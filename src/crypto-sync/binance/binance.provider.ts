@@ -113,7 +113,8 @@ type CoinBalances = ReadonlyMap<Currency, number>;
 
 /**
  * What one wallet's read found. `refused` holds a tracked coin whose amounts are malformed or
- * add past the safe integer: such a coin is never written, and never zeroed either.
+ * add past the safe integer: such a coin is never written, and never zeroed either (a Spot BTC
+ * with no holding yet is the one exception: it gets the zero anchor).
  * `untracked` holds each asset the app does not track that has a balance. `assets` holds every
  * asset the read named, whatever its amount.
  */
@@ -307,11 +308,33 @@ const heldCoinsOf = (wallet: BinanceWallet, existingKeys: ReadonlySet<string>): 
     return parts?.wallet === wallet ? [parts.code] : [];
   });
 
+const holdingOf = (
+  currency: Currency,
+  wallet: BinanceWallet,
+  balanceMinorUnits: number,
+): ProviderBalance => ({
+  currency,
+  balanceMinorUnits,
+  metadataKey: holdingKeyOf(currency, wallet),
+  name: coinHoldingName(currency, wallet),
+  ...renameOf(currency, wallet),
+});
+
+/**
+ * One line per refused coin, so a holding left at a stale balance shows in the log. It names the
+ * wallet only: the coin and its amount are the user's data, which the log never carries.
+ */
+const logRefusal = (wallet: BinanceWallet): void => {
+  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a refused coin amount, wallet only
+  console.warn('[binance sync] a coin amount was refused', { wallet });
+};
+
 /**
  * Append one wallet's holdings to the batch, one per coin:
  * - read FAILED (`read === null`): omit every holding of the wallet, leaving each at its
  *   last good balance rather than overwriting it with a fabricated 0.
- * - coin REFUSED (`read.refused`): omit that coin's holding alone, for the same reason.
+ * - coin REFUSED (`read.refused`): omit that coin's holding alone, for the same reason, and log
+ *   it.
  * - holding ALREADY exists: write it, a zero included, and a coin the good read does not list
  *   is a zero: a wallet the user emptied is zeroed, never left stale and never archived.
  * - no holding yet: write it only from the coin's dust threshold up, so a zero or a dust
@@ -330,18 +353,18 @@ const appendWallet = (
   const { balances, refused } = read;
   const coins = new Set([...balances.keys(), ...heldCoinsOf(wallet, existingKeys)]);
 
+  refused.forEach(() => {
+    logRefusal(wallet);
+  });
+
   for (const currency of [...coins].filter((coin) => !refused.has(coin))) {
     const balanceMinorUnits = balances.get(currency) ?? 0;
-    const metadataKey = holdingKeyOf(currency, wallet);
 
-    if (existingKeys.has(metadataKey) || balanceMinorUnits >= appearMinorUnitsOf(currency)) {
-      batch.push({
-        currency,
-        balanceMinorUnits,
-        metadataKey,
-        name: coinHoldingName(currency, wallet),
-        ...renameOf(currency, wallet),
-      });
+    if (
+      existingKeys.has(holdingKeyOf(currency, wallet)) ||
+      balanceMinorUnits >= appearMinorUnitsOf(currency)
+    ) {
+      batch.push(holdingOf(currency, wallet, balanceMinorUnits));
     }
   }
 };
@@ -436,10 +459,19 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     const existingKeys = existingBinanceKeys(target.holdings);
 
     // The capital, Pay, Transfer and Earn walks import nothing while no Spot BTC holding exists,
-    // so a good Spot read always writes it, a zero or dust balance included. Those walks and
-    // this anchor go together.
+    // so while none exists the Spot read writes it: a good read at its balance, a zero or dust
+    // one included, and a refused Spot BTC amount at a zero, which never overwrites a real
+    // balance. An existing Spot BTC holding whose amount is refused keeps its last balance.
+    // Those walks and this anchor go together.
     const spot = spotRead(spotAccount);
     appendWallet(balances, 'spot', spot, new Set([...existingKeys, SPOT_KEY]));
+
+    if (
+      !existingKeys.has(SPOT_KEY) &&
+      !balances.some(({ metadataKey }) => metadataKey === SPOT_KEY)
+    ) {
+      balances.push(holdingOf(BINANCE_ASSET, 'spot', 0));
+    }
 
     // Funding: one holding per coin; a failure skips the whole wallet.
     const funding = await walletRead('funding', async () =>

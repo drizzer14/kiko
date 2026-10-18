@@ -251,12 +251,25 @@ describe('binanceProvider — Spot holding', () => {
     await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(/Binance/);
   });
 
-  it('skips a Spot coin whose amount is not a number rather than writing NaN', async () => {
+  it('writes the zero anchor, never NaN, for a Spot BTC amount that is no number', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const deps = makeDeps([{ asset: 'BTC', free: 'x', locked: '0' }]);
 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
+    warn.mockRestore();
+  });
+
+  it('keeps an existing Spot BTC holding at its last balance when its amount is refused', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = makeDeps([{ asset: 'BTC', free: 'x', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC', 500)] };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
     expect(byKey(balances, 'BTC')).toBeUndefined();
+    warn.mockRestore();
   });
 
   it('surfaces a Spot 429/418 as the localized binanceRequestFailed message, not the raw rate-limit text', async () => {
@@ -633,7 +646,7 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
     },
   );
 
-  it('skips a Spot coin whose amount is in exponent form', async () => {
+  it('writes a zero anchor and the other coins when a Spot amount is in exponent form', async () => {
     const deps = makeDeps([
       { asset: 'BTC', free: '1e-8', locked: '0' },
       { asset: 'ETH', free: '1', locked: '0' },
@@ -641,7 +654,8 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
-    expect(keysOf(balances)).toEqual(['ETH']);
+    expect(keysOf(balances)).toEqual(['BTC', 'ETH']);
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(0);
   });
 
   it('reads a JSON number through its exact decimal text in every wallet', async () => {
@@ -685,7 +699,7 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
 
     const { balances, exchangeState } = await binanceRead.fetchBalances(deps, emptyTarget);
 
-    expect(byKey(balances, 'BTC')).toBeUndefined();
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
     expect(exchangeState).toEqual(
       expect.arrayContaining([
         { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: ['BTC'] },
@@ -698,12 +712,21 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
 
     const { balances, exchangeState } = await binanceRead.fetchBalances(deps, emptyTarget);
 
-    expect(byKey(balances, 'BTC')).toBeUndefined();
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
     expect(exchangeState).toEqual(
       expect.arrayContaining([
         { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: ['BTC'] },
       ]),
     );
+  });
+
+  it('keeps an existing Spot BTC holding when its amount is beyond the safe integer', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '90071992.54740992', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC', 500)] };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'BTC')).toBeUndefined();
   });
 
   it('never fails on a malformed balance of a coin it does not track', async () => {

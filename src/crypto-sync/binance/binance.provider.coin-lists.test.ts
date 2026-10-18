@@ -218,6 +218,16 @@ describe('binanceProvider — the balance lists after a read', () => {
     expect(lists().oversized).toEqual({ balance: [], history: ['BTC'] });
   });
 
+  it('drops a stored Binance-quoted fiat from the not-tracked list, and writes its holding', async () => {
+    const { balances, lists } = await run({
+      funding: [['EUR', '5']],
+      stored: { untrackedCoins: { balance: ['EUR', 'PEPE'], history: [] } },
+    });
+
+    expect(lists().untracked.balance).toEqual([]);
+    expect(writtenKeys(balances)).toEqual(['BTC', 'EUR:funding']);
+  });
+
   it('a good balance read that finds nothing clears the balance list', async () => {
     const { lists } = await run({ stored });
 
@@ -255,13 +265,29 @@ describe('binanceProvider — the balance lists after a read', () => {
 });
 
 describe('binanceProvider — an amount above the safe bound or malformed', () => {
-  it('an oversized Spot coin skips only that coin; the other coins still write', async () => {
+  it('an oversized Spot BTC writes the zero anchor; the other coins still write', async () => {
     const { balances, lists } = await run({
       spot: [
         ['BTC', OVERSIZED],
         ['USDT', '10'],
       ],
     });
+
+    expect(writtenKeys(balances)).toEqual(['BTC', 'USDT']);
+    expect(balances.find(({ metadataKey }) => metadataKey === 'BTC')?.balanceMinorUnits).toBe(0);
+    expect(lists().oversized.balance).toEqual(['BTC']);
+  });
+
+  it('an oversized Spot BTC leaves an existing Spot BTC holding at its last balance', async () => {
+    const { balances, lists } = await run(
+      {
+        spot: [
+          ['BTC', OVERSIZED],
+          ['USDT', '10'],
+        ],
+      },
+      holding(heldBalance('BTC', 'BTC', 500)),
+    );
 
     expect(writtenKeys(balances)).toEqual(['USDT']);
     expect(lists().oversized.balance).toEqual(['BTC']);
@@ -329,6 +355,41 @@ describe('binanceProvider — an amount above the safe bound or malformed', () =
     );
 
     expect(writtenKeys(balances)).toEqual(['BTC']);
+  });
+
+  describe('the log of a refused coin', () => {
+    const TAG = '[binance sync] a coin amount was refused';
+
+    const refusalLogs = () => warn.mock.calls.filter(([tag]) => tag === TAG);
+
+    it('logs one fixed line per refused coin, naming only its wallet', async () => {
+      await run({
+        spot: [
+          ['ETH', OVERSIZED],
+          ['USDT', 'x'],
+        ],
+        funding: [['USDT', OVERSIZED]],
+      });
+
+      expect(refusalLogs()).toEqual([
+        [TAG, { wallet: 'spot' }],
+        [TAG, { wallet: 'spot' }],
+        [TAG, { wallet: 'funding' }],
+      ]);
+      expect(JSON.stringify(refusalLogs())).not.toMatch(/ETH|USDT|9007|"x"/);
+    });
+
+    it('logs it for the refused Spot BTC that gets the zero anchor too', async () => {
+      await run({ spot: [['BTC', OVERSIZED]] });
+
+      expect(refusalLogs()).toEqual([[TAG, { wallet: 'spot' }]]);
+    });
+
+    it('logs nothing when no coin is refused', async () => {
+      await run({ spot: [['ETH', '1']], funding: [['USDT', '2']] });
+
+      expect(refusalLogs()).toEqual([]);
+    });
   });
 
   it('replaces the oversized balance list on a read that refuses nothing', async () => {
