@@ -10,7 +10,6 @@ import { type Currency, isCrypto } from '@kiko/currency/currency';
 import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
 import either, { bifold, bifoldMap, type Either, isLeft, left, right } from 'fnts/either';
 import { type AmountError, exchangeMinorUnits } from '@kiko/crypto-sync/exchange/amounts';
-import { type ExchangeStateDeps, exchangeStateDepsOf } from '@kiko/crypto-sync/exchange/walk';
 import { compareDecimal, decimalFromJsonNumber, normalizeDecimal } from '@kiko/currency/decimal';
 
 import type { BalanceProvider, ProviderBalance } from '../provider';
@@ -47,7 +46,7 @@ type WalletFetch<Body> = (
   options?: FetchAccountOptions,
 ) => Promise<Body>;
 
-export type BinanceDeps = Pick<ExchangeStateDeps, 'patchExchangeState'> & {
+export type BinanceDeps = {
   fetchImpl: typeof fetch;
   now: () => number;
   readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
@@ -65,7 +64,6 @@ export const defaultBinanceDeps: BinanceDeps = {
   fetchFundingAsset,
   fetchFlexiblePosition,
   fetchLockedPosition,
-  patchExchangeState: exchangeStateDepsOf('binance').patchExchangeState,
 };
 
 /**
@@ -400,7 +398,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     // "balance sync never fails because of the history walk" contract even
     // when the history walk is the one that set the cooldown.
     if (isBinanceCoolingDown(target.accountId, deps.now())) {
-      return [];
+      return { balances: [] };
     }
 
     const credentials = await deps.readCredentials(target.accountId);
@@ -468,14 +466,16 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     appendWallet(balances, 'earn', earn, existingKeys);
 
     // A read in which Funding or Earn failed knows nothing of that wallet's coins, so replacing
-    // either list from it would drop the coins that wallet held: both lists stay as stored.
-    if (funding !== null && earn !== null) {
-      await deps.patchExchangeState(
-        target.accountId,
-        balanceListPatches([spot, funding, earn], earn.assets),
-      );
+    // either list from it would drop the coins that wallet held: both lists stay as stored. The
+    // lists are returned, not written: the write needs the account marked as Binance's, which a
+    // first Connect does only after this read.
+    if (funding === null || earn === null) {
+      return { balances };
     }
 
-    return balances;
+    return {
+      balances,
+      exchangeState: balanceListPatches([spot, funding, earn], earn.assets),
+    };
   },
 };

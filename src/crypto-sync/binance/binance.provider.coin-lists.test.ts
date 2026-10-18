@@ -6,7 +6,7 @@ import {
 } from '@kiko/crypto-sync/exchange/walk-state';
 import type { Currency } from '@kiko/currency/currency';
 
-import type { SyncTarget } from '../provider';
+import type { ProviderBalance, SyncTarget } from '../provider';
 
 import { setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceDeps, binanceProvider } from './binance.provider';
@@ -36,10 +36,11 @@ const failedRead = async (): Promise<never> => {
   throw new Error('Binance request failed: 401');
 };
 
-// A deps set over one stored state: a patch applies to it as the repo applies it.
+// A deps set over one stored state: the patches a read returns apply to it as the repo applies
+// them (the account's institution gate is pinned over a real database in
+// `run-crypto-sync.first-connect.real-sqlite.test.ts`).
 const worldOf = ({ spot = [], funding = [], flexible = [], locked = [], stored = {} }: World) => {
   let text: string = JSON.stringify({ version: 1, walks: {}, ...stored });
-  const patches: ExchangeStatePatch[][] = [];
 
   const deps: BinanceDeps = {
     fetchImpl: (async () => ({ ok: true })) as unknown as typeof fetch,
@@ -67,10 +68,10 @@ const worldOf = ({ spot = [], funding = [], flexible = [], locked = [], stored =
       locked === 'fails'
         ? failedRead()
         : { rows: locked.map(([asset, amount]) => ({ asset, amount })), total: locked.length },
-    patchExchangeState: jest.fn(async (_accountId, applied) => {
-      patches.push([...applied]);
-      text = exchangeStatePatched(text, applied) ?? text;
-    }),
+  };
+
+  const apply = (patches: readonly ExchangeStatePatch[] = []): void => {
+    text = exchangeStatePatched(text, patches) ?? text;
   };
 
   const lists = () => {
@@ -83,17 +84,19 @@ const worldOf = ({ spot = [], funding = [], flexible = [], locked = [], stored =
     return { untracked: state.untrackedCoins, oversized: state.oversizedCoins };
   };
 
-  return { deps, lists, patches };
+  return { deps, lists, apply };
 };
 
 const run = async (world: World, from: SyncTarget = target) => {
   const read = worldOf(world);
-  const balances = await binanceProvider.fetchBalances(read.deps, from);
+  const { balances, exchangeState } = await binanceProvider.fetchBalances(read.deps, from);
 
-  return { balances, ...read };
+  read.apply(exchangeState);
+
+  return { balances, exchangeState, ...read };
 };
 
-const writtenKeys = (balances: Awaited<ReturnType<typeof binanceProvider.fetchBalances>>) =>
+const writtenKeys = (balances: ProviderBalance[]) =>
   balances.map(({ metadataKey }) => metadataKey).sort();
 
 const heldBalance = (
@@ -221,14 +224,12 @@ describe('binanceProvider — the balance lists after a read', () => {
     expect(lists().untracked.balance).toEqual([]);
   });
 
-  it('patches both balance lists in one write', async () => {
-    const { patches } = await run({ spot: [['ABC', '1']] });
+  it('returns both balance lists as the patches of one write', async () => {
+    const { exchangeState } = await run({ spot: [['ABC', '1']] });
 
-    expect(patches).toEqual([
-      [
-        { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['ABC'] },
-        { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: [] },
-      ],
+    expect(exchangeState).toEqual([
+      { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['ABC'] },
+      { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: [] },
     ]);
   });
 
@@ -236,29 +237,20 @@ describe('binanceProvider — the balance lists after a read', () => {
     ['Funding', { funding: 'fails' as const }],
     ['Earn', { locked: 'fails' as const }],
   ])('a balance read with a failed wallet keeps both balance lists (%s)', async (_, failing) => {
-    const { patches, lists } = await run({ spot: [['ABC', '1']], stored, ...failing });
+    const { exchangeState, lists } = await run({ spot: [['ABC', '1']], stored, ...failing });
 
-    expect(patches).toEqual([]);
+    expect(exchangeState).toBeUndefined();
     expect(lists().untracked.balance).toEqual(['PEPE']);
     expect(lists().oversized.balance).toEqual(['ETH']);
   });
 
-  it('a Spot failure patches nothing', async () => {
-    const read = worldOf({ stored });
-    read.deps.fetchAccount = failedRead;
-
-    await expect(binanceProvider.fetchBalances(read.deps, target)).rejects.toThrow(/Binance/);
-
-    expect(read.patches).toEqual([]);
-  });
-
-  it('an account cooling down patches nothing', async () => {
+  it('an account cooling down returns no lists', async () => {
     const cooling: SyncTarget = { accountId: 'acc-lists-cooldown', holdings: [] };
     setBinanceCooldownUntil(cooling.accountId, NOW + 60_000);
 
-    const { patches } = await run({ spot: [['ABC', '1']], stored }, cooling);
+    const { exchangeState } = await run({ spot: [['ABC', '1']], stored }, cooling);
 
-    expect(patches).toEqual([]);
+    expect(exchangeState).toBeUndefined();
   });
 });
 

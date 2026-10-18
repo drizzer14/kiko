@@ -51,7 +51,7 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
       // orchestrator writes nothing for an empty result, so only a wallet that never stored
       // an address is an error.
       if (target.holdings.some(({ metadata }) => walletAddressOf(metadata) !== undefined)) {
-        return [];
+        return { balances: [] };
       }
 
       throw new Error(i18n.t('accountDetail.noWalletAddressStored'));
@@ -76,6 +76,6 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
       });
     }
 
-    return balances;
+    return { balances };
   },
 };

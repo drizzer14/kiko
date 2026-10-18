@@ -13,7 +13,7 @@ import {
 import { i18n } from '@kiko/i18n/init';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 
-import type { BalanceProvider, ProviderBalance, SyncTarget } from '../provider';
+import type { BalanceProvider, ProviderBalance, ProviderRead, SyncTarget } from '../provider';
 
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
 
@@ -41,7 +41,10 @@ const walletBalance = (balanceMinorUnits: number): ProviderBalance => ({
   name: 'BTC Wallet',
 });
 
-type FakeDeps = { balances: ProviderBalance[] | Error };
+type FakeDeps = {
+  balances: ProviderBalance[] | Error;
+  exchangeState?: ProviderRead['exchangeState'];
+};
 
 /**
  * A wallet-shaped provider whose result is injected through its deps; records
@@ -60,7 +63,7 @@ const makeProvider = (id: BalanceProvider<FakeDeps>['id'] = 'btc_wallet') => {
         throw deps.balances;
       }
 
-      return deps.balances;
+      return { balances: deps.balances, exchangeState: deps.exchangeState };
     },
   };
 
@@ -186,6 +189,24 @@ describe('runBalanceSync', () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({ accountId: 'acc-1', holdings: [] });
+  });
+
+  it('returns the exchange state the read carried, with the account already marked', async () => {
+    const exchangeState: ProviderRead['exchangeState'] = [
+      { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['PEPE'] },
+    ];
+    const { provider } = makeProvider('binance');
+    const { deps, accountsStore } = makeInMemoryDeps([cryptoAccount()]);
+    deps.targetAccountId = 'acc-1';
+
+    const result = await runBalanceSync(
+      provider,
+      { balances: [walletBalance(1)], exchangeState },
+      deps,
+    );
+
+    expect(result).toEqual({ syncedHoldings: 1, exchangeState });
+    expect(accountsStore[0].institution).toBe('binance');
   });
 
   it("writes the balance in the provider's currency", async () => {

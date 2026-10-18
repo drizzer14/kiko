@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import type { HoldingRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeMetadataField } from '@kiko/holdings/holding-metadata';
+import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
 
 /**
  * The single source of truth for the balance-provider ids. Each id doubles as
@@ -63,9 +64,20 @@ export type ProviderBalance = {
  */
 export type SyncTarget = { accountId: string; holdings: HoldingRow[] };
 
+/** What one balance read found. */
+export type ProviderRead = {
+  balances: ProviderBalance[];
+  /**
+   * Writes to the account's exchange state that wait for the sync to mark the account: the
+   * write is gated on `accounts.institution`, which a first Connect sets only after the read.
+   * Absent when the read has nothing to write.
+   */
+  exchangeState?: readonly ExchangeStatePatch[];
+};
+
 export interface BalanceProvider<Deps> {
   id: BalanceProviderId;
   /** The `holdings.metadata` field the provider's `metadataKey` is stored under. */
   metadataField: ExchangeMetadataField;
-  fetchBalances: (deps: Deps, target: SyncTarget) => Promise<ProviderBalance[]>;
+  fetchBalances: (deps: Deps, target: SyncTarget) => Promise<ProviderRead>;
 }

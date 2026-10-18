@@ -12,10 +12,14 @@ import {
   fetchFundingAsset,
   fetchLockedPosition,
 } from './binance.client';
+import {
+  type BinanceDeps,
+  binanceProvider as binanceRead,
+  defaultBinanceDeps,
+} from './binance.provider';
 import { readCredentials } from './binance.credentials';
 import { setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceWallet, holdingKeyOf, SPOT_KEY } from './binance.holding-keys';
-import { type BinanceDeps, binanceProvider, defaultBinanceDeps } from './binance.provider';
 
 // The credentials module imports react-native-keychain, whose native binding is
 // absent under Jest; `readCredentials` is injected, so the stub only needs the
@@ -23,6 +27,14 @@ import { type BinanceDeps, binanceProvider, defaultBinanceDeps } from './binance
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
+
+// This file pins the holdings a read writes; the balance lists the same read returns are pinned
+// in `binance.provider.coin-lists.test.ts`.
+const binanceProvider = {
+  ...binanceRead,
+  fetchBalances: async (...args: Parameters<typeof binanceRead.fetchBalances>) =>
+    (await binanceRead.fetchBalances(...args)).balances,
+};
 
 const NOW = 1_704_326_400_000;
 const emptyTarget: SyncTarget = { accountId: 'acc-1', holdings: [] };
@@ -47,7 +59,6 @@ const makeDeps = (balances: { asset: string; free: string; locked: string }[]): 
   fetchFundingAsset: jest.fn(async () => []),
   fetchFlexiblePosition: jest.fn(async () => ({ rows: [], total: 0 })),
   fetchLockedPosition: jest.fn(async () => ({ rows: [], total: 0 })),
-  patchExchangeState: jest.fn(async () => undefined),
 });
 
 // A minimal synced Binance holding for a given match key, to model a target that
@@ -90,7 +101,6 @@ describe('binanceProvider', () => {
     expect(defaultBinanceDeps.fetchFlexiblePosition).toBe(fetchFlexiblePosition);
     expect(defaultBinanceDeps.fetchLockedPosition).toBe(fetchLockedPosition);
     expect(defaultBinanceDeps.readCredentials).toBe(readCredentials);
-    expect(typeof defaultBinanceDeps.patchExchangeState).toBe('function');
     expect(defaultBinanceDeps.fetchImpl).toBe(fetch);
     expect(typeof defaultBinanceDeps.now()).toBe('number');
   });
@@ -673,11 +683,10 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
   it('skips a Spot balance beyond the safe integer rather than truncating it', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '90071992.54740992', locked: '0' }]);
 
-    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+    const { balances, exchangeState } = await binanceRead.fetchBalances(deps, emptyTarget);
 
     expect(byKey(balances, 'BTC')).toBeUndefined();
-    expect(deps.patchExchangeState).toHaveBeenCalledWith(
-      emptyTarget.accountId,
+    expect(exchangeState).toEqual(
       expect.arrayContaining([
         { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: ['BTC'] },
       ]),
@@ -687,11 +696,10 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
   it('skips a Spot coin when two safe amounts add beyond the safe integer', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '90071992.54740991', locked: '0.00000001' }]);
 
-    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+    const { balances, exchangeState } = await binanceRead.fetchBalances(deps, emptyTarget);
 
     expect(byKey(balances, 'BTC')).toBeUndefined();
-    expect(deps.patchExchangeState).toHaveBeenCalledWith(
-      emptyTarget.accountId,
+    expect(exchangeState).toEqual(
       expect.arrayContaining([
         { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: ['BTC'] },
       ]),
