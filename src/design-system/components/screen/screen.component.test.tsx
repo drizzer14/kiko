@@ -580,18 +580,9 @@ describe('Screen', () => {
       expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
     });
 
-    it('adds nothing under a 72 pt bottom bar', async () => {
+    it.each([72, 83])('adds nothing under a %i pt bottom bar', async (barHeight) => {
       mockUseTabBarEdge.mockReturnValue('bottom');
-      mockUseBottomTabBarHeight.mockReturnValue(72);
-
-      const view = await renderScreen();
-
-      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
-    });
-
-    it('adds nothing under an 83 pt bottom bar', async () => {
-      mockUseTabBarEdge.mockReturnValue('bottom');
-      mockUseBottomTabBarHeight.mockReturnValue(83);
+      mockUseBottomTabBarHeight.mockReturnValue(barHeight);
 
       const view = await renderScreen();
 

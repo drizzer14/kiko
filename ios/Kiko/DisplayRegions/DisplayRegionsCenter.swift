@@ -61,7 +61,7 @@ import os
   // `tabBarIsHidden` and `tabBarFrame` are the controller's own tab bar, kept for the debug log
   // only: they say why a floating or missing bar came out as it did. `rejectedFrame` is the frame
   // `isInsideWindow` dropped when no frame was accepted; it too is for the log only, so `frame`
-  // stays nil and the snapshot reads `none` as before.
+  // stays nil and the snapshot reads `none`.
   struct TabBarReading {
     var kind: String
     var frame: CGRect?
@@ -249,29 +249,32 @@ import os
     of controller: UITabBarController, in window: UIWindow
   ) -> TabBarReading {
     let tabBar = controller.tabBar
-    let tabBarCandidate = splitByWindow(
-      visibleFrame(of: tabBar, in: window), windowBounds: window.bounds)
+    let tabBarCandidate = visibleFrame(of: tabBar, in: window)
     let ownFrame = tabBar.convert(tabBar.bounds, to: window)
 
-    if let tabBarFrame = tabBarCandidate.accepted {
+    if let tabBarFrame = tabBarCandidate,
+      isInsideWindow(frame: tabBarFrame, windowBounds: window.bounds)
+    {
       return TabBarReading(
         kind: "tabBar", frame: tabBarFrame, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
     }
 
-    let floatingCandidate = splitByWindow(
-      floatingBarFrame(
-        below: controller.view, selectedView: controller.selectedViewController?.viewIfLoaded,
-        in: window),
-      windowBounds: window.bounds)
+    let floatingCandidate = floatingBarFrame(
+      below: controller.view, selectedView: controller.selectedViewController?.viewIfLoaded,
+      in: window)
 
-    if let floating = floatingCandidate.accepted {
+    if let floating = floatingCandidate,
+      isInsideWindow(frame: floating, windowBounds: window.bounds)
+    {
       return TabBarReading(
         kind: "floating", frame: floating, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
     }
 
+    // Past both accept checks, a candidate that exists is one `isInsideWindow` dropped; the log
+    // keeps it so it can say a candidate was seen and refused.
     let rejectedKinds = [
-      tabBarCandidate.rejected == nil ? nil : "tabBar",
-      floatingCandidate.rejected == nil ? nil : "floating",
+      tabBarCandidate.map { _ in "tabBar" },
+      floatingCandidate.map { _ in "floating" },
     ].compactMap { $0 }
 
     return TabBarReading(
@@ -279,20 +282,7 @@ import os
       frame: nil,
       tabBarIsHidden: tabBar.isHidden,
       tabBarFrame: ownFrame,
-      rejectedFrame: tabBarCandidate.rejected ?? floatingCandidate.rejected)
-  }
-
-  // The one place `isInsideWindow` decides: a frame it keeps is the reading, a frame it drops is
-  // kept apart so the log can say a candidate was seen and refused.
-  private static func splitByWindow(_ candidate: CGRect?, windowBounds: CGRect) -> (
-    accepted: CGRect?, rejected: CGRect?
-  ) {
-    guard let candidate else {
-      return (nil, nil)
-    }
-
-    return isInsideWindow(frame: candidate, windowBounds: windowBounds)
-      ? (candidate, nil) : (nil, candidate)
+      rejectedFrame: floatingCandidate ?? tabBarCandidate)
   }
 
   // A breadth-first descent below the controller's view; the first view in that order that is

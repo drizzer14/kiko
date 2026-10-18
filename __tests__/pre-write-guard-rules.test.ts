@@ -271,13 +271,17 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       ).toContain(RULE_ID);
     });
 
-    it.each(['message', 'fix'] as const)(
+    it.each([
+      ['message', (finding?: Finding) => finding?.extra.message],
+      ['fix', (finding?: Finding) => finding?.extra.metadata.fix],
+    ] as const)(
       'the %s sends only the bottom function to the hook and never imports the top one',
-      (field) => {
-        const finding = scanFor(
-          `import { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\n`,
-        ).find(({ check_id }) => check_id.endsWith(RULE_ID));
-        const text = field === 'message' ? finding?.extra.message : finding?.extra.metadata.fix;
+      (_field, textOf) => {
+        const text = textOf(
+          scanFor(`import { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\n`).find(
+            ({ check_id }) => check_id.endsWith(RULE_ID),
+          ),
+        );
 
         expect(text).toMatch(/resolveBottomClearance[^.]*useBottomClearance\(\)/);
         expect(text).not.toMatch(/resolveTopClearance[^.]*useBottomClearance/);

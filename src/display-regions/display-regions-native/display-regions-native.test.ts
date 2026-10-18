@@ -18,13 +18,6 @@ const flatSnapshot: DisplayRegionsSnapshot = {
   foldRegion: null,
 };
 
-const topBarSnapshot: DisplayRegionsSnapshot = {
-  horizontalSizeClass: 'regular',
-  verticalBarEdge: 'none',
-  tabBarEdge: 'top',
-  foldRegion: null,
-};
-
 // The wrapper keeps the last native snapshot in module state, so each test loads its own copy of
 // the wrapper together with the native mock that copy reads: a reset registry re-runs both module
 // factories, and the wrapper requires the native module lazily from that same registry. The mock
@@ -100,12 +93,6 @@ describe('displayRegionsNative.getSnapshot', () => {
 
   it('models an older system as a compact, bar-less, unfolded window', () => {
     expect(FALLBACK_SNAPSHOT).toEqual(flatSnapshot);
-  });
-
-  it('parses a top tab bar edge (iPad full screen)', () => {
-    nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(topBarSnapshot));
-
-    expect(displayRegionsNative.getSnapshot()).toEqual(topBarSnapshot);
   });
 
   it.each<TabBarEdge>(['top', 'bottom', 'leading', 'trailing', 'none'])(
