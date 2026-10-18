@@ -283,8 +283,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
   worktree except under `node_modules/`, and counts when unresolved (fail closed). Resolved and
   NOT covered: `harness/kiko/scripts/*`, non-YAML
-  `harness/kiko/hooks/*`, and a scripts folder under `ios/` or `docs/`. A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is
-  now denied: build the scratch from a git merge or commit, or use `git archive <sha> scripts |
+  `harness/kiko/hooks/*`, and a scripts folder under `ios/` or `docs/`.
+  A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
+  build the scratch from a git merge or commit, or use `git archive <sha> scripts |
   tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
   `sed`, `tee`, and interpreters, not the archive extractor; not run against the guard, so
   re-verify). Formatter
