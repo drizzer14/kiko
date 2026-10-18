@@ -598,17 +598,17 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
     await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(/Binance/);
   });
 
-  it('never fails on a malformed balance of a coin it does not read', async () => {
+  it('never fails on a malformed balance of a coin it does not track', async () => {
     const deps = makeDeps([
-      { asset: 'ETH', free: 'x', locked: '1e-8' },
+      { asset: 'PEPE', free: 'x', locked: '1e-8' },
       { asset: 'LDBTC', free: 'x', locked: '0' },
       { asset: 'BTC', free: '1', locked: '0' },
     ]);
     deps.fetchFundingAsset.mockResolvedValue([
-      { asset: 'ETH', free: 'x', locked: '0', freeze: '0', withdrawing: '0' },
+      { asset: 'PEPE', free: 'x', locked: '0', freeze: '0', withdrawing: '0' },
     ]);
     deps.fetchFlexiblePosition.mockResolvedValue({
-      rows: [{ asset: 'ETH', totalAmount: '1e-8' }],
+      rows: [{ asset: 'PEPE', totalAmount: '1e-8' }],
       total: 1,
     });
     deps.fetchLockedPosition.mockResolvedValue({
@@ -620,5 +620,135 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
 
     expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('binanceProvider — every asset, keyed per coin', () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('writes a Spot USDT holding in USDT under its own key', async () => {
+    const deps = makeDeps([{ asset: 'USDT', free: '10', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'USDT')).toEqual({
+      currency: 'USDT',
+      balanceMinorUnits: 1_000_000_000,
+      metadataKey: 'USDT',
+      name: 'Binance Spot · USDT',
+    });
+  });
+
+  it('writes a Funding EUR holding at the fiat scale', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'EUR', free: '5.00', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'EUR:funding')).toEqual({
+      currency: 'EUR',
+      balanceMinorUnits: 500,
+      metadataKey: 'EUR:funding',
+      name: 'Binance Funding · EUR',
+    });
+  });
+
+  it('writes an Earn holding per coin, Flexible and Locked summed within each coin', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [
+        { asset: 'USDT', totalAmount: '3' },
+        { asset: 'ETH', totalAmount: '0.5' },
+        { asset: 'USDT', totalAmount: '1' },
+      ],
+      total: 3,
+    });
+    deps.fetchLockedPosition.mockResolvedValue({
+      rows: [{ asset: 'USDT', amount: '2' }],
+      total: 1,
+    });
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'USDT:earn')).toEqual({
+      currency: 'USDT',
+      balanceMinorUnits: 600_000_000,
+      metadataKey: 'USDT:earn',
+      name: 'Binance Earn · USDT',
+    });
+    expect(byKey(balances, 'ETH:earn')).toMatchObject({
+      currency: 'ETH',
+      balanceMinorUnits: 50_000_000,
+    });
+  });
+
+  it('sums each coin on its own, never one coin into another', async () => {
+    const deps = makeDeps([
+      { asset: 'ETH', free: '0.1', locked: '0.2' },
+      { asset: 'BTC', free: '1', locked: '0.5' },
+    ]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'USDT', free: '1', locked: '2', freeze: '3', withdrawing: '4' },
+      { asset: 'BTC', free: '0.1', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(150_000_000);
+    expect(byKey(balances, 'ETH')?.balanceMinorUnits).toBe(30_000_000);
+    expect(byKey(balances, 'USDT:funding')?.balanceMinorUnits).toBe(1_000_000_000);
+    expect(byKey(balances, 'BTC:funding')?.balanceMinorUnits).toBe(10_000_000);
+  });
+
+  it('reads an Earn BTC position and no Spot holding for the LDBTC receipt token', async () => {
+    const deps = makeDeps([{ asset: 'LDBTC', free: '0.1', locked: '0' }]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [{ asset: 'BTC', totalAmount: '0.1' }],
+      total: 1,
+    });
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'LDBTC')).toBeUndefined();
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(0);
+    expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(10_000_000);
+  });
+
+  it('reads LDO as LDO, a code that is no tracked coin, so it writes no holding', async () => {
+    const deps = makeDeps([{ asset: 'LDO', free: '3', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(balances.map(({ metadataKey }) => metadataKey)).toEqual(['BTC']);
+  });
+
+  it('fails the Spot read on a malformed balance of a tracked coin other than BTC', async () => {
+    const deps = makeDeps([{ asset: 'USDT', free: 'x', locked: '0' }]);
+
+    await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(
+      i18n.t('accountDetail.binanceNonNumericBalanceAmount'),
+    );
+  });
+
+  it('keeps every Funding holding at its last good balance on a malformed amount of any tracked coin', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'BTC', free: '1', locked: '0', freeze: '0', withdrawing: '0' },
+      { asset: 'USDT', free: '1e-8', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(balances.map(({ metadataKey }) => metadataKey)).toEqual(['BTC']);
   });
 });

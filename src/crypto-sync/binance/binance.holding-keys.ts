@@ -1,4 +1,5 @@
 import type { HoldingRow } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
 
 /**
  * Match keys stored under `metadata.binanceAsset`, one holding per Binance
@@ -25,6 +26,25 @@ export const WALLET_HOLDING_NAMES: Record<BinanceWalletKey, string> = {
   [FUNDING_KEY]: 'Binance Funding',
   [EARN_KEY]: 'Binance Earn',
 };
+
+export type BinanceWallet = 'spot' | 'funding' | 'earn';
+
+/**
+ * The open key form of one (coin, wallet) holding: `<CODE>`, `<CODE>:funding`, `<CODE>:earn`. It
+ * yields the three BTC constants above for BTC, so a stored BTC holding keeps matching.
+ */
+export const holdingKeyOf = (code: Currency, wallet: BinanceWallet): string =>
+  wallet === 'spot' ? code : `${code}:${wallet}`;
+
+const WALLET_LABELS: Record<BinanceWallet, string> = {
+  spot: 'Spot',
+  funding: 'Funding',
+  earn: 'Earn',
+};
+
+/** The default name of a holding the sync creates for a coin: "Binance Spot · USDT". */
+export const coinHoldingName = (code: Currency, wallet: BinanceWallet): string =>
+  `Binance ${WALLET_LABELS[wallet]} · ${code}`;
 
 /** The `metadata.binanceAsset` key stored on a holding, if any. */
 export const binanceKeyOf = (holding: Pick<HoldingRow, 'metadata'>): string | undefined => {

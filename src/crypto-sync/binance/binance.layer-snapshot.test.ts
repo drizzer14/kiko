@@ -94,11 +94,11 @@ const EXPECTED_URLS: Record<string, string> = {
   account:
     'https://api.binance.com/api/v3/account?timestamp=1791590400000&recvWindow=5000&signature=7490c3a7eb8acc21216096b21094601993e20d0f9e664482dabda0400bddd910',
   'funding asset':
-    'https://api.binance.com/sapi/v1/asset/get-funding-asset?asset=BTC&timestamp=1791590400000&recvWindow=5000&signature=eb14368637c305ce120b05bf35e037d2ddd88f4ca619319eec47920ea4a237e2',
+    'https://api.binance.com/sapi/v1/asset/get-funding-asset?timestamp=1791590400000&recvWindow=5000&signature=7490c3a7eb8acc21216096b21094601993e20d0f9e664482dabda0400bddd910',
   'flexible position':
-    'https://api.binance.com/sapi/v1/simple-earn/flexible/position?asset=BTC&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=c42d865d37f360be491740058338c38c84376a8b0c1255d15085bd791e69a2d4',
+    'https://api.binance.com/sapi/v1/simple-earn/flexible/position?current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=e84b361aece3f41ee6815a56e53e2bc9a045b432f1c910c5e5d769ea0a26f6ff',
   'locked position':
-    'https://api.binance.com/sapi/v1/simple-earn/locked/position?asset=BTC&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=c42d865d37f360be491740058338c38c84376a8b0c1255d15085bd791e69a2d4',
+    'https://api.binance.com/sapi/v1/simple-earn/locked/position?current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=e84b361aece3f41ee6815a56e53e2bc9a045b432f1c910c5e5d769ea0a26f6ff',
   'deposit history':
     'https://api.binance.com/sapi/v1/capital/deposit/hisrec?coin=BTC&startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=9e960ba104e88789b4926156c1563c87d3230206b7b06f70b6935daf0136fc10',
   'withdraw history':

@@ -3,8 +3,10 @@ import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import { isRecord } from '@kiko/type-guards';
 import { logFailure } from '@kiko/diagnostics';
 import { decimalFromJsonNumber } from '@kiko/currency/decimal';
+import { type Currency, isCurrency } from '@kiko/currency/currency';
 import either, { bifold, bifoldMap, type Either, isLeft, left, right } from 'fnts/either';
 import { type AmountError, exchangeMinorUnits } from '@kiko/crypto-sync/exchange/amounts';
 
@@ -12,7 +14,6 @@ import type { BalanceProvider, ProviderBalance } from '../provider';
 
 import {
   type BinanceAccount,
-  type BinanceBalance,
   BINANCE_ASSET,
   BinanceRateLimitError,
   type BinanceFlexiblePosition,
@@ -25,9 +26,12 @@ import {
   fetchLockedPosition,
 } from './binance.client';
 import {
+  type BinanceWallet,
   binanceKeyOf,
+  coinHoldingName,
   EARN_KEY,
   FUNDING_KEY,
+  holdingKeyOf,
   SPOT_KEY,
   WALLET_HOLDING_NAMES,
 } from './binance.holding-keys';
@@ -83,19 +87,23 @@ const amountText = (value: unknown): string | undefined =>
     .with(P.number, (number) => decimalFromJsonNumber(number) ?? undefined)
     .otherwise(() => undefined);
 
-const amountMinorUnits = (value: unknown): Either<AmountError, number> =>
-  foldMap(maybe(amountText(value)), (text) => exchangeMinorUnits(BINANCE_ASSET, text, 'balance')) ??
+const amountMinorUnits = (currency: Currency, value: unknown): Either<AmountError, number> =>
+  foldMap(maybe(amountText(value)), (text) => exchangeMinorUnits(currency, text, 'balance')) ??
   left('amount-malformed');
 
 /**
- * Sum amounts as exact integer minor units. Each is parsed on its own, so no float sits between
- * the text and the stored value, and a sum past the safe integer is refused, never truncated.
+ * Sum amounts as exact integer minor units of `currency`. Each is parsed on its own, so no float
+ * sits between the text and the stored value, and a sum past the safe integer is refused, never
+ * truncated.
  */
-const sumAmounts = (amounts: readonly unknown[]): Either<AmountError, number> => {
+const sumAmounts = (
+  currency: Currency,
+  amounts: readonly unknown[],
+): Either<AmountError, number> => {
   let total = 0;
 
   for (const amount of amounts) {
-    const units = amountMinorUnits(amount);
+    const units = amountMinorUnits(currency, amount);
 
     if (isLeft(units)) {
       return units;
@@ -123,10 +131,36 @@ const unitsOrThrow = (result: Either<AmountError, number>, failure: AmountFailur
   return units;
 };
 
-const isBTCEntry = (entry: unknown): boolean =>
-  typeof entry === 'object' &&
-  entry !== null &&
-  (entry as { asset?: unknown }).asset === BINANCE_ASSET;
+type CoinBalances = ReadonlyMap<Currency, number>;
+
+type AmountEntry = { asset: unknown; amounts: readonly unknown[] };
+
+/** One entry per row object, with the named fields of its amounts; a non-object is no entry. */
+const entriesOf = (rows: readonly unknown[], fields: readonly string[]): AmountEntry[] =>
+  rows
+    .filter(isRecord)
+    .map((row) => ({ asset: row.asset, amounts: fields.map((field) => row[field]) }));
+
+/**
+ * Each tracked coin's balance in its own minor units. An asset that is no `Currency` (a coin the
+ * app does not track) is dropped BEFORE any amount is read, so its malformed text fails nothing.
+ */
+const balancesOf = (entries: readonly AmountEntry[], failure: AmountFailureKey): CoinBalances => {
+  const amountsByCoin = new Map<Currency, unknown[]>();
+
+  for (const { asset, amounts } of entries) {
+    if (typeof asset === 'string' && isCurrency(asset)) {
+      amountsByCoin.set(asset, [...(amountsByCoin.get(asset) ?? []), ...amounts]);
+    }
+  }
+
+  return new Map(
+    [...amountsByCoin].map(([currency, amounts]) => [
+      currency,
+      unitsOrThrow(sumAmounts(currency, amounts), failure),
+    ]),
+  );
+};
 
 /**
  * Whether the parsed `/api/v3/account` body carries a usable balances array.
@@ -151,68 +185,59 @@ const hasRows = (body: unknown): body is { rows: unknown[] } =>
   'rows' in body &&
   Array.isArray((body as { rows: unknown }).rows);
 
-/** Spot BTC satoshis: `free + locked` per BTC balance. Throws on a malformed body. */
-const spotSatoshis = (account: BinanceAccount): number => {
+/** Spot balances: `free + locked` per tracked coin. Throws on a malformed body. */
+const spotBalances = (account: BinanceAccount): CoinBalances => {
   if (!hasBalances(account)) {
     throw new Error(i18n.t('accountDetail.binanceMissingBalancesArray'));
   }
 
-  const btcBalances = account.balances.filter((balance): balance is BinanceBalance =>
-    isBTCEntry(balance),
-  );
-
-  return unitsOrThrow(
-    sumAmounts(btcBalances.flatMap((balance) => [balance.free, balance.locked])),
+  return balancesOf(
+    entriesOf(account.balances, ['free', 'locked']),
     'accountDetail.binanceNonNumericBalanceAmount',
   );
 };
 
-/** Funding BTC satoshis: `free + locked + freeze + withdrawing` per BTC row. */
-const fundingSatoshis = (assets: BinanceFundingAsset[]): number => {
+/** Funding balances: `free + locked + freeze + withdrawing` per tracked coin. */
+const fundingBalances = (assets: BinanceFundingAsset[]): CoinBalances => {
   if (!Array.isArray(assets)) {
     throw new Error(i18n.t('accountDetail.binanceFundingResponseNotArray'));
   }
 
-  const btcAssets = assets.filter((asset): asset is BinanceFundingAsset => isBTCEntry(asset));
-
-  return unitsOrThrow(
-    sumAmounts(
-      btcAssets.flatMap((asset) => [asset.free, asset.locked, asset.freeze, asset.withdrawing]),
-    ),
+  return balancesOf(
+    entriesOf(assets, ['free', 'locked', 'freeze', 'withdrawing']),
     'accountDetail.binanceNonNumericFundingAmount',
   );
 };
 
 /**
- * The BTC amounts of one Simple Earn read. A flexible position holds its BTC in `totalAmount`, a
- * locked one in `amount`; the caller names which field, and sums both reads together.
+ * The amount entries of one Simple Earn read. A flexible position holds its amount in
+ * `totalAmount`, a locked one in `amount`; the caller names which field, and sums both reads
+ * together per coin.
  */
-const positionAmounts = (
+const positionEntries = (
   body: { rows: unknown[] },
   amountField: 'totalAmount' | 'amount',
-): unknown[] => {
+): AmountEntry[] => {
   if (!hasRows(body)) {
     throw new Error(i18n.t('accountDetail.binanceMissingRowsArray'));
   }
 
-  return body.rows
-    .filter((row): row is Record<string, unknown> => isBTCEntry(row))
-    .map((row) => row[amountField]);
+  return entriesOf(body.rows, [amountField]);
 };
 
 /**
  * Run one non-Spot wallet's read and parse. Any failure — a missing API-key
  * permission, a throttle, a malformed body — SKIPS that wallet only (logging
  * which one) and returns `null`, so a single wallet never breaks the whole sync
- * AND its holding is left untouched rather than clobbered with a fabricated 0.
- * `null` (skipped) is deliberately distinct from `0` (a genuine empty wallet).
+ * AND its holdings are left untouched rather than clobbered with a fabricated 0.
+ * `null` (skipped) is deliberately distinct from an empty map (a genuine empty wallet).
  * Spot is deliberately NOT wrapped: its failure must fail the sync.
  */
-const walletSatoshis = async (
+const walletBalances = async (
   wallet: string,
-  satoshis: () => Promise<number>,
-): Promise<number | null> => {
-  const attempt = await either<unknown, number>(satoshis);
+  balances: () => Promise<CoinBalances>,
+): Promise<CoinBalances | null> => {
+  const attempt = await either<unknown, CoinBalances>(balances);
 
   return bifoldMap(
     attempt,
@@ -240,10 +265,26 @@ const existingBinanceKeys = (holdings: HoldingRow[]): Set<string> => {
   return keys;
 };
 
+// BTC keeps its pre-per-coin default names until the rename moves a stored holding with them.
+const BTC_HOLDING_NAMES: Record<BinanceWallet, string> = {
+  spot: WALLET_HOLDING_NAMES[SPOT_KEY],
+  funding: WALLET_HOLDING_NAMES[FUNDING_KEY],
+  earn: WALLET_HOLDING_NAMES[EARN_KEY],
+};
+
+const holdingNameOf = (currency: Currency, wallet: BinanceWallet): string =>
+  currency === BINANCE_ASSET ? BTC_HOLDING_NAMES[wallet] : coinHoldingName(currency, wallet);
+
+// A good read that lists no BTC is a genuine zero BTC, as it always was, so an existing BTC
+// holding is zeroed; the same rule for every other coin is the absent-coin rows' to settle.
+const withBtcZero = (balances: CoinBalances | null): CoinBalances | null =>
+  foldMap(maybe(balances), (read) => new Map<Currency, number>([[BINANCE_ASSET, 0], ...read])) ??
+  null;
+
 /**
- * Append one non-Spot wallet's holding to the batch, applying the skip/zero
+ * Append one non-Spot wallet's holdings to the batch, one per coin, applying the skip/zero
  * rules that keep the split correct without cluttering the grid:
- * - read FAILED (`satoshis === null`): omit — leave any existing holding at its
+ * - read FAILED (`balances === null`): omit — leave every existing holding of the wallet at its
  *   last-good balance (never overwrite it with a fabricated 0).
  * - read succeeded, > 0: write (the upsert creates or updates the holding).
  * - read succeeded, 0, holding ALREADY exists: write 0 — a wallet the user
@@ -253,19 +294,22 @@ const existingBinanceKeys = (holdings: HoldingRow[]): Set<string> => {
  */
 const appendWallet = (
   batch: ProviderBalance[],
-  satoshis: number | null,
-  metadataKey: string,
-  name: string,
+  wallet: BinanceWallet,
+  balances: CoinBalances | null,
   existingKeys: Set<string>,
 ): void => {
-  if (satoshis === null) {
-    return;
-  }
+  for (const [currency, balanceMinorUnits] of balances ?? []) {
+    const metadataKey = holdingKeyOf(currency, wallet);
 
-  if (satoshis === 0 && !existingKeys.has(metadataKey)) {
-    return;
+    if (balanceMinorUnits !== 0 || existingKeys.has(metadataKey)) {
+      batch.push({
+        currency,
+        balanceMinorUnits,
+        metadataKey,
+        name: holdingNameOf(currency, wallet),
+      });
+    }
   }
-  batch.push({ currency: BINANCE_ASSET, balanceMinorUnits: satoshis, metadataKey, name });
 };
 
 export const binanceProvider: BalanceProvider<BinanceDeps> = {
@@ -314,11 +358,11 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
       throw error;
     }
 
-    const spot = spotSatoshis(spotAccount);
+    const spot = spotBalances(spotAccount);
     const balances: ProviderBalance[] = [
       {
         currency: BINANCE_ASSET,
-        balanceMinorUnits: spot,
+        balanceMinorUnits: spot.get(BINANCE_ASSET) ?? 0,
         metadataKey: SPOT_KEY,
         name: WALLET_HOLDING_NAMES[SPOT_KEY],
         // Relabel a legacy aggregated holding still named 'Binance BTC' to
@@ -329,32 +373,38 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
 
     const existingKeys = existingBinanceKeys(target.holdings);
 
-    // Funding: its own holding; a failure skips only it.
-    const funding = await walletSatoshis('funding', async () =>
-      fundingSatoshis(await deps.fetchFundingAsset(apiKey, secret, options)),
+    // Every other Spot coin follows the same zero/exists rule as the other wallets: the anchor
+    // above is the one Spot holding written for a genuine zero.
+    appendWallet(
+      balances,
+      'spot',
+      new Map([...spot].filter(([currency]) => currency !== BINANCE_ASSET)),
+      existingKeys,
     );
-    appendWallet(balances, funding, FUNDING_KEY, WALLET_HOLDING_NAMES[FUNDING_KEY], existingKeys);
 
-    // Earn: Flexible + Locked COMBINED into ONE holding. A failure in EITHER read
-    // skips the WHOLE Earn holding — importing one side alone would silently
+    // Funding: one holding per coin; a failure skips the whole wallet.
+    const funding = await walletBalances('funding', async () =>
+      fundingBalances(await deps.fetchFundingAsset(apiKey, secret, options)),
+    );
+    appendWallet(balances, 'funding', withBtcZero(funding), existingKeys);
+
+    // Earn: Flexible + Locked COMBINED into ONE holding per coin. A failure in EITHER read
+    // skips the WHOLE Earn wallet — importing one side alone would silently
     // UNDER-COUNT the user's Earn balance — so both reads sit inside one
-    // `walletSatoshis` guard rather than two.
-    const earn = await walletSatoshis('earn', async () => {
-      const flexible = positionAmounts(
+    // `walletBalances` guard rather than two.
+    const earn = await walletBalances('earn', async () => {
+      const flexible = positionEntries(
         await deps.fetchFlexiblePosition(apiKey, secret, options),
         'totalAmount',
       );
-      const locked = positionAmounts(
+      const locked = positionEntries(
         await deps.fetchLockedPosition(apiKey, secret, options),
         'amount',
       );
 
-      return unitsOrThrow(
-        sumAmounts([...flexible, ...locked]),
-        'accountDetail.binanceNonNumericPositionAmount',
-      );
+      return balancesOf([...flexible, ...locked], 'accountDetail.binanceNonNumericPositionAmount');
     });
-    appendWallet(balances, earn, EARN_KEY, WALLET_HOLDING_NAMES[EARN_KEY], existingKeys);
+    appendWallet(balances, 'earn', withBtcZero(earn), existingKeys);
 
     return balances;
   },
