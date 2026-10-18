@@ -106,8 +106,9 @@ rules:
   # number is stale. `generic` is the only language that opens `.maestro/*.yaml`, and a generic rule
   # needs `paths.include` or it scans docs and skills, which cite the old number on purpose. The
   # include globs are unanchored, so the nested fixtures under `rules/fixtures/<rule-id>/` match
-  # too. The line-local lookahead lets a dated remediation note, a "formerly 2.3.1(a)" aside and
-  # "2.3.1(a), now 2.5.19" stay; a wrap that puts the marker on the next line is not read.
+  # too. Each citation is judged alone: the look-arounds let only the three adjacent forms
+  # "2.3.1(a) remediation", "formerly 2.3.1(a)" and "2.3.1(a), now 2.5.19" stay, so a marker
+  # elsewhere on the line, or wrapped onto the next line, does not excuse a citation.
   - id: kiko-no-stale-guideline-2-3-1a-citation
     languages: [generic]
     paths:
@@ -118,10 +119,12 @@ rules:
     severity: ERROR
     message: >
       Cite Guideline 2.5.19 for the no-hidden-feature rule: Apple renumbered it from 2.3.1(a). The
-      old number stays only in a dated remediation note on the same line ("2.3.1(a) remediation",
-      "formerly 2.3.1(a)", "2.3.1(a), now 2.5.19"); see kiko-compliance's "2.5.19 — no hidden,
-      dormant or undocumented features".
-    pattern-regex: '^(?![^\n]*(?:[Rr]emediation|formerly 2\.3\.1\(a\)|2\.3\.1\(a\),? now 2\.5\.19))[^\n]*?\K(?<![\d.])2\.3\.1\(a\)'
+      old number stays only in one of three adjacent forms, with the marker on the citation itself
+      ("2.3.1(a) remediation", "formerly 2.3.1(a)", "2.3.1(a), now 2.5.19"); a marker elsewhere on
+      the line or on the next line does not count. In src/, e2e/ and .maestro/, cite the
+      Notes-for-Review duty by name without the old number. See kiko-compliance's "2.5.19 — no
+      hidden, dormant or undocumented features".
+    pattern-regex: '(?<![\d.])(?<!formerly )2\.3\.1\(a\)(?! remediation\b)(?!, now 2\.5\.19)'
   # Layer rule (skill-gap-analysis #14): `src/screens/**` is the UI layer that
   # composes design-system primitives and domain modules, never the other way
   # around. A design-system component importing a screens module (FieldTrigger
