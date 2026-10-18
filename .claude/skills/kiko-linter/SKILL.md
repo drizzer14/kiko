@@ -282,7 +282,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; read it there for the current list.
   An entry may hold several segments (`.claude/skills`, `harness/kiko`): it matches a resolved
   path inside any worktree of this repository, and an unresolved path fails closed when its
-  segments appear as consecutive non-final segments; matching is case-folded.
+  segments appear as consecutive non-final segments (as written, or with its `.` and `//`
+  segments folded); matching is case-folded. A python/node join counts each literal path as a
+  folder with a file after it, so `os.path.join('skills', n)` run from `.claude` is denied.
+  A `cp`/`mv` is also denied when a folder lands exactly on `<worktree>/.claude` or
+  `<worktree>/harness` (`cp -r /tmp/x/.claude .`: the folder may hold a tree), and when a
+  recursive copy puts a source's contents there (`cp -r`, `-R`, `-a`, or `-T`): a source
+  ending in `/` or `/.`, or with a glob or variable as its last segment
+  (`cp -r /tmp/x/* .claude/`). A file copied into `.claude/` and a slash-less folder copied
+  into `harness/` (`cp -r /tmp/kikox harness/`) stay allowed.
   `scripts/` and `githooks/` match like `src/`: resolved inside any worktree of this repository, or
   unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
   `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
@@ -292,8 +300,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`echo x > $(pwd)/src/a`) tokenizes as a standalone word, so the guarded path is never seen
   and the write is allowed, for every guarded tree; the quoted form is denied. (b) A `~/...`
   target resolves through HOME and is judged like any resolved path (outside every worktree is
-  allowed). (c) `xargs cp`/`mv` into a prefix is already denied by the YAML fail-closed rule,
-  so no separate test row exists for the named path.
+  allowed). (c) `xargs cp`/`mv` into a prefix is judged by the tree match, with each tree name
+  as a fixed input; the YAML marker (`xargs-input.yml`) counts resolved paths only, so it does
+  not cover a prefix. An unresolved destination such as `$X/harness/` is denied only for a
+  recursive `cp` or a `mv`, through the `src` marker (`$X/harness/src/_`); a plain `cp` there
+  stays allowed. The parent-folder rule above is not applied behind `xargs`.
   A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
   build the scratch from a git merge or commit, or use `git archive <sha> scripts |
   tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,

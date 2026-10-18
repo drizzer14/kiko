@@ -251,10 +251,12 @@ Every count and exit code is the orchestrator's own measured result.
   also generic: port it as a configurable extension list.
 - kill-guard multi-segment `WRITE_GUARDED_TREES` entries: the generic part is the entry rule (a
   resolved path inside any worktree matches; an unresolved path fails closed when the segments
-  appear as consecutive non-final segments; case-folded) and the `.claude/skills` and
-  `.claude/agents` entries. The plugin-folder entry is repo-specific: in the harness repo it is
-  that repo's plugin folder, not `harness/kiko`. Create `.claude/agents/.gitkeep` so the path
-  resolves.
+  appear as consecutive non-final segments, as written or with its `.` and `//` segments
+  folded; case-folded), the parent-folder rule (a `cp`/`mv` that lands a folder exactly on
+  `<worktree>/.claude` or the plugin folder's parent, or a recursive copy of a source's
+  contents there, is denied), and the `.claude/skills` and `.claude/agents` entries. The
+  plugin-folder entry is repo-specific: in the harness repo it is that repo's plugin folder,
+  not `harness/kiko`. Create `.claude/agents/.gitkeep` so the path resolves.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

@@ -35,12 +35,10 @@
 // `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
 // scripts, hooks, the plugin manifest) at the root of any worktree of this repository, or into a
 // YAML file (a final segment ending in `.yml` or `.yaml`) at any depth of one, except under
-// `node_modules/` (a YAML
-// path the text cannot resolve is denied too; one resolved outside every worktree of this
-// repository stays allowed) — `sed -i`, `perl -i`, a `>`/`>>`
-// (or `>|`, `&>`, `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner
-// (or one fed by a heredoc or here-string on its stdin)
-// that opens a file for writing, and `xargs`
+// `node_modules/` (a YAML path the text cannot resolve is denied too; one resolved outside every
+// worktree of this repository stays allowed) — `sed -i`, `perl -i`, a `>`/`>>` (or `>|`, `&>`,
+// `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner (or one fed by a heredoc or
+// here-string on its stdin) that opens a file for writing, and `xargs`
 // running an in-place edit, or a cp/mv whose destination the text resolves into a folder of a
 // worktree (the names xargs reads are unknown, so any of them may be a YAML file; a destination
 // outside every worktree, or under `node_modules/`, stays allowed) — because the pre-write guard
@@ -1808,6 +1806,15 @@ const namesTreeAt = (segments, index) =>
     (tree) => index + tree.length < segments.length && spellsTreeAt(segments, index, tree),
   );
 
+// Whether `segments` end with the first folders of a tree that has more (`.claude`, `harness`)
+// from `index` on: a folder that may hold that tree.
+const namesTreeParentAt = (segments, index) =>
+  GUARDED_TREE_SEGMENTS.some((tree) => {
+    const depth = segments.length - index;
+
+    return depth < tree.length && spellsTreeAt(segments, index, tree.slice(0, depth));
+  });
+
 // The repository whose worktrees count: the one this file lives in.
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
@@ -1861,13 +1868,41 @@ function isInsideGuardedTree(target, rules) {
   );
 }
 
+// Whether the absolute `target` is a folder at the root of a worktree of this repository that may
+// hold a tree (`<worktree>/.claude`, `<worktree>/harness`): what lands there whole may carry one.
+function isTreeParentFolder(target, rules) {
+  const segments = target.split('/');
+
+  return segments.some(
+    (_segment, index) =>
+      index > 0 &&
+      namesTreeParentAt(segments, index) &&
+      isProjectWorktree(segments.slice(0, index).join('/') || '/', rules),
+  );
+}
+
+// The text as written, and with its `.` and `//` segments folded: `$D/.claude/./skills/a` is
+// `$D/.claude/skills/a`. Both count, so folding a `..` away never drops a deny the text spelled.
+const writtenAndFolded = (target) => [target, path.posix.normalize(target)];
+
 // A path the text cannot pin down (a variable, a glob, a span, a relative
 // path from an unknown directory) counts when its folders spell a tree
 // (fail closed).
 function namesGuardedTree(target) {
-  const segments = target.split('/');
+  return writtenAndFolded(target).some((text) => {
+    const segments = text.split('/');
 
-  return segments.some((_segment, index) => namesTreeAt(segments, index));
+    return segments.some((_segment, index) => namesTreeAt(segments, index));
+  });
+}
+
+// The same for a folder that may hold a tree, as the unresolved text of a cp/mv target.
+function namesTreeParentFolder(target) {
+  return writtenAndFolded(target).some((text) => {
+    const segments = text.replace(/\/+$/, '').split('/');
+
+    return segments.some((_segment, index) => namesTreeParentAt(segments, index));
+  });
 }
 
 // The repository config holds core.hooksPath, which turns the pre-commit typecheck on, so a shell
@@ -1911,21 +1946,27 @@ function isYamlInsideWorktree(target, rules) {
 // that is inside a tree, is a YAML file of a worktree, or is a git config file, or null. A cp/mv
 // `destination` may be a folder, and what it copies lands inside it, so one
 // that is a tree folder itself counts too. With `resolvedOnly`, a target the
-// text cannot resolve never counts.
-function guardedPlace(target, directory, rules, { destination, resolvedOnly }) {
+// text cannot resolve never counts. A `folder` target (a copied or moved folder, or the
+// destination of a copy of a folder's contents) counts too when it is a folder that may hold a
+// tree (`<worktree>/.claude`): what lands there whole may carry one.
+function guardedPlace(target, directory, rules, { destination, resolvedOnly, folder }) {
   const resolved = resolveDirectory(directory, target);
   const inside = (place) => (destination ? `${place.replace(/\/+$/, '')}/_` : place);
   if (resolved === null) {
     if (resolvedOnly) return null;
 
-    return namesGuardedTree(inside(target)) || namesGitConfig(target) || YAML_FILE.test(target)
+    return namesGuardedTree(inside(target)) ||
+      namesGitConfig(target) ||
+      YAML_FILE.test(target) ||
+      (folder && namesTreeParentFolder(target))
       ? target
       : null;
   }
 
   return isInsideGuardedTree(inside(resolved), rules) ||
     isGitConfigFile(resolved) ||
-    isYamlInsideWorktree(resolved, rules)
+    isYamlInsideWorktree(resolved, rules) ||
+    (folder && isTreeParentFolder(resolved, rules))
     ? resolved
     : null;
 }
@@ -1936,11 +1977,11 @@ function firstGuardedWrite(
   targets,
   directories,
   rules,
-  { verb = 'writes', destination = false, resolvedOnly = false } = {},
+  { verb = 'writes', destination = false, resolvedOnly = false, folder = false } = {},
 ) {
   for (const target of targets) {
     for (const directory of directories) {
-      const where = guardedPlace(target, directory, rules, { destination, resolvedOnly });
+      const where = guardedPlace(target, directory, rules, { destination, resolvedOnly, folder });
       if (where !== null) return { verb, where };
     }
   }
@@ -2082,26 +2123,45 @@ function readCopyMoveOption(word, next) {
 const intoFolder = (folder, sources) =>
   sources.map((source) => `${folder.replace(/\/+$/, '')}/${path.basename(source)}`);
 
-// The paths a cp/mv writes; a moved source is removed, not written. With
-// two operands the text cannot tell whether the destination is a folder,
-// so both readings count (fail closed).
-function copyMoveTargets(parameters) {
+// Whether copying `source` puts its contents, not the folder itself, in the destination: a
+// trailing `/` or `/.` (BSD cp), or a last segment the text cannot resolve (a glob, a variable).
+const copiesContents = (source) =>
+  source.endsWith('/') || /(?:^|\/)\.$/.test(source) || UNRESOLVED_PATH.test(path.basename(source));
+
+// What a cp/mv writes: its `targets` (a moved source is removed, not written) and its `folders`,
+// the targets where a whole folder lands (each source into a destination folder) or a recursive
+// copy puts a source's contents (the destination itself). With two operands the text cannot tell
+// whether the destination is a folder, so both readings count (fail closed).
+function copyMovePlan(parameters) {
   const { options, operands } = splitOptions(parameters, readCopyMoveOption);
+  const recursive = options.some((option) => option.recursive);
+  const contentsInto = (folder, sources) =>
+    recursive && sources.some(copiesContents) ? [folder] : [];
   const targetDirectory = options.findLast((option) => option.targetDirectory !== undefined);
-  if (targetDirectory !== undefined) return intoFolder(targetDirectory.targetDirectory, operands);
-  if (operands.length < 2) return [];
+  if (targetDirectory !== undefined) {
+    const landed = intoFolder(targetDirectory.targetDirectory, operands);
+
+    return {
+      targets: landed,
+      folders: [...landed, ...contentsInto(targetDirectory.targetDirectory, operands)],
+    };
+  }
+  if (operands.length < 2) return { targets: [], folders: [] };
   const destination = operands.at(-1);
   const sources = operands.slice(0, -1);
-  if (options.some((option) => option.noTargetDirectory)) return [destination];
-  if (sources.length > 1 || destination.endsWith('/')) return intoFolder(destination, sources);
+  if (options.some((option) => option.noTargetDirectory)) {
+    return { targets: [destination], folders: recursive ? [destination] : [] };
+  }
+  const landed = intoFolder(destination, sources);
+  const folders = [...landed, ...contentsInto(destination, sources)];
+  if (sources.length > 1 || destination.endsWith('/')) return { targets: landed, folders };
 
-  return [destination, ...intoFolder(destination, sources)];
+  return { targets: [destination, ...landed], folders };
 }
 
-// The files a command writes (`sed -i`, `perl -i`, `tee`, `cp`, `mv`), or
-// null when it is none of them or does not edit in place.
+// The files a command writes (`sed -i`, `perl -i`, `tee`), or null when it is none of them or
+// does not edit in place (a cp/mv is read by `copyMovePlan`).
 function writtenFiles(base, parameters) {
-  if (COPY_MOVE_COMMANDS.has(base)) return copyMoveTargets(parameters);
   if (SED_COMMANDS.has(base)) {
     return inPlaceFiles(splitOptions(parameters, readSedOption), (option) => option.script);
   }
@@ -2290,27 +2350,17 @@ const isLiteralFree = (expression) =>
   literalsOf(expression).length === 0 && !ARGV_READ.test(expression);
 
 // A literal after a variable (`root + '/__tests__/x.ts'`) starts with the
-// slash that joins them, so it also counts without it. A candidate that is
-// a tree folder itself (`os.path.join(root, 'src', name)`) names a file in
-// it: the rest of the path is a variable.
+// slash that joins them, so it also counts without it. A candidate may be a
+// folder (`os.path.join(root, 'src', name)`) that names a file in it: the rest
+// of the path is a variable. The matcher judges whether that folder is a tree
+// from the path resolved, so `skills` counts when the code runs in `.claude`.
 function expressionPaths(expression, argv) {
   const own = literalsOf(expression);
   const joined = own.map((literal) => literal.replace(/^\/+/, ''));
   const candidates = [...own, ...joined, own.join('/')];
-  const insideTree = candidates
-    .map((candidate) => candidate.replace(/\/+$/, ''))
-    .filter((candidate) => {
-      const segments = candidate.split('/');
+  const insideFolder = candidates.map((candidate) => `${candidate.replace(/\/+$/, '')}/_`);
 
-      return GUARDED_TREE_SEGMENTS.some(
-        (tree) =>
-          segments.length >= tree.length &&
-          spellsTreeAt(segments, segments.length - tree.length, tree),
-      );
-    })
-    .map((candidate) => `${candidate}/_`);
-
-  return [...candidates, ...insideTree, ...(ARGV_READ.test(expression) ? argv : [])];
+  return [...candidates, ...insideFolder, ...(ARGV_READ.test(expression) ? argv : [])];
 }
 
 function interpreterWrite(program, directories, rules) {
@@ -2346,13 +2396,6 @@ const withXargsInput = (parameters, placeholder, input) =>
     ? [...parameters, input]
     : parameters.map((word) => word.replaceAll(placeholder, input));
 
-// The names an input may carry to land in a tree: the tree, and, for a
-// prefix of several folders, its last folder (`cp -r {} harness/` fills
-// `{}` with `kiko`).
-const XARGS_FOLDER_NAMES = [
-  ...new Set([...WRITE_GUARDED_TREES].flatMap((tree) => [tree, tree.split('/').pop()])),
-];
-
 // A cp/mv behind `xargs` writes into a folder its own text names only when
 // the input cannot reach the destination; null when it may. The input may
 // carry any name, so each source it fills counts once as a fixed marker
@@ -2364,13 +2407,13 @@ const XARGS_FOLDER_NAMES = [
 function xargsCopyMoveTargets(base, parameters, placeholder) {
   if (!COPY_MOVE_COMMANDS.has(base) || inputMayBeDestination(parameters, placeholder)) return null;
   const targetsFor = (inputs) =>
-    inputs.flatMap((input) => copyMoveTargets(withXargsInput(parameters, placeholder, input)));
+    inputs.flatMap((input) => copyMovePlan(withXargsInput(parameters, placeholder, input)).targets);
   const { options } = splitOptions(parameters, readCopyMoveOption);
 
   return {
     plain: targetsFor(['xargs-input']),
     yaml: targetsFor(['xargs-input.yml']),
-    named: targetsFor(XARGS_FOLDER_NAMES),
+    named: targetsFor([...WRITE_GUARDED_TREES]),
     canCopyFolder: MOVE_COMMANDS.has(base) || options.some((option) => option.recursive),
   };
 }
@@ -2382,8 +2425,10 @@ function commandWrite(
 ) {
   const base = basename(tokens[0]);
   const parameters = tokens.slice(1);
-  const files = writtenFiles(base, parameters);
   const destination = COPY_MOVE_COMMANDS.has(base);
+  const { targets: files, folders } = destination
+    ? copyMovePlan(parameters)
+    : { targets: writtenFiles(base, parameters), folders: [] };
   if (files !== null && viaXargs) {
     const targets = xargsCopyMoveTargets(base, parameters, placeholder);
     if (targets === null) return XARGS_WRITE;
@@ -2397,7 +2442,12 @@ function commandWrite(
       })
     );
   }
-  if (files !== null) return firstGuardedWrite(files, directories, rules, { destination });
+  if (files !== null) {
+    return (
+      firstGuardedWrite(files, directories, rules, { destination }) ??
+      firstGuardedWrite(folders, directories, rules, { destination, folder: true })
+    );
+  }
   const program = interpreterProgramOf(base, parameters, stdinScripts);
   if (program === null) return null;
 
