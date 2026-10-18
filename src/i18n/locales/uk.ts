@@ -727,7 +727,7 @@ export const uk: typeof en = {
     noWalletAddressStored: 'Адресу гаманця не збережено; підключіть гаманець перед синхронізацією.',
     openBinanceLink: 'Відкрити керування API Binance',
     openMonobankLink: 'Відкрити api.monobank.ua',
-    oversizedAmount: '{{coin}}: Кіко не зміг імпортувати цю суму точно, тому її пропущено.',
+    oversizedAmount: '{{coin}}: Кіко не зміг точно імпортувати суму, тому її пропущено.',
     pasteApiKey: 'Вставити API ключ із буфера обміну',
     pasteApiSecret: 'Вставити API секрет із буфера обміну',
     pasteFromClipboard: 'Вставити з буфера обміну',
@@ -741,7 +741,7 @@ export const uk: typeof en = {
     tryAgainMessage: 'Спробуйте ще раз.',
     unsupportedCurrencyCode: 'Непідтримуваний код валюти Monobank: {{code}}.',
     untrackedCoins:
-      'Не відстежуються: {{tickers}}. Цих монет немає в списку Кіко, тому Кіко їх не імпортує.',
+      'Не відстежуються: {{tickers}}. Кіко не імпортує валюту, яку не підтримує синхронізація Binance.',
     wallet: 'Гаманець',
     walletAddressRequiredError: 'Введіть адресу гаманця.',
     walletConnected: 'Гаманець підключено',

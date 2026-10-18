@@ -819,7 +819,7 @@ export const en = {
     noWalletAddressStored: 'No wallet address stored; connect a wallet before syncing.',
     openBinanceLink: 'Open Binance API management',
     openMonobankLink: 'Open api.monobank.ua',
-    oversizedAmount: '{{coin}}: Kiko could not import this amount exactly, so it was skipped.',
+    oversizedAmount: '{{coin}}: Kiko could not import an amount exactly, so it was skipped.',
     pasteApiKey: 'Paste API key from clipboard',
     pasteApiSecret: 'Paste API secret from clipboard',
     pasteFromClipboard: 'Paste from clipboard',
@@ -833,7 +833,7 @@ export const en = {
     tryAgainMessage: 'Please try again.',
     unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}.',
     untrackedCoins:
-      "Not tracked: {{tickers}}. These coins are not on Kiko's coin list, so Kiko does not import them.",
+      'Not tracked: {{tickers}}. Kiko does not import a currency its Binance sync does not support.',
     wallet: 'Wallet',
     walletAddressRequiredError: 'Enter a wallet address.',
     walletConnected: 'Wallet connected',

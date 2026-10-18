@@ -708,8 +708,12 @@ type CoinLists = { balance?: unknown; history?: unknown };
 
 const UNTRACKED_LINE_PREFIX = 'Not tracked: ';
 
+// A piece of the oversized line that no other line holds, so a test that expects the line to be
+// absent fails when it renders; the test that shows the lines pins that this piece matches them.
+const OVERSIZED_LINE_FRAGMENT = 'could not import an amount exactly';
+
 const oversizedLine = (coin: string): string =>
-  `${coin}: Kiko could not import this amount exactly, so it was skipped.`;
+  `${coin}: Kiko could not import an amount exactly, so it was skipped.`;
 
 // The account's stored coin lists, under a state that parses.
 const renderWithLists = (
@@ -745,7 +749,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
 
     expect(
       getByText(
-        "Not tracked: ABC, PEPE, XYZ. These coins are not on Kiko's coin list, so Kiko does not import them.",
+        'Not tracked: ABC, PEPE, XYZ. Kiko does not import a currency its Binance sync does not support.',
       ),
     ).toBeTruthy();
   });
@@ -776,13 +780,14 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
   });
 
   it('shows the oversized line of each coin in the sorted union of both lists', async () => {
-    const { getByText } = await renderWithLists({
+    const { getByText, getAllByText } = await renderWithLists({
       oversizedCoins: { balance: ['USDT', 'BTC'], history: ['BTC', 'ETH'] },
     });
 
     expect(getByText(oversizedLine('BTC'))).toBeTruthy();
     expect(getByText(oversizedLine('ETH'))).toBeTruthy();
     expect(getByText(oversizedLine('USDT'))).toBeTruthy();
+    expect(getAllByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toHaveLength(3);
   });
 
   it('shows no oversized line when none is stored', async () => {
@@ -790,7 +795,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
       untrackedCoins: { balance: ['PEPE'], history: [] },
     });
 
-    expect(queryByText('could not import this amount', { exact: false })).toBeNull();
+    expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
   });
 
   it('keeps both lines while a sync is in flight, since they state what the last sync found', async () => {
@@ -816,7 +821,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
     );
 
     expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
-    expect(queryByText('could not import this amount', { exact: false })).toBeNull();
+    expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
   });
 
   it('shows neither line for a state this build cannot read', async () => {
@@ -830,7 +835,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
     );
 
     expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
-    expect(queryByText('could not import this amount', { exact: false })).toBeNull();
+    expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
   });
 
   it('shows neither line for a wallet account', async () => {
@@ -843,7 +848,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
     );
 
     expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
-    expect(queryByText('could not import this amount', { exact: false })).toBeNull();
+    expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
   });
 });
 
@@ -871,11 +876,9 @@ describe('CryptoSyncSection — not-tracked and oversized lines in Ukrainian', (
 
     expect(
       getByText(
-        'Не відстежуються: ABC, PEPE. Цих монет немає в списку Кіко, тому Кіко їх не імпортує.',
+        'Не відстежуються: ABC, PEPE. Кіко не імпортує валюту, яку не підтримує синхронізація Binance.',
       ),
     ).toBeTruthy();
-    expect(
-      getByText('BTC: Кіко не зміг імпортувати цю суму точно, тому її пропущено.'),
-    ).toBeTruthy();
+    expect(getByText('BTC: Кіко не зміг точно імпортувати суму, тому її пропущено.')).toBeTruthy();
   });
 });
