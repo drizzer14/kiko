@@ -454,7 +454,7 @@ for patched_file in dist/src/jest-test-runner.js dist/src/jest-plugins/mixin-jes
       "$RUNNER_DIR/$patched_file is missing or lacks the marker \"$PATCH_MARKER\"." \
       "The standing patch makes a mutant run select its covering tests exactly instead of through one regex per mutant. Without it a mutant with more than a few hundred covering tests times out on regex cost alone and the gate reports a false TIMEOUT-HEAVY failure." \
       "Run: npm ci   (its postinstall runs patch-package, which applies patches/@stryker-mutator+jest-runner+8.7.1.patch; patch-package exits 0 on a failed apply locally, so read its output for the jest-runner line). After a jest-runner upgrade re-make the patch: see docs/harness/dependency-hygiene.md." \
-      "Do not run Stryker on an unpatched runner, do not raise timeoutMS, and do not edit the marker into the files by hand."
+      "Do not run Stryker on an unpatched runner, do not raise timeoutMS, and do not add only the marker to the files: re-derive the patch per docs/harness/dependency-hygiene.md."
     exit 2
   fi
 done

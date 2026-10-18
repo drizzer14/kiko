@@ -215,9 +215,9 @@ parents resolve 1.11.0 or later on their own:
 ## Standing patch: `@stryker-mutator/jest-runner` 8.7.1 (exact covering-test selection)
 
 `patches/@stryker-mutator+jest-runner+8.7.1.patch` is a standing `patch-package` patch (user
-ruling 2026-10-18, H9 task 3/3). `postinstall` applies it on every `npm ci`. It edits two installed
-files, `dist/src/jest-test-runner.js` and `dist/src/jest-plugins/mixin-jest-environment.cjs`, and
-carries the marker comment `kiko-patch: exact covering-test selection` in both.
+ruling 2026-10-18). `postinstall` applies it on every `npm ci`. It edits two installed files,
+`dist/src/jest-test-runner.js` and `dist/src/jest-plugins/mixin-jest-environment.cjs`, and carries
+the marker comment `kiko-patch: exact covering-test selection` in both.
 
 Why: the runner builds one `testNamePattern` regex per mutant from its covering test ids. Above a
 few hundred covering tests the regex cost alone times the mutant out (every timed-out mutant of the
@@ -237,10 +237,15 @@ runs as an extra.
 How it is pinned (three layers, because `patch-package` exits 0 on a failed apply when run
 locally, so a missing patch is silent):
 
-- `__tests__/stryker-jest-runner-patch.test.ts` fails unless `package.json`, the lockfile and the
-  installed package are all exactly 8.7.1, the patch file exists with the marker, and both
-  installed files carry the marker; it also runs the patched code (`mutantRun` against a fake
-  adapter, the mixin against a fake describe tree).
+- `__tests__/stryker-jest-runner-patch.test.ts` fails unless three packages are pinned exactly:
+  `@stryker-mutator/jest-runner` 8.7.1, `@stryker-mutator/core` 8.7.1 (it passes the dry run's
+  `test.id` as the mutant's `testFilter`) and `jest-circus` 29.7.0 (the `fullName` form,
+  `ROOT_DESCRIBE_BLOCK_NAME` and the `run_start` order the id copies). For each, the installed
+  `node_modules/<name>/package.json` and the `package-lock.json` entry must match; `package.json`
+  and the lockfile root must also hold the two Stryker packages (`jest-circus` is transitive). The
+  test also fails unless the patch file exists with the marker and both installed files carry it,
+  and it runs the patched code (`mutantRun` against a fake adapter, the mixin against a fake
+  describe tree, including the order of the inner handler and the selection).
 - `scripts/checks/mutation.sh` runs a preflight before Stryker starts: a missing package, a missing
   file or a missing marker prints a failure block (naming the marker, `npm ci` and `patch-package`)
   and exits 2. `--list` (`make mutable`) skips it, because it never starts Stryker and counting
@@ -248,12 +253,13 @@ locally, so a missing patch is silent):
 - `npm ci` re-applies the patch; read the `patch-package` output for the
   `@stryker-mutator/jest-runner@8.7.1` line with its check mark.
 
-Upgrade rule: an upgrade of `@stryker-mutator/jest-runner` (or of `jest-circus`, whose `fullName`
-form the id copies) must re-derive the patch: edit the two new installed files by hand with the
-same marker, run `npx patch-package @stryker-mutator/jest-runner`, delete the old patch file, and
-update the version in the pin test and the patch file name. The pin test fails until this is done.
-Re-prove the new patch too: the covering-test id still equals Stryker's `fullName`, and it applies
-exactly to the pristine files of `npm pack @stryker-mutator/jest-runner@<version>`.
+Upgrade rule: an upgrade of any of the three pinned packages (`@stryker-mutator/jest-runner`,
+`@stryker-mutator/core`, `jest-circus`) fails the pin test until the patch is re-derived and
+re-proved. Re-derive it: edit the two new installed jest-runner files by hand with the same marker,
+run `npx patch-package @stryker-mutator/jest-runner`, delete the old patch file, and update the
+versions in the pin test and the patch file name. Re-prove it: the covering-test id still equals
+Stryker's `fullName`, and the patch applies exactly to the pristine files of
+`npm pack @stryker-mutator/jest-runner@<version>`. Only then change the expected versions.
 
 ## `.env` is public-only
 

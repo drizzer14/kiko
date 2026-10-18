@@ -9,13 +9,22 @@ import {
 } from './test-support/stryker-jest-runner';
 import { probeRunner } from './test-support/stryker-mutant-run-probe';
 
-// H9 task 3/3: Stryker's jest runner builds one testNamePattern regex per mutant, which times out
-// from regex cost alone above a few hundred covering tests. The standing patch selects exactly the
-// covering test ids with a Set instead. The runner class is not exported, so the patch edits the
-// installed 8.7.1 files; these pins fail on any upgrade until the patch is re-made and re-checked.
+// Stryker's jest runner builds one testNamePattern regex per mutant, which times out from regex
+// cost alone above a few hundred covering tests. The standing patch selects exactly the covering
+// test ids with a Set instead. The runner class is not exported, so the patch edits the installed
+// 8.7.1 files; these pins fail on any upgrade until the patch is re-made and re-checked.
 const ROOT = join(__dirname, '..');
 const PATCH_FILE = join(ROOT, 'patches', '@stryker-mutator+jest-runner+8.7.1.patch');
 const SELECTED_GLOBAL = '__kikoStrykerSelectedTestIds__';
+
+// The patch also depends on these two packages: jest-circus 29.7.0 for the fullName form,
+// ROOT_DESCRIBE_BLOCK_NAME and the run_start order, and Stryker core 8.7.1 for passing the dry
+// run's test.id as the mutant's testFilter. jest-circus is transitive, so only core is in
+// package.json.
+const COMPANION_PINS = [
+  { name: '@stryker-mutator/core', version: '8.7.1' },
+  { name: 'jest-circus', version: '29.7.0' },
+] as const;
 
 type TestNode = { type: 'test'; name: string; mode?: string; parent: DescribeNode };
 type DescribeNode = {
@@ -45,6 +54,32 @@ describe('@stryker-mutator/jest-runner patch pin', () => {
     );
 
     expect(installed.version).toBe('8.7.1');
+  });
+
+  it('pins Stryker core to exactly 8.7.1 in package.json', () => {
+    const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+
+    expect(manifest.devDependencies['@stryker-mutator/core']).toBe('8.7.1');
+  });
+
+  it.each(COMPANION_PINS)('pins $name to exactly $version in package-lock.json', (pin) => {
+    const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8'));
+
+    expect(lock.packages[`node_modules/${pin.name}`].version).toBe(pin.version);
+  });
+
+  it('pins Stryker core to exactly 8.7.1 in the package-lock.json root', () => {
+    const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8'));
+
+    expect(lock.packages[''].devDependencies['@stryker-mutator/core']).toBe('8.7.1');
+  });
+
+  it.each(COMPANION_PINS)('installs $name $version, the one the patch was made for', (pin) => {
+    const installed = JSON.parse(
+      readFileSync(join(ROOT, 'node_modules', pin.name, 'package.json'), 'utf8'),
+    );
+
+    expect(installed.version).toBe(pin.version);
   });
 
   it('ships patches/@stryker-mutator+jest-runner+8.7.1.patch carrying the marker for both files', () => {
@@ -156,8 +191,21 @@ describe('patched Stryker environment', () => {
   class FakeEnvironment {
     global: Record<string, unknown> = {};
     static events: string[] = [];
-    async handleTestEvent(event: { name: string }): Promise<void> {
+    static lateTestName: string | undefined;
+    async handleTestEvent(
+      event: { name: string },
+      state?: { rootDescribeBlock: DescribeNode },
+    ): Promise<void> {
       FakeEnvironment.events.push(event.name);
+
+      if (FakeEnvironment.lateTestName !== undefined && state !== undefined) {
+        // Stands for jest-circus finishing its own run_start work (collecting tests) after a
+        // real asynchronous wait; a selection that ran before this await would never see the test.
+        await new Promise((resolve) => setImmediate(resolve));
+        state.rootDescribeBlock.children.push(
+          testNode(FakeEnvironment.lateTestName, state.rootDescribeBlock),
+        );
+      }
     }
   }
 
@@ -198,6 +246,7 @@ describe('patched Stryker environment', () => {
 
   beforeEach(() => {
     FakeEnvironment.events = [];
+    FakeEnvironment.lateTestName = undefined;
     messaging.state.coverageAnalysis = 'off';
   });
 
@@ -315,6 +364,15 @@ describe('patched Stryker environment', () => {
 
     expect(FakeEnvironment.events).toEqual(['run_start']);
     expect(modes(root)).toEqual({ out: 'skip' });
+  });
+
+  it('selects only after the inner handler finished: a test it adds late is seen', async () => {
+    FakeEnvironment.lateTestName = 'added late';
+    const root = rootBlock((top) => [testNode('in', top)]);
+
+    await sendEvent(root, new Set(['in']));
+
+    expect(modes(root)).toEqual({ in: undefined, 'added late': 'skip' });
   });
 
   it('changes nothing on any other event', async () => {
