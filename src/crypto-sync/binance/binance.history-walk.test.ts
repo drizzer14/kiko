@@ -1889,13 +1889,19 @@ describe('advanceWalkMarks', () => {
       const stale = { start: 10_000, end: 20_000 };
       const storedPlan = planOf({ rescanEnd: 1_000_000, pendingRanges: [stale, day] });
 
+      // A write call with no patch is a store round trip for nothing, which `writes` cannot show.
+      let writeCalls = 0;
+
       const store = async (marks: WalkMarks): Promise<Write[]> => {
         const writes: Write[] = [];
+
+        writeCalls = 0;
 
         await storePlannedList({
           plan: storedPlan,
           marks,
           write: async (patches) => {
+            writeCalls += 1;
             writes.push(...patches.map((patch): Write => [patch.field, patch.value as Write[1]]));
           },
         });
@@ -1915,6 +1921,7 @@ describe('advanceWalkMarks', () => {
         const marks = markOf({ cursor: 100, pending: [stale, day] });
 
         expect(await store(marks)).toEqual([]);
+        expect(writeCalls).toBe(0);
         expect(marks.listStored).toBe(true);
       });
 
@@ -2172,6 +2179,7 @@ describe('dropReadPoints', () => {
       pending,
     };
     const writes: [string, OwedGround[]][] = [];
+    let writeCalls = 0;
 
     await dropReadPoints({
       pass,
@@ -2179,6 +2187,7 @@ describe('dropReadPoints', () => {
       read,
       marks,
       write: async (patches) => {
+        writeCalls += 1;
         writes.push(
           ...patches.map((patch): [string, OwedGround[]] => [
             patch.field,
@@ -2188,7 +2197,7 @@ describe('dropReadPoints', () => {
       },
     });
 
-    return { marks, writes };
+    return { marks, writes, writeCalls };
   };
 
   it('takes a point off the list when the window holds all of it and a returned record owes exactly it, in one write', async () => {
@@ -2199,9 +2208,10 @@ describe('dropReadPoints', () => {
   });
 
   it('keeps a point, and writes nothing, when the window returned no record that owes it: it fails closed', async () => {
-    const { marks, writes } = await drop({ pending: [point], read: [] });
+    const { marks, writes, writeCalls } = await drop({ pending: [point], read: [] });
 
     expect(writes).toEqual([]);
+    expect(writeCalls).toBe(0);
     expect(marks.pending).toEqual([point]);
   });
 
