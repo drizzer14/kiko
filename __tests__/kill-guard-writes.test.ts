@@ -4,8 +4,9 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
-// writes into src/, __tests__/, rules/, e2e/, or drizzle/ of any worktree of this repository
-// (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
+// writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, or githooks/ of any worktree of
+// this repository, or into a YAML file (final segment .yml/.yaml) anywhere in one except under
+// node_modules/ (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
 // one-liner) skips the pre-write guard, which sees only Edit/Write/MultiEdit,
 // so the hook denies it and points at Edit/Write.
 //
@@ -38,10 +39,16 @@ for (const folder of [
   'main/__tests__',
   'main/rules',
   'main/drizzle/migrations/meta',
-  'main/scripts',
+  'main/scripts/checks',
+  'main/githooks',
+  'main/.maestro',
   'main/docs/src',
+  'main/docs/x',
   'main/node_modules/package/src',
   'worktree/src',
+  'worktree/scripts/checks',
+  'worktree/githooks',
+  'worktree/.maestro',
   'other/.git',
   'other/src',
   'plain/src',
@@ -282,7 +289,6 @@ const ALLOWED_COPY_MOVE: string[] = [
   'cp /tmp/a /tmp/b',
   'cp -r /tmp/x /tmp/y',
   'cp -r /tmp/srcx .',
-  'cp -rT /tmp/x ./scripts',
   'cp -r /tmp/x ./docs/src',
   `cp -r /tmp/x ${OTHER}/src`,
   // A backup folder outside the project is no tree, whatever name the input
@@ -321,7 +327,6 @@ const ALLOWED: string[] = [
   'echo x 2>&1',
   'echo x >&2',
   'ls >&-',
-  'echo x > scripts/out.txt',
   'echo x > docs/src/x.md',
   'echo x > node_modules/package/src/x.js',
   `echo x > ${OTHER}/src/x.ts`,
@@ -358,7 +363,6 @@ const ALLOWED: string[] = [
   'cat <<< "x > src/y"',
   "find src -name '*.ts' -exec grep -l foo {} +",
   "find /tmp/x -exec sed -i 's/a/b/' {} +",
-  `sed -i 's/a/b/' ${MAIN}/scripts/x.sh`,
   "sed -i 's/a/b/' /tmp/src.txt",
 ];
 
@@ -386,7 +390,6 @@ const ALLOWED_E2E: string[] = [
   'echo x > /tmp/e2e-like/x.ts',
   "sed -i 's/a/b/' /tmp/e2e.txt",
   'echo x > docs/e2e/x.md',
-  'echo x > scripts/e2e.sh',
   `echo x > ${OTHER}/e2e/x.ts`,
   `echo x > ${PLAIN}/e2e/x.ts`,
 ];
@@ -437,7 +440,6 @@ const ALLOWED_GIT_CONFIG: string[] = [
   'git config user.name x',
   'echo x > /tmp/x/config',
   'echo x > config',
-  'echo x > scripts/config',
   'echo x > .github/config',
   'echo x > .gitignore',
   'echo x > docs/.git-notes/config',
@@ -526,8 +528,6 @@ const DENIED_WHATEVER_THE_VARIABLE_HOLDS: string[] = [
 const ALLOWED_SAME_COMMAND_VARIABLE: string[] = [
   `f=/tmp/x.ts; sed -i '' 's/a/b/' $f`,
   `f=docs/x.md; sed -i '' 's/a/b/' "$f"`,
-  'f=scripts/out.txt; echo x > $f',
-  'f=scripts/src/out.txt; echo x >> "$f"',
   'f=/tmp/out.txt; echo x | tee $f',
   'f=/tmp/a; cp /tmp/b $f',
   `f=src/x.ts; f=/tmp/a; sed -i '' 's/a/b/' $f`,
@@ -588,7 +588,152 @@ const ALLOWED_DRIZZLE: string[] = [
   ),
 ];
 
+// scripts/ and githooks/ hold the harness shell and JavaScript; Edit/Write runs the fast tier on
+// them, a Bash write skips it, and guard-replay replays only .ts/.tsx, so they are guarded like
+// the trees above (worktree-root folders, resolved in any worktree of this repository).
+const SCRIPT_AND_HOOK_FILES = ['scripts/checks/x.sh', 'scripts/x.js', 'githooks/pre-commit'];
+
+const DIRECT_WRITE_TEMPLATES: Array<(file: string) => string> = [
+  ...WRITE_TEMPLATES,
+  (file) => `perl -pi -e 's/a/b/' ${file}`,
+  (file) => `echo x >| ${file}`,
+  (file) => `python3 -c "open('${file}', 'w').write('x')"`,
+];
+
+// An `xargs sed -i` is denied whatever its target, as the DENIED_NESTED rows show, so only a
+// denied list may use these.
+const XARGS_WRITE_TEMPLATES: Array<(file: string) => string> = [
+  (file) => `echo ${file} | xargs sed -i '' 's/a/b/'`,
+  (file) => `echo x | xargs sed -i '' 's/a/b/' ${file}`,
+];
+
+const ALL_WRITE_TEMPLATES = [...DIRECT_WRITE_TEMPLATES, ...XARGS_WRITE_TEMPLATES];
+
+const DENIED_SCRIPTS_AND_GITHOOKS: string[] = [
+  ...SCRIPT_AND_HOOK_FILES.flatMap((file) =>
+    [file, `${MAIN}/${file}`, `${WORKTREE}/${file}`].flatMap((target) =>
+      ALL_WRITE_TEMPLATES.map((template) => template(target)),
+    ),
+  ),
+  "cd scripts && sed -i '' 's/a/b/' x.js",
+  'cd scripts && echo x > x.js',
+  'cd scripts/checks && echo x > x.sh',
+  'cd githooks && echo x >> pre-commit',
+  'cd scripts && cp /tmp/x .',
+  "cd githooks && perl -pi -e 's/a/b/' pre-commit",
+  `cd ${WORKTREE}/scripts && echo x | tee x.js`,
+  'echo x > "$D/scripts/a.sh"',
+  'echo x > "$D/githooks/pre-commit"',
+  "sed -i '' 's/a/b/' $D/scripts/checks/x.sh",
+  'cp -rT /tmp/x ./scripts',
+  'echo x > scripts/out.txt',
+  `sed -i 's/a/b/' ${MAIN}/scripts/x.sh`,
+  'echo x > scripts/e2e.sh',
+  'echo x > scripts/config',
+  'f=scripts/out.txt; echo x > $f',
+  'f=scripts/src/out.txt; echo x >> "$f"',
+];
+
+const ALLOWED_SCRIPTS_AND_GITHOOKS: string[] = [
+  ...SCRIPT_AND_HOOK_FILES.flatMap((file) => [
+    `cat ${file}`,
+    `grep -n foo ${file}`,
+    `sed -n '1,5p' ${file}`,
+    `bash ${file}`,
+    `bash ${file} > /dev/null 2>&1`,
+    `git mv ${file} ${file}.old`,
+    `git checkout -- ${file}`,
+    `echo x > /tmp/${file}`,
+    `./node_modules/.bin/biome check --write ${file}`,
+  ]),
+  'echo x > /dev/null',
+  `echo x > ${OTHER}/scripts/x.sh`,
+  `echo x > ${PLAIN}/githooks/pre-commit`,
+  'echo x > docs/scripts/x.sh',
+];
+
+const DENIED_YAML: string[] = [
+  ...[
+    '.maestro/flow.yaml',
+    'docs/x/config.yml',
+    `${MAIN}/.maestro/flow.yaml`,
+    `${WORKTREE}/.maestro/a.YML`,
+    '.maestro/a.Yaml',
+    '$D/a.yaml',
+    '"$D"/b.yml',
+  ].flatMap((file) => ALL_WRITE_TEMPLATES.map((template) => template(file))),
+  'echo x > "$D/a.yaml"',
+  'cp a.yml .maestro/',
+  'mv a.yml .maestro/',
+  'cp -t .maestro a.yml',
+  'cp --target-directory=docs/x a.yaml',
+  `cp a.yml ${MAIN}/.maestro/`,
+  'cd .maestro && echo x > flow.yaml',
+  'cd docs/x && sed -i "" s/a/b/ config.yml',
+  'f=.maestro/flow.yaml; sed -i "" s/a/b/ $f',
+  `f=${MAIN}/docs/x/config.yml; echo x >> $f`,
+];
+
+const ALLOWED_YAML: string[] = [
+  ...[
+    '/tmp/x.yml',
+    '/tmp/x/config.yaml',
+    '/private/tmp/claude-501/-project/session/scratchpad/x.yml',
+    `${SCRATCH}/notes/x.yaml`,
+    `${OTHER}/a.yml`,
+    `${PLAIN}/a.yaml`,
+    `${MAIN}/node_modules/package/x.yml`,
+    'node_modules/package/x.yml',
+    './node_modules/package/deep/x.YAML',
+  ].flatMap((file) => DIRECT_WRITE_TEMPLATES.map((template) => template(file))),
+  'cat .maestro/flow.yaml',
+  'grep -n appId .maestro/flow.yaml',
+  "sed -n '1,5p' docs/x/config.yml",
+  'cat .maestro/flow.yaml > /tmp/flow.yaml',
+  'cp .maestro/flow.yaml /tmp/flow.yaml',
+  'git mv .maestro/a.yaml .maestro/b.yaml',
+  'npx prettier --write .maestro/flow.yaml',
+  'echo x > notes.yml.txt',
+  'echo x > .maestro/notes.yml.txt',
+  'echo x > docs/x/config.yamlx',
+  'echo x > docs/x/yml',
+  'echo x > docs/x/config.yml/readme.md',
+];
+
 describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each(DENIED_SCRIPTS_AND_GITHOOKS)(
+    'denies a write into scripts/ or githooks/: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('shellWrite');
+    },
+  );
+
+  it.each(ALLOWED_SCRIPTS_AND_GITHOOKS)(
+    'allows a read of scripts/ or githooks/, or a write outside them: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it.each(DENIED_YAML)('denies a write into a YAML file: %s', (command) => {
+    expect(decideInMain(command)).toBe('shellWrite');
+  });
+
+  it.each(ALLOWED_YAML)(
+    'allows a read of a YAML file, or a write outside the project or under node_modules: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it('judges a YAML write from a linked worktree and a cwd outside the project', () => {
+    expect(decide('echo x > a.yml', { cwd: join(WORKTREE, '.maestro') })).toBe('shellWrite');
+    expect(decide('echo x > a.yml', { cwd: join(MAIN, 'node_modules/package') })).toBe('allow');
+    expect(decide('echo x > a.yml', { cwd: OTHER })).toBe('allow');
+    expect(decide('echo x > scripts/a.sh', { cwd: WORKTREE })).toBe('shellWrite');
+    expect(decide('echo x > scripts/a.sh', { cwd: OTHER })).toBe('allow');
+  });
+
   it.each(DENIED_DRIZZLE)('denies a write into drizzle/: %s', (command) => {
     expect(decideInMain(command)).toBe('shellWrite');
   });
@@ -683,7 +828,7 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
 
   it('denies from a subfolder of a worktree', () => {
     expect(decide('echo x > x.ts', { cwd: join(MAIN, 'src') })).toBe('shellWrite');
-    expect(decide('echo x > x.ts', { cwd: join(MAIN, 'scripts') })).toBe('allow');
+    expect(decide('echo x > x.ts', { cwd: join(MAIN, 'scripts') })).toBe('shellWrite');
   });
 
   // A literal target writes that file; a variable or expression target may
@@ -768,6 +913,16 @@ describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
     expect(reason).toContain(join(REPOSITORY_ROOT, 'src/App.tsx'));
     expect(reason).toContain('Edit or Write');
     expect(reason).toContain('to move a file, use `git mv` (git add a new file first)');
+  });
+
+  it('names scripts/, githooks/ and YAML in the deny text', () => {
+    const result = run(payloadIn(REPOSITORY_ROOT, 'echo x > scripts/checks/x.sh'));
+    const reason: string = JSON.parse(result.stdout.trim()).hookSpecificOutput
+      .permissionDecisionReason;
+
+    expect(reason).toContain('scripts/');
+    expect(reason).toContain('githooks/');
+    expect(reason).toContain('YAML');
   });
 
   it('denies a write into .git/config and names ensure-git-hooks.sh', () => {
