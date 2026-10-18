@@ -387,7 +387,10 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     const balances: ProviderBalance[] = [];
     const existingKeys = existingBinanceKeys(target.holdings);
 
-    appendWallet(balances, 'spot', spotBalances(spotAccount), existingKeys);
+    // The capital, Pay, Transfer and Earn walks import nothing while no Spot BTC holding exists,
+    // so a good Spot read always writes it, a zero or dust balance included. Those walks and
+    // this anchor go together.
+    appendWallet(balances, 'spot', spotBalances(spotAccount), new Set([...existingKeys, SPOT_KEY]));
 
     // Funding: one holding per coin; a failure skips the whole wallet.
     const funding = await walletBalances('funding', async () =>

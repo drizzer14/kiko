@@ -14,7 +14,7 @@ import {
 } from './binance.client';
 import { readCredentials } from './binance.credentials';
 import { setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
+import { type BinanceWallet, holdingKeyOf, SPOT_KEY } from './binance.holding-keys';
 import { type BinanceDeps, binanceProvider, defaultBinanceDeps } from './binance.provider';
 
 // The credentials module imports react-native-keychain, whose native binding is
@@ -165,12 +165,53 @@ describe('binanceProvider — Spot holding', () => {
     expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(30_000_000);
   });
 
-  it('writes no Spot BTC holding for a coin never held when the payload carries no BTC entry', async () => {
-    const deps = makeDeps([{ asset: 'ETH', free: '2.00000000', locked: '0.00000000' }]);
+  it.each([
+    ['carries no BTC entry', [{ asset: 'ETH', free: '2', locked: '0' }], 0],
+    ['carries no asset at all', [], 0],
+    ['carries a zero BTC entry', [{ asset: 'BTC', free: '0', locked: '0' }], 0],
+    [
+      'carries BTC below its dust threshold',
+      [{ asset: 'BTC', free: '0.00000999', locked: '0' }],
+      999,
+    ],
+  ])(
+    'a new connection still gets the Spot BTC holding, so history imports, when the payload %s',
+    async (_, balances, units) => {
+      const deps = makeDeps(balances);
 
-    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+      const written = await binanceProvider.fetchBalances(deps, emptyTarget);
 
-    expect(byKey(balances, 'BTC')).toBeUndefined();
+      expect(written.filter(({ metadataKey }) => metadataKey === 'BTC')).toEqual([
+        {
+          currency: 'BTC',
+          balanceMinorUnits: units,
+          metadataKey: 'BTC',
+          name: 'Binance Spot',
+          renameFromDefault: 'Binance BTC',
+        },
+      ]);
+    },
+  );
+
+  it('writes the Spot BTC holding once on every good sync, with or without a stored one', async () => {
+    const withHolding: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC', 700)] };
+
+    for (const target of [emptyTarget, withHolding]) {
+      const written = await binanceProvider.fetchBalances(makeDeps([]), target);
+
+      expect(written.filter(({ metadataKey }) => metadataKey === 'BTC')).toHaveLength(1);
+    }
+  });
+
+  it('keeps the other Spot coins to the dust and absent rules beside the anchor', async () => {
+    const deps = makeDeps([
+      { asset: 'DOGE', free: '11.9999', locked: '0' },
+      { asset: 'ETH', free: '1', locked: '0' },
+    ]);
+
+    const written = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(written)).toEqual(['BTC', 'ETH']);
   });
 
   it('writes a zero Spot holding when the payload carries no BTC entry and the holding exists', async () => {
@@ -738,7 +779,7 @@ describe('binanceProvider — every asset, keyed per coin', () => {
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
     expect(byKey(balances, 'LDBTC')).toBeUndefined();
-    expect(byKey(balances, 'BTC')).toBeUndefined();
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(0);
     expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(10_000_000);
   });
 
@@ -747,7 +788,7 @@ describe('binanceProvider — every asset, keyed per coin', () => {
 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
-    expect(balances).toEqual([]);
+    expect(keysOf(balances)).toEqual(['BTC']);
   });
 
   it('fails the Spot read on a malformed balance of a tracked coin other than BTC', async () => {
@@ -767,7 +808,7 @@ describe('binanceProvider — every asset, keyed per coin', () => {
 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
-    expect(balances).toEqual([]);
+    expect(keysOf(balances)).toEqual(['BTC']);
   });
 });
 
@@ -775,6 +816,10 @@ type BalanceList = Awaited<ReturnType<typeof binanceProvider.fetchBalances>>;
 
 const keysOf = (balances: BalanceList): string[] =>
   balances.map(({ metadataKey }) => metadataKey).sort();
+
+// The Spot BTC anchor is written on every good sync; the coin rules are read beside it.
+const besideAnchor = (balances: BalanceList): BalanceList =>
+  balances.filter(({ metadataKey }) => metadataKey !== SPOT_KEY);
 
 // One coin read at `amount` in exactly one wallet, every other wallet empty.
 const depsHolding = (wallet: BinanceWallet, asset: string, amount: string): ProviderMocks => {
@@ -814,7 +859,7 @@ describe('binanceProvider — appear, stay and dust', () => {
       emptyTarget,
     );
 
-    expect(balances).toEqual([]);
+    expect(besideAnchor(balances)).toEqual([]);
   });
 
   it.each(WALLETS)('writes an existing %s holding at zero and keeps it', async (wallet) => {
@@ -823,7 +868,7 @@ describe('binanceProvider — appear, stay and dust', () => {
       heldIn(wallet, 'USDT', 1_000_000_000),
     );
 
-    expect(balances).toEqual([
+    expect(besideAnchor(balances)).toEqual([
       expect.objectContaining({
         currency: 'USDT',
         balanceMinorUnits: 0,
@@ -838,7 +883,7 @@ describe('binanceProvider — appear, stay and dust', () => {
       emptyTarget,
     );
 
-    expect(balances).toEqual([]);
+    expect(besideAnchor(balances)).toEqual([]);
   });
 
   it.each(WALLETS)(
@@ -849,7 +894,7 @@ describe('binanceProvider — appear, stay and dust', () => {
         emptyTarget,
       );
 
-      expect(balances).toEqual([
+      expect(besideAnchor(balances)).toEqual([
         expect.objectContaining({
           currency: 'DOGE',
           balanceMinorUnits: 120_000,
@@ -867,7 +912,7 @@ describe('binanceProvider — appear, stay and dust', () => {
         heldIn(wallet, 'DOGE', 5),
       );
 
-      expect(balances).toEqual([
+      expect(besideAnchor(balances)).toEqual([
         expect.objectContaining({
           currency: 'DOGE',
           balanceMinorUnits: 119_999,
@@ -882,7 +927,7 @@ describe('binanceProvider — appear, stay and dust', () => {
 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
-    expect(keysOf(balances)).toEqual(['DOGE']);
+    expect(keysOf(besideAnchor(balances))).toEqual(['DOGE']);
   });
 
   it('judges the dust threshold of each coin by its own entry', async () => {
@@ -894,22 +939,26 @@ describe('binanceProvider — appear, stay and dust', () => {
 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
-    expect(keysOf(balances)).toEqual(['ETH']);
+    expect(keysOf(besideAnchor(balances))).toEqual(['ETH']);
   });
 
-  it('creates a Spot BTC holding at its dust threshold and none below it', async () => {
+  it('creates a Funding BTC holding at its dust threshold and none below it', async () => {
     const below = await binanceProvider.fetchBalances(
-      makeDeps([{ asset: 'BTC', free: '0.00000999', locked: '0' }]),
+      depsHolding('funding', 'BTC', '0.00000999'),
       emptyTarget,
     );
     const at = await binanceProvider.fetchBalances(
-      makeDeps([{ asset: 'BTC', free: '0.00001', locked: '0' }]),
+      depsHolding('funding', 'BTC', '0.00001'),
       emptyTarget,
     );
 
-    expect(below).toEqual([]);
-    expect(at).toEqual([
-      expect.objectContaining({ currency: 'BTC', balanceMinorUnits: 1_000, metadataKey: 'BTC' }),
+    expect(besideAnchor(below)).toEqual([]);
+    expect(besideAnchor(at)).toEqual([
+      expect.objectContaining({
+        currency: 'BTC',
+        balanceMinorUnits: 1_000,
+        metadataKey: 'BTC:funding',
+      }),
     ]);
   });
 
@@ -928,7 +977,7 @@ describe('binanceProvider — appear, stay and dust', () => {
       emptyTarget,
     );
 
-    expect(balances).toEqual([
+    expect(besideAnchor(balances)).toEqual([
       expect.objectContaining({
         currency: 'EUR',
         balanceMinorUnits: 1,
@@ -947,8 +996,8 @@ describe('binanceProvider — appear, stay and dust', () => {
       heldIn('funding', 'EUR', 500),
     );
 
-    expect(none).toEqual([]);
-    expect(zeroed).toEqual([
+    expect(besideAnchor(none)).toEqual([]);
+    expect(besideAnchor(zeroed)).toEqual([
       expect.objectContaining({
         currency: 'EUR',
         balanceMinorUnits: 0,
@@ -1027,7 +1076,22 @@ describe('binanceProvider — coins a good read does not list', () => {
 
     const balances = await binanceProvider.fetchBalances(makeDeps([]), target);
 
-    expect(balances).toEqual([]);
+    expect(besideAnchor(balances)).toEqual([]);
+  });
+
+  it('never zeroes a held key of a fiat code that Binance does not quote', async () => {
+    const target: SyncTarget = {
+      accountId: 'acc-1',
+      holdings: [
+        binanceHolding('SCR', 500, 'SCR'),
+        binanceHolding('SCR:funding', 500, 'SCR'),
+        binanceHolding('SCR:earn', 500, 'SCR'),
+      ],
+    };
+
+    const balances = await binanceProvider.fetchBalances(makeDeps([]), target);
+
+    expect(besideAnchor(balances)).toEqual([]);
   });
 
   it('leaves every holding of a wallet whose read failed untouched', async () => {
@@ -1050,7 +1114,7 @@ describe('binanceProvider — coins a good read does not list', () => {
       warn.mockRestore();
     }
 
-    expect(keysOf(balances)).toEqual(['USDT:earn']);
+    expect(keysOf(besideAnchor(balances))).toEqual(['USDT:earn']);
   });
 
   it('leaves every Earn holding untouched when either position read failed', async () => {
@@ -1072,7 +1136,7 @@ describe('binanceProvider — coins a good read does not list', () => {
       warn.mockRestore();
     }
 
-    expect(balances).toEqual([]);
+    expect(besideAnchor(balances)).toEqual([]);
   });
 
   it('fails the whole sync on a Spot failure, writing no zero for any held coin', async () => {
