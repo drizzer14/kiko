@@ -349,7 +349,24 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   folder-name fills count only for a recursive copy (`-r`, `-R`, `-a`,
   `--recursive`, `--archive`, or a GNU abbreviation such as `--recur`)
   or any `mv`, since a plain `cp` cannot copy a folder: `ls | xargs -I{} cp {} "$BK"/` passes, `ls | xargs
-  -I{} cp -r {} "$BK"/` and `… mv {} "$BK"/old/` deny. Otherwise (no
+  -I{} cp -r {} "$BK"/` and `… mv {} "$BK"/old/` deny. The input may
+  also be a YAML file, so a `cp`/`mv` behind `xargs` whose destination
+  RESOLVES inside a project worktree folder (not under `node_modules/`)
+  is denied whatever the input files are (fail closed: the names are
+  unknowable): `ls | xargs -I{} cp {} .maestro/` denies. An unresolved
+  destination gets no YAML check, only the folder-name fills above.
+  Known YAML limits: outside `xargs`, a recursive or `-T` folder copy
+  that holds YAML passes, since the folder's name cannot tell
+  (`cp -r /tmp/flows .maestro/` allowed; only a literal `*.yml` path
+  denies); an `xargs` `cp`/`mv` whose destination the text cannot
+  resolve still lets a YAML file into a worktree (`cd "$X" && ls
+  /tmp/*.yml | xargs cp -t .maestro` and `… xargs cp -t "$WT/.maestro"`
+  pass, while the tree analog `cd "$X" && ls | xargs cp -t src` denies;
+  kept so the backup forms `xargs cp -t "$BK"` and `"$(mktemp -d)"/`
+  pass, and the deny's DO NOT line forbids routing through a variable);
+  a YAML file under `node_modules/` passes; a move out of a
+  YAML path is no write. Use Edit/Write for YAML. The deny hint ends
+  "write the literal path, or use Edit or Write". Otherwise (no
   placeholder, so the input is appended last, or a destination holding
   the placeholder) it denies as a write of any file. `git mv` stays
   allowed and is the way to move a file: guard-replay follows it as a
