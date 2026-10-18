@@ -1362,6 +1362,13 @@ example a main-rooted session editing an Orca worktree's githooks file) gets no 
 history-rule finding; `*.sh`/`*.bash` match from any cwd; project-wide `check:security` still
 catches it.
 
+**Stale guideline citation.** `kiko-no-stale-guideline-2-3-1a-citation`
+(`rules/semgrep-mobile.yml`, Class A ERROR) is a generic `pattern-regex` rule; its
+`paths.include` (`src/**`, `e2e/**`, `.maestro/**`) keeps it off docs and skills. It flags
+`2.3.1(a)` on a line unless that line also has "remediation", "formerly 2.3.1(a)" or
+"2.3.1(a), now 2.5.19". Known limits, NOT flagged: a marker wrapped onto the next line, and
+the number written as `2.3.1 (a)` or `2.3.1a`.
+
 ## `kiko-no-history-id-comment`
 
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no

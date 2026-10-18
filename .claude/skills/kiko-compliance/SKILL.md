@@ -45,6 +45,10 @@ re-derive it here. In short, ask:
   change specifically in the Notes for Review (App Store Connect)? Guideline 2.3.1(a): generic
   descriptions are rejected.
 
+Cite 2.5.19 for the no-hidden-feature rule. 2.3.1(a) appears only in a dated remediation note
+on the same line, enforced by `kiko-no-stale-guideline-2-3-1a-citation`; it stays the right
+citation for the Notes-for-Review duty above.
+
 Mechanized: the Semgrep rule `kiko-no-hidden-feature-flag-or-demo-import`
 (`rules/semgrep-mobile.yml`, Class A ERROR, runs under
 `npm run check:security`) catches a `SHOW_*`/`HIDE_*`/`SCREENSHOT_*`
