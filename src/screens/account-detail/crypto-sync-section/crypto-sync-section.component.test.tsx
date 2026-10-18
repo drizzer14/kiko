@@ -614,6 +614,16 @@ describe('CryptoSyncSection', () => {
       const { queryByText } = await renderConnectedWallet();
 
       expect(queryByText(PAUSED_CAPTION)).toBeNull();
+      expect(queryByText(/history import is paused/)).toBeNull();
+    });
+
+    it('reads the account sync_state row through a live query on the sync_state table', async () => {
+      await renderMalformed('{not json');
+
+      expect(mockUseLiveQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ __syncState: true, __accountId: ACCOUNT_ID }),
+        ['sync_state'],
+      );
     });
   });
 });
