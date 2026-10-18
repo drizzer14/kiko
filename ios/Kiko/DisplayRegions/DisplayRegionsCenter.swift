@@ -144,20 +144,29 @@ import os
   }
 
   private func readSnapshot() -> Snapshot {
+    return readSnapshotWithTabBar().snapshot
+  }
+
+  // The tab bar reading comes back with the snapshot it produced, so the debug log of a read
+  // needs no second walk of the view tree.
+  private func readSnapshotWithTabBar() -> (snapshot: Snapshot, tabBar: TabBarReading) {
     guard let window = foregroundWindow() else {
-      return Self.fallbackSnapshot
+      return (Self.fallbackSnapshot, .missing)
     }
 
-    return Snapshot(
+    let tabBar = Self.readTabBar(in: window)
+    let snapshot = Snapshot(
       horizontalSizeClass: window.traitCollection.horizontalSizeClass == .regular
         ? "regular" : "compact",
       verticalBarEdge: Self.verticalBarEdgeName(of: window),
       tabBarEdge: Self.tabBarEdgeName(
-        frame: Self.readTabBar(in: window).frame,
+        frame: tabBar.frame,
         windowBounds: window.bounds,
         isRightToLeft: window.traitCollection.layoutDirection == .rightToLeft),
       foldRegion: lastHinge?.hidesFold == true ? nil : Self.foldRegion(of: window)
     )
+
+    return (snapshot, tabBar)
   }
 
   // MARK: - Tab bar edge
@@ -545,11 +554,14 @@ import os
   }
 
   private func refresh(_ source: ReadSource) {
-    let json = snapshotJson()
+    let read = readSnapshotWithTabBar()
+    let json = Self.encode(read.snapshot)
     let changed = json != lastObservedJson
+    let candidateFrame = Self.describe(read.tabBar.frame)
 
     Self.logger.debug(
-      "read source=\(source.rawValue, privacy: .public) changed=\(changed, privacy: .public)")
+      "read source=\(source.rawValue, privacy: .public) changed=\(changed, privacy: .public) tabBarEdge=\(read.snapshot.tabBarEdge, privacy: .public) candidate=\(read.tabBar.kind, privacy: .public) candidateFrame=\(candidateFrame, privacy: .public)"
+    )
 
     guard changed else {
       return
