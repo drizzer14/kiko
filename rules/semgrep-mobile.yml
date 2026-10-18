@@ -102,6 +102,26 @@ rules:
           - pattern-regex: import\s*\{[^}]*\b(SHOW_[A-Z0-9_]*|HIDE_[A-Z0-9_]*|SCREENSHOT_[A-Z0-9_]*)\b[^}]*\}\s*from\s*['"]@env['"]
           - pattern-regex: import\s[^;]*from\s*['"][^'"]*\be2e/[^'"]*['"]
           - pattern-regex: require\s*\(\s*['"][^'"]*\be2e/[^'"]*['"]\s*\)
+  # Apple renumbered the no-hidden-feature guideline from 2.3.1(a) to 2.5.19; a citation of the old
+  # number is stale. `generic` is the only language that opens `.maestro/*.yaml`, and a generic rule
+  # needs `paths.include` or it scans docs and skills, which cite the old number on purpose. The
+  # include globs are unanchored, so the nested fixtures under `rules/fixtures/<rule-id>/` match
+  # too. The line-local lookahead lets a dated remediation note, a "formerly 2.3.1(a)" aside and
+  # "2.3.1(a), now 2.5.19" stay; a wrap that puts the marker on the next line is not read.
+  - id: kiko-no-stale-guideline-2-3-1a-citation
+    languages: [generic]
+    paths:
+      include:
+        - "src/**"
+        - "e2e/**"
+        - ".maestro/**"
+    severity: ERROR
+    message: >
+      Cite Guideline 2.5.19 for the no-hidden-feature rule: Apple renumbered it from 2.3.1(a). The
+      old number stays only in a dated remediation note on the same line ("2.3.1(a) remediation",
+      "formerly 2.3.1(a)", "2.3.1(a), now 2.5.19"); see kiko-compliance's "2.5.19 — no hidden,
+      dormant or undocumented features".
+    pattern-regex: '^(?![^\n]*(?:[Rr]emediation|formerly 2\.3\.1\(a\)|2\.3\.1\(a\),? now 2\.5\.19))[^\n]*?\K(?<![\d.])2\.3\.1\(a\)'
   # Layer rule (skill-gap-analysis #14): `src/screens/**` is the UI layer that
   # composes design-system primitives and domain modules, never the other way
   # around. A design-system component importing a screens module (FieldTrigger
