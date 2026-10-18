@@ -458,8 +458,9 @@ verified usage, not dead weight:
   40% duplicated lines / 43.71% duplicated tokens to jscpd, all by design.
   The
   semgrep `--exclude` is the bare directory name `fixtures` (semgrep matches it
-  per path component), so it hits only `rules/fixtures`; the app's own
-  `src/**/__fixtures__` stays in scope. No coverage is lost:
+  per path component), so it hits every folder named `fixtures` (also
+  `e2e/screenshot/fixtures/**`, which project-wide `check:security` never scans); the
+  app's own `src/**/__fixtures__` stays in scope. For `rules/fixtures` no coverage is lost:
   `npm run check:rules` (`scripts/checks/semgrep-rules.sh`) is the check that
   DOES scan the directory, and it fails if any rule stops matching its positive
   fixture or starts matching its negative one.

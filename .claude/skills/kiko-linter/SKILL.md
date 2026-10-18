@@ -1362,12 +1362,19 @@ example a main-rooted session editing an Orca worktree's githooks file) gets no 
 history-rule finding; `*.sh`/`*.bash` match from any cwd; project-wide `check:security` still
 catches it.
 
-**Stale guideline citation.** `kiko-no-stale-guideline-2-3-1a-citation`
-(`rules/semgrep-mobile.yml`, Class A ERROR) is a generic `pattern-regex` rule; its
+## `kiko-no-stale-guideline-2-3-1a-citation`
+
+The rule (`rules/semgrep-mobile.yml`, Class A ERROR) is a generic `pattern-regex`; its
 `paths.include` (`src/**`, `e2e/**`, `.maestro/**`) keeps it off docs and skills. It flags
-`2.3.1(a)` on a line unless that line also has "remediation", "formerly 2.3.1(a)" or
-"2.3.1(a), now 2.5.19". Known limits, NOT flagged: a marker wrapped onto the next line, and
-the number written as `2.3.1 (a)` or `2.3.1a`.
+`2.3.1(a)` unless one of three adjacent forms sits on the citation itself:
+"2.3.1(a) remediation", "formerly 2.3.1(a)" or "2.3.1(a), now 2.5.19". No date is required.
+A marker wrapped onto the next line IS flagged (a false positive): keep it on the citation's
+line. Real misses: the number split across lines (`2.3.1` then `(a)`), and the forms
+`2.3.1 (a)` and `2.3.1a`. Coverage limits: `scripts/checks/security.sh` passes
+`--exclude 'fixtures'`, which drops every path segment named fixtures, so project-wide
+`check:security` never scans `e2e/screenshot/fixtures/**`. The fast tier runs the rule on
+`.ts`, `.tsx`, `.js`, `.yml` and `.yaml` writes but skips `.md`
+(`scripts/checks/fast.sh`), so `e2e/screenshot/fixtures/README.md` is scanned by no tier.
 
 ## `kiko-no-history-id-comment`
 

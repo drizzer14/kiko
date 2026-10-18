@@ -45,9 +45,11 @@ re-derive it here. In short, ask:
   change specifically in the Notes for Review (App Store Connect)? Guideline 2.3.1(a): generic
   descriptions are rejected.
 
-Cite 2.5.19 for the no-hidden-feature rule. 2.3.1(a) appears only in a dated remediation note
-on the same line, enforced by `kiko-no-stale-guideline-2-3-1a-citation`; it stays the right
-citation for the Notes-for-Review duty above.
+Cite 2.5.19 for the no-hidden-feature rule. In `src/`, `e2e/` and `.maestro/` (docs and
+skills are outside the rule), 2.3.1(a) appears only as "2.3.1(a) remediation", "formerly
+2.3.1(a)" or "2.3.1(a), now 2.5.19" on the citation's line, enforced by
+`kiko-no-stale-guideline-2-3-1a-citation`; cite the Notes-for-Review duty there by name
+("the Notes-for-Review duty") without the old number.
 
 Mechanized: the Semgrep rule `kiko-no-hidden-feature-flag-or-demo-import`
 (`rules/semgrep-mobile.yml`, Class A ERROR, runs under
