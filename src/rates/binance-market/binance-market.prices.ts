@@ -8,10 +8,10 @@ import type { BinanceMarketClient } from './binance-market.client';
  * The UAH price of what a USDT-quoted price converts through. `usdt` is USDT's own price when the
  * run priced it; `euro` is the fiat anchor that prices USDT through EURUSDT when it did not.
  */
-export type FallbackAnchors = { usdt: number | undefined; euro: number | undefined };
+type FallbackAnchors = { usdt: number | undefined; euro: number | undefined };
 
 /** The EUR price in USDT: the pair that prices USDT itself, which has no USDT symbol. */
-const EURO_SYMBOL = 'EURUSDT';
+export const EURO_SYMBOL = 'EURUSDT';
 
 const usdtPriceOf = async (
   anchors: FallbackAnchors,

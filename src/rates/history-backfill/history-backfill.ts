@@ -19,12 +19,20 @@ import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
 import {
+  type HistoryRateEntry,
+  groupTimelines,
+  nearestAtOrBefore,
+  toUtcMidnight,
+} from '../history-entry';
+import {
   historyCurrencies as defaultHistoryCurrencies,
   type HistoryCurrencies,
 } from '../open-currencies-gate';
+import type { BinanceMarketClient } from '../binance-market';
 import { type NbuHistory, fetchNbuHistory } from '../nbu-history';
-import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 import { type CryptoHistory, CryptoHistoryFailure, fetchCryptoHistory } from '../coingecko-history';
+
+import { withBinanceFallback } from './history-backfill.binance-fallback';
 
 /** A row ready for `rateHistoryRepo.upsertMany` (rate stored as text). */
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
@@ -68,6 +76,11 @@ export type BackfillDeps = {
   today?: number;
   fetchNbuHistory?: (currencies: Currency[], start: number, end: number) => Promise<NbuHistory>;
   fetchCryptoHistory?: (days: number, currencies: CryptoCurrency[]) => Promise<CryptoHistory>;
+  /**
+   * Binance's public market data, asked only for a requested coin CoinGecko gave no history for.
+   * Defaults to a client of this run, so its pacing, budget and refusals belong to this run alone.
+   */
+  binanceMarket?: BinanceMarketClient;
   upsertMany?: (rows: NewHistoryRow[]) => Promise<void>;
   /**
    * The data-presence gate (kiko-architecture: app-open/refresh work is
@@ -578,53 +591,23 @@ export const planBackfillRun = (
   return { run: false, resumeFrom: null };
 };
 
-/** Choose the stored source for a currency's own `X:UAH` row — crypto comes from CoinGecko. */
-const pairSource = (base: Currency): NewHistoryRow['source'] =>
-  isCrypto(base) ? 'coingecko' : 'nbu';
+/**
+ * Choose the stored source for a currency's own `X:UAH` row — crypto comes from CoinGecko, except
+ * a coin whose own `X:UAH` series came from Binance's public market data.
+ */
+const pairSource = (
+  base: Currency,
+  timelines: Map<string, HistoryRateEntry[]>,
+): NewHistoryRow['source'] => {
+  if (!isCrypto(base)) {
+    return 'nbu';
+  }
+
+  return timelines.get(`${base}:UAH`)?.at(0)?.source === 'binance' ? 'binance' : 'coingecko';
+};
 
 /** Each currency's value expressed in UAH — the pivot for composing pairs. */
 type UahPrice = Partial<Record<Currency, number>>;
-
-/**
- * Resolve one anchor's rate for `day` from its ascending timeline, using the
- * nearest point AT OR BEFORE `day` (carry-forward across weekend/holiday gaps).
- */
-const nearestAtOrBefore = (timeline: HistoryRateEntry[], day: number): number | undefined => {
-  let rate: number | undefined;
-
-  for (const entry of timeline) {
-    if (entry.day <= day) {
-      rate = entry.rate;
-    } else {
-      break;
-    }
-  }
-
-  return rate;
-};
-
-const anchorKey = (base: Currency, quote: Currency) => `${base}:${quote}`;
-
-/**
- * Group anchor entries into ascending per-pair timelines so each target day can
- * carry the nearest prior rate forward.
- */
-const groupTimelines = (entries: HistoryRateEntry[]): Map<string, HistoryRateEntry[]> => {
-  const timelines = new Map<string, HistoryRateEntry[]>();
-
-  for (const entry of entries) {
-    const key = anchorKey(entry.base, entry.quote);
-    const list = timelines.get(key) ?? [];
-    list.push(entry);
-    timelines.set(key, list);
-  }
-
-  for (const list of timelines.values()) {
-    list.sort((a, b) => a.day - b.day);
-  }
-
-  return timelines;
-};
 
 /**
  * Build the UAH pivot for `day` from the anchor timelines: every fiat currency
@@ -695,7 +678,13 @@ export const composeHistoryRows = (
       if (rate === undefined) {
         continue;
       }
-      rows.push({ base, quote: 'UAH', day, rate: String(rate), source: pairSource(base) });
+      rows.push({
+        base,
+        quote: 'UAH',
+        day,
+        rate: String(rate),
+        source: pairSource(base, timelines),
+      });
     }
   }
 
@@ -992,10 +981,18 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // Each leg is ALSO gated individually on `historyCurrencies`'s own verdict: a
   // leg with nothing to convert/hold resolves to its own empty shape without
   // ever calling its fetch function.
-  const [nbuResult, cryptoResult] = await Promise.allSettled([
+  const [nbuResult, coinGeckoResult] = await Promise.allSettled([
     runNbuLeg(fiatCurrenciesToFetch, loadNbu, spanStart, today),
     runCryptoLeg(cryptoRequested, loadCrypto, cryptoDays),
   ]);
+  const cryptoResult = await withBinanceFallback({
+    requested: cryptoRequested,
+    nbuResult,
+    cryptoResult: coinGeckoResult,
+    range: { start: requestedStartOf(spanStart, today), end: today },
+    loadNbu,
+    client: deps.binanceMarket,
+  });
 
   const { rows, failures } = composeAndClassify(
     fiatCurrencies,

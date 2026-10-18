@@ -19,7 +19,7 @@ import { toUtcMidnight } from '../history-entry';
 /** One day's candle of a symbol: the UTC day it opened and the price it closed at. */
 export type DailyClose = { day: number; close: number };
 
-export type BinanceMarketOptions = {
+type BinanceMarketOptions = {
   fetchImpl?: typeof fetch;
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;

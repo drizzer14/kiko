@@ -14,6 +14,16 @@ import {
   runBackfill,
 } from './history-backfill';
 
+// Binance's public market data prices nothing here, so a coin left to the fallback never reaches
+// the real network.
+jest.mock('@kiko/rates/binance-market', () => ({
+  ...jest.requireActual('@kiko/rates/binance-market'),
+  createBinanceMarketClient: () => ({
+    tickerPrice: async () => undefined,
+    dailyCloses: async () => undefined,
+  }),
+}));
+
 const day = (index: number) => Date.UTC(2026, 8, 1) + index * DAY_MS;
 const TODAY = day(2);
 
