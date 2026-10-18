@@ -1,22 +1,27 @@
 # Device confirm for task 10/10 D1 (docs/harness/documented-exceptions.md, "patch-package
 # patches"): a field focused in one pane must not move the OTHER pane's scroll offset. NOT a
-# screenshot check — no `takeScreenshot` step; it asserts a row stays on screen.
+# screenshot check — no `takeScreenshot` step; it asserts an element stays on screen.
 #
 # PRECONDITION (the coordinator/user sets it; the flow does not): the iPhone Duo simulator
-# E862974E is UNFOLDED, so the app shows two panes (Settings list left, detail right). The
-# flow only reaches the Import Data screen in the right pane; in a single pane there is no
-# "other pane" and the assertion proves nothing.
+# E862974E is UNFOLDED, so the app shows two panes after launch: LEFT = Statistics
+# (`two-pane-companion`), RIGHT = Home (`two-pane-primary`). The flow taps no tab (the unfolded
+# tab bar is not in the accessibility tree); it opens the transaction form from Home's add
+# button, which opens in the RIGHT pane. In a single pane there is no "other pane".
 #
 # NOT DESTRUCTIVE: no `clearState`, no `clearKeychain`, and `launchApp` keeps the app's data —
-# the user's demo data is on that simulator. Nothing is typed into the key field, and nothing
-# is imported.
+# the user's demo data is on that simulator. Nothing is typed into any field and nothing is
+# saved: the form is only focused and its keyboard dismissed.
 #
-# EXPECTED: RED on a build without patches/react-native+0.87.1.patch (sim build ba5e9027),
-# GREEN on a patched build. On an unpatched build the left pane's scroll view reacts to the
-# keyboard of a field in the RIGHT pane: its content offset moves down by one keyboard height
-# per show and a hide does not restore it, so after three shows the top "System" row has
-# scrolled off and the final assertion fails. One show moves only about one keyboard height,
-# hence the repeats.
+# LANGUAGE: any app language (ids first; a regex over the en and uk catalogues where no id
+# exists).
+#
+# EXPECTED: the LEFT-pane check is RED on a build without patches/react-native+0.87.1.patch
+# (sim build ba5e9027) and GREEN on a patched build. On an unpatched build the Statistics
+# scroll view reacts to the keyboard of a field in the RIGHT pane: its content offset moves
+# down by one keyboard height per show and a hide does not restore it, so after the repeats
+# the filter bar at its top has scrolled off. One show moves only about one keyboard height
+# (about 65 pt with the hardware-keyboard bar), hence 5 repeats. The RIGHT-pane check is a
+# separate finding, not covered by the patch.
 #
 # Run (host note, ops skill "Maestro on this host"):
 #   JAVA_HOME=/opt/homebrew/opt/openjdk@21 maestro --device E862974E test \
@@ -26,8 +31,8 @@
 # repo, add `--debug-output <dir outside the worktree>` and delete that directory after.
 #
 # Authored WITHOUT a live Maestro run (battery, no simulator use): the first execution must
-# confirm the step sequence, in particular that tapping the secure field by its placeholder
-# focuses it and that the native "Done" accessory is hit by `tapOn: "Done"`.
+# confirm the step sequence, in particular that the amount field is focused by its
+# placeholder and that the native "Done" accessory is hit by the `Done|Готово` tap.
 appId: com.dmytro-vasylkivskyi.kiko
 ---
 - launchApp
@@ -37,54 +42,40 @@ appId: com.dmytro-vasylkivskyi.kiko
       id: "migrations-gate-pending"
     timeout: 30000
 
-# Settings tab, in every tab-bar form. The id "gear" (the SF Symbol name, as in
-# onboarding-fresh-install.yaml) is not exposed by the unfolded sidebar or floating bar, so it is
-# optional, then the tab title is tapped by text, optional too. Maestro matches a whole text, so
-# "Settings|Налаштування" (en.ts `settings.title`, uk.ts:871) cannot hit a longer label such as
-# "Налаштування нагадування"; if Settings is already open the tap lands on its title, harmless.
-- tapOn:
-    id: "gear"
-    optional: true
-- tapOn:
-    text: "Settings|Налаштування"
-    optional: true
-
-# The first Settings row, at the very top of the left pane. A failure here means "Settings tab
-# not reached", not D1.
-# (settings.screen.tsx `settings-row-system`, label `settings.system` = "System").
+# The top-most SMALL element of the Statistics scroll content: the account filter menu
+# (statistics.screen.tsx:1186 `statistics-account-filter`, the first child of the filter bar).
+# A whole chart block could stay partly visible after a shift and give a false GREEN.
 - assertVisible:
-    id: "settings-row-system"
+    id: "statistics-account-filter"
 
-# "Import Data" row (`settings-row-import-data`) opens the screen in the RIGHT pane.
+# Home's add-transaction button (add-transaction-fab.component.tsx:45 glass surface id; the
+# Pressable around it carries the label `home.addTransaction`) opens the form in the RIGHT pane.
 - tapOn:
-    id: "settings-row-import-data"
+    id: "add-transaction-fab-glass"
 - assertVisible:
-    id: "settings-button-pick-file"
+    id: "transaction-form"
 
-# Two-pane guard: in a single pane Import Data is pushed OVER the Settings list, so the row is
-# hidden. Seeing it next to the open Import Data screen proves the unfolded two-pane layout; a
-# failure here means "precondition: not unfolded", not D1.
+# Two-pane GUARD: in a single pane the form is pushed OVER Statistics, so the filter would be
+# hidden. A failure here means "not unfolded", not D1.
 - assertVisible:
-    id: "settings-row-system"
+    id: "statistics-account-filter"
 
-# Focus the "Encryption key" field and dismiss with the keyboard's Done accessory. The field
-# has no testID (import-data.screen.tsx passes none) and the Done button has none of its own
-# (the accessory's `keyboard-done-accessory` id is on its container), so both are matched by
-# a regex over the en and uk catalogues, which keeps the flow language-independent:
-# `settings.dataImport.keyPlaceholder` (en "Paste the key from your export", uk "Вставте ключ,
-# наданий при експорті") and `common.done` (en "Done", uk "Готово"). Three rounds, so an
-# unpatched build's shift adds up.
+# Focus the form's Amount field (field-group.component.tsx:85, placeholder
+# `forms.transaction.amountPlaceholder`: en "250.00", uk "250,00"; it has no testID) and
+# dismiss with the keyboard's Done accessory (`common.done`: en "Done", uk "Готово"; the
+# accessory's own `keyboard-done-accessory` id is on its container, not the button).
 - repeat:
-    times: 3
+    times: 5
     commands:
-      - tapOn: "Paste the key from your export|Вставте ключ, наданий при експорті"
+      - tapOn: "250[.,]00"
       - tapOn: "Done|Готово"
 
-# The left pane must not have moved: the top row is still on screen.
+# LEFT pane (the D1 check): it must not have moved, its top element is still on screen.
 - assertVisible:
-    id: "settings-row-system"
+    id: "statistics-account-filter"
 
 # RIGHT pane (the field's own pane): a separate check. A failure here, after the left-pane
 # assert passed, is the own-pane displacement (not covered by the D1 patch), not a D1 failure.
+# The form root is the form's outermost element (transaction-form.screen.tsx:1350).
 - assertVisible:
-    id: "settings-button-pick-file"
+    id: "transaction-form"
