@@ -1,9 +1,12 @@
 import { identity } from 'fnts';
+import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
-import { Money } from '@kiko/currency/money';
+import maybe, { foldMap } from 'fnts/maybe';
 import { logFailure } from '@kiko/diagnostics';
-import either, { bifoldMap } from 'fnts/either';
+import { decimalFromJsonNumber } from '@kiko/currency/decimal';
+import either, { bifold, bifoldMap, type Either, isLeft, left, right } from 'fnts/either';
+import { type AmountError, exchangeMinorUnits } from '@kiko/crypto-sync/exchange/amounts';
 
 import type { BalanceProvider, ProviderBalance } from '../provider';
 
@@ -65,24 +68,60 @@ export const defaultBinanceDeps: BinanceDeps = {
  */
 const LEGACY_HOLDING_NAME = 'Binance BTC';
 
-/**
- * Sum a set of decimal-string BTC amounts into satoshis. Each string is
- * converted on its own and added as `Money`, so no float addition happens before
- * rounding — a value already validated as finite by `isFiniteAmount`.
- */
-const sumSatoshis = (amounts: string[]): number =>
-  amounts.reduce(
-    (total, amount) => total.add(Money.fromMajor(BINANCE_ASSET, Number(amount))),
-    Money.of(BINANCE_ASSET, 0),
-  ).minorUnits;
+type AmountFailureKey =
+  | 'accountDetail.binanceNonNumericBalanceAmount'
+  | 'accountDetail.binanceNonNumericFundingAmount'
+  | 'accountDetail.binanceNonNumericPositionAmount';
 
 /**
- * Whether one amount is a usable decimal STRING. `Number('x')` is `NaN`, which
- * would flow straight into a `notNull` integer column, so a non-finite value is
- * rejected before it is summed.
+ * An amount as exact decimal text: the string as Binance sent it, or a JSON number expanded
+ * without a float re-parse. Anything else is no amount.
  */
-const isFiniteAmount = (value: unknown): boolean =>
-  typeof value === 'string' && Number.isFinite(Number(value));
+const amountText = (value: unknown): string | undefined =>
+  match(value)
+    .with(P.string, identity)
+    .with(P.number, (number) => decimalFromJsonNumber(number) ?? undefined)
+    .otherwise(() => undefined);
+
+const amountMinorUnits = (value: unknown): Either<AmountError, number> =>
+  foldMap(maybe(amountText(value)), (text) => exchangeMinorUnits(BINANCE_ASSET, text, 'balance')) ??
+  left('amount-malformed');
+
+/**
+ * Sum amounts as exact integer minor units. Each is parsed on its own, so no float sits between
+ * the text and the stored value, and a sum past the safe integer is refused, never truncated.
+ */
+const sumAmounts = (amounts: readonly unknown[]): Either<AmountError, number> => {
+  let total = 0;
+
+  for (const amount of amounts) {
+    const units = amountMinorUnits(amount);
+
+    if (isLeft(units)) {
+      return units;
+    }
+
+    const exact: number = bifold(units);
+    total += exact;
+
+    if (!Number.isSafeInteger(total)) {
+      return left('amount-too-large');
+    }
+  }
+
+  return right(total);
+};
+
+/** A refused amount fails the wallet's read; the caller decides what a failed read costs. */
+const unitsOrThrow = (result: Either<AmountError, number>, failure: AmountFailureKey): number => {
+  if (isLeft(result)) {
+    throw new Error(i18n.t(failure));
+  }
+
+  const units: number = bifold(result);
+
+  return units;
+};
 
 const isBTCEntry = (entry: unknown): boolean =>
   typeof entry === 'object' &&
@@ -122,13 +161,10 @@ const spotSatoshis = (account: BinanceAccount): number => {
     isBTCEntry(balance),
   );
 
-  for (const balance of btcBalances) {
-    if (!isFiniteAmount(balance.free) || !isFiniteAmount(balance.locked)) {
-      throw new Error(i18n.t('accountDetail.binanceNonNumericBalanceAmount'));
-    }
-  }
-
-  return btcBalances.reduce((sum, balance) => sum + sumSatoshis([balance.free, balance.locked]), 0);
+  return unitsOrThrow(
+    sumAmounts(btcBalances.flatMap((balance) => [balance.free, balance.locked])),
+    'accountDetail.binanceNonNumericBalanceAmount',
+  );
 };
 
 /** Funding BTC satoshis: `free + locked + freeze + withdrawing` per BTC row. */
@@ -139,44 +175,29 @@ const fundingSatoshis = (assets: BinanceFundingAsset[]): number => {
 
   const btcAssets = assets.filter((asset): asset is BinanceFundingAsset => isBTCEntry(asset));
 
-  for (const asset of btcAssets) {
-    const fields = [asset.free, asset.locked, asset.freeze, asset.withdrawing];
-
-    if (fields.some((field) => !isFiniteAmount(field))) {
-      throw new Error(i18n.t('accountDetail.binanceNonNumericFundingAmount'));
-    }
-  }
-
-  return btcAssets.reduce(
-    (sum, asset) => sum + sumSatoshis([asset.free, asset.locked, asset.freeze, asset.withdrawing]),
-    0,
+  return unitsOrThrow(
+    sumAmounts(
+      btcAssets.flatMap((asset) => [asset.free, asset.locked, asset.freeze, asset.withdrawing]),
+    ),
+    'accountDetail.binanceNonNumericFundingAmount',
   );
 };
 
 /**
- * Simple Earn BTC satoshis. A flexible position holds its BTC in `totalAmount`, a
- * locked one in `amount`; the caller names which field, the parse is otherwise
- * identical.
+ * The BTC amounts of one Simple Earn read. A flexible position holds its BTC in `totalAmount`, a
+ * locked one in `amount`; the caller names which field, and sums both reads together.
  */
-const positionSatoshis = (
+const positionAmounts = (
   body: { rows: unknown[] },
   amountField: 'totalAmount' | 'amount',
-): number => {
+): unknown[] => {
   if (!hasRows(body)) {
     throw new Error(i18n.t('accountDetail.binanceMissingRowsArray'));
   }
 
-  const btcRows = body.rows.filter((row): row is Record<string, unknown> => isBTCEntry(row));
-
-  for (const row of btcRows) {
-    if (!isFiniteAmount(row[amountField])) {
-      throw new Error(i18n.t('accountDetail.binanceNonNumericPositionAmount'));
-    }
-  }
-
-  // `isFiniteAmount` above already proved each value is a finite decimal string,
-  // so the cast is safe and no runtime `String()` conversion is needed.
-  return btcRows.reduce((sum, row) => sum + sumSatoshis([row[amountField] as string]), 0);
+  return body.rows
+    .filter((row): row is Record<string, unknown> => isBTCEntry(row))
+    .map((row) => row[amountField]);
 };
 
 /**
@@ -319,16 +340,19 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     // UNDER-COUNT the user's Earn balance — so both reads sit inside one
     // `walletSatoshis` guard rather than two.
     const earn = await walletSatoshis('earn', async () => {
-      const flexible = positionSatoshis(
+      const flexible = positionAmounts(
         await deps.fetchFlexiblePosition(apiKey, secret, options),
         'totalAmount',
       );
-      const locked = positionSatoshis(
+      const locked = positionAmounts(
         await deps.fetchLockedPosition(apiKey, secret, options),
         'amount',
       );
 
-      return flexible + locked;
+      return unitsOrThrow(
+        sumAmounts([...flexible, ...locked]),
+        'accountDetail.binanceNonNumericPositionAmount',
+      );
     });
     appendWallet(balances, earn, EARN_KEY, WALLET_HOLDING_NAMES[EARN_KEY], existingKeys);
 
