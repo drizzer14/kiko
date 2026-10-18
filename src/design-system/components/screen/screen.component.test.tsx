@@ -32,10 +32,11 @@ jest.mock('react-native-bottom-tabs', () => ({
 // The system's own vertical-bar trait, in place of any geometry guess. Every
 // test here but the "Duo vertical bar" cases sees `none`, an ordinary bottom bar.
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+// An unknown native edge keeps today's rule, which every case but the top-bar ones pins.
+const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
-  // An unknown native edge keeps today's rule, which these cases pin.
-  useTabBarEdge: () => 'none',
+  useTabBarEdge: () => mockUseTabBarEdge(),
   // The content cap reads the layout mode and the size class: a compact single window, as on an
   // iPhone, caps nothing.
   useLayoutMode: () => 'single',
@@ -540,6 +541,100 @@ describe('Screen', () => {
       const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
       expect(footerStyle.paddingHorizontal).toBe(16);
+    });
+  });
+
+  describe('under a floating top tab bar', () => {
+    const TOP_BAR_PILL = 44;
+
+    const renderInPane = (props: ComponentProps<typeof Screen>, mode: 'columns' | 'rows') =>
+      render(
+        <PaneContext.Provider value={paneContextOf(mode, 'primary')}>
+          <Screen {...props}>
+            <Text>content</Text>
+          </Screen>
+        </PaneContext.Provider>,
+      );
+
+    const contentTop = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+      StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style).paddingTop;
+
+    beforeEach(() => {
+      mockUseTabBarEdge.mockReturnValue('top');
+    });
+
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+      mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+    });
+
+    it('pads the plain content 44 pt more under a top bar on a regular full-screen window (bar bottom 76)', async () => {
+      const view = await renderScreen();
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
+    });
+
+    it('pads the plain content 44 pt more under a top bar when bleedBottom is set (Home)', async () => {
+      const view = await renderScreen({ bleedBottom: true });
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
+    });
+
+    it('adds nothing on the compact 375x563 window', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      mockUseBottomTabBarHeight.mockReturnValue(72);
+
+      const view = await renderScreen();
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
+    });
+
+    it("adds nothing under the Duo inner portrait's bottom bar", async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      mockUseBottomTabBarHeight.mockReturnValue(83);
+
+      const view = await renderScreen();
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
+    });
+
+    it('adds nothing in the rows primary, which has no bar over it', async () => {
+      const view = await renderInPane({}, 'rows');
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
+    });
+
+    it('adds the pill in the columns primary, which reaches the top of the window', async () => {
+      const view = await renderInPane({}, 'columns');
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
+    });
+
+    it('never puts the clearance on the SafeAreaView', async () => {
+      const { getByTestId } = await renderScreen();
+
+      expect(
+        StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).parent?.props.style).paddingTop,
+      ).toBeUndefined();
+    });
+
+    it('carries no top clearance in the scroll branch', async () => {
+      const { getByTestId } = await renderScreen({ scroll: true });
+      const scrollContentStyle = StyleSheet.flatten(
+        getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+      );
+
+      expect(scrollContentStyle.paddingTop).toBeUndefined();
+      expect(scrollContentStyle.padding).toBe(CONTENT_BASE_PADDING);
+    });
+
+    it('carries no top clearance in the bleedTop branch', async () => {
+      const { getByText, queryByTestId } = await renderScreen({ bleedTop: true });
+
+      expect(queryByTestId(CONTENT_TEST_ID)).toBeNull();
+      expect(
+        StyleSheet.flatten(getByText('content').parent?.props.style).paddingTop,
+      ).toBeUndefined();
     });
   });
 

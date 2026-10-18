@@ -225,6 +225,7 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
   describe('kiko-no-pane-blind-bottom-clearance on an inline snippet (Semgrep only)', () => {
     const RULE_ID = 'kiko-no-pane-blind-bottom-clearance';
     const CLEARANCE_MODULE = "'@kiko/design-system/components/screen/bottom-clearance'";
+    const TOP_CLEARANCE_MODULE = "'@kiko/design-system/components/screen/top-clearance'";
 
     function findingsFor(content: string): string[] {
       const directory = mkdtempSync(join(tmpdir(), 'kiko-clearance-snippet-'));
@@ -258,6 +259,12 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       ).toContain(RULE_ID);
     });
 
+    it('reports a value import of the top function, which proves the scan runs the top arm', () => {
+      expect(
+        findingsFor(`import { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\n`),
+      ).toContain(RULE_ID);
+    });
+
     it.each([
       [
         'a type-only import of the function, which is erased',
@@ -266,6 +273,14 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       [
         'a path that only ends in the same words',
         "import { useBottomClearance } from '@kiko/design-system/components/screen/use-bottom-clearance';\nexport const hook = useBottomClearance;\n",
+      ],
+      [
+        'a type-only import of the top function, which is erased',
+        `import type { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\nexport type Clearance = typeof resolveTopClearance;\n`,
+      ],
+      [
+        'a top path that only ends in the same words',
+        "import { useTopClearance } from '@kiko/design-system/components/screen/use-top-clearance';\nexport const hook = useTopClearance;\n",
       ],
     ])('leaves %s alone', (_name, content) => {
       expect(findingsFor(content)).not.toContain(RULE_ID);

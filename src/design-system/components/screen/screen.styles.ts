@@ -39,16 +39,18 @@ export const styles = StyleSheet.create((theme) => ({
   // whichever sibling (`footer`) or child (the `bleedBottom` list) is
   // actually adjacent to the true bottom edge, not to this container as well,
   // or the gap below the last row/action would be counted twice. Horizontal
-  // and top padding stay at the base spacing step regardless.
-  content: (ownsClearance: boolean, bottomClearance: number) => ({
+  // padding stays at the base spacing step regardless, and so does the top
+  // padding, plus `topClearance` below a floating top tab bar.
+  content: (ownsClearance: boolean, bottomClearance: number, topClearance: number) => ({
     flex: 1,
     // A large-title `bleedTop` screen never reaches this wrapper — it renders
     // its scrollable child directly under the SafeAreaView (see
     // `screen.component.tsx`) so the child, not this padded View, is the scroll
     // view iOS tracks for the large-title collapse. So this wrapper always keeps
     // the base top padding for the headerless/non-scrolling screens that DO use
-    // it.
-    paddingTop: theme.spacing(4),
+    // it. The SafeAreaView reserves only the top inset, so a top bar's pill
+    // (`topClearance`) is added here, never on the SafeAreaView.
+    paddingTop: theme.spacing(4) + topClearance,
     paddingHorizontal: theme.spacing(4),
     paddingBottom: ownsClearance
       ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance

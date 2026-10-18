@@ -1783,13 +1783,20 @@ describe('StatisticsScreen', () => {
   it('renders all four empty charts without crashing when there is no data', async () => {
     setLiveData({ accounts: [CASH] });
 
-    const { getByTestId, getAllByText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     expect(getByTestId('bar-chart-empty')).toBeTruthy();
     expect(getByTestId('net-worth-line-empty')).toBeTruthy();
     expect(getByTestId('pie-chart-empty')).toBeTruthy();
     expect(getByTestId('category-pie-empty')).toBeTruthy();
-    expect(getAllByText(i18n.t('statistics.noSpendingToShow')).length).toBeGreaterThan(0);
+    expect(
+      within(getByTestId('category-pie-empty')).getByText(i18n.t('statistics.noSpendingToShow')),
+    ).toBeTruthy();
+    expect(
+      within(getByTestId('category-trend-line-empty')).getByText(
+        i18n.t('statistics.noSpendingToShow'),
+      ),
+    ).toBeTruthy();
   });
 
   describe('with no accounts', () => {

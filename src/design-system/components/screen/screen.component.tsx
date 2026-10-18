@@ -7,6 +7,7 @@ import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 
 import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
+import { useTopClearance } from './use-top-clearance';
 import { useBottomClearance } from './use-bottom-clearance';
 import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
 
@@ -53,6 +54,10 @@ const Screen: FC<ScreenProps> = ({
   // too: it also gives a pane that is not at the window's bottom no clearance,
   // since no tab bar is over it.
   const bottomClearance = useBottomClearance();
+  // A floating TOP bar covers the top edge the same way, so a headerless plain screen starts
+  // below its pill. Only the plain branch uses it: the scroll and `bleedTop` branches sit under a
+  // native header that already clears the bar.
+  const topClearance = useTopClearance();
   const paneCap = useContentCap();
   // The footer follows the content: a capped footer under uncapped content would not line up.
   const contentCap = uncapped ? undefined : paneCap;
@@ -189,7 +194,10 @@ const Screen: FC<ScreenProps> = ({
       edges={plainEdges}
       style={[styles.safeArea, bleedBottom ? undefined : contentCap]}
     >
-      <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
+      <View
+        testID="screen-content"
+        style={styles.content(contentOwnsClearance, bottomClearance, topClearance)}
+      >
         {fields}
       </View>
       {footer ? (

@@ -54,4 +54,19 @@ describe('StatisticsGrid', () => {
       expect(view.queryAllByTestId('statistics-grid-spacer')).toHaveLength(spacers);
     },
   );
+
+  it.each([2, 3] as const)(
+    'renders at %d columns without a duplicate or missing key warning',
+    async (columns) => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        await renderGrid(columns);
+
+        expect(consoleError).not.toHaveBeenCalled();
+      } finally {
+        consoleError.mockRestore();
+      }
+    },
+  );
 });

@@ -70,6 +70,14 @@ import os
       kind: "none", frame: nil, tabBarIsHidden: nil, tabBarFrame: nil)
   }
 
+  // A snapshot with the tab bar reading, the window bounds and the display scale that produced it.
+  struct SnapshotReading {
+    var snapshot: Snapshot
+    var tabBar: TabBarReading
+    var windowBounds: CGRect
+    var displayScale: CGFloat
+  }
+
   struct HingeState: Equatable {
     var status: Int
     var hidesFold: Bool
@@ -92,6 +100,9 @@ import os
   // A floating bar is small on both sides next to the window; a view whose short side reaches
   // half the window's is content.
   private static let floatingBarShortSideLimit: CGFloat = 0.5
+
+  // How far, in points, a candidate frame may reach past the window and still count as inside it.
+  private static let windowFrameTolerance: CGFloat = 1
 
   // An invisible view still holds a frame, so a view at or under this alpha counts as hidden.
   private static let minimumVisibleAlpha: CGFloat = 0.01
@@ -154,11 +165,10 @@ import os
 
   // The tab bar reading, the window bounds and the display scale come back with the snapshot they
   // produced, so the debug logs of a read and of its emit need no second walk of the view tree.
-  private func readSnapshotWithTabBar() -> (
-    snapshot: Snapshot, tabBar: TabBarReading, windowBounds: CGRect, displayScale: CGFloat
-  ) {
+  private func readSnapshotWithTabBar() -> SnapshotReading {
     guard let window = foregroundWindow() else {
-      return (Self.fallbackSnapshot, .missing, .zero, 0)
+      return SnapshotReading(
+        snapshot: Self.fallbackSnapshot, tabBar: .missing, windowBounds: .zero, displayScale: 0)
     }
 
     let tabBar = Self.readTabBar(in: window)
@@ -173,7 +183,9 @@ import os
       foldRegion: lastHinge?.hidesFold == true ? nil : Self.foldRegion(of: window)
     )
 
-    return (snapshot, tabBar, window.bounds, window.traitCollection.displayScale)
+    return SnapshotReading(
+      snapshot: snapshot, tabBar: tabBar, windowBounds: window.bounds,
+      displayScale: window.traitCollection.displayScale)
   }
 
   // MARK: - Tab bar edge
@@ -225,7 +237,9 @@ import os
     of controller: UITabBarController, in window: UIWindow
   ) -> TabBarReading {
     let tabBar = controller.tabBar
-    let tabBarFrame = visibleFrame(of: tabBar, in: window)
+    let tabBarFrame = visibleFrame(of: tabBar, in: window).flatMap {
+      isInsideWindow(frame: $0, windowBounds: window.bounds) ? $0 : nil
+    }
     let ownFrame = tabBar.convert(tabBar.bounds, to: window)
 
     if let tabBarFrame {
@@ -235,7 +249,10 @@ import os
 
     let floating = floatingBarFrame(
       below: controller.view, selectedView: controller.selectedViewController?.viewIfLoaded,
-      in: window)
+      in: window
+    ).flatMap {
+      isInsideWindow(frame: $0, windowBounds: window.bounds) ? $0 : nil
+    }
 
     return TabBarReading(
       kind: floating == nil ? "none" : "floating",
@@ -314,6 +331,13 @@ import os
     }
 
     return frame
+  }
+
+  // A candidate frame reaching outside the window is stale: the tree still holds the layout of the
+  // size the window had before a resize, so the frame is rejected and reads as no bar. The
+  // tolerance absorbs sub-point rounding of a bar that sits flush with the window's edge.
+  static func isInsideWindow(frame: CGRect, windowBounds: CGRect) -> Bool {
+    return windowBounds.insetBy(dx: -windowFrameTolerance, dy: -windowFrameTolerance).contains(frame)
   }
 
   // A tall bar is a side bar, and which side is read against the reading direction; otherwise the
@@ -624,10 +648,7 @@ import os
   // checked with `log stream --level debug --predicate 'category == "DisplayRegions"'`. The payload
   // is public because it holds only layout numbers, and so do the tab bar candidate, its window
   // frame and the controller's own tab bar, which say why an edge came out.
-  private func logEmitted(
-    _ json: String,
-    read: (snapshot: Snapshot, tabBar: TabBarReading, windowBounds: CGRect, displayScale: CGFloat)
-  ) {
+  private func logEmitted(_ json: String, read: SnapshotReading) {
     let bounds = read.windowBounds
     let scale = read.displayScale
     let reading = read.tabBar
