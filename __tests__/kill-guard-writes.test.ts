@@ -4,11 +4,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
-// writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, or githooks/ of any worktree of
-// this repository, or into a YAML file (final segment .yml/.yaml) anywhere in one except under
-// node_modules/ (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
-// one-liner) skips the pre-write guard, which sees only Edit/Write/MultiEdit,
-// so the hook denies it and points at Edit/Write.
+// writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, .claude/skills/,
+// .claude/agents/, or harness/kiko/ of any worktree of this repository, or into a YAML file
+// (final segment .yml/.yaml) anywhere in one except under node_modules/ (`sed -i`, `perl -i`, a
+// `>`/`>>` redirect, `tee`, a python or node one-liner) skips the pre-write guard, which sees
+// only Edit/Write/MultiEdit, so the hook denies it and points at Edit/Write.
 //
 // Every text here is judged, never run: `decide` is called in node as a
 // parser only, and the hook rows only pipe JSON into kill-guard.sh. The
@@ -823,14 +823,14 @@ const DENIED_PREFIX_GUARDED: string[] = [
   // A path the text cannot resolve still names the prefix, whatever the command assigned.
   'echo x > $X/harness/kiko/a',
   'echo x > "$X/harness/kiko/a"',
-  'echo x > ~/w/.claude/skills/a',
+  'echo x > ~root/w/.claude/skills/a',
   'echo x > $X/.claude/agents/a',
   'echo x > "$X/.claude/skills/a/SKILL.md"',
   "sed -i '' 's/a/b/' $D/harness/kiko/skills/ops/SKILL.md",
   'cp /tmp/x $D/.claude/skills/a.md',
   'echo x | tee $D/harness/kiko/hooks/hooks.json',
   `echo x > \${X}/harness/kiko/a`,
-  'echo x > $(pwd)/.claude/agents/a',
+  'echo x > "$(pwd)/.claude/agents/a"',
   'D=/tmp; echo x > $D/harness/kiko/a',
   'D=/tmp; echo x > $D/.claude/skills/a',
   'D=/tmp; echo x | tee "$D/.claude/agents/a.md"',

@@ -32,8 +32,10 @@
 // runs after a queued verify of that commit.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
-// or `githooks/` at the root of any worktree of this repository, or into a YAML file (a final
-// segment ending in `.yml` or `.yaml`) at any depth of one, except under `node_modules/` (a YAML
+// `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
+// scripts, hooks, the plugin manifest) at the root of any worktree of this repository, or into a
+// YAML file (a final segment ending in `.yml` or `.yaml`) at any depth of one, except under
+// `node_modules/` (a YAML
 // path the text cannot resolve is denied too; one resolved outside every worktree of this
 // repository stays allowed) — `sed -i`, `perl -i`, a `>`/`>>`
 // (or `>|`, `&>`, `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner
@@ -157,7 +159,8 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
 
 const SHELL_WRITE_REASON_LINES = [
   'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, e2e/, drizzle/, ' +
-    'scripts/, or githooks/ of a worktree of this repository, into a YAML file (.yml, .yaml) of ' +
+    'scripts/, or githooks/ of a worktree of this repository, into .claude/skills/, ' +
+    '.claude/agents/, or any of harness/kiko/ of one, into a YAML file (.yml, .yaml) of ' +
     'one, or into a git config file (.git/config, config.worktree).',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
@@ -166,7 +169,8 @@ const SHELL_WRITE_REASON_LINES = [
   'HOW TO FIX:     use the Edit or Write tool for that file; to move a file, use `git mv` ' +
     '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
     'cannot resolve (a variable, a glob) counts when a folder in it is named src, rules, e2e, ' +
-    'drizzle, scripts, githooks, or __tests__, or when it ends in .yml or .yaml, and so does a ' +
+    'drizzle, scripts, githooks, or __tests__, when its folders spell .claude/skills, ' +
+    '.claude/agents, or harness/kiko, or when it ends in .yml or .yaml, and so does a ' +
     'cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
     'write the literal path, or use Edit or Write. Reading it, a ' +
     'redirect to /dev/null or to a path outside those trees that is not a YAML file of a ' +
@@ -1773,10 +1777,12 @@ function gitFinding(segment, invocations, rules) {
   };
 }
 
-// ---- shell writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, YAML ----
+// ---- shell writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, ----
+// ---- .claude/skills/, .claude/agents/, harness/kiko/, YAML ----
 
 // The folders, at the root of any worktree of this repository, that only
-// Edit/Write may change: the pre-write guard sees no other tool.
+// Edit/Write may change: the pre-write guard sees no other tool. An entry
+// with a slash is a path prefix of several folders.
 const WRITE_GUARDED_TREES = new Set([
   'src',
   '__tests__',
@@ -1785,7 +1791,22 @@ const WRITE_GUARDED_TREES = new Set([
   'drizzle',
   'scripts',
   'githooks',
+  '.claude/skills',
+  '.claude/agents',
+  'harness/kiko',
 ]);
+
+const GUARDED_TREE_SEGMENTS = [...WRITE_GUARDED_TREES].map((tree) => tree.split('/'));
+
+// Whether `segments` spell `tree` from `index` on, case-folded (APFS folds case).
+const spellsTreeAt = (segments, index, tree) =>
+  tree.every((name, offset) => segments[index + offset]?.toLowerCase() === name);
+
+// Whether `segments` spell some tree from `index` on, with a segment (the file) after it.
+const namesTreeAt = (segments, index) =>
+  GUARDED_TREE_SEGMENTS.some(
+    (tree) => index + tree.length < segments.length && spellsTreeAt(segments, index, tree),
+  );
 
 // The repository whose worktrees count: the one this file lives in.
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -1833,24 +1854,20 @@ function isInsideGuardedTree(target, rules) {
   const segments = target.split('/');
 
   return segments.some(
-    (segment, index) =>
+    (_segment, index) =>
       index > 0 &&
-      index < segments.length - 1 &&
-      WRITE_GUARDED_TREES.has(segment.toLowerCase()) &&
+      namesTreeAt(segments, index) &&
       isProjectWorktree(segments.slice(0, index).join('/') || '/', rules),
   );
 }
 
 // A path the text cannot pin down (a variable, a glob, a span, a relative
-// path from an unknown directory) counts when any folder in it is named
-// like a tree (fail closed).
+// path from an unknown directory) counts when its folders spell a tree
+// (fail closed).
 function namesGuardedTree(target) {
   const segments = target.split('/');
 
-  return segments.some(
-    (segment, index) =>
-      index < segments.length - 1 && WRITE_GUARDED_TREES.has(segment.toLowerCase()),
-  );
+  return segments.some((_segment, index) => namesTreeAt(segments, index));
 }
 
 // The repository config holds core.hooksPath, which turns the pre-commit typecheck on, so a shell
@@ -2282,7 +2299,15 @@ function expressionPaths(expression, argv) {
   const candidates = [...own, ...joined, own.join('/')];
   const insideTree = candidates
     .map((candidate) => candidate.replace(/\/+$/, ''))
-    .filter((candidate) => WRITE_GUARDED_TREES.has(candidate.split('/').pop().toLowerCase()))
+    .filter((candidate) => {
+      const segments = candidate.split('/');
+
+      return GUARDED_TREE_SEGMENTS.some(
+        (tree) =>
+          segments.length >= tree.length &&
+          spellsTreeAt(segments, segments.length - tree.length, tree),
+      );
+    })
     .map((candidate) => `${candidate}/_`);
 
   return [...candidates, ...insideTree, ...(ARGV_READ.test(expression) ? argv : [])];
@@ -2321,6 +2346,13 @@ const withXargsInput = (parameters, placeholder, input) =>
     ? [...parameters, input]
     : parameters.map((word) => word.replaceAll(placeholder, input));
 
+// The names an input may carry to land in a tree: the tree, and, for a
+// prefix of several folders, its last folder (`cp -r {} harness/` fills
+// `{}` with `kiko`).
+const XARGS_FOLDER_NAMES = [
+  ...new Set([...WRITE_GUARDED_TREES].flatMap((tree) => [tree, tree.split('/').pop()])),
+];
+
 // A cp/mv behind `xargs` writes into a folder its own text names only when
 // the input cannot reach the destination; null when it may. The input may
 // carry any name, so each source it fills counts once as a fixed marker
@@ -2338,7 +2370,7 @@ function xargsCopyMoveTargets(base, parameters, placeholder) {
   return {
     plain: targetsFor(['xargs-input']),
     yaml: targetsFor(['xargs-input.yml']),
-    named: targetsFor([...WRITE_GUARDED_TREES]),
+    named: targetsFor(XARGS_FOLDER_NAMES),
     canCopyFolder: MOVE_COMMANDS.has(base) || options.some((option) => option.recursive),
   };
 }
