@@ -19,6 +19,15 @@
 # The run mutates the CHANGED LINES of the changed source files (the lines the branch added,
 # passed to Stryker as `path:start-end` entries), not the whole files.
 #
+# When the scorer fails the first run on TIMEOUT-HEAVY alone, the gate reruns the timed-out mutants
+# once, inside the same lock: it prints the first run's score lines with a `FIRST RUN: ` prefix,
+# waits for the load to fall below RERUN_MAX_LOAD (at most RERUN_MAX_WAIT seconds), removes those
+# mutants from reports/stryker-incremental.json (mutation-rerun.js), and runs Stryker again with
+# `--concurrency 1` on the same --mutate entries. It prints one `RERUN <path>: ...` line per file
+# and takes the final report's score as the verdict. `RERUN SKIPPED: N mutants over the cap` and
+# `RERUN SKIPPED: load` leave the first run's failure standing. Only the first run feeds the ETA
+# run history; the per-file timeout history takes the final scorer rows.
+#
 # `--list` prints the files this run would mutate with their changed-line ranges, the sum of
 # changed lines, the file count, and the share of those files' mutants that timed out in earlier
 # runs, then exits (2 above the cap) without Stryker, so a change set is sized with the gate's own
@@ -124,6 +133,14 @@ fi
 # above this many source files never starts. It is a plain assignment on purpose:
 # no env var may raise it.
 MUTATION_FILE_CAP=30
+# The rerun of the timed-out mutants (see the header) never starts above this many mutants, and
+# waits at most RERUN_MAX_WAIT seconds for the 5-minute load average to fall below RERUN_MAX_LOAD:
+# a rerun under load would time out again and prove nothing. Plain assignments on purpose too: the
+# one seam is KIKO_MUTATION_RERUN_WAIT_SECONDS below, for the wait only, so a test need not wait
+# 30 minutes. Neither the cap nor the load limit has one.
+RERUN_MUTANT_CAP=60
+RERUN_MAX_LOAD=10
+RERUN_MAX_WAIT=1800
 CAP_REASON="A big mutation run takes hours and starves the machine (a whole-release run went 10 h 16 min with no result)."
 
 # Reads candidate .ts/.tsx paths on stdin and prints the ones Stryker would
@@ -483,6 +500,59 @@ stryker_limits="$(node -e '
 # it so a Stryker that writes none is caught by the missing-report check below.
 rm -f "$MUTATION_REPORT"
 
+# A code other than 0 or 1 is a CRASH (Stryker never finished a run at all),
+# and so is code 1 with no report: Stryker also exits 1 on a failed run (for
+# example "No tests were executed"), while a run that completes and misses its
+# break threshold has written its report first. A crash is not a completed run,
+# so it is never recorded in history. $1 is the run's exit code, $2 its output; the first
+# run and the rerun share this.
+fail_on_crash() {
+  if { [ "$1" -ne 0 ] && [ "$1" -ne 1 ]; } || { [ "$1" -eq 1 ] && [ ! -f "$MUTATION_REPORT" ]; }; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Stryker exited with code $1 rather than completing a run." \
+      "$2" \
+      "A crash produces no mutation report at all, so neither the whole-report sanity floor nor the change-set gate below can run; a check that never actually ran must never report success." \
+      "Read the output above for the crash cause (an instrumentation error, an out-of-memory worker, ...), fix it, and re-run: npm run check:mutation" \
+      "Do not treat a crash as a pass, and do not raise concurrency or memory limits to paper over an instrumentation bug."
+    exit 2
+  fi
+}
+
+# $1 is a finished run's exit code, $2 its output. Fails on Stryker's own whole-report floor
+# (code 1) and on a passing run that wrote no report.
+fail_on_unusable_report() {
+  if [ "$1" -eq 1 ]; then
+    # Stryker's OWN break threshold (stryker.conf.json's thresholds.break: 60)
+    # covers the WHOLE accumulated incremental report, not this change set. It
+    # is kept only as a SANITY FLOOR for a catastrophic whole-report regression;
+    # the REAL gate for a reviewed change set is its own score below, read from
+    # the json reporter's output rather than this whole-report number.
+    print_block \
+      "Stryker (mutation testing)" \
+      "The whole-report sanity floor (Stryker's own break threshold, 60 over every file Stryker has ever mutated) failed." \
+      "$2" \
+      "This number covers the entire accumulated incremental report, not this change set — a regression this large usually means something is broken project-wide (a bad config, a swallowed exception in every test), not just in the files reviewed here." \
+      "Read the output above for the failing files, fix the regression, and re-run: npm run check:mutation" \
+      "Do not lower this sanity floor to get green; it almost never trips for a normal change set (see the header of this script)."
+    exit 2
+  fi
+
+  # code == 0: Stryker's own whole-report sanity floor passed. Gate on the
+  # CHANGE SET's own score instead (scripts/checks/mutation-score.js), read from
+  # the json reporter's output, restricted to the files THIS run mutated.
+  if [ ! -f "$MUTATION_REPORT" ]; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Stryker passed but wrote no JSON report at $MUTATION_REPORT." \
+      "$2" \
+      "Without the report the change-set score cannot be computed at all, and a missing result must never read as a pass." \
+      "Check that stryker.conf.json's reporters array still includes \"json\", then re-run: npm run check:mutation" \
+      "Do not skip the change-set gate when the report is missing; fix why it was not written."
+    exit 2
+  fi
+}
+
 start="$(date +%s 2>/dev/null || printf '0')"
 "$BIN" run "$mutate_arg" 2>&1 | tee "$log" \
   | harness_mutation_eta_filter "$rate" "$fit_normal" "$fit_slow" "${share%% *}" "${stryker_limits%% *}" "${stryker_limits#* }" "$history_share"
@@ -505,21 +575,7 @@ score="$(printf '%s' "$out" | grep -Eio 'mutation score[^0-9]*[0-9]+(\.[0-9]+)?'
 
 iso="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
 
-# A code other than 0 or 1 is a CRASH (Stryker never finished a run at all),
-# and so is code 1 with no report: Stryker also exits 1 on a failed run (for
-# example "No tests were executed"), while a run that completes and misses its
-# break threshold has written its report first. A crash is not a completed run,
-# so it is never recorded in history.
-if { [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; } || { [ "$code" -eq 1 ] && [ ! -f "$MUTATION_REPORT" ]; }; then
-  print_block \
-    "Stryker (mutation testing)" \
-    "Stryker exited with code $code rather than completing a run." \
-    "$out" \
-    "A crash produces no mutation report at all, so neither the whole-report sanity floor nor the change-set gate below can run; a check that never actually ran must never report success." \
-    "Read the output above for the crash cause (an instrumentation error, an out-of-memory worker, ...), fix it, and re-run: npm run check:mutation" \
-    "Do not treat a crash as a pass, and do not raise concurrency or memory limits to paper over an instrumentation bug."
-  exit 2
-fi
+fail_on_crash "$code" "$out"
 
 # Stryker only WARNS when a --mutate entry resolves to no file (it falls under
 # stryker.conf.json's ignorePatterns, or holds a glob special character), yet
@@ -547,35 +603,7 @@ esac
 # duration is ever recorded. This never changes the gate's exit code.
 [ "$dur" -gt 0 ] && harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score" "$tested" "$timed_out"
 
-if [ "$code" -eq 1 ]; then
-  # Stryker's OWN break threshold (stryker.conf.json's thresholds.break: 60)
-  # covers the WHOLE accumulated incremental report, not this change set. It
-  # is kept only as a SANITY FLOOR for a catastrophic whole-report regression;
-  # the REAL gate for a reviewed change set is its own score below, read from
-  # the json reporter's output rather than this whole-report number.
-  print_block \
-    "Stryker (mutation testing)" \
-    "The whole-report sanity floor (Stryker's own break threshold, 60 over every file Stryker has ever mutated) failed." \
-    "$out" \
-    "This number covers the entire accumulated incremental report, not this change set — a regression this large usually means something is broken project-wide (a bad config, a swallowed exception in every test), not just in the files reviewed here." \
-    "Read the output above for the failing files, fix the regression, and re-run: npm run check:mutation" \
-    "Do not lower this sanity floor to get green; it almost never trips for a normal change set (see the header of this script)."
-  exit 2
-fi
-
-# code == 0: Stryker's own whole-report sanity floor passed. Gate on the
-# CHANGE SET's own score instead (scripts/checks/mutation-score.js), read from
-# the json reporter's output, restricted to the files THIS run mutated.
-if [ ! -f "$MUTATION_REPORT" ]; then
-  print_block \
-    "Stryker (mutation testing)" \
-    "Stryker passed but wrote no JSON report at $MUTATION_REPORT." \
-    "$out" \
-    "Without the report the change-set score cannot be computed at all, and a missing result must never read as a pass." \
-    "Check that stryker.conf.json's reporters array still includes \"json\", then re-run: npm run check:mutation" \
-    "Do not skip the change-set gate when the report is missing; fix why it was not written."
-  exit 2
-fi
+fail_on_unusable_report "$code" "$out"
 
 # $entries is a newline-separated list (bash 3.2-safe: no mapfile), expanded
 # into one argv entry per --mutate entry for mutation-score.js, so the scorer's scope check
@@ -585,11 +613,112 @@ while IFS= read -r changed_file; do
   [ -n "$changed_file" ] && file_arguments+=("$changed_file")
 done < <(printf '%s\n' "$entries")
 
-score_out="$(node "$DIR/mutation-score.js" "$MUTATION_REPORT" "${file_arguments[@]}" 2>&1)"
-score_code=$?
+score_report() {
+  score_out="$(node "$DIR/mutation-score.js" "$MUTATION_REPORT" "${file_arguments[@]}" 2>&1)"
+  score_code=$?
+}
+
+# Prints one `RERUN <path>: ...` line per rerun file: how its $1 (the `path<TAB>id` candidates)
+# came out in the final report.
+print_rerun_summary() {
+  printf '%s\n' "$1" | node -e '
+    const fs = require("fs");
+    const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const wanted = new Map();
+    for (const line of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
+      const [path, identifier] = line.split("\t");
+      wanted.set(path, (wanted.get(path) ?? new Set()).add(identifier));
+    }
+    for (const [path, identifiers] of wanted) {
+      const counts = { Killed: 0, Survived: 0, Timeout: 0 };
+      const other = new Map();
+      const seen = new Set();
+      for (const mutant of report.files?.[path]?.mutants ?? []) {
+        const identifier = String(mutant.id);
+        if (!identifiers.has(identifier)) continue;
+        seen.add(identifier);
+        if (mutant.status in counts) counts[mutant.status] += 1;
+        else other.set(mutant.status, (other.get(mutant.status) ?? 0) + 1);
+      }
+      const parts = [...other].sort(([a], [b]) => (a < b ? -1 : 1)).map(([status, count]) => `${status} ${count}`);
+      if (seen.size < identifiers.size) parts.push(`missing ${identifiers.size - seen.size}`);
+      const otherTotal = (identifiers.size - counts.Killed - counts.Survived - counts.Timeout);
+      const otherNote = otherTotal > 0 ? `, ${otherTotal} other (${parts.join(", ")})` : "";
+      console.log(`RERUN ${path}: ${identifiers.size} timed out -> ${counts.Killed} killed, ${counts.Survived} survived, ${counts.Timeout} timeout${otherNote}`);
+    }
+  ' "$MUTATION_REPORT" 2>/dev/null || true
+}
+
+# Why the rerun did not start, printed after the verdict it did not change.
+rerun_note=""
+
+# When TIMEOUT-HEAVY is the gate's only failure, a Timeout there is mostly load drift between
+# Stryker's dry run (which sets each mutant's time budget) and the mutant run, minutes to an hour
+# later, not a hang. Stryker's incremental mode reuses a Timeout result, so the timed-out mutants
+# are removed from reports/stryker-incremental.json and Stryker runs once more: its new dry run
+# measures the quiet machine the wait below made, it runs only the dropped mutants, and every
+# other result is reused. The timeout formula is untouched, so a hang normally times out again
+# and stays Timeout, but a memory-filling hang can end RuntimeError (V8 runs out of memory before
+# Stryker's timer; Stryker reports Error after its retries). The scorer does not count that and
+# the summary shows it as other. The final report is scored with the same rule and is the verdict.
+rerun_timed_out_mutants() {
+  local candidates candidate_count wait_seconds wait_code rerun_error rerun_offset rerun_code rerun_out
+  candidates="$(node "$DIR/mutation-score.js" --rerun-candidates "$MUTATION_REPORT" "${file_arguments[@]}" 2>/dev/null)" || return 0
+  [ -n "$candidates" ] || return 0
+
+  candidate_count="$(printf '%s\n' "$candidates" | grep -c .)"
+  if [ "$candidate_count" -gt "$RERUN_MUTANT_CAP" ]; then
+    rerun_note="RERUN SKIPPED: $candidate_count mutants over the cap"
+    return 0
+  fi
+
+  # Exit 3 (the load cannot be read) goes on: the queue's own load defer does the same, and
+  # failing the gate on an unreadable sysctl would hide the verdict behind a tooling fault.
+  wait_seconds="${KIKO_MUTATION_RERUN_WAIT_SECONDS:-$RERUN_MAX_WAIT}"
+  bash "$DIR/../wait-load.sh" "$RERUN_MAX_LOAD" "$wait_seconds"
+  wait_code=$?
+  if [ "$wait_code" -ne 0 ] && [ "$wait_code" -ne 3 ]; then
+    rerun_note="RERUN SKIPPED: load"
+    return 0
+  fi
+
+  # The prefix keeps the first run's TIMEOUT-HEAVY lines out of the queue's DONE summary, which
+  # reads the final verdict from lines that start with them.
+  printf '%s\n' "$score_out" | sed 's/^/FIRST RUN: /'
+  if ! rerun_error="$(printf '%s\n' "$candidates" | node "$DIR/mutation-rerun.js" "$ROOT/reports/stryker-incremental.json" 2>&1)"; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "The rerun of the timed-out mutants could not prepare reports/stryker-incremental.json." \
+      "$rerun_error" \
+      "Stryker reuses a Timeout result, so the rerun must first remove those mutants from the incremental file. With the file missing, unreadable, or without one of them, a second run would redo everything or reproduce the Timeouts, and the gate must not guess which." \
+      "Check that the first run wrote reports/stryker-incremental.json (stryker.conf.json's incremental setting), then re-run: npm run check:mutation" \
+      "Do not delete the incremental file to force a full run, and do not treat the TIMEOUT-HEAVY failure as a pass."
+    exit 2
+  fi
+
+  # The report goes first: a second Stryker that writes none must not leave the first report to
+  # be scored again. The log is shared, and the failure blocks take only this run's part of it.
+  rm -f "$MUTATION_REPORT"
+  rerun_offset="$(wc -c < "$log" 2>/dev/null | tr -d ' ')"
+  "$BIN" run "$mutate_arg" --concurrency 1 2>&1 | tee -a "$log"
+  rerun_code="${PIPESTATUS[0]}"
+  rerun_out="$(tail -c +"$((${rerun_offset:-0} + 1))" "$log" 2>/dev/null || true)"
+  fail_on_crash "$rerun_code" "$rerun_out"
+  fail_on_unusable_report "$rerun_code" "$rerun_out"
+
+  score_report
+  print_rerun_summary "$candidates"
+}
+
+score_report
+if [ "$score_code" -ne 0 ]; then
+  rerun_timed_out_mutants
+fi
 printf '%s\n' "$score_out"
-# The scorer's rows feed the per-file timeout history whichever way the gate goes; this reads
-# its output after the fact and never feeds it or changes $score_code.
+[ -z "$rerun_note" ] || printf '%s\n' "$rerun_note"
+# The scorer's rows feed the per-file timeout history whichever way the gate goes (the final
+# report's rows when a rerun ran); this reads its output after the fact and never feeds it or
+# changes $score_code.
 printf '%s\n' "$score_out" | harness_mutation_files_append "$ROOT" "$iso"
 if [ "$score_code" -ne 0 ]; then
   print_block \
@@ -597,7 +726,7 @@ if [ "$score_code" -ne 0 ]; then
     "The CHANGE SET's own mutation score failed the gate (the thresholds are on the GATE line)." \
     "$score_out" \
     "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report. A report whose recorded scope differs from this change set's files fails too, because it cannot vouch for them. A TIMEOUT-HEAVY file (its timeouts are over the share of its detected mutants, named on the GATE line) fails whatever the totals say: a mutant that times out on jest's related-test load proves nothing about the file's tests." \
-    "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. For a TIMEOUT-HEAVY file: prove each timed-out mutant in plain jest (apply the replacement, run the file's own test, see it fail, revert) or write it in the BATCH READY as equivalent; the gate keeps failing for that file, so the BATCH READY carries the failed gate with the proofs; never raise the timeout. Re-run: npm run check:mutation" \
+    "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. For a TIMEOUT-HEAVY file: when TIMEOUT-HEAVY was the only failure, this gate has already rerun its timed-out mutants once on a quiet machine (the RERUN lines above) and scored that final report, so a file still failing here keeps real loops or survivors, or its rerun was skipped (a RERUN SKIPPED line: over the cap, or the load wait ran out). Then prove each timed-out mutant in plain jest (apply the replacement, run the file's own test, see it fail, revert) or write it in the BATCH READY as equivalent; the BATCH READY carries the failed gate with the proofs; never raise the timeout. Re-run: npm run check:mutation" \
     "Do not delete the failing mutant's test, and do not add a file to the exclusion allowlist without a concrete, verifiable reason (see CLAUDE.md's Override protocol)."
   exit 2
 fi

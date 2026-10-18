@@ -13,9 +13,8 @@ import {
   type SpanCommit,
   type WalkPass,
   type WalkWindow,
-} from './binance.history-walk';
-import type { UnreadableRow } from './binance.history-client';
-import type { BinanceWalletKey } from './binance.holding-keys';
+} from './walk';
+import type { ExchangeWalkConfig } from './walk-config';
 
 /**
  * One span's records told apart: the rows of those the walk can trust, the codes of the stops
@@ -131,6 +130,13 @@ export const settleRecords = <Record, Row>(input: {
     ),
   );
 };
+
+/**
+ * A row the client could not read, kept for the walk instead of failing the read: it holds
+ * nothing of the row but its own time field when that is usable (a finite number or, for a
+ * withdrawal, a datetime text), else `undefined`. The walk owes the row's point, or its span.
+ */
+export type UnreadableRow = { time: number | string | undefined };
 
 /**
  * The rows the client could not read (the page's `unreadable` list), each settled on its own like
@@ -259,8 +265,8 @@ export const commitSettledSpan = async <Planned, Row>(input: {
  * it sits on, `counterpartWallet` the other leg's of a move between two wallets.
  */
 type WalletPlannedRow = {
-  wallet: BinanceWalletKey;
-  counterpartWallet?: BinanceWalletKey;
+  wallet: string;
+  counterpartWallet?: string;
   externalId: string;
 };
 
@@ -282,11 +288,12 @@ type PlacedWalletRow<Planned extends WalletPlannedRow> = Omit<
 export const placeWalletRows = async <Planned extends WalletPlannedRow>(input: {
   accountId: string;
   planned: Planned[];
+  config: ExchangeWalkConfig<Error, unknown>;
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
   ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
   missingCode: string;
 }): Promise<PlacedWalletRow<Planned>[]> => {
-  const { accountId, listHoldings, ensureHoldings, missingCode } = input;
+  const { accountId, config, listHoldings, ensureHoldings, missingCode } = input;
   const planned = [...new Map(input.planned.map((row) => [row.externalId, row])).values()];
 
   if (planned.length === 0) {
@@ -303,6 +310,7 @@ export const placeWalletRows = async <Planned extends WalletPlannedRow>(input: {
         ]),
       ),
     ],
+    config,
     listHoldings,
     ensureHoldings,
   });

@@ -1,4 +1,10 @@
-import { createRequestGate, type RequestGate } from '@kiko/monobank/throttle';
+import {
+  createExchangeRun,
+  type ExchangeRun,
+  type RunBudget,
+} from '@kiko/crypto-sync/exchange/budget';
+
+import type { BinancePageWeights } from './binance.history-client';
 
 /**
  * One lane per walk, so a long backfill in one walk cannot starve the others. The
@@ -70,21 +76,7 @@ export const COSTS = {
   earn: { ip: 150 },
 } as const satisfies Record<string, CallCost>;
 
-export type BinanceRunBudget = {
-  /**
-   * Whether the lane can make this call and still `keep` more of the same cost, so a pass
-   * that comes later in a run keeps the calls it needs. A `narrowing` call is affordable while the
-   * lane has narrowing calls left (`LANE_NARROWING_CALLS`), whatever is kept; the weight reading
-   * judges it as any other.
-   */
-  canAfford: (lane: BudgetLane, cost: CallCost, keep?: number, narrowing?: boolean) => boolean;
-  /** A `narrowing` call is counted against the lane's narrowing calls first, then its cap. */
-  record: (
-    lane: BudgetLane,
-    page: { usedUidWeight1m: number | undefined; usedIpWeight1m: number | undefined },
-    narrowing?: boolean,
-  ) => void;
-};
+export type BinanceRunBudget = RunBudget<BudgetLane, CallCost, BinancePageWeights>;
 
 /**
  * One budget per Binance arm run. A response without a header keeps the last
@@ -141,16 +133,14 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
 };
 
 /** The pacing gate and the weight budget every walk of one Binance arm run shares. */
-export type BinanceHistoryRun = { gate: RequestGate; budget: BinanceRunBudget };
+export type BinanceHistoryRun = ExchangeRun<BudgetLane, CallCost, BinancePageWeights>;
 
 export const createBinanceHistoryRun = (clock: {
   now: () => number;
   sleep: (milliseconds: number) => Promise<void>;
-}): BinanceHistoryRun => ({
-  gate: createRequestGate({
+}): BinanceHistoryRun =>
+  createExchangeRun({
     intervalMs: BINANCE_REQUEST_INTERVAL_MS,
-    now: clock.now,
-    sleep: clock.sleep,
-  }),
-  budget: createBinanceRunBudget(),
-});
+    clock,
+    budget: createBinanceRunBudget(),
+  });

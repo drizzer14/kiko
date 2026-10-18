@@ -4,7 +4,7 @@
 > superpowers:executing-plans to implement this plan set by set. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** land change sets 1-6 of track `crypto-exchanges-1.3-a` (USDT at scale 8 with migration 0059 and `.kiko`
-v4; the curated coin registry; the shared exchange layer; walk state in `sync_state` with migration 0060;
+v4; the curated coin registry; the shared exchange layer; walk state in `sync_state` with migration 0061;
 multi-coin balances; account-wide history walks), each set tip shippable alone.
 
 **Architecture:** money stays integer minor units; every rescale is exact (`x 1000000`) and mirrored on restore;
@@ -34,7 +34,7 @@ Prep line numbers are hints only: **the developer re-greps every fact on the act
 - Migration SQL: single-quoted string literals (`SQLITE_DQS=0`); every `json_type`/`json_extract`/`json_each`/`->`
   over a column, or over a `json_each` element value, sits behind `CASE WHEN ... THEN ... END`, never joined by a
   logical and (`json_type('abc', '$.x')` raises).
-- Migration numbers 0059/0060 follow the base's last migration 0058; each migration set re-checks main's
+- Migration numbers 0059/0060/0061 follow the base's last migration 0058; each migration set re-checks main's
   `drizzle/migrations/meta/_journal.json` before its merge and renumbers (files, journal, tests) if main moved.
 - Tests: TDD, failing test first and shown red (quote the red count), then code. Tests never read `src` source
   text (rule `kiko-no-source-text-read-in-test`). Test names and comments carry no spec scenario id, no migration
@@ -78,16 +78,18 @@ pass in, like `DepthConfig`. Keys and requests stay byte-identical, pinned by se
   barrel (the pager depends on the walk, never the reverse):
   ```ts
   type ExchangeWalkConfig<RateLimitError extends Error, Weights> = {
-    asset: string;                                                  // 'BTC' for Binance in 1.3-a
-    metadataField: string;                                          // 'binanceAsset'
+    asset: ExchangeHolding['currency'];                             // 'BTC' for Binance in 1.3-a
+    metadataField: ExchangeHolding['metadataField'];                // 'binanceAsset'
     holdingKeyOf: (holding: Pick<HoldingRow, 'metadata'>) => string | undefined;
     walletHoldingNameOf: (key: string) => string;                   // wallet key -> default name
     isRateLimitError: (error: unknown) => error is RateLimitError;
     totalPageSize: number;
     refusedCallWeights: Weights;                                    // today's REFUSED_CALL
-    depth: DepthConfig;                                             // set 3 step 4/9
+    depth: DepthConfig;                                             // unread; set 4 removes it
   };
   ```
+  No code reads `depth` (the depth config travels on `DepthMemory.config` and `DepthGuard.config`);
+  set 4's first commit removes it (deferred review Minor m1).
   `onRateLimit` callers keep reading `error.retryAfterMs` (`binance.earn-history.ts`,
   `binance.transfer-history.ts`, `setBinanceCooldownUntil`) because the guard narrows to `RateLimitError`.
 - `TotalPage<Row, Weights>` (`{ rows; unreadable; total; gathered } & Weights`) lands in `exchange/paging`;
@@ -120,7 +122,7 @@ pass in, like `DepthConfig`. Keys and requests stay byte-identical, pinned by se
 4. A version 1-3 `.kiko` whose `deletedImportKeys` holds a USDT key: today's restore inserts those keys as stored
    (`insertDeletedImportKeys`), so the rescale must cover them or a re-import duplicates a deleted row. Owner: set 1
    step 7/11, test "rescales a deleted import key under a USDT holding".
-5. A `sync_state` row created by 0060 with null stamps: any reader that treats row existence as "synced"
+5. A `sync_state` row created by 0061 with null stamps: any reader that treats row existence as "synced"
    (`lastSyncAt`-free checks) would show a never-synced account as synced. Owner: set 4 step 2/10, a grep of
    `syncStateRepo` readers plus a test "an account whose state row only carries walk state reads as never synced".
 
@@ -511,6 +513,11 @@ Spec ids: R1-R5, registry invariants, parser exact-parity property, NR9. Expecte
 Known red between commits: none (every pin that reads the grown `currencyOptions` or `cryptoCurrencyOptions` moves
 in step 3).
 
+Landed beyond the steps: migration 0060 adds the nullable device-local `settings.history_backfill_state` (the
+history backfill's rotation cursor and settled marks; kept live on restore, no export bump, count 61), so the
+later migrations are 0061 (set 4) and 0062 (set 7). Coin names read "Bitcoin" in uk too, and USDT's name is
+"USDT".
+
 **Interfaces produced:**
 - `decimalToMinorUnits(text: string, scale: number, rounding: 'exact' | 'half-away-from-zero'):
   Either<DecimalAmountError, number>` in `src/currency/decimal/decimal.ts`, `DecimalAmountError = 'amount-malformed' |
@@ -646,10 +653,8 @@ Files: `restore-snapshot.ts`, `restore-snapshot.test.ts` (or a new `restore-unkn
       `src/db/schema.ts` (`holdings.currency`, rate and rate-history `base`/`quote`, `settings.base_currency`,
       `price_points.currency`; re-grep) plus the JSON currency fields above. If any committed fixture or demo file
       holds a code outside `currencyScale`, stop and report. `IMPORT_ERROR_KEYS` gains `['data-transfer/unknown-
-      currency', 'settings.dataImport.unknownCurrencyError']`; key en "This backup was made by a newer version of Kiko
-      and holds a currency this version does not know, so nothing was imported. Update Kiko and try again. Your
-      current data is unchanged."; uk «Цю резервну копію створено новішою версією Кіко, і в ній є валюта, якої ця
-      версія не знає, тому нічого не імпортовано. Оновіть Кіко й спробуйте ще раз. Ваші поточні дані не змінено.»
+      currency', 'settings.dataImport.unknownCurrencyError']`; the text says "export file", not "backup" (en.ts and
+      uk.ts are the source: read the text there).
 - [ ] Check: `npx jest src/data-transfer src/screens/settings src/i18n` green. Commit
       `feat(data-transfer): refuse a backup with an unknown currency`.
 
@@ -699,9 +704,9 @@ Files: `e2e/screenshot/fixtures/build-demo-snapshot.ts`, `build-demo-snapshot.te
 
 ### step 10/10: reviews and skill text
 
-- [ ] Translator review of the coin names and `settings.dataImport.unknownCurrencyError` (reviewer + user before
+- [x] Translator review of the coin names and `settings.dataImport.unknownCurrencyError` (reviewer + user before
       deploy).
-- [ ] kiko:scribe: `kiko-domain` scale text -> pointer to `curatedCoins` and `coinScale`; `kiko-pricing` CoinGecko
+- [x] kiko:scribe: `kiko-domain` scale text -> pointer to `curatedCoins` and `coinScale`; `kiko-pricing` CoinGecko
       paragraph ("`ETH`/`USDT` derive the same way"): stablecoins priced from the market, never 1:1; per-coin
       isolation; history only for held coins, at most `CRYPTO_HISTORY_CONCURRENCY` in flight; kiko-statement-import
       or kiko-domain restore text: unknown currency refused.
@@ -755,10 +760,10 @@ credential.ts`. Outside importers unchanged (`accounts.repo.ts`, `account-form.s
 
 ### step 4/9: budget shape, and depth functions into `exchange/walk`
 
-Files: `exchange/budget/` (`RunBudget<Lane>`, `RequestGate`, `createExchangeRun`), Binance numbers and weight
+Files: `exchange/budget/` (`RunBudget<Lane, Cost, Weights>`, `RequestGate`, `createExchangeRun`), Binance numbers and weight
 headers stay in `binance.history-budget.ts`; `binance.history-depth.ts` functions -> `src/crypto-sync/exchange/walk/
 depth.ts` (exported by a new `exchange/walk/index.ts`), its constants -> `BINANCE_DEPTH_CONFIG: DepthConfig` in
-`binance.history-depth.ts` (`DepthConfig = { resolutionMs; marginMs; marginCapMs; extrapolationMaxMs; maxRefusals;
+`binance.depth-config.ts`; the depth config travels on `DepthMemory.config` and `DepthGuard.config` (`DepthConfig = { resolutionMs; marginMs; marginCapMs; extrapolationMaxMs; maxRefusals;
 maxLapses }` from `DEPTH_RESOLUTION_MS`, `DEPTH_MARGIN_MS`, `DEPTH_MARGIN_CAP_MS`, `DEPTH_EXTRAPOLATION_MAX_MS`,
 `MAX_DEPTH_REFUSALS`, `MAX_DEPTH_LAPSES`; re-grep the exported constants), passed to the moved functions; importers (`binance.history-paging.ts`,
 `binance.transfer-history.ts`, `binance.depth-test-fixtures.ts`) import through `@kiko/crypto-sync/exchange/walk`.
@@ -773,7 +778,7 @@ Files: `exchange/amounts/amounts.ts`, `index.ts`, `amounts.test.ts`.
       `balance-precision-rounded`; `'row'` refuses past the scale (`amount-precision`) unless the coin is
       reduced-scale, where it rounds and logs `row-precision-rounded`; both refuse an exponent form
       (`amount-malformed`) and a result above the safe integer (`amount-too-large`). The tags are fixed text, no amount.
-- [ ] Tests first (imported through `@kiko/crypto-sync/exchange/amounts`, so knip sees a consumer):
+- [ ] Tests first (the test imports the unit through `'.'`; an alias into its own feature is denied):
       "returns exact minor units", "refuses more decimals than the scale for a row", "rounds a balance with more
       decimals than the scale half away from zero", "rounds a row on a reduced-scale coin", "refuses above the safe
       integer", "refuses an exponent form". Code wraps `decimalToMinorUnits` with the registry's scale and
@@ -806,10 +811,10 @@ placement rule), `exchange/walk/index.ts`, every Binance walk entry point (passe
 Files: `git mv binance.history-paging.ts exchange/paging/paging.ts` (tests per the placement rule; the moving-depth
 and paging tests import Binance fixtures, so they stay), `exchange/paging/index.ts`, `binance.history-client.ts`
 (`TotalPage` from `exchange/paging`, a type import; `BinancePageWeights`), importers.
-- [ ] Code: `Pager`, `SpanRead`, `offsetPager` are today's paging, moved; it imports `halfOf`, `SpanRead`,
-      `WalkWindow` and the depth functions from `../walk`; the body reads `config.totalPageSize`,
-      `config.isRateLimitError(error)`, `config.refusedCallWeights`, `config.depth.resolutionMs`,
-      `config.depth.maxLapses` and `config.depth.maxRefusals` where it read `HISTORY_TOTAL_PAGE_SIZE`,
+- [ ] Code: the moved units are `fetchAllByTotal`, `readSeriesSpan` and `TotalPage<Row, Weights>` (no `Pager` or
+      `offsetPager` exists); it imports `halfOf`, `WalkWindow` and the depth functions from `../walk`; the body
+      reads `config.totalPageSize`, `config.isRateLimitError(error)`, `config.refusedCallWeights` and, as
+      `depth.config.*` on the `DepthGuard`, `resolutionMs`, `maxLapses` and `maxRefusals` where it read `HISTORY_TOTAL_PAGE_SIZE`,
       `instanceof BinanceRateLimitError`, `REFUSED_CALL`, `DEPTH_RESOLUTION_MS`, `MAX_DEPTH_LAPSES` and
       `MAX_DEPTH_REFUSALS` (today imported from `binance.history-depth`; no value import of `binance/` stays); `onRateLimit` is typed `(error: RateLimitError) =>
       void`; the run type comes from `exchange/budget`. No other body edit. Check: paging suites and the step 1/9
@@ -833,12 +838,16 @@ low (moves); two deep gates (3a, 3b).
 
 ---
 
-## Set 4: `crypto-exchanges-1.3-a task 4/15` (walk state to `sync_state`, 0060)
+## Set 4: `crypto-exchanges-1.3-a task 4/15` (walk state to `sync_state`, 0061)
 
 Spec ids: Z1-Z6, X1-X4, walk properties at 0 / 1 h / 1 day, C-NR8 (list shape). Expected mutable files: about 18.
 TIMEOUT-HEAVY risk: none app-wide; the walk files have large related-test fan-out: name proofs if flagged.
 
-Known red between commits: none (0060's version decision lands with 0060 in step 2).
+First commit: deferred set 3 Minors: drop `ExchangeWalkConfig.depth` (`walk-config.ts`,
+`binance.walk-config.ts`, its test; fix the walk-config doc comment); retitle `binance.walk-config.test.ts`
+"carries today asset…" (no relative-time wording).
+
+Known red between commits: none (0061's version decision lands with 0061 in step 2).
 
 **Interfaces produced:** `ExchangeState`, `WalkMarks`, `WalkId`, `CoinLists` (spec section 2) and
 `parseExchangeState(text: string | null): ParsedExchangeState` in `src/crypto-sync/exchange/walk-state/`;
@@ -879,13 +888,13 @@ keys only through `SPOT_FIELDS` or the writer seams, `binance.earn-history.test.
 - [ ] Check: every touched suite green, same test and assertion counts; dup.sh alone per touched file. Commit
       `test(binance): one helper for walk marks`.
 
-### step 2/10: schema, 0060 and its version decision (Z1-Z5)
+### step 2/10: schema, 0061 and its version decision (Z1-Z5)
 
 Files: `src/db/schema.ts` (`syncState.exchangeState: text('exchange_state')`), `npx drizzle-kit generate --name
 exchange_state` -> `0060_*.sql` + snapshot + journal + `migrations.js` (re-check the file after generate; biome
-write), the hand-appended copy, `drizzle/migrations/0060-exchange-state.test.ts` (new),
+write), the hand-appended copy, `drizzle/migrations/0061-exchange-state.test.ts` (new),
 `src/data-transfer/crypto/envelope.test.ts`, both demo `.kiko` files.
-- [ ] Tests first (real sqlite through 0059): "creates the state row for an account with walk keys and leaves its
+- [ ] Tests first (real sqlite through 0060): "creates the state row for an account with walk keys and leaves its
       stamps null" (Z1); "copies a disconnected account's floor values as stored" (Z2); "copies every walk field into
       its walk entry" (Z3, field map pinned as a table); "a walk with only a cursor copies no other field" (the
       entry has `cursor` only: no `null` siblings); "skips an account whose metadata is not JSON and still succeeds"
@@ -929,9 +938,9 @@ write), the hand-appended copy, `drizzle/migrations/0060-exchange-state.test.ts`
       does: no `id` tiebreak on either side, and no test seeds a tie. Never `json_extract` into `json_object` (an
       absent key writes `null`; a string becomes unquoted text; `true` becomes 1).
 - [ ] Version decision in the same commit, so `envelope.test.ts` "has a version decision for every migration" is
-      never red: `VERSION_DECISIONS` gains the reason "Through <0060 tag>, a nullable column riding inside the sync
+      never red: `VERSION_DECISIONS` gains the reason "Through <0061 tag>, a nullable column riding inside the sync
       state row, derived on restore: an older build drops the key and its walks read from their floors, where keys
-      dedupe; so it needed no bump." -> `{ version: 4, migrationCount: 61 }` ("was:" `migrationCount: 60`).
+      dedupe; so it needed no bump." -> `{ version: 4, migrationCount: 62 }` ("was:" `migrationCount: 61`).
       `generate-demo-kiko.test.ts` has no red window: it compares the files with `EXPORT_VERSION` (still 4) and
       `buildDemoSnapshot` (its `syncState` is `[]` and it builds no Binance holding; re-grep), neither of which this
       set changes; the demo files are regenerated here (`KIKO_REGEN_DEMO=1`, then the plain run green), as the spec
@@ -1016,9 +1025,9 @@ Files: `restore-snapshot.ts` (`withWalkStateMoved`), `restore-walk-state.two-pat
       backup with walk state restores it unchanged"; "an implicit-account merge keeps the merged account's walk
       state".
 - [ ] Code: `withWalkStateMoved` runs after `withImplicitAccountsMerged`, on its `syncState` output and on
-      `holdingsAfterImplicitMerge`; it ranks first and requires a walk key after, as 0060 does: the first Spot BTC
+      `holdingsAfterImplicitMerge`; it ranks first and requires a walk key after, as 0061 does: the first Spot BTC
       holding per account by a stable sort on `(sortOrder, createdAt)` (no `id` tiebreak), the one the walk reads,
-      and no row when that holding has no walk key; it copies only present fields (the 0060 rule). Commit.
+      and no row when that holding has no walk key; it copies only present fields (the 0061 rule). Commit.
 
 ### step 8/10: walk properties at three clock gaps
 
@@ -1028,7 +1037,7 @@ Files: `binance.history-walk.properties.test.ts` (has `RUN_GAPS = [0, HOUR_MS, D
 
 ### step 9/10: reviews
 
-- [ ] `kiko:reviewer` on 0060 before BATCH READY (top question: "can any walk mark be lost, doubled, retyped or
+- [ ] `kiko:reviewer` on 0061 before BATCH READY (top question: "can any walk mark be lost, doubled, retyped or
       misread between migration, restore, parse and writer, or read from a holding the walk does not read?"; queries
       touching `sync_state`; no index -> no EXPLAIN test).
 - [ ] Translator review of `exchangeHistoryPaused` (en + uk); diff to the coordinator for the user.

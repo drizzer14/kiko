@@ -4,6 +4,7 @@ import {
   withWalkOwnedMetadataResetToFloor,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
+import type { OwedGround, UnreadableRow, WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   type BinancePayHistoryDeps,
@@ -21,11 +22,9 @@ import {
   type BinancePayOrder,
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
-  type UnreadableRow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
-import type { OwedGround, WalkWindow } from './binance.history-walk';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 

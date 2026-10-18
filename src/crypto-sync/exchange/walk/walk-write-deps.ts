@@ -6,7 +6,7 @@ import type {
 } from '@kiko/holdings/holding-metadata';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
-import type { OwedGround } from './binance.history-walk';
+import type { OwedGround } from './walk';
 
 /** What every Binance history walk writes to its holding's metadata, one writer for each mark. */
 export type BinanceWalkWriteDeps = {

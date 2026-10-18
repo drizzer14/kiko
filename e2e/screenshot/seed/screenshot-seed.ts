@@ -1,5 +1,5 @@
-// DEV/TEST-ONLY. Lives under `e2e/`, OUTSIDE `src/` (App Store Guideline 2.3.1(a)
-// remediation, 2026-09-18): the fabricated real-brand demo dataset this module
+// DEV/TEST-ONLY. Lives under `e2e/`, OUTSIDE `src/` (App Store Guideline 2.3.1(a) remediation,
+// 2026-09-18): the fabricated real-brand demo dataset this module
 // builds (Сільпо, Rozetka, Монобанк, ПриватБанк, and other real Ukrainian
 // merchant/bank names) must not sit in app source at all. This is now a PURE
 // dataset builder — no DB, no repos, no `@env` — whose only consumer is the
@@ -16,10 +16,10 @@ import type {
   PropertyMeta,
   TermDepositMeta,
 } from '@kiko/holdings/holding-metadata';
-import type { Currency } from '@kiko/currency/currency';
 import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { entityColorsDark } from '@kiko/design-system/palette';
+import { isCrypto, type Currency } from '@kiko/currency/currency';
 import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
 import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
@@ -150,7 +150,20 @@ export type ScreenshotDataset = {
 // for every one would add nothing to the fixtures). A local subset type keeps
 // this map exhaustive over exactly what the seed uses, so it never has to grow
 // when a new currency is added to `currencyOptions`.
-type SeededCurrency = 'UAH' | 'USD' | 'EUR' | 'GBP' | 'CHF' | 'BTC';
+type SeededCurrency =
+  | 'UAH'
+  | 'USD'
+  | 'EUR'
+  | 'GBP'
+  | 'CHF'
+  | 'BTC'
+  | 'ETH'
+  | 'USDT'
+  | 'BNB'
+  | 'SOL'
+  | 'XRP'
+  | 'USDC'
+  | 'CGPT';
 
 /** Value of one major unit of each seeded currency in UAH at the anchor. */
 const PRICE_IN_UAH: Record<SeededCurrency, number> = {
@@ -160,12 +173,54 @@ const PRICE_IN_UAH: Record<SeededCurrency, number> = {
   GBP: 52,
   CHF: 46,
   BTC: 2_665_000,
+  ETH: 100_000,
+  USDT: 41,
+  BNB: 30_000,
+  SOL: 4_300,
+  XRP: 55,
+  USDC: 41,
+  CGPT: 1,
 };
 
-const CURRENCIES: SeededCurrency[] = ['UAH', 'USD', 'EUR', 'BTC'];
+const CURRENCIES: SeededCurrency[] = [
+  'UAH',
+  'USD',
+  'EUR',
+  'BTC',
+  'ETH',
+  'USDT',
+  'BNB',
+  'SOL',
+  'XRP',
+  'USDC',
+  'CGPT',
+];
+
+// What the Binance account holds beside BTC: one small deposit per coin at the coin's own scale
+// (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4 decimals), and a UAH and a EUR balance,
+// since an exchange wallet keeps fiat as a `crypto_asset` holding in a fiat currency.
+type ExchangeHolding = {
+  name: string;
+  currency: SeededCurrency;
+  amountMinorUnits: number;
+  daysAgo: number;
+};
+
+// The coin names are brand names and stay Latin in both languages; the two fiat names are text.
+const buildExchangeHoldings = (text: DemoText): ExchangeHolding[] => [
+  { name: 'Ethereum', currency: 'ETH', amountMinorUnits: 3_000_000, daysAgo: 120 },
+  { name: 'USDT', currency: 'USDT', amountMinorUnits: 5_000_000_000, daysAgo: 110 },
+  { name: 'USD Coin', currency: 'USDC', amountMinorUnits: 3_000_000_000, daysAgo: 105 },
+  { name: 'BNB', currency: 'BNB', amountMinorUnits: 500_000, daysAgo: 100 },
+  { name: 'Solana', currency: 'SOL', amountMinorUnits: 500_000, daysAgo: 90 },
+  { name: 'ChainGPT', currency: 'CGPT', amountMinorUnits: 500_000_000, daysAgo: 85 },
+  { name: 'XRP', currency: 'XRP', amountMinorUnits: 600_000, daysAgo: 80 },
+  { name: text.hryvnia, currency: 'UAH', amountMinorUnits: 100_000, daysAgo: 70 },
+  { name: text.euro, currency: 'EUR', amountMinorUnits: 5_000, daysAgo: 60 },
+];
 
 const rateSource = (base: Currency, quote: Currency): 'monobank' | 'coingecko' =>
-  base === 'BTC' || quote === 'BTC' ? 'coingecko' : 'monobank';
+  isCrypto(base) || isCrypto(quote) ? 'coingecko' : 'monobank';
 
 /** Every ordered distinct pair, priced from the UAH anchors, stamped at the anchor. */
 const buildRates = (calendar: DemoCalendar): SeedRate[] => {
@@ -202,6 +257,13 @@ const HISTORY_PAIRS: HistoryPair[] = [
   { base: 'USD', startUah: 40.0, endUah: PRICE_IN_UAH.USD },
   { base: 'EUR', startUah: 43.0, endUah: PRICE_IN_UAH.EUR },
   { base: 'BTC', startUah: 2_000_000, endUah: PRICE_IN_UAH.BTC },
+  { base: 'ETH', startUah: 85_000, endUah: PRICE_IN_UAH.ETH },
+  { base: 'USDT', startUah: 40.0, endUah: PRICE_IN_UAH.USDT },
+  { base: 'BNB', startUah: 24_000, endUah: PRICE_IN_UAH.BNB },
+  { base: 'SOL', startUah: 3_600, endUah: PRICE_IN_UAH.SOL },
+  { base: 'XRP', startUah: 45, endUah: PRICE_IN_UAH.XRP },
+  { base: 'USDC', startUah: 40.0, endUah: PRICE_IN_UAH.USDC },
+  { base: 'CGPT', startUah: 0.6, endUah: PRICE_IN_UAH.CGPT },
 ];
 
 /** Weekly history points per foreign:UAH pair, linearly trending start -> end. */
@@ -409,6 +471,27 @@ const buildCarLoanPayments = (calendar: DemoCalendar, text: DemoText): SeedTrans
     loanHoldingKey: CAR_LOAN_KEY,
   }));
 
+// Six rows left in the default category, which no stored rule claims, so a rule typed live in
+// the app has something to move: "Name starts with" Wolt, "Amount" less than 800, "Type" Expense
+// takes the pizza, sushi and burgers. Each of the other three fails one condition (an income,
+// another name, an amount of 800 or more) and stays, which shows that every condition must match.
+// The merchant is one the reviewer's fake Monobank statement never names, so importing that
+// statement does not add rows the live rule would move.
+const buildFoodDeliveryTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] =>
+  [
+    { amountMinorUnits: -48_000, daysAgo: 3, description: text.woltPizza },
+    { amountMinorUnits: 35_000, daysAgo: 5, description: text.woltRefund },
+    { amountMinorUnits: -62_000, daysAgo: 6, description: text.woltSushi },
+    { amountMinorUnits: -39_500, daysAgo: 8, description: text.woltBurgers },
+    { amountMinorUnits: -52_000, daysAgo: 10, description: text.boltFoodShawarma },
+    { amountMinorUnits: -145_000, daysAgo: 12, description: text.woltGroupOrder },
+  ].map(({ amountMinorUnits, daysAgo, description }) => ({
+    amountMinorUnits,
+    time: calendar.at(daysAgo),
+    category: 'other',
+    description,
+  }));
+
 /** The main UAH card ledger: an opening deposit, then a monthly salary + spends. */
 const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] => {
   const monthlyExpenses = buildMonthlyExpenses(text);
@@ -461,7 +544,11 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
     }
   }
 
-  return [...list, ...buildCarLoanPayments(calendar, text)];
+  return [
+    ...list,
+    ...buildCarLoanPayments(calendar, text),
+    ...buildFoodDeliveryTransactions(calendar, text),
+  ];
 };
 
 // ---------------------------------------------------------------------------
@@ -675,6 +762,22 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
             },
           ],
         },
+        ...buildExchangeHoldings(text).map(
+          ({ name, currency, amountMinorUnits, daysAgo }): SeedHolding => ({
+            name,
+            type: 'crypto_asset',
+            currency,
+            color: entityColorsDark.orange,
+            transactions: [
+              {
+                amountMinorUnits,
+                time: calendar.at(daysAgo),
+                category: null,
+                description: isCrypto(currency) ? text.cryptoPurchase : text.accountTopUp,
+              },
+            ],
+          }),
+        ),
       ],
     },
     {

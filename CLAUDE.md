@@ -50,7 +50,8 @@ Composite scripts:
   `__tests__/check-all-lists.test.ts` pins this list to `package.json` and the hooks.
 - `npm run check:deep` — the heavy tier: `check:mutation` (Stryker +
   `mutation-score.js` (change-set score, per-file floor, TIMEOUT-HEAVY file rule; thresholds
-  in `docs/harness/checks.md`),
+  in `docs/harness/checks.md`; a lone TIMEOUT-HEAVY failure reruns its timed-out mutants inside
+  the gate),
   then `bash scripts/checks/osv.sh` (any known CVE in `package-lock.json`
   fails). Manual, wired to no hook; the gate is queued with
   `scripts/job-queue.sh gate <worktree> <label> <base> <head>`
@@ -100,10 +101,12 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     `/Users/drizzer14/Developer/Projects/pff-ios` ("MAIN-CHECKOUT deny");
     allowed: `--abort|--quit|--skip|--continue`.
     Merge in a separate detached worktree, then `bash scripts/ff-main.sh <sha>`
-    (a raw `merge --ff-only`/`pull --ff-only` on main is denied).
+    (a raw `merge --ff-only`/`pull --ff-only` on main is denied; the script refuses a
+    `harness/kiko` change whose `plugin.json` version is not above main's, and any commit that
+    lowers, removes, or makes unreadable that version).
   - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
     `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
-    `__tests__/`, `rules/`, `e2e/` of any worktree ("SHELL-WRITE deny"); use
+    `__tests__/`, `rules/`, `e2e/`, `drizzle/` of any worktree ("SHELL-WRITE deny"); use
     Edit/Write, and `git add` + `git mv` to rename; a formatter's own
     `--write` stays allowed.
   - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, or a `-c` /
@@ -140,13 +143,13 @@ A suppression or ignore-list entry is acceptable only when it names a concrete r
 agent can verify. The full inventory lives in **`docs/harness/documented-exceptions.md`**. Read
 and UPDATE it when you add, change, or rely on an exception.
 
-## Guideline 2.3.1(a) — no hidden features (Apple's rejection cited 5.6)
+## Guideline 2.5.19 — no hidden features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 
 Standing architecture rule, not a one-off cleanup: every feature ships VISIBLE to an App Store
 reviewer in a release build — no flag-gated or conditional-visibility feature, and no
 demo/seed/screenshot module in or imported from app `src/`. The full rule, the mechanized Semgrep
 check (`kiko-no-hidden-feature-flag-or-demo-import`), and its known limits live in
-**`.claude/skills/kiko-architecture/SKILL.md`** ("Guideline 2.3.1(a) — no hidden features"). Read that
+**`.claude/skills/kiko-architecture/SKILL.md`** ("Guideline 2.5.19 — no hidden features"). Read that
 section before adding any build/env flag that controls what a user sees, or any dev-only demo/seed
 module.
 

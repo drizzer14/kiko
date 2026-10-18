@@ -3,6 +3,7 @@ import { minOf } from '@kiko/numbers';
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
+  deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDayByCurrency,
   planBackfillRun,
   runBackfill,
@@ -406,6 +407,14 @@ const StatisticsScreen: FC = () => {
   lastBackfilledDayRef.current = lastBackfilledDay;
   const lastBackfilledDayByCurrencyRef = useRef(lastBackfilledDayByCurrency);
   lastBackfilledDayByCurrencyRef.current = lastBackfilledDayByCurrency;
+  // The first stored day of each currency: with the last, it tells the backfill which coin lacks
+  // the days at the start of a span that moved earlier.
+  const firstBackfilledDayByCurrency = useMemo(
+    () => deriveFirstBackfilledDayByCurrency(historyRows),
+    [historyRows],
+  );
+  const firstBackfilledDayByCurrencyRef = useRef(firstBackfilledDayByCurrency);
+  firstBackfilledDayByCurrencyRef.current = firstBackfilledDayByCurrency;
 
   // The distinct set of currencies the backfill's own history must now cover:
   // every held holding's currency plus the base, sorted so the key stays
@@ -528,6 +537,7 @@ const StatisticsScreen: FC = () => {
         lastBackfilledDay: resumeFrom,
         today: now,
         lastBackfilledDayByCurrency: lastBackfilledDayByCurrencyRef.current,
+        firstBackfilledDayByCurrency: firstBackfilledDayByCurrencyRef.current,
       }),
     ).then((result) => {
       if (!isMountedRef.current || token !== runTokenRef.current) {

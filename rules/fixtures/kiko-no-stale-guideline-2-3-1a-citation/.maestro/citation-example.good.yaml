@@ -1,0 +1,7 @@
+# Semgrep fixture (NEGATIVE): a Maestro flow comment with a remediation marker or the current
+# number stays clean under `kiko-no-stale-guideline-2-3-1a-citation`.
+appId: com.example.fixture
+---
+# This flow replaced the seeded capture in the Guideline 2.3.1(a) remediation.
+# Guideline 2.5.19 bars hidden features.
+- launchApp

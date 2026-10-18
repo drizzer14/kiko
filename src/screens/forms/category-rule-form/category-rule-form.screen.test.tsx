@@ -4,6 +4,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
+import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
@@ -41,6 +42,10 @@ jest.mock('@kiko/categories/category-rules-repo', () => ({
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) => {
@@ -111,6 +116,7 @@ beforeEach(() => {
   mockSettingsRows = [{ baseCurrency: 'UAH' }];
   mockRulesLoading = false;
   mockSettingsLoading = false;
+  holdCurrencies([]);
   mockCountRuleRewrite.mockResolvedValue(0);
   mockSaveRule.mockResolvedValue({ id: 'saved', changed: 0 });
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
@@ -179,6 +185,30 @@ describe('CategoryRuleFormScreen — a new rule', () => {
     expect(screen.getByTestId('matcher-currency-0')).toHaveTextContent(/US Dollar/);
   });
 
+  it('amount currency lists the user’s currencies first', async () => {
+    holdCurrencies(['USD', 'BTC']);
+
+    const screen = await renderCreate();
+
+    await pickType(screen, 0, 'amount');
+    await fireEvent.press(screen.getByTestId('matcher-currency-0'));
+
+    expect(
+      screen
+        .getAllByTestId(/^currency-(group|option)-/)
+        .slice(0, 6)
+        .map((row) => String(row.props.testID)),
+    ).toEqual([
+      'currency-group-held',
+      'currency-option-BTC',
+      'currency-option-USD',
+      'currency-group-fiat',
+      'currency-option-UAH',
+      'currency-option-EUR',
+    ]);
+    expect(screen.getByTestId('currency-group-held')).toHaveTextContent('Your currencies');
+  });
+
   it('removes a condition, and offers no removal on the one left', async () => {
     const screen = await renderCreate();
 
@@ -224,6 +254,68 @@ describe('CategoryRuleFormScreen — a new rule', () => {
     await pickType(screen, 0, 'nameIs');
 
     expect(screen.getByLabelText('Name').props.value).toBe('Silpo');
+  });
+});
+
+describe('CategoryRuleFormScreen — the rules read again after a Save', () => {
+  // The write stores the rule, so the live query holds it from the next read on; `goBack` is a
+  // spy here, so the form stays mounted for that read.
+  const storeOnSave = (id: string | null, category: string): void => {
+    mockSaveRule.mockImplementation(async () => {
+      mockRules = [
+        ...mockRules.filter((rule) => rule.id !== id),
+        ruleOf(id ?? 'saved', category, [SILPO]),
+      ];
+
+      return { id: id ?? 'saved', changed: 0 };
+    });
+  };
+
+  const rerenderAfterWrite = async (screen: Screen, ruleId?: string): Promise<void> => {
+    await act(async () => {
+      await screen.rerender(formElement({ categoryKey: 'food', ruleId }));
+    });
+  };
+
+  it.each([
+    ['a rule that changes nothing', 0, undefined],
+    ['a rule applied to the existing transactions', 3, 'Apply to existing'],
+    ['a rule kept for new transactions only', 3, 'New transactions only'],
+  ])(
+    'shows no duplicate error on a new rule once it is stored: %s',
+    async (_label, count, choice) => {
+      mockCountRuleRewrite.mockResolvedValue(count);
+      storeOnSave(null, 'food');
+
+      const screen = await renderCreate();
+
+      await typeName(screen, 'Silpo');
+      await pressSave(navigation.setOptions);
+
+      if (choice !== undefined) {
+        await waitFor(() => expect(screen.getByText(choice)).toBeTruthy());
+        await fireEvent.press(screen.getByText(choice));
+      }
+
+      await waitFor(() => expect(mockSaveRule).toHaveBeenCalledTimes(1));
+      await rerenderAfterWrite(screen);
+
+      expect(screen.queryByText(/already exists/)).toBeNull();
+    },
+  );
+
+  it('shows no duplicate error on an edited rule once it is stored', async () => {
+    mockRules = [ruleOf('mine', 'food', [SILPO])];
+    storeOnSave('mine', 'food');
+
+    const screen = await renderEdit('mine');
+
+    await typeName(screen, 'Silpo ');
+    await pressSave(navigation.setOptions);
+    await waitFor(() => expect(mockSaveRule).toHaveBeenCalledTimes(1));
+    await rerenderAfterWrite(screen, 'mine');
+
+    expect(screen.queryByText(/already exists/)).toBeNull();
   });
 });
 

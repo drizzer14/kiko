@@ -43,7 +43,7 @@ const captionFor = (entry: (typeof bankCatalog)[number], t: TFunction): string =
 // (FieldTrigger, the same family CurrencyField
 // and CategoryField use) that opens a BottomSheet listing every
 // `bankCatalog` entry — ALWAYS every entry, never conditionally hidden
-// (Guideline 2.3.1(a)). Selecting a row reports the id and closes the sheet; the
+// (Guideline 2.5.19). Selecting a row reports the id and closes the sheet; the
 // trigger stays visible and re-openable afterward (no vanish-after-select,
 // the same guard the account-detail BankSyncSection keeps).
 const BankTypeField: FC<BankTypeFieldProps> = ({
@@ -136,7 +136,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
           // catalog data field, never a build/env flag — see bank-catalog.ts)
           // is the ONLY thing gating the live-sync icon. An import-only bank
           // NEVER renders it, so its description stays honestly
-          // statements-only (Guideline 2.3.1(a) — no fake connect affordance).
+          // statements-only (Guideline 2.5.19 — no fake connect affordance).
           const descriptionTone = isSelected ? 'onAccent' : 'textSecondary';
           // The capability icons sit in `trailing` (far right of the option,
           // aligned with the title), so they reuse the TITLE's own tone,

@@ -3,6 +3,7 @@ import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
+import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
 
 import type {
   EarnRecordByKind,
@@ -11,7 +12,6 @@ import type {
   TotalQuery,
 } from './binance.history-client';
 import { NOW } from './binance.pay-test-fixtures';
-import { BinanceWalkStop } from './binance.history-walk';
 import { createBinanceHistoryRun } from './binance.history-budget';
 import type { BinanceHistoryRow } from './binance.transfer-history';
 import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';

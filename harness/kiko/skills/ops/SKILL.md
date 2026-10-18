@@ -48,9 +48,10 @@ Rules:
   When the score is near the floor, let
   the run finish or re-run it instead of pausing. Use a pause for battery
   mode or a simulator session only when the score has headroom.
-- A TIMEOUT-HEAVY failure is cleared by the orchestrator (a plain-jest proof per mutant, or an
-  equivalent note in the BATCH READY), never by ops. Ops reports the failure block as is, never
-  re-runs to clear it, and never raises the timeout.
+- When TIMEOUT-HEAVY is the only failure, the gate itself reruns the timed-out mutants and its
+  final rerun report is the verdict. Only if that report still fails, or the rerun was skipped,
+  does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file").
+  Ops reports the failure block as is, never starts its own rerun, and never raises the timeout.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
@@ -107,7 +108,9 @@ Rules:
   commit of the branch.
 - **Track the known CVEs with `bash scripts/checks/osv.sh` on its own.**
   `check:deep` can stop at the mutation cap before it reaches osv, so
-  its exit code does not prove the osv result.
+  its exit code does not prove the osv result. An exit 2 whose only failure is osv with the
+  tracked CVEs (`docs/harness/dependency-hygiene.md`) is a PASS for the mutation part: read
+  the CHANGE SET TOTAL and per-file lines in the gate log.
 - **`devicectl` "unavailable" or CoreDevice error 4016 means the phone
   is not reachable: ask the user to join the iPhone to the Mac's WiFi
   network (builds install over the network; the 2026-09-27 cause), or
@@ -187,6 +190,18 @@ container UUID in the result — the install URL changes on every
 install, so compare it with the prior one to prove a fresh install
 actually landed.
 
+## Simulator check
+
+- Before you install a build for a simulator check, run
+  `xcrun simctl uninstall <udid> com.dmytro-vasylkivskyi.kiko`. `simctl install` keeps the old
+  data container, and an older `kiko-encrypted.db` whose key sits in a keychain group that the
+  ad-hoc re-signed build cannot see shows the "Kiko cannot read its encryption key" screen
+  (2026-10-16, sim A9850113; cause unproven, evidence deleted).
+- After the first launch, confirm the app's first screen (the user or an allowed check) before
+  you report the sim as ready.
+- The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) has a BTC holding only, with no
+  USDT. Tell the user to add a USDT holding by hand when a check needs one.
+
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
 after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes
 go live only after a plugin update". Verify with a harmless probe
@@ -250,9 +265,18 @@ about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass
 
 ## Load rule
 
-Run `make verify` / `check:all` / full jest only when the 5-minute load
-average (`sysctl -n vm.loadavg`) is below 10: wait first with
-`bash scripts/wait-load.sh 10` (run it in the background and wait on its
+Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queue.sh`, which
+serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
+load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
+agent until RESUME, and a RESUME names its limits (one agent, targeted jest with
+`--maxWorkers=2`). The one exception is built into the queue: a gate at the head waits while
+the 5-minute load is at the limit, for at most the maximum wait (`GATE_START_MAX_LOAD`,
+`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`), then
+starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. A
+TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
+`docs/harness/checks.md`). Do not
+add your own limit. Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
+direct run outside the queue (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
 optional second argument, passes first, 3 when it cannot read the load,
 64 for a bad argument; it prints one start line and nothing else).
@@ -277,7 +301,13 @@ then gates by `changed lines:` (smallest first), then `--long` gates (user rulin
 shows the hold, the power state, the running job, and the tickets. On battery NO job of any class
 starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
 too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit
-2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Keep
+2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Queue
+from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch: the queue
+directory's `format` stamp makes an older copy refuse with exit 2, and a copy that differs from the
+target worktree's own script prints a WARNING. Closing a session kills its queue waiters: the next
+waiter that prunes a dead waiter's ticket writes one `lost` done.log line, and a reclaimed dead
+lock writes a lock-form `lost` line (its job may have run fully). At handover or
+close run `scripts/job-queue.sh status`, re-queue or hand over your own tickets. Keep
 `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm ->
 bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all
 or verify reads the worktree throughout the run; never queue one while a developer still edits that
@@ -295,7 +325,14 @@ A gate forwards the `--list` over-count `warning:` line once before QUEUED. Afte
 summary lines and before the DONE line it prints each `TIMEOUT-HEAVY` line of the gate log once
 (read the end of `scripts/job-queue.sh`), so the waiter's output shows both. A ruling that adds a
 failure line to the gate log also adds its prefix to the DONE summary grep in
-`scripts/job-queue.sh` (read it for the current list); `REPORT SCOPE MISMATCH` is not in it today.
+`scripts/job-queue.sh` (read it for the current list). Today the DONE summary carries the last
+five `changed lines`, `CHANGE SET`, `GATE:` and `CHECK FAILED` lines (never a `FIRST RUN: `
+line), then each distinct `TIMEOUT-HEAVY`, `REPORT SCOPE MISMATCH` and `RERUN ` line (this
+includes `RERUN SKIPPED`). Clearing a TIMEOUT-HEAVY file: `docs/harness/checks.md` "Clearing a
+TIMEOUT-HEAVY file" (the rerun inside the gate, then the manual fallback).
+
+Spotlight indexes `~/orca/workspaces/*/node_modules` and adds load; the user adds
+`~/orca/workspaces` to System Settings > Spotlight > Privacy.
 
 The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. You still never run a group or pattern kill yourself (kill-guard denies it).
 

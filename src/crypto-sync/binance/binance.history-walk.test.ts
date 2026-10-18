@@ -1,16 +1,10 @@
 import { DAY_MS } from '@kiko/dates';
-import type { HoldingRow } from '@kiko/db';
-import type { BinanceSpanHint, BinanceSpanHints } from '@kiko/holdings/holding-metadata';
-
 import {
   advanceWalkMarks,
-  BinanceWalkStop,
-  btcSatoshis,
   buildWalkWindows,
   distinctGround,
   dropReadPoints,
   halfOf,
-  logWalkStop,
   nextSpanAfter,
   type OwedGround,
   type OwedWindow,
@@ -39,7 +33,12 @@ import {
   type WalkWindow,
   type WindowOutcome,
   withoutRead,
-} from './binance.history-walk';
+} from '@kiko/crypto-sync/exchange/walk';
+import type { HoldingRow } from '@kiko/db';
+import type { BinanceSpanHint, BinanceSpanHints } from '@kiko/holdings/holding-metadata';
+
+import { btcSatoshis } from './binance.amounts';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 const WINDOW_MS = 89 * DAY_MS;
@@ -1645,34 +1644,6 @@ describe('btcSatoshis', () => {
     ['an object', {}],
   ])('gives null for %s', (_label, amount) => {
     expect(btcSatoshis(amount)).toBeNull();
-  });
-});
-
-describe('BinanceWalkStop', () => {
-  it('carries its fixed tag as the error name and its own code', () => {
-    const stop = new BinanceWalkStop('capital-wallet-unknown');
-
-    expect(stop).toBeInstanceOf(Error);
-    expect(stop).toBeInstanceOf(BinanceWalkStop);
-    expect(stop.name).toBe('BinanceWalkStop');
-    expect(stop.message).toBe('capital-wallet-unknown');
-    expect(stop.code).toBe('capital-wallet-unknown');
-    expect(Object.hasOwn(stop, 'code')).toBe(true);
-  });
-});
-
-describe('logWalkStop', () => {
-  it('logs only the fixed tag and the stop code', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    logWalkStop('capital-amount-invalid');
-
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith('[binance sync] history window stopped', {
-      name: 'BinanceWalkStop',
-      code: 'capital-amount-invalid',
-    });
-    warn.mockRestore();
   });
 });
 
@@ -4268,6 +4239,7 @@ describe('resolveWalletHoldings', () => {
     const resolved = await resolveWalletHoldings({
       accountId: 'acc-1',
       keys: [SPOT_KEY, FUNDING_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4300,6 +4272,7 @@ describe('resolveWalletHoldings', () => {
     const resolved = await resolveWalletHoldings({
       accountId: 'acc-1',
       keys: [EARN_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4316,6 +4289,7 @@ describe('resolveWalletHoldings', () => {
     await resolveWalletHoldings({
       accountId: 'acc-1',
       keys: [SPOT_KEY, FUNDING_KEY, EARN_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4335,6 +4309,7 @@ describe('resolveWalletHoldings', () => {
       accountId: 'acc-1',
       keys: [SPOT_KEY, FUNDING_KEY, EARN_KEY],
       createKeys: [EARN_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4352,6 +4327,7 @@ describe('resolveWalletHoldings', () => {
       accountId: 'acc-1',
       keys: [FUNDING_KEY],
       createKeys: [],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4367,6 +4343,7 @@ describe('resolveWalletHoldings', () => {
     const resolved = await resolveWalletHoldings({
       accountId: 'acc-1',
       keys: [FUNDING_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });

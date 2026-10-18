@@ -63,13 +63,25 @@ Composite scripts:
   1.5 x and 50 more than the lines the branch's own first-parent non-merge commits added
   (`warn_over_count` in `mutation.sh`): a merged track is counted as this branch's change, so
   set the base to the merged tip (harness-workflow "Mutation base after a track merged
-  next"). **Clearing a TIMEOUT-HEAVY file:** the orchestrator proves each timed-out mutant in
-  plain jest, or writes it in the BATCH READY as equivalent. The gate keeps failing for that
-  file, so the BATCH READY carries the failed gate with the proofs. Never raise the timeout;
-  there is no allowlist file. A queued gate (`scripts/job-queue.sh gate`) prints, after
-  the gate-log summary lines and before the DONE line, each `TIMEOUT-HEAVY` line of the gate log
-  once, so the waiter's output shows the ruling. The mutation step tees its output to a stable,
-  tailable progress log and prints an ETA from run history (shared by all
+  next"). **Clearing a TIMEOUT-HEAVY file:** when it is the only
+  failure, `mutation.sh` reruns the timed-out mutants alone inside the same gate
+  (`RERUN_MAX_LOAD`, `RERUN_MAX_WAIT`, `RERUN_MUTANT_CAP` in `mutation.sh`; it waits for load
+  below the limit; seam `KIKO_MUTATION_RERUN_WAIT_SECONDS`). The final rerun report is the
+  verdict (user ruling 2026-10-17). The `RERUN` summary line shows killed, survived and timeout
+  counts and `N other (<Status> n, missing m)`; a memory-filling hang can end RuntimeError, which
+  the scorer does not count and the line shows as other. Fallback, if the rerun still fails
+  or is skipped (Stryker's jest-runner forces bail:false, so a mutant runs its whole covered
+  set, and at high load the gate times out on fan-out, not only on loops): in a scratch
+  worktree with its own `npm ci`, apply each mutant with the Edit tool (kill-guard denies shell
+  writes into `src/`), run the covering test files with
+  `timeout -k 10 120 node node_modules/jest/bin/jest.js -i <files>`, and revert. Red = killed;
+  exit 134 or a heap OOM = a real infinite loop (detected). Run a control on the unmutated copy
+  first. A mutant that survives plain jest is EQUIVALENT (one-line reason in the BATCH READY) or
+  goes to qa as MISSING TEST. Never raise the timeout; there is no allowlist file. A queued gate
+  (`scripts/job-queue.sh gate`) prints, after the gate-log summary lines and before the DONE
+  line, each `TIMEOUT-HEAVY` line of the gate log once, so the waiter's output shows the
+  ruling. The mutation step tees its output to a
+  stable, tailable progress log and prints an ETA from run history (shared by all
   worktrees) — a split of normal-mutant cost and the timeout share at a fitted
   timed-out cost, times this run's actual mutant count, printed live the moment
   Stryker reports that count, then, when a timeout cost is known, an "Estimate at N%" update at every 10% of
@@ -185,9 +197,21 @@ The queue never takes the worktree's index.lock for these reads. A job that edit
 without committing records `unknown`; an edit reverted before the end is not seen, and ignored
 files (`.env`, `node_modules`) are not counted; keep the tree untouched until DONE. The LAST
 `verify` line whose head equals the full sha decides and needs exit 0;
-`check-all`, `gate`, `unknown`, and old 5-field lines never count. Main must be on
-branch main and an ancestor of the sha. There is no bypass flag or variable; an override goes to
-the user plus a run-log note. Known limit: a hand-forged done.log line passes (the file belongs to
+`check-all`, `gate`, `unknown`, `lost`, and old 5-field lines never count. The queue writes one
+`lost` line when a waiter prunes a dead waiter's ticket, and a lock-form `lost` line when it
+reclaims a dead lock (its job may have run fully). `$QUEUE_DIRECTORY/format` is a format stamp: an
+older `job-queue.sh` copy refuses with exit 2. A copy that differs from the target worktree's own
+script prints a WARNING. Short lines before the first 6-field line give ONE summary WARNING
+(count and the last line); a later short line gets its own WARNING with its line number (`status`
+and `ff-main.sh`). Main must be on
+branch main and an ancestor of the sha. A commit that changes `harness/kiko/**` (`plugin.json`
+excluded) is refused (exit 2) unless its `plugin.json` version is strictly above main's (numeric
+dotted compare; an unreadable or missing version refuses; user ruling 2026-10-17). It also
+refuses any commit that lowers, removes, or makes unreadable that version while main has a
+readable one (user ruling 2026-10-18, run-log gap 20261017T1654-kiko-harness-h8/3); a missing
+manifest at main never refuses by this rule. There is no
+bypass flag or variable; an override goes to the user plus a run-log note. Known limit: a
+hand-forged done.log line passes (the file belongs to
 cooperating agents), and `KIKO_QUEUE_DIR` redirects the evidence to another directory. See
 kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits, and the
 `scripts/ff-main.sh` header for the checks in order.
@@ -220,7 +244,7 @@ See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
 script (ruby/perl code — `-e` or a stdin script — is a known limit))
-into `src/`, `__tests__/`, `rules/`, or `e2e/` of any worktree of this
+into `src/`, `__tests__/`, `rules/`, `e2e/`, or `drizzle/` of any worktree of this
 repository, because the pre-write guard sees only Edit/Write/MultiEdit:
 use Edit or Write. Move or rename a file with `git mv` (`git add` a new
 file first), then edit it with Edit/Write. Reads, git itself, and a

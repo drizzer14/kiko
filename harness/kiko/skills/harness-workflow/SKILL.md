@@ -32,6 +32,9 @@ Rules:
   slash commands (`/reload-plugins`, `/clear`), and running a verbose command in a
   command-runner terminal (never one someone types in); only the coordinator sends a slash
   command into another session.
+- When SendMessage cannot reach the coordinator, append one line per milestone or question to
+  `memory/refs/coordinator-inbox.log` (`<name> HH:MM text`) and name that file in the first
+  report; the coordinator watches it.
 - Do it yourself first. Before you hand the user a command or a click, check whether your own
   tools can do it (Bash, an agent dispatch, a file edit; the coordinator also has `orca terminal
   send` for a slash command in another session). If they can, do it and report the result.
@@ -192,7 +195,9 @@ end-of-integration deep gate. Run it on each change set with
 than 30 files would be mutated (`MUTATION_FILE_CAP`);
 `KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not resolve
 are refused directly (exit 2), and no env var bypasses the cap.
-See the `ops` skill for how to launch and await a run.
+See the `ops` skill for how to launch and await a run. A gate whose done.log exit is 2 and whose
+only failure is osv with the tracked CVEs (`docs/harness/dependency-hygiene.md`) is a PASS for
+the mutation part; read the CHANGE SET TOTAL and per-file lines in its gate log.
 
 Who and when (coordinator ruling, 2026-09-27): the COORDINATOR runs
 `KIKO_MUTATION_BASE=<change set base sha> make deep` detached for each
@@ -218,11 +223,14 @@ comment-only source does not.
 
 The BATCH READY quotes the CHANGE SET TOTAL line split (read it from the gate output) and any
 TIMEOUT-HEAVY file with how it was cleared. A TIMEOUT-HEAVY file (rule and constants in
-`scripts/checks/mutation-score.js`) is cleared by proving each timed-out mutant in plain jest,
-or by writing it as equivalent; the gate still fails for it, so the BATCH READY carries the
-failed gate with the proofs. Never raise the timeout; there is no allowlist file. `make
-mutable` can print a `warning:` line after `changed lines: N` when a merged track inflates
-the count; see "Mutation base after a track merged next".
+`scripts/checks/mutation-score.js`) is cleared by the gate itself: when it is the only
+failure, the gate reruns the timed-out mutants alone and the final rerun report is the
+verdict. Only if that report still fails or the rerun was skipped does the BATCH READY
+carry the failed gate with each timed-out mutant proven in plain jest or written as
+equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file").
+Never raise the timeout; there is no allowlist file. `make mutable` can print a
+`warning:` line after `changed lines: N` when a merged track inflates the count;
+see "Mutation base after a track merged next".
 
 ## Merging into main
 
@@ -258,6 +266,8 @@ hand-merge a binary. After merging the builder source, regenerate
 A read-only agent (debugger, reviewer, auditor, researcher, explorer)
 returns its report in its final message; the orchestrator writes the
 named report file from it. Never ask a read-only agent to write a file.
+A read-only role never starts or stops a process (no churners, no signals), even if a brief
+allows it.
 
 ## Rulings
 
@@ -430,7 +440,7 @@ merge-conflict files".
 ## The Stop tier replays the pre-write guard
 
 The kill-guard denies Bash writes into `src/`, `__tests__/`, `rules/`,
-and `e2e/`; the denied forms and the known limits are listed in
+`e2e/`, and `drizzle/`; the denied forms and the known limits are listed in
 kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
 it with Edit/Write; see kiko-code-style's "Folder-per-thing
@@ -505,8 +515,13 @@ that reads the handoff file.
   `claude plugin update kiko@kiko-marketplace` from the main checkout,
   then the coordinator sends `/reload-plugins` to every Orca session
   except the user's own (the user reloads their own session). If main already carries your
-  `plugin.json` version after you merge main, bump again before your merge commit (two tracks
-  bumped to 0.4.15 on 2026-10-16).
+  `plugin.json` version after you merge main, bump again before your merge commit; read the
+  current version in `harness/kiko/.claude-plugin/plugin.json`. `scripts/ff-main.sh` enforces
+  it (user ruling 2026-10-17): it refuses (exit 2) a commit that changes `harness/kiko/**`
+  (`plugin.json` excluded) unless its `plugin.json` version is strictly above main's (numeric
+  dotted compare; an unreadable or missing version refuses). It also refuses any commit that
+  lowers, removes, or makes unreadable that version while main has a readable one (user ruling
+  2026-10-18); a missing manifest at main never refuses by this rule.
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
@@ -616,6 +631,19 @@ passed", "Tests: N passed") in every BATCH READY, and never relays an
 agent's "passed" verdict (ops misreported a failed `make verify` as
 passing twice on 2026-10-10).
 
+## A signal or race flake needs a measured probe
+
+For a signal or race flake a source read is a hypothesis only. A fix needs a probe of N trials
+with a baseline (H8: foreground `mv` lost 90/2600, `mv & wait $!` 0/3400) and a red row that
+fails on the base. Load and signal probes go to `kiko:ops`.
+
+A fix that moves work to the background lists its new interleavings in the brief (late completion
+after cleanup, pid reuse during a long stop, a signal while starting), each with a rendezvous
+red row.
+
+A date written into a doc comes from `git log -1 --format=%cs` (or `date +%F`) at write time,
+never from a session's own notes clock.
+
 ## Probe a live API before building on its shape
 
 Before building code that depends on an API's response shape, probe it
@@ -651,7 +679,16 @@ shows the hold, the power state, the running job, and the tickets. On battery NO
 starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
 too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
 exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
-Keep `wait-load.sh` for the load wait only. A queued check:all or verify reads the worktree until
+Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
+(an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
+WARNING). Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's
+ticket writes one `lost` done.log line, and a reclaimed dead lock writes a lock-form `lost` line
+(its job may have run fully). At handover or close run
+`scripts/job-queue.sh status`, re-queue or hand over your own tickets, and never close a terminal
+with a live waiter. When many tracks run, the load never drops below a `wait-load.sh` limit:
+queue directly (the queue serializes) and throttle feature tracks with a LOAD HOLD (no new jest
+or tsc agent until RESUME; a RESUME names its limits). Keep `wait-load.sh` for a lone security
+run only. A queued check:all or verify reads the worktree until
 the job is DONE; keep that tree untouched from the queue time until DONE, and never queue one while
 a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
 START or at the end, or HEAD moved.

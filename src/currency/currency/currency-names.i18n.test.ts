@@ -1,6 +1,34 @@
 import { en, uk } from '@kiko/i18n/locales';
 
+import { CURATED_COIN_CODES, type CuratedCoinCode } from '../coins';
+
 import { currencyOptions } from './currency';
+
+const CURATED_ENGLISH_NAMES: Record<CuratedCoinCode, string> = {
+  BTC: 'Bitcoin',
+  ETH: 'Ethereum',
+  USDT: 'USDT',
+  BNB: 'BNB',
+  XRP: 'XRP',
+  USDC: 'USD Coin',
+  SOL: 'Solana',
+  TRX: 'TRON',
+  ZEC: 'Zcash',
+  HYPE: 'Hyperliquid',
+  DOGE: 'Dogecoin',
+  LINK: 'Chainlink',
+  ADA: 'Cardano',
+  NEAR: 'NEAR Protocol',
+  XLM: 'Stellar',
+  BCH: 'Bitcoin Cash',
+  LTC: 'Litecoin',
+  UNI: 'Uniswap',
+  DAI: 'Dai',
+  AVAX: 'Avalanche',
+  SUI: 'Sui',
+  FDUSD: 'First Digital USD',
+  CGPT: 'ChainGPT',
+};
 
 // Currency display names now live in the i18n catalogues under `currencyNames`,
 // keyed by ISO letter code, not in currency.ts. Both catalogues must name every
@@ -37,15 +65,12 @@ describe('currencyNames i18n coverage', () => {
     expect(uk.currencyNames.CHF).toBe('Швейцарський франк');
   });
 
-  it('hand-authors the Ukrainian hryvnia and Bitcoin names', () => {
+  it('hand-authors the Ukrainian hryvnia name', () => {
     expect(uk.currencyNames.UAH).toBe('Українська гривня');
-    expect(uk.currencyNames.BTC).toBe('Біткоїн');
   });
 
-  it('hand-authors the new crypto names in both languages', () => {
-    expect(en.currencyNames.ETH).toBe('Ethereum');
-    expect(en.currencyNames.USDT).toBe('Tether');
-    expect(uk.currencyNames.ETH.length).toBeGreaterThan(0);
-    expect(uk.currencyNames.USDT.length).toBeGreaterThan(0);
+  it.each(CURATED_COIN_CODES)('names the curated coin %s in en and uk', (code) => {
+    expect(en.currencyNames[code]).toBe(CURATED_ENGLISH_NAMES[code]);
+    expect(uk.currencyNames[code]).toBe(CURATED_ENGLISH_NAMES[code]);
   });
 });

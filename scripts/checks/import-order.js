@@ -3,7 +3,8 @@
 // Mechanizes kiko-code-style's "Import ordering" rule (hand-enforced, not
 // covered by Biome's organizeImports — see biome.json's
 // assist.actions.source.organizeImports.level: "off"). Checks (and, given
-// --write, fixes) the LEADING import header of a .ts/.tsx file: 3 groups, in
+// --write, fixes) the leading import header, and each import run after a
+// column-0 `declare module` block, of a .ts/.tsx file: 3 groups, in
 // this order and each separated by a blank line — external (including a
 // path alias like '@kiko/...'), then '../**' parent-relative, then './**'
 // sibling-relative — each holding only imports of its own kind (a group
@@ -187,6 +188,30 @@ function parseHeaderEntries(lines, start = 0) {
   }
 
   return { entries, headerEnd: i };
+}
+
+// The end index (exclusive) of an ambient `declare module` block starting at `index`, or null
+// when there is none. Such a block sits between two import runs (a module augmentation placed
+// next to the imports it extends); the header scan steps over it instead of stopping there, so
+// the imports after it are still checked. Only a column-0 block closed by a column-0 `}` (or a
+// one-line `declare module 'x';`) counts, the shape every real block in this repo has.
+function ambientBlockEnd(lines, index) {
+  const line = lines[index] ?? '';
+
+  if (!/^declare\s+module\b/.test(line)) {
+    return null;
+  }
+
+  if (endsStatement(line)) {
+    return index + 1;
+  }
+
+  let cursor = index + 1;
+  while (cursor < lines.length && !/^\}\s*$/.test(lines[cursor])) {
+    cursor += 1;
+  }
+
+  return Math.min(cursor + 1, lines.length);
 }
 
 function isSideEffectImport(statementLines) {
@@ -524,16 +549,14 @@ function checkDuplicateSpecifiers(items, violations) {
   }
 }
 
-function checkImportOrder(source) {
-  const lines = source.split('\n');
-  const { entries } = parseHeaderEntries(lines, skipPrelude(lines));
-  const groups = splitIntoGroups(entries);
-  const violations = [];
-  const headerItems = [];
+// Checks one import run (the entries between the file start, or an ambient block, and the next
+// non-import line), pushing its items onto `headerItems`. Each run starts with fresh order state:
+// an ambient block between two runs is a boundary no group merges across.
+function checkRun(entries, headerItems, violations) {
   let previousRank = -1;
   let previousGroupKind = null;
 
-  groups.forEach((groupEntries, groupIndex) => {
+  splitIntoGroups(entries).forEach((groupEntries, groupIndex) => {
     const { items } = analyzeGroup(groupEntries);
     headerItems.push(...items);
 
@@ -548,6 +571,26 @@ function checkImportOrder(source) {
     const groupKind = groupKindOf(items);
     previousGroupKind = checkGroupAdjacency(groupIndex, groupKind, previousGroupKind, violations);
   });
+}
+
+function checkImportOrder(source) {
+  const lines = source.split('\n');
+  const violations = [];
+  const headerItems = [];
+  let start = skipPrelude(lines);
+
+  for (;;) {
+    const { entries, headerEnd } = parseHeaderEntries(lines, start);
+    checkRun(entries, headerItems, violations);
+
+    const ambientEnd = ambientBlockEnd(lines, headerEnd);
+
+    if (ambientEnd === null) {
+      break;
+    }
+
+    start = ambientEnd;
+  }
 
   checkDuplicateSpecifiers(headerItems, violations);
 
@@ -588,10 +631,9 @@ function mergeAdjacentSameKindGroups(analyzedGroups) {
 
 // Reorders every SAFE group's items (stable sort by sortKey, partitioned at
 // barriers) and reassembles the file. A group with an interior comment is
-// left completely untouched. Returns { text, changed }.
-function fixImportOrder(source) {
-  const lines = source.split('\n');
-  const start = skipPrelude(lines);
+// left completely untouched. An ambient `declare module` block ends the run it follows and is kept
+// verbatim; the lines after it are fixed as their own run. Returns { lines, changed }.
+function fixRun(lines, start) {
   const prelude = lines.slice(0, start);
   const { entries, headerEnd } = parseHeaderEntries(lines, start);
   const analyzedGroups = splitIntoGroups(entries).map((groupEntries) => ({
@@ -635,12 +677,28 @@ function fixImportOrder(source) {
   const rebuiltHeader = rebuiltGroups.flatMap((group, index) =>
     index === 0 ? group : ['', ...group],
   );
-  const rest = lines.slice(headerEnd);
   const leadingGap = Array(leadingBlankCount(entries)).fill('');
   const gap = Array(trailingBlankCount(entries)).fill('');
-  const text = [...prelude, ...leadingGap, ...rebuiltHeader, ...gap, ...rest].join('\n');
+  const ambientEnd = ambientBlockEnd(lines, headerEnd);
+  const head = [...prelude, ...leadingGap, ...rebuiltHeader, ...gap];
 
-  return { text, changed };
+  if (ambientEnd === null) {
+    return { lines: [...head, ...lines.slice(headerEnd)], changed };
+  }
+
+  const tail = fixRun(lines.slice(ambientEnd), 0);
+
+  return {
+    lines: [...head, ...lines.slice(headerEnd, ambientEnd), ...tail.lines],
+    changed: changed || tail.changed,
+  };
+}
+
+function fixImportOrder(source) {
+  const lines = source.split('\n');
+  const { lines: fixed, changed } = fixRun(lines, skipPrelude(lines));
+
+  return { text: fixed.join('\n'), changed };
 }
 
 // Applies --write to one file, printing what it did, then re-runs the plain

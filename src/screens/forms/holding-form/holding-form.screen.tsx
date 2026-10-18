@@ -5,11 +5,6 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
 } from '@kiko/holdings/holding-type';
-import {
-  holdingCurrencyOptions,
-  isCryptoHoldingType,
-  isCurrencyExpectedForHoldingType,
-} from '@kiko/holdings/holding-currency';
 import type { TFunction } from 'i18next';
 import {
   holdsOnlyDebts,
@@ -53,7 +48,9 @@ import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
 import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
+import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
+import { isCurrencyExpectedForHoldingType } from '@kiko/holdings/holding-currency';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
@@ -422,6 +419,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // An "Add holding" row opens the form on a type its picker lists (`start.type`),
   // which the snap below keeps while the account offers it.
   const [type, setType] = useState<HoldingType>(startingType(start.type, typeOptions));
+  const currencyGroups = useCurrencyPickerGroups({ kind: 'holding', type });
 
   // Reactive `PriceBook`, passed through `EditContext.book` to every hook's
   // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`
@@ -945,8 +943,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             sheetTitle={t('forms.fields.currencySheetTitle')}
             selected={currency}
             onSelect={setCurrency}
-            options={holdingCurrencyOptions(type)}
-            cryptoFirst={isCryptoHoldingType(type)}
+            groups={currencyGroups}
             disabled={isEdit}
             onOpenChange={setIsSearchSheetOpen}
             testID="holding-currency-field"

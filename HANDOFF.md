@@ -1,6 +1,50 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-16 ~01:40) — READ THIS FIRST
+## ⭐ COORDINATOR HANDOFF (2026-10-18 ~00:00) — READ THIS FIRST
+Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323 (restarted in the Orca profile). Event log:
+memory/refs/night-summary-2026-10-17.md (from "15:0x NEW COORDINATOR SESSION"; AWAY-D1..D10 = coordinator calls).
+The 2026-10-17 ~14:30 section below is HISTORY. The morning walkthrough of 2026-10-17 is DONE (all 8 items answered).
+FIRST ACTIONS of the next session:
+1. ListAgents (all sessions are in ONE registry now: Orca profile claude-profiles/915a0295.../home). If a session is
+   missing, it runs in an old terminal: restart it (memory orca-hub, "TWO SESSION REGISTRIES").
+2. Queue: `bash scripts/job-queue.sh status`. ipad-t6-deep finished PASS (84.00, osv-only exit 2); "gate done" sent;
+   ipad-a2's Device Hub simulator pass 2 is the ONE heavy job: hold every other gate until ipad-a2 reports it done.
+3. Arm: inbox watcher (memory/refs/coordinator-inbox.log), pmset watcher, gauge watchers (memory/refs/gaugewatch.sh,
+   40 %) for binance-f6, ipad-a2, h8-a1. After any plugin.json bump merges: `claude plugin update kiko@kiko-marketplace`
+   from the main checkout + /reload-plugins per screen check.
+| Thing | Value |
+|---|---|
+| main = next | bc701ff3 (today: Semgrep worklet rule fix da8d0d40, user settings a35e5a1a + newline eab6ed75, Binance set 3 43fe7341, H8 tasks 2+3 bc701ff3). Plugin 0.4.22 installed + reloaded. origin/main NOT pushed. ff-main.sh moves main only: ff `next` by hand (`git -C .../next merge --ff-only main`). ff-main.sh now REFUSES a harness/kiko change whose plugin.json version is not above main's. |
+| BINANCE 1.3-a | binance-f6 = SendMessage "binance-backfill-fix-b8", term_d039c728 (worktree binance-backfill-fix). Set 4 (walk state -> sync_state, migration 0061_exchange_state, run 20261017T1639) RUNNING: commit 0 + steps 1-4 done, step 4 fix round. DEPLOY NOTE: no device install of 67a0944a..step 4. Rulings accepted: per-part parse; step 4 (1)-(3); connection-generation stamp = known gap for a later set. 3 live 2.3.1(a) citations in its plan/spec at scribe step 10. User: device builds ONLY after merge. User sees multi-coin after set 5 (~1-2 days), full history after set 6 (~2-3 days) (run-log based). |
+| iPAD | ipad-a2 = SendMessage "ipad-phase3-76", term_7201c7da. Branch ipad-phase3 (stacked on duo-adaptive 2731abc2; tip 9115a856 = task 6), branch ipad-family (be3d08d1 flip + 29711501; MERGES ONLY after the preconditions in .superpowers/sdd/2026-10-17-ipad-phase3/progress.md: 1.3 shipped/own branch, Duo on main, layout on main, user iPad pass, 13-inch shots, reviewer kit, plugin bump, built UIDeviceFamily [1,2]). Spec ce182bbb, plan 2f00fd27 (12 tasks). Done: 1, 2, 4 (gate cleared by proof table), 5 (gate PASS 100 %), 6 (BATCH READY, gate running). Task 3 sim facts: only 13-inch portrait measured; pass 2 with Device Hub (Xcode-27.1 DeviceHub.app, DEVELOPER_DIR=Xcode-27.1, JAVA_HOME=/opt/homebrew/opt/openjdk@21) held for the gate. User: iPad ships in its OWN release after 1.3; implementation ok; iterate after the user's own iPad check. |
+| H8 | h8-a1 = SendMessage "harness-h8-77", term_529770b8 (worktree harness-h8). Tasks 2+3 MERGED. Task 1/4 running: start-defer (load < 10, max 20 min), in-gate auto rerun of TIMEOUT-HEAVY files' Timeout mutants (user ruled Q1 = A in its terminal), D1 checks.md method, Spotlight line, gap /3 (refuse any plugin.json decrease, user ruled in its terminal). Replay gates (3b, 3a, ipad-t4) allowed via its ops. Then task 4 (2.3.1(a) live citations; skips Binance docs). Brief memory/refs/brief-h8.md. |
+| DUO | duo-g1 = SendMessage "duo-adaptive-6f", term_9337ecde, idle. duo-adaptive 2731abc2. Main merge + split plan AFTER H8 (user order); then the follow-ups track (walkthrough item 4). |
+| RELEASE 1.2.0 (31) | In App Store review. release-12 h1 = SendMessage "release-1-2-87", term_54098d5a, idle. Step 8 after publication. |
+| Status | PM session "Status", term_22e8974a: one message per milestone. |
+| Open for the user | Spotlight: exclude ~/orca/workspaces (System Settings > Spotlight > Privacy). Role-agent trailers name Opus (no rewrite recommended). |
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-17 ~14:30) — HISTORY
+Coordinator was SendMessage "pff-ios-8a" (job 828f039f). Event logs: memory/refs/night-summary-2026-10-16.md (from
+"~21:49 LAPTOP REBOOT") and memory/refs/night-summary-2026-10-17.md. The 2026-10-16 ~01:40 section below is HISTORY.
+FIRST ACTIONS of the next session:
+1. Walk the user through memory/refs/morning-walkthrough-2026-10-17.md IN ITS ORDER, one item at a time
+   (AskUserQuestion, recommendation first); log each answer and send it to the named track.
+2. `orca terminal list` (Orca restores sessions); ListAgents; tell each live orchestrator your SendMessage name.
+3. Arm: a background watcher on memory/refs/coordinator-inbox.log (sessions that cannot reach SendMessage append one
+   line there), a pmset watcher (battery <-> AC), a gauge watcher (memory/refs/gaugewatch.sh, 40 %) per orchestrator.
+4. Orca send hygiene: always send WITH Enter, after `orca terminal read --screen` shows no prompt and an empty input box.
+| Thing | Value |
+|---|---|
+| main = next | a74b8a00 (tonight: 4509644b guidelines 2.5.19, f505a37c 1.2 fixes, edda07f2 net-worth chart line, 024164c7 Binance set 2 + migration 0060, ee8728e4 currency pickers, a74b8a00 shared date range). Plugin 0.4.20 installed. origin/main NOT pushed. MERGE PATH: queued verify at the exact sha (from the target worktree's own scripts) + `bash scripts/ff-main.sh <sha>`. |
+| Retro 2026-10-17 | Memory written by kiko:scribe; skill drift commit in worktree retro-2026-10-17 (plugin 0.4.21): queued verify + ff-main.sh, then claude plugin update + /reload-plugins. See the night summary end for its state. |
+| 1.3 EXCHANGES | binance-f5 = term_b3646f95-3fff-49aa-a901-904662fd7410 (worktree binance-backfill-fix; reports via the inbox file). Set 2 MERGED. Set 3 (exchange-layer extraction, code moves only, 2 change sets, run 20261017T1100) RUNNING from ee8728e4; 4-7 h to BATCH READY; then two gates (3a base ee8728e4, 3b base its step-5 sha). Notes: .superpowers/sdd/binance-multicoin/HANDOFF.md. |
+| RELEASE 1.2.0 (31) | In App Store review. release-12 h1 = SendMessage "release-1-2-87" (term_0b5853a0), idle. Step 7 DONE (fixes on main). Step 8 after publication (tag v1.2.0 on f0f1d2a8 + main follow-ups). Build 30 archive in ~/Library/Developer/Xcode/Archives-spent/. |
+| DUO | duo-g1 = term_9337ecde (inbox), IDLE. duo-adaptive 5a3dacaf (user sim check LGTM). Merge to main needs a fresh main merge + split plan (walkthrough item 5). |
+| NET-WORTH-SCRUB | MERGED. scrub-a1 = term_52d337e5 finishing its run log (asked twice): then archive .superpowers to memory/refs/sdd-archive/net-worth-scrub-2026-10-17/, close the terminal, prune the worktree. |
+| iPhone | Scratch build device-features 5873d789 (= today's features, shows 1.1.0 (29)); user live check LGTM. Worktree device-features to prune after the user agrees (walkthrough item 8). |
+| Status | PM session "Status" (term_68c9abb1): one message per milestone. |
+
+## ⭐ COORDINATOR HANDOFF (2026-10-16 ~01:40) — HISTORY
 Coordinator job 828f039f. Event log: memory/refs/night-summary-2026-10-15.md (from "~14:10 Coordinator
 /clear" to the end). Session addresses: memory orca-hub (last bullets). The 2026-10-15 ~14:00 section
 below is HISTORY.

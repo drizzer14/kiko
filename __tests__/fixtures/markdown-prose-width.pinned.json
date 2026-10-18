@@ -6,12 +6,9 @@
     "  now\"): no tips feature folder, no tip card component, no dismiss-tip or reset-tips settings function, and the Help",
     "  an account with no capital row starts at the floor. The forward pass starts at `max(floor, cursor)`. The",
     "  `BINANCE_TRANSFER_PENDING_OVERLAP_FIELD` alone), false before the account's own first balance sync. An owed point never",
-    "  codes (`binance.history-walk.ts`; the spec lists them): read them there. The wallet holding is found by `binanceKeyOf`",
     "  decision is the 0058 `untrackedCounterpart` note on the snapshot version in this file). The label and the exclusion are in",
     "- **Transfer forward stops (O1; the Earn lane does the same with `EARN_FORWARD_OWES`).** A stop tied to ONE transfer with a usable",
     "  failure: ignored, nothing owed. Any other value (a pending status such as PURCHASING or CREATED, or an unknown one) is",
-    "- **STOP_ENDS_PASS and R28** (plan OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop",
-    "  Keychain. A restore keeps this device's live `settings.lockEnabled` (the app lock is turned off only after",
     "  empty array in it, as a no-op, not an error — `import-data.ts` still restores `payload.tables` regardless. Follow",
     "  glyph never stands for several former accounts. It runs right after `withBankAccountsBankIdBackfilled` (a live device",
     "  (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.",
@@ -65,7 +62,6 @@
     "(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` does not switch `kind` for an implicit kind, it only stores `pickedImplicitKind` so the kind field shows the pick in the tap's own frame while the fields, icon and color stay put; the form passes `closesWithoutAnimation={isImplicitAccountKind}`, so that sheet closes with no fade and `onSelectClosed` (hence the `replace`) follows at once, while every other kind keeps the fade; `account-form.screen.tsx`), where `draft` is the",
     "the screen that owns the sheet's Modal. `setParams` is immediate. `replace`, never `navigate`: Back from either form",
     "lot-form eligible when that function can return `'addLot'` (read the `FooterAction` union there). `metal`",
-    "create form uses to list cryptocurrencies first (`src/holdings/holding-currency/holding-currency.ts`).",
     "  whose marker names a deleted holding is cleared. The delete keeps the pair id and moves no balance: a",
     "  `exchange` sentence already names is not named again there; with a split, the exchange sentences that say",
     "`settings.lockEnabled` is LIVE (a `.kiko` restore never changes it) — wired through `src/auth/use-app-lock.ts`",
@@ -86,7 +82,6 @@
     "  failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a",
     "  The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. An agent's own group or pattern kill is still denied.",
     "  excluded, only when `<name>/.git` exists (`isInsideMainCheckout`). The target comes from the payload",
-    "  `__tests__/`, `rules/`, or `e2e/` (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `e2e/` joined",
     "  or any `mv`, since a plain `cp` cannot copy a folder: `ls | xargs -I{} cp {} \"$BK\"/` passes, `ls | xargs",
     "  option, and a letter after a glued `-o` is no `a`/`e`/`x` flag), or `pgrep` WITH `-f` (any flag group holding `f` before a",
     "  `skipped (no added lines): <path>` and is not counted). FAIL CLOSED: the script prints a path only when it PROVED the file",
@@ -174,7 +169,6 @@
     "- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.",
     "- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.",
     "- You write TypeScript and TSX. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.",
-    "- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`, `e2e/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.",
     "- Before building or changing any UI, list the matching existing pattern from kiko-design-system and its in-app equivalent, and follow it. A new pattern needs coordinator approval before it ships.",
     "- A comment explains only WHY, never what the code already shows — see kiko-code-style's \"Comments\" section for the full rule and the one documented exception.",
     "- Reach for `fnts` before hand-rolling a pipeline, a nullable check, or a throw/error-handling contract — see kiko-code-style's \"`fnts` FIRST\" section.",
@@ -194,7 +188,6 @@
     "- No more than one component per file, except a small local, non-exported component extracted for readability or re-render reasons — see kiko-code-style's \"One component per file\" section.",
     "- Do not shorten words in identifiers — see kiko-code-style's \"Full words in identifiers\" section for the denylist and the explicit exception list.",
     "- Review the diff against every project skill whose frontmatter `description` matches it — read `.claude/skills/*/SKILL.md` frontmatter to find the match rather than trusting a fixed list here (a skill can be added between reviews of this agent file); kiko-code-style and kiko-design-system apply to nearly everything (import length-sort, folder-per-thing layout, currency mapping). kiko-compliance applies when the diff adds a new network host, a native permission, a build/env flag that controls what a user sees, a credential, or a third-party API. Read the one that fits before you write, if unsure.",
-    "- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`, `e2e/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.",
     "- Iterate with SCOPED tests (only the touched files) to save tokens. Do not run a manual `make lint` after each change — the PostToolUse hook (`scripts/checks/fast.sh`) already lints every file you edit automatically, so a per-edit lint is redundant. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass, so it replaces separate end-of-work `make jest` and `make gate` calls.",
     "- When a check fails, fix the code. Never weaken a check, add `|| true`, or bare-suppress a lint rule.",
     "- Never change or revert a user-approved visual without explicit user approval, including in a cleanup that calls it \"exploratory\". Locked visual decisions live in `kiko-design-system`."
@@ -230,9 +223,7 @@
     "- Do not shorten words in identifiers — see kiko-code-style's \"Full words in identifiers\" section for the denylist and the explicit exception list.",
     "- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.",
     "- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.",
-    "- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`, `e2e/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.",
     "- Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.",
-    "- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/` by name, so a shell redirect into a file under that folder",
     "- A form's Save is a native nav-bar item: press it with `pressSave` from `src/test-support/form-header-items.ts` (see the kiko-design-system form Save bullet), never `getByText('Save')`."
   ],
   "harness/kiko/agents/researcher.md": [
@@ -257,8 +248,7 @@
     "- When a report says a file was written through Bash or python, run `npm run check:guard-replay` in that worktree (it replays the unchanged pre-write guard against the file's pre-session content, so only an added violation fails) and report any failure as a finding.",
     "- Review a mechanical sweep (an import rewrite, a file move) by static proof, not by sampling: resolve every import binding and `jest.mock`/`require` target at both commits, count cycles, and check each side-effect import's predecessors. See `harness-workflow`'s \"Large reviews\".",
     "- Flag any diff that alters a user-approved visual (locked decisions live in `kiko-design-system`) unless the user explicitly approved the change.",
-    "- Execute kill-guard probe text ONLY through `scripts/checks/kill-guard-probe.sh`, with the sentinel `kg_sentinel_target` in place of any kill command and a fake main folder in place of the real one; real kill words go only in non-executed `decide()` tests. The runner is not a sandbox. See kiko-linter's \"Probing the kill-guard\".",
-    "- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/` by name, so a shell redirect into a file under that folder"
+    "- Execute kill-guard probe text ONLY through `scripts/checks/kill-guard-probe.sh`, with the sentinel `kg_sentinel_target` in place of any kill command and a fake main folder in place of the real one; real kill words go only in non-executed `decide()` tests. The runner is not a sandbox. See kiko-linter's \"Probing the kill-guard\"."
   ],
   "harness/kiko/agents/scribe.md": [
     "- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included.",

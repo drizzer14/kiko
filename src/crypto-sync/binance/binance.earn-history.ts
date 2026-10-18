@@ -9,22 +9,25 @@ import {
   BINANCE_EARN_SPAN_HINTS_FIELD,
   binanceWalkCursorOf,
 } from '@kiko/holdings/holding-metadata';
-import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
-
 import {
   advanceWalkMarks,
   BinanceWalkStop,
-  btcSatoshis,
+  type BinanceWalkWriteDeps,
+  commitSettledSpan,
+  defaultWalkWriteDeps,
   dropReadPoints,
+  instantAt,
+  joinSettled,
   type OwedWindow,
+  placeWalletRows,
   planWalkPasses,
   readPendingMark,
   readWalkRoundRobins,
   roundRobinHooksOf,
   runWalkPlan,
+  type SettledSpan,
+  settleRecords,
+  settleUnreadable,
   type SpanCommit,
   type SpanRead,
   type WalkMarkFields,
@@ -35,7 +38,13 @@ import {
   type WalkResult,
   walkWritersOf,
   type WalkWindow,
-} from './binance.history-walk';
+} from '@kiko/crypto-sync/exchange/walk';
+import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
+
 import {
   type BinanceWalletKey,
   binanceKeyOf,
@@ -50,23 +59,14 @@ import {
   type TotalPage,
   type TotalQuery,
 } from './binance.history-client';
-import {
-  commitSettledSpan,
-  instantAt,
-  joinSettled,
-  placeWalletRows,
-  type SettledSpan,
-  settleRecords,
-  settleUnreadable,
-} from './binance.history-records';
+import { btcSatoshis } from './binance.amounts';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import type { FetchAccountOptions } from './binance.client';
 import type { BinanceHistoryRow } from './binance.transfer-history';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
-import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
 import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
 
 /** The widest range an Earn history read takes is 30 days. */
 export const EARN_WINDOW_MS = 30 * DAY_MS;
@@ -732,8 +732,9 @@ const readSpan = (
 ): Promise<SpanRead<SeriesSpan<EarnRecordKind, EarnRecord>> | undefined> => {
   const { deps, run, accountId, apiKey, secret, options } = context;
 
-  return readSeriesSpan<EarnRecordKind, EarnRecord>({
+  return readSeriesSpan({
     run,
+    config: BINANCE_WALK_CONFIG,
     lane: 'earn',
     cost: COSTS.earn,
     span,
@@ -779,6 +780,7 @@ const commitSpan = (
       placeWalletRows({
         accountId,
         planned,
+        config: BINANCE_WALK_CONFIG,
         listHoldings: deps.listHoldings,
         ensureHoldings: deps.ensureHoldings,
         missingCode: 'earn-holding-missing',

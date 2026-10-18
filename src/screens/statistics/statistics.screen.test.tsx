@@ -58,6 +58,7 @@ import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { DAY_MS, formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -571,7 +572,9 @@ const seedSpendingWithMccMovements = (): void =>
     categories: [...CATEGORIES, CASH_CATEGORY],
   });
 
-const renderScreen = (): ReturnType<typeof render> => render(<StatisticsScreen />);
+// The net-worth plot carries the scrub line's GestureDetector, which needs a root view.
+const renderScreen = (): ReturnType<typeof render> =>
+  render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
 
 // Open one filter menu, tap an option row, then dismiss via the backdrop.
 const pressFilter = async (
@@ -809,6 +812,36 @@ describe('StatisticsScreen', () => {
     });
 
     expect(mockRunBackfill).toHaveBeenCalled();
+  });
+
+  it("hands the backfill each currency's first stored day from the history that loaded", async () => {
+    const baseData: LiveData = {
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+    };
+    const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
+    setLiveData({ ...baseData, history: [], isLoading: { currency_rate_history: true } });
+
+    const { rerender } = await renderScreen();
+
+    setLiveData({
+      ...baseData,
+      history: [
+        { base: 'USD', quote: 'UAH', day: day(2), rate: '40' },
+        { base: 'USD', quote: 'UAH', day: day(5), rate: '40' },
+        { base: 'EUR', quote: 'UAH', day: day(3), rate: '45' },
+      ],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+    expect(mockRunBackfill.mock.calls[0]?.[0]).toMatchObject({
+      firstBackfilledDayByCurrency: { USD: day(5), EUR: day(3) },
+    });
   });
 
   // kiko-architecture: a cached display mount's rows can be one read old, and

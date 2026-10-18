@@ -1,3 +1,5 @@
+import { signQuery } from '@kiko/crypto-sync/exchange/signing';
+
 import {
   BINANCE_HISTORY_PARSE_ERROR,
   BinanceHistoryParseError,
@@ -11,7 +13,6 @@ import {
   PAY_PAGE_LIMIT,
   UNIVERSAL_TRANSFER_TYPES,
 } from './binance.history-client';
-import { signQuery } from './binance.hmac';
 import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 
 const NOW = 1_704_326_400_000;

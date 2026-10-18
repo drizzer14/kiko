@@ -12,7 +12,8 @@ Source files: `src/design-system/` (grid-interaction, use-grid-lift-guard),
 `src/screens/accounts/accounts.screen.tsx`,
 `src/screens/account-detail/account-detail.screen.tsx`,
 `src/screens/settings/categories/`,
-`src/design-system/components/bottom-sheet/bottom-sheet.gesture.ts`.
+`src/design-system/components/bottom-sheet/bottom-sheet.gesture.ts`,
+`src/screens/statistics/net-worth-line/` (component + `net-worth-line.scrub.ts`).
 
 ## LongPress-vs-Sortables-drag arbitration
 
@@ -165,6 +166,26 @@ thread) must be created with `.runOnJS(true)` on the gesture, exactly
 like `Gesture.LongPress().runOnJS(true)` in `CardContextMenu`. Without
 it the callback runs on the UI thread and calling a non-worklet JS API
 from there throws or silently no-ops.
+
+## A horizontal Pan inside a vertical ScrollView (the NetWorthLine scrub)
+
+`NetWorthLine`'s scrub Pan sits inside the Statistics vertical `ScrollView`.
+It uses `activeOffsetX([-SCRUB_ACTIVE_OFFSET_X, SCRUB_ACTIVE_OFFSET_X])` and
+`failOffsetY([-SCRUB_FAIL_OFFSET_Y, SCRUB_FAIL_OFFSET_Y])` (constants in
+`net-worth-line.scrub.ts`; read them there) so a vertical swipe still scrolls
+the page. It is `runOnJS(true)` (see the section above).
+
+- `onBegin` resets `lastTickIndex` to `null`; `onStart` and `onUpdate` both
+  call `moveTo`.
+- `trigger('selection')` fires once per NEW index, compared against
+  `lastTickIndex ?? selectedIndex`: several events can arrive before a
+  re-render, so the rendered index alone would double-tick.
+- Tests wrap in `GestureRootWrapper` and find the Pan by `withTestId`
+  (`NET_WORTH_SCRUB_GESTURE_TEST_ID`).
+- The pure math lives in a gesture-free file (see "Pure-gesture-math
+  testability pattern").
+- Unverified: the live feel (vertical scroll vs drag) is not confirmed until
+  the user's simulator check; update this note when it is.
 
 ## Sortables grid conventions
 

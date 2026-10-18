@@ -86,6 +86,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   onCurrencyColumnChange,
   fixedCurrency,
   onFixedCurrencyChange,
+  targetHolding,
   descriptionColumn,
   onDescriptionColumnChange,
   counterpartyColumn,
@@ -263,6 +264,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
             onCurrencyColumnChange={onCurrencyColumnChange}
             fixedCurrency={fixedCurrency}
             onFixedCurrencyChange={onFixedCurrencyChange}
+            targetHolding={targetHolding}
             currencyColumnError={validation.currencyColumnError}
           />
         </Box>

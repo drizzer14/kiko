@@ -4,7 +4,7 @@ import '@kiko/design-system/unistyles';
 // Real i18n init (side effect), same as App.tsx, so the search placeholder's
 // `t(...)` resolves under test the same way it does at runtime.
 import '@kiko/i18n/init';
-import { fiatCurrencyOptions } from '@kiko/currency/currency';
+import { currencyOptions, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import CurrencyField from '.';
 import type { CurrencyFieldProps } from './currency-field.props';
@@ -16,10 +16,22 @@ const renderCurrencyField = (overrides: Partial<CurrencyFieldProps> = {}) =>
       sheetTitle="Select a Currency"
       selected="UAH"
       onSelect={jest.fn()}
+      groups={[{ kind: 'fiat', currencies: currencyOptions }]}
       testID="currency-field"
       {...overrides}
     />,
   );
+
+// Every heading and currency row on screen, in render order.
+const listedIds = (utils: Awaited<ReturnType<typeof render>>): string[] =>
+  utils
+    .getAllByTestId(/^currency-(group|option)-/)
+    .map((row) => String(row.props.testID).replace('currency-', ''));
+
+const coinsThenCurrencies: CurrencyFieldProps['groups'] = [
+  { kind: 'crypto', currencies: ['ETH', 'BTC'] },
+  { kind: 'fiat', currencies: ['UAH', 'ARS'] },
+];
 
 const open = async (utils: Awaited<ReturnType<typeof render>>): Promise<void> => {
   await fireEvent.press(utils.getByTestId('currency-field'));
@@ -80,8 +92,10 @@ describe('CurrencyField', () => {
     expect(utils.queryByTestId('currency-option-EUR')).toBeNull();
   });
 
-  it('restricts the list to the given options (fiat only offers no BTC)', async () => {
-    const utils = await renderCurrencyField({ options: fiatCurrencyOptions });
+  it('restricts the list to the given groups (fiat only offers no BTC)', async () => {
+    const utils = await renderCurrencyField({
+      groups: [{ kind: 'fiat', currencies: fiatCurrencyOptions }],
+    });
     await open(utils);
     // Narrow by search: unfiltered, USD sorts near the end of the alphabetized
     // fiat list and falls outside the FlatList's virtualized initial window.
@@ -193,77 +207,113 @@ describe('CurrencyField', () => {
     expect(utils.queryByTestId('currency-option-USD')).toBeNull();
   });
 
-  it('pins UAH first in the fiat group when the search box is empty', async () => {
-    // ARS ("Argentine Peso") sorts alphabetically before UAH ("Ukrainian
-    // Hryvnia") — restricting `options` to just these two isolates the pin
-    // from the rest of the fiat set: if UAH were merely sorted in like any
-    // other fiat, ARS would render first.
-    const utils = await renderCurrencyField({ options: ['ARS', 'UAH'] });
-    await open(utils);
-
-    const rows = utils.getAllByTestId(/^currency-option-/);
-    expect(rows[0]).toHaveProp('accessibilityLabel', 'UAH Ukrainian Hryvnia');
-  });
-
-  it('does not force-pin UAH first while a search is active', async () => {
-    // Same ARS/UAH pair, but this time both rows match the search query
-    // ("a" is in both "ARS"/"Argentine Peso" and "UAH"/"Ukrainian Hryvnia") —
-    // if the pin were still applied during a search, UAH would render first
-    // despite ARS sorting first alphabetically by name.
-    const utils = await renderCurrencyField({ options: ['ARS', 'UAH'] });
-    await open(utils);
-    await search(utils, 'a');
-
-    const rows = utils.getAllByTestId(/^currency-option-/);
-    expect(rows[0]).toHaveProp('accessibilityLabel', 'ARS Argentine Peso');
-  });
-
-  it('sorts fiat currencies alphabetically by localized name, not by ISO code', async () => {
-    // DZD ("Algerian Dinar") vs AOA ("Angolan Kwanza"): the ISO codes sort
-    // AOA before DZD, but the localized names sort the other way round
-    // ("Algerian" < "Angolan") — the two orders DISAGREE, so DZD rendering
-    // before AOA proves the list is sorted by name, not by code.
-    const utils = await renderCurrencyField({ selected: 'DZD', options: ['AOA', 'DZD'] });
-    await open(utils);
-
-    const rows = utils.getAllByTestId(/^currency-option-/);
-    expect(rows[0]).toHaveProp('accessibilityLabel', 'DZD Algerian Dinar');
-    expect(rows[1]).toHaveProp('accessibilityLabel', 'AOA Angolan Kwanza');
-  });
-
-  it('groups crypto (BTC, ETH, USDT) after every fiat currency, sorted alphabetically within itself', async () => {
-    const utils = await renderCurrencyField({ options: ['USDT', 'UAH', 'ETH', 'BTC'] });
-    await open(utils);
-
-    const rows = utils.getAllByTestId(/^currency-option-/);
-    const labels = rows.map((row) => row.props.accessibilityLabel as string);
-
-    // The lone fiat currency (UAH) comes first, then the crypto trio —
-    // alphabetically by localized name (Bitcoin, Ethereum, Tether), never in
-    // the `options` array's own order.
-    expect(labels).toEqual(['UAH Ukrainian Hryvnia', 'BTC Bitcoin', 'ETH Ethereum', 'USDT Tether']);
-  });
-
-  it('lists the crypto group before the fiat group when cryptoFirst is set', async () => {
+  it('renders a group in the order it was given, never re-sorting it', async () => {
+    // ARS ("Argentine Peso") sorts before UAH by name, and AOA before DZD by code: the
+    // given order wins over both, because ordering is the group builder's job.
     const utils = await renderCurrencyField({
-      options: ['ARS', 'USDT', 'UAH', 'ETH', 'BTC'],
-      cryptoFirst: true,
+      groups: [{ kind: 'fiat', currencies: ['UAH', 'ARS', 'AOA', 'DZD'] }],
     });
     await open(utils);
 
-    const labels = utils
-      .getAllByTestId(/^currency-option-/)
-      .map((row) => row.props.accessibilityLabel as string);
+    expect(listedIds(utils)).toEqual(['option-UAH', 'option-ARS', 'option-AOA', 'option-DZD']);
+  });
 
-    // The fiat group keeps its own order after the crypto trio: UAH pinned
-    // first, then the rest by localized name.
-    expect(labels).toEqual([
-      'BTC Bitcoin',
-      'ETH Ethereum',
-      'USDT Tether',
-      'UAH Ukrainian Hryvnia',
-      'ARS Argentine Peso',
+  it('keeps the given group order while searching', async () => {
+    // "t" is in the codes ETH and BTC, and in "Argentine Peso"; UAH and its name have none.
+    const utils = await renderCurrencyField({ groups: coinsThenCurrencies });
+    await open(utils);
+    await search(utils, 't');
+
+    expect(listedIds(utils)).toEqual([
+      'group-crypto',
+      'option-ETH',
+      'option-BTC',
+      'group-fiat',
+      'option-ARS',
     ]);
+  });
+
+  it('lists each group under its own heading, in the order the groups were given', async () => {
+    const utils = await renderCurrencyField({ groups: coinsThenCurrencies });
+    await open(utils);
+
+    expect(listedIds(utils)).toEqual([
+      'group-crypto',
+      'option-ETH',
+      'option-BTC',
+      'group-fiat',
+      'option-UAH',
+      'option-ARS',
+    ]);
+  });
+
+  it('shows a heading per group when two groups are shown', async () => {
+    const utils = await renderCurrencyField({ groups: coinsThenCurrencies });
+    await open(utils);
+
+    expect(utils.getByTestId('currency-group-crypto')).toHaveTextContent('Crypto');
+    expect(utils.getByTestId('currency-group-fiat')).toHaveTextContent('Currencies');
+    expect(utils.getByTestId('currency-group-crypto')).toHaveProp('accessibilityRole', 'header');
+  });
+
+  it('labels the target and held headings', async () => {
+    const utils = await renderCurrencyField({
+      groups: [
+        { kind: 'target', currencies: ['EUR'] },
+        { kind: 'held', currencies: ['USD'] },
+      ],
+    });
+    await open(utils);
+
+    expect(utils.getByTestId('currency-group-target')).toHaveTextContent('Holding currency');
+    expect(utils.getByTestId('currency-group-held')).toHaveTextContent('Your currencies');
+  });
+
+  it('shows no heading for a single group', async () => {
+    const utils = await renderCurrencyField({
+      groups: [{ kind: 'fiat', currencies: ['UAH', 'ARS'] }],
+    });
+    await open(utils);
+
+    expect(utils.queryByTestId('currency-group-fiat')).toBeNull();
+    expect(listedIds(utils)).toEqual(['option-UAH', 'option-ARS']);
+  });
+
+  it('hides a group the search empties, and drops headings once one group is left', async () => {
+    const utils = await renderCurrencyField({ groups: coinsThenCurrencies });
+    await open(utils);
+
+    expect(utils.getByTestId('currency-group-fiat')).toBeTruthy();
+
+    await search(utils, 'BTC');
+
+    expect(utils.queryByTestId('currency-group-fiat')).toBeNull();
+    expect(utils.queryByTestId('currency-group-crypto')).toBeNull();
+    expect(listedIds(utils)).toEqual(['option-BTC']);
+  });
+
+  it('search spans every group', async () => {
+    // "i" is in "Bitcoin" and "Ukrainian Hryvnia", not in "US Dollar".
+    const utils = await renderCurrencyField({
+      groups: [
+        { kind: 'crypto', currencies: ['BTC'] },
+        { kind: 'fiat', currencies: ['UAH', 'USD'] },
+      ],
+    });
+    await open(utils);
+    await search(utils, 'i');
+
+    expect(listedIds(utils)).toEqual(['group-crypto', 'option-BTC', 'group-fiat', 'option-UAH']);
+  });
+
+  it('resets the search on close', async () => {
+    const utils = await renderCurrencyField();
+    await open(utils);
+    await search(utils, 'USD');
+    await fireEvent.press(utils.getByTestId('currency-picker-sheet-backdrop'));
+    await open(utils);
+
+    expect(utils.getByPlaceholderText('Search by code or name').props.value).toBe('');
   });
 
   it('finds a currency by searching its ISO code', async () => {

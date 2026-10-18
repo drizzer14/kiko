@@ -47,7 +47,7 @@ describe('synced predicates', () => {
     expect(isSyncedAccount({ institution: 'kraken' })).toBe(false);
   });
 
-  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 2.3.1(a)), so
+  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 2.5.19), so
   // their institution ids are not synced.
   it('rejects every removed provider institution', () => {
     expect(isSyncedAccount({ institution: 'privatbank' })).toBe(false);

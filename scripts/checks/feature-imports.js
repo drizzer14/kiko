@@ -34,6 +34,7 @@ const CONTAINERS = new Set([
   'calendar',
   'categories',
   'crypto-sync',
+  'crypto-sync/exchange',
   'currency',
   'design-system',
   'design-system/components',
@@ -62,7 +63,7 @@ const CONTAINERS = new Set([
 const SCREEN_CONTAINERS = new Set(['screens', 'screens/forms', 'screens/settings']);
 
 // Imported deep, and only by test files: a barrel that exported one would
-// put test code in the App Store build (kiko-compliance 2.3.1(a)).
+// put test code in the App Store build (kiko-compliance 2.5.19).
 const TEST_ONLY = [
   { path: 'test-support/**', reason: 'shared, ownerless test helpers; no barrel' },
   { path: '**/__fixtures__/**', reason: 'fixture data' },

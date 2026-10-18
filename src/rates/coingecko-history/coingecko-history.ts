@@ -14,18 +14,59 @@ const MAX_MARKET_CHART_DAYS = 365;
 /**
  * One `fetchCryptoHistory` answer: every answering coin's series, plus the
  * coins whose OWN request failed — so a caller never mistakes a failed coin
- * for one CoinGecko answered with no data.
+ * for one CoinGecko answered with no data. `rateLimitedCurrencies` is the
+ * subset of the failed coins CoinGecko answered with HTTP 429: the burst
+ * limit, which the next run has to route around, unlike a coin that fails by
+ * itself every time.
  */
-export type CryptoHistory = { entries: HistoryRateEntry[]; failedCurrencies: CryptoCurrency[] };
+export type CryptoHistory = {
+  entries: HistoryRateEntry[];
+  failedCurrencies: CryptoCurrency[];
+  rateLimitedCurrencies: CryptoCurrency[];
+};
 
 /** The `market_chart` body: `prices` is a `[epochMs, price]` pair per day. */
 type MarketChart = { prices: [number, number][] };
+
+const RATE_LIMITED_STATUS = 429;
+
+export class CoinGeckoRequestError extends Error {
+  public readonly status: number;
+
+  constructor(status: number) {
+    super(`CoinGecko request failed: ${status}`);
+    this.name = 'CoinGeckoRequestError';
+    this.status = status;
+    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that `instanceof`
+    // relies on unless it is restored explicitly.
+    Object.setPrototypeOf(this, CoinGeckoRequestError.prototype);
+  }
+}
+
+/**
+ * Thrown when every requested coin failed. It still names the coins that were rate-limited,
+ * because a run where the first coin fails by itself and every other one is rate-limited
+ * answers nothing, and the next run has to know where the limit began.
+ */
+export class CryptoHistoryFailure extends Error {
+  public readonly rateLimitedCurrencies: CryptoCurrency[];
+
+  constructor(rateLimitedCurrencies: CryptoCurrency[]) {
+    super('CoinGecko history request failed for every coin');
+    this.name = 'CryptoHistoryFailure';
+    this.rateLimitedCurrencies = rateLimitedCurrencies;
+    Object.setPrototypeOf(this, CryptoHistoryFailure.prototype);
+  }
+}
+
+const isRateLimited = (reason: unknown): boolean =>
+  reason instanceof CoinGeckoRequestError && reason.status === RATE_LIMITED_STATUS;
 
 const readChart = guard(
   [
     (response: Response) => !response.ok,
     (response: Response): never => {
-      throw new Error(`CoinGecko request failed: ${response.status}`);
+      throw new CoinGeckoRequestError(response.status);
     },
   ],
   (response: Response): Promise<MarketChart> => response.json(),
@@ -61,6 +102,41 @@ const fetchOneCoinHistory = async (
 };
 
 /**
+ * The most `market_chart` requests in flight at once. The free tier rate-limits a burst, and a
+ * holder of many coins would otherwise open one request per coin together.
+ */
+export const CRYPTO_HISTORY_CONCURRENCY = 2;
+
+/**
+ * Runs the tasks through a small pool and settles each on its own, in task order, so a failed
+ * task never stops the others and the result lines up with the input by index.
+ */
+const settleWithConcurrencyCap = async <Result>(
+  tasks: readonly (() => Promise<Result>)[],
+  cap: number,
+): Promise<PromiseSettledResult<Result>[]> => {
+  const results: PromiseSettledResult<Result>[] = [];
+  let nextIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+
+      try {
+        results[index] = { status: 'fulfilled', value: await tasks[index]() };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(cap, tasks.length) }, worker));
+
+  return results;
+};
+
+/**
  * Fetch the daily USD price series for the last `days` days for every HELD
  * crypto (`currencies`, defaulting to every supported one), one
  * `market_chart` request per coin (clamped to the free tier's 365-day
@@ -80,25 +156,34 @@ export const fetchCryptoHistory = async (
   currencies: readonly CryptoCurrency[] = cryptoCurrencyOptions,
 ): Promise<CryptoHistory> => {
   if (currencies.length === 0) {
-    return { entries: [], failedCurrencies: [] };
+    return { entries: [], failedCurrencies: [], rateLimitedCurrencies: [] };
   }
 
-  const results = await Promise.allSettled(
-    currencies.map((currency) =>
-      fetchOneCoinHistory(currency, cryptoCoinGeckoId[currency], days, fetchImpl),
+  const results = await settleWithConcurrencyCap(
+    currencies.map(
+      (currency) => () =>
+        fetchOneCoinHistory(currency, cryptoCoinGeckoId[currency], days, fetchImpl),
     ),
+    CRYPTO_HISTORY_CONCURRENCY,
   );
 
   const fulfilled = results.filter(
     (r): r is PromiseFulfilledResult<HistoryRateEntry[]> => r.status === 'fulfilled',
   );
 
+  const rateLimitedCurrencies = currencies.filter((_, index) => {
+    const result = results[index];
+
+    return result.status === 'rejected' && isRateLimited(result.reason);
+  });
+
   if (fulfilled.length === 0) {
-    throw new Error('CoinGecko history request failed for every coin');
+    throw new CryptoHistoryFailure(rateLimitedCurrencies);
   }
 
   return {
     entries: fulfilled.flatMap((r) => r.value),
     failedCurrencies: currencies.filter((_, index) => results[index].status === 'rejected'),
+    rateLimitedCurrencies,
   };
 };

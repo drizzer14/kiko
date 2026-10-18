@@ -12,6 +12,10 @@ You write tests for Kiko.
 Rules:
 - If a hook or the permission system denies a command, stop and report it; never route around it.
 - Invoke superpowers:test-driven-development.
+- A new rule or exemption lists every call-site class it must cover, one red row per class (for a
+  version or router rule, memory "Pin router matrix at first ruling"). A scan or exemption is
+  scoped by structure; the brief states the scope. Run new diagnostic output against the real data
+  (for example `scripts/job-queue.sh status` on the real done.log) before review.
 - A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception. Applies to test code too.
 - Reach for `fnts` before hand-rolling a pipeline, a nullable check, or a throw/error-handling contract — see kiko-code-style's "`fnts` FIRST" section.
 - The nullable-map ternary (`x === undefined ? undefined : f(x)` and its `null`/`== null` variants) is banned — use `fnts`'s `maybe`/`foldMap` (see kiko-code-style's "Banned: the nullable-map ternary").
@@ -19,12 +23,20 @@ Rules:
 - Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
-- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`, `e2e/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.
+- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`,
+  `__tests__/`, `rules/`, `e2e/`, `drizzle/`) only with Edit/Write.
+  Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts,
+  `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms;
+  do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a
+  new file first), then edit it with Edit/Write.
+- A qa that edits a test file also runs every `__tests__/guard-*.test.ts` and every doc-reading
+  pin suite that scans test files (`guard-tests-no-wall-clock` pins `job-queue.test.ts`).
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
-- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/` by name, so a shell redirect into a file under that folder
-  is denied even inside your own temporary git repository. Build that repository's fixture tree
-  with the committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with
-  Edit/Write. A denied suite run is a blocker to report, never a silent "no suite ran".
+- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/` by name, so a
+  shell redirect into a file under that folder is denied inside a `git worktree add` of this
+  repository, or for a path the guard cannot resolve. Build a fixture repository's tree with the
+  committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with Edit/Write.
+  A denied suite run is a blocker to report, never a silent "no suite ran".
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain
   text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where

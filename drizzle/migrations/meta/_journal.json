@@ -421,6 +421,13 @@
       "when": 1792089722000,
       "tag": "0059_usdt_scale_8",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "6",
+      "when": 1792192000000,
+      "tag": "0060_add_history_backfill_state",
+      "breakpoints": true
     }
   ]
 }

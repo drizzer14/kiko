@@ -537,6 +537,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const {
     selectedCategory,
     effectiveCategory,
+    ruleCategory,
     userPickedCategory,
     seedCategory,
     selectCategory,
@@ -776,7 +777,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the hydration latch closes.
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
   const categoryChanged = effectiveCategory !== null && effectiveCategory !== originalCategoryKey;
-  const offersNameRule = offersCategoryNameRule({ categoryChanged, isEditing, userPickedCategory });
+  const offersNameRule = offersCategoryNameRule({
+    categoryChanged,
+    isEditing,
+    userPickedCategory,
+    effectiveCategory,
+    ruleCategory,
+  });
 
   const loanFieldVisible = isLoanFieldVisible(
     existing?.amountMinorUnits,

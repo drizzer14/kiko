@@ -6,6 +6,7 @@ import {
   winningRule,
 } from '@kiko/categories/category-rules';
 import maybe, { foldMap } from 'fnts/maybe';
+import { isCrypto } from '@kiko/currency/currency';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
@@ -106,6 +107,37 @@ describe('buildDemoSnapshot', () => {
     }
   });
 
+  it('holds UAH, EUR and at least five curated coins in the crypto account, one of them outside the top 30 with a dated price history', () => {
+    const cryptoAccount = snapshot.accounts.find((account) => account.kind === 'crypto');
+    const cryptoHoldings = snapshot.holdings.filter(
+      (holding) => holding.accountId === cryptoAccount?.id,
+    );
+    const codes = cryptoHoldings.map((holding) => holding.currency);
+    const outsideTopThirtyDays = snapshot.currencyRateHistory
+      .filter((row) => row.base === 'CGPT')
+      .map((row) => row.day);
+
+    expect(new Set(codes.filter(isCrypto)).size).toBeGreaterThanOrEqual(5);
+    expect(codes).toEqual(
+      expect.arrayContaining(['UAH', 'EUR', 'USDC', 'ETH', 'BNB', 'USDT', 'CGPT']),
+    );
+    expect(cryptoHoldings.every((holding) => holding.type === 'crypto_asset')).toBe(true);
+    expect(new Set(outsideTopThirtyDays).size).toBeGreaterThan(1);
+  });
+
+  it('prices and charts every coin it holds, so none drops out of the net worth', () => {
+    const heldCoins = new Set(
+      snapshot.holdings.map((holding) => holding.currency).filter(isCrypto),
+    );
+    const pricedBases = new Set(snapshot.currencyRates.map((rate) => rate.base));
+    const chartedBases = new Set(snapshot.currencyRateHistory.map((row) => row.base));
+
+    for (const coin of heldCoins) {
+      expect(pricedBases.has(coin)).toBe(true);
+      expect(chartedBases.has(coin)).toBe(true);
+    }
+  });
+
   it('gives every bank account a catalog bank id, as a post-0049 device stores it, and no other kind a bank id', () => {
     const bankIdByKind = snapshot.accounts.map((account) => [account.kind, account.bankId]);
 
@@ -121,7 +153,7 @@ describe('buildDemoSnapshot', () => {
   });
 
   // The App Store reviewer reaches Connect only on a connectable bank's page
-  // (Guideline 2.3.1(a)), so the demo must hold one account per connectable bank.
+  // (Guideline 2.5.19), so the demo must hold one account per connectable bank.
   it('holds at least one bank account per connectable catalog bank, and one Other bank', () => {
     const demoBankIds = new Set(snapshot.accounts.map((account) => account.bankId));
     const connectableIds = bankCatalog
@@ -235,7 +267,7 @@ describe('buildDemoSnapshot', () => {
   });
 
   // The App Store reviewer reaches the rule editor and the rule cards only through the demo
-  // file (Guideline 2.3.1(a)), so the file must carry a rule on a name alone and one on several
+  // file (Guideline 2.5.19), so the file must carry a rule on a name alone and one on several
   // conditions.
   describe('category rules', () => {
     const rulesOf = (demoSnapshot: typeof snapshot) =>

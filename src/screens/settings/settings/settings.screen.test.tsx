@@ -10,6 +10,7 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
@@ -58,6 +59,15 @@ const mockUseLiveQuery = jest.fn((_query: SqlQuery, _tables: string[], enabled =
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: Parameters<typeof mockUseLiveQuery>) => mockUseLiveQuery(...args),
 }));
+
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
+
+afterEach(() => {
+  holdCurrencies([]);
+});
 
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which
 // a standalone screen render lacks; stand it in with a spy so this test can
@@ -341,6 +351,25 @@ describe('SettingsScreen', () => {
     await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'USD');
 
     expect(getByTestId('currency-option-USD')).toBeTruthy();
+    expect(queryByTestId('currency-option-BTC')).toBeNull();
+  });
+
+  it('base currency picker shows no group heading and no coin', async () => {
+    holdCurrencies(['USD', 'BTC']);
+    const { getByPlaceholderText, getByTestId, getAllByTestId, queryByTestId } =
+      await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-row-base-currency'));
+
+    expect(queryByTestId(/^currency-group-/)).toBeNull();
+    expect(
+      getAllByTestId(/^currency-option-/)
+        .slice(0, 3)
+        .map((row) => String(row.props.testID)),
+    ).toEqual(['currency-option-USD', 'currency-option-UAH', 'currency-option-EUR']);
+
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'BTC');
+
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 

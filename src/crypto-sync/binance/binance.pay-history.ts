@@ -9,6 +9,36 @@ import {
   BINANCE_PAY_SPAN_HINTS_FIELD,
   binanceWalkCursorOf,
 } from '@kiko/holdings/holding-metadata';
+import {
+  advanceWalkMarks,
+  BinanceWalkStop,
+  type BinanceWalkWriteDeps,
+  commitSettledSpan,
+  defaultWalkWriteDeps,
+  dropReadPoints,
+  halfOf,
+  instantAt,
+  joinSettled,
+  logWalkStop,
+  placeWalletRows,
+  planWalkPasses,
+  readPendingMark,
+  readWalkRoundRobins,
+  roundRobinHooksOf,
+  runWalkPlan,
+  settleRecords,
+  settleUnreadable,
+  type SpanCommit,
+  type SpanRead,
+  type WalkMarkFields,
+  type WalkMarks,
+  walkSpans,
+  type WalkPass,
+  type WalkPlan,
+  type WalkResult,
+  walkWritersOf,
+  type WalkWindow,
+} from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -21,29 +51,6 @@ import {
   fetchAccount,
   type FetchAccountOptions,
 } from './binance.client';
-import {
-  advanceWalkMarks,
-  BinanceWalkStop,
-  btcSatoshis,
-  dropReadPoints,
-  halfOf,
-  logWalkStop,
-  planWalkPasses,
-  readPendingMark,
-  readWalkRoundRobins,
-  roundRobinHooksOf,
-  runWalkPlan,
-  type SpanCommit,
-  type SpanRead,
-  type WalkMarkFields,
-  type WalkMarks,
-  walkSpans,
-  type WalkPass,
-  type WalkPlan,
-  type WalkResult,
-  walkWritersOf,
-  type WalkWindow,
-} from './binance.history-walk';
 import {
   type BinanceWalletKey,
   binanceKeyOf,
@@ -63,18 +70,11 @@ import {
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
 } from './binance.history-client';
-import {
-  commitSettledSpan,
-  instantAt,
-  joinSettled,
-  placeWalletRows,
-  settleRecords,
-  settleUnreadable,
-} from './binance.history-records';
+import { btcSatoshis } from './binance.amounts';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
 
 /** Binance rejects a Pay `startTime`/`endTime` gap of 90 days or more. */
 export const PAY_WINDOW_MS = 89 * DAY_MS;
@@ -580,6 +580,7 @@ const commitSpan = (
       placeWalletRows({
         accountId,
         planned,
+        config: BINANCE_WALK_CONFIG,
         listHoldings: deps.listHoldings,
         ensureHoldings: deps.ensureHoldings,
         missingCode: 'pay-holding-missing',

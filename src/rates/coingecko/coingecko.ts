@@ -1,12 +1,11 @@
 import { guard } from 'fnts';
 import { PRICE_ENDPOINT } from '@env';
+import maybe, { foldMap } from 'fnts/maybe';
+import { isRecord } from '@kiko/type-guards';
 import { cryptoCurrencyOptions, type CryptoCurrency } from '@kiko/currency/currency';
 
 import type { RateEntry } from '../conversion';
 import { cryptoCoinGeckoId } from '../coingecko-ids';
-
-/** The `/simple/price` body: one `{ usd }` object per requested coin id. */
-type CoinGeckoPrices = Record<string, { usd: number }>;
 
 /**
  * Read a CoinGecko simple-price body, or throw on a non-ok response. The
@@ -24,31 +23,15 @@ const readPrice = guard(
 );
 
 // A 200 with an unexpected body is as real a failure as a 429 — CoinGecko's free
-// tier returns `{}` (and sometimes an error object) under load. Every REQUESTED
-// coin id must carry a finite `usd`, else the body is rejected with a typed error
-// rather than throwing a bare TypeError downstream — never the full supported
-// set: a scoped request (see `currencies` below) never needed a coin outside it.
-const isCoinGeckoPrices = (value: unknown, ids: readonly string[]): value is CoinGeckoPrices => {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
+// tier returns `{}` (and sometimes an error object) under load. A coin's own
+// missing or non-finite `usd` leaves only that coin unpriced, so one delisted or
+// renamed id never blocks the coins CoinGecko did answer.
+const finiteUsdOf = (body: Record<string, unknown>, id: string): number | undefined => {
+  const entry = body[id];
 
-  for (const id of ids) {
-    const entry = record[id];
-
-    if (
-      typeof entry !== 'object' ||
-      entry === null ||
-      !('usd' in entry) ||
-      typeof (entry as { usd: unknown }).usd !== 'number' ||
-      !Number.isFinite((entry as { usd: number }).usd)
-    ) {
-      return false;
-    }
-  }
-
-  return true;
+  return isRecord(entry) && typeof entry.usd === 'number' && Number.isFinite(entry.usd)
+    ? entry.usd
+    : undefined;
 };
 
 const priceUrl = (ids: readonly string[]): string =>
@@ -58,7 +41,8 @@ const priceUrl = (ids: readonly string[]): string =>
  * Fetch the current USD price of every HELD crypto (`currencies`, defaulting
  * to every supported one) from CoinGecko's public simple-price endpoint —
  * never a coin nobody holds (kiko-architecture: no request for data the user
- * does not have). Returns one `<crypto>->USD` entry per requested coin; other
+ * does not have). Returns one `<crypto>->USD` entry per requested coin
+ * CoinGecko priced, and rejects only when none was; other
  * crypto pairs are composed downstream from the fiat cross rates
  * (`rates-refresh.ts`). An empty `currencies` list makes no request at all
  * and resolves to `[]`.
@@ -75,14 +59,27 @@ export const fetchCryptoPrices = async (
   const response = await fetchImpl(priceUrl(ids));
   const data: unknown = await readPrice(response);
 
-  if (!isCoinGeckoPrices(data, ids)) {
-    throw new Error('CoinGecko price response did not contain a finite usd value for every coin');
+  const body = isRecord(data) ? data : {};
+  const priced = currencies.flatMap(
+    (base): RateEntry[] =>
+      foldMap(maybe(finiteUsdOf(body, cryptoCoinGeckoId[base])), (rate) => [
+        { base, quote: 'USD', rate, source: 'coingecko' },
+      ]) ?? [],
+  );
+
+  if (priced.length === 0) {
+    throw new Error('CoinGecko price response did not contain a finite usd value for any coin');
   }
 
-  return currencies.map((base) => ({
-    base,
-    quote: 'USD',
-    rate: (data as CoinGeckoPrices)[cryptoCoinGeckoId[base]].usd,
-    source: 'coingecko',
-  }));
+  const pricedBases = new Set(priced.map((entry) => entry.base));
+  const unpriced = currencies.filter((base) => !pricedBases.has(base));
+
+  if (unpriced.length > 0) {
+    // Codes only, no amounts: the one trace of a coin CoinGecko dropped, since the caller sees a
+    // shorter list and nothing else.
+    // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) coins CoinGecko left unpriced
+    console.warn('[coingecko] coins left unpriced', { currencies: unpriced });
+  }
+
+  return priced;
 };

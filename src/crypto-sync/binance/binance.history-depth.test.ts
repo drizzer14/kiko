@@ -1,12 +1,7 @@
 import { DAY_MS } from '@kiko/dates';
-
 import {
   createDepthMemories,
   createDepthMemory,
-  DEPTH_EXTRAPOLATION_MAX_MS,
-  DEPTH_MARGIN_CAP_MS,
-  DEPTH_MARGIN_MS,
-  DEPTH_RESOLUTION_MS,
   hasDepthLapsed,
   isDepthMarginCapped,
   knownStartOf,
@@ -15,7 +10,15 @@ import {
   narrowRefusedStart,
   rememberServedStart,
   widenDepthMargin,
-} from './binance.history-depth';
+} from '@kiko/crypto-sync/exchange/walk';
+
+import {
+  BINANCE_DEPTH_CONFIG,
+  DEPTH_EXTRAPOLATION_MAX_MS,
+  DEPTH_MARGIN_CAP_MS,
+  DEPTH_MARGIN_MS,
+  DEPTH_RESOLUTION_MS,
+} from './binance.depth-config';
 
 const START = 1_700_000_000_000;
 const WIDTH = 30 * DAY_MS;
@@ -46,6 +49,7 @@ const narrow = (input: {
     refusedMs: START,
     endMs: START + WIDTH,
     floorMs: FLOOR,
+    config: BINANCE_DEPTH_CONFIG,
     ...input,
   });
 
@@ -296,6 +300,7 @@ describe('narrowLapsedStart', () => {
       highMs: START + HOURS_10_MS,
       endMs: START + WIDTH,
       floorMs: FLOOR,
+      config: BINANCE_DEPTH_CONFIG,
       ...input,
     });
 
@@ -400,11 +405,11 @@ describe('the depth memory', () => {
   const SERVED_START = START + 40 * DAY_MS;
 
   it('knows no start before anything was asked', () => {
-    expect(knownStartOf(createDepthMemory(), SERVED_AT)).toBeUndefined();
+    expect(knownStartOf(createDepthMemory(BINANCE_DEPTH_CONFIG), SERVED_AT)).toBeUndefined();
   });
 
   it('moves a served start forward with the clock, and adds the margin for the time a request takes', () => {
-    const memory = createDepthMemory();
+    const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
     rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
 
     expect(knownStartOf(memory, SERVED_AT)).toBe(SERVED_START + DEPTH_MARGIN_MS);
@@ -413,14 +418,14 @@ describe('the depth memory', () => {
   });
 
   it('never moves a start back when the clock reads earlier than it did when the start was served', () => {
-    const memory = createDepthMemory();
+    const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
     rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
 
     expect(knownStartOf(memory, SERVED_AT - 3_600_000)).toBe(SERVED_START + DEPTH_MARGIN_MS);
   });
 
   it('keeps a refused start where it is: it is a bound below the ground, with no time it was served at', () => {
-    const memory = createDepthMemory();
+    const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
     rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: undefined });
 
     expect(knownStartOf(memory, SERVED_AT)).toBe(SERVED_START);
@@ -428,7 +433,7 @@ describe('the depth memory', () => {
   });
 
   it('doubles the margin each time it is widened, and starts it over with the next served start', () => {
-    const memory = createDepthMemory();
+    const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
     rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
 
     widenDepthMargin(memory);
@@ -441,7 +446,7 @@ describe('the depth memory', () => {
   });
 
   it('stops doubling the margin at the cap, which is a refusal the margin cannot answer', () => {
-    const memory = createDepthMemory();
+    const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
     rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
 
     const margins = [1, 2, 3, 4, 5].map(() => {
@@ -462,7 +467,7 @@ describe('the depth memory', () => {
   });
 
   it('starts the capped margin over with the next served start', () => {
-    const memory = createDepthMemory();
+    const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
     rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
     widenDepthMargin(memory);
     widenDepthMargin(memory);
@@ -477,15 +482,17 @@ describe('the depth memory', () => {
 
   describe('the time a served start is moved forward by', () => {
     it('has not lapsed for a memory that holds no start, or a start that was refused', () => {
-      const refused = createDepthMemory();
+      const refused = createDepthMemory(BINANCE_DEPTH_CONFIG);
       rememberServedStart(refused, { startMs: SERVED_START, servedAtMs: undefined });
 
-      expect(hasDepthLapsed(createDepthMemory(), SERVED_AT + DAY_MS)).toBe(false);
+      expect(hasDepthLapsed(createDepthMemory(BINANCE_DEPTH_CONFIG), SERVED_AT + DAY_MS)).toBe(
+        false,
+      );
       expect(hasDepthLapsed(refused, SERVED_AT + DAY_MS)).toBe(false);
     });
 
     it('lapses once the time since the start was served is over the bound, and not at it', () => {
-      const memory = createDepthMemory();
+      const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
       rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
 
       expect(hasDepthLapsed(memory, SERVED_AT + DEPTH_EXTRAPOLATION_MAX_MS)).toBe(false);
@@ -493,7 +500,7 @@ describe('the depth memory', () => {
     });
 
     it('has not lapsed when the clock reads earlier than it did when the start was served', () => {
-      const memory = createDepthMemory();
+      const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
       rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
 
       expect(hasDepthLapsed(memory, SERVED_AT - DAY_MS)).toBe(false);
@@ -504,7 +511,7 @@ describe('the depth memory', () => {
     const LAPSED_AT = SERVED_AT + DEPTH_EXTRAPOLATION_MAX_MS + 1;
     const movedOnMs = SERVED_START + DEPTH_EXTRAPOLATION_MAX_MS + 1 + DEPTH_MARGIN_MS;
     const lapsedMemory = () => {
-      const memory = createDepthMemory();
+      const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
       rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
 
       return memory;
@@ -527,21 +534,24 @@ describe('the depth memory', () => {
     });
 
     it('leaves none open while the memory has not lapsed, or holds a refused start or none', () => {
-      const refused = createDepthMemory();
+      const refused = createDepthMemory(BINANCE_DEPTH_CONFIG);
       rememberServedStart(refused, { startMs: SERVED_START, servedAtMs: undefined });
 
       expect(
         lapsedRangeOf(lapsedMemory(), SERVED_AT + DEPTH_EXTRAPOLATION_MAX_MS, START),
       ).toBeUndefined();
       expect(lapsedRangeOf(refused, LAPSED_AT, START)).toBeUndefined();
-      expect(lapsedRangeOf(createDepthMemory(), LAPSED_AT, START)).toBeUndefined();
+      expect(
+        lapsedRangeOf(createDepthMemory(BINANCE_DEPTH_CONFIG), LAPSED_AT, START),
+      ).toBeUndefined();
     });
   });
 });
 
 describe('the depth memories of the series of a run', () => {
   const NOW_MS = START + 5_000;
-  const memoriesAt = (nowMs: () => number = () => NOW_MS) => createDepthMemories(nowMs);
+  const memoriesAt = (nowMs: () => number = () => NOW_MS) =>
+    createDepthMemories(nowMs, BINANCE_DEPTH_CONFIG);
 
   it('gives each series a memory of its own, the same one every time', () => {
     const { memoryOf } = memoriesAt();
@@ -608,5 +618,18 @@ describe('the depth memories of the series of a run', () => {
     rememberServedStart(memoryOf('MAIN_MARGIN'), { startMs: START + 9, servedAtMs: undefined });
     rememberServedStart(memoryOf('MARGIN_MAIN'), { startMs: START + 2, servedAtMs: undefined });
     expect(refusedBoundMs()).toBe(START + 9);
+  });
+});
+
+describe('BINANCE_DEPTH_CONFIG', () => {
+  it('carries the measured numbers of the Binance depth, each under its own name', () => {
+    expect(BINANCE_DEPTH_CONFIG).toEqual({
+      resolutionMs: 1_000,
+      marginMs: 1_000,
+      marginCapMs: 8_000,
+      extrapolationMaxMs: 120_000,
+      maxRefusals: 6,
+      maxLapses: 1,
+    });
   });
 });

@@ -19,13 +19,11 @@ import {
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
-import { Money } from '@kiko/currency/money';
 import { logFailure } from '@kiko/diagnostics';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 
-import { BINANCE_ASSET } from './binance.client';
-import type { BinanceWalkWriteDeps } from './binance.walk-write-deps';
-import { type BinanceWalletKey, binanceKeyOf, WALLET_HOLDING_NAMES } from './binance.holding-keys';
+import type { ExchangeWalkConfig } from './walk-config';
+import type { BinanceWalkWriteDeps } from './walk-write-deps';
 
 /** What one walk reports: rows imported this run, and whether it reached the end of its span. */
 export type WalkResult = { imported: number; complete: boolean };
@@ -1219,24 +1217,6 @@ export const runWalkPlan = async (input: {
   return { imported, complete };
 };
 
-const isDecimalInput = (amount: unknown): amount is string | number =>
-  typeof amount === 'number' || (typeof amount === 'string' && amount.trim() !== '');
-
-/**
- * A BTC decimal string (or number) to satoshis, or `null` when it is not a finite
- * number. A blank string is no amount: `Number('')` reads as 0 and would import a
- * zero-satoshi row.
- */
-export const btcSatoshis = (amount: unknown): number | null => {
-  if (!isDecimalInput(amount)) {
-    return null;
-  }
-
-  const value = Number(amount);
-
-  return Number.isFinite(value) ? Money.fromMajor(BINANCE_ASSET, value).minorUnits : null;
-};
-
 /**
  * A window the walk will not commit, because a row in it cannot be placed or
  * trusted. The code is a fixed tag; a swallowed failure logs only an error's name
@@ -1432,15 +1412,17 @@ export const walkSpans = async <Page>(input: {
  */
 export const resolveWalletHoldings = async (input: {
   accountId: string;
-  keys: BinanceWalletKey[];
-  createKeys?: BinanceWalletKey[];
+  keys: string[];
+  createKeys?: string[];
+  config: ExchangeWalkConfig<Error, unknown>;
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
   ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
-}): Promise<Map<BinanceWalletKey, HoldingRow>> => {
-  const { accountId, keys, createKeys = keys, listHoldings, ensureHoldings } = input;
+}): Promise<Map<string, HoldingRow>> => {
+  const { accountId, keys, createKeys = keys, config, listHoldings, ensureHoldings } = input;
   let current = await listHoldings(accountId);
   const missing = keys.filter(
-    (key) => createKeys.includes(key) && !current.some((holding) => binanceKeyOf(holding) === key),
+    (key) =>
+      createKeys.includes(key) && !current.some((holding) => config.holdingKeyOf(holding) === key),
   );
 
   if (missing.length > 0) {
@@ -1448,11 +1430,11 @@ export const resolveWalletHoldings = async (input: {
       missing.map(
         (key): ExchangeHolding => ({
           accountId,
-          name: WALLET_HOLDING_NAMES[key],
+          name: config.walletHoldingNameOf(key),
           type: 'crypto_asset',
-          currency: BINANCE_ASSET,
+          currency: config.asset,
           balanceMinorUnits: 0,
-          metadataField: 'binanceAsset',
+          metadataField: config.metadataField,
           metadataKey: key,
         }),
       ),
@@ -1462,7 +1444,7 @@ export const resolveWalletHoldings = async (input: {
 
   return new Map(
     keys.flatMap((key) => {
-      const found = current.find((holding) => binanceKeyOf(holding) === key);
+      const found = current.find((holding) => config.holdingKeyOf(holding) === key);
 
       return foldMap(maybe(found), (holding) => [[key, holding] as const]) ?? [];
     }),

@@ -25,6 +25,7 @@
     "scripts/checks/closure-table.js",
     "scripts/checks/deps-ranges.js",
     "scripts/checks/mutation-score.js",
+    "scripts/checks/mutation-rerun.js",
     "scripts/checks/comment-only-changes.js",
     "scripts/checks/mutation-ranges.js"
   ],
@@ -33,8 +34,6 @@
     "@typescript/native-preview",
     "jscpd",
     "depcheck",
-    "@env",
-    "babel-plugin-inline-import",
-    "babel-plugin-module-resolver"
+    "@env"
   ]
 }

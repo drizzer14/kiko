@@ -240,6 +240,76 @@ describe('scripts/ff-main.sh moves main', () => {
   });
 });
 
+describe('scripts/ff-main.sh short done.log lines', () => {
+  const shortLine = 'verify label 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z';
+
+  it('warns about a line with fewer than 6 fields and still moves main on a green line', () => {
+    const fixture = createFixture();
+    record(fixture, shortLine, doneLine(fixture.tipCommit));
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+    const warnings = result.stderr.split('\n').filter((line) => line.includes('WARNING'));
+
+    expect(result.status).toBe(0);
+    expect(mainHead(fixture)).toBe(fixture.tipCommit);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(shortLine);
+  });
+
+  it('warns and still ignores the short line, so the refusal stands', () => {
+    const fixture = createFixture();
+    record(fixture, shortLine);
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+
+    expect(result.status).toBe(2);
+    expect(mainHead(fixture)).toBe(fixture.baseCommit);
+    expect(result.stderr.split('\n').filter((line) => line.includes('WARNING'))).toHaveLength(1);
+  });
+
+  describe('a done.log whose old 5-field block predates the head field', () => {
+    const shortAt = (index: number) =>
+      `verify old-${String(index).padStart(3, '0')} 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z`;
+    const leading = Array.from({ length: 60 }, (_, index) => shortAt(index + 1));
+    const warningsOf = (stderr: string) =>
+      stderr.split('\n').filter((line) => line.includes('WARNING'));
+
+    it('summarizes the leading short lines in one WARNING and still moves main', () => {
+      const lateOne = 'verify late-one 1 2026-10-16T22:33:18Z 2026-10-16T22:44:16Z';
+      const lateTwo = 'verify torn';
+      const fixture = createFixture();
+      record(fixture, ...leading, doneLine(fixture.tipCommit), lateOne, lateTwo);
+
+      const result = runScript(fixture, [fixture.tipCommit]);
+      const warnings = warningsOf(result.stderr);
+
+      expect(result.status).toBe(0);
+      expect(mainHead(fixture)).toBe(fixture.tipCommit);
+      expect(warnings).toHaveLength(3);
+      expect(warnings[0]).toContain('WARNING: 60 done.log');
+      expect(warnings[0]).toContain(shortAt(60));
+      expect(warnings[1]).toContain(lateOne);
+      expect(warnings[1]).toContain('62');
+      expect(warnings[2]).toContain(lateTwo);
+      expect(warnings[2]).toContain('63');
+    });
+
+    it('gives a file of only short lines one summary WARNING and the refusal stands', () => {
+      const fixture = createFixture();
+      record(fixture, ...leading.slice(0, 5));
+
+      const result = runScript(fixture, [fixture.tipCommit]);
+      const warnings = warningsOf(result.stderr);
+
+      expect(result.status).toBe(2);
+      expect(mainHead(fixture)).toBe(fixture.baseCommit);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('WARNING: 5 done.log');
+      expect(warnings[0]).toContain(shortAt(5));
+    });
+  });
+});
+
 const BLOCK_LABELS = [
   'CHECK FAILED: ff-main.sh',
   'WHAT FAILED:',
@@ -431,6 +501,280 @@ describe('scripts/ff-main.sh refuses', () => {
 
     expect(lines).toContain(`WHAT FAILED:    ${what}`);
     expect(lines.find((line) => line.startsWith('DETAILS:'))).toContain(details);
+  });
+});
+
+const PLUGIN_MANIFEST = 'harness/kiko/.claude-plugin/plugin.json';
+
+const pluginManifest = (version: string): string =>
+  `${JSON.stringify({ name: 'kiko', version })}\n`;
+
+// main gets the plugin manifest first, so a commit above it changes harness/kiko against main's
+// own HEAD, which is what the rule compares.
+const withMainManifest = (fixture: Fixture, manifest: string): void => {
+  const head = commitFile(fixture, fixture.work, PLUGIN_MANIFEST, manifest);
+  runGit(fixture.main, fixture.environment, 'merge', '--ff-only', head);
+};
+
+type ChangeKind = 'harness' | 'other' | 'manifest-only' | 'other-with-manifest';
+
+const CHANGE: Record<ChangeKind, { files: string[]; touchesManifest: boolean }> = {
+  harness: { files: ['harness/kiko/skills/example/SKILL.md'], touchesManifest: true },
+  other: { files: ['unrelated.txt'], touchesManifest: false },
+  'manifest-only': { files: [], touchesManifest: true },
+  'other-with-manifest': { files: ['unrelated.txt'], touchesManifest: true },
+};
+
+// A null manifest deletes the file from the commit under test.
+const commitPluginChange = (
+  fixture: Fixture,
+  kind: ChangeKind,
+  manifest: string | null,
+): string => {
+  for (const file of CHANGE[kind].files) {
+    writeFile(fixture.work, file, 'changed\n');
+  }
+
+  if (CHANGE[kind].touchesManifest) {
+    if (manifest === null) {
+      runGit(fixture.work, fixture.environment, 'rm', '-q', PLUGIN_MANIFEST);
+    } else {
+      writeFile(fixture.work, PLUGIN_MANIFEST, manifest);
+    }
+  }
+
+  runGit(fixture.work, fixture.environment, 'add', '-A');
+  runGit(fixture.work, fixture.environment, 'commit', '-qm', 'plugin change');
+
+  return runGit(fixture.work, fixture.environment, 'rev-parse', 'HEAD');
+};
+
+describe('scripts/ff-main.sh plugin version rule', () => {
+  const tabbed = '{\n\t"version"\t:\t"0.4.22"\n}\n';
+
+  // A null main manifest leaves main without one; a null commit manifest deletes it in the commit.
+  it.each<[string, string | null, string | null, ChangeKind, boolean]>([
+    ['at main version', pluginManifest('0.4.21'), pluginManifest('0.4.21'), 'harness', false],
+    ['above main', pluginManifest('0.4.21'), pluginManifest('0.4.22'), 'harness', true],
+    ['below main', pluginManifest('0.4.21'), pluginManifest('0.4.20'), 'harness', false],
+    [
+      '0.4.9 to 0.4.10, the last field',
+      pluginManifest('0.4.9'),
+      pluginManifest('0.4.10'),
+      'harness',
+      true,
+    ],
+    [
+      '0.4.10 to 0.4.9, the last field',
+      pluginManifest('0.4.10'),
+      pluginManifest('0.4.9'),
+      'harness',
+      false,
+    ],
+    [
+      '0.4.21 to 0.5.0, an earlier field',
+      pluginManifest('0.4.21'),
+      pluginManifest('0.5.0'),
+      'harness',
+      true,
+    ],
+    [
+      '0.5.0 to 0.4.21, an earlier field',
+      pluginManifest('0.5.0'),
+      pluginManifest('0.4.21'),
+      'harness',
+      false,
+    ],
+    [
+      '0.99.99 to 1.0.0, the first field',
+      pluginManifest('0.99.99'),
+      pluginManifest('1.0.0'),
+      'harness',
+      true,
+    ],
+    [
+      '0.4.0 to 0.4, fewer fields',
+      pluginManifest('0.4.0'),
+      pluginManifest('0.4'),
+      'harness',
+      false,
+    ],
+    [
+      '0.4.21 to 0.4.21.1, more fields',
+      pluginManifest('0.4.21'),
+      pluginManifest('0.4.21.1'),
+      'harness',
+      true,
+    ],
+    [
+      '0.4.9 to 0.4.09, a leading zero',
+      pluginManifest('0.4.9'),
+      pluginManifest('0.4.09'),
+      'harness',
+      false,
+    ],
+    ['a missing main manifest', null, pluginManifest('0.4.22'), 'harness', false],
+    [
+      'an unparseable main version',
+      pluginManifest('0.4.21-rc'),
+      pluginManifest('0.4.22'),
+      'harness',
+      false,
+    ],
+    ['a missing commit manifest', pluginManifest('0.4.21'), null, 'harness', false],
+    [
+      'an unparseable commit version',
+      pluginManifest('0.4.21'),
+      pluginManifest('0.4.22-rc'),
+      'harness',
+      false,
+    ],
+    [
+      'a compact one-line manifest',
+      pluginManifest('0.4.21'),
+      '{"name":"kiko","version":"0.4.22"}',
+      'harness',
+      true,
+    ],
+    ['tabs around the colon', pluginManifest('0.4.21'), tabbed, 'harness', true],
+    [
+      'no harness change at main version',
+      pluginManifest('0.4.21'),
+      pluginManifest('0.4.21'),
+      'other',
+      true,
+    ],
+    [
+      'a pure manifest bump above main',
+      pluginManifest('0.4.21'),
+      pluginManifest('0.4.22'),
+      'manifest-only',
+      true,
+    ],
+  ])('a version change: %s', (_title, mainManifest, commitManifest, kind, moves) => {
+    const fixture = createFixture();
+
+    if (mainManifest !== null) {
+      withMainManifest(fixture, mainManifest);
+    }
+
+    const before = mainHead(fixture);
+    const head = commitPluginChange(fixture, kind, commitManifest);
+    record(fixture, doneLine(head));
+
+    const result = runScript(fixture, [head]);
+
+    expect(mainHead(fixture)).toBe(moves ? head : before);
+    expect(result.status).toBe(moves ? 0 : 2);
+
+    if (!moves) {
+      expect(result.stderr).toContain('plugin.json');
+    }
+  });
+
+  it.each<[string, string | null, ChangeKind]>([
+    [
+      'a plugin.json-only commit that lowers the version',
+      pluginManifest('0.4.21'),
+      'manifest-only',
+    ],
+    [
+      'a commit outside harness/kiko that lowers the version',
+      pluginManifest('0.4.21'),
+      'other-with-manifest',
+    ],
+    ['a plugin.json-only commit that deletes the manifest', null, 'manifest-only'],
+    [
+      'a plugin.json-only commit with a non-numeric version',
+      pluginManifest('0.5.0-rc.1'),
+      'manifest-only',
+    ],
+  ])('refuses any version decrease: %s', (_title, commitManifest, kind) => {
+    const fixture = createFixture();
+    withMainManifest(fixture, pluginManifest('0.4.22'));
+    const before = mainHead(fixture);
+    const head = commitPluginChange(fixture, kind, commitManifest);
+    record(fixture, doneLine(head));
+
+    const result = runScript(fixture, [head]);
+    const lines = result.stderr.split('\n');
+
+    expect(mainHead(fixture)).toBe(before);
+    expect(result.status).toBe(2);
+    expect(lines).toContain("WHAT FAILED:    A plugin.json version below main's is refused");
+    expect(lines.find((line) => line.startsWith('DETAILS:'))).toContain('0.4.22');
+  });
+
+  it.each<[string, string | null, string | null, ChangeKind]>([
+    [
+      'no harness change at an equal version',
+      pluginManifest('0.4.22'),
+      pluginManifest('0.4.22'),
+      'other-with-manifest',
+    ],
+    [
+      'a plugin.json-only commit that raises the version',
+      pluginManifest('0.4.22'),
+      pluginManifest('0.4.23'),
+      'manifest-only',
+    ],
+    ['no manifest at main or in the commit and no harness change', null, null, 'other'],
+    [
+      'no manifest at main and a plugin.json-only commit that adds one',
+      null,
+      pluginManifest('0.1.0'),
+      'manifest-only',
+    ],
+  ])('moves main without a decrease: %s', (_title, mainManifest, commitManifest, kind) => {
+    const fixture = createFixture();
+
+    if (mainManifest !== null) {
+      withMainManifest(fixture, mainManifest);
+    }
+
+    const head = commitPluginChange(fixture, kind, commitManifest);
+    record(fixture, doneLine(head));
+
+    const result = runScript(fixture, [head]);
+
+    expect(mainHead(fixture)).toBe(head);
+    expect(result.status).toBe(0);
+  });
+
+  it('refuses a harness change after a merge brought main ahead to the same version', () => {
+    const fixture = createFixture();
+    withMainManifest(fixture, pluginManifest('0.4.21'));
+    commitPluginChange(fixture, 'harness', pluginManifest('0.4.22'));
+    runGit(fixture.main, fixture.environment, 'checkout', '-q', '-b', 'other-track');
+    writeFile(fixture.main, PLUGIN_MANIFEST, pluginManifest('0.4.22'));
+    runGit(fixture.main, fixture.environment, 'commit', '-qam', 'other track bump');
+    runGit(fixture.main, fixture.environment, 'checkout', '-q', 'main');
+    runGit(fixture.main, fixture.environment, 'merge', '--ff-only', 'other-track');
+    runGit(fixture.work, fixture.environment, 'merge', '-q', '--no-edit', 'main');
+    const head = runGit(fixture.work, fixture.environment, 'rev-parse', 'HEAD');
+    record(fixture, doneLine(head));
+    const before = mainHead(fixture);
+
+    const result = runScript(fixture, [head]);
+
+    expect(result.status).toBe(2);
+    expect(mainHead(fixture)).toBe(before);
+    expect(result.stderr).toContain('plugin.json');
+    expect(result.stderr).toContain('0.4.22');
+  });
+
+  it('ships a manifest with one "version" key at any depth, so the first match is the top one', () => {
+    const manifest = JSON.parse(readFileSync(join(__dirname, '..', PLUGIN_MANIFEST), 'utf8'));
+    const versionKeysIn = (value: unknown): number =>
+      typeof value !== 'object' || value === null
+        ? 0
+        : Object.entries(value).reduce(
+            (count, [key, child]) => count + (key === 'version' ? 1 : 0) + versionKeysIn(child),
+            0,
+          );
+
+    expect(versionKeysIn(manifest)).toBe(1);
+    expect(typeof manifest.version).toBe('string');
   });
 });
 

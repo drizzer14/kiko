@@ -3,12 +3,15 @@
 Two committed, encrypted export files, generated from the pure demo dataset
 in `../seed/screenshot-seed.ts` and used by two consumers, through the app's
 **real Import UI** — there is no boot-time seed, no build flag, no launch
-argument (Guideline 2.3.1(a)):
+argument (Guideline 2.5.19):
 
-- **`kiko-demo-uk.kiko`** — the user's own manual marketing screenshots
-  (matches the shipped `screenshots/appstore/**/uk/` deliverables). Ukrainian
-  names (Монобанк, Сільпо, Брокер, ...) and `language: 'uk'`, so it imports
-  with the UI in Ukrainian.
+- **`kiko-demo-uk.kiko`** — the user's own manual marketing screenshots.
+  Ukrainian names (Монобанк, Сільпо, Брокер, ...) and `language: 'uk'`, so it
+  imports with the UI in Ukrainian. It matched the shipped
+  `screenshots/appstore/**/uk/` deliverables until the live rule demo rows
+  (below) were added: Home and Statistics now also show those six rows, and the
+  Monobank card balance and the net worth are ₴3,115 lower by their net sum, so a
+  reshoot differs from the shipped images.
 - **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. English
   names for every user-visible text the file carries (Broker, US dollars,
   Government bonds (OVDP), Real estate, Owed to Andrii, ...) and
@@ -42,12 +45,12 @@ Home list and charts on the last 30 days before the **device date**
 (`src/dates/default-range.ts`), and the newest demo row sits two days before the
 anchor. So the files fill Home and the charts from the anchor day onward, but
 they thin out as the device date moves past it: the default 30-day window
-holds about a dozen rows on the anchor day, fewer each week, and none after
+holds 19 rows on the anchor day, fewer each week, and none after
 about four weeks (see `seed/screenshot-seed.ts`). The data thins from about
 the second week, so about four weeks is an upper bound, not a safe age: a file anchored on a past day imports fine but shows a sparse,
 then empty, Home list and spending charts.
 
-There is no date shifting at import time (Guideline 2.3.1(a)): the app imports the
+There is no date shifting at import time (Guideline 2.5.19): the app imports the
 file as written. Keep the files fresh instead: regenerate the files and refresh
 the reviewer kit for **every App Store submission and resubmission**, and
 before a screenshot session.
@@ -99,6 +102,18 @@ unchanged — that is expected, not a bug.
 The demo carries category rules; the contract is in `build-demo-snapshot.test.ts`
 (rule-vs-ledger agreement over en and uk). Regenerating moves the anchor to the
 regeneration day.
+
+## The live rule demo
+
+Six Monobank card rows (`Wolt: ...` and `Bolt Food: ...`, 3 to 12 days before the anchor) sit in
+the default category with no rule over them, so a rule typed live in the app has rows to move. Open
+the Settings tab, then Categories, then Dining, then Add rule, and enter three conditions: Name
+starts with `Wolt`; Amount, Less than, `800` (hryvnias); Type, Expense. Save asks "This changes 3
+transactions."; the pizza, sushi and burgers move to Dining. The refund (an income), the Bolt Food
+order (another name) and the group order (1,450) each fail one condition and stay.
+The merchant is Wolt because the reviewer kit's fake Monobank statement names Glovo (five rows
+under 800 that import as other), so a Glovo rule would count 8 once that statement is imported.
+`build-demo-snapshot.rule-demo.test.ts` pins the rule and the count with the app's own matcher.
 
 ## Importing on a device
 

@@ -1,6 +1,7 @@
 import * as Keychain from 'react-native-keychain';
+import { hardenedFor } from '@kiko/crypto-sync/exchange/credentials';
 
-import { BINANCE_CREDENTIALS_SERVICE, hardenedFor, serviceFor } from './binance.credentials';
+import { BINANCE_CREDENTIALS_SERVICE, serviceFor } from './binance.credentials';
 
 /**
  * Move the single GLOBAL Binance credentials (`kiko.binance.credentials`) to a

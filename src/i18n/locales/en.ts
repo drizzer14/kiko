@@ -98,7 +98,7 @@ export const en = {
     },
     dataImport: {
       amountTooLargeError:
-        'This backup has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
+        'This export file has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
       chooseFile: 'Choose file',
       confirmButton: 'Replace data',
       confirmMessage:
@@ -119,6 +119,8 @@ export const en = {
       rowLabel: 'Import Data',
       successMessage: 'Import complete — {{count}} accounts restored.',
       title: 'Import Data',
+      unknownCurrencyError:
+        'This export file was made by a newer version of Kiko and holds a currency this version does not know, so nothing was imported. Update Kiko and try again. Your current data is unchanged.',
       wrongFileTypeError: 'Choose a Kiko export file (.kiko).',
       wrongKeyError: 'The key is wrong, or the file is corrupted.',
     },
@@ -1062,7 +1064,7 @@ export const en = {
           '1': 'On the "Home" tab, tap "+", or open a holding and tap "Add transaction".',
           '2': 'Choose the "Type": "Expense", "Income", "Exchange", or "Split".',
           '3': 'Choose the holding, enter the amount and a description, and pick a category.',
-          '4': 'Tap "Save". If you picked the category yourself, choose "Apply" to use it for every transaction with that name, or "Cancel" to keep it for this transaction only.',
+          '4': 'Tap "Save". If you picked a category that your rules do not already give this transaction, choose "Apply" to use it for every transaction with that name, or "Cancel" to keep it for this transaction only.',
         },
         title: 'Add a Transaction',
       },
@@ -1113,7 +1115,7 @@ export const en = {
         rowLabel: 'Edit, duplicate, or delete a transaction',
         steps: {
           '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
-          '2': 'Tap it, make your changes, and tap "Save". In a synced or imported transaction, you can change only the category and the loan link.',
+          '2': 'Tap it, make your changes, and tap "Save". If you changed the category, choose "Apply" to use it for every transaction with that name, or "Just for this one". In a synced or imported transaction, you can change only the category and the loan link.',
           '3': 'Touch and hold a transaction you added or imported, then tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
         },
         title: 'Edit, Duplicate, or Delete a Transaction',
@@ -1208,7 +1210,7 @@ export const en = {
         rowLabel: 'Read your statistics',
         steps: {
           '1': 'Open the "Statistics" tab. "Accounts" at the top chooses the accounts that every chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two spending charts.',
-          '2': '"Net Worth Over Time" shows your net worth across those dates. The dashed line is its value on the first day: the line is green above it and red below it.',
+          '2': '"Net Worth Over Time" shows your net worth across those dates. The horizontal dashed line is its value on the first day: the line is green above it and red below it. The vertical dashed line shows your net worth on one day, the last of those dates at first. Drag across the chart to move it to another day.',
           '3': '"By Type" shows what your assets are worth today by holding type, largest first. Loans and anything you owe are not part of it.',
           '4': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
           '5': '"Expenses by Category" shows your spending over the chosen dates, with the total in the middle. "Categories" chooses which categories it counts. The list under the chart shows categories of 5% or more, and "Show all" shows the rest.',
@@ -1331,12 +1333,22 @@ export const en = {
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    currencyField: {
+      groups: {
+        target: 'Holding currency',
+        held: 'Your currencies',
+        fiat: 'Currencies',
+        crypto: 'Crypto',
+      },
+    },
     expandToggle: {
       showAll: 'Show all',
       showLess: 'Show less',
     },
     netWorthLine: {
       loadingHistory: 'Loading history',
+      selectedDay: '{{amount}}, {{date}}',
+      chartAccessibilityLabel: 'Net worth by day',
     },
     pieChart: {
       emptyDefault: 'No accounts to show',
@@ -1792,6 +1804,26 @@ export const en = {
     ZAR: 'South African Rand',
     BTC: 'Bitcoin',
     ETH: 'Ethereum',
-    USDT: 'Tether',
+    USDT: 'USDT',
+    BNB: 'BNB',
+    XRP: 'XRP',
+    USDC: 'USD Coin',
+    SOL: 'Solana',
+    TRX: 'TRON',
+    ZEC: 'Zcash',
+    HYPE: 'Hyperliquid',
+    DOGE: 'Dogecoin',
+    LINK: 'Chainlink',
+    ADA: 'Cardano',
+    NEAR: 'NEAR Protocol',
+    XLM: 'Stellar',
+    BCH: 'Bitcoin Cash',
+    LTC: 'Litecoin',
+    UNI: 'Uniswap',
+    DAI: 'Dai',
+    AVAX: 'Avalanche',
+    SUI: 'Sui',
+    FDUSD: 'First Digital USD',
+    CGPT: 'ChainGPT',
   },
 };

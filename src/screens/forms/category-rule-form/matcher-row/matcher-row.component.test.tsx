@@ -2,16 +2,20 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
+import type { CurrencyGroup } from '@kiko/currency/currency-group';
 
 import { emptyMatcherDraft } from '../rule-draft';
 
 import MatcherRow from './matcher-row.component';
 import type { MatcherRowProps } from './matcher-row.props';
 
+const CURRENCY_GROUPS: CurrencyGroup[] = [{ kind: 'fiat', currencies: ['UAH', 'USD', 'EUR'] }];
+
 const renderRow = (overrides: Partial<MatcherRowProps> = {}) =>
   render(
     <MatcherRow
       draft={emptyMatcherDraft('UAH')}
+      currencyGroups={CURRENCY_GROUPS}
       position={0}
       canRemove={false}
       onChange={jest.fn()}
@@ -141,6 +145,32 @@ describe('MatcherRow', () => {
       await fireEvent.press(getByTestId('currency-option-EUR'));
 
       expect(onChange).toHaveBeenCalledWith({ currency: 'EUR' });
+    });
+
+    it('amount currency lists the groups it is handed, in order', async () => {
+      const { getByTestId, getAllByTestId } = await renderRow({
+        draft: amountDraft,
+        currencyGroups: [
+          { kind: 'held', currencies: ['BTC', 'USD'] },
+          { kind: 'fiat', currencies: ['UAH', 'EUR'] },
+        ],
+      });
+
+      await fireEvent.press(getByTestId('matcher-currency-0'));
+
+      expect(
+        getAllByTestId(/^currency-(group|option)-/)
+          .slice(0, 6)
+          .map((row) => String(row.props.testID)),
+      ).toEqual([
+        'currency-group-held',
+        'currency-option-BTC',
+        'currency-option-USD',
+        'currency-group-fiat',
+        'currency-option-UAH',
+        'currency-option-EUR',
+      ]);
+      expect(getByTestId('currency-group-held')).toHaveTextContent('Your currencies');
     });
 
     it('shows its error under the amount field, not a name error', async () => {

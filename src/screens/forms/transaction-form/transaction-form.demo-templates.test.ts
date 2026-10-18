@@ -15,7 +15,7 @@ import { resolveTemplateSeed } from './template-references';
 // The App Store reviewer opens the demo `.kiko` through the real Import UI and the Templates list
 // names each template's mode, so the form a template opens must be that mode with every stored
 // reference seated: a template whose holding cannot be its mode's payer opens a plain expense and
-// the reviewer never reaches the mode (Guideline 2.3.1(a)). The committed files are read, not the
+// the reviewer never reaches the mode (Guideline 2.5.19). The committed files are read, not the
 // dataset builder, because `src/screens` may not import the `e2e/` tree.
 const FIXTURES = join(__dirname, '../../../../e2e/screenshot/fixtures');
 const DEMO_KEY = join(FIXTURES, 'kiko-demo.key');

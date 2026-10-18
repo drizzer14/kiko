@@ -91,6 +91,22 @@ const sortedById = <Row extends { id: string }>(rows: Row[]): Row[] =>
 
 type Scenario = { name: string; seed: (database: DatabaseSync) => void };
 
+const seedUsdtAndUsdc = (rawDatabase: DatabaseSync): void => {
+  insertAccount(rawDatabase, { id: 'acc-wallet', name: 'Wallet', kind: 'cash', sortOrder: 3 });
+  insertCryptoCashHolding(rawDatabase, {
+    id: 'h-usdt',
+    accountId: 'acc-wallet',
+    name: 'Tether',
+    currency: 'USDT',
+  });
+  insertCryptoCashHolding(rawDatabase, {
+    id: 'h-usdc',
+    accountId: 'acc-wallet',
+    name: 'USD Coin',
+    currency: 'USDC',
+  });
+};
+
 const scenarios: Scenario[] = [
   {
     name: 'creates crypto-from-<source> when no eligible crypto account exists',
@@ -139,6 +155,10 @@ const scenarios: Scenario[] = [
         currency: 'USDT',
       });
     },
+  },
+  {
+    name: 'leaves a cash holding in a coin the 1.0 build never had',
+    seed: seedUsdtAndUsdc,
   },
   {
     name: 'breaks a sort_order tie by created_at, then by id',
@@ -207,6 +227,21 @@ describe('a pre-0044 .kiko restore ends byte-equal to the live migration 0044 up
       expect(sortedById(mirrored.accounts)).toEqual(liveAccounts);
       expect(sortedById(mirrored.holdings)).toEqual(liveHoldings);
     });
+  });
+
+  it('moves only the 1.0 crypto codes', async () => {
+    const rawDatabase = newMigratedDatabase();
+    seedUsdtAndUsdc(rawDatabase);
+    const drizzleDatabase = executingDrizzle<typeof database>(rawDatabase);
+
+    const mirrored = withCryptoCashHoldingsMoved(
+      await drizzleDatabase.select().from(accounts),
+      await holdingRowsOf(drizzleDatabase),
+    );
+    const typeOf = (id: string) => mirrored.holdings.find((holding) => holding.id === id)?.type;
+
+    expect(typeOf('h-usdt')).toBe('crypto_asset');
+    expect(typeOf('h-usdc')).toBe('cash');
   });
 
   it('is a true no-op (same array references) for a snapshot with no crypto cash holding', async () => {

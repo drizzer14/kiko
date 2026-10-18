@@ -11,7 +11,7 @@ verified usage, not dead weight:
   `@babel/plugin-transform-runtime` as helper imports in compiled
   output, never a static import), `@typescript/native-preview` (the
   `tsgo` / TS7 binary, reserved for a future typecheck script that
-  does not exist yet), `jscpd`, `knip`, and `depcheck` (each invoked
+  does not exist yet), `jscpd` and `depcheck` (each invoked
   only via `npx --no-install <tool>` inside its own
   `scripts/checks/*.sh` wrapper, never from a package.json script
   Knip's static scan can see). Also `@env` — the virtual module that
@@ -20,14 +20,9 @@ verified usage, not dead weight:
   it is not a real npm package, so Knip's resolver reports the import
   as an unlisted dependency. The package itself (`react-native-dotenv`)
   is seen through `babel.config.js`; only the synthetic `@env`
-  specifier needs ignoring. Also `babel-plugin-inline-import` — a
-  Babel plugin referenced only as the string `'inline-import'` in
-  `babel.config.js` (it inlines the drizzle-orm migration `.sql`
-  files as string exports), never imported from source, so Knip's
-  static scan cannot see the usage. Also `babel-plugin-module-resolver`
-  — a Babel plugin referenced only as the string `'module-resolver'` in
-  `babel.config.js` (it resolves the `@kiko/*` path aliases to `src/*`),
-  never imported from source, so Knip's static scan cannot see the usage.
+  specifier needs ignoring. The Babel plugins `babel-plugin-inline-import`
+  and `babel-plugin-module-resolver` are not ignored: Knip sees both
+  through `babel.config.js`.
 - **`tsconfig.json` `compilerOptions.types`**: the base
   `@react-native/typescript-config` pins `types: ["jest"]`, which
   drops the Node ambient globals and module typings that three test
@@ -80,15 +75,9 @@ verified usage, not dead weight:
   itself being used). Also `react-native-dotenv` — a Babel plugin referenced only
   as the string `'module:react-native-dotenv'` in `babel.config.js`,
   never imported from source, so depcheck's static scan cannot see the
-  usage and reports it as an unused devDependency. Also
-  `babel-plugin-inline-import` — a Babel plugin referenced only as the
-  string `'inline-import'` in `babel.config.js` (it inlines the
-  drizzle-orm migration `.sql` files as string exports), never
-  imported from source, for the same reason. Also
-  `babel-plugin-module-resolver` — referenced only as the string
-  `'module-resolver'` in `babel.config.js` (it resolves the `@kiko/*`
-  path aliases to `src/*`), never imported from source, for the same
-  reason.
+  usage and reports it as an unused devDependency. The Babel plugins
+  `babel-plugin-inline-import` and `babel-plugin-module-resolver` are
+  not ignored: depcheck sees both through `babel.config.js`.
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
   a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
   flags as a false positive (verified fingerprint:
@@ -171,9 +160,9 @@ verified usage, not dead weight:
   `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
   10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
   `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
-  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.88%,
+  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.55%,
   `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
-  5.75%, `holding-form.screen.test.tsx` 5.63% (every non-test source file over
+  5.75%, `holding-form.screen.test.tsx` 5.36% (every non-test source file over
   the limit is under 2%). A second figure is tracked beside the per-file ones:
   one more run measures the whole scope TOGETHER with the limits raised,
   because a clone between a large file and another file is invisible to the
@@ -197,7 +186,7 @@ verified usage, not dead weight:
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, `rules/`, or `e2e/`, and a while/until process-scan
+  into `src/`, `__tests__/`, `rules/`, `e2e/`, or `drizzle/`, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
@@ -377,6 +366,15 @@ verified usage, not dead weight:
   in `ignore` above, so Knip never walks into it and reports it as an
   unused file. It is reached exactly as far as those checkers are, and
   exercised through their tests.
+- **`knip.json` `ignore`**: `scripts/checks/mutation-rerun.js` — run by path as
+  `node "$DIR/mutation-rerun.js"` in `scripts/checks/mutation.sh` (the TIMEOUT-HEAVY rerun),
+  never a static import, so Knip sees no importer.
+- **`knip.json` `ignore`**: `scripts/checks/mutation-score.js` — run by path as
+  `node "$DIR/mutation-score.js"` in `scripts/checks/mutation.sh` (the change-set scorer and
+  `--rerun-candidates`), never a static import, so Knip sees no importer.
+- **`knip.json` `ignore`**: `scripts/checks/plural-count.js` — spawned by path as a node child
+  process by `scripts/checks/pre-write-guard.js` (`runSpawnedNodeChecker('plural-count.js', ...)`)
+  and by `__tests__/plural-count.test.ts`, never a static import, so Knip sees no importer.
 - **`knip.json` `ignore`**: `scripts/checks/deps-ranges.js` — the same
   shape as `guard-replay.js`/`import-order.js` above.
   `scripts/checks/deps.sh` (part of `check:deps`) reaches it only via a
@@ -391,7 +389,7 @@ verified usage, not dead weight:
   `@kiko/<path>`, and only by a test file. No barrel may export them
   (`--tree` `barrel-leak`), and a production file may not import them
   (`test-only-from-production`), so no test code reaches the App Store
-  build (kiko-compliance 2.3.1(a)). Each entry and its reason:
+  build (kiko-compliance 2.5.19). Each entry and its reason:
   - `test-support/**`: shared test helpers with no owning feature. The
     folder has no barrel.
   - `**/__fixtures__/**`: fixture data (db, monobank, the statement-import
@@ -452,7 +450,7 @@ verified usage, not dead weight:
   any `rules/fixtures/` file among its arguments)**: the
   positive/negative fixture pair that
   proves each project Semgrep rule still fires. A positive fixture is
-  deliberately non-conforming, never-imported code (a hidden Guideline 2.3.1(a)
+  deliberately non-conforming, never-imported code (a hidden Guideline 2.5.19
   feature flag import, a Keychain secret pushed into React state), and each
   pair is near-identical by construction — the negative fixture
   is the positive one plus the fix. Verified: without these exclusions a
@@ -460,8 +458,9 @@ verified usage, not dead weight:
   40% duplicated lines / 43.71% duplicated tokens to jscpd, all by design.
   The
   semgrep `--exclude` is the bare directory name `fixtures` (semgrep matches it
-  per path component), so it hits only `rules/fixtures`; the app's own
-  `src/**/__fixtures__` stays in scope. No coverage is lost:
+  per path component), so it hits every folder named `fixtures` (also
+  `e2e/screenshot/fixtures/**`, which project-wide `check:security` never scans); the
+  app's own `src/**/__fixtures__` stays in scope. For `rules/fixtures` no coverage is lost:
   `npm run check:rules` (`scripts/checks/semgrep-rules.sh`) is the check that
   DOES scan the directory, and it fails if any rule stops matching its positive
   fixture or starts matching its negative one.
@@ -637,17 +636,17 @@ verified usage, not dead weight:
   machine was not proof of a fresh checkout; defaulting to a committed file
   makes them reproducible. Every value is public, non-secret config (same
   rule as `.env` — see `dependency-hygiene.md`'s "`.env` is public-only").
-  Updated 2026-09-18 (Guideline 2.3.1(a) remediation, Task 1): `.env.test` no
+  Updated 2026-09-18 (Guideline 2.3.1(a), now 2.5.19, remediation, Task 1): `.env.test` no
   longer carries a `SHOW_UNREADY_BANKS`-style flag — that release-readiness
   visibility gate was removed outright, not merely defaulted off. The "add
   a bank" sheet's `visibleCatalogEntries`
   (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`)
   now takes no flag argument: it shows every wired-registry provider in the
   catalog unconditionally, so there is nothing left for a test-env value to
-  gate. See the `kiko-architecture` skill's "Guideline 2.3.1(a) — no hidden
+  gate. See the `kiko-architecture` skill's "Guideline 2.5.19 — no hidden
   features" section for the standing rule this codifies.
 - **`e2e/screenshot/` — the demo-dataset subsystem lives outside `src/`,
-  and `knip.json` needs NO entry/ignore for it (2026-09-19, Guideline 2.3.1(a)
+  and `knip.json` needs NO entry/ignore for it (2026-09-19, Guideline 2.3.1(a), now 2.5.19,
   remediation).** `src/` now has **zero** references into `e2e/`, of any
   kind — no static import, no dynamic `require`. The one dynamic `require`
   that used to reach `screenshot-seed.ts` from `MigrationsGate`

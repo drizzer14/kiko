@@ -5,6 +5,8 @@ const makeFetch = (body: unknown, ok = true): typeof fetch =>
 
 const body = { bitcoin: { usd: 65_000 }, ethereum: { usd: 3_200 }, tether: { usd: 1.0007 } };
 
+const FIRST_THREE = ['BTC', 'ETH', 'USDT'] as const;
+
 describe('fetchCryptoPrices', () => {
   it('requests the simple-price endpoint for every crypto id', async () => {
     let sentUrl = '';
@@ -14,7 +16,7 @@ describe('fetchCryptoPrices', () => {
       return { ok: true, json: async () => body, status: 200 };
     }) as unknown as typeof fetch;
 
-    await fetchCryptoPrices(spyFetch);
+    await fetchCryptoPrices(spyFetch, FIRST_THREE);
 
     expect(sentUrl).toBe(
       'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,tether&vs_currencies=usd',
@@ -22,7 +24,7 @@ describe('fetchCryptoPrices', () => {
   });
 
   it('returns one <crypto>->USD entry per coin', async () => {
-    const result = await fetchCryptoPrices(makeFetch(body));
+    const result = await fetchCryptoPrices(makeFetch(body), FIRST_THREE);
 
     expect(result).toEqual([
       { base: 'BTC', quote: 'USD', rate: 65_000, source: 'coingecko' },
@@ -35,14 +37,46 @@ describe('fetchCryptoPrices', () => {
     await expect(fetchCryptoPrices(makeFetch({}, false))).rejects.toThrow('429');
   });
 
-  it('rejects when any requested coin is missing a finite usd price', async () => {
-    await expect(fetchCryptoPrices(makeFetch({ bitcoin: { usd: 65_000 } }))).rejects.toThrow(
-      /CoinGecko/,
-    );
+  it('returns the priced coins when one coin is missing', async () => {
     await expect(
-      fetchCryptoPrices(
-        makeFetch({ bitcoin: { usd: 65_000 }, ethereum: { usd: 3_200 }, tether: { usd: 'lots' } }),
-      ),
+      fetchCryptoPrices(makeFetch({ bitcoin: { usd: 65_000 } }), FIRST_THREE),
+    ).resolves.toEqual([{ base: 'BTC', quote: 'USD', rate: 65_000, source: 'coingecko' }]);
+  });
+
+  it('logs the coins CoinGecko left unpriced, by code only', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await fetchCryptoPrices(makeFetch({ bitcoin: { usd: 65_000 } }), FIRST_THREE);
+
+    expect(warn).toHaveBeenCalledWith('[coingecko] coins left unpriced', {
+      currencies: ['ETH', 'USDT'],
+    });
+    warn.mockRestore();
+  });
+
+  it('logs nothing when every requested coin is priced', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await fetchCryptoPrices(makeFetch(body), FIRST_THREE);
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('leaves out a coin whose usd price is not a finite number', async () => {
+    const result = await fetchCryptoPrices(
+      makeFetch({ bitcoin: { usd: 65_000 }, ethereum: { usd: 3_200 }, tether: { usd: 'lots' } }),
+      FIRST_THREE,
+    );
+
+    expect(result.map((entry) => entry.base)).toEqual(['BTC', 'ETH']);
+  });
+
+  it('rejects when no requested coin has a finite usd price', async () => {
+    await expect(fetchCryptoPrices(makeFetch({}), FIRST_THREE)).rejects.toThrow(/CoinGecko/);
+    await expect(fetchCryptoPrices(makeFetch(null), FIRST_THREE)).rejects.toThrow(/CoinGecko/);
+    await expect(
+      fetchCryptoPrices(makeFetch({ bitcoin: { usd: Number.NaN } }), ['BTC']),
     ).rejects.toThrow(/CoinGecko/);
   });
 

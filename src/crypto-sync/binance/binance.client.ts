@@ -4,8 +4,7 @@ import { BINANCE_API_ENDPOINT } from '@env';
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import either, { bifoldr } from 'fnts/either';
-
-import { signQuery } from './binance.hmac';
+import { signQuery } from '@kiko/crypto-sync/exchange/signing';
 
 /** One spot balance from `/api/v3/account` — decimal strings, per Binance. */
 export type BinanceBalance = { asset: string; free: string; locked: string };

@@ -38,6 +38,11 @@ in the harness repo):
   on a missing scan root. Portable only to a repo that uses the
   `src/design-system/components/<name>/` convention.
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+- H8 generic ports (pff-ios branch harness-h8): the TIMEOUT-HEAVY rerun inside the mutation gate
+  (`mutation.sh`, `mutation-score.js --rerun-candidates`, `mutation-rerun.js`); the gate start
+  defer on load in `job-queue.sh`; the `ff-main.sh` rule refusing a plugin.json version
+  decrease, removal or unreadable version; the `knip-ignore-documented` pin suite
+  (`__tests__/knip-ignore-documented.test.ts`).
 - H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
   comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
   and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks
@@ -57,6 +62,20 @@ in the harness repo):
   `mainFastForward` kind with its scan of scripts and data bodies; the docs for these; in
   `job-queue.sh`: `tree_is_clean` (`--no-optional-locks` and `--untracked-files=all`),
   `confirm_tested_head`, and `read_tested_head`'s unknown rule.
+- H8 task 2, generic queue changes: the `lost` done.log lines (a pruned dead waiter's ticket; a
+  reclaimed dead lock, lock form); the queue `format` stamp (an older copy refuses, exit 2) and
+  the old-copy WARNING; `run_awaited` (`cmd & wait $!`, so a pid-only SIGINT is not lost on bash
+  3.2) with the in-flight command ended first in `stop_on_signal` (`end_in_flight`, before
+  `terminate_job_group`) and again at the top of cleanup on the EXIT path (a pid reaped during a
+  long terminate poll can be reused); the no-settle-sleep rule for queue tests (rendezvous, never
+  a clock; the poll-bound exemption holds only inside the braces of the loop holding the bound,
+  and a renamed `timers/promises` `setTimeout` import counts); the `done.log` short-line WARNING
+  (short
+  lines before the first 6-field line fold into ONE summary WARNING, later ones get their own with
+  the line number). `ff-main.sh` plugin version rule,
+  for a repo that ships a `plugin.json`: refuse (exit 2) a commit changing the plugin folder
+  (`plugin.json` excluded) unless its version is strictly above main's (numeric dotted compare;
+  an unreadable or missing version refuses).
 - H7 set 3, generic doc-suite gate: the `medium.sh` doc-reading-suites Stop step; the `_lib.sh`
   helpers `harness_doc_roots_pattern`, `harness_doc_suites`, `harness_doc_files`,
   `harness_doc_suite_fixtures`, `harness_doc_fingerprint`, and `harness_doc_suites_by_hand`;
@@ -67,6 +86,9 @@ in the harness repo):
   `__tests__/test-support/warm-executables.ts` helper (`warmExecutables`) and its use in the
   tests that exec a fresh script; the `fast.sh` shell, YAML and githooks arm that runs
   `security.sh` beside `comment-line-width.sh`.
+- pff-ios `339a3d7c`: generic `import-order.js` change (`ambientBlockEnd`, `checkRun`,
+  `fixRun`; `__tests__/import-order.test.ts` +4 cases). Portable as is; carry the gap /1
+  closer widening if it lands first.
 - The CLAUDE.md trim (docs/harness/checks.md split).
 
 ## Classification
@@ -223,6 +245,8 @@ Every count and exit code is the orchestrator's own measured result.
   `20457fac`: a heredoc in a scanned script is judged for the scan's kinds; `088a78d7` and
   `7ce17ec5`: comments and test titles). It does
   NOT carry the GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file check (deleted).
+- kill-guard `drizzle/` shell-write deny (`b566307f`): the mechanism is generic, the tree list is
+  kiko's, so port it as a configurable list (`WRITE_GUARDED_TREES`), not a hard-coded `drizzle`.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

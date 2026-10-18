@@ -39,6 +39,8 @@ Rules:
   skill or agent text; point at `make doc-suites` and
   `harness_doc_suites` in `scripts/checks/_lib.sh`, since a new invariant would make the
   list stale.
+- Wrap a long line; never lengthen a pinned one (pin lists only shrink). Never leave a red
+  intermediate commit.
 - A skill states the RULE, never a survey of current usage: "always do X" or
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads
