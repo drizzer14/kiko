@@ -6,6 +6,8 @@ import {
   fetchFlexiblePosition,
   fetchFundingAsset,
   fetchLockedPosition,
+  retryAfterMsFromHeaders,
+  usedApiWeightFromHeaders,
   usedWeightsFromHeaders,
 } from './binance.client';
 
@@ -512,6 +514,41 @@ describe('usedWeightsFromHeaders', () => {
       usedUidWeight1m: undefined,
       usedIpWeight1m: undefined,
     });
+  });
+});
+
+describe('usedApiWeightFromHeaders', () => {
+  it('reads the /api/* weight of the minute', () => {
+    expect(usedApiWeightFromHeaders(new Headers({ 'X-MBX-USED-WEIGHT-1M': '42' }))).toBe(42);
+  });
+
+  it('reads a missing or non-numeric header as undefined', () => {
+    expect(usedApiWeightFromHeaders(new Headers())).toBeUndefined();
+    expect(
+      usedApiWeightFromHeaders(new Headers({ 'X-MBX-USED-WEIGHT-1M': 'abc' })),
+    ).toBeUndefined();
+  });
+
+  it('does not read the SAPI headers', () => {
+    const headers = new Headers({ 'X-SAPI-USED-IP-WEIGHT-1M': '420' });
+
+    expect(usedApiWeightFromHeaders(headers)).toBeUndefined();
+  });
+});
+
+describe('retryAfterMsFromHeaders', () => {
+  it('converts the Retry-After seconds to milliseconds', () => {
+    expect(retryAfterMsFromHeaders(new Headers({ 'Retry-After': '30' }))).toBe(30_000);
+  });
+
+  it('falls back to the default for a missing, zero or non-numeric header', () => {
+    expect(retryAfterMsFromHeaders(new Headers())).toBe(DEFAULT_RETRY_AFTER_MS);
+    expect(retryAfterMsFromHeaders(new Headers({ 'Retry-After': '0' }))).toBe(
+      DEFAULT_RETRY_AFTER_MS,
+    );
+    expect(retryAfterMsFromHeaders(new Headers({ 'Retry-After': 'soon' }))).toBe(
+      DEFAULT_RETRY_AFTER_MS,
+    );
   });
 });
 

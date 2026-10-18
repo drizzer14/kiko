@@ -1,4 +1,5 @@
 export * from './binance.client';
+export * from './binance.cooldown';
 export * from './binance.provider';
 export * from './binance.credentials';
 export { isTrackedBinanceAsset } from './binance.tracked-coin';

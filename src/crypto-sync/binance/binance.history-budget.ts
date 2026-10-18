@@ -9,12 +9,22 @@ import type { BinancePageWeights } from './binance.history-client';
 /**
  * One lane per walk, so a long backfill in one walk cannot starve the others. The
  * capital walk has two: its withdraw reads are the expensive ones, its deposit
- * reads are not.
+ * reads are not. `market` is the public price reads of `src/rates/binance-market/`.
  */
-export type BudgetLane = 'capitalWithdraw' | 'capitalDeposit' | 'pay' | 'transfer' | 'earn';
+export type BudgetLane =
+  | 'capitalWithdraw'
+  | 'capitalDeposit'
+  | 'pay'
+  | 'transfer'
+  | 'earn'
+  | 'market';
 
-/** What one request adds to Binance's per-minute count: UID weight or IP weight, never both. */
-export type CallCost = { uid: number } | { ip: number };
+/**
+ * What one request adds to Binance's per-minute count: UID weight, SAPI IP weight or `/api/*` IP
+ * weight, never more than one. The `/api/*` endpoints count against their own IP limit, so they
+ * carry their own reading.
+ */
+export type CallCost = { uid: number } | { ip: number } | { api: number };
 
 /**
  * Binance's own per-minute UID weight ceiling — what `X-SAPI-USED-UID-WEIGHT-1M` is
@@ -27,6 +37,12 @@ export const UID_WEIGHT_BUDGET_1M = 180_000;
  * network keeps room.
  */
 export const IP_BUDGET_1M = 6_000;
+
+/**
+ * Half of the 6000 per-minute IP limit the `/api/*` endpoints share (`X-MBX-USED-WEIGHT-1M`), so
+ * the account reads and the public price reads of one IP keep room for each other.
+ */
+export const API_IP_BUDGET_1M = 3_000;
 
 /**
  * The inter-request pacing interval for the whole history run. A first sync fans out
@@ -47,6 +63,7 @@ export const LANE_CALL_CAPS: Record<BudgetLane, number> = {
   pay: 20,
   transfer: 80,
   earn: 30,
+  market: 150,
 };
 
 /**
@@ -64,6 +81,7 @@ export const LANE_NARROWING_CALLS: Record<BudgetLane, number> = {
   pay: 0,
   transfer: 397,
   earn: 0,
+  market: 0,
 };
 
 /** The documented weight of one call to each endpoint. */
@@ -74,6 +92,8 @@ export const COSTS = {
   account: { ip: 20 },
   transfer: { ip: 1 },
   earn: { ip: 150 },
+  ticker: { api: 2 },
+  klines: { api: 2 },
 } as const satisfies Record<string, CallCost>;
 
 export type BinanceRunBudget = RunBudget<BudgetLane, CallCost, BinancePageWeights>;
@@ -89,6 +109,7 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
     pay: 0,
     transfer: 0,
     earn: 0,
+    market: 0,
   };
   const narrowingCallsByLane: Record<BudgetLane, number> = {
     capitalWithdraw: 0,
@@ -96,9 +117,11 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
     pay: 0,
     transfer: 0,
     earn: 0,
+    market: 0,
   };
   let usedUidWeight: number | undefined;
   let usedIpWeight: number | undefined;
+  let usedApiWeight: number | undefined;
 
   /** Whether a call is drawn from the lane's narrowing calls rather than its cap. */
   const isNarrowingCall = (lane: BudgetLane, narrowing: boolean): boolean =>
@@ -117,6 +140,12 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
         );
       }
 
+      if ('api' in cost) {
+        return (
+          usedApiWeight === undefined || usedApiWeight + cost.api * (keep + 1) <= API_IP_BUDGET_1M
+        );
+      }
+
       return usedIpWeight === undefined || usedIpWeight + cost.ip * (keep + 1) <= IP_BUDGET_1M;
     },
     record: (lane, page, narrowing = false) => {
@@ -128,6 +157,7 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
 
       usedUidWeight = page.usedUidWeight1m ?? usedUidWeight;
       usedIpWeight = page.usedIpWeight1m ?? usedIpWeight;
+      usedApiWeight = page.usedApiWeight1m ?? usedApiWeight;
     },
   };
 };

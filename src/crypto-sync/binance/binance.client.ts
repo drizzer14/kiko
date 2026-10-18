@@ -54,7 +54,7 @@ export class BinanceRateLimitError extends Error {
  */
 export const DEFAULT_RETRY_AFTER_MS = 60_000;
 
-const retryAfterMsFromHeaders = (headers: Headers): number => {
+export const retryAfterMsFromHeaders = (headers: Headers): number => {
   const seconds = Number(headers.get('Retry-After'));
 
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_RETRY_AFTER_MS;
@@ -351,3 +351,10 @@ export const usedWeightsFromHeaders = (
   usedUidWeight1m: weightFromHeader(headers, 'X-SAPI-USED-UID-WEIGHT-1M'),
   usedIpWeight1m: weightFromHeader(headers, 'X-SAPI-USED-IP-WEIGHT-1M'),
 });
+
+/**
+ * The requesting minute's spent `/api/*` weight (`X-MBX-USED-WEIGHT-1M`, the one IP limit those
+ * endpoints share), when Binance reports it.
+ */
+export const usedApiWeightFromHeaders = (headers: Headers): number | undefined =>
+  weightFromHeader(headers, 'X-MBX-USED-WEIGHT-1M');
