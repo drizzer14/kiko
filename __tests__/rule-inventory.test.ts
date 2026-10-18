@@ -67,9 +67,9 @@ const singleTestFileExcludes = (yamlText: string): string[] =>
     (entry) => !GLOB_CHARACTER_PATTERN.test(entry) && TEST_FILE_PATTERN.test(entry),
   );
 
-// kiko-linter's rule sections tell which of the comment-history rules, and the kind-ternary rule,
-// block (ERROR). A severity changed in the rule file alone would pass every fixture, so flipping
-// one is a deliberate edit here too.
+// kiko-linter's rule sections tell which of the comment-history rules, the stale 2.3.1(a)
+// citation rule, and the kind-ternary rule, block (ERROR). A severity changed in the rule file
+// alone would pass every fixture, so flipping one is a deliberate edit here too.
 const PINNED_SEVERITIES = {
   'kiko-kind-ternary-prefers-match': 'ERROR',
   'kiko-no-history-id-comment': 'ERROR',

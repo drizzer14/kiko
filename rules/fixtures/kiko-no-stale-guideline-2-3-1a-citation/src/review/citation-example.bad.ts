@@ -25,3 +25,16 @@ export const otherWordsAreNotAnAllowance = 'Guideline 2.3.1(a) was formerly cite
 
 // EXPECT-FINDING
 export const nowWithoutVersionIsNotAnAllowance = 'now Guideline 2.3.1(a)';
+
+// EXPECT-FINDING
+// Dev-only data left src/ for the screenshots (2026-09-19, Guideline 2.3.1(a)
+// remediation) and stays out of the bundle.
+export const wrappedMarkerIsNotAdjacent = true;
+
+// EXPECT-FINDING
+// Never flag-gate this list (Guideline 2.3.1(a)); the remediation path is the Import UI.
+export const unrelatedRemediationWord = true;
+
+// EXPECT-FINDING
+// formerly 2.3.1(a); Guideline 2.3.1(a) also bars X
+export const secondCitationAfterFormerly = true;
