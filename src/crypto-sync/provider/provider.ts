@@ -41,16 +41,18 @@ export type ProviderBalance = {
   /**
    * Display name for the holding the first sync inserts. An existing holding
    * keeps its (possibly user-edited) name — the upsert never rewrites it, EXCEPT
-   * the one-time transition rename below.
+   * the once-per-holding transition rename below.
    */
   name: string;
   /**
-   * One-time transition rename. When set, the upsert rewrites an EXISTING
-   * matched holding's name to `name` ONLY IF its current name still equals one
-   * of these exact strings. A user-edited name never matches, so it is
-   * preserved. Binance's BTC balances set this to the earlier default names of
-   * their wallet (Spot: 'Binance BTC' and 'Binance Spot') so a stored holding is
-   * relabeled to 'Binance <Wallet> · BTC'; every other provider omits it.
+   * Transition rename, once per holding. When set, the FIRST upsert of a holding
+   * rewrites an EXISTING matched holding's name to `name` ONLY IF its current
+   * name equals one of these exact strings, and marks the holding whether or not
+   * it renamed it; no later upsert renames it again, so a name the user sets
+   * afterwards, even one of these strings, is preserved. Binance's BTC balances
+   * set this to the earlier default names of their wallet (Spot: 'Binance BTC'
+   * and 'Binance Spot') so a stored holding is relabeled to
+   * 'Binance <Wallet> · BTC'; every other provider omits it.
    */
   renameFromDefaults?: readonly string[];
 };

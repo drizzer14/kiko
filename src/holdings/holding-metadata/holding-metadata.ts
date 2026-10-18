@@ -177,8 +177,21 @@ export const SYNC_CLOSED_FROM_FIELD = 'syncClosedFromMs';
 
 export const STATEMENT_FROM_FIELD = 'statementFromMs';
 
-/** What an upsert carries over from the stored row: a reopened card's or jar's statement cursor. */
-const carriedMetadataKeys = [STATEMENT_FROM_FIELD] as const;
+/**
+ * Set on a holding the first time a sync upsert offers it a default-name rename, whether or not
+ * the name changed. Without it the rename would run again on every sync and undo a user's
+ * rename back to an old default name.
+ */
+export const DEFAULT_NAME_RENAME_FIELD = 'defaultNameRenameSettled';
+
+export const isDefaultNameRenameSettled = (metadata: unknown): boolean =>
+  isRecord(metadata) && metadata[DEFAULT_NAME_RENAME_FIELD] === true;
+
+/**
+ * What an upsert carries over from the stored row: a reopened card's or jar's statement cursor,
+ * and the default-name rename mark.
+ */
+const carriedMetadataKeys = [STATEMENT_FROM_FIELD, DEFAULT_NAME_RENAME_FIELD] as const;
 
 const numberFieldOf =
   (field: string) =>

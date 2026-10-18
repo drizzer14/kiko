@@ -53,7 +53,7 @@ export const coinHoldingName = (code: Currency, wallet: BinanceWallet): string =
  * Default display names for the BTC holdings a sync creates. 'Binance' and its
  * wallet names are brand terms, read the same in every language, and each name
  * is user-editable after creation — an upsert never rewrites it, except the
- * one-time rename from `PREVIOUS_BTC_HOLDING_NAMES`.
+ * once-per-holding rename from `PREVIOUS_BTC_HOLDING_NAMES`.
  */
 export const WALLET_HOLDING_NAMES: Record<BinanceWalletKey, string> = {
   [SPOT_KEY]: coinHoldingName('BTC', 'spot'),
@@ -63,8 +63,9 @@ export const WALLET_HOLDING_NAMES: Record<BinanceWalletKey, string> = {
 
 /**
  * The default names earlier releases gave each wallet's BTC holding, so a stored holding that
- * still carries one is renamed to its `coinHoldingName`; a name the user chose matches none.
- * The single BTC holding of the pre-split release was 'Binance BTC', which became Spot.
+ * still carries one on its first sync is renamed to its `coinHoldingName`; the upsert marks the
+ * holding then, so a name chosen afterwards is never renamed. The single BTC holding of the
+ * pre-split release was 'Binance BTC', which became Spot.
  */
 export const PREVIOUS_BTC_HOLDING_NAMES: Record<BinanceWallet, readonly string[]> = {
   spot: ['Binance BTC', 'Binance Spot'],

@@ -828,9 +828,10 @@ describe('holdingsRepo.upsertExchange', () => {
     expect(updates[0]).toMatchObject({ balanceMinorUnits: 0 });
   });
 
-  // The one-time transition rename: when `renameFromDefaults` is set and the
-  // matched holding's name STILL equals one of the old defaults, the update rewrites
-  // the name; a user-edited name never matches and is left untouched.
+  // The transition rename: when `renameFromDefaults` is set and the matched holding
+  // (not yet marked) has a name equal to one of the old defaults, the update rewrites
+  // the name; any other name is left untouched. Once per holding: see
+  // `holdings.repo.default-name-rename.test.ts`.
   it.each(['Binance BTC', 'Binance Spot'])(
     'renames a matched holding whose name is still the old default "%s"',
     async (storedName) => {

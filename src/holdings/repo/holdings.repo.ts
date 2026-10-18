@@ -37,6 +37,8 @@ import {
   syncClosedFromOf,
   STATEMENT_FROM_FIELD,
   SYNC_CLOSED_FROM_FIELD,
+  DEFAULT_NAME_RENAME_FIELD,
+  isDefaultNameRenameSettled,
   withCarriedMetadataKeys,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
@@ -95,9 +97,10 @@ type SyncBalanceHolding = NewHoldingBase & {
 type SyncedHolding = SyncBalanceHolding & {
   metadataField: SyncedMetadataField;
   metadataKey: string;
-  // One-time transition rename: rewrite an EXISTING matched holding's name to
-  // `name` ONLY IF its current name still equals this exact old default (a
-  // user-edited name never matches). See `renameFromDefaults` in provider.ts.
+  // Transition rename, once per holding: on the first upsert that carries this field, rewrite an
+  // EXISTING matched holding's name to `name` ONLY IF its current name still equals one of these
+  // exact old defaults. That upsert also marks the holding, so no later upsert renames it again.
+  // See `renameFromDefaults` in provider.ts.
   renameFromDefaults?: readonly string[];
 };
 
@@ -182,8 +185,9 @@ const insertSyncedHolding = async (
 // update balance + metadata in place on a hit, insert with a fresh sortOrder on
 // a miss. The holding's name is written on insert and otherwise preserved on
 // update — a user rename survives a re-sync — with ONE exception: the transition
-// rename, applied only when the stored name still equals one of `renameFromDefaults` (see
-// provider.ts).
+// rename, applied once per holding, on the first upsert that carries `renameFromDefaults`
+// and only when the stored name still equals one of them (see provider.ts). That upsert
+// marks the holding (`DEFAULT_NAME_RENAME_FIELD`) whether or not it renamed it.
 //
 // The update branch also reads the row's OWN stored metadata (not just
 // `id`/`name`) so `withCarriedMetadataKeys` can carry a sync-owned key
@@ -215,7 +219,11 @@ const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefaults, ...rest }: SyncedHolding,
 ): Promise<void> => {
-  const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
+  const merged = {
+    ...(metadata as Record<string, unknown> | null),
+    [metadataField]: metadataKey,
+    ...(renameFromDefaults === undefined ? {} : { [DEFAULT_NAME_RENAME_FIELD]: true }),
+  };
   const keyMatch = metadataKeyMatch(metadataField, metadataKey);
   const existing = await databaseTransaction
     .select({
@@ -231,9 +239,13 @@ const upsertByMetadataKey = async (
 
   if (current) {
     // Name is preserved on update (a user rename survives a re-sync), EXCEPT the
-    // one-time transition rename: rewrite it only when the stored name still
-    // equals one of the exact old defaults `renameFromDefaults` names.
-    const rename = (renameFromDefaults ?? []).includes(current.name);
+    // transition rename: rewrite it only on the first upsert that offers
+    // `renameFromDefaults` (before the mark is set), and only when the stored name still
+    // equals one of those exact old defaults. The mark is written on that first upsert
+    // either way, so a user who later renames back to an old default is never renamed again.
+    const rename =
+      !isDefaultNameRenameSettled(current.metadata) &&
+      (renameFromDefaults ?? []).includes(current.name);
     const syncClosedFrom = syncClosedFromOf(current.metadata);
     const reopenFrom = current.closedAt !== null && syncClosedFrom !== null ? syncClosedFrom : null;
     const carried = withCarriedMetadataKeys(merged, current.metadata);

@@ -529,7 +529,7 @@ describe('binanceProvider — data transition from the single aggregated holding
 
   // The BTC holdings of the earlier releases kept their old default names; each balance
   // carries them as `renameFromDefaults`, so the upsert renames a still-default holding to
-  // "Binance <Wallet> · BTC" while leaving a user-edited name untouched (H9, H10).
+  // "Binance <Wallet> · BTC" while leaving a user-edited name untouched.
   it.each<[BinanceWallet, string, string[]]>([
     ['spot', 'Binance Spot · BTC', ['Binance BTC', 'Binance Spot']],
     ['funding', 'Binance Funding · BTC', ['Binance Funding']],
