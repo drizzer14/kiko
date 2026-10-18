@@ -31,6 +31,7 @@ const withPricedCoins = (
   cryptoResult: PromiseSettledResult<CryptoHistory>,
   requested: CryptoCurrency[],
   fallbackEntries: HistoryRateEntry[],
+  requestedStart: number,
 ): PromiseSettledResult<CryptoHistory> => {
   const priced = new Set(fallbackEntries.map((entry) => entry.base));
   const before: CryptoHistory =
@@ -45,13 +46,19 @@ const withPricedCoins = (
               : [],
         };
 
+  const reachesStart = new Set(
+    fallbackEntries.filter((entry) => entry.day <= requestedStart).map((entry) => entry.base),
+  );
+
   return {
     status: 'fulfilled',
     value: {
       entries: [...before.entries, ...fallbackEntries],
       failedCurrencies: before.failedCurrencies.filter((coin) => !priced.has(coin)),
-      // A coin Binance priced needs no later CoinGecko turn, so it never holds the rotation.
-      rateLimitedCurrencies: before.rateLimitedCurrencies.filter((coin) => !priced.has(coin)),
+      // Only Binance's days from the requested start leave nothing for CoinGecko to add. A coin
+      // priced from a later day keeps its turn: dropping it would let the coins ahead of it use
+      // the rate limit on every run, and the days before Binance's first one would stay flat.
+      rateLimitedCurrencies: before.rateLimitedCurrencies.filter((coin) => !reachesStart.has(coin)),
     },
   };
 };
@@ -109,5 +116,7 @@ export const withBinanceFallback = async (input: {
     client: input.client ?? createBinanceMarketClient(),
   });
 
-  return entries.length === 0 ? cryptoResult : withPricedCoins(cryptoResult, requested, entries);
+  return entries.length === 0
+    ? cryptoResult
+    : withPricedCoins(cryptoResult, requested, entries, range.start);
 };

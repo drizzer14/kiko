@@ -131,6 +131,12 @@ export type BackfillDeps = {
    * earlier. Defaults to `{}`, where no coin is known to lack them.
    */
   firstBackfilledDayByCurrency?: Partial<Record<Currency, number>>;
+  /**
+   * The coins whose every stored row came from Binance (`deriveBinanceOnlyCurrencies`). An
+   * unexpired empty CoinGecko mark holds for such a coin even though its rows exist. Defaults to
+   * none, where an empty mark is ignored once rows exist.
+   */
+  binanceOnlyCurrencies?: ReadonlySet<Currency>;
 };
 
 // The coin cursor and the settled marks share one settings column; each writer changes its own
@@ -152,6 +158,33 @@ const writeStoredSettled = (additions: SettledHistory): Promise<void> =>
   settingsRepo.recordSettledHistory(additions);
 
 /**
+ * How long an empty answer holds. A provider that has nothing for a currency today may start
+ * quoting it later (NBU adds currencies, CoinGecko lists coins), so the answer is read again
+ * after this many days, once, and stamped again: at most one request per currency per period.
+ */
+const EMPTY_MARK_HOLDS_DAYS = 7;
+
+// A check day after today (the clock moved back) is expired, not held for weeks.
+const isUnexpiredEmptyMark = (mark: SettledMark | undefined, today: number): mark is SettledMark =>
+  mark !== undefined &&
+  mark.firstDay === null &&
+  mark.checkedOn !== undefined &&
+  today >= mark.checkedOn &&
+  today - mark.checkedOn < EMPTY_MARK_HOLDS_DAYS * DAY_MS;
+
+/**
+ * Whether an unexpired empty mark holds although the currency has rows: they are all Binance's,
+ * so CoinGecko has still given nothing, and the mark was stamped for a start at or before this one.
+ */
+const emptyMarkHoldsOverRows = (
+  mark: SettledMark | undefined,
+  context: { binanceOnly: boolean; today: number; requestedStart: number },
+): boolean =>
+  context.binanceOnly &&
+  isUnexpiredEmptyMark(mark, context.today) &&
+  context.requestedStart >= mark.start;
+
+/**
  * Whether a series lacks days at the start of the span it is asked for. Without a mark, its
  * first stored day is later than the start. With one (a fetch already began from `mark.start`
  * and the provider answered from `mark.firstDay` on, or with nothing), the days before
@@ -166,10 +199,12 @@ const seriesMissesEarlierDays = (
   mark: SettledMark | undefined,
   firstDay: number | undefined,
   requestedStart: number,
+  emptyMarkHolds = false,
 ): boolean => {
-  // An empty mark says nothing once rows exist: they came from a later answer.
+  // An empty mark says nothing once rows exist: they came from a later answer, unless that
+  // answer is Binance's and the mark has not expired (`emptyMarkHoldsOverRows`).
   if (mark === undefined || (mark.firstDay === null && firstDay !== undefined)) {
-    return firstDay !== undefined && firstDay > requestedStart;
+    return firstDay !== undefined && firstDay > requestedStart && !emptyMarkHolds;
   }
 
   return (
@@ -178,11 +213,14 @@ const seriesMissesEarlierDays = (
   );
 };
 
+const NO_CURRENCIES: ReadonlySet<Currency> = new Set();
+
 type CoinNeedInput = {
   cryptoCurrencies: CryptoCurrency[];
   lastBackfilledDayByCurrency: Partial<Record<Currency, number>>;
   firstBackfilledDayByCurrency: Partial<Record<Currency, number>>;
   knownEmpty: ReadonlySet<Currency>;
+  binanceOnly: ReadonlySet<Currency>;
   settled: SettledHistory;
   today: number;
   requestedStart: number;
@@ -209,6 +247,11 @@ const coinsNeedingHistory = (input: CoinNeedInput): CryptoCurrency[] =>
             input.settled[coin],
             input.firstBackfilledDayByCurrency[coin],
             input.requestedStart,
+            emptyMarkHoldsOverRows(input.settled[coin], {
+              binanceOnly: input.binanceOnly.has(coin),
+              today: input.today,
+              requestedStart: input.requestedStart,
+            }),
           ))
       );
     })
@@ -226,17 +269,11 @@ const requestStartOf = (currency: Currency, spanStart: number, today: number): n
   isCrypto(currency) ? requestedStartOf(spanStart, today) : spanStart;
 
 /**
- * How long an empty answer holds. A provider that has nothing for a currency today may start
- * quoting it later (NBU adds currencies, CoinGecko lists coins), so the answer is read again
- * after this many days, once, and stamped again: at most one request per currency per period.
- */
-const EMPTY_MARK_HOLDS_DAYS = 7;
-
-/**
  * The currencies a mark says have nothing to fetch for this span: a currency with no stored rows
  * the provider answered with nothing, from a start at or before this one, within the last
- * `EMPTY_MARK_HOLDS_DAYS` days. A currency with rows is never empty (a later answer gave them),
- * and an empty mark with no check day has expired.
+ * `EMPTY_MARK_HOLDS_DAYS` days. A currency with rows is never empty (a later answer gave them;
+ * `emptyMarkHoldsOverRows` is the one case a mark still holds), and an empty mark with no check
+ * day has expired.
  */
 const markedEmptyCurrencies = (
   settled: SettledHistory,
@@ -247,12 +284,7 @@ const markedEmptyCurrencies = (
     const mark = settled[currency];
 
     return (
-      mark !== undefined &&
-      mark.firstDay === null &&
-      mark.checkedOn !== undefined &&
-      // A check day after today (the clock moved back) is expired, not held for weeks.
-      today >= mark.checkedOn &&
-      today - mark.checkedOn < EMPTY_MARK_HOLDS_DAYS * DAY_MS &&
+      isUnexpiredEmptyMark(mark, today) &&
       deps.firstBackfilledDayByCurrency?.[currency] === undefined &&
       requestStartOf(currency, toUtcMidnight(deps.earliestDay), today) >= mark.start
     );
@@ -273,15 +305,23 @@ const anySeriesMissesEarlierDays = (
     today: number;
   },
 ): boolean =>
-  input.held.some(
-    (currency) =>
+  input.held.some((currency) => {
+    const requestedStart = requestStartOf(currency, toUtcMidnight(deps.earliestDay), input.today);
+
+    return (
       !input.knownEmpty.has(currency) &&
       seriesMissesEarlierDays(
         input.settled[currency],
         deps.firstBackfilledDayByCurrency?.[currency],
-        requestStartOf(currency, toUtcMidnight(deps.earliestDay), input.today),
-      ),
-  );
+        requestedStart,
+        emptyMarkHoldsOverRows(input.settled[currency], {
+          binanceOnly: deps.binanceOnlyCurrencies?.has(currency) ?? false,
+          today: input.today,
+          requestedStart,
+        }),
+      )
+    );
+  });
 
 const readSettledOrEmpty = async (deps: BackfillDeps): Promise<SettledHistory> =>
   bifoldr(await either<unknown, SettledHistory>(deps.readSettledHistory ?? readStoredSettled)) ??
@@ -292,13 +332,14 @@ const markOf = (
   answerDays: number[],
   requestedStart: number,
   existing: SettledMark | undefined,
-  context: { storedFirstDay: number | undefined; today: number },
+  context: { storedFirstDay: number | undefined; binanceOnly: boolean; today: number },
 ): SettledMark | undefined => {
   const firstDay = answerDays.length === 0 ? null : minOf(answerDays);
 
-  // An empty answer is a mark only for a currency with no rows, stamped with the day it was read.
+  // An empty answer is a mark only for a currency with no rows, or with rows that are all
+  // Binance's (CoinGecko still gave none), stamped with the day it was read.
   if (firstDay === null) {
-    return context.storedFirstDay !== undefined ||
+    return (context.storedFirstDay !== undefined && !context.binanceOnly) ||
       (existing?.checkedOn === context.today && existing.start <= requestedStart)
       ? undefined
       : { start: requestedStart, firstDay: null, checkedOn: context.today };
@@ -349,7 +390,11 @@ const earnedMarks = (
         answerDaysOf(entries, currency),
         spanStart,
         input.settled[currency],
-        { storedFirstDay: deps.firstBackfilledDayByCurrency?.[currency], today: input.today },
+        {
+          storedFirstDay: deps.firstBackfilledDayByCurrency?.[currency],
+          binanceOnly: false,
+          today: input.today,
+        },
       );
     }
   }
@@ -362,6 +407,7 @@ const earnedMarks = (
     for (const coin of input.cryptoRequested.filter((code) => !failedCurrencies.includes(code))) {
       earnings[coin] = markOf(answerDaysOf(entries, coin), coinStart, input.settled[coin], {
         storedFirstDay: deps.firstBackfilledDayByCurrency?.[coin],
+        binanceOnly: deps.binanceOnlyCurrencies?.has(coin) ?? false,
         today: input.today,
       });
     }
@@ -405,6 +451,7 @@ const planCryptoRequests = async (
   const needing = coinsNeedingHistory({
     ...input,
     firstBackfilledDayByCurrency: deps.firstBackfilledDayByCurrency ?? {},
+    binanceOnly: deps.binanceOnlyCurrencies ?? NO_CURRENCIES,
     requestedStart: requestedStartOf(input.spanStart, input.today),
   });
   const storedCursor =
@@ -518,6 +565,28 @@ export const deriveFirstBackfilledDayByCurrency = (
   }
 
   return days;
+};
+
+/**
+ * The currencies whose every stored row came from Binance's public market data: a coin CoinGecko
+ * has never given a row for. Read off the rows the caller already loads.
+ */
+export const deriveBinanceOnlyCurrencies = (
+  rows: Pick<CurrencyRateHistoryRow, 'base' | 'source'>[],
+): Set<Currency> => {
+  const binanceOnly = new Set<Currency>();
+  const mixed = new Set<Currency>();
+
+  for (const row of rows) {
+    if (row.source !== 'binance') {
+      mixed.add(row.base);
+      binanceOnly.delete(row.base);
+    } else if (!mixed.has(row.base)) {
+      binanceOnly.add(row.base);
+    }
+  }
+
+  return binanceOnly;
 };
 
 /** The maximum stored `day`, i.e. the resume point — null when there is none. */

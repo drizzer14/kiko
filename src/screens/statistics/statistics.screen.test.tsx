@@ -838,6 +838,29 @@ describe('StatisticsScreen', () => {
     });
   });
 
+  it('hands the backfill the coins whose every stored row came from Binance', async () => {
+    const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [
+        { base: 'ETH', quote: 'UAH', day: day(2), rate: '120000', source: 'binance' },
+        { base: 'ETH', quote: 'UAH', day: day(1), rate: '121000', source: 'binance' },
+        { base: 'SOL', quote: 'UAH', day: day(2), rate: '6000', source: 'binance' },
+        { base: 'SOL', quote: 'UAH', day: day(1), rate: '6100', source: 'coingecko' },
+        { base: 'USD', quote: 'UAH', day: day(1), rate: '40', source: 'nbu' },
+      ],
+    });
+
+    await renderScreen();
+
+    expect(mockRunBackfill.mock.calls[0]?.[0]).toMatchObject({
+      binanceOnlyCurrencies: new Set(['ETH']),
+    });
+  });
+
   // kiko-architecture: a cached display mount's rows can be one read old, and
   // a run marks its span covered for the rest of the mount. A run planned from
   // the cached resume point (for example, history a .kiko restore replaced)

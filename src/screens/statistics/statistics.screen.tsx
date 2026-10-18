@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import { minOf } from '@kiko/numbers';
 import {
   type BackfillStatus,
+  deriveBinanceOnlyCurrencies,
   deriveLastBackfilledDay,
   deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDayByCurrency,
@@ -412,6 +413,14 @@ const StatisticsScreen: FC = () => {
   );
   const firstBackfilledDayByCurrencyRef = useRef(firstBackfilledDayByCurrency);
   firstBackfilledDayByCurrencyRef.current = firstBackfilledDayByCurrency;
+  // The coins whose rows are all Binance's: an unexpired empty CoinGecko mark still holds for
+  // them, so the backfill does not repeat the whole span on every run.
+  const binanceOnlyCurrencies = useMemo(
+    () => deriveBinanceOnlyCurrencies(historyRows),
+    [historyRows],
+  );
+  const binanceOnlyCurrenciesRef = useRef(binanceOnlyCurrencies);
+  binanceOnlyCurrenciesRef.current = binanceOnlyCurrencies;
 
   // The distinct set of currencies the backfill's own history must now cover:
   // every held holding's currency plus the base, sorted so the key stays
@@ -535,6 +544,7 @@ const StatisticsScreen: FC = () => {
         today: now,
         lastBackfilledDayByCurrency: lastBackfilledDayByCurrencyRef.current,
         firstBackfilledDayByCurrency: firstBackfilledDayByCurrencyRef.current,
+        binanceOnlyCurrencies: binanceOnlyCurrenciesRef.current,
       }),
     ).then((result) => {
       if (!isMountedRef.current || token !== runTokenRef.current) {

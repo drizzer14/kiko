@@ -1,4 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
+import type { CurrencyRateHistoryRow } from '@kiko/db';
 import type { CryptoCurrency, Currency } from '@kiko/currency/currency';
 
 import {
@@ -12,6 +13,7 @@ import { type CryptoHistory, CryptoHistoryFailure } from '../coingecko-history';
 import {
   type BackfillDeps,
   composeHistoryRows,
+  deriveBinanceOnlyCurrencies,
   deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDay,
   deriveLastBackfilledDayByCurrency,
@@ -20,7 +22,13 @@ import {
 
 const day = (index: number) => Date.UTC(2026, 8, 1) + index * DAY_MS;
 
-type StoredRow = { base: Currency; quote: string; day: number; rate: string; source: string };
+type StoredRow = {
+  base: Currency;
+  quote: string;
+  day: number;
+  rate: string;
+  source: CurrencyRateHistoryRow['source'];
+};
 
 type Reply = {
   closes?: number[];
@@ -307,6 +315,153 @@ describe('runBackfill — the Binance public history fallback', () => {
     });
 
     expect(cursors).toEqual(['SOL']);
+  });
+
+  describe('the rotation cursor of a coin Binance priced from a later day', () => {
+    const answered = ['ADA', 'BTC'].flatMap((base) =>
+      [0, 1, 2].map((index) => ({
+        base,
+        quote: 'USD',
+        day: day(index),
+        rate: 1 + index,
+        source: 'coingecko',
+      })),
+    ) as HistoryRateEntry[];
+
+    it('keeps a rate-limited coin at the head of the next run, so CoinGecko answers it in the end', async () => {
+      let cursor: string | null = null;
+      const asked: CryptoCurrency[][] = [];
+      const everyRun = {
+        readHistoryBackfillCursor: async () => cursor,
+        writeHistoryBackfillCursor: async (next: string | null) => {
+          cursor = next;
+        },
+        fetchCryptoHistory: async (_days: number, currencies: CryptoCurrency[]) => {
+          asked.push(currencies);
+
+          return { ...failed(['SOL'], ['SOL']), entries: answered };
+        },
+      };
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await run({
+          fiat: ['USD'],
+          held: ['ADA', 'BTC', 'SOL'],
+          crypto: failed([]),
+          binance: {
+            SOLUSDT: { closes: [150, 151], firstDayIndex: 1 },
+            EURUSDT: { closes: [1.08, 1.1, 1.12] },
+          },
+          overrides: everyRun,
+        });
+      }
+
+      expect(asked).toEqual([
+        ['ADA', 'BTC', 'SOL'],
+        ['SOL', 'ADA', 'BTC'],
+      ]);
+    });
+
+    it('moves the cursor past a rate-limited coin whose Binance series reaches the requested start', async () => {
+      const { cursors } = await run({
+        fiat: ['USD'],
+        held: ['ADA', 'BTC', 'SOL'],
+        crypto: { ...failed(['SOL'], ['SOL']), entries: answered },
+        binance: {
+          SOLUSDT: { closes: [150, 151, 152] },
+          EURUSDT: { closes: [1.08, 1.1, 1.12] },
+        },
+      });
+
+      expect(cursors).toEqual([]);
+    });
+  });
+
+  describe('an empty CoinGecko answer for a coin Binance prices from a later day', () => {
+    it('holds the empty mark run after run until it expires, then asks CoinGecko again', async () => {
+      const settledStore: Record<string, unknown> = {};
+      const stored: StoredRow[] = [];
+      const asked: CryptoCurrency[][] = [];
+      const runOn = async (today: number, lastIndex: number) => {
+        asked.length = 0;
+        const writes: unknown[] = [];
+        const result = await run({
+          fiat: ['USD'],
+          held: ['ETH', 'USDT'],
+          crypto: failed([]),
+          binance: {
+            ETHUSDT: {
+              closes: Array.from({ length: lastIndex }, (_, i) => 3_000 + i),
+              firstDayIndex: 1,
+            },
+          },
+          overrides: {
+            today,
+            lastBackfilledDay: deriveLastBackfilledDay(stored),
+            lastBackfilledDayByCurrency: deriveLastBackfilledDayByCurrency(stored),
+            firstBackfilledDayByCurrency: deriveFirstBackfilledDayByCurrency(stored),
+            binanceOnlyCurrencies: deriveBinanceOnlyCurrencies(stored),
+            readSettledHistory: async () => ({ ...settledStore }),
+            writeSettledHistory: async (additions) => {
+              writes.push(additions);
+              Object.assign(settledStore, additions);
+            },
+            fetchCryptoHistory: async (_days, currencies) => {
+              asked.push(currencies);
+
+              return { ...failed([]), entries: usdtEntries };
+            },
+          },
+        });
+        stored.push(...result.rows);
+
+        return { ...result, writes };
+      };
+
+      const first = await runOn(day(2), 2);
+
+      expect(asked).toEqual([['ETH', 'USDT']]);
+      expect(first.writes).toEqual([{ ETH: { start: day(0), firstDay: null, checkedOn: day(2) } }]);
+      expect(first.rowsOf('ETH').map((row) => row.day)).toEqual([day(1), day(2)]);
+
+      const second = await runOn(day(2), 2);
+
+      expect(asked).toEqual([]);
+      expect(second.nbuCalls).toEqual([]);
+      expect(second.binance.urls).toEqual([]);
+
+      const afterExpiry = await runOn(day(9), 9);
+
+      expect(asked.flat()).toContain('ETH');
+      expect(afterExpiry.writes).toEqual([
+        { ETH: { start: day(0), firstDay: null, checkedOn: day(9) } },
+      ]);
+
+      const next = await runOn(day(9), 9);
+
+      expect(asked).toEqual([]);
+      expect(next.nbuCalls).toEqual([]);
+    });
+
+    it('asks CoinGecko again once a row of the coin is not from Binance', async () => {
+      const { nbuCalls } = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed([]), entries: usdtEntries },
+        binance: {},
+        overrides: {
+          lastBackfilledDay: day(2),
+          lastBackfilledDayByCurrency: { ETH: day(2), USDT: day(2) },
+          firstBackfilledDayByCurrency: { ETH: day(1), USDT: day(0) },
+          binanceOnlyCurrencies: new Set(),
+          readSettledHistory: async () => ({
+            ETH: { start: day(0), firstDay: null, checkedOn: day(2) },
+          }),
+        },
+      });
+
+      expect(nbuCalls).toEqual([['USD']]);
+    });
   });
 
   describe('the settled marks', () => {
