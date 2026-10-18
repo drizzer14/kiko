@@ -7,7 +7,7 @@ import { isRecord } from '@kiko/type-guards';
 import { logFailure } from '@kiko/diagnostics';
 import { curatedCoins } from '@kiko/currency/coins';
 import { decimalFromJsonNumber } from '@kiko/currency/decimal';
-import { type Currency, isCrypto, isCurrency } from '@kiko/currency/currency';
+import { type Currency, isCrypto } from '@kiko/currency/currency';
 import either, { bifold, bifoldMap, type Either, isLeft, left, right } from 'fnts/either';
 import { type AmountError, exchangeMinorUnits } from '@kiko/crypto-sync/exchange/amounts';
 
@@ -37,6 +37,7 @@ import {
   SPOT_KEY,
   WALLET_HOLDING_NAMES,
 } from './binance.holding-keys';
+import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
@@ -151,7 +152,7 @@ const balancesOf = (entries: readonly AmountEntry[], failure: AmountFailureKey):
   const amountsByCoin = new Map<Currency, unknown[]>();
 
   for (const { asset, amounts } of entries) {
-    if (typeof asset === 'string' && isCurrency(asset)) {
+    if (typeof asset === 'string' && isTrackedBinanceAsset(asset)) {
       amountsByCoin.set(asset, [...(amountsByCoin.get(asset) ?? []), ...amounts]);
     }
   }

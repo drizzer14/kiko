@@ -1085,6 +1085,55 @@ describe('binanceProvider — coins a good read does not list', () => {
   });
 });
 
+describe('binanceProvider — a ticker that equals a fiat code', () => {
+  it('writes no holding for SCR on Spot and fails nothing, though SCR is a fiat code of the app', async () => {
+    const deps = makeDeps([
+      { asset: 'SCR', free: '5', locked: '0' },
+      { asset: 'BTC', free: '1', locked: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(balances)).toEqual(['BTC']);
+  });
+
+  it('writes no holding for MNT on Funding', async () => {
+    const balances = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'MNT', '5'),
+      emptyTarget,
+    );
+
+    expect(byKey(balances, 'MNT:funding')).toBeUndefined();
+  });
+
+  it('never reads the amount of such a ticker', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const balances = await binanceProvider.fetchBalances(
+        makeDeps([{ asset: 'SCR', free: 'x', locked: '1e-8' }]),
+        emptyTarget,
+      );
+
+      expect(byKey(balances, 'SCR')).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('still writes a Funding holding for EUR, a Binance fiat code', async () => {
+    const balances = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'EUR', '5.00'),
+      emptyTarget,
+    );
+
+    expect(byKey(balances, 'EUR:funding')).toMatchObject({
+      currency: 'EUR',
+      balanceMinorUnits: 500,
+    });
+  });
+});
+
 describe('binanceProvider — the account of the user (UA-1)', () => {
   it('writes Spot BTC and the Funding holdings, and no USDT or UAH holding', async () => {
     const deps = makeDeps([

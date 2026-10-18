@@ -1,6 +1,8 @@
 import { match, P } from 'ts-pattern';
 import type { HoldingRow } from '@kiko/db';
-import { type Currency, isCurrency } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
+
+import { isTrackedBinanceAsset } from './binance.tracked-coin';
 
 /**
  * Match keys stored under `metadata.binanceAsset`, one holding per Binance
@@ -42,9 +44,9 @@ type HoldingKeyParts = { code: Currency; wallet: BinanceWallet };
 /** The coin and wallet a stored key names; a key `holdingKeyOf` never makes names none. */
 export const partsOfHoldingKey = (key: string): HoldingKeyParts | undefined =>
   match(key.split(':'))
-    .with([P.when(isCurrency)], ([code]): HoldingKeyParts => ({ code, wallet: 'spot' }))
+    .with([P.when(isTrackedBinanceAsset)], ([code]): HoldingKeyParts => ({ code, wallet: 'spot' }))
     .with(
-      [P.when(isCurrency), P.union('funding', 'earn')],
+      [P.when(isTrackedBinanceAsset), P.union('funding', 'earn')],
       ([code, wallet]): HoldingKeyParts => ({ code, wallet }),
     )
     .otherwise(() => undefined);

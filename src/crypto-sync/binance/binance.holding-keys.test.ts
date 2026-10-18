@@ -55,6 +55,7 @@ describe('partsOfHoldingKey', () => {
   it.each([
     ['a ticker that is no coin of the app', 'PEPE'],
     ['a wallet suffix on such a ticker', 'PEPE:funding'],
+    ['a fiat code of the app that Binance does not quote', 'SCR:funding'],
     ['a Simple Earn receipt token', 'LDBTC'],
     ['a suffix that names no wallet', 'BTC:flexible'],
     ['an extra part', 'BTC:funding:x'],
