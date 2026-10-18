@@ -74,3 +74,8 @@ appId: com.dmytro-vasylkivskyi.kiko
 # The left pane must not have moved: the top row is still on screen.
 - assertVisible:
     id: "settings-row-system"
+
+# RIGHT pane (the field's own pane): a separate check. A failure here, after the left-pane
+# assert passed, is the own-pane displacement (not covered by the D1 patch), not a D1 failure.
+- assertVisible:
+    id: "settings-button-pick-file"
