@@ -13,7 +13,7 @@ export const nowNote = true;
 // Guideline 2.5.19 bars hidden features.
 export const currentCitation = true;
 
-// Section 12.3.1(a) of the vendor manual is not a guideline citation.
+// Vendor clause 12.3.1(a) is not a guideline citation.
 export const digitBeforeTheNumber = true;
 
 export const testTitle = 'keeps the 2.3.1(a) remediation seed out of the bundle';
