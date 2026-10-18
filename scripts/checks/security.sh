@@ -43,18 +43,11 @@ if [ "${#TARGETS[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# Dedup a call whose targets are all files on their content plus the mobile
-# rules files; the key names every target, so a changed file or a different
-# file set is never vouched for by an earlier pass. The external p/ rulesets
-# are pinned to the installed semgrep and do not change within a session, so
-# they are not part of the fingerprint. A whole-repo or directory target always
-# runs. A skip says so on stderr: an exit 0 with no scan must not read as one.
-dkey=""; fp=""
-all_files=1
-# Registry rule ids that cannot match this repo (no express, cors, or DOM target), excluded by
-# their FULL check_id: semgrep treats the id as exact, so a short form excludes nothing and an
-# unknown id is ignored silently. Sorted, one per line; the list's content is part of the dedup
-# fingerprint below. Why these and nothing else: docs/harness/documented-exceptions.md.
+# Registry rule ids that cannot match this repo (no HTTP request handler, no sink package they
+# import, no DOM target), excluded by their FULL check_id: semgrep treats the id as exact, so a
+# short form excludes nothing and an unknown id is ignored silently. Sorted, one per line; the
+# list's content is part of the dedup fingerprint below. Why these and nothing else:
+# docs/harness/documented-exceptions.md.
 EXCLUDED_RULE_IDS=(
   javascript.express.security.audit.express-check-directory-listing.express-check-directory-listing
   javascript.express.security.audit.express-cookie-settings.express-cookie-session-default-name
@@ -94,6 +87,15 @@ EXCLUDE_RULE_ARGUMENTS=()
 for rule_id in "${EXCLUDED_RULE_IDS[@]}"; do
   EXCLUDE_RULE_ARGUMENTS+=(--exclude-rule "$rule_id")
 done
+
+# Dedup a call whose targets are all files on their content plus the mobile
+# rules files and the excluded rule ids; the key names every target, so a changed file or a
+# different file set is never vouched for by an earlier pass. The external p/ rulesets
+# are pinned to the installed semgrep and do not change within a session, so
+# they are not part of the fingerprint. A whole-repo or directory target always
+# runs. A skip says so on stderr: an exit 0 with no scan must not read as one.
+dkey=""; fp=""
+all_files=1
 for target in "${TARGETS[@]}"; do
   [ -f "$target" ] || all_files=0
 done
@@ -104,7 +106,7 @@ if [ "$all_files" -eq 1 ]; then
           shasum "$ROOT/rules/semgrep-prewrite.yml" 2>/dev/null
           printf '%s\n' "${EXCLUDED_RULE_IDS[@]}"; } | harness_hash )"
   if harness_unchanged "$ROOT" "$dkey" "$fp"; then
-    printf 'security.sh: SKIPPED, not a fresh scan: %s target(s) are unchanged since their last passing scan (same file content, same rules files). Run npm run check:security with no argument for a full scan.\n' "${#TARGETS[@]}" >&2
+    printf 'security.sh: SKIPPED, not a fresh scan: %s target(s) are unchanged since their last passing scan (same file content, same rules files, same excluded rule ids). Run npm run check:security with no argument for a full scan.\n' "${#TARGETS[@]}" >&2
     exit 0
   fi
 fi
