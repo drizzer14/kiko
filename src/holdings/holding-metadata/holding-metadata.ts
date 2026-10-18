@@ -213,9 +213,9 @@ export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
  * Copies any `carriedMetadataKeys` present on `storedMetadata` onto
  * `target`, overwriting whatever (or nothing) `target` already has for that
  * key — the read-side counterpart of a sync's blanket metadata overwrite, so a
- * reopened card's pending statement cursor survives it. A Binance walk's marks
- * are not in the metadata at all (they live in `sync_state.exchange_state`), so
- * an old walk key an upsert finds there is dropped, not carried.
+ * reopened card's pending statement cursor and a holding's default-name rename mark survive it.
+ * A Binance walk's marks are not in the metadata at all (they live in
+ * `sync_state.exchange_state`), so an old walk key an upsert finds there is dropped, not carried.
  */
 export const withCarriedMetadataKeys = (
   target: Record<string, unknown>,

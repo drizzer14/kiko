@@ -190,19 +190,19 @@ const insertSyncedHolding = async (
 // marks the holding (`DEFAULT_NAME_RENAME_FIELD`) whether or not it renamed it.
 //
 // The update branch also reads the row's OWN stored metadata (not just
-// `id`/`name`) so `withCarriedMetadataKeys` can carry a sync-owned key
-// (a reopened card's or jar's `statementFromMs`) over the
-// caller's `merged` object — a routine balance sync's `metadata: { syncedAt }`
-// would otherwise wipe it every run, since `merged` is built from the
-// CALLER-supplied `metadata` alone, never the stored row.
+// `id`/`name`) so `withCarriedMetadataKeys` can carry a sync-owned key over the
+// caller's `merged` object: a reopened card's or jar's `statementFromMs`, and the
+// default-name rename mark `defaultNameRenameSettled`. A routine balance sync's
+// `metadata: { syncedAt }` would otherwise wipe them every run, since `merged` is built
+// from the CALLER-supplied `metadata` alone, never the stored row.
 //
 // The update branch also REOPENS a holding the sync closed (the Monobank
 // reconcile's `closeManyBySync`), and only that one: a row is reopened when it
 // is closed AND carries `syncClosedFromMs`, which the user's own close never
 // writes, so a user-closed holding stays closed and a Binance or wallet row
-// (no mark, ever) never reopens. The reopen clears `closedAt`, drops the mark
-// (an upsert carries only the sync-owned keys, so the mark is not carried), and
-// hands the mark on as `statementFromMs`, the from-cursor of its next statement
+// (no `syncClosedFromMs`, ever) never reopens. The reopen clears `closedAt`, drops
+// `syncClosedFromMs` (an upsert carries only the sync-owned keys, so it is not carried), and
+// hands its value on as `statementFromMs`, the from-cursor of its next statement
 // fetch, for a card and a jar alike (both are statement sources): while it was
 // absent no run fetched its statements, and the closing run graduated the
 // normal cursor past the gap. It moves no balance; the balance written here is
