@@ -382,8 +382,10 @@ describe('runBackfill — the Binance public history fallback', () => {
       const settledStore: Record<string, unknown> = {};
       const stored: StoredRow[] = [];
       const asked: CryptoCurrency[][] = [];
+      const askedDays: number[] = [];
       const runOn = async (today: number, lastIndex: number) => {
         asked.length = 0;
+        askedDays.length = 0;
         const writes: unknown[] = [];
         const result = await run({
           fiat: ['USD'],
@@ -391,7 +393,7 @@ describe('runBackfill — the Binance public history fallback', () => {
           crypto: failed([]),
           binance: {
             ETHUSDT: {
-              closes: Array.from({ length: lastIndex }, (_, i) => 3_000 + i),
+              closes: Array.from({ length: lastIndex }, (_, index) => 3_000 + index),
               firstDayIndex: 1,
             },
           },
@@ -406,8 +408,9 @@ describe('runBackfill — the Binance public history fallback', () => {
               writes.push(additions);
               Object.assign(settledStore, additions);
             },
-            fetchCryptoHistory: async (_days, currencies) => {
+            fetchCryptoHistory: async (days, currencies) => {
               asked.push(currencies);
+              askedDays.push(days);
 
               return { ...failed([]), entries: usdtEntries };
             },
@@ -429,6 +432,13 @@ describe('runBackfill — the Binance public history fallback', () => {
       expect(asked).toEqual([]);
       expect(second.nbuCalls).toEqual([]);
       expect(second.binance.urls).toEqual([]);
+
+      const nextDay = await runOn(day(3), 3);
+
+      expect(asked).toEqual([['ETH', 'USDT']]);
+      expect(askedDays).toEqual([1]);
+      expect(nextDay.writes).toEqual([]);
+      expect(nextDay.rowsOf('ETH').map((row) => row.day)).toEqual([day(3)]);
 
       const afterExpiry = await runOn(day(9), 9);
 
@@ -461,6 +471,38 @@ describe('runBackfill — the Binance public history fallback', () => {
       });
 
       expect(nbuCalls).toEqual([['USD']]);
+    });
+
+    it('leaves a held coin with an unexpired empty mark out of a whole-span run a new coin forces', async () => {
+      const asked: CryptoCurrency[][] = [];
+      const writes: unknown[] = [];
+
+      await run({
+        fiat: ['USD'],
+        held: ['BTC', 'ETH', 'USDT'],
+        crypto: failed([]),
+        binance: {},
+        overrides: {
+          lastBackfilledDay: day(2),
+          lastBackfilledDayByCurrency: { ETH: day(2), USDT: day(2), USD: day(2) },
+          firstBackfilledDayByCurrency: { ETH: day(1), USDT: day(0), USD: day(0) },
+          binanceOnlyCurrencies: new Set<Currency>(['ETH']),
+          readSettledHistory: async () => ({
+            ETH: { start: day(0), firstDay: null, checkedOn: day(2) },
+          }),
+          writeSettledHistory: async (additions) => {
+            writes.push(additions);
+          },
+          fetchCryptoHistory: async (_days, currencies) => {
+            asked.push(currencies);
+
+            return { ...failed([]), entries: usdtEntries };
+          },
+        },
+      });
+
+      expect(asked).toEqual([['BTC']]);
+      expect(writes.flatMap((additions) => Object.keys(additions as object))).not.toContain('ETH');
     });
   });
 

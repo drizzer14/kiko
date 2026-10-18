@@ -165,8 +165,7 @@ const writeStoredSettled = (additions: SettledHistory): Promise<void> =>
 const EMPTY_MARK_HOLDS_DAYS = 7;
 
 // A check day after today (the clock moved back) is expired, not held for weeks.
-const isUnexpiredEmptyMark = (mark: SettledMark | undefined, today: number): mark is SettledMark =>
-  mark !== undefined &&
+const isUnexpiredEmptyMark = (mark: SettledMark, today: number): boolean =>
   mark.firstDay === null &&
   mark.checkedOn !== undefined &&
   today >= mark.checkedOn &&
@@ -181,6 +180,7 @@ const emptyMarkHoldsOverRows = (
   context: { binanceOnly: boolean; today: number; requestedStart: number },
 ): boolean =>
   context.binanceOnly &&
+  mark !== undefined &&
   isUnexpiredEmptyMark(mark, context.today) &&
   context.requestedStart >= mark.start;
 
@@ -199,7 +199,7 @@ const seriesMissesEarlierDays = (
   mark: SettledMark | undefined,
   firstDay: number | undefined,
   requestedStart: number,
-  emptyMarkHolds = false,
+  emptyMarkHolds: boolean,
 ): boolean => {
   // An empty mark says nothing once rows exist: they came from a later answer, unless that
   // answer is Binance's and the mark has not expired (`emptyMarkHoldsOverRows`).
@@ -284,6 +284,7 @@ const markedEmptyCurrencies = (
     const mark = settled[currency];
 
     return (
+      mark !== undefined &&
       isUnexpiredEmptyMark(mark, today) &&
       deps.firstBackfilledDayByCurrency?.[currency] === undefined &&
       requestStartOf(currency, toUtcMidnight(deps.earliestDay), today) >= mark.start
