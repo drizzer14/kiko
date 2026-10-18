@@ -15,6 +15,7 @@ import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { isTrackedBinanceAsset } from '@kiko/crypto-sync/binance';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
@@ -22,6 +23,7 @@ import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+import { oversizedCoinsOf, untrackedCoinsOf } from '@kiko/crypto-sync/exchange/history-status';
 
 import { styles } from '../account-detail.styles';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
@@ -39,6 +41,29 @@ const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string 
     .with('btc_wallet', () => t('accountDetail.disconnectProviderMessage.wallet'))
     .with('binance', () => t('accountDetail.disconnectProviderMessage.binance'))
     .exhaustive();
+
+type CoinLinesProps = { untrackedCoins: string[]; oversizedCoins: string[] };
+
+// Split out of the section so its own branches stay under the complexity budget.
+const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins }) => {
+  const { t } = useTranslation();
+
+  return (
+    <>
+      {untrackedCoins.length > 0 && (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.untrackedCoins', { tickers: untrackedCoins.join(', ') })}
+        </Text>
+      )}
+
+      {oversizedCoins.map((coin) => (
+        <Text key={coin} variant="caption" tone="textSecondary">
+          {t('accountDetail.oversizedAmount', { coin })}
+        </Text>
+      ))}
+    </>
+  );
+};
 
 // The crypto account's Synchronization section — the counterpart of the bank
 // account's Monobank token field + Connect/Sync/Disconnect row. Before a
@@ -123,6 +148,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     // a standing fact of the stored state, not a lag a sync closes, so a sync in flight keeps it.
     const historyPaused =
       !syncStateLoading && connectedProvider === 'binance' && walkState.kind === 'malformed';
+    // The coin lines state what the last read found, so a sync in flight keeps them; a state that
+    // is malformed holds no list, and a wallet has none.
+    const coinLinesShown = !syncStateLoading && connectedProvider === 'binance';
     const historyBehind =
       !isSyncing &&
       !syncStateLoading &&
@@ -152,6 +180,13 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               })}
             </Text>
           </Box>
+
+          {coinLinesShown && (
+            <CoinLines
+              untrackedCoins={untrackedCoinsOf(walkState, isTrackedBinanceAsset)}
+              oversizedCoins={oversizedCoinsOf(walkState)}
+            />
+          )}
 
           {historyPaused && (
             <Text variant="caption" tone="textSecondary">
