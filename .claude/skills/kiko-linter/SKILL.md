@@ -1208,8 +1208,9 @@ findings-handling for the exact mechanism, not restated here):
   with exit 0) fails `check:security`. Other warn-level errors stay
   non-blocking. Read `scripts/checks/security.sh` for the exact test.
 - **Only registry rules that cannot match this repo are excluded.**
-  `security.sh` passes `--exclude-rule <full check_id>`; the full id repeats
-  the rule name after the dotted path (for example
+  `security.sh` passes `--exclude-rule <full check_id>`; the full id is
+  the registry rule file's dotted path plus the rule's own id; copy it from
+  the Semgrep JSON `check_id`, never build it by hand (for example
   `javascript.express.security.audit.express-ssrf.express-ssrf`). Semgrep
   1.175.0 silently ignores a short or unknown id: it excludes nothing and
   gives no error. A new id needs a `docs/harness/documented-exceptions.md`
