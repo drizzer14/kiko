@@ -32,11 +32,11 @@ describe('resolveBottomClearance', () => {
   });
 
   describe('a top bar', () => {
-    it('is zero under a top bar, 64 pt reported over a 20 pt inset (Pro 13-inch full screen; was 44)', () => {
+    it('is zero under a top bar, 64 pt reported over a 20 pt inset (Pro 13-inch full screen)', () => {
       expect(resolveBottomClearance(64, 20, 'top')).toBe(0);
     });
 
-    it('is zero under a top bar, 72 over 10 (Stage Manager half; was 62)', () => {
+    it('is zero under a top bar, 72 over 10 (Stage Manager half)', () => {
       expect(resolveBottomClearance(72, 10, 'top')).toBe(0);
     });
   });

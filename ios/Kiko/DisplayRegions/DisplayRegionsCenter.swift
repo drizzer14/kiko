@@ -152,11 +152,13 @@ import os
     return readSnapshotWithTabBar().snapshot
   }
 
-  // The tab bar reading comes back with the snapshot it produced, so the debug log of a read
-  // needs no second walk of the view tree.
-  private func readSnapshotWithTabBar() -> (snapshot: Snapshot, tabBar: TabBarReading) {
+  // The tab bar reading, the window bounds and the display scale come back with the snapshot they
+  // produced, so the debug logs of a read and of its emit need no second walk of the view tree.
+  private func readSnapshotWithTabBar() -> (
+    snapshot: Snapshot, tabBar: TabBarReading, windowBounds: CGRect, displayScale: CGFloat
+  ) {
     guard let window = foregroundWindow() else {
-      return (Self.fallbackSnapshot, .missing)
+      return (Self.fallbackSnapshot, .missing, .zero, 0)
     }
 
     let tabBar = Self.readTabBar(in: window)
@@ -171,7 +173,7 @@ import os
       foldRegion: lastHinge?.hidesFold == true ? nil : Self.foldRegion(of: window)
     )
 
-    return (snapshot, tabBar)
+    return (snapshot, tabBar, window.bounds, window.traitCollection.displayScale)
   }
 
   // MARK: - Tab bar edge
@@ -232,7 +234,8 @@ import os
     }
 
     let floating = floatingBarFrame(
-      below: controller.view, selectedView: controller.selectedViewController?.view, in: window)
+      below: controller.view, selectedView: controller.selectedViewController?.viewIfLoaded,
+      in: window)
 
     return TabBarReading(
       kind: floating == nil ? "none" : "floating",
@@ -243,8 +246,10 @@ import os
 
   // A breadth-first descent below the controller's view; the first view in that order that is
   // effectively visible and short next to the window wins. It stops at a subtree holding the
-  // selected content, never enters a hidden or transparent view, and gives up with no frame past
-  // either bound.
+  // selected content (read with `viewIfLoaded`: an unloaded view is not in the tree, and a read
+  // must not load one) and never enters a hidden or transparent view. Past the depth bound it
+  // stops queueing deeper views and keeps scanning the ones already queued; past the visited bound
+  // it returns no frame.
   private static func floatingBarFrame(
     below root: UIView, selectedView: UIView?, in window: UIWindow
   ) -> CGRect? {
@@ -611,7 +616,7 @@ import os
       return
     }
 
-    logEmitted(json)
+    logEmitted(json, read: read)
     emitter(json)
   }
 
@@ -619,11 +624,13 @@ import os
   // checked with `log stream --level debug --predicate 'category == "DisplayRegions"'`. The payload
   // is public because it holds only layout numbers, and so do the tab bar candidate, its window
   // frame and the controller's own tab bar, which say why an edge came out.
-  private func logEmitted(_ json: String) {
-    let window = foregroundWindow()
-    let bounds = window?.bounds ?? .zero
-    let scale = window?.traitCollection.displayScale ?? 0
-    let reading = window.map { Self.readTabBar(in: $0) } ?? .missing
+  private func logEmitted(
+    _ json: String,
+    read: (snapshot: Snapshot, tabBar: TabBarReading, windowBounds: CGRect, displayScale: CGFloat)
+  ) {
+    let bounds = read.windowBounds
+    let scale = read.displayScale
+    let reading = read.tabBar
     let frame = Self.describe(reading.frame)
     let tabBarFrame = Self.describe(reading.tabBarFrame)
     let tabBarIsHidden = reading.tabBarIsHidden.map { String($0) } ?? "none"

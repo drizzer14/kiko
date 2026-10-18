@@ -5,12 +5,9 @@ import type { DisplayRegionsSnapshot } from '../display-regions-native';
 
 import { useTabBarEdge } from '.';
 
-type RefreshableSpec = jest.Mocked<Spec> & { requestRefresh: jest.Mock };
-
-// Read through the registry, not a value import: only the wrapper may load
-// the native module. The shared stub has no requestRefresh, so each test installs its own.
+// Read through the registry, not a value import: only the wrapper may load the native module.
 const nativeModule = (
-  jest.requireMock('@kiko/native-specs/NativeDisplayRegions') as { default: RefreshableSpec }
+  jest.requireMock('@kiko/native-specs/NativeDisplayRegions') as { default: jest.Mocked<Spec> }
 ).default;
 
 const snapshotWithEdge = (tabBarEdge: DisplayRegionsSnapshot['tabBarEdge']): string =>
@@ -22,7 +19,7 @@ const snapshotWithEdge = (tabBarEdge: DisplayRegionsSnapshot['tabBarEdge']): str
   } satisfies DisplayRegionsSnapshot);
 
 beforeEach(() => {
-  nativeModule.requestRefresh = jest.fn();
+  nativeModule.requestRefresh.mockClear();
   nativeModule.getSnapshot.mockReturnValue(snapshotWithEdge('none'));
 });
 

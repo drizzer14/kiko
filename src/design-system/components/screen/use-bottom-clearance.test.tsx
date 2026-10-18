@@ -85,7 +85,7 @@ describe('useBottomClearance', () => {
     expect(result.current).toBe(0);
   });
 
-  it('is zero under a top tab bar, 64 over 20 on the Pro 13-inch (was 44)', async () => {
+  it('is zero under a top tab bar, 64 over 20 on the Pro 13-inch', async () => {
     mockUseTabBarEdge.mockReturnValue('top');
     mockTabBarHeight = 64;
     mockBottomInset = 20;
@@ -116,6 +116,18 @@ describe('useBottomClearance', () => {
     const { result } = await renderHook(() => useBottomClearance());
 
     expect(result.current).toBe(83 - 20);
+  });
+
+  it('is zero when the native edge says bottom but the system reports a vertical bar (Duo inner landscape)', async () => {
+    mockUseTabBarEdge.mockReturnValue('bottom');
+    mockUseVerticalBarEdge.mockReturnValue('trailing');
+    mockTabBarHeight = 83;
+    mockBottomInset = 20;
+    mockWindowHeight = 669;
+
+    const { result } = await renderHook(() => useBottomClearance());
+
+    expect(result.current).toBe(0);
   });
 
   it('is zero in the pane above the other one even under a bottom tab bar', async () => {

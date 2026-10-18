@@ -25,8 +25,6 @@ const topBarSnapshot: DisplayRegionsSnapshot = {
   foldRegion: null,
 };
 
-type RefreshableSpec = jest.Mocked<Spec> & { requestRefresh: jest.Mock };
-
 // The wrapper keeps the last native snapshot in module state, so each test loads its own copy of
 // the wrapper together with the native mock that copy reads: a reset registry re-runs both module
 // factories, and the wrapper requires the native module lazily from that same registry. The mock
@@ -140,12 +138,9 @@ describe('displayRegionsNative.getSnapshot', () => {
 
 describe('displayRegionsNative.requestRefresh', () => {
   it('calls the native method once', () => {
-    const refreshable = nativeModule as RefreshableSpec;
-    refreshable.requestRefresh = jest.fn();
-
     displayRegionsNative.requestRefresh();
 
-    expect(refreshable.requestRefresh).toHaveBeenCalledTimes(1);
+    expect(nativeModule.requestRefresh).toHaveBeenCalledTimes(1);
   });
 });
 

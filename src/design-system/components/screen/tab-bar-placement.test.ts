@@ -24,6 +24,13 @@ describe('tabBarPlacementOf', () => {
     ] as const)('%s', (_title, tabBarEdge, tabBarHeight, windowHeight, expected) => {
       expect(tabBarPlacementOf(tabBarEdge, 'none', tabBarHeight, windowHeight)).toBe(expected);
     });
+
+    it.each(['leading', 'trailing'] as const)(
+      'keeps a side bar when the native edge says bottom but the system reports a vertical bar (Duo inner landscape, %s)',
+      (verticalBarEdge) => {
+        expect(tabBarPlacementOf('bottom', verticalBarEdge, 83, 669)).toBe('side');
+      },
+    );
   });
 
   describe.each(['leading', 'trailing'] as const)('native edge %s', (tabBarEdge) => {
