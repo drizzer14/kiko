@@ -714,8 +714,10 @@ new component can land between reviews of this skill:
   form) gets only the bottom inset, which resets on hide. Never rely on a ScrollView's offset
   for a field outside it. No screen gates `automaticallyAdjustKeyboardInsets` for a sheet: a
   field in a sheet or another pane moves no other ScrollView's offset, so `CurrencyField` has no
-  open-state callback and a Screen keeps the default while a sheet is open. A device check of the
-  other pane covers this; a field the keyboard covers inside its OWN Screen has no device proof.
+  open-state callback and a Screen keeps the default while a sheet is open. Proof scope: a device
+  check (user, unfolded Duo, 2026-10-18) proved the OTHER-pane case; the sheet case is proven by
+  code only (it takes the same native branch); scrolling a field the keyboard covers into view
+  inside its OWN Screen has no device proof.
   Settings' About block (app name/version, copyright, links) is an
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned

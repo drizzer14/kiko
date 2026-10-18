@@ -110,7 +110,9 @@ absent** — this skill states the shape and non-enum facts only:
   `BinanceWriteToken` of that write, not the pair. The account form's
   `clearPairIfRowMissing(token)` calls `clearCredentialsIfWrittenBy`, which resets the pair only
   when that token is still the account's latest recorded write, so a later save (even of the same
-  pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). The form clears
+  pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). Every write and
+  clear of the pair goes through that file's per-account lock; the exchange helpers
+  (`exchange/credentials`) are lock-free and have no other caller. The form clears
   when no row owns P, and account detail keeps the pair (user ruling 2026-10-10).
   Known limit after a fold: see kiko-architecture, "Form drafts". Re-picking the
   already-selected kind is a no-op (the bank/broker
@@ -3028,5 +3030,6 @@ default holding over it; the other writer of draft references is `resolveDraftRe
 (`template-references/template-references.ts`). Template entries (`templateId`, `editTemplateId`,
 `newTemplate`) never open from a draft: coordinator ruling B, 2026-10-17, same as main, so a fold or
 unfold there loses unsaved edits. A restored form shows its holding field per `revealsHoldingField`
-(`route-entry/route-entry.ts`), recomputed at mount, not stored. Known residual: a template with no
-holding after one with a holding hides the field after a remount; the write target stays correct.
+(`route-entry/route-entry.ts`), recomputed at mount, not stored. Known residuals after a remount,
+both hiding the field: a re-pick of the page's own holding, and a template with no holding after
+one with a holding; the write target stays correct.

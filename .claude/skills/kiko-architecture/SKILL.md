@@ -1881,7 +1881,11 @@ than restated here:
   `exchange/credentials`, `exchange/budget` (`RunBudget`, `createExchangeRun`),
   `exchange/walk/depth.ts` (Binance's `BINANCE_DEPTH_CONFIG` is in
   `binance.depth-config.ts`) and `exchange/amounts` (`exchangeMinorUnits`);
-  read each folder's barrel. The walk, records, paging and depth tests stay
+  read each folder's barrel. `exchange/credentials` (`saveExchangeCredentials`,
+  `clearExchangeCredentials`) takes no per-account lock: a caller serializes its own writes and
+  clears (Binance does, with its write tokens, in `binance/binance.credentials.ts`); never call
+  these two helpers from anywhere else (see the header of `exchange/credentials/credentials.ts`).
+  The walk, records, paging and depth tests stay
   in `binance/` (they import Binance fixtures); `walk.series-ranges.test.ts`
   lives beside the walk. The
   capital caller is `binance.transactions.ts` (`WINDOW_MS`, `MAX_WINDOWS`,
@@ -3105,8 +3109,11 @@ what a change must keep.
   reset resolves; a restart loses tokens, so nothing is cleared: fail safe) inside the
   per-account serialized Keychain write chain. The `readCredentials` access-policy repair is
   one serialized compare-and-set step (re-read inside the step, re-save the same pair only if
-  unchanged; it records no new token). No step calls another serialized step (no re-entry).
-  Save writes
+  unchanged; it records no new token); `readCredentials` calls this serialized repair, never an
+  unserialized re-save (that could restore a pair a clear had just removed; pinned by "the
+  access-policy repair is one serialized step > leaves a pair that was cleared between its read
+  and its save cleared" in `binance.credentials.test.ts`). No step calls another serialized step (no
+  re-entry). Save writes
   the picked icon in the same `saveFormAccount` write (a second write that
   failed after the row existed would read as no row).
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
@@ -3280,10 +3287,11 @@ function; when a review finds hidden state on one holding path, grep every
 `setPrimaryHoldingId` caller and every seed path, share one helper, and pin one red test per
 path.
 
-Field visibility is sticky: on Add-from-holding the holding field shows once a template seats
-a different holding (`revealsHoldingField` / `resolveHoldingField`, `route-entry/`) and stays
-shown, showing the holding Save writes. One state set in the seed branch holds it; it is
-never derived per render.
+Field visibility is sticky within one mount: on Add-from-holding the holding field shows once a
+template seats a different holding (`revealsHoldingField` / `resolveHoldingField`,
+`route-entry/`). It is local state, not in the draft; a remount recomputes it from the draft's
+holding. Known limit: it can hide after a remount (a re-pick of the page's own holding, or a
+template with no holding after one with a holding). The write target stays the page's holding.
 
 ## Navigator-layer title behaviour
 

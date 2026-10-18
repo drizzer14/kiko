@@ -168,7 +168,7 @@ Fix these first, before the style sweep. Each one needs a regression test. Each 
 | 35 | Latent | `src/holdings/priced-value/priced-value.ts:94` and `:53` | A holding with no id is handled three different ways. The metal value is a bare UAH number that the code wraps in `holding.currency`. | R6 |
 | 36 | Low | `src/screens/statistics/bar-chart/bar-chart.component.tsx:104` | The by-type bar shows current values only, but its empty state says "No data for this range". | R3 |
 | 37 | Perf | `src/screens/holding-detail/holding-detail.screen.tsx:507` | `now = Date.now()` is a memo dependency, so the ledger is sorted and grouped again on every render. | R1 |
-| 38 | Low | `src/design-system/components/currency-field` and `src/screens/column-mapping/currency-fields/currency-fields.component.tsx:60` | The column-mapping host does not wire `onOpenChange`, so the background-scroll bug is still open there (divergent twin). | R5 |
+| 38 | Low | `src/design-system/components/currency-field` and `src/screens/column-mapping/currency-fields/currency-fields.component.tsx:60` | The column-mapping host does not wire `onOpenChange`, so the background-scroll bug is still open there (divergent twin). Closed by `patches/react-native+0.87.1.patch` (no host wires `onOpenChange` any more). | R5 |
 
 
 
@@ -836,7 +836,7 @@ Correctness bugs come first. `BUG` = correctness bug, placed before the brief's 
 | G2 | src/design-system/components/option-pills/option-pills.component.tsx:29-101 | Near-duplicate of src/screens/forms/chip-row/chip-row.component.tsx: both are selectable pill rows with an accent fill, `onAccent` label and inline selected background. OptionPills even has a compact size. ChipRow stays outside the design system. | Merge into one design-system chips component. Visual change. | M | USER-DECISION: final chip look |
 | G2 | src/design-system/components/symbol/symbol.props.d.ts:7 | `SymbolTone` is a copy of `TextTone` (text.props.d.ts:16, not exported). | Export TextTone and reuse it. | S | |
 | G2 | src/design-system/entity-tint.ts:90-95,104-109 | Byte-to-hex formatting duplicates symbol.color.ts:19 `byteToHex`, in a different style. | One helper in entity-tint. | S | |
-| G2 | src/design-system/components/currency-field/currency-field.component.tsx:103,117-120 | Divergent twin. settings, account-form and holding-form wire `onOpenChange` → `automaticallyAdjustKeyboardInsets`. src/screens/column-mapping/currency-fields/currency-fields.component.tsx:60 does not, and column-mapping.screen.tsx:1139 is a `Screen scroll`. The background-scroll misfire bug is still open there. | Wire it there. Better: move the gating into Screen or a context so no host can forget it. Behavior fix. | S | |
+| G2 | src/design-system/components/currency-field/currency-field.component.tsx:103,117-120 | Divergent twin. settings, account-form and holding-form wire `onOpenChange` → `automaticallyAdjustKeyboardInsets`. src/screens/column-mapping/currency-fields/currency-fields.component.tsx:60 does not, and column-mapping.screen.tsx:1139 is a `Screen scroll`. The background-scroll misfire bug is still open there. | Wire it there. Better: move the gating into Screen or a context so no host can forget it. Behavior fix. Closed by `patches/react-native+0.87.1.patch` (the gating and `onOpenChange` are gone). | S | |
 | G2 | src/design-system/components/screen/screen.component.tsx:119-123,152-156,172-176 | The footer node is written 3×. | One `footerNode` const. | S | |
 | G3 | src/design-system/components/symbol/symbol.component.tsx:13 | Folder is `symbol/`, props are `SymbolProps`, but the component is `SymbolIcon`. | Rename to `symbol-icon/` / `SymbolIconProps`. | S | |
 | G4 | src/design-system/components/bottom-sheet/bottom-sheet.component.tsx:131-383 | Mixes keyboard tracking (224-266), the drag gesture (282-294), the scrim (337-347, a second copy of GlassSurface's glass/fallback branch) and the body. | Extract a `useKeyboardHeight` hook and a `SheetScrim` component. | M | |
@@ -1629,7 +1629,7 @@ Each batch covers one concern and is one commit, or a few small ones. Run every 
 | Batch | Content | Behavior-free? | Gate |
 |---|---|---|---|
 | 0 | **Urgent production fixes.** Chunk `ratesRepo.upsertMany` + the bound-parameter test (bug 1). Translate the Face ID labels (bug 28). | No | Device check of the rates first; the user reviews the new en/uk strings. |
-| 1 | **The other correctness bugs**, one commit each with a test, grouped by area: data-transfer (bugs 2-3, after the `dbKeyHex` decision), statement-import and sync (4, 5, 20-22), transaction-form (6-8), column-mapping and statement-import screens (9, 23-27, 29), domain (10, 11, 18, 19, 33-35), home and statistics (15-17, 36), settings (30-32), holding-detail memo (37), column-mapping `onOpenChange` (38). Bugs 12-14 go to the feature session. | No | Full jest; a device check for network and sync items. |
+| 1 | **The other correctness bugs**, one commit each with a test, grouped by area: data-transfer (bugs 2-3, after the `dbKeyHex` decision), statement-import and sync (4, 5, 20-22), transaction-form (6-8), column-mapping and statement-import screens (9, 23-27, 29), domain (10, 11, 18, 19, 33-35), home and statistics (15-17, 36), settings (30-32), holding-detail memo (37), column-mapping `onOpenChange` (38; closed by `patches/react-native+0.87.1.patch`). Bugs 12-14 go to the feature session. | No | Full jest; a device check for network and sync items. |
 | 2 | **User decisions (section 6) + a first scribe pass.** Fix the three skill texts that cause new violations every day: the U2 rule, the fnts/U3 rule, and the UX-patterns section. Remove the ids from all skills. | Docs only | The skill-drift rule. |
 | 3 | **Automated checks, first.** `check:imports` with blank lines (item 1); Semgrep U3, U2 and U5 at Class B (items 2-4); the i18n and twin invariants that already pass (items 18-20). | Harness only | `check:rules` fixtures. |
 | 4 | **Shared helpers and test-support.** `deriveTestID` (fnts), `AppTheme`, the touch-target token, one `DAY_MS`/`isRecord`/`isCurrency`/`rateKey`/`toMajor`/`startOfLocalDay` source, `readJsonOrThrow`, `mockUseLiveQuery`, a strict `fakeTx` that throws on unknown input, `fakeQuery`, the Text-tone and Symbol mocks, a Keychain `__mocks__`, typed row factories, `emptySnapshot`. Then move the tests onto them, one folder at a time. | Yes | Full jest. |
@@ -2127,7 +2127,7 @@ All behavior-free unless marked. Run in this order.
 8. **Behavior and UX (device check, some user decisions).**
    - Calendar-header icon-only Buttons (44pt target).
    - CurrencyField `error` passthrough (feat-refactor).
-   - column-mapping `onOpenChange` twin fix.
+   - column-mapping `onOpenChange` twin fix (closed by `patches/react-native+0.87.1.patch`).
    - One Cancel style (USER-DECISION).
    - OptionPills/ChipRow merge (USER-DECISION).
    - Monday-first calendar (USER-DECISION).
