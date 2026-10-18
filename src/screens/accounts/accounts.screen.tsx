@@ -505,7 +505,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             {/* The Properties and Loans sections render from data (a
                 non-empty holding list of a live implicit account, so the
                 heading always has an account to name), never a build flag
-                (Guideline 2.3.1(a)). */}
+                (Guideline 2.5.19). */}
             {propertyAccount !== undefined &&
               propertyHoldings.length > 0 &&
               renderHoldingSection({

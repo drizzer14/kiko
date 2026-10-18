@@ -751,7 +751,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             only, whether or not the account is connected. The
             live-sync Connect field stays CREATE-ONLY — editing an already-
             connected account's real connection is BankSyncSection's job on
-            the account-detail screen (Monobank-only, Guideline 2.3.1(a)),
+            the account-detail screen (Monobank-only, Guideline 2.5.19),
             untouched here. The credential field itself is NOT required (no asterisk): an
             account still creates with no credentials — a secret is masked
             and write-only, going straight to the Keychain on save, never

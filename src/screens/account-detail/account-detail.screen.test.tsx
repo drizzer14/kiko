@@ -1412,7 +1412,7 @@ describe('AccountDetailScreen', () => {
     expect(queryByText('Disconnect')).toBeNull();
   });
 
-  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 2.3.1(a)) —
+  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 2.5.19) —
   // Monobank is the sole shipped native provider, so the picker sheet lists
   // exactly one row and there is no cross-provider routing to exercise here
   // (see `bank-sync-section.component.test.tsx` and

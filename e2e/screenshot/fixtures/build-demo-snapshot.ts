@@ -64,7 +64,7 @@ const buildCategories = (): CategoryRow[] => {
 
 /**
  * Two rules, so the reviewer finds both kinds on the category page and in the rule editor (the
- * demo file is the only way to see them, Guideline 2.3.1(a)): a name alone, and a name with an
+ * demo file is the only way to see them, Guideline 2.5.19): a name alone, and a name with an
  * amount. Each one agrees with the ledger it ships with, so no row would change category if a
  * rule were applied to existing transactions. Stored as the export stores a rule: the matchers
  * as the JSON text the table holds.

@@ -3,7 +3,7 @@
 Two committed, encrypted export files, generated from the pure demo dataset
 in `../seed/screenshot-seed.ts` and used by two consumers, through the app's
 **real Import UI** — there is no boot-time seed, no build flag, no launch
-argument (Guideline 2.3.1(a)):
+argument (Guideline 2.5.19):
 
 - **`kiko-demo-uk.kiko`** — the user's own manual marketing screenshots.
   Ukrainian names (Монобанк, Сільпо, Брокер, ...) and `language: 'uk'`, so it
@@ -50,7 +50,7 @@ about four weeks (see `seed/screenshot-seed.ts`). The data thins from about
 the second week, so about four weeks is an upper bound, not a safe age: a file anchored on a past day imports fine but shows a sparse,
 then empty, Home list and spending charts.
 
-There is no date shifting at import time (Guideline 2.3.1(a)): the app imports the
+There is no date shifting at import time (Guideline 2.5.19): the app imports the
 file as written. Keep the files fresh instead: regenerate the files and refresh
 the reviewer kit for **every App Store submission and resubmission**, and
 before a screenshot session.
