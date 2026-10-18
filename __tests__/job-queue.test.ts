@@ -28,6 +28,7 @@ import {
   buildMutationRepository,
 } from './test-support/mutation-repository';
 import { warmExecutables } from './test-support/warm-executables';
+import { HIGH_LOAD, LOW_LOAD, sysctlCallCount, writeSysctlStub } from './test-support/sysctl-stub';
 
 // scripts/job-queue.sh is the one in-repo queue for heavy jobs. Each test runs it against a
 // throwaway KIKO_QUEUE_DIR with `make`, `npm`, `caffeinate`, and `pmset` stubbed, so no real job
@@ -94,6 +95,10 @@ const createSandbox = (): Sandbox => {
     writeExecutable(join(bin, 'pmset'), PMSET_STUB),
     writeExecutable(join(bin, 'uptime'), UPTIME_STUB),
   ]);
+  // A gate reads the 5-minute load before it starts, so every sandbox starts on a quiet machine
+  // instead of the real one.
+  writeSysctlStub(bin, LOW_LOAD, LOW_LOAD, 0);
+  warmExecutables([join(bin, 'sysctl')]);
   writeFileSync(join(root, 'power'), AC_POWER);
 
   const sandbox: Sandbox = {
@@ -535,6 +540,65 @@ describe('scripts/job-queue.sh a gate', () => {
 
     expect(result.stdout.split('\n').filter((line) => line === heavy)).toEqual([heavy]);
     expect(result.stdout).not.toContain('noise');
+  });
+
+  describe('the gate log lines mutation.sh and mutation-score.js print on a failure', () => {
+    const FIRST_RUN = [
+      'FIRST RUN: src/a.ts: 100.00 killed=2 timeout=5 survived=0 noCoverage=0',
+      'FIRST RUN: CHANGE SET TOTAL: 100.00 killed=2 timeout=5 survived=0 noCoverage=0',
+      'FIRST RUN: GATE: change set >= 75, each file >= 60, a file fails TIMEOUT-HEAVY when timeout > 50% of detected and >= 3',
+      'FIRST RUN: TIMEOUT-HEAVY src/a.ts: timeout 5 of 7 detected (71.4 %), killed 2, score without timeouts 28.57 < 60',
+    ];
+    const RERUN = 'RERUN src/a.ts: 5 timed out -> 3 killed, 1 survived, 1 timeout';
+    const FINAL_TOTAL = 'CHANGE SET TOTAL: 80.00 killed=4 timeout=1 survived=1 noCoverage=0';
+    const FINAL_GATE = 'GATE: change set >= 75, each file >= 60';
+    const FINAL_HEAVY = 'TIMEOUT-HEAVY src/a.ts: timeout 1 of 5 detected (20.0 %), killed 4';
+    const BLOCK = 'CHECK FAILED: Stryker (mutation testing)';
+
+    const stdoutLines = (stubOutput: string): string[] => {
+      const sandbox = createSandbox();
+      const gate = createGateWorktree(sandbox, 'gate', listing(12));
+      sandbox.environment.KIKO_STUB_OUTPUT = stubOutput;
+
+      return runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head).stdout.split('\n');
+    };
+
+    it.each([
+      [
+        'REPORT SCOPE MISMATCH',
+        'REPORT SCOPE MISMATCH: the report does not belong to this run (its recorded config.mutate differs from the changed files).',
+      ],
+      ['RERUN', RERUN],
+      ['RERUN SKIPPED (cap)', 'RERUN SKIPPED: 500 mutants over the cap'],
+      ['RERUN SKIPPED (load)', 'RERUN SKIPPED: load'],
+    ])('prints the %s line once, although the gate log holds it twice', (_name, line) => {
+      const lines = stdoutLines(`noise\n${line}\n${BLOCK}\n${line}`);
+
+      expect(lines.filter((candidate) => candidate === line)).toEqual([line]);
+      expect(lines).not.toContain('noise');
+    });
+
+    it('shows the final verdict and the RERUN line, never the first run it replaced', () => {
+      const lines = stdoutLines(
+        [
+          ...FIRST_RUN,
+          RERUN,
+          FINAL_TOTAL,
+          FINAL_GATE,
+          FINAL_HEAVY,
+          BLOCK,
+          RERUN,
+          FINAL_TOTAL,
+          FINAL_GATE,
+          FINAL_HEAVY,
+        ].join('\n'),
+      );
+
+      expect(lines.filter((line) => line === RERUN)).toEqual([RERUN]);
+      expect(lines).toContain(FINAL_TOTAL);
+      expect(lines.filter((line) => line === FINAL_HEAVY)).toEqual([FINAL_HEAVY]);
+      expect(lines.filter((line) => line.startsWith('FIRST RUN: '))).toEqual([]);
+    });
   });
 
   it('forwards the --list warning line to the waiter, once', () => {
@@ -1658,6 +1722,243 @@ describe('scripts/job-queue.sh battery power', () => {
   });
 });
 
+// A gate at the head of the queue waits while the 5-minute load is at or above its start limit
+// (10), for at most KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS (1200 s in production), then starts anyway.
+// Only a gate defers: a gate's first mutants time out on drift between its dry run and its run.
+describe('scripts/job-queue.sh gate start load defer', () => {
+  const stubLoad = (sandbox: Sandbox, high: string, highCalls: number): void => {
+    writeSysctlStub(join(sandbox.root, 'bin'), high, LOW_LOAD, highCalls);
+    warmExecutables([join(sandbox.root, 'bin/sysctl')]);
+  };
+
+  // The poll sleep is a child of the waiter. A signal sent once it exists lands in the wait
+  // builtin, not in the gap between the fork of the sleep and the record of its pid, where the
+  // sleep would outlive the queue and hold the output pipe open.
+  const sleepsBetweenPolls = (waiter: Waiter): boolean =>
+    spawnSync('pgrep', ['-P', String(waiter.child.pid), '-x', 'sleep']).status === 0;
+
+  const orderOf = (text: string, ...markers: RegExp[]): number[] =>
+    markers.map((marker) => text.search(marker));
+
+  it('waits at the head while the load is high, then starts once it drops', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, HIGH_LOAD, 3);
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitFor(
+      () => waiter.stdout().includes('WAITING gate: load') || waiter.child.exitCode !== null,
+    );
+    const result = await waiter.finished;
+
+    expect(result.stdout).toMatch(/^WAITING gate: load\b/m);
+    expect(result.code).toBe(0);
+    expect(result.stdout).not.toContain('LOAD WAIT EXPIRED');
+    const [waiting, start] = orderOf(result.stdout, /^WAITING gate: load/m, /^START gate /m);
+    expect(waiting).toBeGreaterThanOrEqual(0);
+    expect(start).toBeGreaterThan(waiting);
+    expect(startedWorktrees(sandbox)).toEqual([gate.worktree]);
+  });
+
+  it('starts anyway after the wait limit, printing LOAD WAIT EXPIRED before START', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, HIGH_LOAD, 9999);
+    sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
+    const [waiting, expired, start] = orderOf(
+      result.stdout,
+      /^WAITING gate: load/m,
+      /^LOAD WAIT EXPIRED gate: /m,
+      /^START gate /m,
+    );
+    expect(waiting).toBeGreaterThanOrEqual(0);
+    expect(expired).toBeGreaterThan(waiting);
+    expect(start).toBeGreaterThan(expired);
+    expect(startedWorktrees(sandbox)).toEqual([gate.worktree]);
+  });
+
+  it('never defers a verify, however high the load', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    stubLoad(sandbox, HIGH_LOAD, 9999);
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toMatch(/^WAITING /m);
+    expect(result.stdout).not.toContain('LOAD WAIT EXPIRED');
+    expect(startedWorktrees(sandbox)).toEqual([worktree]);
+  });
+
+  it('prints one "load unknown" line and does not defer when the load cannot be read', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, 'garbage', 9999);
+    const lock = holdLock(sandbox);
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitFor(() => waiter.stdout().includes('load unknown') || powerChecks(sandbox) >= 5);
+    await waitForPasses(sandbox);
+    rmSync(lock, { recursive: true });
+    const result = await waiter.finished;
+
+    expect(result.stdout.split('\n').filter((line) => line.includes('load unknown'))).toHaveLength(
+      1,
+    );
+    expect(result.stdout).not.toMatch(/^WAITING /m);
+    expect(result.code).toBe(0);
+    expect(startedWorktrees(sandbox)).toEqual([gate.worktree]);
+  });
+
+  it('keeps the hold reason while the queue is held and reads no load, then defers after release', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, HIGH_LOAD, 9999);
+    sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+    runQueue(sandbox, 'hold', 'maintenance');
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitFor(() => waiter.stdout().includes('WAITING gate: hold (maintenance)'));
+
+    expect(waiter.stdout()).not.toMatch(/^WAITING gate: load/m);
+    expect(sysctlCallCount(join(sandbox.root, 'bin'))).toBe(0);
+    runQueue(sandbox, 'release');
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/^WAITING gate: load\b/m);
+    expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
+  });
+
+  it('keeps the battery reason while on battery and reads no load, then defers on AC power', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, HIGH_LOAD, 9999);
+    sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+    writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, BATTERY_POWER);
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitFor(() => waiter.stdout().includes('WAITING gate: battery power'));
+    await waitForPasses(sandbox);
+
+    expect(waiter.stdout()).not.toMatch(/^WAITING gate: load/m);
+    expect(sysctlCallCount(join(sandbox.root, 'bin'))).toBe(0);
+    writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, AC_POWER);
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
+  });
+
+  // A reset clock prints a fresh load WAITING line after the release; a clock that kept running
+  // through the hold or battery pause expires at once, with no such line.
+  it.each([
+    [
+      'a hold',
+      (sandbox: Sandbox) => runQueue(sandbox, 'hold', 'maintenance'),
+      (sandbox: Sandbox) => runQueue(sandbox, 'release'),
+    ],
+    [
+      'battery power',
+      (sandbox: Sandbox) =>
+        writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, BATTERY_POWER),
+      (sandbox: Sandbox) => writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, AC_POWER),
+    ],
+  ])(
+    'gives the gate its full load wait again after %s that outlasted the limit',
+    async (_name, engage, release) => {
+      const sandbox = createSandbox();
+      const gate = createGateWorktree(sandbox, 'gate', listing(12));
+      stubLoad(sandbox, HIGH_LOAD, 9999);
+      sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+      // A hold reads no power state, so the poll sleep itself is the pass counter here.
+      const sleepLog = join(sandbox.root, 'sleeps');
+      sandbox.environment.KIKO_STUB_SLEEP_LOG = sleepLog;
+      warmExecutables([
+        writeExecutable(
+          join(sandbox.root, 'bin', 'sleep'),
+          [
+            '#!/usr/bin/env bash',
+            'printf "sleep\\n" >> "$KIKO_STUB_SLEEP_LOG"',
+            'exec /bin/sleep "$@"',
+            '',
+          ].join('\n'),
+        ),
+      ]);
+
+      const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+      await waitFor(() => waiter.stdout().includes('WAITING gate: load'));
+      engage(sandbox);
+      await waitFor(() => /^WAITING gate: (hold|battery)/m.test(waiter.stdout()));
+      const outlastingPasses = readLines(sleepLog).length + 20;
+      await waitFor(() => readLines(sleepLog).length >= outlastingPasses);
+      expect(waiter.stdout()).not.toContain('LOAD WAIT EXPIRED');
+      release(sandbox);
+      const result = await waiter.finished;
+      const lines = result.stdout.split('\n');
+      const pausedAt = lines.findIndex((line) => /^WAITING gate: (hold|battery)/.test(line));
+      const afterPause = lines.slice(pausedAt + 1);
+      const loadWaitingAgainAt = afterPause.findIndex((line) =>
+        line.startsWith('WAITING gate: load'),
+      );
+      const expiredAt = afterPause.indexOf('LOAD WAIT EXPIRED gate: load 12.25');
+
+      expect(result.code).toBe(0);
+      expect(loadWaitingAgainAt).toBeGreaterThanOrEqual(0);
+      expect(expiredAt).toBeGreaterThan(loadWaitingAgainAt);
+    },
+  );
+
+  it('starts the wait only when the lock is free, never while a running job holds it', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, HIGH_LOAD, 9999);
+    sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+    const lock = holdLock(sandbox);
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitForPasses(sandbox, 20);
+
+    expect(waiter.stdout()).not.toMatch(/^(WAITING|LOAD WAIT EXPIRED) /m);
+    rmSync(lock, { recursive: true });
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/^WAITING gate: load\b/m);
+    expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
+  });
+
+  it.each([
+    ['SIGTERM', 143],
+    ['SIGINT', 130],
+  ] as const)(
+    'exits %s promptly from the load wait and removes its ticket',
+    async (signal, code) => {
+      const sandbox = createSandbox();
+      sandbox.environment.KIKO_QUEUE_POLL_SECONDS = LONG_POLL_SECONDS;
+      const gate = createGateWorktree(sandbox, 'gate', listing(12));
+      stubLoad(sandbox, HIGH_LOAD, 9999);
+
+      const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+      await waitFor(
+        () => waiter.stdout().includes('WAITING gate: load') && sleepsBetweenPolls(waiter),
+      );
+      waiter.child.kill(signal);
+      const result = await waiter.finished;
+
+      expect(result.code).toBe(code);
+      expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+      expect(lockPresent(sandbox)).toBe(false);
+      expect(startedWorktrees(sandbox)).toEqual([]);
+    },
+  );
+});
+
 // A `make` stub that commits inside the worktree it was given (`make -C <dir> verify`).
 const COMMITTING_MAKE_STUB = [
   '#!/usr/bin/env bash',
@@ -1863,7 +2164,7 @@ describe('scripts/job-queue.sh status', () => {
 
       expect(status).toBe(0);
       expect(warnings).toHaveLength(3);
-      expect(warnings[0]).toContain('60');
+      expect(warnings[0]).toContain('WARNING: 60 done.log');
       expect(warnings[0]).toContain(shortAt(60));
       expect(warnings[1]).toContain(lateOne);
       expect(warnings[1]).toContain('62');
@@ -1877,7 +2178,7 @@ describe('scripts/job-queue.sh status', () => {
       );
 
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain('5');
+      expect(warnings[0]).toContain('WARNING: 5 done.log');
       expect(warnings[0]).toContain(shortAt(5));
     });
   });

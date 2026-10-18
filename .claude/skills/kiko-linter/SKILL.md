@@ -30,6 +30,8 @@ fast+medium gate is picked up by `make verify` automatically through
 `scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
 A gate forwards the `--list` over-count `warning:` line before QUEUED and prints each
 `TIMEOUT-HEAVY` line of its log before the DONE line (the ops skill's "Load rule" has the order).
+The rerun and the manual fallback for a TIMEOUT-HEAVY file:
+`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file".
 
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
@@ -261,9 +263,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   worktree, run a queued `scripts/job-queue.sh verify` on the merge commit, then
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
   sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
-  version strictly above main's; known limit: a commit changing only
-  plugin.json may lower the version and main still moves, gap
-  20261017T1654-kiko-harness-h8/3). `scripts/ff-main.sh` needs no exemption: its merge uses
+  version strictly above main's, and no commit may lower, remove, or make unreadable that
+  version while main has a readable one, user ruling 2026-10-18).
+  `scripts/ff-main.sh` needs no exemption: its merge uses
   a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
   option's value (see the limits list). A session
@@ -762,11 +764,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `MUTATION_FILE_CAP` (30, a plain assignment in the script), prints the
   structured block and exits 2 BEFORE Stryker starts. The scorer fails a TIMEOUT-HEAVY file
   (`TIMEOUT_HEAVY_SHARE`, `TIMEOUT_HEAVY_MINIMUM` in `mutation-score.js`; rule in
-  `docs/harness/checks.md`): `mutation-score.js` exits 1, `mutation.sh` exits 2. It is cleared
-  by the orchestrator proving each timed-out mutant in plain jest or writing it in the BATCH
-  READY as equivalent; the gate keeps failing, so the BATCH READY carries the failed gate with
-  the proofs. Never raise the timeout; no allowlist file. `mutation.sh --list` can print a
-  `warning:` line after `changed lines: N` for a merged track (`warn_over_count`). Mutation testing
+  `docs/harness/checks.md`): `mutation-score.js` exits 1, `mutation.sh` exits 2. When it is
+  the only failure, the gate reruns the timed-out mutants alone and the final rerun report is
+  the verdict. Only if that report still fails or the rerun was skipped does the orchestrator
+  prove each timed-out mutant in plain jest or write it in the BATCH READY as equivalent
+  (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file"). Never raise the timeout; no
+  allowlist file. `mutation.sh --list` can print a `warning:` line after `changed lines: N`
+  for a merged track (`warn_over_count`). Mutation testing
   runs per small change set only (a whole-release run went 10 h 16 min
   with no result): the fix is `KIKO_MUTATION_BASE` set to the change
   set's own base commit, never a raised cap. The coordinator runs it per

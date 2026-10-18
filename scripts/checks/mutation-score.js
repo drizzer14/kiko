@@ -33,8 +33,19 @@
 // formula still counts a Timeout as detected, but a widely imported file's mutants time out on
 // jest's related-test load, not on behavior, so a file made mostly of them proves nothing about
 // its tests. It fails the gate whatever the total and the floor say, and its line names the
-// score without the timeouts. A re-run of the same gate fails it again: it is cleared outside the
-// scorer (see docs/harness/checks.md).
+// score without the timeouts. The verdict on a report never changes, but the gate does not stop at
+// it: when TIMEOUT-HEAVY is the only failure, scripts/checks/mutation.sh reruns the timed-out
+// mutants once under a quiet machine and scores the final report with this same rule. A hang
+// normally times out again there and the file still fails, cleared by the manual method (see
+// docs/harness/checks.md). A memory-filling hang can instead end RuntimeError (V8 runs out of
+// memory before Stryker's timer; Stryker reports Error after its retries), which this scorer does
+// not count; the rerun summary shows it as other.
+//
+// `--rerun-candidates <report.json> <mutate-entry>...` prints that rerun set instead of a score:
+// one `path<TAB>mutant id` line for every Timeout mutant inside the graded ranges of each
+// TIMEOUT-HEAVY file. It prints nothing (exit 0) when no file is heavy or when anything else
+// fails too (a file below the floor, a total below the threshold, a scope mismatch), because a
+// rerun would not make that gate pass.
 //
 // Exit 2 (usage) for an entry that is not `path:start-end` (a plain path would grade a whole file,
 // which no run mutates), for a range that is empty or starts below line 1, and for a file with a
@@ -242,6 +253,15 @@ const scopeMismatch = (report, entries) => {
   ];
 };
 
+const gradeFailures = (rows, total) => ({
+  belowFloor: rows.some((row) => row.kind === 'graded' && row.score < PER_FILE_FLOOR),
+  belowThreshold: total.score !== null && total.score < CHANGE_SET_THRESHOLD,
+  timeoutHeavy: rows.some(isTimeoutHeavy),
+});
+
+const gradeRows = (groups, report) =>
+  [...groups].map(([path, group]) => rowFor(path, group, report));
+
 const scoreChangeSet = (report, entries) => {
   const groups = groupEntries(entries);
   const mismatch = scopeMismatch(report, entries);
@@ -256,12 +276,9 @@ const scoreChangeSet = (report, entries) => {
     };
   }
 
-  const rows = [...groups].map(([path, group]) => rowFor(path, group, report));
+  const rows = gradeRows(groups, report);
   const total = aggregate(rows);
-  const belowFloor = rows.some((row) => row.kind === 'graded' && row.score < PER_FILE_FLOOR);
-  const belowThreshold = total.score !== null && total.score < CHANGE_SET_THRESHOLD;
-
-  const timeoutHeavy = rows.some(isTimeoutHeavy);
+  const { belowFloor, belowThreshold, timeoutHeavy } = gradeFailures(rows, total);
 
   return {
     passed: !belowFloor && !belowThreshold && !timeoutHeavy,
@@ -269,21 +286,71 @@ const scoreChangeSet = (report, entries) => {
   };
 };
 
-const [reportPath, ...mutateEntries] = process.argv.slice(2);
+// Only a gate that TIMEOUT-HEAVY alone fails has a rerun set: any other failure stays failed
+// after a rerun, so listing candidates for it would spend a Stryker run on a verdict that cannot
+// change.
+const rerunCandidates = (report, entries) => {
+  const groups = groupEntries(entries);
+
+  if (scopeMismatch(report, entries).length > 0) {
+    return [];
+  }
+
+  const rows = gradeRows(groups, report);
+  const { belowFloor, belowThreshold, timeoutHeavy } = gradeFailures(rows, aggregate(rows));
+
+  if (belowFloor || belowThreshold || !timeoutHeavy) {
+    return [];
+  }
+
+  return rows.filter(isTimeoutHeavy).flatMap((row) =>
+    gradedMutants(row.path, groups.get(row.path), report.files[row.path])
+      .filter((mutant) => mutant.status === 'Timeout')
+      .map((mutant) => {
+        if (mutant.id === undefined) {
+          usageFailure(`report mutant has no id: ${row.path}`);
+        }
+
+        return `${row.path}\t${mutant.id}`;
+      }),
+  );
+};
+
+const RERUN_FLAG = '--rerun-candidates';
+const RERUN_USAGE = `usage: mutation-score.js ${RERUN_FLAG} <report.json> <mutate-entry>...`;
+
+const readReport = (reportPath) => {
+  try {
+    return JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+  } catch (error) {
+    process.stderr.write(`could not read or parse ${reportPath}: ${error.message}\n`);
+    process.exit(2);
+  }
+};
+
+const [firstArgument, ...otherArguments] = process.argv.slice(2);
+
+if (firstArgument === RERUN_FLAG) {
+  const [rerunReportPath, ...rerunEntries] = otherArguments;
+
+  if (!rerunReportPath || rerunEntries.length === 0) {
+    usageFailure(RERUN_USAGE);
+  }
+
+  const lines = rerunCandidates(readReport(rerunReportPath), rerunEntries);
+
+  process.stdout.write(lines.map((line) => `${line}\n`).join(''));
+  process.exit(0);
+}
+
+const [reportPath, mutateEntries] = [firstArgument, otherArguments];
 
 if (!reportPath) {
   process.stderr.write('usage: mutation-score.js <report.json> <mutate-entry>...\n');
   process.exit(2);
 }
 
-let report;
-
-try {
-  report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-} catch (error) {
-  process.stderr.write(`could not read or parse ${reportPath}: ${error.message}\n`);
-  process.exit(2);
-}
+const report = readReport(reportPath);
 
 if (mutateEntries.length === 0) {
   process.stdout.write('CHANGE SET TOTAL: n/a (no changed files given)\n');

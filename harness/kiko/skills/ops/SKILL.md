@@ -48,9 +48,10 @@ Rules:
   When the score is near the floor, let
   the run finish or re-run it instead of pausing. Use a pause for battery
   mode or a simulator session only when the score has headroom.
-- A TIMEOUT-HEAVY failure is cleared by the orchestrator (a plain-jest proof per mutant, or an
-  equivalent note in the BATCH READY), never by ops. Ops reports the failure block as is, never
-  re-runs to clear it, and never raises the timeout.
+- When TIMEOUT-HEAVY is the only failure, the gate itself reruns the timed-out mutants and its
+  final rerun report is the verdict. Only if that report still fails, or the rerun was skipped,
+  does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file").
+  Ops reports the failure block as is, never starts its own rerun, and never raises the timeout.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
@@ -268,7 +269,13 @@ Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queu
 serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
 load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
 agent until RESUME, and a RESUME names its limits (one agent, targeted jest with
-`--maxWorkers=2`). Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
+`--maxWorkers=2`). The one exception is built into the queue: a gate at the head waits while
+the 5-minute load is at the limit, for at most the maximum wait (`GATE_START_MAX_LOAD`,
+`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`), then
+starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. A
+TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
+`docs/harness/checks.md`). Do not
+add your own limit. Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
 direct run outside the queue (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
 optional second argument, passes first, 3 when it cannot read the load,
@@ -318,7 +325,14 @@ A gate forwards the `--list` over-count `warning:` line once before QUEUED. Afte
 summary lines and before the DONE line it prints each `TIMEOUT-HEAVY` line of the gate log once
 (read the end of `scripts/job-queue.sh`), so the waiter's output shows both. A ruling that adds a
 failure line to the gate log also adds its prefix to the DONE summary grep in
-`scripts/job-queue.sh` (read it for the current list); `REPORT SCOPE MISMATCH` is not in it today.
+`scripts/job-queue.sh` (read it for the current list). Today the DONE summary carries the last
+five `changed lines`, `CHANGE SET`, `GATE:` and `CHECK FAILED` lines (never a `FIRST RUN: `
+line), then each distinct `TIMEOUT-HEAVY`, `REPORT SCOPE MISMATCH` and `RERUN ` line (this
+includes `RERUN SKIPPED`). Clearing a TIMEOUT-HEAVY file: `docs/harness/checks.md` "Clearing a
+TIMEOUT-HEAVY file" (the rerun inside the gate, then the manual fallback).
+
+Spotlight indexes `~/orca/workspaces/*/node_modules` and adds load; the user adds
+`~/orca/workspaces` to System Settings > Spotlight > Privacy.
 
 The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. You still never run a group or pattern kill yourself (kill-guard denies it).
 

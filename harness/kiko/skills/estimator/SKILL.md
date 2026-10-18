@@ -77,6 +77,8 @@ Rules:
 - Rule reversal touching many tests: x1.5-2; hook-code task (kill-guard):
   x1.7-2.6 of the agent estimate.
 - Stryker's start-of-run ETA is unreliable (~7 h quoted for a 224 min run).
+- A TIMEOUT-HEAVY rerun adds a Stryker dry run plus the rerun mutants and a load wait; a gate
+  can start late at high load (`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`).
 
 These are a snapshot of a small sample, not a formula — always re-check
 against the log's current rows, which may have more by the time you read

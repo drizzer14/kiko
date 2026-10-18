@@ -38,6 +38,11 @@ in the harness repo):
   on a missing scan root. Portable only to a repo that uses the
   `src/design-system/components/<name>/` convention.
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+- H8 generic ports (pff-ios branch harness-h8): the TIMEOUT-HEAVY rerun inside the mutation gate
+  (`mutation.sh`, `mutation-score.js --rerun-candidates`, `mutation-rerun.js`); the gate start
+  defer on load in `job-queue.sh`; the `ff-main.sh` rule refusing a plugin.json version
+  decrease, removal or unreadable version; the `knip-ignore-documented` pin suite
+  (`__tests__/knip-ignore-documented.test.ts`).
 - H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
   comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
   and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks

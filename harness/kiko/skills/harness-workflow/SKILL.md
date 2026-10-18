@@ -223,11 +223,14 @@ comment-only source does not.
 
 The BATCH READY quotes the CHANGE SET TOTAL line split (read it from the gate output) and any
 TIMEOUT-HEAVY file with how it was cleared. A TIMEOUT-HEAVY file (rule and constants in
-`scripts/checks/mutation-score.js`) is cleared by proving each timed-out mutant in plain jest,
-or by writing it as equivalent; the gate still fails for it, so the BATCH READY carries the
-failed gate with the proofs. Never raise the timeout; there is no allowlist file. `make
-mutable` can print a `warning:` line after `changed lines: N` when a merged track inflates
-the count; see "Mutation base after a track merged next".
+`scripts/checks/mutation-score.js`) is cleared by the gate itself: when it is the only
+failure, the gate reruns the timed-out mutants alone and the final rerun report is the
+verdict. Only if that report still fails or the rerun was skipped does the BATCH READY
+carry the failed gate with each timed-out mutant proven in plain jest or written as
+equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file").
+Never raise the timeout; there is no allowlist file. `make mutable` can print a
+`warning:` line after `changed lines: N` when a merged track inflates the count;
+see "Mutation base after a track merged next".
 
 ## Merging into main
 
@@ -516,7 +519,9 @@ that reads the handoff file.
   current version in `harness/kiko/.claude-plugin/plugin.json`. `scripts/ff-main.sh` enforces
   it (user ruling 2026-10-17): it refuses (exit 2) a commit that changes `harness/kiko/**`
   (`plugin.json` excluded) unless its `plugin.json` version is strictly above main's (numeric
-  dotted compare; an unreadable or missing version refuses).
+  dotted compare; an unreadable or missing version refuses). It also refuses any commit that
+  lowers, removes, or makes unreadable that version while main has a readable one (user ruling
+  2026-10-18); a missing manifest at main never refuses by this rule.
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
