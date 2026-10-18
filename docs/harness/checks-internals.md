@@ -225,8 +225,8 @@ dedup always runs in full.
   `check:security` (`medium.sh` does not call `security.sh`; the fast tier
   passes one file, and a person may pass several). The key names every file
   and the fingerprint covers every file's content plus the two Semgrep rules
-  files, so a changed file or a different file set rescans; a skip prints
-  `security.sh: SKIPPED, not a fresh scan` on stderr. A directory or
+  files and the `EXCLUDED_RULE_IDS` exclusion list, so a changed file or a different file
+  set rescans; a skip prints `security.sh: SKIPPED, not a fresh scan` on stderr. A directory or
   no-argument run always scans.
 - Dedups both a single-file run and the project-wide run:
   `check:import-order`, `check:full-word-identifiers`,

@@ -1207,10 +1207,25 @@ findings-handling for the exact mechanism, not restated here):
   `error` or of type `Timeout` (Semgrep reports a timeout at warn level
   with exit 0) fails `check:security`. Other warn-level errors stay
   non-blocking. Read `scripts/checks/security.sh` for the exact test.
+- **Only registry rules that cannot match this repo are excluded.**
+  `security.sh` passes `--exclude-rule <full check_id>`; the full id is
+  the registry rule file's dotted path plus the rule's own id; copy it from
+  the Semgrep JSON `check_id`, never build it by hand (for example
+  `javascript.express.security.audit.express-ssrf.express-ssrf`). Semgrep
+  1.175.0 silently ignores a short or unknown id: it excludes nothing and
+  gives no error. A new id needs a `docs/harness/documented-exceptions.md`
+  entry with a can-not-match proof and an update to
+  `__tests__/security-excluded-registry-rules.test.ts`. Never exclude a
+  `kiko-*` rule, a file, or an id that can match here; the proof is
+  handler-shaped (any `(request, response)` HTTP handler, a sink package, or
+  a DOM target means the matching ids come back). A Semgrep Timeout on a
+  rule that still runs keeps failing `check:security`.
 - **Every argument is scanned.** `security.sh` takes any number of targets
   (none means the whole repo), drops a `rules/fixtures/` file among them,
   and hands the rest to ONE Semgrep call. A call whose targets are all
-  files dedups on every file's content plus both rules files; a skip prints
+  files dedups on every file's content, both rules files, and the
+  `EXCLUDED_RULE_IDS` list (a list change forces a rescan; read it in
+  `scripts/checks/security.sh`); a skip prints
   `SKIPPED, not a fresh scan` on stderr, so an exit 0 with no scan never
   reads as one. A failure block always names its cause (Semgrep's stderr,
   its `errors[]`, or the exit code) and a Class A/B block lists each
