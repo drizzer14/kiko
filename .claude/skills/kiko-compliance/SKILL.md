@@ -22,7 +22,10 @@ over-engineering findings — name the guideline number.
 ## 2.5.19 — no hidden, dormant or undocumented features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 
 The rejection guideline. Apple moved it from 2.3.1(a) to 2.5.19 on 2026-10-16
-(https://developer.apple.com/news/?id=92th7e5i). 2.5.19 also bans hiding an undocumented feature
+(https://developer.apple.com/news/?id=92th7e5i). Only the hidden-feature rule moved: the
+Notes-for-Review sentence stayed in 2.3.1(a) (checked 2026-10-18,
+https://developer.apple.com/app-store/review/guidelines/), so citing it below is correct.
+2.5.19 also bans hiding an undocumented feature
 in the binary, such as through code obfuscation or other methods: grounds for removal from the
 App Store and termination of the developer account. Its intent is bait-and-switch, a feature
 added after approval (https://developer.apple.com/news/?id=vvzx6cul). This stated intent adds

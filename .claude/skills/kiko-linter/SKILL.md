@@ -1368,8 +1368,9 @@ The rule (`rules/semgrep-mobile.yml`, Class A ERROR) is a generic `pattern-regex
 `paths.include` (`src/**`, `e2e/**`, `.maestro/**`) keeps it off docs and skills. It flags
 `2.3.1(a)` unless one of three adjacent forms sits on the citation itself:
 "2.3.1(a) remediation", "formerly 2.3.1(a)" or "2.3.1(a), now 2.5.19". No date is required.
-A marker wrapped onto the next line IS flagged (a false positive): keep it on the citation's
-line. Real misses: the number split across lines (`2.3.1` then `(a)`), and the forms
+A marker wrapped onto the next line IS flagged, by design: keep the marker beside the citation.
+A capitalised "Formerly 2.3.1(a)" is flagged too (the lookbehind is case-sensitive; use the
+lowercase form). Real misses: the number split across lines (`2.3.1` then `(a)`), and the forms
 `2.3.1 (a)` and `2.3.1a`. Coverage limits: `scripts/checks/security.sh` passes
 `--exclude 'fixtures'`, which drops every path segment named fixtures, so project-wide
 `check:security` never scans `e2e/screenshot/fixtures/**`. The fast tier runs the rule on
