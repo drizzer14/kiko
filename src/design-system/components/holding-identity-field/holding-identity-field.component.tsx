@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { TextInput } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
+import { useFieldBlur } from '@kiko/design-system/field-blur';
 import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
 
 import Box from '../box';
@@ -44,6 +45,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
 }) => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const handleBlur = useFieldBlur(undefined);
   const nameLabel = t('forms.fields.name');
   // A defined, non-empty `error` IS the invalid signal — same contract as
   // TextField's own `hasError` (see text-field.component.tsx).
@@ -88,6 +90,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
             onChangeText={onChangeName}
             onEndEditing={onEndEditingName}
             onFocus={onFocus}
+            onBlur={handleBlur}
             placeholder={namePlaceholder}
             placeholderTextColor={theme.colors.textSecondary}
             returnKeyType="done"

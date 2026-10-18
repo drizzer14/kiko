@@ -9,15 +9,17 @@ import DateField from '@kiko/screens/forms/date-field';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
-import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
+import type { AccountsStackParamList, ContributionFormDraft } from '@kiko/navigation/types';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -45,9 +47,11 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   const currency: Currency = holding?.currency ?? 'UAH';
 
   const { t } = useTranslation();
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState<number>(startOfToday);
+  const { initialDraft, saveDraft } = useDraftParam<ContributionFormDraft>(navigation, route);
+  const [amount, setAmount] = useState(initialDraft?.amount ?? '');
+  const [date, setDate] = useState<number>(() => initialDraft?.date ?? startOfToday());
   const [attemptedSave, setAttemptedSave] = useState(false);
+  const onFieldBlur = useDraftAutosave({ amount, date }, saveDraft);
 
   // The amount field's own wrapper — a blocked Save (an invalid amount)
   // scrolls it into view alongside its inline error. See scroll-to-field.ts.
@@ -89,7 +93,12 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
 
   return (
-    <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
+    <Screen
+      scroll
+      scrollableRef={scrollableRef}
+      onContentSizeChange={onContentSizeChange}
+      onFieldBlur={onFieldBlur}
+    >
       <Box gap={4}>
         <View ref={amountFieldRef}>
           <TextField

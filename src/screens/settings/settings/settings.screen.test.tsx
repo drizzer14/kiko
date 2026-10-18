@@ -78,9 +78,21 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
+// A row opens its page in the detail pane (on one pane, a plain navigate), and on a wide window
+// the menu marks the row whose page the detail pane opened with.
+const mockOpenInPane = jest.fn();
+const mockUseDetailPaneRoute = jest.fn(
+  (): { name: string; params?: object; isDefault: boolean } | null => null,
+);
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  useOpenInPane: () => mockOpenInPane,
+  useDetailPaneRoute: () => mockUseDetailPaneRoute(),
+}));
+
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseDetailPaneRoute.mockReturnValue(null);
     mockLiveQueryData = [{ baseCurrency: 'UAH' }];
     mockLiveQueryIsLoading = false;
   });
@@ -301,7 +313,8 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(getByTestId('settings-row-system'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('System');
+    expect(mockOpenInPane).toHaveBeenCalledWith('System');
+    expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
   it('navigates to the Reminders list from its own bell row', async () => {
@@ -316,7 +329,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(within(card).getByTestId('settings-row-reminders'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('Reminders');
+    expect(mockOpenInPane).toHaveBeenCalledWith('Reminders');
   });
 
   it('no longer renders the Language card (it moved to the System sub-screen)', async () => {
@@ -360,21 +373,14 @@ describe('SettingsScreen', () => {
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
-  // Same root cause as the account/holding forms (`holding-form.screen.test.tsx`'s own
-  // test of this name): the currency
-  // sheet's search field lives inside a Modal above this Screen's background
-  // ScrollView, which otherwise misfires `automaticallyAdjustKeyboardInsets`
-  // for a responder it does not contain. This screen's base-currency
-  // `CurrencyField` had no `onOpenChange` wiring at all, so the fix that
-  // already covered the account/holding forms never reached Settings.
-  it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
+  // The patched React Native moves a scroll view's offset only for a field inside it, so the
+  // sheet's search field cannot misfire this screen: the Screen keeps its keyboard adjustment on.
+  it('keeps automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
     const { getByTestId } = await renderScreen();
-
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
 
     await fireEvent.press(getByTestId('settings-row-base-currency'));
 
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(false);
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
   it('groups Transaction templates and Categories into one card, templates first', async () => {
@@ -427,7 +433,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(getByTestId('settings-row-transaction-templates'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('TransactionTemplates');
+    expect(mockOpenInPane).toHaveBeenCalledWith('TransactionTemplates');
   });
 
   it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {
@@ -436,7 +442,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(getByTestId('settings-row-categories'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('Categories');
+    expect(mockOpenInPane).toHaveBeenCalledWith('Categories');
   });
 
   it('puts a questionmark.circle Help row in the last card, after Categories, and opens Help', async () => {
@@ -452,7 +458,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(within(card).getByTestId('settings-row-help'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('Help');
+    expect(mockOpenInPane).toHaveBeenCalledWith('Help');
   });
 
   it('navigates to the ExportData sub-screen when the Export Data row is pressed', async () => {
@@ -461,7 +467,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(await findByTestId('settings-row-export-data'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('ExportData');
+    expect(mockOpenInPane).toHaveBeenCalledWith('ExportData');
   });
 
   it('navigates to the ImportData sub-screen when the Import Data row is pressed', async () => {
@@ -470,7 +476,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(await findByTestId('settings-row-import-data'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('ImportData');
+    expect(mockOpenInPane).toHaveBeenCalledWith('ImportData');
   });
 
   it('calls setBaseCurrency when a currency option is pressed', async () => {
@@ -622,6 +628,82 @@ describe('SettingsScreen — loading gate', () => {
 
     expect(getByTestId('settings-card-base-currency')).toBeTruthy();
     expect(queryByTestId('settings-loading')).toBeNull();
+  });
+});
+
+// On a wide window the menu is one pane and the page of a row the other: the row whose page the
+// detail pane opened with (Categories until another is opened) is marked. On one pane nothing is.
+describe('SettingsScreen — the selected row', () => {
+  // Import and Export share one card, and so do Templates and Categories, so there the row is
+  // marked and the card is not.
+  const ROWS = [
+    ['System', 'settings-card-system', 'settings-row-system', true],
+    ['Reminders', 'settings-card-reminders', 'settings-row-reminders', true],
+    ['ImportData', 'settings-card-data-transfer', 'settings-row-import-data', false],
+    ['ExportData', 'settings-card-data-transfer', 'settings-row-export-data', false],
+    [
+      'TransactionTemplates',
+      'settings-card-templates-and-categories',
+      'settings-row-transaction-templates',
+      false,
+    ],
+    ['Categories', 'settings-card-templates-and-categories', 'settings-row-categories', false],
+    ['Help', 'settings-card-help', 'settings-row-help', true],
+  ] as const;
+
+  const selectedRows = async () => {
+    const { getByTestId } = await renderScreen();
+
+    return ROWS.filter(
+      ([, , row]) => getByTestId(row).props.accessibilityState?.selected === true,
+    ).map(([route]) => route);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLiveQueryData = [{ baseCurrency: 'UAH' }];
+    mockLiveQueryIsLoading = false;
+    mockUseDetailPaneRoute.mockReturnValue(null);
+  });
+
+  it('is none on one pane, where the primary pane is not shown', async () => {
+    expect(await selectedRows()).toEqual([]);
+  });
+
+  it('is Categories while the pane shows it as its default', async () => {
+    mockUseDetailPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
+
+    expect(await selectedRows()).toEqual(['Categories']);
+  });
+
+  it.each(ROWS)('follows the primary pane to %s', async (route, cardId, rowId, marksCard) => {
+    mockUseDetailPaneRoute.mockReturnValue({ name: route, isDefault: false });
+    const { getByTestId } = await renderScreen();
+    const card = StyleSheet.flatten(getByTestId(cardId).props.style);
+    const row = StyleSheet.flatten(getByTestId(rowId).props.style);
+
+    expect(await selectedRows()).toEqual([route]);
+    // One marker per row: the card of a single-row card, the row itself in a shared one.
+    expect(card.backgroundColor === darkTheme.colors.accent).toBe(marksCard);
+    expect(row.backgroundColor === darkTheme.colors.accent).toBe(!marksCard);
+  });
+
+  it('marks the Categories row, and no card, while its default shows', async () => {
+    mockUseDetailPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
+    const { getByTestId } = await renderScreen();
+    const fillOf = (cardId: string) =>
+      StyleSheet.flatten(getByTestId(cardId).props.style).backgroundColor;
+
+    expect(fillOf('settings-row-categories')).toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-card-templates-and-categories')).not.toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-card-help')).not.toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-card-system')).not.toBe(darkTheme.colors.accent);
+  });
+
+  it('marks nothing for a page the menu has no row for', async () => {
+    mockUseDetailPaneRoute.mockReturnValue({ name: 'HelpTopic', isDefault: false });
+
+    expect(await selectedRows()).toEqual([]);
   });
 });
 

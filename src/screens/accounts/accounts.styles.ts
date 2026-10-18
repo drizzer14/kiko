@@ -14,6 +14,14 @@ export const styles = StyleSheet.create((theme) => ({
     justifyContent: 'space-between',
     alignItems: 'center',
     minHeight: TOUCH_TARGET_MIN_HEIGHT,
+    // The selected fill reaches a little past the heading text, as a highlighted row does. The
+    // margin takes back what the padding adds, so the heading does not move when it is marked.
+    paddingHorizontal: theme.spacing(2),
+    marginHorizontal: -theme.spacing(2),
+  },
+  // The corners of the shared selected fill on a section heading.
+  sectionHeadingSelected: {
+    borderRadius: theme.radii.md,
   },
   // The disclosure chevron at the row's end: a small gap off the total, and
   // never squeezed by a long name or a wide total.

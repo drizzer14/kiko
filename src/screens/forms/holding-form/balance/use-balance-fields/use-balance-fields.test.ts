@@ -109,4 +109,38 @@ describe('useBalanceFields', () => {
       expect.any(Number),
     );
   });
+
+  describe('the draft', () => {
+    it('holds the opening balance as typed', async () => {
+      const { result } = await renderBalanceFields();
+
+      await act(async () => {
+        result.current.setOpeningBalance('250');
+      });
+
+      expect(result.current.draft).toEqual({ openingBalance: '250' });
+    });
+
+    it('brings the opening balance back', async () => {
+      const { result } = await renderBalanceFields();
+
+      await act(async () => {
+        result.current.restore({ openingBalance: '1 000' });
+      });
+
+      expect(result.current.openingBalance).toBe('1 000');
+      expect(result.current.draft).toEqual({ openingBalance: '1 000' });
+    });
+
+    it('keeps one restore across renders, so the screen effect that depends on it runs once', async () => {
+      const { result } = await renderBalanceFields();
+      const first = result.current.restore;
+
+      await act(async () => {
+        result.current.setOpeningBalance('5');
+      });
+
+      expect(result.current.restore).toBe(first);
+    });
+  });
 });

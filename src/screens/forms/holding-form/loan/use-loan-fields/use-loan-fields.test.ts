@@ -14,6 +14,7 @@ import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 
 import {
+  type LoanFieldsDraft,
   loanEditInvalidatesAutoLinks,
   loanFieldErrors,
   loanReasonKey,
@@ -728,5 +729,60 @@ describe('useLoanFields — saveEdit out of a "none" schedule', () => {
 
     expect(op).toEqual({ kind: 'delete', day: dayKeyOf(informalStart) });
     expect(newMeta.startDate).toBe(earlierStart);
+  });
+});
+
+describe('useLoanFields draft', () => {
+  const filled: LoanFieldsDraft = {
+    kind: 'car_loan',
+    principal: '500 000',
+    startDate: new Date(2026, 0, 1).getTime(),
+    schedule: 'differentiated',
+    annualRatePct: '12',
+    term: '2',
+    termUnit: 'years',
+    paymentHoldingId: 'h-card',
+    lenderName: 'Bank',
+    lenderIban: 'UA213223130000026007233566001',
+  };
+
+  it('holds a blank loan as it opens', async () => {
+    const { result } = await renderLoanFields();
+
+    expect(result.current.draft).toEqual({
+      kind: 'mortgage',
+      principal: '',
+      startDate: null,
+      schedule: 'annuity',
+      annualRatePct: '',
+      term: '',
+      termUnit: 'months',
+      paymentHoldingId: null,
+      lenderName: '',
+      lenderIban: '',
+    });
+  });
+
+  it('brings back every field', async () => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.restore(filled);
+    });
+
+    expect(result.current.draft).toEqual(filled);
+    expect(result.current.schedule).toBe('differentiated');
+    expect(result.current.paymentHoldingId).toBe('h-card');
+  });
+
+  it('keeps one restore across renders, so the screen effect that depends on it runs once', async () => {
+    const { result } = await renderLoanFields();
+    const first = result.current.restore;
+
+    await act(async () => {
+      result.current.setPrincipal('5');
+    });
+
+    expect(result.current.restore).toBe(first);
   });
 });

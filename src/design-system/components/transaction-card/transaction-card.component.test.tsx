@@ -1,6 +1,8 @@
+import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { Money } from '@kiko/currency/money';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import TransactionCard from '.';
 
@@ -93,6 +95,47 @@ describe('TransactionCard', () => {
     );
 
     expect(JSON.stringify(toJSON())).toContain('link');
+  });
+
+  it('takes the accent fill only when selected', async () => {
+    const fillOf = async (selected?: boolean) => {
+      const { getByTestId } = await render(
+        <TransactionCard
+          title="Coffee"
+          categoryIcon="cup.and.saucer"
+          categoryIconColor="#8E44AD"
+          categoryAccessibilityLabel="Dining"
+          money={Money.of('UAH', -1_000)}
+          selected={selected}
+          testID="card"
+        />,
+      );
+
+      return StyleSheet.flatten(getByTestId('card').props.style).backgroundColor;
+    };
+
+    expect(await fillOf(true)).toBe(darkTheme.colors.accent);
+    expect(await fillOf()).not.toBe(darkTheme.colors.accent);
+  });
+
+  it('keeps the category colour on the glyph, and gives it onAccent on the accent fill', async () => {
+    const glyphTintOf = async (selected?: boolean) => {
+      const { getByLabelText } = await render(
+        <TransactionCard
+          title="Coffee"
+          categoryIcon="cup.and.saucer"
+          categoryIconColor="#0A84FF"
+          categoryAccessibilityLabel="Dining"
+          money={Money.of('UAH', -1_000)}
+          selected={selected}
+        />,
+      );
+
+      return getByLabelText('Dining').props.tintColor;
+    };
+
+    expect(await glyphTintOf()).toBe('#0A84FF');
+    expect(await glyphTintOf(true)).toBe(darkTheme.colors.onAccent);
   });
 
   // A transaction template's amount is optional, so the card renders the

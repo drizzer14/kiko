@@ -6,6 +6,7 @@ import {
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { BinanceWriteToken } from '@kiko/crypto-sync/binance';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
@@ -22,10 +23,13 @@ type CryptoSyncFormProps = {
   // Keychain write and first sync to this id.
   accountId: string;
   onConnectWallet: (address: string) => Promise<boolean>;
-  onConnectBinance: () => Promise<boolean>;
+  onConnectBinance: (stored: BinanceWriteToken) => Promise<boolean>;
   // Each source's field takes its own reminder: only the picked source's field is mounted.
   walletReminder?: ConnectReminder;
   binanceReminder?: ConnectReminder;
+  // Forwarded to the Binance field: runs when it unmounted during the write that stored its pair,
+  // with the token of that write.
+  onBinanceStoredWhileUnmounted?: (stored: BinanceWriteToken) => Promise<void>;
 };
 
 // A function (not a module-level constant) so its labels re-resolve against
@@ -47,6 +51,7 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
   onConnectBinance,
   walletReminder,
   binanceReminder,
+  onBinanceStoredWhileUnmounted,
 }) => {
   const { t } = useTranslation();
   const [source, setSource] = useState<BalanceProviderId>('btc_wallet');
@@ -81,6 +86,7 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
           accountId={accountId}
           onConnect={onConnectBinance}
           reminder={binanceReminder}
+          onStoredWhileUnmounted={onBinanceStoredWhileUnmounted}
         />
       )}
     </Box>

@@ -91,7 +91,19 @@ type UseMetalFieldsParams = {
   isEdit: boolean;
 };
 
+/** What a fold or unfold must give back of the metal form: every field the user fills. */
+export type MetalFieldsDraft = {
+  metal: Metal;
+  form: MetalForm;
+  unit: MetalUnit;
+  purity: string;
+  quantity: string;
+  cost: string;
+};
+
 export type UseMetalFieldsResult = HoldingTypeForm & {
+  draft: MetalFieldsDraft;
+  restore: (draft: MetalFieldsDraft) => void;
   metal: Metal;
   setMetal: (value: Metal) => void;
   form: MetalForm;
@@ -166,6 +178,17 @@ export const useMetalFields = (params: UseMetalFieldsParams): UseMetalFieldsResu
     setLots(meta.lots);
   }, []);
 
+  // What the user filled, over whatever `seed` read from the stored metal: its lots are not in a
+  // draft, they are read again.
+  const restore = useCallback((restored: MetalFieldsDraft): void => {
+    setMetal(restored.metal);
+    setForm(restored.form);
+    setUnit(restored.unit);
+    setPurity(restored.purity);
+    setQuantity(restored.quantity);
+    setCost(restored.cost);
+  }, []);
+
   const createPayload = (): CreatePayload =>
     buildMetalCreatePayload({ metal, form, unit, purity, quantity, cost });
 
@@ -179,6 +202,8 @@ export const useMetalFields = (params: UseMetalFieldsParams): UseMetalFieldsResu
     });
 
   return {
+    draft: { metal, form, unit, purity, quantity, cost },
+    restore,
     metal,
     setMetal,
     form,

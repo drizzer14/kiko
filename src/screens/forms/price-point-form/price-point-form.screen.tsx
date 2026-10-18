@@ -15,16 +15,18 @@ import { View, type TextInputInstance } from 'react-native';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { type FC, useLayoutEffect, useRef, useState } from 'react';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
-import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
+import type { AccountsStackParamList, PricePointFormDraft } from '@kiko/navigation/types';
 
 type PricePointFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'PricePointForm'>;
 
@@ -113,9 +115,11 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   const copy = pricePointCopy[kind];
 
   const { t } = useTranslation();
-  const [value, setValue] = useState('');
-  const [date, setDate] = useState<number>(startOfToday);
+  const { initialDraft, saveDraft } = useDraftParam<PricePointFormDraft>(navigation, route);
+  const [value, setValue] = useState(initialDraft?.value ?? '');
+  const [date, setDate] = useState<number>(() => initialDraft?.date ?? startOfToday());
   const [attemptedSave, setAttemptedSave] = useState(false);
+  const onFieldBlur = useDraftAutosave({ value, date }, saveDraft);
   const price = pricePointPriceOf(kind, value, currency);
 
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
@@ -169,7 +173,12 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
 
   return (
-    <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
+    <Screen
+      scroll
+      scrollableRef={scrollableRef}
+      onContentSizeChange={onContentSizeChange}
+      onFieldBlur={onFieldBlur}
+    >
       <Box gap={4}>
         <View ref={valueFieldRef}>
           <TextField

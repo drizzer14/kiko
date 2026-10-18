@@ -75,13 +75,16 @@ jest.mock('@kiko/rates/history-backfill', () => ({
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
   useIsFocused: () => true,
+  // `useIsScreenVisible` reads the route key; with no pane context it falls back to `useIsFocused`.
+  useRoute: () => ({ key: 'route' }),
   useNavigation: () => ({ navigate: jest.fn() }),
 }));
-// Seeded once per mount, like the real hook: only a re-focus advances it, never a re-render.
-jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
+// Seeded once per mount, like the real hook: only a return to visibility advances it, never a
+// re-render.
+jest.mock('@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
 
-  return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
+  return { useVisibleRefreshedNow: () => useState(() => Date.now())[0] };
 });
 
 const DAYS_BEFORE_TODAY = 3;

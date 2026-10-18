@@ -1,8 +1,15 @@
 import type { TFunction } from 'i18next';
 
-// A route swapped in from the other form carries a `draft`.
+import { isSavedDraft } from '../use-draft-param';
+
+// A route swapped in from the other form carries a `draft` of the identity to seed. A draft of the
+// form's own saved fields (see `useDraftParam`) is no swap.
 const carriesDraft = (params: object | undefined): boolean =>
-  params !== undefined && 'draft' in params && params.draft !== undefined;
+  params !== undefined &&
+  'draft' in params &&
+  typeof params.draft === 'object' &&
+  params.draft !== null &&
+  !isSavedDraft(params.draft);
 
 const swapAnimation = (params: object | undefined): 'none' | 'default' =>
   carriesDraft(params) ? 'none' : 'default';

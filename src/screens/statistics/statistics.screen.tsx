@@ -67,6 +67,7 @@ import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { localMidnightOfDayKey } from '@kiko/prices/price-book';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -84,14 +85,14 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import { toggleFilterValue } from '@kiko/design-system/toggle-filter-value';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
+import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
-import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
+import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
-import { type NavigationProp, useIsFocused, useNavigation } from '@react-navigation/native';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 
 import BarChart from './bar-chart';
@@ -193,8 +194,10 @@ const StatisticsScreen: FC = () => {
   // hiding this tab causes no read, no state change, and no memo recompute —
   // `enabled: false` would instead unsubscribe and drop every chart to empty
   // (see kiko-architecture's `useLiveQuery` pattern section for the design).
-  const isFocused = useIsFocused();
-  const liveOptions = { cached: true, paused: !isFocused } as const;
+  // Visibility, not focus: as the Home tab's companion default this screen is on screen and
+  // never the focused route.
+  const isVisible = useIsScreenVisible();
+  const liveOptions = { cached: true, paused: !isVisible } as const;
 
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.listQuery(),
@@ -253,12 +256,12 @@ const StatisticsScreen: FC = () => {
   // it them.
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
-  // `now` is seeded at mount and REFRESHED on every screen focus (see
-  // useFocusRefreshedNow): the default date-range seed, the default line window,
+  // `now` is seeded at mount and REFRESHED every time the screen becomes visible (see
+  // useVisibleRefreshedNow): the default date-range seed, the default line window,
   // the backfill's "today", and every memo below key on it, and it stays stable
   // across renders so a fresh `Date.now()` each render never defeats that
-  // memoization — only a re-focus advances it.
-  const now = useFocusRefreshedNow();
+  // memoization — only a return to visible advances it.
+  const now = useVisibleRefreshedNow(isVisible);
 
   const { dateFrom, dateTo, applyDateRange, clearDateRange } = useDateRangeSelection(now);
 

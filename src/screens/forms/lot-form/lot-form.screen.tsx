@@ -17,12 +17,13 @@ import DateField from '@kiko/screens/forms/date-field';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { asMetalMeta } from '@kiko/holdings/holding-metadata';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldLabel from '@kiko/design-system/components/field-label';
-import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { metalUnitSuffix } from '@kiko/screens/forms/metal-unit-suffix';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
@@ -34,10 +35,11 @@ import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
+import type { AccountsStackParamList, LotFormDraft } from '@kiko/navigation/types';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 
-type LotDirection = 'buy' | 'sell';
+type LotDirection = LotFormDraft['direction'];
 
 const directions: readonly LotDirection[] = ['buy', 'sell'];
 
@@ -136,11 +138,16 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
   const quantitySuffix = foldMap(maybe(asMetalMeta(holding?.metadata)), (meta) =>
     metalUnitSuffix(t, meta.unit),
   );
-  const [direction, setDirection] = useState<LotDirection>('buy');
-  const [quantityText, setQuantityText] = useState('');
-  const [costText, setCostText] = useState('');
-  const [date, setDate] = useState<number>(startOfToday);
+  const { initialDraft, saveDraft } = useDraftParam<LotFormDraft>(navigation, route);
+  const [direction, setDirection] = useState<LotDirection>(initialDraft?.direction ?? 'buy');
+  const [quantityText, setQuantityText] = useState(initialDraft?.quantity ?? '');
+  const [costText, setCostText] = useState(initialDraft?.cost ?? '');
+  const [date, setDate] = useState<number>(() => initialDraft?.date ?? startOfToday());
   const [attemptedSave, setAttemptedSave] = useState(false);
+  const onFieldBlur = useDraftAutosave(
+    { direction, quantity: quantityText, cost: costText, date },
+    saveDraft,
+  );
 
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const quantityFieldRef = useRef<FieldInstance>(null);
@@ -154,19 +161,25 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
     }
   }, [lotIndex, navigation, t]);
 
-  // Seeded once: a later live-query emission must not clobber what the user typed.
+  // Seeded once: a later live-query emission must not clobber what the user typed. A draft the
+  // route carries is what the user typed, so it wins over the stored lot.
   const hydrated = useRef(false);
   useEffect(() => {
     if (hydrated.current || editedLot === undefined) {
       return;
     }
     hydrated.current = true;
+
+    if (initialDraft !== undefined) {
+      return;
+    }
+
     const sale = isSale(editedLot);
     setDirection(sale ? 'sell' : 'buy');
     setQuantityText(groupAmount(editedLot.quantityDelta.replace('-', '')));
     setCostText(sale ? '' : groupAmount(majorAmountText(currency, editedLot.costMinorUnits)));
     setDate(localMidnightOfDayKey(editedLot.day));
-  }, [editedLot, currency]);
+  }, [editedLot, currency, initialDraft]);
 
   const quantity = normalizeDecimal(quantityText);
   const quantityValid = quantity !== null && compareDecimal(quantity, '0') > 0;
@@ -232,7 +245,12 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
   useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
 
   return (
-    <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
+    <Screen
+      scroll
+      scrollableRef={scrollableRef}
+      onContentSizeChange={onContentSizeChange}
+      onFieldBlur={onFieldBlur}
+    >
       <Box gap={4}>
         <Box gap={1}>
           <FieldLabel label={t('forms.lot.type')} />

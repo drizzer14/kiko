@@ -170,6 +170,14 @@ describe('entity/chart palettes', () => {
     expect(darkTheme.colors.entityColors.blue).toBe(darkTheme.colors.accent);
   });
 
+  it('exposes the two-pane content cap', () => {
+    expect(darkTheme.layout.paneMaxWidth).toBe(600);
+  });
+
+  it('exposes the bottom-sheet card width cap', () => {
+    expect(darkTheme.layout.sheetMaxWidth).toBe(540);
+  });
+
   it('exposes a categorical chart palette of >= 6 distinct hex hues', () => {
     expect(chartSeriesDark.length).toBeGreaterThanOrEqual(6);
 

@@ -1,6 +1,7 @@
 import { useWindowDimensions } from 'react-native';
 import { type ReactElement, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
+import { usePaneWidth } from '@kiko/design-system/pane-context';
 
 import TitleMeasurer from './title-measurer';
 import { estimatedTitleFits } from './title-fit';
@@ -25,10 +26,13 @@ type Measurement = { key: string; fits: boolean };
  * estimate until it is measured.
  */
 export const useTitleFit = (title: string): TitleFit => {
-  const { width } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
+  const paneWidth = usePaneWidth();
   const { theme } = useUnistyles();
   const [measurement, setMeasurement] = useState<Measurement>();
-  const availableWidth = width - 2 * theme.spacing(LARGE_TITLE_MARGIN_STEP);
+  // A split window gives each pane its own header, about half the window wide, so the pane's width
+  // is the line the title has; the window is the line only where it is the screen.
+  const availableWidth = (paneWidth ?? windowWidth) - 2 * theme.spacing(LARGE_TITLE_MARGIN_STEP);
   const key = `${availableWidth}:${title}`;
 
   const fits =

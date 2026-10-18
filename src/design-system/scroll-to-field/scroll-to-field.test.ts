@@ -5,10 +5,21 @@ import { HeaderHeightContext } from '@react-navigation/elements';
 
 import {
   useHeaderInset,
+  resolveHeaderInset,
   resolveFieldScrollTarget,
   scrollToField,
   type FieldInstance,
 } from './scroll-to-field';
+
+// A mutable `jest.fn()` wrapper so the dedicated vertical-bar cases below can
+// override the reported edge per test. Every OTHER test in this file (and
+// every real caller of `useHeaderInset` — the 4 form screens, none of which
+// mock this module at all) sees `none`, which leaves `useHeaderInset` an exact
+// passthrough of `HeaderHeightContext` — no existing behavior changes.
+const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+jest.mock('@kiko/display-regions', () => ({
+  useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+}));
 
 // Plain `createElement` (not JSX) — this module stays a `.ts` file, so JSX
 // syntax is not parsed here.
@@ -30,6 +41,55 @@ describe('useHeaderInset', () => {
     const { result } = await renderHook(() => useHeaderInset());
 
     expect(result.current).toBe(0);
+  });
+
+  it.each(['leading', 'trailing'] as const)(
+    'floors an implausible zero header height to the known backgrounded-stack value, ONLY with a vertical bar (the %s edge)',
+    async (edge) => {
+      mockUseVerticalBarEdge.mockReturnValueOnce(edge);
+
+      const { result } = await renderHook(() => useHeaderInset(), {
+        wrapper: headerHeightWrapper(0),
+      });
+
+      expect(result.current).toBe(82);
+    },
+  );
+
+  it('does NOT floor a genuinely absent header context, even with a vertical bar (Home has no header at all)', async () => {
+    mockUseVerticalBarEdge.mockReturnValueOnce('trailing');
+
+    const { result } = await renderHook(() => useHeaderInset());
+
+    expect(result.current).toBe(0);
+  });
+
+  it('never floors an already-nonzero reported height, with or without a vertical bar', async () => {
+    mockUseVerticalBarEdge.mockReturnValueOnce('trailing');
+
+    const { result } = await renderHook(() => useHeaderInset(), {
+      wrapper: headerHeightWrapper(140),
+    });
+
+    expect(result.current).toBe(140);
+  });
+});
+
+describe('resolveHeaderInset', () => {
+  it.each(['leading', 'trailing'] as const)(
+    'floors a reported 0 to the known backgrounded-stack value with a vertical bar on the %s edge',
+    (edge) => {
+      expect(resolveHeaderInset(0, edge)).toBe(82);
+    },
+  );
+
+  it('passes a reported 0 straight through with no vertical bar (a genuine no-header screen, e.g. Home)', () => {
+    expect(resolveHeaderInset(0, 'none')).toBe(0);
+  });
+
+  it('never floors an already-nonzero reported height', () => {
+    expect(resolveHeaderInset(44, 'trailing')).toBe(44);
+    expect(resolveHeaderInset(96, 'none')).toBe(96);
   });
 });
 

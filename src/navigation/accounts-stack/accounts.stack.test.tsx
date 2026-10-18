@@ -38,7 +38,7 @@ import { fittingLargeTitleLayout } from '../fitting-large-title';
 
 import AccountsStack from './accounts.stack';
 
-type ScreenOptions = { title?: string; animation?: string };
+type ScreenOptions = { title?: string; animation?: string; headerShown?: boolean };
 
 type ScreenElement = ReactElement<{
   name: string;
@@ -129,8 +129,14 @@ describe('AccountsStack', () => {
     expect(titleByScreen().ReminderForm).toBe('New Reminder');
   });
 
+  it('registers the empty pane of a wide window without a header', () => {
+    expect(screenElements().map((screen) => screen.props.name)).toContain('AccountsEmptyPane');
+    expect(optionsOf('AccountsEmptyPane', undefined)?.headerShown).toBe(false);
+  });
+
   describe('the account form and the implicit holding form swap without an animation', () => {
     const draft = { name: 'Flat', icon: null, color: null };
+    const savedDraft = { saved: true, name: 'Flat', icon: null, color: null };
 
     it('animates a form opened from the Accounts screen as usual', () => {
       expect(optionsOf('AccountForm', {})?.animation).toBe('default');
@@ -145,6 +151,18 @@ describe('AccountsStack', () => {
 
     it('swaps back to the account form with no animation', () => {
       expect(optionsOf('AccountForm', { initialKind: 'bank', draft })?.animation).toBe('none');
+    });
+
+    // A form keeps its own fields in the same `draft` param once the user has filled it: that
+    // is no swap, and Back from it must animate.
+    it('keeps the default animation on a form that holds its own saved draft', () => {
+      expect(optionsOf('AccountForm', { draft: savedDraft })?.animation).toBe('default');
+      expect(
+        optionsOf('HoldingForm', { accountId: 'account-1', draft: savedDraft })?.animation,
+      ).toBe('default');
+      expect(
+        optionsOf('HoldingForm', { implicitKind: 'property', draft: savedDraft })?.animation,
+      ).toBe('default');
     });
 
     // native-stack pops with the animation a screen carries, so the swap's
@@ -180,6 +198,7 @@ describe('AccountsStack', () => {
         ['empty params', {}],
         ['an account id', { accountId: 'account-1' }],
         ['an undefined draft', { draft: undefined }],
+        ['a draft of its own fields', { draft: savedDraft }],
       ])('leaves a route with %s alone', (_label, params) => {
         expect(transitionEndFor('AccountForm', params).setOptions).not.toHaveBeenCalled();
         expect(transitionEndFor('HoldingForm', params).setOptions).not.toHaveBeenCalled();

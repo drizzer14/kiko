@@ -24,6 +24,11 @@ import { Money } from '@kiko/currency/money';
 import { isRecord } from '@kiko/type-guards';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
+import Screen, {
+  useBottomClearance,
+  useContentCap,
+  useScrollIndicatorProps,
+} from '@kiko/design-system/components/screen';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { FlatList, Pressable } from 'react-native';
@@ -49,13 +54,11 @@ import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { removeNotice } from '@kiko/transactions/remove-notice';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import EntryCard from '@kiko/design-system/components/entry-card';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
@@ -73,7 +76,6 @@ import EntryDateHeader from '@kiko/design-system/components/entry-date-header';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
-import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import { genericEntitySymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
 import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
@@ -88,6 +90,7 @@ import {
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
+import { useCloseWhenGone } from './use-close-when-gone';
 import OversizedSaleNotice from './oversized-sale-notice';
 import LotRowMenu, { type LotActions } from './lot-row-menu';
 import { useBondRegisterTerms } from './use-bond-register-terms';
@@ -736,12 +739,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
   // from filtering the full holdings list for this id.
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
-    holdingsRepo.allQuery(),
-    ['holdings'],
-    true,
-    { cached: true },
-  );
+  const {
+    data: holdings,
+    isLoading: holdingsLoading,
+    isFresh: holdingsFresh,
+  } = useLiveQuery(holdingsRepo.allQuery(), ['holdings'], true, { cached: true });
   const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
     transactionsRepo.listByHoldingQuery(holdingId),
     ['transactions'],
@@ -791,6 +793,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
+  useCloseWhenGone({ routeKey: route.key, isFresh: holdingsFresh, holding });
   // The loan detail's own "Linked payments" section: the transactions the
   // matcher (or a manual pick) linked to THIS loan, newest first — a loan
   // is ledgerless, so its own `transactions` query above never finds them
@@ -929,13 +932,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // footer slot owns the floating tab-bar clearance and the list needs only a
   // plain gap above it; with NO footer (a bond or synced holding), the list is
   // the screen's true bottom edge and must clear the tab bar itself via the ONE
-  // shared arithmetic (the same computation Home's list uses). `useSafeAreaInsets`
-  // supplies the bottom inset the SafeAreaView already reserves, so the tab-bar
-  // height is not double-counted.
-  const tabBarHeight = useBottomTabBarHeight();
-  const insets = useSafeAreaInsets();
-  const listBottomClearance =
-    footerAction === 'none' ? resolveBottomClearance(tabBarHeight, insets.bottom) : 0;
+  // shared hook (the same one Home's list uses), which leaves the bottom inset
+  // to the SafeAreaView and gives a pane that is not at the window's bottom none.
+  const bottomClearance = useBottomClearance();
+  const listBottomClearance = footerAction === 'none' ? bottomClearance : 0;
+  // In a pane the list keeps the whole pane and its content is capped and centred.
+  const contentCap = useContentCap();
+  const scrollIndicatorProps = useScrollIndicatorProps();
   // A term_deposit/bond event is day-granular (a contribution, coupon, or
   // redemption), so its ledger rows show the date only; every other holding
   // keeps the full date + HH:MM stamp.
@@ -1194,8 +1197,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         // passes `bleedTop` above to drop the matching double top inset). Same
         // setting the shared `Screen` scroll branch applies to its ScrollView.
         contentInsetAdjustmentBehavior="automatic"
+        {...scrollIndicatorProps}
         style={styles.list}
-        contentContainerStyle={styles.listContent(listBottomClearance)}
+        contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
       />
     </Screen>
   );
@@ -1219,7 +1223,7 @@ const styles = StyleSheet.create((theme) => ({
   //    still reaches the top edge for iOS's automatic large-title inset;
   //  - horizontal: `spacing(4)`, the screen's side gutter;
   //  - bottom: a `spacing(4)` gap plus the caller's `bottomClearance` — 0 when a
-  //    footer owns the floating tab-bar clearance, else `resolveBottomClearance`
+  //    footer owns the floating tab-bar clearance, else `useBottomClearance`
   //    so the last row clears the bar exactly once (see the screen component).
   // The `spacing(2)` gap sits between every child — the header block and the
   // first row, and each row and the next — the same rhythm a `<Box gap={2}>`

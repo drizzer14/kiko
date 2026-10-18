@@ -466,6 +466,58 @@ verified usage, not dead weight:
   `npm run check:rules` (`scripts/checks/semgrep-rules.sh`) is the check that
   DOES scan the directory, and it fails if any rule stops matching its positive
   fixture or starts matching its negative one.
+- **Excluded Semgrep registry rules (`--exclude-rule <full check_id>` x33 in
+  `scripts/checks/security.sh`, the `EXCLUDED_RULE_IDS` array; pinned by
+  `__tests__/security-excluded-registry-rules.test.ts`)**: 33 registry rule
+  ids that cannot match this repo, in four groups: the 30 `javascript.express.*`
+  rules other than cors, the express
+  `javascript.express.security.cors-misconfiguration.cors-misconfiguration`,
+  `javascript.sequelize.security.audit.sequelize-injection-express.express-sequelize-injection`,
+  and `typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method`
+  (31 of the 33 ids start with `javascript.express.`).
+  Cause: the registry web rules time out under load, and a timeout fails
+  `check:security` closed (binance debugger, 2026-10-18: single files take
+  0.6-2.4 s at load about 10 but 7-28 s at load 28-40; `express-ssrf` timed out on
+  `src/screens/forms/holding-form/holding-form.screen.test.tsx`). Proof each
+  cannot match: none of the rules checks for an `express` import. Their taint
+  sources are handler-shaped: a `function ... ($REQ, $RES)` (or a typed
+  `({ $REQ }: Request, $RES: Response) =>`) reading `$REQ.query`, `.body`,
+  `.params`, `.cookies` or `.headers`. Their sinks are an express response method
+  (`$RES.send`, `.write`, `.redirect`, `.sendFile`, `.render`, `.set`, `.header`,
+  `.setHeader`, `.writeHead`), a call into a package that is imported by no tracked
+  file (`puppeteer`, `phantom`, `libxmljs`, `vm2`, `request`, `xml2json`,
+  `node-expat`, `serve-index`, `express-session`, `cookie-session`, `express-jwt`,
+  `node-serialize`, `serialize-to-js`, `sandbox`, and the template
+  engines `pug`, `jade`, `dot`, `ejs`, `nunjucks`, `lodash`, `mustache`, `eta`,
+  `squirrelly`, `hogan.js`, `handlebars`; `pug` and `lodash` sit in
+  `package-lock.json` as transitive dependencies only), the bare `path` or `vm` module
+  (tracked code imports only `node:path`, a different literal), or one of three
+  generic shapes (an HTML-looking string built from a value, a dynamic
+  `require(x)`, a `sequelize.query(...)` call, the identifier `sequelize` being in
+  no tracked file but this harness's own pin and docs). A source can match by accident
+  (a test double reading `init.headers`), so the proof is that no sink is reachable: there is no
+  (request, response) HTTP handler anywhere in tracked code (no `createServer`,
+  `.listen(`, `http`, `https`, `express`, `koa` or `fastify` import, no
+  `(req, res)` or `(request, response)` function, no `Request`/`Response`
+  typed handler), and a scan with only these 33 rules over the repo found 0
+  findings and 0 errors in 2092 files (semgrep 1.175.0, 2026-10-18; an earlier
+  all-rules run over 2066 files had 0 findings and 2 files that timed out,
+  `__tests__/pre-write-guard.test.ts` and `scripts/checks/kill-guard.js`, and a
+  grep confirms neither contains `document.write`, `document.writeln` or
+  `insertAdjacentHTML`). The `react-unsanitized-method` sinks are only those three
+  DOM calls, which do not exist in React Native; no tracked file calls them. The id
+  must be the full check_id: semgrep 1.175.0 treats it as exact, so the short form
+  (`javascript.express.security.audit.express-ssrf`) excludes nothing and an
+  unknown id is silently ignored; the test pins the full form. The exclusion
+  list's content is part of the dedup fingerprint, so a changed list never
+  lets an older pass skip a scan. Still running: `react-unsanitized-property`,
+  every other `p/typescript`, `p/react` and `p/secrets` rule, and every `kiko-*`
+  rule on every file. Never add a file, a `kiko-*` rule, or an id that can match
+  here. Re-check trigger: if any (request, response) HTTP handler is ever added
+  (express or not, for example a Node mock server in `scripts/` or `e2e/`), if any
+  of the sink packages above is imported, or if a DOM target (a web view that
+  renders DOM, or a web build) is added, remove the matching ids in the same
+  change.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
   five categories are excluded from the set of files Stryker
@@ -868,17 +920,32 @@ verified usage, not dead weight:
   (`stageDraft`) and once per insert batch, never per row; transaction rows
   are paged. Any new whole-table reader inside a write needs its own entry.
 
-- **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
-  `.ts` file name in `src/`.** React Native codegen reads a spec file only
-  if its basename matches `/^(Native.+|.+NativeComponent)/`
+- **`src/native-specs/Native*.ts` (`NativeKikoReminders.ts`,
+  `NativeDisplayRegions.ts`) — the only PascalCase `.ts` file names in
+  `src/`, in a folder with no barrel.** React Native codegen reads a spec
+  file only if its basename matches `/^(Native.+|.+NativeComponent)/`
   (case-sensitive) and has exactly one dot (see `filterJSFile` in
   `node_modules/@react-native/codegen/lib/cli/combine/combine-utils.js`),
   so the name cannot be kebab-case. `package.json` `codegenConfig.jsSrcsDir`
-  points at that folder. Only `reminders-native.ts` loads it (lazily, via
-  `require`), and the barrel does not export it; the
-  `kiko-no-native-reminders-module-import` Semgrep rule
-  (`rules/semgrep-prewrite.yml`) denies any other value import. Add another
+  points at that folder. A barrel there would call
+  `TurboModuleRegistry.getEnforcing` on load, so `feature-imports.js`
+  (`NATIVE_SPEC_PATTERN`) treats `native-specs/**` as barrel-less: the folder needs no
+  `index.ts` and a spec is imported deep through the alias. Only each module's
+  wrapper (`reminders-native.ts`, `display-regions-native.ts`) loads its spec
+  (lazily, via `require`); the
+  `kiko-no-native-reminders-module-import` and
+  `kiko-no-native-display-regions-module-import` Semgrep rules
+  (`rules/semgrep-prewrite.yml`) deny any other value import. Add another
   `Native*` spec only for a new app TurboModule.
+
+- **`src/design-system/components/screen/**` — the owner folder of
+  `kiko-no-pane-blind-bottom-clearance`'s `paths.exclude`.** The rule denies
+  importing `resolveBottomClearance` (or its `bottom-clearance` module) so a
+  `bleedBottom`/`bleedTop` child takes the pane-aware `useBottomClearance()`
+  instead. The Screen folder is the one place that may: `use-bottom-clearance.ts`
+  imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder
+  exclude is right here because every file in it is part of the sink; the rule
+  still reaches every consumer (Home, HoldingDetail).
 
 - **`sf-symbols-typescript` — a transitive package read by path in a test,
   invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
@@ -997,3 +1064,27 @@ verified usage, not dead weight:
   Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
+
+- **patch-package patches (`patches/`, applied by `postinstall`)**: three patches edit
+  `node_modules` after `npm ci`; re-check each on upgrade of its package.
+  - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
+    `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
+    `ScrollView` with `automaticallyAdjustKeyboardInsets` shifted its content offset by the
+    keyboard height for a field OUTSIDE it (the outside-field `inputAccessoryView` branch). The
+    patch drops that branch, so an offset moves only for a field inside the scroll view; the
+    inset math is unchanged. It fixes the Duo/iPad two-pane blank pane (a field in one pane
+    moved the other pane's list) and the same shift of a Screen covered by a pushed form.
+    Pinned by `__tests__/react-native-patch.test.ts` ("the React Native ScrollView keyboard
+    patch": the patch touches that one file, `react-native` is exactly `0.87.1`, the installed
+    file has the guard). A React Native upgrade fails that pin: re-check the patch then.
+  - `patches/react-native-nitro-sfsymbols+2.0.0.patch` (`react-native-nitro-sfsymbols@2.0.0`):
+    the diff adds two lines to `init` of the generated `HybridNitroSfsymbolsComponent.mm`,
+    setting `_props` to a static default `HybridNitroSfsymbolsProps` before `updateView` runs.
+    The diff does not state why; it gives the view non-null props from its first
+    `updateView`.
+  - `patches/read-excel-file+9.3.10.patch` (`read-excel-file@9.3.10`, its `commonjs` and
+    `modules` `zip/unzipFromArrayBuffer.js`): `unzipAsync` calls `fflate`'s `unzipSync`
+    instead of the async `unzip`. The diff's own comment: async `unzip` does `new Worker(...)`
+    for an entry that decompresses to 512 KB or more AND compresses to under 80% of its
+    original size, Hermes has no `Worker` global, so it threw `ReferenceError` on device (never
+    under Jest).

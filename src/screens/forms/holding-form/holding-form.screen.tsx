@@ -39,6 +39,7 @@ import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import HoldingTypeField from '@kiko/screens/forms/holding-type-field';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
 import CurrencyField from '@kiko/design-system/components/currency-field';
@@ -46,13 +47,14 @@ import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
-import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
 import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import { isCurrencyExpectedForHoldingType } from '@kiko/holdings/holding-currency';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
+import { type FC, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type ImplicitAccountKind, isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
 import {
@@ -70,6 +72,7 @@ import { useLoanFields } from './loan/use-loan-fields';
 import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
 import BalanceFormBlock from './balance/balance-form-block';
+import type { HoldingFormDraft } from './holding-form-draft';
 import PropertyFormBlock from './property/property-form-block';
 import PropertyTypeField from './property/property-type-field';
 import { useBalanceFields } from './balance/use-balance-fields';
@@ -232,7 +235,9 @@ type HoldingFormScreenProps = {
   navigation: {
     goBack: () => void;
     setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
-    setParams: (params: { implicitKind: ImplicitAccountKind }) => void;
+    setParams: (
+      params: { implicitKind: ImplicitAccountKind } | { draft: FormDraft | HoldingFormDraft },
+    ) => void;
     replace: (name: 'AccountForm', params: AccountsStackParamList['AccountForm']) => void;
     push: (...route: CreateHoldingRoute) => void;
     popTo: <Name extends 'StatementImport' | 'ColumnMapping'>(
@@ -289,6 +294,23 @@ const shownKind = (
   leavingKind: AccountRow['kind'] | undefined,
 ): AccountRow['kind'] => leavingKind ?? implicitKind;
 
+// The form's own saved fields, when the `draft` param holds them and not the identity a swap
+// between the account and holding forms carries.
+const savedDraftOf = (draft: FormDraft | HoldingFormDraft | undefined) =>
+  isSavedDraft(draft) ? draft : undefined;
+
+// A create has no stored holding to read first, so it takes a saved draft at once, before
+// paint. An edit takes it after reading the stored holding (see the hydration effect).
+const restoreOnCreate = (
+  isEdit: boolean,
+  saved: HoldingFormDraft | undefined,
+  restore: (saved: HoldingFormDraft) => void,
+): void => {
+  if (!isEdit && saved !== undefined) {
+    restore(saved);
+  }
+};
+
 // At module scope to keep this branch out of HoldingFormScreen's own cognitive
 // complexity score.
 const startingType = (
@@ -303,6 +325,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const target = holdingFormTarget(route.params);
   const draft = holdingFormDraft(route.params);
   const start = holdingFormStart(route.params);
+  const { initialDraft, saveDraft } = useDraftParam<FormDraft | HoldingFormDraft>(
+    navigation,
+    route,
+  );
+  const savedDraft = savedDraftOf(initialDraft);
   const { t } = useTranslation();
   // Human display text for the id-like holding types (the select field
   // below still reports the underlying value on select). Built from the
@@ -408,12 +435,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     needsPriceBook(editingHolding?.type ?? type),
   );
   const [currency, setCurrency] = useState<Currency>(start.currency);
-  // While the currency sheet's search field can be
-  // focused, this screen's background ScrollView must NOT react to the
-  // keyboard's frame change — it does not contain that responder, but
-  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless (see
-  // `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   // The kind just picked on the kind field that leaves for the account form,
   // shown there until the swap replaces this screen (see `retargetImplicitKind`).
   const [leavingKind, setLeavingKind] = useState<AccountRow['kind'] | undefined>(undefined);
@@ -529,6 +550,50 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   };
   const active = forms[type];
 
+  // A fold or unfold remounts this screen but keeps the route's params, so the fields the user
+  // filled come back from the draft the form saved there (see `useDraftAutosave`). An edit reads
+  // the stored holding first (below), and the draft goes over it.
+  const { restore: restoreBalance } = balance;
+  const { restore: restoreDeposit } = deposit;
+  const { restore: restoreBond } = bond;
+  const { restore: restoreProperty } = property;
+  const { restore: restoreMetal } = metal;
+  const { restore: restoreLoan } = loanFields;
+  const restoreDraft = useCallback(
+    (saved: HoldingFormDraft): void => {
+      setName(saved.name);
+      setType(saved.type);
+      setCurrency(saved.currency);
+      setIcon(saved.icon);
+      setColor(saved.color);
+      restoreBalance(saved.balance);
+      restoreDeposit(saved.deposit);
+      restoreBond(saved.bond);
+      restoreProperty(saved.property);
+      restoreMetal(saved.metal);
+      restoreLoan(saved.loan);
+    },
+    [restoreBalance, restoreDeposit, restoreBond, restoreProperty, restoreMetal, restoreLoan],
+  );
+  useLayoutEffect(() => {
+    restoreOnCreate(isEdit, savedDraft, restoreDraft);
+  }, [isEdit, savedDraft, restoreDraft]);
+  const currentDraft: HoldingFormDraft = {
+    saved: true,
+    name,
+    type,
+    currency,
+    icon,
+    color,
+    balance: balance.draft,
+    deposit: deposit.draft,
+    bond: bond.draft,
+    property: property.draft,
+    metal: metal.draft,
+    loan: loanFields.draft,
+  };
+  const onFieldBlur = useDraftAutosave(currentDraft, saveDraft, savedDraft);
+
   // A holding type with a fixed currency (today, only `metal` — NBU quotes
   // precious metals only in UAH, kiko-pricing) offers no currency picker at
   // all (below) and this effect forces the state back to that fixed currency
@@ -575,9 +640,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     };
     const seed = Object.hasOwn(seeds, holding.type) ? seeds[holding.type] : balance.seed;
     seed(holding);
+    foldMap(maybe(savedDraft), restoreDraft);
   }, [
     isEdit,
     editingHolding,
+    savedDraft,
+    restoreDraft,
     deposit.seed,
     bond.seed,
     property.seed,
@@ -761,8 +829,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      automaticallyAdjustKeyboardInsets={!isSearchSheetOpen}
       onContentSizeChange={onContentSizeChange}
+      onFieldBlur={onFieldBlur}
     >
       <Box gap={4} testID="holding-form">
         <View ref={nameFieldRef}>
@@ -870,7 +938,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             onSelect={setCurrency}
             groups={currencyGroups}
             disabled={isEdit}
-            onOpenChange={setIsSearchSheetOpen}
             testID="holding-currency-field"
           />
         )}

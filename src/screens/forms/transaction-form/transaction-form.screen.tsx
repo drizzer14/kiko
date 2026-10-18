@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { match } from 'ts-pattern';
+import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
@@ -31,11 +32,12 @@ import Screen from '@kiko/design-system/components/screen';
 import Button from '@kiko/design-system/components/button';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
-import type { TransactionFormParams } from '@kiko/navigation/types';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { useDataReady, useLiveQuery, type HoldingRow } from '@kiko/db';
 import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
@@ -50,6 +52,7 @@ import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format'
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { isExchangeCreateDestinationType } from '@kiko/holdings/exchange-destination';
 import ModeSelectField, { type FormMode } from '@kiko/screens/forms/mode-select-field';
+import type { TransactionFormDraft, TransactionFormParams } from '@kiko/navigation/types';
 
 import {
   type SaveDisabledField,
@@ -112,23 +115,79 @@ import { DEFAULT_MODE, MODE_ICONS, resolveModeOptions } from './mode-options';
 import { readRouteEntry, resolveHoldingField, revealsHoldingField } from './route-entry';
 import { offersCategoryNameRule, resolveCategoryOverrideRequest } from './category-rule';
 
-// This screen is registered in the Home, Accounts, and Settings stacks (Home lists every
-// transaction; Accounts reaches it from a holding; Settings reaches it from the templates
-// list), so it cannot bind its props to a single stack's param list. It only needs the route
-// params and a few navigation methods (`navigate` for the create forms every stack
-// registers), so it declares exactly that minimal shape — structurally satisfied by any
-// stack's generated props.
+// This screen is registered in the Home, Accounts, Settings, and Statistics stacks (Home lists
+// every transaction; Accounts reaches it from a holding; Settings reaches it from the templates
+// list; Statistics opens it beside its own root), so it cannot bind its props to a single
+// stack's param list. It only needs the route params and a few navigation methods (`navigate`
+// for the create forms every stack registers), so it declares exactly that minimal shape —
+// structurally satisfied by any stack's generated props.
 type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
   navigation: {
     goBack: () => void;
     setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
+    setParams: (params: { draft: TransactionFormDraft }) => void;
     navigate: (...route: CreateHoldingRoute) => void;
     // A template's "Create transaction" opens this same route from the template's own form, so it
     // must push a second entry: a `navigate` to the current route would only swap its params.
     push: (name: 'TransactionForm', params: TransactionFormParams) => void;
   };
 };
+
+// What the form's state opens with: the draft the route carries, else a blank add dated now. The
+// day is read here, not at module load, so a form opened tomorrow does not open on today.
+const openingOf = (
+  draft: TransactionFormDraft | undefined,
+  initialTab: EntryTab,
+): TransactionFormDraft =>
+  draft ?? {
+    primaryHoldingId: null,
+    mode: DEFAULT_MODE,
+    amount: '',
+    description: '',
+    changeReturns: [{ id: 0, holdingId: null, amount: '' }],
+    valueIn: '',
+    destinationHoldingId: null,
+    converting: false,
+    counterpartHoldingId: null,
+    counterpartAmount: '',
+    time: Date.now(),
+    selectedCategory: null,
+    userPickedCategory: false,
+    prefilledLabel: null,
+    saveAsTemplate: false,
+    templateName: '',
+    tab: initialTab,
+    pickedTemplateId: null,
+  };
+
+// The draft an entry opens from. A template entry (to add, to edit, or to fill from) opens from
+// none, a known limit: an edit and a fill seed from the template they name, and an add names none
+// and seeds the default holding.
+const draftOfEntry = (
+  draft: TransactionFormDraft | undefined,
+  isTemplateMode: boolean,
+  templateQueryId: string,
+): TransactionFormDraft | undefined =>
+  isTemplateMode || templateQueryId !== '' ? undefined : draft;
+
+// The id the next appended return row takes: one past the highest a restored draft holds, so a
+// row added after a remount never shares a React key with one that came back. A user can remove
+// every row, which leaves nothing to count past.
+const nextReturnIdOf = (rows: readonly ChangeReturnRow[]): number =>
+  Math.max(0, maxOf(rows.map((row) => row.id)) + 1);
+
+// Whether a draft already holds every field, so the stored row (an edit, a duplicate) must not
+// seed over it. A global add that saved before its default holding was seated still needs that
+// one seat, which touches nothing else. A template picked since has seated its own holding or
+// emptied the seam on purpose, so an empty holding beside a picked template is a choice, not a
+// seat that is still to come.
+const isDraftComplete = (
+  draft: TransactionFormDraft | undefined,
+  seedsDefaultHolding: boolean,
+): boolean =>
+  draft !== undefined &&
+  !(seedsDefaultHolding && draft.primaryHoldingId === null && draft.pickedTemplateId === null);
 
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
@@ -201,6 +260,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   } = readRouteEntry(route.params);
   // Adding or editing a template: the form saves a template, not a transaction.
   const isTemplateMode = templateEntry !== null;
+  // A fold or unfold remounts this screen but keeps the route's params, so the fields the user
+  // filled come back from the draft the form saved there (see `useDraftAutosave`).
+  const { initialDraft, saveDraft } = useDraftParam<TransactionFormDraft>(navigation, route);
+  const entryDraft = draftOfEntry(initialDraft, isTemplateMode, templateQueryId);
+  const [opening] = useState(() => openingOf(entryDraft, initialTab));
   // ONE by-id subscription serves both the edit source and the duplicate source
   // (never both at once — the union keeps the params mutually exclusive).
   const { data: matchedTransactions } = useLiveQuery(
@@ -267,15 +331,24 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // exchange rules) reads through it. Null on a plain add/edit, where
   // `holdingParamId`/`existing` supply the holding instead, until a template seats it (a
   // template with a holding sets it, and one with none empties it back to those).
-  const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(null);
+  const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(opening.primaryHoldingId);
   const holdingId = existing?.holdingId ?? primaryHoldingId ?? holdingParamId ?? undefined;
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   // The holding an add from a holding names, which stays the form's holding whenever the seam is
   // empty again: a template with none of its own falls back to it.
   const pageHolding = holdings.find((candidate) => candidate.id === holdingParamId);
-  // Set once a template seats a holding other than the page's, and never cleared (see
-  // `revealsHoldingField`): an add from a holding then shows its holding field.
-  const [isHoldingFieldRevealed, setHoldingFieldRevealed] = useState(false);
+  // Set once a template seats a holding other than the page's, and never cleared within one mount
+  // (see `revealsHoldingField`): an add from a holding then shows its holding field. A form
+  // restored from a draft opens with the field shown only when the draft holds such a holding.
+  // Known limit: the flag itself is not in the draft, so two paths hide the field after a
+  // fold or unfold. The user re-picks the page's own holding, or picks a template with no
+  // holding after one with a holding. The write target stays right in both: the page's holding.
+  const [isHoldingFieldRevealed, setHoldingFieldRevealed] = useState(
+    () =>
+      foldMap(maybe(opening.primaryHoldingId), (seatedHoldingId) =>
+        revealsHoldingField(false, holdingParamId, seatedHoldingId),
+      ) ?? false,
+  );
   const holdingField = resolveHoldingField({
     isEmptyCreate,
     isRevealed: isHoldingFieldRevealed,
@@ -391,9 +464,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     t,
   );
 
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [mode, setMode] = useState<FormMode>(DEFAULT_MODE);
+  const [amount, setAmount] = useState(opening.amount);
+  const [description, setDescription] = useState(opening.description);
+  const [mode, setMode] = useState<FormMode>(opening.mode);
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
@@ -449,19 +522,21 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // one picker when Split is entered. `nextReturnId` hands out a stable key per
   // appended row (the same pattern as the term-deposit contribution rows), so a
   // removed row never reshuffles React keys onto the wrong inputs.
-  const nextReturnId = useRef(1);
-  const [changeReturns, setChangeReturns] = useState<ChangeReturnRow[]>([
-    { id: 0, holdingId: null, amount: '' },
-  ]);
-  const [valueIn, setValueIn] = useState('');
-  const [destinationHoldingId, setDestinationHoldingId] = useState<string | null>(null);
-  const [converting, setConverting] = useState(false);
-  const [counterpartHoldingId, setCounterpartHoldingId] = useState<string | null>(null);
-  const [counterpartAmount, setCounterpartAmount] = useState('');
+  const nextReturnId = useRef(nextReturnIdOf(opening.changeReturns));
+  const [changeReturns, setChangeReturns] = useState<ChangeReturnRow[]>(opening.changeReturns);
+  const [valueIn, setValueIn] = useState(opening.valueIn);
+  const [destinationHoldingId, setDestinationHoldingId] = useState<string | null>(
+    opening.destinationHoldingId,
+  );
+  const [converting, setConverting] = useState(opening.converting);
+  const [counterpartHoldingId, setCounterpartHoldingId] = useState<string | null>(
+    opening.counterpartHoldingId,
+  );
+  const [counterpartAmount, setCounterpartAmount] = useState(opening.counterpartAmount);
   // The transaction's time, defaulting to now for a fresh add so a manual row
   // can be BACKDATED via the DateField below. Edit mode hydrates the existing
   // time; picking a day sets it to that day's local midnight.
-  const [time, setTime] = useState<number>(() => Date.now());
+  const [time, setTime] = useState<number>(opening.time);
   const {
     selectedCategory,
     effectiveCategory,
@@ -479,14 +554,39 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     time,
     mode,
     currency: holding?.currency ?? null,
+    initial: { category: opening.selectedCategory, isPicked: opening.userPickedCategory },
   });
-  const [hydrated, setHydrated] = useState(false);
+  // A draft the route carries holds every field, so the stored row never seeds over it.
+  const [hydrated, setHydrated] = useState(isDraftComplete(entryDraft, seedsDefaultHolding));
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
-  const [prefilledLabel, setPrefilledLabel] = useState<string | null>(null);
+  const [prefilledLabel, setPrefilledLabel] = useState<string | null>(opening.prefilledLabel);
   // The template name field: filled by an Edit template, typed in an Add template.
-  const [templateName, setTemplateName] = useState('');
-  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState(opening.templateName);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(opening.saveAsTemplate);
+  const [tab, setTab] = useState<EntryTab>(opening.tab);
+  const [pickedTemplateId, setPickedTemplateId] = useState<string | null>(opening.pickedTemplateId);
+  const draft: TransactionFormDraft = {
+    primaryHoldingId,
+    mode,
+    amount,
+    description,
+    changeReturns,
+    valueIn,
+    destinationHoldingId,
+    converting,
+    counterpartHoldingId,
+    counterpartAmount,
+    time,
+    selectedCategory,
+    userPickedCategory,
+    prefilledLabel,
+    saveAsTemplate,
+    templateName,
+    tab,
+    pickedTemplateId,
+  };
+  const onFieldBlur = useDraftAutosave(draft, saveDraft);
   const templateSwitch = resolveTemplateSwitch({
     isOn: saveAsTemplate,
     isReadOnly,
@@ -494,8 +594,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     isTemplateMode,
   });
   const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
-  const [tab, setTab] = useState<EntryTab>(initialTab);
-  const [pickedTemplateId, setPickedTemplateId] = useState<string | null>(null);
   // The template the Template tab has picked: the select's pick, else the one the route names.
   const { template: selectedTemplate, id: selectedTemplateId } = resolveSelectedTemplate({
     pickedId: pickedTemplateId,
@@ -1243,6 +1341,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scroll
         scrollableRef={scrollableRef}
         onContentSizeChange={onContentSizeChange}
+        onFieldBlur={onFieldBlur}
         footer={foldMap(maybe(editTemplateId), (templateId) => (
           // Create transaction opens the template as it is STORED: the unsaved edits on this
           // form are neither used nor saved. Save is the nav bar's, like every other form's, so

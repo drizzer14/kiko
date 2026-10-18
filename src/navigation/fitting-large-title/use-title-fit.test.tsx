@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { Dimensions, Text } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
+import { PaneWidthContext } from '@kiko/design-system/pane-context';
 
 import '@kiko/design-system/unistyles';
 
@@ -63,6 +64,36 @@ describe('useTitleFit', () => {
 
     expect(fitting.getByTestId('fits').props.children).toBe('true');
     expect(over.getByTestId('fits').props.children).toBe('false');
+  });
+
+  // In columns each pane has its own header at about half the window, so a title that fits the
+  // window (20 letters, as above) can still be wider than the pane (187pt less 32pt of margins).
+  describe('in a pane', () => {
+    const inPane = (width: number, title: string) => (
+      <PaneWidthContext.Provider value={width}>
+        <Probe title={title} />
+      </PaneWidthContext.Provider>
+    );
+
+    it('gives the title the pane width, not the window width', async () => {
+      const { getByTestId } = await render(inPane(187, 'a'.repeat(20)));
+
+      expect(getByTestId('fits').props.children).toBe('false');
+    });
+
+    it('still fits a title the pane holds', async () => {
+      const { getByTestId } = await render(inPane(187, 'a'.repeat(8)));
+
+      expect(getByTestId('fits').props.children).toBe('true');
+    });
+
+    it('gives a pane as wide as the window the same line, as in rows', async () => {
+      const fitting = await render(inPane(375, 'a'.repeat(20)));
+      const over = await render(inPane(375, 'a'.repeat(21)));
+
+      expect(fitting.getByTestId('fits').props.children).toBe('true');
+      expect(over.getByTestId('fits').props.children).toBe('false');
+    });
   });
 
   it('lets a one line measurement overrule a pessimistic estimate', async () => {
