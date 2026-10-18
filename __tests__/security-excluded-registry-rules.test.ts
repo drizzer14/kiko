@@ -9,9 +9,10 @@ import {
 
 // Four groups of Semgrep registry rules cannot match this repository: the 30 express rules, the
 // express cors-misconfiguration rule, the sequelize express rule, and the react
-// unsanitized-method rule. It has no (request, response) HTTP handler, no sink package they
-// import, and no DOM target, so scripts/checks/security.sh excludes them by their full check_id;
-// every kiko-* rule keeps running on every file.
+// unsanitized-method rule. No sink is reachable from a handler-shaped function (any 2-parameter
+// function reading a parameter's query, body, params, cookies or headers), no sink package they
+// import is imported, and there is no DOM target, so scripts/checks/security.sh excludes them by
+// their full check_id; every kiko-* rule keeps running on every file.
 const SCRIPT = join(__dirname, '../scripts/checks/security.sh');
 const LIBRARY = join(__dirname, '../scripts/checks/_lib.sh');
 const REPOSITORY_ROOT = join(__dirname, '..');

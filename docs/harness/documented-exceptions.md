@@ -495,11 +495,17 @@ verified usage, not dead weight:
   generic shapes (an HTML-looking string built from a value, a dynamic
   `require(x)`, a `sequelize.query(...)` call, the identifier `sequelize` being in
   no tracked file but this harness's own pin and docs). A source can match by accident
-  (a test double reading `init.headers`), so the proof is that no sink is reachable: there is no
-  (request, response) HTTP handler anywhere in tracked code (no `createServer`,
-  `.listen(`, `http`, `https`, `express`, `koa` or `fastify` import, no
-  `(req, res)` or `(request, response)` function, no `Request`/`Response`
-  typed handler), and a scan with only these 33 rules over the repo found 0
+  (a test double reading `init.headers`), and an accidental source can reach a generic
+  sink with no HTTP handler (a fetch double
+  ``function mockFetch(request, init) { return `<html>${request.body}</html>`; }``
+  is a `raw-html-format` source and sink). So the proof has two parts. (1) No sink is
+  reachable from a handler-shaped function, meaning any 2-parameter function reading a
+  parameter's `query`, `body`, `params`, `cookies` or `headers`: no sink-package call,
+  no express response method, no HTML-looking string built from such a value, no
+  dynamic `require(x)` (and there is no `createServer`, `.listen(`, `http`, `https`,
+  `express`, `koa` or `fastify` import, no `(req, res)` or `(request, response)`
+  function, no `Request`/`Response` typed handler). (2) The measured run: a scan
+  with only these 33 rules over the repo found 0
   findings and 0 errors in 2092 files (semgrep 1.175.0, 2026-10-18; an earlier
   all-rules run over 2066 files had 0 findings and 2 files that timed out,
   `__tests__/pre-write-guard.test.ts` and `scripts/checks/kill-guard.js`, and a
@@ -515,7 +521,9 @@ verified usage, not dead weight:
   rule on every file. Never add a file, a `kiko-*` rule, or an id that can match
   here. Re-check trigger: if any (request, response) HTTP handler is ever added
   (express or not, for example a Node mock server in `scripts/` or `e2e/`), if any
-  of the sink packages above is imported, or if a DOM target (a web view that
+  of the sink packages above is imported, if a dynamic `require(x)` is added, if an
+  HTML string is built from a parameter's `body`, `headers`, `query`, `params` or
+  `cookies` inside a 2-parameter function, or if a DOM target (a web view that
   renders DOM, or a web build) is added, remove the matching ids in the same
   change.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
