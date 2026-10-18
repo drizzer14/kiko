@@ -4,6 +4,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme as theme } from '@kiko/design-system/theme';
+import { FieldBlurContext } from '@kiko/design-system/field-blur';
 
 import { KIKO_CATEGORIES_ICONS } from '../icon-pools';
 
@@ -88,6 +89,33 @@ describe('HoldingIdentityField', () => {
     await fireEvent(getByLabelText('Card name'), 'endEditing');
 
     expect(onEndEditingName).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells a form that listens when the name field loses focus', async () => {
+    const listener = jest.fn();
+    const { getByLabelText } = await render(
+      <FieldBlurContext.Provider value={listener}>
+        <HoldingIdentityField
+          icons={KIKO_CATEGORIES_ICONS}
+          icon={null}
+          fallbackIcon="creditcard"
+          name="My card"
+          onChangeName={jest.fn()}
+          onSelectIcon={jest.fn()}
+          onRemoveIcon={jest.fn()}
+        />
+      </FieldBlurContext.Provider>,
+    );
+
+    await fireEvent(getByLabelText('Name'), 'blur');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the name field without an onBlur where no form listens', async () => {
+    const { getByLabelText } = await setup();
+
+    expect(getByLabelText('Name').props.onBlur).toBeUndefined();
   });
 
   it('pins the icon control and the name field to the same fixed box height', async () => {

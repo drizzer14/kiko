@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import { usePropertyFields } from './use-property-fields';
+import { type PropertyFieldsDraft, usePropertyFields } from './use-property-fields';
 
 describe('usePropertyFields scrollTargets', () => {
   it('holds the cost target, then the ownership target', async () => {
@@ -138,5 +138,81 @@ describe('usePropertyFields seed', () => {
     });
 
     expect(result.current.category).toBe('other');
+  });
+});
+
+describe('usePropertyFields draft', () => {
+  const filled: PropertyFieldsDraft = {
+    category: 'vehicle',
+    cost: '9 000',
+    entry: { mode: 'fraction', percent: '33.33', numerator: '1', denominator: '3' },
+    effectiveDate: new Date(2026, 0, 1).getTime(),
+  };
+
+  it('holds a blank property as it opens: the first category, whole share, dated today', async () => {
+    const { result } = await renderHook(() =>
+      usePropertyFields({ isEdit: false, currency: 'UAH' }),
+    );
+
+    expect(result.current.draft).toEqual({
+      category: 'real_estate',
+      cost: '',
+      entry: { mode: 'percent', percent: '100', numerator: '1', denominator: '1' },
+      effectiveDate: expect.any(Number),
+    });
+  });
+
+  it('brings back every field', async () => {
+    const { result } = await renderHook(() =>
+      usePropertyFields({ isEdit: false, currency: 'UAH' }),
+    );
+
+    await act(async () => {
+      result.current.restore(filled);
+    });
+
+    expect(result.current.draft).toEqual(filled);
+    expect(result.current.ownership.denominator).toBe('3');
+    expect(result.current.category).toBe('vehicle');
+  });
+
+  it('leaves what an edit reads from the stored property alone: its lots and its share changes', async () => {
+    const { result } = await renderHook(() => usePropertyFields({ isEdit: true, currency: 'UAH' }));
+    const firstDay = Date.UTC(2024, 0, 1);
+
+    await act(async () => {
+      result.current.seed({
+        id: 'h1',
+        currency: 'UAH',
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: firstDay, quantityDelta: '1', costMinorUnits: 900_000 }],
+          ownership: [{ day: firstDay, numerator: 1, denominator: 2 }],
+          ownershipInput: 'fraction',
+        },
+        // `seed` only reads `metadata`; a full HoldingRow literal would be noise.
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
+      } as any);
+    });
+    await act(async () => {
+      result.current.restore({ ...filled, category: 'real_estate' });
+    });
+
+    expect(result.current.draft).not.toHaveProperty('lots');
+    expect(result.current.draft).not.toHaveProperty('storedOwnership');
+    expect(result.current.ownership.showsEffectiveDate).toBe(true);
+  });
+
+  it('keeps one restore across renders, so the screen effect that depends on it runs once', async () => {
+    const { result } = await renderHook(() =>
+      usePropertyFields({ isEdit: false, currency: 'UAH' }),
+    );
+    const first = result.current.restore;
+
+    await act(async () => {
+      result.current.setCost('5');
+    });
+
+    expect(result.current.restore).toBe(first);
   });
 });

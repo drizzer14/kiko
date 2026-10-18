@@ -2,11 +2,16 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { expectNavBarSaveOnly, pressSave } from '@kiko/test-support/form-header-items';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import PricePointFormScreen from './price-point-form.screen';
 
@@ -36,11 +41,11 @@ const seed = (holding: unknown = propertyHolding): void => {
   mockUseLiveQuery.mockImplementation(() => ({ data: [holding] }));
 };
 
-const renderScreen = () =>
+const renderScreen = (openedRoute: PricePointFormProps['route'] = route) =>
   render(
     <PricePointFormScreen
       navigation={asNavigationProp<PricePointFormProps['navigation']>(navigation)}
-      route={route}
+      route={openedRoute}
     />,
   );
 
@@ -244,5 +249,80 @@ describe('PricePointFormScreen', () => {
 
   it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
     expectNavBarSaveOnly(navigation.setOptions, await renderScreen());
+  });
+});
+
+describe('PricePointFormScreen — draft', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    seed();
+  });
+
+  const reopened = () =>
+    asRouteProp<PricePointFormProps['route']>(
+      'PricePointForm',
+      paramsAfter(navigation, { holdingId: 'h-1' }),
+    );
+
+  it('brings back the typed value and the picked date after a remount', async () => {
+    const first = await renderScreen();
+    await fireEvent.changeText(first.getByLabelText('Value'), '5000');
+    await pickDate(first, 2025, 6, 1);
+    await fireEvent(first.getByLabelText('Value'), 'blur');
+    await first.unmount();
+
+    const second = await renderScreen(reopened());
+
+    expect(second.getByLabelText('Value').props.value).toBe('5 000');
+
+    await pressSave(navigation.setOptions);
+
+    expect(pricePointsRepo.upsertMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        day: dayKeyOf(new Date(2025, 5, 1).getTime()),
+        price: '5000.00',
+      }),
+    ]);
+  });
+
+  it('keeps the draft to plain values, so the route params stay JSON', async () => {
+    const utils = await renderScreen();
+    await fireEvent.changeText(utils.getByLabelText('Value'), '5000');
+    await fireEvent(utils.getByLabelText('Value'), 'blur');
+
+    expect(navigation.setParams).toHaveBeenCalledWith({
+      draft: { value: '5 000', date: today() },
+    });
+  });
+
+  it('writes the draft once per blur, never while typing', async () => {
+    const utils = await renderScreen();
+
+    await fireEvent.changeText(utils.getByLabelText('Value'), '5');
+    await fireEvent.changeText(utils.getByLabelText('Value'), '50');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await fireEvent(utils.getByLabelText('Value'), 'blur');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens blank when the route carries no draft', async () => {
+    const utils = await renderScreen();
+
+    expect(utils.getByLabelText('Value').props.value).toBe('');
+  });
+
+  it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+    const utils = await renderScreen();
+    await fireEvent.changeText(utils.getByLabelText('Value'), '5000');
+    await fireEvent(utils.getByLabelText('Value'), 'blur');
+    navigation.setParams.mockClear();
+
+    await pressSave(navigation.setOptions);
+
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(navigation.setParams).not.toHaveBeenCalled();
   });
 });

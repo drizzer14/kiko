@@ -1,5 +1,7 @@
 import { StyleSheet } from 'react-native-unistyles';
 
+import type { SheetFrame } from './bottom-sheet.layout';
+
 // The single base padding step every sheet keeps around its content, shared by
 // the top, horizontal, and (on top of the safe-area inset) bottom edges. Three
 // of the four original sheets already used spacing(4) here; it also matches the
@@ -133,8 +135,8 @@ export const styles = StyleSheet.create((theme) => ({
   backdropFallback: {
     backgroundColor: theme.colors.scrimFallback,
   },
-  // The sheet card: flush to the screen's left/right/bottom edges with only its
-  // top corners rounded — a clean bottom sheet, no floating frame. The Modal
+  // The sheet card: flush to the screen's left/right/bottom edges (on a single
+  // window) with only its top corners rounded — a clean bottom sheet, no floating frame. The Modal
   // renders outside any SafeAreaView, so the sheet owns the bottom safe-area
   // inset itself (`bottomInset` is `useSafeAreaInsets().bottom` from the call
   // site) on top of the single base step, or its last row would sit flush
@@ -164,8 +166,15 @@ export const styles = StyleSheet.create((theme) => ({
   // `surfaceHigh` for exactly this reason), so none blends, and every sheet
   // gains the correct grouped elevation. A new in-sheet control must sit at
   // `surfaceHigh` (or above), never `surface`, or it blends into this base.
-  sheet: (bottomInset: number, maxHeight: number) => ({
+  //
+  // On a two-pane display `frame` narrows the card to a width and a left offset (see
+  // `resolveSheetFrame`): a definite `width` takes the card out of the overlay's stretch, so the
+  // `marginLeft` alone places it, and the full-bleed scrim stays behind it. A single window passes
+  // an empty frame, and the card keeps filling the overlay's width.
+  sheet: (bottomInset: number, maxHeight: number, frame: SheetFrame) => ({
     maxHeight,
+    width: frame.width,
+    marginLeft: frame.left,
     overflow: 'hidden',
     borderTopLeftRadius: theme.radii.lg,
     borderTopRightRadius: theme.radii.lg,

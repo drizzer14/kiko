@@ -3,13 +3,18 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { SaleExceedsHoldingError } from '@kiko/holdings/lots';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { expectNavBarSaveOnly, pressSave } from '@kiko/test-support/form-header-items';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import LotFormScreen from './lot-form.screen';
 
@@ -430,6 +435,103 @@ describe('LotFormScreen', () => {
         'h-1',
         expect.objectContaining({ kind: 'edit', index: 1 }),
       );
+    });
+  });
+
+  describe('the draft', () => {
+    const reopened = (opened: { holdingId: string; lotIndex?: number }) =>
+      paramsAfter(navigation, opened) as typeof opened;
+
+    it('brings back a buy as typed after a remount', async () => {
+      const first = await renderScreen();
+      await fireEvent.changeText(first.getByLabelText('Quantity'), '5');
+      await fireEvent.changeText(first.getByLabelText('Total cost'), '250000');
+      await pickDate(first, 2025, 2, 10);
+      await fireEvent(first.getByLabelText('Total cost'), 'blur');
+      await first.unmount();
+
+      const second = await renderScreen(reopened({ holdingId: 'h-1' }));
+
+      expect(second.getByLabelText('Quantity').props.value).toBe('5');
+      expect(second.getByLabelText('Total cost').props.value).toBe('250 000');
+
+      await pressSave(navigation.setOptions);
+
+      expect(changeLotsMock).toHaveBeenCalledWith('h-1', {
+        kind: 'add',
+        lot: {
+          day: dayKeyOf(new Date(2025, 1, 10).getTime()),
+          quantityDelta: '5',
+          costMinorUnits: 250_000_00,
+        },
+      });
+    });
+
+    it('brings back a sell, with no total cost field', async () => {
+      const first = await renderScreen();
+      await fireEvent.press(first.getByText('Sell'));
+      await fireEvent.changeText(first.getByLabelText('Quantity'), '4');
+      await fireEvent(first.getByLabelText('Quantity'), 'blur');
+      await first.unmount();
+
+      const second = await renderScreen(reopened({ holdingId: 'h-1' }));
+
+      expect(second.getByLabelText('Quantity').props.value).toBe('4');
+      expect(second.queryByLabelText('Total cost')).toBeNull();
+    });
+
+    it('keeps the draft to plain values, so the route params stay JSON', async () => {
+      const utils = await renderScreen();
+      await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
+      await fireEvent(utils.getByLabelText('Quantity'), 'blur');
+
+      expect(navigation.setParams).toHaveBeenCalledWith({
+        draft: { direction: 'buy', quantity: '5', cost: '', date: today() },
+      });
+    });
+
+    it('writes the draft once per blur, never while typing', async () => {
+      const utils = await renderScreen();
+
+      await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
+      await fireEvent.changeText(utils.getByLabelText('Quantity'), '55');
+
+      expect(navigation.setParams).not.toHaveBeenCalled();
+
+      await fireEvent(utils.getByLabelText('Quantity'), 'blur');
+
+      expect(navigation.setParams).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets the draft of an edit win over the stored lot it was opened on', async () => {
+      const first = await renderScreen({ holdingId: 'h-1', lotIndex: 0 });
+      await fireEvent.changeText(first.getByLabelText('Quantity'), '7');
+      await fireEvent(first.getByLabelText('Quantity'), 'blur');
+      await first.unmount();
+
+      const second = await renderScreen(reopened({ holdingId: 'h-1', lotIndex: 0 }));
+
+      expect(second.getByLabelText('Quantity').props.value).toBe('7');
+      expect(second.getByLabelText('Total cost').props.value).toBe('500 000');
+    });
+
+    it('opens an edit from the stored lot when the route carries no draft', async () => {
+      const utils = await renderScreen({ holdingId: 'h-1', lotIndex: 0 });
+
+      expect(utils.getByLabelText('Quantity').props.value).toBe('10');
+    });
+
+    it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+      const utils = await renderScreen();
+      await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
+      await fireEvent.changeText(utils.getByLabelText('Total cost'), '100');
+      await fireEvent(utils.getByLabelText('Total cost'), 'blur');
+      navigation.setParams.mockClear();
+
+      await pressSave(navigation.setOptions);
+
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+      expect(navigation.setParams).not.toHaveBeenCalled();
     });
   });
 });

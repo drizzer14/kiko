@@ -113,7 +113,17 @@ export type PropertyOwnershipFields = {
   setEffectiveDate: (timestamp: number) => void;
 };
 
+/** What a fold or unfold must give back of the property form: every field the user fills. */
+export type PropertyFieldsDraft = {
+  category: PropertyCategory;
+  cost: string;
+  entry: OwnershipEntry;
+  effectiveDate: number;
+};
+
 export type UsePropertyFieldsResult = HoldingTypeForm & {
+  draft: PropertyFieldsDraft;
+  restore: (draft: PropertyFieldsDraft) => void;
   currency: Currency;
   category: PropertyCategory;
   setCategory: (value: PropertyCategory) => void;
@@ -194,6 +204,15 @@ export const usePropertyFields = (params: UsePropertyFieldsParams): UsePropertyF
     setEntry(ownershipEntryOf(meta.ownershipInput ?? 'percent', current));
   }, []);
 
+  // What the user filled, over whatever `seed` read from the stored property: its lots and share
+  // changes (and the share in effect) are not in a draft, they are read again.
+  const restore = useCallback((restored: PropertyFieldsDraft): void => {
+    setCategory(restored.category);
+    setCost(restored.cost);
+    setEntry(restored.entry);
+    setEffectiveDate(restored.effectiveDate);
+  }, []);
+
   const createPayload = (): CreatePayload =>
     buildPropertyCreatePayload({
       category,
@@ -219,6 +238,8 @@ export const usePropertyFields = (params: UsePropertyFieldsParams): UsePropertyF
   };
 
   return {
+    draft: { category, cost, entry, effectiveDate },
+    restore,
     currency,
     category,
     setCategory,

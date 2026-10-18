@@ -417,11 +417,10 @@ one for the other:
   read if the query went dirty while paused, zero if it did not; the
   MOUNT read always runs regardless of `paused`, since a screen can be
   mounted unfocused (a deep link, a restore) and still needs its first
-  real data. Toggling `paused` never re-subscribes. `statistics.screen.tsx`,
-  `home.screen.tsx` and `accounts.screen.tsx` pass `paused: !isFocused`
-  (`useIsFocused` from `@react-navigation/native`) to every one of their own
-  `useLiveQuery`/price-book calls; each screen's test pins that no call
-  skips the flag and that a write made while hidden shows only once the tab
+  real data. Toggling `paused` never re-subscribes. A tab screen passes `paused: !isVisible`
+  (`useIsScreenVisible`; see
+  "Pane navigation") to every one of its own `useLiveQuery`/price-book calls; each screen's test
+  pins that no call skips the flag and that a write made while hidden shows only once the tab
   regains focus. `enabled: false` unsubscribes and
   returns `[]`, the wrong contract for a tab that stays mounted and must
   show its last rows the instant it regains focus — use `paused`, not
@@ -764,7 +763,9 @@ hand-written `toLowerCase()` in a screen.
 derived from the whole draft. Seed a loaded draft only through `seedCategory`
 (one call sets the category, the hand-pick flag and the settled description);
 the nav-bar Save settles the description first. Rule: coupled state is set by
-one seed function, never by a pair of exported setters. On a create, the
+one seed function, never by a pair of exported setters. `useCategoryPick` takes a required
+`initial: { category, isPicked }` and opens with its description settled, so a restored draft shows
+the category and pick flag it was saved with; every caller passes `initial`. On a create, the
 name-rule sheet ("Apply to all transactions named X?") is offered only when the
 user picked the category by hand or a Duplicate/template seed carries one
 (what a template stores is kiko-domain "Transaction templates"); a
@@ -1009,6 +1010,13 @@ not a class.
   for the canonical shape. Do not write each row's `sortOrder` in its
   own separate transaction; a partial write would leave the stored
   order inconsistent with what the grid showed.
+- A decision that depends on whether a row exists, taken while another
+  screen may have a queued insert, reads through `write()`
+  (`accountsRepo.exists`), never through a plain query, which skips
+  op-sqlite's JS write queue. Find the callers with
+  `grep -rn accountsRepo.exists src`, never from a list here. A test that
+  mocks that read keeps the queue's order (FIFO): it answers only after the
+  writes registered before its call.
 
 ## Monobank sync pipeline (functional)
 
@@ -1873,7 +1881,11 @@ than restated here:
   `exchange/credentials`, `exchange/budget` (`RunBudget`, `createExchangeRun`),
   `exchange/walk/depth.ts` (Binance's `BINANCE_DEPTH_CONFIG` is in
   `binance.depth-config.ts`) and `exchange/amounts` (`exchangeMinorUnits`);
-  read each folder's barrel. The walk, records, paging and depth tests stay
+  read each folder's barrel. `exchange/credentials` (`saveExchangeCredentials`,
+  `clearExchangeCredentials`) takes no per-account lock: a caller serializes its own writes and
+  clears (Binance does, with its write tokens, in `binance/binance.credentials.ts`); never call
+  these two helpers from anywhere else (see the header of `exchange/credentials/credentials.ts`).
+  The walk, records, paging and depth tests stay
   in `binance/` (they import Binance fixtures); `walk.series-ranges.test.ts`
   lives beside the walk. The
   capital caller is `binance.transactions.ts` (`WINDOW_MS`, `MAX_WINDOWS`,
@@ -2876,6 +2888,11 @@ what a change must keep.
   transaction form's draft; both take options from `src/navigation/swapped-form-options/`. A form
   that stays mounted underneath uses `navigate`, but a `HoldingForm` opening another `HoldingForm`
   uses `push` (navigate to its own name only changes params).
+  The Statistics stack (`src/navigation/statistics-stack/statistics.stack.tsx`) registers both too,
+  because its `TransactionForm` opens them from an empty holding picker. The type-level
+  `MissingCreateForms` assertion in `src/navigation/types/types.test.ts` requires `AccountForm` and
+  `HoldingForm` in every stack param list that has `TransactionForm`; add a new stack to that
+  test's union.
   `ReminderForm` is registered in BOTH the Accounts and Settings
   stacks, so its props type is structural (`route.params:
   ReminderFormParams` plus the `goBack`/`setOptions` it reads), not
@@ -3065,12 +3082,12 @@ what a change must keep.
   A reminder NOTIFICATION never names its account (its title and body are
   generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
-  Accounts stack: the routes it has now (or `Accounts` while the tab has
-  not mounted), then the new ones. Two nested navigates back to back lose
+  Accounts stack, rebuilt from the root (`rebuiltStack`,
+  `src/reminders/routing/route-response.ts`; the rule and its known limit are in "Pane
+  navigation" below). Two nested navigates back to back lose
   the first, because the second replaces the tab's nested params before
   the stack reads them (`route-response.navigator.test.tsx`, on the real
-  routers). The tapped account's page, when already on top, takes the new
-  params in place. Before `navigationRef.isReady()` (a tap that launched
+  routers). Before `navigationRef.isReady()` (a tap that launched
   the app) the route waits for the container's `ready` event. Routes that
   waited all navigate in the same tick, so the newest one's stack wins.
   `navigationRef` (`src/navigation/navigation-ref/`) is the
@@ -3096,12 +3113,24 @@ what a change must keep.
   account still reads as manual, so a deletable account can own one. The
   clear never rejects (a failed one is logged): the delete has committed,
   and a rejection would show the save error and skip the re-plan. On the
-  create form, a Binance connect that cannot create the account row
-  clears the key pair the field stored first (`connectBinance` in
-  `account-form.screen.tsx`, through `logOnFailure`), so no pair stays
-  under an id with no account. The create inserts the picked icon in the
-  same write (a second write that failed after the row existed would
-  read as no row and clear the pair of an account that is there).
+  create form, a Binance connect that fails clears only the write it made, and only
+  when row P does not exist, read through
+  `accountsRepo.exists` (the write queue rule in the repository section above;
+  `grep -rn accountsRepo.exists src` lists the callers), so no pair stays
+  under an id with no account. A failed read keeps the keys. The same helper
+  (`clearPairIfRowMissing` in `account-form.screen.tsx`) also clears the write stored after
+  the field unmounted. Both go through `clearCredentialsIfWrittenBy`, which compares the
+  per-write token (in memory, recorded after `setGenericPassword` resolves, dropped after a
+  reset resolves; a restart loses tokens, so nothing is cleared: fail safe) inside the
+  per-account serialized Keychain write chain. The `readCredentials` access-policy repair is
+  one serialized compare-and-set step (re-read inside the step, re-save the same pair only if
+  unchanged; it records no new token); `readCredentials` calls this serialized repair, never an
+  unserialized re-save (that could restore a pair a clear had just removed; pinned by "the
+  access-policy repair is one serialized step > leaves a pair that was cleared between its read
+  and its save cleared" in `binance.credentials.test.ts`). No step calls another serialized step (no
+  re-entry). Save writes
+  the picked icon in the same `saveFormAccount` write (a second write that
+  failed after the row existed would read as no row).
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
   `id`. `restoreDataSnapshot` deletes `reminders` before
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders
@@ -3133,6 +3162,134 @@ what a change must keep.
   `coalesce(max(col, v), col, v)` (see `latest()` in
   `reminders.repo.ts`).
 
+## Pane navigation
+
+On a wide window (a `LayoutMode` other than `single`, from `@kiko/display-regions`) a tab's
+stack shows two panes (`companion`, `primary`); on a narrow one it is one native stack. The code is
+the `src/navigation/pane-stack/` feature; its barrel (`src/navigation/pane-stack/index.ts`) is
+the whole public surface, so read it for the exports. The units are one folder each under
+`src/navigation/pane-stack/` (`pane-assignment` is the pure pane maths, `pane-router` is
+`PaneRouter`, a `StackRouter` wrapper); list the folder for the rest. The four tab stacks
+(`src/navigation/*-stack/*.stack.tsx`)
+are built with `createPaneStackNavigator`.
+
+- **The one rule: route 0 shows in the list pane (`rootPane`); every other route shows in the
+  detail pane (the pane opposite `rootPane`), whichever pane its opener is in** (`useOpenInPane`,
+  or a plain `navigate` from a screen; both become `PANE_OPEN`). `openFrom` in
+  `pane-assignment.ts` first pops every route above the opener, so a tap in the list replaces
+  the detail stack and a tap in the detail pane goes one step deeper there.
+- **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` decides
+  by position alone: index 0 takes `rootPane`, every other route, a default included, takes the
+  detail pane (so a route pushed while folded, or a reminder rebuild, never lands in the list
+  pane). `retainPanes` drops the entry of every closed route; the router calls it after every
+  action.
+- **Per-tab config.** Each stack file declares its own `PANE_CONFIG` (`rootPane`, and optionally
+  `companionDefault` / `primaryDefault` as `{ name, isDefault: true }`). Read the four
+  `src/navigation/*-stack/*.stack.tsx` `PANE_CONFIG`s for the current defaults, not this skill.
+  A config with no default can still get a RUNTIME default (below): the Accounts stack's config
+  declares none, and `use-accounts-pane.ts` shows one through `useShowPaneDefault`. A config
+  default is a stand-in, not a tapped page: a fold drops it, a form opened above it replaces it,
+  and closing that form brings the stand-in back (it is not a real Back target, and the
+  stand-in screen's own state, a scroll position say, is lost).
+- **Static defaults are not in the state.** An empty pane shows its config default as a synthetic
+  route keyed `pane-default:<pane>` that `pane-slice.ts` describes without materializing it.
+  React Navigation hands such a screen one shared per-navigator placeholder navigation whose
+  every helper throws; `standInNavigation` (in `pane-stack-view/`) mutates that object in place:
+  `navigate`/`push` of a name of this stack becomes `PANE_OPEN` from the default, a name the
+  stack lacks goes on to the parent (a tab, say), and every other helper is a no-op. Two tests
+  pin React Navigation assumptions (the two `PINS React Navigation` cases in
+  `src/navigation/root-navigator/default-pane-navigation.test.tsx`); re-check them on every React
+  Navigation upgrade.
+- **Screen rule for anything that can be a default** (Home, Statistics, Settings Categories and
+  the Accounts list, as the rule's path globs say). In a default `useIsFocused()` is false and
+  `useFocusEffect` never runs, so such a screen uses `useIsScreenVisible()` (two panes: the top
+  route of either pane while the tab is focused; one pane: `useIsFocused`) and passes
+  `paused: !isVisible` to its live queries (the "paused vs enabled" rule above). Semgrep rule
+  `kiko-no-focus-hook-in-pane-default-screen` (`rules/semgrep-prewrite.yml`) bans
+  `useIsFocused` / `useFocusEffect` under
+  `src/screens/{home,accounts,statistics,settings/categories}/X
+- **Runtime defaults.** `useShowPaneDefault` (`show-pane-default.ts`; it takes no pane
+  argument) dispatches `PANE_SHOW_DEFAULT`, handled by `showDefault` in `pane-router.ts`. It
+  fills the detail pane only, is a no-op when not `isSplit`, returns the state unchanged when the
+  detail pane's floor is a tapped page, and otherwise replaces the shown default in place,
+  keeping a page opened from a placeholder on top of it. `PANE_OPEN` from an `isDefault` route
+  clears the flag (materializes it), except for a placeholder (`isPlaceholder`, e.g.
+  `AccountsEmptyPane`): that keeps `isDefault`, the pane hook replaces it once an account
+  exists, and `PANE_FOLD` drops it (`pane-assignment.ts`; R37). `PANE_CLOSE`
+  (`useClosePaneRoute`, `pane-router.ts` `close`) closes a route by key AND every route opened
+  above it, and is a no-op once the key is gone; the stack router pops the root. It serves a
+  deleted entity: the Accounts list closes the detail pane's first page, and `useCloseWhenGone`
+  (`src/screens/holding-detail/use-close-when-gone/use-close-when-gone.ts`) closes this page and
+  the steps opened from it, in panes only, after a fresh read (R38).
+- **Row marking.** A list row that opens a page is marked `selected` when the detail pane's
+  first page is that page: read `useDetailPaneRoute()` (`pane-visibility`; null in one pane or
+  an empty detail pane) and compare with `detailParamOf(route, name, param)`, which reads a
+  string param, for every row kind that opens a page. The mark persists while deeper steps cover
+  the page. The markers are in `use-accounts-pane.ts`, the Settings menu and the Home
+  transaction row (`home.screen.tsx`, `TransactionRow` `selected`). Read the exports in the
+  `pane-stack` barrel. See the design-system `selected` rule (R32).
+- **While split, the action's source is not the focused route.** The router reads `isSplit` from
+  a ref that `createPaneStackNavigator` sets in `useInsertionEffect` (current before any child's
+  effect). `isSplit` also gates `PANE_SHOW_DEFAULT`. With a source route present and not on top, or
+  an `isDefault` source even on top (a bystander, `pane-router.ts` `fromBystander`):
+  `NAVIGATE`/`PUSH` = `PANE_OPEN` from the source; `GO_BACK`/`POP`/`POP_TO`/`REPLACE` act on the
+  source (REPLACE keeps the replaced route's pane); from an `isDefault` source `GO_BACK`/`POP` are
+  handled no-ops; `POP_TO_TOP` is standard; a `POP` with count above 1 closes that many routes of
+  the source pane's own stack (a pane keeps its first). In single mode, or with a focused
+  non-default or absent source, it is the plain `StackRouter`.
+- **Fold and unfold.** `useSettledLayoutMode` delays a change between `single` and split by
+  `SETTLE_DELAY_MS` (a pose change reports a burst of snapshots) and applies a rotation between
+  split modes at once. `usePaneFold` dispatches `PANE_FOLD` / `PANE_UNFOLD` when `isSplit`
+  changes (nothing on mount). `PANE_FOLD` drops `isDefault` routes (placeholders too) and keeps
+  every tapped route's
+  pane. A tab re-tap pops a page only when the stack holds one (`hasPageToPop` in
+  `create-pane-stack-navigator.tsx`), so it skips a runtime default. Screens remount when the
+  mode crosses single/split (ruling 3A);
+  `TwoPaneLayout` takes the
+  settled mode through its `mode` prop instead of reading the live one.
+- **Reminder tap rebuilds the Accounts stack from the root.** Rule (user ruling option B): a
+  reminder notification tap sets the Accounts stack to `[Accounts, AccountDetail <tapped account>,
+  next screen?]` (`rebuiltStack`, `src/reminders/routing/route-response.ts`); nothing opened
+  earlier stays. The list route keeps its key (no remount). A page of the tapped account the user
+  opened right above the list (index 1, not flagged `isDefault`) keeps its key and takes the new
+  params in place; an `isDefault` page is never reused. Why: an earlier page left below would
+  close the reminder's page with it when its entity is deleted, and the list marks the detail
+  pane's FIRST route. In single mode, Back from the reminder's page goes to the Accounts list
+  (accepted trade-off). Known limit (user ruling D): the rebuild discards an open form
+  (`TransactionForm`, `AccountForm`, `HoldingForm`, `ReminderForm`, ...) in the Accounts stack
+  together with its draft, with no confirm. Keeping the form on the stack would let the close of
+  an earlier account's page close the reminder's page (the pane router's close slices every route
+  above the closed one). A `beforeRemove` / `usePreventRemove` guard does not fire on this path:
+  the nested `state` param is applied as a reset, not a dispatched action. Pinned by the tests
+  "discards an open form of the tapped account, and its draft, ..." and "... of another
+  account ..." in `route-response.navigator.test.tsx`.
+- **Form drafts.** A form restores what the user typed after the remount through its route's
+  `draft` param: `useDraftParam` / `isSavedDraft` (`src/navigation/use-draft-param/`) read it
+  once at mount. `useDraftAutosave(draft, saveDraft, restored?)`
+  (`src/navigation/use-draft-autosave/`) saves after a blur commit (`Screen`'s `onFieldBlur`) and
+  on the RAW `useLayoutMode` change, not the settled one; never per keystroke, and never when the
+  JSON text is unchanged. The save is `setParams` on the asking route: `SET_PARAMS` stays on its
+  source route and changes no router state (`pane-router.test.ts`). Params hold JSON only.
+  Secrets, tokens, wallet and Binance keys never go in a draft (a lender IBAN lives only in the
+  in-memory loan draft). Not saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`,
+  `leavingKind`. The "Add holding" round-trip
+  auto-select (`use-select-created-holding`, a `useRef`) does not survive a fold: the user picks the
+  new holding by hand (known limit, user-accepted 2026-10-10, no fix planned). Likewise a remounted
+  account form does not show the "Connected as <client name>" status of a Connect made before the
+  fold: the status is local state in `MonobankConnectField`
+  (`src/design-system/components/monobank-connect-field/`), the name comes from the token's
+  `fetchClientInfo`, and no name is stored. A re-tap of Connect re-syncs the same account (known
+  limit, user-accepted 2026-10-10, no fix planned). Proof on two panes:
+  `accounts.stack.draft.navigator.test.tsx`.
+- **`resetTabStackOnBlur`** (`src/navigation/reset-tab-stack-on-blur/`) is unchanged and every
+  tab stack still passes it as `screenListeners`. It dispatches `popToTop` when the parent tab
+  is not focused and the state's `index > 0`; in a split navigator that is the router's standard
+  `POP_TO_TOP`, and `retainPanes` then clears the closed routes' panes. A static default is not
+  in the state, but a runtime default is (`index > 0`), so a blur pops it and the Accounts pane
+  hook inserts it again.
+- **Cost.** Home and Statistics are each mounted in two tabs on a wide window (a root in one, a
+  default in the other), so their live queries run twice.
+
 ## Transaction form: holding change and template seeding
 
 Every user primary-holding pick goes through ONE path: `pickPrimaryHolding` in
@@ -3145,10 +3302,11 @@ function; when a review finds hidden state on one holding path, grep every
 `setPrimaryHoldingId` caller and every seed path, share one helper, and pin one red test per
 path.
 
-Field visibility is sticky: on Add-from-holding the holding field shows once a template seats
-a different holding (`revealsHoldingField` / `resolveHoldingField`, `route-entry/`) and stays
-shown, showing the holding Save writes. One state set in the seed branch holds it; it is
-never derived per render.
+Field visibility is sticky within one mount: on Add-from-holding the holding field shows once a
+template seats a different holding (`revealsHoldingField` / `resolveHoldingField`,
+`route-entry/`). It is local state, not in the draft; a remount recomputes it from the draft's
+holding. Known limit: it can hide after a remount (a re-pick of the page's own holding, or a
+template with no holding after one with a holding). The write target stays the page's holding.
 
 ## Navigator-layer title behaviour
 
@@ -3198,26 +3356,53 @@ in memory for the crash history this fixed.
   "Tomorrow" action are lost. It must not touch `window` (see memory
   `scene-lifecycle-appdelegate-window-crash`). The center holds its delegate
   weakly, so the delegate is a `static let shared`.
-- **Only the wrapper loads the reminders TurboModule spec.**
-  `src/reminders/native/NativeKikoReminders.ts` calls
+- **Only the wrapper loads a TurboModule spec.**
+  A spec in `src/native-specs/` (for example `NativeKikoReminders.ts`) calls
   `TurboModuleRegistry.getEnforcing` at module load, which throws on a binary
-  built without the module. `reminders-native.ts` loads it with a lazy
-  `require` on first use, so importing reminders code can never crash the
-  app; every other module calls `remindersNative` from
-  `@kiko/reminders/native`, and a type is imported with `import type`. A test
-  reaches the global mock (`jest/setup.js`) through `jest.requireMock`.
-  `reminders-native.lazy-load.test.ts` proves the lazy load, and the Semgrep
-  rule `kiko-no-native-reminders-module-import` (`rules/semgrep-prewrite.yml`)
-  denies any other value import, re-export, `require`, or dynamic `import()`.
-- **`KikoReminders` is the app's one TurboModule, so it also carries the one
-  non-reminder read: `uses24HourClock()`.** A SYNCHRONOUS method (spec
-  `NativeKikoReminders.ts`, `- (NSNumber *)uses24HourClock` in
+  built without the module. The wrappers
+  `src/reminders/native/reminders-native.ts` and
+  `src/display-regions/display-regions-native/display-regions-native.ts`
+  lazy-`require` their spec from `@kiko/native-specs` on first use, so
+  importing feature code can never crash the app; every other module calls the
+  wrapper through its feature barrel, and a type is imported with
+  `import type`. A test reaches the global mock (`jest/setup.js`) through
+  `jest.requireMock`. Each wrapper has a `*.lazy-load.test.ts` proving the lazy
+  load, and a Semgrep rule in `rules/semgrep-prewrite.yml`
+  (`kiko-no-native-reminders-module-import`,
+  `kiko-no-native-display-regions-module-import`) denies any other value
+  import, re-export, `require`, or dynamic `import()`.
+- **`DisplayRegions` feeds the layout hooks.** Feature `src/display-regions/`
+  (barrel exports `useDisplayRegions`, `useLayoutMode`, `useFoldRegion`,
+  `useVerticalBarEdge`); native `ios/Kiko/DisplayRegions/`
+  (`DisplayRegionsCenter.swift`, `RCTDisplayRegions.h`/`.mm`). Swift guards the
+  iOS 27.1 symbols with a compile-time SDK check plus `#available(iOS 27.1, *)`
+  (read the exact guard in `DisplayRegionsCenter.swift`), observes the hinge
+  with a `UIHingeInteraction` (a change of hinge status reads at once; only
+  `closed` and `fullyOpen` read as no fold, any other status including
+  `unknown` leaves the region query to decide, and `UIScene.didActivateNotification`
+  clears the last status; an angle tick with the same status starts the settle
+  reads when none are pending and never cancels a pending pair, so a tick
+  stream cannot postpone a pair's reads past 1.2 s; a tick that lands inside a
+  pair sets a flag, and the pair's end starts one more, so the last read comes
+  at least 1.2 s after the last tick), re-reads at 0.3 s and 1.2 s after
+  every trigger because the reserved region lands after the trigger and nothing
+  reports it, emits under the emitter lock so no emit outlives
+  `removeChangeEmitter`, and logs `os.Logger` `.debug` lines (category
+  `DisplayRegions`; read them with `log stream --level debug`): one per emit,
+  one per read (`read source=… changed=…`), one per hinge update (status and
+  angle). The JS wrapper reads native once, keeps its cache current from
+  `onChange`, and falls back to `FALLBACK_SNAPSHOT` when the module is
+  missing.
+- **`KikoReminders` also carries the one non-reminder read:
+  `uses24HourClock()`.** A SYNCHRONOUS method (spec
+  `src/native-specs/NativeKikoReminders.ts`, `- (NSNumber *)uses24HourClock` in
   `RCTKikoReminders.mm`): the iOS 24-Hour Time setting, read as "the `j`
   hour skeleton of `[NSLocale autoupdatingCurrentLocale]` has no `a`".
   Only `useTimeClock` (`src/i18n/use-time-clock/`) calls it, through
   `remindersNative.uses24HourClock`, which throws where the module is
-  missing; the hook falls back then (en 12-hour, uk 24-hour). A new method
-  on the spec changes codegen: run `make pods` and commit
+  missing; the hook falls back then (en 12-hour, uk 24-hour). `package.json`
+  `codegenConfig.jsSrcsDir` is `src/native-specs`, so every codegen spec goes
+  there. A new method on the spec changes codegen: run `make pods` and commit
   `ios/Podfile.lock` with the spec when it changes. The global jest mock
   (`jest/setup.js`) returns `true`.
 - **An ObjC++ (`.mm`) file that imports `Kiko-Swift.h` must first import

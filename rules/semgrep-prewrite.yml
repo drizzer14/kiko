@@ -1128,6 +1128,114 @@ rules:
     patterns:
       - pattern-regex: |-
           (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeKikoReminders(?:\.tsx?)?['"]
+  # The same lazy-load guard for the display-regions TurboModule spec
+  # (`NativeDisplayRegions.ts`): only its wrapper may load it, on first use, so
+  # that the layout hooks, which every screen reads, never crash a binary built
+  # without the module. The regex and its exclusions mirror
+  # `kiko-no-native-reminders-module-import` above; read that comment for the
+  # shape it matches.
+  - id: kiko-no-native-display-regions-module-import
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Only `src/display-regions/display-regions-native/display-regions-native.ts`
+      may load the `NativeDisplayRegions` TurboModule spec, lazily on first use:
+      `TurboModuleRegistry.getEnforcing` throws at module load on a binary
+      built without the module. Call `displayRegionsNative` (or a layout hook)
+      from `@kiko/display-regions` instead; a type-only `import type` is fine.
+    metadata:
+      fix: "Call `displayRegionsNative` or a hook from `@kiko/display-regions` (or use `import type` for a type); never value-import `NativeDisplayRegions`."
+      skill: "kiko-architecture › Native iOS shell"
+    paths:
+      exclude:
+        - "src/display-regions/display-regions-native/display-regions-native.ts"
+        - "jest/setup.js"
+    patterns:
+      - pattern-regex: |-
+          (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeDisplayRegions(?:\.tsx?)?['"]
+  # kiko-design-system's Screen: `resolveBottomClearance` is the pane-BLIND
+  # arithmetic behind `useBottomClearance`. A bleedBottom/bleedTop child that
+  # calls it directly puts a tab-bar clearance under the last row of a pane
+  # that is not at the bottom of the window (the top pane of rows mode). Only
+  # the Screen folder may import it; every other consumer calls the hook. Two
+  # arms: a value import or re-export that names the function, and a value
+  # import, re-export, require or dynamic import of a module file named
+  # `bottom-clearance`. `import type` and prose never match.
+  - id: kiko-no-pane-blind-bottom-clearance
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `resolveBottomClearance` ignores which pane a screen is in, so a list
+      that applies it sits above a tab bar that is not over its pane. Call
+      `useBottomClearance()` from `@kiko/design-system/components/screen`
+      instead; only the Screen folder imports the function.
+    metadata:
+      fix: "Use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; never import `resolveBottomClearance` or `bottom-clearance`."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/screen/**"
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\bresolveBottomClearance\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/bottom-clearance(?:\.ts)?['"]
+  # kiko-architecture's "Pane navigation": on a wide window a screen can be the default
+  # of a pane (Statistics and Home as each other's companion, Categories as the Settings
+  # primary), and the Accounts list sits under the default it fills the primary pane
+  # with. A default is on screen without being the focused route, so
+  # `useIsFocused()` is false and `useFocusEffect` never runs there: a screen
+  # that pauses its reads or answers a tip on focus freezes or goes silent.
+  # `useIsScreenVisible()` is the check that holds in both modes. `paths.include`
+  # names every folder of those four screens (their child components render under the
+  # same route), so the fixture pair is NESTED. ERROR from the start: no finding
+  # in the tree when the rule landed.
+  - id: kiko-no-focus-hook-in-pane-default-screen
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A default has no focus; use `useIsScreenVisible()`. In a pane default
+      `useIsFocused()` is false and `useFocusEffect` never runs, so a screen
+      that can render as one reads visibility from `@kiko/navigation/pane-stack`
+      instead.
+    metadata:
+      fix: "Use `useIsScreenVisible()` from `@kiko/navigation/pane-stack`; for work on becoming visible, an effect keyed on it."
+      skill: "kiko-architecture › Pane navigation"
+    paths:
+      include:
+        - "src/screens/home/**"
+        - "src/screens/accounts/**"
+        - "src/screens/statistics/**"
+        - "src/screens/settings/categories/**"
+    pattern-either:
+      - pattern: useIsFocused(...)
+      - pattern: useFocusEffect(...)
+      - pattern: $NS.useIsFocused(...)
+      - pattern: $NS.useFocusEffect(...)
+      # The hook read off a namespace without a call, then called under another name, and the
+      # same read as a destructure (`const { useIsFocused: focused } = Navigation`). Semgrep
+      # resolves an import alias, so a `typeof` of a type-only alias (an `import type` or an
+      # inline `type` specifier) would match the bare read too, and so would a test double's
+      # `as jest.Mock` cast, which calls nothing; those positions are left out.
+      - patterns:
+          - pattern-either:
+              - pattern: $NS.useIsFocused
+              - pattern: $NS.useFocusEffect
+          - pattern-not-inside: "type $ALIAS = $TYPE"
+          - pattern-not-regex: \btypeof\s+[\w.]+
+          - pattern-not-inside: $MOCK as jest.Mock
+      - pattern: "const { useIsFocused: $LOCAL, ... } = $NS"
+      - pattern: "const { useFocusEffect: $LOCAL, ... } = $NS"
+      - pattern: "let { useIsFocused: $LOCAL, ... } = $NS"
+      - pattern: "let { useFocusEffect: $LOCAL, ... } = $NS"
+      - pattern: "var { useIsFocused: $LOCAL, ... } = $NS"
+      - pattern: "var { useFocusEffect: $LOCAL, ... } = $NS"
+      - pattern: "const { useIsFocused = $DEFAULT, ... } = $NS"
+      - pattern: "const { useFocusEffect = $DEFAULT, ... } = $NS"
+      # Any value import or re-export that names either hook as a specifier of its own, which
+      # covers an alias (`useIsFocused as focused`) and a local re-export file a screen then calls
+      # by another name. The hook must open its specifier (right after `{` or `,`), so an inline
+      # `type` modifier (`import { type useIsFocused }`, erased like `import type`) and a name only
+      # aliased TO the hook (`foo as useIsFocused`) never match.
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?[{,]\s*(?:useIsFocused|useFocusEffect)\b[^;'"]*?\bfrom\s*['"]
   # kiko-domain's "Dates": `jest.config.js` pins `process.env.TZ` to
   # Europe/Kyiv at config load, and Jest gives each test sandbox its own copy
   # of `process.env`, so an assignment in a test file, a `beforeAll`, or a

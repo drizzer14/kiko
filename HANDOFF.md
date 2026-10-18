@@ -1,6 +1,31 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐ COORDINATOR HANDOFF (2026-10-18 ~00:00) — READ THIS FIRST
+## ⭐ COORDINATOR HANDOFF (2026-10-18 ~17:50) — READ THIS FIRST
+Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323. Event log: memory/refs/night-summary-2026-10-17.md
+(from "00:1x NEW COORDINATOR SESSION"). Open user items: memory/refs/morning-walkthrough-2026-10-18.md (items 1-21;
+answered ones are marked in the event log). The 2026-10-18 ~00:00 section below is HISTORY.
+FIRST ACTIONS of the next session:
+1. ListAgents. Queue: `bash scripts/job-queue.sh status`. Power: `pmset -g batt` (BATTERY MODE was ON at handoff; send
+   CHARGER BACK to binance-f8, ipad-a3, duo-g1 when AC returns).
+2. Arm: inbox watcher (memory/refs/coordinator-inbox.log), pmset watcher, gauge watchers (memory/refs/gaugewatch.sh,
+   40 %) for binance-f8 term_1b48d115-30c5-44bf-ae41-ec4fbcaa81cd, ipad-a3 term_1c2b9d42-d515-4174-bc8b-10de40123a03,
+   duo-g1 term_9337ecde-d144-4d91-a9c7-42cffe45e036.
+3. Keep the full verify output: queue verifies from the coordinator with `> <scratchpad>/<label>.log`, never a grep tail.
+| Thing | Value |
+|---|---|
+| main = next | e405993e (today: release 1.2 follow-ups 33c58d53, H8 task 1 ca448f54, H8 task 4 1e299e28, Binance set 4 e405993e). Plugin 0.4.23 installed. origin/main NOT pushed. |
+| RELEASE 1.2.0 | LIVE on the App Store. Tag v1.2.0 pushed; GitHub release https://github.com/drizzer14/kiko/releases/tag/v1.2.0. Track closed (release-1-2-87 idle). |
+| H8 | COMPLETE, archived memory/refs/sdd-archive/h8-2026-10-18/, worktree removed. |
+| H9 (next harness track) | NOT STARTED. Brief memory/refs/brief-h9.md (user rulings: exclude express/cors Semgrep registry rules; scripts/ + githooks/ + YAML into SHELL-WRITE deny; structural Stryker regex fix; + backlog). The coordinator proposed starting H9 now with the Semgrep exclusion first; USER ANSWER PENDING. |
+| BINANCE 1.3-a | binance-f8 = SendMessage "binance-backfill-fix-77". Set 5 (task 5/15, run 20261018T1121): steps 0-6 done + reviewed; step 7 commit 1 d42bba10; price-fallback developer running (D1 api.binance.com, D2 fail-soft). Rulings today: BINANCE_FIAT_CODES = 20 quote-asset fiat; INR-type fiat -> visible not-tracked list; zero Spot BTC anchor until set 6; one-time rename mark defaultNameRenameSettled; oversized per-wallet replace (balanceByWallet, Option A); shared text "{{coin}}: Kiko could not import this amount exactly, so it was skipped." (uk via translator). RELEASE HOLD C2: binance.com/en/terms could not be read by any agent tool (WebFetch, curl 202, archive blocked, Orca browser renders no body) -> the USER reads Intellectual property / Prohibited use / Restricted locations in their browser. User-review package later: 2 keys + privacy wording + App Privacy label. |
+| DUO | duo-g1 = SendMessage "duo-adaptive-6f". D1 blank-pane fix PROVEN (user hand test, A RED / B GREEN). Main merged (d401be45), follow-up a1dcbbb5 (hand gates removed), scribe running, then merge main e405993e (merge-tree clean), ONE verify at F (on AC), BATCH READY, ff-main to F. USER RULINGS: Duo deep gates SKIPPED; main fast-forwards to F. BLOCKER: the user must type "skip the Duo mutation gates" in the duo-g1 terminal (harness rule) before BATCH READY. Then ipad-phase3 rebases onto main. |
+| iPAD | ipad-a3 = SendMessage "ipad-phase3-f8". Plan N/14. Task 8/14 DONE (gate 100). Task 7/14: native tabBarEdge works (gate run 2 PASS; R46 bounded BFS), steps 5-8 + fix round 4b1a88e6 (jest 778/21830 + check:all 0). Step 9/9 phase 1 PASS; PHASE 2 needs AC + the USER in Device Hub: click OK on the "HID Vendor Defined" sheet, close the stale Duo window, drag Stage Manager window sizes, set the Duo poses (outer, inner landscape, inner portrait). Then BATCH READY 7/14 + coordinator deep gate (base 4a572db9, 7 files). Task 9/14 brief ready (F1 in-bounds rule rides it). ipad-family stays unmerged. |
+| ACCOUNT CURRENCY (1.3) | Brief memory/refs/brief-account-card-currency.md (all user rulings + confirmed defaults). Starts after Duo is on main. Needs a migration + .kiko format bump. |
+| ANDROID | Parked. memory/refs/android-research-2026-10-18.md. |
+| Retro 2026-10-18 | kiko:retrospect: no skill drift in the sampled references (a kiko-architecture vs set 4 walk-state scan was not done; the set 4 scribe drift fixes are 0d5eadb2/c11a1e2e). kiko:scribe recorded memory lessons (Semgrep load artefact + ruling E, Stryker regex timeouts + Method A, split-half gate scripts, heavy-job order, Duo posture/Maestro/HW keyboard, user-typed waiver, unreadable terms page, full verify logs). |
+| Open for the user | Duo terminal line; Device Hub steps (iPad 9/9 phase 2); Binance terms read; H9 start yes/no; ios/Podfile.lock uncommitted in the main checkout (origin unknown). |
+
+## ⭐ COORDINATOR HANDOFF (2026-10-18 ~00:00) — HISTORY
 Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323 (restarted in the Orca profile). Event log:
 memory/refs/night-summary-2026-10-17.md (from "15:0x NEW COORDINATOR SESSION"; AWAY-D1..D10 = coordinator calls).
 The 2026-10-17 ~14:30 section below is HISTORY. The morning walkthrough of 2026-10-17 is DONE (all 8 items answered).

@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { useFieldBlur } from '@kiko/design-system/field-blur';
 import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
 
 import Box from '../box';
@@ -64,6 +65,7 @@ const TextField: FC<TextFieldProps> = ({
   testID,
 }) => {
   const { theme } = useUnistyles();
+  const handleBlur = useFieldBlur(onBlur);
   // The native Done keyboard accessory, shared with every other Kiko input.
   // Unconditional on iOS (text and numeric alike); `inputAccessoryViewID` is
   // this field's own id (or `undefined` off iOS). `keyboardAppearance` keeps
@@ -93,7 +95,7 @@ const TextField: FC<TextFieldProps> = ({
       ref={inputRef}
       value={value}
       onChangeText={onChangeText}
-      onBlur={onBlur}
+      onBlur={handleBlur}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.textSecondary}
       keyboardType={keyboardType}

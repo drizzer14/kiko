@@ -81,6 +81,18 @@ describe('HomeStack', () => {
     });
   });
 
+  it('shows the Statistics header with the shared large-title options and the translated title', () => {
+    expect(optionsOf('Statistics', undefined)).toEqual({
+      headerShown: true,
+      ...sharedLargeTitleOptions,
+      title: 'Statistics',
+    });
+  });
+
+  it('leaves the Home root without options of its own', () => {
+    expect(optionsOf('Home', undefined)).toBeUndefined();
+  });
+
   it.each([
     ['AccountForm', 'Add Account'],
     ['HoldingForm', 'Add Holding'],
@@ -95,6 +107,18 @@ describe('HomeStack', () => {
       });
     },
   );
+
+  it('keeps the default animation on a form that holds its own saved draft', () => {
+    const savedDraft = { saved: true, name: 'Flat', icon: null, color: null };
+
+    expect(optionsOf('AccountForm', { draft: savedDraft })?.animation).toBe('default');
+    expect(optionsOf('HoldingForm', { accountId: 'account-1', draft: savedDraft })?.animation).toBe(
+      'default',
+    );
+    expect(
+      optionsOf('HoldingForm', { implicitKind: 'property', draft: savedDraft })?.animation,
+    ).toBe('default');
+  });
 
   it('titles the implicit holding form like an account and swaps without an animation', () => {
     const draft = { name: 'Flat', icon: null, color: null };

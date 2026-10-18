@@ -1,21 +1,14 @@
 import type { FC } from 'react';
 import { ScrollView, View } from 'react-native';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { FieldBlurContext } from '@kiko/design-system/field-blur';
 
 import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 
 import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
-import { resolveBottomClearance } from './bottom-clearance';
-
-// A large-title navigator header owns the top inset itself, so any branch whose
-// content sits under one drops the SafeAreaView's top edge — keeping it would
-// double-offset content beneath the header. Used by the always-scrolling
-// `scroll` branch AND by the plain branch's `bleedTop` opt-in (a large-title
-// screen whose child is itself the scrollable surface, e.g. HoldingDetail's
-// ledger FlatList).
-const LARGE_TITLE_SAFE_AREA_EDGES = ['left', 'right', 'bottom'] as const;
+import { useBottomClearance } from './use-bottom-clearance';
+import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
 
 const Screen: FC<ScreenProps> = ({
   children,
@@ -26,7 +19,13 @@ const Screen: FC<ScreenProps> = ({
   scrollableRef,
   onContentSizeChange,
   automaticallyAdjustKeyboardInsets = true,
+  onFieldBlur,
 }) => {
+  // The fields' way to report a blur to the screen; every layout below renders them.
+  const fields = (
+    <FieldBlurContext.Provider value={onFieldBlur}>{children}</FieldBlurContext.Provider>
+  );
+
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
   // universally, from this one place — rather than each screen re-solving it.
@@ -43,16 +42,19 @@ const Screen: FC<ScreenProps> = ({
   // global Jest manual mock returns 0 for standalone renders. Used by the
   // scroll branch's `footer` below and by the plain branch's `content` — never
   // both on one render, since `scroll` selects exactly one return path.
-  const tabBarHeight = useBottomTabBarHeight();
-  const insets = useSafeAreaInsets();
-  // Both `SafeAreaView` branches below already reserve `insets.bottom`
-  // themselves as real padding — `edges` includes `'bottom'` in the scroll
-  // branch's explicit list, and in the plain branch's default (an unset
-  // `edges` prop reserves every edge). Adding the FULL tab-bar height again
-  // on top of that reservation double-counts the inset. See
-  // `bottom-clearance.ts` for the shared arithmetic (also used by every
-  // `bleedBottom` child, e.g. Home's transaction list) and its full rationale.
-  const bottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom);
+  //
+  // Every branch's `SafeAreaView` reserves `insets.bottom` itself when its
+  // edges include the bottom one (always outside a pane; in a pane only when
+  // the pane touches the window's bottom). Adding the FULL tab-bar height
+  // again on top of that reservation double-counts the inset. See
+  // `bottom-clearance.ts` for the shared arithmetic and `use-bottom-clearance.ts`
+  // for the hook every `bleedBottom` child, e.g. Home's transaction list, uses
+  // too: it also gives a pane that is not at the window's bottom no clearance,
+  // since no tab bar is over it.
+  const bottomClearance = useBottomClearance();
+  const contentCap = useContentCap();
+  const scrollIndicatorProps = useScrollIndicatorProps();
+  const { plainEdges, largeTitleEdges } = usePaneScreen();
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
   // a `footer` (pinned below it, see the plain-branch return) or a
@@ -66,11 +68,12 @@ const Screen: FC<ScreenProps> = ({
 
   if (scroll) {
     return (
-      <SafeAreaView edges={LARGE_TITLE_SAFE_AREA_EDGES} style={styles.safeArea}>
+      <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
         <ScrollView
           ref={scrollableRef}
           testID="screen-scroll-view"
           contentInsetAdjustmentBehavior="automatic"
+          {...scrollIndicatorProps}
           // iOS-only: when the keyboard changes size, iOS adjusts this scroll
           // view's contentInset/scrollIndicatorInsets and scrolls the first
           // responder above the keyboard — the shared, app-wide auto-scroll so
@@ -79,17 +82,11 @@ const Screen: FC<ScreenProps> = ({
           // one inset clears BOTH the keyboard and the accessory (no
           // hand-rolled accessory-height math). Harmlessly ignored on Android.
           //
-          // This prop has no per-responder scoping — it reacts to ANY
-          // focused input, including one hosted inside a BottomSheet
-          // floating above this ScrollView (CurrencyField's search
-          // TextField is the one such case in the app today), which
-          // misfires a scroll/inset adjustment on THIS background
-          // ScrollView for a responder it does not even contain, and never
-          // self-corrects. `automaticallyAdjustKeyboardInsets` is therefore
-          // a real escape hatch (see `ScreenProps`): a caller that hosts
-          // such a sheet gates it off for the duration the sheet is open
-          // (`CurrencyField`'s `onOpenChange`; see account-form/holding-form)
-          // and back on once it closes.
+          // The patched React Native (`patches/react-native+0.87.1.patch`) moves this scroll
+          // view's offset only for a field inside it; a field outside it (the other pane, a
+          // sheet above it) gets the bottom inset alone, which resets when the keyboard hides.
+          // So no caller has to switch the prop off while a sheet is open; it stays an escape
+          // hatch for a caller that wants no keyboard adjustment at all (see `ScreenProps`).
           automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
           // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
           // scroll-to-top hook's negative target — more negative than that `0`
@@ -116,15 +113,17 @@ const Screen: FC<ScreenProps> = ({
           // tap. "handled" fires a focusable/handled child on the first tap
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent(footer !== undefined)}
+          // In a pane the content is capped and centred here, not on the scroll
+          // view, so the scroll view and its indicator span the whole pane.
+          contentContainerStyle={[styles.scrollContent(footer !== undefined), contentCap]}
           {...headingScrollProps}
         >
           <LargeTitleHeading />
 
-          {children}
+          {fields}
         </ScrollView>
         {footer ? (
-          <View testID="screen-footer" style={styles.footer(bottomClearance)}>
+          <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
             {footer}
           </View>
         ) : null}
@@ -148,16 +147,16 @@ const Screen: FC<ScreenProps> = ({
   // owns ALL of its own padding — top (via `contentInsetAdjustmentBehavior`
   // "automatic" + its own content-container top padding), horizontal, AND the
   // floating tab-bar bottom clearance (the same `bleedBottom` contract Home's
-  // list follows, via `resolveBottomClearance`). The top safe-area edge is
+  // list follows, via `useBottomClearance()`). The top safe-area edge is
   // dropped here for the same reason the scroll branch drops it: the large-title
   // header owns the top inset. A `footer` still sits pinned below the child as a
   // sibling, with its own clearance, exactly as in the other two branches.
   if (bleedTop) {
     return (
-      <SafeAreaView edges={LARGE_TITLE_SAFE_AREA_EDGES} style={styles.safeArea}>
-        {children}
+      <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
+        {fields}
         {footer ? (
-          <View testID="screen-footer" style={styles.footer(bottomClearance)}>
+          <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
             {footer}
           </View>
         ) : null}
@@ -170,14 +169,25 @@ const Screen: FC<ScreenProps> = ({
   // short page's footer still lands pinned to the screen's true bottom edge,
   // exactly like the scroll branch's footer, rather than floating directly
   // beneath a short page's content. `bleedTop` returns above, so this branch is
-  // always a headerless screen that keeps the default all-edges reservation.
+  // always a headerless screen: it keeps the all-edges reservation, or in a
+  // pane only the edges the pane touches. With no scroll view of its own, it
+  // takes the pane cap on its root. A `bleedBottom` child is itself the
+  // scrollable surface, so a cap on the root would narrow its scroll indicator
+  // too: it caps its own content (`useContentCap()`), and only the footer is
+  // capped here.
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+      edges={plainEdges}
+      style={[styles.safeArea, bleedBottom ? undefined : contentCap]}
+    >
       <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
-        {children}
+        {fields}
       </View>
       {footer ? (
-        <View testID="screen-footer" style={styles.footer(bottomClearance)}>
+        <View
+          testID="screen-footer"
+          style={[styles.footer(bottomClearance), bleedBottom ? contentCap : undefined]}
+        >
           {footer}
         </View>
       ) : null}

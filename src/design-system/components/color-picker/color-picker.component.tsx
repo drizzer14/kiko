@@ -34,7 +34,7 @@ const ColorPicker = ({
         </Text>
       )}
 
-      <Box style={styles.swatchRow} gap={2}>
+      <Box style={styles.swatchRow}>
         {swatches.map(([name, hex]) => {
           const selected = value === hex;
 
@@ -45,9 +45,14 @@ const ColorPicker = ({
               accessibilityState={{ selected }}
               accessibilityLabel={`${resolvedAccessibilityLabelPrefix} ${name}`}
               onPress={() => onSelect(hex)}
-              style={[styles.swatchRing, selected && { borderColor: theme.colors.textPrimary }]}
+              style={styles.swatchCell}
             >
-              <View style={[styles.swatch, { backgroundColor: hex }]} />
+              <View
+                testID={`color-ring-${name}`}
+                style={[styles.swatchRing, selected && { borderColor: theme.colors.textPrimary }]}
+              >
+                <View style={[styles.swatch, { backgroundColor: hex }]} />
+              </View>
             </Pressable>
           );
         })}

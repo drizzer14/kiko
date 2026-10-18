@@ -1,5 +1,10 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
+import {
+  OnAccentContext,
+  selectedSurfaceStyles,
+  useIsOnAccent,
+} from '@kiko/design-system/selected-surface';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
@@ -8,6 +13,14 @@ import SymbolIcon from '@kiko/design-system/components/symbol';
 import { styles } from './settings-row.styles';
 import { chevronSize } from './settings-row.chevron';
 import type { SettingsRowProps } from './settings-row.props';
+
+// The selection takes the colors and the screen keeps the shape of its row, as on `Card`: the
+// default radius sits below the screen's style, the fill above it.
+const withSelectedFill = (style: SettingsRowProps['style'], isFilled: boolean) => [
+  isFilled && styles.selected,
+  style,
+  isFilled && selectedSurfaceStyles.fill,
+];
 
 // A single full-width row inside a Settings GlassSurface card: an optional
 // leading icon, a label, an optional `trailing` control, a chevron on a
@@ -23,9 +36,16 @@ const SettingsRow: FC<SettingsRowProps> = ({
   onPress,
   trailing,
   children,
+  selected = false,
+  style,
   ...props
 }) => {
   const { theme } = useUnistyles();
+  // A row in a selected card is already marked by the card's fill (a Settings card holds one row),
+  // so it adds none of its own; either way its content reads on the accent.
+  const isInSelectedSurface = useIsOnAccent();
+  const rowStyle = withSelectedFill(style, selected && !isInSelectedSurface);
+  const isOnAccent = selected || isInSelectedSurface;
 
   const lead = (
     <Box direction="row" gap={3} style={styles.rowLead}>
@@ -73,7 +93,7 @@ const SettingsRow: FC<SettingsRowProps> = ({
 
   if (onPress === undefined) {
     return (
-      <Box gap={3} {...props}>
+      <Box gap={3} style={style} {...props}>
         {header}
         {children}
       </Box>
@@ -85,23 +105,37 @@ const SettingsRow: FC<SettingsRowProps> = ({
   // without a body keeps its first-line header layout.
   if (children !== undefined) {
     return (
-      <Pressable accessibilityRole="button" onPress={onPress} {...props}>
-        <Box direction="row" style={styles.centeredEnd}>
-          <Box gap={1} style={styles.body}>
-            {lead}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        onPress={onPress}
+        style={rowStyle}
+        {...props}
+      >
+        <OnAccentContext.Provider value={isOnAccent}>
+          <Box direction="row" style={styles.centeredEnd}>
+            <Box gap={1} style={styles.body}>
+              {lead}
 
-            {children}
+              {children}
+            </Box>
+
+            {end}
           </Box>
-
-          {end}
-        </Box>
+        </OnAccentContext.Provider>
       </Pressable>
     );
   }
 
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} {...props}>
-      {header}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={rowStyle}
+      {...props}
+    >
+      <OnAccentContext.Provider value={isOnAccent}>{header}</OnAccentContext.Provider>
     </Pressable>
   );
 };

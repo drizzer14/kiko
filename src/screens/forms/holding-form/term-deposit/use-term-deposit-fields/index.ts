@@ -1,1 +1,1 @@
-export { useTermDepositFields } from './use-term-deposit-fields';
+export { useTermDepositFields, type TermDepositFieldsDraft } from './use-term-deposit-fields';

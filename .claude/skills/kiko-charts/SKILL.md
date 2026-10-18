@@ -305,6 +305,12 @@ that hole) — the Expenses-by-Category donut is the current caller.
 Read that file directly for the default ratio and exact prop shape
 rather than trusting a restated number here.
 
+The centre total uses `typography.title` with no `lineHeight`: iOS shrinks an
+`adjustsFontSizeToFit` text only when its width and height both overflow, so a fixed line
+height leaves it at the minimum scale. The text sits in a view whose `maxWidth` is the hole's
+width (`size * innerRatio`), so a long total shrinks inside the hole. See `pie-chart.styles.ts`
+(`centerAmount`) and `pie-chart.component.tsx`.
+
 It also supports an opt-in `legendMinShare` prop: when set, the LEGEND
 (never the ring) crops to slices whose `share` is at or above that
 fraction, with a shared `ExpandToggle` (testID `${testID}-legend-toggle`; see

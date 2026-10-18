@@ -15,7 +15,6 @@ import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import CategoryFormScreen from '@kiko/screens/forms/category-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 import CategoryRuleFormScreen from '@kiko/screens/forms/category-rule-form';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import TransactionTemplatesScreen from '@kiko/screens/settings/transaction-templates';
 
 import {
@@ -24,11 +23,19 @@ import {
   restoreDefaultAnimationOfSwappedForm,
 } from '../swapped-form-options';
 import type { SettingsStackParamList } from '../types';
+import { createPaneStackNavigator } from '../pane-stack';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
-const Stack = createNativeStackNavigator<SettingsStackParamList>();
+const Stack = createPaneStackNavigator<SettingsStackParamList>();
+
+// The menu is the root and takes the companion pane; what it opens takes the primary pane, which
+// shows Categories until something else opens there.
+const PANE_CONFIG = {
+  rootPane: 'companion',
+  primaryDefault: { name: 'Categories', isDefault: true },
+} as const;
 
 /** The Settings tab's native stack, rooted at a large-title Settings screen. */
 const SettingsStack: FC = () => {
@@ -36,6 +43,7 @@ const SettingsStack: FC = () => {
 
   return (
     <Stack.Navigator
+      paneConfig={PANE_CONFIG}
       screenOptions={largeTitleScreenOptions}
       screenLayout={fittingLargeTitleLayout}
       screenListeners={resetTabStackOnBlur}

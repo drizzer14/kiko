@@ -16,6 +16,9 @@ type UseCategoryPickParams = {
   mode: FormMode;
   // The picked holding's currency, null while no holding is picked.
   currency: Currency | null;
+  // What a form restored from its saved draft opens with, so a remount keeps the category and
+  // whether it was picked by hand. The description it settled on is the one the field opens with.
+  initial: { category: string | null; isPicked: boolean };
 };
 
 // The picked category and the ways it gets set: an explicit pick, and the
@@ -28,6 +31,7 @@ export const useCategoryPick = ({
   time,
   mode,
   currency,
+  initial,
 }: UseCategoryPickParams) => {
   // The category rules: subscribed once and prepared once per change, so a create can pre-select
   // a category from its draft. Matching is JS-normalized (never SQL), mirroring the sync insert
@@ -37,15 +41,15 @@ export const useCategoryPick = ({
   // The category the user picked, or the one an edit or a Duplicate loaded (a categories.key
   // slug, lowercase). Null = none. A create without a pick shows what the rules give its draft
   // instead, so this holds nothing for it.
-  const [storedCategory, setStoredCategory] = useState<string | null>(null);
+  const [storedCategory, setStoredCategory] = useState<string | null>(initial.category);
   // Whether the user has explicitly picked a category through the picker. Gates
   // the pre-select: once the user chooses, a rule that starts to match later must
   // never replace that choice. A category an edit or a Duplicate seeds counts as a pick too.
-  const [userPickedCategory, setUserPickedCategory] = useState(false);
+  const [userPickedCategory, setUserPickedCategory] = useState(initial.isPicked);
   // The description the picker's pre-select reads, taken from the field when it settles (a blur,
   // a tapped suggestion, a Save), never from a keystroke: a category that flipped under the
   // user's typing would be noise. Every other part of the draft re-evaluates as it changes.
-  const [settledDescription, setSettledDescription] = useState('');
+  const [settledDescription, setSettledDescription] = useState(description);
 
   // An explicit category pick: record the choice AND flag it, so the pre-select
   // never replaces what the user chose.

@@ -42,6 +42,14 @@ export const navigationSpy = (): NavigationSpy => ({
 });
 
 /**
+ * The route params a screen has left behind: what it opened with, with every `setParams` it made
+ * merged in, in order, as React Navigation merges them. A remount test opens the screen again
+ * with these.
+ */
+export const paramsAfter = (spy: NavigationSpy, opened: object): object =>
+  Object.assign({}, opened, ...spy.setParams.mock.calls.map(([patch]) => patch));
+
+/**
  * Present a `NavigationSpy` as a screen's real `navigation` prop. The cast is
  * unavoidable — a full React Navigation prop object cannot be constructed in a
  * unit test — but it is confined to this one function, and the SPY keeps its

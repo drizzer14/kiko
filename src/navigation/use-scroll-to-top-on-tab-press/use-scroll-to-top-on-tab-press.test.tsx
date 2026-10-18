@@ -402,4 +402,24 @@ describe('useScrollToTopOnTabPress', () => {
 
     expect(scrollTo).not.toHaveBeenCalled();
   });
+
+  it('degrades identically to the no-header case when a REAL header context reports the Duo sidebar-mode anomaly (0 on the focused stack)', async () => {
+    const scrollTo = jest.fn();
+    const scrollRef = { current: { scrollTo } } as RefObject<TabRootScrollable | null>;
+
+    // `headerHeight: 0` wraps a REAL `HeaderHeightContext.Provider` reporting
+    // the literal value 0 — the Duo anomaly (a screen that DOES have a
+    // header, misreporting 0) — not the `undefined` "no provider at all"
+    // case the "targets y: 0 when there is no header context" test above
+    // already covers. This hook has no sidebar-mode signal of its own and
+    // must not gain one — Home's own legitimate 0 must stay untouched. This proves the
+    // existing `?? 0` / max-latch path degrades a present-but-0 context
+    // exactly the same way it already degrades an absent one: target stays
+    // 0, never past it, never throws.
+    const { fireTabPress } = await setup(scrollRef, { headerHeight: 0 });
+
+    fireTabPress();
+
+    expect(scrollTo).toHaveBeenCalledWith({ y: -0, animated: true });
+  });
 });

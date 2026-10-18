@@ -39,7 +39,9 @@ const HoldingCard: FC<{
   rateTable: RateTable;
   priceBook: PriceBook;
   onOpen: () => void;
-}> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen }) => {
+  // The holding whose page the other pane shows, on a wide window.
+  selected?: boolean;
+}> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen, selected = false }) => {
   const { t } = useTranslation();
   const { icon, color } = holdingIdentity(holding);
   const value = holdingValue(holding, now, priceBook);
@@ -57,8 +59,13 @@ const HoldingCard: FC<{
       : null;
 
   return (
-    <Card testID="holding-card" padding={4}>
-      <Pressable accessibilityRole="button" onPress={onOpen} style={styles.row}>
+    <Card testID="holding-card" padding={4} selected={selected}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        onPress={onOpen}
+        style={styles.row}
+      >
         <Box direction="row" gap={3} style={styles.rowLead}>
           <EntityIconTile name={icon} color={color} accessibilityLabel={`${holding.name} icon`} />
           <Box gap={1} style={styles.rowDescription}>
