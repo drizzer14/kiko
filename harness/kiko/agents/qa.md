@@ -32,6 +32,9 @@ Rules:
   new file first), then edit it with Edit/Write.
 - A qa that edits a test file also runs every `__tests__/guard-*.test.ts` and every doc-reading
   pin suite that scans test files (`guard-tests-no-wall-clock` pins `job-queue.test.ts`).
+- For a shell-write guard test, list the write forms per target AND every code path that
+  computes a target (name each helper, for example `xargsCopyMoveTargets`); each path needs a
+  red row before the fix (H9 I1: the xargs cp/mv fill had no red row).
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
   `githooks/` by name, and any `*.yml`/`*.yaml` file by extension, so a shell redirect or `cp`

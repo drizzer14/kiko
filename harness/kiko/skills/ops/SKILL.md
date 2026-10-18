@@ -275,7 +275,12 @@ the 5-minute load is at the limit, for at most the maximum wait (`GATE_START_MAX
 starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. A
 TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
 `docs/harness/checks.md`). Do not
-add your own limit. Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
+add your own limit. Never run a whole-repo semgrep, a full jest run, or stryker outside
+`scripts/job-queue.sh`: a brief that asks for one is refused and goes to the coordinator for a
+queued job (2026-10-18: two parallel whole-repo semgrep runs outside the queue overlapped a
+queued check-all and made it fail on registry timeouts at load 106; their counts had 45-68
+Timeout entries, so they were not evidence either). Run a lone security run as
+`scripts/job-queue.sh security`. Use `bash scripts/wait-load.sh <max>` only for a small
 direct run outside the queue (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
 optional second argument, passes first, 3 when it cannot read the load,
@@ -293,7 +298,10 @@ never raise a timeout. See memory `check-security-timeout-under-load`.
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full
 contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
-await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in
+await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. A per-rule
+Class B count comes from queued `scripts/job-queue.sh security <worktree> <label>` jobs, one per
+tree (a clean detached worktree for main); the job prints every finding with its rule id. Compare
+the repo-relative finding sets; the first finding sits on the `DETAILS:` line. State lives in
 `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first,
 then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a
 `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold

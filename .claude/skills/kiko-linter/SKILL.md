@@ -592,6 +592,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   test-only `KIKO_PROBE_STUB_FIRST_RUN_DELAY=<seconds>` makes a stub sleep on its first call to
   prove it (read the runner's header). A tightening of the guard is proven by a differential
   over every test literal x every cwd, base against HEAD; a hand-picked sample is not proof.
+  Method: a `NODE_OPTIONS` `--require` preload, kept in the scratchpad, wraps `decide()` of the
+  worktree's `kill-guard.js`. At each call, while the test fixtures still exist, it judges the
+  same (command, options) with BASE and HEAD copies extracted by `git archive`, also across a
+  fixed set of cwds, and records every flipped pair; classify each as intended or not (H9
+  2026-10-18: 43,738 pairs, 0 deny->allow). The preload only calls `decide()`; it never executes
+  a command. Timing-bound tests may fail under the preload (overhead); the proof run of the
+  suites is the plain one.
   No real kill
   word and no real main path is ever handed to the runner; they appear
   ONLY in NON-executed parser tests (node: string -> `decide()`). The
