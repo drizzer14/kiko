@@ -35,6 +35,7 @@ const cryptoAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
 });
 
 const walletBalance = (balanceMinorUnits: number): ProviderBalance => ({
+  currency: 'BTC',
   balanceMinorUnits,
   metadataKey: ADDRESS,
   name: 'BTC Wallet',
@@ -185,6 +186,30 @@ describe('runBalanceSync', () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({ accountId: 'acc-1', holdings: [] });
+  });
+
+  it("writes the balance in the provider's currency", async () => {
+    const { provider } = makeProvider('binance');
+    const { deps, holdingsStore } = makeInMemoryDeps([cryptoAccount()]);
+    deps.targetAccountId = 'acc-1';
+
+    await runBalanceSync(
+      provider,
+      {
+        balances: [
+          { ...walletBalance(25), currency: 'ETH' },
+          { ...walletBalance(7), metadataKey: 'USDT', currency: 'USDT' },
+        ],
+      },
+      deps,
+    );
+
+    expect(
+      holdingsStore.map(({ currency, balanceMinorUnits }) => [currency, balanceMinorUnits]),
+    ).toEqual([
+      ['ETH', 25],
+      ['USDT', 7],
+    ]);
   });
 
   it('with no target id, syncs into the account already connected under the provider institution and hands it its holdings', async () => {
@@ -339,6 +364,7 @@ describe('runBalanceSync', () => {
     // Distinct match keys so three Spot/Funding/Earn balances upsert as three
     // holdings, not one (the in-memory double keys on metadataKey).
     const btcBalance = (metadataKey: string, balanceMinorUnits: number): ProviderBalance => ({
+      currency: 'BTC',
       balanceMinorUnits,
       metadataKey,
       name: metadataKey,

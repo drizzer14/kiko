@@ -1,6 +1,7 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import type { HoldingRow } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeMetadataField } from '@kiko/holdings/holding-metadata';
 
 /**
@@ -28,7 +29,9 @@ export const providerDisplayName = (providerId: BalanceProviderId, t: TFunction)
     .exhaustive();
 
 export type ProviderBalance = {
-  /** Satoshis. */
+  /** The currency the balance and the holding it writes are in. */
+  currency: Currency;
+  /** Minor units of `currency`. */
   balanceMinorUnits: number;
   /**
    * Provider-specific key the sync matches and upserts the target holding by:

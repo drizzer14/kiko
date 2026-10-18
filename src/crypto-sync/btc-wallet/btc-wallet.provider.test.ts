@@ -62,7 +62,7 @@ describe('bitcoinWalletProvider', () => {
 
     expect(deps.fetchAddressBalance).toHaveBeenCalledWith(ADDRESS, deps.fetchImpl);
     expect(balances).toEqual([
-      { balanceMinorUnits: 12_345_678, metadataKey: ADDRESS, name: 'BTC Wallet' },
+      { currency: 'BTC', balanceMinorUnits: 12_345_678, metadataKey: ADDRESS, name: 'BTC Wallet' },
     ]);
   });
 
@@ -88,7 +88,9 @@ describe('bitcoinWalletProvider', () => {
 
     expect(deps.fetchAddressBalance).toHaveBeenCalledTimes(1);
     expect(deps.fetchAddressBalance).toHaveBeenCalledWith(ADDRESS, deps.fetchImpl);
-    expect(balances).toEqual([{ balanceMinorUnits: 42, metadataKey: ADDRESS, name: 'BTC Wallet' }]);
+    expect(balances).toEqual([
+      { currency: 'BTC', balanceMinorUnits: 42, metadataKey: ADDRESS, name: 'BTC Wallet' },
+    ]);
   });
 
   it('re-syncs every stored address, one balance each, in holding order', async () => {
@@ -111,8 +113,8 @@ describe('bitcoinWalletProvider', () => {
       OTHER_ADDRESS,
     ]);
     expect(balances).toEqual([
-      { balanceMinorUnits: 100, metadataKey: ADDRESS, name: 'BTC Wallet' },
-      { balanceMinorUnits: 200, metadataKey: OTHER_ADDRESS, name: 'BTC Wallet' },
+      { currency: 'BTC', balanceMinorUnits: 100, metadataKey: ADDRESS, name: 'BTC Wallet' },
+      { currency: 'BTC', balanceMinorUnits: 200, metadataKey: OTHER_ADDRESS, name: 'BTC Wallet' },
     ]);
   });
 

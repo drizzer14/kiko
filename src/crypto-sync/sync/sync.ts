@@ -188,11 +188,11 @@ const runBalanceSyncInner = async <Deps>(
     // call entirely rather than opening an empty write transaction.
     if (balances.length > 0) {
       await deps.upsertHoldings(
-        balances.map(({ name, balanceMinorUnits, metadataKey, renameFromDefault }) => ({
+        balances.map(({ name, currency, balanceMinorUnits, metadataKey, renameFromDefault }) => ({
           accountId,
           name,
           type: 'crypto_asset',
-          currency: 'BTC',
+          currency,
           balanceMinorUnits,
           metadata: { syncedAt },
           metadataField: provider.metadataField,

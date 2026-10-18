@@ -69,6 +69,7 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
     // after this returns, so a failed address leaves every stored balance as it was.
     for (const address of addresses) {
       balances.push({
+        currency: 'BTC',
         balanceMinorUnits: await deps.fetchAddressBalance(address, deps.fetchImpl),
         metadataKey: address,
         name: WALLET_HOLDING_NAME,
