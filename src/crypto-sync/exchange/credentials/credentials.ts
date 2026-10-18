@@ -30,7 +30,10 @@ const isCredentials = (value: unknown): value is ExchangeCredentials =>
  * ID / Touch ID prompt on EVERY read, so a pull-to-refresh sync would prompt the user each time.
  * The app-wide biometric gate is `LockGate` (`src/auth`). The pair is never written to SQLite,
  * holding metadata, or a log. Only the `service` differs between items; the hardening is derived
- * here from ONE place and reused verbatim by every writer.
+ * here from ONE place and reused verbatim by every writer. These helpers take no per-account lock,
+ * so a caller must serialize its own writes and clears (Binance does, with its write tokens, in
+ * `src/crypto-sync/binance/binance.credentials.ts`); never call `saveExchangeCredentials` or
+ * `clearExchangeCredentials` directly from elsewhere.
  */
 export const hardenedFor = (service: string): Keychain.SetOptions => ({
   service,
