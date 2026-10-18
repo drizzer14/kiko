@@ -588,6 +588,6 @@ import os
   }
 
   private static func describe(_ frame: CGRect?) -> String {
-    return frame.map { NSStringFromCGRect($0) } ?? "none"
+    return frame.map { "\($0.origin.x),\($0.origin.y) \($0.width)x\($0.height)" } ?? "none"
   }
 }
