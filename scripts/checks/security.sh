@@ -51,6 +51,49 @@ fi
 # runs. A skip says so on stderr: an exit 0 with no scan must not read as one.
 dkey=""; fp=""
 all_files=1
+# Registry rule ids that cannot match this repo (no express, cors, or DOM target), excluded by
+# their FULL check_id: semgrep treats the id as exact, so a short form excludes nothing and an
+# unknown id is ignored silently. Sorted, one per line; the list's content is part of the dedup
+# fingerprint below. Why these and nothing else: docs/harness/documented-exceptions.md.
+EXCLUDED_RULE_IDS=(
+  javascript.express.security.audit.express-check-directory-listing.express-check-directory-listing
+  javascript.express.security.audit.express-cookie-settings.express-cookie-session-default-name
+  javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-domain
+  javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-expires
+  javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-httponly
+  javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-path
+  javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-secure
+  javascript.express.security.audit.express-jwt-not-revoked.express-jwt-not-revoked
+  javascript.express.security.audit.express-libxml-noent.express-libxml-noent
+  javascript.express.security.audit.express-open-redirect.express-open-redirect
+  javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
+  javascript.express.security.audit.express-res-sendfile.express-res-sendfile
+  javascript.express.security.audit.express-session-hardcoded-secret.express-session-hardcoded-secret
+  javascript.express.security.audit.express-ssrf.express-ssrf
+  javascript.express.security.audit.express-third-party-object-deserialization.express-third-party-object-deserialization
+  javascript.express.security.audit.express-xml2json-xxe-event.express-xml2json-xxe-event
+  javascript.express.security.audit.res-render-injection.res-render-injection
+  javascript.express.security.audit.xss.direct-response-write.direct-response-write
+  javascript.express.security.cors-misconfiguration.cors-misconfiguration
+  javascript.express.security.express-expat-xxe.express-expat-xxe
+  javascript.express.security.express-insecure-template-usage.express-insecure-template-usage
+  javascript.express.security.express-jwt-hardcoded-secret.express-jwt-hardcoded-secret
+  javascript.express.security.express-phantom-injection.express-phantom-injection
+  javascript.express.security.express-puppeteer-injection.express-puppeteer-injection
+  javascript.express.security.express-sandbox-injection.express-sandbox-code-injection
+  javascript.express.security.express-vm-injection.express-vm-injection
+  javascript.express.security.express-vm2-injection.express-vm2-injection
+  javascript.express.security.express-xml2json-xxe.express-xml2json-xxe
+  javascript.express.security.injection.raw-html-format.raw-html-format
+  javascript.express.security.require-request.require-request
+  javascript.express.security.x-frame-options-misconfiguration.x-frame-options-misconfiguration
+  javascript.sequelize.security.audit.sequelize-injection-express.express-sequelize-injection
+  typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method
+)
+EXCLUDE_RULE_ARGUMENTS=()
+for rule_id in "${EXCLUDED_RULE_IDS[@]}"; do
+  EXCLUDE_RULE_ARGUMENTS+=(--exclude-rule "$rule_id")
+done
 for target in "${TARGETS[@]}"; do
   [ -f "$target" ] || all_files=0
 done
@@ -58,7 +101,8 @@ if [ "$all_files" -eq 1 ]; then
   dkey="security:$(printf '%s\n' "${TARGETS[@]}" | harness_hash)"
   fp="$( { shasum "${TARGETS[@]}" 2>/dev/null
           shasum "$ROOT/rules/semgrep-mobile.yml" 2>/dev/null
-          shasum "$ROOT/rules/semgrep-prewrite.yml" 2>/dev/null; } | harness_hash )"
+          shasum "$ROOT/rules/semgrep-prewrite.yml" 2>/dev/null
+          printf '%s\n' "${EXCLUDED_RULE_IDS[@]}"; } | harness_hash )"
   if harness_unchanged "$ROOT" "$dkey" "$fp"; then
     printf 'security.sh: SKIPPED, not a fresh scan: %s target(s) are unchanged since their last passing scan (same file content, same rules files). Run npm run check:security with no argument for a full scan.\n' "${#TARGETS[@]}" >&2
     exit 0
@@ -70,6 +114,7 @@ out="$(semgrep --quiet --error --json \
   --config "$ROOT/rules/semgrep-mobile.yml" \
   --config "$ROOT/rules/semgrep-prewrite.yml" \
   --exclude 'fixtures' \
+  "${EXCLUDE_RULE_ARGUMENTS[@]}" \
   "${TARGETS[@]}" 2>/tmp/kiko-security-stderr.$$)"
 semgrep_code=$?
 stderr_out="$(cat /tmp/kiko-security-stderr.$$ 2>/dev/null)"
@@ -133,7 +178,7 @@ if [ -n "$scan_problems" ]; then
     "$scan_problems" \
     "A rule that timed out or errored did not run on that file, so a vulnerability there would pass unseen." \
     "Make the named rule cheaper on the named file (or fix the reported error) and re-run: npm run check:security" \
-    "Do not raise the timeout or exclude the file to pass. Fix the rule or the scan error."
+    "Do not raise the timeout or exclude the file to pass. The only excluded rules are the registry ids that cannot match this repo (documented-exceptions.md); never add a file, a kiko-* rule, or an id that can match here. Fix the rule or the scan error."
   exit 2
 fi
 

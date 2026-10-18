@@ -466,6 +466,33 @@ verified usage, not dead weight:
   `npm run check:rules` (`scripts/checks/semgrep-rules.sh`) is the check that
   DOES scan the directory, and it fails if any rule stops matching its positive
   fixture or starts matching its negative one.
+- **Excluded Semgrep registry rules (`--exclude-rule <full check_id>` x33 in
+  `scripts/checks/security.sh`, the `EXCLUDED_RULE_IDS` array; pinned by
+  `__tests__/security-excluded-registry-rules.test.ts`)**: 33 registry rule
+  ids that cannot match this repo: the 30 `javascript.express.*` rules,
+  `javascript.express.security.cors-misconfiguration.cors-misconfiguration`,
+  `javascript.sequelize.security.audit.sequelize-injection-express.express-sequelize-injection`,
+  and `typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method`.
+  Cause: the registry web rules time out under load, and a timeout fails
+  `check:security` closed (binance debugger, 2026-10-18: single files take
+  0.6-2.4 s at load about 10 but 7-28 s at load 28-40; `express-ssrf` timed out on
+  `src/screens/forms/holding-form/holding-form.screen.test.tsx`). Proof each
+  cannot match: there is no `express` or `cors` in `package.json`,
+  `package-lock.json` or any `src/` import, so every `javascript.express.*` rule
+  has no express request to match; `express-sequelize-injection` taints only
+  express requests; the `react-unsanitized-method` sinks are only `document.write`,
+  `document.writeln` and `insertAdjacentHTML`, which do not exist in React
+  Native (0 findings over 2066 files, semgrep 1.175.0, 2026-10-18). The id must be
+  the full check_id: semgrep 1.175.0 treats it as exact, so the short form
+  (`javascript.express.security.audit.express-ssrf`) excludes nothing and an
+  unknown id is silently ignored; the test pins the full form. The exclusion
+  list's content is part of the dedup fingerprint, so a changed list never
+  lets an older pass skip a scan. Still running: `react-unsanitized-property`,
+  every other `p/typescript`, `p/react` and `p/secrets` rule, and every `kiko-*`
+  rule on every file. Never add a file, a `kiko-*` rule, or an id that can match
+  here. Re-check trigger: if `express`, `cors` or a DOM target (a web view that
+  renders DOM, or a web build) is ever added, remove the matching ids in the
+  same change.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
   five categories are excluded from the set of files Stryker
