@@ -702,7 +702,11 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
     expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
     expect(exchangeState).toEqual(
       expect.arrayContaining([
-        { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: ['BTC'] },
+        {
+          kind: 'oversizedBalance',
+          wallets: { spot: ['BTC'], funding: [], earn: [] },
+          complete: true,
+        },
       ]),
     );
   });
@@ -715,7 +719,11 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
     expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
     expect(exchangeState).toEqual(
       expect.arrayContaining([
-        { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: ['BTC'] },
+        {
+          kind: 'oversizedBalance',
+          wallets: { spot: ['BTC'], funding: [], earn: [] },
+          complete: true,
+        },
       ]),
     );
   });

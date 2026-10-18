@@ -387,28 +387,54 @@ const isReceiptToken = (asset: string, positionAssets: ReadonlySet<string>): boo
 
 const sortedTickers = (tickers: readonly string[]): string[] => [...new Set(tickers)].sort();
 
-/** The balance lists after these wallet reads: each replaces the stored one. */
-const balanceListPatches = (
-  reads: readonly WalletRead[],
-  positionAssets: ReadonlySet<string>,
-): ExchangeStatePatch[] => [
-  {
-    kind: 'coinList',
-    coins: 'untrackedCoins',
-    list: 'balance',
-    tickers: sortedTickers(
-      reads
-        .flatMap(({ untracked }) => untracked)
-        .filter((ticker) => !isReceiptToken(ticker, positionAssets)),
+/** Spot is strict, so only the other two wallets can have failed. */
+type WalletReads = Record<Exclude<BinanceWallet, 'spot'>, WalletRead | null> & {
+  spot: WalletRead;
+};
+
+/** The refused coins of each wallet whose read succeeded; a wallet that failed is absent. */
+const refusedByWallet = (reads: WalletReads): Record<string, string[]> =>
+  Object.fromEntries(
+    Object.entries(reads).flatMap(
+      ([wallet, read]) =>
+        foldMap(maybe(read), ({ refused }): [string, string[]][] => [
+          [wallet, sortedTickers([...refused])],
+        ]) ?? [],
     ),
-  },
-  {
-    kind: 'coinList',
-    coins: 'oversizedCoins',
-    list: 'balance',
-    tickers: sortedTickers(reads.flatMap(({ refused }) => [...refused])),
-  },
-];
+  );
+
+/**
+ * The balance lists after these wallet reads. The oversized list is written wallet by wallet: a
+ * wallet that read replaces its own coins, and one that failed keeps its stored ones. The
+ * not-tracked list is replaced only by a read in which every wallet read, since a failed wallet
+ * knows nothing of its coins.
+ */
+const balanceListPatches = (reads: WalletReads): ExchangeStatePatch[] => {
+  const { spot, funding, earn } = reads;
+  const oversized: ExchangeStatePatch = {
+    kind: 'oversizedBalance',
+    wallets: refusedByWallet(reads),
+    complete: funding !== null && earn !== null,
+  };
+
+  if (funding === null || earn === null) {
+    return [oversized];
+  }
+
+  return [
+    {
+      kind: 'coinList',
+      coins: 'untrackedCoins',
+      list: 'balance',
+      tickers: sortedTickers(
+        [spot, funding, earn]
+          .flatMap(({ untracked }) => untracked)
+          .filter((ticker) => !isReceiptToken(ticker, earn.assets)),
+      ),
+    },
+    oversized,
+  ];
+};
 
 export const binanceProvider: BalanceProvider<BinanceDeps> = {
   id: 'binance',
@@ -497,17 +523,8 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     });
     appendWallet(balances, 'earn', earn, existingKeys);
 
-    // A read in which Funding or Earn failed knows nothing of that wallet's coins, so replacing
-    // either list from it would drop the coins that wallet held: both lists stay as stored. The
-    // lists are returned, not written: the write needs the account marked as Binance's, which a
-    // first Connect does only after this read.
-    if (funding === null || earn === null) {
-      return { balances };
-    }
-
-    return {
-      balances,
-      exchangeState: balanceListPatches([spot, funding, earn], earn.assets),
-    };
+    // The lists are returned, not written: the write needs the account marked as Binance's,
+    // which a first Connect does only after this read.
+    return { balances, exchangeState: balanceListPatches({ spot, funding, earn }) };
   },
 };

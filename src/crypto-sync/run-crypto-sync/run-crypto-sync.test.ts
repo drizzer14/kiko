@@ -290,7 +290,7 @@ describe('runCryptoSync', () => {
   describe('the balance lists the read returned', () => {
     const lists = [
       { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['PEPE'] },
-      { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: ['ETH'] },
+      { kind: 'oversizedBalance', wallets: { spot: ['ETH'] }, complete: false },
     ];
 
     it('writes them to the account once the balance sync has marked it', async () => {

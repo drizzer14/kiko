@@ -242,11 +242,21 @@ const patchPending = (walkId: 'pay'): ExchangeStatePatch => ({
   value: [{ start: 100, end: 200 }],
 });
 
+// The oversized balance list has no plain `coinList` patch: a balance write there is a complete
+// read in which only Spot refused `tickers`.
 const patchCoinList = (
   coins: 'untrackedCoins' | 'oversizedCoins',
   list: 'balance' | 'history',
   tickers: string[],
-): ExchangeStatePatch => ({ kind: 'coinList', coins, list, tickers });
+): ExchangeStatePatch => {
+  if (coins === 'untrackedCoins') {
+    return { kind: 'coinList', coins, list, tickers };
+  }
+
+  return list === 'history'
+    ? { kind: 'coinList', coins, list, tickers }
+    : { kind: 'oversizedBalance', wallets: { spot: tickers }, complete: true };
+};
 
 const patchInOrder = async (...patches: ExchangeStatePatch[]): Promise<void> => {
   for (const patch of patches) {
@@ -473,7 +483,11 @@ describe('syncStateRepo.patchExchangeState', () => {
       expect(storedExchangeStateJson(rawDatabase)).toEqual({
         version: 1,
         walks: {},
-        [coins]: { balance: ['CCC'], history: ['XXX', 'YYY'] },
+        [coins]: {
+          balance: ['CCC'],
+          history: ['XXX', 'YYY'],
+          ...(coins === 'oversizedCoins' ? { balanceByWallet: { spot: ['CCC'] } } : {}),
+        },
       });
     });
 

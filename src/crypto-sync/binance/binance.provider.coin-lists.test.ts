@@ -84,7 +84,9 @@ const worldOf = ({ spot = [], funding = [], flexible = [], locked = [], stored =
     return { untracked: state.untrackedCoins, oversized: state.oversizedCoins };
   };
 
-  return { deps, lists, apply };
+  const storedAfter = (): Record<string, unknown> => JSON.parse(text);
+
+  return { deps, lists, apply, storedAfter };
 };
 
 const run = async (world: World, from: SyncTarget = target) => {
@@ -239,19 +241,80 @@ describe('binanceProvider — the balance lists after a read', () => {
 
     expect(exchangeState).toEqual([
       { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['ABC'] },
-      { kind: 'coinList', coins: 'oversizedCoins', list: 'balance', tickers: [] },
+      {
+        kind: 'oversizedBalance',
+        wallets: { spot: [], funding: [], earn: [] },
+        complete: true,
+      },
     ]);
   });
 
   it.each([
-    ['Funding', { funding: 'fails' as const }],
-    ['Earn', { locked: 'fails' as const }],
-  ])('a balance read with a failed wallet keeps both balance lists (%s)', async (_, failing) => {
-    const { exchangeState, lists } = await run({ spot: [['ABC', '1']], stored, ...failing });
+    ['Funding', { funding: 'fails' as const }, { spot: ['ETH'], funding: ['SOL'] }],
+    ['Earn', { locked: 'fails' as const }, { spot: ['ETH'], earn: ['SOL'] }],
+  ])(
+    'a balance read with a failed wallet keeps the not-tracked list and that wallet oversized coins (%s)',
+    async (_, failing, balanceByWallet) => {
+      const { exchangeState, lists } = await run({
+        spot: [['ABC', '1']],
+        stored: {
+          untrackedCoins: stored.untrackedCoins,
+          oversizedCoins: { balance: ['ETH', 'SOL'], history: ['BTC'], balanceByWallet },
+        },
+        ...failing,
+      });
 
-    expect(exchangeState).toBeUndefined();
-    expect(lists().untracked.balance).toEqual(['PEPE']);
-    expect(lists().oversized.balance).toEqual(['ETH']);
+      expect(exchangeState).toEqual([
+        expect.objectContaining({ kind: 'oversizedBalance', complete: false }),
+      ]);
+      expect(lists().untracked.balance).toEqual(['PEPE']);
+      expect(lists().oversized).toEqual({ balance: ['SOL'], history: ['BTC'] });
+    },
+  );
+
+  describe('the oversized list of a read in which a wallet failed', () => {
+    const OVERSIZED_ETH: Row = ['ETH', OVERSIZED];
+
+    it('lists a coin the Spot read refused, though Earn failed', async () => {
+      const { lists } = await run({ spot: [OVERSIZED_ETH], locked: 'fails' });
+
+      expect(lists().oversized.balance).toEqual(['ETH']);
+    });
+
+    it('removes it on a later read in which Earn still fails and Spot reads the coin fine', async () => {
+      const first = await run({ spot: [OVERSIZED_ETH], locked: 'fails' });
+
+      const second = await run({
+        spot: [['ETH', '1']],
+        locked: 'fails',
+        stored: first.storedAfter(),
+      });
+
+      expect(second.lists().oversized.balance).toEqual([]);
+    });
+
+    it('keeps what Funding refused earlier while Funding fails now', async () => {
+      const first = await run({ funding: [['USDT', OVERSIZED]] });
+      expect(first.lists().oversized.balance).toEqual(['USDT']);
+
+      const second = await run({
+        spot: [OVERSIZED_ETH],
+        funding: 'fails',
+        stored: first.storedAfter(),
+      });
+
+      expect(second.lists().oversized.balance).toEqual(['ETH', 'USDT']);
+    });
+
+    it('keeps a ticker stored before wallets were named until a read in which every wallet read', async () => {
+      const legacy = { oversizedCoins: { balance: ['OLD'], history: [] } };
+
+      const partial = await run({ funding: 'fails', stored: legacy });
+      expect(partial.lists().oversized.balance).toEqual(['OLD']);
+
+      const full = await run({ stored: partial.storedAfter() });
+      expect(full.lists().oversized.balance).toEqual([]);
+    });
   });
 
   it('an account cooling down returns no lists', async () => {
