@@ -37,4 +37,6 @@ Rules:
   report, per the standing rule.
 - Hand each lesson (and any drift found) to the scribe to persist. Do
   not edit the plugin yourself.
+- When a scribe rewrote a section, grep every literal it states (query strings, keys,
+  constants, paths) against `src/`; the symbol-name check does not cover them.
 - Verify a negative claim ("does not exist", "none found") with `ls -a` and a whole-tree grep that includes hidden paths before you report it.

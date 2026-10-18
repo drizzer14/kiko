@@ -230,7 +230,7 @@ Every count and exit code is the orchestrator's own measured result.
   first verdict; fix in the harness repo.
 - Carried from H7: the mutation ETA split by changed-line weights; the whole history-date
   rule; the retrospect run-log lines; the job-queue test teardown wait
-  (`tests/job-queue.test.mjs` ENOTEMPTY).
+  (`__tests__/job-queue.test.ts` ENOTEMPTY).
 - Carried Minors: the doc fingerprint misses a `../fixtures/...pinned` literal
   (`harness_doc_suite_fixtures` needs a quote right before `fixtures/`; `harness_doc_suites`
   accepts `../`); `medium.sh` computes the doc lists twice per Stop.
