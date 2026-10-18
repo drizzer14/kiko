@@ -1016,7 +1016,9 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     earnedMarks(deps, {
       nbuResult,
       fiatRequested: fiatCurrenciesToFetch,
-      cryptoResult,
+      // A mark says what the provider has no earlier day for. Binance's first candle says nothing
+      // of CoinGecko's days, so a coin CoinGecko failed earns none, however Binance priced it.
+      cryptoResult: coinGeckoResult,
       cryptoRequested,
       settled,
       spanStart,

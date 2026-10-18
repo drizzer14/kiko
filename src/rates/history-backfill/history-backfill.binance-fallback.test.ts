@@ -5,11 +5,18 @@ import type { HistoryRateEntry } from '../history-entry';
 import { createBinanceMarketClient } from '../binance-market';
 import { type CryptoHistory, CryptoHistoryFailure } from '../coingecko-history';
 
-import { type BackfillDeps, composeHistoryRows, runBackfill } from './history-backfill';
+import {
+  type BackfillDeps,
+  composeHistoryRows,
+  deriveFirstBackfilledDayByCurrency,
+  deriveLastBackfilledDay,
+  deriveLastBackfilledDayByCurrency,
+  runBackfill,
+} from './history-backfill';
 
 const day = (index: number) => Date.UTC(2026, 8, 1) + index * DAY_MS;
 
-type StoredRow = { base: string; quote: string; day: number; rate: string; source: string };
+type StoredRow = { base: Currency; quote: string; day: number; rate: string; source: string };
 
 type Reply = {
   closes?: number[];
@@ -298,15 +305,82 @@ describe('runBackfill — the Binance public history fallback', () => {
     expect(cursors).toEqual(['SOL']);
   });
 
-  it('earns the settled mark of a coin Binance listed after the span start', async () => {
-    const { marks } = await run({
-      fiat: ['USD'],
-      held: ['ETH', 'USDT'],
-      crypto: { ...failed(['ETH']), entries: usdtEntries },
-      binance: { ETHUSDT: { closes: [3_100, 3_200], firstDayIndex: 1 } },
+  describe('the settled marks', () => {
+    it('earns none for a coin CoinGecko failed, though Binance priced it from a later day', async () => {
+      const { marks, rowsOf } = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed(['ETH']), entries: usdtEntries },
+        binance: { ETHUSDT: { closes: [3_100, 3_200], firstDayIndex: 1 } },
+      });
+
+      expect(marks).toEqual([]);
+      expect(rowsOf('ETH').map((row) => row.day)).toEqual([day(1), day(2)]);
     });
 
-    expect(marks).toEqual([{ ETH: { start: day(0), firstDay: day(1) } }]);
+    it('earns none for a coin of a CoinGecko leg that failed whole', async () => {
+      const { marks, rowsOf } = await run({
+        fiat: ['USD'],
+        held: ['ETH'],
+        crypto: new CryptoHistoryFailure(['ETH']),
+        binance: {
+          ETHUSDT: { closes: [3_100, 3_200], firstDayIndex: 1 },
+          EURUSDT: { closes: [1.08, 1.1, 1.12] },
+        },
+      });
+
+      expect(marks).toEqual([]);
+      expect(rowsOf('ETH')).toHaveLength(2);
+    });
+
+    it('keeps the expiring empty mark of a coin CoinGecko answered with nothing', async () => {
+      const { marks, rowsOf } = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed([]), entries: usdtEntries },
+        binance: { ETHUSDT: { closes: [3_100, 3_200], firstDayIndex: 1 } },
+      });
+
+      expect(marks).toEqual([{ ETH: { start: day(0), firstDay: null, checkedOn: day(2) } }]);
+      expect(rowsOf('ETH')).toHaveLength(2);
+    });
+
+    it('asks CoinGecko for the coin again after a 429 that Binance covered from a later day', async () => {
+      const settledStore: Record<string, unknown> = {};
+      const stored = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed(['ETH'], ['ETH']), entries: usdtEntries },
+        binance: { ETHUSDT: { closes: [3_100, 3_200], firstDayIndex: 1 } },
+        overrides: {
+          readSettledHistory: async () => ({ ...settledStore }),
+          writeSettledHistory: async (additions) => {
+            Object.assign(settledStore, additions);
+          },
+        },
+      });
+      const asked: CryptoCurrency[][] = [];
+
+      await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: failed([]),
+        binance: {},
+        overrides: {
+          lastBackfilledDay: deriveLastBackfilledDay(stored.rows),
+          lastBackfilledDayByCurrency: deriveLastBackfilledDayByCurrency(stored.rows),
+          firstBackfilledDayByCurrency: deriveFirstBackfilledDayByCurrency(stored.rows),
+          readSettledHistory: async () => ({ ...settledStore }),
+          fetchCryptoHistory: async (_days, currencies) => {
+            asked.push(currencies);
+
+            return { ...failed([]), entries: usdtEntries };
+          },
+        },
+      });
+
+      expect(asked.flat()).toContain('ETH');
+    });
   });
 
   describe.each([451, 403, 418, 429])('HTTP %i from Binance', (status) => {
