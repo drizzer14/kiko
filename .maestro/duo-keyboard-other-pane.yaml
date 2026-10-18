@@ -37,11 +37,20 @@ appId: com.dmytro-vasylkivskyi.kiko
       id: "migrations-gate-pending"
     timeout: 30000
 
-# Settings tab (testID "gear" is the tab's, as in onboarding-fresh-install.yaml).
+# Settings tab, in every tab-bar form. The id "gear" (the SF Symbol name, as in
+# onboarding-fresh-install.yaml) is not exposed by the unfolded sidebar or floating bar, so it is
+# optional, then the tab title is tapped by text, optional too. Maestro matches a whole text, so
+# "Settings|Налаштування" (en.ts `settings.title`, uk.ts:871) cannot hit a longer label such as
+# "Налаштування нагадування"; if Settings is already open the tap lands on its title, harmless.
 - tapOn:
     id: "gear"
+    optional: true
+- tapOn:
+    text: "Settings|Налаштування"
+    optional: true
 
-# The first Settings row, at the very top of the left pane
+# The first Settings row, at the very top of the left pane. A failure here means "Settings tab
+# not reached", not D1.
 # (settings.screen.tsx `settings-row-system`, label `settings.system` = "System").
 - assertVisible:
     id: "settings-row-system"
