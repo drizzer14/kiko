@@ -1780,28 +1780,40 @@ restated here:
   `metadata.binanceAsset`, matched by `upsertByMetadataKey`). Earn combines
   Simple Earn Flexible + Locked into ONE holding. The keys are asymmetric on
   purpose: see the data transition below.
-- **Data transition from the old single holding.** The pre-split model wrote
-  one aggregated holding keyed `'BTC'`. Because Spot reuses that same key, the
-  first post-split sync UPDATES that existing row IN PLACE into the Spot
-  holding (no orphan, no duplicate), while Funding and Earn are created under
-  their new keys. The Spot balance carries `renameFromDefault: 'Binance BTC'`
-  (the old default name), so the upsert relabels the legacy holding to
-  `'Binance Spot'` ONLY IF its name is still that exact default — a user-edited
-  name never matches and is preserved. This is the one exception to the upsert's
-  name-preserve-on-update rule (`upsertByMetadataKey`); a wallet omits the
-  marker and is never renamed.
-- **Spot is strict; Funding and Earn are per-holding error-tolerant.** Spot's
-  failure fails the whole sync (its balance must be trusted) and Spot is ALWAYS
-  written — a genuine zero included — as the connection's anchor. Each other
-  wallet runs through `walletSatoshis`, which returns `null` (NOT 0) on a
-  missing API-key permission, a throttle, or a malformed body: `appendWallet`
-  then OMITS that holding, leaving any existing one at its last-good balance
-  rather than clobbering it with a fabricated 0, and logs one `logFailure`
-  (`@kiko/diagnostics`: the wallet in the tag, the error's name and code
-  only). A successful read of 0 writes 0
-  ONLY when a holding for that wallet already exists (to zero an emptied
-  wallet); an all-zero never-used wallet creates no empty holding. A Spot-only
-  key still writes the Spot holding.
+- **Per coin and wallet.** Every balance goes through `exchangeMinorUnits`
+  (`@kiko/crypto-sync/exchange/amounts`), never a float sum. A holding is keyed
+  per coin and wallet (`holdingKeyOf`, `binance.holding-keys.ts`). A tracked
+  coin is `isTrackedBinanceAsset` (`binance.tracked-coin.ts`): the curated
+  crypto plus `BINANCE_FIAT_CODES`, the Kiko fiat codes Binance quotes. Read
+  both files for the closed sets.
+- **Names and the one-time rename.** A holding is named
+  `'Binance <Wallet> · <CODE>'`. A BTC holding carries `renameFromDefaults`
+  (`PREVIOUS_BTC_HOLDING_NAMES`, plural): `upsertByMetadataKey`
+  (`holdings.repo.ts`) renames it ONCE per holding, only if its name is still
+  one of those defaults. The mark `defaultNameRenameSettled`
+  (`holding-metadata.ts`) is written on the first upsert that carries
+  `renameFromDefaults`, rename or not, is carried by `withCarriedMetadataKeys`
+  and kept through `.kiko`. A user-edited name is never overwritten.
+- **Spot is strict; the others are per-holding error-tolerant.** Spot's read
+  failure fails the whole sync. While NO Spot BTC holding exists, a zero Spot
+  BTC anchor is written (also when the Spot BTC amount is refused); an
+  existing Spot BTC holding with a refused amount keeps its last balance. Set
+  6 removes the anchor together with the four walk guards. A Funding or Earn
+  read that fails omits that wallet's holdings (`appendWallet`), leaving each
+  at its last-good balance, and logs one `logFailure`.
+- **A refused coin skips only itself.** An oversized or malformed tracked-coin
+  amount omits that coin alone and logs `'[binance sync] a coin amount was
+  refused'` with `{ wallet }` only. For the dust, stay and absent rules per
+  coin read `appendWallet` in `binance.provider.ts`; do not restate them.
+- **Coin lists.** `fetchBalances` returns `ProviderRead`
+  (`{ balances, exchangeState? }`). `runBinanceSyncAndImport`
+  (`run-crypto-sync.ts`) writes the lists after the institution is set, under
+  `logOnFailure('[binance sync] balance lists failed')`, before the walks. The
+  not-tracked list is written only on a read where every wallet read. The
+  oversized list is per wallet (`balanceByWallet`): a wallet that read
+  replaces its own array, a failed wallet keeps it, a complete read replaces
+  every array. One writer, `withOversizedBalance`
+  (`exchange-state-patch.ts`).
 - **The Simple Earn position reads MUST paginate, and Earn skips as a whole.**
   The flexible and locked position endpoints are paged (`current` from 1,
   `size` per page capped at 100, response `{ rows, total }`); reading page 1
@@ -1809,15 +1821,14 @@ restated here:
   especially — each locked subscription is its own row). `fetchAllPositions`
   in `binance.client.ts` loops `current` until the gathered rows cover `total`
   (short-page and a hard 50-page cap are the backstops). Both Earn reads sit
-  inside ONE `walletSatoshis` guard, so a failure on EITHER read (or any page)
+  inside ONE wallet read guard, so a failure on EITHER read (or any page)
   skips the WHOLE Earn holding rather than writing a partial, silently
   under-counted total. The funding read is a full array — NOT paginated. All
   three SAPI reads send `asset=BTC` to shrink the payload.
-- **Amounts sum as `Money`, never as floats.** Each decimal-string field
-  is converted with `Money.fromMajor('BTC', …)` and added via `sumSatoshis`
-  (see `kiko-domain`); a non-finite amount is rejected before it can reach
-  the `notNull` satoshi column. Cross-wallet addition is plain integer
-  satoshis, so no drift is possible there.
+- **Amounts are integer minor units, never floats.** Each decimal-string
+  field is converted by `exchangeMinorUnits` (see `kiko-domain`); a
+  non-finite, malformed or oversized amount is refused before it can reach
+  the `notNull` column.
 
 Confirm each Binance endpoint's path, params, and response shape against
 the live API (or the official Binance Postman collection / SDK models)
