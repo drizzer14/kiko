@@ -1317,6 +1317,15 @@ Known limits:
   non-TypeScript extension: the rule reads only a string literal or a
   join. A safe false positive: write `join(__dirname, 'x.csv')`.
 
+## An absence assertion must not go vacuous
+
+A test that asserts a text is ABSENT (`queryByText`, `not.toContain`)
+passes for ever once a reword changes the text it hunts. Derive that text
+from the i18n key (`i18n.t(...)`) or an exported constant, never a typed
+fragment. Add a positive twin that finds the same text in the case where
+it must be there, so the matcher is proven to match. After any reword,
+grep the old fragment across `src/` and the tests.
+
 ## A rejection names its error
 
 A `.rejects` assertion names what the call rejects with: the error class, a message, or
