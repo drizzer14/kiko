@@ -8,10 +8,10 @@ import {
   usedApiWeightFromHeaders,
 } from '@kiko/crypto-sync/binance';
 import { DAY_MS } from '@kiko/dates';
+import { maxOf } from '@kiko/numbers';
 import { match, P } from 'ts-pattern';
 import { BINANCE_API_ENDPOINT } from '@env';
 import maybe, { foldMap } from 'fnts/maybe';
-import { isRecord } from '@kiko/type-guards';
 import either, { bifoldr } from 'fnts/either';
 
 import { toUtcMidnight } from '../history-entry';
@@ -33,10 +33,12 @@ type BinanceMarketOptions = {
 /**
  * One run's reads of Binance's public market data. A read that fails for any reason is `undefined`
  * (no price), never a throw: the coin stays as unpriced as it was and nothing else in the refresh
- * is touched.
+ * is touched. A pair that stopped trading keeps its last candle and its last trade for good, so a
+ * price is only ever today's candle (`currentPrice`) or a series that reaches yesterday
+ * (`dailyCloses`); an older one is no price at all.
  */
 export type BinanceMarketClient = {
-  tickerPrice: (symbol: string) => Promise<number | undefined>;
+  currentPrice: (symbol: string) => Promise<number | undefined>;
   dailyCloses: (symbol: string, start: number, end: number) => Promise<DailyClose[] | undefined>;
 };
 
@@ -59,6 +61,15 @@ const closeOf = (row: unknown): DailyClose | undefined => {
     ? { day: toUtcMidnight(openTime), close: price }
     : undefined;
 };
+
+const closesOfRows = (rows: unknown[]): DailyClose[] =>
+  rows.flatMap((row) => foldMap(maybe(closeOf(row)), (candle) => [candle]) ?? []);
+
+// A series that stops before yesterday is a pair that stopped trading: no price, not a stale one.
+const untilYesterday = (closes: DailyClose[], today: number): DailyClose[] | undefined =>
+  closes.length > 0 && maxOf(closes.map((close) => close.day)) < today - DAY_MS
+    ? undefined
+    : closes;
 
 const defaultSleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -113,10 +124,11 @@ export const createBinanceMarketClient = (
   };
 
   return {
-    tickerPrice: async (symbol) => {
-      const body = await read(`/api/v3/ticker/price?symbol=${symbol}`, COSTS.ticker);
+    currentPrice: async (symbol) => {
+      const body = await read(`/api/v3/klines?symbol=${symbol}&interval=1d&limit=1`, COSTS.klines);
+      const candle = Array.isArray(body) ? closeOf(body[0]) : undefined;
 
-      return isRecord(body) ? positiveNumberOf(body.price) : undefined;
+      return candle?.day === toUtcMidnight(now()) ? candle.close : undefined;
     },
     dailyCloses: async (symbol, start, end) => {
       const from = Math.max(start, end - (MAX_KLINES_PER_CALL - 1) * DAY_MS);
@@ -127,7 +139,7 @@ export const createBinanceMarketClient = (
       );
 
       return Array.isArray(body)
-        ? body.flatMap((row) => foldMap(maybe(closeOf(row)), (candle) => [candle]) ?? [])
+        ? untilYesterday(closesOfRows(body), toUtcMidnight(end))
         : undefined;
     },
   };

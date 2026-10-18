@@ -9,7 +9,7 @@ const day = (index: number) => DAY_ONE + index * DAY_MS;
 const clientOf = (series: Record<string, DailyClose[] | undefined>) => {
   const asked: { symbol: string; start: number; end: number }[] = [];
   const client: BinanceMarketClient = {
-    tickerPrice: async () => undefined,
+    currentPrice: async () => undefined,
     dailyCloses: async (symbol, start, end) => {
       asked.push({ symbol, start, end });
 

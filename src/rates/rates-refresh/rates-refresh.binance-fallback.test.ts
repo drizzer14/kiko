@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { CryptoCurrency, Currency } from '@kiko/currency/currency';
 
@@ -12,12 +13,15 @@ type StoredRate = { base: string; quote: string; rate: string; source: string; f
 type Reply = {
   status?: number;
   price?: string;
+  /** How many days before today the last candle opened; a pair that stopped trading is older. */
+  openedDaysAgo?: number;
   headers?: Record<string, string>;
   throws?: boolean;
   body?: unknown;
 };
 
 const NOW = 1000;
+const TODAY = Math.floor(NOW / DAY_MS) * DAY_MS;
 
 const fiat: RateEntry[] = [
   { base: 'USD', quote: 'UAH', rate: 40, source: 'monobank' },
@@ -38,7 +42,7 @@ const binanceFetchOf = (replies: Record<string, Reply>) => {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const fetchImpl = (async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
-    const symbol = url.split('symbol=')[1] ?? '';
+    const symbol = url.split('symbol=')[1]?.split('&')[0] ?? '';
     const reply = replies[symbol] ?? { status: 400 };
 
     if (reply.throws) {
@@ -52,7 +56,9 @@ const binanceFetchOf = (replies: Record<string, Reply>) => {
       headers: new Headers(reply.headers),
       json: async () =>
         reply.body ??
-        (reply.price === undefined ? { code: -1121 } : { symbol, price: reply.price }),
+        (reply.price === undefined
+          ? { code: -1121 }
+          : [[TODAY - (reply.openedDaysAgo ?? 0) * DAY_MS, '0', '0', '0', reply.price]]),
     };
   }) as unknown as typeof fetch;
 
@@ -118,7 +124,7 @@ describe('refreshRates — the Binance public price fallback', () => {
     expect(rowOf('BTC')?.source).toBe('coingecko');
     expect(rowOf('USDT')?.source).toBe('coingecko');
     expect(binance.calls.map((call) => call.url)).toEqual([
-      'https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT',
+      'https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1d&limit=1',
     ]);
   });
 
@@ -137,7 +143,7 @@ describe('refreshRates — the Binance public price fallback', () => {
       fetchedAt: NOW,
     });
     expect(binance.calls.map((call) => call.url)).toEqual([
-      'https://api.binance.com/api/v3/ticker/price?symbol=EURUSDT',
+      'https://api.binance.com/api/v3/klines?symbol=EURUSDT&interval=1d&limit=1',
     ]);
   });
 
@@ -226,7 +232,9 @@ describe('refreshRates — the Binance public price fallback', () => {
     expect(binance.calls).toHaveLength(3);
 
     for (const call of binance.calls) {
-      expect(call.url).toMatch(/^https:\/\/api\.binance\.com\/api\/v3\/ticker\/price\?symbol=\w+$/);
+      expect(call.url).toMatch(
+        /^https:\/\/api\.binance\.com\/api\/v3\/klines\?symbol=\w+&interval=1d&limit=1$/,
+      );
       expect(JSON.stringify(call.init ?? {}).toLowerCase()).not.toContain('apikey');
     }
   });
@@ -302,7 +310,7 @@ describe('refreshRates — the Binance public price fallback', () => {
     });
 
     expect(binance.calls.map((call) => call.url)).toEqual([
-      'https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT',
+      'https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1d&limit=1',
     ]);
   });
 
@@ -344,6 +352,53 @@ describe('refreshRates — the Binance public price fallback', () => {
 
     expect(afterCooldownFetch.calls).toHaveLength(1);
     expect(afterCooldown.rowOf('ETH')?.source).toBe('binance');
+  });
+
+  it.each([
+    ['30 days old (a halted pair)', 30],
+    ['of yesterday', 1],
+  ])(
+    'writes no row for a coin whose last candle is %s, never its last trade stamped as now',
+    async (_label, openedDaysAgo) => {
+      const { outcome, rowOf } = await run({
+        held: ['BTC', 'ETH', 'USDT'],
+        coinGecko: { BTC: 65_000, USDT: 1 },
+        binance: { ETHUSDT: { price: '3000', openedDaysAgo } },
+      });
+
+      expect(outcome).toEqual({ state: 'refreshed', failedLegs: [] });
+      expect(rowOf('ETH')).toBeUndefined();
+      expect(rowOf('BTC')).toBeDefined();
+    },
+  );
+
+  it('prices a coin from the close of its candle of today', async () => {
+    const { rowOf } = await run({
+      held: ['BTC', 'ETH', 'USDT'],
+      coinGecko: { BTC: 65_000, USDT: 1 },
+      binance: { ETHUSDT: { price: '3100.5', openedDaysAgo: 0 } },
+    });
+
+    expect(rowOf('ETH')).toEqual({
+      base: 'ETH',
+      quote: 'UAH',
+      rate: String(3_100.5 * 40),
+      source: 'binance',
+      fetchedAt: NOW,
+    });
+  });
+
+  it('writes no stablecoin row when the EURUSDT that prices USDT has halted', async () => {
+    const { rows } = await run({
+      held: ['USDC', 'USDT'],
+      coinGecko: {},
+      binance: {
+        EURUSDT: { price: '1.08', openedDaysAgo: 30 },
+        USDCUSDT: { price: '0.9996' },
+      },
+    });
+
+    expect(rows.map((row) => row.base)).toEqual(['USD', 'EUR']);
   });
 
   it.each([

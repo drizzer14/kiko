@@ -26,7 +26,10 @@ const usdtPriceOf = async (
     return undefined;
   }
 
-  return foldMap(maybe(await client.tickerPrice(EURO_SYMBOL)), (usdtPerEuro) => euro / usdtPerEuro);
+  return foldMap(
+    maybe(await client.currentPrice(EURO_SYMBOL)),
+    (usdtPerEuro) => euro / usdtPerEuro,
+  );
 };
 
 const uahPriceOf = async (
@@ -43,13 +46,14 @@ const uahPriceOf = async (
     return undefined;
   }
 
-  return foldMap(maybe(await client.tickerPrice(symbol)), (quote) => quote * usdt);
+  return foldMap(maybe(await client.currentPrice(symbol)), (quote) => quote * usdt);
 };
 
 /**
- * The UAH price of each coin CoinGecko did not price, from Binance's public ticker: the coin's
- * USDT price times USDT's price, a stablecoin's included, never 1:1. Only a coin the market priced
- * is in the answer, and nothing is asked when USDT has no price from either source.
+ * The UAH price of each coin CoinGecko did not price, from the close of its Binance candle of
+ * today: the coin's USDT price times USDT's price, a stablecoin's included, never 1:1. Only a coin
+ * the market priced today is in the answer, and nothing is asked when USDT has no price from
+ * either source.
  */
 export const fetchFallbackPrices = async (input: {
   coins: readonly CryptoCurrency[];

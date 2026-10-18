@@ -25,7 +25,7 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
     fetchCryptoPrices: async () => btc,
     // Binance's public market data prices nothing by default, so a test that leaves a coin to the
     // fallback never reaches the real network.
-    binanceMarket: { tickerPrice: async () => undefined, dailyCloses: async () => undefined },
+    binanceMarket: { currentPrice: async () => undefined, dailyCloses: async () => undefined },
     // The data-presence gate (kiko-architecture): every existing test below
     // exercises a run that DOES need both legs, so the default reports both
     // as needed; the "data-presence gate" describe block below overrides this

@@ -92,7 +92,6 @@ export const COSTS = {
   account: { ip: 20 },
   transfer: { ip: 1 },
   earn: { ip: 150 },
-  ticker: { api: 2 },
   klines: { api: 2 },
 } as const satisfies Record<string, CallCost>;
 

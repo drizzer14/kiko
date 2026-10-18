@@ -4,7 +4,7 @@ import type { BinanceMarketClient } from './binance-market.client';
 const clientOf = (tickers: Record<string, number | undefined>) => {
   const asked: string[] = [];
   const client: BinanceMarketClient = {
-    tickerPrice: async (symbol) => {
+    currentPrice: async (symbol) => {
       asked.push(symbol);
 
       return tickers[symbol];

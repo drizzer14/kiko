@@ -383,6 +383,58 @@ describe('runBackfill — the Binance public history fallback', () => {
     });
   });
 
+  describe('a pair that stopped trading', () => {
+    it('gives a coin no row when its last candle is 30 days before the run', async () => {
+      const { rowsOf, status } = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed(['ETH']), entries: usdtEntries },
+        binance: { ETHUSDT: { closes: [3_000] } },
+        overrides: { today: day(30) },
+      });
+
+      expect(rowsOf('ETH')).toEqual([]);
+      expect(status.state).toBe('failed');
+    });
+
+    it('gives a coin no row when its last candle is older than yesterday', async () => {
+      const { rowsOf } = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed(['ETH']), entries: usdtEntries },
+        binance: { ETHUSDT: { closes: [3_000] } },
+      });
+
+      expect(rowsOf('ETH')).toEqual([]);
+    });
+
+    it('prices a coin whose last candle is yesterday', async () => {
+      const { rowsOf } = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed(['ETH']), entries: usdtEntries },
+        binance: { ETHUSDT: { closes: [3_000, 3_100] } },
+      });
+
+      expect(rowsOf('ETH').map((row) => row.day)).toEqual([day(0), day(1), day(2)]);
+      expect(rowsOf('ETH').every((row) => row.source === 'binance')).toBe(true);
+    });
+
+    it.each<[string, CryptoCurrency[]]>([
+      ['USDT itself', ['USDT']],
+      ['a coin that needs the EURUSDT route', ['ETH']],
+    ])('prices %s through no EURUSDT whose last candle is old', async (_label, held) => {
+      const { rows } = await run({
+        fiat: ['USD'],
+        held,
+        crypto: failed(held),
+        binance: { ETHUSDT: { closes: [3_000, 3_100, 3_200] }, EURUSDT: { closes: [1.08] } },
+      });
+
+      expect(rows.filter((row) => held.includes(row.base as CryptoCurrency))).toEqual([]);
+    });
+  });
+
   describe.each([451, 403, 418, 429])('HTTP %i from Binance', (status) => {
     it('leaves the coin unpriced, reports failed, and stores the rows CoinGecko gave', async () => {
       const result = await run({

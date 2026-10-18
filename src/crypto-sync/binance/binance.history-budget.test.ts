@@ -242,7 +242,6 @@ describe('createBinanceRunBudget — weight readings', () => {
       account: { ip: 20 },
       transfer: { ip: 1 },
       earn: { ip: 150 },
-      ticker: { api: 2 },
       klines: { api: 2 },
     });
   });
@@ -257,8 +256,8 @@ describe('createBinanceRunBudget — weight readings', () => {
     const overBudget = createBinanceRunBudget();
     overBudget.record('market', { ...NO_READING, usedApiWeight1m: 2_999 });
 
-    expect(atBudget.canAfford('market', COSTS.ticker)).toBe(true);
-    expect(overBudget.canAfford('market', COSTS.ticker)).toBe(false);
+    expect(atBudget.canAfford('market', COSTS.klines)).toBe(true);
+    expect(overBudget.canAfford('market', COSTS.klines)).toBe(false);
   });
 
   it('counts the calls to keep in the weight of an /api/* call too', () => {
@@ -273,7 +272,7 @@ describe('createBinanceRunBudget — weight readings', () => {
     const budget = createBinanceRunBudget();
     budget.record('market', { usedUidWeight1m: 179_999, usedIpWeight1m: 6_000 });
 
-    expect(budget.canAfford('market', COSTS.ticker)).toBe(true);
+    expect(budget.canAfford('market', COSTS.klines)).toBe(true);
   });
 
   it('keeps the SAPI IP calls out of the /api/* reading', () => {
@@ -289,17 +288,17 @@ describe('createBinanceRunBudget — weight readings', () => {
     budget.record('market', { ...NO_READING, usedApiWeight1m: 2_999 });
     budget.record('market', NO_READING);
 
-    expect(budget.canAfford('market', COSTS.ticker)).toBe(false);
+    expect(budget.canAfford('market', COSTS.klines)).toBe(false);
   });
 
   it('caps the market lane at 150 calls', () => {
     const budget = createBinanceRunBudget();
 
     spendCalls(budget, 'market', 149);
-    expect(budget.canAfford('market', COSTS.ticker)).toBe(true);
+    expect(budget.canAfford('market', COSTS.klines)).toBe(true);
 
     spendCalls(budget, 'market', 1);
-    expect(budget.canAfford('market', COSTS.ticker)).toBe(false);
+    expect(budget.canAfford('market', COSTS.klines)).toBe(false);
   });
 
   it('affords a UID call that lands exactly on the ceiling, not one weight over', () => {

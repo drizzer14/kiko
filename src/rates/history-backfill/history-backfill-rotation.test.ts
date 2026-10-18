@@ -19,7 +19,7 @@ import {
 jest.mock('@kiko/rates/binance-market', () => ({
   ...jest.requireActual('@kiko/rates/binance-market'),
   createBinanceMarketClient: () => ({
-    tickerPrice: async () => undefined,
+    currentPrice: async () => undefined,
     dailyCloses: async () => undefined,
   }),
 }));
