@@ -14,6 +14,7 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+import { match, P } from 'ts-pattern';
 import { DatabaseSync } from 'node:sqlite';
 import { database, type syncState, write } from '@kiko/db';
 import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
@@ -248,15 +249,26 @@ const patchCoinList = (
   coins: 'untrackedCoins' | 'oversizedCoins',
   list: 'balance' | 'history',
   tickers: string[],
-): ExchangeStatePatch => {
-  if (coins === 'untrackedCoins') {
-    return { kind: 'coinList', coins, list, tickers };
-  }
-
-  return list === 'history'
-    ? { kind: 'coinList', coins, list, tickers }
-    : { kind: 'oversizedBalance', wallets: { spot: tickers }, complete: true };
-};
+): ExchangeStatePatch =>
+  match([coins, list] as const)
+    .with(['untrackedCoins', P._], ([untracked, untrackedList]) => ({
+      kind: 'coinList' as const,
+      coins: untracked,
+      list: untrackedList,
+      tickers,
+    }))
+    .with(['oversizedCoins', 'history'], ([oversized, history]) => ({
+      kind: 'coinList' as const,
+      coins: oversized,
+      list: history,
+      tickers,
+    }))
+    .with(['oversizedCoins', 'balance'], () => ({
+      kind: 'oversizedBalance' as const,
+      wallets: { spot: tickers },
+      complete: true,
+    }))
+    .exhaustive();
 
 const patchInOrder = async (...patches: ExchangeStatePatch[]): Promise<void> => {
   for (const patch of patches) {

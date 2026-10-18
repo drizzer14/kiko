@@ -65,7 +65,11 @@ const listsOf = (accountId: string) => {
   return { untracked: state.untrackedCoins.balance, oversized: state.oversizedCoins.balance };
 };
 
+// A refused coin amount logs its skip through the one console sink.
+let warn: jest.SpyInstance;
+
 beforeEach(() => {
+  warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
   mockDatabase.exec('PRAGMA foreign_keys = ON;');
@@ -83,6 +87,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  warn.mockRestore();
   mockDatabase.close();
 });
 
@@ -91,6 +96,9 @@ describe('runCryptoSync — the Binance arm over a real database', () => {
     await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-new' });
 
     expect(listsOf('acc-new')).toEqual({ untracked: ['PEPE'], oversized: ['ETH'] });
+    expect(warn).toHaveBeenCalledWith('[binance sync] a coin amount was refused', {
+      wallet: 'spot',
+    });
   });
 
   it('a re-sync of a connected account replaces both lists', async () => {

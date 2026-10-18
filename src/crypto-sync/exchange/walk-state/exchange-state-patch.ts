@@ -107,6 +107,8 @@ const sortedUnique = (tickers: readonly string[]): string[] => [...new Set(ticke
  * never disagree: the arrays of the wallets that read are replaced, those of the others stay,
  * and `balance` is rebuilt from every array plus the legacy tickers (those in `balance` that no
  * stored wallet array names) that a read in which a wallet failed keeps and a complete one drops.
+ * A complete read also drops every stored array it did not write, so an array under a key this
+ * build never names (a hand-edited or newer file) cannot outlive it.
  * A `balanceByWallet` that is unreadable names no ticker, so the whole stored `balance` is legacy.
  */
 const withOversizedBalance = (
@@ -122,7 +124,7 @@ const withOversizedBalance = (
         (ticker) => !attributed.has(ticker),
       );
   const balanceByWallet = {
-    ...named,
+    ...(complete ? {} : named),
     ...Object.fromEntries(
       Object.entries(wallets).map(([wallet, tickers]) => [wallet, sortedUnique(tickers)]),
     ),

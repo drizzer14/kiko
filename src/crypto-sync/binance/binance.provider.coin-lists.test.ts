@@ -253,7 +253,7 @@ describe('binanceProvider — the balance lists after a read', () => {
     ['Funding', { funding: 'fails' as const }, { spot: ['ETH'], funding: ['SOL'] }],
     ['Earn', { locked: 'fails' as const }, { spot: ['ETH'], earn: ['SOL'] }],
   ])(
-    'a balance read with a failed wallet keeps the not-tracked list and that wallet oversized coins (%s)',
+    "a balance read with a failed wallet keeps the not-tracked list and that wallet's oversized coins (%s)",
     async (_, failing, balanceByWallet) => {
       const { exchangeState, lists } = await run({
         spot: [['ABC', '1']],

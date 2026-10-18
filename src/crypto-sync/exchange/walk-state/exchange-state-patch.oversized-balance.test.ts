@@ -47,6 +47,29 @@ describe('the oversized balance patch', () => {
     });
   });
 
+  describe('a stored wallet array under a key this build never writes', () => {
+    const seed = {
+      balance: ['ETH', 'LTC'],
+      balanceByWallet: { spot: ['ETH'], margin: ['LTC'] },
+    };
+
+    it('stays through a partial read, like the array of any wallet that did not read', () => {
+      expect(patched(seed, oversizedBalance({ spot: [] }))).toEqual({
+        balance: ['LTC'],
+        balanceByWallet: { spot: [], margin: ['LTC'] },
+      });
+    });
+
+    it('is dropped by a full read, which replaces every wallet array', () => {
+      const written = patched(seed, oversizedBalance({ spot: [], funding: [], earn: [] }, true));
+
+      expect(written).toEqual({
+        balance: [],
+        balanceByWallet: { spot: [], funding: [], earn: [] },
+      });
+    });
+  });
+
   describe('a ticker stored before any wallet was named (legacy)', () => {
     const oldShape = { balance: ['OLD'], history: ['BTC'] };
     const attributed = { balance: ['ETH', 'OLD'], balanceByWallet: { spot: ['ETH'] } };
@@ -95,7 +118,7 @@ describe('the oversized balance patch', () => {
       });
     });
 
-    it('reads a malformed wallet entry as empty: its tickers are legacy, the others stay named', () => {
+    it('drops a malformed wallet entry: its tickers become legacy, the others stay named', () => {
       const seed = {
         balance: ['ETH', 'SOL'],
         balanceByWallet: { spot: 5, funding: ['SOL'] },

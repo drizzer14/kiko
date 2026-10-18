@@ -392,14 +392,15 @@ type WalletReads = Record<Exclude<BinanceWallet, 'spot'>, WalletRead | null> & {
   spot: WalletRead;
 };
 
-/** The refused coins of each wallet whose read succeeded; a wallet that failed is absent. */
+/**
+ * The refused coins of each wallet whose read succeeded; a wallet that failed is absent. The
+ * patch sorts every wallet array, so it is not sorted here.
+ */
 const refusedByWallet = (reads: WalletReads): Record<string, string[]> =>
   Object.fromEntries(
     Object.entries(reads).flatMap(
       ([wallet, read]) =>
-        foldMap(maybe(read), ({ refused }): [string, string[]][] => [
-          [wallet, sortedTickers([...refused])],
-        ]) ?? [],
+        foldMap(maybe(read), ({ refused }): [string, string[]][] => [[wallet, [...refused]]]) ?? [],
     ),
   );
 
