@@ -297,7 +297,7 @@ describe('useAutoSync', () => {
   // cursor — a non-Monobank-only user's `lastSyncAt` would then always
   // resolve `null` and every cold open would bypass the throttle. The
   // cursor is read from ANY connected bank account (`bankAccountIdFor`),
-  // proven above by the Monobank cases; Guideline 2.3.1(a) restricts the native
+  // proven above by the Monobank cases; Guideline 2.5.19 restricts the native
   // provider set to Monobank alone, so no cross-provider case remains to
   // exercise here.
 });

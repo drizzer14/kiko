@@ -153,7 +153,7 @@ describe('buildDemoSnapshot', () => {
   });
 
   // The App Store reviewer reaches Connect only on a connectable bank's page
-  // (Guideline 2.3.1(a)), so the demo must hold one account per connectable bank.
+  // (Guideline 2.5.19), so the demo must hold one account per connectable bank.
   it('holds at least one bank account per connectable catalog bank, and one Other bank', () => {
     const demoBankIds = new Set(snapshot.accounts.map((account) => account.bankId));
     const connectableIds = bankCatalog
@@ -267,7 +267,7 @@ describe('buildDemoSnapshot', () => {
   });
 
   // The App Store reviewer reaches the rule editor and the rule cards only through the demo
-  // file (Guideline 2.3.1(a)), so the file must carry a rule on a name alone and one on several
+  // file (Guideline 2.5.19), so the file must carry a rule on a name alone and one on several
   // conditions.
   describe('category rules', () => {
     const rulesOf = (demoSnapshot: typeof snapshot) =>

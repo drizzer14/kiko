@@ -15,7 +15,7 @@ import type { StatementFormatId } from '@kiko/statement-import/parser';
  * build/runtime visibility gate — so every row always renders; only the
  * AFFORDANCE differs (a real Connect field for Monobank, an "import only" or
  * "column mapping only" caption for the rest). Never wire a
- * `SHOW_*`/`HIDE_*`/`ENABLE_*` flag around any entry here (Guideline 2.3.1(a)).
+ * `SHOW_*`/`HIDE_*`/`ENABLE_*` flag around any entry here (Guideline 2.5.19).
  */
 export const bankIds = [
   'monobank',
@@ -67,7 +67,7 @@ type SpecificBankCatalogEntry = BankCatalogEntryBase & {
    * (a bank-held precious-metal account, distinct from the standalone
    * `metals` account kind, which never gates on this field). Always-rendered
    * DATA on this fully-rendered static array — never a build/runtime
-   * visibility gate (Guideline 2.3.1(a)): every row always renders regardless of
+   * visibility gate (Guideline 2.5.19): every row always renders regardless of
    * this value, and only the CREATABLE holding-type set differs
    * (`creatableHoldingTypesForAccount`, `src/holdings/holding-type/`).
    * PrivatBank, PUMB, Oschadbank, and Ukrgasbank; Monobank and
