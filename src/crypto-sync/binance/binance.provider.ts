@@ -5,8 +5,9 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { logFailure } from '@kiko/diagnostics';
+import { curatedCoins } from '@kiko/currency/coins';
 import { decimalFromJsonNumber } from '@kiko/currency/decimal';
-import { type Currency, isCurrency } from '@kiko/currency/currency';
+import { type Currency, isCrypto, isCurrency } from '@kiko/currency/currency';
 import either, { bifold, bifoldMap, type Either, isLeft, left, right } from 'fnts/either';
 import { type AmountError, exchangeMinorUnits } from '@kiko/crypto-sync/exchange/amounts';
 
@@ -32,6 +33,7 @@ import {
   EARN_KEY,
   FUNDING_KEY,
   holdingKeyOf,
+  partsOfHoldingKey,
   SPOT_KEY,
   WALLET_HOLDING_NAMES,
 } from './binance.holding-keys';
@@ -275,38 +277,62 @@ const BTC_HOLDING_NAMES: Record<BinanceWallet, string> = {
 const holdingNameOf = (currency: Currency, wallet: BinanceWallet): string =>
   currency === BINANCE_ASSET ? BTC_HOLDING_NAMES[wallet] : coinHoldingName(currency, wallet);
 
-// A good read that lists no BTC is a genuine zero BTC, as it always was, so an existing BTC
-// holding is zeroed; the same rule for every other coin is the absent-coin rows' to settle.
-const withBtcZero = (balances: CoinBalances | null): CoinBalances | null =>
-  foldMap(maybe(balances), (read) => new Map<Currency, number>([[BINANCE_ASSET, 0], ...read])) ??
-  null;
+// The Spot BTC holding is the one the pre-split single holding became; it carries the old
+// default name so the upsert relabels it, and only it.
+const renameOf = (
+  currency: Currency,
+  wallet: BinanceWallet,
+): Pick<ProviderBalance, 'renameFromDefault'> =>
+  currency === BINANCE_ASSET && wallet === 'spot' ? { renameFromDefault: LEGACY_HOLDING_NAME } : {};
+
+/** The least balance that creates a holding: a coin's dust threshold, any non-zero fiat balance. */
+const appearMinorUnitsOf = (currency: Currency): number =>
+  isCrypto(currency)
+    ? bifoldMap(
+        exchangeMinorUnits(currency, curatedCoins[currency].dustBelow, 'balance'),
+        () => 1,
+        identity,
+      )
+    : 1;
+
+/** The coins that already have a holding in `wallet`. */
+const heldCoinsOf = (wallet: BinanceWallet, existingKeys: ReadonlySet<string>): Currency[] =>
+  [...existingKeys].flatMap((key) => {
+    const parts = partsOfHoldingKey(key);
+
+    return parts?.wallet === wallet ? [parts.code] : [];
+  });
 
 /**
- * Append one non-Spot wallet's holdings to the batch, one per coin, applying the skip/zero
- * rules that keep the split correct without cluttering the grid:
- * - read FAILED (`balances === null`): omit — leave every existing holding of the wallet at its
- *   last-good balance (never overwrite it with a fabricated 0).
- * - read succeeded, > 0: write (the upsert creates or updates the holding).
- * - read succeeded, 0, holding ALREADY exists: write 0 — a wallet the user
- *   emptied must be zeroed, not left stale at its previous balance.
- * - read succeeded, 0, no holding yet: omit — a never-used wallet creates no
- *   empty holding the user cannot easily delete.
+ * Append one wallet's holdings to the batch, one per coin:
+ * - read FAILED (`balances === null`): omit every holding of the wallet, leaving each at its
+ *   last good balance rather than overwriting it with a fabricated 0.
+ * - holding ALREADY exists: write it, a zero included, and a coin the good read does not list
+ *   is a zero: a wallet the user emptied is zeroed, never left stale and never archived.
+ * - no holding yet: write it only from the coin's dust threshold up, so a zero or a dust
+ *   balance creates no empty holding the user cannot easily delete.
  */
 const appendWallet = (
   batch: ProviderBalance[],
   wallet: BinanceWallet,
   balances: CoinBalances | null,
-  existingKeys: Set<string>,
+  existingKeys: ReadonlySet<string>,
 ): void => {
-  for (const [currency, balanceMinorUnits] of balances ?? []) {
+  if (balances === null) {
+    return;
+  }
+
+  for (const currency of new Set([...balances.keys(), ...heldCoinsOf(wallet, existingKeys)])) {
+    const balanceMinorUnits = balances.get(currency) ?? 0;
     const metadataKey = holdingKeyOf(currency, wallet);
 
-    if (balanceMinorUnits !== 0 || existingKeys.has(metadataKey)) {
+    if (existingKeys.has(metadataKey) || balanceMinorUnits >= appearMinorUnitsOf(currency)) {
       batch.push({
         currency,
         balanceMinorUnits,
         metadataKey,
         name: holdingNameOf(currency, wallet),
+        ...renameOf(currency, wallet),
       });
     }
   }
@@ -336,9 +362,8 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     const options: FetchAccountOptions = { fetchImpl: deps.fetchImpl, now: deps.now };
 
     // Spot MUST succeed — its failure fails the whole Binance sync. It is the
-    // connection's proof of life and the split's anchor, so it is ALWAYS written
-    // (a genuine zero included), and it reuses the legacy key so the pre-split
-    // aggregated holding is updated in place into the Spot holding. A 429/418
+    // connection's proof of life, and its BTC holding reuses the legacy key so the
+    // pre-split aggregated holding is updated in place into the Spot holding. A 429/418
     // sets the shared cooldown (so a subsequent history-walk request also backs
     // off) and surfaces as the LOCALIZED `binanceRequestFailed` message, never
     // the raw `BinanceRateLimitError` text `useSyncAction` would otherwise show
@@ -358,35 +383,16 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
       throw error;
     }
 
-    const spot = spotBalances(spotAccount);
-    const balances: ProviderBalance[] = [
-      {
-        currency: BINANCE_ASSET,
-        balanceMinorUnits: spot.get(BINANCE_ASSET) ?? 0,
-        metadataKey: SPOT_KEY,
-        name: WALLET_HOLDING_NAMES[SPOT_KEY],
-        // Relabel a legacy aggregated holding still named 'Binance BTC' to
-        // 'Binance Spot' on the first post-split sync; a user rename is preserved.
-        renameFromDefault: LEGACY_HOLDING_NAME,
-      },
-    ];
-
+    const balances: ProviderBalance[] = [];
     const existingKeys = existingBinanceKeys(target.holdings);
 
-    // Every other Spot coin follows the same zero/exists rule as the other wallets: the anchor
-    // above is the one Spot holding written for a genuine zero.
-    appendWallet(
-      balances,
-      'spot',
-      new Map([...spot].filter(([currency]) => currency !== BINANCE_ASSET)),
-      existingKeys,
-    );
+    appendWallet(balances, 'spot', spotBalances(spotAccount), existingKeys);
 
     // Funding: one holding per coin; a failure skips the whole wallet.
     const funding = await walletBalances('funding', async () =>
       fundingBalances(await deps.fetchFundingAsset(apiKey, secret, options)),
     );
-    appendWallet(balances, 'funding', withBtcZero(funding), existingKeys);
+    appendWallet(balances, 'funding', funding, existingKeys);
 
     // Earn: Flexible + Locked COMBINED into ONE holding per coin. A failure in EITHER read
     // skips the WHOLE Earn wallet — importing one side alone would silently
@@ -404,7 +410,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
 
       return balancesOf([...flexible, ...locked], 'accountDetail.binanceNonNumericPositionAmount');
     });
-    appendWallet(balances, 'earn', withBtcZero(earn), existingKeys);
+    appendWallet(balances, 'earn', earn, existingKeys);
 
     return balances;
   },

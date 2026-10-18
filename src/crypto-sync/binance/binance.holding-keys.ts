@@ -1,5 +1,6 @@
+import { match, P } from 'ts-pattern';
 import type { HoldingRow } from '@kiko/db';
-import type { Currency } from '@kiko/currency/currency';
+import { type Currency, isCurrency } from '@kiko/currency/currency';
 
 /**
  * Match keys stored under `metadata.binanceAsset`, one holding per Binance
@@ -35,6 +36,18 @@ export type BinanceWallet = 'spot' | 'funding' | 'earn';
  */
 export const holdingKeyOf = (code: Currency, wallet: BinanceWallet): string =>
   wallet === 'spot' ? code : `${code}:${wallet}`;
+
+type HoldingKeyParts = { code: Currency; wallet: BinanceWallet };
+
+/** The coin and wallet a stored key names; a key `holdingKeyOf` never makes names none. */
+export const partsOfHoldingKey = (key: string): HoldingKeyParts | undefined =>
+  match(key.split(':'))
+    .with([P.when(isCurrency)], ([code]): HoldingKeyParts => ({ code, wallet: 'spot' }))
+    .with(
+      [P.when(isCurrency), P.union('funding', 'earn')],
+      ([code, wallet]): HoldingKeyParts => ({ code, wallet }),
+    )
+    .otherwise(() => undefined);
 
 const WALLET_LABELS: Record<BinanceWallet, string> = {
   spot: 'Spot',

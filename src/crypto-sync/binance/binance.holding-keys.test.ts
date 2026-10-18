@@ -3,6 +3,7 @@ import {
   EARN_KEY,
   FUNDING_KEY,
   holdingKeyOf,
+  partsOfHoldingKey,
   SPOT_KEY,
 } from './binance.holding-keys';
 
@@ -26,6 +27,40 @@ describe('holdingKeyOf', () => {
     const keys = coins.flatMap((coin) => wallets.map((wallet) => holdingKeyOf(coin, wallet)));
 
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe('partsOfHoldingKey', () => {
+  it.each([
+    ['BTC', { code: 'BTC', wallet: 'spot' }],
+    ['BTC:funding', { code: 'BTC', wallet: 'funding' }],
+    ['BTC:earn', { code: 'BTC', wallet: 'earn' }],
+    ['USDT', { code: 'USDT', wallet: 'spot' }],
+    ['USDT:earn', { code: 'USDT', wallet: 'earn' }],
+    ['EUR:funding', { code: 'EUR', wallet: 'funding' }],
+  ])('reads the coin and the wallet of %s', (key, parts) => {
+    expect(partsOfHoldingKey(key)).toEqual(parts);
+  });
+
+  it('reads back every key holdingKeyOf makes', () => {
+    const wallets = ['spot', 'funding', 'earn'] as const;
+
+    for (const code of ['BTC', 'ETH', 'USDT', 'EUR'] as const) {
+      for (const wallet of wallets) {
+        expect(partsOfHoldingKey(holdingKeyOf(code, wallet))).toEqual({ code, wallet });
+      }
+    }
+  });
+
+  it.each([
+    ['a ticker that is no coin of the app', 'PEPE'],
+    ['a wallet suffix on such a ticker', 'PEPE:funding'],
+    ['a Simple Earn receipt token', 'LDBTC'],
+    ['a suffix that names no wallet', 'BTC:flexible'],
+    ['an extra part', 'BTC:funding:x'],
+    ['the empty key', ''],
+  ])('reads nothing from %s', (_, key) => {
+    expect(partsOfHoldingKey(key)).toBeUndefined();
   });
 });
 
