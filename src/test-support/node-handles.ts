@@ -17,7 +17,8 @@ export const mockFindNodeHandle = (node: unknown): number | null => {
 
   // A test reaches a host through a query (a TestInstance wrapper) while the code under test
   // holds the View instance from its ref; the two are different objects that carry the same
-  // testID, so a testID is the identity when there is one.
+  // testID, so a testID is the identity when there is one. Keying by props.testID collides when
+  // two host views share a testID: they then get one handle.
   const testID = (node as { props?: { testID?: string } }).props?.testID;
   const key = testID ?? node;
   const known = handles.get(key);

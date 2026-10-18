@@ -7,14 +7,25 @@ type DisplayRegionsNativeModule = typeof import('.');
 const duoSnapshot: DisplayRegionsSnapshot = {
   horizontalSizeClass: 'regular',
   verticalBarEdge: 'trailing',
+  tabBarEdge: 'trailing',
   foldRegion: { x: 470, y: 0, width: 11, height: 669 },
 };
 
 const flatSnapshot: DisplayRegionsSnapshot = {
   horizontalSizeClass: 'compact',
   verticalBarEdge: 'none',
+  tabBarEdge: 'none',
   foldRegion: null,
 };
+
+const topBarSnapshot: DisplayRegionsSnapshot = {
+  horizontalSizeClass: 'regular',
+  verticalBarEdge: 'none',
+  tabBarEdge: 'top',
+  foldRegion: null,
+};
+
+type RefreshableSpec = jest.Mocked<Spec> & { requestRefresh: jest.Mock };
 
 // The wrapper keeps the last native snapshot in module state, so each test loads its own copy of
 // the wrapper together with the native mock that copy reads: a reset registry re-runs both module
@@ -91,6 +102,50 @@ describe('displayRegionsNative.getSnapshot', () => {
 
   it('models an older system as a compact, bar-less, unfolded window', () => {
     expect(FALLBACK_SNAPSHOT).toEqual(flatSnapshot);
+  });
+
+  it('parses a top tab bar edge (iPad full screen)', () => {
+    nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(topBarSnapshot));
+
+    expect(displayRegionsNative.getSnapshot()).toEqual(topBarSnapshot);
+  });
+
+  it('reads a payload without tabBarEdge as none and keeps its fold (a binary built before the field)', () => {
+    const { tabBarEdge: _omitted, ...withoutTabBarEdge } = duoSnapshot;
+    nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(withoutTabBarEdge));
+
+    expect(displayRegionsNative.getSnapshot()).toEqual({ ...duoSnapshot, tabBarEdge: 'none' });
+  });
+
+  it('falls back on an unknown tab bar edge', () => {
+    nativeModule.getSnapshot.mockReturnValueOnce(
+      JSON.stringify({ ...duoSnapshot, tabBarEdge: 'diagonal' }),
+    );
+
+    expect(displayRegionsNative.getSnapshot()).toEqual(FALLBACK_SNAPSHOT);
+  });
+
+  it('an equal payload still parses to the same object', () => {
+    const { tabBarEdge: _omitted, ...withoutTabBarEdge } = duoSnapshot;
+    const payload = JSON.stringify(withoutTabBarEdge);
+    nativeModule.getSnapshot.mockReturnValue(payload);
+
+    const first = displayRegionsNative.getSnapshot();
+    const unsubscribe = displayRegionsNative.subscribe(jest.fn());
+    unsubscribe();
+
+    expect(displayRegionsNative.getSnapshot()).toBe(first);
+  });
+});
+
+describe('displayRegionsNative.requestRefresh', () => {
+  it('calls the native method once', () => {
+    const refreshable = nativeModule as RefreshableSpec;
+    refreshable.requestRefresh = jest.fn();
+
+    displayRegionsNative.requestRefresh();
+
+    expect(refreshable.requestRefresh).toHaveBeenCalledTimes(1);
   });
 });
 

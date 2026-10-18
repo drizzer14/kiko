@@ -14,12 +14,14 @@ const nativeModule = jest.mocked(
 const flatSnapshot: DisplayRegionsSnapshot = {
   horizontalSizeClass: 'compact',
   verticalBarEdge: 'none',
+  tabBarEdge: 'none',
   foldRegion: null,
 };
 
 const duoSnapshot: DisplayRegionsSnapshot = {
   horizontalSizeClass: 'regular',
   verticalBarEdge: 'leading',
+  tabBarEdge: 'trailing',
   foldRegion: { x: 470, y: 0, width: 11, height: 669 },
 };
 

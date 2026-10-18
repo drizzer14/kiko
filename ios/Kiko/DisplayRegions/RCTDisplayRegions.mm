@@ -60,4 +60,11 @@ RCT_EXPORT_MODULE(DisplayRegions)
   return snapshotJson;
 }
 
+// The first snapshot is read before the tab view mounts; JS asks for one more
+// read once it has. The center hops to the main queue itself.
+- (void)requestRefresh
+{
+  [DisplayRegionsCenter.shared requestRefresh];
+}
+
 @end

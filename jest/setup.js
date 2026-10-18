@@ -233,8 +233,14 @@ jest.mock('@kiko/native-specs/NativeDisplayRegions', () => ({
   __esModule: true,
   default: {
     getSnapshot: jest.fn(() =>
-      JSON.stringify({ horizontalSizeClass: 'compact', verticalBarEdge: 'none', foldRegion: null }),
+      JSON.stringify({
+        horizontalSizeClass: 'compact',
+        verticalBarEdge: 'none',
+        tabBarEdge: 'none',
+        foldRegion: null,
+      }),
     ),
+    requestRefresh: jest.fn(),
     onChange: jest.fn(() => ({ remove: jest.fn() })),
   },
 }));

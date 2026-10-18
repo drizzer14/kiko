@@ -31,8 +31,9 @@
 # seed, nothing here forces one locale over the other.
 #
 # TAB BAR IDENTIFIERS: `tab-home` (Home) and `tab-accounts` (Accounts) are the explicit
-# `tabBarButtonTestID` values in `src/navigation/root-navigator/root.navigator.tsx`, the same on
-# iPhone and iPad (the iPad floating top bar exposes no SF Symbol ids).
+# `tabBarButtonTestID` values in `src/navigation/root-navigator/root.navigator.tsx`, meant to be
+# the same on iPhone and iPad (the iPad floating top bar exposes no SF Symbol ids; an iPad run,
+# task 10/14, is what proves it).
 #
 # THIS FLOW WAS AUTHORED WITHOUT A LIVE MAESTRO RUN (orchestrator ruling:
 # write + validate YAML syntax only; the run is a morning device check) —

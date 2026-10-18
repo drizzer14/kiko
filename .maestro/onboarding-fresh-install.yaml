@@ -19,7 +19,8 @@
 #
 # TAB BAR IDENTIFIERS: `tab-accounts` and `tab-settings` are the explicit
 # `tabBarButtonTestID` values `src/navigation/root-navigator/root.navigator.tsx` gives the
-# tabs, the same on iPhone and iPad (the iPad floating top bar exposes no SF Symbol ids);
+# tabs, meant to be the same on iPhone and iPad (the iPad floating top bar exposes no SF Symbol
+# ids; an iPad run, task 10/14, is what proves it);
 # `tab-accounts` is the same selector `.maestro/statement-import.yaml` relies on.
 #
 # BACK NAVIGATION: the left-edge swipe stands in for the native back button,

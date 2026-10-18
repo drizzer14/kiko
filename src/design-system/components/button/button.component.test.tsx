@@ -126,10 +126,10 @@ describe('Button', () => {
     expect(compact.getByRole('button').props.hitSlop).toBeUndefined();
   });
 
-  // secondaryTonal is the neutral counterpart to destructiveTonal: a faint neutral tint fill
-  // under an ordinary textPrimary label (the fill is applied through the variant block the mock
-  // strips, so only the label is asserted). The label color is applied inline (not through that
-  // block), so it survives into the flattened label style.
+  // Each row pins one variant's label color. The fill is applied through the variant block the
+  // mock strips, so only the label is asserted; the label color is applied inline (not through
+  // that block), so it survives into the flattened label style. secondaryTonal is the neutral
+  // counterpart to destructiveTonal: a faint neutral tint fill under a textPrimary label.
   it.each([
     [
       'renders the secondaryTonal label in textPrimary on the faint neutral tint',

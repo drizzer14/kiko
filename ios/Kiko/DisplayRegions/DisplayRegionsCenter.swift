@@ -53,7 +53,21 @@ import os
   struct Snapshot {
     var horizontalSizeClass: String
     var verticalBarEdge: String
+    var tabBarEdge: String
     var foldRegion: CGRect?
+  }
+
+  // Where the tab bar was found and its frame in window points; `frame` is nil on every miss.
+  // `tabBarIsHidden` and `tabBarFrame` are the controller's own tab bar, kept for the debug log
+  // only: they say why a floating or missing bar came out as it did.
+  struct TabBarReading {
+    var kind: String
+    var frame: CGRect?
+    var tabBarIsHidden: Bool?
+    var tabBarFrame: CGRect?
+
+    static let missing = TabBarReading(
+      kind: "none", frame: nil, tabBarIsHidden: nil, tabBarFrame: nil)
   }
 
   struct HingeState: Equatable {
@@ -63,8 +77,19 @@ import os
 
   // Where a read came from, for the debug log.
   private enum ReadSource: String {
-    case hinge, geometry, trait, notification, settle
+    case hinge, geometry, trait, notification, settle, request
   }
+
+  // The bound on the tab bar walk. A real tree holds a handful of controllers, so reaching it
+  // means a tree this code does not know, and the walk gives up with no frame.
+  private static let maximumWalkedControllers = 64
+
+  // A floating bar is small on both sides next to the window; a view whose short side reaches
+  // half the window's is content.
+  private static let floatingBarShortSideLimit: CGFloat = 0.5
+
+  // An invisible view still holds a frame, so a view at or under this alpha counts as hidden.
+  private static let minimumVisibleAlpha: CGFloat = 0.01
 
   // How long after a trigger the settle reads run. The reserved region reaches the window as its
   // own update, later than the hinge, the traits and the geometry, and no API reports it.
@@ -73,6 +98,7 @@ import os
   static let fallbackSnapshot = Snapshot(
     horizontalSizeClass: "compact",
     verticalBarEdge: "none",
+    tabBarEdge: "none",
     foldRegion: nil
   )
 
@@ -92,6 +118,7 @@ import os
     let object: [String: Any] = [
       "horizontalSizeClass": snapshot.horizontalSizeClass,
       "verticalBarEdge": snapshot.verticalBarEdge,
+      "tabBarEdge": snapshot.tabBarEdge,
       "foldRegion": fold,
     ]
 
@@ -125,8 +152,138 @@ import os
       horizontalSizeClass: window.traitCollection.horizontalSizeClass == .regular
         ? "regular" : "compact",
       verticalBarEdge: Self.verticalBarEdgeName(of: window),
+      tabBarEdge: Self.tabBarEdgeName(
+        frame: Self.readTabBar(in: window).frame,
+        windowBounds: window.bounds,
+        isRightToLeft: window.traitCollection.layoutDirection == .rightToLeft),
       foldRegion: lastHinge?.hidesFold == true ? nil : Self.foldRegion(of: window)
     )
+  }
+
+  // MARK: - Tab bar edge
+  //
+  // Public UIKit only, no class-name match and no device idiom. Every miss, whatever the view
+  // tree looks like, reads as no frame and so as `none`, which JS treats as "unknown".
+
+  // The window's tab bar: a breadth-first walk of the view controllers from the root, through
+  // `children` only (a presented controller sits over the bar and does not move it), to the first
+  // tab bar controller whose view is in this window and holds a visible bar. The bar is the
+  // controller's `tabBar`, else the floating bar: the smallest visible view among the controller
+  // view's subviews that does not hold the selected tab's content and is small next to the window.
+  private static func readTabBar(in window: UIWindow) -> TabBarReading {
+    guard
+      window.windowScene != nil,
+      window.bounds.width > 0,
+      window.bounds.height > 0,
+      let root = window.rootViewController
+    else {
+      return .missing
+    }
+
+    var queue = [root]
+    var visited = 0
+
+    while visited < queue.count, visited < maximumWalkedControllers {
+      let controller = queue[visited]
+      visited += 1
+
+      if let tabController = controller as? UITabBarController,
+        tabController.isViewLoaded,
+        tabController.view.window === window
+      {
+        let reading = tabBarReading(of: tabController, in: window)
+
+        if reading.frame != nil {
+          return reading
+        }
+      }
+
+      queue.append(contentsOf: controller.children)
+    }
+
+    return .missing
+  }
+
+  private static func tabBarReading(
+    of controller: UITabBarController, in window: UIWindow
+  ) -> TabBarReading {
+    let tabBar = controller.tabBar
+    let tabBarFrame = visibleFrame(of: tabBar, in: window)
+    let ownFrame = tabBar.convert(tabBar.bounds, to: window)
+
+    if let tabBarFrame {
+      return TabBarReading(
+        kind: "tabBar", frame: tabBarFrame, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
+    }
+
+    let selectedView = controller.selectedViewController?.view
+    let windowShortSide = min(window.bounds.width, window.bounds.height)
+    let floating =
+      controller.view.subviews
+      .compactMap { subview -> CGRect? in
+        if let selectedView, selectedView.isDescendant(of: subview) {
+          return nil
+        }
+
+        guard let frame = visibleFrame(of: subview, in: window),
+          min(frame.width, frame.height) < windowShortSide * floatingBarShortSideLimit
+        else {
+          return nil
+        }
+
+        return frame
+      }
+      .min { $0.width * $0.height < $1.width * $1.height }
+
+    return TabBarReading(
+      kind: floating == nil ? "none" : "floating",
+      frame: floating,
+      tabBarIsHidden: tabBar.isHidden,
+      tabBarFrame: ownFrame)
+  }
+
+  // The view's frame in window points when it is effectively visible: it and every superview up to
+  // the window are shown and not transparent, and the frame is not empty and meets the window.
+  private static func visibleFrame(of view: UIView, in window: UIWindow) -> CGRect? {
+    var ancestor: UIView? = view
+
+    while let current = ancestor, current !== window {
+      guard !current.isHidden, current.alpha > minimumVisibleAlpha else {
+        return nil
+      }
+
+      ancestor = current.superview
+    }
+
+    guard ancestor === window else {
+      return nil
+    }
+
+    let frame = view.convert(view.bounds, to: window)
+
+    guard !frame.isEmpty, frame.intersects(window.bounds) else {
+      return nil
+    }
+
+    return frame
+  }
+
+  // A tall bar is a side bar, and which side is read against the reading direction; otherwise the
+  // half of the window the bar's centre lies in decides between top and bottom.
+  static func tabBarEdgeName(frame: CGRect?, windowBounds: CGRect, isRightToLeft: Bool) -> String {
+    guard let frame else {
+      return "none"
+    }
+
+    if frame.height > frame.width {
+      if frame.midX < windowBounds.midX {
+        return isRightToLeft ? "trailing" : "leading"
+      }
+
+      return isRightToLeft ? "leading" : "trailing"
+    }
+
+    return frame.midY < windowBounds.midY ? "top" : "bottom"
   }
 
   // MARK: - iOS 27.1 symbols
@@ -224,6 +381,17 @@ import os
     DispatchQueue.main.async {
       MainActor.assumeIsolated {
         self.startObserving()
+      }
+    }
+  }
+
+  /// The first snapshot is read before the tab view mounts and nothing native fires when it
+  /// appears, so JS asks for one more read. It hops to main like `setChangeEmitter`, and an
+  /// unchanged snapshot emits nothing.
+  @objc public nonisolated func requestRefresh() {
+    DispatchQueue.main.async {
+      MainActor.assumeIsolated {
+        self.trigger(.request)
       }
     }
   }
@@ -403,13 +571,23 @@ import os
 
   // One line per emit, beside one per read and one per hinge update, so a Release build can be
   // checked with `log stream --level debug --predicate 'category == "DisplayRegions"'`. The payload
-  // is public because it holds only layout numbers.
+  // is public because it holds only layout numbers, and so do the tab bar candidate, its window
+  // frame and the controller's own tab bar, which say why an edge came out.
   private func logEmitted(_ json: String) {
-    let bounds = foregroundWindow()?.bounds ?? .zero
-    let scale = foregroundWindow()?.traitCollection.displayScale ?? 0
+    let window = foregroundWindow()
+    let bounds = window?.bounds ?? .zero
+    let scale = window?.traitCollection.displayScale ?? 0
+    let reading = window.map { Self.readTabBar(in: $0) } ?? .missing
+    let frame = Self.describe(reading.frame)
+    let tabBarFrame = Self.describe(reading.tabBarFrame)
+    let tabBarIsHidden = reading.tabBarIsHidden.map { String($0) } ?? "none"
 
     Self.logger.debug(
-      "emit \(json, privacy: .public) windowBounds=\(bounds.width, privacy: .public)x\(bounds.height, privacy: .public)pt scale=\(scale, privacy: .public)"
+      "emit \(json, privacy: .public) windowBounds=\(bounds.width, privacy: .public)x\(bounds.height, privacy: .public)pt scale=\(scale, privacy: .public) candidate=\(reading.kind, privacy: .public) candidateFrame=\(frame, privacy: .public) tabBarHidden=\(tabBarIsHidden, privacy: .public) tabBarFrame=\(tabBarFrame, privacy: .public)"
     )
+  }
+
+  private static func describe(_ frame: CGRect?) -> String {
+    return frame.map { NSStringFromCGRect($0) } ?? "none"
   }
 }
