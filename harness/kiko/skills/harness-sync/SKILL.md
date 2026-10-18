@@ -247,6 +247,8 @@ Every count and exit code is the orchestrator's own measured result.
   NOT carry the GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file check (deleted).
 - kill-guard `drizzle/` shell-write deny (`b566307f`): the mechanism is generic, the tree list is
   kiko's, so port it as a configurable list (`WRITE_GUARDED_TREES`), not a hard-coded `drizzle`.
+  The YAML rule (`YAML_FILE`, any `*.yml`/`*.yaml` in a worktree outside `node_modules/`) is
+  also generic: port it as a configurable extension list.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

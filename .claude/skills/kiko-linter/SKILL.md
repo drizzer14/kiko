@@ -275,8 +275,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, `e2e/`, or `drizzle/`
-  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `drizzle/` is
+  `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, or `githooks/`, or into any
+  `*.yml`/`*.yaml` file (user ruling 2, 2026-10-18)
+  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; read it there for the current list.
+  `scripts/` and `githooks/` match like `src/`: resolved inside any worktree of this repository, or
+  unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
+  `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
+  worktree except under `node_modules/`, and counts when unresolved (fail closed). Resolved and
+  NOT covered: `harness/kiko/scripts/*`, non-YAML
+  `harness/kiko/hooks/*`, and a scripts folder under `ios/` or `docs/`. A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is
+  now denied: build the scratch from a git merge or commit, or use `git archive <sha> scripts |
+  tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
+  `sed`, `tee`, and interpreters, not the archive extractor; not run against the guard, so
+  re-verify). Formatter
+  `--write` and reads stay allowed. `drizzle/` is
   checked by the pre-write guard and guard-replay for `drizzle/migrations/*.test.ts` (`.ts` is in
   scope); a `.sql` or `.json` there has no pre-write rule, and shipped-migrations covers a shipped
   migration at Stop; `e2e/` joined
@@ -2633,7 +2645,8 @@ On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
-forms into `src/`, `__tests__/`, `rules/`, `e2e/`, and `drizzle/`. It allows the `--write`
+forms into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, and YAML
+files (`WRITE_GUARDED_TREES`, `YAML_FILE`). It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
 `find -exec`, a path held in a variable the command does not assign (see "SHELL-WRITE deny,
