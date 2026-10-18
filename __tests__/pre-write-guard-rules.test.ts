@@ -228,7 +228,13 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     const CLEARANCE_MODULE = "'@kiko/design-system/components/screen/bottom-clearance'";
     const TOP_CLEARANCE_MODULE = "'@kiko/design-system/components/screen/top-clearance'";
 
+    type Finding = { check_id: string; extra: { message: string; metadata: { fix: string } } };
+
     function findingsFor(content: string): string[] {
+      return scanFor(content).map(({ check_id }) => check_id.split('.').pop() ?? '');
+    }
+
+    function scanFor(content: string): Finding[] {
       const directory = mkdtempSync(join(tmpdir(), 'kiko-clearance-snippet-'));
       try {
         const target = join(directory, 'snippet.ts');
@@ -246,9 +252,8 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
           ],
           { encoding: 'utf8' },
         );
-        const results: { check_id: string }[] = JSON.parse(scan.stdout).results;
 
-        return results.map(({ check_id }) => check_id.split('.').pop() ?? '');
+        return JSON.parse(scan.stdout).results;
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }
@@ -265,6 +270,21 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
         findingsFor(`import { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\n`),
       ).toContain(RULE_ID);
     });
+
+    it.each(['message', 'fix'] as const)(
+      'the %s sends only the bottom function to the hook and never imports the top one',
+      (field) => {
+        const finding = scanFor(
+          `import { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\n`,
+        ).find(({ check_id }) => check_id.endsWith(RULE_ID));
+        const text = field === 'message' ? finding?.extra.message : finding?.extra.metadata.fix;
+
+        expect(text).toMatch(/resolveBottomClearance[^.]*useBottomClearance\(\)/);
+        expect(text).not.toMatch(/resolveTopClearance[^.]*useBottomClearance/);
+        expect(text).toMatch(/resolveTopClearance[^.]*is never imported/);
+        expect(text).toMatch(/plain branch/);
+      },
+    );
 
     it.each([
       [

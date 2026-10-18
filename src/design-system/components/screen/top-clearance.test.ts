@@ -13,11 +13,7 @@ describe('resolveTopClearance', () => {
     expect(insetTop + resolveTopClearance('top')).toBe(54);
   });
 
-  it('is zero under a bottom bar (375x563)', () => {
-    expect(resolveTopClearance('bottom')).toBe(0);
-  });
-
-  it("is zero under the Duo inner portrait's bottom bar", () => {
+  it('is zero under a bottom bar', () => {
     expect(resolveTopClearance('bottom')).toBe(0);
   });
 

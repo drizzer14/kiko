@@ -1158,7 +1158,8 @@ rules:
   # A bleedBottom/bleedTop child that calls one directly puts a tab-bar clearance
   # under the last row of a pane that is not at the bottom of the window (the top
   # pane of rows mode), or above the first row of a pane that is not at the top.
-  # Only the Screen folder may import them; every other consumer calls the hook.
+  # Only the Screen folder may import them; a bottom consumer calls the hook, and the
+  # top clearance has no import outside Screen's plain branch.
   # Two arms: a value import or re-export that names either function, and a value
   # import, re-export, require or dynamic import of a module file named
   # `bottom-clearance` or `top-clearance`. `import type` and prose never match.
@@ -1168,11 +1169,13 @@ rules:
     message: >
       `resolveBottomClearance` and `resolveTopClearance` ignore which pane a
       screen is in, so a list that applies one sits next to a tab bar that is
-      not over its pane. Call `useBottomClearance()` from
-      `@kiko/design-system/components/screen` instead; only the Screen folder
-      imports the functions.
+      not over its pane. For `resolveBottomClearance`, call
+      `useBottomClearance()` from `@kiko/design-system/components/screen`
+      instead. `resolveTopClearance` is never imported: the top clearance
+      belongs to Screen's plain branch, so render the content in `Screen`.
+      Only the Screen folder imports the functions.
     metadata:
-      fix: "Use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; never import `resolveBottomClearance`, `resolveTopClearance`, `bottom-clearance` or `top-clearance`."
+      fix: "For `resolveBottomClearance` or `bottom-clearance`, use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; `resolveTopClearance` or `top-clearance` is never imported: render the content in `Screen`, whose plain branch owns the top clearance."
       skill: "kiko-design-system › Component set"
     paths:
       exclude:

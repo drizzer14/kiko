@@ -1,6 +1,6 @@
 import type { Spec } from '@kiko/native-specs/NativeDisplayRegions';
 
-import { type DisplayRegionsSnapshot, FALLBACK_SNAPSHOT } from '.';
+import { type DisplayRegionsSnapshot, FALLBACK_SNAPSHOT, type TabBarEdge } from '.';
 
 type DisplayRegionsNativeModule = typeof import('.');
 
@@ -107,6 +107,20 @@ describe('displayRegionsNative.getSnapshot', () => {
 
     expect(displayRegionsNative.getSnapshot()).toEqual(topBarSnapshot);
   });
+
+  it.each<TabBarEdge>(['top', 'bottom', 'leading', 'trailing', 'none'])(
+    'parses the %s tab bar edge',
+    (tabBarEdge) => {
+      const payload: DisplayRegionsSnapshot = {
+        ...flatSnapshot,
+        horizontalSizeClass: 'regular',
+        tabBarEdge,
+      };
+      nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(payload));
+
+      expect(displayRegionsNative.getSnapshot()).toEqual(payload);
+    },
+  );
 
   it('reads a payload without tabBarEdge as none and keeps its fold (a binary built before the field)', () => {
     const { tabBarEdge: _omitted, ...withoutTabBarEdge } = duoSnapshot;

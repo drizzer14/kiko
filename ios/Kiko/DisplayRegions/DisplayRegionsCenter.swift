@@ -59,12 +59,19 @@ import os
 
   // Where the tab bar was found and its frame in window points; `frame` is nil on every miss.
   // `tabBarIsHidden` and `tabBarFrame` are the controller's own tab bar, kept for the debug log
-  // only: they say why a floating or missing bar came out as it did.
+  // only: they say why a floating or missing bar came out as it did. `rejectedFrame` is the frame
+  // `isInsideWindow` dropped when no frame was accepted; it too is for the log only, so `frame`
+  // stays nil and the snapshot reads `none` as before.
   struct TabBarReading {
     var kind: String
     var frame: CGRect?
     var tabBarIsHidden: Bool?
     var tabBarFrame: CGRect?
+    var rejectedFrame: CGRect? = nil
+
+    var loggedFrame: CGRect? {
+      frame ?? rejectedFrame
+    }
 
     static let missing = TabBarReading(
       kind: "none", frame: nil, tabBarIsHidden: nil, tabBarFrame: nil)
@@ -211,6 +218,7 @@ import os
 
     var queue = [root]
     var visited = 0
+    var rejectedReading: TabBarReading?
 
     while visited < queue.count, visited < maximumWalkedControllers {
       let controller = queue[visited]
@@ -225,40 +233,66 @@ import os
         if reading.frame != nil {
           return reading
         }
+
+        if rejectedReading == nil, reading.rejectedFrame != nil {
+          rejectedReading = reading
+        }
       }
 
       queue.append(contentsOf: controller.children)
     }
 
-    return .missing
+    return rejectedReading ?? .missing
   }
 
   private static func tabBarReading(
     of controller: UITabBarController, in window: UIWindow
   ) -> TabBarReading {
     let tabBar = controller.tabBar
-    let tabBarFrame = visibleFrame(of: tabBar, in: window).flatMap {
-      isInsideWindow(frame: $0, windowBounds: window.bounds) ? $0 : nil
-    }
+    let tabBarCandidate = splitByWindow(
+      visibleFrame(of: tabBar, in: window), windowBounds: window.bounds)
     let ownFrame = tabBar.convert(tabBar.bounds, to: window)
 
-    if let tabBarFrame {
+    if let tabBarFrame = tabBarCandidate.accepted {
       return TabBarReading(
         kind: "tabBar", frame: tabBarFrame, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
     }
 
-    let floating = floatingBarFrame(
-      below: controller.view, selectedView: controller.selectedViewController?.viewIfLoaded,
-      in: window
-    ).flatMap {
-      isInsideWindow(frame: $0, windowBounds: window.bounds) ? $0 : nil
+    let floatingCandidate = splitByWindow(
+      floatingBarFrame(
+        below: controller.view, selectedView: controller.selectedViewController?.viewIfLoaded,
+        in: window),
+      windowBounds: window.bounds)
+
+    if let floating = floatingCandidate.accepted {
+      return TabBarReading(
+        kind: "floating", frame: floating, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
     }
 
+    let rejectedKinds = [
+      tabBarCandidate.rejected == nil ? nil : "tabBar",
+      floatingCandidate.rejected == nil ? nil : "floating",
+    ].compactMap { $0 }
+
     return TabBarReading(
-      kind: floating == nil ? "none" : "floating",
-      frame: floating,
+      kind: rejectedKinds.isEmpty ? "none" : "rejected(\(rejectedKinds.joined(separator: ",")))",
+      frame: nil,
       tabBarIsHidden: tabBar.isHidden,
-      tabBarFrame: ownFrame)
+      tabBarFrame: ownFrame,
+      rejectedFrame: tabBarCandidate.rejected ?? floatingCandidate.rejected)
+  }
+
+  // The one place `isInsideWindow` decides: a frame it keeps is the reading, a frame it drops is
+  // kept apart so the log can say a candidate was seen and refused.
+  private static func splitByWindow(_ candidate: CGRect?, windowBounds: CGRect) -> (
+    accepted: CGRect?, rejected: CGRect?
+  ) {
+    guard let candidate else {
+      return (nil, nil)
+    }
+
+    return isInsideWindow(frame: candidate, windowBounds: windowBounds)
+      ? (candidate, nil) : (nil, candidate)
   }
 
   // A breadth-first descent below the controller's view; the first view in that order that is
@@ -620,7 +654,7 @@ import os
     let read = readSnapshotWithTabBar()
     let json = Self.encode(read.snapshot)
     let changed = json != lastObservedJson
-    let candidateFrame = Self.describe(read.tabBar.frame)
+    let candidateFrame = Self.describe(read.tabBar.loggedFrame)
 
     Self.logger.debug(
       "read source=\(source.rawValue, privacy: .public) changed=\(changed, privacy: .public) tabBarEdge=\(read.snapshot.tabBarEdge, privacy: .public) candidate=\(read.tabBar.kind, privacy: .public) candidateFrame=\(candidateFrame, privacy: .public)"
@@ -652,7 +686,7 @@ import os
     let bounds = read.windowBounds
     let scale = read.displayScale
     let reading = read.tabBar
-    let frame = Self.describe(reading.frame)
+    let frame = Self.describe(reading.loggedFrame)
     let tabBarFrame = Self.describe(reading.tabBarFrame)
     let tabBarIsHidden = reading.tabBarIsHidden.map { String($0) } ?? "none"
 

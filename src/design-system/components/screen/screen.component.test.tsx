@@ -568,7 +568,7 @@ describe('Screen', () => {
       mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
     });
 
-    it('pads the plain content 44 pt more under a top bar on a regular full-screen window (bar bottom 76)', async () => {
+    it('pads the plain content by the 44 pt pill under a top bar', async () => {
       const view = await renderScreen();
 
       expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
@@ -580,7 +580,7 @@ describe('Screen', () => {
       expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
     });
 
-    it('adds nothing on the compact 375x563 window', async () => {
+    it('adds nothing under a 72 pt bottom bar', async () => {
       mockUseTabBarEdge.mockReturnValue('bottom');
       mockUseBottomTabBarHeight.mockReturnValue(72);
 
@@ -589,7 +589,7 @@ describe('Screen', () => {
       expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
     });
 
-    it("adds nothing under the Duo inner portrait's bottom bar", async () => {
+    it('adds nothing under an 83 pt bottom bar', async () => {
       mockUseTabBarEdge.mockReturnValue('bottom');
       mockUseBottomTabBarHeight.mockReturnValue(83);
 
