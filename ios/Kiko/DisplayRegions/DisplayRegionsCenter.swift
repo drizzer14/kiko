@@ -84,6 +84,11 @@ import os
   // means a tree this code does not know, and the walk gives up with no frame.
   private static let maximumWalkedControllers = 64
 
+  // The same kind of bound on the floating bar descent: views visited, and levels below the
+  // controller's view (which is level 0).
+  private static let maximumVisitedViews = 128
+  private static let maximumDescentDepth = 6
+
   // A floating bar is small on both sides next to the window; a view whose short side reaches
   // half the window's is content.
   private static let floatingBarShortSideLimit: CGFloat = 0.5
@@ -177,8 +182,9 @@ import os
   // The window's tab bar: a breadth-first walk of the view controllers from the root, through
   // `children` only (a presented controller sits over the bar and does not move it), to the first
   // tab bar controller whose view is in this window and holds a visible bar. The bar is the
-  // controller's `tabBar`, else the floating bar: the smallest visible view among the controller
-  // view's subviews that does not hold the selected tab's content and is small next to the window.
+  // controller's `tabBar`, else the floating bar: the OUTERMOST visible short view below the
+  // controller's view, outside the selected tab's content. Not the smallest: a vertical bar's inner
+  // item cells are wider than tall, so the smallest view would read a side bar as top or bottom.
   private static func readTabBar(in window: UIWindow) -> TabBarReading {
     guard
       window.windowScene != nil,
@@ -225,30 +231,58 @@ import os
         kind: "tabBar", frame: tabBarFrame, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
     }
 
-    let selectedView = controller.selectedViewController?.view
-    let windowShortSide = min(window.bounds.width, window.bounds.height)
-    let floating =
-      controller.view.subviews
-      .compactMap { subview -> CGRect? in
-        if let selectedView, selectedView.isDescendant(of: subview) {
-          return nil
-        }
-
-        guard let frame = visibleFrame(of: subview, in: window),
-          min(frame.width, frame.height) < windowShortSide * floatingBarShortSideLimit
-        else {
-          return nil
-        }
-
-        return frame
-      }
-      .min { $0.width * $0.height < $1.width * $1.height }
+    let floating = floatingBarFrame(
+      below: controller.view, selectedView: controller.selectedViewController?.view, in: window)
 
     return TabBarReading(
       kind: floating == nil ? "none" : "floating",
       frame: floating,
       tabBarIsHidden: tabBar.isHidden,
       tabBarFrame: ownFrame)
+  }
+
+  // A breadth-first descent below the controller's view; the first view in that order that is
+  // effectively visible and short next to the window wins. It stops at a subtree holding the
+  // selected content, never enters a hidden or transparent view, and gives up with no frame past
+  // either bound.
+  private static func floatingBarFrame(
+    below root: UIView, selectedView: UIView?, in window: UIWindow
+  ) -> CGRect? {
+    guard let selectedView else {
+      return nil
+    }
+
+    let shortSideLimit = min(window.bounds.width, window.bounds.height) * floatingBarShortSideLimit
+    var queue = root.subviews.map { (view: $0, depth: 1) }
+    var visited = 0
+
+    while visited < queue.count {
+      guard visited < maximumVisitedViews else {
+        return nil
+      }
+
+      let (view, depth) = queue[visited]
+      visited += 1
+
+      guard !selectedView.isDescendant(of: view),
+        !view.isHidden,
+        view.alpha > minimumVisibleAlpha
+      else {
+        continue
+      }
+
+      if let frame = visibleFrame(of: view, in: window),
+        min(frame.width, frame.height) < shortSideLimit
+      {
+        return frame
+      }
+
+      if depth < maximumDescentDepth {
+        queue.append(contentsOf: view.subviews.map { (view: $0, depth: depth + 1) })
+      }
+    }
+
+    return nil
   }
 
   // The view's frame in window points when it is effectively visible: it and every superview up to
