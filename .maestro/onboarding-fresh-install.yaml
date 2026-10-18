@@ -17,9 +17,10 @@
 # `uk.ts` counterparts. Every other selector is a testID and is locale-proof,
 # so a later wording change only touches the two `text:` assertions.
 #
-# TAB BAR IDENTIFIERS: `tray` (Accounts) and `gear` (Settings) are the SF
-# Symbol names `src/navigation/root-navigator/root.navigator.tsx` gives the
-# tabs; `tray` is the same selector `.maestro/statement-import.yaml` relies on.
+# TAB BAR IDENTIFIERS: `tab-accounts` and `tab-settings` are the explicit
+# `tabBarButtonTestID` values `src/navigation/root-navigator/root.navigator.tsx` gives the
+# tabs, the same on iPhone and iPad (the iPad floating top bar exposes no SF Symbol ids);
+# `tab-accounts` is the same selector `.maestro/statement-import.yaml` relies on.
 #
 # BACK NAVIGATION: the left-edge swipe stands in for the native back button,
 # because Maestro's `back` command is Android-only and the iOS back button
@@ -40,7 +41,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 # 1. Accounts tab: empty state, then the account form via its action
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "tray"
+    id: "tab-accounts"
 - assertVisible:
     id: "accounts-empty"
 # `accounts.empty.title`
@@ -66,7 +67,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 # 2. Settings tab -> Help -> both topic rows
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "gear"
+    id: "tab-settings"
 - assertVisible:
     id: "settings-card-help"
 # The Help card's only row, `help.rowLabel` ("Help").

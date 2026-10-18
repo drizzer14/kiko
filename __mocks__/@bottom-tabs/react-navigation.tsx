@@ -33,7 +33,13 @@ type MockScreenProps = {
   // native `{ sfSymbol }` descriptor rather than a React node. Surfaced here so
   // a test can assert each tab wires the intended SF Symbol (see
   // root.navigator.test.tsx) without a native tab-bar renderer.
-  options?: { title?: string; tabBarIcon?: () => { sfSymbol?: string } };
+  // `tabBarButtonTestID` is a real NativeBottomTabNavigationOptions member (types.ts:112),
+  // which the real view hands to the native Tab as its accessibility identifier.
+  options?: {
+    title?: string;
+    tabBarIcon?: () => { sfSymbol?: string };
+    tabBarButtonTestID?: string;
+  };
 };
 
 // Native tab-bar appearance props the real navigator forwards to the
@@ -111,6 +117,13 @@ function Navigator({
             key={`icon-${screen.props.name}`}
             testID={`tab-icon-${screen.props.name}`}
             sfSymbol={screen.props.options?.tabBarIcon?.().sfSymbol}
+          />
+        ))}
+        {screens.map((screen) => (
+          <View
+            key={`button-${screen.props.name}`}
+            testID={screen.props.options?.tabBarButtonTestID}
+            accessibilityLabel={`tab-button-${screen.props.name}`}
           />
         ))}
       </TabBarView>

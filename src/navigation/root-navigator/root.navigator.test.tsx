@@ -44,6 +44,27 @@ describe('RootNavigator', () => {
     expect((await findByTestId('tab-icon-SettingsTab')).props.sfSymbol).toBe('gear');
   });
 
+  // The iPad floating top bar exposes no SF Symbol ids, so the Maestro flows key on an explicit
+  // `tabBarButtonTestID` instead, the same on every device.
+  it('gives each tab a stable test id on every device (tab-home, tab-accounts, tab-statistics, tab-settings)', async () => {
+    const { findByTestId } = await render(
+      <NavigationContainer theme={navigationDarkTheme}>
+        <RootNavigator />
+      </NavigationContainer>,
+    );
+
+    expect((await findByTestId('tab-home')).props.accessibilityLabel).toBe('tab-button-HomeTab');
+    expect((await findByTestId('tab-accounts')).props.accessibilityLabel).toBe(
+      'tab-button-AccountsTab',
+    );
+    expect((await findByTestId('tab-statistics')).props.accessibilityLabel).toBe(
+      'tab-button-StatisticsTab',
+    );
+    expect((await findByTestId('tab-settings')).props.accessibilityLabel).toBe(
+      'tab-button-SettingsTab',
+    );
+  });
+
   // The native UITabBar rebuilds its styling on every tab's
   // `onAppear` (see react-native-bottom-tabs `TabAppearModifier`). With no
   // `tabBarStyle`, that rebuild calls `configureWithDefaultBackground()`,

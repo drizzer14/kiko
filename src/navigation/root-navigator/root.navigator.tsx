@@ -60,7 +60,11 @@ const RootNavigator: FC = () => {
       <Tabs.Screen
         name="HomeTab"
         component={HomeStack}
-        options={{ title: t('home.title'), tabBarIcon: () => ({ sfSymbol: 'house.fill' }) }}
+        options={{
+          title: t('home.title'),
+          tabBarIcon: () => ({ sfSymbol: 'house.fill' }),
+          tabBarButtonTestID: 'tab-home',
+        }}
       />
 
       <Tabs.Screen
@@ -69,6 +73,7 @@ const RootNavigator: FC = () => {
         options={{
           title: t('accounts.title'),
           tabBarIcon: () => ({ sfSymbol: genericEntitySymbol.account }),
+          tabBarButtonTestID: 'tab-accounts',
         }}
       />
 
@@ -78,13 +83,18 @@ const RootNavigator: FC = () => {
         options={{
           title: t('statistics.title'),
           tabBarIcon: () => ({ sfSymbol: entrySymbol.statistics }),
+          tabBarButtonTestID: 'tab-statistics',
         }}
       />
 
       <Tabs.Screen
         name="SettingsTab"
         component={SettingsStack}
-        options={{ title: t('settings.title'), tabBarIcon: () => ({ sfSymbol: 'gear' }) }}
+        options={{
+          title: t('settings.title'),
+          tabBarIcon: () => ({ sfSymbol: 'gear' }),
+          tabBarButtonTestID: 'tab-settings',
+        }}
       />
     </Tabs.Navigator>
   );

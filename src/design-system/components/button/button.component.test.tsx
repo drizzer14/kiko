@@ -1,6 +1,6 @@
 import { i18n } from '@kiko/i18n/init';
-import { StyleSheet } from 'react-native';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, createRef } from 'react';
+import { StyleSheet, type ViewInstance } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -26,15 +26,26 @@ jest.mock('@kiko/design-system/components/symbol', () => {
 const flattenRoot = (node: RenderedElement): Record<string, unknown> =>
   StyleSheet.flatten(node.props.style as never) as Record<string, unknown>;
 
+type ButtonOverrides = Omit<Partial<ComponentProps<typeof Button>>, 'children'>;
+
+// Nearly every test renders a labelled Button and varies one or two props; this keeps the
+// per-test body to the prop under test and its assertion.
+const renderButton = (overrides: ButtonOverrides = {}, label = 'Save') =>
+  render(
+    <Button onPress={() => {}} {...overrides}>
+      {label}
+    </Button>,
+  );
+
 describe('Button', () => {
   it('renders its children as the label', async () => {
-    const { getByText } = await render(<Button onPress={() => {}}>Add holding</Button>);
+    const { getByText } = await renderButton({}, 'Add holding');
     expect(getByText('Add holding')).toBeTruthy();
   });
 
   it('calls onPress when pressed', async () => {
     const onPress = jest.fn();
-    const { getByText } = await render(<Button onPress={onPress}>Save</Button>);
+    const { getByText } = await renderButton({ onPress });
 
     await fireEvent.press(getByText('Save'));
     expect(onPress).toHaveBeenCalledTimes(1);
@@ -42,11 +53,7 @@ describe('Button', () => {
 
   it('does not call onPress and dims itself when disabled', async () => {
     const onPress = jest.fn();
-    const { getByRole } = await render(
-      <Button onPress={onPress} disabled>
-        Save
-      </Button>,
-    );
+    const { getByRole } = await renderButton({ onPress, disabled: true });
 
     const button = getByRole('button');
     await fireEvent.press(button);
@@ -55,32 +62,24 @@ describe('Button', () => {
   });
 
   it('stretches to full width by default', async () => {
-    const { getByRole } = await render(<Button onPress={() => {}}>Save</Button>);
+    const { getByRole } = await renderButton();
     expect(flattenRoot(getByRole('button')).width).toBe('100%');
   });
 
   it('does not stretch when fullWidth is false', async () => {
-    const { getByRole } = await render(
-      <Button onPress={() => {}} fullWidth={false}>
-        Save
-      </Button>,
-    );
+    const { getByRole } = await renderButton({ fullWidth: false });
     expect(flattenRoot(getByRole('button')).width).toBeUndefined();
   });
 
   it('renders at the prominent regular size by default', async () => {
-    const { getByRole } = await render(<Button onPress={() => {}}>Save</Button>);
+    const { getByRole } = await renderButton();
     const style = flattenRoot(getByRole('button'));
     expect(style.minHeight).toBe(50);
     expect(style.alignSelf).toBeUndefined();
   });
 
   it('renders a compact, self-hugging button when size is compact', async () => {
-    const { getByRole } = await render(
-      <Button onPress={() => {}} size="compact" fullWidth={false}>
-        Remove
-      </Button>,
-    );
+    const { getByRole } = await renderButton({ size: 'compact', fullWidth: false }, 'Remove');
     const style = flattenRoot(getByRole('button'));
     // Compact hugs its content (shorter than regular's 50) but still holds the
     // 44pt HIG touch-target floor — see the dedicated touch-target test above.
@@ -90,22 +89,14 @@ describe('Button', () => {
   });
 
   it('gives the compact size a 44pt minimum touch target (iOS HIG)', async () => {
-    const { getByRole } = await render(
-      <Button onPress={() => {}} size="compact" fullWidth={false}>
-        Remove
-      </Button>,
-    );
+    const { getByRole } = await renderButton({ size: 'compact', fullWidth: false }, 'Remove');
     // A compact button must still meet the 44pt minimum, so an icon-only ghost
     // control built from it (categories, delete) is tappable.
     expect(flattenRoot(getByRole('button')).minHeight).toBe(44);
   });
 
   it('renders a small button visibly shorter than 44pt and self-hugging', async () => {
-    const { getByRole } = await render(
-      <Button onPress={() => {}} size="small" fullWidth={false}>
-        Remove
-      </Button>,
-    );
+    const { getByRole } = await renderButton({ size: 'small', fullWidth: false }, 'Remove');
     const style = flattenRoot(getByRole('button'));
     // The small size is a deliberately SHORTER inline control (clearly smaller
     // than the 50pt primary and the 44pt compact), hugging its own content.
@@ -115,11 +106,7 @@ describe('Button', () => {
   });
 
   it('restores the 44pt HIG tap target on the small size via hitSlop', async () => {
-    const { getByRole } = await render(
-      <Button onPress={() => {}} size="small" fullWidth={false}>
-        Remove
-      </Button>,
-    );
+    const { getByRole } = await renderButton({ size: 'small', fullWidth: false }, 'Remove');
     const button = getByRole('button');
     const slop = button.props.hitSlop as { top: number; bottom: number };
     const visibleHeight = flattenRoot(button).minHeight as number;
@@ -131,29 +118,41 @@ describe('Button', () => {
   });
 
   it('carries no hitSlop on the regular or compact sizes', async () => {
-    const regular = await render(<Button onPress={() => {}}>Save</Button>);
+    const regular = await renderButton();
     expect(regular.getByRole('button').props.hitSlop).toBeUndefined();
 
-    const compact = await render(
-      <Button onPress={() => {}} size="compact" fullWidth={false}>
-        Save
-      </Button>,
-    );
+    const compact = await renderButton({ size: 'compact', fullWidth: false });
     // Compact already holds 44pt as its visible minHeight, so it needs no slop.
     expect(compact.getByRole('button').props.hitSlop).toBeUndefined();
   });
 
-  it('renders the secondaryTonal label in textPrimary on the faint neutral tint', async () => {
-    // secondaryTonal is the neutral counterpart to destructiveTonal: a faint
-    // neutral tint fill under an ordinary textPrimary label (the fill is applied
-    // through the variant block the mock strips, so only the label is asserted).
-    const { getByText } = await render(
-      <Button onPress={() => {}} variant="secondaryTonal">
-        Connect
-      </Button>,
-    );
+  // secondaryTonal is the neutral counterpart to destructiveTonal: a faint neutral tint fill
+  // under an ordinary textPrimary label (the fill is applied through the variant block the mock
+  // strips, so only the label is asserted). The label color is applied inline (not through that
+  // block), so it survives into the flattened label style.
+  it.each([
+    [
+      'renders the secondaryTonal label in textPrimary on the faint neutral tint',
+      'secondaryTonal',
+      'Connect',
+      darkTheme.colors.textPrimary,
+    ],
+    [
+      'renders the primary label in onAccent (white on both schemes)',
+      'primary',
+      'Save',
+      darkTheme.colors.onAccent,
+    ],
+    [
+      'renders the secondary label in textPrimary',
+      'secondary',
+      'Cancel',
+      darkTheme.colors.textPrimary,
+    ],
+  ] as const)('%s', async (_title, variant, label, expected) => {
+    const { getByText } = await renderButton({ variant }, label);
 
-    expect(flattenRoot(getByText('Connect')).color).toBe(darkTheme.colors.textPrimary);
+    expect(flattenRoot(getByText(label)).color).toBe(expected);
   });
 
   it('renders an icon-only button (icon, no label) that stays pressable', async () => {
@@ -197,73 +196,36 @@ describe('Button', () => {
   });
 
   it('renders a leading icon when an icon name is given', async () => {
-    const { getByText } = await render(
-      <Button onPress={() => {}} icon="checkmark.circle">
-        Save
-      </Button>,
-    );
+    const { getByText } = await renderButton({ icon: 'checkmark.circle' });
     expect(getByText('icon:checkmark.circle')).toBeTruthy();
     expect(getByText('Save')).toBeTruthy();
   });
 
   it('renders a trailing icon when a trailingIcon name is given', async () => {
-    const { getByText } = await render(
-      <Button onPress={() => {}} trailingIcon="pencil">
-        Edit
-      </Button>,
-    );
+    const { getByText } = await renderButton({ trailingIcon: 'pencil' }, 'Edit');
     expect(getByText('icon:pencil')).toBeTruthy();
     expect(getByText('Edit')).toBeTruthy();
   });
 
   it('forwards an accessibilityLabel so identical labels stay distinguishable', async () => {
-    const { getByLabelText } = await render(
-      <Button onPress={() => {}} accessibilityLabel="Remove contribution 2">
-        Remove
-      </Button>,
+    const { getByLabelText } = await renderButton(
+      { accessibilityLabel: 'Remove contribution 2' },
+      'Remove',
     );
     expect(getByLabelText('Remove contribution 2')).toBeTruthy();
   });
 
   it('forwards a testID onto the pressable so a caller can target it', async () => {
-    const { getByTestId } = await render(
-      <Button onPress={() => {}} testID="my-button">
-        Save
-      </Button>,
-    );
+    const { getByTestId } = await renderButton({ testID: 'my-button' });
 
     expect(getByTestId('my-button')).toBeTruthy();
   });
 
   it('overrides the label color when textColor is given', async () => {
-    const { getByText } = await render(
-      <Button onPress={() => {}} variant="ghost" textColor="#FF453A">
-        Cancel
-      </Button>,
-    );
+    const { getByText } = await renderButton({ variant: 'ghost', textColor: '#FF453A' }, 'Cancel');
     // textColor is applied inline (not through the variant block the mock
     // strips), so it survives into the flattened label style.
     expect(flattenRoot(getByText('Cancel')).color).toBe('#FF453A');
-  });
-
-  it('renders the primary label in onAccent (white on both schemes)', async () => {
-    const { getByText } = await render(
-      <Button onPress={() => {}} variant="primary">
-        Save
-      </Button>,
-    );
-
-    expect(flattenRoot(getByText('Save')).color).toBe(darkTheme.colors.onAccent);
-  });
-
-  it('renders the secondary label in textPrimary', async () => {
-    const { getByText } = await render(
-      <Button onPress={() => {}} variant="secondary">
-        Cancel
-      </Button>,
-    );
-
-    expect(flattenRoot(getByText('Cancel')).color).toBe(darkTheme.colors.textPrimary);
   });
 
   it('renders the destructiveTonal label in the red negative tone, not white', async () => {
@@ -272,11 +234,7 @@ describe('Button', () => {
     // label is `negative`, never `onAccent`. The label color is applied inline
     // (not through the variant block the mock strips), so it survives into the
     // flattened label style.
-    const { getByText } = await render(
-      <Button onPress={() => {}} variant="destructiveTonal">
-        Remove
-      </Button>,
-    );
+    const { getByText } = await renderButton({ variant: 'destructiveTonal' }, 'Remove');
 
     expect(flattenRoot(getByText('Remove')).color).toBe(darkTheme.colors.negative);
     expect(flattenRoot(getByText('Remove')).color).not.toBe(darkTheme.colors.onAccent);
@@ -303,11 +261,7 @@ describe('Button', () => {
   describe('loading', () => {
     it('shows a spinner in the label color and blocks presses while loading', async () => {
       const onPress = jest.fn();
-      const { getByRole, getByTestId } = await render(
-        <Button onPress={onPress} loading>
-          Apply
-        </Button>,
-      );
+      const { getByRole, getByTestId } = await renderButton({ onPress, loading: true }, 'Apply');
 
       const button = getByRole('button');
       await fireEvent.press(button);
@@ -318,16 +272,11 @@ describe('Button', () => {
     });
 
     it('keeps the same size: the hidden label still lays out under the spinner', async () => {
-      const { getByRole, getByText } = await render(
-        <Button onPress={jest.fn()} icon="checkmark" loading>
-          Apply
-        </Button>,
+      const { getByRole, getByText } = await renderButton(
+        { icon: 'checkmark', loading: true },
+        'Apply',
       );
-      const idle = await render(
-        <Button onPress={jest.fn()} icon="checkmark">
-          Apply
-        </Button>,
-      );
+      const idle = await renderButton({ icon: 'checkmark' }, 'Apply');
 
       const loadingRoot = flattenRoot(getByRole('button'));
       const idleRoot = flattenRoot(idle.getByRole('button'));
@@ -342,19 +291,27 @@ describe('Button', () => {
     });
 
     it('does not dim a loading button the way a disabled one is dimmed', async () => {
-      const { getByRole } = await render(
-        <Button onPress={jest.fn()} loading>
-          Apply
-        </Button>,
-      );
+      const { getByRole } = await renderButton({ loading: true }, 'Apply');
 
       expect(flattenRoot(getByRole('button')).opacity).toBeUndefined();
     });
 
     it('renders no spinner when not loading', async () => {
-      const { queryByTestId } = await render(<Button onPress={jest.fn()}>Apply</Button>);
+      const { queryByTestId } = await renderButton({}, 'Apply');
 
       expect(queryByTestId('button-loading-spinner')).toBeNull();
+    });
+  });
+
+  describe('ref', () => {
+    it('reaches the pressable host, not the label inside it', async () => {
+      const control = createRef<ViewInstance>();
+      await renderButton({ ref: control, testID: 'share' }, 'Share');
+
+      expect(control.current).not.toBeNull();
+      expect(control.current).toMatchObject({
+        props: { testID: 'share', accessibilityRole: 'button' },
+      });
     });
   });
 });

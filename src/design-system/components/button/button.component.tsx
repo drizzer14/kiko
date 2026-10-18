@@ -28,6 +28,7 @@ const Button: FC<ButtonProps> = ({
   accessibilityLabel,
   textColor,
   testID,
+  ref,
 }) => {
   const { theme } = useUnistyles();
   styles.useVariants({ variant });
@@ -82,6 +83,7 @@ const Button: FC<ButtonProps> = ({
 
   return (
     <Pressable
+      ref={ref}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ busy: loading }}
