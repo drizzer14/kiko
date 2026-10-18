@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
+import { useContentCap } from '@kiko/design-system/components/screen';
 import { useSyncProgress, useSyncStatus } from '@kiko/monobank/sync-status';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -37,6 +38,7 @@ const NEXT_STEP_CREEP = 0.9;
 const SyncProgressBar: FC = () => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const contentCap = useContentCap();
   const isSyncing = useSyncStatus();
   const { completed, total, workCompleted, workTotal } = useSyncProgress();
 
@@ -56,7 +58,8 @@ const SyncProgressBar: FC = () => {
   }
 
   return (
-    <Box gap={1}>
+    // In a pane the list takes the whole pane, so the bar caps itself like the header above it.
+    <Box gap={1} style={contentCap}>
       <Text variant="caption" tone="textSecondary">
         {t('home.syncingHoldings', { completed, total })}
       </Text>

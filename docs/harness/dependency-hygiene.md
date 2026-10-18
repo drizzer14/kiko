@@ -22,6 +22,14 @@ exact prerelease spec is never misjudged as a range merely because one of
 its identifiers happens to contain a denylisted character. See
 `__tests__/deps-ranges.test.ts` for its fixture coverage.
 
+## Dependency patches (patch-package)
+
+A dependency fix is `patches/<pkg>+<version>.patch`, applied by `postinstall`. Each patch is
+listed in `docs/harness/documented-exceptions.md` under "patch-package patches" with its
+reason. The react-native patch is pinned by `__tests__/react-native-patch.test.ts` (exact
+version plus the guard in the installed file). An upgrade of a patched package fails the pin
+or the apply: re-check the patch then. Never edit `node_modules` by hand without a patch.
+
 ## 7-day dependency minimum age (`min-release-age`)
 
 `.npmrc` enforces a 7-day dependency minimum age: npm refuses any

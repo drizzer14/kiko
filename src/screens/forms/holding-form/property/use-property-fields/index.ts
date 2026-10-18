@@ -1,1 +1,1 @@
-export { usePropertyFields } from './use-property-fields';
+export { usePropertyFields, type PropertyFieldsDraft } from './use-property-fields';

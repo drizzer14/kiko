@@ -12,7 +12,17 @@ import { asNavigationProp, navigationSpy } from '@kiko/test-support/navigation-p
 
 import AddTransactionFab from './add-transaction-fab.component';
 
+// The system's own vertical-bar trait; `none` is an ordinary bottom bar.
+const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+jest.mock('@kiko/display-regions', () => ({
+  useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+}));
+
 describe('AddTransactionFab', () => {
+  afterEach(() => {
+    mockUseVerticalBarEdge.mockReturnValue('none');
+  });
+
   it('renders a labeled floating action button', async () => {
     const { getByLabelText } = await render(
       <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
@@ -100,5 +110,106 @@ describe('AddTransactionFab', () => {
 
     expect(base.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
     expect(base.backgroundColor).not.toBe(darkTheme.colors.surface);
+  });
+
+  it('anchors a fixed spacing(4) = 16 from the right edge', async () => {
+    // The enclosing Screen's SafeAreaView already reserves the right
+    // safe-area inset itself (the Duo sidebar case included), so the FAB
+    // never needs its own extra right offset — see `screen.component.tsx`.
+    const { getByLabelText } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+    );
+
+    const fab = getByLabelText('Add transaction');
+    const flattened = StyleSheet.flatten(fab.props.style);
+
+    expect(flattened.right).toBe(16);
+  });
+
+  it('follows a new bottom clearance on re-render', async () => {
+    const { getByLabelText, rerender } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={100} />,
+    );
+
+    await rerender(<AddTransactionFab onPress={() => undefined} bottomOffset={200} />);
+
+    expect(StyleSheet.flatten(getByLabelText('Add transaction').props.style).bottom).toBe(216);
+  });
+
+  it('does not dim while at rest', async () => {
+    const { getByLabelText } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+    );
+
+    expect(
+      StyleSheet.flatten(getByLabelText('Add transaction').props.style).opacity,
+    ).toBeUndefined();
+  });
+
+  it('dims while pressed in', async () => {
+    const { getByLabelText } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+    );
+
+    await fireEvent(getByLabelText('Add transaction'), 'responderGrant', {
+      nativeEvent: {},
+      persist: () => undefined,
+    });
+
+    expect(StyleSheet.flatten(getByLabelText('Add transaction').props.style).opacity).toBe(0.85);
+  });
+
+  describe('follows the edge the system puts a vertical tab bar on', () => {
+    const flattenedFab = async (bottomOffset: number) => {
+      const { getByLabelText } = await render(
+        <AddTransactionFab onPress={() => undefined} bottomOffset={bottomOffset} />,
+      );
+
+      return StyleSheet.flatten(getByLabelText('Add transaction').props.style);
+    };
+
+    it('sits bottom-right beside a bar on the trailing edge', async () => {
+      mockUseVerticalBarEdge.mockReturnValue('trailing');
+
+      const flattened = await flattenedFab(0);
+
+      expect(flattened.right).toBe(16);
+      expect(flattened.left).toBeUndefined();
+      expect(flattened.bottom).toBe(16);
+    });
+
+    it('sits bottom-left beside a bar on the leading edge', async () => {
+      mockUseVerticalBarEdge.mockReturnValue('leading');
+
+      const flattened = await flattenedFab(0);
+
+      expect(flattened.left).toBe(16);
+      expect(flattened.right).toBeUndefined();
+      expect(flattened.bottom).toBe(16);
+    });
+
+    it('moves to the other side when the bar edge changes on re-render', async () => {
+      mockUseVerticalBarEdge.mockReturnValue('leading');
+
+      const { getByLabelText, rerender } = await render(
+        <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+      );
+
+      mockUseVerticalBarEdge.mockReturnValue('trailing');
+      await rerender(<AddTransactionFab onPress={() => undefined} bottomOffset={0} />);
+
+      const flattened = StyleSheet.flatten(getByLabelText('Add transaction').props.style);
+
+      expect(flattened.right).toBe(16);
+      expect(flattened.left).toBeUndefined();
+    });
+
+    it('sits bottom-right with the clearance when there is no vertical bar', async () => {
+      const flattened = await flattenedFab(100);
+
+      expect(flattened.right).toBe(16);
+      expect(flattened.left).toBeUndefined();
+      expect(flattened.bottom).toBe(116);
+    });
   });
 });

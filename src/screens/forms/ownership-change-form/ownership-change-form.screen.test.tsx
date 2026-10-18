@@ -2,10 +2,15 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { expectNavBarSaveOnly, pressSave } from '@kiko/test-support/form-header-items';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import OwnershipChangeFormScreen from './ownership-change-form.screen';
 
@@ -48,14 +53,11 @@ const seed = (holding: unknown): void => {
   mockUseLiveQuery.mockImplementation(() => ({ data: [holding] }));
 };
 
-const renderScreen = (day = changeDay) =>
+const renderScreen = (day = changeDay, params: object = { holdingId: 'h-1', day }) =>
   render(
     <OwnershipChangeFormScreen
       navigation={asNavigationProp<OwnershipChangeFormProps['navigation']>(navigation)}
-      route={asRouteProp<OwnershipChangeFormProps['route']>('OwnershipChangeForm', {
-        holdingId: 'h-1',
-        day,
-      })}
+      route={asRouteProp<OwnershipChangeFormProps['route']>('OwnershipChangeForm', params)}
     />,
   );
 
@@ -177,5 +179,94 @@ describe('OwnershipChangeFormScreen', () => {
     await pressSave(navigation.setOptions);
 
     expect(scrollToField).not.toHaveBeenCalled();
+  });
+
+  describe('the draft', () => {
+    const reopen = () =>
+      renderScreen(changeDay, paramsAfter(navigation, { holdingId: 'h-1', day: changeDay }));
+
+    it('brings back an edited share and a picked effective date after a remount', async () => {
+      const first = await renderScreen();
+      await fireEvent.changeText(first.getByLabelText('Out of'), '4');
+      await pickEffectiveDate(first, 2025, 7, 1);
+      await fireEvent(first.getByLabelText('Out of'), 'blur');
+      await first.unmount();
+
+      const second = await reopen();
+
+      expect(second.getByLabelText('Share').props.value).toBe('1');
+      expect(second.getByLabelText('Out of').props.value).toBe('4');
+      expect(second.getByLabelText('Effective from')).toHaveTextContent('01.07.2025');
+
+      await pressSave(navigation.setOptions);
+
+      expect(holdingsRepo.editOwnershipChange).toHaveBeenCalledWith(
+        'h-1',
+        changeDay,
+        { day: Date.UTC(2025, 6, 1), numerator: 1, denominator: 4 },
+        'fraction',
+      );
+    });
+
+    it('brings back the input form the user switched to', async () => {
+      const first = await renderScreen();
+      await fireEvent.press(first.getByText('Percent'));
+      await fireEvent.changeText(first.getByLabelText('Share'), '25');
+      await fireEvent(first.getByLabelText('Share'), 'blur');
+      await first.unmount();
+
+      const second = await reopen();
+
+      expect(second.getByLabelText('Share').props.value).toBe('25');
+      expect(second.queryByLabelText('Out of')).toBeNull();
+    });
+
+    it('keeps the draft to plain values, so the route params stay JSON', async () => {
+      const screen = await renderScreen();
+      await fireEvent.changeText(screen.getByLabelText('Out of'), '4');
+      await fireEvent(screen.getByLabelText('Out of'), 'blur');
+
+      expect(navigation.setParams).toHaveBeenCalledWith({
+        draft: {
+          entry: { mode: 'fraction', percent: '33.33', numerator: '1', denominator: '4' },
+          effectiveDate: expect.any(Number),
+        },
+      });
+    });
+
+    it('writes the draft once per blur, never while typing', async () => {
+      const screen = await renderScreen();
+
+      await fireEvent.changeText(screen.getByLabelText('Out of'), '4');
+      await fireEvent.changeText(screen.getByLabelText('Out of'), '45');
+
+      expect(navigation.setParams).not.toHaveBeenCalled();
+
+      await fireEvent(screen.getByLabelText('Out of'), 'blur');
+
+      expect(navigation.setParams).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing again for a second blur with nothing changed in between', async () => {
+      const screen = await renderScreen();
+
+      await fireEvent(screen.getByLabelText('Out of'), 'blur');
+      navigation.setParams.mockClear();
+      await fireEvent(screen.getByLabelText('Out of'), 'blur');
+
+      expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+      const screen = await renderScreen();
+      await fireEvent.changeText(screen.getByLabelText('Out of'), '4');
+      await fireEvent(screen.getByLabelText('Out of'), 'blur');
+      navigation.setParams.mockClear();
+
+      await pressSave(navigation.setOptions);
+
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+      expect(navigation.setParams).not.toHaveBeenCalled();
+    });
   });
 });

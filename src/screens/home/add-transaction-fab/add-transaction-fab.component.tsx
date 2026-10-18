@@ -2,13 +2,15 @@ import { Pressable } from 'react-native';
 import { type FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
+import { useVerticalBarEdge } from '@kiko/display-regions';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import GlassSurface from '@kiko/design-system/components/glass-surface';
 
 import { styles } from './add-transaction-fab.styles';
 import type { AddTransactionFabProps } from './add-transaction-fab.props';
 
-// The floating "+" action pinned bottom-right over the Home transaction list —
+// The floating "+" action pinned bottom-right over the Home transaction list
+// (bottom-left beside a vertical tab bar on the leading edge) —
 // the global way to add a manual transaction from anywhere, opening the shared
 // create form with NO holding fixed (the form then shows its own primary-leg
 // holding picker). It sits OUTSIDE the list's scroll content and lifts itself
@@ -22,11 +24,15 @@ import type { AddTransactionFabProps } from './add-transaction-fab.props';
 const AddTransactionFab: FC<AddTransactionFabProps> = ({ onPress, bottomOffset }) => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const verticalBarEdge = useVerticalBarEdge();
 
-  // `bottomOffset` is a runtime value, so the positioned base style is a
-  // function call — memoized so a Home re-render (e.g. a reactive fire during a
-  // sync) does not rebuild an identical style object each time.
-  const fabStyle = useMemo(() => styles.fab(bottomOffset), [bottomOffset]);
+  // `bottomOffset` and the bar edge are runtime values, so the positioned base
+  // style is a function call — memoized so a Home re-render (e.g. a reactive
+  // fire during a sync) does not rebuild an identical style object each time.
+  const fabStyle = useMemo(
+    () => styles.fab(bottomOffset, verticalBarEdge),
+    [bottomOffset, verticalBarEdge],
+  );
 
   return (
     <Pressable

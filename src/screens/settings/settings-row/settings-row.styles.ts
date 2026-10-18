@@ -64,6 +64,11 @@ export const styles = StyleSheet.create((theme) => ({
     height: theme.iconSizes.body,
     justifyContent: 'center',
   },
+  // The corners of the shared selected fill on a row of its own. Each row in a card with a divider
+  // carries its own padding, so the fill spans the card.
+  selected: {
+    borderRadius: theme.radii.md,
+  },
   // A chevron right after a switch crowds it without a gutter; a chevron
   // after a label needs none because the header's space-between already
   // separates them.

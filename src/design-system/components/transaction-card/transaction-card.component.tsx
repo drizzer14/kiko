@@ -28,6 +28,7 @@ const TransactionCard: FC<TransactionCardProps> = ({
   footerMeta,
   footerTrailing,
   loanLinked,
+  selected,
   style,
   testID,
 }) => {
@@ -35,7 +36,7 @@ const TransactionCard: FC<TransactionCardProps> = ({
   const hasFooter = footerMeta !== undefined || footerTrailing !== undefined || loanLinked === true;
 
   return (
-    <Card padding={3} testID={testID} style={style}>
+    <Card padding={3} testID={testID} style={style} selected={selected}>
       <Box gap={2}>
         <Box direction="row" style={styles.rowMain}>
           <Box direction="row" gap={2} style={styles.rowLead}>
@@ -43,7 +44,9 @@ const TransactionCard: FC<TransactionCardProps> = ({
               name={categoryIcon}
               size={theme.iconSizes.body}
               tone="textSecondary"
-              color={categoryIconColor}
+              // A glyph with no colour of its own reads as onAccent on the selected fill, where
+              // the category colour (the accent blue, say) would vanish into it.
+              color={selected === true ? undefined : categoryIconColor}
               accessibilityLabel={categoryAccessibilityLabel}
             />
             <Box style={styles.rowDescription}>

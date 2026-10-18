@@ -1,8 +1,46 @@
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import { OnAccentContext } from '@kiko/design-system/selected-surface';
+
 import Text from './text.component';
+import { styles } from './text.styles';
 
 describe('Text', () => {
+  // The tone -> color mapping lives in a unistyles variant that the Jest mock strips, so the
+  // variants the component asks for are the observable part.
+  describe('on an accent fill', () => {
+    const toneRequested = async (
+      tone: 'textSecondary' | 'positive' | undefined,
+      onAccent: boolean,
+    ) => {
+      const useVariants = jest.spyOn(styles, 'useVariants');
+
+      await render(
+        <OnAccentContext.Provider value={onAccent}>
+          <Text tone={tone}>content</Text>
+        </OnAccentContext.Provider>,
+      );
+
+      const requested = useVariants.mock.calls.at(-1)?.[0]?.tone;
+
+      useVariants.mockRestore();
+
+      return requested;
+    };
+
+    it.each(['textSecondary', 'positive', undefined] as const)(
+      'takes onAccent in place of the tone %s',
+      async (tone) => {
+        expect(await toneRequested(tone, true)).toBe('onAccent');
+      },
+    );
+
+    it('keeps its own tone anywhere else', async () => {
+      expect(await toneRequested('textSecondary', false)).toBe('textSecondary');
+      expect(await toneRequested(undefined, false)).toBe('textPrimary');
+    });
+  });
+
   it('renders its children', async () => {
     const { getByText } = await render(<Text>Hello</Text>);
     expect(getByText('Hello')).toBeTruthy();

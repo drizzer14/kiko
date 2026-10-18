@@ -2488,7 +2488,8 @@ a pre-existing finding points at. A Semgrep deny names
   `export const a = b`), with comments inside the import braces
   ignored. Its classification
   (`CONTAINERS`, `TEST_ONLY`, `AMBIENT_LOOSE`, …) lives in the checker;
-  read it there. No `--write`.
+  read it there. `native-specs/**` has no barrel and is deep-imported via
+  the alias (`NATIVE_SPEC_PATTERN`; read it there). No `--write`.
 - `specifier-scanner.js` is the shared import-specifier scanner. A new
   checker that reads import specifiers reuses it. Its `commentSpans`
   returns the real comment spans (offsets) that `blankNoise` passes over,
@@ -2587,6 +2588,11 @@ disk that git tracks or would track
 (the file listing in `__tests__/test-support/repository-files.ts`, kept when
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
+
+A skill sentence that lists a guard's conditions, or a write-queue read's
+callers, drifts when one is added: point at the boolean's definition or at a
+`grep` that finds the callers, and grep the skills for a screen's boolean
+names when a hook joins it.
 
 The same test checks the comments of `src/**` sources (read through the TypeScript parse, so
 a path in a string or JSX text is not read). A rooted path (the roots are in `TREE_PATH_PATTERN` in

@@ -1,5 +1,5 @@
+import type { FC } from 'react';
 import { match } from 'ts-pattern';
-import { type FC, useState } from 'react';
 import SettingsRow, {
   chevronSize,
   chevronTrailingWhitespace,
@@ -23,6 +23,7 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useDetailPaneRoute, useOpenInPane } from '@kiko/navigation/pane-stack';
 import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
@@ -55,7 +56,14 @@ const styles = StyleSheet.create(() => ({
   },
 }));
 
-const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
+const SettingsScreen: FC<SettingsScreenProps> = () => {
+  // Each row opens its page in the detail pane (on one pane, a plain navigate), and the menu marks
+  // the row whose page the detail pane opened with: Categories until another is opened, and still
+  // that page while a step opened from it covers it.
+  const openInPane = useOpenInPane();
+  const detailRoute = useDetailPaneRoute();
+  const isShown = (routeName: string): boolean => detailRoute?.name === routeName;
+
   // Re-tapping the Settings tab while already on it returns this scrolling page
   // to the top (the standard iOS active-tab re-tap), driven off the native tab
   // navigator's `tabPress`.
@@ -63,13 +71,6 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // The live `contentOffset.y`, so the hook can skip a redundant scroll.
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
-  // Same root cause as the account/holding forms (see
-  // `holding-form.screen.tsx`'s own comment): while the base-currency sheet's
-  // search field can be focused, this screen's background ScrollView must
-  // NOT react to the keyboard's frame change — it does not contain that
-  // responder, but `automaticallyAdjustKeyboardInsets` reacts to any focus
-  // regardless (`screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
 
   const { t, i18n } = useTranslation();
   const { theme } = useUnistyles();
@@ -144,7 +145,6 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
     <Screen
       scroll
       scrollableRef={scrollRef}
-      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       footer={
         // App Store compliance footer: app name + version, copyright, and a
         // Privacy Policy link. It renders through the pinned `footer` slot so
@@ -180,21 +180,23 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         {/* The System sub-page groups system-level preferences (Language, Color
             Scheme, Face ID) away from the finance settings below. It sits at the
             very top as a navigating row that pushes the System screen. */}
-        <Card testID="settings-card-system" padding={3}>
+        <Card testID="settings-card-system" padding={3} selected={isShown('System')}>
           <SettingsRow
             testID="settings-row-system"
             icon={entrySymbol.system}
             label={t('settings.system')}
-            onPress={() => navigation.navigate('System')}
+            onPress={() => openInPane('System')}
+            selected={isShown('System')}
           />
         </Card>
 
-        <Card testID="settings-card-reminders" padding={3}>
+        <Card testID="settings-card-reminders" padding={3} selected={isShown('Reminders')}>
           <SettingsRow
             testID="settings-row-reminders"
             icon={entrySymbol.reminders}
             label={t('reminders.rowLabel')}
-            onPress={() => navigation.navigate('Reminders')}
+            onPress={() => openInPane('Reminders')}
+            selected={isShown('Reminders')}
           />
         </Card>
 
@@ -216,7 +218,8 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             testID="settings-row-import-data"
             icon={entrySymbol.importData}
             label={t('settings.dataImport.rowLabel')}
-            onPress={() => navigation.navigate('ImportData')}
+            onPress={() => openInPane('ImportData')}
+            selected={isShown('ImportData')}
             style={groupedRowStyle}
           />
 
@@ -226,7 +229,8 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             testID="settings-row-export-data"
             icon={entrySymbol.exportData}
             label={t('settings.dataExport.rowLabel')}
-            onPress={() => navigation.navigate('ExportData')}
+            onPress={() => openInPane('ExportData')}
+            selected={isShown('ExportData')}
             style={groupedRowStyle}
           />
         </Card>
@@ -248,7 +252,6 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
               hideLabel
               selected={settings?.baseCurrency}
               onSelect={handleSelectCurrency}
-              onOpenChange={setIsCurrencySheetOpen}
               groups={currencyGroups}
             />
           </SettingsRow>
@@ -260,7 +263,8 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             testID="settings-row-transaction-templates"
             icon={genericEntitySymbol.template}
             label={t('settings.transactionTemplates')}
-            onPress={() => navigation.navigate('TransactionTemplates')}
+            onPress={() => openInPane('TransactionTemplates')}
+            selected={isShown('TransactionTemplates')}
             style={groupedRowStyle}
           />
 
@@ -270,17 +274,19 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             testID="settings-row-categories"
             icon={genericEntitySymbol.category}
             label={t('settings.categories')}
-            onPress={() => navigation.navigate('Categories')}
+            onPress={() => openInPane('Categories')}
+            selected={isShown('Categories')}
             style={groupedRowStyle}
           />
         </Card>
 
-        <Card testID="settings-card-help" padding={3}>
+        <Card testID="settings-card-help" padding={3} selected={isShown('Help')}>
           <SettingsRow
             testID="settings-row-help"
             icon="questionmark.circle"
             label={t('help.rowLabel')}
-            onPress={() => navigation.navigate('Help')}
+            onPress={() => openInPane('Help')}
+            selected={isShown('Help')}
           />
         </Card>
       </Box>

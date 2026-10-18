@@ -938,17 +938,32 @@ verified usage, not dead weight:
   (`stageDraft`) and once per insert batch, never per row; transaction rows
   are paged. Any new whole-table reader inside a write needs its own entry.
 
-- **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
-  `.ts` file name in `src/`.** React Native codegen reads a spec file only
-  if its basename matches `/^(Native.+|.+NativeComponent)/`
+- **`src/native-specs/Native*.ts` (`NativeKikoReminders.ts`,
+  `NativeDisplayRegions.ts`) — the only PascalCase `.ts` file names in
+  `src/`, in a folder with no barrel.** React Native codegen reads a spec
+  file only if its basename matches `/^(Native.+|.+NativeComponent)/`
   (case-sensitive) and has exactly one dot (see `filterJSFile` in
   `node_modules/@react-native/codegen/lib/cli/combine/combine-utils.js`),
   so the name cannot be kebab-case. `package.json` `codegenConfig.jsSrcsDir`
-  points at that folder. Only `reminders-native.ts` loads it (lazily, via
-  `require`), and the barrel does not export it; the
-  `kiko-no-native-reminders-module-import` Semgrep rule
-  (`rules/semgrep-prewrite.yml`) denies any other value import. Add another
+  points at that folder. A barrel there would call
+  `TurboModuleRegistry.getEnforcing` on load, so `feature-imports.js`
+  (`NATIVE_SPEC_PATTERN`) treats `native-specs/**` as barrel-less: the folder needs no
+  `index.ts` and a spec is imported deep through the alias. Only each module's
+  wrapper (`reminders-native.ts`, `display-regions-native.ts`) loads its spec
+  (lazily, via `require`); the
+  `kiko-no-native-reminders-module-import` and
+  `kiko-no-native-display-regions-module-import` Semgrep rules
+  (`rules/semgrep-prewrite.yml`) deny any other value import. Add another
   `Native*` spec only for a new app TurboModule.
+
+- **`src/design-system/components/screen/**` — the owner folder of
+  `kiko-no-pane-blind-bottom-clearance`'s `paths.exclude`.** The rule denies
+  importing `resolveBottomClearance` (or its `bottom-clearance` module) so a
+  `bleedBottom`/`bleedTop` child takes the pane-aware `useBottomClearance()`
+  instead. The Screen folder is the one place that may: `use-bottom-clearance.ts`
+  imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder
+  exclude is right here because every file in it is part of the sink; the rule
+  still reaches every consumer (Home, HoldingDetail).
 
 - **`sf-symbols-typescript` — a transitive package read by path in a test,
   invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
@@ -1067,3 +1082,27 @@ verified usage, not dead weight:
   Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
+
+- **patch-package patches (`patches/`, applied by `postinstall`)**: three patches edit
+  `node_modules` after `npm ci`; re-check each on upgrade of its package.
+  - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
+    `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
+    `ScrollView` with `automaticallyAdjustKeyboardInsets` shifted its content offset by the
+    keyboard height for a field OUTSIDE it (the outside-field `inputAccessoryView` branch). The
+    patch drops that branch, so an offset moves only for a field inside the scroll view; the
+    inset math is unchanged. It fixes the Duo/iPad two-pane blank pane (a field in one pane
+    moved the other pane's list) and the same shift of a Screen covered by a pushed form.
+    Pinned by `__tests__/react-native-patch.test.ts` ("the React Native ScrollView keyboard
+    patch": the patch touches that one file, `react-native` is exactly `0.87.1`, the installed
+    file has the guard). A React Native upgrade fails that pin: re-check the patch then.
+  - `patches/react-native-nitro-sfsymbols+2.0.0.patch` (`react-native-nitro-sfsymbols@2.0.0`):
+    the diff adds two lines to `init` of the generated `HybridNitroSfsymbolsComponent.mm`,
+    setting `_props` to a static default `HybridNitroSfsymbolsProps` before `updateView` runs.
+    The diff does not state why; it gives the view non-null props from its first
+    `updateView`.
+  - `patches/read-excel-file+9.3.10.patch` (`read-excel-file@9.3.10`, its `commonjs` and
+    `modules` `zip/unzipFromArrayBuffer.js`): `unzipAsync` calls `fflate`'s `unzipSync`
+    instead of the async `unzip`. The diff's own comment: async `unzip` does `new Worker(...)`
+    for an entry that decompresses to 512 KB or more AND compresses to under 80% of its
+    original size, Hermes has no `Worker` global, so it threw `ReferenceError` on device (never
+    under Jest).

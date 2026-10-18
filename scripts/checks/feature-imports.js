@@ -127,6 +127,15 @@ const stripExtension = (filePath) => filePath.replace(/\.d\.ts$|\.tsx?$|\.js$/, 
 const isTestOnly = (sourceRelative) =>
   TEST_ONLY_PATTERNS.some((pattern) => pattern.test(sourceRelative));
 
+// The app's codegen spec files. `package.json` `codegenConfig.jsSrcsDir` points at this folder and
+// codegen reads only its `Native*` files, so it has no barrel: a barrel re-exporting a spec would
+// call `TurboModuleRegistry.getEnforcing` on load (kiko-architecture "Native iOS shell"). Each
+// spec is imported deep, by the one wrapper that owns it; a Semgrep rule bans every other value
+// import.
+const NATIVE_SPEC_PATTERN = globToRegExp('native-specs/**');
+
+const isNativeSpec = (sourceRelative) => NATIVE_SPEC_PATTERN.test(sourceRelative);
+
 const IN_SCOPE_FROM_ROOT = /^(?:(?:src|__tests__|e2e|jest)\/|App\.tsx$)/;
 
 // The repo root a file belongs to. A file in this checkout uses ROOT, so a
@@ -293,6 +302,7 @@ function describeTarget(context, entry) {
     sourceRelative,
     location,
     testOnly: isTestOnly(sourceRelative),
+    nativeSpec: isNativeSpec(sourceRelative),
     namesBarrel: location.feature !== null && sourceRelative === location.feature,
     relative: !entry.specifier.startsWith(ALIAS_PREFIX),
     jestCall: entry.callKind === 'jest',
@@ -340,9 +350,9 @@ function classifyRelative(context, target, specifier, suggestion) {
   };
 }
 
-// A test-only path has no barrel to go through.
+// A test-only path or a codegen spec has no barrel to go through.
 const classifyAlias = (target, suggestion) =>
-  target.namesBarrel || target.jestCall || target.testOnly
+  target.namesBarrel || target.jestCall || target.testOnly || target.nativeSpec
     ? null
     : { kind: 'alias-skips-barrel', suggestion };
 
@@ -485,7 +495,7 @@ function layoutFindings(sourceRoot) {
       const { files, folders } = listDirectory(directory);
       const units = folders
         .map((name) => joinRelative(container, name))
-        .filter((unit) => !CONTAINERS.has(unit) && !isTestOnly(unit));
+        .filter((unit) => !CONTAINERS.has(unit) && !isTestOnly(unit) && !isNativeSpec(unit));
 
       return [
         ...looseFileFindings(directory, container, files),

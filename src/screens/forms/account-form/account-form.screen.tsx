@@ -7,7 +7,6 @@ import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
 import { useSync } from '@kiko/sync/use-sync';
 import { accountsRepo } from '@kiko/accounts';
-import either, { isRight } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
@@ -18,13 +17,13 @@ import {
 } from '@kiko/screens/forms/use-form-header-items';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
+import either, { bifoldr, isRight } from 'fnts/either';
 import { type BrokerId, isBrokerId } from '@kiko/brokers';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import Divider from '@kiko/design-system/components/divider';
-import { clearCredentials } from '@kiko/crypto-sync/binance';
 import BankTypeField from '@kiko/screens/forms/bank-type-field';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -36,19 +35,23 @@ import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
 import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
-import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
-import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
+import { type BinanceWriteToken, clearCredentialsIfWrittenBy } from '@kiko/crypto-sync/binance';
+import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
+import { usePendingRowLock } from './use-pending-row-lock';
 import { useConnectReminder } from './use-connect-reminder';
 
 // This screen is registered in the Accounts, Home, and Settings stacks (Home and Settings
@@ -60,6 +63,7 @@ type AccountFormScreenProps = {
   navigation: {
     goBack: () => void;
     setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
+    setParams: (params: { draft: FormDraft | AccountFormDraft }) => void;
     replace: (name: 'HoldingForm', params: AccountsStackParamList['HoldingForm']) => void;
   };
 };
@@ -76,13 +80,26 @@ type CreateSeed = {
   icon: string | null;
   iconIsDirty: boolean;
   color: string | null;
+  currency: Currency;
+  initialValue: string;
+  bankId: BankId | null;
+  brokerId: BrokerId | null;
 };
 
 // What a create form opens with: a plain create opens on the default kind with
 // that kind's glyph, and a swap back from the holding form carries the
 // identity the user already typed. A carried icon is a pick, so it stays one;
 // an absent one follows the opening kind's default like any untouched icon.
-const createSeed = (initialKind: Kind | undefined, draft: FormDraft | undefined): CreateSeed => {
+// A draft of the form's own saved fields comes back as it was, whatever kind
+// the swap named.
+const createSeed = (
+  initialKind: Kind | undefined,
+  draft: FormDraft | AccountFormDraft | undefined,
+): CreateSeed => {
+  if (isSavedDraft(draft)) {
+    return draft;
+  }
+
   const kind = initialKind ?? INITIAL_KIND;
 
   return {
@@ -91,6 +108,36 @@ const createSeed = (initialKind: Kind | undefined, draft: FormDraft | undefined)
     icon: draft?.icon ?? accountKindSymbol[kind],
     iconIsDirty: typeof draft?.icon === 'string',
     color: draft?.color ?? null,
+    currency: 'UAH',
+    initialValue: '',
+    bankId: null,
+    brokerId: null,
+  };
+};
+
+type Opening = CreateSeed & {
+  // The id the form made for the account it may create, kept across a remount from a saved draft.
+  pendingAccountId: string;
+  // Whether it opens on the form's own saved draft, which an edit must not overwrite from the
+  // stored account.
+  isSaved: boolean;
+};
+
+// Everything the form's state opens with, worked out once. An edit starts with no icon, to be
+// hydrated from the stored account; a saved draft has the icon as the user left it.
+const openingOf = (
+  isEdit: boolean,
+  initialKind: Kind | undefined,
+  draft: FormDraft | AccountFormDraft | undefined,
+): Opening => {
+  const seed = createSeed(initialKind, draft);
+  const isSaved = isSavedDraft(draft);
+
+  return {
+    ...seed,
+    icon: isEdit && !isSaved ? null : seed.icon,
+    pendingAccountId: isSavedDraft(draft) ? draft.pendingAccountId : id(),
+    isSaved,
   };
 };
 
@@ -206,32 +253,37 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // create form.
   const editId = route.params?.accountId;
   const isEdit = editId !== undefined;
-  const seed = createSeed(route.params?.initialKind, route.params?.draft);
 
   const { t } = useTranslation();
   const currencyGroups = useCurrencyPickerGroups(CASH_CURRENCY_CONTEXT);
 
-  const [name, setName] = useState(seed.name);
-  const [kind, setKind] = useState<Kind>(seed.kind);
+  const { initialDraft, saveDraft } = useDraftParam<FormDraft | AccountFormDraft>(
+    navigation,
+    route,
+  );
+  const [opening] = useState(() => openingOf(isEdit, route.params?.initialKind, initialDraft));
+
+  const [name, setName] = useState(opening.name);
+  const [kind, setKind] = useState<Kind>(opening.kind);
   // The Property or Loan the user just picked, shown on the kind field until
   // the swap replaces this screen (see `handleSelectKind`).
   const [pickedImplicitKind, setPickedImplicitKind] = useState<Kind | undefined>(undefined);
-  const [currency, setCurrency] = useState<Currency>('UAH');
-  const [initialValue, setInitialValue] = useState('');
+  const [currency, setCurrency] = useState<Currency>(opening.currency);
+  const [initialValue, setInitialValue] = useState(opening.initialValue);
   // A create form seeds the icon with the initially-selected kind's default
   // glyph so it opens on a sensible symbol; the user can still override it in
   // the picker below. Edit mode starts null and is hydrated from the stored
   // row (below), so the seed never clobbers a saved icon.
-  const [icon, setIcon] = useState<string | null>(isEdit ? null : seed.icon);
+  const [icon, setIcon] = useState<string | null>(opening.icon);
   // Whether `icon` is the user's own pick rather than the kind's default, which
   // is all a swap to the holding form may carry: it re-derives its own default.
   // A kind switch resets the icon, so it resets this too.
-  const [iconIsDirty, setIconIsDirty] = useState(seed.iconIsDirty);
+  const [iconIsDirty, setIconIsDirty] = useState(opening.iconIsDirty);
   // Mirrors the icon's dirty pattern: null until the user taps a swatch. While
   // null, the effective color follows the selected kind's default
   // (defaultAccountColor[kind]) — the ColorPicker highlights that swatch and
   // switching kind moves it; once picked, the choice sticks.
-  const [color, setColor] = useState<string | null>(seed.color);
+  const [color, setColor] = useState<string | null>(opening.color);
   // The bank the user picked in the sync section's BankTypeField, tagging the
   // created row for later provider-specific handling (import, connect status).
   // null = nothing picked yet: a new bank account cannot Save until it is set
@@ -239,9 +291,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // auto-seeded on a fresh bank create (no auto-jump to Monobank). An existing
   // account saved before the pick was required can still hold null here, and
   // keeps it on edit.
-  const [bankId, setBankId] = useState<BankId | null>(null);
+  const [bankId, setBankId] = useState<BankId | null>(opening.bankId);
   // The broker picked in BrokerTypeField, the same shape as `bankId`.
-  const [brokerId, setBrokerId] = useState<BrokerId | null>(null);
+  const [brokerId, setBrokerId] = useState<BrokerId | null>(opening.brokerId);
   const catalogId = catalogIdFor(kind, bankId, brokerId);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
@@ -265,27 +317,45 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // The account's id is pre-generated once for this create session so the
   // per-source fields — which bind to an EXISTING account id (a per-account
   // Keychain item and a `sync({ targetAccountId })`) — have a stable id to key
-  // against before the row exists. The row is inserted with this exact id by
-  // `ensureAccount` on the first Connect (or on Save), so a field's Keychain
-  // write and first sync land on the row that Save then persists. Shared by both
-  // the bank and crypto kinds — one create-first / one-shot-insert latch, not a
-  // second copy.
-  const pendingAccountId = useMemo(() => id(), []);
-  // A one-shot create promise: whichever fires first (a field's own Connect or
-  // the nav-bar Save) inserts the row exactly once; every later caller reuses the
-  // same promise, so a field Connect followed by Save can never produce a
-  // DUPLICATE account (connect-first). On a REJECTED create the ref is reset to null
-  // (see below) so a retry re-attempts and Save never silently no-ops.
-  const accountCreate = useRef<Promise<string> | null>(null);
-  // A render-visible mirror of "the row has been (or is being) inserted", used
-  // only to DISABLE the kind switch and the bank picker once a source is
-  // connected — switching kind afterwards would route Save down a branch that
-  // creates a SECOND account and orphans the started row, and re-picking the bank
-  // would make the connect-first Save overwrite the connected row's bank id. It is
-  // state (not just the ref) because the disable must re-render; it follows the
-  // ref, reset to false on a failed create so both re-enable when no row exists.
+  // against before the row exists. Every Connect inserts the row with this exact id (and leaves
+  // a stored one as it is), so a field's Keychain write and first sync land on a row that exists,
+  // and Save then writes to the same id. Shared by both the bank and crypto kinds. No ref
+  // remembers the insert: whether the row exists is the database's to say, because a fold can
+  // leave a Connect running in the old screen that inserts the row after this one opened, and a
+  // row can be deleted elsewhere after a Connect inserted it.
+  const { pendingAccountId } = opening;
+  // A render-visible mirror of "a Connect has started inserting the row", used only to DISABLE
+  // the kind switch and the bank picker once a source is connected — switching kind afterwards
+  // would leave a started row of the old kind behind, and re-picking the bank would make Save
+  // overwrite the connected row's bank id. It is state because the disable must re-render; it is
+  // reset to false on a failed insert, and the live query below keeps the lock on while a row is
+  // stored.
   const [accountRowStarted, setAccountRowStarted] = useState(false);
-  const isPickLocked = isEdit || accountRowStarted;
+  // The account being edited, or in a create form the row a Connect inserted under the pending id,
+  // possibly from the screen a fold replaced.
+  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(editId ?? pendingAccountId), [
+    'accounts',
+  ]);
+  const draft: AccountFormDraft = {
+    saved: true,
+    name,
+    icon,
+    iconIsDirty,
+    color,
+    kind,
+    currency,
+    initialValue,
+    bankId,
+    brokerId,
+    pendingAccountId,
+  };
+  const onFieldBlur = useDraftAutosave(draft, saveDraft);
+  // A form that remounted from its saved draft does not know yet whether the screen a fold
+  // replaced still has the insert of the pending row queued, which the live query above shows
+  // only once it lands. Locked, a pick cannot send Save to a second account or clear that row's
+  // bank; the lock lifts only when the write queue says no such row is stored.
+  const isRowUnknown = usePendingRowLock(pendingAccountId, !isEdit && opening.isSaved);
+  const isPickLocked = isEdit || accountRowStarted || accounts.length > 0 || isRowUnknown;
   // ONE shared attempted-submit flag for every validated field on this form
   // (kiko-code-style's form validation model), set true by a blocked Connect
   // OR a blocked Save — never a per-field flag: each field's own error below
@@ -293,12 +363,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // first show, so a fresh create form shows no error before the user has
   // tried to submit.
   const [attemptedSave, setAttemptedSave] = useState(false);
-  // While the currency sheet's search field can
-  // be focused, this screen's background ScrollView must NOT react to the
-  // keyboard's frame change — it does not contain that responder, but
-  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
-  // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
 
   // The name field's own wrapper — a blocked Connect/Save (empty name) scrolls
   // it into view alongside its inline error, rather than leaving the reason
@@ -323,51 +387,44 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // scrolls it into view; the error under it is the cue.
   const catalogFieldRef = useRef<FieldInstance>(null);
 
+  // What both writes of the account row store. The icon goes in the same write as the rest: a
+  // second write could fail after the row exists, and a Binance connect would then clear the key
+  // pair of an account that is there.
+  const accountRow = (): Parameters<typeof accountsRepo.saveFormAccount>[0] => ({
+    id: pendingAccountId,
+    name: trimmedName,
+    // Neither cash (createCashAccount returns before this) nor property/debt
+    // (the swap to the holding form leaves this form first) reaches here.
+    kind,
+    color,
+    icon,
+    bankId: catalogId,
+  });
+
   const ensureAccount = (): Promise<string> => {
     // Parity with the bank Save gate (`canSave = trimmedName !== ''`): a sync
     // form is always visible and a credential/address may be entered, but NO
     // account row is ever created without a name. A field's own Connect tapped
     // with an empty (whitespace-only) name rejects HERE before any insert — the
     // field surfaces its existing "could not connect" state and the name-required
-    // reason renders below the name field so the user understands why. The latch
-    // and the `accountRowStarted` kind-lock are left untouched (no row was
-    // started), so a retry after typing a name re-attempts cleanly. Save is
-    // separately blocked on `!canSave`, so this also guards the programmatic path.
+    // reason renders below the name field so the user understands why. The
+    // `accountRowStarted` kind-lock is left untouched (no row was started), so a
+    // retry after typing a name re-attempts cleanly. Save is separately blocked
+    // on `!canSave`, so this also guards the programmatic path.
     if (!canSave) {
       setAttemptedSave(true);
       scrollTo(nameFieldRef, () => nameInputRef.current?.focus());
 
       return Promise.reject(new Error('name-required'));
     }
-    // The icon goes in the same insert: a second write could fail after the row
-    // exists, and a Binance connect reads any failure here as "no row" and
-    // clears the key pair of an account that is there.
-    accountCreate.current ??= (async () => {
-      await accountsRepo.create({
-        id: pendingAccountId,
-        name: trimmedName,
-        // Neither cash (createCashAccount returns before this) nor property/debt
-        // (the swap to the holding form leaves this form first) reaches here.
-        kind,
-        color,
-        icon,
-        bankId: catalogId,
-      });
+    setAccountRowStarted(true);
 
-      return pendingAccountId;
-    })().catch((error: unknown) => {
-      // A failed insert (DB locked, disk full) must not poison the session: clear
-      // the latch so a retry — or the Save fallback — re-attempts, rather than
-      // leaving the ref non-null and sending Save down the UPDATE branch, which
-      // would match no row and silently no-op while the user believes they
-      // saved. Re-throw so the caller still sees the failure.
-      accountCreate.current = null;
+    // A row already stored under the pending id (an earlier Connect, or another screen's after a
+    // fold) is left as it is, so every Connect can insert and none depends on an earlier one.
+    return accountsRepo.createIfAbsent(accountRow()).catch((error: unknown) => {
       setAccountRowStarted(false);
       throw error;
     });
-    setAccountRowStarted(true);
-
-    return accountCreate.current;
   };
 
   // Shared by every field's Connect handler below: `true` once the account row
@@ -385,8 +442,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // token to the Keychain keyed by the pre-generated id, then runs the first
   // Monobank sync against it (the write-only-secret order).
   // Any failure BEFORE the sync returns false so the field shows its "could not
-  // connect" status rather than an unhandled rejection; the ensureAccount reset
-  // above lets the next Connect retry. The token goes ONLY to the Keychain —
+  // connect" status rather than an unhandled rejection. The token goes ONLY to the Keychain —
   // never to the database or a log.
   const connectMonobank = async (token: string): Promise<boolean> => {
     if (!(await accountEnsured())) {
@@ -408,11 +464,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // against it. `CryptoSyncForm`/`BinanceCredentialsField` validate the
   // credential and write the Binance secret to the Keychain themselves, keyed by
   // the pre-generated id, before calling these — the secret never reaches this
-  // screen, the DB, or a log. A create failure is caught here (via
+  // screen, the DB, or a log (the Binance callbacks get only the token of the field's write). A
+  // create failure is caught here (via
   // `accountEnsured`) and surfaced to the field as a `false` (not-connected)
   // result, so the field shows its "could not connect" status instead of an
-  // unhandled rejection that would leave it stuck on "checking"; the ref
-  // reset above lets the next Connect retry.
+  // unhandled rejection that would leave it stuck on "checking".
   const connectWallet = async (address: string): Promise<boolean> => {
     if (!(await accountEnsured())) {
       return false;
@@ -425,14 +481,30 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     });
   };
 
-  const connectBinance = async (): Promise<boolean> => {
-    if (!(await accountEnsured())) {
-      // The field stored its key pair under the pre-generated account id before
-      // this connect, and no row owns it now, so nothing else would ever clear
-      // it. A failed clear is logged: the connect still reports its own failure.
+  // A field stored a pair under the pre-generated account id with the write `written`, and no
+  // Connect of it will follow: connectBinance's Connect failed to ensure the row, or the field
+  // unmounted during the write and the form decides instead. Only when no row owns the id does
+  // nothing else ever clear the pair: a reject on an empty name leaves a row that is there with its
+  // keys, even one another screen's Connect has still queued (the read waits behind it), and a
+  // failed read of the row keeps them too. The clear removes the pair `written` stored and no other
+  // write's, not even an equal pair: a remounted field saves its own pair outside the write queue,
+  // possibly after the read above answered. A failed clear is logged: the caller still reports its
+  // own outcome.
+  const clearPairIfRowMissing = async (written: BinanceWriteToken): Promise<void> => {
+    const rowIsMissing =
+      bifoldr(await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId))) ===
+      false;
+
+    if (rowIsMissing) {
       await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
-        clearCredentials(pendingAccountId),
+        clearCredentialsIfWrittenBy(pendingAccountId, written),
       );
+    }
+  };
+
+  const connectBinance = async (stored: BinanceWriteToken): Promise<boolean> => {
+    if (!(await accountEnsured())) {
+      await clearPairIfRowMissing(stored);
 
       return false;
     }
@@ -440,17 +512,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     return syncCrypto({ providerId: 'binance', targetAccountId: pendingAccountId });
   };
 
-  // In edit mode, load the account being edited so its fields can seed the form.
-  // The query always runs (hooks can't be conditional); an empty id in create
-  // mode simply matches no row.
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(editId ?? ''), ['accounts']);
+  // In edit mode, the account being edited seeds the form (the query above always runs: hooks
+  // can't be conditional).
   const editingAccount = isEdit ? accounts.at(0) : undefined;
 
   // Seed the form once from the loaded account. `useLiveQuery` resolves
   // asynchronously, so the initial render precedes the data; a one-shot ref
   // guards against re-seeding (and clobbering the user's in-progress edits) on
-  // every subsequent live-query emission.
-  const hydrated = useRef(false);
+  // every subsequent live-query emission. A saved draft is the user's edits, so
+  // it starts the ref spent and the stored account never overwrites it.
+  const hydrated = useRef(opening.isSaved);
   useEffect(() => {
     if (!isEdit || hydrated.current || editingAccount === undefined) {
       return;
@@ -561,25 +632,17 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       }
 
       // Every kind but cash (returned above) shares one create path. A field's
-      // own Connect may already have inserted the row via
-      // ensureAccount (connect-first); if so, persist any name/color/icon edited
-      // AFTER connecting rather than inserting a DUPLICATE account (the field
-      // already handled the credential + first sync). Otherwise this Save is
-      // the first write, so create the row now — an unconnected bank/crypto
-      // account is valid (the user connects a source later from its detail
-      // screen), and a metals account has no source to connect at all — it
-      // always takes this branch. (Property and debt never get here: picking
-      // either swaps to the holding form, which leaves this form first.)
-      if (accountCreate.current !== null) {
-        await accountsRepo.update(pendingAccountId, {
-          name: trimmedName,
-          color,
-          bankId: catalogId,
-        });
-        await accountsRepo.setIcon(pendingAccountId, icon);
-      } else {
-        await ensureAccount();
-      }
+      // own Connect may already have inserted the row (connect-first): the one
+      // write below then stores any name/color/icon edited AFTER connecting on
+      // it, rather than inserting a DUPLICATE account (the field already handled
+      // the credential + first sync). With no row, this Save is the first write
+      // and creates it — an unconnected bank/crypto account is valid (the user
+      // connects a source later from its detail screen), and a metals account has
+      // no source to connect at all. (Property and debt never get here: picking
+      // either swaps to the holding form, which leaves this form first.) The write
+      // looks the row up itself, queued behind any Connect insert still waiting, so no earlier
+      // read can make it update a row that is missing or insert one that is there.
+      await accountsRepo.saveFormAccount(accountRow());
       navigation.goBack();
     } catch {
       // A DB write failure (disk full, locked) must not vanish silently — the
@@ -651,8 +714,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       onContentSizeChange={onContentSizeChange}
+      onFieldBlur={onFieldBlur}
     >
       <Box gap={4} testID="account-form">
         {/* One shared icon+name block for every kind, cash included: the icon
@@ -726,7 +789,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               selected={currency}
               onSelect={setCurrency}
               groups={currencyGroups}
-              onOpenChange={setIsCurrencySheetOpen}
               testID="account-currency-field"
             />
 
@@ -815,6 +877,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               onConnectBinance={connectBinance}
               walletReminder={reminderFor('wallet')}
               binanceReminder={reminderFor('binance')}
+              onBinanceStoredWhileUnmounted={clearPairIfRowMissing}
             />
           </Box>
         )}

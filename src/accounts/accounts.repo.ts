@@ -115,6 +115,36 @@ const insertImplicitAccount = async (
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
   Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color' | 'icon'>>;
 
+// The row both account creates insert: the id (the caller's, or a new one) and the next free grid
+// slot, after the implicit kinds are refused.
+const newAccountValues = async (
+  databaseTransaction: typeof database,
+  input: NewAccount,
+): Promise<NewAccount & Required<Pick<NewAccount, 'id' | 'sortOrder'>>> => {
+  if (isImplicitAccountKind(input.kind)) {
+    throw new Error(
+      'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
+    );
+  }
+
+  return {
+    ...input,
+    id: input.id ?? id(),
+    sortOrder: input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.kind)),
+  };
+};
+
+const isAccountStored = async (
+  databaseTransaction: typeof database,
+  accountId: string,
+): Promise<boolean> =>
+  (
+    await databaseTransaction
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.id, accountId))
+  ).length > 0;
+
 type NewCashAccount = {
   name: string;
   currency: Currency;
@@ -209,17 +239,62 @@ export const accountsRepo = {
    */
   create: (input: NewAccount): Promise<string> =>
     write(async (databaseTransaction) => {
-      if (isImplicitAccountKind(input.kind)) {
-        throw new Error(
-          'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
-        );
+      const values = await newAccountValues(databaseTransaction, input);
+      await databaseTransaction.insert(accounts).values(values);
+
+      return values.id;
+    }),
+  /**
+   * `create` for a caller whose id was pre-generated and may already be stored:
+   * the row is looked up inside the same write, and a stored one is left as it is
+   * with nothing else written (not even the sort-order shift a new row would run),
+   * so a row another screen inserted under the same id first (a fold can leave its
+   * Connect running) fails nothing. Resolves to the id either way.
+   */
+  createIfAbsent: (input: NewAccount & Required<Pick<NewAccount, 'id'>>): Promise<string> =>
+    write(async (databaseTransaction) => {
+      if (await isAccountStored(databaseTransaction, input.id)) {
+        return input.id;
       }
 
-      const accountId = input.id ?? id();
-      const sortOrder = input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.kind));
-      await databaseTransaction.insert(accounts).values({ ...input, id: accountId, sortOrder });
+      const values = await newAccountValues(databaseTransaction, input);
+      // A backstop: the lookup above already found no row, so a clash is a row from outside this
+      // write queue.
+      await databaseTransaction
+        .insert(accounts)
+        .values(values)
+        .onConflictDoNothing({ target: accounts.id });
 
-      return accountId;
+      return values.id;
+    }),
+  /**
+   * Whether a row is stored under the id, read through the write queue: a plain read skips it
+   * and cannot see an insert still waiting there, while this one runs after every write queued
+   * before it. For a decision that must not act on a row that is about to appear.
+   */
+  exists: (accountId: string): Promise<boolean> =>
+    write((databaseTransaction) => isAccountStored(databaseTransaction, accountId)),
+  /**
+   * The create form's Save, in ONE write: the row under the form's id is looked up in the
+   * transaction, so the write runs after any Connect insert queued before it and sees that row.
+   * A stored row takes the form's editable fields (never its kind, institution or sort order);
+   * a missing one (deleted elsewhere, or never created) is inserted as a new account.
+   */
+  saveFormAccount: (input: NewAccount & Required<Pick<NewAccount, 'id'>>): Promise<string> =>
+    write(async (databaseTransaction) => {
+      if (await isAccountStored(databaseTransaction, input.id)) {
+        await databaseTransaction
+          .update(accounts)
+          .set({ name: input.name, color: input.color, icon: input.icon, bankId: input.bankId })
+          .where(eq(accounts.id, input.id));
+
+        return input.id;
+      }
+
+      const values = await newAccountValues(databaseTransaction, input);
+      await databaseTransaction.insert(accounts).values(values);
+
+      return values.id;
     }),
   /**
    * Insert a property or loan holding into the one live implicit account of its

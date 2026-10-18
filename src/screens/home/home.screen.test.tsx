@@ -26,15 +26,18 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdCard } from '@kiko/test-support/hold-card';
 import { metalInstrument } from '@kiko/prices/instrument';
 import { formatDate, defaultDateRange } from '@kiko/dates';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '@kiko/test-support/mock-text-tone';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
-import { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { DUPLICATE_ACTION_TEST_ID } from '@kiko/design-system/components/card-context-menu';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HomeScreen from './home.screen';
@@ -60,17 +63,44 @@ jest.mock('@kiko/design-system/components/text', () => ({
 // height" formula indistinguishable from the correct one, so a double-counting
 // bug would go unnoticed.
 const MOCK_TAB_BAR_HEIGHT = 80;
+// Mutable so the dedicated "Duo vertical bar" cases below can override it
+// per test and restore it afterwards — see `mockUseSafeAreaInsets` just
+// below for the identical treatment and rationale.
+const mockUseBottomTabBarHeight = jest.fn(() => MOCK_TAB_BAR_HEIGHT);
 jest.mock('react-native-bottom-tabs', () => ({
-  useBottomTabBarHeight: () => MOCK_TAB_BAR_HEIGHT,
+  useBottomTabBarHeight: () => mockUseBottomTabBarHeight(),
+}));
+
+// The system's own vertical-bar trait, in place of any geometry guess; `none`
+// is an ordinary bottom bar, which every test here but the "Duo vertical bar"
+// cases sees.
+const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+jest.mock('@kiko/display-regions', () => ({
+  useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+  // The Home filter sheet is a BottomSheet, which reads the layout mode and the fold: a
+  // single flat window, as on an iPhone.
+  useLayoutMode: () => 'single',
+  useFoldRegion: () => null,
 }));
 
 const MOCK_BOTTOM_INSET = 34;
+// A plain arrow-returning factory can't be overridden per test, so this is a
+// mutable `jest.fn()` wrapper instead — its default return value is exactly
+// what every existing test in this file expects (a bottom-tab-bar iPhone,
+// zero horizontal inset); only the dedicated "Duo vertical bar" tests at the
+// end of this file override it, restoring it in their own `afterEach`.
+const mockUseSafeAreaInsets = jest.fn(() => ({
+  top: 0,
+  right: 0,
+  bottom: MOCK_BOTTOM_INSET,
+  left: 0,
+}));
 jest.mock('react-native-safe-area-context', () => {
   const actual = jest.requireActual('react-native-safe-area-context');
 
   return {
     ...actual,
-    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: MOCK_BOTTOM_INSET, left: 0 }),
+    useSafeAreaInsets: () => mockUseSafeAreaInsets(),
   };
 });
 
@@ -91,10 +121,43 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
   isLiquidGlassSupported: boolean;
 };
 
-const mockUseIsFocused = jest.fn(() => true);
+// Whether Home is on screen. A pane navigator's companion default is visible without being the
+// focused route, so `useIsFocused` would freeze it.
+const mockUseIsScreenVisible = jest.fn(() => true);
+// The form opens in the pane opposite Home's own; outside a pane navigator the real helper falls
+// back to `navigate` (its own test pins that).
+const mockOpenInPane = jest.fn();
+// The first route of the detail pane; null on one pane (the real hook's answer there) and while
+// the pane shows nothing.
+const mockUseDetailPaneRoute = jest.fn((): object | null => null);
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  detailParamOf: jest.requireActual('@kiko/navigation/pane-stack/pane-visibility').detailParamOf,
+  useDetailPaneRoute: () => mockUseDetailPaneRoute(),
+  useIsScreenVisible: () => mockUseIsScreenVisible(),
+  useOpenInPane: () => mockOpenInPane,
+}));
+
+// The real card behind a render counter, to read which rows a change of the detail route
+// re-renders.
+const mockTransactionCardRender = jest.fn();
+jest.mock('@kiko/design-system/components/transaction-card', () => {
+  const actual = jest.requireActual('@kiko/design-system/components/transaction-card');
+  const { createElement } = jest.requireActual('react');
+
+  return {
+    __esModule: true,
+    default: (props: { title: string }) => {
+      mockTransactionCardRender(props.title);
+
+      return createElement(actual.default, props);
+    },
+  };
+});
+
+// Never focused: Home is a companion default here, so only its visibility may decide a pause.
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
-  useIsFocused: () => mockUseIsFocused(),
+  useIsFocused: () => false,
 }));
 
 const mockUseLiveQuery = jest.fn();
@@ -1631,13 +1694,191 @@ describe('HomeScreen', () => {
     expect(getByText('No transactions')).toBeTruthy();
   });
 
-  it('opens the transaction form for the tapped row, keyed by its id', async () => {
+  it('opens the transaction form in a pane for the tapped row, keyed by its id', async () => {
     seed({ transactions: [transaction({ id: 't-42', description: 'Coffee' })] });
     const { getByText } = await renderHome();
 
     await fireEvent.press(getByText('Coffee'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', { transactionId: 't-42' });
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('TransactionForm', { transactionId: 't-42' });
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the pre-filled create form in a pane from a row’s Duplicate action', async () => {
+    seed({
+      transactions: [transaction({ id: 't-42', description: 'Coffee', source: 'manual' })],
+    });
+    const { getByTestId } = await render(
+      <HomeScreen
+        navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+        route={asRouteProp<HomeProps['route']>('Home')}
+      />,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await holdCard();
+    await act(async () => {
+      await fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+    });
+
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('TransactionForm', {
+      duplicateOfTransactionId: 't-42',
+    });
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the empty create form in a pane from the add button', async () => {
+    seed({ transactions: [transaction({ id: 't-42', description: 'Coffee' })] });
+    const { getByLabelText } = await renderHome();
+
+    await fireEvent.press(getByLabelText(i18n.t('home.addTransaction')));
+
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('TransactionForm', {});
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  describe('the selected transaction row', () => {
+    const formRoute = (params: object) => ({
+      key: 'form-page',
+      name: 'TransactionForm',
+      params,
+      isDefault: false,
+    });
+
+    const inTwoPanes = () => (
+      <PaneContext.Provider value={paneContextOf('columns', 'primary')}>
+        <HomeScreen
+          navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+          route={asRouteProp<HomeProps['route']>('Home')}
+        />
+      </PaneContext.Provider>
+    );
+
+    const renderTwoPanes = () => render(inTwoPanes());
+
+    const rerenderTwoPanes = (view: Awaited<ReturnType<typeof renderTwoPanes>>) =>
+      act(async () => {
+        await view.rerender(inTwoPanes());
+      });
+
+    const selectedRows = (view: Awaited<ReturnType<typeof renderTwoPanes>>) =>
+      view
+        .getAllByTestId('transaction-row')
+        .filter(
+          (row) => StyleSheet.flatten(row.props.style).backgroundColor === darkTheme.colors.accent,
+        );
+
+    beforeEach(() => {
+      seed({
+        transactions: [
+          transaction({ id: 't-1', description: 'Coffee' }),
+          transaction({ id: 't-2', description: 'Lunch' }),
+          transaction({ id: 't-3', description: 'Taxi' }),
+        ],
+      });
+    });
+
+    afterEach(() => {
+      mockUseDetailPaneRoute.mockReturnValue(null);
+    });
+
+    it('is the row of the transaction the detail pane edits, and only that row', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-2' }));
+
+      const view = await renderTwoPanes();
+      const selected = selectedRows(view);
+
+      expect(selected).toHaveLength(1);
+      expect(within(selected[0]).getByText('Lunch')).toBeTruthy();
+      expect(
+        view
+          .getAllByRole('button')
+          .filter((row) => row.props.accessibilityState?.selected === true),
+      ).toHaveLength(1);
+    });
+
+    it('is none for the form that adds a transaction', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({}));
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none for the form that adds a transaction to a holding', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ holdingId: 'h-1' }));
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none for the form that duplicates a transaction, which is a new one', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ duplicateOfTransactionId: 't-2' }));
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none for a page that is not the transaction form', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        key: 'other-page',
+        name: 'HoldingDetail',
+        params: { transactionId: 't-2' },
+        isDefault: false,
+      });
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none while the detail pane has no page, or no params', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({ ...formRoute({}), params: undefined });
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none on one pane, where the hook reports no detail pane', async () => {
+      const view = await renderHome();
+
+      expect(selectedRows(view)).toHaveLength(0);
+      expect(
+        view
+          .getAllByRole('button')
+          .filter((row) => row.props.accessibilityState?.selected === true),
+      ).toHaveLength(0);
+    });
+
+    it('follows the detail pane and clears when it no longer shows that form', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-2' }));
+      const view = await renderTwoPanes();
+
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-1' }));
+      await rerenderTwoPanes(view);
+
+      expect(within(selectedRows(view)[0]).getByText('Coffee')).toBeTruthy();
+      expect(selectedRows(view)).toHaveLength(1);
+
+      mockUseDetailPaneRoute.mockReturnValue({
+        key: 'another-page',
+        name: 'Categories',
+        params: undefined,
+        isDefault: false,
+      });
+      await rerenderTwoPanes(view);
+
+      expect(selectedRows(view)).toHaveLength(0);
+    });
+
+    it('re-renders only the rows whose mark changed when the detail pane moves', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-2' }));
+      const view = await renderTwoPanes();
+
+      mockTransactionCardRender.mockClear();
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-1' }));
+      await rerenderTwoPanes(view);
+
+      expect(
+        [...new Set(mockTransactionCardRender.mock.calls.map(([title]) => title))].sort(),
+      ).toEqual(['Coffee', 'Lunch']);
+    });
   });
 
   it('groups the list by day with Today/Yesterday separators, newest day first', async () => {
@@ -1814,17 +2055,152 @@ describe('HomeScreen', () => {
   it('clears the tab bar without double-counting the safe-area inset', async () => {
     const { getByTestId } = await renderHome();
 
-    const listPadding = getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+    const listPadding = StyleSheet.flatten(
+      getByTestId('home-transactions').props.contentContainerStyle,
+    ).paddingBottom;
 
     // This guards against Home passing the FULL tab-bar height as its own
     // clearance on top of the bottom inset Screen's SafeAreaView already
     // reserves (see `home.screen.tsx`), which would leave 130pt of dead space
     // under the last row instead of the 96pt every other screen has.
-    expect(listPadding).toBe(resolveBottomClearance(MOCK_TAB_BAR_HEIGHT, MOCK_BOTTOM_INSET));
+    expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET);
 
     // Total dead space under the last row must match every other screen's 96:
     // the SafeAreaView's 34 inset + Screen's own 16 base padding + this 46.
     expect(MOCK_BOTTOM_INSET + 16 + listPadding).toBe(96);
+  });
+
+  describe('in one of two panes', () => {
+    const renderInPane = (mode: 'columns' | 'rows', pane: 'companion' | 'primary') =>
+      render(
+        <PaneContext.Provider value={paneContextOf(mode, pane)}>
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />
+        </PaneContext.Provider>,
+      );
+
+    const listContentOf = (view: Awaited<ReturnType<typeof render>>) =>
+      StyleSheet.flatten(view.getByTestId('home-transactions').props.contentContainerStyle);
+
+    const listPaddingOf = (view: Awaited<ReturnType<typeof render>>): number =>
+      listContentOf(view).paddingBottom;
+
+    it('gives the list no tab-bar clearance in a pane above the other one', async () => {
+      expect(listPaddingOf(await renderInPane('rows', 'companion'))).toBe(0);
+    });
+
+    it('clears the tab bar in the left pane too, since both panes of columns reach the bottom', async () => {
+      expect(listPaddingOf(await renderInPane('columns', 'companion'))).toBe(46);
+    });
+
+    it('clears the tab bar in the pane at the bottom of the window', async () => {
+      expect(listPaddingOf(await renderInPane('rows', 'primary'))).toBe(46);
+    });
+
+    // The list is its own scroll view, so it takes the whole pane and its content is capped and
+    // centred; capping the screen's root would pull the scroll indicator in from the pane edge.
+    it('caps and centres the list content, and leaves the list the whole pane', async () => {
+      const view = await renderInPane('rows', 'primary');
+      const content = listContentOf(view);
+      const list = StyleSheet.flatten(view.getByTestId('home-transactions').props.style);
+
+      expect(content.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(content.width).toBe('100%');
+      expect(content.alignSelf).toBe('center');
+      expect(list.maxWidth).toBeUndefined();
+    });
+
+    // UIKit insets a scroll indicator by the window's right safe-area inset; the left pane of
+    // columns does not reach that edge, so its lists stop UIKit doing it.
+    it.each([
+      ['columns', 'companion', false],
+      ['columns', 'primary', undefined],
+    ] as const)(
+      'stops UIKit insetting the list scroll indicator of the %s %s pane (%s)',
+      async (mode, pane, expected) => {
+        const view = await renderInPane(mode, pane);
+
+        expect(
+          view.getByTestId('home-transactions').props.automaticallyAdjustsScrollIndicatorInsets,
+        ).toBe(expected);
+      },
+    );
+
+    it('stops UIKit insetting the loading scroll indicator of the left pane', async () => {
+      setLiveData({ isLoading: { accounts: true } });
+      const view = await renderInPane('columns', 'companion');
+
+      expect(
+        view.getByTestId('home-loading-scroll').props.automaticallyAdjustsScrollIndicatorInsets,
+      ).toBe(false);
+    });
+
+    it('caps and centres the fixed header above the list', async () => {
+      const view = await renderInPane('rows', 'primary');
+      const header = StyleSheet.flatten(view.getByTestId('home-header').props.style);
+
+      expect(header.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(header.alignSelf).toBe('center');
+    });
+
+    // The sync caption and bar sit between the header and the list; left uncapped they would span
+    // the whole pane and stick out past the capped header card above them.
+    describe('the sync progress bar', () => {
+      const barCapOf = (view: Awaited<ReturnType<typeof render>>) =>
+        StyleSheet.flatten(view.getByTestId('sync-progress-bar').parent?.props.style);
+
+      beforeEach(() => {
+        mockUseSyncStatus.mockReturnValue(true);
+        mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+      });
+
+      it('is capped and centred like the header above the list', async () => {
+        const cap = barCapOf(await renderInPane('rows', 'primary'));
+
+        expect(cap.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+        expect(cap.alignSelf).toBe('center');
+      });
+
+      it('is capped and centred while the screen loads', async () => {
+        setLiveData({ isLoading: { accounts: true } });
+        const cap = barCapOf(await renderInPane('rows', 'primary'));
+
+        expect(cap.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      });
+
+      it('is not capped outside a pane', async () => {
+        expect(barCapOf(await renderHome())?.maxWidth).toBeUndefined();
+      });
+    });
+
+    it('leaves the screen root the whole pane', async () => {
+      const view = await renderInPane('rows', 'primary');
+      const root = StyleSheet.flatten(view.getByTestId('home-content').parent?.props.style);
+
+      expect(root.maxWidth).toBeUndefined();
+    });
+
+    it('caps the loading scroll view content the same way', async () => {
+      setLiveData({ isLoading: { accounts: true } });
+      const view = await renderInPane('rows', 'primary');
+      const content = StyleSheet.flatten(
+        view.getByTestId('home-loading-scroll').props.contentContainerStyle,
+      );
+
+      expect(content.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(content.alignSelf).toBe('center');
+    });
+
+    it('caps nothing outside a pane', async () => {
+      const view = await renderHome();
+
+      expect(listContentOf(view).maxWidth).toBeUndefined();
+      expect(StyleSheet.flatten(view.getByTestId('home-header').props.style)?.maxWidth).toBe(
+        undefined,
+      );
+    });
   });
 
   it('runs a full sync when the transaction list is pulled to refresh', async () => {
@@ -1887,6 +2263,71 @@ describe('HomeScreen', () => {
 
     expect(getByText(/Binance/)).toBeTruthy();
     expect(getByText(/Cold storage/)).toBeTruthy();
+  });
+
+  describe('Duo vertical bar (the system places the tab bar on a vertical edge)', () => {
+    // The primary panel's measured live geometry — see the duo-adaptive
+    // design doc's "Context" section.
+    const DUO_TAB_BAR_HEIGHT = 678;
+    const DUO_INSETS = { top: 0, right: 84, bottom: MOCK_BOTTOM_INSET, left: 0 };
+
+    afterEach(() => {
+      mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+      mockUseVerticalBarEdge.mockReturnValue('none');
+      mockUseSafeAreaInsets.mockReturnValue({
+        top: 0,
+        right: 0,
+        bottom: MOCK_BOTTOM_INSET,
+        left: 0,
+      });
+    });
+
+    it('ignores the poisoned tab-bar height, drops the list clearance to 0, and leaves the FAB anchor unchanged — the exact measured Duo primary-panel geometry', async () => {
+      mockUseBottomTabBarHeight.mockReturnValue(DUO_TAB_BAR_HEIGHT);
+      mockUseVerticalBarEdge.mockReturnValue('trailing');
+      mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
+
+      const { getByTestId, getByLabelText } = await renderHome();
+
+      const listPadding = StyleSheet.flatten(
+        getByTestId('home-transactions').props.contentContainerStyle,
+      ).paddingBottom;
+
+      // Not 678 - 34 = 644 (the bug) — a vertical bar distrusts the tab-bar
+      // height entirely.
+      expect(listPadding).toBe(0);
+
+      const fab = getByLabelText('Add transaction');
+      const flattened = StyleSheet.flatten(fab.props.style);
+
+      // The enclosing Screen's SafeAreaView already reserves the 84pt right
+      // inset itself, so the FAB's own container sits clear of the
+      // bar without any extra offset — the usual spacing(4) = 16 gap,
+      // unchanged. Adding the inset again here flung the FAB into the middle
+      // of the screen — the bug the real-device screenshots caught.
+      expect(flattened.right).toBe(16);
+    });
+
+    it('keeps the ordinary bottom-tab-bar clearance and FAB anchor unchanged when there is no vertical bar', async () => {
+      mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+      mockUseSafeAreaInsets.mockReturnValue({
+        top: 0,
+        right: 0,
+        bottom: MOCK_BOTTOM_INSET,
+        left: 0,
+      });
+
+      const { getByTestId, getByLabelText } = await renderHome();
+
+      const listPadding = StyleSheet.flatten(
+        getByTestId('home-transactions').props.contentContainerStyle,
+      ).paddingBottom;
+      expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET);
+
+      const fab = getByLabelText('Add transaction');
+      const flattened = StyleSheet.flatten(fab.props.style);
+      expect(flattened.right).toBe(16);
+    });
   });
 });
 
@@ -2267,7 +2708,7 @@ describe('HomeScreen — localization', () => {
 describe('HomeScreen — empty states', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
     mockUseSyncStatus.mockReturnValue(false);
     mockRefreshing.mockReturnValue(false);
@@ -2354,18 +2795,18 @@ describe('HomeScreen — empty states', () => {
 describe('HomeScreen — paused while hidden', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
     mockUseSyncStatus.mockReturnValue(false);
     mockRefreshing.mockReturnValue(false);
   });
 
   afterEach(() => {
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
   });
 
-  it('pauses every live query while unfocused, keeping the cache option and the enabled argument', async () => {
-    mockUseIsFocused.mockReturnValue(false);
+  it('pauses every live query while not on screen, keeping the cache option and the enabled argument', async () => {
+    mockUseIsScreenVisible.mockReturnValue(false);
     seed({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
 
     await renderHome();
@@ -2381,7 +2822,8 @@ describe('HomeScreen — paused while hidden', () => {
     );
   });
 
-  it('leaves every live query unpaused while focused', async () => {
+  // A companion default is visible but never the focused route; `useIsFocused` is mocked false.
+  it('leaves every live query unpaused while on screen, focused or not', async () => {
     seed();
 
     await renderHome();
@@ -2416,7 +2858,7 @@ describe('HomeScreen — paused while hidden', () => {
     );
 
     return {
-      writeWhileHidden: (next: LiveData): void => {
+      write: (next: LiveData): void => {
         pending = next;
       },
     };
@@ -2440,12 +2882,12 @@ describe('HomeScreen — paused while hidden', () => {
     const { getByText, queryByText, rerender } = await render(element());
     expect(getByText('Coffee')).toBeTruthy();
 
-    mockUseIsFocused.mockReturnValue(false);
+    mockUseIsScreenVisible.mockReturnValue(false);
     await act(async () => {
       await rerender(element());
     });
 
-    stub.writeWhileHidden({
+    stub.write({
       ...base,
       transactions: [
         transaction({ id: 't1', description: 'Coffee' }),
@@ -2457,11 +2899,41 @@ describe('HomeScreen — paused while hidden', () => {
     });
     expect(queryByText('Tea')).toBeNull();
 
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     await act(async () => {
       await rerender(element());
     });
     expect(getByText('Tea')).toBeTruthy();
     expect(getByText('Coffee')).toBeTruthy();
+  });
+
+  it('shows a transaction written while visible as the companion, without being focused', async () => {
+    const base: LiveData = {
+      accounts: [MONOBANK],
+      holdings: [UAH_HOLDING],
+      transactions: [transaction({ id: 't1', description: 'Coffee' })],
+    };
+    const stub = pausedAwareLiveData(base);
+    const element = () => (
+      <HomeScreen
+        navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+        route={asRouteProp<HomeProps['route']>('Home')}
+      />
+    );
+
+    const { getByText, rerender } = await render(element());
+
+    stub.write({
+      ...base,
+      transactions: [
+        transaction({ id: 't1', description: 'Coffee' }),
+        transaction({ id: 't2', description: 'Tea', time: Date.now() + 1 }),
+      ],
+    });
+    await act(async () => {
+      await rerender(element());
+    });
+
+    expect(getByText('Tea')).toBeTruthy();
   });
 });

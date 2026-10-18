@@ -1,0 +1,35 @@
+import { useCallback, useState } from 'react';
+
+type DraftNavigation<Draft> = { setParams: (params: { draft: Draft }) => void };
+
+type DraftRoute<Draft> = { params?: { draft?: Draft } };
+
+/**
+ * Whether a `draft` param is a form's own saved fields, marked `saved: true`, and not the
+ * identity a swap between the account and holding forms carries to seed a new form.
+ */
+export const isSavedDraft = <Draft extends object>(
+  draft: Draft | undefined,
+): draft is Extract<Draft, { saved: true }> =>
+  draft !== undefined && 'saved' in draft && draft.saved === true;
+
+/**
+ * The unsaved field values of a form, kept in its route's `draft` param. A fold or unfold remounts
+ * every screen but keeps route params, so the form starts from `initialDraft` again. Params must
+ * stay JSON, so a draft holds the raw field values (strings, ids, numbers), never a class or a
+ * function.
+ *
+ * `initialDraft` is read once, at mount: this hook writes the same param later, and a form that
+ * followed it would reseed itself from its own save.
+ */
+export const useDraftParam = <Draft>(
+  navigation: DraftNavigation<Draft>,
+  route: DraftRoute<Draft>,
+): { initialDraft: Draft | undefined; saveDraft: (draft: Draft) => void } => {
+  const [initialDraft] = useState(() => route.params?.draft);
+  const { setParams } = navigation;
+
+  const saveDraft = useCallback((draft: Draft): void => setParams({ draft }), [setParams]);
+
+  return { initialDraft, saveDraft };
+};

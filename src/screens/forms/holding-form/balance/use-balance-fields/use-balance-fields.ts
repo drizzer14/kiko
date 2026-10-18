@@ -12,10 +12,15 @@ type UseBalanceFieldsParams = {
   currency: Currency;
 };
 
+/** What a fold or unfold must give back: the typed opening balance. */
+export type BalanceFieldsDraft = { openingBalance: string };
+
 export type UseBalanceFieldsResult = HoldingTypeForm & {
   currency: Currency;
   openingBalance: string;
   setOpeningBalance: (value: string) => void;
+  draft: BalanceFieldsDraft;
+  restore: (draft: BalanceFieldsDraft) => void;
 };
 
 /**
@@ -39,6 +44,10 @@ export const useBalanceFields = (params: UseBalanceFieldsParams): UseBalanceFiel
     setOpeningBalance(groupAmount(majorAmountText(balance.currency, balance.minorUnits)));
   }, []);
 
+  const restore = useCallback((draft: BalanceFieldsDraft): void => {
+    setOpeningBalance(draft.openingBalance);
+  }, []);
+
   const createPayload = (): CreatePayload => ({
     openingBalance: openingBalanceMoney(),
     metadata: undefined,
@@ -60,6 +69,8 @@ export const useBalanceFields = (params: UseBalanceFieldsParams): UseBalanceFiel
     currency,
     openingBalance,
     setOpeningBalance,
+    draft: { openingBalance },
+    restore,
     isValid: true,
     scrollTargets: [],
     createPayload,

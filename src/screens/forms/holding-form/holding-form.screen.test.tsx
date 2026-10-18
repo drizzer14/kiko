@@ -11,6 +11,12 @@ import {
   propertyCategorySymbol,
 } from '@kiko/holdings/entity-symbols';
 import { Money } from '@kiko/currency/money';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
@@ -25,9 +31,9 @@ import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
+import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -56,6 +62,9 @@ const selectedSwatchHex = (
   return undefined;
 };
 
+jest.mock('@kiko/display-regions', () =>
+  require('@kiko/test-support/layout-mode-spy').layoutModeSpyModule(),
+);
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     create: jest.fn().mockResolvedValue('new-holding-id'),
@@ -438,19 +447,14 @@ describe('HoldingFormScreen term deposit', () => {
     expect(getByTestId('currency-option-USD')).toBeTruthy();
   });
 
-  // The currency sheet's search field lives inside a Modal above this
-  // Screen's background ScrollView, which otherwise misfires
-  // `automaticallyAdjustKeyboardInsets` for a responder it does not contain.
-  // `CurrencyField`'s `onOpenChange` must gate that prop off for exactly the
-  // window the sheet is open.
-  it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
+  // The patched React Native moves a scroll view's offset only for a field inside it, so the
+  // sheet's search field cannot misfire this screen: the Screen keeps its keyboard adjustment on.
+  it('keeps automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
     const { getByTestId } = await renderScreen();
-
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
 
     await fireEvent.press(getByTestId('holding-currency-field'));
 
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(false);
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
   it('does not render the opening Balance input for a term deposit', async () => {
@@ -5408,5 +5412,434 @@ describe('HoldingFormScreen implicit create', () => {
     const screen = await renderScreen();
 
     expect(screen.queryByTestId('account-kind-field')).toBeNull();
+  });
+});
+
+describe('HoldingFormScreen — draft', () => {
+  const open = (params: object) =>
+    render(
+      <HoldingFormScreen
+        navigation={navigationProp(navigation)}
+        route={asRouteProp<HoldingFormProps['route']>('HoldingForm', params)}
+      />,
+    );
+
+  // The form opened again with the route params the first mount left behind.
+  const reopen = (opened: object) => open(paramsAfter(navigation, opened));
+
+  const blur = (screen: Screen, label: string) => fireEvent(screen.getByLabelText(label), 'blur');
+
+  beforeEach(() => {
+    createMock.mockClear();
+    updateDeltaMock.mockClear();
+    updateLoanMock.mockClear();
+    updateFromStoredMock.mockClear();
+    navigation.goBack.mockClear();
+    mockAccountKind = 'bank';
+    mockAccountInstitution = null;
+  });
+
+  afterEach(() => {
+    resetLayoutMode();
+  });
+
+  it('brings back a term deposit as typed, and keeps adding contributions under new keys', async () => {
+    const first = await open({ accountId: 'acc-1' });
+    await fillTermDepositFields(first);
+    await blur(first, 'Term');
+    await first.unmount();
+
+    const second = await reopen({ accountId: 'acc-1' });
+
+    expect(second.getByLabelText('Name').props.value).toBe('My deposit');
+    expect(second.getByLabelText('Contribution 1 amount').props.value).toBe('1 000');
+    expect(second.getByLabelText('Annual rate').props.value).toBe('12');
+    expect(second.getByLabelText('Term').props.value).toBe('12');
+
+    await fireEvent.press(second.getByText('Add contribution'));
+
+    expect(second.getByLabelText('Contribution 2 amount')).toBeTruthy();
+
+    await fireEvent.press(second.getByLabelText('Remove contribution 2'));
+    await pressSave(navigation.setOptions);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'term_deposit',
+        name: 'My deposit',
+        metadata: expect.objectContaining({
+          contributions: [{ amountMinorUnits: 100_000, date: localDay(2026, 1, 1) }],
+          annualRatePct: 12,
+          termMonths: 12,
+        }),
+      }),
+    );
+  });
+
+  it('brings back a manual bond with its dates', async () => {
+    const first = await open({ accountId: 'acc-1' });
+    await fillBondFields(first);
+    await blur(first, 'Coupon');
+    await first.unmount();
+
+    const second = await reopen({ accountId: 'acc-1' });
+
+    expect(
+      second.getByTestId('bond-isin-mode-control-option-manual').props.accessibilityState.selected,
+    ).toBe(true);
+    expect(second.getByLabelText('Name').props.value).toBe('My bond');
+    expect(second.getByLabelText('Quantity').props.value).toBe('10');
+    expect(second.getByLabelText('Face value').props.value).toBe('1 000');
+    expect(second.getByLabelText('Coupon').props.value).toBe('9');
+
+    await pressSave(navigation.setOptions);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'bond',
+        metadata: expect.objectContaining({
+          quantity: 10,
+          couponPct: 9,
+          purchaseDate: localDay(2026, 1, 1),
+          maturityDate: localDay(2028, 1, 1),
+        }),
+      }),
+    );
+  });
+
+  describe('a bond found in the register', () => {
+    const registerRow = {
+      isin: 'UA4000234215',
+      terms: {
+        isin: 'UA4000234215',
+        currency: 'USD',
+        faceValueMinorUnits: 100_000,
+        couponPct: 9.5,
+        maturityDate: localDay(2029, 6, 24),
+        couponFrequency: 'quarterly',
+        name: 'Register Bond UA4000234215',
+      },
+      fetchedAt: 1,
+    };
+
+    it('stays as the user left it: the match is not applied again over their edits', async () => {
+      mockBondRegisterRows = [registerRow];
+      const first = await open({ accountId: 'acc-1' });
+      await selectHoldingType(first, 'bond');
+      await fireEvent.changeText(first.getByPlaceholderText('UA4000234215'), 'UA4000234215');
+      await fill(first, 'Name', 'My own bond');
+      await fill(first, 'Quantity', '10');
+      await fill(first, 'Purchase price per bond', '10 000');
+      await blur(first, 'Quantity');
+      await first.unmount();
+
+      const second = await reopen({ accountId: 'acc-1' });
+
+      expect(second.getByPlaceholderText('UA4000234215').props.value).toBe('UA4000234215');
+      expect(second.getByLabelText('Name').props.value).toBe('My own bond');
+      expect(second.getByLabelText('Quantity').props.value).toBe('10');
+      expect(second.getByTestId('holding-currency-field')).toHaveTextContent('US Dollar', {
+        exact: false,
+      });
+
+      await pressSave(navigation.setOptions);
+
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'My own bond',
+          currency: 'USD',
+          metadata: expect.objectContaining({ isin: 'UA4000234215', quantity: 10 }),
+        }),
+      );
+    });
+  });
+
+  it('brings back a loan with its schedule fields', async () => {
+    mockAccountKind = 'debt';
+    const first = await open({ accountId: 'acc-1' });
+    await fill(first, 'Name', 'Car loan');
+    await fill(first, 'Principal', '500000');
+    await pickDate(first, 'Start date', 2026, 1, 1);
+    await fill(first, 'Annual rate', '12');
+    await fill(first, 'Term', '24');
+    await blur(first, 'Term');
+    await first.unmount();
+
+    const second = await reopen({ accountId: 'acc-1' });
+
+    expect(second.getByLabelText('Principal').props.value).toBe('500 000');
+    expect(second.getByLabelText('Annual rate').props.value).toBe('12');
+    expect(second.getByLabelText('Term').props.value).toBe('24');
+
+    await pressSave(navigation.setOptions);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'loan',
+        name: 'Car loan',
+        metadata: expect.objectContaining({
+          principalMinorUnits: 50_000_000,
+          startDate: localDay(2026, 1, 1),
+          annualRatePct: 12,
+          termMonths: 24,
+        }),
+      }),
+    );
+  });
+
+  it('brings back a property with its cost and share', async () => {
+    mockAccountKind = 'property';
+    const first = await open({ accountId: 'acc-1' });
+    await fill(first, 'Name', 'Apartment');
+    await fill(first, 'Cost', '9000');
+    await fill(first, 'Share', '50');
+    await blur(first, 'Share');
+    await first.unmount();
+
+    const second = await reopen({ accountId: 'acc-1' });
+
+    expect(second.getByLabelText('Cost').props.value).toBe('9 000');
+    expect(second.getByLabelText('Share').props.value).toBe('50');
+
+    await pressSave(navigation.setOptions);
+
+    const metadata = createMock.mock.calls[0][0].metadata as { lots: { day: number }[] };
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        ownership: [{ day: metadata.lots[0].day, numerator: 1, denominator: 2 }],
+      }),
+    );
+  });
+
+  it('brings back a metal with its purity and first lot', async () => {
+    mockAccountKind = 'metals';
+    const first = await open({ accountId: 'acc-1' });
+    await fill(first, 'Name', 'Gold bar');
+    await fill(first, 'Quantity', '31.1');
+    await fill(first, 'Total cost', '80000');
+    await fill(first, 'Purity', '750');
+    await blur(first, 'Purity');
+    await first.unmount();
+
+    const second = await reopen({ accountId: 'acc-1' });
+
+    expect(second.getByLabelText('Purity').props.value).toBe('750');
+    expect(second.getByLabelText('Quantity').props.value).toBe('31.1');
+
+    await pressSave(navigation.setOptions);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'metal',
+        metadata: expect.objectContaining({
+          purity: '0.75',
+          lots: [{ day: expect.any(Number), quantityDelta: '31.1', costMinorUnits: 8_000_000 }],
+        }),
+      }),
+    );
+  });
+
+  it('brings back a cash holding with its opening balance, currency, icon and color', async () => {
+    mockAccountKind = 'cash';
+    const first = await open({ accountId: 'acc-1' });
+    await fill(first, 'Name', 'Wallet');
+    await fill(first, 'Balance', '250');
+    await fireEvent.press(first.getByTestId('holding-currency-field'));
+    await fireEvent.changeText(first.getByPlaceholderText('Search by code or name'), 'EUR');
+    await fireEvent.press(first.getByTestId('currency-option-EUR'));
+    await fireEvent.press(first.getByLabelText('Color violet'));
+    await fireEvent.press(first.getByLabelText('Change Icon'));
+    await fireEvent.press(first.getByLabelText('Choose icon giftcard'));
+    await blur(first, 'Balance');
+    await first.unmount();
+
+    const second = await reopen({ accountId: 'acc-1' });
+
+    expect(second.getByLabelText('Name').props.value).toBe('Wallet');
+    expect(second.getByLabelText('Balance').props.value).toBe('250');
+    expect(second.getByTestId('holding-currency-field')).toHaveTextContent('Euro', {
+      exact: false,
+    });
+    expect(second.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+    expect(second.getByLabelText('Icon giftcard')).toBeTruthy();
+
+    await pressSave(navigation.setOptions);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Wallet',
+        currency: 'EUR',
+        color: entityColors.violet,
+        icon: 'giftcard',
+      }),
+    );
+  });
+
+  it('brings back the choices made since the last blur once the window changes shape', async () => {
+    mockAccountKind = 'cash';
+    const first = await open({ accountId: 'acc-1' });
+    await fill(first, 'Name', 'Wallet');
+    await fireEvent.press(first.getByLabelText('Color violet'));
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await emitLayoutMode('columns');
+    await first.unmount();
+
+    const second = await reopen({ accountId: 'acc-1' });
+
+    expect(second.getByLabelText('Name').props.value).toBe('Wallet');
+    expect(second.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+  });
+
+  describe('an edit', () => {
+    const lotOne = { day: 1000, quantityDelta: '1', costMinorUnits: 8_000_000 };
+    const lotTwo = { day: 2000, quantityDelta: '2', costMinorUnits: 16_000_000 };
+    const goldBar = (lots: (typeof lotOne)[]) => ({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Gold bar',
+      type: 'metal',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: { metal: 'XAU', form: 'bar', unit: 'oz', purity: '0.9999', lots },
+    });
+    const edited = { accountId: 'acc-1', holdingId: 'h1' };
+
+    beforeEach(() => {
+      mockAccountKind = 'metals';
+    });
+
+    it('lets the draft win over the stored holding, but saves the lots as they are stored now', async () => {
+      const first = await open(edited);
+      mockEditHoldings = [goldBar([lotOne])];
+      await first.unmount();
+      const opened = await open(edited);
+      await fill(opened, 'Purity', '750');
+      await fill(opened, 'Name', 'Renamed bar');
+      await blur(opened, 'Purity');
+      await opened.unmount();
+
+      // A lot added while the form was closed.
+      mockEditHoldings = [goldBar([lotOne, lotTwo])];
+      const second = await reopen(edited);
+
+      expect(second.getByLabelText('Purity').props.value).toBe('750');
+      expect(second.getByLabelText('Name').props.value).toBe('Renamed bar');
+
+      await pressSave(navigation.setOptions);
+
+      expect(updateDeltaMock).toHaveBeenCalledWith(
+        'h1',
+        expect.objectContaining({
+          name: 'Renamed bar',
+          metadata: expect.objectContaining({ purity: '0.75', lots: [lotOne, lotTwo] }),
+        }),
+        expect.any(Number),
+      );
+    });
+
+    it('opens from the stored holding when the route carries no draft', async () => {
+      mockEditHoldings = [goldBar([lotOne])];
+      const screen = await open(edited);
+
+      expect(screen.getByLabelText('Purity').props.value).toBe('999.9');
+    });
+  });
+
+  describe('beside the identity a swap between the account and holding forms carries', () => {
+    const carried = { name: 'Flat', icon: 'giftcard', color: entityColors.violet };
+
+    beforeEach(() => {
+      mockAccountLoaded = false;
+    });
+
+    afterEach(() => {
+      mockAccountLoaded = true;
+    });
+
+    it('writes nothing for a blur on a form that only holds what the swap carried', async () => {
+      const screen = await open({ implicitKind: 'property', draft: carried });
+
+      await blur(screen, 'Name');
+
+      expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('writes the whole form over what the swap carried once the user changes a field', async () => {
+      const first = await open({ implicitKind: 'property', draft: carried });
+      await fill(first, 'Cost', '5000');
+      await blur(first, 'Cost');
+
+      expect(navigation.setParams).toHaveBeenCalledTimes(1);
+      expect(navigation.setParams).toHaveBeenCalledWith({
+        draft: expect.objectContaining({
+          saved: true,
+          name: 'Flat',
+          icon: 'giftcard',
+          color: entityColors.violet,
+          type: 'property_item',
+        }),
+      });
+
+      await first.unmount();
+
+      const second = await reopen({ implicitKind: 'property', draft: carried });
+
+      expect(second.getByLabelText('Cost').props.value).toBe('5 000');
+      expect(second.getByLabelText('Name').props.value).toBe('Flat');
+    });
+  });
+
+  it('keeps the draft to plain values, so the route params stay JSON', async () => {
+    mockAccountKind = 'cash';
+    const screen = await open({ accountId: 'acc-1' });
+    await fill(screen, 'Balance', '250');
+    await blur(screen, 'Balance');
+
+    const [[{ draft }]] = navigation.setParams.mock.calls;
+
+    expect(draft).toEqual(expect.objectContaining({ saved: true, type: 'cash', currency: 'UAH' }));
+    expect(draft.balance).toEqual({ openingBalance: '250' });
+    expect(JSON.parse(JSON.stringify(draft))).toEqual(draft);
+  });
+
+  it('writes the draft once per blur, never while typing', async () => {
+    mockAccountKind = 'cash';
+    const screen = await open({ accountId: 'acc-1' });
+
+    await fill(screen, 'Balance', '2');
+    await fill(screen, 'Balance', '25');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await blur(screen, 'Balance');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing for a blur on a form the user has not changed', async () => {
+    mockAccountKind = 'cash';
+    const screen = await open({ accountId: 'acc-1' });
+
+    await blur(screen, 'Name');
+    await blur(screen, 'Balance');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+  });
+
+  it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+    mockAccountKind = 'cash';
+    const screen = await open({ accountId: 'acc-1' });
+    await fill(screen, 'Name', 'Wallet');
+    await blur(screen, 'Name');
+    navigation.setParams.mockClear();
+
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
+    expect(navigation.setParams).not.toHaveBeenCalled();
   });
 });

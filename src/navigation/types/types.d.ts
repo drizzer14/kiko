@@ -1,11 +1,18 @@
 import type { AccountRow } from '@kiko/db';
 import type { HelpTopicId } from '@kiko/help';
+import type { BrokerId } from '@kiko/brokers';
 import type { Currency } from '@kiko/currency/currency';
+import type { ReminderDraft } from '@kiko/reminders/rules';
+import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { HoldingType } from '@kiko/holdings/holding-type';
+import type { EntryTab } from '@kiko/screens/forms/transaction-form';
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
+import type { HoldingFormDraft } from '@kiko/screens/forms/holding-form';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
+import type { OwnershipEntry } from '@kiko/screens/forms/property-ownership';
 
 /**
  * Per-tab native-stack param lists. Each tab owns its own stack, so screens
@@ -21,31 +28,60 @@ import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
  * CREATE form pre-filled from an existing manual row (its amount, description,
  * category, and holding), dated to now — a new row on save, never an edit of
  * the source. The union makes the entry points mutually exclusive so a caller
- * can never pass more than one. It is registered in the Home, Accounts, and Settings
- * stacks (Home lists every transaction; Accounts reaches it from a holding; Settings
- * reaches it from the templates list), so all three param lists carry the same shape.
- * The final member — an EMPTY object (`Record<string, never>`) — is the global-add entry
- * (Bundle B): a create with NO holding fixed by navigation, so the form renders its own
- * primary-leg holding picker. `Record<string, never>` admits `{}` alone, keeping every
- * member mutually exclusive (a caller can pass exactly one id, or none at all).
- * The three template members open the same form for a template: `templateId` creates a
+ * can never pass more than one. It is registered in the Home, Accounts, Settings, and Statistics
+ * stacks (Home lists every transaction; Accounts reaches it from a holding; Settings reaches it
+ * from the templates list; Statistics opens it beside its own root), so all four param lists
+ * carry the same shape. The final member — an object with no id — is the global-add entry: a
+ * create with NO holding fixed by navigation, so the form renders its own primary-leg holding
+ * picker. The three template members open the same form for a template: `templateId` creates a
  * transaction filled from that template, `editTemplateId` edits it, and `newTemplate` adds one.
+ * Every member may also carry the form's own `draft` (see `TransactionFormDraft`).
  */
 export type TransactionFormParams =
-  | { holdingId: string }
-  | { transactionId: string }
-  | { duplicateOfTransactionId: string }
-  | { templateId: string }
-  | { editTemplateId: string }
-  | { newTemplate: true }
-  | Record<string, never>;
+  | { holdingId: string; draft?: TransactionFormDraft }
+  | { transactionId: string; draft?: TransactionFormDraft }
+  | { duplicateOfTransactionId: string; draft?: TransactionFormDraft }
+  | { templateId: string; draft?: TransactionFormDraft }
+  | { editTemplateId: string; draft?: TransactionFormDraft }
+  | { newTemplate: true; draft?: TransactionFormDraft }
+  | { draft?: TransactionFormDraft };
+
+/**
+ * Every field the transaction form keeps in its state: a typed amount, the mode and the holdings
+ * picked for it, the day, the category and whether the user chose it, the Template tab and the
+ * template picked there, and the save-as-template switch with its name. What the form seeds from a
+ * stored row (an edit, a duplicate) is in it too, as the user left it, so a draft wins over it.
+ */
+export type TransactionFormDraft = {
+  primaryHoldingId: string | null;
+  mode: FormMode;
+  amount: string;
+  description: string;
+  changeReturns: { id: number; holdingId: string | null; amount: string }[];
+  valueIn: string;
+  destinationHoldingId: string | null;
+  converting: boolean;
+  counterpartHoldingId: string | null;
+  counterpartAmount: string;
+  time: number;
+  selectedCategory: string | null;
+  userPickedCategory: boolean;
+  prefilledLabel: string | null;
+  saveAsTemplate: boolean;
+  templateName: string;
+  tab: EntryTab;
+  pickedTemplateId: string | null;
+};
 
 /**
  * The reminder form edits a saved reminder by its id, or creates the one
  * reminder of `kind` an account can have. The union keeps the two entry points
  * mutually exclusive.
  */
-export type ReminderFormParams = { reminderId: string } | { accountId: string; kind: ReminderKind };
+export type ReminderFormParams = (
+  | { reminderId: string }
+  | { accountId: string; kind: ReminderKind }
+) & { draft?: ReminderDraft };
 
 /**
  * The identity the account form and the implicit holding form carry across the
@@ -56,28 +92,77 @@ export type ReminderFormParams = { reminderId: string } | { accountId: string; k
 export type FormDraft = { name: string; icon: string | null; color: string | null };
 
 /**
+ * The `draft` param of the account form and the holding form is one of two things. A `FormDraft`
+ * seeds a form that a swap between the two just opened. A draft marked `saved` is the form's own
+ * fields, kept so a fold or unfold, which remounts the screen, gives them back; it wins over a
+ * seed, and a form opened with one is not a swap (no instant transition).
+ */
+export type AccountFormDraft = {
+  saved: true;
+  name: string;
+  icon: string | null;
+  iconIsDirty: boolean;
+  color: string | null;
+  kind: AccountRow['kind'];
+  currency: Currency;
+  initialValue: string;
+  bankId: BankId | null;
+  brokerId: BrokerId | null;
+  // The id the form made for the account it may create: a remount keeps it, so a row a Connect
+  // already created under it is saved onto, not created again.
+  pendingAccountId: string;
+};
+
+/**
+ * What a form keeps in its route's `draft` param so a fold or unfold, which remounts every screen
+ * but keeps route params, gives it back its unsaved fields. Each draft holds the raw field values
+ * the form keeps (typed text, ids, day timestamps): route params must stay JSON.
+ */
+export type ContributionFormDraft = { amount: string; date: number };
+
+export type PricePointFormDraft = { value: string; date: number };
+
+export type OwnershipChangeFormDraft = {
+  entry: OwnershipEntry;
+  effectiveDate: number;
+};
+
+export type LotFormDraft = {
+  direction: 'buy' | 'sell';
+  quantity: string;
+  cost: string;
+  date: number;
+};
+
+/**
  * What every entry to the holding form carries. `implicitKind` (instead of
  * `accountId`) opens the form in implicit create mode: the one property or debt
  * account is found or created on Save, and `draft` seeds the identity the
- * account form carried over. `initialType` and `initialCurrency` seed a create
- * on a named account, once on mount, for an "Add holding" row whose picker lists
+ * account form carried over; once the user has filled the form, it is the form's own
+ * saved fields instead (see `HoldingFormDraft`). `initialType` and `initialCurrency` seed a
+ * create on a named account, once on mount, for an "Add holding" row whose picker lists
  * only some holdings; the user can still change both. Without the Accounts
  * stack's `returnTo`, so the Home and Settings stacks, which have no import
  * screen to pop back to, cannot pass one.
  */
 type HoldingFormParams = (
   | { accountId: string; initialType?: HoldingType; initialCurrency?: Currency }
-  | { implicitKind: ImplicitAccountKind; draft?: FormDraft }
+  | { implicitKind: ImplicitAccountKind }
 ) & {
+  draft?: FormDraft | HoldingFormDraft;
   holdingId?: string;
   // Edit only: whether the account holds only debts, so the title reads "Loan"
   // on the first frame; the form reads the account itself when this is absent.
   debtAccount?: boolean;
 };
 
+// `Statistics` is the companion pane of the Home tab on a wide window, and Home with
+// `TransactionForm` are the same on the Statistics tab: each tab shows the other's root beside
+// its own.
 export type HomeStackParamList = {
   Home: undefined;
   TransactionForm: TransactionFormParams;
+  Statistics: undefined;
   // The two create forms an empty holding picker's "Add holding" row opens. They
   // sit in this stack, not behind a switch to the Accounts tab, because leaving
   // the tab resets its stack and the transaction form's draft would go with it.
@@ -87,6 +172,8 @@ export type HomeStackParamList = {
 
 export type AccountsStackParamList = {
   Accounts: undefined;
+  // Fills the primary pane of a wide window while the user has no account to show there.
+  AccountsEmptyPane: undefined;
   // `name` is the entity's name captured at navigation time from the row the
   // user tapped, so the detail screen's native large title (and the back button
   // on any screen pushed from it) shows the name from the FIRST render — before
@@ -122,7 +209,7 @@ export type AccountsStackParamList = {
   AccountForm: {
     accountId?: string;
     initialKind?: Exclude<AccountRow['kind'], ImplicitAccountKind>;
-    draft?: FormDraft;
+    draft?: FormDraft | AccountFormDraft;
   };
   // `returnTo` is the CREATE-only return channel for a "Create new holding"
   // launched from the statement-import preview or Map Columns: the caller's
@@ -149,25 +236,25 @@ export type AccountsStackParamList = {
   // Add a top-up ("contribution") to a term deposit, reached from the holding's
   // detail screen. Bonds record a contribution as a plain TransactionForm entry
   // instead; only deposits take a dedicated contribution form.
-  ContributionForm: { holdingId: string };
+  ContributionForm: { holdingId: string; draft?: ContributionFormDraft };
   // Record a new `manual` price point for a priced holding (property_item,
   // metal), reached from the holding-detail screen's
   // "Update value" footer action. A dedicated form, mirroring
   // ContributionForm's shape, rather than a plain TransactionForm entry: a
   // revaluation moves no ledger balance, only the holding's `price_points`
   // series (kiko-domain).
-  PricePointForm: { holdingId: string };
+  PricePointForm: { holdingId: string; draft?: PricePointFormDraft };
   // Record a buy or sell lot against a lot-form-eligible holding (`metal` —
   // kiko-pricing), reached from the holding-detail screen's "Add
   // lot" footer action; with `lotIndex`, edit that stored lot, reached from
   // its row's long-press menu. Writes `metadata.lots` through
   // `holdingsRepo.changeLots`, which re-reads the lots inside its write;
   // unlike ContributionForm/PricePointForm it never touches a price series.
-  LotForm: { holdingId: string; lotIndex?: number };
+  LotForm: { holdingId: string; lotIndex?: number; draft?: LotFormDraft };
   // Edit one stored share change of a property, reached from the holding
   // detail's Share changes list. `day` is the change's `dayKeyOf` key; the
   // repo re-reads the list inside its write rather than trusting a row.
-  OwnershipChangeForm: { holdingId: string; day: number };
+  OwnershipChangeForm: { holdingId: string; day: number; draft?: OwnershipChangeFormDraft };
   // The account's own reminders page, reached from the bell in the account
   // detail header.
   AccountReminders: { accountId: string };
@@ -251,6 +338,11 @@ export type SettingsStackParamList = {
 
 export type StatisticsStackParamList = {
   Statistics: undefined;
+  Home: undefined;
+  TransactionForm: TransactionFormParams;
+  // The two create forms an empty holding picker's "Add holding" row opens, as in the Home stack.
+  AccountForm: AccountsStackParamList['AccountForm'];
+  HoldingForm: HoldingFormParams;
 };
 
 /**

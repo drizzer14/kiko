@@ -98,7 +98,8 @@ theme:
 
 ## Token categories
 
-Five token categories, defined once in a single theme module:
+The token categories, defined once in a single theme module (read
+`src/design-system/theme/theme.ts` for the full set):
 
 - **color** — background, surface (per elevation level), primary
   text, secondary text, accent(s), positive-money, negative-money.
@@ -122,6 +123,12 @@ Five token categories, defined once in a single theme module:
   current values; never restate the numbers here. A call site passes
   `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
   checkmark beside caption text), never an inline literal like `18`.
+- **layout** — `paneMaxWidth` caps a pane's SCREEN CONTENT (lists,
+  forms) and never native bars; `hairline` is the flat two-pane divider
+  width. Read `theme.ts` for the values; never restate them. Pane code
+  reads `theme.layout`, never an inline width literal or
+  `StyleSheet.hairlineWidth`. The divider keeps the ordinary hairline
+  rule.
 
 Components read tokens; they never hardcode a raw color, spacing,
 radius, or icon-size value inline. The same rule extends to layout: prefer a
@@ -149,9 +156,9 @@ itself, not only to `Button` — `chip-row.component.tsx` and
 trend-filter sheet's selected manual-category row
 (`trend-filter-field.component.tsx`'s `ManualCategoryRow`): its
 selected row paints the same filled `accent` background with
-`onAccent` text/icon/checkmark, REPLACING an earlier `surfaceHigh`
-selected-row treatment — the same filled-accent selection vocabulary
-as `ChipRow`, not a one-off. An UNCHECKED trend-filter
+`onAccent` text/icon/checkmark — the same filled-accent selection
+vocabulary as `ChipRow`, not a one-off; `TransactionCard`'s category
+glyph takes `onAccent` when the card is `selected`. An UNCHECKED trend-filter
 row keeps its own category's identity color instead: `SymbolIcon`
 resolves an explicit `color` prop over its `tone` prop, so the row
 passes `color={checked ? undefined : option.color}` — clearing
@@ -159,6 +166,12 @@ passes `color={checked ? undefined : option.color}` — clearing
 selected. A new accent-filled control
 follows the same rule: read `theme.ts`'s own `onAccent` doc comment,
 then one of these call sites, rather than reinventing the check.
+
+**The shared selected surface** (`src/design-system/selected-surface/`): `OnAccentContext`,
+`useIsOnAccent` and `selectedSurfaceStyles.fill` (the accent fill plus border). `Text` and
+`SymbolIcon` switch to `onAccent` inside it by themselves. A selected list row sets `selected` on
+`Card`, `SettingsRow` or `HoldingCard`; it never hand-sets a fill or an `onAccent` color.
+`EntityIconTile` keeps its identity color on the fill (pending the user's live check, R34).
 
 ## Styling layer: react-native-unistyles v3
 
@@ -294,7 +307,8 @@ an entry (date + value) the moment the user approves a new visual.
   Changing any of these, or the numbers they rest on, needs the user's explicit approval.
   Mechanism: every large-title native stack passes `screenLayout={fittingLargeTitleLayout}`
   (`src/navigation/fitting-large-title/`); a new large-title stack adds it too. It measures the
-  title (`useTitleFit`) in the native large-title font; a title that does not fit shows in full
+  title (`useTitleFit`) in the native large-title font, against the width of its own pane in a
+  split window (`usePaneWidth`) and the window's otherwise; a title that does not fit shows in full
   as a wrapping `LargeTitleHeading` (`src/design-system/components/large-title-heading/`) as
   the first content. `Screen` in scroll mode hosts the heading; a custom list screen renders
   `LargeTitleHeading` itself and wires its scroll with `useLargeTitleScroll`, as `HoldingDetail`
@@ -371,7 +385,9 @@ The established patterns grouped under this heading:
   directly; a stored selection of a left-out account is pruned to All (that
   account holds nothing). A value that only fell out of scope (a category outside the date range)
   is still unioned back, never pruned (the rule above).
-- **SettingsRow** (`src/screens/settings/settings-row/`): `onPress`
+- **SettingsRow** (`src/screens/settings/settings-row/`): `selected?: boolean` marks the row
+  with the shared selected surface (`accessibilityState.selected`; it keeps a caller's radius);
+  `onPress`
   makes the row a `Pressable` (with a chevron). `trailing` pins an
   inline control to the label's line. The two can be combined
   (`ReminderRow`: tap opens the form, the trailing Switch pauses).
@@ -481,6 +497,11 @@ The established patterns grouped under this heading:
   (via the field's `error` prop) on a Connect press instead —
   `disabled` stays reserved for the field's own
   in-flight `status.kind === 'checking'`.
+  `BinanceCredentialsField` also takes an optional `onStoredWhileUnmounted`, called
+  instead of `onConnect` when the field unmounted after the Keychain write stored the pair.
+  Both callbacks receive the write's `BinanceWriteToken`; `CryptoSyncForm`'s `onConnectBinance`
+  and `onBinanceStoredWhileUnmounted` carry the same type. The pair leaves the field only into
+  `fetchAccount` (the check) and `saveCredentials`.
 - The "Connect first" reminder (user-approved 2026-10-08, create form only).
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly
@@ -632,21 +653,71 @@ real set — enumerated at `src/design-system/components/`; read that
 directory listing directly rather than trusting a copy of it here, a
 new component can land between reviews of this skill:
 
+- **TwoPaneLayout** — props `{ companion, primary, mode? }` (`mode` pins
+  the mode the caller has settled on; the default is `useLayoutMode`). Single
+  mode renders only `primary`; columns/rows position two pane frames via
+  `resolvePaneGeometry` (`src/design-system/pane-geometry/pane-geometry.ts`).
+  Flat = a hairline divider; folded = the fold region is the gap. Each pane
+  child is given a `PaneContext` (`src/design-system/pane-context/`): the
+  window edges the pane touches, which a `Screen` inside it reads.
+  Each pane also gets `PaneWidthContext` (same folder; read with `usePaneWidth`): the pane's own
+  frame width, a number kept apart from `PaneContext` (compared by value). Only `useTitleFit`
+  reads it (a long large title is measured against the pane width, not the window's); a screen's
+  own sizing reads `PaneContext`.
+  Rule (user ruling R13, 2026-10-09): TwoPaneLayout POSITIONS PANE
+  FRAMES ONLY — no width cap, no safe-area padding; native bars span
+  the full pane; the `paneMaxWidth` cap and per-pane safe areas belong
+  to the screen content inside the pane. Frames are window coordinates,
+  so it mounts at the window origin at full window size. A fold counts
+  for columns when it is taller than wide and for rows when it is wider
+  than tall (no window-size comparison); any other fold is flat (rotation
+  transient). The rule is in `pane-geometry.ts`.
 - **Screen** — the top-level screen container: true-black background,
+  an optional `onFieldBlur` prop (`screen.props.d.ts`) that Screen hands to every text field
+  inside through `FieldBlurContext` (`src/design-system/field-blur/`): a form that keeps a draft
+  passes `onFieldBlur` to Screen and no blur handler to each field;
   safe-area handling per mode (`scroll` drops the top safe-area edge
   under a large-title header), and a footer slot that clears the
   native glass tab bar's measured height. A `bleedBottom` child that
   owns the screen's true bottom edge itself (e.g. a scrollable list)
-  must compute that same clearance with the shared
-  `resolveBottomClearance(tabBarHeight, insetBottom)` helper exported
-  from `src/design-system/components/screen/bottom-clearance.ts` —
-  never re-derive it inline, or it double-counts the bottom safe-area
-  inset Screen's `SafeAreaView` already reserves. Its `scroll`
-  ScrollView is also the tab-root scroll container an active-tab
+  must take that same clearance from `useBottomClearance()`
+  (`src/design-system/components/screen/use-bottom-clearance.ts`, built
+  on `resolveBottomClearance` in `bottom-clearance.ts`; read its
+  thresholds there) — never re-derive it inline, or it double-counts
+  the bottom safe-area inset Screen's `SafeAreaView` already reserves.
+  The hook is pane-aware: a pane that is not at the window's bottom has
+  no tab bar over it and gets 0. `resolveBottomClearance` is pane-blind,
+  so nothing outside `src/design-system/components/screen/` may import
+  it (`kiko-no-pane-blind-bottom-clearance`). In a pane (a
+  `PaneContext` from `TwoPaneLayout`), the `SafeAreaView` keeps only the
+  window edges the pane touches (`use-pane-screen.ts`), a footer is
+  capped like content (it takes the same cap as the content container,
+  or sits inside the capped root), and a `scroll` Screen caps and
+  centres its content container at `theme.layout.paneMaxWidth` and the
+  ScrollView keeps the whole pane; a `bleedTop` child does the same on
+  its own content container with `useContentCap()`; the plain branch
+  caps its root. The vertical-bar signal it consumes is
+  `useVerticalBarEdge` from `@kiko/display-regions`
+  (`src/display-regions/`); `scroll-to-field` reads it through
+  `@kiko/display-regions` too. `useScrollIndicatorProps()` (`use-pane-screen.ts`, exported by
+  the Screen barrel) is spread into every ScrollView or list a screen renders: it turns off
+  UIKit's automatic indicator insets only for a pane that does not reach the window's right edge.
+  Its `scroll` ScrollView is also the tab-root scroll container an active-tab
   re-tap returns to the top, where `HeaderHeightContext` is the LIVE
   header height — see
   `src/navigation/use-scroll-to-top-on-tab-press/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
+  Keyboard offset: `react-native` 0.87.1 is patched
+  (`patches/react-native+0.87.1.patch`, listed in `docs/harness/documented-exceptions.md`) so a
+  ScrollView with `automaticallyAdjustKeyboardInsets` moves its content offset only when the
+  focused field is INSIDE it. Every other ScrollView (the other pane, a Screen under a pushed
+  form) gets only the bottom inset, which resets on hide. Never rely on a ScrollView's offset
+  for a field outside it. No screen gates `automaticallyAdjustKeyboardInsets` for a sheet: a
+  field in a sheet or another pane moves no other ScrollView's offset, so `CurrencyField` has no
+  open-state callback and a Screen keeps the default while a sheet is open. Proof scope: a device
+  check (user, unfolded Duo, 2026-10-18) proved the OTHER-pane case; the sheet case is proven by
+  code only (it takes the same native branch); scrolling a field the keyboard covers into view
+  inside its OWN Screen has no device proof.
   Settings' About block (app name/version, copyright, links) is an
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned
@@ -829,13 +900,15 @@ new component can land between reviews of this skill:
   centered on the input (pinned by `clipboard-text-field.component.test.tsx`).
 - **Card** (`src/design-system/components/card/`) — the shared
   CONTENT-layer surface: a solid, opaque themed fill with a defined
-  hairline border, no glass/blur material at all. Every content card,
+  hairline border, no glass/blur material at all. `selected?: boolean` (`card.props.d.ts`)
+  paints the shared selected surface (accent fill, `onAccent` content) on a list row whose page
+  the detail pane shows. Every content card,
   list row, and chart container that used to be a neutral (non-tint)
   `GlassSurface` now renders through this component instead — read
   its header comment (`card.component.tsx`) for the HIG rationale
   (Liquid Glass is reserved for the NAVIGATION layer, not content).
 - **GlassSurface** — the shared NAV-LAYER surface only: the tab bar,
-  bottom sheets, the FAB, and the keyboard-done accessory (grep
+  bottom sheets, the FAB (its edge: see "FAB edge" below), and the keyboard-done accessory (grep
   `<GlassSurface` for the current consumer list; content cards use
   `Card` above instead). Real Liquid Glass on iOS 26+, a themed flat
   fallback everywhere else, an optional `bordered` edge, and
@@ -950,7 +1023,12 @@ new component can land between reviews of this skill:
   it, so a control reads as raised instead of blending into the sheet
   (a chip or segment on it uses the faint `neutralSubtle` fill — see
   `ChipRow` and `SegmentedControl` below); a base at `surfaceHigh`
-  itself would swallow a selected pill. It caps
+  itself would swallow a selected pill. The scrim stays full-bleed. The card is full width on
+  one pane; on two panes it is narrowed to `theme.layout.sheetMaxWidth` and centred, and with a
+  fold reported it is centred inside the primary pane, so it never straddles the hinge; with
+  rows and a fold its height is capped to the primary pane (`resolveSheetFrame` in
+  `bottom-sheet.layout.ts`, applied in `bottom-sheet.component.tsx`; read the width in
+  `theme.ts`). It caps
   its own height at a fixed 66%-of-window ceiling and takes an optional
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a
@@ -1296,7 +1374,8 @@ new component can land between reviews of this skill:
   with no descriptor shows no line), the holding's computed value (as of
   `now`) on the right, a smaller base-currency line for a holding in another currency,
   and the owned share of a part-owned property. A plain tap calls
-  `onOpen`; it carries no long-press of its own, so a grid wraps it in
+  `onOpen`; `selected` marks it (the Card's selected surface, `accessibilityState.selected`); it
+  carries no long-press of its own, so a grid wraps it in
   `CardContextMenu` and `Sortable.Grid`. Consumers: the account-detail
   holding grid and the Accounts screen's Property and Debts grids.
 - **CloseHoldingSheet** and `useCloseHoldingAction`
@@ -1366,8 +1445,10 @@ new component can land between reviews of this skill:
   elsewhere in the row, and it must then get `accessibilityLabel` so
   VoiceOver names it.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
-  theme tokens. Its disabled chrome (border/background/opacity) comes
-  from the shared `disabledFieldStyle(theme)` helper
+  theme tokens. It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
+  Screen's `onFieldBlur`. `HoldingIdentityField` calls `useFieldBlur(undefined)`; a text field
+  outside these two must call `useFieldBlur` itself. Its disabled chrome (border/background/opacity)
+  comes from the shared `disabledFieldStyle(theme)` helper
   (`src/design-system/disabled-field-style/disabled-field-style.ts`); `DateField` and
   `TimeField` (`src/screens/forms/`) consume the SAME helper so a
   read-only date/time field renders identically to a read-only text
@@ -1427,6 +1508,10 @@ new component can land between reviews of this skill:
   onContentSizeChange, scrollTo(fieldRef, onSettled?) }`), so no screen
   re-derives the header inset or the content height: two copies of that
   geometry drift apart.
+- **`useIsMounted()`** (`src/design-system/use-is-mounted/`) returns a stable
+  function that answers whether the component is still mounted. An async
+  handler asks it after an await and drops its result when it is unmounted
+  (the Connect fields do, so no credential is stored after a fold).
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading
@@ -1616,10 +1701,9 @@ new component can land between reviews of this skill:
   carries no `accessibilityLabel`). The day number is `numberOfLines={1}`
   with `adjustsFontSizeToFit` (`minimumFontScale` 0.7, as
   `SegmentedControl`), so "31" never splits at accessibility text sizes.
-  **Layout traps:** the cell width is `'14.28%'`, never `100 / 7` —
-  Yoga resolves percentages in 32-bit float and wraps on a strict `>`, so
-  seven exact sevenths overshoot on 390pt/414pt rows and the grid drops
-  to six columns (the component test replays that float math). The
+  **Layout traps:** the cell width is `SEVEN_COLUMN_WIDTH`
+  (`src/design-system/seven-column-width/`, shared with `ColorPicker`), never `100 / 7`; the
+  Yoga float reason is documented in that file. The
   chip inset (`CHIP_TAP_INSET` in `chip-geometry.ts`, half of the
   44pt cell minus the 34pt chip; read the value there) is the cell's
   vertical padding, not a fixed cell height, so a chip grown by Dynamic Type keeps the inset the grid's
@@ -1747,8 +1831,18 @@ new component can land between reviews of this skill:
   their coordinate-space and testID conventions before touching any
   of the three. `NetWorthLine` has a scrub line with its own label
   (see `kiko-charts`). `PieChart` additionally supports `innerRatio` (ring
-  thickness) and `centerTotal` (an amount centered in the donut hole)
-  — see `kiko-charts`.
+  thickness) and `centerTotal` (an amount centered in the donut hole;
+  its sizing rule is in `kiko-charts`).
+- **ColorPicker** (`src/design-system/components/color-picker/`) — a seven-column swatch grid
+  whose cell width is `SEVEN_COLUMN_WIDTH` (`src/design-system/seven-column-width/`, shared with
+  `DayOfMonthGrid`) with a theme `rowGap`, so the swatches fill whole rows; read
+  `color-picker.styles.ts` and the palette for the current count.
+- **TransactionCard** (`src/design-system/components/transaction-card/`) — `selected` sets the
+  `Card` selected surface, and a category glyph with no colour of its own then takes `onAccent`.
+  Home marks a `TransactionRow` selected through `useDetailPaneRoute` and `detailParamOf`
+  (`kiko-architecture`, "Row marking").
+- **Form header** (`useFormHeaderItems`, `src/screens/forms/use-form-header-items/`) — see
+  "Form Save and Cancel live in the native nav bar" above.
 
 ## Capability icons — the transparency principle
 
@@ -1891,6 +1985,13 @@ reach). Raising the target again is one edit to `DEPLOYMENT_TARGET` plus the
 build files, then `pod install`; lowering it needs every symbol re-checked
 by the same guard.
 
+## FAB edge
+
+The add-transaction FAB sits on the window's vertical-bar side: `FAB_SIDE` in
+`src/screens/home/add-transaction-fab/add-transaction-fab.styles.ts` maps `useVerticalBarEdge()`
+(`leading` to left, `trailing` to right, `none` to right). In a companion pane the side is the fold
+side. Read the file for the current map (R33).
+
 ## GlassSurface `isLiquidGlassSupported` branch
 
 This section documents `GlassSurface` itself — now a NAV-LAYER-only
@@ -1943,8 +2044,8 @@ project-wide rule this follows.
 **Percentage widths.** Yoga resolves `%` widths in 32-bit float and
 wraps on a strict `>`, so N equal columns of `100 / N`% can drop the
 last column on some row widths. Always use a slightly smaller rounded
-percentage (see `DayOfMonthGrid`'s `'14.28%'`) and pin it with a test
-that replays the float math.
+percentage (see `SEVEN_COLUMN_WIDTH` in `src/design-system/seven-column-width/`) and pin it
+with a test that replays the float math.
 
 Separate sibling React nodes in JSX with a blank line, the same way
 sibling statements are separated in `kiko-code-style`'s "Blank lines

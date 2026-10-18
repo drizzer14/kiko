@@ -10,12 +10,13 @@ import '@kiko/i18n/init';
 
 import HomeStack from '../home-stack';
 import AccountsStack from '../accounts-stack';
+import StatisticsStack from '../statistics-stack';
 
 /**
  * The empty picker's "Add holding" row sends the user to a create form and back
  * to the SAME form instance with its draft. That is a router property a
  * `navigationSpy` cannot see, so this suite renders the REAL Home and Accounts
- * stacks (their route registrations are what is under test) with the form
+ * stacks, and the Statistics one (their route registrations are what is under test) with the form
  * screens swapped for stand-ins that make the exact navigation calls their real
  * counterparts make:
  *
@@ -43,6 +44,25 @@ jest.mock('@kiko/screens/home', () => {
   );
 
   return { __esModule: true, default: HomeStub };
+});
+
+jest.mock('@kiko/screens/statistics', () => {
+  const { Pressable, Text } = require('react-native');
+
+  const StatisticsStub = ({
+    navigation,
+  }: {
+    navigation: { navigate: (name: string, p: object) => void };
+  }) => (
+    <Pressable
+      testID="open-transaction-form"
+      onPress={() => navigation.navigate('TransactionForm', {})}
+    >
+      <Text>Add transaction</Text>
+    </Pressable>
+  );
+
+  return { __esModule: true, default: StatisticsStub };
 });
 
 jest.mock('@kiko/screens/accounts', () => {
@@ -168,10 +188,14 @@ const routeNames = (): string[] => routes().map((route) => route.name);
 const keyOf = (name: string): string | undefined =>
   routes().find((route) => route.name === name)?.key;
 
-const renderStack = async (stack: 'home' | 'accounts') => {
+const STACKS = { home: HomeStack, accounts: AccountsStack, statistics: StatisticsStack };
+
+const renderStack = async (stack: keyof typeof STACKS) => {
+  const Stack = STACKS[stack];
+
   const view = await render(
     <NavigationContainer ref={navigationRef}>
-      {stack === 'home' ? <HomeStack /> : <AccountsStack />}
+      <Stack />
     </NavigationContainer>,
   );
 
@@ -183,6 +207,7 @@ const renderStack = async (stack: 'home' | 'accounts') => {
 describe.each([
   ['Home', 'home', 'Home'],
   ['Accounts', 'accounts', 'Accounts'],
+  ['Statistics', 'statistics', 'Statistics'],
 ] as const)('%s stack — adding a holding from the transaction form', (_name, stack, rootName) => {
   it('returns to the SAME transaction form instance with its draft, with no route left behind', async () => {
     const view = await renderStack(stack);

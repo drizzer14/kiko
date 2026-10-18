@@ -10,6 +10,9 @@ type SettingsRowBaseProps = ViewProps & {
   // toggle); on a pressable row it wraps beside the control and chevron,
   // which center on the label and body together.
   children?: ReactNode;
+  // On a wide window, the row whose page the other pane shows: a raised surface, and
+  // `accessibilityState.selected`. Meaningful on a navigating row only.
+  selected?: boolean;
 };
 
 // `onPress` is present only for a navigating row (e.g. the Categories row) —

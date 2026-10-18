@@ -20,8 +20,8 @@ import { type BondTerms, currentCouponPct } from '@kiko/bonds/nbu-register';
 import { type RefObject, useCallback, useMemo, useRef, useState } from 'react';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
-import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
+import { useBondIsinMode, type IsinModeDraft, type IsinReasonKey } from '../use-bond-isin-mode';
 
 import {
   bondFieldErrors,
@@ -139,7 +139,22 @@ type UseBondFieldsParams = {
   setName: (value: string) => void;
 };
 
+/** What a fold or unfold must give back of the bond form: every field the user fills. */
+export type BondFieldsDraft = {
+  quantity: string;
+  faceValue: string;
+  couponPct: string;
+  purchasePrice: string;
+  purchaseDate: number | null;
+  maturityDate: number | null;
+  bondKind: BondKind;
+  couponFrequency: BondCouponFrequency;
+  isinMode: IsinModeDraft;
+};
+
 export type UseBondFieldsResult = HoldingTypeForm & {
+  draft: BondFieldsDraft;
+  restore: (draft: BondFieldsDraft) => void;
   currency: Currency;
   quantity: string;
   setQuantity: (value: string) => void;
@@ -246,6 +261,8 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     pickedCouponFrequency,
     setPickedCouponFrequency,
     seedStoredIsin,
+    draft: isinModeDraft,
+    restore: restoreIsinMode,
   } = useBondIsinMode({
     type,
     isEdit,
@@ -404,6 +421,23 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     [seedStoredIsin, setBondMode],
   );
 
+  // What the user filled, over whatever `seed` read from the stored bond: the stored bond itself
+  // (`savedBondRef`, the kept schedule) is not in a draft, it is read again.
+  const restore = useCallback(
+    (restored: BondFieldsDraft): void => {
+      setQuantity(restored.quantity);
+      setFaceValue(restored.faceValue);
+      setCouponPct(restored.couponPct);
+      setPurchasePrice(restored.purchasePrice);
+      setPurchaseDate(restored.purchaseDate);
+      setMaturityDate(restored.maturityDate);
+      setBondKind(restored.bondKind);
+      setCouponFrequency(restored.couponFrequency);
+      restoreIsinMode(restored.isinMode);
+    },
+    [restoreIsinMode],
+  );
+
   // Ledgerless: a bond's value derives entirely from its lots/schedule, never
   // a typed opening balance — the stored balance is always 0, the same as
   // property/metal/loan.
@@ -428,6 +462,18 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     );
 
   return {
+    draft: {
+      quantity,
+      faceValue,
+      couponPct,
+      purchasePrice,
+      purchaseDate,
+      maturityDate,
+      bondKind,
+      couponFrequency,
+      isinMode: isinModeDraft,
+    },
+    restore,
     currency,
     quantity,
     setQuantity,

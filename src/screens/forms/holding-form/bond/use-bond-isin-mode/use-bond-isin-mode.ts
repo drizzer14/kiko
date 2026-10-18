@@ -107,7 +107,22 @@ const bondIsinReasonKey = (params: {
     : null;
 };
 
+/**
+ * What a fold or unfold must give back of the ISIN / Manual part of the bond form.
+ * `appliedIsin` and `filledName` are the effect's own memory of the match it already applied.
+ */
+export type IsinModeDraft = {
+  bondMode: BondEntryMode;
+  isin: string;
+  pickedCouponFrequency: BondCouponFrequency | null;
+  appliedIsin: string | null;
+  filledName: string | null;
+  storedIsin: string | null;
+};
+
 type UseBondIsinModeResult = {
+  draft: IsinModeDraft;
+  restore: (draft: IsinModeDraft) => void;
   bondMode: BondEntryMode;
   setBondMode: (mode: BondEntryMode) => void;
   isin: string;
@@ -363,7 +378,27 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     setPickedCouponFrequencyState(stored.couponFrequency);
   }, []);
 
+  // The mode, the ISIN and the pick are the user's; the applied ISIN and the filled name are what
+  // keeps a later match from being applied over what the user has typed since.
+  const restore = useCallback((draft: IsinModeDraft): void => {
+    setBondMode(draft.bondMode);
+    setIsin(draft.isin);
+    setPickedCouponFrequencyState(draft.pickedCouponFrequency);
+    setStoredIsin(draft.storedIsin);
+    lastAppliedIsinRef.current = draft.appliedIsin;
+    filledNameRef.current = draft.filledName;
+  }, []);
+
   return {
+    draft: {
+      bondMode,
+      isin,
+      pickedCouponFrequency,
+      appliedIsin: lastAppliedIsinRef.current,
+      filledName: filledNameRef.current,
+      storedIsin,
+    },
+    restore,
     bondMode,
     setBondMode,
     isin,

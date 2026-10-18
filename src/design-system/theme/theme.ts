@@ -12,6 +12,8 @@
 // The named entity-color and chart-series palettes live in ../palette
 // (entityColorsDark, chartSeriesDark); the theme references those sets.
 
+import { StyleSheet } from 'react-native';
+
 import { chartSeriesDark, entityColorsDark } from '../palette';
 
 const spacing = (multiplier: number) => multiplier * 4;
@@ -59,6 +61,17 @@ const iconSizes = {
   heading: iconSize(typography.heading.fontSize), // 20 -> 25
   title: iconSize(typography.title.fontSize), // 28 -> 35
   display: iconSize(typography.display.fontSize), // 44 -> 55
+} as const;
+
+// Two-pane (Duo) layout: a pane's screen content (lists and forms, never the native bars) is
+// centred and capped at `paneMaxWidth` so a wide pane never stretches a form line across the
+// screen; `hairline` is the flat-window divider. `sheetMaxWidth` is the width a BottomSheet card
+// narrows to on a two-pane display: 540 pt is UIKit's default form-sheet width, the width an iPad
+// presents a sheet at.
+const layout = {
+  paneMaxWidth: 600,
+  sheetMaxWidth: 540,
+  hairline: StyleSheet.hairlineWidth,
 } as const;
 
 export const darkTheme = {
@@ -211,4 +224,5 @@ export const darkTheme = {
   radii,
   typography,
   iconSizes,
+  layout,
 } as const;

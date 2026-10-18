@@ -10,9 +10,9 @@ import HoldingFormScreen from '@kiko/screens/forms/holding-form';
 import StatementImportScreen from '@kiko/screens/statement-import';
 import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import PricePointFormScreen from '@kiko/screens/forms/price-point-form';
+import AccountsEmptyPaneScreen from '@kiko/screens/accounts-empty-pane';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 import ContributionFormScreen from '@kiko/screens/forms/contribution-form';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AccountRemindersScreen from '@kiko/screens/settings/account-reminders';
 import OwnershipChangeFormScreen from '@kiko/screens/forms/ownership-change-form';
 
@@ -22,11 +22,17 @@ import {
   restoreDefaultAnimationOfSwappedForm,
 } from '../swapped-form-options';
 import type { AccountsStackParamList } from '../types';
+import { createPaneStackNavigator } from '../pane-stack';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
-const Stack = createNativeStackNavigator<AccountsStackParamList>();
+const Stack = createPaneStackNavigator<AccountsStackParamList>();
+
+// The list is the root and takes the companion pane; the account page opens in the primary pane,
+// which is where the outer display shows it. The primary default is set at runtime by the list:
+// the first account, or the empty pane while there is none.
+const PANE_CONFIG = { rootPane: 'companion' } as const;
 
 /**
  * The Accounts tab's native stack. The list and form screens use a large title,
@@ -49,6 +55,7 @@ const AccountsStack: FC = () => {
 
   return (
     <Stack.Navigator
+      paneConfig={PANE_CONFIG}
       screenOptions={largeTitleScreenOptions}
       screenLayout={fittingLargeTitleLayout}
       screenListeners={resetTabStackOnBlur}
@@ -57,6 +64,12 @@ const AccountsStack: FC = () => {
         name="Accounts"
         component={AccountsScreen}
         options={{ title: t('accounts.title') }}
+      />
+
+      <Stack.Screen
+        name="AccountsEmptyPane"
+        component={AccountsEmptyPaneScreen}
+        options={{ headerShown: false }}
       />
 
       <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />

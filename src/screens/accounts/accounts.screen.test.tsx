@@ -18,6 +18,7 @@ import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
+import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -58,22 +59,40 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
-// useFocusRefreshedNow also reads the navigation context (useFocusEffect) via
-// the same real-context requirement as the hook above; stand it in the same
-// way statistics.screen.test.tsx does — a `Date.now()` taken once at mount
-// and held STABLE across re-renders (no focus event fires in a standalone
-// screen render), so a re-render test can prove the screen does not read
-// its own fresh `Date.now()` per render.
-jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
+// useVisibleRefreshedNow is stood in the same way statistics.screen.test.tsx
+// does — a `Date.now()` taken once at mount and held STABLE across re-renders
+// (no visibility change fires in a standalone screen render), so a re-render
+// test can prove the screen does not read its own fresh `Date.now()` per render.
+jest.mock('@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
 
-  return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
+  return { useVisibleRefreshedNow: () => useState(() => Date.now())[0] };
 });
 
-const mockUseIsFocused = jest.fn(() => true);
+// Whether the list is on screen. While a runtime default shows, the stack's focused route is that
+// default, so `useIsFocused` is mocked false for the whole file: only visibility may decide.
+const mockUseIsScreenVisible = jest.fn(() => true);
+// A detail opens in the detail pane; outside a pane navigator the real helper falls back to
+// `navigate` (its own test pins that). `mockUseDetailPaneRoute` is what the detail pane opened
+// with, `mockShowPaneDefault` what the list fills it with, and `mockClosePaneRoute`
+// how it closes the page of an entity that is gone.
+const mockOpenInPane = jest.fn();
+const mockShowPaneDefault = jest.fn();
+const mockClosePaneRoute = jest.fn();
+const mockUseDetailPaneRoute = jest.fn(
+  (): { key?: string; name: string; params?: object; isDefault: boolean } | null => null,
+);
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  detailParamOf: jest.requireActual('@kiko/navigation/pane-stack/pane-visibility').detailParamOf,
+  useIsScreenVisible: () => mockUseIsScreenVisible(),
+  useOpenInPane: () => mockOpenInPane,
+  useShowPaneDefault: () => mockShowPaneDefault,
+  useClosePaneRoute: () => mockClosePaneRoute,
+  useDetailPaneRoute: () => mockUseDetailPaneRoute(),
+}));
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
-  useIsFocused: () => mockUseIsFocused(),
+  useIsFocused: () => false,
 }));
 
 const mockUseLiveQuery = jest.fn();
@@ -361,7 +380,7 @@ describe('AccountsScreen', () => {
     // back button pushed from it) reads immediately, before its own live query.
     // The kind rides along too, so the page knows its header items (no
     // Reminders bell for an implicit account) from its first render.
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+    expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
       accountId: 'a',
       name: 'Monobank',
       kind: 'bank',
@@ -623,7 +642,7 @@ describe('AccountsScreen', () => {
     // A tap reaches the card's own Pressable and navigates, without touching the
     // context menu — the menu only opens on touch-and-hold.
     await fireEvent.press(getByText('Wallet'));
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+    expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
       accountId: 'a',
       name: 'Wallet',
       kind: 'cash',
@@ -702,7 +721,7 @@ describe('AccountsScreen', () => {
     await liftCard(getByTestId('sortable-grid'), 'a');
     await fireEvent.press(getByText('Monobank'));
 
-    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(mockOpenInPane).not.toHaveBeenCalled();
   });
 
   it('opens the account on the next quick tap after a lifted release', async () => {
@@ -712,8 +731,8 @@ describe('AccountsScreen', () => {
     await fireEvent.press(getByText('Monobank'));
     await fireEvent.press(getByText('Monobank'));
 
-    expect(navigation.navigate).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
       accountId: 'a',
       name: 'Monobank',
       kind: 'bank',
@@ -727,7 +746,7 @@ describe('AccountsScreen', () => {
     await dropCard(getByTestId('sortable-grid'), 'a');
     await fireEvent.press(getByText('Monobank'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+    expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
       accountId: 'a',
       name: 'Monobank',
       kind: 'bank',
@@ -982,11 +1001,11 @@ describe('AccountsScreen', () => {
       const { getByText } = await renderAccounts();
       await fireEvent.press(getByText('Mortgage'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+      expect(mockOpenInPane).toHaveBeenCalledWith('HoldingDetail', {
         holdingId: 'l1',
         name: 'Mortgage',
       });
-      expect(navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
+      expect(mockOpenInPane).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
     });
 
     // A Debts-grid drag persists the implicit debt account's open loans only,
@@ -1352,11 +1371,11 @@ describe('AccountsScreen', () => {
       const { getByText } = await renderAccounts();
       await fireEvent.press(getByText('Apartment'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+      expect(mockOpenInPane).toHaveBeenCalledWith('HoldingDetail', {
         holdingId: 'h1',
         name: 'Apartment',
       });
-      expect(navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
+      expect(mockOpenInPane).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
     });
 
     // A Property-grid drag persists the implicit property account's open
@@ -1518,7 +1537,7 @@ describe('AccountsScreen', () => {
       await liftCard(grid, holdingId);
       await fireEvent.press(getByText(holdingName));
 
-      expect(navigation.navigate).not.toHaveBeenCalled();
+      expect(mockOpenInPane).not.toHaveBeenCalled();
     });
 
     it('opens the holding on the next quick tap', async () => {
@@ -1528,8 +1547,8 @@ describe('AccountsScreen', () => {
       await fireEvent.press(getByText(holdingName));
       await fireEvent.press(getByText(holdingName));
 
-      expect(navigation.navigate).toHaveBeenCalledTimes(1);
-      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+      expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+      expect(mockOpenInPane).toHaveBeenCalledWith('HoldingDetail', {
         holdingId,
         name: holdingName,
       });
@@ -1542,7 +1561,7 @@ describe('AccountsScreen', () => {
       await dropCard(grid, holdingId);
       await fireEvent.press(getByText(holdingName));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+      expect(mockOpenInPane).toHaveBeenCalledWith('HoldingDetail', {
         holdingId,
         name: holdingName,
       });
@@ -1678,7 +1697,7 @@ describe('AccountsScreen', () => {
         const { getByTestId } = await renderAccounts();
         await fireEvent.press(getByTestId(testID));
 
-        expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+        expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
           accountId,
           name,
           kind,
@@ -1702,7 +1721,7 @@ describe('AccountsScreen', () => {
         const { getByTestId } = await renderAccounts();
         await fireEvent.press(getByTestId(testID));
 
-        expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+        expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
           accountId,
           name,
           kind,
@@ -1719,7 +1738,7 @@ describe('AccountsScreen', () => {
       const { getByTestId } = await renderAccounts();
       await fireEvent.press(getByTestId('accounts-property-open'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
         accountId: 'p',
         name: 'Real estate',
         kind: 'property',
@@ -1733,12 +1752,12 @@ describe('AccountsScreen', () => {
       await fireEvent.press(getByText('Properties'));
       await fireEvent.press(getByTestId('accounts-debts-total'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
         accountId: 'p',
         name: 'Properties',
         kind: 'property',
       });
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
         accountId: 'd',
         name: 'Loans',
         kind: 'debt',
@@ -2012,15 +2031,15 @@ describe('AccountsScreen — paused while hidden', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
   });
 
   afterEach(() => {
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
   });
 
-  it('pauses every live query while unfocused, keeping the cache option and the enabled argument', async () => {
-    mockUseIsFocused.mockReturnValue(false);
+  it('pauses every live query while not on screen, keeping the cache option and the enabled argument', async () => {
+    mockUseIsScreenVisible.mockReturnValue(false);
     setLiveData({
       accounts: [BANK],
       holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 0, type: 'metal' }],
@@ -2039,7 +2058,7 @@ describe('AccountsScreen — paused while hidden', () => {
     );
   });
 
-  it('leaves every live query unpaused while focused', async () => {
+  it('leaves every live query unpaused while on screen, focused or not', async () => {
     setLiveData({ accounts: [BANK] });
 
     await renderAccounts();
@@ -2092,7 +2111,7 @@ describe('AccountsScreen — paused while hidden', () => {
     });
     expect(getByText('Monobank')).toBeTruthy();
 
-    mockUseIsFocused.mockReturnValue(false);
+    mockUseIsScreenVisible.mockReturnValue(false);
     await act(async () => {
       await rerender(element());
     });
@@ -2103,11 +2122,419 @@ describe('AccountsScreen — paused while hidden', () => {
     });
     expect(queryByText('Savings')).toBeNull();
 
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     await act(async () => {
       await rerender(element());
     });
     expect(getByText('Savings')).toBeTruthy();
     expect(getByText('Monobank')).toBeTruthy();
+  });
+});
+
+// On a wide window the list is one pane and an account page the other: the list fills the empty
+// primary pane with its first account (or the empty pane), marks the row that pane shows, and
+// opens a tapped row there. On one pane none of it applies.
+describe('AccountsScreen — in one of two panes', () => {
+  const MONOBANK = { id: 'a', name: 'Monobank', kind: 'bank' };
+  const SAVINGS = { id: 'c', name: 'Savings', kind: 'cash' };
+  const MONOBANK_PARAMS = { accountId: 'a', name: 'Monobank', kind: 'bank' };
+
+  const renderInPane = () =>
+    render(
+      <PaneContext.Provider value={paneContextOf('columns', 'companion')}>
+        <AccountsScreen
+          navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
+          route={asRouteProp<AccountsProps['route']>('Accounts')}
+        />
+      </PaneContext.Provider>,
+      { wrapper: GestureRootWrapper },
+    );
+
+  const selectedCards = (view: Awaited<ReturnType<typeof renderAccounts>>) =>
+    view
+      .getAllByTestId('account-card')
+      .filter(
+        (card) => StyleSheet.flatten(card.props.style).backgroundColor === darkTheme.colors.accent,
+      );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsScreenVisible.mockReturnValue(true);
+    mockUseDetailPaneRoute.mockReturnValue(null);
+    setLiveData({
+      accounts: [MONOBANK, SAVINGS],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+  });
+
+  describe('the default of the primary pane', () => {
+    it('is the first account while the pane shows nothing', async () => {
+      await renderInPane();
+
+      expect(mockShowPaneDefault).toHaveBeenCalledTimes(1);
+      expect(mockShowPaneDefault).toHaveBeenCalledWith('AccountDetail', MONOBANK_PARAMS, false);
+    });
+
+    it('is the empty pane while there is no account', async () => {
+      setLiveData({ accounts: [], holdings: [] });
+
+      await renderInPane();
+
+      expect(mockShowPaneDefault).toHaveBeenCalledTimes(1);
+      expect(mockShowPaneDefault).toHaveBeenCalledWith('AccountsEmptyPane', undefined, true);
+    });
+
+    it('is replaced when the first account is no longer the one shown', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        name: 'AccountDetail',
+        params: { accountId: 'c', name: 'Savings', kind: 'cash' },
+        isDefault: true,
+      });
+
+      await renderInPane();
+
+      expect(mockShowPaneDefault).toHaveBeenCalledWith('AccountDetail', MONOBANK_PARAMS, false);
+    });
+
+    it('is replaced by the account page once an account exists after the empty pane', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({ name: 'AccountsEmptyPane', isDefault: true });
+
+      await renderInPane();
+
+      expect(mockShowPaneDefault).toHaveBeenCalledWith('AccountDetail', MONOBANK_PARAMS, false);
+    });
+
+    it('is not dispatched again once it is the one shown', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        name: 'AccountDetail',
+        params: MONOBANK_PARAMS,
+        isDefault: true,
+      });
+
+      await renderInPane();
+
+      expect(mockShowPaneDefault).not.toHaveBeenCalled();
+    });
+
+    it('leaves an account the user tapped in the pane', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        name: 'AccountDetail',
+        params: { accountId: 'c', name: 'Savings', kind: 'cash' },
+        isDefault: false,
+      });
+
+      await renderInPane();
+
+      expect(mockShowPaneDefault).not.toHaveBeenCalled();
+    });
+
+    it('waits for the first load rather than showing the empty pane', async () => {
+      setLiveData({ accounts: [], holdings: [], isLoading: { accounts: true } });
+
+      await renderInPane();
+
+      expect(mockShowPaneDefault).not.toHaveBeenCalled();
+    });
+
+    it('is not dispatched while the tab is not on screen', async () => {
+      mockUseIsScreenVisible.mockReturnValue(false);
+
+      await renderInPane();
+
+      expect(mockShowPaneDefault).not.toHaveBeenCalled();
+    });
+
+    it('is dispatched once the tab comes back on screen', async () => {
+      mockUseIsScreenVisible.mockReturnValue(false);
+      const element = () => (
+        <PaneContext.Provider value={paneContextOf('columns', 'companion')}>
+          <AccountsScreen
+            navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
+            route={asRouteProp<AccountsProps['route']>('Accounts')}
+          />
+        </PaneContext.Provider>
+      );
+      const { rerender } = await render(element(), { wrapper: GestureRootWrapper });
+
+      mockUseIsScreenVisible.mockReturnValue(true);
+      await act(async () => {
+        await rerender(element());
+      });
+
+      expect(mockShowPaneDefault).toHaveBeenCalledWith('AccountDetail', MONOBANK_PARAMS, false);
+    });
+
+    it('is never dispatched on one pane', async () => {
+      await renderAccounts();
+
+      expect(mockShowPaneDefault).not.toHaveBeenCalled();
+    });
+  });
+
+  // A page the user opened stays in the pane until its entity goes; then the pane goes back to its
+  // default (the list fills it again once the page is closed).
+  describe('the page of an entity that is gone', () => {
+    const tapped = (name: string, params: object) =>
+      mockUseDetailPaneRoute.mockReturnValue({ key: 'page-key', name, params, isDefault: false });
+
+    it('is closed once its account is no longer in the list', async () => {
+      tapped('AccountDetail', { accountId: 'deleted' });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).toHaveBeenCalledTimes(1);
+      expect(mockClosePaneRoute).toHaveBeenCalledWith('page-key');
+    });
+
+    it('is closed once the last account is deleted', async () => {
+      tapped('AccountDetail', { accountId: 'a' });
+      setLiveData({ accounts: [], holdings: [] });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).toHaveBeenCalledWith('page-key');
+    });
+
+    it('is closed once its holding is no longer in the list', async () => {
+      tapped('HoldingDetail', { holdingId: 'deleted' });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).toHaveBeenCalledWith('page-key');
+    });
+
+    it('is left open while its account is in the list, archived or not', async () => {
+      setLiveData({
+        accounts: [MONOBANK, { id: 'z', name: 'Old', kind: 'bank', archivedAt: 1_700_000_000_000 }],
+        holdings: [],
+      });
+      tapped('AccountDetail', { accountId: 'z' });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it('is left open while its holding is in the list, closed or not', async () => {
+      setLiveData({
+        accounts: [propertyAccount()],
+        holdings: [propertyHolding({ closedAt: 1_700_000_000_000 })],
+      });
+      tapped('HoldingDetail', { holdingId: 'h1' });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a default, which the list replaces on its own', { isDefault: true }],
+      ['another screen', { name: 'HoldingForm' }],
+    ])('is not closed for %s', async (_label, over) => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        key: 'page-key',
+        name: 'AccountDetail',
+        params: { accountId: 'deleted' },
+        isDefault: false,
+        ...over,
+      });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the first load', { isLoading: { accounts: true } }],
+      ['a read that is still the cached one', { isStale: { accounts: true } }],
+      ['a holdings read that is still the cached one', { isStale: { holdings: true } }],
+    ])('waits for %s before judging the page gone', async (_label, flags) => {
+      tapped('AccountDetail', { accountId: 'deleted' });
+      setLiveData({ accounts: [MONOBANK], holdings: [], ...flags });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it('waits until the tab is on screen', async () => {
+      tapped('AccountDetail', { accountId: 'deleted' });
+      mockUseIsScreenVisible.mockReturnValue(false);
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it('is never closed on one pane', async () => {
+      tapped('AccountDetail', { accountId: 'deleted' });
+
+      await renderAccounts();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the selected row', () => {
+    it('is the account whose page the primary pane shows', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        name: 'AccountDetail',
+        params: { accountId: 'c', name: 'Savings', kind: 'cash' },
+        isDefault: false,
+      });
+
+      const view = await renderInPane();
+      const selected = selectedCards(view);
+
+      expect(selected).toHaveLength(1);
+      expect(within(selected[0]).getByText('Savings')).toBeTruthy();
+    });
+
+    it('is also the default account the list put there', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        name: 'AccountDetail',
+        params: MONOBANK_PARAMS,
+        isDefault: true,
+      });
+
+      const selected = selectedCards(await renderInPane());
+
+      expect(selected).toHaveLength(1);
+      expect(within(selected[0]).getByText('Monobank')).toBeTruthy();
+    });
+
+    it('is none while the primary pane shows another screen', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({ name: 'AccountsEmptyPane', isDefault: true });
+
+      expect(selectedCards(await renderInPane())).toHaveLength(0);
+    });
+
+    it('tells a screen reader which row is selected', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        name: 'AccountDetail',
+        params: MONOBANK_PARAMS,
+        isDefault: false,
+      });
+
+      const { getAllByRole } = await renderInPane();
+      const rows = getAllByRole('button').filter(
+        (row) => row.props.accessibilityState?.selected === true,
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(within(rows[0]).getByText('Monobank')).toBeTruthy();
+    });
+
+    // Every row that opens a page is marked when the primary pane shows that page.
+    describe('on every kind of row that opens a page', () => {
+      const shown = (name: string, params: object) =>
+        mockUseDetailPaneRoute.mockReturnValue({ name, params, isDefault: false });
+      const fillOf = (node: { props: { style?: unknown } }) =>
+        StyleSheet.flatten(node.props.style as never)?.backgroundColor;
+      const isFilled = (node: { props: { style?: unknown } }) =>
+        fillOf(node) === darkTheme.colors.accent;
+
+      const withSections = () =>
+        setLiveData({
+          accounts: [MONOBANK, propertyAccount(), debtAccount()],
+          holdings: [
+            propertyHolding(),
+            propertyHolding({ id: 'h2', name: 'Garage' }),
+            loanHolding(),
+          ],
+        });
+
+      it.each([
+        ['Apartment', 'h1'],
+        ['Garage', 'h2'],
+        ['Mortgage', 'l1'],
+      ])(
+        'marks the holding card %s while its page is shown, and no other card',
+        async (name, id) => {
+          withSections();
+          shown('HoldingDetail', { holdingId: id, name });
+
+          const { getAllByTestId } = await renderInPane();
+          const cards = getAllByTestId('holding-card');
+          const marked = cards.filter(isFilled);
+
+          expect(marked).toHaveLength(1);
+          expect(within(marked[0]).getByText(name)).toBeTruthy();
+          expect(getAllByTestId('account-card').filter(isFilled)).toHaveLength(0);
+        },
+      );
+
+      it('tells a screen reader which holding card is selected', async () => {
+        withSections();
+        shown('HoldingDetail', { holdingId: 'h2', name: 'Garage' });
+
+        const { getAllByRole } = await renderInPane();
+        const rows = getAllByRole('button').filter(
+          (row) => row.props.accessibilityState?.selected === true,
+        );
+
+        expect(rows).toHaveLength(1);
+        expect(within(rows[0]).getByText('Garage')).toBeTruthy();
+      });
+
+      it.each([
+        ['accounts-property-open', 'p', 'Properties'],
+        ['accounts-debts-open', 'd', 'Loans'],
+      ])(
+        'marks the section row %s while the page of its account is shown',
+        async (testID, id, name) => {
+          withSections();
+          shown('AccountDetail', { accountId: id, name });
+
+          const { getByTestId, getAllByTestId } = await renderInPane();
+          const other =
+            testID === 'accounts-property-open' ? 'accounts-debts-open' : 'accounts-property-open';
+
+          expect(isFilled(getByTestId(testID))).toBe(true);
+          expect(getByTestId(testID).props.accessibilityState).toEqual({ selected: true });
+          expect(isFilled(getByTestId(other))).toBe(false);
+          expect(getByTestId(other).props.accessibilityState).toEqual({ selected: false });
+          expect(getAllByTestId('holding-card').filter(isFilled)).toHaveLength(0);
+          expect(getAllByTestId('account-card').filter(isFilled)).toHaveLength(0);
+        },
+      );
+
+      it('marks no section row and no holding card for another account', async () => {
+        withSections();
+        shown('AccountDetail', { accountId: 'a', name: 'Monobank' });
+
+        const { getByTestId, getAllByTestId } = await renderInPane();
+
+        expect(isFilled(getByTestId('accounts-property-open'))).toBe(false);
+        expect(isFilled(getByTestId('accounts-debts-open'))).toBe(false);
+        expect(getAllByTestId('holding-card').filter(isFilled)).toHaveLength(0);
+      });
+
+      it('marks the property section row, not an account card, when the user has no other account', async () => {
+        setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
+        shown('AccountDetail', { accountId: 'p', name: 'Properties' });
+
+        const { getByTestId } = await renderInPane();
+
+        expect(isFilled(getByTestId('accounts-property-open'))).toBe(true);
+      });
+    });
+
+    it('is none on one pane, where the primary pane has no route to report', async () => {
+      expect(selectedCards(await renderAccounts())).toHaveLength(0);
+    });
+  });
+
+  it('opens a tapped account in a pane', async () => {
+    const { getByText } = await renderInPane();
+
+    await fireEvent.press(getByText('Savings'));
+
+    expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'c',
+      name: 'Savings',
+      kind: 'cash',
+    });
+    expect(navigation.navigate).not.toHaveBeenCalled();
   });
 });

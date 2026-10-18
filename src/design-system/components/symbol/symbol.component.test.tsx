@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import { OnAccentContext } from '@kiko/design-system/selected-surface';
 
 // Aliased to SymbolIcon, not Symbol: importing the default export as
 // `Symbol` shadows the global `Symbol` constructor
@@ -64,6 +65,28 @@ describe('Symbol', () => {
     );
 
     expect(getByLabelText('Favorite').props.tintColor).toBe(darkTheme.colors.accent);
+  });
+
+  describe('on an accent fill', () => {
+    const tintOf = async (props: { tone?: 'accent'; color?: string }) => {
+      const { getByLabelText } = await render(
+        <OnAccentContext.Provider value>
+          <SymbolIcon name="heart.fill" accessibilityLabel="Favorite" {...props} />
+        </OnAccentContext.Provider>,
+      );
+
+      return getByLabelText('Favorite').props.tintColor;
+    };
+
+    it('takes onAccent in place of the tone', async () => {
+      expect(await tintOf({})).toBe(darkTheme.colors.onAccent);
+      expect(await tintOf({ tone: 'accent' })).toBe(darkTheme.colors.onAccent);
+    });
+
+    // A glyph that carries its own colour (the entity tile's, picked for its tile) keeps it.
+    it('keeps an explicit color', async () => {
+      expect(await tintOf({ color: '#FFD60A' })).toBe('#FFD60A');
+    });
   });
 
   it('normalizes an rgba() color to hex for the native tintColor', async () => {

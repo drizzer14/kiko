@@ -7,7 +7,7 @@ const loadWrapperWithoutNativeModule = (): typeof import('.') => {
   let wrapper: typeof import('.') | undefined;
 
   jest.isolateModules(() => {
-    jest.doMock('./NativeKikoReminders', () => {
+    jest.doMock('@kiko/native-specs/NativeKikoReminders', () => {
       throw new Error(MISSING_MODULE);
     });
     wrapper = require('.') as typeof import('.');

@@ -1,10 +1,10 @@
 import type { FC } from 'react';
 import HomeScreen from '@kiko/screens/home';
 import { useTranslation } from 'react-i18next';
+import StatisticsScreen from '@kiko/screens/statistics';
 import AccountFormScreen from '@kiko/screens/forms/account-form';
 import HoldingFormScreen from '@kiko/screens/forms/holding-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import {
   accountFormOptions,
@@ -12,11 +12,19 @@ import {
   restoreDefaultAnimationOfSwappedForm,
 } from '../swapped-form-options';
 import type { HomeStackParamList } from '../types';
+import { createPaneStackNavigator } from '../pane-stack';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
-const Stack = createNativeStackNavigator<HomeStackParamList>();
+const Stack = createPaneStackNavigator<HomeStackParamList>();
+
+// Home is what the outer display shows, so it takes the primary pane; Statistics fills the
+// companion until something else opens there.
+const PANE_CONFIG = {
+  rootPane: 'primary',
+  companionDefault: { name: 'Statistics', isDefault: true },
+} as const;
 
 /**
  * The Home tab's native stack. Home itself owns no title and no back button, so
@@ -24,6 +32,8 @@ const Stack = createNativeStackNavigator<HomeStackParamList>();
  * form onto this same stack, so it opts its own header back on (with a back
  * button) and a large title; the form drives that title itself via
  * `setOptions` (Add / Edit / read-only), so no static title is set here.
+ * Statistics is registered for the companion pane of a wide window, where it
+ * shows as a large-title screen.
  *
  * The account and holding create forms are registered here too: the transaction
  * form's empty holding pickers open them, and a switch to the Accounts tab would
@@ -34,6 +44,7 @@ const HomeStack: FC = () => {
 
   return (
     <Stack.Navigator
+      paneConfig={PANE_CONFIG}
       screenOptions={{ headerShown: false }}
       screenLayout={fittingLargeTitleLayout}
       screenListeners={resetTabStackOnBlur}
@@ -44,6 +55,12 @@ const HomeStack: FC = () => {
         name="TransactionForm"
         component={TransactionFormScreen}
         options={{ headerShown: true, ...largeTitleScreenOptions }}
+      />
+
+      <Stack.Screen
+        name="Statistics"
+        component={StatisticsScreen}
+        options={{ headerShown: true, ...largeTitleScreenOptions, title: t('statistics.title') }}
       />
 
       <Stack.Screen
