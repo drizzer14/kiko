@@ -37,13 +37,7 @@ import {
   syncClosedFromOf,
   STATEMENT_FROM_FIELD,
   SYNC_CLOSED_FROM_FIELD,
-  withWalkOwnedMetadataCarried,
-  type BinanceWalkNumberField,
-  type BinanceWalkPendingField,
-  type BinanceWalkSpanHintField,
-  type BinancePendingRange,
-  type BinanceSpanHints,
-  withWalkOwnedMetadataResetToFloor,
+  withCarriedMetadataKeys,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
 import { asLots, withLotChange, type LotChange } from '../lots';
@@ -171,29 +165,6 @@ const upsertManualPricePoint = (
 const metadataKeyMatch = (metadataField: SyncedMetadataField, metadataKey: string) =>
   sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
 
-// Merge one walk-owned field into a holding's stored metadata, only while the holding's
-// account is still `institution = 'binance'` (see `setBinanceWalkCursor`).
-const setBinanceWalkField = (holdingId: string, field: string, value: unknown) =>
-  write(async (databaseTransaction) => {
-    const rows = await databaseTransaction
-      .select({ metadata: holdings.metadata, institution: accounts.institution })
-      .from(holdings)
-      .innerJoin(accounts, eq(holdings.accountId, accounts.id))
-      .where(eq(holdings.id, holdingId));
-    const row = rows.at(0);
-
-    if (row === undefined || row.institution !== 'binance') {
-      return;
-    }
-
-    const stored = (row.metadata as Record<string, unknown> | null) ?? {};
-
-    await databaseTransaction
-      .update(holdings)
-      .set({ metadata: { ...stored, [field]: value } })
-      .where(eq(holdings.id, holdingId));
-  });
-
 // Insert a synced holding at the end of its account's grid, with its source key merged
 // into `metadata`. Shared by the upsert's miss branch and `ensureExchangeHoldings`.
 const insertSyncedHolding = async (
@@ -215,8 +186,8 @@ const insertSyncedHolding = async (
 // provider.ts).
 //
 // The update branch also reads the row's OWN stored metadata (not just
-// `id`/`name`) so `withWalkOwnedMetadataCarried` can carry a walk-owned key
-// (the Binance walk cursors, a reopened card's or jar's `statementFromMs`) over the
+// `id`/`name`) so `withCarriedMetadataKeys` can carry a sync-owned key
+// (a reopened card's or jar's `statementFromMs`) over the
 // caller's `merged` object — a routine balance sync's `metadata: { syncedAt }`
 // would otherwise wipe it every run, since `merged` is built from the
 // CALLER-supplied `metadata` alone, never the stored row.
@@ -226,7 +197,7 @@ const insertSyncedHolding = async (
 // is closed AND carries `syncClosedFromMs`, which the user's own close never
 // writes, so a user-closed holding stays closed and a Binance or wallet row
 // (no mark, ever) never reopens. The reopen clears `closedAt`, drops the mark
-// (an upsert carries only the walk-owned keys, so the mark is not carried), and
+// (an upsert carries only the sync-owned keys, so the mark is not carried), and
 // hands the mark on as `statementFromMs`, the from-cursor of its next statement
 // fetch, for a card and a jar alike (both are statement sources): while it was
 // absent no run fetched its statements, and the closing run graduated the
@@ -265,7 +236,7 @@ const upsertByMetadataKey = async (
     const rename = renameFromDefault !== undefined && current.name === renameFromDefault;
     const syncClosedFrom = syncClosedFromOf(current.metadata);
     const reopenFrom = current.closedAt !== null && syncClosedFrom !== null ? syncClosedFrom : null;
-    const carried = withWalkOwnedMetadataCarried(merged, current.metadata);
+    const carried = withCarriedMetadataKeys(merged, current.metadata);
     await databaseTransaction
       .update(holdings)
       .set({
@@ -1113,74 +1084,6 @@ export const holdingsRepo = {
       }
     }),
   /**
-   * Reset every Binance history-walk cursor to `floorMs` on every holding of one
-   * account — called on a Binance disconnect so a stale, FORWARD watermark
-   * cannot leak into a reconnected DIFFERENT Binance account's fresh walk
-   * (which would otherwise fall back to `latestTransactionTime` and skip that
-   * account's own older history). Every OTHER metadata key (`binanceAsset`
-   * among them) is untouched, so a same-account reconnect still re-adopts the
-   * row and simply re-walks from the floor (idempotent). A holding that never
-   * carried the key is skipped entirely — no redundant write, no reactive
-   * `holdings` fire for it.
-   */
-  resetBinanceWalkCursors: (accountId: string, floorMs: number) =>
-    write(async (databaseTransaction) => {
-      const rows = await databaseTransaction
-        .select({ id: holdings.id, metadata: holdings.metadata })
-        .from(holdings)
-        .where(eq(holdings.accountId, accountId));
-
-      for (const row of rows) {
-        const reset = withWalkOwnedMetadataResetToFloor(row.metadata, floorMs);
-
-        if (reset === undefined) {
-          continue;
-        }
-
-        await databaseTransaction
-          .update(holdings)
-          .set({ metadata: reset })
-          .where(eq(holdings.id, row.id));
-      }
-    }),
-  /**
-   * Advance one Binance walk's cursor (`field`) on one holding's metadata,
-   * merging it into whatever is currently stored rather than replacing the
-   * whole object — the write-side counterpart of `withWalkOwnedMetadataCarried`,
-   * which only stops a DIFFERENT write (a balance sync) from wiping this value;
-   * this is the one call that actually sets it. A walk holds the account's
-   * credentials for its whole run, so a disconnect can commit WHILE a walk is
-   * still in flight; the read-then-write below checks, inside the SAME write,
-   * that the holding's account is STILL `institution = 'binance'` and is a
-   * no-op otherwise — a late-arriving window commit from a walk started
-   * before the disconnect must never resurrect a watermark on an
-   * already-disconnected account (undoing `resetBinanceWalkCursors`'s own
-   * floor write, which runs as part of that same disconnect).
-   */
-  setBinanceWalkCursor: (holdingId: string, field: BinanceWalkNumberField, cursorMs: number) =>
-    setBinanceWalkField(holdingId, field, cursorMs),
-  /**
-   * Store one Binance walk's list of pending overlap ranges (`field`) on one holding's
-   * metadata, under the same account gate and merge as `setBinanceWalkCursor`: a late write
-   * from a walk started before a disconnect must not bring back a range the disconnect reset
-   * to an empty list.
-   */
-  setBinanceWalkPending: (
-    holdingId: string,
-    field: BinanceWalkPendingField,
-    ranges: BinancePendingRange[],
-  ) => setBinanceWalkField(holdingId, field, ranges),
-  /**
-   * Store one Binance walk's span hints (`field`) on one holding's metadata, under the same
-   * account gate and merge as `setBinanceWalkCursor`: a late write from a walk started before a
-   * disconnect must not bring back a hint the disconnect dropped.
-   */
-  setBinanceWalkSpanHints: (
-    holdingId: string,
-    field: BinanceWalkSpanHintField,
-    hints: BinanceSpanHints,
-  ) => setBinanceWalkField(holdingId, field, hints),
-  /**
    * Advance the crash-safe statement-import marker (`syncedBalanceMinorUnits`,
    * see db/schema.ts) for one Monobank card to the balance whose statements the
    * sync just imported. The sync calls this ONLY after a card's statement
@@ -1275,9 +1178,9 @@ export const holdingsRepo = {
    * the walk's read and this write would be zeroed. Here a row of the same account
    * with the same key, open or closed, makes the entry a no-op, so a closed holding
    * stays closed and no second one is created. One write, so a batch lands whole.
-   * An entry whose account is disconnected from Binance is skipped, for the reason
-   * `setBinanceWalkCursor` states: a walk still in flight when the user disconnects
-   * must not create a holding on the disconnected account.
+   * An entry whose account is disconnected from Binance is skipped: a walk still in
+   * flight when the user disconnects must not create a holding on the disconnected
+   * account.
    */
   ensureExchangeHoldings: (holdingsList: Omit<ExchangeHolding, 'renameFromDefault'>[]) =>
     write(async (databaseTransaction) => {

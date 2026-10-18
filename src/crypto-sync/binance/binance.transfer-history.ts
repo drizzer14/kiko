@@ -1,29 +1,21 @@
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
-  BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
-  BINANCE_TRANSFER_POINT_CURSOR_FIELD,
-  BINANCE_TRANSFER_RANGE_CURSOR_FIELD,
-  BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
-  BINANCE_TRANSFER_SPAN_HINTS_FIELD,
-  binanceWalkCursorOf,
-} from '@kiko/holdings/holding-metadata';
-import {
   advanceWalkMarks,
   BinanceWalkStop,
-  type BinanceWalkWriteDeps,
   commitSettledSpan,
   createDepthMemories,
-  defaultWalkWriteDeps,
   type DepthGuard,
   dropReadPoints,
+  type ExchangeStateDeps,
+  exchangeStateDepsOf,
   instantAt,
   joinSettled,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
   readPendingMark,
+  readWalkMarks,
   readWalkRoundRobins,
   roundRobinHooksOf,
   runWalkPlan,
@@ -33,13 +25,13 @@ import {
   type SpanCommit,
   type SpanRead,
   storePlannedList,
-  type WalkMarkFields,
+  type WalkMarkWriter,
   type WalkMarks,
+  walkMarkWriterOf,
   walkSpans,
   type WalkPass,
   type WalkPlan,
   type WalkResult,
-  walkWritersOf,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
@@ -131,15 +123,6 @@ export const TRANSFER_FORWARD_OWES: readonly string[] = [
   TRANSFER_AMOUNT_INVALID,
   TRANSFER_ROW_UNREADABLE,
 ];
-
-const TRANSFER_MARK_FIELDS: WalkMarkFields = {
-  cursor: BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
-  rescan: BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
-  point: BINANCE_TRANSFER_POINT_CURSOR_FIELD,
-  range: BINANCE_TRANSFER_RANGE_CURSOR_FIELD,
-  hints: BINANCE_TRANSFER_SPAN_HINTS_FIELD,
-  pending: BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
-};
 
 /**
  * The earliest `startTime` the walk asks transfer history for: 179 whole days back (see
@@ -303,9 +286,9 @@ export const transferRowsOf = (
 /**
  * The injectable seams of the Transfer walk: the credential and holding reads, the transfer read
  * (one page of one type of one range), the insert-only holding creation, the deduping import, and
- * the mark writes. Pacing and the weight budget come from the run.
+ * the walk state read and write. Pacing and the weight budget come from the run.
  */
-export type BinanceTransferHistoryDeps = BinanceWalkWriteDeps & {
+export type BinanceTransferHistoryDeps = ExchangeStateDeps & {
   now: () => number;
   fetchImpl: typeof fetch;
   readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
@@ -321,7 +304,7 @@ export type BinanceTransferHistoryDeps = BinanceWalkWriteDeps & {
 };
 
 const defaultTransferHistoryDeps: BinanceTransferHistoryDeps = {
-  ...defaultWalkWriteDeps,
+  ...exchangeStateDepsOf('binance'),
   now: () => Date.now(),
   fetchImpl: fetch,
   readCredentials,
@@ -335,12 +318,12 @@ type TransferContext = {
   deps: BinanceTransferHistoryDeps;
   run: BinanceHistoryRun;
   accountId: string;
-  spot: HoldingRow;
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
   marks: WalkMarks;
   plan: WalkPlan;
+  write: WalkMarkWriter;
   depthMemories: Pick<DepthGuard, 'config' | 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
 };
 
@@ -464,7 +447,7 @@ const commitSpan = (
   read: SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, spot, plan, marks } = context;
+  const { deps, accountId, plan, marks, write } = context;
 
   return commitSettledSpan({
     pass,
@@ -490,9 +473,7 @@ const commitSpan = (
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
-        fields: TRANSFER_MARK_FIELDS,
-        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
-        writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+        write,
       }),
   });
 };
@@ -516,21 +497,17 @@ const runSync = async (
     return { imported: 0, complete: true };
   }
 
-  const cursor = binanceWalkCursorOf(TRANSFER_MARK_FIELDS.cursor, spot.metadata);
-  const rescanCursor = binanceWalkCursorOf(TRANSFER_MARK_FIELDS.rescan, spot.metadata);
-  const writers = walkWritersOf(spot.id, deps);
-  const roundRobins = await readWalkRoundRobins({
-    fields: TRANSFER_MARK_FIELDS,
-    metadata: spot.metadata,
-    ...writers,
-  });
+  const stored = await readWalkMarks(deps, accountId, 'transfer');
+
+  const { cursor, rescan: rescanCursor } = stored;
+  const write = walkMarkWriterOf(deps, accountId, 'transfer');
+  const roundRobins = await readWalkRoundRobins({ stored, write });
   const floorMs = transferFloorMs(now);
   const pending = await readPendingMark({
-    field: TRANSFER_MARK_FIELDS.pending,
-    metadata: spot.metadata,
+    stored: stored.pending,
     owedIfUnreadable: { start: floorMs, end: cursor ?? floorMs },
     knownSeries: UNIVERSAL_TRANSFER_TYPES,
-    write: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+    write,
   });
   const plan = planWalkPasses({
     cursor,
@@ -553,21 +530,16 @@ const runSync = async (
     deps,
     run,
     accountId,
-    spot,
     apiKey: credentials.apiKey,
     secret: credentials.secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
     marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
+    write,
     depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
   };
 
-  await storePlannedList({
-    plan,
-    marks: context.marks,
-    fields: TRANSFER_MARK_FIELDS,
-    writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
-  });
+  await storePlannedList({ plan, marks: context.marks, write });
 
   return runWalkPlan({
     plan,
@@ -589,11 +561,10 @@ const runSync = async (
             window,
             read,
             marks: context.marks,
-            fields: TRANSFER_MARK_FIELDS,
-            writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+            write,
           }),
       }),
-    ...roundRobinHooksOf({ marks: context.marks, fields: TRANSFER_MARK_FIELDS, ...writers }),
+    ...roundRobinHooksOf({ marks: context.marks, write }),
   });
 };
 

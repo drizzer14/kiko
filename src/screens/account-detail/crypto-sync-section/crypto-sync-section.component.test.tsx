@@ -3,6 +3,13 @@ import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  type ExchangeStateSeed,
+  type WalkName,
+  WALK_NAMES,
+  withWalkMarkSeeds,
+  withWalkMarks,
+} from '@kiko/test-support/walk-marks';
 import { DAY_MS, formatDateTime } from '@kiko/dates';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 
@@ -20,6 +27,15 @@ jest.mock('@kiko/db/use-live-query', () => ({
 jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
   syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
   drainReminderResponses: async () => [],
+}));
+jest.mock('@kiko/sync-state/sync-state.repo', () => ({
+  syncStateRepo: {
+    getQuery: (accountId: string) => ({
+      __syncState: true,
+      __accountId: accountId,
+      toSQL: () => ({ sql: '', params: [accountId] }),
+    }),
+  },
 }));
 jest.mock('@kiko/sync/use-crypto-sync', () => ({
   useCryptoSync: () => mockUseCryptoSync(),
@@ -101,8 +117,10 @@ jest.mock('@kiko/design-system/components/button', () => {
 
 const ADDRESS = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 
+const ACCOUNT_ID = 'a';
+
 const account = (overrides: Partial<AccountRow> = {}): AccountRow => ({
-  id: 'a',
+  id: ACCOUNT_ID,
   name: 'Cold storage',
   kind: 'crypto',
   institution: null,
@@ -117,7 +135,7 @@ const account = (overrides: Partial<AccountRow> = {}): AccountRow => ({
 
 const holding = (metadata: unknown): HoldingRow => ({
   id: 'h1',
-  accountId: 'a',
+  accountId: ACCOUNT_ID,
   name: 'BTC Wallet',
   type: 'crypto_asset',
   currency: 'BTC',
@@ -135,12 +153,34 @@ const holding = (metadata: unknown): HoldingRow => ({
 
 /**
  * Seed the two connected-accounts live queries, keyed on the institution each one was built
- * for.
+ * for. The `sync_state` query answers only for the account the section renders: a query built
+ * for another account id finds no row.
  */
 const setConnected = (connected: { btc_wallet?: AccountRow[]; binance?: AccountRow[] }): void => {
-  mockUseLiveQuery.mockImplementation((query: { __institution: 'btc_wallet' | 'binance' }) => ({
-    data: connected[query.__institution] ?? [],
-  }));
+  mockUseLiveQuery.mockImplementation(
+    (query: {
+      __institution: 'btc_wallet' | 'binance';
+      __syncState?: true;
+      __accountId?: string;
+    }) => {
+      if (query.__syncState !== true) {
+        return { data: connected[query.__institution] ?? [] };
+      }
+
+      return query.__accountId === ACCOUNT_ID ? syncStateResult : { data: [], isLoading: false };
+    },
+  );
+};
+
+// What the account's own `sync_state` live query returns: the rows, and whether its first read is
+// still queued.
+let syncStateResult: { data: { exchangeState: string }[]; isLoading: boolean } = {
+  data: [],
+  isLoading: false,
+};
+
+const setSyncState = (state: ExchangeStateSeed, isLoading = false): void => {
+  syncStateResult = { data: [{ exchangeState: JSON.stringify(state) }], isLoading };
 };
 
 const CONNECTED_WALLET_SYNCED_AT = 1_700_000_000_000;
@@ -149,14 +189,43 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 
+const PAUSED_CAPTION =
+  'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to fix this. Your holdings and transactions are kept.';
+
 // The four forward cursors of the history walks, each `behindMs` behind the balance sync.
-const walkCursors = (behindMs: number, over: Record<string, number> = {}) => ({
-  binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - behindMs,
-  binancePayHistoryCursor: CONNECTED_WALLET_SYNCED_AT - behindMs,
-  binanceTransferHistoryCursor: CONNECTED_WALLET_SYNCED_AT - behindMs,
-  binanceEarnHistoryCursor: CONNECTED_WALLET_SYNCED_AT - behindMs,
-  ...over,
-});
+const walkCursors = (
+  behindMs: number,
+  over: Partial<Record<WalkName, number>> = {},
+): ExchangeStateSeed =>
+  withWalkMarkSeeds(
+    {},
+    ACCOUNT_ID,
+    Object.fromEntries(
+      WALK_NAMES.map((walkName) => [
+        walkName,
+        { cursor: over[walkName] ?? CONNECTED_WALLET_SYNCED_AT - behindMs },
+      ]),
+    ),
+  );
+
+// A connected Binance account whose spot holding the balance sync stamped, over the given walk
+// state row (and whether that row's first read is still queued).
+const renderBinance = (
+  state: ExchangeStateSeed,
+  isLoading = false,
+  metadata: Record<string, unknown> = {},
+) => {
+  setSyncState(state, isLoading);
+
+  return render(
+    <CryptoSyncSection
+      account={account({ institution: 'binance' })}
+      holdings={[
+        holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT, ...metadata }),
+      ]}
+    />,
+  );
+};
 
 // Shared by every "already connected to a wallet" test below — each one only
 // differs in what it asserts afterward, never in how the section itself is
@@ -182,6 +251,7 @@ describe('CryptoSyncSection', () => {
     mockSync.mockResolvedValue(true);
     mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     mockDisconnect.mockResolvedValue(undefined);
+    syncStateResult = { data: [], isLoading: false };
     setConnected({});
   });
 
@@ -403,90 +473,56 @@ describe('CryptoSyncSection', () => {
   });
 
   it('shows the lagging-history caption when the Binance history walks are more than a day behind the balance sync', async () => {
-    const { getByText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'binance' })}
-        holdings={[
-          holding({
-            binanceAsset: 'BTC',
-            ...walkCursors(3 * DAY_MS),
-            syncedAt: CONNECTED_WALLET_SYNCED_AT,
-          }),
-        ]}
-      />,
-    );
+    const { getByText } = await renderBinance(walkCursors(3 * DAY_MS));
 
     expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
   });
 
   it('shows the caption when only the Earn walk is behind: the other three cursors are current', async () => {
-    const { getByText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'binance' })}
-        holdings={[
-          holding({
-            binanceAsset: 'BTC',
-            ...walkCursors(HOUR_MS, {
-              binanceEarnHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS,
-            }),
-            syncedAt: CONNECTED_WALLET_SYNCED_AT,
-          }),
-        ]}
-      />,
+    const { getByText } = await renderBinance(
+      walkCursors(HOUR_MS, { earn: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS }),
     );
 
     expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
   });
 
   it('shows the caption when a walk has no cursor yet, though the capital walk is current', async () => {
-    const { getByText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'binance' })}
-        holdings={[
-          holding({
-            binanceAsset: 'BTC',
-            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - HOUR_MS,
-            syncedAt: CONNECTED_WALLET_SYNCED_AT,
-          }),
-        ]}
-      />,
+    const { getByText } = await renderBinance(
+      withWalkMarks({}, ACCOUNT_ID, 'capital', { cursor: CONNECTED_WALLET_SYNCED_AT - HOUR_MS }),
     );
 
     expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
   });
 
   it('shows no caption once every Binance history walk is caught up', async () => {
-    const { queryByText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'binance' })}
-        holdings={[
-          holding({
-            binanceAsset: 'BTC',
-            ...walkCursors(2 * HOUR_MS),
-            syncedAt: CONNECTED_WALLET_SYNCED_AT,
-          }),
-        ]}
-      />,
-    );
+    const { queryByText } = await renderBinance(walkCursors(2 * HOUR_MS));
+
+    expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+  });
+
+  it('reads the state row, not the old walk keys an upgraded device still holds behind in the metadata', async () => {
+    const behind = CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS;
+    const { queryByText } = await renderBinance(walkCursors(HOUR_MS), false, {
+      binanceHistoryCursor: behind,
+      binancePayHistoryCursor: behind,
+      binanceTransferHistoryCursor: behind,
+      binanceEarnHistoryCursor: behind,
+    });
+
+    expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+  });
+
+  it('shows no caption while the state row is loading, though its cursors are behind', async () => {
+    const { queryByText } = await renderBinance(walkCursors(3 * DAY_MS), true);
 
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
   });
 
   it('shows no caption while the cursors are current and only a Transfer point is owed', async () => {
-    const { queryByText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'binance' })}
-        holdings={[
-          holding({
-            binanceAsset: 'BTC',
-            ...walkCursors(2 * HOUR_MS),
-            binanceTransferPendingOverlap: [
-              { start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' },
-            ],
-            syncedAt: CONNECTED_WALLET_SYNCED_AT,
-          }),
-        ]}
-      />,
+    const { queryByText } = await renderBinance(
+      withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, 'transfer', {
+        pending: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
+      }),
     );
 
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
@@ -498,18 +534,8 @@ describe('CryptoSyncSection', () => {
   ])(
     'shows the caption while the cursors are current and the Transfer walk owes %s',
     async (_label, owed) => {
-      const { getByText } = await render(
-        <CryptoSyncSection
-          account={account({ institution: 'binance' })}
-          holdings={[
-            holding({
-              binanceAsset: 'BTC',
-              ...walkCursors(2 * HOUR_MS),
-              binanceTransferPendingOverlap: [owed],
-              syncedAt: CONNECTED_WALLET_SYNCED_AT,
-            }),
-          ]}
-        />,
+      const { getByText } = await renderBinance(
+        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, 'transfer', { pending: [owed] }),
       );
 
       expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
@@ -519,18 +545,7 @@ describe('CryptoSyncSection', () => {
   it('hides the lagging-history caption while a sync is in flight, even when the history walk is behind', async () => {
     mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
 
-    const { queryByText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'binance' })}
-        holdings={[
-          holding({
-            binanceAsset: 'BTC',
-            ...walkCursors(3 * DAY_MS),
-            syncedAt: CONNECTED_WALLET_SYNCED_AT,
-          }),
-        ]}
-      />,
-    );
+    const { queryByText } = await renderBinance(walkCursors(3 * DAY_MS));
 
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
   });
@@ -539,6 +554,77 @@ describe('CryptoSyncSection', () => {
     const { queryByText } = await renderConnectedWallet();
 
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+  });
+
+  describe('a walk state this build cannot read', () => {
+    // The column is stored as text, so a state no build reads is seeded as text, not as a seed
+    // object.
+    const renderMalformed = (text: string, isLoading = false) => {
+      syncStateResult = { data: [{ exchangeState: text }], isLoading };
+
+      return render(
+        <CryptoSyncSection
+          account={account({ institution: 'binance' })}
+          holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
+        />,
+      );
+    };
+
+    it.each([
+      ['text that is not JSON', '{not json'],
+      ['a state of another version', '{"version":2,"walks":{}}'],
+      ['a state with no walks', '{"version":1}'],
+    ])('shows the paused caption for %s', async (_label, text) => {
+      const { getByText } = await renderMalformed(text);
+
+      expect(getByText(PAUSED_CAPTION)).toBeTruthy();
+    });
+
+    it('shows the paused caption instead of the behind caption, never both', async () => {
+      const { getByText, queryByText } = await renderMalformed('{not json');
+
+      expect(getByText(PAUSED_CAPTION)).toBeTruthy();
+      expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+    });
+
+    it('shows the paused caption while a sync is in flight: a paused history does not flash', async () => {
+      mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
+
+      const { getByText } = await renderMalformed('{not json');
+
+      expect(getByText(PAUSED_CAPTION)).toBeTruthy();
+    });
+
+    it('shows no caption while the state row is loading', async () => {
+      const { queryByText } = await renderMalformed('{not json', true);
+
+      expect(queryByText(PAUSED_CAPTION)).toBeNull();
+      expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+    });
+
+    it('shows no paused caption on a state that parses, an unreadable entry too', async () => {
+      const { queryByText } = await renderMalformed('{"version":1,"walks":{"pay":"oops"}}');
+
+      expect(queryByText(PAUSED_CAPTION)).toBeNull();
+    });
+
+    it('never shows the paused caption for a wallet account', async () => {
+      syncStateResult = { data: [{ exchangeState: '{not json' }], isLoading: false };
+
+      const { queryByText } = await renderConnectedWallet();
+
+      expect(queryByText(PAUSED_CAPTION)).toBeNull();
+      expect(queryByText(/history import is paused/)).toBeNull();
+    });
+
+    it('reads the account sync_state row through a live query on the sync_state table', async () => {
+      await renderMalformed('{not json');
+
+      expect(mockUseLiveQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ __syncState: true, __accountId: ACCOUNT_ID }),
+        ['sync_state'],
+      );
+    });
   });
 });
 
@@ -576,5 +662,39 @@ describe('CryptoSyncSection — localization', () => {
     const { getByText } = await renderSection({ institution: 'binance' });
 
     expect(getByText(/Ніколи/)).toBeTruthy();
+  });
+});
+
+describe('CryptoSyncSection — paused caption localization', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    setConnected({});
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the paused caption in Ukrainian, naming Binance twice', async () => {
+    syncStateResult = { data: [{ exchangeState: '{not json' }], isLoading: false };
+
+    const { getByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
+      />,
+    );
+
+    expect(
+      getByText(
+        'Імпорт історії Binance призупинено: Кіко не зміг прочитати збережений стан імпорту. Щоб це виправити, відключіть і знову підключіть Binance. Ваші активи й транзакції збережуться.',
+      ),
+    ).toBeTruthy();
   });
 });

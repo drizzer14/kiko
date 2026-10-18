@@ -1,16 +1,6 @@
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  BINANCE_PAY_HISTORY_CURSOR_FIELD,
-  BINANCE_PAY_PENDING_OVERLAP_FIELD,
-  BINANCE_PAY_POINT_CURSOR_FIELD,
-  BINANCE_PAY_RANGE_CURSOR_FIELD,
-  BINANCE_PAY_RESCAN_CURSOR_FIELD,
-  BINANCE_PAY_SPAN_HINTS_FIELD,
-  type BinanceSpanHintPass,
-  type BinanceSpanHints,
-} from '@kiko/holdings/holding-metadata';
-import {
   advanceWalkMarks,
   BinanceWalkStop,
   commitSettledSpan,
@@ -22,6 +12,7 @@ import {
   type OwedGround,
   type OwedWindow,
   planWalkPasses,
+  readPendingMark,
   runWalkPlan,
   type SettledSpan,
   settleRecords,
@@ -31,11 +22,14 @@ import {
   storeRangeCursor,
   storeSpanHints,
   walkSpans,
-  type WalkMarkFields,
+  readWalkMarks,
+  walkMarkWriterOf,
   type WalkMarks,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
 import maybe, { foldMap } from 'fnts/maybe';
+import { walkStateFake, type WalkField, type WalkName } from '@kiko/test-support/walk-marks';
+import type { BinanceSpanHintPass, BinanceSpanHints } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
   EARN_FORWARD_OWES,
@@ -419,15 +413,6 @@ const pointOf = (record: SimRecord): OwedGround => ({
 const holdsPointOf = (owed: OwedGround[], record: SimRecord): boolean =>
   owed.some((ground) => sameWindow(ground, pointOf(record)) && ground.series === record.series);
 
-const MARK_FIELDS: WalkMarkFields = {
-  cursor: BINANCE_PAY_HISTORY_CURSOR_FIELD,
-  rescan: BINANCE_PAY_RESCAN_CURSOR_FIELD,
-  point: BINANCE_PAY_POINT_CURSOR_FIELD,
-  range: BINANCE_PAY_RANGE_CURSOR_FIELD,
-  hints: BINANCE_PAY_SPAN_HINTS_FIELD,
-  pending: BINANCE_PAY_PENDING_OVERLAP_FIELD,
-};
-
 /** The rows of a record: its id, or a stop while the record is stuck. */
 const rowsOf = (entry: SimRecord, run: number): number[] => {
   if (run < entry.stuckUntil) {
@@ -784,22 +769,51 @@ const endTimeOf = (input: Simulation, run: number): number => {
   return START_MS + (input.skewMs ?? 0) + early * (catchUp?.gapMs ?? 0) + (run - early) * gapMs;
 };
 
+const SIMULATION_ACCOUNT_ID = 'acc-1';
+
+const walkNameOf = (lane: Lane): WalkName => lane.walk ?? (lane.name === 'Pay' ? 'pay' : 'capital');
+
+/** The marks of a run as the walk reads them from the stored state, the one thing runs share. */
+const storedMarksOf = async (
+  deps: ReturnType<typeof walkStateFake>['deps'],
+  walkName: WalkName,
+  knownSeries: Lane['series'],
+): Promise<WalkMarks> => {
+  const stored = await readWalkMarks(deps, SIMULATION_ACCOUNT_ID, walkName);
+  const pending = await readPendingMark({
+    stored: stored.pending,
+    owedIfUnreadable: { start: stored.cursor ?? 0, end: stored.cursor ?? 0 },
+    knownSeries,
+    write: walkMarkWriterOf(deps, SIMULATION_ACCOUNT_ID, walkName),
+  });
+
+  return {
+    cursor: stored.cursor,
+    rescanCursor: stored.rescan,
+    pointCursor: stored.pointCursor ?? null,
+    rangeCursor: stored.rangeCursor ?? null,
+    hints: stored.spanHints ?? NO_HINTS,
+    pending,
+  };
+};
+
 const simulate = async (input: Simulation): Promise<Outcome> => {
   const { lane, scenario, runs } = input;
   const { forwardOwes } = lane;
   const importedAt = new Map<number, number>();
   const writes: Outcome['writes'] = [];
-  let marks: WalkMarks = {
-    cursor: START_MS,
-    rescanCursor: null,
-    pointCursor: null,
-    rangeCursor: null,
-    hints: NO_HINTS,
-    pending: scenario.owed,
-  };
+  const walkName = walkNameOf(lane);
+  const fake = walkStateFake({
+    accountId: SIMULATION_ACCOUNT_ID,
+    marks: { [walkName]: { cursor: START_MS, pending: scenario.owed } },
+  });
   const records: RunRecord[] = [];
 
   for (let run = 0; run < runs; run += 1) {
+    const deps = fake.freshDeps();
+    const write = walkMarkWriterOf(deps, SIMULATION_ACCOUNT_ID, walkName);
+    const marks = await storedMarksOf(deps, walkName, lane.series);
+
     const live: WalkMarks = { ...marks, pending: [...marks.pending] };
     const record: RunRecord = {
       owed: [],
@@ -854,31 +868,14 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
       plan,
       callsOf,
       canAfford: (keep) => reads + keep < lane.reads,
-      markPointRead: (window) =>
-        storePointCursor({
-          window,
-          marks: live,
-          field: MARK_FIELDS.point,
-          write: async () => undefined,
-        }),
+      markPointRead: (window) => storePointCursor({ window, marks: live, write }),
       markRangeRead: async (window) => {
         record.rangesRead.push(window.start);
-        await storeRangeCursor({
-          window,
-          marks: live,
-          field: MARK_FIELDS.range,
-          write: async () => undefined,
-        });
+        await storeRangeCursor({ window, marks: live, write });
       },
       hints: {
         stored: live.hints,
-        store: (hints) =>
-          storeSpanHints({
-            hints,
-            marks: live,
-            field: MARK_FIELDS.hints,
-            write: async () => undefined,
-          }),
+        store: (hints) => storeSpanHints({ hints, marks: live, write }),
       },
       runWindow: (window, pass, keep, hint) => {
         if (pass !== 'forward' && !pastForward) {
@@ -928,8 +925,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               window,
               read,
               marks: live,
-              fields: MARK_FIELDS,
-              writePending: async () => undefined,
+              write,
             }),
           commit: async (span, page) => {
             const committed = await commitSettledSpan({
@@ -955,13 +951,12 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
                 advanceWalkMarks({
                   pass,
                   span,
+                  series: window.series,
                   owed,
                   plan,
                   marks: live,
                   restartMs: FLOOR_MS,
-                  fields: MARK_FIELDS,
-                  write: async () => undefined,
-                  writePending: async () => undefined,
+                  write,
                 }),
             });
 
@@ -981,10 +976,11 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
       },
     });
 
-    marks = live;
-    record.owed = live.pending;
-    record.hints = live.hints;
-    record.cursor = live.cursor;
+    const left = await storedMarksOf(fake.freshDeps(), walkName, lane.series);
+
+    record.owed = left.pending;
+    record.hints = left.hints;
+    record.cursor = left.cursor;
     record.callsAfterForward = pastForward ? record.callsAfterForward : lane.reads - reads;
     record.readsOfAPoint = Math.max(0, ...pointReads.values());
     records.push(record);
@@ -1525,6 +1521,28 @@ const insideMergedRangeScenario = (lane: Lane, seed: number, withTwin = true): S
       ...(withTwin ? [builder.twinOf(stuck)] : []),
       ...ranges.map((range) => builder.record(builder.interiorOf(range))),
     ],
+  };
+};
+
+/**
+ * An owed range with no series, and inside it the point of a stuck record of one series. A record
+ * of another series sits on the edge of that point: only a read of the range, in every series,
+ * returns it, so a read of the point in the stuck record's own series must not cut the point out
+ * of the range.
+ */
+const pointInSeriesRangeScenario = (lane: Lane, seed: number): Scenario => {
+  const builder = builderOf(lane, seed);
+  const range = builder.rangeAt(0);
+  const stuck = builder.record(builder.interiorOf(range), NEVER);
+  const otherSeries = (lane.series ?? []).find((series) => series !== stuck.series);
+  const twin = {
+    ...builder.twinOf(stuck),
+    ...foldMap(maybe(otherSeries), (series) => ({ series })),
+  };
+
+  return {
+    owed: [range, pointOf(stuck)],
+    records: [stuck, twin, builder.record(builder.interiorOf(range))],
   };
 };
 
@@ -2870,6 +2888,50 @@ describe.each(LANES)('a split window resumes in the next run, $name lane', (lane
   );
 });
 
+describe.each(LANES.filter((lane) => lane.series !== undefined))(
+  'a point of one series inside a range owed in every series, $name lane',
+  (laneOfName) => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    describe.each(readingsOf(laneOfName))('a read that returns the records with %s', (reading) => {
+      const lane = laneUnder(laneOfName, reading);
+      const seeds = reading === 'both ends included' ? SEEDS : SEEDS.slice(0, 1);
+
+      it.each(
+        seeds.flatMap((seed) =>
+          [undefined, HOUR_MS].map((spanMs) => ({ seed, spanMs, bound: rangeRuns(lane, 1) + 40 })),
+        ),
+      )(
+        'P1-P4: an owed range with no series and a stuck record of one series found as a point inside it, a record of another series at its time (seed $seed, a read too full above $spanMs ms keeps the range pass reading for many runs, so the point is read alone first): a read of the point never cuts it out of the range, so the other series record imports within $bound runs and the point stays',
+        async ({ seed, spanMs, bound }) => {
+          const scenario = pointInSeriesRangeScenario(lane, seed);
+          const outcome = await simulate({
+            lane,
+            reading,
+            scenario,
+            runs: bound + 5,
+            ...foldMap(maybe(spanMs), (span) => ({
+              dense: { range: { start: BASE_MS, end: BASE_MS + 2 * DAY_MS }, spanMs: span },
+            })),
+          });
+
+          expect(
+            violationsOf(lane, reading, outcome, scenario, { imported: bound, pointed: 1 }),
+          ).toEqual([]);
+        },
+      );
+    });
+  },
+);
+
 describe.each(LANES.filter((lane) => lane.walk === 'earn'))(
   'a reward group with one member the client cannot read, $name lane',
   (lane) => {
@@ -3003,3 +3065,107 @@ describe.each(LANES.filter((lane) => lane.walk === 'earn'))(
     );
   },
 );
+
+const SHARED_WALKS = ['capital', 'pay', 'transfer', 'earn'] as const;
+
+type SharedWalk = (typeof SHARED_WALKS)[number];
+
+type WrittenMarks = Partial<Record<WalkField, unknown>>;
+
+/** A small deterministic sequence, so the order the walks write in is not picked by hand. */
+const nextRandom = (state: number): number => (state * 1_103_515_245 + 12_345) % 2 ** 31;
+
+const interleavedWalks = (seed: number, run: number): SharedWalk[] =>
+  SHARED_WALKS.map((walk, index) => ({ walk, key: nextRandom(seed + run * 7 + index * 13) }))
+    .sort((left, right) => left.key - right.key)
+    .map(({ walk }) => walk);
+
+const freshMarks = (): WalkMarks => ({
+  cursor: null,
+  rescanCursor: null,
+  pointCursor: null,
+  rangeCursor: null,
+  hints: NO_HINTS,
+  pending: [],
+});
+
+describe.each(SEEDS)('walk marks in one shared state, order seed %d', (seed) => {
+  const ACCOUNT_ID = 'acc-1';
+  const UNKNOWN_KEYS = { futureKey: { note: 'kept' }, notImported: ['XYZ'] };
+  const UNKNOWN_WALKS = { somebodyElse: { cursor: 7, pending: [{ start: 1, end: 2 }] } };
+  const RUNS = 8;
+
+  it.each(RUN_GAPS.map((gapMs) => ({ gapMs })))(
+    "a patch never loses another walk's marks across runs, runs $gapMs ms apart: each walk holds what it last wrote, and the unknown keys and walk ids stay",
+    async ({ gapMs }) => {
+      const fake = walkStateFake({
+        accountId: ACCOUNT_ID,
+        marks: { capital: { cursor: FLOOR_MS }, earn: { rescan: FLOOR_MS } },
+        unknown: { keys: UNKNOWN_KEYS, walks: UNKNOWN_WALKS },
+      });
+      const lastWritten: Record<SharedWalk, WrittenMarks> = {
+        capital: { cursor: FLOOR_MS },
+        pay: {},
+        transfer: {},
+        earn: { rescan: FLOOR_MS },
+      };
+      const live: Record<SharedWalk, WalkMarks> = {
+        capital: freshMarks(),
+        pay: freshMarks(),
+        transfer: freshMarks(),
+        earn: freshMarks(),
+      };
+      const observed = new Set<string>();
+
+      const expectEveryWalkHoldsItsOwn = async (): Promise<void> => {
+        SHARED_WALKS.forEach((walk) => {
+          expect(fake.marksOf(walk)).toEqual(lastWritten[walk]);
+        });
+
+        const stored = JSON.parse((await fake.deps.readExchangeState(ACCOUNT_ID)) ?? '');
+
+        expect(stored).toMatchObject({ ...UNKNOWN_KEYS, walks: UNKNOWN_WALKS });
+        observed.add(JSON.stringify(stored.walks));
+      };
+
+      for (let run = 0; run < RUNS; run += 1) {
+        const time = START_MS + run * gapMs;
+
+        for (const walk of interleavedWalks(seed, run)) {
+          const write = walkMarkWriterOf(fake.freshDeps(), ACCOUNT_ID, walk);
+          const own = SHARED_WALKS.indexOf(walk) + 1;
+          const start = time + own * SECOND_MS + run;
+          const window = { start, end: start + HOUR_MS };
+          const pending = [{ start, end: start + own * HOUR_MS }];
+          const hints = { ...NO_HINTS, forward: [{ start, end: start + own }] };
+
+          await storePointCursor({ window, marks: live[walk], write });
+          lastWritten[walk].pointCursor = start;
+          await expectEveryWalkHoldsItsOwn();
+
+          await storeRangeCursor({ window, marks: live[walk], write });
+          lastWritten[walk].rangeCursor = window.end;
+          await expectEveryWalkHoldsItsOwn();
+
+          await write([
+            { field: 'pending', value: pending },
+            { field: 'cursor', value: time + own },
+          ]);
+          lastWritten[walk].pending = pending;
+          lastWritten[walk].cursor = time + own;
+          await expectEveryWalkHoldsItsOwn();
+
+          if ((run + own) % 2 === 0) {
+            await storeSpanHints({ hints, marks: live[walk], write });
+            lastWritten[walk].spanHints = hints;
+            await write([{ field: 'rescan', value: time - own }]);
+            lastWritten[walk].rescan = time - own;
+            await expectEveryWalkHoldsItsOwn();
+          }
+        }
+      }
+
+      expect(observed.size).toBeGreaterThan(RUNS);
+    },
+  );
+});

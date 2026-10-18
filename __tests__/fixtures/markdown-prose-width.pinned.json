@@ -5,7 +5,6 @@
     "  parallel and price_points disables afterwards if nothing needs it. `needsPriceBook` (`src/holdings/priced-value/`)",
     "  now\"): no tips feature folder, no tip card component, no dismiss-tip or reset-tips settings function, and the Help",
     "  an account with no capital row starts at the floor. The forward pass starts at `max(floor, cursor)`. The",
-    "  `BINANCE_TRANSFER_PENDING_OVERLAP_FIELD` alone), false before the account's own first balance sync. An owed point never",
     "  decision is the 0058 `untrackedCounterpart` note on the snapshot version in this file). The label and the exclusion are in",
     "- **Transfer forward stops (O1; the Earn lane does the same with `EARN_FORWARD_OWES`).** A stop tied to ONE transfer with a usable",
     "  failure: ignored, nothing owed. Any other value (a pending status such as PURCHASING or CREATED, or an unknown one) is",

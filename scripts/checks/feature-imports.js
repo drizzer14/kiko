@@ -78,6 +78,10 @@ const TEST_ONLY = [
   { path: 'db/capture-set-tx', reason: 'its only importers are tests' },
   { path: 'rates/monobank-feed-test-helper', reason: 'test-only feed builder' },
   { path: 'statement-import/formats/format-test-fixtures', reason: 'shared format test rows' },
+  {
+    path: 'crypto-sync/binance/binance.earn-test-fixtures',
+    reason: 'shared Earn walk test world; its only importers are tests',
+  },
   { path: 'i18n/locales/flatten-catalog', reason: 'catalog helper used only by i18n tests' },
   { path: 'i18n/locales/title-keys', reason: 'catalog helper used only by i18n tests' },
 ];

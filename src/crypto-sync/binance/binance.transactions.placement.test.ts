@@ -16,6 +16,7 @@ import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
+import { seedWalkMarks, walkMarksOf } from '@kiko/test-support/walk-marks';
 
 import type { BinanceDeposit } from './binance.history-client';
 import { syncBinanceTransactions } from './binance.transactions';
@@ -42,7 +43,8 @@ const openDatabase = (): DatabaseSync => {
       `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
        VALUES ('h-spot', 'acc-1', 'Binance Spot', 'crypto_asset', 'BTC', 100, ?)`,
     )
-    .run(JSON.stringify({ binanceAsset: 'BTC', binanceHistoryCursor: NOW - 10 * DAY_MS }));
+    .run(JSON.stringify({ binanceAsset: 'BTC' }));
+  seedWalkMarks(rawDatabase, 'acc-1', 'capital', { cursor: NOW - 10 * DAY_MS });
 
   return rawDatabase;
 };
@@ -182,12 +184,7 @@ describe('capital placement on real SQLite', () => {
   it('advances the capital cursor on the Spot holding once the rows are stored', async () => {
     await runWalk([deposit({ walletType: 1 })]);
 
-    const stored = mockDatabase
-      .prepare("SELECT metadata FROM holdings WHERE id = 'h-spot'")
-      .get() as {
-      metadata: string;
-    };
-    expect(JSON.parse(stored.metadata).binanceHistoryCursor).toBe(NOW);
+    expect(walkMarksOf(mockDatabase, 'acc-1', 'capital').cursor).toBe(NOW);
     expect(storedRows()).toHaveLength(1);
   });
 });

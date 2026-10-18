@@ -1,7 +1,14 @@
 import { match } from 'ts-pattern';
-import { logOnFailure } from '@kiko/diagnostics';
+import {
+  BinanceWalkStop,
+  EXCHANGE_STATE_MALFORMED,
+  exchangeStateDepsOf,
+} from '@kiko/crypto-sync/exchange/walk';
+import { logFailure, logOnFailure } from '@kiko/diagnostics';
+import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
+  type BinanceHistoryRun,
   binanceProvider,
   createBinanceHistoryRun,
   defaultBinanceDeps,
@@ -24,16 +31,24 @@ export type CryptoSyncRequest =
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-const runBinanceSyncAndImport = async (targetAccountId: string): Promise<BalanceSyncResult> => {
-  const result = await runBalanceSync(binanceProvider, defaultBinanceDeps, { targetAccountId });
-  // One gate and one weight budget for every history walk of this run, so the walks
-  // together stay under Binance's per-minute limits.
-  const run = createBinanceHistoryRun({ now: () => Date.now(), sleep });
+const runBinanceHistoryWalks = async (
+  targetAccountId: string,
+  run: BinanceHistoryRun,
+): Promise<void> => {
+  // Read once, for the whole run: a state this build cannot read is no state a walk can write
+  // to, so every walk would start from its floor again on every run. A read that fails is
+  // logged by the caller, and skips the walks too.
+  const stateText = await exchangeStateDepsOf('binance').readExchangeState(targetAccountId);
 
-  // The history walks are SUPPLEMENTARY to the balance sync and run after it (the
-  // Spot holding must exist first). A failure — a 429, a permission gap — must NOT
-  // fail the balance sync, so it is only logged. The balance result is returned
-  // regardless.
+  if (parseExchangeState(stateText).kind === 'malformed') {
+    logFailure(
+      '[binance sync] walk state unreadable',
+      new BinanceWalkStop(EXCHANGE_STATE_MALFORMED),
+    );
+
+    return;
+  }
+
   await logOnFailure('[binance sync] capital history failed', () =>
     syncBinanceTransactions({ targetAccountId, run }),
   );
@@ -49,6 +64,21 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
   // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too.
   await logOnFailure('[binance sync] earn history failed', () =>
     syncBinanceEarnHistory({ targetAccountId, run }),
+  );
+};
+
+const runBinanceSyncAndImport = async (targetAccountId: string): Promise<BalanceSyncResult> => {
+  const result = await runBalanceSync(binanceProvider, defaultBinanceDeps, { targetAccountId });
+  // One gate and one weight budget for every history walk of this run, so the walks
+  // together stay under Binance's per-minute limits.
+  const run = createBinanceHistoryRun({ now: () => Date.now(), sleep });
+
+  // The history walks are SUPPLEMENTARY to the balance sync and run after it (the
+  // Spot holding must exist first). A failure — a 429, a permission gap, a state that cannot
+  // be read — must NOT fail the balance sync, so it is only logged. The balance result is
+  // returned regardless.
+  await logOnFailure('[binance sync] walk state read failed', () =>
+    runBinanceHistoryWalks(targetAccountId, run),
   );
 
   return result;

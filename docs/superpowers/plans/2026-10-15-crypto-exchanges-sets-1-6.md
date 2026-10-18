@@ -49,7 +49,7 @@ Prep line numbers are hints only: **the developer re-greps every fact on the act
 - Identifiers in full words; imports through `@kiko/<feature>` barrels; `jest.mock` names the seam file.
 - Copy: en + uk for every new key; kiko-translator casing; the user reviews new keys before a deploy that ships
   them.
-- No flag, no hidden feature (Guideline 2.3.1(a)); every new visible text ships reachable.
+- No flag, no hidden feature (Guideline 2.5.19); every new visible text ships reachable.
 - Kill/stash/checkout rules of the harness apply; commits use Bash `timeout: 300000`; never `--no-verify`.
 
 ## Run-log gaps (`run-log.mjs stats --gaps --repo kiko`, read 2026-10-15)
@@ -851,10 +851,12 @@ Known red between commits: none (0061's version decision lands with 0061 in step
 
 **Interfaces produced:** `ExchangeState`, `WalkMarks`, `WalkId`, `CoinLists` (spec section 2) and
 `parseExchangeState(text: string | null): ParsedExchangeState` in `src/crypto-sync/exchange/walk-state/`;
-`syncStateRepo.patchExchangeState(accountId, exchangeId, patch: ExchangeStatePatch)` and
-`syncStateRepo.resetExchangeState(accountId, exchangeId, floorMs)`; the walk deps seam `ExchangeStateDeps =
-{ readExchangeState: (accountId: string) => Promise<string | null>; patchExchangeState: (accountId: string, patch:
-ExchangeStatePatch) => Promise<void> }` (replaces `BinanceWalkWriteDeps` in step 5); test helpers in
+`syncStateRepo.patchExchangeState(accountId, exchangeId, patches: readonly ExchangeStatePatch[])` and
+`syncStateRepo.resetExchangeStateDatabaseTransaction(databaseTransaction, accountId, exchangeId, floorMs)`, called
+by `accountsRepo.disconnectExchange(accountId, exchangeId, floorMs)` (ONE write: reset, then the institution clear);
+the walk deps seam `ExchangeStateDeps =
+{ readExchangeState: (accountId: string) => Promise<string | null>; patchExchangeState: (accountId: string, patches:
+readonly ExchangeStatePatch[]) => Promise<void> }` (replaces `BinanceWalkWriteDeps` in step 5); test helpers in
 `src/test-support/walk-marks.ts`: `walkMarksOf(database | rows, accountId, walkId)`, `withWalkMarks(seed,
 accountId, walkId, marks)`, `expectWalkMarkWritten(deps, accountId, walkId, field, value)`,
 `walkMarkWritesOf(deps, walkId, field)` (the written values in call order), `walkStateFake(world)`.
@@ -891,10 +893,10 @@ keys only through `SPOT_FIELDS` or the writer seams, `binance.earn-history.test.
 ### step 2/10: schema, 0061 and its version decision (Z1-Z5)
 
 Files: `src/db/schema.ts` (`syncState.exchangeState: text('exchange_state')`), `npx drizzle-kit generate --name
-exchange_state` -> `0060_*.sql` + snapshot + journal + `migrations.js` (re-check the file after generate; biome
+exchange_state` -> `0061_exchange_state.sql` + snapshot + journal + `migrations.js` (re-check the file after generate; biome
 write), the hand-appended copy, `drizzle/migrations/0061-exchange-state.test.ts` (new),
 `src/data-transfer/crypto/envelope.test.ts`, both demo `.kiko` files.
-- [ ] Tests first (real sqlite through 0060): "creates the state row for an account with walk keys and leaves its
+- [ ] Tests first (real sqlite through 0061): "creates the state row for an account with walk keys and leaves its
       stamps null" (Z1); "copies a disconnected account's floor values as stored" (Z2); "copies every walk field into
       its walk entry" (Z3, field map pinned as a table); "a walk with only a cursor copies no other field" (the
       entry has `cursor` only: no `null` siblings); "skips an account whose metadata is not JSON and still succeeds"
@@ -971,8 +973,9 @@ Files: `src/sync-state/sync-state.repo.ts`, `sync-state.repo.test.ts` (real sqli
       duplicates"; reset: "resets every walk to the floor, empties pending lists, removes the coin lists and
       replaces a malformed value".
 - [ ] Code: `patchExchangeState` inside `write(...)`: re-read, gate on `accounts.institution = exchangeId`, then
-      patch. `resetExchangeState` inside `write(...)`: gate on the same institution (it runs before
-      `accountsRepo.disconnect`), replace the whole column with `{ version: 1, walks }`: in each parsed walk entry
+      patch. `resetExchangeStateDatabaseTransaction` inside `accountsRepo.disconnectExchange`'s single
+      write: gated by the institution before the clear, it replaces the whole column with `{ version: 1, walks }`
+      (capital `{ cursor: floor }` on a corrupt capital entry or a malformed top level): in each parsed walk entry
       (none for a malformed column) a stored `cursor` or `rescan` becomes the floor and a stored `pending` becomes
       `[]` (today's `withWalkOwnedMetadataResetToFloor` rule); point/range cursors, span hints, trades and both coin
       lists of each kind are removed. Commit `feat(sync-state): gated exchange state writers`.
@@ -984,13 +987,15 @@ pay/transfer/earn walk entry points), `holdings.repo.ts` (`setBinanceWalkCursor`
 `setBinanceWalkSpanHints`, `resetBinanceWalkCursors` removed; `carriedMetadataKeys` stops carrying the 24 keys),
 `holding-metadata.ts` walk readers removed or moved, `src/crypto-sync/disconnect/disconnect.ts` and its test,
 `binance-history-status.ts`, `crypto-sync-section.component.tsx`, their tests, `src/test-support/walk-marks.ts`
-(now seeds/reads `exchange_state` and asserts `patchExchangeState` calls), retired suites.
+(now seeds/reads `exchange_state` and asserts `patchExchangeState` calls), retired suites, and residue edits in
+`binance.pay-history.real-sqlite.test.ts`, `binance.pay-history.test.ts`, `binance.transactions.test.ts` and
+`restore-snapshot.test.ts`. Note: `readPendingMark`'s `hasKnownSeries` runs on the PARSED pending list.
 - [ ] One commit, because removing `resetBinanceWalkCursors` and its caller in `disconnectCryptoAccount` together
       keeps the typecheck green.
 - [ ] Tests first: "reads back every BTC walk mark equal to the old metadata" (Z3 read-back through the parse, all
-      four passes of span hints); disconnect: "resets the walk state through the reset writer before the account
-      disconnects, then clears the key" (order: `syncStateRepo.resetExchangeState(accountId, 'binance',
-      HISTORY_FLOOR_MS)`, `accountsRepo.disconnect`, `clearCredentials`); holdings and rows stay; caption: "hides the
+      four passes of span hints); disconnect: "resets the walk state and clears the institution in one write, then
+      clears the key" (order: `accountsRepo.disconnectExchange(accountId, 'binance', HISTORY_FLOOR_MS)` (one write),
+      `clearCredentials`); holdings and rows stay; caption: "hides the
       caption when the state row's cursors are current and the metadata keys are gone".
 - [ ] Code: `BinanceWalkWriteDeps` becomes `ExchangeStateDeps`; walks read their marks from the parsed state and
       write through `patchExchangeState`. `walkCursorsOf` and `transferOwesRange` read the parsed state from
@@ -1294,7 +1299,7 @@ Files: `binance.earn-history.ts`, `binance.history-client.ts` (`fetchEarnRecords
 
 Files: walk entry points, `src/crypto-sync/exchange/walk/walk.ts` (`advanceCursor`: the marker rides its cursor
 patch), `exchange/walk-state` (parse and patch of `multiCoinSince` and `multiCoinSeen`),
-`syncStateRepo.resetExchangeState`, tests.
+`syncStateRepo.resetExchangeStateDatabaseTransaction` (via `accountsRepo.disconnectExchange`), tests.
 - [ ] Parse rule: a present but malformed `multiCoinSince` (not a finite number) reads as the walk entry's parsed
       `cursor` (absent when that cursor is null): fail-safe, it owes a range rather than none; a malformed
       `multiCoinSeen` (anything but `true`) reads as absent.
@@ -1305,7 +1310,7 @@ patch), `exchange/walk-state` (parse and patch of `multiCoinSince` and `multiCoi
       window writes neither, so the next run is again the first multi-coin run; so `multiCoinSeen` is never stored
       without a stored cursor, which a disconnect resets to the floor. A walk with `multiCoinSeen` never writes either
       again. Capital with a null stored cursor and a legacy `latest` records `latest`, so set 15's backfill covers
-      `[floor, latest)`: no history skipped. `resetExchangeState` removes `multiCoinSince` and keeps
+      `[floor, latest)`: no history skipped. The reset (`resetExchangeStateDatabaseTransaction`) removes `multiCoinSince` and keeps
       `multiCoinSeen: true` (the reset cursor is the floor, so every coin is read from it; nothing is owed).
 - [ ] Tests first: "records the plan cursor at the first multi-coin run"; "records none when the plan cursor is
       null"; "a second run after a null-cursor first run records none"; "records the latest row time for capital with
@@ -1313,7 +1318,7 @@ patch), `exchange/walk-state` (parse and patch of `multiCoinSince` and `multiCoi
       of the first committed window" (the first cursor patch carries `cursor`, `multiCoinSeen` and `multiCoinSince`
       together; no patch before it names either marker); "a disconnect before any capital window commit keeps the
       backfill owed" (capital with no stored cursor and a legacy latest row time L; the first multi-coin run stops
-      before any window commits: neither marker is stored; the account disconnects (`resetExchangeState`) and
+      before any window commits: neither marker is stored; the account disconnects (`accountsRepo.disconnectExchange`) and
       reconnects; the next run's first committed window stores `multiCoinSince` = L, so set 15 owes `[floor, L)`);
       "reads a malformed multiCoinSince as the stored cursor and a malformed multiCoinSeen as absent" (a walk entry
       with `cursor` C, `multiCoinSince: 'x'`, `multiCoinSeen: 'yes'` parses to `multiCoinSince` C and no

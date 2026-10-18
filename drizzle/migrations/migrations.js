@@ -62,6 +62,7 @@ import m0057 from './0057_add_transaction_templates.sql';
 import m0058 from './0058_add_untracked_counterpart.sql';
 import m0059 from './0059_usdt_scale_8.sql';
 import m0060 from './0060_add_history_backfill_state.sql';
+import m0061 from './0061_exchange_state.sql';
 
 export default {
   journal,
@@ -127,5 +128,6 @@ export default {
     m0058,
     m0059,
     m0060,
+    m0061,
   },
 };

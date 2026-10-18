@@ -400,6 +400,8 @@ verified usage, not dead weight:
   - `rates/monobank-feed-test-helper`: a test-only feed builder.
   - `statement-import/formats/format-test-fixtures`: shared format test
     rows.
+  - `crypto-sync/binance/binance.earn-test-fixtures`: the shared Earn walk
+    test world; only tests import it.
   - `i18n/locales/flatten-catalog`, `i18n/locales/title-keys`: catalog
     helpers that only the i18n tests use.
 - **`scripts/checks/feature-imports.js`'s `AMBIENT_LOOSE` set**: `env.d.ts`,

@@ -117,19 +117,8 @@ describe('exchange credentials', () => {
     expect(await loadExchangeCredentials(SAMPLE, ACCOUNT_A)).toBeUndefined();
   });
 
-  it('loads nothing from a value that is not JSON or lacks half of the pair', async () => {
-    const service = credentialServiceFor(SAMPLE, ACCOUNT_A);
-
-    await Keychain.setGenericPassword('sample', 'not-json', { service });
-    expect(await loadExchangeCredentials(SAMPLE, ACCOUNT_A)).toBeUndefined();
-
-    await Keychain.setGenericPassword('sample', JSON.stringify({ apiKey: 'only-half' }), {
-      service,
-    });
-    expect(await loadExchangeCredentials(SAMPLE, ACCOUNT_A)).toBeUndefined();
-  });
-
   it.each([
+    ['a value that is not JSON', 'not-json'],
     ['the JSON null', 'null'],
     ['a pair without its apiKey', JSON.stringify({ secret: 'only-half' })],
     ['a pair without its secret', JSON.stringify({ apiKey: 'only-half' })],

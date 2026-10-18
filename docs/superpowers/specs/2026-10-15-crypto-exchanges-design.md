@@ -180,12 +180,12 @@ Not in 1.3-a by rule:
 - dividends and airdrops (C-Div);
 - P2P sales and P2P orders as advertiser (C-P2P-SELL-MAKER B; listed as not imported).
 
-### Release rule (App Store Guideline 2.3.1(a))
+### Release rule (App Store Guideline 2.5.19)
 
 - 1.3-a ships only with all 15 change sets merged and verified on the user's device with the user's
   own read-only Binance key (R-Scope). There is no flag, no `SHOW_*`/`HIDE_*`/`ENABLE_*` control,
   no catalog entry for an exchange that is not complete, and no dormant reader (kiko-architecture
-  "Guideline 2.3.1(a) — no hidden features (Apple's rejection cited 5.6)"; Semgrep
+  "Guideline 2.5.19 — no hidden features"; Semgrep
   `kiko-no-hidden-feature-flag-or-demo-import`).
 - Bybit gets a catalog entry only in the change set that completes it (1.3-b). If 1.3-b misses the
   1.3 cut, 1.3 ships 1.3-a alone and Bybit moves to 1.3.x.
@@ -282,7 +282,7 @@ type CoinLists = {
   history?: string[];                         // grows with each history read; cleared on disconnect
 };
 type WalkMarks = {
-  cursor: number | null; rescan?: number; pending?: BinancePendingRange[];
+  cursor?: number | null; rescan?: number; pending?: BinancePendingRange[];
   pointCursor?: number; rangeCursor?: number; spanHints?: BinanceSpanHints; multiCoinSince?: number;
   multiCoinSeen?: true;                       // the walk's first multi-coin run happened (section 7)
 };
@@ -318,7 +318,8 @@ Parse, per walk (set 4):
   run, the caption shows its paused copy (`accountDetail.exchangeHistoryPaused`, section 10; set 4
   adds the key in en and uk, with translator review), and nothing writes the column until
   disconnect resets it. The malformed text is never overwritten by a walk patch.
-- `trades`, each of the four coin lists (`untrackedCoins.balance`, `untrackedCoins.history`,
+- `trades` parses per PART (`symbols`, `rotation`, `balanceSnapshot`): a bad part never empties
+  another (`tradesOf`, `walk-state.ts`). Each of the four coin lists (`untrackedCoins.balance`, `untrackedCoins.history`,
   `oversizedCoins.balance`, `oversizedCoins.history`) and `notImported` parse on their own. A
   malformed one reads as its empty value and logs the same tag with the entry name. A
   `notImported` entry whose kind is not in `NOT_IMPORTED_KINDS` is dropped on read and logged (a
@@ -1021,7 +1022,7 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   looked up; trades on 1 symbol, the oldest from 2025-01. The lane cap of 100 calls is far above
   that.
 - Rotation: a symbol is read this run when its base or quote balance changed since
-  `trades.balanceSnapshot`, when it was never read (no entry or a null `fromId`), when it holds a
+  `trades.balanceSnapshot` (a coin with no `balanceSnapshot` entry counts as changed), when it was never read (no entry or a null `fromId`), when it holds a
   `heldOrderId`, or when its turn comes in the round-robin from `trades.rotation`. Fixed read order:
   held symbols first, in ascending symbol order; then never-read symbols; then changed symbols; then
   the round-robin. At least 1 call of the lane per run is reserved for the round-robin, so the held,
@@ -1067,7 +1068,7 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   `fromId`, complete by itself), then the id cursor from the stop fill, where the held order's fills
   follow the once-per-run rule (skipped up to the re-read's last fill id; a higher id ends the
   read). A held symbol gets at most the lane cap - 1 calls (one call stays for the round-robin,
-  "Rotation" above). `heldOrderId` is cleared in the cursor patch written after the order's rows. No
+  "Rotation" above). `heldOrderId` is cleared in the cursor patch written after the order's rows (clearing `heldOrderId` deletes the key). No
   owed point is stored (the trades walk keys progress by id, not time).
 - Rows per order, Spot wallet: spent leg = sum of `quoteQty` (buy) or `qty` (sell), negative;
   received leg = sum of `qty` (buy) or `quoteQty` (sell) minus every commission in the received
@@ -1656,7 +1657,7 @@ not in 1.3-a (C-Div).
 | `accountDetail.connectExchangeSheetTitle` | Connect an Exchange or Wallet | Підключити біржу або гаманець |
 | `accountDetail.changeExchangeAction` | Change exchange | Змінити біржу |
 | `accountDetail.exchangeHistoryPending` (replaces `binanceHistoryPending`) | Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync. | Частину історії транзакцій {{exchange}} ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій. |
-| `accountDetail.exchangeHistoryPaused` (set 4; shown instead of the pending caption while the top-level state is malformed, X1 and K7) | {{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to repair it; your holdings and transactions stay. | Імпорт історії {{exchange}} призупинено, бо Кіко не зміг прочитати збережений прогрес імпорту. Відʼєднайте й знову підключіть {{exchange}}, щоб це виправити; ваші активи й транзакції залишаться. |
+| `accountDetail.exchangeHistoryPaused` (set 4; shown instead of the pending caption while the top-level state is malformed, X1 and K7) | {{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to fix this. Your holdings and transactions are kept. | Імпорт історії {{exchange}} призупинено: Кіко не зміг прочитати збережений стан імпорту. Щоб це виправити, відключіть і знову підключіть {{exchange}}. Ваші активи й транзакції збережуться. |
 | `accountDetail.untrackedCoins` | Not tracked: {{tickers}}. These coins are not on Kiko's coin list, so Kiko does not import them. | Не відстежуються: {{tickers}}. Цих монет немає в списку Кіко, тому Кіко їх не імпортує. |
 | `accountDetail.oversizedAmount` | {{coin}}: the amount is too large for Kiko to store exactly, so it was not imported. | {{coin}}: сума завелика, щоб Кіко зберіг її точно, тому її не імпортовано. |
 | `settings.dataImport.amountTooLargeError` (set 1; a version 1-3 backup refused by the USDT safe-integer bound, U8b) | The "export file" text (`en.ts` and `uk.ts` are the source: read it there) | The "export file" text (read it in `uk.ts`) |

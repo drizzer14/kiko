@@ -24,10 +24,10 @@ import {
 } from '@kiko/db';
 import { getTableColumns } from 'drizzle-orm';
 import { holdingValue } from '@kiko/holdings/holding-value';
+import { asBondMeta } from '@kiko/holdings/holding-metadata';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
 import { rezoneImportTime } from '@kiko/statement-import/rezone-import-times';
-import { asBondMeta, binanceWalkCursorOf } from '@kiko/holdings/holding-metadata';
 
 import { EXPORT_VERSION } from '../crypto/envelope';
 
@@ -1538,20 +1538,21 @@ describe('restoreDataSnapshot', () => {
     expect(asBondMeta(restored.metadata)?.entryMode).toBe('isin');
   });
 
-  it("keeps a Binance holding's history-walk cursor through a restore", async () => {
+  it("keeps a Binance holding's metadata as it is through a restore, a former walk key included", async () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
+    const metadata = {
+      binanceAsset: 'BTC',
+      syncedAt: 1_704_326_400_000,
+      binanceHistoryCursor: 1_704_326_400_000,
+    };
     const spot = {
       id: 'h1',
       type: 'crypto_asset',
       currency: 'BTC',
       balanceMinorUnits: 50_000_000,
       balanceSetAt: null,
-      metadata: {
-        binanceAsset: 'BTC',
-        binanceHistoryCursor: 1_704_326_400_000,
-        syncedAt: 1_704_326_400_000,
-      },
+      metadata,
     };
 
     await restore(
@@ -1560,6 +1561,6 @@ describe('restoreDataSnapshot', () => {
 
     const [restored] = insertedRows.holdings as { metadata: unknown }[];
 
-    expect(binanceWalkCursorOf('binanceHistoryCursor', restored.metadata)).toBe(1_704_326_400_000);
+    expect(restored.metadata).toEqual(metadata);
   });
 });

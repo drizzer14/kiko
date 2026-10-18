@@ -602,6 +602,11 @@ export const syncState = sqliteTable('sync_state', {
   lastFullSyncAt: integer('last_full_sync_at'),
   lastSyncDisplayAt: integer('last_sync_display_at'),
   failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
+  // An exchange account's history walk state as JSON text: one entry per walk, its marks, and the
+  // coin lists. Plain text on purpose, so a value an older or newer build wrote reads back as
+  // stored and the reader decides about it, field by field. Null for a Monobank account and for
+  // an exchange account no walk has run for.
+  exchangeState: text('exchange_state'),
 });
 
 export type SyncStateRow = typeof syncState.$inferSelect;

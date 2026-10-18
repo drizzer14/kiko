@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
+import { type WalkMarkSeed, type WalkName, walkStateDeps } from '@kiko/test-support/walk-marks';
 
 import {
   fetchAccount,
@@ -45,8 +46,8 @@ import {
   walkOnce,
   worldOf,
 } from './binance.earn-test-fixtures';
+import { EARN_KEY, FUNDING_KEY } from './binance.holding-keys';
 import { createBinanceHistoryRun } from './binance.history-budget';
-import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 import { type BinancePayHistoryDeps, syncBinancePayHistory } from './binance.pay-history';
 
@@ -205,16 +206,12 @@ const freshRun = () => createBinanceHistoryRun({ now: () => NOW, sleep: async ()
 const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow =>
   ({ id, metadata }) as unknown as HoldingRow;
 
-const spotWith = (marks: Record<string, unknown>) =>
-  holdingWith('h-spot', { binanceAsset: SPOT_KEY, ...marks });
 const FUNDING = holdingWith('h-funding', { binanceAsset: FUNDING_KEY });
 const EARN = holdingWith('h-earn', { binanceAsset: EARN_KEY });
 
-const walkWrites = {
-  writeWalkCursor: async () => undefined,
-  writeWalkPending: async () => undefined,
-  writeWalkHints: async () => undefined,
-};
+/** The listed holdings and the writers over one stored state: the Spot holding after the walk. */
+const walkedOver = (walkName: WalkName, marks: WalkMarkSeed, alongside: HoldingRow[]) =>
+  walkStateDeps({ accountId: 'acc-1', alongside, marks: { [walkName]: marks } });
 
 // A walk reads a span more than once (forward, owed ground, re-scan), so a row is kept once, by
 // its key, in the order its keys sort.
@@ -330,14 +327,13 @@ describe('the request windows and the external ids and rows every walk produces 
     const { rows, addTransactions } = collector();
     const { reads, record } = recorder();
     const overrides: Partial<BinanceTransactionSyncDeps> = {
-      ...walkWrites,
+      ...walkedOver('capital', { cursor: NOW - 5 * DAY_MS }, [FUNDING]),
       addTransactions,
       now: () => NOW,
       ensureHoldings: async () => undefined,
       storedExternalIds: async () => new Set(),
       latestTransactionTime: async () => undefined,
       readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
-      listHoldings: async () => [spotWith({ binanceHistoryCursor: NOW - 5 * DAY_MS }), FUNDING],
       fetchDepositHistory: async (_key, _secret, window): Promise<HistoryPage<BinanceDeposit>> => {
         record('deposit', window);
 
@@ -411,17 +407,12 @@ describe('the request windows and the external ids and rows every walk produces 
     const { rows, addTransactions } = collector();
     const { reads, record } = recorder();
     const overrides: Partial<BinancePayHistoryDeps> = {
-      ...walkWrites,
+      ...walkedOver('pay', { cursor: NOW - 30 * DAY_MS }, [FUNDING, EARN]),
       addTransactions,
       now: () => NOW,
       ensureHoldings: async () => undefined,
       readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
       fetchAccount: async () => ({ balances: [], uid: OWN }),
-      listHoldings: async () => [
-        spotWith({ binancePayHistoryCursor: NOW - 30 * DAY_MS }),
-        FUNDING,
-        EARN,
-      ],
       fetchPayHistory: async (_key, _secret, window): Promise<PayHistoryPage> => {
         record('pay', window);
 
@@ -465,15 +456,11 @@ describe('the request windows and the external ids and rows every walk produces 
     const { rows, addTransactions } = collector<BinanceHistoryRow>();
     const { reads, record } = recorder();
     const overrides: Partial<BinanceTransferHistoryDeps> = {
-      ...walkWrites,
+      ...walkedOver('transfer', { cursor: NOW - 5 * DAY_MS }, [FUNDING]),
       addTransactions,
       now: () => NOW,
       ensureHoldings: async () => undefined,
       readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
-      listHoldings: async () => [
-        spotWith({ binanceTransferHistoryCursor: NOW - 5 * DAY_MS }),
-        FUNDING,
-      ],
       fetchUniversalTransfers: async (
         _key,
         _secret,
@@ -508,7 +495,7 @@ describe('the request windows and the external ids and rows every walk produces 
   });
 
   it('earn: both products subscribed and redeemed, a flexible reward on Earn and a locked reward on Spot', async () => {
-    const world = worldOf({ binanceEarnHistoryCursor: NOW - 5 * DAY_MS });
+    const world = worldOf({ cursor: NOW - 5 * DAY_MS });
 
     const { requests } = await walkOnce({
       world,
@@ -538,7 +525,7 @@ describe('the request windows and the external ids and rows every walk produces 
   });
 
   it('earn: a subscription read that comes back full is split in half and each half is read', async () => {
-    const world = worldOf({ binanceEarnHistoryCursor: NOW - 5 * DAY_MS });
+    const world = worldOf({ cursor: NOW - 5 * DAY_MS });
 
     const { requests } = await walkOnce({
       world,

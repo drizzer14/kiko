@@ -799,6 +799,8 @@ export const en = {
       message: 'Add a holding to start tracking the balance of this account.',
       title: 'No holdings yet',
     },
+    exchangeHistoryPaused:
+      '{{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to fix this. Your holdings and transactions are kept.',
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',
