@@ -6,10 +6,12 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { logFailure } from '@kiko/diagnostics';
 import { curatedCoins } from '@kiko/currency/coins';
-import { decimalFromJsonNumber } from '@kiko/currency/decimal';
 import { type Currency, isCrypto } from '@kiko/currency/currency';
+import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
 import either, { bifold, bifoldMap, type Either, isLeft, left, right } from 'fnts/either';
 import { type AmountError, exchangeMinorUnits } from '@kiko/crypto-sync/exchange/amounts';
+import { type ExchangeStateDeps, exchangeStateDepsOf } from '@kiko/crypto-sync/exchange/walk';
+import { compareDecimal, decimalFromJsonNumber, normalizeDecimal } from '@kiko/currency/decimal';
 
 import type { BalanceProvider, ProviderBalance } from '../provider';
 
@@ -45,7 +47,7 @@ type WalletFetch<Body> = (
   options?: FetchAccountOptions,
 ) => Promise<Body>;
 
-export type BinanceDeps = {
+export type BinanceDeps = Pick<ExchangeStateDeps, 'patchExchangeState'> & {
   fetchImpl: typeof fetch;
   now: () => number;
   readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
@@ -63,12 +65,8 @@ export const defaultBinanceDeps: BinanceDeps = {
   fetchFundingAsset,
   fetchFlexiblePosition,
   fetchLockedPosition,
+  patchExchangeState: exchangeStateDepsOf('binance').patchExchangeState,
 };
-
-type AmountFailureKey =
-  | 'accountDetail.binanceNonNumericBalanceAmount'
-  | 'accountDetail.binanceNonNumericFundingAmount'
-  | 'accountDetail.binanceNonNumericPositionAmount';
 
 /**
  * An amount as exact decimal text: the string as Binance sent it, or a JSON number expanded
@@ -113,18 +111,20 @@ const sumAmounts = (
   return right(total);
 };
 
-/** A refused amount fails the wallet's read; the caller decides what a failed read costs. */
-const unitsOrThrow = (result: Either<AmountError, number>, failure: AmountFailureKey): number => {
-  if (isLeft(result)) {
-    throw new Error(i18n.t(failure));
-  }
-
-  const units: number = bifold(result);
-
-  return units;
-};
-
 type CoinBalances = ReadonlyMap<Currency, number>;
+
+/**
+ * What one wallet's read found. `refused` holds a tracked coin whose amounts are malformed or
+ * add past the safe integer: such a coin is never written, and never zeroed either.
+ * `untracked` holds each asset the app does not track that has a balance. `assets` holds every
+ * asset the read named, whatever its amount.
+ */
+type WalletRead = {
+  balances: CoinBalances;
+  refused: ReadonlySet<Currency>;
+  untracked: readonly string[];
+  assets: ReadonlySet<string>;
+};
 
 type AmountEntry = { asset: unknown; amounts: readonly unknown[] };
 
@@ -134,25 +134,57 @@ const entriesOf = (rows: readonly unknown[], fields: readonly string[]): AmountE
     .filter(isRecord)
     .map((row) => ({ asset: row.asset, amounts: fields.map((field) => row[field]) }));
 
-/**
- * Each tracked coin's balance in its own minor units. An asset that is no `Currency` (a coin the
- * app does not track) is dropped BEFORE any amount is read, so its malformed text fails nothing.
- */
-const balancesOf = (entries: readonly AmountEntry[], failure: AmountFailureKey): CoinBalances => {
-  const amountsByCoin = new Map<Currency, unknown[]>();
+const amountsByAsset = (entries: readonly AmountEntry[]): Map<string, unknown[]> => {
+  const amounts = new Map<string, unknown[]>();
 
-  for (const { asset, amounts } of entries) {
-    if (typeof asset === 'string' && isTrackedBinanceAsset(asset)) {
-      amountsByCoin.set(asset, [...(amountsByCoin.get(asset) ?? []), ...amounts]);
+  for (const entry of entries) {
+    if (typeof entry.asset === 'string') {
+      amounts.set(entry.asset, [...(amounts.get(entry.asset) ?? []), ...entry.amounts]);
     }
   }
 
-  return new Map(
-    [...amountsByCoin].map(([currency, amounts]) => [
-      currency,
-      unitsOrThrow(sumAmounts(currency, amounts), failure),
-    ]),
-  );
+  return amounts;
+};
+
+/** Whether an amount is a plain decimal above zero; text that is no number is not a balance. */
+const isPositiveAmount = (value: unknown): boolean =>
+  foldMap(maybe(amountText(value)), (text) =>
+    foldMap(maybe(normalizeDecimal(text)), (plain) => compareDecimal(plain, '0') === 1),
+  ) ?? false;
+
+/**
+ * Each tracked coin's balance in its own minor units. An asset that is not tracked has no scale,
+ * so its amounts are never converted: it is listed when one of them is above zero, and a
+ * malformed text of it fails nothing. A tracked coin whose amounts are refused is skipped alone.
+ */
+const readOf = (entries: readonly AmountEntry[]): WalletRead => {
+  const amounts = amountsByAsset(entries);
+  const balances = new Map<Currency, number>();
+  const refused = new Set<Currency>();
+  const untracked: string[] = [];
+
+  for (const [asset, assetAmounts] of amounts) {
+    if (!isTrackedBinanceAsset(asset)) {
+      if (assetAmounts.some(isPositiveAmount)) {
+        untracked.push(asset);
+      }
+
+      continue;
+    }
+
+    const units = sumAmounts(asset, assetAmounts);
+
+    if (isLeft(units)) {
+      refused.add(asset);
+
+      continue;
+    }
+
+    const exact: number = bifold(units);
+    balances.set(asset, exact);
+  }
+
+  return { balances, refused, untracked, assets: new Set(amounts.keys()) };
 };
 
 /**
@@ -179,27 +211,21 @@ const hasRows = (body: unknown): body is { rows: unknown[] } =>
   Array.isArray((body as { rows: unknown }).rows);
 
 /** Spot balances: `free + locked` per tracked coin. Throws on a malformed body. */
-const spotBalances = (account: BinanceAccount): CoinBalances => {
+const spotRead = (account: BinanceAccount): WalletRead => {
   if (!hasBalances(account)) {
     throw new Error(i18n.t('accountDetail.binanceMissingBalancesArray'));
   }
 
-  return balancesOf(
-    entriesOf(account.balances, ['free', 'locked']),
-    'accountDetail.binanceNonNumericBalanceAmount',
-  );
+  return readOf(entriesOf(account.balances, ['free', 'locked']));
 };
 
 /** Funding balances: `free + locked + freeze + withdrawing` per tracked coin. */
-const fundingBalances = (assets: BinanceFundingAsset[]): CoinBalances => {
+const fundingRead = (assets: BinanceFundingAsset[]): WalletRead => {
   if (!Array.isArray(assets)) {
     throw new Error(i18n.t('accountDetail.binanceFundingResponseNotArray'));
   }
 
-  return balancesOf(
-    entriesOf(assets, ['free', 'locked', 'freeze', 'withdrawing']),
-    'accountDetail.binanceNonNumericFundingAmount',
-  );
+  return readOf(entriesOf(assets, ['free', 'locked', 'freeze', 'withdrawing']));
 };
 
 /**
@@ -223,14 +249,14 @@ const positionEntries = (
  * permission, a throttle, a malformed body — SKIPS that wallet only (logging
  * which one) and returns `null`, so a single wallet never breaks the whole sync
  * AND its holdings are left untouched rather than clobbered with a fabricated 0.
- * `null` (skipped) is deliberately distinct from an empty map (a genuine empty wallet).
+ * `null` (skipped) is deliberately distinct from an empty read (a genuine empty wallet).
  * Spot is deliberately NOT wrapped: its failure must fail the sync.
  */
-const walletBalances = async (
+const walletRead = async (
   wallet: string,
-  balances: () => Promise<CoinBalances>,
-): Promise<CoinBalances | null> => {
-  const attempt = await either<unknown, CoinBalances>(balances);
+  read: () => Promise<WalletRead>,
+): Promise<WalletRead | null> => {
+  const attempt = await either<unknown, WalletRead>(read);
 
   return bifoldMap(
     attempt,
@@ -285,8 +311,9 @@ const heldCoinsOf = (wallet: BinanceWallet, existingKeys: ReadonlySet<string>): 
 
 /**
  * Append one wallet's holdings to the batch, one per coin:
- * - read FAILED (`balances === null`): omit every holding of the wallet, leaving each at its
+ * - read FAILED (`read === null`): omit every holding of the wallet, leaving each at its
  *   last good balance rather than overwriting it with a fabricated 0.
+ * - coin REFUSED (`read.refused`): omit that coin's holding alone, for the same reason.
  * - holding ALREADY exists: write it, a zero included, and a coin the good read does not list
  *   is a zero: a wallet the user emptied is zeroed, never left stale and never archived.
  * - no holding yet: write it only from the coin's dust threshold up, so a zero or a dust
@@ -295,14 +322,17 @@ const heldCoinsOf = (wallet: BinanceWallet, existingKeys: ReadonlySet<string>): 
 const appendWallet = (
   batch: ProviderBalance[],
   wallet: BinanceWallet,
-  balances: CoinBalances | null,
+  read: WalletRead | null,
   existingKeys: ReadonlySet<string>,
 ): void => {
-  if (balances === null) {
+  if (read === null) {
     return;
   }
 
-  for (const currency of new Set([...balances.keys(), ...heldCoinsOf(wallet, existingKeys)])) {
+  const { balances, refused } = read;
+  const coins = new Set([...balances.keys(), ...heldCoinsOf(wallet, existingKeys)]);
+
+  for (const currency of [...coins].filter((coin) => !refused.has(coin))) {
     const balanceMinorUnits = balances.get(currency) ?? 0;
     const metadataKey = holdingKeyOf(currency, wallet);
 
@@ -317,6 +347,47 @@ const appendWallet = (
     }
   }
 };
+
+const RECEIPT_TOKEN_PREFIX = 'LD';
+
+/**
+ * An Earn receipt token (`LDBTC`): `LD` and the code of a tracked coin, or of an asset in this
+ * run's Simple Earn positions. A real coin that only starts with `LD` (`LDO`) is not one.
+ */
+const isReceiptToken = (asset: string, positionAssets: ReadonlySet<string>): boolean => {
+  if (!asset.startsWith(RECEIPT_TOKEN_PREFIX)) {
+    return false;
+  }
+
+  const underlying = asset.slice(RECEIPT_TOKEN_PREFIX.length);
+
+  return isTrackedBinanceAsset(underlying) || positionAssets.has(underlying);
+};
+
+const sortedTickers = (tickers: readonly string[]): string[] => [...new Set(tickers)].sort();
+
+/** The balance lists after these wallet reads: each replaces the stored one. */
+const balanceListPatches = (
+  reads: readonly WalletRead[],
+  positionAssets: ReadonlySet<string>,
+): ExchangeStatePatch[] => [
+  {
+    kind: 'coinList',
+    coins: 'untrackedCoins',
+    list: 'balance',
+    tickers: sortedTickers(
+      reads
+        .flatMap(({ untracked }) => untracked)
+        .filter((ticker) => !isReceiptToken(ticker, positionAssets)),
+    ),
+  },
+  {
+    kind: 'coinList',
+    coins: 'oversizedCoins',
+    list: 'balance',
+    tickers: sortedTickers(reads.flatMap(({ refused }) => [...refused])),
+  },
+];
 
 export const binanceProvider: BalanceProvider<BinanceDeps> = {
   id: 'binance',
@@ -369,19 +440,20 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     // The capital, Pay, Transfer and Earn walks import nothing while no Spot BTC holding exists,
     // so a good Spot read always writes it, a zero or dust balance included. Those walks and
     // this anchor go together.
-    appendWallet(balances, 'spot', spotBalances(spotAccount), new Set([...existingKeys, SPOT_KEY]));
+    const spot = spotRead(spotAccount);
+    appendWallet(balances, 'spot', spot, new Set([...existingKeys, SPOT_KEY]));
 
     // Funding: one holding per coin; a failure skips the whole wallet.
-    const funding = await walletBalances('funding', async () =>
-      fundingBalances(await deps.fetchFundingAsset(apiKey, secret, options)),
+    const funding = await walletRead('funding', async () =>
+      fundingRead(await deps.fetchFundingAsset(apiKey, secret, options)),
     );
     appendWallet(balances, 'funding', funding, existingKeys);
 
     // Earn: Flexible + Locked COMBINED into ONE holding per coin. A failure in EITHER read
     // skips the WHOLE Earn wallet — importing one side alone would silently
     // UNDER-COUNT the user's Earn balance — so both reads sit inside one
-    // `walletBalances` guard rather than two.
-    const earn = await walletBalances('earn', async () => {
+    // `walletRead` guard rather than two.
+    const earn = await walletRead('earn', async () => {
       const flexible = positionEntries(
         await deps.fetchFlexiblePosition(apiKey, secret, options),
         'totalAmount',
@@ -391,9 +463,18 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
         'amount',
       );
 
-      return balancesOf([...flexible, ...locked], 'accountDetail.binanceNonNumericPositionAmount');
+      return readOf([...flexible, ...locked]);
     });
     appendWallet(balances, 'earn', earn, existingKeys);
+
+    // A read in which Funding or Earn failed knows nothing of that wallet's coins, so replacing
+    // either list from it would drop the coins that wallet held: both lists stay as stored.
+    if (funding !== null && earn !== null) {
+      await deps.patchExchangeState(
+        target.accountId,
+        balanceListPatches([spot, funding, earn], earn.assets),
+      );
+    }
 
     return balances;
   },

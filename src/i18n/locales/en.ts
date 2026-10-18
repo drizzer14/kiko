@@ -758,9 +758,6 @@ export const en = {
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
     binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
     binanceMissingRowsArray: 'Binance simple-earn response did not contain a rows array',
-    binanceNonNumericBalanceAmount: 'Binance balance contained a non-numeric free/locked amount',
-    binanceNonNumericFundingAmount: 'Binance funding balance contained a non-numeric amount',
-    binanceNonNumericPositionAmount: 'Binance simple-earn position contained a non-numeric amount',
     binanceRequestFailed: 'Binance request failed: {{status}}{{detail}}',
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
@@ -822,6 +819,8 @@ export const en = {
     noWalletAddressStored: 'No wallet address stored; connect a wallet before syncing.',
     openBinanceLink: 'Open Binance API management',
     openMonobankLink: 'Open api.monobank.ua',
+    oversizedAmount:
+      '{{coin}}: the amount is too large for Kiko to store exactly, so it was not imported.',
     pasteApiKey: 'Paste API key from clipboard',
     pasteApiSecret: 'Paste API secret from clipboard',
     pasteFromClipboard: 'Paste from clipboard',
@@ -834,6 +833,8 @@ export const en = {
     tokenRequiredError: 'Enter your Monobank token.',
     tryAgainMessage: 'Please try again.',
     unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}.',
+    untrackedCoins:
+      "Not tracked: {{tickers}}. These coins are not on Kiko's coin list, so Kiko does not import them.",
     wallet: 'Wallet',
     walletAddressRequiredError: 'Enter a wallet address.',
     walletConnected: 'Wallet connected',

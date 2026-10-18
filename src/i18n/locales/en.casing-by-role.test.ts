@@ -52,6 +52,7 @@ import { flattenCatalog } from './flatten-catalog';
 // regardless of position, not a casing choice).
 const PROPER_NOUNS = new Set([
   'Kiko',
+  "Kiko's",
   'Monobank',
   'Binance',
   'Bitcoin',
