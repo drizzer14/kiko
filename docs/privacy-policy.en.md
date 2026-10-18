@@ -65,8 +65,8 @@ service can see your device's IP address.
   your transfers between your Binance wallets (universal transfer), and your
   Simple Earn subscriptions, redemptions and rewards, using your read-only API
   key. Also, for any user, public market prices of a coin CoinGecko did not
-  price: Kiko sends only the market symbol (for example `BTCUSDT`); no key,
-  address or amount is sent.
+  price: Kiko sends only the market symbol (for example `BTCUSDT`) and the
+  dates of the prices it needs; no key, address, or amount is sent.
 - **Blockstream** (`blockstream.info`) — the public on-chain balance of a
   Bitcoin address you add. Kiko sends that address to Blockstream to look it up.
 - **CoinGecko** (`api.coingecko.com`) — the current price and the daily price
