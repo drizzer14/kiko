@@ -92,23 +92,10 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   error,
   hideLabel,
   testID,
-  onOpenChange,
 }) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-
-  // A hosting Screen's `automaticallyAdjustKeyboardInsets` misfires a
-  // scroll/inset adjustment on its OWN background ScrollView when this
-  // sheet's search field gets focus, even though that ScrollView does not
-  // contain the responder — and it never self-corrects. `updateOpen`
-  // notifies `onOpenChange` at every open/close site (synchronously with the
-  // state update, so a caller can gate that prop off before the search field
-  // can be focused) instead of calling `setOpen` directly.
-  const updateOpen = (next: boolean): void => {
-    setOpen(next);
-    onOpenChange?.(next);
-  };
 
   // Reset the query each time the sheet closes so a reopen starts fresh
   // rather than replaying the previous search.
@@ -122,17 +109,16 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
 
   const handleSelect = (code: Currency): void => {
     // The search TextField above is the app's only focusable input inside a
-    // sheet — without a dismiss on selection the keyboard stays up (and the
-    // background form stays scrolled, per Screen's
-    // automaticallyAdjustKeyboardInsets) even after the sheet closes.
+    // sheet — without a dismiss on selection the keyboard stays up even after
+    // the sheet closes.
     Keyboard.dismiss();
     onSelect(code);
-    updateOpen(false);
+    setOpen(false);
   };
 
   const handleDismiss = (): void => {
     Keyboard.dismiss();
-    updateOpen(false);
+    setOpen(false);
   };
 
   // The trigger's value mirrors the option rows exactly: the currency NAME
@@ -153,7 +139,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         disabled={disabled}
         error={error}
         testID={testID}
-        onPress={() => updateOpen(true)}
+        onPress={() => setOpen(true)}
         leadingText={foldMap(maybe(selected), (currency) => currencySymbol[currency])}
         value={triggerValue}
         valueTone={selected === undefined ? 'textSecondary' : 'textPrimary'}

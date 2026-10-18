@@ -2257,6 +2257,23 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       expect(second.getByLabelText('Description').props.value).toBe('Coffee');
     });
 
+    // The remount must not fill the template over an edit made after the pick: a draft with a
+    // picked template and no holding is complete, so the template is not applied a second time.
+    it('keeps a field edited after a template pick, not the template value', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES, latestManualHoldingId: 'h1' });
+      const first = await render(templateScreen({}));
+      await fireEvent.press(within(first.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(first, 't3');
+      await fireEvent.changeText(first.getByLabelText('Description'), 'Latte');
+      await fireEvent(first.getByLabelText('Description'), 'blur');
+      await first.unmount();
+
+      const second = await reopen({});
+
+      expect(second.getByLabelText('Description').props.value).toBe('Latte');
+      expect(second.getByLabelText('Holding')).toHaveTextContent('Select holding');
+    });
+
     it('keeps the Template tab with the template it picked', async () => {
       setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
       const first = await render(templateScreen({}));

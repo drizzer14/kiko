@@ -1,5 +1,5 @@
+import type { FC } from 'react';
 import { match } from 'ts-pattern';
-import { type FC, useState } from 'react';
 import SettingsRow, {
   chevronSize,
   chevronTrailingWhitespace,
@@ -71,13 +71,6 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
   // The live `contentOffset.y`, so the hook can skip a redundant scroll.
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
-  // Same root cause as the account/holding forms (see
-  // `holding-form.screen.tsx`'s own comment): while the base-currency sheet's
-  // search field can be focused, this screen's background ScrollView must
-  // NOT react to the keyboard's frame change — it does not contain that
-  // responder, but `automaticallyAdjustKeyboardInsets` reacts to any focus
-  // regardless (`screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
 
   const { t, i18n } = useTranslation();
   const { theme } = useUnistyles();
@@ -152,7 +145,6 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
     <Screen
       scroll
       scrollableRef={scrollRef}
-      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       footer={
         // App Store compliance footer: app name + version, copyright, and a
         // Privacy Policy link. It renders through the pinned `footer` slot so
@@ -260,7 +252,6 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
               hideLabel
               selected={settings?.baseCurrency}
               onSelect={handleSelectCurrency}
-              onOpenChange={setIsCurrencySheetOpen}
               groups={currencyGroups}
             />
           </SettingsRow>

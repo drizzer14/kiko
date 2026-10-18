@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const ROOT = join(__dirname, '..');
 const SCROLL_VIEW_FILE =
@@ -12,8 +12,6 @@ const PATCH_FILE = 'patches/react-native+0.87.1.patch';
 // patch (see docs/harness/documented-exceptions.md, "patch-package patches").
 describe('the React Native ScrollView keyboard patch', () => {
   it('ships a patch that touches only the ScrollView component view', () => {
-    expect(existsSync(join(ROOT, PATCH_FILE))).toBe(true);
-
     const patch = readFileSync(join(ROOT, PATCH_FILE), 'utf8');
     const touchedFiles = patch
       .split('\n')

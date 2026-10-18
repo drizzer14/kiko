@@ -435,12 +435,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     needsPriceBook(editingHolding?.type ?? type),
   );
   const [currency, setCurrency] = useState<Currency>(start.currency);
-  // While the currency sheet's search field can be
-  // focused, this screen's background ScrollView must NOT react to the
-  // keyboard's frame change — it does not contain that responder, but
-  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless (see
-  // `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   // The kind just picked on the kind field that leaves for the account form,
   // shown there until the swap replaces this screen (see `retargetImplicitKind`).
   const [leavingKind, setLeavingKind] = useState<AccountRow['kind'] | undefined>(undefined);
@@ -835,7 +829,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      automaticallyAdjustKeyboardInsets={!isSearchSheetOpen}
       onContentSizeChange={onContentSizeChange}
       onFieldBlur={onFieldBlur}
     >
@@ -945,7 +938,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             onSelect={setCurrency}
             groups={currencyGroups}
             disabled={isEdit}
-            onOpenChange={setIsSearchSheetOpen}
             testID="holding-currency-field"
           />
         )}

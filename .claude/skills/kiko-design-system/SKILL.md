@@ -712,10 +712,10 @@ new component can land between reviews of this skill:
   ScrollView with `automaticallyAdjustKeyboardInsets` moves its content offset only when the
   focused field is INSIDE it. Every other ScrollView (the other pane, a Screen under a pushed
   form) gets only the bottom inset, which resets on hide. Never rely on a ScrollView's offset
-  for a field outside it. The sheet hand gates
-  `automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}` in `settings.screen.tsx` and
-  `account-form.screen.tsx`, and `{!isSearchSheetOpen}` in `holding-form.screen.tsx`, stay until
-  a device confirm shows them redundant; do not remove them on code reasoning alone.
+  for a field outside it. No screen gates `automaticallyAdjustKeyboardInsets` for a sheet: a
+  field in a sheet or another pane moves no other ScrollView's offset, so `CurrencyField` has no
+  open-state callback and a Screen keeps the default while a sheet is open. A device check of the
+  other pane covers this; a field the keyboard covers inside its OWN Screen has no device proof.
   Settings' About block (app name/version, copyright, links) is an
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned

@@ -363,12 +363,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // first show, so a fresh create form shows no error before the user has
   // tried to submit.
   const [attemptedSave, setAttemptedSave] = useState(false);
-  // While the currency sheet's search field can
-  // be focused, this screen's background ScrollView must NOT react to the
-  // keyboard's frame change — it does not contain that responder, but
-  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
-  // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
 
   // The name field's own wrapper — a blocked Connect/Save (empty name) scrolls
   // it into view alongside its inline error, rather than leaving the reason
@@ -720,7 +714,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       onContentSizeChange={onContentSizeChange}
       onFieldBlur={onFieldBlur}
     >
@@ -796,7 +789,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               selected={currency}
               onSelect={setCurrency}
               groups={currencyGroups}
-              onOpenChange={setIsCurrencySheetOpen}
               testID="account-currency-field"
             />
 

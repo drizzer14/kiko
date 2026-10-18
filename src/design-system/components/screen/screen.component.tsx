@@ -82,17 +82,11 @@ const Screen: FC<ScreenProps> = ({
           // one inset clears BOTH the keyboard and the accessory (no
           // hand-rolled accessory-height math). Harmlessly ignored on Android.
           //
-          // This prop has no per-responder scoping — it reacts to ANY
-          // focused input, including one hosted inside a BottomSheet
-          // floating above this ScrollView (CurrencyField's search
-          // TextField is the one such case in the app today), which
-          // misfires a scroll/inset adjustment on THIS background
-          // ScrollView for a responder it does not even contain, and never
-          // self-corrects. `automaticallyAdjustKeyboardInsets` is therefore
-          // a real escape hatch (see `ScreenProps`): a caller that hosts
-          // such a sheet gates it off for the duration the sheet is open
-          // (`CurrencyField`'s `onOpenChange`; see account-form/holding-form)
-          // and back on once it closes.
+          // The patched React Native (`patches/react-native+0.87.1.patch`) moves this scroll
+          // view's offset only for a field inside it; a field outside it (the other pane, a
+          // sheet above it) gets the bottom inset alone, which resets when the keyboard hides.
+          // So no caller has to switch the prop off while a sheet is open; it stays an escape
+          // hatch for a caller that wants no keyboard adjustment at all (see `ScreenProps`).
           automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
           // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
           // scroll-to-top hook's negative target — more negative than that `0`

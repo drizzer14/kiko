@@ -500,21 +500,15 @@ describe('AccountFormScreen', () => {
     expectNavBarSaveOnly(form.navigation.setOptions, form);
   });
 
-  // The currency sheet's search field lives inside a Modal above this
-  // Screen's background ScrollView, which otherwise misfires
-  // `automaticallyAdjustKeyboardInsets` for a responder it does not contain.
-  // `CurrencyField`'s `onOpenChange` must gate that prop off for exactly the
-  // window the sheet is open.
-  it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
+  // The patched React Native moves a scroll view's offset only for a field inside it, so the
+  // sheet's search field cannot misfire this screen: the Screen keeps its keyboard adjustment on.
+  it('keeps automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
     const { getByTestId } = await renderForm();
 
     await selectKind(getByTestId, 'cash');
-
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
-
     await fireEvent.press(getByTestId('account-currency-field'));
 
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(false);
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
   it('separates the color picker and the synchronization sub-heading with form dividers', async () => {

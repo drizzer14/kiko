@@ -373,21 +373,14 @@ describe('SettingsScreen', () => {
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
-  // Same root cause as the account/holding forms (`holding-form.screen.test.tsx`'s own
-  // test of this name): the currency
-  // sheet's search field lives inside a Modal above this Screen's background
-  // ScrollView, which otherwise misfires `automaticallyAdjustKeyboardInsets`
-  // for a responder it does not contain. This screen's base-currency
-  // `CurrencyField` had no `onOpenChange` wiring at all, so the fix that
-  // already covered the account/holding forms never reached Settings.
-  it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
+  // The patched React Native moves a scroll view's offset only for a field inside it, so the
+  // sheet's search field cannot misfire this screen: the Screen keeps its keyboard adjustment on.
+  it('keeps automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
     const { getByTestId } = await renderScreen();
-
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
 
     await fireEvent.press(getByTestId('settings-row-base-currency'));
 
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(false);
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
   it('groups Transaction templates and Categories into one card, templates first', async () => {
