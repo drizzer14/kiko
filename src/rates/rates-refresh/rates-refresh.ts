@@ -5,8 +5,13 @@ import {
   type CryptoCurrency,
 } from '@kiko/currency/currency';
 import { ratesRepo } from '@kiko/rates/repo';
-import either, { bifold, isLeft } from 'fnts/either';
+import either, { bifold, bifoldr, isLeft } from 'fnts/either';
 
+import {
+  type BinanceMarketClient,
+  createBinanceMarketClient,
+  fetchFallbackPrices,
+} from '../binance-market';
 import {
   openCurrencies as defaultOpenCurrencies,
   type OpenCurrencies,
@@ -33,7 +38,7 @@ type StoredRate = {
   base: Currency;
   quote: Currency;
   rate: string;
-  source: 'monobank' | 'coingecko' | 'nbu';
+  source: 'monobank' | 'coingecko' | 'nbu' | 'binance';
   fetchedAt: number;
 };
 
@@ -67,6 +72,11 @@ export type RefreshDeps = {
    */
   fetchNbuRates?: () => Promise<RateEntry[]>;
   fetchCryptoPrices?: (currencies: CryptoCurrency[]) => Promise<RateEntry[]>;
+  /**
+   * Binance's public market data, asked only for a held coin CoinGecko did not price. Defaults to
+   * a client of this run, so its pacing, budget and refusals belong to this refresh alone.
+   */
+  binanceMarket?: BinanceMarketClient;
   upsertMany?: (rates: StoredRate[]) => Promise<void>;
   now?: () => number;
   lastRefreshAt?: number | null;
@@ -154,6 +164,18 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
   return price;
 };
 
+const sourceOf = (
+  base: Currency,
+  fiatSource: 'monobank' | 'nbu',
+  binancePriced: ReadonlySet<Currency>,
+): StoredRate['source'] => {
+  if (!isCrypto(base)) {
+    return fiatSource;
+  }
+
+  return binancePriced.has(base) ? 'binance' : 'coingecko';
+};
+
 /**
  * Compose one `X:UAH` row per priced currency (`X !== 'UAH'`) from the
  * UAH-anchored prices — never a cross row between two non-UAH currencies; a
@@ -171,13 +193,15 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
  * `fiatFetchedAt` stamps the fiat rows: a pass that reuses an earlier pass's
  * fiat answer must not label it newer than it is, or it would outrank a rate
  * another refresh stored in between. A crypto row is always stamped
- * `fetchedAt`, its own fetch.
+ * `fetchedAt`, its own fetch. A coin in `binancePriced` is tagged `'binance'`
+ * instead: CoinGecko did not price it, Binance's public market data did.
  */
 const buildUahRows = (
   price: UahPrice,
   fetchedAt: number,
   fiatSource: 'monobank' | 'nbu',
   fiatFetchedAt: number,
+  binancePriced: ReadonlySet<Currency>,
 ): StoredRate[] => {
   const rows: StoredRate[] = [];
 
@@ -191,7 +215,7 @@ const buildUahRows = (
       base,
       quote: 'UAH',
       rate: String(rate),
-      source: isCrypto(base) ? 'coingecko' : fiatSource,
+      source: sourceOf(base, fiatSource, binancePriced),
       fetchedAt: isCrypto(base) ? fetchedAt : fiatFetchedAt,
     });
   }
@@ -429,13 +453,28 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   ]);
   const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
+  const uahPrice = buildUahPrice(fiat, crypto);
+  // A held coin CoinGecko left unpriced, or every coin of a failed CoinGecko leg, is asked of
+  // Binance's public market data. The fallback never rejects, and a coin it cannot price stays
+  // unpriced.
+  const binancePrices =
+    bifoldr(
+      await either(() =>
+        fetchFallbackPrices({
+          coins: cryptoCurrencies.filter((coin) => uahPrice[coin] === undefined),
+          anchors: { usdt: uahPrice.USDT, euro: uahPrice.EUR },
+          client: deps.binanceMarket ?? createBinanceMarketClient({ now, sleep }),
+        }),
+      ),
+    ) ?? {};
 
   await upsertUnstoredRows(
     buildUahRows(
-      buildUahPrice(fiat, crypto),
+      { ...uahPrice, ...binancePrices },
       at,
       fiatAnswer?.source ?? 'monobank',
       fiatAnswer?.fetchedAt ?? at,
+      new Set(Object.keys(binancePrices) as Currency[]),
     ),
     deps.fiatOfRun,
     upsertMany,

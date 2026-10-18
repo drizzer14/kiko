@@ -1,1 +1,2 @@
 export * from './binance-market.client';
+export * from './binance-market.prices';
