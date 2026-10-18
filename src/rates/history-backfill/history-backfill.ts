@@ -896,6 +896,12 @@ const composeAndClassify = (
   return { rows, failures };
 };
 
+// The fallback only adds rows: whatever it throws, the run keeps what NBU and CoinGecko gave.
+const cryptoLegWithBinance = async (
+  input: Parameters<typeof withBinanceFallback>[0],
+): Promise<PromiseSettledResult<CryptoHistory>> =>
+  bifoldr(await either(() => withBinanceFallback(input))) ?? input.cryptoResult;
+
 /**
  * Run one incremental pass: compute the still-missing days, fetch the fiat range
  * from NBU and every crypto's series from CoinGecko for that span, compose every
@@ -985,7 +991,7 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     runNbuLeg(fiatCurrenciesToFetch, loadNbu, spanStart, today),
     runCryptoLeg(cryptoRequested, loadCrypto, cryptoDays),
   ]);
-  const cryptoResult = await withBinanceFallback({
+  const cryptoResult = await cryptoLegWithBinance({
     requested: cryptoRequested,
     nbuResult,
     cryptoResult: coinGeckoResult,

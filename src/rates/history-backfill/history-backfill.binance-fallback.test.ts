@@ -1,8 +1,12 @@
 import { DAY_MS } from '@kiko/dates';
 import type { CryptoCurrency, Currency } from '@kiko/currency/currency';
 
+import {
+  type BinanceMarketClient,
+  type DailyClose,
+  createBinanceMarketClient,
+} from '../binance-market';
 import type { HistoryRateEntry } from '../history-entry';
-import { createBinanceMarketClient } from '../binance-market';
 import { type CryptoHistory, CryptoHistoryFailure } from '../coingecko-history';
 
 import {
@@ -433,6 +437,53 @@ describe('runBackfill — the Binance public history fallback', () => {
 
       expect(rows.filter((row) => held.includes(row.base as CryptoCurrency))).toEqual([]);
     });
+  });
+
+  describe('a Binance fallback that throws', () => {
+    const throwing = (answers: Record<string, DailyClose[]> = {}): BinanceMarketClient => ({
+      currentPrice: async () => undefined,
+      dailyCloses: async (symbol) => {
+        const closes = answers[symbol];
+
+        if (closes === undefined) {
+          throw new TypeError(`fallback broke on ${symbol}`);
+        }
+
+        return closes;
+      },
+    });
+
+    it.each<[string, CryptoCurrency[], CryptoHistory, BinanceMarketClient]>([
+      [
+        'the coin symbol',
+        ['ETH', 'USDT'],
+        { ...failed(['ETH']), entries: usdtEntries },
+        throwing(),
+      ],
+      ['the EURUSDT route', ['USDT'], failed(['USDT']), throwing()],
+      [
+        'the EURUSDT route of a coin whose own symbol answered',
+        ['ETH'],
+        failed(['ETH']),
+        throwing({ ETHUSDT: [{ day: day(0), close: 3_000 }] }),
+      ],
+    ])(
+      'keeps the NBU and CoinGecko rows when it throws on %s',
+      async (_label, held, crypto, client) => {
+        const { rows, rowsOf, status } = await run({
+          fiat: ['USD'],
+          held,
+          crypto,
+          binance: {},
+          overrides: { binanceMarket: client },
+        });
+
+        expect(rowsOf('USD')).toHaveLength(3);
+        expect(rowsOf('ETH')).toEqual([]);
+        expect(rows.some((row) => row.source === 'binance')).toBe(false);
+        expect(status.state).toBe('failed');
+      },
+    );
   });
 
   describe.each([451, 403, 418, 429])('HTTP %i from Binance', (status) => {
