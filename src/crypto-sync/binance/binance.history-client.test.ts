@@ -304,6 +304,7 @@ describe('used-weight headers', () => {
     expect(page).toEqual({
       rows: [],
       unreadable: [],
+      untracked: [],
       usedUidWeight1m: 18_000,
       usedIpWeight1m: undefined,
     });
@@ -327,6 +328,7 @@ describe('used-weight headers', () => {
     expect(page).toEqual({
       rows: [],
       unreadable: [],
+      untracked: [],
       usedUidWeight1m: undefined,
       usedIpWeight1m: undefined,
     });

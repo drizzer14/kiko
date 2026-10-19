@@ -1,9 +1,9 @@
 import {
   type BinanceDeposit,
   type BinanceWithdrawal,
+  type CapitalPage,
   fetchDepositHistory,
   fetchWithdrawHistory,
-  type HistoryPage,
 } from './binance.history-client';
 
 const NOW = 1_704_326_400_000;
@@ -38,10 +38,10 @@ const options = (body: unknown) => ({ fetchImpl: bodyFetch(body), now: () => NOW
 
 const WINDOW = { startTime: NOW - 1000, endTime: NOW, offset: 0 };
 
-const readDeposits = (body: unknown): Promise<HistoryPage<BinanceDeposit>> =>
+const readDeposits = (body: unknown): Promise<CapitalPage<BinanceDeposit>> =>
   fetchDepositHistory('api-key-fixture', 'secret-fixture', WINDOW, options(body));
 
-const readWithdrawals = (body: unknown): Promise<HistoryPage<BinanceWithdrawal>> =>
+const readWithdrawals = (body: unknown): Promise<CapitalPage<BinanceWithdrawal>> =>
   fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, options(body));
 
 const without = (row: Record<string, unknown>, key: string): Record<string, unknown> =>
@@ -75,5 +75,121 @@ describe('the coin of a capital row', () => {
 
     expect(page.rows).toEqual([]);
     expect(page.unreadable).toEqual([{ time: withdrawalRow.applyTime }]);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['spaces', '   '],
+  ])('reports a row whose coin is %s as unreadable, never untracked', async (_label, coin) => {
+    const deposits = await readDeposits([{ ...depositRow, coin }]);
+    const withdrawals = await readWithdrawals([{ ...withdrawalRow, coin }]);
+
+    expect(deposits).toMatchObject({ rows: [], untracked: [], unreadable: [{ time: NOW }] });
+    expect(withdrawals).toMatchObject({
+      rows: [],
+      untracked: [],
+      unreadable: [{ time: withdrawalRow.applyTime }],
+    });
+  });
+});
+
+type Case = [label: string, row: Record<string, unknown>, time: number | string | undefined];
+
+describe('an off-contract row of an untracked coin is counted and never parsed', () => {
+  const depositCases: Case[] = [
+    ['an amount that is a JSON number', { ...depositRow, coin: 'PEPE', amount: 1000 }, NOW],
+    ['no amount', { ...without(depositRow, 'amount'), coin: 'PEPE' }, NOW],
+    ['no id and no status', { coin: 'PEPE', insertTime: NOW }, NOW],
+    ['a fractional walletType', { ...depositRow, coin: 'PEPE', walletType: 0.5 }, NOW],
+    ['no insertTime', { ...without(depositRow, 'insertTime'), coin: 'PEPE' }, undefined],
+    ['a text insertTime', { ...depositRow, coin: 'PEPE', insertTime: 'soon' }, undefined],
+    ['nothing but its coin', { coin: 'PEPE' }, undefined],
+  ];
+  const withdrawalCases: Case[] = [
+    [
+      'an amount that is a JSON number',
+      { ...withdrawalRow, coin: 'PEPE', amount: 1000 },
+      withdrawalRow.applyTime,
+    ],
+    ['no amount', { ...without(withdrawalRow, 'amount'), coin: 'PEPE' }, withdrawalRow.applyTime],
+    [
+      'a fee that is not text',
+      { ...withdrawalRow, coin: 'PEPE', transactionFee: 5 },
+      withdrawalRow.applyTime,
+    ],
+    ['a numeric applyTime', { ...withdrawalRow, coin: 'PEPE', applyTime: NOW }, NOW],
+    ['no applyTime', { ...without(withdrawalRow, 'applyTime'), coin: 'PEPE' }, undefined],
+    ['nothing but its coin', { coin: 'PEPE' }, undefined],
+  ];
+
+  it.each(depositCases)('a deposit with %s', async (_label, row, time) => {
+    const page = await readDeposits([row]);
+
+    expect(page.rows).toEqual([]);
+    expect(page.unreadable).toEqual([]);
+    expect(page.untracked).toEqual([{ ticker: 'PEPE', status: row.status, time }]);
+  });
+
+  it.each(withdrawalCases)('a withdrawal with %s', async (_label, row, time) => {
+    const page = await readWithdrawals([row]);
+
+    expect(page.rows).toEqual([]);
+    expect(page.unreadable).toEqual([]);
+    expect(page.untracked).toEqual([{ ticker: 'PEPE', status: row.status, time }]);
+  });
+
+  it('reports the ticker upper-cased and trimmed, once', async () => {
+    const page = await readDeposits([{ ...depositRow, coin: ' pepe ', amount: 1 }]);
+
+    expect(page.untracked).toEqual([{ ticker: 'PEPE', status: 1, time: NOW }]);
+  });
+
+  it('reads a status that is not a finite number as no status', async () => {
+    const page = await readDeposits([
+      { ...depositRow, coin: 'PEPE', status: 'done' },
+      { ...depositRow, coin: 'PEPE', status: null },
+    ]);
+
+    expect(page.untracked.map(({ status }) => status)).toEqual([undefined, undefined]);
+  });
+
+  it('still reads a TRACKED row strictly: a malformed one is unreadable and owed', async () => {
+    const deposits = await readDeposits([
+      { ...depositRow, coin: 'usdt', amount: 1000 },
+      { ...depositRow, coin: 'BTC', amount: 1000 },
+    ]);
+    const withdrawals = await readWithdrawals([{ ...withdrawalRow, coin: 'USDT', amount: 1000 }]);
+
+    expect(deposits).toMatchObject({
+      rows: [],
+      untracked: [],
+      unreadable: [{ time: NOW }, { time: NOW }],
+    });
+    expect(withdrawals).toMatchObject({
+      rows: [],
+      untracked: [],
+      unreadable: [{ time: withdrawalRow.applyTime }],
+    });
+  });
+
+  it('keeps the rows, the untracked records and the unreadable rows of one page apart', async () => {
+    const page = await readDeposits([
+      { ...depositRow, id: '1' },
+      { ...depositRow, id: '2', coin: 'PEPE', amount: 5 },
+      { ...depositRow, id: '3', amount: 5 },
+    ]);
+
+    expect(page.rows.map(({ id }) => id)).toEqual(['1']);
+    expect(page.untracked).toHaveLength(1);
+    expect(page.unreadable).toHaveLength(1);
+  });
+
+  it('keeps nothing of an untracked row but its ticker, status and time', async () => {
+    const page = await readDeposits([
+      { ...depositRow, coin: 'PEPE', id: 'SECRET-ID', address: 'SECRET' },
+    ]);
+
+    expect(JSON.stringify(page.untracked)).not.toMatch(/SECRET/);
+    expect(Object.keys(page.untracked[0]).sort()).toEqual(['status', 'ticker', 'time']);
   });
 });

@@ -34,8 +34,8 @@ import {
   type BinanceDeposit,
   BinanceHistoryParseError,
   type BinanceWithdrawal,
+  type CapitalPage,
   HISTORY_PAGE_LIMIT,
-  type HistoryPage,
   type HistoryWindow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
@@ -81,9 +81,10 @@ const historyPage = <Row>(
   rows: Row[],
   usedUidWeight1m?: number,
   usedIpWeight1m?: number,
-): HistoryPage<Row> => ({
+): CapitalPage<Row> => ({
   rows,
   unreadable: [],
+  untracked: [],
   usedUidWeight1m,
   usedIpWeight1m,
 });
@@ -2344,7 +2345,7 @@ describe('the pending overlap days of the capital walk', () => {
 
       /** A read that also reports the unreadable rows in the span (all those with no time). */
       const reporting = <Row>(
-        serve: (apiKey: string, secret: string, window: HistoryWindow) => Promise<HistoryPage<Row>>,
+        serve: (apiKey: string, secret: string, window: HistoryWindow) => Promise<CapitalPage<Row>>,
         unreadable: UnreadableRow[],
       ) =>
         jest.fn(async (apiKey: string, secret: string, window: HistoryWindow) => ({

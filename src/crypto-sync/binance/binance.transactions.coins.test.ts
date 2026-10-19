@@ -7,11 +7,15 @@ import {
   type BinanceTransactionSyncDeps,
   syncBinanceTransactions,
 } from './binance.transactions';
-import type {
-  BinanceDeposit,
-  BinanceWithdrawal,
-  HistoryPage,
-  HistoryWindow,
+import {
+  type BinanceDeposit,
+  type BinanceUntrackedRecord,
+  type BinanceWithdrawal,
+  type CapitalPage,
+  fetchDepositHistory,
+  fetchWithdrawHistory,
+  HISTORY_PAGE_LIMIT,
+  type HistoryWindow,
 } from './binance.history-client';
 import { createBinanceHistoryRun } from './binance.history-budget';
 
@@ -45,17 +49,33 @@ const withdrawal = (over: Partial<BinanceWithdrawal> = {}): BinanceWithdrawal =>
     ...over,
   }) as BinanceWithdrawal;
 
-const historyPage = <Row>(rows: Row[]): HistoryPage<Row> => ({
+const historyPage = <Row>(
+  rows: Row[],
+  untracked: BinanceUntrackedRecord[] = [],
+): CapitalPage<Row> => ({
   rows,
   unreadable: [],
+  untracked,
   usedUidWeight1m: undefined,
   usedIpWeight1m: undefined,
 });
 
+/** A record of a coin the walk does not track, as the client reports it (settled by default). */
+const untrackedRecord = (over: Partial<BinanceUntrackedRecord> = {}): BinanceUntrackedRecord => ({
+  ticker: 'PEPE',
+  status: 1,
+  time: NOW - DAY_MS,
+  ...over,
+});
+
+/** The same for a withdrawal: settled is status 6, and its time is a datetime text. */
+const untrackedWithdrawal = (over: Partial<BinanceUntrackedRecord> = {}) =>
+  untrackedRecord({ status: 6, time: '2024-01-03 00:00:00', ...over });
+
 /** A history that holds `rows` only in a span ending at now, so no span behind it reads any. */
-const rowsAtNow = <Row>(rows: Row[]) =>
+const rowsAtNow = <Row>(rows: Row[], untracked: BinanceUntrackedRecord[] = []) =>
   jest.fn(async (_apiKey: string, _secret: string, window: HistoryWindow) =>
-    historyPage(window.endTime === NOW ? rows : []),
+    window.endTime === NOW ? historyPage(rows, untracked) : historyPage([]),
   );
 
 /** The holdings a walk creates are listed by the next read, as a real store lists them. */
@@ -218,10 +238,7 @@ describe('capital records of a coin that is not tracked', () => {
 
   it('counts a PEPE deposit, imports no row for it and lists its ticker once', async () => {
     const deps = makeDeps({
-      fetchDepositHistory: rowsAtNow([
-        deposit({ id: '1', coin: 'PEPE', amount: '1000000' }),
-        deposit({ id: '2' }),
-      ]),
+      fetchDepositHistory: rowsAtNow([deposit({ id: '2' })], [untrackedRecord()]),
     });
 
     const result = await sync(deps);
@@ -240,11 +257,8 @@ describe('capital records of a coin that is not tracked', () => {
     });
     const deps = makeDeps({
       ...fake.deps,
-      fetchDepositHistory: rowsAtNow([
-        deposit({ id: '1', coin: 'PEPE' }),
-        deposit({ id: '2', coin: 'pepe' }),
-      ]),
-      fetchWithdrawHistory: rowsAtNow([withdrawal({ coin: 'PEPE' })]),
+      fetchDepositHistory: rowsAtNow([], [untrackedRecord(), untrackedRecord()]),
+      fetchWithdrawHistory: rowsAtNow([], [untrackedWithdrawal()]),
     });
 
     await sync(deps);
@@ -267,7 +281,7 @@ describe('capital records of a coin that is not tracked', () => {
   });
 
   it('moves the cursor past a window that holds only untracked records', async () => {
-    const deps = makeDeps({ fetchWithdrawHistory: rowsAtNow([withdrawal({ coin: 'PEPE' })]) });
+    const deps = makeDeps({ fetchWithdrawHistory: rowsAtNow([], [untrackedWithdrawal()]) });
 
     await sync(deps);
 
@@ -275,20 +289,25 @@ describe('capital records of a coin that is not tracked', () => {
     expect(untrackedPatchesOf(deps)).toHaveLength(1);
   });
 
-  it('does not list a coin whose record is not settled', async () => {
+  it.each([
+    ['status 0', untrackedRecord({ status: 0 })],
+    ['status 3', untrackedRecord({ status: 3 })],
+    ['no status', untrackedRecord({ status: undefined })],
+  ])('does not list a coin whose record is not settled (%s)', async (_label, record) => {
     const deps = makeDeps({
-      fetchDepositHistory: rowsAtNow([deposit({ coin: 'PEPE', status: 0 })]),
-      fetchWithdrawHistory: rowsAtNow([withdrawal({ coin: 'PEPE', status: 3 })]),
+      fetchDepositHistory: rowsAtNow([], [record]),
+      fetchWithdrawHistory: rowsAtNow([], [{ ...record, time: '2024-01-03 00:00:00' }]),
     });
 
-    await sync(deps);
+    const result = await sync(deps);
 
     expect(coinListPatchesOf(deps)).toEqual([]);
+    expect(result).toEqual({ imported: 0, complete: true });
   });
 
-  it('reads an untracked record by nothing but its ticker: a malformed amount is no stop', async () => {
+  it('lists a settled record whose time is no usable time: it has no point to return', async () => {
     const deps = makeDeps({
-      fetchDepositHistory: rowsAtNow([deposit({ coin: 'PEPE', amount: 'lots' })]),
+      fetchDepositHistory: rowsAtNow([], [untrackedRecord({ time: undefined })]),
     });
 
     const result = await sync(deps);
@@ -297,13 +316,54 @@ describe('capital records of a coin that is not tracked', () => {
     expect(untrackedPatchesOf(deps)[0].tickers).toEqual(['PEPE']);
   });
 
+  it('settles a withdrawal and a deposit by their own settled status', async () => {
+    const deps = makeDeps({
+      fetchDepositHistory: rowsAtNow([], [untrackedRecord({ ticker: 'DEPOSITED', status: 6 })]),
+      fetchWithdrawHistory: rowsAtNow(
+        [],
+        [untrackedRecord({ ticker: 'WITHDRAWN', status: 1, time: '2024-01-03 00:00:00' })],
+      ),
+    });
+
+    await sync(deps);
+
+    expect(coinListPatchesOf(deps)).toEqual([]);
+  });
+
+  it('counts an untracked record toward a full page, so a page of them is read in halves', async () => {
+    const full = Array.from({ length: HISTORY_PAGE_LIMIT }, () => untrackedRecord());
+    const deps = makeDeps({
+      fetchDepositHistory: jest.fn(
+        async (_apiKey: string, _secret: string, window: HistoryWindow) =>
+          historyPage([], window.endTime - window.startTime > DAY_MS / 2 ? full : []),
+      ),
+    });
+
+    await sync(deps);
+
+    const windows = (deps.fetchDepositHistory as jest.Mock).mock.calls.map(
+      ([, , window]) => window as HistoryWindow,
+    );
+    const [first] = windows;
+    const width = (window: HistoryWindow) => window.endTime - window.startTime;
+    expect(windows.some((window) => window.offset > 0)).toBe(false);
+    expect(
+      windows.some(
+        (window) =>
+          window.startTime >= first.startTime &&
+          window.endTime <= first.endTime &&
+          width(window) <= width(first) / 2 + 1,
+      ),
+    ).toBe(true);
+  });
+
   it('stops at a TRACKED record whose amount is too precise, never skipping it', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const deps = makeDeps({
-      fetchDepositHistory: rowsAtNow([
-        deposit({ id: '1', coin: 'USDT', amount: '0.000000001' }),
-        deposit({ id: '2', coin: 'PEPE' }),
-      ]),
+      fetchDepositHistory: rowsAtNow(
+        [deposit({ id: '1', coin: 'USDT', amount: '0.000000001' })],
+        [untrackedRecord()],
+      ),
     });
 
     const result = await sync(deps);
@@ -315,6 +375,107 @@ describe('capital records of a coin that is not tracked', () => {
       code: 'amount-precision',
     });
     warn.mockRestore();
+  });
+});
+
+describe('a page beside an off-contract row of an untracked coin, read by the real client', () => {
+  const bodyFetch = (body: unknown) =>
+    (async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => body,
+    })) as unknown as typeof fetch;
+
+  /** The same JSON body for the span that ends at now, nothing for any other span or page. */
+  const servedAtNow = <Row>(
+    body: unknown,
+    read: (
+      apiKey: string,
+      secret: string,
+      window: HistoryWindow,
+      options: { fetchImpl: typeof fetch; now: () => number },
+    ) => Promise<CapitalPage<Row>>,
+  ) =>
+    jest.fn(async (apiKey: string, secret: string, window: HistoryWindow) =>
+      read(apiKey, secret, window, {
+        fetchImpl: bodyFetch(window.endTime === NOW && window.offset === 0 ? body : []),
+        now: () => NOW,
+      }),
+    );
+
+  const btcDeposit = {
+    id: '2',
+    amount: '0.5',
+    coin: 'BTC',
+    insertTime: NOW - DAY_MS,
+    status: 1,
+  };
+  const btcWithdrawal = {
+    id: '9',
+    amount: '0.25',
+    coin: 'BTC',
+    applyTime: '2024-01-03 00:00:00',
+    status: 6,
+  };
+
+  it.each([
+    ['an amount that is a JSON number', { coin: 'PEPE', amount: 1000, insertTime: NOW - DAY_MS }],
+    ['no amount and no id', { coin: 'PEPE', status: 1, insertTime: NOW - DAY_MS }],
+    ['nothing but its coin', { coin: 'PEPE' }],
+  ])('imports the BTC deposit and moves the cursor past a PEPE row with %s', async (_l, pepe) => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = makeDeps({
+      fetchDepositHistory: servedAtNow([pepe, btcDeposit], fetchDepositHistory),
+    });
+
+    const result = await sync(deps);
+
+    expect(addedRows(deps).map((row) => row.externalId)).toEqual(['acc-1:deposit:2']);
+    expect(result).toEqual({ imported: 1, complete: true });
+    expect(walkMarkWritesOf(deps, 'capital', 'cursor')).toEqual([NOW]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it.each([
+    [
+      'an amount that is a JSON number',
+      { coin: 'PEPE', amount: 1000, applyTime: '2024-01-03 00:00:00', status: 6 },
+    ],
+    ['no amount and no id', { coin: 'PEPE', status: 6, applyTime: '2024-01-03 00:00:00' }],
+    ['nothing but its coin', { coin: 'PEPE' }],
+  ])(
+    'imports the BTC withdrawal and moves the cursor past a PEPE row with %s',
+    async (_l, pepe) => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const deps = makeDeps({
+        fetchWithdrawHistory: servedAtNow([pepe, btcWithdrawal], fetchWithdrawHistory),
+      });
+
+      const result = await sync(deps);
+
+      expect(addedRows(deps).map((row) => row.externalId)).toEqual(['acc-1:withdraw:9']);
+      expect(result).toEqual({ imported: 1, complete: true });
+      expect(walkMarkWritesOf(deps, 'capital', 'cursor')).toEqual([NOW]);
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    },
+  );
+
+  it('lists a settled off-contract PEPE row once, beside the imported BTC row', async () => {
+    const deps = makeDeps({
+      fetchDepositHistory: servedAtNow(
+        [{ coin: 'pepe', amount: 1000, status: 1, insertTime: NOW - DAY_MS }, btcDeposit],
+        fetchDepositHistory,
+      ),
+    });
+
+    await sync(deps);
+
+    expect(coinListPatchesOf(deps)).toEqual([
+      { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['PEPE'] },
+    ]);
   });
 });
 

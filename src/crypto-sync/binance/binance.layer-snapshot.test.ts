@@ -18,13 +18,13 @@ import {
   type BinanceDeposit,
   type BinanceUniversalTransfer,
   type BinanceWithdrawal,
+  type CapitalPage,
   type EarnRecordKind,
   fetchDepositHistory,
   fetchEarnRecords,
   fetchPayHistory,
   fetchUniversalTransfers,
   fetchWithdrawHistory,
-  type HistoryPage,
   type HistoryWindow,
   type PayHistoryPage,
   type TotalPage,
@@ -334,12 +334,13 @@ describe('the request windows and the external ids and rows every walk produces 
       storedExternalIds: async () => new Set(),
       latestTransactionTime: async () => undefined,
       readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
-      fetchDepositHistory: async (_key, _secret, window): Promise<HistoryPage<BinanceDeposit>> => {
+      fetchDepositHistory: async (_key, _secret, window): Promise<CapitalPage<BinanceDeposit>> => {
         record('deposit', window);
 
         return {
           rows: DEPOSITS.filter((deposit) => within(window, deposit.insertTime)),
           unreadable: [],
+          untracked: [],
           ...unweighted,
         };
       },
@@ -347,12 +348,13 @@ describe('the request windows and the external ids and rows every walk produces 
         _key,
         _secret,
         window,
-      ): Promise<HistoryPage<BinanceWithdrawal>> => {
+      ): Promise<CapitalPage<BinanceWithdrawal>> => {
         record('withdraw', window);
 
         return {
           rows: within(window, WITHDRAWN_AT) ? WITHDRAWALS : [],
           unreadable: [],
+          untracked: [],
           ...unweighted,
         };
       },

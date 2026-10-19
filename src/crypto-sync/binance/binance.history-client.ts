@@ -11,6 +11,7 @@ import {
   signedRequestPage,
   usedWeightsFromHeaders,
 } from './binance.client';
+import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 
 /**
  * The message of every unexpected response shape. It is fixed on purpose: a URL
@@ -180,18 +181,6 @@ const epochTime: TimeReader = optionalFiniteNumber;
 const epochOrDatetimeTime: TimeReader = (value) =>
   typeof value === 'string' ? value : optionalFiniteNumber(value);
 
-const arrayPage =
-  <Row>(readRow: Reader<Row>, timeOf: TimeReader) =>
-  ({ body, headers }: SignedPage): HistoryPage<Row> => {
-    const readings = readingsOf(body, readRow, timeOf);
-
-    return {
-      rows: valuesOf(readings),
-      unreadable: unreadableOf(readings),
-      ...usedWeightsFromHeaders(headers),
-    };
-  };
-
 /**
  * A row of another asset is counted for the pager and never parsed (`undefined`): it can be off
  * contract in any way without stalling the BTC rows. A row with no string asset is not one of
@@ -250,6 +239,74 @@ const capitalParams = (window: HistoryWindow): Record<string, string> => ({
 });
 
 /**
+ * A capital record of a coin the walk does not track: counted for the pager, never parsed, so it
+ * can be off contract in any way without stalling the tracked rows. Only what the walk needs is
+ * kept: the upper-cased ticker, the `status` (`undefined` unless it is a finite number, so the
+ * walk lists the coin only once the record is settled) and the time field as it stands (a number,
+ * a datetime text for a withdrawal, or `undefined`), which says where the record sits in a span.
+ */
+export type BinanceUntrackedRecord = {
+  ticker: string;
+  status: number | undefined;
+  time: UnreadableRow['time'];
+};
+
+/**
+ * One page of a capital endpoint: the tracked rows that parsed, the rows it could not read, and the
+ * records of other coins, which a full page counts like any other row.
+ */
+export type CapitalPage<Row> = HistoryPage<Row> & { untracked: BinanceUntrackedRecord[] };
+
+type CapitalItem<Row> = { row: Row } | { untracked: BinanceUntrackedRecord };
+
+/**
+ * A capital row is read by its `coin`, upper-cased once. A tracked coin (`isTrackedBinanceAsset`)
+ * parses strictly, and a malformed row is unreadable and owed. Any other coin with a string ticker
+ * is counted and never parsed. A row with no string coin, or a blank one, cannot be told from a
+ * row of a tracked coin, so it is unreadable.
+ */
+const capitalItemOf =
+  <Row>(readRow: Reader<Row>, timeField: string, readTime: TimeReader): Reader<CapitalItem<Row>> =>
+  (item) => {
+    const ticker =
+      isRecord(item) && typeof item.coin === 'string' ? binanceTickerOf(item.coin) : '';
+
+    if (!isRecord(item) || ticker === '') {
+      return parseFailure();
+    }
+
+    if (isTrackedBinanceAsset(ticker)) {
+      return { row: readRow(item) };
+    }
+
+    return {
+      untracked: {
+        ticker,
+        status: optionalFiniteNumber(item.status),
+        time: readTime(item[timeField]),
+      },
+    };
+  };
+
+const capitalPage =
+  <Row>(readRow: Reader<Row>, timeField: string, readTime: TimeReader) =>
+  ({ body, headers }: SignedPage): CapitalPage<Row> => {
+    const readings = readingsOf(
+      body,
+      capitalItemOf(readRow, timeField, readTime),
+      timeFieldOf(timeField, readTime),
+    );
+    const items = valuesOf(readings);
+
+    return {
+      rows: items.flatMap((item) => ('row' in item ? [item.row] : [])),
+      unreadable: unreadableOf(readings),
+      untracked: items.flatMap((item) => ('untracked' in item ? [item.untracked] : [])),
+      ...usedWeightsFromHeaders(headers),
+    };
+  };
+
+/**
  * `walletType` is 0 for Spot and 1 for Funding. `txId` is empty for a movement
  * with no on-chain hash. The read is account-wide, so `coin` names the asset of each record: a
  * record with no coin cannot be told from one of a coin that is not tracked, so it is unreadable.
@@ -285,11 +342,12 @@ const WITHDRAWAL_FIELDS = {
 /** One withdrawal from `/sapi/v1/capital/withdraw/history`. */
 export type BinanceWithdrawal = Parsed<typeof WITHDRAWAL_FIELDS>;
 
-const depositPage = arrayPage(recordReader(DEPOSIT_FIELDS), timeFieldOf('insertTime', epochTime));
+const depositPage = capitalPage(recordReader(DEPOSIT_FIELDS), 'insertTime', epochTime);
 
-const withdrawalPage = arrayPage(
+const withdrawalPage = capitalPage(
   recordReader(WITHDRAWAL_FIELDS),
-  timeFieldOf('applyTime', epochOrDatetimeTime),
+  'applyTime',
+  epochOrDatetimeTime,
 );
 
 /**
@@ -302,7 +360,7 @@ export const fetchDepositHistory = async (
   secret: string,
   window: HistoryWindow,
   options: FetchAccountOptions = {},
-): Promise<HistoryPage<BinanceDeposit>> =>
+): Promise<CapitalPage<BinanceDeposit>> =>
   depositPage(
     await signedRequestPage(
       apiKey,
@@ -325,7 +383,7 @@ export const fetchWithdrawHistory = async (
   secret: string,
   window: HistoryWindow,
   options: FetchAccountOptions = {},
-): Promise<HistoryPage<BinanceWithdrawal>> =>
+): Promise<CapitalPage<BinanceWithdrawal>> =>
   withdrawalPage(
     await signedRequestPage(
       apiKey,

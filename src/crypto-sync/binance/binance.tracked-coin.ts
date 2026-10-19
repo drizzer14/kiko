@@ -28,6 +28,9 @@ export const BINANCE_FIAT_CODES = [
   'ZAR',
 ] as const satisfies readonly Currency[];
 
+/** A history record's ticker, upper-cased once where it is read; blank when Binance sent none. */
+export const binanceTickerOf = (coin: string): string => coin.trim().toUpperCase();
+
 /** Whether a Binance ticker is a curated coin or one of the fiat codes Binance quotes. */
 export const isTrackedBinanceAsset = (asset: string): asset is Currency =>
   isCurrency(asset) &&

@@ -84,8 +84,18 @@ const runWalk = (deposits: BinanceDeposit[], withdrawals: BinanceWithdrawal[] = 
     {
       now: () => NOW,
       readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-      fetchDepositHistory: async () => ({ rows: deposits, unreadable: [], ...NO_READING }),
-      fetchWithdrawHistory: async () => ({ rows: withdrawals, unreadable: [], ...NO_READING }),
+      fetchDepositHistory: async () => ({
+        rows: deposits,
+        unreadable: [],
+        untracked: [],
+        ...NO_READING,
+      }),
+      fetchWithdrawHistory: async () => ({
+        rows: withdrawals,
+        unreadable: [],
+        untracked: [],
+        ...NO_READING,
+      }),
     },
   );
 

@@ -47,15 +47,16 @@ import {
 } from './binance.history-budget';
 import {
   type BinanceDeposit,
+  type BinanceUntrackedRecord,
   type BinanceWithdrawal,
+  type CapitalPage,
   fetchDepositHistory,
   fetchWithdrawHistory,
   HISTORY_PAGE_LIMIT,
-  type HistoryPage,
   type HistoryWindow,
 } from './binance.history-client';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
-import { isTrackedBinanceAsset } from './binance.tracked-coin';
+import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
@@ -141,13 +142,13 @@ export type BinanceTransactionSyncDeps = ExchangeStateDeps & {
     secret: string,
     window: HistoryWindow,
     options?: FetchAccountOptions,
-  ) => Promise<HistoryPage<BinanceDeposit>>;
+  ) => Promise<CapitalPage<BinanceDeposit>>;
   fetchWithdrawHistory: (
     apiKey: string,
     secret: string,
     window: HistoryWindow,
     options?: FetchAccountOptions,
-  ) => Promise<HistoryPage<BinanceWithdrawal>>;
+  ) => Promise<CapitalPage<BinanceWithdrawal>>;
 };
 
 const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
@@ -199,8 +200,23 @@ const walletOf = (walletType: number | undefined): BinanceWallet =>
       throw new BinanceWalkStop('capital-wallet-unknown');
     });
 
-/** A record's ticker, upper-cased once where it is read; blank when Binance sent none. */
-const tickerOf = ({ coin }: { coin: string }): string => coin.trim().toUpperCase();
+type SpanKind = 'deposit' | 'withdraw';
+
+/**
+ * Whether a record has reached Binance's settled state for its kind. The one definition: a record
+ * that is not settled is neither imported nor listed, whatever its coin.
+ */
+const isSettled = ({
+  kind,
+  record,
+}: {
+  kind: SpanKind;
+  record: { status: number | undefined };
+}): boolean =>
+  match(kind)
+    .with('deposit', () => record.status === DEPOSIT_STATUS_SUCCESS)
+    .with('withdraw', () => record.status === WITHDRAW_STATUS_COMPLETED)
+    .exhaustive();
 
 /** A row mapped from a settled record, before its wallet is turned into a holding. */
 type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: string };
@@ -209,7 +225,7 @@ type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: string };
  * Map one SETTLED record of a tracked coin to a row. A record the walk cannot trust (no id, a
  * blank coin, a non-numeric amount, an unreadable time, an unknown wallet) stops the window: a
  * skipped row would be silent loss. A record of a coin that is not tracked never gets here: the
- * walk counts it without reading it (`untrackedTickerOf`).
+ * client counts it without parsing it (`BinanceUntrackedRecord`).
  */
 const plannedRowOf = (input: {
   accountId: string;
@@ -226,7 +242,7 @@ const plannedRowOf = (input: {
 }): PlannedRow => {
   const { accountId, kind, direction, record, time } = input;
   const key = recordKey(record);
-  const ticker = tickerOf(record);
+  const ticker = binanceTickerOf(record.coin);
 
   if (key === '') {
     throw new BinanceWalkStop('capital-id-missing');
@@ -260,7 +276,7 @@ const plannedRowOf = (input: {
 
 /** The row of a deposit, or `null` while it is not settled. */
 const plannedDepositOf = (accountId: string, record: BinanceDeposit): PlannedRow | null => {
-  if (record.status !== DEPOSIT_STATUS_SUCCESS) {
+  if (!isSettled({ kind: 'deposit', record })) {
     return null;
   }
 
@@ -279,7 +295,7 @@ const plannedDepositOf = (accountId: string, record: BinanceDeposit): PlannedRow
  * user sent.
  */
 const plannedWithdrawalOf = (accountId: string, record: BinanceWithdrawal): PlannedRow | null => {
-  if (record.status !== WITHDRAW_STATUS_COMPLETED) {
+  if (!isSettled({ kind: 'withdraw', record })) {
     return null;
   }
 
@@ -309,7 +325,12 @@ type WindowContext = {
  * to ask for instead.
  */
 type Paged<Row> =
-  | { kind: 'rows'; rows: Row[]; unreadable: UnreadableRow[] }
+  | {
+      kind: 'rows';
+      rows: Row[];
+      unreadable: UnreadableRow[];
+      untracked: BinanceUntrackedRecord[];
+    }
   | { kind: 'split'; half: WalkWindow };
 
 /**
@@ -329,10 +350,11 @@ type Paged<Row> =
 const fetchAllInWindow = async <Row>(
   run: BinanceHistoryRun,
   budgeted: { lane: BudgetLane; cost: CallCost; half: WalkWindow | undefined; keep?: number },
-  fetchPage: (offset: number) => Promise<HistoryPage<Row>>,
+  fetchPage: (offset: number) => Promise<CapitalPage<Row>>,
 ): Promise<Paged<Row> | undefined> => {
   const rows: Row[] = [];
   const unreadable: UnreadableRow[] = [];
+  const untracked: BinanceUntrackedRecord[] = [];
 
   for (let pageIndex = 0; pageIndex < MAX_PAGES_PER_WINDOW; pageIndex += 1) {
     if (!run.budget.canAfford(budgeted.lane, budgeted.cost, budgeted.keep)) {
@@ -344,10 +366,12 @@ const fetchAllInWindow = async <Row>(
     run.budget.record(budgeted.lane, page);
     rows.push(...page.rows);
     unreadable.push(...page.unreadable);
+    untracked.push(...page.untracked);
 
-    // An unreadable row fills the page as much as a row that parsed.
-    if (page.rows.length + page.unreadable.length < HISTORY_PAGE_LIMIT) {
-      return { kind: 'rows', rows, unreadable };
+    // An unreadable row and a record of an untracked coin fill the page as much as a row that
+    // parsed.
+    if (page.rows.length + page.unreadable.length + page.untracked.length < HISTORY_PAGE_LIMIT) {
+      return { kind: 'rows', rows, unreadable, untracked };
     }
 
     if (budgeted.half !== undefined) {
@@ -355,12 +379,14 @@ const fetchAllInWindow = async <Row>(
     }
   }
 
-  return { kind: 'rows', rows, unreadable };
+  return { kind: 'rows', rows, unreadable, untracked };
 };
 
 type SpanRecords = {
   deposits: BinanceDeposit[];
   withdrawals: BinanceWithdrawal[];
+  untrackedDeposits: BinanceUntrackedRecord[];
+  untrackedWithdrawals: BinanceUntrackedRecord[];
   unreadableDeposits: UnreadableRow[];
   unreadableWithdrawals: UnreadableRow[];
 };
@@ -409,6 +435,8 @@ const readSpan = async (
       page: {
         deposits: deposits.rows,
         withdrawals: withdrawals.rows,
+        untrackedDeposits: deposits.untracked,
+        untrackedWithdrawals: withdrawals.untracked,
         unreadableDeposits: deposits.unreadable,
         unreadableWithdrawals: withdrawals.unreadable,
       },
@@ -482,22 +510,15 @@ type SpanRecord =
   | { kind: 'deposit'; record: BinanceDeposit }
   | { kind: 'withdraw'; record: BinanceWithdrawal };
 
-const isSettled = (entry: SpanRecord): boolean =>
-  match(entry)
-    .with({ kind: 'deposit' }, ({ record }) => record.status === DEPOSIT_STATUS_SUCCESS)
-    .with({ kind: 'withdraw' }, ({ record }) => record.status === WITHDRAW_STATUS_COMPLETED)
-    .exhaustive();
+/** A record of a coin the walk does not track, with the kind of endpoint it came from. */
+type UntrackedEntry = { kind: SpanKind; record: BinanceUntrackedRecord };
 
 /**
  * The ticker of a settled record of a coin the walk does not track: counted, imported as no row
- * and listed. A blank coin is no ticker (it is unreadable), and a record not settled yet is
- * neither imported nor listed, whatever its coin.
+ * and listed. A record not settled yet is counted and neither imported nor listed.
  */
-const untrackedTickerOf = (entry: SpanRecord): string | undefined => {
-  const ticker = tickerOf(entry.record);
-
-  return isSettled(entry) && ticker !== '' && !isTrackedBinanceAsset(ticker) ? ticker : undefined;
-};
+const untrackedTickerOf = (entry: UntrackedEntry): string | undefined =>
+  isSettled(entry) ? entry.record.ticker : undefined;
 
 const plannedOf = (accountId: string, entry: SpanRecord): PlannedRow[] =>
   match(entry)
@@ -565,6 +586,19 @@ const commitSpan = (
         ],
         rowsOf: (entry) => plannedOf(accountId, entry),
         extentOf,
+      }),
+      settleRecords({
+        span,
+        records: [
+          ...records.untrackedDeposits.map(
+            (record): UntrackedEntry => ({ kind: 'deposit', record }),
+          ),
+          ...records.untrackedWithdrawals.map(
+            (record): UntrackedEntry => ({ kind: 'withdraw', record }),
+          ),
+        ],
+        rowsOf: () => [],
+        extentOf: ({ kind, record }) => unreadableExtentOf(kind, record),
         untrackedOf: untrackedTickerOf,
       }),
       settleUnreadable({

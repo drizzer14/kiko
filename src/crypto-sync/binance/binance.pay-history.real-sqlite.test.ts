@@ -26,7 +26,7 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import type {
   BinanceDeposit,
   BinancePayOrder,
-  HistoryPage,
+  CapitalPage,
   HistoryWindow,
 } from './binance.history-client';
 import { syncBinancePayHistory } from './binance.pay-history';
@@ -134,13 +134,14 @@ const depositRecord = (deposit: TestDeposit) => ({
 const historyPageOf = <Row>(rows: Row[]) => ({
   rows,
   unreadable: [],
+  untracked: [],
   usedUidWeight1m: undefined,
   usedIpWeight1m: undefined,
 });
 
 /** The capital walk over the real repos, with the given answer to a deposit-history request. */
 const runCapitalWalkOver = (
-  fetchDepositHistory: (window: HistoryWindow) => Promise<HistoryPage<BinanceDeposit>>,
+  fetchDepositHistory: (window: HistoryWindow) => Promise<CapitalPage<BinanceDeposit>>,
 ) =>
   syncBinanceTransactions(requestOf(), {
     ...clockAndCredentials,
@@ -453,7 +454,7 @@ describe('the capital cursor beside rows of the other walks on real SQLite', () 
   /** Binance answering as it does: the deposits that fall in the window asked for. */
   const depositServer =
     (deposits: BinanceDeposit[], asked: HistoryWindow[] = []) =>
-    async (window: HistoryWindow): Promise<HistoryPage<BinanceDeposit>> => {
+    async (window: HistoryWindow): Promise<CapitalPage<BinanceDeposit>> => {
       asked.push(window);
 
       return historyPageOf(
