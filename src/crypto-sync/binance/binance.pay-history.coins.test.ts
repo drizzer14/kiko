@@ -395,6 +395,127 @@ describe('a Pay send paid in another coin', () => {
   });
 });
 
+describe('a Pay send in a coin stored at a reduced scale', () => {
+  const xrpSend = (
+    costs: Funds['walletAssetCost'],
+    total = '0.0003',
+    over: Partial<BinancePayOrder> = {},
+  ) =>
+    sentOrder({
+      currency: 'XRP',
+      amount: `-${total}`,
+      walletTypes: [1, 2, 5],
+      fundsDetail: [{ currency: 'XRP', amount: total, walletAssetCost: costs }],
+      ...over,
+    });
+
+  const unitsOf = (order: BinancePayOrder) =>
+    rowsOf(order).map((row) => [row.externalId, row.amountMinorUnits]);
+
+  it('places the shares of a split so they add up to the rounded total, not each rounded alone', () => {
+    const order = xrpSend([
+      { walletType: 1, amount: '0.00015' },
+      { walletType: 2, amount: '0.00015' },
+    ]);
+
+    expect(unitsOf(order)).toEqual([
+      ['acc-1:pay:C2C:tx-1:1:XRP', -2],
+      ['acc-1:pay:C2C:tx-1:2:XRP', -1],
+    ]);
+  });
+
+  it('balances a two-wallet split whose halves are each half a unit', () => {
+    const order = xrpSend(
+      [
+        { walletType: 1, amount: '0.00005' },
+        { walletType: 2, amount: '0.00005' },
+      ],
+      '0.0001',
+    );
+
+    expect(unitsOf(order)).toEqual([['acc-1:pay:C2C:tx-1:1:XRP', -1]]);
+  });
+
+  it('gives a share that rounds to nothing no row and still balances the others', () => {
+    const order = xrpSend(
+      [
+        { walletType: 1, amount: '0.00004' },
+        { walletType: 2, amount: '0.00004' },
+        { walletType: 5, amount: '0.00002' },
+      ],
+      '0.0001',
+    );
+
+    expect(unitsOf(order)).toEqual([['acc-1:pay:C2C:tx-1:2:XRP', -1]]);
+  });
+
+  it('places the same shares whatever order Binance lists the wallets in', () => {
+    const halves = [
+      { walletType: 1, amount: '0.00015' },
+      { walletType: 2, amount: '0.00015' },
+    ];
+
+    expect(unitsOf(xrpSend([...halves].reverse())).sort()).toEqual(unitsOf(xrpSend(halves)));
+  });
+
+  it('balances a split of XRP funds that paid an order in another coin', () => {
+    const order = sentOrder({
+      currency: 'USDT',
+      amount: '-5',
+      walletTypes: [1, 2],
+      fundsDetail: [
+        {
+          currency: 'XRP',
+          amount: '0.0001',
+          walletAssetCost: [
+            { walletType: 1, amount: '0.00005' },
+            { walletType: 2, amount: '0.00005' },
+          ],
+        },
+      ],
+    });
+
+    expect(unitsOf(order)).toEqual([['acc-1:pay:C2C:tx-1:1:XRP', -1]]);
+  });
+
+  it('adds the cost-less entries of one coin before rounding them', () => {
+    const order = sentOrder({
+      currency: 'USDT',
+      amount: '-5',
+      walletType: 2,
+      walletTypes: [2],
+      fundsDetail: [
+        { currency: 'XRP', amount: '0.00005', walletAssetCost: [] },
+        { currency: 'XRP', amount: '0.00005', walletAssetCost: [] },
+      ],
+    });
+
+    expect(unitsOf(order)).toEqual([['acc-1:pay:C2C:tx-1:2:XRP', -1]]);
+  });
+
+  it('still stops a split whose costs are not the amount, however it rounds', () => {
+    const order = xrpSend([
+      { walletType: 1, amount: '0.00015' },
+      { walletType: 2, amount: '0.00025' },
+    ]);
+
+    expect(stopOf(order)?.code).toBe('pay-split-mismatch');
+  });
+
+  it('stops a split with a cost on a wallet the order does not name', () => {
+    const order = xrpSend(
+      [
+        { walletType: 1, amount: '0.00015' },
+        { walletType: 2, amount: '0.00015' },
+      ],
+      '0.0003',
+      { walletTypes: [1] },
+    );
+
+    expect(stopOf(order)?.code).toBe('pay-split-mismatch');
+  });
+});
+
 describe('a Pay order in a coin the walk does not track', () => {
   it('imports the tracked funds rows of a send, never reading the order amount as a number of that coin', () => {
     const order = sentOrder({

@@ -38,6 +38,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { addDecimal, compareDecimal } from '@kiko/currency/decimal';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
 import {
@@ -192,24 +193,40 @@ type CoinShares = { coin: Currency; shares: WalletShare[] };
 /** What an order's amount is in its own coin, which is a tracked one. */
 type OrderAmount = { coin: Currency; units: number };
 
-/** What a coin's funds entries say each wallet paid: the wallets with a cost above zero. */
-const costsOf = (coin: Currency, entries: FundsEntry[]): WalletShare[] => {
-  const unitsByWallet = new Map<number, number>();
+/** What a wallet paid, as Binance's decimal text, before any rounding to the coin's scale. */
+type WalletCost = { walletType: number; amount: string };
+
+/**
+ * `sum` plus `amount`, exactly. The coin's own read of `amount` comes first: it stops a text
+ * the sum could not parse, and a coin stored at its own scale refuses digits past it there.
+ */
+const addAmount = (coin: Currency, sum: string, amount: string): string => {
+  rowMinorUnits(coin, amount);
+
+  return addDecimal(sum, amount);
+};
+
+/**
+ * What a coin's funds entries say each wallet paid, exactly: the wallets with a cost above zero.
+ * Rounding happens once, on a sum (`sharesFromCosts`), never on each cost, because the costs of
+ * a coin stored at a reduced scale can each round on their own to more or less than their total.
+ */
+const costsOf = (coin: Currency, entries: FundsEntry[]): WalletCost[] => {
+  const amountByWallet = new Map<number, string>();
 
   for (const cost of entries.flatMap((entry) => entry.walletAssetCost)) {
-    const costUnits = rowMinorUnits(coin, cost.amount);
+    const sum = addAmount(coin, amountByWallet.get(cost.walletType) ?? '0', cost.amount);
 
-    if (costUnits < 0) {
+    if (compareDecimal(cost.amount, '0') < 0) {
       throw new BinanceWalkStop('pay-amount-invalid');
     }
 
-    const stored = unitsByWallet.get(cost.walletType) ?? 0;
-    unitsByWallet.set(cost.walletType, stored + costUnits);
+    amountByWallet.set(cost.walletType, sum);
   }
 
-  return [...unitsByWallet]
-    .filter(([, costUnits]) => costUnits > 0)
-    .map(([walletType, costUnits]) => ({ walletType, units: costUnits }));
+  return [...amountByWallet]
+    .filter(([, amount]) => compareDecimal(amount, '0') > 0)
+    .map(([walletType, amount]) => ({ walletType, amount }));
 };
 
 const declaredWalletsOf = (order: BinancePayOrder): number[] => [
@@ -232,23 +249,44 @@ const namedWalletsOf = (order: BinancePayOrder): number[] => {
 
 /**
  * What a send paid from: the wallets with a cost above zero. They must be among the
- * wallets the order names and their costs must add up to `units` exactly, or the order is
- * one this walk cannot place. A named wallet with no cost is left out: a send is paid from
- * the wallets that were charged, and `walletTypes` can list one that was not.
+ * wallets the order names and their costs, summed exactly and rounded once, must come to `units`,
+ * or the order is one this walk cannot place. A named wallet with no cost is left out: a send is
+ * paid from the wallets that were charged, and `walletTypes` can list one that was not.
+ *
+ * Each wallet's share is the step the rounded running sum takes at it, the wallets taken in
+ * ascending order so the shares do not depend on the order Binance lists them in. The shares
+ * add up to the rounded total whatever the scale, and a share that rounds to nothing has no row.
  */
-const sharesFromCosts = (
-  shares: WalletShare[],
-  wallets: number[],
-  units: number,
-): WalletShare[] => {
-  const total = shares.reduce((sum, share) => sum + share.units, 0);
-  const costedOnNamed = shares.every((share) => wallets.includes(share.walletType));
+const sharesFromCosts = (input: {
+  coin: Currency;
+  costs: WalletCost[];
+  wallets: number[];
+  units: number;
+}): WalletShare[] => {
+  const { coin, costs, wallets, units } = input;
+  const ascending = [...costs].sort((a, b) => a.walletType - b.walletType);
+  const runningUnits = ascending.map((_cost, index) =>
+    rowMinorUnits(
+      coin,
+      ascending.slice(0, index + 1).reduce((sum, cost) => addDecimal(sum, cost.amount), '0'),
+    ),
+  );
+  const costedOnNamed = costs.every((cost) => wallets.includes(cost.walletType));
 
-  if (!costedOnNamed || total !== units) {
+  if (!costedOnNamed || (runningUnits.at(-1) ?? 0) !== units) {
     throw new BinanceWalkStop('pay-split-mismatch');
   }
 
-  return shares;
+  const unitsByWallet = new Map(
+    ascending.map((cost, index) => [
+      cost.walletType,
+      runningUnits[index] - (runningUnits[index - 1] ?? 0),
+    ]),
+  );
+
+  return costs
+    .map(({ walletType }) => ({ walletType, units: unitsByWallet.get(walletType) ?? 0 }))
+    .filter((share) => share.units > 0);
 };
 
 /**
@@ -291,7 +329,10 @@ const sharesOfCoin = (input: {
   const { funds, wallets, declared, orderUnits } = input;
   const { coin, entries } = funds;
   const entryUnits = (): number =>
-    entries.reduce((sum, entry) => sum + rowMinorUnits(coin, entry.amount), 0);
+    rowMinorUnits(
+      coin,
+      entries.reduce((sum, entry) => addAmount(coin, sum, entry.amount), '0'),
+    );
 
   if (entries.every((entry) => entry.walletAssetCost.length === 0) && declared.length === 1) {
     const units = entryUnits();
@@ -303,7 +344,12 @@ const sharesOfCoin = (input: {
     return units > 0 ? [{ walletType: declared[0], units }] : [];
   }
 
-  return sharesFromCosts(costsOf(coin, entries), wallets, orderUnits ?? entryUnits());
+  return sharesFromCosts({
+    coin,
+    costs: costsOf(coin, entries),
+    wallets,
+    units: orderUnits ?? entryUnits(),
+  });
 };
 
 /**
