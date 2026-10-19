@@ -1552,18 +1552,17 @@ Set 6 notes owed from set 5 (retrospect 2026-10-18), now placed:
 - Accepted known costs (no step): a coin CoinGecko left empty and Binance priced is asked of CoinGecko once per 7
   days and of Binance every run; a pair that halted yesterday gets a one-day carry in its history.
 
-Open questions for the coordinator (the steps above assume the recommendation):
-- Q1 (step 4/13): with the anchor gone, the "Last sync" line (`latestSyncedAt(holdings)`) reads "Never" for a Binance
-  account with no tracked holding. A: keep the anchor, drop only the guards; B (recommended): stamp the balance sync
-  in `exchange_state` (step 4/13); C: accept "Never" for such an account.
-- Q2 (step 7/13): an order in an untracked coin paid in a tracked coin. A (recommended): import the tracked funds
-  rows (the Y3/Y4 cross-coin rule) and list the order's ticker; B: the whole order is untracked (no row).
-- Q3 (step 2/13): when the oversized history patch is written. A (recommended): at every span read that sees the stop,
-  committed or not; B: only with a committed span (a capital or Pay forward stop would never show it).
-- Q4 (step 5/13): the capital stored-row placeholder without a Spot holding. A: `storedExternalIds` returns each
-  row's stored holding id (`transactions.repo.ts`: app-wide fan-out, TIMEOUT-HEAVY risk); B (recommended): leave such a
-  row out of the write; C: place it on any holding of the account (fails with none).
-- Q5 (step 2/13): the parser's stop codes in the Transfer and Earn lanes. A (recommended): add the three codes to
-  `TRANSFER_FORWARD_OWES` and `EARN_FORWARD_OWES`; B: map a parser error to the walk's own `*-amount-invalid` code.
+Rulings on the former open questions (2026-10-19; spec: Pay rule and the balance "Spot anchor" bullets):
+- Q1 = B (step 4/13), coordinator ruling on the user's standing approval for Binance edge cases: the balance sync is
+  stamped in `exchange_state` (no migration) and "Last sync" reads it, so no "Never" without a tracked holding.
+  Steps 4 and 5 are never merged apart.
+- Q2 = A (step 7/13), USER ANSWER 2026-10-19: import the tracked funds rows (the Y3/Y4 cross-coin rule) and list the
+  order's ticker on the not-tracked line.
+- Q3 = A (step 2/13), coordinator ruling (standing approval): the oversized history patch is written at every span
+  read that meets the stop, committed or not.
+- Q4 = B (step 5/13), coordinator ruling (standing approval), PINNED in step 5: a stored capital row re-read with no
+  Spot holding is left out of the write; new rows still import.
+- Q5 = A (step 2/13), coordinator ruling (standing approval): the three amount codes join `TRANSFER_FORWARD_OWES` and
+  `EARN_FORWARD_OWES`.
 
 End of plan: `make verify` through the queue on the set 6 tip, re-run until green.

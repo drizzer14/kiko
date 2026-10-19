@@ -145,7 +145,7 @@ Each reversal has a "was:" column in its scenario matrix (section 7).
 | A non-BTC Pay order paid with BTC stops (`pay-btc-funded-other-coin`, user ruling A2 2026-10-10) | history spec P9, Q8 | one row per debited coin (R-Q7) |
 | `currencyScale.USDT` = 2 | `currency.ts` | 8 (R-Q5) |
 | A crypto amount shows every decimal of its scale (`₿0.05000000`) | `formatMoney` (`format.ts`) | trailing zeros trimmed, at least 2 decimals (`₿0.05`; R-Display; DP1-DP5) |
-| Default names "Binance Spot/Funding/Earn" | `WALLET_HOLDING_NAMES` | "Binance <Wallet> · <COIN>" (R-Q6) |
+| Default names "Binance Spot/Funding/Earn" | `WALLET_HOLDING_NAMES` (deleted in set 6 step 3; the walk config `BINANCE_WALK_CONFIG` in `binance.walk-config.ts` now has `walletHoldingOf(key) => { currency, name }`, built from `partsOfHoldingKey` and `coinHoldingName`, and `undefined` for a key that is no holding key) | "Binance <Wallet> · <COIN>" (R-Q6) |
 | The caption shows for null/behind cursors and a Transfer owed range only (OVERNIGHT 20 = B) | history spec section 8 | also while a backfill range is owed (R-Q8) |
 | The fiat total of a P2P / card / fiat row lives in the note | R-Map | in the marker code; the note displays it (C-NR1) |
 | The 2-minute same-amount matcher (`internalTransferTransactionIds`) sees every row of the ledger | `statistics.screen.tsx` | it sees only rows with no `exchangePairId`, no `exchangeCounterpartHoldingId` and no `untrackedCounterpart` (section 6, S1) |
@@ -655,6 +655,17 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
   for a coin never held. The zero Spot BTC anchor is written whenever NO Spot BTC holding exists
   (also when the Spot BTC amount is refused); an existing Spot BTC holding with a refused amount
   keeps its last balance. Set 6 removes the anchor together with the four walk guards.
+  Set 6 Q1 = B (coordinator ruling on the user's standing approval for Binance edge cases,
+  2026-10-19): the balance-sync time is stamped in `exchange_state` (JSON, no migration) and "Last
+  sync" reads it, so an account with no tracked holding never shows "Never" after the anchor goes.
+  Steps 4 and 5 are never merged apart.
+- Set 6 Q3 = A (coordinator ruling, standing approval, 2026-10-19): the oversized-history list
+  patch is written on every span read that meets the stop, committed or not.
+- Set 6 Q5 = A (coordinator ruling, standing approval, 2026-10-19): `amount-malformed`,
+  `amount-precision` and `amount-too-large` join `TRANSFER_FORWARD_OWES` and `EARN_FORWARD_OWES`.
+- Set 6 Q4 = B (coordinator ruling, standing approval, 2026-10-19; PINNED in step 5): a capital row
+  already stored, re-read while no Spot holding exists, is left out of the write; new rows still
+  import.
 - Wallet failures keep today's rule per wallet (`walletRead` returns `null` and leaves every
   holding of that wallet at its last good balance).
 - Names: `Binance <Wallet> · <CODE>` ("Binance Spot · USDT", "Binance Funding · EUR",
@@ -820,6 +831,9 @@ reason (R-Walk A).
   `<amount> <X>` (Binance's own decimal string and code; no words), written on insert only.
 - A funds entry in an untracked coin imports no row; its ticker joins the history list of
   `untrackedCoins` (C-NR8), so the not-tracked line keeps it after the next balance read.
+- An order in an untracked coin paid with a tracked coin (set 6 Q2 = A, USER ANSWER 2026-10-19):
+  the tracked funds rows import (the Y3/Y4 cross-coin rule) and the order's ticker joins the
+  not-tracked line.
 - A receive imports one row in the order's coin (funds describe the payer side).
 - Keys: a BTC-funded row of a BTC order keeps
   `${accountId}:pay:${orderType}:${transactionId}:${walletType}` byte-identical; every other row
