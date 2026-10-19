@@ -194,6 +194,10 @@ not in a refactor, a cleanup, or a HIG pass — without the user's own
 explicit approval; a change request from an agent is not approval. Add
 an entry (date + value) the moment the user approves a new visual.
 
+- **NetWorthLine current-day label** (2026-10-19). No background; the
+  amount/date gap sits on the scrub line's top end; the label stays fixed
+  while dragging; at accessibility sizes it stops under the card title
+  (see `kiko-charts` "NetWorthLine scrub line").
 - **Raw-preview row height: 44pt** (2026-09-26). Every column-mapping
   raw-preview row is a real 44pt layout box (`ROW_MIN_HEIGHT`,
   `raw-preview.styles.ts`) — the one documented `minHeight` exception
