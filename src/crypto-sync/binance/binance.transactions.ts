@@ -49,19 +49,19 @@ import {
   type BinanceDeposit,
   type BinanceUntrackedRecord,
   type BinanceWithdrawal,
+  type CapitalKind,
   type CapitalPage,
-  DEPOSIT_STATUS_SUCCESS,
   fetchDepositHistory,
   fetchWithdrawHistory,
   HISTORY_PAGE_LIMIT,
   type HistoryWindow,
-  WITHDRAW_STATUS_COMPLETED,
+  isCapitalSettled,
 } from './binance.history-client';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
+import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWallet, binanceKeyOf, holdingKeyOf, SPOT_KEY } from './binance.holding-keys';
 
 /** The stop of a row the client could not read: logged by its code alone, never its content. */
@@ -192,7 +192,7 @@ const recordKey = (record: { id: string; txId: string }, ticker: string): string
     return record.id;
   }
 
-  return record.txId && ticker !== 'BTC' ? `${record.txId}:${ticker}` : record.txId || '';
+  return record.txId && ticker !== BINANCE_ASSET ? `${record.txId}:${ticker}` : record.txId || '';
 };
 
 /**
@@ -210,23 +210,16 @@ const walletOf = (walletType: number | undefined): BinanceWallet =>
       throw new BinanceWalkStop('capital-wallet-unknown');
     });
 
-type SpanKind = 'deposit' | 'withdraw';
+type SpanKind = CapitalKind;
 
-/**
- * Whether a record has reached Binance's settled state for its kind. The one definition: a record
- * that is not settled is neither imported nor listed, whatever its coin.
- */
+/** A record that is not settled is neither imported nor listed, whatever its coin. */
 const isSettled = ({
   kind,
   record,
 }: {
   kind: SpanKind;
   record: { status: number | undefined };
-}): boolean =>
-  match(kind)
-    .with('deposit', () => record.status === DEPOSIT_STATUS_SUCCESS)
-    .with('withdraw', () => record.status === WITHDRAW_STATUS_COMPLETED)
-    .exhaustive();
+}): boolean => isCapitalSettled(kind, record.status);
 
 /** A row mapped from a settled record, before its wallet is turned into a holding. */
 type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: string };

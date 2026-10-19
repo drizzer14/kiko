@@ -654,11 +654,12 @@ type MarkAdvance = {
 
 /**
  * What a walk that was never seen writes with the cursor of its first committed forward span: the
- * seen mark, and the cursor the run planned from (`planCursor`) as the start of the range set 15
- * backfills for the other coins, `[floor, start)`. A null plan cursor owes no range, because the
- * walk reads every coin from its floor anyway. A walk that was seen writes nothing, so a later run
- * after a null-cursor first run records no start. A walk that holds a start but lost its seen mark
- * keeps the earlier of the two starts: the later one would skip ground the earlier one owes.
+ * seen mark, and the cursor the run planned from (`planCursor`) as the start of the range the
+ * backfill of the other coins reads, `[floor, start)`. A null plan cursor owes no range, because
+ * the walk reads every coin from its floor anyway. A walk that was seen writes nothing, so a later
+ * run after a null-cursor first run records no start. A walk that holds a start but lost its seen
+ * mark keeps the earlier of the two starts: it is the exact start, because the ground between the
+ * two was already read for every coin, and a later start would owe that ground again.
  */
 export const multiCoinPatchesOf = (input: {
   stored: Pick<ParsedWalkMarks, 'multiCoinSince' | 'multiCoinSeen'>;
@@ -672,12 +673,10 @@ export const multiCoinPatchesOf = (input: {
 
   const starts = [planCursor, stored.multiCoinSince].flatMap((start) => start ?? []);
 
-  return [
-    { field: 'multiCoinSeen', value: true },
-    ...(foldMap(maybe(starts.length > 0 ? minOf(starts) : undefined), (value): WalkMarkPatch[] => [
-      { field: 'multiCoinSince', value },
-    ]) ?? []),
-  ];
+  const since: WalkMarkPatch[] =
+    starts.length > 0 ? [{ field: 'multiCoinSince', value: minOf(starts) }] : [];
+
+  return [{ field: 'multiCoinSeen', value: true }, ...since];
 };
 
 /** Stored lists are cut to nothing and merged to no limit: only a run's plan bounds a list. */

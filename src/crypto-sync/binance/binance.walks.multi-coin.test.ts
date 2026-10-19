@@ -1,5 +1,5 @@
-// Each walk records where its multi-coin reading started, so a later set can backfill the other
-// coins before it: both marks ride the cursor write of the run's first committed window.
+// Each walk records where its multi-coin reading started, so the backfill of the other coins can
+// read the ground before it: both marks ride the cursor write of the run's first committed window.
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import type { WalkResult } from '@kiko/crypto-sync/exchange/walk';

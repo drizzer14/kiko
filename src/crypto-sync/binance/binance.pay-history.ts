@@ -619,16 +619,17 @@ const fetchSpan = async (
 /**
  * The tickers the orders of a page name that the walk does not track: the coin of an order read
  * strictly that is not tracked (a send in it is paid in a tracked coin, a receive of it has no
- * row), a coin of its funds that is not tracked, and the tickers of an order counted and never
- * read. The funds of a receive are the payer's, so a receive names only its own coin: the
- * direction of an order read strictly is the uid's (`payDirection`), and that of an order never
- * read is its amount's sign, as it has no parties.
+ * row), a coin of the funds of a send that is not tracked, and the tickers of an order counted
+ * and never read. The funds of a receive are the payer's, and an order with no direction has
+ * none the walk can place, so each names only its own coin: the direction of an order read
+ * strictly is the uid's (`payDirection`), and that of an order never read is its amount's sign,
+ * as it has no parties.
  */
 const untrackedTickersOf = (page: PayHistoryPage, uid: string): string[] => [
   ...page.rows.flatMap((order) =>
-    (payDirection(order, uid) === 'in'
-      ? [order.currency]
-      : [order.currency, ...order.fundsDetail.map((entry) => entry.currency)]
+    (payDirection(order, uid) === 'out'
+      ? [order.currency, ...order.fundsDetail.map((entry) => entry.currency)]
+      : [order.currency]
     ).filter((ticker) => !isTrackedBinanceAsset(ticker)),
   ),
   ...page.untracked.flatMap((order) =>

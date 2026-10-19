@@ -61,6 +61,16 @@ describe('multiCoinPatchesOf', () => {
     expect(multiCoinPatchesOf({ stored: {}, planCursor: 5_000 })).toEqual(FIRST_RUN);
   });
 
+  it.each([FLOOR_MS, FLOOR_MS - 1])(
+    'records a plan cursor of %d, at or below the floor, as the start it is',
+    (planCursor) => {
+      expect(multiCoinPatchesOf({ stored: {}, planCursor })).toEqual([
+        { field: 'multiCoinSeen', value: true },
+        { field: 'multiCoinSince', value: planCursor },
+      ]);
+    },
+  );
+
   it('names the seen mark alone when the plan cursor is null', () => {
     expect(multiCoinPatchesOf({ stored: {}, planCursor: null })).toEqual([
       { field: 'multiCoinSeen', value: true },

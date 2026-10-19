@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import { untrackedCoinsOf } from '@kiko/crypto-sync/exchange/history-status';
@@ -368,6 +369,36 @@ describe('a Pay order of an untracked coin paid in a tracked coin', () => {
       expect(untrackedPatchesOf(deps)).toEqual([
         { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['XYZ'] },
       ]);
+    });
+
+    it('lists no coin of the funds of an order with no direction, which is owed', async () => {
+      const owedDay = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
+      const undirected = order({
+        currency: 'USDT',
+        amount: '-12.5',
+        transactionTime: owedDay.start + 3_600_000,
+        fundsDetail: receivedFromXyzPayer.fundsDetail,
+        payerInfo: party('Bob', OTHER),
+        receiverInfo: party('Ann', OTHER),
+      });
+      const deps = makeDeps({
+        fetchPayHistory: jest.fn(async (_apiKey: string, _secret: string, query) =>
+          query.endTime === owedDay.end ? payPage([undirected]) : payPage([]),
+        ),
+        ...walkStateFake({
+          accountId: ACCOUNT_ID,
+          marks: { pay: { cursor: NOW, pending: [owedDay] } },
+        }).deps,
+      });
+
+      await sync(deps);
+
+      expect(addedRows(deps)).toEqual([]);
+      expect(untrackedPatchesOf(deps)).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(STOP_TAG, {
+        name: 'BinanceWalkStop',
+        code: 'pay-direction-ambiguous',
+      });
     });
 
     it('lists only the own coin of an untracked order whose amount says receive', async () => {

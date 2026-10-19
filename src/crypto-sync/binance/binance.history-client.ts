@@ -305,12 +305,21 @@ export type CapitalPage<Row> = HistoryPage<Row> & { untracked: BinanceUntrackedR
 
 type CapitalItem<Row> = { row: Row } | { untracked: BinanceUntrackedRecord };
 
-/** Binance's own settled states: a credited deposit, a completed withdrawal. */
-export const DEPOSIT_STATUS_SUCCESS = 1;
-export const WITHDRAW_STATUS_COMPLETED = 6;
+export type CapitalKind = 'deposit' | 'withdraw';
 
-/** What differs between the two capital endpoints: the time field, how to read it, what settles. */
-type CapitalField = { time: string; readTime: TimeReader; settledStatus: number };
+/** Binance's own settled states: a credited deposit, a completed withdrawal. */
+const CAPITAL_SETTLED_STATUS: Record<CapitalKind, number> = { deposit: 1, withdraw: 6 };
+
+/**
+ * Whether a capital record has reached Binance's settled state for its kind. The one definition,
+ * for the client (which lists an unreadable settled record) and the walk (which imports or lists
+ * only a settled one).
+ */
+export const isCapitalSettled = (kind: CapitalKind, status: number | undefined): boolean =>
+  status === CAPITAL_SETTLED_STATUS[kind];
+
+/** What differs between the two capital endpoints: the time field, how to read it, its kind. */
+type CapitalField = { time: string; readTime: TimeReader; kind: CapitalKind };
 
 /**
  * A capital row is read by its `coin`, upper-cased once. A tracked coin (`isTrackedBinanceAsset`)
@@ -322,7 +331,7 @@ type CapitalField = { time: string; readTime: TimeReader; settledStatus: number 
 const capitalItemOf =
   <Row>(
     readRow: Reader<Row>,
-    { time: timeField, readTime, settledStatus }: CapitalField,
+    { time: timeField, readTime, kind }: CapitalField,
   ): Reader<CapitalItem<Row>> =>
   (item) => {
     if (!isRecord(item)) {
@@ -337,7 +346,7 @@ const capitalItemOf =
 
     const status = optionalFiniteNumber(item.status);
 
-    if (ticker === '' && status === settledStatus) {
+    if (ticker === '' && isCapitalSettled(kind, status)) {
       return parseFailure();
     }
 
@@ -365,7 +374,8 @@ const capitalPage =
 /**
  * `walletType` is 0 for Spot and 1 for Funding. `txId` is empty for a movement
  * with no on-chain hash. The read is account-wide, so `coin` names the asset of each record: a
- * record with no coin cannot be told from one of a coin that is not tracked, so it is unreadable.
+ * settled record with no usable coin cannot be told from one of a tracked coin, so it is
+ * unreadable and owed, and one not settled yet is counted with an empty ticker (`capitalItemOf`).
  */
 const DEPOSIT_FIELDS = {
   id: identifierOrEmpty,
@@ -401,13 +411,13 @@ export type BinanceWithdrawal = Parsed<typeof WITHDRAWAL_FIELDS>;
 const depositPage = capitalPage(recordReader(DEPOSIT_FIELDS), {
   time: 'insertTime',
   readTime: epochTime,
-  settledStatus: DEPOSIT_STATUS_SUCCESS,
+  kind: 'deposit',
 });
 
 const withdrawalPage = capitalPage(recordReader(WITHDRAWAL_FIELDS), {
   time: 'applyTime',
   readTime: epochOrDatetimeTime,
-  settledStatus: WITHDRAW_STATUS_COMPLETED,
+  kind: 'withdraw',
 });
 
 /**

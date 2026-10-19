@@ -1,6 +1,7 @@
 // The capital walk over the REAL repos: a disconnect before the first window commits must not
-// lose the range set 15 backfills. The legacy row time the walk plans from outlives the disconnect
-// (the rows stay), so the walk that reconnects records it at its first committed window.
+// lose the range the backfill of the other coins reads. The legacy row time the walk plans from
+// outlives the disconnect (the rows stay), so the walk that reconnects records it at its first
+// committed window.
 let mockDatabase: DatabaseSync;
 jest.mock('@kiko/db/client', () => {
   const actual = jest.requireActual('@kiko/db/client');
