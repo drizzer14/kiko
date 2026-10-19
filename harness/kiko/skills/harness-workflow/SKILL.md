@@ -178,9 +178,10 @@ RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ 
 Every write to the global memory dir is a permission prompt the user often misses, so:
 
 - A session or agent working in a worktree (orchestrators, their scribes, retrospects, every
-  other role agent) NEVER writes the global memory dir. It appends candidate lessons to
-  `.superpowers/sdd/<track>/lessons.md`, beside HANDOFF.md, and lists them in BATCH READY or
-  the completion report.
+  other role agent) NEVER writes the global memory dir. Candidate lessons go to
+  `.superpowers/sdd/<track>/lessons.md`, beside HANDOFF.md. The orchestrator appends what a
+  read-only agent (retrospect, reviewer, explorer, researcher) reports; a role agent with
+  write tools may append its own. All are listed in BATCH READY or the completion report.
 - Only the coordinator session writes the memory dir: ONE batch per merge or per coordinator
   retrospect, only durable lessons not already in the repo, preferring an edit of an existing
   memory over a new file. A scribe the coordinator spawns for that batch may do the writes.
