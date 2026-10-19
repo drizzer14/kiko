@@ -161,7 +161,8 @@ the edit form passes `currency` in its patch (D5).
 - Implicit accounts (property, debt) are reached as Accounts screen section heading -> their
   `AccountDetail` -> the Edit bar item (`navigation.navigate('AccountForm', { accountId })`) -> the
   account form in edit mode. The field shows there in task 6/6, together with the section total that
-  uses it (Q4). Task 5/6 hides it for implicit kinds, so no task tip shows a field with no effect.
+  uses it (Q4). Task 5/6 hides it for implicit kinds, so no task tip shows a field with no effect
+  (superseded: shown on implicit edit since task 6/6).
   The account-detail headline (task 4/6) already follows the stored currency of an implicit
   account before task 6/6, from the migrated value. That is the same display rule as every other
   account, not a field without an effect.
@@ -209,7 +210,7 @@ the edit form passes `currency` in its patch (D5).
     is)
 - The Property and Debts section totals follow their implicit account's currency in task 6/6, with
   caption testIDs `property-total-converted` and `debts-total-converted` (Q4; the brief listed them
-  as staying in base).
+  as staying in base). The Q4 section totals depend on D7a: their currency needs a rate.
 - Fix the stale sentence in the `HoldingCard` header comment, "the account card already shows the
   base currency": the account card now shows the account's own currency.
 
@@ -219,6 +220,20 @@ A later base-currency change (`settingsRepo.setBaseCurrency`) never changes a st
 `accounts.currency` (ruling 5). Adding holdings in other currencies does not change it either. A
 real-SQLite repo test pins both. No code path recomputes the rule after 0062, except the restore of
 a pre-0062 file.
+
+### D7a. The rate refresh covers every account currency
+
+The card (D6) totals in `accounts.currency`, so that currency needs a rate or price even with no
+holding in it. `openCurrencies()` (`src/rates/open-currencies-gate/open-currencies-gate.ts`) is the
+union of `holdingsRepo.openCurrenciesQuery()` and `accountsRepo.openCurrenciesQuery()`
+(non-archived accounts). Its only caller is `refreshRates`; the sync top-up and the picker order
+stay holdings-only on purpose. Endpoints are unchanged (Monobank `/bank/currency`, NBU, CoinGecko,
+Binance public market), so there is no new network domain.
+
+The account form fires `refreshMarketData({ throttled: false, metals: false })`, fire-and-forget,
+after a write that stores a picked currency: a changed edit, a non-cash create with a pick, or a
+cash create. It fires right after `accountsRepo.update` (not after `setIcon`), and never for an
+unchanged pick or a failed write.
 
 ### D8. i18n
 

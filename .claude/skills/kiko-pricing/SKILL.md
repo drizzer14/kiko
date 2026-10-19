@@ -56,7 +56,7 @@ non-currency `price_points` store.
   (`src/currency/coins/coins.ts`), a stablecoin priced from the market,
   never 1:1.
 - **Binance public price fallback** (`src/rates/binance-market/`; read the
-  symbols there). A held coin CoinGecko left unpriced (all coins, when the
+  symbols there). A held or account coin CoinGecko left unpriced (all coins, when the
   CoinGecko leg fails) is asked of Binance (`fetchFallbackPrices`, called
   from `rates-refresh.ts`); its row has `source = 'binance'` (`sourceOf`;
   the TS and DB enums in `src/db/schema.ts` and `history-entry.ts`, no
@@ -191,7 +191,9 @@ first stored day later than the span start means NBU had no quote before it.
 Crypto history rules (`src/rates/coingecko-history/coingecko-history.ts`,
 `history-backfill.ts`; read the symbols there):
 
-- Only HELD coins are fetched. Each coin is its own CoinGecko request,
+- Only HELD coins and coins a non-archived account totals in are fetched
+  (`src/rates/open-currencies-gate/open-currencies-gate.ts`; kiko-architecture's
+  rate refresh section). Each coin is its own CoinGecko request,
   isolated: a coin that fails or answers empty is left out and logged,
   never written as a zero row, and never discards another coin's rows. The
   ids come from `curatedCoins` (`src/currency/coins/coins.ts`); a stablecoin
@@ -783,7 +785,7 @@ provider's own cache window (see "Currency-rate fallback chain"
 above) — do not poll faster than the upstream cache refreshes.
 
 `shouldThrottle` (`rates-refresh.ts`) treats `UAH` as always present
-in its "does every held currency already have a rate" check: a star
+in its "does every held or account currency already have a rate" check: a star
 row's `quote` is always `UAH` and its `base` never is, so
 `presentCurrenciesQuery` (a distinct `base` read) can never list
 `UAH` itself. Without this exception a base-USD user who holds UAH

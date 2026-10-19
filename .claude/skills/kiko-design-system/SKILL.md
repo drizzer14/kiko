@@ -762,8 +762,11 @@ new component can land between reviews of this skill:
   `formatMoney`). `money: null` renders nothing, so a caller passes
   `null` for "same currency" or "no rate" instead of guarding the
   element. Consumers: `AccountTotal`
-  (`src/screens/accounts/account-total/`, the account card, testID
-  passed as `convertedTestID`), `HoldingCard`
+  (`src/screens/accounts/account-total/`, the account card
+  (`account-card-converted`) and the Accounts section headings
+  (`renderHoldingSection`; `property-total-converted`,
+  `debts-total-converted`), testID passed as `convertedTestID`; find
+  them with `grep -rn convertedTestID src`), `HoldingCard`
   (`holding-card-converted`) and the account-detail headline
   (`account-detail-converted`, through `EntityAmountHeader`'s
   `secondary`). Find them with `grep -rn ConvertedCaption src`.

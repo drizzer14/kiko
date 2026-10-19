@@ -1428,7 +1428,8 @@ offline seed, so an unrated crypto holding is excluded until a live
 CoinGecko price lands) — every fiat currency is covered by the bundled
 seed and effectively never drops.
 
-An account's total, on its card (`AccountTotal`) and in the
+An account's total, on its card (`AccountTotal`), on the
+Property/Debts section heading (implicit accounts) and in the
 account-detail headline
 (`src/screens/account-detail/account-detail.screen.tsx`; before the
 row loads it falls back to `account?.currency ?? baseCurrency`, hidden
@@ -1440,7 +1441,7 @@ baseCurrency, rates, now, book)`
 `total`, so no double rounding through the UAH pivot); `inBase` is
 `null` when the account is in the base currency or
 `canConvert(account, base)` is false. The caption
-(`ConvertedCaption`, card and detail alike) renders only for a
+(`ConvertedCaption`, card, section heading and detail alike) renders only for a
 non-null `inBase`.
 
 `buildTypeBreakdown` (`src/statistics/type-breakdown/`, the by-type
@@ -1469,14 +1470,21 @@ SIGNED (net) sums of every holding, so the breakdown still adds up to
 the headline exactly as it always did — a debt nets into its own
 currency's cell there, unlike Statistics' assets-only pie. Accounts'
 own "Debts" section (`accounts.screen.tsx`) computes its OWN section
-total independently, via `guardedNetWorth` of the OPEN holdings of the
-implicit debt account (it holds only `loan` holdings, so this total is
-always <= 0; one card per loan); it does not call `buildDebtTotal`,
-which sums across every account kind. The implicit property account
-gets the SAME treatment: its own "Property" section (one card per open
-holding), its own `guardedNetWorth`-summed section total over that
-account's open holdings, rendered between the main grid and the Debts
-section. A section with no open holding does not render. Read `kiko-charts` for the pie/line-specific rules.
+total independently: `accountTotal` (via `useSectionTotals`) over the
+OPEN holdings of the implicit debt account, in THAT account's
+currency, rendered by `AccountTotal` with a base `ConvertedCaption`
+(testIDs `debts-total-converted`, `property-total-converted`). It is
+the same figure and caption as the account's detail headline (spec D6
+parity, pinned by `src/test-support/implicit-total-parity.ts`); it
+does not use `guardedNetWorth` as Home does. The debt account holds
+only `loan` holdings, so its total and caption are <= 0 (one card per
+loan); it does not call `buildDebtTotal`, which sums across every
+account kind. The implicit property account gets the SAME treatment:
+its own "Property" section (one card per open holding) with the same
+`accountTotal` figure and caption, rendered between the main grid and
+the Debts section. A section renders only for a live implicit account
+row with at least one open holding; with none it does not render.
+Read `kiko-charts` for the pie/line-specific rules.
 
 ### Bond funding recognition (net-worth series only)
 

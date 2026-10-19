@@ -256,7 +256,8 @@ file.
     a row missing after load.
     Known interim state until task 6/6: an implicit account's Property/Debts heading shows the
     base total while its detail page shows the account currency (spec D6 parity is restored by
-    task 6/6; the merge waits for 6/6).
+    task 6/6; the merge waits for 6/6) (resolved in task 6/6; a section renders only for a live
+    account row, so there is no base-total state).
   - `EntityAmountHeader` takes `money={total}` and
     `secondary={<ConvertedCaption money={inBase} testID="account-detail-converted" />}`.
   - `CurrencyBreakdown` stays unchanged.
@@ -374,6 +375,15 @@ file.
 **Checks:** tests red then green; heading/detail parity pin; existing section-total pins
 unchanged; heading a11y test (it reads
 the total) re-checked.
+
+**Fix rounds:** review found two gaps the spec lacked, now spec D7a.
+(1) `ed508723`: `openCurrencies()` included only holding currencies, now also
+`accountsRepo.openCurrenciesQuery()`; parity fixture `src/test-support/implicit-total-parity.ts`.
+(2) `03dc5803`: the account form fired no `refreshMarketData` after a pick, now
+`refreshAfterCurrencyWrite` (fires after the update commit, not after `setIcon`); `e95b234e` is a
+comment fix. Task 6/6 files also include `src/rates/open-currencies-gate`,
+`src/accounts/accounts.repo.ts`, `rates-refresh.ts` comments and `src/test-support/*`. The
+mutation file count comes from `make mutable`.
 
 ---
 
