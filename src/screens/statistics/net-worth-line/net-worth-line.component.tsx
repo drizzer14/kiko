@@ -62,6 +62,10 @@ type NetWorthLineProps = {
   baseCurrency: Currency;
   loading?: boolean;
   height?: number;
+  // The free room the host leaves above the chart, in spacing units: how far the scrub label may
+  // reach above the plot. The chart cannot see its neighbours, so the host that owns the gap
+  // passes it; with none the label stays inside the plot.
+  spaceAbove?: number;
 };
 
 // The logical SVG coordinate space. The plot stretches to the container's real
@@ -488,13 +492,22 @@ type ScrubLabelProps = {
   plotWidth: number;
   gap: number;
   tipY: number;
+  maxOverhang: number;
 };
 
 // The small day label beside the scrub line. It measures its own width so `placeScrubLabel` can
 // flip it away from a plot edge, and the height of its amount line so the gap between the amount
 // and the date lands on `tipY`, the top end of the scrub line. It stays invisible until all of
 // them are known so the first frame never draws it mis-placed.
-const ScrubLabel: FC<ScrubLabelProps> = ({ money, time, lineX, plotWidth, gap, tipY }) => {
+const ScrubLabel: FC<ScrubLabelProps> = ({
+  money,
+  time,
+  lineX,
+  plotWidth,
+  gap,
+  tipY,
+  maxOverhang,
+}) => {
   const [labelWidth, setLabelWidth] = useState(0);
   const [amountHeight, setAmountHeight] = useState(0);
   const left = placeScrubLabel(lineX, labelWidth, plotWidth, gap);
@@ -507,8 +520,12 @@ const ScrubLabel: FC<ScrubLabelProps> = ({ money, time, lineX, plotWidth, gap, t
       onLayout={(event: LayoutChangeEvent) => setLabelWidth(event.nativeEvent.layout.width)}
       // The label has no vertical padding, so the gap sits exactly one amount line below its top.
       // The top goes above the plot's own top by design: the amount line is taller than the plot's
-      // top inset.
-      style={[styles.scrubLabel, { left, top: tipY - amountHeight, opacity: measured ? 1 : 0 }]}
+      // top inset. It stops at `maxOverhang`, the room the host leaves, so a large accessibility
+      // font cannot push the amount over the text above the chart; the gap then sits below the tip.
+      style={[
+        styles.scrubLabel,
+        { left, top: Math.max(tipY - amountHeight, -maxOverhang), opacity: measured ? 1 : 0 },
+      ]}
     >
       <View
         testID="net-worth-line-scrub-amount"
@@ -529,6 +546,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   baseCurrency,
   loading = false,
   height = DEFAULT_HEIGHT,
+  spaceAbove = 0,
 }) => {
   const { theme } = useUnistyles();
   // The scrub state sits above the empty/loading early return so the hook order never changes.
@@ -854,6 +872,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               plotWidth={plotWidth}
               gap={theme.spacing(2)}
               tipY={PADDING_Y}
+              maxOverhang={theme.spacing(spaceAbove)}
             />
           </View>
         </GestureDetector>

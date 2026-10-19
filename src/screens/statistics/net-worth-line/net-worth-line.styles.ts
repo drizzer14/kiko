@@ -41,8 +41,8 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The scrub line's label: its `left` set inline from the measured plot width (the line moves
   // under the finger) and its `top` from the measured amount height, so the gap between amount
-  // and date sits on the line's tip. It has no background (user look check), so the line and the
-  // gridlines show behind it.
+  // and date sits on the line's tip. It has no background, so the line and the gridlines show
+  // behind it.
   scrubLabel: {
     position: 'absolute',
     paddingHorizontal: theme.spacing(1),
