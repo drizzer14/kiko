@@ -227,7 +227,13 @@ TIMEOUT-HEAVY file with how it was cleared. A TIMEOUT-HEAVY file (rule and const
 failure, the gate reruns the timed-out mutants alone and the final rerun report is the
 verdict. Only if that report still fails or the rerun was skipped does the BATCH READY
 carry the failed gate with each timed-out mutant proven in plain jest or written as
-equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file").
+equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file"). Proof tables are the
+fallback for a REAL timeout only: the standing jest-runner patch removed the regex cost that
+made heavy mutants time out. A gate scratch needs `npm ci` so the patch is applied; the
+`mutation.sh` preflight exits 2 on an unpatched runner.
+A proof gate whose pass criterion is 0 Timeout lists, in the same brief, the plain-jest
+check for each remaining timeout (id, covering files, a bounded run), so one residual
+timeout gets a verdict without a second gate.
 Never raise the timeout; there is no allowlist file. `make mutable` can print a
 `warning:` line after `changed lines: N` when a merged track inflates the count;
 see "Mutation base after a track merged next".
@@ -279,6 +285,8 @@ a test in the fix commit.
 
 - A ruling that narrows a rule or a guard is proven by a differential, base against HEAD, over
   the cases the rule decides; a sample the author picked is not proof.
+- Before dispatching a ruling that changes a guard decision, grep the test file's ALLOWED rows
+  for a case it would flip (a pinned `cp -r /tmp/kikox harness/` allowed row).
 - Plan text follows later decisions: the orchestrator updates the plan file in the same step that
   records the ruling, so the plan never contradicts it.
 - A guard change that alters a command the coordinator runs ships its CLAUDE.md change in the
@@ -440,7 +448,8 @@ merge-conflict files".
 ## The Stop tier replays the pre-write guard
 
 The kill-guard denies Bash writes into `src/`, `__tests__/`, `rules/`,
-`e2e/`, `drizzle/`, `scripts/`, `githooks/`, and YAML files; the denied forms and the known
+`e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`, `.claude/agents/`, all of
+`harness/kiko/`, and YAML files; the denied forms and the known
 limits are listed in
 kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
@@ -523,9 +532,11 @@ that reads the handoff file.
   dotted compare; an unreadable or missing version refuses). It also refuses any commit that
   lowers, removes, or makes unreadable that version while main has a readable one (user ruling
   2026-10-18); a missing manifest at main never refuses by this rule.
-- Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
-  checkout in place. Build the new file in scratch, run `bash -n`, grep
-  it for conflict markers, then install it with one `mv`.
+- Hook changes reach main only through `bash scripts/ff-main.sh <sha>` (a git fast-forward,
+  allowed). Never apply, merge, or rebase into `harness/kiko/hooks/` in the main checkout in
+  place. An emergency repair of a hook file there uses Edit/Write, checked with `bash -n` and a
+  grep for conflict markers. A shell `mv`/`cp` into `harness/kiko/` is denied by the SHELL-WRITE
+  rule.
 - A coordinator edit or commit of hook/harness code may be
   classifier-denied, but do not assume it. Offer to commit it yourself
   in one line, because it changes the guards and the user decides. On

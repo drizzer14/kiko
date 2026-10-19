@@ -43,7 +43,8 @@ Rules:
 - Flag any diff that alters a user-approved visual (locked decisions live in `kiko-design-system`) unless the user explicitly approved the change.
 - Execute kill-guard probe text ONLY through `scripts/checks/kill-guard-probe.sh`, with the sentinel `kg_sentinel_target` in place of any kill command and a fake main folder in place of the real one; real kill words go only in non-executed `decide()` tests. The runner is not a sandbox. See kiko-linter's "Probing the kill-guard".
 - The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
-  `githooks/` by name, and any `*.yml`/`*.yaml` file by extension, so a shell redirect or `cp`
+  `githooks/`, `.claude/skills/`, `.claude/agents/`, `harness/kiko/` by name,
+  and any `*.yml`/`*.yaml` file by extension, so a shell redirect or `cp`
   into a file under such a folder is denied inside a `git worktree add` of this
   repository, or for a path the guard cannot resolve. Build a fixture repository's tree with the
   committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with Edit/Write.

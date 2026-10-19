@@ -191,7 +191,8 @@ verified usage, not dead weight:
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, or a YAML
+  into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`,
+  `.claude/skills/`, `.claude/agents/`, `harness/kiko/`, or a YAML
   file, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
@@ -1088,7 +1089,7 @@ verified usage, not dead weight:
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
 
-- **patch-package patches (`patches/`, applied by `postinstall`)**: three patches edit
+- **patch-package patches (`patches/`, applied by `postinstall`)**: four patches edit
   `node_modules` after `npm ci`; re-check each on upgrade of its package.
   - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
     `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
@@ -1111,3 +1112,9 @@ verified usage, not dead weight:
     for an entry that decompresses to 512 KB or more AND compresses to under 80% of its
     original size, Hermes has no `Worker` global, so it threw `ReferenceError` on device (never
     under Jest).
+  - `patches/@stryker-mutator+jest-runner+8.7.1.patch` (`@stryker-mutator/jest-runner@8.7.1`,
+    `dist/src/jest-test-runner.js` and `dist/src/jest-plugins/mixin-jest-environment.cjs`): a
+    mutant run selects its covering tests exactly instead of through one `testNamePattern` regex
+    per mutant, which timed out on regex cost alone above a few hundred covering tests. Pinned
+    by `__tests__/stryker-jest-runner-patch.test.ts` and the `scripts/checks/mutation.sh`
+    preflight; full rule in `docs/harness/dependency-hygiene.md` ("Standing patch").

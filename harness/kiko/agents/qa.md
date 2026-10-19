@@ -23,8 +23,9 @@ Rules:
 - Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
-- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`,
-  `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`) and any `*.yml`/`*.yaml`
+- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`; kiko-linter
+  "SHELL-WRITE deny" names them, including `.claude/skills/`, `.claude/agents/` and all of
+  `harness/kiko/`) and any `*.yml`/`*.yaml`
   file only with Edit/Write.
   Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts,
   `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms;
@@ -37,7 +38,8 @@ Rules:
   red row before the fix (H9 I1: the xargs cp/mv fill had no red row).
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
-  `githooks/` by name, and any `*.yml`/`*.yaml` file by extension, so a shell redirect or `cp`
+  `githooks/`, `.claude/skills/`, `.claude/agents/`, `harness/kiko/` by name,
+  and any `*.yml`/`*.yaml` file by extension, so a shell redirect or `cp`
   into a file under such a folder is denied inside a `git worktree add` of this
   repository, or for a path the guard cannot resolve. Build a fixture repository's tree with the
   committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with Edit/Write.

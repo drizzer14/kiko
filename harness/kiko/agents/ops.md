@@ -44,6 +44,8 @@ Rules:
   over a few minutes in the background and wait only for its exit code; past 30 minutes on one
   step, report "still running: <step>, <elapsed>" instead of going quiet. Then include the command
   and output.
+- Never hand back while your own background job (a preloaded jest, a build) still runs: wait
+  for its exit code first.
 - Wait for load only via scripts/wait-load.sh; never a ps/pgrep grep loop (kill-guard denies it).
   `make verify` and mutation gates go through the shared one-at-a-time queue queued by
   `scripts/job-queue.sh` (see the ops skill's "Load rule" section); never start a second heavy job.

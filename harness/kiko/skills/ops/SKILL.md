@@ -28,9 +28,15 @@ Rules:
   changed lines are mutated. `scripts/checks/mutation.sh` exits 2 before Stryker
   starts when more than 30 files would be mutated (`MUTATION_FILE_CAP`);
   `KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not
-  resolve are refused directly (exit 2), and no env var bypasses the cap.
+  resolve are refused directly (exit 2), and no env var bypasses the cap. A patched-runner
+  preflight also exits 2 when the installed `@stryker-mutator/jest-runner` lacks the standing
+  patch marker (`npm ci` applies it; a gate scratch must run `npm ci` too).
   On that failure, split the run into smaller change sets — never raise
   the cap.
+  If `npm ci` in a gate scratch prints that install scripts were not run, the patch is NOT
+  applied (patch-package runs from `postinstall` and exits 0 on a failed apply): run
+  `npx patch-package` and confirm the `@stryker-mutator/jest-runner@8.7.1` line, or let the
+  mutation.sh preflight exit 2. Never start a gate without the marker.
 - A running gate can be paused with `kill -STOP` on its own pids (the
   stryker parent plus its `child-process-proxy-worker` children) and
   resumed with `kill -CONT` (verified 2026-10-10/11: kill-guard allows it
@@ -50,7 +56,8 @@ Rules:
   mode or a simulator session only when the score has headroom.
 - When TIMEOUT-HEAVY is the only failure, the gate itself reruns the timed-out mutants and its
   final rerun report is the verdict. Only if that report still fails, or the rerun was skipped,
-  does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file").
+  does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file"). A
+  proof table is the fallback for a real timeout only, not for regex cost (the patch removed it).
   Ops reports the failure block as is, never starts its own rerun, and never raises the timeout.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).

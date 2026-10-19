@@ -43,6 +43,11 @@ in the harness repo):
   defer on load in `job-queue.sh`; the `ff-main.sh` rule refusing a plugin.json version
   decrease, removal or unreadable version; the `knip-ignore-documented` pin suite
   (`__tests__/knip-ignore-documented.test.ts`).
+- H9 generic port: the Stryker jest-runner exact-Set patch (`patches/@stryker-mutator+jest-runner+
+  8.7.1.patch`, `__tests__/stryker-jest-runner-patch.test.ts`, the `mutation.sh` patched-runner
+  preflight, and the `docs/harness/dependency-hygiene.md` "Standing patch" section). The
+  mechanism is generic (it touches only the installed runner, not Kiko code); port
+  it only to a repo that runs Stryker's jest runner at those exact pinned versions.
 - H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
   comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
   and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks
@@ -249,6 +254,16 @@ Every count and exit code is the orchestrator's own measured result.
   kiko's, so port it as a configurable list (`WRITE_GUARDED_TREES`), not a hard-coded `drizzle`.
   The YAML rule (`YAML_FILE`, any `*.yml`/`*.yaml` in a worktree outside `node_modules/`) is
   also generic: port it as a configurable extension list.
+- kill-guard multi-segment `WRITE_GUARDED_TREES` entries: the generic part is the entry rule (a
+  resolved path inside any worktree matches; an unresolved path fails closed when the segments
+  appear as consecutive non-final segments, as written or with its `.` and `//` segments
+  folded; case-folded), the parent-folder rule (a `cp`/`mv` that lands a folder exactly on
+  `<worktree>/.claude` or the plugin folder's parent, or a recursive copy of a source's
+  contents there, is denied; `-T` counts only with a recursive flag), `expressionPaths`
+  judges resolved `/_` candidates and `namesGuardedTree` checks raw and normalized text, and
+  the `.claude/skills` and `.claude/agents` entries. The
+  plugin-folder entry is repo-specific: in the harness repo it is that repo's plugin folder,
+  not `harness/kiko`. Create `.claude/agents/.gitkeep` so the path resolves.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the
