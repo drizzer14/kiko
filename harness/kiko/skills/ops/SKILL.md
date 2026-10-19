@@ -33,6 +33,10 @@ Rules:
   patch marker (`npm ci` applies it; a gate scratch must run `npm ci` too).
   On that failure, split the run into smaller change sets — never raise
   the cap.
+  If `npm ci` in a gate scratch prints that install scripts were not run, the patch is NOT
+  applied (patch-package runs from `postinstall` and exits 0 on a failed apply): run
+  `npx patch-package` and confirm the `@stryker-mutator/jest-runner@8.7.1` line, or let the
+  mutation.sh preflight exit 2. Never start a gate without the marker.
 - A running gate can be paused with `kill -STOP` on its own pids (the
   stryker parent plus its `child-process-proxy-worker` children) and
   resumed with `kill -CONT` (verified 2026-10-10/11: kill-guard allows it

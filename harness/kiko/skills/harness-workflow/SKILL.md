@@ -231,6 +231,9 @@ equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file"). Proof ta
 fallback for a REAL timeout only: the standing jest-runner patch removed the regex cost that
 made heavy mutants time out. A gate scratch needs `npm ci` so the patch is applied; the
 `mutation.sh` preflight exits 2 on an unpatched runner.
+A proof gate whose pass criterion is 0 Timeout lists, in the same brief, the plain-jest
+check for each remaining timeout (id, covering files, a bounded run), so one residual
+timeout gets a verdict without a second gate.
 Never raise the timeout; there is no allowlist file. `make mutable` can print a
 `warning:` line after `changed lines: N` when a merged track inflates the count;
 see "Mutation base after a track merged next".

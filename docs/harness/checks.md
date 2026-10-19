@@ -47,7 +47,8 @@ Composite scripts:
   `KIKO_MUTATION_FULL=1` (whole project) and a `KIKO_MUTATION_BASE`
   that does not resolve are refused directly (exit 2), and no env var
   bypasses the cap. An unpatched `@stryker-mutator/jest-runner` (patched-runner preflight,
-  marker missing) also exits 2 before Stryker starts. There is no release-scope deep gate.
+  marker missing) also exits 2 before Stryker starts; it runs after the 0-file exit, so a
+  0-file change set exits 0 on an unpatched tree. There is no release-scope deep gate.
   **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached (queued with
@@ -81,7 +82,10 @@ Composite scripts:
   80 / 1496 / 68 / 1204; walk.ts mutant 55 (4781) 65 / 1699 / 65 / 705; transfer-history
   mutant 17 (449) 15 / 82 / 19 / 16. The standing patch selects the covering tests by an exact
   Set at `run_start` and builds no regex (`docs/harness/dependency-hygiene.md` "Standing
-  patch"; the preflight above refuses an unpatched runner). So a TIMEOUT-HEAVY file is now a
+  patch"; the preflight above refuses an unpatched runner). To compare covering-test
+  selections offline, index the test names by prefix (a trie): matching the real unanchored
+  case-insensitive alternation against thousands of test names did not finish in 15 min.
+  So a TIMEOUT-HEAVY file is now a
   REAL timeout (a loop or slow code), cleared by the rerun above.
   Proof (measured 2026-10-19, binance set 4 half-2 gate with the patch, 436 mutants): 2 h 11 min
   against 3 h 48 min for the same change set without it; change set total 94.04 (409 killed,

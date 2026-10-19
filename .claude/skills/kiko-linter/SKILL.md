@@ -800,7 +800,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   above, it counts the files it would mutate and, above
   `MUTATION_FILE_CAP` (30, a plain assignment in the script), prints the
   structured block and exits 2 BEFORE Stryker starts. A patched-runner preflight (after the
-  `--list` exit, before the dedup skip) exits 2 the same way when the installed
+  0-file exit and the `--list` exit, before the dedup skip; a 0-file change set exits 0 on an
+  unpatched tree) exits 2 the same way when the installed
   `@stryker-mutator/jest-runner` files lack the `kiko-patch: exact covering-test selection`
   marker. `__tests__/stryker-jest-runner-patch.test.ts` pins `@stryker-mutator/jest-runner`,
   `@stryker-mutator/core` and `jest-circus` versions and runs the patched code; an upgrade of
