@@ -28,6 +28,12 @@ export const accounts = sqliteTable(
       enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker'],
     }).notNull(),
     institution: text('institution'),
+    // The currency the account card totals in. Fixed once set: a base-currency change and a
+    // holding in another currency never move it, and it only changes what a screen shows, never a
+    // holding or an amount. The SQL default exists because SQLite cannot add a NOT NULL column
+    // without one; until every write path sets the currency, the default covers an insert that
+    // omits it.
+    currency: text('currency', { enum: currencyOptions }).notNull().default('UAH'),
     // The catalog identity this account REPRESENTS, per kind: a `bankCatalog`
     // id (`src/bank-sync/bank-catalog/`) for a `bank`, a `brokerCatalog` id
     // (`src/brokers/`) for a `broker`. Independent of `institution`

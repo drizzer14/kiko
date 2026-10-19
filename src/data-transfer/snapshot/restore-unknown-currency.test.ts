@@ -53,6 +53,7 @@ const categoryRuleSnapshot = (matchers: unknown): DataSnapshot => ({
 
 const UNKNOWN_CURRENCY_CASES: [string, DataSnapshot][] = [
   ['a holding', snapshotWithHolding('XYZ')],
+  ['an account', { ...emptySnapshot, accounts: [{ id: 'a1', currency: 'XYZ' }] as never }],
   ['a price point', { ...emptySnapshot, pricePoints: [{ id: 'p1', currency: 'XYZ' }] as never }],
   ['a rate base', { ...emptySnapshot, currencyRates: [{ base: 'XYZ', quote: 'USD' }] as never }],
   ['a rate quote', { ...emptySnapshot, currencyRates: [{ base: 'USD', quote: 'XYZ' }] as never }],

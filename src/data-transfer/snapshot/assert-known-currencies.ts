@@ -44,6 +44,7 @@ const hasUnknownBondTermsCurrency = (terms: unknown): boolean =>
   isRecord(terms) && isUnknownCurrency(terms.currency);
 
 const snapshotHasUnknownCurrency = (snapshot: DataSnapshot): boolean =>
+  hasUnknownCurrency(snapshot.accounts, ['currency']) ||
   hasUnknownCurrency(snapshot.holdings, ['currency']) ||
   hasUnknownCurrency(snapshot.pricePoints, ['currency']) ||
   hasUnknownCurrency(snapshot.currencyRates, ['base', 'quote']) ||

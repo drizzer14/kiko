@@ -30,6 +30,7 @@ const cryptoAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   color: null,
   sortOrder: 0,
   archivedAt: null,
+  currency: 'UAH',
   createdAt: 0,
   ...overrides,
 });

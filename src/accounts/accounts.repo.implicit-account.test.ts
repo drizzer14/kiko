@@ -90,6 +90,7 @@ describe('accountsRepo.createImplicitHolding', () => {
         icon: null,
         color: null,
         institution: null,
+        currency: 'UAH',
         bank_id: null,
         sort_order: 0,
         archived_at: null,

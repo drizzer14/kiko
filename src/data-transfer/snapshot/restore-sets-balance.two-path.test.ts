@@ -175,7 +175,10 @@ const readPreMarkerSnapshot = async (source: DatabaseSync): Promise<DataSnapshot
 
   return {
     ...emptySnapshot,
-    accounts: await sourceDrizzle.select().from(accounts).orderBy(asc(accounts.id)),
+    accounts: (await sourceDrizzle
+      .select(columnsWithout(getTableColumns(accounts), 'currency'))
+      .from(accounts)
+      .orderBy(asc(accounts.id))) as DataSnapshot['accounts'],
     holdings: preMarkerHoldings as HoldingRow[],
     transactions: preMarkerTransactions as TransactionRow[],
   };
