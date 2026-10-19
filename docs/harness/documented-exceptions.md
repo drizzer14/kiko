@@ -1089,7 +1089,7 @@ verified usage, not dead weight:
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
 
-- **patch-package patches (`patches/`, applied by `postinstall`)**: three patches edit
+- **patch-package patches (`patches/`, applied by `postinstall`)**: four patches edit
   `node_modules` after `npm ci`; re-check each on upgrade of its package.
   - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
     `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
@@ -1112,3 +1112,9 @@ verified usage, not dead weight:
     for an entry that decompresses to 512 KB or more AND compresses to under 80% of its
     original size, Hermes has no `Worker` global, so it threw `ReferenceError` on device (never
     under Jest).
+  - `patches/@stryker-mutator+jest-runner+8.7.1.patch` (`@stryker-mutator/jest-runner@8.7.1`,
+    `dist/src/jest-test-runner.js` and `dist/src/jest-plugins/mixin-jest-environment.cjs`): a
+    mutant run selects its covering tests exactly instead of through one `testNamePattern` regex
+    per mutant, which timed out on regex cost alone above a few hundred covering tests. Pinned
+    by `__tests__/stryker-jest-runner-patch.test.ts` and the `scripts/checks/mutation.sh`
+    preflight; full rule in `docs/harness/dependency-hygiene.md` ("Standing patch").
