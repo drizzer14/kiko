@@ -7,13 +7,18 @@ import {
   flexibleRewardOf,
   flexibleSubscriptionOf,
   lockedRewardOf,
+  listOf,
   lockedSubscriptionOf,
+  pointOf,
+  pointsIn,
+  unreadableEntryOf,
   untrackedEntryOf,
   walkOnce,
   worldOf,
 } from './binance.earn-test-fixtures';
 import { NOW } from './binance.pay-test-fixtures';
-import type { EarnRecordKind } from './binance.history-client';
+import type { BinanceEarnHistoryDeps } from './binance.earn-history';
+import { type EarnRecordKind, fetchEarnRecords } from './binance.history-client';
 
 const caughtUp = { cursor: agoMs(5) };
 
@@ -281,4 +286,97 @@ describe('an Earn row the client could not read', () => {
     expect(result.complete).toBe(false);
     expect(untrackedPatchesOf(deps)[0].tickers).toEqual(['PEPE']);
   });
+
+  describe('at the time of a reward group of a tracked coin', () => {
+    const time = agoMs(3);
+    const later = agoMs(2);
+    const unreadableReward = unreadableEntryOf('flexibleRewards', time);
+
+    it('holds a USDT reward at that time back and owes its point', async () => {
+      const world = worldOf(caughtUp);
+
+      const { result } = await walkOnce({
+        world,
+        entries: [
+          unreadableReward,
+          entryOf('flexibleRewards', flexibleRewardOf({ asset: 'USDT', rewards: '0.5', time })),
+          entryOf(
+            'flexibleRewards',
+            flexibleRewardOf({ asset: 'USDT', rewards: '0.25', time: later }),
+          ),
+        ],
+      });
+
+      expect(world.added.map((row) => row.time)).toEqual([later]);
+      expect(result.complete).toBe(false);
+      expect(pointsIn(listOf(world))).toContainEqual(pointOf(time, 'flexibleRewards'));
+    });
+
+    it('does not hold a USDT reward of the other product at that time', async () => {
+      const world = worldOf(caughtUp);
+
+      await walkOnce({
+        world,
+        entries: [
+          unreadableReward,
+          entryOf('lockedRewards', lockedRewardOf({ asset: 'USDT', amount: '0.5', time })),
+        ],
+      });
+
+      expect(world.added.map((row) => [row.time, row.holdingId])).toEqual([[time, 'created-USDT']]);
+    });
+  });
+});
+
+describe('an untracked locked redemption read through the client', () => {
+  const redemption = (isComplete: boolean) => ({
+    positionId: '9',
+    redeemId: 'r-9',
+    time: agoMs(2),
+    asset: 'doggo',
+    amount: '1',
+    type: 'AHEAD',
+    status: 'PAID',
+    isComplete,
+  });
+
+  // Binance answers each read with the redemption only when the read's window holds its time.
+  const servingOver = (row: ReturnType<typeof redemption>): typeof fetch =>
+    (async (url: string) => {
+      const query = new URL(url).searchParams;
+      const held =
+        url.includes('/locked/history/redemptionRecord') &&
+        Number(query.get('startTime')) <= row.time &&
+        row.time <= Number(query.get('endTime'));
+
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({ rows: held ? [row] : [], total: held ? 1 : 0 }),
+      };
+    }) as unknown as typeof fetch;
+
+  it.each([false, true])(
+    'is counted, imports no row and lists its ticker with isComplete %s',
+    async (isComplete) => {
+      const world = worldOf(caughtUp);
+
+      const { deps, result } = await walkOnce({
+        world,
+        over: {
+          fetchEarnRecords: jest.fn(
+            fetchEarnRecords,
+          ) as unknown as BinanceEarnHistoryDeps['fetchEarnRecords'],
+          fetchImpl: servingOver(redemption(isComplete)),
+        },
+      });
+
+      expect(world.added).toEqual([]);
+      expect(result.complete).toBe(true);
+      expect(untrackedPatchesOf(deps)).toEqual([
+        { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['DOGGO'] },
+      ]);
+    },
+  );
 });

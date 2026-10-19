@@ -558,3 +558,165 @@ describe('the request windows and the external ids and rows every walk produces 
     ]);
   });
 });
+
+const ETH_HOLDINGS = [
+  holdingWith('h-ETH', { binanceAsset: 'ETH' }),
+  holdingWith('h-ETH:funding', { binanceAsset: 'ETH:funding' }),
+  holdingWith('h-ETH:earn', { binanceAsset: 'ETH:earn' }),
+];
+
+const WITH_ETH = [FUNDING, EARN, ...ETH_HOLDINGS];
+
+const BTC_HOLDING_IDS = new Set(['h-spot', 'h-funding', 'h-earn']);
+
+const btcRowsOf = (rows: BinanceTransactionRow[]) =>
+  rows.filter((row) => BTC_HOLDING_IDS.has(row.holdingId));
+
+const ethRowsOf = (rows: BinanceTransactionRow[]) =>
+  rows.filter((row) => !BTC_HOLDING_IDS.has(row.holdingId));
+
+const ALONGSIDE_DEPS = {
+  now: () => NOW,
+  ensureHoldings: async () => undefined,
+  readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
+};
+
+const EMPTY_PAGE = {
+  rows: [],
+  unreadable: [],
+  untracked: [],
+  gathered: 0,
+  total: 0,
+  ...unweighted,
+};
+
+// A record of another coin that shares every id the BTC record has (a txId, an order id, a
+// transfer id, a purchase id): the BTC row must keep the key the same record has today, and the
+// other coin's row must not take it.
+describe("every BTC key equals today's key for the same record when another coin rides along", () => {
+  it('capital: a BTC deposit with no id keeps its bare hash, an ETH one with that hash adds its coin', async () => {
+    const ethDeposit: BinanceDeposit = JSON.parse(
+      `{"id":"","amount":"0.25","coin":"ETH","txId":"dep-tx-2","insertTime":${TWO_DAYS_AGO},"status":1,"walletType":1}`,
+    );
+    const { rows, addTransactions } = collector();
+    const overrides: Partial<BinanceTransactionSyncDeps> = {
+      ...walkedOver('capital', { cursor: NOW - 5 * DAY_MS }, WITH_ETH),
+      ...ALONGSIDE_DEPS,
+      addTransactions,
+      storedExternalIds: async () => new Set(),
+      latestTransactionTime: async () => undefined,
+      fetchDepositHistory: async (_key, _secret, window) => ({
+        ...EMPTY_PAGE,
+        rows: [...DEPOSITS, ethDeposit].filter((deposit) => within(window, deposit.insertTime)),
+      }),
+      fetchWithdrawHistory: async () => EMPTY_PAGE,
+    };
+
+    await syncBinanceTransactions({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
+
+    expect(placed(btcRowsOf(rows()))).toEqual([
+      ['acc-1:deposit:d-1', 'h-spot', 50_000_000],
+      ['acc-1:deposit:dep-tx-2', 'h-funding', 25_000_000],
+    ]);
+    expect(ethRowsOf(rows()).map((row) => row.externalId)).toEqual(['acc-1:deposit:dep-tx-2:ETH']);
+  });
+
+  it('pay: a BTC send keeps its key, an ETH send of the same order id adds its coin', async () => {
+    const ethOrder = payOrder({
+      currency: 'ETH',
+      amount: '-0.001',
+      fundsDetail: [
+        { currency: 'ETH', amount: '0.001', walletAssetCost: [{ walletType: 2, amount: '0.001' }] },
+      ],
+    });
+    const { rows, addTransactions } = collector();
+    const overrides: Partial<BinancePayHistoryDeps> = {
+      ...walkedOver('pay', { cursor: NOW - 30 * DAY_MS }, WITH_ETH),
+      ...ALONGSIDE_DEPS,
+      addTransactions,
+      fetchAccount: async () => ({ balances: [], uid: OWN }),
+      fetchPayHistory: async (_key, _secret, window) => {
+        const held = [payOrder(), ethOrder].filter((order) =>
+          within(window, order.transactionTime),
+        );
+
+        return { ...EMPTY_PAGE, rows: held, gathered: held.length };
+      },
+    };
+
+    await syncBinancePayHistory({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
+
+    expect(placed(btcRowsOf(rows()))).toEqual([['acc-1:pay:C2C:tx-1:2', 'h-spot', -100_000]]);
+    expect(ethRowsOf(rows()).map((row) => row.externalId)).toEqual(['acc-1:pay:C2C:tx-1:2:ETH']);
+  });
+
+  it('transfer: a BTC pair keeps its keys, an ETH pair of the same transfer id adds its coin', async () => {
+    const transfer = (asset: string, type: string): BinanceUniversalTransfer => ({
+      asset,
+      amount: '0.001',
+      type,
+      status: 'CONFIRMED',
+      tranId: 't-1',
+      timestamp: TWO_DAYS_AGO,
+    });
+    const transfers = [
+      transfer('BTC', 'MAIN_FUNDING'),
+      transfer('ETH', 'MAIN_FUNDING'),
+      transfer('BTC', 'FUNDING_MAIN'),
+      transfer('ETH', 'FUNDING_MAIN'),
+    ];
+    const { rows, addTransactions } = collector<BinanceHistoryRow>();
+    const overrides: Partial<BinanceTransferHistoryDeps> = {
+      ...walkedOver('transfer', { cursor: NOW - 5 * DAY_MS }, WITH_ETH),
+      ...ALONGSIDE_DEPS,
+      addTransactions,
+      fetchUniversalTransfers: async (_key, _secret, query) => {
+        const held = transfers.filter(
+          (one) => one.type === query.type && within(query, one.timestamp),
+        );
+
+        return { ...EMPTY_PAGE, rows: held, gathered: held.length, total: held.length };
+      },
+    };
+
+    await syncBinanceTransferHistory({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
+
+    expect(placed(btcRowsOf(rows()))).toEqual([
+      ['acc-1:xfer:FUNDING_MAIN:t-1:BTC', 'h-spot', 100_000],
+      ['acc-1:xfer:FUNDING_MAIN:t-1:BTC:funding', 'h-funding', -100_000],
+      ['acc-1:xfer:MAIN_FUNDING:t-1:BTC', 'h-spot', -100_000],
+      ['acc-1:xfer:MAIN_FUNDING:t-1:BTC:funding', 'h-funding', 100_000],
+    ]);
+    expect(ethRowsOf(rows()).map((row) => row.externalId)).toEqual([
+      'acc-1:xfer:FUNDING_MAIN:t-1:ETH',
+      'acc-1:xfer:FUNDING_MAIN:t-1:ETH:funding',
+      'acc-1:xfer:MAIN_FUNDING:t-1:ETH',
+      'acc-1:xfer:MAIN_FUNDING:t-1:ETH:funding',
+    ]);
+  });
+
+  it('earn: a BTC subscription and reward keep their keys, the ETH ones of the same ids add the coin', async () => {
+    const world = worldOf({ cursor: NOW - 5 * DAY_MS });
+
+    await walkOnce({
+      world,
+      entries: [
+        entryOf('flexibleSubscription', flexibleSubscriptionOf()),
+        entryOf('flexibleSubscription', flexibleSubscriptionOf({ asset: 'ETH' })),
+        entryOf('flexibleRewards', flexibleRewardOf()),
+        entryOf('flexibleRewards', flexibleRewardOf({ asset: 'ETH' })),
+      ],
+    });
+
+    expect(placed(btcRowsOf(uniqueByKey(world.added)))).toEqual([
+      ['acc-1:earn:reward:flexible:BTC001:REALTIME:1791417600000:0', 'h-earn', 12],
+      ['acc-1:earn:sub:flexible:p-1:BTC', 'h-spot', -100_000],
+      ['acc-1:earn:sub:flexible:p-1:BTC:earn', 'h-earn', 100_000],
+    ]);
+    expect(ethRowsOf(uniqueByKey(world.added)).map((row) => row.externalId)).toEqual([
+      'acc-1:earn:reward:flexible:BTC001:REALTIME:1791417600000:0:ETH',
+      'acc-1:earn:sub:flexible:p-1:ETH',
+      'acc-1:earn:sub:flexible:p-1:ETH:earn',
+    ]);
+  });
+});
