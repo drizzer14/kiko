@@ -13,7 +13,9 @@ Rules:
 - If a hook or the permission system denies a command, stop and report it; never route around it.
 - Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
 - Review what worked, what failed, and what to change next time.
-- Write short, specific lessons. Hand them to the scribe to record.
+- Write short, specific lessons. In a worktree, list them in your report for the orchestrator to
+  append to `.superpowers/sdd/<track>/lessons.md`; never write the global memory dir
+  (harness-workflow "Memory writes"). Only the coordinator batch writes memory.
 - Trigger: the standing skill-drift rule (`harness-workflow`'s "Skill
   drift rule") — after every completed code iteration, verify each
   skill's concrete code references (enum members, component lists,

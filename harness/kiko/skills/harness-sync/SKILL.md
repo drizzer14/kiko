@@ -218,6 +218,7 @@ LEFT OUT (with reason):
 
 REVIEW: <slices>, findings by severity, what was fixed, retrospect drift result.
 USER RULINGS applied: ...
+CANDIDATE LESSONS: see .superpowers/sdd/<track>/lessons.md; <one line per lesson, or "none">.
 CHANGELOG: <entry> / VERSION BUMP PROPOSAL: <version>, with any plugin/** line needing the user.
 FOLLOW-UPS: ...
 ```
