@@ -766,10 +766,12 @@ verified usage, not dead weight:
   `OVERRIDE_COMMENT_PATTERN` and its surrounding comments for the
   exact match rule. Every `paths.exclude` scope added to
   `rules/semgrep-prewrite.yml` (one per rule, pointing at the real
-  implementation a rule's own pattern would otherwise also flag) is
-  documented inline in that file's own comments next to each rule —
-  read the rule there rather than duplicating the list here, since a
-  new rule's exclude would otherwise drift this bullet out of date.
+  implementation a rule's own pattern would otherwise also flag) gets
+  its own bullet in this file, named by the rule id, as kiko-linter's
+  "Adding a pre-write guard rule" step 7 requires; the exact glob list
+  lives in the comments next to the rule in that file, so read the rule
+  there for it. Older rules may still have only the inline comment, and
+  gain a bullet the next time their exclude changes.
 
 - **`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`)
   excludes every test file (`*.test.ts`, `*.test.tsx`, `__tests__/**`,
@@ -790,6 +792,17 @@ verified usage, not dead weight:
   on a large array, the premise that makes `minOf`/`maxOf` necessary, so
   they must spell out the spread. `__tests__/pre-write-guard-rules.test.ts`
   proves the exclusion; the flat fixture pair still proves the rule.
+
+- **`kiko-component-explicit-return` (`rules/semgrep-prewrite.yml`) excludes
+  `*.test.tsx` and includes only `*.tsx`.** The exclude: a component local to
+  a test file is scaffolding, such as the stub screen
+  `const DetailScreen: FC = () => null;` in
+  `large-title-heading-bar.test.tsx`, and kiko-code-style's "One component per
+  file, each in its own folder" states that exemption. App components and the
+  components in `src/test-support/` are not exempt. The include: the rule reads
+  source text, string contents included, so a `.ts` harness test that quotes
+  component source stays outside it. `__tests__/pre-write-guard-rules.test.ts`
+  proves the include; the flat fixture pair proves the rule in `check:rules`.
 
 - **`kiko-no-root-calendars-value-import` (`rules/semgrep-prewrite.yml`)
   excludes `*.test.ts` and `*.test.tsx`.** The rule exists for bundle size,

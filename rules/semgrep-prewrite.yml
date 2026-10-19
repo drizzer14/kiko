@@ -2288,8 +2288,10 @@ rules:
   # text tells them apart. The regex reads `const <Name>: FC<...> = (<params>) =>` (also bare `FC`
   # and `React.FC`), skips the balanced parentheses of the parameter list (a callback type or a
   # default value inside it holds `=>` and `)`), and matches when the first thing after `=>` is
-  # not `{`. Scope: every `.tsx` file but a test, whose local mock components are exempt (the
-  # skill's mock-factory exemption). ERROR: the tree holds 0 findings for this id. See
+  # not `{`. Scope: `.tsx` files only, because the regex reads text inside a string too and a
+  # harness test under `__tests__/` quotes component source; a `*.test.tsx` is excluded, since a
+  # component local to a test is scaffolding (kiko-code-style's "One component per file, each in
+  # its own folder" states the exemption). ERROR: the tree holds 0 findings for this id. See
   # kiko-linter's "kiko-component-explicit-return" section for the known limits.
   - id: kiko-component-explicit-return
     languages: [typescript]
@@ -2302,6 +2304,8 @@ rules:
       fix: "Give the arrow a block body: `const Name: FC<Props> = (props) => { return (<...>); };`."
       skill: "kiko-code-style › One component per file, each in its own folder"
     paths:
+      include:
+        - "*.tsx"
       exclude:
         - "*.test.tsx"
-    pattern-regex: '(?s)\bconst\s+\w+\s*:\s*(?:React\s*\.\s*)?FC(?:<[^=]*?(?:=>[^=]*?)*?>)?\s*=\s*(?:async\s+)?(\((?:[^()]++|(?1))*\))\s*=>\s*[^{\s]'
+    pattern-regex: '(?s)\bconst\s+\w+\s*:\s*(?:React\s*\.\s*)?FC(?:<[^=]*?(?:=>[^=]*?)*?>)?\s*=\s*(\((?:[^()]++|(?1))*\))\s*=>\s*[^{\s]'

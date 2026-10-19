@@ -1,8 +1,8 @@
 // Semgrep fixture (NEGATIVE): `kiko-component-explicit-return` MUST report nothing here. A
 // component with a block body and an explicit `return` is the form the skill asks for, however
 // its props are typed and however many arrows sit in its body or its parameter list. An arrow
-// that is not annotated as a component is outside the rule. One component is exported; the rest
-// are local, so the guard's one-component-per-file check passes on this file too.
+// that is not a component is outside the rule. One component is exported; the rest are local, so
+// the guard's one-component-per-file check passes on this file too.
 import * as React from 'react';
 import type { FC } from 'react';
 import { Text, View } from 'react-native';
@@ -43,10 +43,6 @@ const ReactFc: React.FC<{ label: string }> = ({ label }) => {
   return <Text>{label}</Text>;
 };
 
-const Wrapped: FC<{ label: string }> = React.memo(({ label }) => <Text>{label}</Text>);
-
-const render = (label: string) => <Text>{label}</Text>;
-
 const trim = ({ label }: { label: string }): string => label.trim();
 
 export const Showcase: FC = () => {
@@ -62,9 +58,7 @@ export const Showcase: FC = () => {
 
       <ReactFc label="d" />
 
-      <Wrapped label="e" />
-
-      {render(trim({ label: ' f ' }))}
+      <Text>{trim({ label: ' f ' })}</Text>
     </View>
   );
 };

@@ -4,6 +4,8 @@
 // real src/test-support/ path instead. The rule MUST report a finding on each pinned line: a
 // mock of the design-system `Text` whose own factory forwards `variant`, whether the factory has
 // a block body or an expression body, and whether the module is named by alias or relatively.
+export {};
+
 // EXPECT-FINDING
 jest.mock('@kiko/design-system/components/text', () => {
   const React = require('react');

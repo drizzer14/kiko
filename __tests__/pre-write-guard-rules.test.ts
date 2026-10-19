@@ -275,6 +275,46 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     });
   });
 
+  // kiko-component-explicit-return reads source text, so its scope has to be the `.tsx` files
+  // that hold components: a harness test under `__tests__/` that quotes component source inside
+  // a string is `.ts` and must stay outside it. The `.tsx` control proves the same text is
+  // denied where a component can live.
+  describe('kiko-component-explicit-return scope (real semgrep)', () => {
+    const RULE_ID = 'kiko-component-explicit-return';
+    const componentSource = [
+      'const Row: FC<{ label: string }> = ({ label }) => (',
+      '  <Text>{label}</Text>',
+      ');',
+    ].join('\n');
+
+    function guardFor(relativePath: string, content: string): SpawnSyncReturns<string> {
+      const project = mkdtempSync(join(tmpdir(), 'kiko-explicit-return-scope-'));
+      try {
+        const target = join(project, relativePath);
+        mkdirSync(join(target, '..'), { recursive: true });
+
+        return runGuard(payloadFor(target, content), project);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    }
+
+    it('denies the component text in a `.tsx` file, which proves the scope reaches the rule', () => {
+      const result = guardFor(`src/probe/${RULE_ID}.tsx`, `${componentSource}\n`);
+
+      expect(result.status).toBe(2);
+      expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason).toContain(
+        `rule ${RULE_ID} at `,
+      );
+    });
+
+    it('leaves a `__tests__` .ts file that quotes the component text in a string alone', () => {
+      const content = ['export const source = `', componentSource, '`;', ''].join('\n');
+
+      expect(guardFor('__tests__/quoted-component.test.ts', content).status).toBe(0);
+    });
+  });
+
   // kiko-no-history-id-comment's own paths.exclude only names "e2e/**" and the harness
   // tree, never a bare "*.test.tsx" — unlike kiko-no-raw-color-literal, which excludes every
   // test file. A co-located test file under src/ (this project's own
