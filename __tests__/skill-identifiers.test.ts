@@ -165,7 +165,7 @@ const EXAMPLE_NAMES: readonly ExampleGroup[] = [
   {
     file: '.claude/skills/kiko-code-style/SKILL.md',
     reason: 'a deliberately wrong name shown beside the rule it breaks',
-    names: ['counterIBAN', 'isBtcEntry', 'makeCreateTransaction'],
+    names: ['counterIBAN', 'makeCreateTransaction'],
   },
   {
     file: '.claude/skills/kiko-code-style/SKILL.md',

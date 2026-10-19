@@ -906,9 +906,9 @@ code, so they stay lower-`an`/lower-`iban` rather than becoming
 not drift to fix — do not "correct" a wire-mirrored field to match the
 acronym rule.
 
-This applies inside a compound name too, not just standalone —
-`isBTCEntry` (`src/crypto-sync/binance/binance.provider.ts`), not
-`isBtcEntry`, is a live example.
+This applies inside a compound name too, not just standalone. The
+analyzer's acronym-run rule in `scripts/checks/full-word-identifiers.js` is the source of how a
+run like `maskedPAN` splits into words; read it there.
 
 Note: the Drizzle schema's own column names (`externalId`, `mcc`)
 follow ordinary camelCase per Drizzle/SQL convention, not this rule
