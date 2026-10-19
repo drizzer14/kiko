@@ -1,6 +1,29 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐ COORDINATOR HANDOFF (2026-10-18 ~17:50) — READ THIS FIRST
+## ⭐ COORDINATOR HANDOFF (2026-10-19 ~12:00) — READ THIS FIRST
+Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323. Event log: memory/refs/night-summary-2026-10-17.md
+(from "18:3x NEW COORDINATOR SESSION"; overnight mode 00:4x-08:1x). Morning list: memory/refs/morning-walkthrough-2026-10-19.md
+(all answered). The 2026-10-18 ~17:50 section below is HISTORY.
+FIRST ACTIONS of the next session:
+1. ListAgents. Queue: `bash scripts/job-queue.sh status` (empty at handoff). Power: `pmset -g batt` (AC at handoff).
+2. Arm: inbox watcher (memory/refs/coordinator-inbox.log), pmset watcher, gauge watchers (memory/refs/gaugewatch.sh, 40 %)
+   for the 5 tracks below.
+3. Keep the full verify output: queue from the coordinator with `> <scratchpad>/<label>.log`, never a grep tail.
+4. Log every event with `bash memory/refs/log-event.sh "<line>"` (pushes to Status; no polling).
+5. At EVERY merge into main: re-read this table for a track whose start waits on that merge (memory
+   start-gated-tracks-on-merge), run `npx patch-package` in the main checkout, and `claude plugin update` if plugin.json moved.
+| Thing | Value |
+|---|---|
+| main = next | 841b1ab7 (since 2026-10-18 18:00: H9 task 1 4f2324ea, Duo phase 2 0e7e37f2, H9 task 2 20a203ea, Binance set 5 1eb08738, H9 task 4 841b1ab7). Plugin 0.4.28 installed + reloaded in every session (binance-f9's reload was queued while busy: check). origin/main NOT pushed. |
+| BINANCE 1.3-a | binance-f9 = SendMessage "binance-backfill-fix-f9", term_b3c3d1a0-3749-41de-a1cf-9bef022992b3. Set 5 MERGED. Set 6 RUNNING (run 20261019T0817, plan 17d3a6ed, 13 steps, 2 deep halves). Answers: Q2 = A (user), Q1 B / Q3 A / Q4 B / Q5 A (coordinator, standing approval). Steps 4+5 never merge apart. |
+| H9 | h9-a2 = SendMessage "harness-h9-a2", term_e7dafee1-3b3a-4767-9b4e-ab30b0ca58b8. Tasks 1, 2, 4 MERGED. Task 3 (Stryker jest-runner patch) at harness-h9-t3 ff4a74d6: user CONFIRMED step 6 ruling A; next = main merge 841b1ab7 + plugin 0.4.29 + verify -> BATCH READY. Backlog grew (toMatchObject Set/Map rule first; dup.sh per-file ceiling; queue status race; patch-package after merge hook; i denylist; C-3/C-4). |
+| iPAD | ipad-a4 = SendMessage "ipad-phase3-a4", term_a56c4fcc-e78f-44f7-a916-5369c888b90c. Tasks 7, 9 deep gates cleared by Method A proof tables; main merged into ipad-phase3 (1c204110). Task 10/14 steps 1-2 done at 7bcd1f58. NEXT needs the user: step 3 native build in scratch ipad-t10-sim (queue HOLD), then sim captures, Stage Manager drags, Duo poses, approval. ipad-family stays unmerged. |
+| ACCOUNT CURRENCY (1.3) | acur-a1 = SendMessage "account-currency", term_ad27b8e1-a20f-40fd-89bc-793824d03f49, worktree account-currency from 841b1ab7. STARTED 2026-10-19 ~11:50 (late: missed at the Duo merge). Step 1 = spec + plan (45-60 min). Brief memory/refs/brief-account-card-currency.md. |
+| DUO | duo-g2 = SendMessage "duo-adaptive-g2", term_ddfc5c46-b2bf-4933-a4cb-643db770c2bd. Phase 2 MERGED; idle. Deferred list for the next Duo task in its HANDOFF-orchestrator.md "DONE". |
+| Status | term_22e8974a (memory/refs/status-terminal.txt); fed by log-event.sh. |
+| Plugin versions | 0.4.28 on main; H9 task 3 = 0.4.29; a later merge bumps above main. |
+
+## ⭐ COORDINATOR HANDOFF (2026-10-18 ~17:50) — HISTORY
 Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323. Event log: memory/refs/night-summary-2026-10-17.md
 (from "00:1x NEW COORDINATOR SESSION"). Open user items: memory/refs/morning-walkthrough-2026-10-18.md (items 1-21;
 answered ones are marked in the event log). The 2026-10-18 ~00:00 section below is HISTORY.
@@ -11,6 +34,7 @@ FIRST ACTIONS of the next session:
    40 %) for binance-f8 term_1b48d115-30c5-44bf-ae41-ec4fbcaa81cd, ipad-a3 term_1c2b9d42-d515-4174-bc8b-10de40123a03,
    duo-g1 term_9337ecde-d144-4d91-a9c7-42cffe45e036.
 3. Keep the full verify output: queue verifies from the coordinator with `> <scratchpad>/<label>.log`, never a grep tail.
+4. Log every event with `bash memory/refs/log-event.sh "<line>"` (it also pushes to Status; no Status polling).
 | Thing | Value |
 |---|---|
 | main = next | e405993e (today: release 1.2 follow-ups 33c58d53, H8 task 1 ca448f54, H8 task 4 1e299e28, Binance set 4 e405993e). Plugin 0.4.23 installed. origin/main NOT pushed. |
