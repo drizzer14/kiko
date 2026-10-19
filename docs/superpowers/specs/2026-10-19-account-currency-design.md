@@ -272,7 +272,7 @@ and kept only as the backfill.
 | empty, migrated | none | any | base 0 | none | base 0 |
 | cash USD, edited to EUR | cash USD 100 | rates | €(converted) | ₴ | n/a; holding stays USD 100 |
 
-## User rulings 2026-10-19 (Q1-Q3) and orchestrator defaults (Q4-Q7)
+## User rulings 2026-10-19 (Q1-Q4) and orchestrator defaults (Q5-Q7)
 
 **Q1. Which holdings decide the backfill currency? USER RULING: A.**
 Open holdings only (`closed_at IS NULL`), on every account, archived ones included. This matches
@@ -298,14 +298,13 @@ the card (D6). It is implemented in task 4/6.
 | USD, base UAH | UAH 1,000 + USD 50 | USD:UAH 40 | ₴3,000 | $75 | ₴3,000 |
 | BTC, base UAH | BTC 0.5 | no BTC rate | ₴0 | 0.5 BTC | none |
 
-**Q4. Property/Debts (implicit) accounts. Orchestrator default: A.**
+**Q4. Property/Debts (implicit) accounts. USER RULING: A.**
 The section heading total acts as the implicit account's card: it follows the account currency,
 with the base caption, and the field shows on the implicit edit (task 6/6).
-- B: the field shows and the totals stay in base. That leaves a control with no effect.
-- C: no field. That contradicts ruling 4.
+- B (rejected): the field shows and the totals stay in base. That leaves a control with no effect.
+- C (rejected): no field. That contradicts ruling 4.
 
-B or C means dropping or trimming task 6/6 only. This was numbered Q3 in the first spec. The
-relayed answers number the headline question as Q3, so the two questions swapped numbers.
+- was: open question. Options B and C were rejected.
 
 **Q5. Caption value.**
 - A. `guardedNetWorth(holdings, base)`, today's figure. Consequence: it equals the account's share

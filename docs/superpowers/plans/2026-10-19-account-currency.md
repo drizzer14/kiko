@@ -15,8 +15,8 @@ and an `AccountTotal` view.
 **Tech Stack:** Drizzle + op-sqlite (migrations through `run-migrations.ts`), `node:sqlite` tests
 (`src/test-support/real-sqlite.ts`), React Native, i18next.
 
-**Spec:** `docs/superpowers/specs/2026-10-19-account-currency-design.md` (D1-D9; Q1-Q3 are user rulings of
-2026-10-19, and Q4-Q7 are orchestrator defaults that the plan applies).
+**Spec:** `docs/superpowers/specs/2026-10-19-account-currency-design.md` (D1-D9; Q1-Q4 are user rulings of
+2026-10-19, and Q5-Q7 are orchestrator defaults that the plan applies).
 
 ## Global Constraints
 
@@ -333,9 +333,7 @@ file.
 
 ---
 
-### account-currency task 6/6: implicit accounts follow their currency (spec Q4 = A, orchestrator default)
-
-Drop or trim this task if the coordinator rules Q4 = B or C.
+### account-currency task 6/6: implicit accounts follow their currency (spec Q4 = A, user ruling)
 
 **Files (floor):**
 - Modify: `src/screens/accounts/accounts.screen.tsx` (`propertyTotal`/`debtsTotal` through
