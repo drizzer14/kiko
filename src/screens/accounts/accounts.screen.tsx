@@ -38,7 +38,6 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
-import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
@@ -47,9 +46,11 @@ import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshe
 import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
+import { accountTotal, buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import { OnAccentContext, selectedSurfaceStyles } from '@kiko/design-system/selected-surface';
 
 import { styles } from './accounts.styles';
+import AccountTotal from './account-total';
 import { useAccountsPane } from './use-accounts-pane';
 import ImplicitAccountHeading from './implicit-account-heading';
 
@@ -253,7 +254,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // render here: their holdings are the cards of their own sections below.
   const renderAccountCard = (item: (typeof activeAccounts)[number]) => {
     const accountHoldings = holdingsByAccount.get(item.id) ?? [];
-    const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now, priceBook);
+    const { total, inBase } = accountTotal(
+      accountHoldings,
+      item.currency,
+      baseCurrency,
+      rateTable,
+      now,
+      priceBook,
+    );
     const { icon, color } = accountIdentity(item);
 
     return (
@@ -307,9 +315,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 </Text>
               </Box>
             </Box>
-            <Box style={styles.rowAmount}>
-              <MoneyText money={balance} context="balance" />
-            </Box>
+            <AccountTotal total={total} inBase={inBase} convertedTestID="account-card-converted" />
           </Pressable>
         </Card>
       </CardContextMenu>

@@ -153,6 +153,7 @@ type Account = {
   id: string;
   name: string;
   kind: string;
+  currency?: string;
   institution?: string | null;
   archivedAt?: number | null;
   icon?: string | null;
@@ -192,7 +193,8 @@ const setLiveData = (data: {
   isStale?: Partial<Record<string, boolean>>;
 }): void => {
   const byTable: Record<string, unknown[]> = {
-    accounts: data.accounts ?? [],
+    // The base currency of every fixture, so an account that names none keeps the base totals.
+    accounts: (data.accounts ?? []).map((account) => ({ currency: 'UAH', ...account })),
     holdings: data.holdings ?? [],
     currency_rates: data.rates ?? [],
     settings: data.settings ?? [{ baseCurrency: 'UAH' }],
@@ -440,6 +442,47 @@ describe('AccountsScreen', () => {
     // Each account maps to its own Card (testID `account-card`),
     // so two active accounts yield two distinct cards rather than one group.
     expect(getAllByTestId('account-card')).toHaveLength(2);
+  });
+
+  describe('the account currency', () => {
+    const usdRate = [{ base: 'USD', quote: 'UAH', rate: '40' }];
+
+    it('totals a USD account in dollars with the base figure beneath', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Wise', kind: 'bank', currency: 'USD' }],
+        holdings: [{ accountId: 'a', currency: 'USD', balanceMinorUnits: 10_000 }],
+        rates: usdRate,
+      });
+      const { getByText, getByTestId } = await renderAccounts();
+
+      expect(getByText('$100.00')).toBeTruthy();
+      expect(within(getByTestId('account-card-converted')).getByText(/4,000\.00 ₴/)).toBeTruthy();
+    });
+
+    it('shows no caption for an account in the base currency', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+        holdings: [{ accountId: 'a', currency: 'USD', balanceMinorUnits: 10_000 }],
+        rates: usdRate,
+      });
+      const { getByText, queryByTestId } = await renderAccounts();
+
+      expect(getByText(/4,000\.00 ₴/)).toBeTruthy();
+      expect(queryByTestId('account-card-converted')).toBeNull();
+    });
+
+    it('shows a crypto account its own sum, with no caption and no zero in the base', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Cold wallet', kind: 'crypto', currency: 'BTC' }],
+        holdings: [{ accountId: 'a', currency: 'BTC', balanceMinorUnits: 50_000_000 }],
+        rates: [],
+      });
+      const { getByText, queryByText, queryByTestId } = await renderAccounts();
+
+      expect(getByText(/0\.5/)).toBeTruthy();
+      expect(queryByText(/0\.00 ₴/)).toBeNull();
+      expect(queryByTestId('account-card-converted')).toBeNull();
+    });
   });
 
   it('renders an empty state when there are no active accounts', async () => {

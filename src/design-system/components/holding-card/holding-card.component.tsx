@@ -31,7 +31,7 @@ import { styles } from './holding-card.styles';
 // a stored balance of 0), matching the account headline and the holding-detail
 // page. A holding in a currency OTHER than the base (main) currency shows a
 // smaller converted base-currency value beneath its own-currency value, so the
-// user reads both figures; the account card already shows the base currency.
+// user reads both figures; the account card shows the account's own currency.
 const HoldingCard: FC<{
   holding: HoldingRow;
   now: number;
