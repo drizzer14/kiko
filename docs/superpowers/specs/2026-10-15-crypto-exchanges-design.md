@@ -665,9 +665,10 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
   2026-10-19): the balance-sync time is stamped in `exchange_state` (JSON, no migration) and "Last
   sync" reads it, so an account with no tracked holding never shows "Never" after the anchor goes.
   Steps 4 and 5 are never merged apart.
-  KNOWN LIMIT (display only), coordinator ACCEPTED 2026-10-19: an account whose `exchange_state`
-  top level is malformed cannot get the balance-sync stamp, so an account with no holding shows
-  "Last sync: Never"; that account already shows the paused-history caption.
+  ACCEPTED DISPLAY GAP (display only, no data effect), coordinator
+  2026-10-19: an account whose `exchange_state` top level is malformed cannot get the balance-sync
+  stamp, so an account with no holding shows "Last sync: Never"; that account already shows the
+  paused-history caption.
 - Set 6 Q3 = A (coordinator ruling, standing approval, 2026-10-19): the oversized-history list
   patch is written on every span read that meets the stop, committed or not.
 - Set 6 Q5 = A (coordinator ruling, standing approval, 2026-10-19): `amount-malformed`,
