@@ -41,13 +41,6 @@ import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 
 import {
-  type BinanceWalletKey,
-  binanceKeyOf,
-  EARN_KEY,
-  FUNDING_KEY,
-  SPOT_KEY,
-} from './binance.holding-keys';
-import {
   type EarnRecordByKind,
   type EarnRecordKind,
   fetchEarnRecords,
@@ -61,6 +54,7 @@ import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
 import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceWalletKey, EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 /** The widest range an Earn history read takes is 30 days. */
 export const EARN_WINDOW_MS = 30 * DAY_MS;
@@ -799,11 +793,9 @@ const runSync = async (
     return { imported: 0, complete: false };
   }
 
-  const holdings = await deps.listHoldings(accountId);
-  const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
   const credentials = await deps.readCredentials(accountId);
 
-  if (spot === undefined || credentials === undefined) {
+  if (credentials === undefined) {
     return { imported: 0, complete: true };
   }
 

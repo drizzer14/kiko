@@ -632,17 +632,30 @@ describe('the rows of a settled record, written', () => {
     expect(stopCodes(warn)).toEqual([]);
   });
 
-  it('writes nothing for an account with no Spot holding or no credentials', async () => {
-    const noSpot = await walkOnce({ world: worldOf(), over: { listHoldings: async () => [] } });
+  it('writes nothing for an account with no credentials', async () => {
     const noKeys = await walkOnce({
       world: worldOf(),
       over: { readCredentials: async () => undefined },
     });
 
-    expect(noSpot.requests).toEqual([]);
     expect(noKeys.requests).toEqual([]);
-    expect(noSpot.result).toEqual({ imported: 0, complete: true });
     expect(noKeys.result).toEqual({ imported: 0, complete: true });
+  });
+
+  it('imports a flexible reward with no Spot BTC holding', async () => {
+    const world = worldOf(cursorBehind, []);
+
+    const { result } = await walkOnce({
+      world,
+      entries: [entryOf('flexibleRewards', flexibleRewardOf())],
+      over: { listHoldings: async () => world.others },
+    });
+
+    expect(world.events.filter((event) => event.startsWith('ensure:'))).toEqual([
+      'ensure:BTC:earn',
+    ]);
+    expect(world.added.map((row) => row.holdingId)).toEqual(['created-BTC:earn']);
+    expect(result.imported).toBe(1);
   });
 });
 

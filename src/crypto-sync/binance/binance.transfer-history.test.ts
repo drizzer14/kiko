@@ -827,17 +827,34 @@ describe('where the walk starts and what it never asks', () => {
     expect(requests.filter((request) => request.startTime === request.endTime)).toEqual([]);
   });
 
-  it('does nothing for an account with no Spot holding or no credentials', async () => {
-    const noSpot = await walkOnce({ world: worldOf(), over: { listHoldings: async () => [] } });
+  it('does nothing for an account with no credentials', async () => {
     const noKeys = await walkOnce({
       world: worldOf(),
       over: { readCredentials: async () => undefined },
     });
 
-    expect(noSpot.requests).toEqual([]);
     expect(noKeys.requests).toEqual([]);
-    expect(noSpot.result).toEqual({ imported: 0, complete: true });
     expect(noKeys.result).toEqual({ imported: 0, complete: true });
+  });
+
+  it('imports a Spot-to-Funding transfer with no Spot BTC holding', async () => {
+    const world = worldOf({ cursor: agoMs(5) }, []);
+
+    const { result } = await walkOnce({
+      world,
+      entries: [entryOf({ tranId: 'no-spot' })],
+      over: { listHoldings: async () => world.others },
+    });
+
+    expect(world.events.filter((event) => event.startsWith('ensure:'))).toEqual([
+      'ensure:BTC',
+      'ensure:BTC:funding',
+    ]);
+    expect(world.added.map((row) => row.holdingId).sort()).toEqual([
+      'created-BTC',
+      'created-BTC:funding',
+    ]);
+    expect(result).toEqual({ imported: 2, complete: true });
   });
 });
 

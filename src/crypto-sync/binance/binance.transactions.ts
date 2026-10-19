@@ -279,7 +279,6 @@ type WindowContext = {
   deps: BinanceTransactionSyncDeps;
   run: BinanceHistoryRun;
   accountId: string;
-  spot: HoldingRow;
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
@@ -413,8 +412,8 @@ const readSpan = async (
  * zero first, but only for a wallet that receives a row whose key is new. A row
  * whose key is already stored keeps its stored holding (the upsert never moves it),
  * so it must not conjure an empty holding it will never sit on; if its wallet has
- * none it travels under `spot`, which the upsert ignores. A wallet that cannot be
- * resolved even after creation stops the window.
+ * none it is left out of the write, and loses only the refresh of its own columns.
+ * A wallet that cannot be resolved for a new row, even after creation, stops the window.
  */
 const placeRows = async (
   context: WindowContext,
@@ -424,10 +423,10 @@ const placeRows = async (
     return [];
   }
 
-  const { deps, accountId, spot } = context;
+  const { deps, accountId } = context;
   // This lookup runs outside the `addManyDedup` write. A user delete of a stored row in
-  // that gap re-inserts it on the placeholder holding (`spot`), exactly as a row the
-  // walk had never imported would be: nothing is lost, only the user's delete is undone.
+  // that gap re-inserts it on its wallet's holding, exactly as a row the walk had never
+  // imported would be: nothing is lost, only the user's delete is undone.
   const stored = await deps.storedExternalIds(planned.map((row) => row.externalId));
   const newRows = planned.filter((row) => !stored.has(row.externalId));
   const holdings = await resolveWalletHoldings({
@@ -439,14 +438,18 @@ const placeRows = async (
     ensureHoldings: deps.ensureHoldings,
   });
 
-  return planned.map(({ wallet, ...row }) => {
-    const holding = holdings.get(wallet) ?? (stored.has(row.externalId) ? spot : undefined);
+  return planned.flatMap(({ wallet, ...row }) => {
+    const holding = holdings.get(wallet);
 
-    if (holding === undefined) {
-      throw new BinanceWalkStop('capital-holding-missing');
+    if (holding !== undefined) {
+      return [{ ...row, holdingId: holding.id }];
     }
 
-    return { ...row, holdingId: holding.id };
+    if (stored.has(row.externalId)) {
+      return [];
+    }
+
+    throw new BinanceWalkStop('capital-holding-missing');
   });
 };
 
@@ -575,7 +578,7 @@ const runSync = async (
   const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
   const credentials = await deps.readCredentials(accountId);
 
-  if (spot === undefined || credentials === undefined) {
+  if (credentials === undefined) {
     return { imported: 0, complete: true };
   }
 
@@ -588,11 +591,11 @@ const runSync = async (
   const { cursor, rescan: rescanCursor } = stored;
   const write = walkMarkWriterOf(deps, accountId, 'capital');
   const roundRobins = await readWalkRoundRobins({ stored, write });
-  // An account with no capital row falls back to nothing, and so starts at the floor.
-  const latest = await deps.latestTransactionTime(spot.id, [
-    `${accountId}:deposit:`,
-    `${accountId}:withdraw:`,
-  ]);
+  // An account with no capital row falls back to nothing, and so starts at the floor. So does one
+  // with no Spot BTC holding: the walk never ran there, so no legacy capital row is on one.
+  const latest = await foldMap(maybe(spot), ({ id }) =>
+    deps.latestTransactionTime(id, [`${accountId}:deposit:`, `${accountId}:withdraw:`]),
+  );
   const planCursor = cursor ?? latest ?? null;
   const pending = await readPendingMark({
     stored: stored.pending,
@@ -615,7 +618,6 @@ const runSync = async (
     deps,
     run,
     accountId,
-    spot,
     apiKey,
     secret,
     options,
@@ -655,10 +657,9 @@ const runSync = async (
  * `walletType` 1), idempotently, committing each span's rows before advancing the
  * mark past it. A run goes forward from the watermark first, then reads the overlap ground
  * earlier runs left owed, then re-scans the last window behind the watermark, each on what
- * budget is left (see `planWalkPasses`). Runs AFTER the balance
- * sync (which creates/updates the Spot holding), so the Spot holding it anchors on
- * already exists. A missing Spot holding, missing credentials, or an active
- * post-429/418 cooldown is a no-op. `complete: false` means history, owed ground or the
+ * budget is left (see `planWalkPasses`). Runs AFTER the balance sync, and creates the wallet
+ * holding a new row needs when none exists. Missing credentials, or an active post-429/418
+ * cooldown, is a no-op. `complete: false` means history, owed ground or the
  * re-scan remains and a later run will resume from the stored marks; a history request failure
  * OTHER than a rate limit rejects, so the caller can log it without failing the balance
  * sync.

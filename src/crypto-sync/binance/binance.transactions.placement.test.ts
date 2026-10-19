@@ -188,3 +188,72 @@ describe('capital placement on real SQLite', () => {
     expect(storedRows()).toHaveLength(1);
   });
 });
+
+describe('capital placement on real SQLite, with no Spot BTC holding', () => {
+  const spotHoldings = (): { id: string; name: string; balance_minor_units: number }[] =>
+    mockDatabase
+      .prepare(
+        "SELECT id, name, balance_minor_units FROM holdings WHERE json_extract(metadata, '$.binanceAsset') = 'BTC'",
+      )
+      .all() as { id: string; name: string; balance_minor_units: number }[];
+
+  beforeEach(() => {
+    mockDatabase = openDatabase();
+    mockDatabase.prepare("DELETE FROM holdings WHERE id = 'h-spot'").run();
+    mockDatabase
+      .prepare(
+        `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
+         VALUES ('h-funding', 'acc-1', 'Binance Funding', 'crypto_asset', 'BTC', 0, ?)`,
+      )
+      .run(JSON.stringify({ binanceAsset: 'BTC:funding' }));
+  });
+
+  it('creates the Spot BTC holding at zero for a new Spot deposit, and places the row on it', async () => {
+    const result = await runWalk([deposit({ walletType: 0 })]);
+
+    const [spot] = spotHoldings();
+    expect(result).toEqual({ imported: 1, complete: true });
+    expect(spot).toMatchObject({ name: 'Binance Spot · BTC', balance_minor_units: 0 });
+    expect(storedRows()).toEqual([
+      { external_id: 'acc-1:deposit:7', holding_id: spot.id, amount_minor_units: 50_000_000 },
+    ]);
+  });
+
+  it('creates no second Spot holding and no second row on a second identical run', async () => {
+    const deposits = [deposit({ walletType: 0 })];
+
+    await runWalk(deposits);
+    const secondRun = await runWalk(deposits);
+
+    expect(secondRun).toEqual({ imported: 0, complete: true });
+    expect(spotHoldings()).toHaveLength(1);
+    expect(storedRows()).toHaveLength(1);
+  });
+
+  // Q4: a stored row whose wallet has no holding keeps what it has (the walk only loses the
+  // refresh of its own columns), and a new row of the same window still imports.
+  it('leaves a stored row out of the write, whatever it now reads as, and imports a new row beside it', async () => {
+    await transactionsRepo.addManyDedup([
+      {
+        holdingId: 'h-funding',
+        amountMinorUnits: 50_000_000,
+        time: DEPOSIT_TIME,
+        source: 'binance',
+        externalId: 'acc-1:deposit:7',
+        description: 'BTC',
+      },
+    ]);
+
+    const result = await runWalk([
+      deposit({ walletType: 0, amount: '0.9' }),
+      deposit({ id: '8', walletType: 1 }),
+    ]);
+
+    expect(result).toEqual({ imported: 1, complete: true });
+    expect(spotHoldings()).toEqual([]);
+    expect(storedRows()).toEqual([
+      { external_id: 'acc-1:deposit:7', holding_id: 'h-funding', amount_minor_units: 50_000_000 },
+      { external_id: 'acc-1:deposit:8', holding_id: 'h-funding', amount_minor_units: 50_000_000 },
+    ]);
+  });
+});

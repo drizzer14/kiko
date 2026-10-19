@@ -46,13 +46,6 @@ import {
   type FetchAccountOptions,
 } from './binance.client';
 import {
-  type BinanceWalletKey,
-  binanceKeyOf,
-  EARN_KEY,
-  FUNDING_KEY,
-  SPOT_KEY,
-} from './binance.holding-keys';
-import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
   RESYNC_OVERLAP_MS,
@@ -68,6 +61,7 @@ import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceWalletKey, EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 /** Binance rejects a Pay `startTime`/`endTime` gap of 90 days or more. */
 export const PAY_WINDOW_MS = 89 * DAY_MS;
@@ -647,11 +641,9 @@ const runSync = async (
     return { imported: 0, complete: false };
   }
 
-  const holdings = await deps.listHoldings(accountId);
-  const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
   const credentials = await deps.readCredentials(accountId);
 
-  if (spot === undefined || credentials === undefined) {
+  if (credentials === undefined) {
     return { imported: 0, complete: true };
   }
 

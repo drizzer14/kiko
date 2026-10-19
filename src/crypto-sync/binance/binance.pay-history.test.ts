@@ -384,14 +384,38 @@ describe('the walk and the capital walk', () => {
     ]);
   });
 
-  it('does nothing, and is complete, with no Spot holding or no credentials', async () => {
-    const noSpot = makeDeps({ listHoldings: async () => [] });
+  it('does nothing, and is complete, with no credentials', async () => {
     const noCredentials = makeDeps({ readCredentials: async () => undefined });
 
-    expect(await sync(noSpot)).toEqual({ imported: 0, complete: true });
     expect(await sync(noCredentials)).toEqual({ imported: 0, complete: true });
-    expect(noSpot.fetchPayHistory).not.toHaveBeenCalled();
     expect(noCredentials.fetchPayHistory).not.toHaveBeenCalled();
+  });
+
+  it('imports a send with no Spot BTC holding and creates its wallet holding', async () => {
+    let created: HoldingRow[] = [];
+    const seeded = payWalkAt(NOW - 3_600_000);
+    const deps = makeDeps({
+      ...seeded,
+      listHoldings: async () => created,
+      ensureHoldings: jest.fn(async () => {
+        created = [holdingWith('h-funding', { binanceAsset: 'BTC:funding' })];
+      }),
+      fetchPayHistory: scripted([payPage([order({ walletType: 1, fundsDetail: costOn(1) })])]),
+    });
+    const accountId = nextAccountId();
+
+    const result = await sync(deps, accountId);
+
+    expect(deps.ensureHoldings).toHaveBeenCalledWith([
+      expect.objectContaining({
+        accountId,
+        name: 'Binance Funding · BTC',
+        metadataKey: 'BTC:funding',
+        balanceMinorUnits: 0,
+      }),
+    ]);
+    expect(addedRows(deps).map((row) => row.holdingId)).toEqual(['h-funding']);
+    expect(result).toEqual({ imported: 1, complete: true });
   });
 });
 
