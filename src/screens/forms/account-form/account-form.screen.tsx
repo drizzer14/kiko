@@ -220,7 +220,8 @@ const currencyPatch = (
 // A currency the user just picked needs its rate visible without an app restart: the rate gate
 // counts a non-archived account's currency, but only a refresh fetches the rate. The SAME gated
 // refresh the holding form runs after a create, unthrottled (a deliberate user action, not a
-// background poll); it no-ops when the currency already has a rate. No metals: an account
+// background poll). It skips the network only when every held and account currency is the base
+// currency, so the cost is one fetch per save, as for the holding form. No metals: an account
 // currency is a fiat or a coin, and a metal price is only read for a held metal.
 // `refreshMarketData` never rejects and logs its own failure, so a committed write never turns
 // into a shown error; fire-and-forget, as Save must not sit on the network before navigating
