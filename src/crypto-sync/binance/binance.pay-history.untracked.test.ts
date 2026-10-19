@@ -42,6 +42,7 @@ const untrackedOrder = (
 ): BinanceUntrackedPayOrder => ({
   tickers: ['PEPE'],
   transactionTime: PAID_AT,
+  received: false,
   ...over,
 });
 
@@ -310,6 +311,92 @@ describe('a Pay order of an untracked coin paid in a tracked coin', () => {
     expect(untrackedPatchesOf(deps)).toEqual([
       { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['XYZ'] },
     ]);
+  });
+
+  describe('by the direction of the order', () => {
+    const receivedFromXyzPayer = {
+      amount: '12.5',
+      payerInfo: party('Bob', OTHER),
+      receiverInfo: party('Me', OWN),
+      fundsDetail: [{ currency: 'XYZ', amount: '3', walletAssetCost: [] }],
+    };
+
+    it('lists no coin of the funds of a USDT receive the payer paid in XYZ', async () => {
+      const deps = makeDeps({
+        fetchPayHistory: pageAtNow(
+          payPage([order({ currency: 'USDT', walletType: undefined, ...receivedFromXyzPayer })]),
+        ),
+      });
+
+      const result = await sync(deps);
+
+      expect(addedRows(deps)).toEqual([
+        expect.objectContaining({ holdingId: 'h-USDT', amountMinorUnits: 1_250_000_000 }),
+      ]);
+      expect(untrackedPatchesOf(deps)).toEqual([]);
+      expect(result).toEqual({ imported: 1, complete: true });
+    });
+
+    it('still lists the own untracked coin of a receive, and not the coin of its funds', async () => {
+      const received = xyzSend({
+        ...receivedFromXyzPayer,
+        fundsDetail: [
+          { currency: 'USDT', amount: '1', walletAssetCost: [] },
+          ...receivedFromXyzPayer.fundsDetail,
+          { currency: 'ABC', amount: '2', walletAssetCost: [] },
+        ],
+      });
+      const deps = makeDeps({ fetchPayHistory: pageAtNow(payPage([received])) });
+
+      await sync(deps);
+
+      expect(untrackedPatchesOf(deps)).toEqual([
+        { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['XYZ'] },
+      ]);
+    });
+
+    it('lists the coin of the funds of a USDT send paid in XYZ', async () => {
+      const sent = order({
+        currency: 'USDT',
+        amount: '-12.5',
+        fundsDetail: receivedFromXyzPayer.fundsDetail,
+      });
+      const deps = makeDeps({ fetchPayHistory: pageAtNow(payPage([sent])) });
+
+      await sync(deps);
+
+      expect(untrackedPatchesOf(deps)).toEqual([
+        { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['XYZ'] },
+      ]);
+    });
+
+    it('lists only the own coin of an untracked order whose amount says receive', async () => {
+      const deps = makeDeps({
+        fetchPayHistory: pageAtNow(
+          payPage([], [untrackedOrder({ tickers: ['XYZ', 'ABC'], received: true })]),
+        ),
+      });
+
+      await sync(deps);
+
+      expect(untrackedPatchesOf(deps)).toEqual([
+        { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['XYZ'] },
+      ]);
+    });
+
+    it('lists the own coin and the funds coins of an untracked order whose amount says send', async () => {
+      const deps = makeDeps({
+        fetchPayHistory: pageAtNow(
+          payPage([], [untrackedOrder({ tickers: ['XYZ', 'ABC'], received: false })]),
+        ),
+      });
+
+      await sync(deps);
+
+      expect(untrackedPatchesOf(deps)).toEqual([
+        { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['XYZ', 'ABC'] },
+      ]);
+    });
   });
 
   it('keeps a Pay-only untracked coin on the not-tracked line after the next balance read', async () => {

@@ -498,11 +498,14 @@ const PAY_SUCCESS_CODE = '000000';
  * it can be off contract in any way without stalling the tracked orders. Only what the walk needs
  * is kept: the upper-cased tickers it names (its own coin first, then each coin of its funds
  * that names one), to list them, and its time as a finite number, or `undefined`, which says
- * where it sits in a span.
+ * where it sits in a span. `received` is whether its amount is a positive number: an order that
+ * is never parsed has no parties to read a direction from, so its sign is the only signal, and
+ * an amount that is no usable number is not a receive.
  */
 export type BinanceUntrackedPayOrder = {
   tickers: string[];
   transactionTime: number | undefined;
+  received: boolean;
 };
 
 /**
@@ -534,6 +537,12 @@ const fundsTickersOf = (fundsDetail: unknown): string[] =>
     return ticker === '' ? [] : [ticker];
   });
 
+const isReceivedAmount = (amount: unknown): boolean => {
+  const value = typeof amount === 'string' ? Number(amount) : amount;
+
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+};
+
 const readPayItem: Reader<PayItem> = (value) => {
   if (!isRecord(value)) {
     return parseFailure();
@@ -544,7 +553,13 @@ const readPayItem: Reader<PayItem> = (value) => {
 
   return tickers.some(isTrackedBinanceAsset)
     ? { order: readTrackedPayOrder(value) }
-    : { untracked: { tickers, transactionTime: optionalFiniteNumber(value.transactionTime) } };
+    : {
+        untracked: {
+          tickers,
+          transactionTime: optionalFiniteNumber(value.transactionTime),
+          received: isReceivedAmount(value.amount),
+        },
+      };
 };
 
 const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {

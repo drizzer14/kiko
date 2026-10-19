@@ -572,17 +572,21 @@ const fetchSpan = async (
 /**
  * The tickers the orders of a page name that the walk does not track: the coin of an order read
  * strictly that is not tracked (a send in it is paid in a tracked coin, a receive of it has no
- * row), a coin of its funds that is not tracked, and every ticker of an order counted and never
- * read. Every order names them the same way, whatever its direction: an order counted and never
- * read has no uid-read direction, so the two kinds are not told apart.
+ * row), a coin of its funds that is not tracked, and the tickers of an order counted and never
+ * read. The funds of a receive are the payer's, so a receive names only its own coin: the
+ * direction of an order read strictly is the uid's (`payDirection`), and that of an order never
+ * read is its amount's sign, as it has no parties.
  */
-const untrackedTickersOf = (page: PayHistoryPage): string[] => [
+const untrackedTickersOf = (page: PayHistoryPage, uid: string): string[] => [
   ...page.rows.flatMap((order) =>
-    [order.currency, ...order.fundsDetail.map((entry) => entry.currency)].filter(
-      (ticker) => !isTrackedBinanceAsset(ticker),
-    ),
+    (payDirection(order, uid) === 'in'
+      ? [order.currency]
+      : [order.currency, ...order.fundsDetail.map((entry) => entry.currency)]
+    ).filter((ticker) => !isTrackedBinanceAsset(ticker)),
   ),
-  ...page.untracked.flatMap((order) => order.tickers),
+  ...page.untracked.flatMap((order) =>
+    order.received ? order.tickers.slice(0, 1) : order.tickers,
+  ),
 ];
 
 /**
@@ -614,7 +618,13 @@ const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistory
       rowsOf: () => [],
       extentOf: (order) => instantAt(order.transactionTime),
     }),
-    { rows: [], codes: [], owed: [], returned: [], untracked: untrackedTickersOf(page) },
+    {
+      rows: [],
+      codes: [],
+      owed: [],
+      returned: [],
+      untracked: untrackedTickersOf(page, context.uid),
+    },
   ]);
 
 /**
