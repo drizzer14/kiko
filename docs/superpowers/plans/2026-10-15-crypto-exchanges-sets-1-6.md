@@ -1442,8 +1442,8 @@ Files: `binance.transfer-history.ts` (the walk-level `record.asset !== BINANCE_A
 `holdingKeyOf(asset, wallet)`), `binance.history-client.ts` (`totalPage` takes its row filter per call:
 Transfer's `transferPage` passes a tracked-row reader; a row whose upper-cased `asset` the tracked rule accepts is
 read strictly; any other is counted, imports no row, and its ticker is reported for `untrackedCoins.history`; the
-Earn page keeps passing the BTC-only `btcRowOf` until step 9, so no non-BTC Earn row reaches the BTC-only Earn walk at
-this step's tip), `exchange/paging/paging.ts` (`TotalPage` gains the reported tickers; re-grep
+Earn page kept its BTC-only row reader until step 9 (it was removed in `1a938441`, when Earn took the tracked-row
+reader), so no non-BTC Earn row reaches the BTC-only Earn walk at this step's tip), `exchange/paging/paging.ts` (`TotalPage` gains the reported tickers; re-grep
 `fetchAllByTotal`), tests.
 - [ ] "was:" pins (titles re-grepped at `1eb08738`): `binance.transfer-history.test.ts` "a row of another asset gives
       no row", "a transfer of another asset is ignored, and counted for the pager...", "an off-contract row of
@@ -1454,7 +1454,7 @@ this step's tip), `exchange/paging/paging.ts` (`TotalPage` gains the reported ti
       else is wrong with it" -> holds for an untracked asset only; a malformed tracked-asset row is unreadable and
       owes its point; "is told from a BTC row by its asset alone: a row with a lowercase btc asset is another asset"
       -> a lowercase `btc` row is read as BTC (asset upper-cased once). The Earn page pin "counts every row of the
-      page, and parses only the rows of BTC" stays green here (Earn keeps `btcRowOf`); it moves in step 9.
+      page, and parses only the rows of BTC" stays green here (Earn keeps its BTC-only row reader); it moves in step 9.
 - [ ] Test first: "a transfer of an untracked coin is counted, imports no row and adds its ticker to the not-tracked
       history list" (a `PEPE` transfer beside a BTC one: one row, `untrackedCoins.history` gains `PEPE`).
 - [ ] Check: `npx jest src/crypto-sync`. Commit.
@@ -1474,7 +1474,7 @@ Files: `binance.earn-history.ts` (`rewardGroupsOf` keys a group by product, `own
       (`lockedRewards`, rows `{ asset: 'ETH' }` and a whole BTC row) -> renamed "counts every row of the page, and
       reads an incomplete row of a tracked coin as unreadable": `gathered` 2, `rows` length 1, `unreadable` length 1
       ("was:" `toEqual([])`); a second case with `{ asset: 'XYZ' }` keeps `unreadable` `[]`.
-- [ ] Code: the Earn page passes step 8's tracked-row reader instead of `btcRowOf`; `btcRowOf` goes (knip).
+- [ ] Code: the Earn page passes step 8's tracked-row reader instead of the BTC-only row reader; that reader goes (knip; done in `1a938441`).
 - [ ] Check: `npx jest src/crypto-sync`. Commit.
 
 ### step 10/13: `multiCoinSince`

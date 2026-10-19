@@ -826,9 +826,15 @@ reason (R-Walk A).
 ### Capital (deposits, withdrawals)
 
 `coin=` is dropped. Placement by `walletType` (0 Spot, 1 Funding, else stop
-`capital-wallet-unknown`), settled statuses (deposit 1, withdraw 6), keys
-`${accountId}:deposit:<id>` / `${accountId}:withdraw:<id>` unchanged. Description = the coin code
-(as BTC today). Withdrawals stay spending (R-Q12).
+`capital-wallet-unknown`), settled statuses (deposit 1, withdraw 6; one rule,
+`isCapitalSettled(kind, status)`), keys `${accountId}:deposit:<id>` / `${accountId}:withdraw:<id>`
+unchanged. Description = the coin code (as BTC today). Withdrawals stay spending (R-Q12).
+Rulings (coordinator, standing approval, 2026-10-19): a record that is NOT settled is counted
+whatever its coin and never listed; a SETTLED record with a blank or non-string coin is
+unreadable and owed. m3 = A: a BTC key is byte-identical; a non-BTC record whose key falls back to
+the `txId` (Binance omitted `id`) appends `:<COIN>`, an `id` is never changed (condition checked:
+every main version that reads capital sends `coin=BTC`, and no set 6 commit reached a device, so
+no stored non-BTC capital row has the bare form).
 
 ### Pay (R-Q7)
 
@@ -849,6 +855,25 @@ reason (R-Walk A).
   `${accountId}:pay:${orderType}:${transactionId}:${walletType}` byte-identical; every other row
   is `...:${walletType}:${currency}`.
 - Stops `pay-btc-funded-other-coin` and `pay-funds-not-btc` are removed.
+- Rulings (coordinator, standing approval, 2026-10-19):
+  - Listing by direction: on a RECEIVE the not-tracked line lists only the order's own coin; the
+    coins of `fundsDetail` are listed only for a SEND (the uid's direction for a tracked order,
+    the sign of the amount for an untracked one; a zero or unreadable amount has none and lists
+    its own coin only).
+  - Split: costs add up exactly and round once, wallets in ascending order, each share the step of
+    the rounded running sum; a share of 0 units has no row.
+  - m2 = B: an order whose own amount rounds to 0 units at its coin scale imports no own-coin row,
+    is not listed and does not stop the walk; an unparseable amount still stops. The funds rows of
+    ANOTHER tracked coin beside it import per Q2 A (a mixed-coin dust send imports each coin's
+    rows); funds of its own coin that are not dust stop `pay-split-mismatch` only when ALL funds
+    are in the own coin, whatever their cost shape.
+  - m3 = C: for an untracked order only a funds entry with a blank or non-text currency (or that
+    is no object) is unreadable and owes its point; an absent or non-array `fundsDetail` is
+    counted.
+  - A negative cost (also one that rounds to 0 at a reduced scale) or a negative funds entry stops
+    `pay-amount-invalid`: a sign error, not dust, as BTC stops every negative text. A zero entry
+    keeps no row. The text of every entry is parsed on the costed path too, so an unparseable or
+    over-precise entry stops there (`addNonNegative`).
 
 ### Transfer, Simple Earn
 
@@ -864,6 +889,16 @@ ascending, as today. Key: a BTC group keeps
 other coin appends `:${asset}`. A pinned case mixes BTC and USDT rewards at one (`ownerId`, `type`,
 `time`) and asserts the BTC keys equal the keys today's BTC-only read gives. Probe P11 confirms
 whether `productId` is per asset; the rule holds either way.
+
+Rulings (coordinator, standing approval, 2026-10-19): the pair id of a Transfer or Earn move is
+`exchangePairIdOf(id, coin)`: BTC byte-identical, any other coin appends `:<COIN>` (capital and
+Pay build no shared pair id). An untracked record lists its ticker only when it is settled:
+Transfer `CONFIRMED`, Earn subscription `SUCCESS`, redemption `PAID` (a locked one listed with
+`isComplete` false, as it is never parsed), a reward always (it has no status); an unsettled one
+is counted by its point and not listed. A settled record with a blank asset (rewards included) is
+unreadable and owes its point, never untracked; an unreadable reward at time T holds every reward
+group of its kind at T whatever its coin. The settled constants live in
+`binance.history-client.ts`.
 
 ### Convert
 
@@ -1333,6 +1368,15 @@ effect.
   writes either field again, so a later run after a null-cursor first run records none.
   Disconnect removes `multiCoinSince` and keeps `multiCoinSeen`: the reset cursor is the floor,
   so every coin is read from it and nothing is owed.
+  Step 10 rulings (coordinator, standing approval, 2026-10-19; `a1c51603`): a stored
+  `multiCoinSince` with a lost or malformed `multiCoinSeen` keeps the EARLIER of the stored start
+  and the plan cursor and writes seen again (`multiCoinPatchesOf`); a plan cursor at or below the
+  floor is recorded as `multiCoinSince`, an empty range the set 15 backfill reads as nothing
+  owed; the marks ride only the first FORWARD cursor write of a run.
+  Review requirement (slice B m5, no fix in set 6): a malformed `multiCoinSince` beside
+  `multiCoinSeen: true` is never rewritten, so it reads as the current cursor and moves later
+  every run; the set 15 backfill must repair the value once (or bound the range), and must treat
+  an empty or negative range as nothing owed.
 - Set 15: each of capital, Pay, Transfer, Earn with a `multiCoinSince` owes one range
   `[floor, multiCoinSince)` with `scope: 'backfill'`, read in the existing round-robin of owed
   ranges. A read in a backfill range imports every coin except BTC; BTC records there are skipped
