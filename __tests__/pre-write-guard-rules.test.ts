@@ -3,6 +3,11 @@ import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
+
 // Every other pre-write-guard test stubs semgrep entirely (see
 // pre-write-guard.test.ts), so nothing else in the suite proves
 // rules/semgrep-prewrite.yml itself — the file the hook loads by default —
@@ -287,16 +292,14 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       ');',
     ].join('\n');
 
-    function guardFor(relativePath: string, content: string): SpawnSyncReturns<string> {
-      const project = mkdtempSync(join(tmpdir(), 'kiko-explicit-return-scope-'));
-      try {
-        const target = join(project, relativePath);
-        mkdirSync(join(target, '..'), { recursive: true });
+    afterEach(removeTemporaryDirectories);
 
-        return runGuard(payloadFor(target, content), project);
-      } finally {
-        rmSync(project, { recursive: true, force: true });
-      }
+    function guardFor(relativePath: string, content: string): SpawnSyncReturns<string> {
+      const project = createTemporaryDirectory('kiko-explicit-return-scope-');
+      const target = join(project, relativePath);
+      mkdirSync(join(target, '..'), { recursive: true });
+
+      return runGuard(payloadFor(target, content), project);
     }
 
     it('denies the component text in a `.tsx` file, which proves the scope reaches the rule', () => {

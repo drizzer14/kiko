@@ -13,8 +13,7 @@ import TrendFilterField from './trend-filter-field.component';
 // `fontSize` can be asserted from the rendered style. Mock the shared `Text`
 // primitive with the shared passthrough that forwards both its `tone` AND `variant`
 // props onto the host node instead, so the test can read the PROPS that
-// drive the color and the type-scale step. A getter, so `mockTextVariantTone` is read when
-// `Text` is first used, after the import ran.
+// drive the color and the type-scale step.
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
   get default() {

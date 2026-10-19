@@ -13,8 +13,7 @@ import SegmentedControl from './segmented-control.component';
 // asserted from the PROP it actually drives. Kept in its own file (rather
 // than inside `segmented-control.component.test.tsx`) so this file-wide
 // module mock never touches that file's other assertions, which render the
-// real `Text`. A getter, so `mockTextVariantTone` is read when `Text` is first used, after the
-// import ran.
+// real `Text`.
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
   get default() {

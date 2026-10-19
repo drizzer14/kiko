@@ -5,7 +5,6 @@ import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 
 import ConvertedCaption from '.';
 
-// A getter, so `mockTextVariantTone` is read when `Text` is first used, after the import ran.
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
   get default() {

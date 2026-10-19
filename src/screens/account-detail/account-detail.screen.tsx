@@ -292,7 +292,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // Deposit/bond holdings grow with time, so net worth is evaluated as of now —
   // otherwise their accrued value never reflects in the account balance.
   const now = Date.now();
-  // The account row may not have loaded yet; the headline reads the base currency until it has.
+  // The loading gate hides this fallback; it renders only for a row missing after load.
   const { total: overallBalance, inBase: overallInBase } = accountTotal(
     activeHoldings,
     account?.currency ?? baseCurrency,
@@ -452,6 +452,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             label={t('accountDetail.balanceLabel')}
             money={overallBalance}
             context="balance"
+            testID="account-detail-headline"
             icon={<EntityHeaderIcon identity={identity} />}
             secondary={<ConvertedCaption money={overallInBase} testID="account-detail-converted" />}
           />

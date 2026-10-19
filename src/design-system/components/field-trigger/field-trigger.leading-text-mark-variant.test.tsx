@@ -14,8 +14,7 @@ import FieldTrigger from '.';
 // from the PROP that actually drives it rather than a resolved `fontSize`
 // the mock cannot produce. Kept in its own file (rather than inside
 // `field-trigger.component.test.tsx`) so this file-wide module mock never
-// touches that file's other assertions, which render the real `Text`. A getter, so
-// `mockTextVariantTone` is read when `Text` is first used, after the import ran.
+// touches that file's other assertions, which render the real `Text`.
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
   get default() {

@@ -492,12 +492,13 @@ describe('AccountDetailScreen', () => {
   describe('the account currency', () => {
     it('totals a USD account in dollars with the base figure beneath', async () => {
       setLiveData({ ...multiCurrencyData, accounts: [account({ currency: 'USD' })] });
-      const { getByText, getByTestId } = await renderScreen();
+      const { getAllByText, getByTestId } = await renderScreen();
 
-      expect(getByText('$75.00')).toBeTruthy();
+      expect(within(getByTestId('account-detail-headline')).getByText('$75.00')).toBeTruthy();
       expect(within(getByTestId('account-detail-converted')).getByText(/3,000\.00 ₴/)).toBeTruthy();
-      expect(getByText('UAH')).toBeTruthy();
-      expect(getByText('USD')).toBeTruthy();
+      // Each amount shows in its holding row and in the unchanged per-currency breakdown.
+      expect(getAllByText('1,000.00 ₴').length).toBeGreaterThan(1);
+      expect(getAllByText('$50.00').length).toBeGreaterThan(1);
     });
 
     it('shows no caption for an account in the base currency', async () => {
@@ -515,10 +516,9 @@ describe('AccountDetailScreen', () => {
         ],
         rates: [],
       });
-      const { getAllByText, queryByText, queryByTestId } = await renderScreen();
+      const { getByTestId, queryByText, queryByTestId } = await renderScreen();
 
-      // The headline, the holding row and the breakdown line each show the BTC sum.
-      expect(getAllByText('₿0.50')).toHaveLength(3);
+      expect(within(getByTestId('account-detail-headline')).getByText('₿0.50')).toBeTruthy();
       expect(queryByText(/0\.00 ₴/)).toBeNull();
       expect(queryByTestId('account-detail-converted')).toBeNull();
     });

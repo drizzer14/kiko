@@ -6,6 +6,8 @@ import { type StyleProp, Text as RNText, type TextStyle } from 'react-native';
 // typography step or color mocks Text with this component, which hands both through as host
 // props for `layoutOf` (`@kiko/test-support/layout-of`) to record. `style` goes through too,
 // for a test that pins a screen-local override such as a footer line's `textAlign`.
+// Mount it through a getter, `get default() { return mockTextVariantTone; }`, in the
+// `jest.mock` factory: it is read when `Text` is first used, after the import ran.
 const MockTextVariantTone = ({
   variant = 'body',
   tone = 'textPrimary',
