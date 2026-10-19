@@ -160,6 +160,10 @@ const CATEGORY_DONUT_INNER_RATIO = 0.78;
 // account-contribution pie passes no threshold, so its legend is uncropped.
 const CATEGORY_LEGEND_MIN_SHARE = 0.05;
 
+// The gap between the net-worth card's title and its chart, in spacing units. The chart's scrub
+// label may reach up into it, so the same value goes to both the `Box` and `NetWorthLine`.
+const NET_WORTH_CARD_GAP = 3;
+
 /**
  * The Statistics tab: four blocks, in order — a converted net-worth line over
  * time (historical rates), a by-type horizontal bar chart of current value, a
@@ -1221,7 +1225,7 @@ const StatisticsScreen: FC = () => {
         </Box>
 
         <Card testID="statistics-block-line" padding={4} radius="lg">
-          <Box gap={3}>
+          <Box gap={NET_WORTH_CARD_GAP}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.netWorthOverTime')}
             </Text>
@@ -1231,6 +1235,7 @@ const StatisticsScreen: FC = () => {
               startReference={netWorth.startReference}
               baseCurrency={baseCurrency}
               loading={backfillStatus.state === 'loading'}
+              spaceAbove={NET_WORTH_CARD_GAP}
             />
           </Box>
         </Card>
