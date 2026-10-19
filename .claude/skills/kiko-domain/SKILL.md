@@ -32,7 +32,12 @@ absent** — this skill states the shape and non-enum facts only:
   marks a LIVE sync connection), `bankId` (nullable, migration
   `0033`; see below), `icon`, `color`, `sortOrder`, `archivedAt`
   (nullable), `createdAt`, `currency` (`schema.ts` `accounts.currency`,
-  migration `0062`; derived once by `accountCurrencyOf`). `holdingTypesForAccountKind`
+  migration `0062`). `accountCurrencyOf` derives it only for migrated and
+  restored pre-0062 rows; a new account takes the cash pick
+  (`createCashAccount`) or the base read inside the write (`null` = base).
+  Never re-derive a stored account currency after creation: a base change
+  or a new foreign holding never moves it (ruling 5,
+  `src/accounts/accounts.repo.currency.test.ts`). `holdingTypesForAccountKind`
   (`src/holdings/holding-type/`) maps each account kind to its
   allowed `Holding.type` set — `property` maps to `property_item`,
   `metals` maps to `metal`, `debt` maps to `loan` — read that file

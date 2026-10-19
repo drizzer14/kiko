@@ -670,6 +670,11 @@ the row re-read inside its own write.
 query.** Disable Save while the query's `isLoading` is true; saving
 early writes a value built from missing data (the loan edit once saved
 before the price book loaded and wrote a permanent manual point).
+The allowed alternative: the form passes `null` and the repo write reads
+the value inside its own transaction (`newAccountValues` and
+`baseCurrencyOf` in `src/accounts/accounts.repo.ts`). A create form
+never writes a fallback taken from a live query that may not have
+loaded.
 
 **A write started from a cached display screen must not trust its
 rows.** `useLiveQuery` also returns `isFresh`: `true` once THIS
@@ -2771,7 +2776,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   USER RULING 2026-10-19: open holdings only, every account, archived
   included. One currency among them gives that currency; several or none
   give `settings.base_currency`. The pure rule is `accountCurrencyOf`
-  (`src/holdings/account-currency/`). Its restore mirror
+  (`src/holdings/account-currency/`); it backfills and restores only, and
+  create paths do not use it (see the kiko-domain Account bullet). Its restore mirror
   `withAccountCurrencyDerived` runs after `withImplicitAccountsMerged`.
   `assertKnownCurrencies` covers `accounts.currency`. Export version 5; read
   the decision in `VERSION_DECISIONS` in `envelope.test.ts`.

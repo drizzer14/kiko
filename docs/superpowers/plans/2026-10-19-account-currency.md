@@ -45,7 +45,8 @@ and an `AccountTotal` view.
 1. An older `.kiko` restore must produce the same `accounts.currency` as the same data upgraded in
    place (two-path test, task 1/6).
 2. A Connect (`createIfAbsent`) and then a currency pick and Save must keep the pick
-   (`saveFormAccount` update branch, task 2/6 and task 5/6).
+   (`saveFormAccount` update branch, task 2/6 and task 5/6; task 5/6 first writes a non-null
+   value there).
 3. A cash account currency edit must leave its holding, transactions and amounts byte-identical
    (task 5/6).
 4. A crypto-currency account with no rate shows its own sum and no caption. It never throws
@@ -153,14 +154,15 @@ Own change set; a `kiko:reviewer` pass on the migration alone before BATCH READY
 
 **Files (floor):**
 - Modify: `src/accounts/accounts.repo.ts`:
-  - `NewAccount` requires `currency`;
+  - `NewAccount` requires `currency: Currency | null`; `null` resolves to base inside the write;
   - `createCashAccount` writes `currency` on the account row;
   - `insertImplicitAccount` reads `settings.baseCurrency` where `id = SETTINGS_ID` inside the
     write, falling back to `'UAH'`;
-  - the `saveFormAccount` update `set` adds `currency`.
+  - the `saveFormAccount` update branch leaves `currency` untouched on `null` and writes only a
+    non-null pick.
 - Modify: `src/screens/forms/account-form/account-form.screen.tsx`: `accountRow()` passes
-  `currency: baseCurrency` from `useLiveQuery(settingsRepo.getQuery(), ['settings'])`. No UI change
-  in this task.
+  `currency: null`; the repo resolves `null` to base inside the write. No settings query in the
+  form until task 5/6. No UI change in this task.
 - Create: `src/accounts/accounts.repo.currency.test.ts` (real SQLite, `executingClient`)
 - Modify: `accounts.repo.test.ts`, `accounts.repo.implicit-account.test.ts`, and the test files
   calling `accountsRepo.create` (2 files), `createIfAbsent` (1), `saveFormAccount` (1),

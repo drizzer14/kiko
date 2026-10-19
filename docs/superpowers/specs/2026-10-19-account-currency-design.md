@@ -123,8 +123,8 @@ a floor: re-grep `insert\((schema\.)?accounts\)|INSERT (OR [A-Z]+ )?INTO "?accou
 | Path | Writes |
 |---|---|
 | `accountsRepo.createCashAccount` (form, cash create) | `currency` = the cash pick (the same value as the holding currency) |
-| `accountsRepo.saveFormAccount` (form Save, non-cash create; also updates a row a Connect inserted) | `input.currency` = the form's account currency (default base). The update branch's `set` also writes `currency`, so a pick made after Connect is kept |
-| `accountsRepo.createIfAbsent` (Monobank/Binance/wallet Connect from the form) | `input.currency` = the form's account currency at Connect (default base). A later Save writes the final pick (row above) |
+| `accountsRepo.saveFormAccount` (form Save, non-cash create; also updates a row a Connect inserted) | `input.currency` (required `Currency | null`) = the form's raw pick; `null` = base read inside the write on insert. The update branch leaves `currency` on `null` and writes a non-null pick, so a pick made after Connect is kept |
+| `accountsRepo.createIfAbsent` (Monobank/Binance/wallet Connect from the form) | `input.currency` = the form's raw pick at Connect (`null` = base read inside the write). A later Save writes the final pick (row above) |
 | `accountsRepo.create` (no production caller at the base, tests only) | `input.currency` (required in `NewAccount`) |
 | `insertImplicitAccount` via `accountsRepo.createImplicitHolding` (holding form, property/loan) | base currency read INSIDE the write (`settings.baseCurrency` where `id = SETTINGS_ID`, fallback `'UAH'`) |
 | migration 0044 `crypto-from-` accounts | shipped and never edited (check:shipped-migrations). On a device they predate the column, so 0062's backfill sets them |
@@ -132,7 +132,7 @@ a floor: re-grep `insert\((schema\.)?accounts\)|INSERT (OR [A-Z]+ )?INTO "?accou
 | `restoreDataSnapshot` insert | the file's value, or the derived value for a pre-0062 file (D3) |
 | demo `build-demo-snapshot.ts` | `accountCurrencyOf(open holdings, dataset.baseCurrency)` |
 
-`NewAccount` adds `currency` as required. `accountsRepo.update` keeps `Partial<AccountRow>`, and
+`NewAccount` adds `currency` as a required `Currency | null`. `accountsRepo.update` keeps `Partial<AccountRow>`, and
 the edit form passes `currency` in its patch (D5).
 
 ### D5. Account form picker
@@ -147,11 +147,12 @@ the edit form passes `currency` in its patch (D5).
   renders.
 - Create for any other non-implicit kind (bank, crypto, metals, broker): the field is bound to a
   new state, `accountCurrency: Currency | null`. `null` means untouched, and the shown value is
-  `accountCurrency ?? baseCurrency`, read from `settingsRepo.getQuery()`. The picker groups use
-  context `{ kind: 'any' }` (held, fiat, crypto).
+  `accountCurrency ?? baseCurrency`, read from `settingsRepo.getQuery()` (display only). The write
+  gets `accountCurrency` itself (`null` when untouched), never `accountCurrency ?? baseCurrency`.
+  The picker groups use context `{ kind: 'any' }` (held, fiat, crypto).
 - Edit, every kind: the field is seeded from the stored `editingAccount.currency` in the one-shot
   hydration effect, uses `{ kind: 'any' }` groups, and the edit patch
-  (`accountsRepo.update(editId, {...})`) carries `currency`. For a cash account the edit is DISPLAY
+  (`accountsRepo.update(editId, {...})`) carries `currency` only when the user changed it. For a cash account the edit is DISPLAY
   ONLY (ruling 7): the patch touches `accounts.currency` alone and never the cash holding, a
   transaction or an amount.
 - A hint under the field on every render except cash create: new key `forms.account.currencyHint`.
