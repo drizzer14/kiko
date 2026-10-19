@@ -83,7 +83,14 @@ Composite scripts:
   Set at `run_start` and builds no regex (`docs/harness/dependency-hygiene.md` "Standing
   patch"; the preflight above refuses an unpatched runner). So a TIMEOUT-HEAVY file is now a
   REAL timeout (a loop or slow code), cleared by the rerun above.
-  Proof: the binance set 4 half-2 gate with the patch — result pending.
+  Proof (measured 2026-10-19, binance set 4 half-2 gate with the patch, 436 mutants): 2 h 11 min
+  against 3 h 48 min for the same change set without it; change set total 94.04 (409 killed,
+  1 timeout, 26 survived, 0 no coverage); no TIMEOUT-HEAVY file (the unpatched run had 3). The
+  195 heavy mutants matched the plain-jest table (185 killed, the same 9 survived, 1 timeout).
+  The one timeout, walk.ts id 68 (4444 covering tests), also timed out unpatched and the old
+  regex and the Set select the same tests, so the regex did not cause it; plain jest killed it
+  (923 s serial). A mutant with about 4,400 covering tests can still time out on its own run
+  cost; its gate time against Stryker's budget is unmeasured (gap open).
   Fallback, if the rerun still fails or is skipped: Method A, a plain-jest proof table. In a
   scratch worktree with its own `npm ci`, write a scratch jest config whose resolution maps the
   source file to the mutated copy, run `--runTestsByPath` once per covering file with bail,
