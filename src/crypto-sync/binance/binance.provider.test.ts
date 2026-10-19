@@ -789,14 +789,14 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
     expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
     expect(byKey(balances, 'BTC:funding')?.balanceMinorUnits).toBe(100_000_000);
     expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(100_000_000);
-    expect(warn).not.toHaveBeenCalledWith('[binance sync] skipped the funding wallet', {
-      name: 'Error',
-      code: undefined,
-    });
-    expect(warn).not.toHaveBeenCalledWith('[binance sync] skipped the earn wallet', {
-      name: 'Error',
-      code: undefined,
-    });
+    expect(warn).not.toHaveBeenCalledWith(
+      '[binance sync] skipped the funding wallet',
+      expect.anything(),
+    );
+    expect(warn).not.toHaveBeenCalledWith(
+      '[binance sync] skipped the earn wallet',
+      expect.anything(),
+    );
   });
 
   it('lists no coin for a Spot row whose asset is no text', async () => {
