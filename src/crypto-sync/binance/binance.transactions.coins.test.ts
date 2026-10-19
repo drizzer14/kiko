@@ -5,6 +5,7 @@ import { coinListPatchesOf, walkMarkWritesOf, walkStateFake } from '@kiko/test-s
 import {
   type BinanceTransactionRow,
   type BinanceTransactionSyncDeps,
+  HISTORY_FLOOR_MS,
   syncBinanceTransactions,
 } from './binance.transactions';
 import {
@@ -24,6 +25,10 @@ const ACCOUNT_ID = 'acc-1';
 const STOP_TAG = '[binance sync] history window stopped';
 
 const spotHolding = { id: 'h-spot', metadata: { binanceAsset: 'BTC' } } as unknown as HoldingRow;
+const fundingHolding = {
+  id: 'h-funding',
+  metadata: { binanceAsset: 'BTC:funding' },
+} as unknown as HoldingRow;
 
 // The walk never reads the hash of a record that has an id, so the fixtures leave it out.
 const deposit = (over: Partial<BinanceDeposit> = {}): BinanceDeposit =>
@@ -511,4 +516,95 @@ describe('a capital record with a blank coin', () => {
       warn.mockRestore();
     },
   );
+});
+
+describe('an account with no Spot BTC holding', () => {
+  const withoutCursor = walkStateFake({ accountId: ACCOUNT_ID }).deps;
+
+  it('imports a Spot deposit with no Spot BTC holding and creates it', async () => {
+    let stored: HoldingRow[] = [];
+    const ensureHoldings = jest.fn(async (_holdings: unknown[]) => {
+      stored = [spotHolding];
+    });
+    const deps = makeDeps({
+      listHoldings: async () => stored,
+      ensureHoldings,
+      fetchDepositHistory: rowsAtNow([deposit()]),
+    });
+
+    const result = await sync(deps);
+
+    expect(ensureHoldings).toHaveBeenCalledWith([
+      expect.objectContaining({
+        accountId: ACCOUNT_ID,
+        name: 'Binance Spot · BTC',
+        metadataKey: 'BTC',
+        balanceMinorUnits: 0,
+      }),
+    ]);
+    expect(addedRows(deps).map((row) => [row.externalId, row.holdingId])).toEqual([
+      ['acc-1:deposit:1', 'h-spot'],
+    ]);
+    expect(result).toEqual({ imported: 1, complete: true });
+  });
+
+  it('reads no legacy capital cursor and starts at the floor: it never ran this walk', async () => {
+    const latestTransactionTime = jest.fn(async () => NOW - 89 * DAY_MS);
+    const deps = makeDeps({
+      ...withoutCursor,
+      listHoldings: async () => [],
+      latestTransactionTime,
+    });
+
+    await sync(deps);
+
+    const windows = (deps.fetchDepositHistory as jest.Mock).mock.calls.map((call) => call[2]);
+    expect(latestTransactionTime).not.toHaveBeenCalled();
+    expect(windows[0].startTime).toBe(HISTORY_FLOOR_MS);
+  });
+
+  it('still reads the legacy capital cursor of the Spot BTC holding it has', async () => {
+    const latestTransactionTime = jest.fn(async () => NOW - 89 * DAY_MS);
+    const deps = makeDeps({ ...withoutCursor, latestTransactionTime });
+
+    await sync(deps);
+
+    expect(latestTransactionTime).toHaveBeenCalledWith('h-spot', [
+      'acc-1:deposit:',
+      'acc-1:withdraw:',
+    ]);
+  });
+
+  it('leaves a stored row out when its wallet has no holding, and imports a new row beside it', async () => {
+    const deps = makeDeps({
+      listHoldings: async () => [fundingHolding],
+      storedExternalIds: jest.fn(async () => new Set(['acc-1:deposit:1'])),
+      fetchDepositHistory: rowsAtNow([
+        deposit({ id: '1', walletType: 0 }),
+        deposit({ id: '2', walletType: 1 }),
+      ]),
+    });
+
+    const result = await sync(deps);
+
+    expect(addedRows(deps).map((row) => [row.externalId, row.holdingId])).toEqual([
+      ['acc-1:deposit:2', 'h-funding'],
+    ]);
+    expect(deps.ensureHoldings).not.toHaveBeenCalled();
+    expect(result).toEqual({ imported: 1, complete: true });
+  });
+
+  it('stops the window when a new row has no wallet holding even after creation', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = makeDeps({
+      listHoldings: async () => [],
+      fetchDepositHistory: rowsAtNow([deposit()]),
+    });
+
+    const result = await sync(deps);
+
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(result.complete).toBe(false);
+    warn.mockRestore();
+  });
 });

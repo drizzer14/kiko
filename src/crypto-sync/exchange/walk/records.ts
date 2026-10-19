@@ -63,25 +63,19 @@ export const rowMinorUnits = (currency: Currency, text: string): number =>
   );
 
 /**
- * The write of the coins a history read met oversized: one union patch, as the list only grows
- * (see `withCoinList`).
+ * The write of the coins a history read met, to one of the two history lists: the oversized coins
+ * (a record whose amount stopped too large) or the untracked ones (a window counted them but
+ * imported no row). One union patch, as a list only grows (see `withCoinList`).
  */
-export const oversizedHistoryWriterOf =
-  (deps: Pick<ExchangeStateDeps, 'patchExchangeState'>, accountId: string) =>
+export const historyListWriterOf =
+  (
+    deps: Pick<ExchangeStateDeps, 'patchExchangeState'>,
+    accountId: string,
+    coins: 'oversizedCoins' | 'untrackedCoins',
+  ) =>
   (tickers: readonly string[]): Promise<void> =>
     deps.patchExchangeState(accountId, [
-      { kind: 'coinList', coins: 'oversizedCoins', list: 'history', tickers: [...tickers] },
-    ]);
-
-/**
- * The write of the tickers a committed window counted but imported as no row: one union patch,
- * as the list only grows (see `withCoinList`).
- */
-export const untrackedHistoryWriterOf =
-  (deps: Pick<ExchangeStateDeps, 'patchExchangeState'>, accountId: string) =>
-  (tickers: readonly string[]): Promise<void> =>
-    deps.patchExchangeState(accountId, [
-      { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: [...tickers] },
+      { kind: 'coinList', coins, list: 'history', tickers: [...tickers] },
     ]);
 
 /** The one millisecond a record with a time to the millisecond sits in, if it has a time. */
@@ -305,7 +299,7 @@ const isOwedPast = (ground: OwedGround): boolean => isPoint(ground) || ground.se
  * Only a record with a usable time can be owed that way: a stop that owes more than a point (a
  * record with no time owes the whole span, and so does a stop that is no one record's) leaves the
  * span uncommitted, as does any other code beside it. The tickers the span counted but imported as
- * no row (`untracked`) are written once its rows are, if the walk gives a writer for them.
+ * no row (`untracked`) are written once its rows are.
  */
 export const commitSettledSpan = async <Planned, Row>(input: {
   pass: WalkPass;
@@ -315,7 +309,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   add: (rows: Row[]) => Promise<number>;
   advance: (result: { owed: OwedGround[] }) => Promise<void>;
   writeOversized: (tickers: readonly string[]) => Promise<void>;
-  writeUntracked?: (tickers: readonly string[]) => Promise<void>;
+  writeUntracked: (tickers: readonly string[]) => Promise<void>;
   forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
   const {
@@ -358,7 +352,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   // Once for the window, after its rows and before its marks: a crash between the two reads the
   // span again, and a ticker that is already listed changes nothing.
   if (ready.untracked !== undefined) {
-    await writeUntracked?.(ready.untracked);
+    await writeUntracked(ready.untracked);
   }
 
   await advance({ owed: ready.owed });

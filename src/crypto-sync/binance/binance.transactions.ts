@@ -8,9 +8,9 @@ import {
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
+  historyListWriterOf,
   instantAt,
   joinSettled,
-  oversizedHistoryWriterOf,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
@@ -32,7 +32,6 @@ import {
   type WalkPlan,
   type WalkResult,
   type WalkWindow,
-  untrackedHistoryWriterOf,
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -616,8 +615,8 @@ const commitSpan = (
     ]),
     place: (planned) => placeRows(context, planned),
     add: deps.addTransactions,
-    writeOversized: oversizedHistoryWriterOf(deps, accountId),
-    writeUntracked: untrackedHistoryWriterOf(deps, accountId),
+    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
+    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
@@ -722,8 +721,8 @@ const runSync = async (
 };
 
 /**
- * Fetch BTC deposit + withdrawal history from Binance and import it as
- * transactions on the wallet holding each movement names (Spot, or Funding for
+ * Fetch the deposit + withdrawal history of every tracked coin from Binance and import it as
+ * transactions on the coin and wallet holding each movement names (Spot, or Funding for
  * `walletType` 1), idempotently, committing each span's rows before advancing the
  * mark past it. A run goes forward from the watermark first, then reads the overlap ground
  * earlier runs left owed, then re-scans the last window behind the watermark, each on what

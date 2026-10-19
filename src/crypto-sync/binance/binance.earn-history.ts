@@ -8,9 +8,9 @@ import {
   dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
+  historyListWriterOf,
   instantAt,
   joinSettled,
-  oversizedHistoryWriterOf,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
@@ -767,7 +767,8 @@ const commitSpan = (
         missingCode: 'earn-holding-missing',
       }),
     add: deps.addTransactions,
-    writeOversized: oversizedHistoryWriterOf(deps, accountId),
+    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
+    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,

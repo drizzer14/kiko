@@ -253,7 +253,7 @@ describe('capital placement on real SQLite, with no Spot BTC holding', () => {
     expect(storedRows()).toHaveLength(1);
   });
 
-  // Q4: a stored row whose wallet has no holding keeps what it has (the walk only loses the
+  // A stored row whose wallet has no holding keeps what it has (the walk only loses the
   // refresh of its own columns), and a new row of the same window still imports.
   it('leaves a stored row out of the write, whatever it now reads as, and imports a new row beside it', async () => {
     await transactionsRepo.addManyDedup([

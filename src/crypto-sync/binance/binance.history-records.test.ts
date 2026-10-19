@@ -3,10 +3,10 @@ import {
   BinanceWalkStop,
   commitSettledSpan,
   type ExchangeStateDeps,
+  historyListWriterOf,
   instantAt,
   joinSettled,
   type OwedGround,
-  oversizedHistoryWriterOf,
   placeWalletRows,
   rowMinorUnits,
   settleRecords,
@@ -111,7 +111,11 @@ describe('rowMinorUnits', () => {
   });
 
   it('reads a row as the exchange amounts do: a reduced-scale coin rounds, never stops', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
     expect(rowMinorUnits('XRP', '1.23455')).toBe(12_346);
+    expect(warn).toHaveBeenCalledWith('row-precision-rounded', { name: 'Error', code: undefined });
+    warn.mockRestore();
   });
 
   it('is every code of the amount parser that a lane that owes the point lists', () => {
@@ -123,20 +127,26 @@ describe('rowMinorUnits', () => {
   });
 });
 
-describe('oversizedHistoryWriterOf', () => {
-  it('writes one patch that adds the tickers to the oversized history list of the account', async () => {
-    const patchExchangeState = jest.fn<
-      ReturnType<ExchangeStateDeps['patchExchangeState']>,
-      Parameters<ExchangeStateDeps['patchExchangeState']>
-    >(async () => undefined);
+describe('historyListWriterOf', () => {
+  it.each([
+    ['oversizedCoins', ['BTC', 'ETH']],
+    ['untrackedCoins', ['PEPE', 'DOGE']],
+  ] as const)(
+    'writes one patch that adds the tickers to the %s history list of the account',
+    async (coins, tickers) => {
+      const patchExchangeState = jest.fn<
+        ReturnType<ExchangeStateDeps['patchExchangeState']>,
+        Parameters<ExchangeStateDeps['patchExchangeState']>
+      >(async () => undefined);
 
-    await oversizedHistoryWriterOf({ patchExchangeState }, 'acc-1')(['BTC', 'ETH']);
+      await historyListWriterOf({ patchExchangeState }, 'acc-1', coins)(tickers);
 
-    expect(patchExchangeState).toHaveBeenCalledTimes(1);
-    expect(patchExchangeState).toHaveBeenCalledWith('acc-1', [
-      { kind: 'coinList', coins: 'oversizedCoins', list: 'history', tickers: ['BTC', 'ETH'] },
-    ]);
-  });
+      expect(patchExchangeState).toHaveBeenCalledTimes(1);
+      expect(patchExchangeState).toHaveBeenCalledWith('acc-1', [
+        { kind: 'coinList', coins, list: 'history', tickers: [...tickers] },
+      ]);
+    },
+  );
 });
 
 describe('settleRecords', () => {
@@ -607,6 +617,7 @@ describe('commitSettledSpan', () => {
       add,
       advance,
       writeOversized,
+      writeUntracked: async () => undefined,
     });
 
   it.each(['pending', 'rescan'] as const)(
@@ -725,6 +736,7 @@ describe('commitSettledSpan', () => {
         add,
         advance,
         writeOversized,
+        writeUntracked: async () => undefined,
         forwardOwes: ['owed-only'],
       });
 

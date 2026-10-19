@@ -1,12 +1,10 @@
 import {
   commitSettledSpan,
-  type ExchangeStateDeps,
   instantAt,
   joinSettled,
   type OwedGround,
   type SettledSpan,
   settleRecords,
-  untrackedHistoryWriterOf,
 } from '@kiko/crypto-sync/exchange/walk';
 
 const SPAN = { start: 1_000, end: 5_000 };
@@ -108,22 +106,6 @@ describe('joinSettled with untracked tickers', () => {
   });
 });
 
-describe('untrackedHistoryWriterOf', () => {
-  it('writes one patch that adds the tickers to the not-tracked history list of the account', async () => {
-    const patchExchangeState = jest.fn<
-      ReturnType<ExchangeStateDeps['patchExchangeState']>,
-      Parameters<ExchangeStateDeps['patchExchangeState']>
-    >(async () => undefined);
-
-    await untrackedHistoryWriterOf({ patchExchangeState }, 'acc-1')(['PEPE', 'DOGE']);
-
-    expect(patchExchangeState).toHaveBeenCalledTimes(1);
-    expect(patchExchangeState).toHaveBeenCalledWith('acc-1', [
-      { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['PEPE', 'DOGE'] },
-    ]);
-  });
-});
-
 describe('commitSettledSpan with untracked tickers', () => {
   const calls: string[] = [];
   const writeUntracked = jest.fn(async (tickers: readonly string[]): Promise<void> => {
@@ -140,11 +122,7 @@ describe('commitSettledSpan with untracked tickers', () => {
     jest.restoreAllMocks();
   });
 
-  const commit = (
-    pass: 'forward' | 'pending' | 'rescan',
-    span: SettledSpan<string>,
-    writer: { writeUntracked?: typeof writeUntracked } = { writeUntracked },
-  ) =>
+  const commit = (pass: 'forward' | 'pending' | 'rescan', span: SettledSpan<string>) =>
     commitSettledSpan({
       pass,
       span: SPAN,
@@ -159,7 +137,7 @@ describe('commitSettledSpan with untracked tickers', () => {
         calls.push('advance');
       },
       writeOversized: async () => undefined,
-      ...writer,
+      writeUntracked,
     });
 
   it.each(['forward', 'pending', 'rescan'] as const)(
@@ -192,12 +170,5 @@ describe('commitSettledSpan with untracked tickers', () => {
 
     expect(committed).toBeUndefined();
     expect(calls).toEqual([]);
-  });
-
-  it('commits a span of a walk that has no writer for them', async () => {
-    const committed = await commit('forward', settled({ rows: ['a'], untracked: ['PEPE'] }), {});
-
-    expect(calls).toEqual(['add:a', 'advance']);
-    expect(committed?.imported).toBe(1);
   });
 });

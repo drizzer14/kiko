@@ -8,10 +8,10 @@ import {
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
+  historyListWriterOf,
   instantAt,
   joinSettled,
   logWalkStop,
-  oversizedHistoryWriterOf,
   placeWalletRows,
   planWalkPasses,
   readPendingMark,
@@ -558,7 +558,8 @@ const commitSpan = (
         missingCode: 'pay-holding-missing',
       }),
     add: deps.addTransactions,
-    writeOversized: oversizedHistoryWriterOf(deps, accountId),
+    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
+    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
