@@ -8,12 +8,14 @@ import type { AccountTotalProps } from './account-total.props';
 
 // The account card's trailing figure: the total in the account's own currency, with the
 // base-currency caption under it when there is one.
-const AccountTotal: FC<AccountTotalProps> = ({ total, inBase, convertedTestID }) => (
-  <Box style={styles.column}>
-    <MoneyText money={total} context="balance" />
+const AccountTotal: FC<AccountTotalProps> = ({ total, inBase, convertedTestID }) => {
+  return (
+    <Box style={styles.column}>
+      <MoneyText money={total} context="balance" />
 
-    <ConvertedCaption money={inBase} testID={convertedTestID} />
-  </Box>
-);
+      <ConvertedCaption money={inBase} testID={convertedTestID} />
+    </Box>
+  );
+};
 
 export default AccountTotal;

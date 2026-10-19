@@ -82,13 +82,15 @@ const draftToFilter = (draft: Draft): TrendFilter =>
 // reads `heading` (sheet title) > `body` (this label) > `caption` (the
 // value), never a label smaller than its value. Title case, per the design
 // system's heading rule.
-const SectionHeader: FC<{ children: string }> = ({ children }) => (
-  <Box style={styles.label}>
-    <Text variant="body" tone="textPrimary">
-      {children}
-    </Text>
-  </Box>
-);
+const SectionHeader: FC<{ children: string }> = ({ children }) => {
+  return (
+    <Box style={styles.label}>
+      <Text variant="body" tone="textPrimary">
+        {children}
+      </Text>
+    </Box>
+  );
+};
 
 // One manual-mode category row (or the leading "All" row). It delegates to the
 // shared `SelectableRow` — the single source of truth for a category-picker row

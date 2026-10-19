@@ -2102,6 +2102,44 @@ plus early-return form (`if (row.type === 'heading') { return ... }`) is not mat
 Semgrep has no type information and a statement `if` on an event's `type` is everywhere in
 handlers; no fixture can prove that form free of false positives.
 
+## `kiko-no-inline-text-variant-mock`
+
+Mechanizes kiko-design-system's "Component set": a test that reads a label's `variant` or `tone`
+mocks `Text` with the shared `src/test-support/mock-text-variant-tone.tsx` (a getter in the
+`jest.mock` factory), never with its own factory that forwards `variant` onto the host node.
+
+**Severity ERROR.** The tree holds 0 findings; re-measure with the Semgrep command in the
+`kiko-test-title-no-history` section above, filtered to this id.
+
+**Scope.** `paths.include` is `*.test.ts`, `*.test.tsx` and `src/test-support/**`; the last entry
+is only what lets the guard's probe file reach the rule, so the fixture pair is NESTED under
+`rules/fixtures/kiko-no-inline-text-variant-mock/src/test-support/`.
+
+**Known limits.** The module is matched by its text ending in `components/text` or `../text`;
+a mock through another relative path (`./text`) is not seen. The factory is matched by the word
+`variant` anywhere in its text, so a factory that mentions `variant` for another reason is
+flagged too, and a mock that forwards only `tone` is not (it has the `mock-text-tone` helper). A
+factory held in a variable and passed by name is not seen. `jest.doMock` is not matched.
+
+## `kiko-component-explicit-return`
+
+Mechanizes kiko-code-style's "One component per file, each in its own folder": a component
+uses an explicit `return`, never the arrow-shorthand implicit return.
+
+**Severity ERROR.** The tree holds 0 findings; re-measure with the Semgrep command in the
+`kiko-test-title-no-history` section above, filtered to this id.
+
+**Scope.** Every `.tsx` file except `*.test.tsx` (a test's local mock component is exempt, like a
+mock factory's component). The fixture pair is
+`rules/fixtures/kiko-component-explicit-return.bad.tsx` and `.good.tsx`.
+
+**Known limits.** A `pattern-regex`, because Semgrep reads `=> expr` and `=> { return expr; }`
+as one function. It reads `const <Name>: FC<...> = (<params>) =>`, also bare `FC` and `React.FC`,
+and flags a first token after `=>` that is not `{`. Not seen: a component with no `FC`
+annotation (`const Row = (props: Props) => (...)`), a `function` declaration, a component wrapped
+in `memo(...)`, and a parameter list that holds a string or a regex literal with an unbalanced
+parenthesis.
+
 ## The `docs-known-limit` invariant
 
 `__tests__/docs-known-limit.test.ts` fails when a plan or a spec under `docs/superpowers/`

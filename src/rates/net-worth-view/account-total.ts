@@ -4,7 +4,7 @@ import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 
 import type { RateTable } from '../conversion';
 
-import { canConvert, guardedNetWorth } from './net-worth-view';
+import { canConvert, type ConvertibleHolding, guardedNetWorth } from './net-worth-view';
 
 /**
  * An account's total in the account's own currency, and the base-currency figure the card
@@ -16,7 +16,7 @@ import { canConvert, guardedNetWorth } from './net-worth-view';
  * (a crypto account before its first price), so a caption never needs a rate that is missing.
  */
 export const accountTotal = (
-  holdings: Parameters<typeof guardedNetWorth>[0],
+  holdings: ConvertibleHolding[],
   accountCurrency: Currency,
   baseCurrency: Currency,
   rates: RateTable,

@@ -2,6 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 
 import TrendFilterField from './trend-filter-field.component';
 
@@ -10,27 +11,16 @@ import TrendFilterField from './trend-filter-field.component';
 // variant/tone through `styles.useVariants(...)`, which the mock does not
 // compute — so neither the tone's resolved color nor the variant's resolved
 // `fontSize` can be asserted from the rendered style. Mock the shared `Text`
-// primitive with a passthrough that forwards both its `tone` AND `variant`
+// primitive with the shared passthrough that forwards both its `tone` AND `variant`
 // props onto the host node instead, so the test can read the PROPS that
-// drive the color and the type-scale step.
-jest.mock('@kiko/design-system/components/text', () => {
-  const React = require('react');
-  const { Text: RNText } = require('react-native');
-
-  const MockText = ({
-    children,
-    tone,
-    variant,
-  }: {
-    children: React.ReactNode;
-    tone?: string;
-    variant?: string;
-  }) => {
-    return React.createElement(RNText, { tone, variant }, children);
-  };
-
-  return { __esModule: true, default: MockText };
-});
+// drive the color and the type-scale step. A getter, so `mockTextVariantTone` is read when
+// `Text` is first used, after the import ran.
+jest.mock('@kiko/design-system/components/text', () => ({
+  __esModule: true,
+  get default() {
+    return mockTextVariantTone;
+  },
+}));
 
 const FIELD_ID = 'trend-filter';
 

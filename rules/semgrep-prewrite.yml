@@ -2248,3 +2248,60 @@ rules:
       fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call; the same for requireMock, createMockFromModule and genMockFromModule."
       skill: "kiko-code-style › A jest.requireActual call takes no type argument"
     pattern-regex: '\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<'
+  # kiko-design-system's "Component set": a test that must read a label's `variant` or `tone`
+  # mocks the `Text` primitive with the shared `src/test-support/mock-text-variant-tone.tsx`,
+  # never with its own factory that forwards `variant` onto the host node (one copy per file
+  # drifts). The factory is bound to `$FACTORY` and read as text for the identifier `variant`
+  # (not as part of a hyphenated path such as the helper's own module name). The `$MODULE`
+  # regex covers the alias form and a relative `../text`. A tone-only factory (a `testID` built
+  # from `tone`) is another shape and is not matched. ERROR: the tree holds 0 findings for
+  # this id. The `src/test-support/**` include entry is path-prefixed, so the fixture pair is
+  # NESTED. See kiko-linter's "kiko-no-inline-text-variant-mock" section.
+  - id: kiko-no-inline-text-variant-mock
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A test mocks the design-system `Text` with its own factory that forwards `variant`
+      (and `tone`) onto the host node. The shared `mock-text-variant-tone` does exactly that
+      and is the one copy: `jest.mock('@kiko/design-system/components/text', () => ({
+      __esModule: true, get default() { return mockTextVariantTone; } }))` — see
+      kiko-design-system's "Component set".
+    metadata:
+      fix: "Import `mockTextVariantTone` from `@kiko/test-support/mock-text-variant-tone` and mock Text with `jest.mock('@kiko/design-system/components/text', () => ({ __esModule: true, get default() { return mockTextVariantTone; } }))`."
+      skill: "kiko-design-system › Component set"
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+    patterns:
+      - pattern: jest.mock($MODULE, $FACTORY)
+      - metavariable-regex:
+          metavariable: $MODULE
+          regex: ^.*(?:components/|\.\./)text['"]?$
+      - metavariable-regex:
+          metavariable: $FACTORY
+          regex: (?s)^.*(?<![-\w])variant(?![-\w])
+  # kiko-code-style's "One component per file, each in its own folder": a component uses an
+  # explicit `return`, never the arrow-shorthand implicit return. A regex, not an AST pattern:
+  # Semgrep treats `=> expr` and `=> { return expr; }` as the same function, so only the source
+  # text tells them apart. The regex reads `const <Name>: FC<...> = (<params>) =>` (also bare `FC`
+  # and `React.FC`), skips the balanced parentheses of the parameter list (a callback type or a
+  # default value inside it holds `=>` and `)`), and matches when the first thing after `=>` is
+  # not `{`. Scope: every `.tsx` file but a test, whose local mock components are exempt (the
+  # skill's mock-factory exemption). ERROR: the tree holds 0 findings for this id. See
+  # kiko-linter's "kiko-component-explicit-return" section for the known limits.
+  - id: kiko-component-explicit-return
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A component declared as `FC<...> = (...) => (...)` returns its JSX with the arrow-shorthand
+      implicit return. A component uses an explicit `return` — `(props) => { return (<...>); }`
+      — see kiko-code-style's "One component per file, each in its own folder".
+    metadata:
+      fix: "Give the arrow a block body: `const Name: FC<Props> = (props) => { return (<...>); };`."
+      skill: "kiko-code-style › One component per file, each in its own folder"
+    paths:
+      exclude:
+        - "*.test.tsx"
+    pattern-regex: '(?s)\bconst\s+\w+\s*:\s*(?:React\s*\.\s*)?FC(?:<[^=]*?(?:=>[^=]*?)*?>)?\s*=\s*(?:async\s+)?(\((?:[^()]++|(?1))*\))\s*=>\s*[^{\s]'

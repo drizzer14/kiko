@@ -471,6 +471,18 @@ describe('AccountsScreen', () => {
       expect(queryByTestId('account-card-converted')).toBeNull();
     });
 
+    it('shows an empty USD account as zero dollars with a zero caption in the base', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Wise', kind: 'bank', currency: 'USD' }],
+        holdings: [],
+        rates: usdRate,
+      });
+      const { getByText, getByTestId } = await renderAccounts();
+
+      expect(getByText('$0.00')).toBeTruthy();
+      expect(within(getByTestId('account-card-converted')).getByText('0.00 ₴')).toBeTruthy();
+    });
+
     it('shows a crypto account its own sum, with no caption and no zero in the base', async () => {
       setLiveData({
         accounts: [{ id: 'a', name: 'Cold wallet', kind: 'crypto', currency: 'BTC' }],

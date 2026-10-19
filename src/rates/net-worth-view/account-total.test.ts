@@ -72,7 +72,7 @@ describe('accountTotal', () => {
     expect(inBase).toBeNull();
   });
 
-  it('totals an empty account as zero in its currency with no caption', () => {
+  it('totals an empty account as zero in its currency with a zero figure in the base', () => {
     const { total, inBase } = accountTotal([], 'USD', 'UAH', rates, NOW);
 
     expect(total).toMatchObject({ currency: 'USD', minorUnits: 0 });

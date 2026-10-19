@@ -18,6 +18,7 @@ import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import { holdingTypeLabel } from '@kiko/holdings/holding-type-label';
 import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
+import ConvertedCaption from '@kiko/design-system/components/converted-caption';
 
 import { styles } from './holding-card.styles';
 
@@ -95,13 +96,7 @@ const HoldingCard: FC<{
             </Box>
           )}
 
-          {convertedToBase && (
-            <Box testID="holding-card-converted">
-              <Text variant="caption" tone="textSecondary">
-                {formatMoney(convertedToBase, activeLocale())}
-              </Text>
-            </Box>
-          )}
+          <ConvertedCaption money={convertedToBase} testID="holding-card-converted" />
         </Box>
       </Pressable>
     </Card>

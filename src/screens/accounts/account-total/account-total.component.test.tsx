@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { Money } from '@kiko/currency/money';
 
@@ -24,7 +24,6 @@ describe('AccountTotal', () => {
     );
 
     expect(getByText(/\$100\.00/)).toBeTruthy();
-    expect(getByTestId('converted')).toBeTruthy();
-    expect(getByText(/4,000\.00 ₴/)).toBeTruthy();
+    expect(within(getByTestId('converted')).getByText(/4,000\.00 ₴/)).toBeTruthy();
   });
 });

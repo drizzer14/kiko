@@ -1202,7 +1202,9 @@ new component can land between reviews of this skill:
   mock strips `variant` and `tone`; a layout pin that needs them imports
   `src/test-support/mock-text-variant-tone.tsx` and reads the tree with
   `layoutOf` (`src/test-support/layout-of.ts`); `src/test-support/mock-text-tone.tsx`
-  is the tone-only variant. `AccountKindField` and
+  is the tone-only variant. The `jest.mock` factory returns the helper through a getter (it is
+  read after the import ran), never an inline copy that forwards `variant`: Semgrep
+  `kiko-no-inline-text-variant-mock` denies the copy. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
