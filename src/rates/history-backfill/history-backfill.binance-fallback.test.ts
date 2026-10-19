@@ -7,6 +7,7 @@ import {
   type DailyClose,
   createBinanceMarketClient,
 } from '../binance-market';
+import type { NbuHistory } from '../nbu-history';
 import type { HistoryRateEntry } from '../history-entry';
 import { type CryptoHistory, CryptoHistoryFailure } from '../coingecko-history';
 
@@ -19,6 +20,7 @@ import {
   deriveLastBackfilledDayByCurrency,
   runBackfill,
 } from './history-backfill';
+import { withBinanceFallback } from './history-backfill.binance-fallback';
 
 const day = (index: number) => Date.UTC(2026, 8, 1) + index * DAY_MS;
 
@@ -56,6 +58,14 @@ const failed = (failedCurrencies: CryptoCurrency[], rateLimited: CryptoCurrency[
   failedCurrencies,
   rateLimitedCurrencies: rateLimited,
 });
+
+const euroRoutedRows = [3_000, 3_100, 3_200].map((close, index) => ({
+  base: 'ETH',
+  quote: 'UAH',
+  day: day(index),
+  rate: String(close * ((43 + index) / [1.08, 1.1, 1.12][index])),
+  source: 'binance',
+}));
 
 const klinesOf = (reply: Reply) =>
   (reply.closes ?? []).map((close, offset) => [
@@ -200,22 +210,14 @@ describe('runBackfill — the Binance public history fallback', () => {
       },
     });
 
-    expect(rowsOf('ETH')).toEqual(
-      [3_000, 3_100, 3_200].map((close, index) => ({
-        base: 'ETH',
-        quote: 'UAH',
-        day: day(index),
-        rate: String(close * ((43 + index) / [1.08, 1.1, 1.12][index])),
-        source: 'binance',
-      })),
-    );
+    expect(rowsOf('ETH')).toEqual(euroRoutedRows);
     expect(nbuCalls).toEqual([['USD'], ['EUR']]);
     expect(rows.map((row) => row.base)).not.toContain('EUR');
     expect(status.state).toBe('complete');
   });
 
-  it('asks NBU for no EUR when the fiat answer already has it', async () => {
-    const { nbuCalls } = await run({
+  it('prices through the EUR rows the fiat answer already has, asking NBU for no EUR', async () => {
+    const { nbuCalls, rowsOf, status } = await run({
       fiat: ['USD', 'EUR'],
       held: ['ETH'],
       crypto: failed(['ETH']),
@@ -226,6 +228,8 @@ describe('runBackfill — the Binance public history fallback', () => {
     });
 
     expect(nbuCalls).toEqual([['USD', 'EUR']]);
+    expect(rowsOf('ETH')).toEqual(euroRoutedRows);
+    expect(status.state).toBe('complete');
   });
 
   it('prices a coin CoinGecko answered with nothing', async () => {
@@ -237,6 +241,21 @@ describe('runBackfill — the Binance public history fallback', () => {
     });
 
     expect(rowsOf('ETH')).toHaveLength(3);
+  });
+
+  it('prices a coin of a CoinGecko leg that answered no entry at all', async () => {
+    const { rowsOf, status } = await run({
+      fiat: ['USD'],
+      held: ['ETH'],
+      crypto: failed([]),
+      binance: {
+        ETHUSDT: { closes: [3_000, 3_100, 3_200] },
+        EURUSDT: { closes: [1.08, 1.1, 1.12] },
+      },
+    });
+
+    expect(rowsOf('ETH')).toEqual(euroRoutedRows);
+    expect(status.state).toBe('complete');
   });
 
   it('prices USDT itself through EURUSDT when its CoinGecko history failed', async () => {
@@ -260,6 +279,29 @@ describe('runBackfill — the Binance public history fallback', () => {
       fiat: ['USD'],
       held: ['USDT'],
       crypto: { ...failed([]), entries: usdtEntries },
+      binance: {},
+    });
+
+    expect(binance.urls).toEqual([]);
+  });
+
+  it('asks Binance nothing when CoinGecko answered each of several coins', async () => {
+    const { binance } = await run({
+      fiat: ['USD'],
+      held: ['BTC', 'USDT'],
+      crypto: {
+        ...failed([]),
+        entries: [
+          ...usdtEntries,
+          ...[0, 1, 2].map((index) => ({
+            base: 'BTC',
+            quote: 'USD',
+            day: day(index),
+            rate: 65_000 + index,
+            source: 'coingecko',
+          })),
+        ] as HistoryRateEntry[],
+      },
       binance: {},
     });
 
@@ -378,6 +420,29 @@ describe('runBackfill — the Binance public history fallback', () => {
   });
 
   describe('an empty CoinGecko answer for a coin Binance prices from a later day', () => {
+    const runWithRows = async (overrides: Partial<BackfillDeps>) => {
+      const asked: CryptoCurrency[][] = [];
+      const result = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed([]), entries: usdtEntries },
+        binance: {},
+        overrides: {
+          lastBackfilledDay: day(2),
+          lastBackfilledDayByCurrency: { ETH: day(2), USDT: day(2), USD: day(2) },
+          firstBackfilledDayByCurrency: { ETH: day(1), USDT: day(0), USD: day(0) },
+          fetchCryptoHistory: async (_days, currencies) => {
+            asked.push(currencies);
+
+            return { ...failed([]), entries: usdtEntries };
+          },
+          ...overrides,
+        },
+      });
+
+      return { ...result, asked };
+    };
+
     it('holds the empty mark run after run until it expires, then asks CoinGecko again', async () => {
       const settledStore: Record<string, unknown> = {};
       const stored: StoredRow[] = [];
@@ -473,6 +538,38 @@ describe('runBackfill — the Binance public history fallback', () => {
       expect(nbuCalls).toEqual([['USD']]);
     });
 
+    it('asks CoinGecko again once Binance rows of the coin have no mark at all', async () => {
+      const { nbuCalls, asked } = await runWithRows({
+        binanceOnlyCurrencies: new Set<Currency>(['ETH']),
+        readSettledHistory: async () => ({}),
+      });
+
+      expect(nbuCalls).toEqual([['USD']]);
+      expect(asked).toEqual([['ETH']]);
+    });
+
+    it('asks CoinGecko again for a start before the one the empty mark was stamped for', async () => {
+      const { nbuCalls, asked } = await runWithRows({
+        binanceOnlyCurrencies: new Set<Currency>(['ETH']),
+        readSettledHistory: async () => ({
+          ETH: { start: day(1), firstDay: null, checkedOn: day(2) },
+        }),
+      });
+
+      expect(nbuCalls).toEqual([['USD']]);
+      expect(asked).toEqual([['ETH']]);
+    });
+
+    it('asks CoinGecko again when the run is not told which coins hold only Binance rows', async () => {
+      const { nbuCalls } = await runWithRows({
+        readSettledHistory: async () => ({
+          ETH: { start: day(0), firstDay: null, checkedOn: day(2) },
+        }),
+      });
+
+      expect(nbuCalls).toEqual([['USD']]);
+    });
+
     it('leaves a held coin with an unexpired empty mark out of a whole-span run a new coin forces', async () => {
       const asked: CryptoCurrency[][] = [];
       const writes: unknown[] = [];
@@ -544,6 +641,22 @@ describe('runBackfill — the Binance public history fallback', () => {
 
       expect(marks).toEqual([{ ETH: { start: day(0), firstDay: null, checkedOn: day(2) } }]);
       expect(rowsOf('ETH')).toHaveLength(2);
+    });
+
+    it('earns no mark for a coin with stored rows when the run is not told which are Binance only', async () => {
+      const { marks } = await run({
+        fiat: ['USD'],
+        held: ['ETH', 'USDT'],
+        crypto: { ...failed([]), entries: usdtEntries },
+        binance: {},
+        overrides: {
+          lastBackfilledDay: day(2),
+          lastBackfilledDayByCurrency: { ETH: day(2), USDT: day(2), USD: day(2) },
+          firstBackfilledDayByCurrency: { ETH: day(1), USDT: day(0), USD: day(0) },
+        },
+      });
+
+      expect(marks).toEqual([]);
     });
 
     it('asks CoinGecko for the coin again after a 429 that Binance covered from a later day', async () => {
@@ -741,5 +854,93 @@ describe('runBackfill — the Binance public history fallback', () => {
 
     expect(rows.filter((row) => row.base === 'USDC' || row.base === 'USDT')).toEqual([]);
     expect(rows.length).toBeGreaterThan(0);
+  });
+});
+
+describe('withBinanceFallback — the leg it returns', () => {
+  const dailyCloses = jest.fn(
+    async (symbol: string): Promise<DailyClose[] | undefined> =>
+      symbol === 'ETHUSDT'
+        ? [0, 1, 2].map((index) => ({ day: day(index), close: 3_000 + index }))
+        : undefined,
+  );
+  const client: BinanceMarketClient = { currentPrice: async () => undefined, dailyCloses };
+  const loadNbu = jest.fn();
+  const range = { start: day(0), end: day(2) };
+  const nbuResult: PromiseFulfilledResult<NbuHistory> = {
+    status: 'fulfilled',
+    value: { entries: [...nbuEntries, ...usdtEntries], failedCurrencies: [] },
+  };
+  const ethBinanceEntries = [0, 1, 2].map((index) => ({
+    base: 'ETH',
+    quote: 'UAH',
+    day: day(index),
+    rate: (3_000 + index) * ((1 + index / 1000) * (40 + index)),
+    source: 'binance',
+  }));
+
+  beforeEach(() => {
+    dailyCloses.mockClear();
+  });
+
+  it('adds the coins Binance priced and keeps the failures of the coins it did not', async () => {
+    const cryptoResult: PromiseFulfilledResult<CryptoHistory> = {
+      status: 'fulfilled',
+      value: { entries: usdtEntries, failedCurrencies: ['ETH', 'SOL'], rateLimitedCurrencies: [] },
+    };
+
+    const result = await withBinanceFallback({
+      requested: ['ETH', 'SOL'],
+      nbuResult,
+      cryptoResult,
+      range,
+      loadNbu,
+      client,
+    });
+
+    expect(result).toEqual({
+      status: 'fulfilled',
+      value: {
+        entries: [...usdtEntries, ...ethBinanceEntries],
+        failedCurrencies: ['SOL'],
+        rateLimitedCurrencies: [],
+      },
+    });
+    expect(loadNbu).not.toHaveBeenCalled();
+  });
+
+  it('prices every requested coin of a CoinGecko leg that rejected with no rate limit', async () => {
+    const result = await withBinanceFallback({
+      requested: ['ETH'],
+      nbuResult,
+      cryptoResult: { status: 'rejected', reason: new Error('network down') },
+      range,
+      loadNbu,
+      client,
+    });
+
+    expect(result).toEqual({
+      status: 'fulfilled',
+      value: { entries: ethBinanceEntries, failedCurrencies: [], rateLimitedCurrencies: [] },
+    });
+  });
+
+  it('returns the CoinGecko leg itself, asking Binance nothing, when NBU gave no anchor', async () => {
+    const cryptoResult: PromiseFulfilledResult<CryptoHistory> = {
+      status: 'fulfilled',
+      value: failed(['ETH']),
+    };
+
+    await expect(
+      withBinanceFallback({
+        requested: ['ETH'],
+        nbuResult: { status: 'rejected', reason: new Error('NBU down') },
+        cryptoResult,
+        range,
+        loadNbu,
+        client,
+      }),
+    ).resolves.toBe(cryptoResult);
+    expect(dailyCloses).not.toHaveBeenCalled();
   });
 });

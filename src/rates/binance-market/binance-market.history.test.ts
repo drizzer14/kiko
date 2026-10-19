@@ -143,6 +143,46 @@ describe('fetchFallbackHistory', () => {
     expect(loadEuro).not.toHaveBeenCalled();
   });
 
+  it('takes the EURUSDT route for a series with only some days USDT cannot price', async () => {
+    const { asked, client } = clientOf({
+      ETHUSDT: closes(3_000, 3_100),
+      EURUSDT: closes(1.08, 1.1),
+    });
+
+    const entries = await fetchFallbackHistory({
+      coins: ['ETH'],
+      start: day(0),
+      end: day(1),
+      usdtPriceAt: (at) => (at === day(0) ? 40 : undefined),
+      loadEuroPriceAt: euroLoader(() => 44),
+      client,
+    });
+
+    expect(asked.map((call) => call.symbol)).toEqual(['ETHUSDT', 'EURUSDT']);
+    expect(entries).toEqual([
+      { base: 'ETH', quote: 'UAH', day: day(0), rate: 3_000 * 40, source: 'binance' },
+      { base: 'ETH', quote: 'UAH', day: day(1), rate: 3_100 * (44 / 1.1), source: 'binance' },
+    ]);
+  });
+
+  it('asks no EURUSDT and loads no EUR for a coin whose series is empty', async () => {
+    const { asked, client } = clientOf({ ETHUSDT: [], EURUSDT: closes(1.08) });
+    const loadEuro = euroLoader(() => 43);
+
+    const entries = await fetchFallbackHistory({
+      coins: ['ETH'],
+      start: day(0),
+      end: day(0),
+      usdtPriceAt: NO_ANCHOR,
+      loadEuroPriceAt: loadEuro,
+      client,
+    });
+
+    expect(entries).toEqual([]);
+    expect(asked.map((call) => call.symbol)).toEqual(['ETHUSDT']);
+    expect(loadEuro).not.toHaveBeenCalled();
+  });
+
   it('loads no EUR when EURUSDT has no answer', async () => {
     const { client } = clientOf({ ETHUSDT: closes(3_000), EURUSDT: undefined });
     const loadEuro = euroLoader(() => 43);
@@ -157,6 +197,25 @@ describe('fetchFallbackHistory', () => {
         client,
       }),
     ).resolves.toEqual([]);
+    expect(loadEuro).not.toHaveBeenCalled();
+  });
+
+  it('keeps the other coins and loads no EUR when USDT is held and EURUSDT has no answer', async () => {
+    const { client } = clientOf({ ETHUSDT: closes(3_000), EURUSDT: undefined });
+    const loadEuro = euroLoader(() => 43);
+
+    await expect(
+      fetchFallbackHistory({
+        coins: ['ETH', 'USDT'],
+        start: day(0),
+        end: day(0),
+        usdtPriceAt: () => 40,
+        loadEuroPriceAt: loadEuro,
+        client,
+      }),
+    ).resolves.toEqual([
+      { base: 'ETH', quote: 'UAH', day: day(0), rate: 3_000 * 40, source: 'binance' },
+    ]);
     expect(loadEuro).not.toHaveBeenCalled();
   });
 

@@ -115,7 +115,8 @@ describe('fetchFallbackPrices', () => {
       client,
     });
 
-    expect(prices).toEqual({ SOL: 6_000 });
+    expect(prices).toStrictEqual({ SOL: 6_000 });
+    expect(Object.keys(prices)).toEqual(['SOL']);
   });
 
   it('asks no EURUSDT when USDT is priced', async () => {

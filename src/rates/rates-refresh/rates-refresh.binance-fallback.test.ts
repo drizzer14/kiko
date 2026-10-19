@@ -354,6 +354,31 @@ describe('refreshRates — the Binance public price fallback', () => {
     expect(afterCooldown.rowOf('ETH')?.source).toBe('binance');
   });
 
+  it('builds its own market client on the clock and the sleep of the refresh', async () => {
+    const binance = binanceFetchOf({
+      ETHUSDT: { price: '3000.00000000' },
+      SOLUSDT: { price: '150.00000000' },
+    });
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(binance.fetchImpl);
+    const sleep = jest.fn(async (_milliseconds: number) => undefined);
+
+    try {
+      const { rowOf } = await run({
+        held: ['ETH', 'SOL', 'USDT'],
+        coinGecko: { USDT: 1.0007 },
+        binance: {},
+        overrides: { binanceMarket: undefined, sleep },
+      });
+
+      expect(rowOf('ETH')?.source).toBe('binance');
+      expect(rowOf('ETH')?.rate).toBe(String(3_000 * (1.0007 * 40)));
+      expect(rowOf('SOL')?.source).toBe('binance');
+      expect(sleep).toHaveBeenCalledWith(350);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it.each([
     ['30 days old (a halted pair)', 30],
     ['of yesterday', 1],

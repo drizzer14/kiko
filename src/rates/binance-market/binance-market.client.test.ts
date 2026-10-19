@@ -1,6 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import { BINANCE_API_ENDPOINT } from '@env';
-import { DEFAULT_RETRY_AFTER_MS } from '@kiko/crypto-sync/binance';
+import { DEFAULT_RETRY_AFTER_MS, isBinanceCoolingDown } from '@kiko/crypto-sync/binance';
 
 import { createBinanceMarketClient } from './binance-market.client';
 
@@ -199,6 +199,18 @@ describe('createBinanceMarketClient — currentPrice', () => {
     expect(late.calls).toHaveLength(1);
   });
 
+  it('keeps the Retry-After of a client given no key under the public market key', async () => {
+    const refused = makeFetch(() => ({ status: 429, headers: { 'Retry-After': '30' } }));
+    await createBinanceMarketClient({
+      fetchImpl: refused.fetchImpl,
+      now: () => NOW,
+      sleep: noSleep,
+    }).currentPrice('BTCUSDT');
+
+    expect(isBinanceCoolingDown('binance-public-market', NOW + 29_999)).toBe(true);
+    expect(isBinanceCoolingDown('binance-public-market', NOW + 30_000)).toBe(false);
+  });
+
   it('reads an unlisted symbol (HTTP 400) as no price and still asks the next symbol', async () => {
     const { calls, fetchImpl } = makeFetch((url) =>
       url.includes('NOPEUSDT')
@@ -287,6 +299,30 @@ describe('createBinanceMarketClient — the shared /api/* IP budget', () => {
 
     expect(sleep).toHaveBeenCalledTimes(1);
     expect(sleep).toHaveBeenCalledWith(350);
+  });
+
+  it('paces by the real clock at the Binance interval when no sleep is given', async () => {
+    jest.useFakeTimers();
+
+    try {
+      const { calls, fetchImpl } = makeFetch(() => ({ body: todayCandle('3') }));
+      const client = createBinanceMarketClient({
+        fetchImpl,
+        now: () => NOW,
+        cooldownKey: freshKey(),
+      });
+
+      await client.currentPrice('BTCUSDT');
+      const second = client.currentPrice('ETHUSDT');
+      await jest.advanceTimersByTimeAsync(349);
+      expect(calls).toHaveLength(1);
+
+      await jest.advanceTimersByTimeAsync(1);
+      expect(calls).toHaveLength(2);
+      await expect(second).resolves.toBe(3);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('stops asking after the lane cap of calls in one run', async () => {

@@ -1,4 +1,13 @@
-import { transactions } from './schema';
+import { currencyRateHistory, currencyRates, transactions } from './schema';
+
+describe('the rate source enums', () => {
+  it.each([
+    ['currency_rates', currencyRates],
+    ['currency_rate_history', currencyRateHistory],
+  ])('names every rate source of %s', (_table, table) => {
+    expect(table.source.enumValues).toEqual(['monobank', 'coingecko', 'nbu', 'binance']);
+  });
+});
 
 describe('transactions.source enum', () => {
   // Guideline 2.3.1(a) remediation: PrivatBank, bunq, and Starling bank-CONNECT
