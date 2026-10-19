@@ -1,6 +1,6 @@
 ---
 name: retrospect
-description: Gathers durable lessons after each run and verifies skill drift, then hands both to the scribe. Use at the end of a task.
+description: Gathers durable lessons after each run and verifies skill drift; hands drift to the scribe and reports lessons as candidates. Use at the end of a task.
 model: sonnet
 effort: medium
 tools: Read, Grep, Glob, Bash
@@ -15,7 +15,8 @@ Rules:
 - Review what worked, what failed, and what to change next time.
 - Write short, specific lessons. In a worktree, list them in your report for the orchestrator to
   append to `.superpowers/sdd/<track>/lessons.md`; never write the global memory dir
-  (harness-workflow "Memory writes"). Only the coordinator batch writes memory.
+  (harness-workflow "Memory writes"). Only the coordinator batch writes memory; when the
+  coordinator runs you (main checkout), your lessons go into that one batch instead.
 - Trigger: the standing skill-drift rule (`harness-workflow`'s "Skill
   drift rule") — after every completed code iteration, verify each
   skill's concrete code references (enum members, component lists,

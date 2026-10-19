@@ -1,6 +1,6 @@
 ---
 name: retrospect
-description: Use at the end of a run to gather durable lessons, verify skill drift, and hand both to the scribe.
+description: Use at the end of a run to gather durable lessons, verify skill drift, hand drift to the scribe, and report lessons as candidates.
 ---
 
 Gather short, specific lessons after each run.
@@ -37,7 +37,9 @@ Rules:
   report, per the standing rule.
 - Hand any drift found to the scribe. Report each lesson as a candidate for
   `.superpowers/sdd/<track>/lessons.md`; never write the global memory dir
-  (harness-workflow "Memory writes"). Do not edit the plugin yourself.
+  (harness-workflow "Memory writes"). When the coordinator runs the retrospect (main
+  checkout), its lessons go into the coordinator's one memory batch instead. Do not edit
+  the plugin yourself.
 - When a scribe rewrote a section, grep every literal it states (query strings, keys,
   constants, paths) against `src/`; the symbol-name check does not cover them.
 - Verify a negative claim ("does not exist", "none found") with `ls -a` and a whole-tree grep that includes hidden paths before you report it.
