@@ -94,8 +94,14 @@ const HINTS = { forward: [{ start: 1, end: 2 }], pending: [], rescan: [], point:
 
 type StoredReads = [label: string, stored: unknown, reads: unknown];
 
+/**
+ * The fields this table covers: the multi-coin marks read by their own rules, which
+ * `walk-state.multi-coin.test.ts` covers.
+ */
+type TableField = Exclude<WalkField, 'multiCoinSince' | 'multiCoinSeen'>;
+
 /** What a field reads for a stored value: `undefined` is a value that is stored but unreadable. */
-const READS: Record<WalkField, StoredReads[]> = {
+const READS: Record<TableField, StoredReads[]> = {
   cursor: [
     ['nothing stored', undefined, null],
     ['a JSON null', null, null],
@@ -174,7 +180,7 @@ const READS: Record<WalkField, StoredReads[]> = {
   ],
 };
 
-const FIELDS: WalkField[] = [
+const FIELDS: TableField[] = [
   'cursor',
   'rescan',
   'pending',

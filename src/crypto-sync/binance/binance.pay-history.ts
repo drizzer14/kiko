@@ -12,6 +12,7 @@ import {
   instantAt,
   joinSettled,
   logWalkStop,
+  multiCoinPatchesOf,
   placeWalletRows,
   planWalkPasses,
   readPendingMark,
@@ -782,7 +783,13 @@ const runSync = async (
     apiKey,
     secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor: payCursor, rescanCursor, ...roundRobins, pending },
+    marks: {
+      cursor: payCursor,
+      rescanCursor,
+      ...roundRobins,
+      pending,
+      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: payCursor }),
+    },
     plan,
     write,
   };

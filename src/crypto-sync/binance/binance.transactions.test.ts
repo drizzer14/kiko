@@ -174,9 +174,13 @@ const makeStatefulSpotAccount = (accountId = ACCOUNT_ID) => {
 
 type StatefulSpotAccount = ReturnType<typeof makeStatefulSpotAccount>;
 
+/** The multi-coin marks ride the first cursor write, so a crash order leaves them out. */
+const isMultiCoinField = (field: WalkField): boolean =>
+  field === 'multiCoinSeen' || field === 'multiCoinSince';
+
 /** Logs the writes a crash order is about: a number mark is a 'cursor', a list a 'pending'. */
 const logWrite = (log: string[], walkName: WalkName, field: WalkField): void => {
-  if (field !== 'spanHints') {
+  if (field !== 'spanHints' && !isMultiCoinField(field)) {
     log.push(`${walkName}:${field === 'pending' ? 'pending' : 'cursor'}`);
   }
 };
@@ -1628,7 +1632,7 @@ describe('a capital cursor older than the re-scan window', () => {
 
     const writes = state.account
       .writes()
-      .filter((write) => write.field !== 'spanHints')
+      .filter((write) => write.field !== 'spanHints' && !isMultiCoinField(write.field))
       .map((write) => `${write.walkName}:${write.field}`);
     expect(writes.slice(0, 2)).toEqual(['capital:pending', 'capital:cursor']);
     expect(walkMarkWritesOf(state.account.deps, 'capital', 'pending')[0]).toEqual([

@@ -181,14 +181,18 @@ export const exchangeStatePatched = (
  * forward watermark a reconnected DIFFERENT account would inherit), and a stored `pending` becomes
  * `[]` (ranges of the old account's history). Everything else the entry held (point and range
  * cursors, span hints) is dropped: no mark there means "start at the oldest ground, with no span
- * to resume".
+ * to resume". The multi-coin range start goes with the cursor it was recorded against, but a walk
+ * that was seen stays seen: the reset cursor is the floor, so every coin is read from it and no
+ * range is owed. A seen mark that is not `true` reads as none, so it goes too.
  */
-const marksAfterDisconnect = (entry: Metadata, floorMs: number): Metadata =>
-  Object.fromEntries(
+const marksAfterDisconnect = (entry: Metadata, floorMs: number): Metadata => ({
+  ...Object.fromEntries(
     Object.entries({ cursor: floorMs, rescan: floorMs, pending: [] }).filter(
       ([field]) => field in entry,
     ),
-  );
+  ),
+  ...(entry.multiCoinSeen === true ? { multiCoinSeen: true } : {}),
+});
 
 /**
  * The capital walk is the one walk with no mark at a cursor that is missing: it starts at the

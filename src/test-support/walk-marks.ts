@@ -18,7 +18,9 @@ export type WalkField =
   | 'pending'
   | 'pointCursor'
   | 'rangeCursor'
-  | 'spanHints';
+  | 'spanHints'
+  | 'multiCoinSince'
+  | 'multiCoinSeen';
 
 /** Any value, because a test also seeds a malformed mark to prove the walk reads it as none. */
 export type WalkMarkSeed = Partial<Record<WalkField, unknown>>;
@@ -39,7 +41,13 @@ const SPOT_ASSET = 'BTC';
 /** The marks a walk writes as one number: a cursor, a re-scan mark or a round-robin's cursor. */
 export const NUMBER_MARK_FIELDS = ['cursor', 'rescan', 'pointCursor', 'rangeCursor'] as const;
 
-const FIELDS: readonly WalkField[] = [...NUMBER_MARK_FIELDS, 'pending', 'spanHints'];
+const FIELDS: readonly WalkField[] = [
+  ...NUMBER_MARK_FIELDS,
+  'pending',
+  'spanHints',
+  'multiCoinSince',
+  'multiCoinSeen',
+];
 
 export const WALK_NAMES: readonly WalkName[] = ['capital', 'pay', 'transfer', 'earn'];
 

@@ -106,10 +106,16 @@ const storedState = (stored: StoredMarks = {}) => {
       return (marks().pending as OwedGround[] | undefined) ?? [];
     },
     // Every write to any walk's marks in order, by walk and field, to pin what goes before what.
+    // The multi-coin marks ride the first cursor write, so they are no step of that order.
     get order(): string[] {
       return fake
         .writes()
-        .filter((write) => write.field !== 'spanHints')
+        .filter(
+          (write) =>
+            write.field !== 'spanHints' &&
+            write.field !== 'multiCoinSeen' &&
+            write.field !== 'multiCoinSince',
+        )
         .map((write) => `${write.walkName}:${write.field}`);
     },
   };

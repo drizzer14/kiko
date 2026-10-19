@@ -11,6 +11,7 @@ import {
   historyListWriterOf,
   instantAt,
   joinSettled,
+  multiCoinPatchesOf,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
@@ -887,7 +888,13 @@ const runSync = async (
     apiKey: credentials.apiKey,
     secret: credentials.secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor, rescanCursor, ...roundRobins, pending },
+    marks: {
+      cursor,
+      rescanCursor,
+      ...roundRobins,
+      pending,
+      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: cursor }),
+    },
     plan,
     write,
   };

@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
-import { maxOf } from '@kiko/numbers';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import { maxOf, minOf } from '@kiko/numbers';
 import { logFailure } from '@kiko/diagnostics';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 
@@ -629,6 +629,12 @@ export type WalkMarks = {
    * it read since took ground off it: a forward span stores the list in `pending` with the cursor.
    */
   listStored?: boolean;
+  /**
+   * The multi-coin marks the first forward span of the run writes with its cursor
+   * (`multiCoinPatchesOf`), emptied by that write: no other pass writes them, so a run that commits
+   * no forward span writes neither.
+   */
+  multiCoinPatches?: WalkMarkPatch[];
 };
 
 type MarkAdvance = {
@@ -644,6 +650,34 @@ type MarkAdvance = {
   marks: WalkMarks;
   restartMs: number;
   write: WalkMarkWriter;
+};
+
+/**
+ * What a walk that was never seen writes with the cursor of its first committed forward span: the
+ * seen mark, and the cursor the run planned from (`planCursor`) as the start of the range set 15
+ * backfills for the other coins, `[floor, start)`. A null plan cursor owes no range, because the
+ * walk reads every coin from its floor anyway. A walk that was seen writes nothing, so a later run
+ * after a null-cursor first run records no start. A walk that holds a start but lost its seen mark
+ * keeps the earlier of the two starts: the later one would skip ground the earlier one owes.
+ */
+export const multiCoinPatchesOf = (input: {
+  stored: Pick<ParsedWalkMarks, 'multiCoinSince' | 'multiCoinSeen'>;
+  planCursor: number | null;
+}): WalkMarkPatch[] => {
+  const { stored, planCursor } = input;
+
+  if (stored.multiCoinSeen === true) {
+    return [];
+  }
+
+  const starts = [planCursor, stored.multiCoinSince].flatMap((start) => start ?? []);
+
+  return [
+    { field: 'multiCoinSeen', value: true },
+    ...(foldMap(maybe(starts.length > 0 ? minOf(starts) : undefined), (value): WalkMarkPatch[] => [
+      { field: 'multiCoinSince', value },
+    ]) ?? []),
+  ];
 };
 
 /** Stored lists are cut to nothing and merged to no limit: only a run's plan bounds a list. */
@@ -706,8 +740,15 @@ const advanceCursor = async (input: MarkAdvance): Promise<void> => {
       : normalizePending([...listed, ...forwardOwed], UNBOUNDED, Number.POSITIVE_INFINITY),
   );
 
+  const multiCoin = marks.multiCoinPatches ?? [];
+
   marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
-  await write([...pending, { field: 'cursor', value: marks.cursor }]);
+  await write([...pending, ...multiCoin, { field: 'cursor', value: marks.cursor }]);
+
+  if (multiCoin.length > 0) {
+    // Emptied only once the write held: a write that fails ends the run with the marks unwritten.
+    marks.multiCoinPatches = [];
+  }
 };
 
 /** Whether `outer` holds all of `inner`. */

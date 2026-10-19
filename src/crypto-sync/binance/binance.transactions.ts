@@ -11,6 +11,7 @@ import {
   historyListWriterOf,
   instantAt,
   joinSettled,
+  multiCoinPatchesOf,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
@@ -700,7 +701,13 @@ const runSync = async (
     apiKey,
     secret,
     options,
-    marks: { cursor, rescanCursor, ...roundRobins, pending },
+    marks: {
+      cursor,
+      rescanCursor,
+      ...roundRobins,
+      pending,
+      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor }),
+    },
     plan,
     write,
   };
