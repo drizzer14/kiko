@@ -184,7 +184,7 @@ describe('request shape', () => {
     });
   });
 
-  it('keeps the capital reads on coin BTC with offset and limit 1000', async () => {
+  it('keeps the capital reads with offset and limit 1000 and no coin', async () => {
     const deposits = recordingFetch([]);
     const withdrawals = recordingFetch([]);
     const window = { startTime: START, endTime: NOW, offset: 2000 };
@@ -193,7 +193,6 @@ describe('request shape', () => {
     await fetchWithdrawHistory(API_KEY, SECRET, window, optionsFor(withdrawals.fetchImpl));
 
     const expectedParams = {
-      coin: 'BTC',
       startTime: String(START),
       endTime: String(NOW),
       offset: '2000',
@@ -1298,11 +1297,11 @@ describe('capital reads', () => {
     expect(page.rows[0].applyTime).toBe(NOW);
   });
 
-  it('reads a missing hash, fee and coin as empty text', async () => {
-    const deposits = await readDeposits([without(depositRow, 'txId', 'coin')]);
+  it('reads a missing hash and fee as empty text', async () => {
+    const deposits = await readDeposits([without(depositRow, 'txId')]);
     const withdrawals = await readWithdrawals([without(withdrawalRow, 'txId', 'transactionFee')]);
 
-    expect(deposits.rows[0]).toMatchObject({ txId: '', coin: '' });
+    expect(deposits.rows[0]).toMatchObject({ txId: '' });
     expect(withdrawals.rows[0]).toMatchObject({ txId: '', transactionFee: '' });
   });
 

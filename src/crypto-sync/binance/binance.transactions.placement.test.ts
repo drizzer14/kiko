@@ -17,10 +17,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { seedWalkMarks, walkMarksOf } from '@kiko/test-support/walk-marks';
+import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 
-import type { BinanceDeposit } from './binance.history-client';
 import { syncBinanceTransactions } from './binance.transactions';
 import { createBinanceHistoryRun } from './binance.history-budget';
+import type { BinanceDeposit, BinanceWithdrawal } from './binance.history-client';
 
 const NOW = 1_704_326_400_000; // 2024-01-04T00:00:00Z
 const ACCOUNT_ID = 'acc-1';
@@ -62,7 +63,19 @@ const deposit = (over: Partial<BinanceDeposit>): BinanceDeposit => ({
 
 const NO_READING = { usedUidWeight1m: undefined, usedIpWeight1m: undefined };
 
-const runWalk = (deposits: BinanceDeposit[]) =>
+const withdrawal = (over: Partial<BinanceWithdrawal>): BinanceWithdrawal => ({
+  id: '9',
+  amount: '1.5',
+  transactionFee: '0.1',
+  coin: 'USDT',
+  txId: 'wd-tx',
+  applyTime: '2024-01-03 00:00:00',
+  status: 6,
+  walletType: undefined,
+  ...over,
+});
+
+const runWalk = (deposits: BinanceDeposit[], withdrawals: BinanceWithdrawal[] = []) =>
   syncBinanceTransactions(
     {
       targetAccountId: ACCOUNT_ID,
@@ -72,7 +85,7 @@ const runWalk = (deposits: BinanceDeposit[]) =>
       now: () => NOW,
       readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
       fetchDepositHistory: async () => ({ rows: deposits, unreadable: [], ...NO_READING }),
-      fetchWithdrawHistory: async () => ({ rows: [], unreadable: [], ...NO_READING }),
+      fetchWithdrawHistory: async () => ({ rows: withdrawals, unreadable: [], ...NO_READING }),
     },
   );
 
@@ -255,5 +268,81 @@ describe('capital placement on real SQLite, with no Spot BTC holding', () => {
       { external_id: 'acc-1:deposit:7', holding_id: 'h-funding', amount_minor_units: 50_000_000 },
       { external_id: 'acc-1:deposit:8', holding_id: 'h-funding', amount_minor_units: 50_000_000 },
     ]);
+  });
+});
+
+describe('a USDT withdrawal on real SQLite', () => {
+  type SpendingRow = {
+    id: string;
+    holding_id: string;
+    amount_minor_units: number;
+    category: string | null;
+    category_set_by_hand: number;
+    exchange_counterpart_holding_id: string | null;
+    exchange_pair_id: string | null;
+    untracked_counterpart: string | null;
+  };
+
+  const withdrawalRow = (): SpendingRow =>
+    mockDatabase
+      .prepare(
+        `SELECT id, holding_id, amount_minor_units, category, category_set_by_hand,
+                exchange_counterpart_holding_id, exchange_pair_id, untracked_counterpart
+           FROM transactions WHERE external_id = 'acc-1:withdraw:9'`,
+      )
+      .get() as SpendingRow;
+
+  const excludedIdsOf = (row: SpendingRow): Set<string> =>
+    exchangeExcludedTransactionIds([
+      {
+        id: row.id,
+        exchangeCounterpartHoldingId: row.exchange_counterpart_holding_id,
+        untrackedCounterpart: row.untracked_counterpart,
+      },
+    ]);
+
+  beforeEach(() => {
+    mockDatabase = openDatabase();
+  });
+
+  it('imports a USDT withdrawal as spending in the default category', async () => {
+    const result = await runWalk([], [withdrawal({})]);
+
+    const row = withdrawalRow();
+    expect(result).toEqual({ imported: 1, complete: true });
+    expect(row).toMatchObject({
+      amount_minor_units: -150_000_000,
+      category: null,
+      category_set_by_hand: 0,
+      exchange_counterpart_holding_id: null,
+      exchange_pair_id: null,
+      untracked_counterpart: null,
+    });
+    expect(
+      mockDatabase.prepare('SELECT currency, name FROM holdings WHERE id = ?').get(row.holding_id),
+    ).toEqual({ currency: 'USDT', name: 'Binance Spot · USDT' });
+    expect(excludedIdsOf(row).size).toBe(0);
+  });
+
+  it('a hand-linked withdrawal stays excluded when the walk reads it again', async () => {
+    await runWalk([], [withdrawal({})]);
+    const imported = withdrawalRow();
+    mockDatabase
+      .prepare('UPDATE transactions SET exchange_counterpart_holding_id = ? WHERE id = ?')
+      .run('h-spot', imported.id);
+
+    const secondRun = await runWalk([], [withdrawal({})]);
+
+    const row = withdrawalRow();
+    expect(secondRun).toEqual({ imported: 0, complete: true });
+    expect(row).toMatchObject({
+      holding_id: imported.holding_id,
+      amount_minor_units: -150_000_000,
+      exchange_counterpart_holding_id: 'h-spot',
+    });
+    expect(excludedIdsOf(row)).toEqual(new Set([row.id]));
+    expect(
+      mockDatabase.prepare('SELECT currency FROM holdings WHERE id = ?').get(row.holding_id),
+    ).toEqual({ currency: 'USDT' });
   });
 });

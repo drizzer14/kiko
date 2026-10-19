@@ -32,6 +32,7 @@ import {
   type WalkPlan,
   type WalkResult,
   type WalkWindow,
+  untrackedHistoryWriterOf,
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -54,10 +55,11 @@ import {
   type HistoryWindow,
 } from './binance.history-client';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
+import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
-import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
+import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
+import { type BinanceWallet, binanceKeyOf, holdingKeyOf, SPOT_KEY } from './binance.holding-keys';
 
 /** The stop of a row the client could not read: logged by its code alone, never its content. */
 const CAPITAL_ROW_UNREADABLE = 'capital-row-unreadable';
@@ -188,46 +190,61 @@ const recordKey = (record: { id: string; txId: string }): string => record.id ||
  * Any other value is a wallet this walk does not know, and guessing would put a
  * row on the wrong holding.
  */
-const walletOf = (walletType: number | undefined): BinanceWalletKey =>
+const walletOf = (walletType: number | undefined): BinanceWallet =>
   match(walletType)
-    .returnType<BinanceWalletKey>()
-    .with(undefined, 0, () => SPOT_KEY)
-    .with(1, () => FUNDING_KEY)
+    .returnType<BinanceWallet>()
+    .with(undefined, 0, () => 'spot')
+    .with(1, () => 'funding')
     .otherwise(() => {
       throw new BinanceWalkStop('capital-wallet-unknown');
     });
 
+/** A record's ticker, upper-cased once where it is read; blank when Binance sent none. */
+const tickerOf = ({ coin }: { coin: string }): string => coin.trim().toUpperCase();
+
 /** A row mapped from a settled record, before its wallet is turned into a holding. */
-type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: BinanceWalletKey };
+type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: string };
 
 /**
- * Map one SETTLED record to a row. A record the walk cannot trust (no id, a
- * non-numeric amount, an unreadable time, an unknown wallet) stops the window: a
- * skipped row would be silent loss.
+ * Map one SETTLED record of a tracked coin to a row. A record the walk cannot trust (no id, a
+ * blank coin, a non-numeric amount, an unreadable time, an unknown wallet) stops the window: a
+ * skipped row would be silent loss. A record of a coin that is not tracked never gets here: the
+ * walk counts it without reading it (`untrackedTickerOf`).
  */
 const plannedRowOf = (input: {
   accountId: string;
   kind: 'deposit' | 'withdraw';
   direction: 1 | -1;
-  record: { id: string; txId: string; amount: string; walletType: number | undefined };
+  record: {
+    id: string;
+    txId: string;
+    amount: string;
+    coin: string;
+    walletType: number | undefined;
+  };
   time: number;
 }): PlannedRow => {
   const { accountId, kind, direction, record, time } = input;
   const key = recordKey(record);
+  const ticker = tickerOf(record);
 
   if (key === '') {
     throw new BinanceWalkStop('capital-id-missing');
   }
 
-  const satoshis = rowMinorUnits(BINANCE_ASSET, record.amount);
+  if (!isTrackedBinanceAsset(ticker)) {
+    throw new BinanceWalkStop(CAPITAL_ROW_UNREADABLE);
+  }
+
+  const minorUnits = rowMinorUnits(ticker, record.amount);
 
   if (!Number.isFinite(time)) {
     throw new BinanceWalkStop('capital-time-invalid');
   }
 
   return {
-    wallet: walletOf(record.walletType),
-    amountMinorUnits: direction * satoshis,
+    wallet: holdingKeyOf(ticker, walletOf(record.walletType)),
+    amountMinorUnits: direction * minorUnits,
     time,
     source: 'binance',
     externalId: `${accountId}:${kind}:${key}`,
@@ -237,7 +254,7 @@ const plannedRowOf = (input: {
     // match, so the sheet appears with parity to a Monobank merchant row. It
     // must stay non-localized — a localized label would change under a language
     // switch and break name matching.
-    description: BINANCE_ASSET,
+    description: ticker,
   };
 };
 
@@ -465,6 +482,23 @@ type SpanRecord =
   | { kind: 'deposit'; record: BinanceDeposit }
   | { kind: 'withdraw'; record: BinanceWithdrawal };
 
+const isSettled = (entry: SpanRecord): boolean =>
+  match(entry)
+    .with({ kind: 'deposit' }, ({ record }) => record.status === DEPOSIT_STATUS_SUCCESS)
+    .with({ kind: 'withdraw' }, ({ record }) => record.status === WITHDRAW_STATUS_COMPLETED)
+    .exhaustive();
+
+/**
+ * The ticker of a settled record of a coin the walk does not track: counted, imported as no row
+ * and listed. A blank coin is no ticker (it is unreadable), and a record not settled yet is
+ * neither imported nor listed, whatever its coin.
+ */
+const untrackedTickerOf = (entry: SpanRecord): string | undefined => {
+  const ticker = tickerOf(entry.record);
+
+  return isSettled(entry) && ticker !== '' && !isTrackedBinanceAsset(ticker) ? ticker : undefined;
+};
+
 const plannedOf = (accountId: string, entry: SpanRecord): PlannedRow[] =>
   match(entry)
     .returnType<(PlannedRow | null)[]>()
@@ -531,6 +565,7 @@ const commitSpan = (
         ],
         rowsOf: (entry) => plannedOf(accountId, entry),
         extentOf,
+        untrackedOf: untrackedTickerOf,
       }),
       settleUnreadable({
         span,
@@ -548,6 +583,7 @@ const commitSpan = (
     place: (planned) => placeRows(context, planned),
     add: deps.addTransactions,
     writeOversized: oversizedHistoryWriterOf(deps, accountId),
+    writeUntracked: untrackedHistoryWriterOf(deps, accountId),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,

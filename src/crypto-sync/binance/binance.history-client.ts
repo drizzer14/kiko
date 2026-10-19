@@ -243,7 +243,6 @@ export const HISTORY_PAGE_LIMIT = 1000;
 export type HistoryWindow = { startTime: number; endTime: number; offset: number };
 
 const capitalParams = (window: HistoryWindow): Record<string, string> => ({
-  coin: BINANCE_ASSET,
   startTime: String(window.startTime),
   endTime: String(window.endTime),
   offset: String(window.offset),
@@ -252,12 +251,13 @@ const capitalParams = (window: HistoryWindow): Record<string, string> => ({
 
 /**
  * `walletType` is 0 for Spot and 1 for Funding. `txId` is empty for a movement
- * with no on-chain hash.
+ * with no on-chain hash. The read is account-wide, so `coin` names the asset of each record: a
+ * record with no coin cannot be told from one of a coin that is not tracked, so it is unreadable.
  */
 const DEPOSIT_FIELDS = {
   id: identifierOrEmpty,
   amount: text,
-  coin: textOrEmpty,
+  coin: text,
   txId: textOrEmpty,
   insertTime: finiteNumber,
   status: finiteNumber,
@@ -275,7 +275,7 @@ const WITHDRAWAL_FIELDS = {
   id: identifierOrEmpty,
   amount: text,
   transactionFee: textOrEmpty,
-  coin: textOrEmpty,
+  coin: text,
   txId: textOrEmpty,
   applyTime: textOrNumber,
   status: finiteNumber,
@@ -293,7 +293,7 @@ const withdrawalPage = arrayPage(
 );
 
 /**
- * `GET /sapi/v1/capital/deposit/hisrec` (deposit history), filtered to BTC, for
+ * `GET /sapi/v1/capital/deposit/hisrec` (deposit history), of every coin, for
  * ONE offset page of ONE window. Signed, read-only. Returns the page; the
  * offset-paging and window walk live in `binance.transactions.ts`.
  */
@@ -315,7 +315,7 @@ export const fetchDepositHistory = async (
   );
 
 /**
- * `GET /sapi/v1/capital/withdraw/history` (withdrawal history), filtered to BTC,
+ * `GET /sapi/v1/capital/withdraw/history` (withdrawal history), of every coin,
  * for ONE offset page of ONE window. Signed, read-only. Same window/paging
  * contract as `fetchDepositHistory`; the page carries the minute's spent UID weight
  * the resumable walk budgets its next call against.

@@ -100,9 +100,9 @@ const EXPECTED_URLS: Record<string, string> = {
   'locked position':
     'https://api.binance.com/sapi/v1/simple-earn/locked/position?current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=e84b361aece3f41ee6815a56e53e2bc9a045b432f1c910c5e5d769ea0a26f6ff',
   'deposit history':
-    'https://api.binance.com/sapi/v1/capital/deposit/hisrec?coin=BTC&startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=9e960ba104e88789b4926156c1563c87d3230206b7b06f70b6935daf0136fc10',
+    'https://api.binance.com/sapi/v1/capital/deposit/hisrec?startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=0eca7592cf51f123fe5b3d91507d75cd6e617f68bdc9d1a43f28e031d3eaeca2',
   'withdraw history':
-    'https://api.binance.com/sapi/v1/capital/withdraw/history?coin=BTC&startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=9e960ba104e88789b4926156c1563c87d3230206b7b06f70b6935daf0136fc10',
+    'https://api.binance.com/sapi/v1/capital/withdraw/history?startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=0eca7592cf51f123fe5b3d91507d75cd6e617f68bdc9d1a43f28e031d3eaeca2',
   'pay history':
     'https://api.binance.com/sapi/v1/pay/transactions?startTime=1788998400000&endTime=1791590400000&limit=100&timestamp=1791590400000&recvWindow=5000&signature=2d01a2ba5565fd5577994b6383f937f9e3f6471e127fd900b9e144da6a64c90a',
   'universal transfers':
