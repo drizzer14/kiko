@@ -54,7 +54,7 @@ export class BinanceRateLimitError extends Error {
  */
 export const DEFAULT_RETRY_AFTER_MS = 60_000;
 
-const retryAfterMsFromHeaders = (headers: Headers): number => {
+export const retryAfterMsFromHeaders = (headers: Headers): number => {
   const seconds = Number(headers.get('Retry-After'));
 
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_RETRY_AFTER_MS;
@@ -118,7 +118,7 @@ const readBody = guard(
   (response: Response): Promise<unknown> => response.json(),
 );
 
-/** The single asset this milestone reads; every SAPI read filters to it. */
+/** The asset the history reads still filter to; the balance reads take every asset. */
 export const BINANCE_ASSET = 'BTC';
 
 /** A signed request's parsed body alongside its response headers. */
@@ -220,8 +220,8 @@ export type BinanceFundingAsset = {
 };
 
 /**
- * `POST /sapi/v1/asset/get-funding-asset` (Funding wallet). Filtered to BTC.
- * Returns one entry per held asset (a full array, NOT paginated); the BTC amount
+ * `POST /sapi/v1/asset/get-funding-asset` (Funding wallet), every asset.
+ * Returns one entry per held asset (a full array, NOT paginated); a coin's amount
  * is `free + locked + freeze + withdrawing`. "Enable Reading" permission only.
  */
 export const fetchFundingAsset = async (
@@ -234,7 +234,7 @@ export const fetchFundingAsset = async (
     secret,
     'POST',
     '/sapi/v1/asset/get-funding-asset',
-    { asset: BINANCE_ASSET },
+    {},
     options,
   )) as BinanceFundingAsset[];
 
@@ -251,7 +251,7 @@ const POSITION_PAGE_SIZE = 100;
 const MAX_POSITION_PAGES = 50;
 
 /**
- * Walk every page of a Simple Earn position endpoint, filtered to BTC, and
+ * Walk every page of a Simple Earn position endpoint, every asset, and
  * accumulate the rows. Termination depends on `total`, NOT on a page being
  * "full": it stops once the gathered rows cover the reported `total`, or when a
  * page comes back empty (the backstop for an over-reported `total`); the
@@ -276,11 +276,7 @@ const fetchAllPositions = async <Row>(
       secret,
       'GET',
       path,
-      {
-        asset: BINANCE_ASSET,
-        current: String(current),
-        size: String(POSITION_PAGE_SIZE),
-      },
+      { current: String(current), size: String(POSITION_PAGE_SIZE) },
       options,
     )) as { rows?: Row[]; total?: number };
 
@@ -299,7 +295,7 @@ const fetchAllPositions = async <Row>(
   return { rows, total };
 };
 
-/** One Simple Earn Flexible position — its BTC amount is `totalAmount` (decimal string). */
+/** One Simple Earn Flexible position — its amount is `totalAmount` (decimal string). */
 export type BinanceFlexiblePosition = {
   rows: { asset: string; totalAmount: string }[];
   total: number;
@@ -318,7 +314,7 @@ export const fetchFlexiblePosition = async (
     options,
   );
 
-/** One Simple Earn Locked position — its BTC amount is `amount` (decimal string). */
+/** One Simple Earn Locked position — its amount is `amount` (decimal string). */
 export type BinanceLockedPosition = {
   rows: { asset: string; amount: string }[];
   total: number;
@@ -355,3 +351,10 @@ export const usedWeightsFromHeaders = (
   usedUidWeight1m: weightFromHeader(headers, 'X-SAPI-USED-UID-WEIGHT-1M'),
   usedIpWeight1m: weightFromHeader(headers, 'X-SAPI-USED-IP-WEIGHT-1M'),
 });
+
+/**
+ * The requesting minute's spent `/api/*` weight (`X-MBX-USED-WEIGHT-1M`, the one IP limit those
+ * endpoints share), when Binance reports it.
+ */
+export const usedApiWeightFromHeaders = (headers: Headers): number | undefined =>
+  weightFromHeader(headers, 'X-MBX-USED-WEIGHT-1M');

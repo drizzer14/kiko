@@ -55,21 +55,21 @@ describe('bitcoinWalletProvider', () => {
   it('fetches the connect-time address and returns one BTC balance keyed on that address', async () => {
     const deps = makeDeps(12_345_678);
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       { ...deps, address: ADDRESS },
       target(),
     );
 
     expect(deps.fetchAddressBalance).toHaveBeenCalledWith(ADDRESS, deps.fetchImpl);
     expect(balances).toEqual([
-      { balanceMinorUnits: 12_345_678, metadataKey: ADDRESS, name: 'BTC Wallet' },
+      { currency: 'BTC', balanceMinorUnits: 12_345_678, metadataKey: ADDRESS, name: 'BTC Wallet' },
     ]);
   });
 
   it('trims surrounding whitespace from a pasted address', async () => {
     const deps = makeDeps();
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       { ...deps, address: `  ${ADDRESS}\n` },
       target(),
     );
@@ -81,14 +81,16 @@ describe('bitcoinWalletProvider', () => {
   it('reads the stored walletAddress of a single open holding on a re-sync', async () => {
     const deps = makeDeps(42);
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       deps,
       target([holdingWith({ iban: 'UA1' }), holdingWith({ walletAddress: ADDRESS, syncedAt: 1 })]),
     );
 
     expect(deps.fetchAddressBalance).toHaveBeenCalledTimes(1);
     expect(deps.fetchAddressBalance).toHaveBeenCalledWith(ADDRESS, deps.fetchImpl);
-    expect(balances).toEqual([{ balanceMinorUnits: 42, metadataKey: ADDRESS, name: 'BTC Wallet' }]);
+    expect(balances).toEqual([
+      { currency: 'BTC', balanceMinorUnits: 42, metadataKey: ADDRESS, name: 'BTC Wallet' },
+    ]);
   });
 
   it('re-syncs every stored address, one balance each, in holding order', async () => {
@@ -98,7 +100,7 @@ describe('bitcoinWalletProvider', () => {
       async (address: string) => satoshisByAddress[address],
     );
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       deps,
       target([
         holdingWith({ walletAddress: ADDRESS }),
@@ -111,15 +113,15 @@ describe('bitcoinWalletProvider', () => {
       OTHER_ADDRESS,
     ]);
     expect(balances).toEqual([
-      { balanceMinorUnits: 100, metadataKey: ADDRESS, name: 'BTC Wallet' },
-      { balanceMinorUnits: 200, metadataKey: OTHER_ADDRESS, name: 'BTC Wallet' },
+      { currency: 'BTC', balanceMinorUnits: 100, metadataKey: ADDRESS, name: 'BTC Wallet' },
+      { currency: 'BTC', balanceMinorUnits: 200, metadataKey: OTHER_ADDRESS, name: 'BTC Wallet' },
     ]);
   });
 
   it('puts the connect-time address first, then every stored address', async () => {
     const deps = makeDeps();
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       { ...deps, address: OTHER_ADDRESS },
       target([holdingWith({ walletAddress: ADDRESS })]),
     );
@@ -130,7 +132,7 @@ describe('bitcoinWalletProvider', () => {
   it('fetches an address once when the connect-time address is already stored', async () => {
     const deps = makeDeps();
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       { ...deps, address: `  ${ADDRESS} ` },
       target([holdingWith({ walletAddress: ADDRESS })]),
     );
@@ -142,7 +144,7 @@ describe('bitcoinWalletProvider', () => {
   it('fetches an address once when two holdings store it', async () => {
     const deps = makeDeps();
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       deps,
       target([holdingWith({ walletAddress: ADDRESS }), holdingWith({ walletAddress: ADDRESS })]),
     );
@@ -154,7 +156,7 @@ describe('bitcoinWalletProvider', () => {
   it('skips a closed holding on a re-sync and sends its address nowhere', async () => {
     const deps = makeDeps();
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       deps,
       target([
         holdingWith({ walletAddress: ADDRESS }, 1_700_000_000_000),
@@ -171,7 +173,7 @@ describe('bitcoinWalletProvider', () => {
   it('still fetches a connect-time address that belongs to a closed holding', async () => {
     const deps = makeDeps();
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       { ...deps, address: ADDRESS },
       target([holdingWith({ walletAddress: ADDRESS }, 1_700_000_000_000)]),
     );
@@ -183,7 +185,7 @@ describe('bitcoinWalletProvider', () => {
   it('skips a holding that stores no wallet address', async () => {
     const deps = makeDeps();
 
-    const balances = await bitcoinWalletProvider.fetchBalances(
+    const { balances } = await bitcoinWalletProvider.fetchBalances(
       deps,
       target([
         holdingWith({ iban: 'UA1' }),
@@ -274,7 +276,7 @@ describe('bitcoinWalletProvider', () => {
         deps,
         target([holdingWith({ walletAddress: ADDRESS }, 1_700_000_000_000)]),
       ),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({ balances: [] });
     expect(deps.fetchAddressBalance).not.toHaveBeenCalled();
   });
 

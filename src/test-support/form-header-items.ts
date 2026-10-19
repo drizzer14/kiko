@@ -8,23 +8,33 @@ type HeaderItem = {
   onPress: () => void;
 };
 
+type HeaderSlotName = 'unstable_headerLeftItems' | 'unstable_headerRightItems';
+
 type HeaderSlot = (props: { canGoBack: boolean }) => HeaderItem[];
+
+/**
+ * The items the screen last registered for one nav-bar slot, asked the way native-stack asks:
+ * `canGoBack` says whether the stack draws a back button for this screen.
+ */
+export const headerItems = (
+  setOptions: jest.Mock,
+  slot: HeaderSlotName,
+  canGoBack = false,
+): HeaderItem[] => {
+  const registrations: Partial<Record<HeaderSlotName, HeaderSlot>>[] = setOptions.mock.calls
+    .map(([options]) => options)
+    .filter((options) => slot in options);
+
+  return registrations.at(-1)?.[slot]?.({ canGoBack }) ?? [];
+};
 
 /**
  * A form's Save lives in the nav bar, so a form test reads and presses the item the screen last
  * registered with `navigation.setOptions`, as the native bar would. The label is a parameter so a
  * Ukrainian test passes its own.
  */
-export const saveItem = (setOptions: jest.Mock, label = 'Save'): HeaderItem | undefined => {
-  const registrations: { unstable_headerRightItems?: HeaderSlot }[] = setOptions.mock.calls
-    .map(([options]) => options)
-    .filter((options) => 'unstable_headerRightItems' in options);
-
-  return registrations
-    .at(-1)
-    ?.unstable_headerRightItems?.({ canGoBack: false })
-    .find((item) => item.label === label);
-};
+export const saveItem = (setOptions: jest.Mock, label = 'Save'): HeaderItem | undefined =>
+  headerItems(setOptions, 'unstable_headerRightItems').find((item) => item.label === label);
 
 /**
  * A form offers Save only as the prominent nav-bar item: no Save text and no footer in its body.

@@ -270,8 +270,9 @@ See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
 script (ruby/perl code — `-e` or a stdin script — is a known limit))
-into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, or `githooks/` of any
-worktree of this repository, or into a YAML file (a final segment ending in `.yml` or `.yaml`,
+into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
+`.claude/agents/`, or any of `harness/kiko/` of any worktree of this repository, or into a YAML
+file (a final segment ending in `.yml` or `.yaml`,
 at any depth of a worktree except under `node_modules/`; one the text cannot resolve is denied
 too; a `cp`/`mv` behind `xargs` whose destination the text resolves into a worktree folder is
 denied too, since its input names may be YAML), because the pre-write guard sees only

@@ -14,7 +14,7 @@ import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { AccountsStackParamList, TabParamList } from '@kiko/navigation/types';
 
 type ReminderRoute = {
-  accountDetail?: AccountsStackParamList['AccountDetail'];
+  accountDetail: AccountsStackParamList['AccountDetail'];
   // Pushed above the account, so Back from it lands on the account.
   next?:
     | { screen: 'TransactionForm'; params: { holdingId: string } }
@@ -76,42 +76,43 @@ type TabNavigationRef = NavigationContainerRef<TabParamList>;
 
 type StackRoute = { key?: string; name: string; params?: object };
 
-// The Accounts stack as it is now, or its root while the tab has not mounted.
-const accountsStackRoutes = (navigationRef: TabNavigationRef): StackRoute[] => {
+// The stack the tap leaves: the list, the tapped account's page, and the screen above it, and
+// nothing a user opened earlier. An earlier page left below the account's would close the account's
+// with it (its entity deleted, say), and the list marks the first page of the detail pane. The list
+// and a page of the tapped account the user opened right above it keep their keys, so neither is
+// mounted again and the page takes the new params in place. A page right above the list may be the
+// one a wide window fills the primary pane with, flagged `isDefault`, which the user never opened.
+// A form open above the list is discarded with its draft: keeping it would let the close of an
+// earlier account's page close the reminder's page too.
+const rebuiltStack = (route: ReminderRoute, navigationRef: TabNavigationRef): StackRoute[] => {
   const tabs = navigationRef.getRootState()?.routes ?? [];
-  const routes = tabs.find(({ name }) => name === 'AccountsTab')?.state?.routes ?? [];
+  const [list, page] = (tabs.find(({ name }) => name === 'AccountsTab')?.state?.routes ?? []).slice(
+    0,
+    2,
+  ) as (StackRoute & { isDefault?: boolean })[];
+  const isPageOpen =
+    page?.isDefault !== true &&
+    isMatching(
+      { name: 'AccountDetail', params: { accountId: route.accountDetail.accountId } },
+      page,
+    );
 
-  return routes.length === 0
-    ? [{ name: 'Accounts' }]
-    : routes.map(({ key, name, params }) => ({ key, name, params }));
-};
-
-// The page of the tapped account already on top takes the new params in
-// place, as a navigate to the current route does; any other page stays below.
-const withAccountOnTop = (
-  routes: StackRoute[],
-  accountDetail: AccountsStackParamList['AccountDetail'],
-): StackRoute[] => {
-  const top = routes.at(-1);
-
-  if (isMatching({ name: 'AccountDetail', params: { accountId: accountDetail.accountId } }, top)) {
-    return [...routes.slice(0, -1), { ...top, params: accountDetail }];
-  }
-
-  return [...routes, { name: 'AccountDetail', params: accountDetail }];
+  return [
+    { key: list?.key, name: 'Accounts' },
+    {
+      key: isPageOpen ? page?.key : undefined,
+      name: 'AccountDetail',
+      params: route.accountDetail,
+    },
+    ...(foldMap(maybe(route.next), ({ screen, params }) => [{ name: screen, params }]) ?? []),
+  ];
 };
 
 // One navigate with the whole stack: a second navigate right after the first
 // replaces the tab's nested params before the stack has read them, so the
 // account page would never land below the next screen.
 const navigateNow = (route: ReminderRoute, navigationRef: TabNavigationRef): void => {
-  const stack = accountsStackRoutes(navigationRef);
-  const routes = [
-    ...(foldMap(maybe(route.accountDetail), (accountDetail) =>
-      withAccountOnTop(stack, accountDetail),
-    ) ?? stack),
-    ...(foldMap(maybe(route.next), ({ screen, params }) => [{ name: screen, params }]) ?? []),
-  ];
+  const routes = rebuiltStack(route, navigationRef);
 
   navigationRef.navigate('AccountsTab', { state: { routes, index: routes.length - 1 } });
 };
@@ -134,7 +135,7 @@ const navigateTo = (route: ReminderRoute, navigationRef: TabNavigationRef): void
 
 /**
  * Opens the screen for the latest notification tap among the drained
- * responses, in the Accounts tab above the screens it shows now. A tap for a
+ * responses, in the Accounts tab, whose stack it rebuilds from the list. A tap for a
  * reminder that is gone (deleted, or deleted with its account) goes nowhere.
  * The navigator mounts only below `LockGate`, so nothing opens before unlock.
  */

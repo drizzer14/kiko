@@ -114,7 +114,23 @@ export const loanReasonKey = (params: LoanValidationParams): LoanReasonKey | nul
   );
 };
 
+/** What a fold or unfold must give back of the loan form: every field the user fills. */
+export type LoanFieldsDraft = {
+  kind: LoanKind;
+  principal: string;
+  startDate: number | null;
+  schedule: LoanSchedule;
+  annualRatePct: string;
+  term: string;
+  termUnit: TermUnit;
+  paymentHoldingId: string | null;
+  lenderName: string;
+  lenderIban: string;
+};
+
 export type UseLoanFieldsResult = HoldingTypeForm & {
+  draft: LoanFieldsDraft;
+  restore: (draft: LoanFieldsDraft) => void;
   currency: Currency;
   kind: LoanKind;
   setKind: (kind: LoanKind) => void;
@@ -404,6 +420,19 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
     setLenderIban(meta.lenderIban ?? '');
   }, []);
 
+  const restore = useCallback((restored: LoanFieldsDraft): void => {
+    setKind(restored.kind);
+    setPrincipal(restored.principal);
+    setStartDate(restored.startDate);
+    setSchedule(restored.schedule);
+    setAnnualRatePct(restored.annualRatePct);
+    setTerm(restored.term);
+    setTermUnit(restored.termUnit);
+    setPaymentHoldingId(restored.paymentHoldingId);
+    setLenderName(restored.lenderName);
+    setLenderIban(restored.lenderIban);
+  }, []);
+
   const createPayload = (): CreatePayload =>
     buildLoanCreatePayload(
       {
@@ -459,6 +488,19 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
   };
 
   return {
+    draft: {
+      kind,
+      principal,
+      startDate,
+      schedule,
+      annualRatePct,
+      term,
+      termUnit,
+      paymentHoldingId,
+      lenderName,
+      lenderIban,
+    },
+    restore,
     currency,
     kind,
     setKind,

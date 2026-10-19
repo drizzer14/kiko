@@ -1,7 +1,6 @@
 import { match } from 'ts-pattern';
 import { bifoldr, eitherSync } from 'fnts/either';
-
-import type { Spec } from './NativeKikoReminders';
+import type { Spec } from '@kiko/native-specs/NativeKikoReminders';
 
 export const REMINDER_IDENTIFIER_PREFIX = 'kiko.reminder.';
 export const SNOOZE_IDENTIFIER_PREFIX = 'kiko.snooze.';
@@ -51,7 +50,7 @@ export type NotificationResponse = {
 
 // Required on first use, not at import: `getEnforcing` throws on a binary built
 // without the module, and importing this wrapper must never crash the app.
-const loadNativeModule = (): Spec => require('./NativeKikoReminders').default;
+const loadNativeModule = (): Spec => require('@kiko/native-specs/NativeKikoReminders').default;
 
 // An unknown, future status counts as denied, so the app never assumes it may
 // notify.

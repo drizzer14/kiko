@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { OnAccentContext, selectedSurfaceStyles } from '@kiko/design-system/selected-surface';
 
 import { styles } from './card.styles';
 import type { CardProps } from './card.props';
@@ -32,16 +33,30 @@ import type { CardProps } from './card.props';
 // entity-tinted content card reaches for its own explicit `style`
 // `backgroundColor` override (or a dedicated variant, added when a real
 // consumer needs one) rather than resurrecting glass-specific props here.
-const Card: FC<CardProps> = ({ children, style, padding, radius = 'md', testID, ...props }) => {
+const Card: FC<CardProps> = ({
+  children,
+  style,
+  padding,
+  radius = 'md',
+  selected = false,
+  testID,
+  ...props
+}) => {
   const { theme } = useUnistyles();
   const sizing = [
     { borderRadius: theme.radii[radius] },
     padding !== undefined && { padding: theme.spacing(padding) },
   ];
 
+  // The selected look comes last, as in `SettingsRow`: its `onAccent` content is legible only on
+  // the accent fill, so a caller's style cannot take the fill away.
   return (
-    <View style={[styles.card, sizing, style]} testID={testID} {...props}>
-      {children}
+    <View
+      style={[styles.card, sizing, style, selected && selectedSurfaceStyles.fill]}
+      testID={testID}
+      {...props}
+    >
+      <OnAccentContext.Provider value={selected}>{children}</OnAccentContext.Provider>
     </View>
   );
 };

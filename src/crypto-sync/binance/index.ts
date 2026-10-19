@@ -1,6 +1,8 @@
 export * from './binance.client';
+export * from './binance.cooldown';
 export * from './binance.provider';
 export * from './binance.credentials';
+export { isTrackedBinanceAsset } from './binance.tracked-coin';
 export * from './binance.transactions';
 export * from './binance.pay-history';
 export * from './binance.transfer-history';

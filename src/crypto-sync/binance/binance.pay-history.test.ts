@@ -2400,7 +2400,7 @@ describe('wallet holdings', () => {
     expect(deps.ensureHoldings).toHaveBeenCalledWith([
       {
         accountId,
-        name: 'Binance Earn',
+        name: 'Binance Earn · BTC',
         type: 'crypto_asset',
         currency: 'BTC',
         balanceMinorUnits: 0,

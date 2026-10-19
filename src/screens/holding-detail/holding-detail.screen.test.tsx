@@ -29,6 +29,7 @@ import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { type LayoutNode, layoutOf } from '@kiko/test-support/layout-of';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -185,6 +186,11 @@ const noneLoanHolding = {
     schedule: 'none',
   },
 };
+
+const mockClosePaneRoute = jest.fn();
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  useClosePaneRoute: () => mockClosePaneRoute,
+}));
 
 const mockUseLiveQuery = jest.fn();
 
@@ -362,25 +368,30 @@ const seed = (
   // column a row does not set, so the transactions default normalizes every
   // nullable marker the screen reads the same way — an `undefined` here
   // would be a fixture artefact the device never produces.
-  const resultByTable: Record<string, { data: unknown[]; isLoading: boolean }> = {
-    holdings: { data: [holding, ...otherHoldings], isLoading: isLoading.holdings ?? false },
-    categories: { data: categories, isLoading: isLoading.categories ?? false },
-    currency_rates: { data: rates, isLoading: isLoading.currency_rates ?? false },
-    settings: { data: settings, isLoading: isLoading.settings ?? false },
-    accounts: {
-      data: foldMap(maybe(account), (found) => [found]) ?? [],
-      isLoading: isLoading.accounts ?? false,
-    },
-    price_points: { data: pricePoints, isLoading: isLoading.price_points ?? false },
-    bond_register: { data: mockBondRegisterRows, isLoading: isLoading.bond_register ?? false },
-    transactions: {
-      data: transactions.map((row) => ({
-        exchangeCounterpartHoldingId: null,
-        ...(row as Record<string, unknown>),
-      })),
-      isLoading: isLoading.transactions ?? false,
-    },
-  };
+  const resultByTable: Record<string, { data: unknown[]; isLoading: boolean; isFresh?: boolean }> =
+    {
+      holdings: {
+        data: [holding, ...otherHoldings],
+        isLoading: isLoading.holdings ?? false,
+        isFresh: !(isLoading.holdings ?? false),
+      },
+      categories: { data: categories, isLoading: isLoading.categories ?? false },
+      currency_rates: { data: rates, isLoading: isLoading.currency_rates ?? false },
+      settings: { data: settings, isLoading: isLoading.settings ?? false },
+      accounts: {
+        data: foldMap(maybe(account), (found) => [found]) ?? [],
+        isLoading: isLoading.accounts ?? false,
+      },
+      price_points: { data: pricePoints, isLoading: isLoading.price_points ?? false },
+      bond_register: { data: mockBondRegisterRows, isLoading: isLoading.bond_register ?? false },
+      transactions: {
+        data: transactions.map((row) => ({
+          exchangeCounterpartHoldingId: null,
+          ...(row as Record<string, unknown>),
+        })),
+        isLoading: isLoading.transactions ?? false,
+      },
+    };
   const linkedLoanPaymentsResult = {
     data: linkedLoanPayments.map((row) => ({
       exchangeCounterpartHoldingId: null,
@@ -517,6 +528,86 @@ describe('HoldingDetailScreen', () => {
     );
     expect(listContentStyle.paddingHorizontal).toBe(16);
     expect(listContentStyle.paddingTop).toBe(16);
+  });
+
+  it('caps and centres the ledger content in a pane, and leaves the list the whole pane', async () => {
+    seed(cashHolding);
+
+    const { getByTestId } = await render(
+      <PaneContext.Provider value={paneContextOf('rows', 'primary')}>
+        <HoldingDetailScreen
+          navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+          route={route}
+        />
+      </PaneContext.Provider>,
+      { wrapper: GestureRootWrapper },
+    );
+    const list = getByTestId('ledger-list');
+    const content = StyleSheet.flatten(list.props.contentContainerStyle);
+
+    expect(content.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+    expect(content.alignSelf).toBe('center');
+    expect(content.paddingHorizontal).toBe(16);
+    expect(StyleSheet.flatten(list.props.style)?.maxWidth).toBeUndefined();
+  });
+
+  it.each([
+    ['companion', false],
+    ['primary', undefined],
+  ] as const)(
+    'stops UIKit insetting the ledger scroll indicator only in the left %s pane of columns (%s)',
+    async (pane, expected) => {
+      seed(cashHolding);
+
+      const { getByTestId } = await render(
+        <PaneContext.Provider value={paneContextOf('columns', pane)}>
+          <HoldingDetailScreen
+            navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+            route={route}
+          />
+        </PaneContext.Provider>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      expect(getByTestId('ledger-list').props.automaticallyAdjustsScrollIndicatorInsets).toBe(
+        expected,
+      );
+    },
+  );
+
+  describe('when its holding is deleted from the other pane', () => {
+    // The hook's own cases live in its test; these pin that the screen wires the hook, and what it
+    // gives the hook as fresh.
+    // The page is open for h-1, and the holdings read has no such row.
+    const seedGone = (isLoading: Partial<Record<string, boolean>> = {}) =>
+      seed({ ...cashHolding, id: 'h-2' }, [], [], [], [], undefined, undefined, [], isLoading);
+
+    const renderInPane = () =>
+      render(
+        <PaneContext.Provider value={paneContextOf('columns', 'companion')}>
+          <HoldingDetailScreen
+            navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+            route={route}
+          />
+        </PaneContext.Provider>,
+        { wrapper: GestureRootWrapper },
+      );
+
+    it('closes its own route in a pane', async () => {
+      seedGone();
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).toHaveBeenCalledWith('HoldingDetail-test');
+    });
+
+    it('stays open while its holdings are still loading', async () => {
+      seedGone({ holdings: true });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
   });
 
   it('renders a view-only header with no inline name, icon, or color editors', async () => {

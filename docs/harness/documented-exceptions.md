@@ -158,7 +158,10 @@ verified usage, not dead weight:
   debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:
   `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
   `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
-  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
+  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.77%
+  (this one figure re-measured 2026-10-19 at `d78cfccd`; the rise from 7.38% is
+  not a regression of the Binance branch: it came mostly from `62f248ed`,
+  `e7cc80f5` and main merges, so the entry moved, not the test),
   `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
   `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.55%,
   `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
@@ -170,7 +173,9 @@ verified usage, not dead weight:
   the blocking run with the default limits, and it applies to the no-argument
   (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total
   above the threshold is expected until the sweep lands, and a figure above
-  7.33% is a new regression. **Flip condition:** a separate sweep track makes
+  7.33% is a new regression. A listed file's figure is a ceiling: a later rise
+  above it is a new regression; fix the test, or re-record the figure only with
+  a reviewer finding that names the cause. **Flip condition:** a separate sweep track makes
   every large file 5% or less alone AND the combined raised total 5% or less;
   then this warning becomes a failure (`exit 2` through `print_block`) and
   this entry is deleted. The
@@ -186,7 +191,8 @@ verified usage, not dead weight:
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, or a YAML
+  into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`,
+  `.claude/skills/`, `.claude/agents/`, `harness/kiko/`, or a YAML
   file, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
@@ -938,17 +944,32 @@ verified usage, not dead weight:
   (`stageDraft`) and once per insert batch, never per row; transaction rows
   are paged. Any new whole-table reader inside a write needs its own entry.
 
-- **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
-  `.ts` file name in `src/`.** React Native codegen reads a spec file only
-  if its basename matches `/^(Native.+|.+NativeComponent)/`
+- **`src/native-specs/Native*.ts` (`NativeKikoReminders.ts`,
+  `NativeDisplayRegions.ts`) — the only PascalCase `.ts` file names in
+  `src/`, in a folder with no barrel.** React Native codegen reads a spec
+  file only if its basename matches `/^(Native.+|.+NativeComponent)/`
   (case-sensitive) and has exactly one dot (see `filterJSFile` in
   `node_modules/@react-native/codegen/lib/cli/combine/combine-utils.js`),
   so the name cannot be kebab-case. `package.json` `codegenConfig.jsSrcsDir`
-  points at that folder. Only `reminders-native.ts` loads it (lazily, via
-  `require`), and the barrel does not export it; the
-  `kiko-no-native-reminders-module-import` Semgrep rule
-  (`rules/semgrep-prewrite.yml`) denies any other value import. Add another
+  points at that folder. A barrel there would call
+  `TurboModuleRegistry.getEnforcing` on load, so `feature-imports.js`
+  (`NATIVE_SPEC_PATTERN`) treats `native-specs/**` as barrel-less: the folder needs no
+  `index.ts` and a spec is imported deep through the alias. Only each module's
+  wrapper (`reminders-native.ts`, `display-regions-native.ts`) loads its spec
+  (lazily, via `require`); the
+  `kiko-no-native-reminders-module-import` and
+  `kiko-no-native-display-regions-module-import` Semgrep rules
+  (`rules/semgrep-prewrite.yml`) deny any other value import. Add another
   `Native*` spec only for a new app TurboModule.
+
+- **`src/design-system/components/screen/**` — the owner folder of
+  `kiko-no-pane-blind-bottom-clearance`'s `paths.exclude`.** The rule denies
+  importing `resolveBottomClearance` (or its `bottom-clearance` module) so a
+  `bleedBottom`/`bleedTop` child takes the pane-aware `useBottomClearance()`
+  instead. The Screen folder is the one place that may: `use-bottom-clearance.ts`
+  imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder
+  exclude is right here because every file in it is part of the sink; the rule
+  still reaches every consumer (Home, HoldingDetail).
 
 - **`sf-symbols-typescript` — a transitive package read by path in a test,
   invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
@@ -1067,3 +1088,27 @@ verified usage, not dead weight:
   Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
+
+- **patch-package patches (`patches/`, applied by `postinstall`)**: three patches edit
+  `node_modules` after `npm ci`; re-check each on upgrade of its package.
+  - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
+    `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
+    `ScrollView` with `automaticallyAdjustKeyboardInsets` shifted its content offset by the
+    keyboard height for a field OUTSIDE it (the outside-field `inputAccessoryView` branch). The
+    patch drops that branch, so an offset moves only for a field inside the scroll view; the
+    inset math is unchanged. It fixes the Duo/iPad two-pane blank pane (a field in one pane
+    moved the other pane's list) and the same shift of a Screen covered by a pushed form.
+    Pinned by `__tests__/react-native-patch.test.ts` ("the React Native ScrollView keyboard
+    patch": the patch touches that one file, `react-native` is exactly `0.87.1`, the installed
+    file has the guard). A React Native upgrade fails that pin: re-check the patch then.
+  - `patches/react-native-nitro-sfsymbols+2.0.0.patch` (`react-native-nitro-sfsymbols@2.0.0`):
+    the diff adds two lines to `init` of the generated `HybridNitroSfsymbolsComponent.mm`,
+    setting `_props` to a static default `HybridNitroSfsymbolsProps` before `updateView` runs.
+    The diff does not state why; it gives the view non-null props from its first
+    `updateView`.
+  - `patches/read-excel-file+9.3.10.patch` (`read-excel-file@9.3.10`, its `commonjs` and
+    `modules` `zip/unzipFromArrayBuffer.js`): `unzipAsync` calls `fflate`'s `unzipSync`
+    instead of the async `unzip`. The diff's own comment: async `unzip` does `new Worker(...)`
+    for an entry that decompresses to 512 KB or more AND compresses to under 80% of its
+    original size, Hermes has no `Worker` global, so it threw `ReferenceError` on device (never
+    under Jest).

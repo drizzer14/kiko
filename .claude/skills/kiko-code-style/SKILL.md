@@ -648,8 +648,8 @@ KEEP, not an oversight:
   of `try`/`finally` into a bare post-`await` call — see
   `requestOnce` (`src/monobank/client/monobank.client.ts`, a timeout
   classification tied to a `finally`-cleared abort timer) and
-  `account-form.screen.tsx`'s `accountCreate.current` insert
-  (`.catch((error) => { <reset the latch>; throw error; })`).
+  `account-form.screen.tsx`'s `ensureAccount`
+  (`.catch((error) => { setAccountRowStarted(false); throw error; })`).
 - **Loop control/retry.** A retry loop's own `try`/`catch` decides
   whether to `continue`/retry or give up — see `withRetry`
   (`rates-refresh.ts`) and the Monobank sync's per-card `try`/`catch`
@@ -1316,6 +1316,15 @@ Known limits:
 - A template path (`` `${__dirname}/x.csv` ``) fires even with a
   non-TypeScript extension: the rule reads only a string literal or a
   join. A safe false positive: write `join(__dirname, 'x.csv')`.
+
+## An absence assertion must not go vacuous
+
+A test that asserts a text is ABSENT (`queryByText`, `not.toContain`)
+passes for ever once a reword changes the text it hunts. Derive that text
+from the i18n key (`i18n.t(...)`) or an exported constant, never a typed
+fragment. Add a positive twin that finds the same text in the case where
+it must be there, so the matcher is proven to match. After any reword,
+grep the old fragment across `src/` and the tests.
 
 ## A rejection names its error
 

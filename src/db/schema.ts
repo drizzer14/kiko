@@ -364,7 +364,7 @@ export const currencyRates = sqliteTable(
     base: text('base', { enum: currencyOptions }).notNull(),
     quote: text('quote', { enum: currencyOptions }).notNull(),
     rate: text('rate').notNull(),
-    source: text('source', { enum: ['monobank', 'coingecko', 'nbu'] }).notNull(),
+    source: text('source', { enum: ['monobank', 'coingecko', 'nbu', 'binance'] }).notNull(),
     fetchedAt: integer('fetched_at').notNull(),
   },
   (table) => ({
@@ -386,7 +386,7 @@ export const currencyRateHistory = sqliteTable(
      */
     day: integer('day').notNull(),
     rate: text('rate').notNull(),
-    source: text('source', { enum: ['monobank', 'coingecko', 'nbu'] }).notNull(),
+    source: text('source', { enum: ['monobank', 'coingecko', 'nbu', 'binance'] }).notNull(),
   },
   (table) => ({
     pairDayUnique: uniqueIndex('currency_rate_history_pair_day').on(

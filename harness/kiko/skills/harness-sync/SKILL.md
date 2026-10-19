@@ -235,7 +235,7 @@ Every count and exit code is the orchestrator's own measured result.
   first verdict; fix in the harness repo.
 - Carried from H7: the mutation ETA split by changed-line weights; the whole history-date
   rule; the retrospect run-log lines; the job-queue test teardown wait
-  (`tests/job-queue.test.mjs` ENOTEMPTY).
+  (`__tests__/job-queue.test.ts` ENOTEMPTY).
 - Carried Minors: the doc fingerprint misses a `../fixtures/...pinned` literal
   (`harness_doc_suite_fixtures` needs a quote right before `fixtures/`; `harness_doc_suites`
   accepts `../`); `medium.sh` computes the doc lists twice per Stop.
@@ -254,6 +254,16 @@ Every count and exit code is the orchestrator's own measured result.
   kiko's, so port it as a configurable list (`WRITE_GUARDED_TREES`), not a hard-coded `drizzle`.
   The YAML rule (`YAML_FILE`, any `*.yml`/`*.yaml` in a worktree outside `node_modules/`) is
   also generic: port it as a configurable extension list.
+- kill-guard multi-segment `WRITE_GUARDED_TREES` entries: the generic part is the entry rule (a
+  resolved path inside any worktree matches; an unresolved path fails closed when the segments
+  appear as consecutive non-final segments, as written or with its `.` and `//` segments
+  folded; case-folded), the parent-folder rule (a `cp`/`mv` that lands a folder exactly on
+  `<worktree>/.claude` or the plugin folder's parent, or a recursive copy of a source's
+  contents there, is denied; `-T` counts only with a recursive flag), `expressionPaths`
+  judges resolved `/_` candidates and `namesGuardedTree` checks raw and normalized text, and
+  the `.claude/skills` and `.claude/agents` entries. The
+  plugin-folder entry is repo-specific: in the harness repo it is that repo's plugin folder,
+  not `harness/kiko`. Create `.claude/agents/.gitkeep` so the path resolves.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

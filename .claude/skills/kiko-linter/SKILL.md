@@ -275,15 +275,41 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, or `githooks/`, or into any
+  `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
+  `.claude/agents/`, or any of `harness/kiko/` (its scripts, hooks, skills, agents and
+  `.claude-plugin/plugin.json`), or into any
   `*.yml`/`*.yaml` file (user ruling 2, 2026-10-18)
   (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; read it there for the current list.
+  An entry may hold several segments (`.claude/skills`, `harness/kiko`): it matches a resolved
+  path inside any worktree of this repository, and an unresolved path fails closed when its
+  segments appear as consecutive non-final segments (as written, or with its `.` and `//`
+  segments folded); matching is case-folded. A python/node join counts each literal path as a
+  folder with a file after it, so `os.path.join('skills', n)` run from `.claude` is denied.
+  A `cp`/`mv` is also denied when a folder lands exactly on `<worktree>/.claude` or
+  `<worktree>/harness` (`cp -r /tmp/x/.claude .`: the folder may hold a tree), and when a
+  recursive copy puts a source's contents there (`cp -r`, `-R`, `-a`; `-T` counts only
+  together with one of those, and a recursive `-T` copy counts whatever the source looks
+  like): without `-T`, a source ending in `/` or `/.`, or with a glob or variable as its
+  last segment (`cp -r /tmp/x/* .claude/`). A file copied into `.claude/` and a slash-less
+  folder copied into `harness/` (`cp -r /tmp/kikox harness/`) stay allowed.
   `scripts/` and `githooks/` match like `src/`: resolved inside any worktree of this repository, or
   unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
   `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
   worktree except under `node_modules/`, and counts when unresolved (fail closed). Resolved and
-  NOT covered: `harness/kiko/scripts/*`, non-YAML
-  `harness/kiko/hooks/*`, and a scripts folder under `ios/` or `docs/`.
+  NOT covered: a scripts folder under `ios/` or `docs/`.
+  Known limits: (a) an unquoted command-substitution prefix on a write target
+  (`echo x > $(pwd)/src/a`) tokenizes as a standalone word, so the guarded path is never seen
+  and the write is allowed, for every guarded tree; the quoted form is denied. (b) A `~/...`
+  target resolves through HOME and is judged like any resolved path (outside every worktree is
+  allowed). (c) `xargs cp`/`mv` into a resolved worktree folder, a prefix such as
+  `<wt>/harness/` included, is denied through the YAML marker (`xargs-input.yml`, a YAML file
+  inside a worktree); the tree names fill only where the text resolves them. An unresolved
+  destination such as `$X/harness/` is denied only for a recursive `cp` or a `mv`, through the
+  `src` marker (`$X/harness/src/_`); a plain `cp` there stays allowed. The parent-folder rule
+  above is not applied behind `xargs`. (d) A copy of a folder's CONTENTS into a worktree root
+  (`cp -r /tmp/x/ .`, `cp -r /tmp/x/. .`, `cp -r /tmp/x/* .`) is allowed for every tree (the
+  pinned allowed row is `cp -r /tmp/x/* .`). The parent-folder rule judges only
+  `<wt>/.claude` and `<wt>/harness` as the destination.
   A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
   build the scratch from a git merge or commit, or use `git archive <sha> scripts |
   tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
@@ -355,8 +381,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   is denied whatever the input files are (fail closed: the names are
   unknowable): `ls | xargs -I{} cp {} .maestro/` denies. An unresolved
   destination gets no YAML check, only the folder-name fills above.
-  Known YAML limits: outside `xargs`, a recursive or `-T` folder copy
-  that holds YAML passes, since the folder's name cannot tell
+  Known YAML limits: outside `xargs`, a recursive folder copy
+  (`-T` included) that holds YAML passes, since the folder's name cannot tell
   (`cp -r /tmp/flows .maestro/` allowed; only a literal `*.yml` path
   denies); an `xargs` `cp`/`mv` whose destination the text cannot
   resolve still lets a YAML file into a worktree (`cd "$X" && ls
@@ -598,7 +624,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   fixed set of cwds, and records every flipped pair; classify each as intended or not (H9
   2026-10-18: 43,738 pairs, 0 deny->allow). The preload only calls `decide()`; it never executes
   a command. Timing-bound tests may fail under the preload (overhead); the proof run of the
-  suites is the plain one.
+  suites is the plain one. Classify a probe row by the path it resolves to (and its cwd),
+  never by a regex over the command text.
+  Writing a red row for a path rule: do not assume `~/` stays unresolved (`resolveDirectory`
+  expands HOME). A tree entry of 2 or more segments needs the parent-folder `cp`/`mv` rule and
+  a resolved-candidate check in `expressionPaths`. Judge resolved paths, never literal text,
+  when a resolved path is available.
   No real kill
   word and no real main path is ever handed to the runner; they appear
   ONLY in NON-executed parser tests (node: string -> `decide()`). The
@@ -2495,7 +2526,8 @@ a pre-existing finding points at. A Semgrep deny names
   `export const a = b`), with comments inside the import braces
   ignored. Its classification
   (`CONTAINERS`, `TEST_ONLY`, `AMBIENT_LOOSE`, …) lives in the checker;
-  read it there. No `--write`.
+  read it there. `native-specs/**` has no barrel and is deep-imported via
+  the alias (`NATIVE_SPEC_PATTERN`; read it there). No `--write`.
 - `specifier-scanner.js` is the shared import-specifier scanner. A new
   checker that reads import specifiers reuses it. Its `commentSpans`
   returns the real comment spans (offsets) that `blankNoise` passes over,
@@ -2595,6 +2627,11 @@ disk that git tracks or would track
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
 
+A skill sentence that lists a guard's conditions, or a write-queue read's
+callers, drifts when one is added: point at the boolean's definition or at a
+`grep` that finds the callers, and grep the skills for a screen's boolean
+names when a hook joins it.
+
 The same test checks the comments of `src/**` sources (read through the TypeScript parse, so
 a path in a string or JSX text is not read). A rooted path (the roots are in `TREE_PATH_PATTERN` in
 `__tests__/test-support/source-comment-citations.ts`; read them there) or a bare migration file name in a comment must
@@ -2677,8 +2714,8 @@ On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
-forms into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, and YAML
-files (`WRITE_GUARDED_TREES`, `YAML_FILE`). It allows the `--write`
+forms into the trees in "SHELL-WRITE deny" (`WRITE_GUARDED_TREES`, including `.claude/skills/`,
+`.claude/agents/` and `harness/kiko/`) and YAML files (`YAML_FILE`). It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
 `find -exec`, a path held in a variable the command does not assign (see "SHELL-WRITE deny,

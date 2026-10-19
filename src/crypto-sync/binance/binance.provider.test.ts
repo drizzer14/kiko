@@ -1,5 +1,6 @@
 import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
 
 import type { SyncTarget } from '../provider';
 
@@ -11,9 +12,14 @@ import {
   fetchFundingAsset,
   fetchLockedPosition,
 } from './binance.client';
+import {
+  type BinanceDeps,
+  binanceProvider as binanceRead,
+  defaultBinanceDeps,
+} from './binance.provider';
 import { readCredentials } from './binance.credentials';
 import { setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceDeps, binanceProvider, defaultBinanceDeps } from './binance.provider';
+import { type BinanceWallet, holdingKeyOf, SPOT_KEY } from './binance.holding-keys';
 
 // The credentials module imports react-native-keychain, whose native binding is
 // absent under Jest; `readCredentials` is injected, so the stub only needs the
@@ -21,6 +27,14 @@ import { type BinanceDeps, binanceProvider, defaultBinanceDeps } from './binance
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
+
+// This file pins the holdings a read writes; the balance lists the same read returns are pinned
+// in `binance.provider.coin-lists.test.ts`.
+const binanceProvider = {
+  ...binanceRead,
+  fetchBalances: async (...args: Parameters<typeof binanceRead.fetchBalances>) =>
+    (await binanceRead.fetchBalances(...args)).balances,
+};
 
 const NOW = 1_704_326_400_000;
 const emptyTarget: SyncTarget = { accountId: 'acc-1', holdings: [] };
@@ -50,12 +64,16 @@ const makeDeps = (balances: { asset: string; free: string; locked: string }[]): 
 // A minimal synced Binance holding for a given match key, to model a target that
 // already carries one of the split holdings (the transition and zero-balance
 // paths). Only the fields the provider reads (`metadata.binanceAsset`) matter.
-const binanceHolding = (binanceAsset: string, balanceMinorUnits = 1): HoldingRow => ({
+const binanceHolding = (
+  binanceAsset: string,
+  balanceMinorUnits = 1,
+  currency: Currency = 'BTC',
+): HoldingRow => ({
   id: `h-${binanceAsset}`,
   accountId: 'acc-1',
   name: binanceAsset,
   type: 'crypto_asset',
-  currency: 'BTC',
+  currency,
   icon: null,
   color: null,
   balanceMinorUnits,
@@ -142,11 +160,12 @@ describe('binanceProvider — Spot holding', () => {
     // Spot reuses the legacy 'BTC' key so the pre-split aggregated holding is
     // updated IN PLACE into the Spot holding (see the transition test).
     expect(byKey(balances, 'BTC')).toEqual({
+      currency: 'BTC',
       balanceMinorUnits: 75_000_000, // 0.5 + 0.25 BTC
       metadataKey: 'BTC',
-      name: 'Binance Spot',
+      name: 'Binance Spot · BTC',
       // The transition marker: relabel a still-default legacy holding to Spot.
-      renameFromDefault: 'Binance BTC',
+      renameFromDefaults: ['Binance BTC', 'Binance Spot'],
     });
   });
 
@@ -158,12 +177,60 @@ describe('binanceProvider — Spot holding', () => {
     expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(30_000_000);
   });
 
-  // Spot is the connection's proof of life and the split's anchor, so it is
-  // always written — a genuine zero included.
-  it('writes a zero Spot holding when the payload carries no BTC entry', async () => {
-    const deps = makeDeps([{ asset: 'ETH', free: '2.00000000', locked: '0.00000000' }]);
+  it.each([
+    ['carries no BTC entry', [{ asset: 'ETH', free: '2', locked: '0' }], 0],
+    ['carries no asset at all', [], 0],
+    ['carries a zero BTC entry', [{ asset: 'BTC', free: '0', locked: '0' }], 0],
+    [
+      'carries BTC below its dust threshold',
+      [{ asset: 'BTC', free: '0.00000999', locked: '0' }],
+      999,
+    ],
+  ])(
+    'a new connection still gets the Spot BTC holding, so history imports, when the payload %s',
+    async (_, balances, units) => {
+      const deps = makeDeps(balances);
 
-    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+      const written = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+      expect(written.filter(({ metadataKey }) => metadataKey === 'BTC')).toEqual([
+        {
+          currency: 'BTC',
+          balanceMinorUnits: units,
+          metadataKey: 'BTC',
+          name: 'Binance Spot · BTC',
+          renameFromDefaults: ['Binance BTC', 'Binance Spot'],
+        },
+      ]);
+    },
+  );
+
+  it('writes the Spot BTC holding once on every good sync, with or without a stored one', async () => {
+    const withHolding: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC', 700)] };
+
+    for (const target of [emptyTarget, withHolding]) {
+      const written = await binanceProvider.fetchBalances(makeDeps([]), target);
+
+      expect(written.filter(({ metadataKey }) => metadataKey === 'BTC')).toHaveLength(1);
+    }
+  });
+
+  it('keeps the other Spot coins to the dust and absent rules beside the anchor', async () => {
+    const deps = makeDeps([
+      { asset: 'DOGE', free: '11.9999', locked: '0' },
+      { asset: 'ETH', free: '1', locked: '0' },
+    ]);
+
+    const written = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(written)).toEqual(['BTC', 'ETH']);
+  });
+
+  it('writes a zero Spot holding when the payload carries no BTC entry and the holding exists', async () => {
+    const deps = makeDeps([{ asset: 'ETH', free: '2.00000000', locked: '0.00000000' }]);
+    const target: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC', 500)] };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
 
     expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
   });
@@ -184,10 +251,25 @@ describe('binanceProvider — Spot holding', () => {
     await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(/Binance/);
   });
 
-  it('fails the whole sync on a non-finite Spot amount rather than writing NaN', async () => {
+  it('writes the zero anchor, never NaN, for a Spot BTC amount that is no number', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const deps = makeDeps([{ asset: 'BTC', free: 'x', locked: '0' }]);
 
-    await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(/Binance/);
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
+    warn.mockRestore();
+  });
+
+  it('keeps an existing Spot BTC holding at its last balance when its amount is refused', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = makeDeps([{ asset: 'BTC', free: 'x', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC', 500)] };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'BTC')).toBeUndefined();
+    warn.mockRestore();
   });
 
   it('surfaces a Spot 429/418 as the localized binanceRequestFailed message, not the raw rate-limit text', async () => {
@@ -244,9 +326,11 @@ describe('binanceProvider — Funding holding', () => {
     // Spot and Funding are DISTINCT holdings — not summed together.
     expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(75_000_000);
     expect(byKey(balances, 'BTC:funding')).toEqual({
+      currency: 'BTC',
       balanceMinorUnits: 40_000_000, // 0.4 BTC
       metadataKey: 'BTC:funding',
-      name: 'Binance Funding',
+      name: 'Binance Funding · BTC',
+      renameFromDefaults: ['Binance Funding'],
     });
   });
 
@@ -280,7 +364,7 @@ describe('binanceProvider — Funding holding', () => {
     expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(10_000_000);
   });
 
-  it('skips a Funding wallet whose BTC amount is non-numeric rather than writing NaN', async () => {
+  it('skips a Funding coin whose BTC amount is non-numeric rather than writing NaN', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]);
     deps.fetchFundingAsset.mockResolvedValue([
       { asset: 'BTC', free: 'x', locked: '0', freeze: '0', withdrawing: '0' },
@@ -319,9 +403,11 @@ describe('binanceProvider — Funding holding', () => {
     const balances = await binanceProvider.fetchBalances(deps, target);
 
     expect(byKey(balances, 'BTC:funding')).toEqual({
+      currency: 'BTC',
       balanceMinorUnits: 0,
       metadataKey: 'BTC:funding',
-      name: 'Binance Funding',
+      name: 'Binance Funding · BTC',
+      renameFromDefaults: ['Binance Funding'],
     });
   });
 });
@@ -347,9 +433,11 @@ describe('binanceProvider — Earn holding (Flexible + Locked combined)', () => 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
     expect(byKey(balances, 'BTC:earn')).toEqual({
+      currency: 'BTC',
       balanceMinorUnits: 50_000_000, // 0.3 + 0.2 BTC, one holding
       metadataKey: 'BTC:earn',
-      name: 'Binance Earn',
+      name: 'Binance Earn · BTC',
+      renameFromDefaults: ['Binance Earn'],
     });
     // No separate flexible/locked holdings exist.
     expect(byKey(balances, 'BTC:flexible')).toBeUndefined();
@@ -393,6 +481,10 @@ describe('binanceProvider — Earn holding (Flexible + Locked combined)', () => 
     let balances: Awaited<ReturnType<typeof binanceProvider.fetchBalances>>;
     try {
       balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+      expect(warn).toHaveBeenCalledWith('[binance sync] skipped the earn wallet', {
+        name: 'Error',
+        code: undefined,
+      });
     } finally {
       warn.mockRestore();
     }
@@ -413,6 +505,10 @@ describe('binanceProvider — Earn holding (Flexible + Locked combined)', () => 
     let balances: Awaited<ReturnType<typeof binanceProvider.fetchBalances>>;
     try {
       balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+      expect(warn).toHaveBeenCalledWith('[binance sync] skipped the earn wallet', {
+        name: 'Error',
+        code: undefined,
+      });
     } finally {
       warn.mockRestore();
     }
@@ -466,17 +562,805 @@ describe('binanceProvider — data transition from the single aggregated holding
     expect(balances.filter((balance) => balance.metadataKey === 'BTC')).toHaveLength(1);
   });
 
-  // The legacy aggregated holding kept the old default name "Binance BTC"; once
-  // it becomes Spot-only it must relabel to "Binance Spot" so the grid does not
-  // mix "Binance BTC" with "Binance Funding"/"Binance Earn". The Spot balance
-  // carries the old default as `renameFromDefault`, so the upsert renames a
-  // still-default holding while leaving a user-edited name untouched.
-  it('marks the Spot balance to relabel a legacy default-named holding to "Binance Spot"', async () => {
+  // The BTC holdings of the earlier releases kept their old default names; each balance
+  // carries them as `renameFromDefaults`, so the upsert renames a still-default holding to
+  // "Binance <Wallet> · BTC" while leaving a user-edited name untouched.
+  it.each<[BinanceWallet, string, string[]]>([
+    ['spot', 'Binance Spot · BTC', ['Binance BTC', 'Binance Spot']],
+    ['funding', 'Binance Funding · BTC', ['Binance Funding']],
+    ['earn', 'Binance Earn · BTC', ['Binance Earn']],
+  ])('names the %s BTC balance "%s" and renames it from %j', async (wallet, name, defaults) => {
     const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'BTC', free: '1', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [{ asset: 'BTC', totalAmount: '1' }],
+      total: 1,
+    });
 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
-    expect(byKey(balances, 'BTC')?.name).toBe('Binance Spot');
-    expect(byKey(balances, 'BTC')?.renameFromDefault).toBe('Binance BTC');
+    expect(byKey(balances, holdingKeyOf('BTC', wallet))).toMatchObject({
+      name,
+      renameFromDefaults: defaults,
+    });
+  });
+
+  it('never marks a coin other than BTC for a rename', async () => {
+    const deps = makeDeps([{ asset: 'USDT', free: '5', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'USDT')?.renameFromDefaults).toBeUndefined();
+  });
+});
+
+// Binance's own JSON can carry a number where its docs say a string; the cast is the off-contract
+// payload, not a type the client declares.
+const jsonNumber = (value: number): string => value as unknown as string;
+
+describe('binanceProvider — balance amounts through exchangeMinorUnits', () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('reads an eight-decimal balance exactly', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0.00012345', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(12_345);
+  });
+
+  it('keeps the Funding holding at its last good balance on an exponent-form amount', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'BTC', free: '1e-8', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+    const target: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC:funding')] };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'BTC:funding')).toBeUndefined();
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
+  });
+
+  it.each([
+    [
+      'Flexible',
+      { rows: [{ asset: 'BTC', totalAmount: '1e-8' }], total: 1 },
+      { rows: [], total: 0 },
+    ],
+    ['Locked', { rows: [], total: 0 }, { rows: [{ asset: 'BTC', amount: '1e-8' }], total: 1 }],
+  ])(
+    'keeps the Earn holding at its last good balance on an exponent-form %s amount',
+    async (_, flexible, locked) => {
+      const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]);
+      deps.fetchFlexiblePosition.mockResolvedValue(flexible);
+      deps.fetchLockedPosition.mockResolvedValue(locked);
+      const target: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC:earn')] };
+
+      const balances = await binanceProvider.fetchBalances(deps, target);
+
+      expect(byKey(balances, 'BTC:earn')).toBeUndefined();
+      expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
+    },
+  );
+
+  it('writes a zero anchor and the other coins when a Spot amount is in exponent form', async () => {
+    const deps = makeDeps([
+      { asset: 'BTC', free: '1e-8', locked: '0' },
+      { asset: 'ETH', free: '1', locked: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(balances)).toEqual(['BTC', 'ETH']);
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(0);
+  });
+
+  it('reads a JSON number through its exact decimal text in every wallet', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: jsonNumber(0.5), locked: '0' }]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      {
+        asset: 'BTC',
+        free: jsonNumber(0.25),
+        locked: '0',
+        freeze: jsonNumber(1e-7),
+        withdrawing: '0',
+      },
+    ]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [{ asset: 'BTC', totalAmount: jsonNumber(0.125) }],
+      total: 1,
+    });
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(50_000_000);
+    expect(byKey(balances, 'BTC:funding')?.balanceMinorUnits).toBe(25_000_010);
+    expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(12_500_000);
+  });
+
+  it('rounds a balance with more decimals than the scale half away from zero', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0.000000015', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC')] };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(2);
+    expect(warn).toHaveBeenCalledWith('balance-precision-rounded', {
+      name: 'Error',
+      code: undefined,
+    });
+  });
+
+  it('skips a Spot balance beyond the safe integer rather than truncating it', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '90071992.54740992', locked: '0' }]);
+
+    const { balances, exchangeState } = await binanceRead.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
+    expect(exchangeState).toEqual(
+      expect.arrayContaining([
+        {
+          kind: 'oversizedBalance',
+          wallets: { spot: ['BTC'], funding: [], earn: [] },
+          complete: true,
+        },
+      ]),
+    );
+  });
+
+  it('skips a Spot coin when two safe amounts add beyond the safe integer', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '90071992.54740991', locked: '0.00000001' }]);
+
+    const { balances, exchangeState } = await binanceRead.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 0, metadataKey: 'BTC' });
+    expect(exchangeState).toEqual(
+      expect.arrayContaining([
+        {
+          kind: 'oversizedBalance',
+          wallets: { spot: ['BTC'], funding: [], earn: [] },
+          complete: true,
+        },
+      ]),
+    );
+  });
+
+  it('keeps an existing Spot BTC holding when its amount is beyond the safe integer', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '90071992.54740992', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-1', holdings: [binanceHolding('BTC', 500)] };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'BTC')).toBeUndefined();
+  });
+
+  it('never fails on a malformed balance of a coin it does not track', async () => {
+    const deps = makeDeps([
+      { asset: 'PEPE', free: 'x', locked: '1e-8' },
+      { asset: 'LDBTC', free: 'x', locked: '0' },
+      { asset: 'BTC', free: '1', locked: '0' },
+    ]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'PEPE', free: 'x', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [{ asset: 'PEPE', totalAmount: '1e-8' }],
+      total: 1,
+    });
+    deps.fetchLockedPosition.mockResolvedValue({
+      rows: [{ asset: 'LDBTC', amount: 'x' }],
+      total: 1,
+    });
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('reads past a row that is no object in every wallet body', async () => {
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockResolvedValue({
+      balances: [null, { asset: 'BTC', free: '1', locked: '0' }],
+      uid: null,
+    });
+    deps.fetchFundingAsset.mockResolvedValue([
+      null,
+      { asset: 'BTC', free: '1', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [null, { asset: 'BTC', totalAmount: '1' }],
+      total: 2,
+    });
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
+    expect(byKey(balances, 'BTC:funding')?.balanceMinorUnits).toBe(100_000_000);
+    expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(100_000_000);
+    expect(warn).not.toHaveBeenCalledWith(
+      '[binance sync] skipped the funding wallet',
+      expect.anything(),
+    );
+    expect(warn).not.toHaveBeenCalledWith(
+      '[binance sync] skipped the earn wallet',
+      expect.anything(),
+    );
+  });
+
+  it('lists no coin for a Spot row whose asset is no text', async () => {
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockResolvedValue({
+      balances: [
+        { free: '1', locked: '0' },
+        { asset: 5, free: '1', locked: '0' },
+        { asset: 'BTC', free: '1', locked: '0' },
+      ],
+      uid: null,
+    });
+
+    const { balances, exchangeState } = await binanceRead.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
+    expect(exchangeState).toContainEqual({
+      kind: 'coinList',
+      coins: 'untrackedCoins',
+      list: 'balance',
+      tickers: [],
+    });
+  });
+});
+
+describe('binanceProvider — every asset, keyed per coin', () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('writes a Spot USDT holding in USDT under its own key', async () => {
+    const deps = makeDeps([{ asset: 'USDT', free: '10', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'USDT')).toEqual({
+      currency: 'USDT',
+      balanceMinorUnits: 1_000_000_000,
+      metadataKey: 'USDT',
+      name: 'Binance Spot · USDT',
+    });
+  });
+
+  it('writes a Funding EUR holding at the fiat scale', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'EUR', free: '5.00', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'EUR:funding')).toEqual({
+      currency: 'EUR',
+      balanceMinorUnits: 500,
+      metadataKey: 'EUR:funding',
+      name: 'Binance Funding · EUR',
+    });
+  });
+
+  it('writes an Earn holding per coin, Flexible and Locked summed within each coin', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [
+        { asset: 'USDT', totalAmount: '3' },
+        { asset: 'ETH', totalAmount: '0.5' },
+        { asset: 'USDT', totalAmount: '1' },
+      ],
+      total: 3,
+    });
+    deps.fetchLockedPosition.mockResolvedValue({
+      rows: [{ asset: 'USDT', amount: '2' }],
+      total: 1,
+    });
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'USDT:earn')).toEqual({
+      currency: 'USDT',
+      balanceMinorUnits: 600_000_000,
+      metadataKey: 'USDT:earn',
+      name: 'Binance Earn · USDT',
+    });
+    expect(byKey(balances, 'ETH:earn')).toMatchObject({
+      currency: 'ETH',
+      balanceMinorUnits: 50_000_000,
+    });
+  });
+
+  it('sums each coin on its own, never one coin into another', async () => {
+    const deps = makeDeps([
+      { asset: 'ETH', free: '0.1', locked: '0.2' },
+      { asset: 'BTC', free: '1', locked: '0.5' },
+    ]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'USDT', free: '1', locked: '2', freeze: '3', withdrawing: '4' },
+      { asset: 'BTC', free: '0.1', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(150_000_000);
+    expect(byKey(balances, 'ETH')?.balanceMinorUnits).toBe(30_000_000);
+    expect(byKey(balances, 'USDT:funding')?.balanceMinorUnits).toBe(1_000_000_000);
+    expect(byKey(balances, 'BTC:funding')?.balanceMinorUnits).toBe(10_000_000);
+  });
+
+  it('reads an Earn BTC position and no Spot holding for the LDBTC receipt token', async () => {
+    const deps = makeDeps([{ asset: 'LDBTC', free: '0.1', locked: '0' }]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [{ asset: 'BTC', totalAmount: '0.1' }],
+      total: 1,
+    });
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'LDBTC')).toBeUndefined();
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(0);
+    expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(10_000_000);
+  });
+
+  it('reads LDO as LDO, a code that is no tracked coin, so it writes no holding', async () => {
+    const deps = makeDeps([{ asset: 'LDO', free: '3', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(balances)).toEqual(['BTC']);
+  });
+
+  it('skips a malformed balance of a tracked coin other than BTC and fails nothing', async () => {
+    const deps = makeDeps([{ asset: 'USDT', free: 'x', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(balances)).toEqual(['BTC']);
+  });
+
+  it('writes the other Funding coins when one tracked coin has a malformed amount', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'BTC', free: '1', locked: '0', freeze: '0', withdrawing: '0' },
+      { asset: 'USDT', free: '1e-8', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(balances)).toEqual(['BTC', 'BTC:funding']);
+  });
+});
+
+type BalanceList = Awaited<ReturnType<typeof binanceProvider.fetchBalances>>;
+
+const keysOf = (balances: BalanceList): string[] =>
+  balances.map(({ metadataKey }) => metadataKey).sort();
+
+// The Spot BTC anchor is written on every good sync; the coin rules are read beside it.
+const besideAnchor = (balances: BalanceList): BalanceList =>
+  balances.filter(({ metadataKey }) => metadataKey !== SPOT_KEY);
+
+// One coin read at `amount` in exactly one wallet, every other wallet empty.
+const depsHolding = (wallet: BinanceWallet, asset: string, amount: string): ProviderMocks => {
+  const deps = makeDeps(wallet === 'spot' ? [{ asset, free: amount, locked: '0' }] : []);
+
+  if (wallet === 'funding') {
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset, free: amount, locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+  }
+
+  if (wallet === 'earn') {
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [{ asset, totalAmount: amount }],
+      total: 1,
+    });
+  }
+
+  return deps;
+};
+
+const WALLETS: BinanceWallet[] = ['spot', 'funding', 'earn'];
+
+const heldIn = (
+  wallet: BinanceWallet,
+  currency: Currency,
+  balanceMinorUnits: number,
+): SyncTarget => ({
+  accountId: 'acc-1',
+  holdings: [binanceHolding(holdingKeyOf(currency, wallet), balanceMinorUnits, currency)],
+});
+
+describe('binanceProvider — appear, stay and dust', () => {
+  it.each(WALLETS)('creates no %s holding for a coin read at zero', async (wallet) => {
+    const balances = await binanceProvider.fetchBalances(
+      depsHolding(wallet, 'USDT', '0'),
+      emptyTarget,
+    );
+
+    expect(besideAnchor(balances)).toEqual([]);
+  });
+
+  it.each(WALLETS)('writes an existing %s holding at zero and keeps it', async (wallet) => {
+    const balances = await binanceProvider.fetchBalances(
+      depsHolding(wallet, 'USDT', '0'),
+      heldIn(wallet, 'USDT', 1_000_000_000),
+    );
+
+    expect(besideAnchor(balances)).toEqual([
+      expect.objectContaining({
+        currency: 'USDT',
+        balanceMinorUnits: 0,
+        metadataKey: holdingKeyOf('USDT', wallet),
+      }),
+    ]);
+  });
+
+  it.each(WALLETS)('creates no %s holding for a coin below its dust threshold', async (wallet) => {
+    const balances = await binanceProvider.fetchBalances(
+      depsHolding(wallet, 'DOGE', '11.9999'),
+      emptyTarget,
+    );
+
+    expect(besideAnchor(balances)).toEqual([]);
+  });
+
+  it.each(WALLETS)(
+    'creates a holding in the %s wallet for a coin exactly at its dust threshold',
+    async (wallet) => {
+      const balances = await binanceProvider.fetchBalances(
+        depsHolding(wallet, 'DOGE', '12'),
+        emptyTarget,
+      );
+
+      expect(besideAnchor(balances)).toEqual([
+        expect.objectContaining({
+          currency: 'DOGE',
+          balanceMinorUnits: 120_000,
+          metadataKey: holdingKeyOf('DOGE', wallet),
+        }),
+      ]);
+    },
+  );
+
+  it.each(WALLETS)(
+    'writes an existing %s holding for a coin below its dust threshold',
+    async (wallet) => {
+      const balances = await binanceProvider.fetchBalances(
+        depsHolding(wallet, 'DOGE', '11.9999'),
+        heldIn(wallet, 'DOGE', 5),
+      );
+
+      expect(besideAnchor(balances)).toEqual([
+        expect.objectContaining({
+          currency: 'DOGE',
+          balanceMinorUnits: 119_999,
+          metadataKey: holdingKeyOf('DOGE', wallet),
+        }),
+      ]);
+    },
+  );
+
+  it('judges the dust threshold on the coin total, not on one amount', async () => {
+    const deps = makeDeps([{ asset: 'DOGE', free: '6', locked: '6' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(besideAnchor(balances))).toEqual(['DOGE']);
+  });
+
+  it('judges the dust threshold of each coin by its own entry', async () => {
+    const deps = makeDeps([
+      { asset: 'BTC', free: '0.00000999', locked: '0' },
+      { asset: 'ETH', free: '0.0004', locked: '0' },
+      { asset: 'USDT', free: '0.99999999', locked: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(besideAnchor(balances))).toEqual(['ETH']);
+  });
+
+  it('creates a Funding BTC holding at its dust threshold and none below it', async () => {
+    const below = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'BTC', '0.00000999'),
+      emptyTarget,
+    );
+    const at = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'BTC', '0.00001'),
+      emptyTarget,
+    );
+
+    expect(besideAnchor(below)).toEqual([]);
+    expect(besideAnchor(at)).toEqual([
+      expect.objectContaining({
+        currency: 'BTC',
+        balanceMinorUnits: 1_000,
+        metadataKey: 'BTC:funding',
+      }),
+    ]);
+  });
+
+  it('writes an existing Spot BTC holding below its dust threshold', async () => {
+    const balances = await binanceProvider.fetchBalances(
+      makeDeps([{ asset: 'BTC', free: '0.00000999', locked: '0' }]),
+      heldIn('spot', 'BTC', 5_000),
+    );
+
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 999 });
+  });
+
+  it('creates a fiat holding for any non-zero balance, a cent included', async () => {
+    const balances = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'EUR', '0.01'),
+      emptyTarget,
+    );
+
+    expect(besideAnchor(balances)).toEqual([
+      expect.objectContaining({
+        currency: 'EUR',
+        balanceMinorUnits: 1,
+        metadataKey: 'EUR:funding',
+      }),
+    ]);
+  });
+
+  it('creates no fiat holding for a zero balance and zeroes an existing one', async () => {
+    const none = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'EUR', '0'),
+      emptyTarget,
+    );
+    const zeroed = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'EUR', '0'),
+      heldIn('funding', 'EUR', 500),
+    );
+
+    expect(besideAnchor(none)).toEqual([]);
+    expect(besideAnchor(zeroed)).toEqual([
+      expect.objectContaining({
+        currency: 'EUR',
+        balanceMinorUnits: 0,
+        metadataKey: 'EUR:funding',
+      }),
+    ]);
+  });
+});
+
+describe('binanceProvider — coins a good read does not list', () => {
+  it.each([
+    ['spot', 'Binance Spot · USDT'],
+    ['funding', 'Binance Funding · USDT'],
+    ['earn', 'Binance Earn · USDT'],
+  ] as const)(
+    'zeroes an existing %s holding whose coin is absent from the read',
+    async (wallet, name) => {
+      const balances = await binanceProvider.fetchBalances(
+        makeDeps([{ asset: 'ETH', free: '1', locked: '0' }]),
+        heldIn(wallet, 'USDT', 1_000_000_000),
+      );
+
+      expect(byKey(balances, holdingKeyOf('USDT', wallet))).toEqual({
+        currency: 'USDT',
+        balanceMinorUnits: 0,
+        metadataKey: holdingKeyOf('USDT', wallet),
+        name,
+      });
+    },
+  );
+
+  it('zeroes an existing Funding and Earn holding whose coin is absent from a good read', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'BTC', free: '1', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+    const target: SyncTarget = {
+      accountId: 'acc-1',
+      holdings: [
+        binanceHolding('USDT:funding', 1_000_000_000, 'USDT'),
+        binanceHolding('USDT:earn', 1_000_000_000, 'USDT'),
+      ],
+    };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'USDT:funding')).toMatchObject({
+      currency: 'USDT',
+      balanceMinorUnits: 0,
+    });
+    expect(byKey(balances, 'USDT:earn')).toMatchObject({ currency: 'USDT', balanceMinorUnits: 0 });
+    expect(byKey(balances, 'BTC:funding')).toMatchObject({ balanceMinorUnits: 100_000_000 });
+  });
+
+  it('judges a coin of one wallet by the read of that wallet only', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'USDT', free: '5', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+    const target: SyncTarget = {
+      accountId: 'acc-1',
+      holdings: [binanceHolding('USDT:funding', 1, 'USDT'), binanceHolding('USDT:earn', 1, 'USDT')],
+    };
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'USDT:funding')).toMatchObject({ balanceMinorUnits: 500_000_000 });
+    expect(byKey(balances, 'USDT:earn')).toMatchObject({ balanceMinorUnits: 0 });
+  });
+
+  it('writes nothing for a stored key that names no coin of the app', async () => {
+    const target: SyncTarget = {
+      accountId: 'acc-1',
+      holdings: [binanceHolding('PEPE:funding'), binanceHolding('BTC:flexible')],
+    };
+
+    const balances = await binanceProvider.fetchBalances(makeDeps([]), target);
+
+    expect(besideAnchor(balances)).toEqual([]);
+  });
+
+  it('never zeroes a held key of a fiat code that Binance does not quote', async () => {
+    const target: SyncTarget = {
+      accountId: 'acc-1',
+      holdings: [
+        binanceHolding('SCR', 500, 'SCR'),
+        binanceHolding('SCR:funding', 500, 'SCR'),
+        binanceHolding('SCR:earn', 500, 'SCR'),
+      ],
+    };
+
+    const balances = await binanceProvider.fetchBalances(makeDeps([]), target);
+
+    expect(besideAnchor(balances)).toEqual([]);
+  });
+
+  it('leaves every holding of a wallet whose read failed untouched', async () => {
+    const deps = makeDeps([]);
+    deps.fetchFundingAsset.mockRejectedValue(new Error('Binance request failed: 401'));
+    const target: SyncTarget = {
+      accountId: 'acc-1',
+      holdings: [
+        binanceHolding('USDT:funding', 1_000_000_000, 'USDT'),
+        binanceHolding('BTC:funding', 100),
+        binanceHolding('USDT:earn', 1_000_000_000, 'USDT'),
+      ],
+    };
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    let balances: BalanceList;
+    try {
+      balances = await binanceProvider.fetchBalances(deps, target);
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(keysOf(besideAnchor(balances))).toEqual(['USDT:earn']);
+  });
+
+  it('leaves every Earn holding untouched when either position read failed', async () => {
+    const deps = makeDeps([]);
+    deps.fetchLockedPosition.mockRejectedValue(new Error('boom'));
+    const target: SyncTarget = {
+      accountId: 'acc-1',
+      holdings: [
+        binanceHolding('USDT:earn', 1_000_000_000, 'USDT'),
+        binanceHolding('BTC:earn', 100),
+      ],
+    };
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    let balances: BalanceList;
+    try {
+      balances = await binanceProvider.fetchBalances(deps, target);
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(besideAnchor(balances)).toEqual([]);
+  });
+
+  it('fails the whole sync on a Spot failure, writing no zero for any held coin', async () => {
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockRejectedValue(new Error('Binance request failed: 401'));
+
+    await expect(
+      binanceProvider.fetchBalances(deps, heldIn('spot', 'USDT', 1_000_000_000)),
+    ).rejects.toThrow(/Binance request failed/);
+  });
+});
+
+describe('binanceProvider — a ticker that equals a fiat code', () => {
+  it('writes no holding for SCR on Spot and fails nothing, though SCR is a fiat code of the app', async () => {
+    const deps = makeDeps([
+      { asset: 'SCR', free: '5', locked: '0' },
+      { asset: 'BTC', free: '1', locked: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(keysOf(balances)).toEqual(['BTC']);
+  });
+
+  it('writes no holding for MNT on Funding', async () => {
+    const balances = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'MNT', '5'),
+      emptyTarget,
+    );
+
+    expect(byKey(balances, 'MNT:funding')).toBeUndefined();
+  });
+
+  it('never reads the amount of such a ticker', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const balances = await binanceProvider.fetchBalances(
+        makeDeps([{ asset: 'SCR', free: 'x', locked: '1e-8' }]),
+        emptyTarget,
+      );
+
+      expect(byKey(balances, 'SCR')).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('still writes a Funding holding for EUR, a Binance fiat code', async () => {
+    const balances = await binanceProvider.fetchBalances(
+      depsHolding('funding', 'EUR', '5.00'),
+      emptyTarget,
+    );
+
+    expect(byKey(balances, 'EUR:funding')).toMatchObject({
+      currency: 'EUR',
+      balanceMinorUnits: 500,
+    });
+  });
+});
+
+describe('binanceProvider — the account of the user (UA-1)', () => {
+  it('writes Spot BTC and the Funding holdings, and no USDT or UAH holding', async () => {
+    const deps = makeDeps([
+      { asset: 'BTC', free: '0.5', locked: '0' },
+      { asset: 'ETH', free: '0', locked: '0' },
+      { asset: 'USDT', free: '0', locked: '0' },
+      { asset: 'UAH', free: '0', locked: '0' },
+    ]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'BTC', free: '0.1', locked: '0', freeze: '0', withdrawing: '0' },
+      { asset: 'CGPT', free: '120.5', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+
+    const balances = await binanceProvider.fetchBalances(deps, heldIn('spot', 'BTC', 1));
+
+    expect(keysOf(balances)).toEqual(['BTC', 'BTC:funding', 'CGPT:funding']);
+    expect(byKey(balances, 'BTC')).toMatchObject({
+      currency: 'BTC',
+      balanceMinorUnits: 50_000_000,
+    });
+    expect(byKey(balances, 'CGPT:funding')).toMatchObject({
+      currency: 'CGPT',
+      balanceMinorUnits: 120_500_000,
+    });
   });
 });

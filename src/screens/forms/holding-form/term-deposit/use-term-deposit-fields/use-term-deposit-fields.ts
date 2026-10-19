@@ -1,3 +1,4 @@
+import { maxOf } from '@kiko/numbers';
 import {
   asTermDepositMeta,
   type CompoundingFrequency,
@@ -41,12 +42,32 @@ const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribut
     saved: true,
   }));
 
+// The key the next added row takes: one past the highest a restored draft holds, so it never
+// shares a React key with a row that came back. The rows may all have been removed.
+const nextContributionIdOf = (rows: readonly Contribution[]): number =>
+  Math.max(0, maxOf(rows.map((row) => row.id)) + 1);
+
 type UseTermDepositFieldsParams = {
   currency: Currency;
   scrollTo: (ref: RefObject<FieldInstance | null>, focus?: () => void) => void;
 };
 
+/**
+ * What a fold or unfold must give back: every field the user fills, the rows already stored by
+ * an edit included, as they stand.
+ */
+export type TermDepositFieldsDraft = {
+  contributions: Contribution[];
+  annualRate: string;
+  term: string;
+  termUnit: TermUnit;
+  recapitalization: boolean;
+  compounding: CompoundingFrequency;
+};
+
 export type UseTermDepositFieldsResult = HoldingTypeForm & {
+  draft: TermDepositFieldsDraft;
+  restore: (draft: TermDepositFieldsDraft) => void;
   currency: Currency;
   contributions: Contribution[];
   addContribution: () => void;
@@ -173,6 +194,16 @@ export const useTermDepositFields = (
     setCompounding(meta.compounding);
   }, []);
 
+  const restore = useCallback((draft: TermDepositFieldsDraft): void => {
+    setContributions(draft.contributions);
+    nextContributionId.current = nextContributionIdOf(draft.contributions);
+    setAnnualRate(draft.annualRate);
+    setTerm(draft.term);
+    setTermUnit(draft.termUnit);
+    setRecap(draft.recapitalization);
+    setCompounding(draft.compounding);
+  }, []);
+
   // Ledgerless: a term deposit's value derives entirely from its
   // contributions/schedule, never a typed opening balance — the stored
   // balance is always 0, the same as property/metal/loan.
@@ -202,6 +233,8 @@ export const useTermDepositFields = (
     setCompounding,
     fieldErrors,
     reasonKey,
+    draft: { contributions, annualRate, term, termUnit, recapitalization, compounding },
+    restore,
     isValid: reasonKey === null,
     scrollTargets: [
       { invalid: fieldErrors.contributionsError !== null, ref: contributionsFieldRef },

@@ -1,6 +1,7 @@
 import { HeaderHeightContext } from '@react-navigation/elements';
 import { type ComponentRef, type RefObject, useContext } from 'react';
 import { Keyboard, type ScrollViewInstance, type View } from 'react-native';
+import { type VerticalBarEdge, useVerticalBarEdge } from '@kiko/display-regions';
 
 // The field's own host INSTANCE (what a `View` ref actually resolves to,
 // carrying `measure`/`measureLayout`) — not the `View` component type
@@ -16,6 +17,37 @@ export type FieldInstance = ComponentRef<typeof View>;
 type ScrollableRef = RefObject<ScrollViewInstance | null> | { current: ScrollViewInstance | null };
 
 type FieldRef = RefObject<FieldInstance | null> | { current: FieldInstance | null };
+
+// The known `HeaderHeightContext` value React Navigation reports for a
+// COLLAPSED large-title header on a BACKGROUNDED native-stack (measured live
+// on the Duo primary panel — see the duo-adaptive design doc's "Context"
+// section). Used ONLY as a floor for the FOCUSED stack's own implausible `0`
+// report with a vertical bar below. It is a fixed value, not a live
+// per-screen measurement.
+const DUO_VERTICAL_BAR_HEADER_INSET_FLOOR = 82;
+
+// Every REAL (non-test) caller of `useHeaderInset` is a form screen pushed
+// under a genuine native-stack header, so a reported `0` there is NEVER a
+// legitimate "no header" case — unlike `HeaderHeightContext`'s OTHER
+// consumer, `use-scroll-to-top-on-tab-press.ts`, whose Home caller
+// legitimately has no header at all and must NOT be floored. On a
+// regular-width scene the system places the native tab bar on a vertical edge
+// (see `useVerticalBarEdge`) and `HeaderHeightContext` has been observed
+// reporting `0` on the FOCUSED stack (vs the correct ~82 on a backgrounded
+// one) — the same scene-geometry anomaly `resolveBottomClearance` guards
+// against. Gated behind a vertical bar so an ordinary iPhone's own
+// legitimate `0` (a bare unit-test render with no navigator at all) is never
+// touched.
+export const resolveHeaderInset = (
+  reportedHeight: number,
+  verticalBarEdge: VerticalBarEdge,
+): number => {
+  if (verticalBarEdge !== 'none' && reportedHeight === 0) {
+    return DUO_VERTICAL_BAR_HEADER_INSET_FLOOR;
+  }
+
+  return reportedHeight;
+};
 
 // The live inset a scrolled-to field must clear at the top of the scroll
 // viewport: React Navigation's own current header height, which ALREADY
@@ -37,8 +69,27 @@ type FieldRef = RefObject<FieldInstance | null> | { current: FieldInstance | nul
 // and a throwing read would crash every one of those tests, not just a
 // scroll-specific one. Degrading to `0` outside a header context mirrors the
 // same choice `use-scroll-to-top-on-tab-press.ts` already makes for the same
-// reason.
-export const useHeaderInset = (): number => useContext(HeaderHeightContext) ?? 0;
+// reason; `resolveHeaderInset` then floors a genuinely REPORTED `0` (a
+// present `HeaderHeightContext`, the Duo anomaly) ONLY with a vertical bar.
+//
+// A context that is not present AT ALL (`contextHeight === undefined`, e.g.
+// this same bare unit-test render) is handled BEFORE that floor, not folded
+// into it via a blind `?? 0` — collapsing "no context" and "context reports
+// 0" into the same value first would make them indistinguishable to
+// `resolveHeaderInset`, which would then floor a bare test render's own
+// legitimate absence of a header the same way it floors the vertical-bar
+// anomaly. Only a context that is actually PRESENT can be a Duo `0`
+// misreport in the first place.
+export const useHeaderInset = (): number => {
+  const contextHeight = useContext(HeaderHeightContext);
+  const verticalBarEdge = useVerticalBarEdge();
+
+  if (contextHeight === undefined) {
+    return 0;
+  }
+
+  return resolveHeaderInset(contextHeight, verticalBarEdge);
+};
 
 // The three live signals a caller reads once, at Save-press time, from its
 // own screen: the ScrollView's current content offset (reanimated's

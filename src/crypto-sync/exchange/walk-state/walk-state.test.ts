@@ -871,6 +871,43 @@ describe('parseExchangeState', () => {
       },
     );
 
+    describe('the oversized balanceByWallet', () => {
+      const withByWallet = (balanceByWallet: unknown) =>
+        readableOf(
+          stateTextOf({
+            oversizedCoins: { balance: ['ETH', 'SOL'], history: ['BTC'], balanceByWallet },
+          }),
+        );
+
+      it('reads as stored, and names nothing', () => {
+        const parsed = withByWallet({ spot: ['ETH'], funding: ['SOL'] });
+
+        expect(parsed.oversizedCoins).toEqual({ balance: ['ETH', 'SOL'], history: ['BTC'] });
+        expect(parsed.unreadable).toEqual([]);
+      });
+
+      it.each([
+        ['text', 'x'],
+        ['null', null],
+        ['a list', ['ETH']],
+      ])('keeps balance as stored and is named when it is %s', (_label, bad) => {
+        const parsed = withByWallet(bad);
+
+        expect(parsed.oversizedCoins).toEqual({ balance: ['ETH', 'SOL'], history: ['BTC'] });
+        expect(parsed.unreadable).toEqual(['oversizedCoins.balanceByWallet']);
+      });
+
+      it('names a wallet array it cannot read, and the others stay readable', () => {
+        const parsed = withByWallet({ spot: 5, funding: ['SOL', 7], earn: ['ETH'] });
+
+        expect(parsed.oversizedCoins).toEqual({ balance: ['ETH', 'SOL'], history: ['BTC'] });
+        expect(parsed.unreadable).toEqual([
+          'oversizedCoins.balanceByWallet.spot',
+          'oversizedCoins.balanceByWallet.funding',
+        ]);
+      });
+    });
+
     it.each(KINDS)('read as empty and are named when the %s are no object', (kind) => {
       for (const bad of ['x', null, ['PEPE']]) {
         const parsed = readableOf(stateTextOf({ ...stored, [kind]: bad }));

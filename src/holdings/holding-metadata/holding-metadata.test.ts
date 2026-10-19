@@ -384,6 +384,19 @@ describe('withCarriedMetadataKeys — the reopen statement cursor', () => {
   });
 });
 
+describe('withCarriedMetadataKeys — the default-name rename mark', () => {
+  it('carries defaultNameRenameSettled from the stored metadata', () => {
+    const target = { binanceAsset: 'BTC', syncedAt: 2_000 };
+    const stored = { binanceAsset: 'BTC', defaultNameRenameSettled: true };
+
+    expect(withCarriedMetadataKeys(target, stored)).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: 2_000,
+      defaultNameRenameSettled: true,
+    });
+  });
+});
+
 describe('asPropertyMeta', () => {
   const valid = {
     category: 'real_estate' as const,

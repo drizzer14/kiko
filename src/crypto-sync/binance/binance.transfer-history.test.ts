@@ -445,7 +445,7 @@ const depsOf = (
   readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
   listHoldings: async () => [...(await world.state.listHoldings()), ...world.others],
   fetchUniversalTransfers: server,
-  ensureHoldings: jest.fn(async (created: Omit<ExchangeHolding, 'renameFromDefault'>[]) => {
+  ensureHoldings: jest.fn(async (created: Omit<ExchangeHolding, 'renameFromDefaults'>[]) => {
     for (const holding of created) {
       world.events.push(`ensure:${holding.metadataKey}`);
       world.others.push(

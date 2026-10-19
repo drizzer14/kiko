@@ -68,7 +68,21 @@ const runBinanceHistoryWalks = async (
 };
 
 const runBinanceSyncAndImport = async (targetAccountId: string): Promise<BalanceSyncResult> => {
-  const result = await runBalanceSync(binanceProvider, defaultBinanceDeps, { targetAccountId });
+  const { syncedHoldings, exchangeState } = await runBalanceSync(
+    binanceProvider,
+    defaultBinanceDeps,
+    { targetAccountId },
+  );
+
+  // Written here, not by the read: the write finds the account connected to Binance only once
+  // the sync has marked it, which a first Connect does after the read. A failed write must not
+  // fail the balance sync, so it is only logged.
+  if (exchangeState !== undefined) {
+    await logOnFailure('[binance sync] balance lists failed', () =>
+      exchangeStateDepsOf('binance').patchExchangeState(targetAccountId, exchangeState),
+    );
+  }
+
   // One gate and one weight budget for every history walk of this run, so the walks
   // together stay under Binance's per-minute limits.
   const run = createBinanceHistoryRun({ now: () => Date.now(), sleep });
@@ -81,7 +95,7 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
     runBinanceHistoryWalks(targetAccountId, run),
   );
 
-  return result;
+  return { syncedHoldings };
 };
 
 /**

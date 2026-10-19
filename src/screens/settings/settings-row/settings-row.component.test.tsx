@@ -3,14 +3,134 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import Card from '@kiko/design-system/components/card';
+import { useIsOnAccent } from '@kiko/design-system/selected-surface';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';
+
+const Probe = () => <RNText>{useIsOnAccent() ? 'on accent' : 'on surface'}</RNText>;
 
 describe('SettingsRow', () => {
   it('renders its label', async () => {
     const { getByText } = await render(<SettingsRow label="Base currency" />);
     expect(getByText('Base currency')).toBeTruthy();
+  });
+
+  describe('selected (the row whose page the other pane shows)', () => {
+    const rowStyle = (row: { props: { style?: unknown } }) =>
+      StyleSheet.flatten(
+        typeof row.props.style === 'function'
+          ? row.props.style({ pressed: false })
+          : row.props.style,
+      );
+
+    it('fills the row with the accent and tells a screen reader it is selected', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow testID="row" label="Categories" onPress={jest.fn()} selected />,
+      );
+      const row = getByTestId('row');
+
+      expect(rowStyle(row).backgroundColor).toBe(darkTheme.colors.accent);
+      expect(rowStyle(row).borderRadius).toBe(darkTheme.radii.md);
+      expect(row.props.accessibilityState).toEqual({ selected: true });
+    });
+
+    // The selected card is already the marker of a single-row card, so its row adds none.
+    it('adds no fill of its own inside a selected card, and still tells a screen reader', async () => {
+      const { getByTestId } = await render(
+        <Card selected>
+          <SettingsRow testID="row" label="Categories" onPress={jest.fn()} selected />
+        </Card>,
+      );
+      const row = getByTestId('row');
+
+      expect(rowStyle(row).backgroundColor).toBeUndefined();
+      expect(row.props.accessibilityState).toEqual({ selected: true });
+    });
+
+    it('lets the selected fill win over the style the screen gave the row', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow
+          testID="row"
+          label="Categories"
+          onPress={jest.fn()}
+          style={{ backgroundColor: '#123456' }}
+          selected
+        />,
+      );
+
+      expect(rowStyle(getByTestId('row')).backgroundColor).toBe(darkTheme.colors.accent);
+    });
+
+    // As on `Card`: the selection takes the colors, the screen keeps the shape of its row.
+    it('keeps the corner radius the screen gave the row', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow
+          testID="row"
+          label="Categories"
+          onPress={jest.fn()}
+          style={{ borderRadius: 3 }}
+          selected
+        />,
+      );
+
+      expect(rowStyle(getByTestId('row')).borderRadius).toBe(3);
+      expect(rowStyle(getByTestId('row')).backgroundColor).toBe(darkTheme.colors.accent);
+    });
+
+    it('draws its content on the accent fill', async () => {
+      const { getByText } = await render(
+        <SettingsRow label="Reminder" onPress={jest.fn()} selected>
+          <Probe />
+        </SettingsRow>,
+      );
+
+      expect(getByText('on accent')).toBeTruthy();
+    });
+
+    it('draws its content on the surface when not selected', async () => {
+      const { getByText } = await render(
+        <SettingsRow label="Reminder" onPress={jest.fn()}>
+          <Probe />
+        </SettingsRow>,
+      );
+
+      expect(getByText('on surface')).toBeTruthy();
+    });
+
+    it('leaves the row as it was when not selected', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow testID="row" label="Categories" onPress={jest.fn()} />,
+      );
+      const row = getByTestId('row');
+
+      expect(rowStyle(row).backgroundColor).toBeUndefined();
+      expect(row.props.accessibilityState).toEqual({ selected: false });
+    });
+
+    it('keeps the style the screen gave the row', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow
+          testID="row"
+          label="Categories"
+          onPress={jest.fn()}
+          style={{ paddingVertical: 12 }}
+          selected
+        />,
+      );
+
+      expect(rowStyle(getByTestId('row')).paddingVertical).toBe(12);
+    });
+
+    it('reads as selected on a row with a body too', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow testID="row" label="Reminder" onPress={jest.fn()} selected>
+          <RNText>body</RNText>
+        </SettingsRow>,
+      );
+
+      expect(getByTestId('row').props.accessibilityState).toEqual({ selected: true });
+    });
   });
 
   it('renders a trailing chevron only when the row navigates (onPress given)', async () => {

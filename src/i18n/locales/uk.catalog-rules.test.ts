@@ -5,7 +5,7 @@
 // or a computed value is caught the same as a plain string:
 //
 // (a) no ASCII apostrophe `'` between two Cyrillic letters in any string
-//     value — Ukrainian text must use the U+2019 apostrophe `’`.
+//     value — Ukrainian text must use the U+02BC apostrophe `ʼ`.
 // (b) the app name appears only as Cyrillic `Кіко`, never Latin `Kiko`, in
 //     any string value.
 // (c) a tap is asked for with «натиснути» only, never торкнутися, тапнути,
@@ -22,7 +22,7 @@ const OTHER_TAP_VERB = /торкн|тапн|тицн|клацн/i;
 const OTHER_LONG_PRESS_VERB = /притисн|затисн|зажм|довг\S* (?:натиск|дотик|тап)|тривал\S* натиск/i;
 
 describe('uk.ts catalogue rules', () => {
-  it('never uses an ASCII apostrophe inside a Cyrillic word (must be U+2019 ’)', () => {
+  it('never uses an ASCII apostrophe inside a Cyrillic word (must be U+02BC ʼ)', () => {
     const offenders = flattenCatalog(uk).filter(({ value }) =>
       ASCII_APOSTROPHE_IN_CYRILLIC_WORD.test(value),
     );

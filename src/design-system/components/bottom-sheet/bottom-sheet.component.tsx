@@ -7,6 +7,7 @@ import Animated, {
 import { type FC, useEffect } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFoldRegion, useLayoutMode } from '@kiko/display-regions';
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
@@ -20,6 +21,7 @@ import {
   resolveKeyboardAwareMaxHeight,
   resolveKeyboardLift,
 } from './bottom-sheet.keyboard';
+import { resolveSheetFrame } from './bottom-sheet.layout';
 import type { BottomSheetProps } from './bottom-sheet.props';
 import { SHEET_PADDING_STEP, styles } from './bottom-sheet.styles';
 import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
@@ -146,11 +148,26 @@ const BottomSheet: FC<BottomSheetProps> = ({
   const { theme } = useUnistyles();
   // `useWindowDimensions` (not a one-shot `Dimensions.get`) so the 66% cap
   // recomputes on rotation, per the design-system requirement.
-  const windowHeight = useWindowDimensions().height;
-  // The 66% cap is the absolute ceiling — a call site's own `maxHeight` can
-  // only tighten it further, never loosen it past 66%.
+  const window = useWindowDimensions();
+  const windowHeight = window.height;
+  // The RAW layout mode, not the settled one: the design system never imports
+  // navigation, and a sheet that outlives a fold or unfold closes with its
+  // screen's remount anyway, so a brief mismatch is harmless.
+  const layoutMode = useLayoutMode();
+  const foldRegion = useFoldRegion();
+  const frame = resolveSheetFrame({
+    mode: layoutMode,
+    window,
+    fold: foldRegion,
+    hairline: theme.layout.hairline,
+    maxWidth: theme.layout.sheetMaxWidth,
+  });
+  // A call site's own `maxHeight` and the fold's bottom-pane cap (a tabletop
+  // posture; infinite otherwise) both only TIGHTEN the 66% ceiling below.
+  const tightenedMaxHeight = Math.min(maxHeight ?? Infinity, frame.heightCap ?? Infinity);
+  // The 66% cap is the absolute ceiling — neither can loosen it past 66%.
   const capHeight = windowHeight * MAX_HEIGHT_RATIO;
-  const resolvedMaxHeight = maxHeight === undefined ? capHeight : Math.min(maxHeight, capHeight);
+  const resolvedMaxHeight = Math.min(tightenedMaxHeight, capHeight);
   // The sheet's own base bottom-padding step (no safe-area inset) — resolved
   // once, on the JS thread, from the same token `styles.sheet` uses, so the
   // keyboard-aware override below (`resolveKeyboardAwareBottomPadding`) never
@@ -250,7 +267,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
         windowHeight,
         keyboardLift,
         MAX_HEIGHT_RATIO,
-        maxHeight,
+        tightenedMaxHeight,
       ),
       paddingBottom: resolveKeyboardAwareBottomPadding(
         sheetBasePadding,
@@ -344,7 +361,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
         </Pressable>
 
         <Animated.View
-          style={[styles.sheet(insets.bottom, resolvedMaxHeight), sheetAnimatedStyle]}
+          style={[styles.sheet(insets.bottom, resolvedMaxHeight, frame), sheetAnimatedStyle]}
           onLayout={(event) => {
             sheetHeight.value = event.nativeEvent.layout.height;
           }}

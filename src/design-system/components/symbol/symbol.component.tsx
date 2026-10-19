@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { SFSymbolView } from 'react-native-nitro-sfsymbols';
+import { useIsOnAccent } from '@kiko/design-system/selected-surface';
 
 import type { SymbolProps } from './symbol.props';
 import { toSFSymbolTintColor } from './symbol.color';
@@ -18,6 +19,8 @@ const SymbolIcon: FC<SymbolProps> = ({
   testID,
 }) => {
   const { theme } = useUnistyles();
+  // On a selected surface's accent fill a glyph with no colour of its own reads as `onAccent`.
+  const isOnAccent = useIsOnAccent();
   // The default is the `body` icon-size token (see theme.ts), not a literal:
   // an icon with no explicit size reads as a body-context glyph. A call site
   // still passes `theme.iconSizes.caption` / `.heading` / etc. for another
@@ -38,7 +41,7 @@ const SymbolIcon: FC<SymbolProps> = ({
       // back to a color that renders as an invisible black glyph on this
       // app's black background — easy to mistake for a layout bug since
       // nothing throws and the view is still there, just uncolored.
-      tintColor={toSFSymbolTintColor(color ?? theme.colors[tone])}
+      tintColor={toSFSymbolTintColor(color ?? theme.colors[isOnAccent ? 'onAccent' : tone])}
       accessibilityLabel={accessibilityLabel}
       testID={testID}
       // Fabric gives an SFSymbolView no intrinsic size, so with no explicit

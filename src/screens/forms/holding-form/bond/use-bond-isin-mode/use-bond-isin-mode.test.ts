@@ -597,4 +597,126 @@ describe('useBondIsinMode', () => {
       expect(filled).toHaveBeenCalledWith('6');
     });
   });
+
+  describe('the draft', () => {
+    it('holds a blank ISIN form as it opens', async () => {
+      const { result } = await renderHook(() => useBondIsinMode(baseParams()));
+
+      expect(result.current.draft).toEqual({
+        bondMode: 'isin',
+        isin: '',
+        pickedCouponFrequency: null,
+        appliedIsin: null,
+        filledName: null,
+        storedIsin: null,
+      });
+    });
+
+    it('holds the match that was applied, and the name it filled in', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const { result, rerender } = await renderHook(() => useBondIsinMode(baseParams()));
+
+      await act(async () => {
+        result.current.setIsin(VALID_ISIN);
+      });
+      // The form re-renders once the apply has set its fields; here they are mocks.
+      await rerender({});
+
+      expect(result.current.draft).toEqual(
+        expect.objectContaining({
+          isin: VALID_ISIN,
+          appliedIsin: VALID_ISIN,
+          filledName: 'Register Bond',
+        }),
+      );
+    });
+
+    it('brings every field back', async () => {
+      const { result } = await renderHook(() => useBondIsinMode(baseParams()));
+      const draft = {
+        bondMode: 'manual',
+        isin: VALID_ISIN,
+        pickedCouponFrequency: 'monthly',
+        appliedIsin: VALID_ISIN,
+        filledName: 'Register Bond',
+        storedIsin: OTHER_ISIN,
+      } as const;
+
+      await act(async () => {
+        result.current.restore(draft);
+      });
+
+      expect(result.current.draft).toEqual(draft);
+      expect(result.current.bondMode).toBe('manual');
+      expect(result.current.pickedCouponFrequency).toBe('monthly');
+    });
+
+    it('does not apply a match again over the form it was restored into', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const params = baseParams();
+      const { result } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.restore({
+          bondMode: 'isin',
+          isin: VALID_ISIN,
+          pickedCouponFrequency: null,
+          appliedIsin: VALID_ISIN,
+          filledName: 'Register Bond',
+          storedIsin: null,
+        });
+      });
+
+      expect(params.setName).not.toHaveBeenCalled();
+      expect(params.setFaceValue).not.toHaveBeenCalled();
+      expect(params.setCurrency).not.toHaveBeenCalled();
+    });
+
+    it('applies a match the restored draft had not applied yet', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const params = baseParams();
+      const { result } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.restore({
+          bondMode: 'isin',
+          isin: VALID_ISIN,
+          pickedCouponFrequency: null,
+          appliedIsin: null,
+          filledName: null,
+          storedIsin: null,
+        });
+      });
+
+      expect(params.setName).toHaveBeenCalledWith('Register Bond');
+    });
+
+    it('keeps a name the user typed over the one a match filled in', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const params = { ...baseParams(), name: 'My own bond' };
+      const { result } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.restore({
+          bondMode: 'isin',
+          isin: VALID_ISIN,
+          pickedCouponFrequency: null,
+          appliedIsin: null,
+          filledName: 'Some earlier register name',
+          storedIsin: null,
+        });
+      });
+
+      expect(params.setName).not.toHaveBeenCalled();
+    });
+
+    it('keeps one restore across renders, so the screen effect that depends on it runs once', async () => {
+      const { result, rerender } = await renderTheHook(baseParams());
+      const first = result.current.restore;
+
+      await rerender(baseParams());
+
+      expect(result.current.restore).toBe(first);
+    });
+  });
 });

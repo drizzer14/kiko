@@ -17,6 +17,9 @@ export type TransactionRowProps = {
   holdingCurrencyById: ReadonlyMap<string, string>;
   categoryKeyForRow: (raw: string | null) => string;
   onPress: (transactionId: string) => void;
+  // Whether the detail pane shows this row's form: a boolean per row, so a change of the detail
+  // route re-renders only the rows whose mark flipped.
+  selected: boolean;
   // Open the create form pre-filled from this row. Passed for MANUAL rows
   // only; a synced row is not duplicable and never receives it, so its
   // long-press keeps offering nothing.

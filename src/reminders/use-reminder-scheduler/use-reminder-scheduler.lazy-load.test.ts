@@ -6,7 +6,7 @@ import { useReminderScheduler } from './use-reminder-scheduler';
 // `TurboModuleRegistry.getEnforcing` throws on a binary built without the
 // module. The scheduler mounts in `AppRoot`, so its subscribe must not take
 // the app down with it.
-jest.mock('@kiko/reminders/native/NativeKikoReminders', () => {
+jest.mock('@kiko/native-specs/NativeKikoReminders', () => {
   throw new Error('KikoReminders is not in this binary');
 });
 

@@ -51,7 +51,7 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
       // orchestrator writes nothing for an empty result, so only a wallet that never stored
       // an address is an error.
       if (target.holdings.some(({ metadata }) => walletAddressOf(metadata) !== undefined)) {
-        return [];
+        return { balances: [] };
       }
 
       throw new Error(i18n.t('accountDetail.noWalletAddressStored'));
@@ -69,12 +69,13 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
     // after this returns, so a failed address leaves every stored balance as it was.
     for (const address of addresses) {
       balances.push({
+        currency: 'BTC',
         balanceMinorUnits: await deps.fetchAddressBalance(address, deps.fetchImpl),
         metadataKey: address,
         name: WALLET_HOLDING_NAME,
       });
     }
 
-    return balances;
+    return { balances };
   },
 };

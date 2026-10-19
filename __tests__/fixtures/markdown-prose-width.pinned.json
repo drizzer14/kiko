@@ -59,7 +59,6 @@
     "`time > asOf` or `source = 'manual'`, never a `setsBalance` row). Example: closing 10,000 as of Oct 1 and",
     "`recordExchange`, and `recordExchangeCounterpart` (Convert-mode). A term_deposit exchange DESTINATION still",
     "(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` does not switch `kind` for an implicit kind, it only stores `pickedImplicitKind` so the kind field shows the pick in the tap's own frame while the fields, icon and color stay put; the form passes `closesWithoutAnimation={isImplicitAccountKind}`, so that sheet closes with no fade and `onSelectClosed` (hence the `replace`) follows at once, while every other kind keeps the fade; `account-form.screen.tsx`), where `draft` is the",
-    "`holdingFormDraft`, all in `holding-form/holding-form-target/`. In implicit mode the form: queries no account",
     "the screen that owns the sheet's Modal. `setParams` is immediate. `replace`, never `navigate`: Back from either form",
     "lot-form eligible when that function can return `'addLot'` (read the `FooterAction` union there). `metal`",
     "  whose marker names a deleted holding is cleared. The delete keeps the pair id and moves no balance: a",

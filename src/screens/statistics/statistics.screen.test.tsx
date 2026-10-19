@@ -34,9 +34,13 @@ jest.mock('@kiko/statistics/net-worth-series', () => {
   };
 });
 
-// A standalone screen render has no real navigation focus context; default
-// focused (matches every other test in this file), overridden per test.
-const mockUseIsFocused = jest.fn(() => true);
+// A standalone screen render has no pane navigator; default on screen (matches every other test
+// in this file), overridden per test. Statistics is a companion default in the Home tab, which is
+// on screen and never focused, so `useIsFocused` is mocked false: only visibility may decide.
+const mockUseIsScreenVisible = jest.fn(() => true);
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  useIsScreenVisible: () => mockUseIsScreenVisible(),
+}));
 
 // The no-account empty state's action navigates to the Accounts tab; a
 // standalone render has no navigator, so the hook answers with a spy.
@@ -44,7 +48,7 @@ const mockNavigate = jest.fn();
 
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
-  useIsFocused: () => mockUseIsFocused(),
+  useIsFocused: () => false,
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
@@ -109,30 +113,32 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
-// useFocusRefreshedNow also reads the navigation context (useFocusEffect) via
-// the same real-context requirement as the hook above; a standalone screen
-// render has none, so stand it in with a `useState`-seeded read, STABLE across
-// an ordinary re-render (matching the real hook's own "only a re-focus
-// advances it" contract) but externally advanceable via `advanceFocusedNow`
-// (below) for the tests that simulate a refocus.
+// useVisibleRefreshedNow is stood in with a `useState`-seeded read, STABLE
+// across an ordinary re-render (matching the real hook's own "only a return to
+// visible advances it" contract) but externally advanceable via
+// `advanceVisibleNow` (below) for the tests that simulate a return. The spy
+// records which visibility the screen hands it.
 let mockNow = Date.now();
 const mockNowListeners = new Set<(value: number) => void>();
+const mockRefreshedNowVisibility = jest.fn();
 
-// Simulates a real focus event's `setNow(Date.now())`: advances every
-// currently-mounted `useFocusRefreshedNow` instance, wrapped in `act` by the
+// Simulates a return to visible's `setNow(Date.now())`: advances every
+// currently-mounted `useVisibleRefreshedNow` instance, wrapped in `act` by the
 // caller.
-const advanceFocusedNow = (value: number): void => {
+const advanceVisibleNow = (value: number): void => {
   mockNow = value;
   mockNowListeners.forEach((listener) => {
     listener(value);
   });
 };
 
-jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
+jest.mock('@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now', () => {
   const { useEffect, useState } = jest.requireActual('react');
 
   return {
-    useFocusRefreshedNow: () => {
+    useVisibleRefreshedNow: (isVisible: boolean) => {
+      mockRefreshedNowVisibility(isVisible);
+
       const [now, setNow] = useState(() => mockNow);
 
       useEffect(() => {
@@ -808,34 +814,53 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).toHaveBeenCalled();
   });
 
-  it("hands the backfill each currency's first stored day from the history that loaded", async () => {
+  const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
+
+  // The memos behind the backfill's inputs recompute from the rows of the first read that
+  // carries history, so the run starts only once that read has landed.
+  const backfillArgumentOnceHistoryLoads = async (
+    history: HistoryRow[],
+  ): Promise<Record<string, unknown>> => {
     const baseData: LiveData = {
       accounts: [CASH, BANK],
       holdings: [UAH_HOLDING, USD_HOLDING],
       rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
     };
-    const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
     setLiveData({ ...baseData, history: [], isLoading: { currency_rate_history: true } });
 
     const { rerender } = await renderScreen();
 
-    setLiveData({
-      ...baseData,
-      history: [
-        { base: 'USD', quote: 'UAH', day: day(2), rate: '40' },
-        { base: 'USD', quote: 'UAH', day: day(5), rate: '40' },
-        { base: 'EUR', quote: 'UAH', day: day(3), rate: '45' },
-      ],
-    });
+    setLiveData({ ...baseData, history });
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
 
     expect(mockRunBackfill).toHaveBeenCalledTimes(1);
-    expect(mockRunBackfill.mock.calls[0]?.[0]).toMatchObject({
-      firstBackfilledDayByCurrency: { USD: day(5), EUR: day(3) },
-    });
+
+    return mockRunBackfill.mock.calls[0]?.[0] as Record<string, unknown>;
+  };
+
+  it("hands the backfill each currency's first stored day from the history that loaded", async () => {
+    const argument = await backfillArgumentOnceHistoryLoads([
+      { base: 'USD', quote: 'UAH', day: day(2), rate: '40' },
+      { base: 'USD', quote: 'UAH', day: day(5), rate: '40' },
+      { base: 'EUR', quote: 'UAH', day: day(3), rate: '45' },
+    ]);
+
+    expect(argument).toMatchObject({ firstBackfilledDayByCurrency: { USD: day(5), EUR: day(3) } });
+  });
+
+  it('hands the backfill the coins whose every stored row came from Binance', async () => {
+    const argument = await backfillArgumentOnceHistoryLoads([
+      { base: 'ETH', quote: 'UAH', day: day(2), rate: '120000', source: 'binance' },
+      { base: 'ETH', quote: 'UAH', day: day(1), rate: '121000', source: 'binance' },
+      { base: 'SOL', quote: 'UAH', day: day(2), rate: '6000', source: 'binance' },
+      { base: 'SOL', quote: 'UAH', day: day(1), rate: '6100', source: 'coingecko' },
+      { base: 'USD', quote: 'UAH', day: day(1), rate: '40', source: 'nbu' },
+    ]);
+
+    expect(argument.binanceOnlyCurrencies).toEqual(new Set(['ETH']));
   });
 
   // kiko-architecture: a cached display mount's rows can be one read old, and
@@ -877,16 +902,16 @@ describe('StatisticsScreen', () => {
     });
     mockRunBackfill.mockRejectedValueOnce(new Error('network down'));
 
-    // `useFocusRefreshedNow` is mocked to a stable per-instance value at the
-    // top of this file; a real focus re-entry advances it, so drive that
-    // here with a spy the test controls directly instead of a fake navigation
-    // focus event.
+    // `useVisibleRefreshedNow` is mocked to a stable per-instance value at the
+    // top of this file; a real return to visible advances it, so drive that
+    // here with a spy the test controls directly instead of a fake visibility
+    // change.
     const focusModule = jest.requireMock(
-      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now',
     ) as {
-      useFocusRefreshedNow: () => number;
+      useVisibleRefreshedNow: (isVisible: boolean) => number;
     };
-    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+    const nowSpy = jest.spyOn(focusModule, 'useVisibleRefreshedNow').mockReturnValue(now);
 
     const { getByTestId, queryByTestId, rerender } = await renderScreen();
 
@@ -920,11 +945,11 @@ describe('StatisticsScreen', () => {
     mockRunBackfill.mockReturnValueOnce(firstRun);
 
     const focusModule = jest.requireMock(
-      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now',
     ) as {
-      useFocusRefreshedNow: () => number;
+      useVisibleRefreshedNow: (isVisible: boolean) => number;
     };
-    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+    const nowSpy = jest.spyOn(focusModule, 'useVisibleRefreshedNow').mockReturnValue(now);
 
     const { getByTestId, queryByTestId, rerender } = await renderScreen();
 
@@ -980,11 +1005,11 @@ describe('StatisticsScreen', () => {
     mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
 
     const focusModule = jest.requireMock(
-      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now',
     ) as {
-      useFocusRefreshedNow: () => number;
+      useVisibleRefreshedNow: (isVisible: boolean) => number;
     };
-    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+    const nowSpy = jest.spyOn(focusModule, 'useVisibleRefreshedNow').mockReturnValue(now);
 
     const { getByTestId, queryByTestId, rerender } = await renderScreen();
 
@@ -1025,11 +1050,11 @@ describe('StatisticsScreen', () => {
     mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
 
     const focusModule = jest.requireMock(
-      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now',
     ) as {
-      useFocusRefreshedNow: () => number;
+      useVisibleRefreshedNow: (isVisible: boolean) => number;
     };
-    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+    const nowSpy = jest.spyOn(focusModule, 'useVisibleRefreshedNow').mockReturnValue(now);
 
     const { rerender } = await renderScreen();
 
@@ -1125,11 +1150,11 @@ describe('StatisticsScreen', () => {
     });
 
     const focusModule = jest.requireMock(
-      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now',
     ) as {
-      useFocusRefreshedNow: () => number;
+      useVisibleRefreshedNow: (isVisible: boolean) => number;
     };
-    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+    const nowSpy = jest.spyOn(focusModule, 'useVisibleRefreshedNow').mockReturnValue(now);
 
     const { rerender } = await renderScreen();
 
@@ -1186,11 +1211,11 @@ describe('StatisticsScreen', () => {
     });
 
     const focusModule = jest.requireMock(
-      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now',
     ) as {
-      useFocusRefreshedNow: () => number;
+      useVisibleRefreshedNow: (isVisible: boolean) => number;
     };
-    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+    const nowSpy = jest.spyOn(focusModule, 'useVisibleRefreshedNow').mockReturnValue(now);
 
     let rejectFirstRun: (error: Error) => void = () => {};
     const firstRun = new Promise<never>((_resolve, reject) => {
@@ -1321,11 +1346,11 @@ describe('StatisticsScreen', () => {
     mockRunBackfill.mockResolvedValueOnce({ state: 'complete', lastDay: now });
 
     const focusModule = jest.requireMock(
-      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now',
     ) as {
-      useFocusRefreshedNow: () => number;
+      useVisibleRefreshedNow: (isVisible: boolean) => number;
     };
-    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+    const nowSpy = jest.spyOn(focusModule, 'useVisibleRefreshedNow').mockReturnValue(now);
 
     const { rerender } = await renderScreen();
 
@@ -2635,12 +2660,12 @@ describe('StatisticsScreen', () => {
 
     const { getByTestId, getByText } = await renderScreen();
 
-    // Not yet focus-refreshed past `now`: tomorrow's expense falls outside the
+    // Not yet refreshed past `now`: tomorrow's expense falls outside the
     // default range, so the donut shows its empty state.
     expect(getByTestId('category-pie-empty')).toBeTruthy();
 
     await act(async () => {
-      advanceFocusedNow(localDaysFrom(now, 1));
+      advanceVisibleNow(localDaysFrom(now, 1));
     });
 
     const centerTotal = within(getByTestId('category-pie-center-total'));
@@ -3024,12 +3049,12 @@ describe('StatisticsScreen — paused while hidden', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     seedFull();
   });
 
-  it('pauses the 7 direct live queries while unfocused, without changing their own enabled argument', async () => {
-    mockUseIsFocused.mockReturnValue(false);
+  it('pauses the 7 direct live queries while not on screen, without changing their own enabled argument', async () => {
+    mockUseIsScreenVisible.mockReturnValue(false);
     await renderScreen();
 
     for (const table of PAUSED_TABLES) {
@@ -3040,7 +3065,7 @@ describe('StatisticsScreen — paused while hidden', () => {
     }
   });
 
-  it('unpauses the 7 direct live queries while focused', async () => {
+  it('unpauses the 7 direct live queries while on screen, focused or not', async () => {
     await renderScreen();
 
     for (const table of PAUSED_TABLES) {
@@ -3048,8 +3073,20 @@ describe('StatisticsScreen — paused while hidden', () => {
     }
   });
 
-  it('pauses usePriceBook the same way while unfocused', async () => {
-    mockUseIsFocused.mockReturnValue(false);
+  it('hands the refreshed now the same visibility', async () => {
+    await renderScreen();
+
+    expect(mockRefreshedNowVisibility).toHaveBeenLastCalledWith(true);
+
+    mockRefreshedNowVisibility.mockClear();
+    mockUseIsScreenVisible.mockReturnValue(false);
+    await renderScreen();
+
+    expect(mockRefreshedNowVisibility).toHaveBeenLastCalledWith(false);
+  });
+
+  it('pauses usePriceBook the same way while not on screen', async () => {
+    mockUseIsScreenVisible.mockReturnValue(false);
     await renderScreen();
 
     expect(callFor('price_points')?.[3]).toEqual({ cached: true, paused: true });
@@ -3074,12 +3111,13 @@ describe('StatisticsScreen — paused while hidden', () => {
   // pending write, if any, as a NEW reference, and otherwise (nothing
   // pending) also keeps the same reference — so a screen render downstream
   // of this stub only sees new data exactly when the real hook would have
-  // read one. `writeWhileHidden` simulates another tab's write landing
-  // while this table is paused, without itself forcing a render (a real
-  // write is a native-side event, never a React state update here).
+  // read one. `landWrite` simulates a write landing, whether this screen
+  // is paused (another tab's write) or visible, without itself forcing a
+  // render (a real write is a native-side event, never a React state
+  // update here).
   const createPausedAwareLiveQuery = (
     initial: LiveData,
-  ): { writeWhileHidden: (overrides: Record<string, unknown[]>) => void } => {
+  ): { landWrite: (overrides: Record<string, unknown[]>) => void } => {
     const committed = buildLiveDataByTable(initial);
     const pending = new Map<string, unknown[]>();
 
@@ -3097,7 +3135,7 @@ describe('StatisticsScreen — paused while hidden', () => {
     );
 
     return {
-      writeWhileHidden: (overrides: Record<string, unknown[]>): void => {
+      landWrite: (overrides: Record<string, unknown[]>): void => {
         for (const [table, rows] of Object.entries(overrides)) {
           pending.set(table, rows);
         }
@@ -3117,7 +3155,7 @@ describe('StatisticsScreen — paused while hidden', () => {
     const { rerender } = await renderScreen();
     expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(1);
 
-    mockUseIsFocused.mockReturnValue(false);
+    mockUseIsScreenVisible.mockReturnValue(false);
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -3126,7 +3164,7 @@ describe('StatisticsScreen — paused while hidden', () => {
     // A write elsewhere while this tab is hidden: deferred, so a render that
     // is still paused must not pick it up — this is what would catch a
     // regression that reads eagerly regardless of `paused`.
-    stub.writeWhileHidden({
+    stub.landWrite({
       transactions: [
         ...TRANSACTIONS,
         { id: 't4', holdingId: 'h1', time: localDaysFrom(now, -1), amountMinorUnits: 25_00 },
@@ -3139,11 +3177,38 @@ describe('StatisticsScreen — paused while hidden', () => {
 
     // The return: the deferred write applies (a real focus's own read) AND
     // `now` refreshes (a real focus's own setNow) — together, ONE recompute.
-    advanceFocusedNow(localDaysFrom(now, 1));
-    mockUseIsFocused.mockReturnValue(true);
+    advanceVisibleNow(localDaysFrom(now, 1));
+    mockUseIsScreenVisible.mockReturnValue(true);
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
+    expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(2);
+  });
+
+  // A companion default is visible without being the focused route (`useIsFocused` is mocked
+  // false for the whole file): a write must still reach it.
+  it('reads a write made while visible as the companion, without being focused', async () => {
+    const stub = createPausedAwareLiveQuery({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+    });
+
+    const { rerender } = await renderScreen();
+    expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(1);
+
+    stub.landWrite({
+      transactions: [
+        ...TRANSACTIONS,
+        { id: 't4', holdingId: 'h1', time: localDaysFrom(now, -1), amountMinorUnits: 25_00 },
+      ],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
     expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(2);
   });
 
@@ -3151,13 +3216,13 @@ describe('StatisticsScreen — paused while hidden', () => {
     const { rerender } = await renderScreen();
     const callsBefore = mockRunBackfill.mock.calls.length;
 
-    mockUseIsFocused.mockReturnValue(false);
+    mockUseIsScreenVisible.mockReturnValue(false);
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
 
-    advanceFocusedNow(localDaysFrom(now, 1));
-    mockUseIsFocused.mockReturnValue(true);
+    advanceVisibleNow(localDaysFrom(now, 1));
+    mockUseIsScreenVisible.mockReturnValue(true);
     await act(async () => {
       rerender(<StatisticsScreen />);
     });

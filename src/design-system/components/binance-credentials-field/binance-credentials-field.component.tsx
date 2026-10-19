@@ -1,8 +1,15 @@
+import {
+  type BinanceCredentials,
+  type BinanceWriteToken,
+  fetchAccount,
+  saveCredentials,
+} from '@kiko/crypto-sync/binance';
+import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
 import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import { type FC, useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
-import { fetchAccount, saveCredentials } from '@kiko/crypto-sync/binance';
+import { useIsMounted } from '@kiko/design-system/use-is-mounted';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
@@ -21,23 +28,63 @@ type BinanceCredentialsFieldProps = {
   accountId: string;
   /**
    * Runs the Binance Connect sync once the pair is verified and stored; resolves whether it
-   * succeeded.
+   * succeeded. Receives the token of the write that stored the pair, so a caller that gives up can
+   * clear that write's pair and no other; the pair itself stays in this field.
    */
-  onConnect: () => Promise<boolean>;
+  onConnect: (stored: BinanceWriteToken) => Promise<boolean>;
   // Lets a form that saves without this connection remind the user to press Connect first.
   reminder?: ConnectReminder;
+  /**
+   * Runs instead of `onConnect` when the field unmounted during the Keychain write that stored the
+   * verified pair, so the screen that owns the account decides what happens to the pair; it must
+   * not reject. It receives the token of that write, which clears that write's pair and no other.
+   * Without it the pair stays where it was stored.
+   */
+  onStoredWhileUnmounted?: (stored: BinanceWriteToken) => Promise<void>;
 };
 
 type Field = 'apiKey' | 'secret';
 
+type StoreOutcome =
+  | { kind: 'saveError' }
+  | { kind: 'unmounted' }
+  | { kind: 'stored'; token: BinanceWriteToken }
+  | { kind: 'storedWhileUnmounted'; token: BinanceWriteToken };
+
+// Stores a verified pair unless the field is gone, and says whether the connect may go on. A fold
+// or a kind switch removes the field during the check or the write. Gone before the write, nothing
+// is stored: a key under an account id nothing connects would be left behind. Gone during the
+// write, the pair is stored and its write token is reported through onStoredWhileUnmounted, because
+// the screen that owns the account decides its fate. Either way connecting is skipped: it would
+// insert the account row after the form that replaced this one already decided what to write.
+const storePair = async (
+  accountId: string,
+  credentials: BinanceCredentials,
+  isMounted: () => boolean,
+): Promise<StoreOutcome> => {
+  if (!isMounted()) {
+    return { kind: 'unmounted' };
+  }
+
+  try {
+    const token = await saveCredentials(accountId, credentials);
+
+    return isMounted() ? { kind: 'stored', token } : { kind: 'storedWhileUnmounted', token };
+  } catch {
+    return { kind: 'saveError' };
+  }
+};
+
 // The Binance counterpart of the Monobank token field: two secure inputs for a
 // read-only ("Enable Reading" only) key pair. Connect verifies the pair with one
 // account call BEFORE it is written to the biometric Keychain, then runs the
-// first sync. The pair never leaves this component except into `saveCredentials`.
+// first sync. The pair never leaves this component except into `fetchAccount` (the check) and
+// `saveCredentials`; the callbacks get only the token of that write.
 const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
   accountId,
   onConnect,
   reminder,
+  onStoredWhileUnmounted,
 }) => {
   const { t } = useTranslation();
   const [apiKey, setAPIKey] = useState('');
@@ -53,6 +100,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
   const secretError =
     attemptedConnect && secret.trim() === '' ? t('accountDetail.secretRequiredError') : undefined;
   const onDraftChange = reminder?.onDraftChange;
+  const isMounted = useIsMounted();
 
   // The typed pair goes with the field, so a draft it reported must not outlive it.
   useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
@@ -78,6 +126,21 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
     Linking.openURL(BINANCE_API_MANAGEMENT_URL);
   };
 
+  const connectStoredPair = async (token: BinanceWriteToken): Promise<void> => {
+    const connected = await onConnect(token);
+
+    if (connected) {
+      // A connected pair is not an unsaved draft; editing it again makes it one.
+      onDraftChange?.(false);
+    }
+
+    setStatus(
+      connected
+        ? { kind: 'success', message: t('accountDetail.binanceConnected') }
+        : { kind: 'saveError', message: t('accountDetail.couldNotConnectBinance') },
+    );
+  };
+
   const handleConnect = (): void => {
     reminder?.onConnectPress();
 
@@ -99,26 +162,18 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
         return;
       }
 
-      try {
-        await saveCredentials(accountId, { apiKey, secret });
-      } catch {
-        setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') });
+      const stored = await storePair(accountId, { apiKey, secret }, isMounted);
 
-        return;
-      }
-
-      const connected = await onConnect();
-
-      if (connected) {
-        // A connected pair is not an unsaved draft; editing it again makes it one.
-        onDraftChange?.(false);
-      }
-
-      setStatus(
-        connected
-          ? { kind: 'success', message: t('accountDetail.binanceConnected') }
-          : { kind: 'saveError', message: t('accountDetail.couldNotConnectBinance') },
-      );
+      await match(stored)
+        .with({ kind: 'saveError' }, async () =>
+          setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') }),
+        )
+        .with({ kind: 'storedWhileUnmounted' }, async ({ token }) =>
+          onStoredWhileUnmounted?.(token),
+        )
+        .with({ kind: 'unmounted' }, async () => undefined)
+        .with({ kind: 'stored' }, async ({ token }) => connectStoredPair(token))
+        .exhaustive();
     })();
   };
 

@@ -1,4 +1,4 @@
-import { expectNavBarSaveOnly, pressSave, saveItem } from './form-header-items';
+import { expectNavBarSaveOnly, headerItems, pressSave, saveItem } from './form-header-items';
 
 describe('form header items test helper', () => {
   it('reads the Save item of the last registration that has the trailing slot', () => {
@@ -38,6 +38,23 @@ describe('form header items test helper', () => {
 
     expect(saveItem(setOptions, 'Зберегти')).toMatchObject({ label: 'Зберегти', disabled: true });
     expect(saveItem(setOptions)).toBeUndefined();
+  });
+
+  it('reads the items of the last registration of either slot, asked with the given canGoBack', () => {
+    const slot = jest.fn((props: { canGoBack: boolean }) =>
+      props.canGoBack ? [] : [{ label: 'Cancel', onPress: jest.fn() }],
+    );
+    const setOptions = jest.fn();
+
+    setOptions({ unstable_headerLeftItems: () => [{ label: 'Old', onPress: jest.fn() }] });
+    setOptions({ unstable_headerLeftItems: slot });
+    setOptions({ title: 'Other' });
+
+    expect(headerItems(setOptions, 'unstable_headerLeftItems').map((item) => item.label)).toEqual([
+      'Cancel',
+    ]);
+    expect(headerItems(setOptions, 'unstable_headerLeftItems', true)).toEqual([]);
+    expect(headerItems(setOptions, 'unstable_headerRightItems')).toEqual([]);
   });
 
   it('has no Save item when nothing registered the trailing slot', () => {
