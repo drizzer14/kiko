@@ -1,9 +1,11 @@
 type ImplicitKind = 'property' | 'debt';
 
-// One implicit account in USD (the base is UAH) whose only open item is held in UAH, with a
+// One implicit account in USD (the base is UAH) whose only counted item is held in UAH, with a
 // USD to UAH rate of 40. The Accounts section heading and the account detail page total these
 // same rows through `accountTotal`, so each screen's own test reads the same two strings: the
-// total in the account currency and the base caption.
+// total in the account currency and the base caption. Two more rows are NOT counted: a closed
+// item with a balance, and an open BTC item with no BTC rate. A screen that counted either
+// would read a different string, so the pair also pins which holdings each screen includes.
 const IMPLICIT_PARITY_RATES = [{ base: 'USD', quote: 'UAH', rate: '40' }];
 
 const PARITY = {
@@ -40,18 +42,14 @@ const PARITY = {
 export const implicitParityFixture = (kind: ImplicitKind, accountId: string) => {
   const { name, holdingName, type, metadata, total, caption } = PARITY[kind];
 
+  const item = { name: holdingName, accountId, type, metadata };
+
   return {
     account: { id: accountId, name, kind, currency: 'USD', archivedAt: null },
     holdings: [
-      {
-        id: 'item-1',
-        name: holdingName,
-        accountId,
-        currency: 'UAH',
-        balanceMinorUnits: 0,
-        type,
-        metadata,
-      },
+      { ...item, id: 'item-1', currency: 'UAH', balanceMinorUnits: 0 },
+      { ...item, id: 'item-closed', currency: 'UAH', balanceMinorUnits: 300_000, closedAt: 1 },
+      { ...item, id: 'item-btc', currency: 'BTC', balanceMinorUnits: 0 },
     ],
     rates: IMPLICIT_PARITY_RATES,
     total,

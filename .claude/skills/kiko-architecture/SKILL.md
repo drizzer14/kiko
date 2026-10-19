@@ -801,7 +801,11 @@ gate says there is nothing to do.
   cryptoCurrencies }` from a single `settings` read plus
   `holdingsRepo.openCurrenciesQuery()` (a `SELECT DISTINCT currency`
   over ACTIVE holdings — open, and whose account is not archived,
-  mirroring `activeHoldings`). The fiat leg (Monobank/NBU) runs only
+  mirroring `activeHoldings`) plus
+  `accountsRepo.openCurrenciesQuery()` (a `SELECT DISTINCT currency`
+  over non-archived accounts: an account card totals in its own
+  currency, so a currency only an account names, with no holding in it,
+  still gets its rate or coin price). The fiat leg (Monobank/NBU) runs only
   when `needsFiat` — some active holding's currency differs from the
   base (display) currency, which also covers the crypto leg's own
   USD:UAH anchor need, since a held crypto currency always differs

@@ -535,7 +535,7 @@ describe('AccountDetailScreen', () => {
 
       expect(within(getByTestId('account-detail-headline')).getByText('₿0.50')).toBeTruthy();
       // The headline, the holding row and the per-currency breakdown each carry the amount.
-      expect(getAllByText('₿0.50').length).toBeGreaterThan(2);
+      expect(getAllByText('₿0.50')).toHaveLength(3);
       expect(queryByText(/0\.00 ₴/)).toBeNull();
       expect(queryByTestId('account-detail-converted')).toBeNull();
     });

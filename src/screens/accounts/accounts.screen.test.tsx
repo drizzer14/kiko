@@ -506,7 +506,15 @@ describe('AccountsScreen', () => {
   ] as const)('the %s section total', (kind, totalTestID, captionTestID) => {
     it('totals in the account currency with the base figure beneath', async () => {
       const { account, holdings, rates, total, caption } = implicitParityFixture(kind, 'x');
-      setLiveData({ accounts: [account], holdings, rates });
+      // An open holding on another account is no part of this section. The detail page cannot
+      // pin that: its mocked holdings query ignores the account id.
+      const otherAccount = { id: 'other', name: 'Other', kind: 'bank', currency: 'UAH' };
+      const otherHolding = { accountId: 'other', currency: 'UAH', balanceMinorUnits: 700_000 };
+      setLiveData({
+        accounts: [account, otherAccount],
+        holdings: [...holdings, otherHolding],
+        rates,
+      });
       const { getByTestId } = await renderAccounts();
 
       expect(within(getByTestId(totalTestID)).getByText(total)).toBeTruthy();

@@ -60,6 +60,31 @@ const openHoldingsOf = (
   account: AccountRow | undefined,
 ): HoldingRow[] => foldMap(maybe(account), (found) => holdingsByAccount.get(found.id)) ?? [];
 
+type SectionTotalsContext = {
+  baseCurrency: Currency;
+  rateTable: ReturnType<typeof buildRateTable>;
+  now: number;
+  priceBook: Parameters<typeof accountTotal>[5];
+};
+
+const useSectionTotals = (
+  holdings: HoldingRow[],
+  account: AccountRow | undefined,
+  { baseCurrency, rateTable, now, priceBook }: SectionTotalsContext,
+) =>
+  useMemo(
+    () =>
+      accountTotal(
+        holdings,
+        account?.currency ?? baseCurrency,
+        baseCurrency,
+        rateTable,
+        now,
+        priceBook,
+      ),
+    [holdings, account, baseCurrency, rateTable, now, priceBook],
+  );
+
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
@@ -199,30 +224,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // holdings and the debts section only `loan` holdings
   // (`holdingTypesForAccountKind`), so the debts total is negative, and so is its caption.
   // A section renders only for a live account, so the base fallback is never shown.
-  const propertyTotals = useMemo(
-    () =>
-      accountTotal(
-        propertyHoldings,
-        propertyAccount?.currency ?? baseCurrency,
-        baseCurrency,
-        rateTable,
-        now,
-        priceBook,
-      ),
-    [propertyHoldings, propertyAccount, baseCurrency, rateTable, now, priceBook],
-  );
-  const debtsTotals = useMemo(
-    () =>
-      accountTotal(
-        debtHoldings,
-        debtAccount?.currency ?? baseCurrency,
-        baseCurrency,
-        rateTable,
-        now,
-        priceBook,
-      ),
-    [debtHoldings, debtAccount, baseCurrency, rateTable, now, priceBook],
-  );
+  const totalsContext = { baseCurrency, rateTable, now, priceBook };
+  const propertyTotals = useSectionTotals(propertyHoldings, propertyAccount, totalsContext);
+  const debtsTotals = useSectionTotals(debtHoldings, debtAccount, totalsContext);
 
   // One close hook per implicit account: its sync check reads that account.
   // Each hook's own `closeSheet` must render, or "Close" in that section

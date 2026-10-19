@@ -240,6 +240,18 @@ export const accountsRepo = {
   byIdQuery: (accountId: string) =>
     database.select().from(accounts).where(eq(accounts.id, accountId)),
   /**
+   * The DISTINCT currencies of the accounts that are not archived: the rate and coin-price
+   * refresh gate's second input (`openCurrencies`, `src/rates/open-currencies-gate/`). An
+   * account card totals in its own currency, so that currency needs a rate or coin price even
+   * when no holding is in it. An archived account shows no card, so its currency never forces
+   * a fetch.
+   */
+  openCurrenciesQuery: () =>
+    database
+      .selectDistinct({ currency: accounts.currency })
+      .from(accounts)
+      .where(isNull(accounts.archivedAt)),
+  /**
    * The account(s) connected under one institution — Monobank by default, or a
    * balance provider (`'btc_wallet'` / `'binance'`). The one-connection-per-
    * institution invariant means this yields at most one row; the UI uses it to
