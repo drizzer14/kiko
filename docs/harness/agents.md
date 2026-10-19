@@ -27,6 +27,9 @@ frontmatter, per the table above.
 
 ### Ponytail isolation
 
+A subagent in an Agent-tool isolation worktree (the worktrees folder inside `.claude`) had
+every git call refused by the hook ("cannot read dir"); use Orca worktrees instead.
+
 The reviewer's `/ponytail-review` command vendors only the review
 prompt from ponytail 4.9.0 (`harness/kiko/commands/ponytail-review.md`).
 No ponytail hooks are registered anywhere (no `SessionStart`,

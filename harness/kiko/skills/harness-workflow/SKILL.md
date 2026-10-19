@@ -707,6 +707,12 @@ the job is DONE; keep that tree untouched from the queue time until DONE, and ne
 a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
 START or at the end, or HEAD moved.
 
+During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
+`check:all` or `make verify` outside the queue; brief every subagent so. A green jest of a
+verify plus a standalone queued `check:all` (ruling E), or a sim pass, never replaces a green
+queued verify line, which `scripts/ff-main.sh` requires for the sha. The same rule is in the
+ops skill's "Load rule" section.
+
 A gate's forwarded warning and `TIMEOUT-HEAVY` lines, and their order against the DONE line,
 are in the ops skill's "Load rule" section.
 

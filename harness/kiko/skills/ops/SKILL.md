@@ -272,6 +272,10 @@ about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass
 
 ## Load rule
 
+During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
+`check:all` or `make verify` outside the queue, and no other pass replaces a green queued
+verify line (harness-workflow skill, "Load rule").
+
 Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queue.sh`, which
 serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
 load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
