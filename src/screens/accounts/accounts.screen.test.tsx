@@ -19,6 +19,7 @@ import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { implicitParityFixture } from '@kiko/test-support/implicit-total-parity';
 import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -494,6 +495,33 @@ describe('AccountsScreen', () => {
       expect(getByText(/0\.5/)).toBeTruthy();
       expect(queryByText(/0\.00 ₴/)).toBeNull();
       expect(queryByTestId('account-card-converted')).toBeNull();
+    });
+  });
+
+  // The Property and Debts headings act as their implicit account's card: the total follows the
+  // account currency, with the base caption beside it.
+  describe.each([
+    ['property', 'accounts-property-total', 'property-total-converted'],
+    ['debt', 'accounts-debts-total', 'debts-total-converted'],
+  ] as const)('the %s section total', (kind, totalTestID, captionTestID) => {
+    it('totals in the account currency with the base figure beneath', async () => {
+      const { account, holdings, rates, total, caption } = implicitParityFixture(kind, 'x');
+      setLiveData({ accounts: [account], holdings, rates });
+      const { getByTestId } = await renderAccounts();
+
+      expect(within(getByTestId(totalTestID)).getByText(total)).toBeTruthy();
+      expect(within(getByTestId(totalTestID)).getByTestId(captionTestID)).toHaveTextContent(
+        caption,
+      );
+    });
+
+    it('shows no caption for an account in the base currency', async () => {
+      const { account, holdings, rates } = implicitParityFixture(kind, 'x');
+      setLiveData({ accounts: [{ ...account, currency: 'UAH' }], holdings, rates });
+      const { getByTestId, queryByTestId } = await renderAccounts();
+
+      expect(within(getByTestId(totalTestID)).getByText(/5,000\.00 ₴/)).toBeTruthy();
+      expect(queryByTestId(captionTestID)).toBeNull();
     });
   });
 

@@ -204,10 +204,10 @@ const CASH_CURRENCY_CONTEXT = { kind: 'fiat' } as const;
 const ACCOUNT_CURRENCY_CONTEXT = { kind: 'any' } as const;
 
 // A new cash account has one currency field, the cash one, which also sets the account currency.
-// Every other non-implicit kind has the account-currency field, on create and on edit. A property
-// or debt account's field waits for the section total that uses it.
-const hasAccountCurrencyField = (isEdit: boolean, kind: Kind): boolean =>
-  !isImplicitAccountKind(kind) && (isEdit || kind !== 'cash');
+// Every other kind has the account-currency field, on create and on edit. A property or debt
+// account is only ever edited here (a create swaps to the holding form), where its section total
+// on the Accounts screen follows the pick.
+const hasAccountCurrencyField = (isEdit: boolean, kind: Kind): boolean => isEdit || kind !== 'cash';
 
 // The edit patch carries the currency only when the user changed it: the write then touches
 // `accounts.currency` alone, for a cash account too, and never its holding or an amount.

@@ -394,17 +394,40 @@ describe('the account currency field on an edit form', () => {
     });
   });
 
-  it.each(['property', 'debt'] as const)(
-    'has no currency field on an implicit %s account',
-    async (kind) => {
-      mockAccounts = [storedAccount({ kind })];
+  describe.each(['property', 'debt'] as const)('an implicit %s account', (kind) => {
+    it('shows the stored currency in the field, with the hint', async () => {
+      mockAccounts = [storedAccount({ kind, currency: 'EUR' })];
 
-      const { queryByTestId, queryByText } = await renderForm({ accountId: 'acc-1' });
+      const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
 
-      expect(queryByTestId('account-currency-field')).toBeNull();
-      expect(queryByText(HINT)).toBeNull();
-    },
-  );
+      expect(getByTestId('account-currency-field')).toHaveTextContent('Euro', { exact: false });
+      expect(getByText(HINT)).toBeTruthy();
+    });
+
+    it('saves a changed currency in the update patch', async () => {
+      mockAccounts = [storedAccount({ kind, currency: 'UAH' })];
+      const view = await renderForm({ accountId: 'acc-1' });
+
+      await pickCurrency(view, 'USD');
+      await pressSave(view.navigation.setOptions);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'acc-1',
+        expect.objectContaining({ currency: 'USD' }),
+      );
+      expect(mockMoneyRepoCall).not.toHaveBeenCalled();
+    });
+
+    it('leaves currency out of the patch when the user did not change it', async () => {
+      mockAccounts = [storedAccount({ kind, currency: 'EUR' })];
+      const view = await renderForm({ accountId: 'acc-1' });
+
+      await pressSave(view.navigation.setOptions);
+
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+      expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('currency');
+    });
+  });
 });
 
 describe('the account currency in the form draft', () => {

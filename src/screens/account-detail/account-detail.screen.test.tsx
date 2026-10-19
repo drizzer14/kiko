@@ -16,6 +16,7 @@ import {
 import { dropCard, liftCard } from '@kiko/test-support/lift-grid-card';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
+import { implicitParityFixture } from '@kiko/test-support/implicit-total-parity';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountDetailScreen from './account-detail.screen';
@@ -500,6 +501,20 @@ describe('AccountDetailScreen', () => {
       expect(getAllByText('1,000.00 ₴').length).toBeGreaterThan(1);
       expect(getAllByText('$50.00').length).toBeGreaterThan(1);
     });
+
+    // The Accounts section heading reads the same two strings from the same fixture.
+    it.each(['property', 'debt'] as const)(
+      'totals an implicit %s account as its Accounts section heading does',
+      async (kind) => {
+        const fixture = implicitParityFixture(kind, 'a');
+        const { total, caption } = fixture;
+        setLiveData({ ...fixture, accounts: [account(fixture.account)] });
+        const { getByTestId } = await renderScreen();
+
+        expect(within(getByTestId('account-detail-headline')).getByText(total)).toBeTruthy();
+        expect(getByTestId('account-detail-converted')).toHaveTextContent(caption);
+      },
+    );
 
     it('shows no caption for an account in the base currency', async () => {
       setLiveData(multiCurrencyData);
