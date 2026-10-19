@@ -98,6 +98,15 @@ describe('exchangeMinorUnits', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['a word', 'x'],
+    ['an empty text', ''],
+    ['a blank text', '   '],
+    ['an Infinity text', 'Infinity'],
+  ])('refuses %s as malformed', (_label, text) => {
+    expect(outcomeOf(FULL_SCALE, text, 'row')).toEqual({ error: 'amount-malformed' });
+  });
+
   it.each(['balance', 'row'] as const)('refuses an exponent form for a %s', (use) => {
     expect(outcomeOf(FULL_SCALE, '1e-8', use)).toEqual({ error: 'amount-malformed' });
     expect(outcomeOf(REDUCED_SCALE, '1.5E+3', use)).toEqual({ error: 'amount-malformed' });

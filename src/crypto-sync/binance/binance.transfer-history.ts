@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
   advanceWalkMarks,
+  AMOUNT_STOP_CODES,
   BinanceWalkStop,
   commitSettledSpan,
   createDepthMemories,
@@ -11,6 +12,7 @@ import {
   exchangeStateDepsOf,
   instantAt,
   joinSettled,
+  oversizedHistoryWriterOf,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
@@ -18,6 +20,7 @@ import {
   readWalkMarks,
   readWalkRoundRobins,
   roundRobinHooksOf,
+  rowMinorUnits,
   runWalkPlan,
   type SettledSpan,
   settleRecords,
@@ -61,7 +64,6 @@ import {
   UNIVERSAL_TRANSFER_TYPES,
   type UniversalTransferType,
 } from './binance.history-client';
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
@@ -122,6 +124,7 @@ export const TRANSFER_FORWARD_OWES: readonly string[] = [
   TRANSFER_ID_MISSING,
   TRANSFER_AMOUNT_INVALID,
   TRANSFER_ROW_UNREADABLE,
+  ...AMOUNT_STOP_CODES,
 ];
 
 /**
@@ -245,9 +248,9 @@ export const transferRowsOf = (
     throw new BinanceWalkStop(TRANSFER_ID_MISSING);
   }
 
-  const satoshis = btcSatoshis(record.amount);
+  const satoshis = rowMinorUnits(BINANCE_ASSET, record.amount);
 
-  if (satoshis === null || satoshis <= 0) {
+  if (satoshis <= 0) {
     throw new BinanceWalkStop(TRANSFER_AMOUNT_INVALID);
   }
 
@@ -464,6 +467,7 @@ const commitSpan = (
         missingCode: 'transfer-holding-missing',
       }),
     add: deps.addTransactions,
+    writeOversized: oversizedHistoryWriterOf(deps, accountId),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,

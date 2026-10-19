@@ -294,6 +294,7 @@ describe('commitSettledSpan, for ground that is owed in one series', () => {
       place: async (planned) => planned,
       add: async (rows) => rows.length,
       advance: jest.fn(async () => undefined),
+      writeOversized: async () => undefined,
     });
 
   it('goes past it in the forward pass: it stays owed and holds nothing back', async () => {

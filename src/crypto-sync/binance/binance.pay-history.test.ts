@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import {
+  coinListPatchesOf,
   expectWalkMarkWritten,
   NUMBER_MARK_FIELDS,
   numberMarkWritesOfAnyWalk,
@@ -2252,6 +2253,45 @@ describe('an order the walk cannot trust stops its window', () => {
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-direction-ambiguous' }],
     ]);
+  });
+
+  it.each([
+    ['an amount in exponent form', '-1e-8', 'amount-malformed'],
+    ['an amount with digits past the scale', '-0.000000001', 'amount-precision'],
+  ])(
+    'stops on %s with the parser code, and adds no oversized coin',
+    async (_label, amount, code) => {
+      const deps = makeDeps(readsOf(order({ amount })));
+
+      const result = await sync(deps);
+
+      expect(result).toEqual({ imported: 0, complete: false });
+      expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
+      expect(warn.mock.calls).toEqual([[WARN_TAG_STOP, { name: 'BinanceWalkStop', code }]]);
+      expect(coinListPatchesOf(deps)).toEqual([]);
+    },
+  );
+
+  it('stops on an amount too large, and adds its coin to the oversized history list though the forward stop commits nothing', async () => {
+    const deps = makeDeps(readsOf(order({ amount: '-90071992.54740992' })));
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
+    expect(warn.mock.calls).toEqual([
+      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'amount-too-large' }],
+    ]);
+    expect(coinListPatchesOf(deps)).toContainEqual({
+      kind: 'coinList',
+      coins: 'oversizedCoins',
+      list: 'history',
+      tickers: ['BTC'],
+    });
+    expect(
+      JSON.parse((await deps.readExchangeState(WALK_ACCOUNT_ID)) ?? '{}').oversizedCoins,
+    ).toEqual({ history: ['BTC'] });
   });
 
   it('logs no amount, id or name', async () => {

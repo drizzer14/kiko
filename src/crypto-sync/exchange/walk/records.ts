@@ -1,7 +1,10 @@
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { bifoldMap, type Either, eitherSync } from 'fnts/either';
+
+import { type AmountError, exchangeMinorUnits } from '../amounts';
 
 import {
   BinanceWalkStop,
@@ -15,19 +18,57 @@ import {
   type WalkWindow,
 } from './walk';
 import type { ExchangeWalkConfig } from './walk-config';
+import type { ExchangeStateDeps } from './exchange-state-deps';
 
 /**
  * One span's records told apart: the rows of those the walk can trust, the codes of the stops
  * of those it cannot, the ground the stuck records owe, and the point of every record the read
  * returned, trusted or not (`returned`): the walk takes a point off its list only for one of
  * those. A point carries the series its record was read under, when the walk reads several.
+ * `oversized` names the coins of the records that stopped too large, and is left out when none did.
  */
 export type SettledSpan<Row> = {
   rows: Row[];
   codes: string[];
   owed: OwedGround[];
   returned: OwedGround[];
+  oversized?: string[];
 };
+
+/**
+ * Every code of the amount parser, for a lane that owes the point of a record the parser refused
+ * and goes past it in the forward pass (`forwardOwes`).
+ */
+export const AMOUNT_STOP_CODES: readonly AmountError[] = [
+  'amount-malformed',
+  'amount-precision',
+  'amount-too-large',
+];
+
+/**
+ * The exact minor units of a history row's amount text, in the coin's own scale. A text the
+ * parser refuses stops the record with the parser's code, and an amount past the safe integer
+ * names its coin, so the walk lists it as oversized.
+ */
+export const rowMinorUnits = (currency: Currency, text: string): number =>
+  bifoldMap(
+    exchangeMinorUnits(currency, text, 'row'),
+    (code): number => {
+      throw new BinanceWalkStop(code, code === 'amount-too-large' ? currency : undefined);
+    },
+    (units) => units,
+  );
+
+/**
+ * The write of the coins a history read met oversized: one union patch, as the list only grows
+ * (see `withCoinList`).
+ */
+export const oversizedHistoryWriterOf =
+  (deps: Pick<ExchangeStateDeps, 'patchExchangeState'>, accountId: string) =>
+  (tickers: readonly string[]): Promise<void> =>
+    deps.patchExchangeState(accountId, [
+      { kind: 'coinList', coins: 'oversizedCoins', list: 'history', tickers: [...tickers] },
+    ]);
 
 /** The one millisecond a record with a time to the millisecond sits in, if it has a time. */
 export const instantAt = (time: number | undefined): WalkWindow | undefined =>
@@ -80,7 +121,13 @@ const settledRecord = <Row>(
         throw error;
       }
 
-      return { rows: [], codes: [error.code], owed: [owedBy(span, point)], returned };
+      return {
+        rows: [],
+        codes: [error.code],
+        owed: [owedBy(span, point)],
+        returned,
+        ...foldMap(maybe(error.oversizedTicker), (ticker) => ({ oversized: [ticker] })),
+      };
     },
     (rows): SettledSpan<Row> => ({ rows, codes: [], owed: [], returned }),
   );
@@ -91,12 +138,17 @@ const settledRecord = <Row>(
  * into a range that holds it, and a range never into another entry, so the whole span owed
  * beside the point of a record in it is two entries.
  */
-export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> => ({
-  rows: parts.flatMap((part) => part.rows),
-  codes: parts.flatMap((part) => part.codes),
-  owed: distinctGround(parts.flatMap((part) => part.owed)),
-  returned: parts.flatMap((part) => part.returned),
-});
+export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> => {
+  const oversized = [...new Set(parts.flatMap((part) => part.oversized ?? []))];
+
+  return {
+    rows: parts.flatMap((part) => part.rows),
+    codes: parts.flatMap((part) => part.codes),
+    owed: distinctGround(parts.flatMap((part) => part.owed)),
+    returned: parts.flatMap((part) => part.returned),
+    ...(oversized.length > 0 ? { oversized } : {}),
+  };
+};
 
 /**
  * The records of one span, each on its own: a record the walk cannot trust (its `rowsOf` throws
@@ -227,12 +279,20 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   place: (planned: Planned[]) => Promise<Row[]>;
   add: (rows: Row[]) => Promise<number>;
   advance: (result: { owed: OwedGround[] }) => Promise<void>;
+  writeOversized: (tickers: readonly string[]) => Promise<void>;
   forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
-  const { pass, span, settled, add, advance, forwardOwes = [] } = input;
+  const { pass, span, settled, add, advance, writeOversized, forwardOwes = [] } = input;
   const stopsRun = (part: Pick<SettledSpan<unknown>, 'codes' | 'owed'>): boolean =>
     pass === 'forward' &&
     (part.codes.some((code) => !forwardOwes.includes(code)) || !part.owed.every(isOwedPast));
+
+  // Before any stop of the forward pass returns, which commits nothing of its span: a capital or
+  // Pay amount that is too large is met again on every run until it ages out, and would never be
+  // listed if the write waited for a commit.
+  if (settled.oversized !== undefined) {
+    await writeOversized(settled.oversized);
+  }
 
   if (stopsRun(settled)) {
     logCodes(settled.codes);

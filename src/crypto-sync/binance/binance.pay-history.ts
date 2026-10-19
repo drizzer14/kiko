@@ -11,12 +11,14 @@ import {
   instantAt,
   joinSettled,
   logWalkStop,
+  oversizedHistoryWriterOf,
   placeWalletRows,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
   roundRobinHooksOf,
+  rowMinorUnits,
   runWalkPlan,
   settleRecords,
   settleUnreadable,
@@ -62,7 +64,6 @@ import {
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
 } from './binance.history-client';
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
@@ -195,9 +196,9 @@ const costsOf = (order: BinancePayOrder): WalletShare[] => {
   const satoshisByWallet = new Map<number, number>();
 
   for (const cost of costEntriesOf(order)) {
-    const costSatoshis = btcSatoshis(cost.amount);
+    const costSatoshis = rowMinorUnits(BINANCE_ASSET, cost.amount);
 
-    if (costSatoshis === null || costSatoshis < 0) {
+    if (costSatoshis < 0) {
       throw new BinanceWalkStop('pay-amount-invalid');
     }
 
@@ -270,15 +271,9 @@ const shareOfReceive = (order: BinancePayOrder, satoshis: number): WalletShare[]
  * invent BTC the user never spent.
  */
 const btcFundsSatoshisOf = (order: BinancePayOrder): number =>
-  order.fundsDetail.filter(isBtcFunds).reduce((sum, entry) => {
-    const entrySatoshis = btcSatoshis(entry.amount);
-
-    if (entrySatoshis === null) {
-      throw new BinanceWalkStop('pay-amount-invalid');
-    }
-
-    return sum + entrySatoshis;
-  }, 0);
+  order.fundsDetail
+    .filter(isBtcFunds)
+    .reduce((sum, entry) => sum + rowMinorUnits(BINANCE_ASSET, entry.amount), 0);
 
 /**
  * A send with no wallet cost anywhere, placed whole on the one wallet `walletTypes` names.
@@ -372,7 +367,7 @@ export const payRowsOf = (input: {
     throw new BinanceWalkStop('pay-direction-ambiguous');
   }
 
-  const satoshis = Math.abs(btcSatoshis(order.amount) ?? 0);
+  const satoshis = Math.abs(rowMinorUnits(BINANCE_ASSET, order.amount));
 
   if (satoshis === 0) {
     throw new BinanceWalkStop('pay-amount-invalid');
@@ -569,6 +564,7 @@ const commitSpan = (
         missingCode: 'pay-holding-missing',
       }),
     add: deps.addTransactions,
+    writeOversized: oversizedHistoryWriterOf(deps, accountId),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,

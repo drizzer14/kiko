@@ -145,7 +145,7 @@ describe('rewardGroupRowsOf', () => {
     },
   );
 
-  it.each([['x'], [''], ['0'], ['0.000000001'], ['-0.00000001']])(
+  it.each([['0'], ['-0.00000001']])(
     'a reward whose amount is %p is no positive number of satoshis: the group is a stop',
     (amount) => {
       expect(
@@ -154,6 +154,18 @@ describe('rewardGroupRowsOf', () => {
     },
   );
 
+  it.each([
+    ['x', 'amount-malformed'],
+    ['', 'amount-malformed'],
+    ['1e-8', 'amount-malformed'],
+    ['0.000000001', 'amount-precision'],
+    ['90071992.54740992', 'amount-too-large'],
+  ])('a reward whose amount is %p stops its group with the parser code %s', (amount, code) => {
+    expect(
+      stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf({ amount })))),
+    ).toBe(code);
+  });
+
   it('stops the WHOLE group for one member whose amount is no number: no member is numbered without it', () => {
     const group = groupOf(
       'flexible',
@@ -161,7 +173,7 @@ describe('rewardGroupRowsOf', () => {
       rewardOf({ amount: 'x' }),
     );
 
-    expect(stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, group))).toBe('earn-amount-invalid');
+    expect(stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, group))).toBe('amount-malformed');
   });
 
   it('stops a group with no project or position id', () => {
@@ -213,7 +225,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
       keyOf('flexible', 'BTC001', 'REALTIME', at + 5, 0),
     ]);
     expect(settled.owed).toEqual([pointOf(at, 'flexibleRewards')]);
-    expect(settled.codes).toEqual(['earn-amount-invalid']);
+    expect(settled.codes).toEqual(['amount-malformed']);
   });
 
   it('blocks every reward group of the kind at the time of an unreadable reward row: its group cannot be known', () => {
@@ -372,7 +384,7 @@ describe('the reward groups of a walk', () => {
 
     expect(world.added).toEqual([]);
     expect(listOf(world)).toEqual([pointOf(stuckAt, 'flexibleRewards')]);
-    expect(stopCodes(warn)).toEqual(['earn-amount-invalid']);
+    expect(stopCodes(warn)).toEqual(['amount-malformed']);
   });
 
   it('a reward group settled per member would shift the numbers: a group that settles later is written under 0 and 1, never 1 alone', async () => {

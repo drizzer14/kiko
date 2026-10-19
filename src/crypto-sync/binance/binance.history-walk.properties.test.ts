@@ -933,6 +933,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               span,
               settled: settledOf({ lane, span, page, run, window, drift: input.drift }),
               forwardOwes,
+              writeOversized: async () => undefined,
               place: async (planned) => planned,
               add: async (rows) => {
                 for (const row of rows) {

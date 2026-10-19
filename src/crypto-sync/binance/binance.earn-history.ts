@@ -2,6 +2,7 @@ import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
 import {
   advanceWalkMarks,
+  AMOUNT_STOP_CODES,
   BinanceWalkStop,
   commitSettledSpan,
   dropReadPoints,
@@ -9,6 +10,7 @@ import {
   exchangeStateDepsOf,
   instantAt,
   joinSettled,
+  oversizedHistoryWriterOf,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
@@ -16,6 +18,7 @@ import {
   readWalkMarks,
   readWalkRoundRobins,
   roundRobinHooksOf,
+  rowMinorUnits,
   runWalkPlan,
   type SettledSpan,
   settleRecords,
@@ -51,11 +54,10 @@ import {
   type TotalPage,
   type TotalQuery,
 } from './binance.history-client';
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
-import type { FetchAccountOptions } from './binance.client';
 import type { BinanceHistoryRow } from './binance.transfer-history';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
+import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
 import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
@@ -145,6 +147,7 @@ export const EARN_FORWARD_OWES: readonly string[] = [
   EARN_REDEMPTION_TYPE_UNCONFIRMED,
   EARN_REWARD_TYPE_UNKNOWN,
   EARN_ROW_UNREADABLE,
+  ...AMOUNT_STOP_CODES,
 ];
 
 /** The description of a reward: income, so no "Transfer to/from" label applies. */
@@ -168,9 +171,9 @@ type PlannedEarnRow = {
 
 /** The satoshis of an amount that must be above zero. */
 const positiveSatoshis = (amount: string): number => {
-  const satoshis = btcSatoshis(amount);
+  const satoshis = rowMinorUnits(BINANCE_ASSET, amount);
 
-  if (satoshis === null || satoshis <= 0) {
+  if (satoshis <= 0) {
     throw new BinanceWalkStop(EARN_AMOUNT_INVALID);
   }
 
@@ -183,9 +186,9 @@ const splitSatoshis = (amount: string | undefined): number => {
     return 0;
   }
 
-  const satoshis = btcSatoshis(amount);
+  const satoshis = rowMinorUnits(BINANCE_ASSET, amount);
 
-  if (satoshis === null || satoshis < 0) {
+  if (satoshis < 0) {
     throw new BinanceWalkStop(EARN_AMOUNT_INVALID);
   }
 
@@ -770,6 +773,7 @@ const commitSpan = (
         missingCode: 'earn-holding-missing',
       }),
     add: deps.addTransactions,
+    writeOversized: oversizedHistoryWriterOf(deps, accountId),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,

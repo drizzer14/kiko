@@ -10,12 +10,14 @@ import {
   halfOf,
   instantAt,
   joinSettled,
+  oversizedHistoryWriterOf,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
   resolveWalletHoldings,
   roundRobinHooksOf,
+  rowMinorUnits,
   runWalkPlan,
   settleRecords,
   settleUnreadable,
@@ -51,7 +53,6 @@ import {
   type HistoryPage,
   type HistoryWindow,
 } from './binance.history-client';
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
@@ -218,11 +219,7 @@ const plannedRowOf = (input: {
     throw new BinanceWalkStop('capital-id-missing');
   }
 
-  const satoshis = btcSatoshis(record.amount);
-
-  if (satoshis === null) {
-    throw new BinanceWalkStop('capital-amount-invalid');
-  }
+  const satoshis = rowMinorUnits(BINANCE_ASSET, record.amount);
 
   if (!Number.isFinite(time)) {
     throw new BinanceWalkStop('capital-time-invalid');
@@ -547,6 +544,7 @@ const commitSpan = (
     ]),
     place: (planned) => placeRows(context, planned),
     add: deps.addTransactions,
+    writeOversized: oversizedHistoryWriterOf(deps, accountId),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,

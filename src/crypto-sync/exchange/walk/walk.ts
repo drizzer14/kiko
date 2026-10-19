@@ -1201,10 +1201,14 @@ export const runWalkPlan = async (input: {
 export class BinanceWalkStop extends Error {
   public readonly code: string;
 
-  constructor(code: string) {
+  /** The coin whose amount was past the safe integer, for the oversized history list. */
+  public readonly oversizedTicker: string | undefined;
+
+  constructor(code: string, oversizedTicker?: string) {
     super(code);
     this.name = 'BinanceWalkStop';
     this.code = code;
+    this.oversizedTicker = oversizedTicker;
     // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
     // `instanceof` relies on unless it is restored explicitly.
     Object.setPrototypeOf(this, BinanceWalkStop.prototype);

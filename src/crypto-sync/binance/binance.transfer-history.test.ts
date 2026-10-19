@@ -2,6 +2,7 @@ import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import { i18n } from '@kiko/i18n/init';
 import {
+  coinListPatchesOf,
   type WalkField,
   type WalkMarkSeed,
   walkMarkWritesOf,
@@ -205,6 +206,9 @@ describe('transferRowsOf', () => {
 
   it('owes and goes past in the forward pass every stop of one transfer, and no stop of the span as a whole', () => {
     expect([...TRANSFER_FORWARD_OWES].sort()).toEqual([
+      'amount-malformed',
+      'amount-precision',
+      'amount-too-large',
       'transfer-amount-invalid',
       'transfer-failed',
       'transfer-id-missing',
@@ -230,12 +234,22 @@ describe('transferRowsOf', () => {
     expect(codeOf(() => rowsOf({ tranId: '' }))).toBe('transfer-id-missing');
   });
 
-  it.each([['0'], ['0.00000000'], ['-0.5'], ['x'], ['']])(
+  it.each([['0'], ['0.00000000'], ['-0.5']])(
     'stops a settled row whose amount is %p: it is no positive number of satoshis',
     (amount) => {
       expect(codeOf(() => rowsOf({ amount }))).toBe('transfer-amount-invalid');
     },
   );
+
+  it.each([
+    ['x', 'amount-malformed'],
+    ['', 'amount-malformed'],
+    ['1e-8', 'amount-malformed'],
+    ['0.000000001', 'amount-precision'],
+    ['90071992.54740992', 'amount-too-large'],
+  ])('stops a settled row whose amount is %p with the parser code %s', (amount, code) => {
+    expect(codeOf(() => rowsOf({ amount }))).toBe(code);
+  });
 
   it('keys each leg by the type too, so a tranId two types share never refreshes the other type row', () => {
     const first = rowsOf({ type: 'MAIN_FUNDING' });
@@ -965,6 +979,9 @@ describe('a transfer the walk cannot trust', () => {
     ],
     ['a transfer with no id', entryOf({ tranId: '', timestamp: stuckAt })],
     ['a transfer with no amount of satoshis', entryOf({ amount: '0', timestamp: stuckAt })],
+    ['a transfer amount in exponent form', entryOf({ amount: '1e-8', timestamp: stuckAt })],
+    ['a transfer amount past the scale', entryOf({ amount: '0.000000001', timestamp: stuckAt })],
+    ['a transfer amount too large', entryOf({ amount: '90071992.54740992', timestamp: stuckAt })],
     ['an unreadable row with a time', unreadableOf('MAIN_FUNDING', stuckAt)],
   ])('%s in the forward window', (_name, entry) => {
     const newer = entryOf({ tranId: 'newer', timestamp: agoMs(2) });
@@ -1087,6 +1104,29 @@ describe('a transfer the walk cannot trust', () => {
       pointOf(later, 'MAIN_FUNDING'),
     ]);
     expect(stopCodes(warn).sort()).toEqual(['transfer-amount-invalid', 'transfer-id-missing']);
+  });
+
+  it('adds the coin of an amount too large to the oversized history list, and no other stop does', async () => {
+    const world = worldOf(caughtUp);
+    const tooLarge = entryOf({ amount: '90071992.54740992', tranId: 'huge', timestamp: stuckAt });
+    const exponent = entryOf({ amount: '1e-8', tranId: 'exp', timestamp: stuckAt + HOUR_MS });
+
+    const { deps } = await walkOnce({ world, entries: [exponent, other] });
+
+    expect(coinListPatchesOf(deps)).toEqual([]);
+
+    const second = await walkOnce({ world, entries: [tooLarge, exponent, other] });
+
+    expect(coinListPatchesOf(second.deps)).toContainEqual({
+      kind: 'coinList',
+      coins: 'oversizedCoins',
+      list: 'history',
+      tickers: ['BTC'],
+    });
+    expect(
+      JSON.parse((await world.state.deps.readExchangeState(world.accountId)) ?? '{}')
+        .oversizedCoins,
+    ).toEqual({ history: ['BTC'] });
   });
 
   it('a FAILED transfer is owed at its point run after run, one call in its own type, until the floor passes it; no row, ever', async () => {

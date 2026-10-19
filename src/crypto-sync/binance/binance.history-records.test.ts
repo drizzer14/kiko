@@ -1,15 +1,20 @@
 import {
+  AMOUNT_STOP_CODES,
   BinanceWalkStop,
   commitSettledSpan,
+  type ExchangeStateDeps,
   instantAt,
   joinSettled,
   type OwedGround,
+  oversizedHistoryWriterOf,
   placeWalletRows,
+  rowMinorUnits,
   settleRecords,
   settleUnreadable,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
 
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { type BinanceWalletKey, EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
@@ -49,6 +54,88 @@ describe('instantAt', () => {
 
   it('is nothing without a time', () => {
     expect(instantAt(undefined)).toBeUndefined();
+  });
+});
+
+describe('rowMinorUnits', () => {
+  const stopOf = (currency: Currency, text: string): BinanceWalkStop | undefined => {
+    try {
+      rowMinorUnits(currency, text);
+    } catch (error) {
+      return error instanceof BinanceWalkStop ? error : undefined;
+    }
+
+    return undefined;
+  };
+
+  it('gives the exact minor units of a row amount text, with its sign', () => {
+    expect(rowMinorUnits('BTC', '0.001')).toBe(100_000);
+    expect(rowMinorUnits('BTC', '-0.12345678')).toBe(-12_345_678);
+    expect(rowMinorUnits('BTC', '0.500000000')).toBe(50_000_000);
+    expect(rowMinorUnits('BTC', '90071992.54740991')).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it.each([
+    ['a word', 'x'],
+    ['an empty text', ''],
+    ['a blank text', '   '],
+    ['an exponent form', '1e-8'],
+    ['an Infinity text', 'Infinity'],
+    ['a plus sign', '+0.5'],
+  ])(
+    'stops %s with the parser code amount-malformed, and names no oversized coin',
+    (_label, text) => {
+      const stop = stopOf('BTC', text);
+
+      expect(stop?.code).toBe('amount-malformed');
+      expect(stop?.oversizedTicker).toBeUndefined();
+    },
+  );
+
+  it.each(['0.000000001', '-0.000000001'])(
+    'stops digits past the scale of %s with amount-precision, and names no oversized coin',
+    (text) => {
+      const stop = stopOf('BTC', text);
+
+      expect(stop?.code).toBe('amount-precision');
+      expect(stop?.oversizedTicker).toBeUndefined();
+    },
+  );
+
+  it('stops a result past the safe integer with amount-too-large and names the coin', () => {
+    const stop = stopOf('BTC', '90071992.54740992');
+
+    expect(stop?.code).toBe('amount-too-large');
+    expect(stop?.oversizedTicker).toBe('BTC');
+    expect(stopOf('ETH', '9007199254.740992')?.oversizedTicker).toBe('ETH');
+  });
+
+  it('reads a row as the exchange amounts do: a reduced-scale coin rounds, never stops', () => {
+    expect(rowMinorUnits('XRP', '1.23455')).toBe(12_346);
+  });
+
+  it('is every code of the amount parser that a lane that owes the point lists', () => {
+    expect([...AMOUNT_STOP_CODES].sort()).toEqual([
+      'amount-malformed',
+      'amount-precision',
+      'amount-too-large',
+    ]);
+  });
+});
+
+describe('oversizedHistoryWriterOf', () => {
+  it('writes one patch that adds the tickers to the oversized history list of the account', async () => {
+    const patchExchangeState = jest.fn<
+      ReturnType<ExchangeStateDeps['patchExchangeState']>,
+      Parameters<ExchangeStateDeps['patchExchangeState']>
+    >(async () => undefined);
+
+    await oversizedHistoryWriterOf({ patchExchangeState }, 'acc-1')(['BTC', 'ETH']);
+
+    expect(patchExchangeState).toHaveBeenCalledTimes(1);
+    expect(patchExchangeState).toHaveBeenCalledWith('acc-1', [
+      { kind: 'coinList', coins: 'oversizedCoins', list: 'history', tickers: ['BTC', 'ETH'] },
+    ]);
   });
 });
 
@@ -94,6 +181,29 @@ describe('settleRecords', () => {
         { start: 2_999, end: 3_001 },
       ],
     });
+  });
+
+  it('names the coin of a record that stopped too large, once, beside the stop it owes', () => {
+    const settled = settleRecords({
+      span: SPAN,
+      records: [entry('a', 2_000), entry('b', 3_000), entry('c', 4_000)],
+      rowsOf: (record) => {
+        if (record.id === 'c') {
+          throw new BinanceWalkStop('amount-precision');
+        }
+
+        throw new BinanceWalkStop('amount-too-large', 'BTC');
+      },
+      extentOf: atTime,
+    });
+
+    expect(settled.codes).toEqual(['amount-too-large', 'amount-too-large', 'amount-precision']);
+    expect(settled.oversized).toEqual(['BTC']);
+    expect(settled.owed).toEqual([
+      pointOf(1_999, 2_001),
+      pointOf(2_999, 3_001),
+      pointOf(3_999, 4_001),
+    ]);
   });
 
   it.each([
@@ -345,6 +455,19 @@ describe('joinSettled', () => {
     });
   });
 
+  it('puts the oversized coins of the parts together, each once, and leaves the key out when none is', () => {
+    const joined = joinSettled([
+      { rows: [], codes: [], owed: [], returned: [], oversized: ['BTC'] },
+      { rows: [], codes: [], owed: [], returned: [], oversized: ['ETH', 'BTC'] },
+      { rows: [], codes: [], owed: [], returned: [] },
+    ]);
+
+    expect(joined.oversized).toEqual(['BTC', 'ETH']);
+    expect('oversized' in joinSettled([{ rows: [], codes: [], owed: [], returned: [] }])).toBe(
+      false,
+    );
+  });
+
   it('owes the whole span and the points inside it as separate entries, a point never absorbed', () => {
     const inside = pointOf(1_999, 2_001);
     const reaching = pointOf(SPAN.end - 1, SPAN.end + 1);
@@ -449,12 +572,16 @@ describe('commitSettledSpan', () => {
   const advance = jest.fn(async ({ owed }: { owed: OwedGround[] }): Promise<void> => {
     calls.push(`advance:${owed.length}`);
   });
+  const writeOversized = jest.fn(async (tickers: readonly string[]): Promise<void> => {
+    calls.push(`oversized:${tickers.join(',')}`);
+  });
 
   beforeEach(() => {
     warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     calls.length = 0;
     add.mockClear();
     advance.mockClear();
+    writeOversized.mockClear();
   });
 
   afterEach(() => {
@@ -468,6 +595,7 @@ describe('commitSettledSpan', () => {
       codes: string[];
       owed: OwedGround[];
       returned?: WalkWindow[];
+      oversized?: string[];
     },
     place: (planned: string[]) => Promise<string[]> = async (planned) => planned,
   ) =>
@@ -478,6 +606,7 @@ describe('commitSettledSpan', () => {
       place,
       add,
       advance,
+      writeOversized,
     });
 
   it.each(['pending', 'rescan'] as const)(
@@ -543,6 +672,45 @@ describe('commitSettledSpan', () => {
     expect(committed).toEqual({ imported: 1, owed: false, returned: [], stuck: [] });
   });
 
+  describe('for the coins a span met too large', () => {
+    const point = pointOf(3_000, 3_001);
+
+    it.each(['pending', 'rescan'] as const)(
+      'writes them before the rows and the marks, in the %s pass',
+      async (pass) => {
+        await commit(pass, {
+          rows: ['a'],
+          codes: ['amount-too-large'],
+          owed: [point],
+          oversized: ['BTC'],
+        });
+
+        expect(calls).toEqual(['oversized:BTC', 'add:a', 'advance:1']);
+      },
+    );
+
+    it('writes them when the forward pass stops and commits nothing of the span', async () => {
+      const committed = await commit('forward', {
+        rows: ['a'],
+        codes: ['amount-too-large'],
+        owed: [point],
+        oversized: ['BTC'],
+      });
+
+      expect(committed).toBeUndefined();
+      expect(calls).toEqual(['oversized:BTC']);
+      expect(add).not.toHaveBeenCalled();
+      expect(advance).not.toHaveBeenCalled();
+    });
+
+    it('writes none when the span met none', async () => {
+      await commit('forward', { rows: ['a'], codes: [], owed: [] });
+      await commit('pending', { rows: [], codes: ['stuck'], owed: [point] });
+
+      expect(writeOversized).not.toHaveBeenCalled();
+    });
+  });
+
   describe('with a code the forward pass owes and goes past', () => {
     const point = pointOf(3_000, 3_001);
     const commitOwing = (
@@ -556,6 +724,7 @@ describe('commitSettledSpan', () => {
         place,
         add,
         advance,
+        writeOversized,
         forwardOwes: ['owed-only'],
       });
 

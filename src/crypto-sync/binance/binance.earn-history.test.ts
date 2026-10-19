@@ -85,6 +85,9 @@ describe('the Earn walk constants', () => {
 
   it('owes and goes past in the forward pass every stop of one record, and no stop of the span as a whole', () => {
     expect([...EARN_FORWARD_OWES].sort()).toEqual([
+      'amount-malformed',
+      'amount-precision',
+      'amount-too-large',
       'earn-account-unknown',
       'earn-amount-invalid',
       'earn-id-missing',
@@ -206,12 +209,13 @@ describe('subscriptionRowsOf', () => {
     expect(rows.map((row) => row.wallet)).toEqual([FUNDING_KEY, EARN_KEY]);
   });
 
-  it.each([['x'], ['-0.001']])(
-    'stops a subscription whose split field is %p: it is no amount of satoshis',
-    (split) => {
-      expect(stopCodeOf(() => rowsOf({ amtFromSpot: split }))).toBe('earn-amount-invalid');
-    },
-  );
+  it.each([
+    ['x', 'amount-malformed'],
+    ['0.000000001', 'amount-precision'],
+    ['-0.001', 'earn-amount-invalid'],
+  ])('stops a subscription whose split field is %p: it is no amount of satoshis', (split, code) => {
+    expect(stopCodeOf(() => rowsOf({ amtFromSpot: split }))).toBe(code);
+  });
 
   it('a FAILED subscription is ignored: no row, and nothing owed', () => {
     expect(rowsOf({ status: 'FAILED' })).toEqual([]);
@@ -267,12 +271,22 @@ describe('subscriptionRowsOf', () => {
     expect(stopCodeOf(() => rowsOf({ purchaseId: '' }))).toBe('earn-id-missing');
   });
 
-  it.each([['0'], ['0.00000000'], ['-0.5'], ['x'], ['']])(
+  it.each([['0'], ['0.00000000'], ['-0.5']])(
     'stops a settled subscription whose amount is %p: it is no positive number of satoshis',
     (amount) => {
       expect(stopCodeOf(() => rowsOf({ amount }))).toBe('earn-amount-invalid');
     },
   );
+
+  it.each([
+    ['x', 'amount-malformed'],
+    ['', 'amount-malformed'],
+    ['1e-8', 'amount-malformed'],
+    ['0.000000001', 'amount-precision'],
+    ['90071992.54740992', 'amount-too-large'],
+  ])('stops a settled subscription whose amount is %p with the parser code %s', (amount, code) => {
+    expect(stopCodeOf(() => rowsOf({ amount }))).toBe(code);
+  });
 
   it('keys a flexible and a locked subscription of one purchase id apart, and two accounts apart', () => {
     const flexible = rowsOf({}, 'flexible').map((row) => row.externalId);
@@ -849,7 +863,7 @@ describe('a record the walk cannot trust', () => {
       pointOf(stuckAt, 'flexibleSubscription'),
       pointOf(later, 'flexibleRedemption'),
     ]);
-    expect(stopCodes(warn).sort()).toEqual(['earn-amount-invalid', 'earn-id-missing']);
+    expect(stopCodes(warn).sort()).toEqual(['amount-malformed', 'earn-id-missing']);
   });
 
   it('owes a redemption to an account Kiko does not track at its point', async () => {

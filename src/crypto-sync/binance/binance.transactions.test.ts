@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import {
+  coinListPatchesOf,
   expectWalkMarkWritten,
   numberMarkWritesOfAnyWalk,
   type WalkField,
@@ -781,10 +782,16 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
   const BAD_ROWS: [string, string, () => Partial<BinanceTransactionSyncDeps>][] = [
     ['C4 deposit', 'capital-wallet-unknown', () => badDeposit({ walletType: 7 })],
     ['C4w withdrawal', 'capital-wallet-unknown', () => badWithdrawal({ walletType: 7 })],
-    ['C5 deposit', 'capital-amount-invalid', () => badDeposit({ amount: 'abc' })],
-    ['C5w withdrawal', 'capital-amount-invalid', () => badWithdrawal({ amount: 'abc' })],
-    ['C5 blank deposit', 'capital-amount-invalid', () => badDeposit({ amount: '' })],
-    ['C5 blank withdrawal', 'capital-amount-invalid', () => badWithdrawal({ amount: '  ' })],
+    ['C5 deposit', 'amount-malformed', () => badDeposit({ amount: 'abc' })],
+    ['C5w withdrawal', 'amount-malformed', () => badWithdrawal({ amount: 'abc' })],
+    ['C5 blank deposit', 'amount-malformed', () => badDeposit({ amount: '' })],
+    ['C5 blank withdrawal', 'amount-malformed', () => badWithdrawal({ amount: '  ' })],
+    ['A2 deposit', 'amount-precision', () => badDeposit({ amount: '0.000000001' })],
+    ['A2w withdrawal', 'amount-precision', () => badWithdrawal({ amount: '0.000000001' })],
+    ['A3 deposit', 'amount-malformed', () => badDeposit({ amount: '1e-8' })],
+    ['A3w withdrawal', 'amount-malformed', () => badWithdrawal({ amount: '1e-8' })],
+    ['A1 deposit', 'amount-too-large', () => badDeposit({ amount: '90071992.54740992' })],
+    ['A1w withdrawal', 'amount-too-large', () => badWithdrawal({ amount: '90071992.54740992' })],
     ['C6 deposit', 'capital-time-invalid', () => badDeposit({ insertTime: Number.NaN })],
     ['C6w withdrawal', 'capital-time-invalid', () => badWithdrawal({ applyTime: 'not a date' })],
     ['C7 deposit', 'capital-id-missing', () => badDeposit({ id: '', txId: '' })],
@@ -800,6 +807,39 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
     expect(deps.addTransactions).not.toHaveBeenCalled();
     expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([[STOP_TAG, { name: 'BinanceWalkStop', code }]]);
+  });
+
+  it('adds the coin of an amount too large to the oversized history list, though the forward stop commits nothing of the span', async () => {
+    const fake = walkStateFake({ accountId: ACCOUNT_ID });
+    const deps = makeDeps({
+      ...fake.deps,
+      latestTransactionTime: RECENT_CURSOR,
+      ...badDeposit({ amount: '90071992.54740992' }),
+    });
+
+    await sync(deps);
+
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(coinListPatchesOf(deps)).toContainEqual({
+      kind: 'coinList',
+      coins: 'oversizedCoins',
+      list: 'history',
+      tickers: ['BTC'],
+    });
+    expect(JSON.parse((await deps.readExchangeState(ACCOUNT_ID)) ?? '{}').oversizedCoins).toEqual({
+      history: ['BTC'],
+    });
+  });
+
+  it.each([
+    ['an amount past the scale', '0.000000001'],
+    ['an amount in exponent form', '1e-8'],
+  ])('writes no oversized coin for %s', async (_label, amount) => {
+    const deps = makeDeps({ latestTransactionTime: RECENT_CURSOR, ...badDeposit({ amount }) });
+
+    await sync(deps);
+
+    expect(coinListPatchesOf(deps)).toEqual([]);
   });
 
   it('ignores an UNSETTLED row with the same defects instead of stopping', async () => {
@@ -1991,6 +2031,26 @@ describe('the pending overlap days of the capital walk', () => {
       expect(state.account.pending()).toEqual([pointAt(NOW - 10 * DAY_MS)]);
       expect(result.complete).toBe(false);
     });
+
+    it.each([
+      ['an amount past the scale', '0.000000001'],
+      ['an amount in exponent form', '1e-8'],
+      ['an amount too large', '90071992.54740992'],
+    ])(
+      'owes a withdrawal with %s at its point in the re-scan, and imports the records around it',
+      async (_label, amount) => {
+        const unparsed = withdrawal({ id: 'unparsed', applyTime: NOW - 10 * DAY_MS, amount });
+        const later = withdrawal({ id: 'later', applyTime: NOW - 5 * DAY_MS });
+        const earlier = withdrawal({ id: 'earlier', applyTime: NOW - 20 * DAY_MS });
+        const state = await stateOf(NOW - 2 * DAY_MS);
+
+        const { result } = await runOver(state, [earlier, unparsed, later]);
+
+        expect(state.imported).toEqual(new Set([keyOf(earlier), keyOf(later)]));
+        expect(state.account.pending()).toEqual([pointAt(NOW - 10 * DAY_MS)]);
+        expect(result.complete).toBe(false);
+      },
+    );
 
     describe('with a new owed range behind stuck ranges that are older', () => {
       const stuckRangesOf = (count: number): WalkWindow[] =>

@@ -44,7 +44,6 @@ import {
 } from '@kiko/crypto-sync/exchange/walk-state';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
@@ -1630,27 +1629,6 @@ describe('buildWalkWindows', () => {
   it('returns no window for an empty span', () => {
     expect(buildWalkWindows(500, 500, 100, 80)).toEqual([]);
     expect(buildWalkWindows(600, 500, 100, 80)).toEqual([]);
-  });
-});
-
-describe('btcSatoshis', () => {
-  it('converts a decimal string and a number to satoshis', () => {
-    expect(btcSatoshis('0.001')).toBe(100_000);
-    expect(btcSatoshis(0.5)).toBe(50_000_000);
-  });
-
-  it.each([
-    ['a word', 'x'],
-    ['an empty string', ''],
-    ['a blank string', '   '],
-    ['NaN', Number.NaN],
-    ['Infinity', Number.POSITIVE_INFINITY],
-    ['an Infinity string', 'Infinity'],
-    ['null', null],
-    ['undefined', undefined],
-    ['an object', {}],
-  ])('gives null for %s', (_label, amount) => {
-    expect(btcSatoshis(amount)).toBeNull();
   });
 });
 
