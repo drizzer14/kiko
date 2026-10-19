@@ -1398,25 +1398,28 @@ export const resolveWalletHoldings = async (input: {
 }): Promise<Map<string, HoldingRow>> => {
   const { accountId, keys, createKeys = keys, config, listHoldings, ensureHoldings } = input;
   let current = await listHoldings(accountId);
-  const missing = keys.filter(
-    (key) =>
-      createKeys.includes(key) && !current.some((holding) => config.holdingKeyOf(holding) === key),
-  );
+  const missing = keys
+    .filter(
+      (key) =>
+        createKeys.includes(key) &&
+        !current.some((holding) => config.holdingKeyOf(holding) === key),
+    )
+    .flatMap(
+      (key) =>
+        foldMap(maybe(config.walletHoldingOf(key)), (defaults): ExchangeHolding[] => [
+          {
+            accountId,
+            ...defaults,
+            type: 'crypto_asset',
+            balanceMinorUnits: 0,
+            metadataField: config.metadataField,
+            metadataKey: key,
+          },
+        ]) ?? [],
+    );
 
   if (missing.length > 0) {
-    await ensureHoldings(
-      missing.map(
-        (key): ExchangeHolding => ({
-          accountId,
-          name: config.walletHoldingNameOf(key),
-          type: 'crypto_asset',
-          currency: config.asset,
-          balanceMinorUnits: 0,
-          metadataField: config.metadataField,
-          metadataKey: key,
-        }),
-      ),
-    );
+    await ensureHoldings(missing);
     current = await listHoldings(accountId);
   }
 
