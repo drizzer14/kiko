@@ -31,8 +31,12 @@ const buildPoints = (firstDayOffset: number, amounts: number[]): NetWorthPoint[]
 
 const points = buildPoints(-3, [100, 300, 200, 400]);
 
-const layoutEvent = (width: number) => ({
-  nativeEvent: { layout: { x: 0, y: 0, width, height: 40 } },
+// Distinct line heights, as under Dynamic Type where the amount and the date scale apart.
+const AMOUNT_HEIGHT = 30;
+const DATE_HEIGHT = 16;
+
+const layoutEvent = (width: number, height = 40) => ({
+  nativeEvent: { layout: { x: 0, y: 0, width, height } },
 });
 
 const renderLine = async (
@@ -53,7 +57,16 @@ type RenderedLine = Awaited<ReturnType<typeof renderLine>>;
 
 const measure = async ({ getByTestId }: RenderedLine): Promise<void> => {
   await fireEvent(getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
-  await fireEvent(getByTestId('net-worth-line-scrub-label'), 'layout', layoutEvent(LABEL_WIDTH));
+  await fireEvent(
+    getByTestId('net-worth-line-scrub-label'),
+    'layout',
+    layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT),
+  );
+  await fireEvent(
+    getByTestId('net-worth-line-scrub-amount'),
+    'layout',
+    layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT),
+  );
 };
 
 // The logical x of each plotted point, read back off the rendered polyline (the series stays above
@@ -229,6 +242,75 @@ describe('NetWorthLine scrub line', () => {
     await drag([-50]);
 
     expect(labelStyle(view).backgroundColor).toBeUndefined();
+  });
+
+  describe('vertical placement', () => {
+    // The gap between the amount line and the date line, in the plot's coordinates: the label's
+    // top plus the measured amount height.
+    const gapY = (view: RenderedLine, amountHeight: number): number =>
+      Number(labelStyle(view).top) + amountHeight;
+
+    const tipY = ({ getByTestId }: RenderedLine): number =>
+      Number(getByTestId('net-worth-line-scrub').props.y1);
+
+    it('puts the gap between the amount and the date on the tip of the line, at rest', async () => {
+      const view = await renderLine();
+      await measure(view);
+
+      expect(gapY(view, AMOUNT_HEIGHT)).toBe(tipY(view));
+    });
+
+    it('keeps the gap on the tip of the line after a drag to either edge', async () => {
+      const view = await renderLine();
+      await measure(view);
+
+      await drag([-50]);
+      expect(gapY(view, AMOUNT_HEIGHT)).toBe(tipY(view));
+
+      await drag([PLOT_WIDTH + 50]);
+      expect(gapY(view, AMOUNT_HEIGHT)).toBe(tipY(view));
+    });
+
+    it('follows the measured amount height, not a constant', async () => {
+      const view = await renderLine();
+      await measure(view);
+
+      await fireEvent(
+        view.getByTestId('net-worth-line-scrub-amount'),
+        'layout',
+        layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT * 2),
+      );
+
+      expect(gapY(view, AMOUNT_HEIGHT * 2)).toBe(tipY(view));
+    });
+
+    it('does not move when only the date line gets taller', async () => {
+      const view = await renderLine();
+      await measure(view);
+      const { top } = labelStyle(view);
+
+      await fireEvent(
+        view.getByTestId('net-worth-line-scrub-label'),
+        'layout',
+        layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT * 2),
+      );
+
+      expect(labelStyle(view).top).toBe(top);
+      expect(gapY(view, AMOUNT_HEIGHT)).toBe(tipY(view));
+    });
+  });
+
+  it('keeps the label hidden until the amount line is measured too', async () => {
+    const view = await renderLine();
+
+    await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-label'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT),
+    );
+
+    expect(labelStyle(view).opacity).toBe(0);
   });
 
   it('keeps the label hidden after only the plot is measured', async () => {
