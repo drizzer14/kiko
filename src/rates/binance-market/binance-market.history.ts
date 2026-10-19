@@ -48,7 +48,7 @@ export const fetchFallbackHistory = async (input: {
   const range = { start: input.start, end: input.end };
   const series = new Map<CryptoCurrency, DailyClose[]>();
 
-  for (const coin of coins.filter((candidate) => candidate !== 'USDT')) {
+  for (const coin of coins) {
     const closes = await closesOf(coin, range, client);
 
     if (closes !== undefined) {
