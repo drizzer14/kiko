@@ -158,7 +158,10 @@ verified usage, not dead weight:
   debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:
   `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
   `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
-  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
+  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.77%
+  (this one figure re-measured 2026-10-19 at `d78cfccd`; the rise from 7.38% is
+  not a regression of the Binance branch: it came mostly from `62f248ed`,
+  `e7cc80f5` and main merges, so the entry moved, not the test),
   `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
   `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.55%,
   `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
@@ -170,7 +173,9 @@ verified usage, not dead weight:
   the blocking run with the default limits, and it applies to the no-argument
   (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total
   above the threshold is expected until the sweep lands, and a figure above
-  7.33% is a new regression. **Flip condition:** a separate sweep track makes
+  7.33% is a new regression. A listed file's figure is a ceiling: a later rise
+  above it is a new regression; fix the test, or re-record the figure only with
+  a reviewer finding that names the cause. **Flip condition:** a separate sweep track makes
   every large file 5% or less alone AND the combined raised total 5% or less;
   then this warning becomes a failure (`exit 2` through `print_block`) and
   this entry is deleted. The
