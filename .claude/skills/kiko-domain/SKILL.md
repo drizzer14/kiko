@@ -31,7 +31,8 @@ absent** — this skill states the shape and non-enum facts only:
   with no sync concept), `institution` (nullable, e.g. `monobank` —
   marks a LIVE sync connection), `bankId` (nullable, migration
   `0033`; see below), `icon`, `color`, `sortOrder`, `archivedAt`
-  (nullable), `createdAt`. `holdingTypesForAccountKind`
+  (nullable), `createdAt`, `currency` (`schema.ts` `accounts.currency`,
+  migration `0062`; derived once by `accountCurrencyOf`). `holdingTypesForAccountKind`
   (`src/holdings/holding-type/`) maps each account kind to its
   allowed `Holding.type` set — `property` maps to `property_item`,
   `metals` maps to `metal`, `debt` maps to `loan` — read that file

@@ -100,7 +100,11 @@ project-level pointer to this section.
   generate, and run `./node_modules/.bin/biome check --write` (never `npx biome`: RTK
   rewrites it in agent Bash and it fails) over the generated
   artifacts: the snapshot and journal JSON are lint-checked like any
-  other file.
+  other file. Then run `npm run check:shipped-migrations` before
+  committing, and keep only inserted lines.
+- A pure rule several features need lives in a folder whose own barrel
+  exports it (`src/holdings/account-currency`), never a sub-barrel of a
+  plain feature: the import is denied as alias-skips-barrel.
 - Bundle migrations into the app and apply them on launch through
   `src/db/run-migrations.ts` — NOT drizzle's own
   `drizzle-orm/op-sqlite/migrator` + `useMigrations`, which misreads
@@ -246,6 +250,10 @@ project-level pointer to this section.
   (`src/test-support/real-sqlite.ts`). Proven on both paths by
   `drizzle/migrations/0047-add-sets-balance.test.ts` and
   `restore-sets-balance.two-path.test.ts`.
+  A test that seeds a database below 0062 and reads accounts through today's
+  schema calls `addAccountCurrencyColumn` (`src/test-support/real-sqlite.ts`);
+  a seed at 0061 modelling a pre-0050 file drops `accounts_implicit_kind`
+  first (see `restore-account-currency.two-path.test.ts`).
 - **A NULL meaning replaced by a stored sentinel id is a kind-scoped
   data-only migration, mirrored on restore.** `0049` is hand-authored SQL
   with no snapshot: it sets `bank_id = 'other'` on `kind = 'bank'` rows
@@ -2731,6 +2739,10 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   A non-idempotent data rewrite bumps `EXPORT_VERSION`; its restore mirror is
   version-gated: `restoreDataSnapshot(snapshot, version)` and `withUsdtRescaled`
   are the model.
+  A backfill derived from rows already in the file uses a per-FILE presence
+  check instead: `withAccountCurrencyDerived`
+  (`snapshot/with-account-currency-derived.ts`) fills `currency` only when
+  none of the file's accounts carries it.
   The decision per migration, each optional snapshot key included, is recorded in
   `VERSION_DECISIONS` in `src/data-transfer/crypto/envelope.test.ts`: read it there.
   A new table the file carries as an OPTIONAL key needs no bump: an older build
@@ -2755,6 +2767,14 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   stay. Read `restore-walk-state.two-path.test.ts`,
   `drizzle/migrations/0061-exchange-state.test.ts` and its `VERSION_DECISIONS`
   entry in `envelope.test.ts`.
+  Migration 0062 (`accounts.currency`, NOT NULL DEFAULT 'UAH') backfills by
+  USER RULING 2026-10-19: open holdings only, every account, archived
+  included. One currency among them gives that currency; several or none
+  give `settings.base_currency`. The pure rule is `accountCurrencyOf`
+  (`src/holdings/account-currency/`). Its restore mirror
+  `withAccountCurrencyDerived` runs after `withImplicitAccountsMerged`.
+  `assertKnownCurrencies` covers `accounts.currency`. Export version 5; read
+  the decision in `VERSION_DECISIONS` in `envelope.test.ts`.
   Worked example of a device-local settings column: 0060
   `settings.history_backfill_state` (nullable; the history backfill's resume
   state). It is listed in `KEPT_FROM_LIVE_ON_RESTORE`, so a file never
