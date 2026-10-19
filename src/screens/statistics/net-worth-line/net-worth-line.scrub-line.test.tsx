@@ -220,6 +220,17 @@ describe('NetWorthLine scrub line', () => {
     expect(labelStyle(view).left).toBe(14);
   });
 
+  it('draws the label with no background, at rest and while dragging', async () => {
+    const view = await renderLine();
+    await measure(view);
+
+    expect(labelStyle(view).backgroundColor).toBeUndefined();
+
+    await drag([-50]);
+
+    expect(labelStyle(view).backgroundColor).toBeUndefined();
+  });
+
   it('keeps the label hidden after only the plot is measured', async () => {
     const view = await renderLine();
 

@@ -40,13 +40,12 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   // The scrub line's label: pinned to the plot's top, its `left` set inline from the measured
-  // plot width (the line moves under the finger), on the card surface so it stays readable over
-  // the line and the gridlines.
+  // plot width (the line moves under the finger). It has no background (user look check), so the
+  // line and the gridlines show behind it.
   scrubLabel: {
     position: 'absolute',
     top: 0,
     paddingHorizontal: theme.spacing(1),
-    backgroundColor: theme.colors.surface,
   },
   // The label's amount: caption-sized and semibold, so it reads above its date line.
   scrubAmount: {
