@@ -476,6 +476,7 @@ const settledTransfers = (input: {
           unreadable: ofSeries(series)
             .filter((entry) => entry.unreadable !== undefined)
             .map((entry) => ({ time: entry.unreadable === 'timeless' ? undefined : entry.time })),
+          untracked: [],
         })),
       drifted: foldMap(maybe(drifted), (series) => [series as TransferType]) ?? [],
     },
@@ -623,6 +624,7 @@ const settledEarn = (input: {
               .filter((entry) => isMemberStuck(entry, run))
               .map((entry) => ({ time: entry.time })),
           ],
+          untracked: [],
         })),
       drifted: foldMap(maybe(drifted), (series) => [series as EarnRecordKind]) ?? [],
     },

@@ -477,6 +477,7 @@ describe('the request windows and the external ids and rows every walk produces 
         return {
           rows: inRead,
           unreadable: [],
+          untracked: [],
           gathered: inRead.length,
           total: inRead.length,
           ...unweighted,

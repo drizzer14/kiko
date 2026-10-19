@@ -1455,6 +1455,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
                 record: flexibleSubscriptionOf({ type: undefined, ...record }),
               })),
               unreadable,
+              untracked: [],
             },
           ],
           drifted: [],

@@ -138,6 +138,7 @@ export const depthWorldOf = (input: {
     return {
       rows: [],
       unreadable: [],
+      untracked: [],
       gathered: 0,
       total: 0,
       usedUidWeight1m: undefined,

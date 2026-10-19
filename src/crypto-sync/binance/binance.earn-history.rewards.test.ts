@@ -205,6 +205,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
         series,
         rows: rows.map((record) => ({ kind: 'flexibleRewards' as const, record })),
         unreadable,
+        untracked: [],
       },
     ],
     drifted: [],
@@ -254,11 +255,12 @@ describe('settledEarnOf: the reward groups of a span', () => {
       span,
       read: {
         read: [
-          { series: 'flexibleRewards', rows: [], unreadable: [{ time: at }] },
+          { series: 'flexibleRewards', rows: [], unreadable: [{ time: at }], untracked: [] },
           {
             series: 'lockedRewards',
             rows: [{ kind: 'lockedRewards', record: lockedRewardOf({ time: at }) }],
             unreadable: [],
+            untracked: [],
           },
         ],
         drifted: [],

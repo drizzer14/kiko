@@ -19,6 +19,7 @@ import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclus
 import {
   type BinanceUniversalTransfer,
   type TotalPage,
+  TRANSFER_SETTLED_STATUS,
   type UniversalTransferType,
   UNIVERSAL_TRANSFER_TYPES,
 } from './binance.history-client';
@@ -34,7 +35,6 @@ import {
   settledTransfersOf,
   syncBinanceTransferHistory,
   TRANSFER_FORWARD_OWES,
-  TRANSFER_SETTLED_STATUS,
   TRANSFER_WINDOW_MS,
   transferFloorMs,
   transferRowsOf,
@@ -42,6 +42,7 @@ import {
 import { NOW } from './binance.pay-test-fixtures';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { isBinanceCoolingDown } from './binance.cooldown';
+import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 import { DEPTH_MARGIN_MS, DEPTH_RESOLUTION_MS } from './binance.depth-config';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
@@ -220,8 +221,15 @@ describe('transferRowsOf', () => {
     expect(TRANSFER_FORWARD_OWES).not.toContain('transfer-holding-missing');
   });
 
-  it('a row of another asset gives no row', () => {
-    expect(rowsOf({ asset: 'ETH' })).toEqual([]);
+  it('a row of another tracked asset gives its legs on that coin own wallet holdings', () => {
+    expect(rowsOf({ asset: 'ETH' }).map((row) => [row.wallet, row.externalId])).toEqual([
+      ['ETH', 'acc-1:xfer:MAIN_FUNDING:t-1:ETH'],
+      ['ETH:funding', 'acc-1:xfer:MAIN_FUNDING:t-1:ETH:funding'],
+    ]);
+  });
+
+  it('a row of an untracked asset is no row the walk can read: it stops as unreadable', () => {
+    expect(codeOf(() => rowsOf({ asset: 'XYZ' }))).toBe('transfer-row-unreadable');
   });
 
   it('a row whose type is not the type it was read under is a stop', () => {
@@ -271,7 +279,12 @@ describe('settledTransfersOf, for ground a type left owed in itself', () => {
   const span = { start: 1_000, end: 5_000 };
   const readOf = (owed?: { series: UniversalTransferType; window: typeof span }[]) => ({
     read: [
-      { series: 'MAIN_FUNDING' as const, rows: [transferOf({ timestamp: 2_000 })], unreadable: [] },
+      {
+        series: 'MAIN_FUNDING' as const,
+        rows: [transferOf({ timestamp: 2_000 })],
+        unreadable: [],
+        untracked: [],
+      },
     ],
     drifted: [],
     ...foldMap(maybe(owed), (ground) => ({ owed: ground })),
@@ -351,6 +364,7 @@ const PAGE_SIZE = 100;
 const pageOf = (over: Partial<TotalPage<BinanceUniversalTransfer>> = {}) => ({
   rows: [],
   unreadable: [],
+  untracked: [],
   gathered: 0,
   total: 0,
   usedUidWeight1m: undefined,
@@ -395,7 +409,12 @@ const serverOf = (entries: Entry[], answer?: Answer, endLeftOut = false) =>
 
       return pageOf({
         rows: page.flatMap((entry) =>
-          'row' in entry && entry.row.asset === 'BTC' ? [entry.row] : [],
+          'row' in entry && isTrackedBinanceAsset(entry.row.asset) ? [entry.row] : [],
+        ),
+        untracked: page.flatMap((entry) =>
+          'row' in entry && !isTrackedBinanceAsset(entry.row.asset)
+            ? [{ ticker: entry.row.asset, status: entry.row.status, time: entry.row.timestamp }]
+            : [],
         ),
         unreadable: page.flatMap((entry) => ('unreadable' in entry ? [entry.unreadable] : [])),
         gathered: page.length,
@@ -711,10 +730,10 @@ describe('the rows of a settled transfer, written', () => {
     ).toEqual([['h-funding', 100_000, 'wallet:UMFUTURE']]);
   });
 
-  it('a transfer of another asset is ignored, and counted for the pager: a full page of other assets with one BTC row is the whole page', async () => {
+  it('a transfer of an untracked asset is ignored, and counted for the pager: a full page of untracked assets with one BTC row is the whole page', async () => {
     const world = worldOf(cursorBehind);
     const others = Array.from({ length: PAGE_SIZE - 1 }, (_unused, index) =>
-      entryOf({ asset: 'ETH', tranId: `eth-${index}`, timestamp: agoMs(3) }),
+      entryOf({ asset: 'XYZ', tranId: `xyz-${index}`, timestamp: agoMs(3) }),
     );
 
     const { result, requests } = await walkOnce({
@@ -939,9 +958,9 @@ describe('a span too full for one page, and a page that does not add up', () => 
     expect(stopCodes(warn)).toContain('transfer-page-drift');
   });
 
-  it('an off-contract row of another asset does not stall the BTC rows of its page', async () => {
+  it('an off-contract row of an untracked asset does not stall the BTC rows of its page', async () => {
     const world = worldOf(caughtUp);
-    const other = entryOf({ asset: 'USDT', amount: 'junk', tranId: 'other', timestamp: agoMs(3) });
+    const other = entryOf({ asset: 'XYZ', amount: 'junk', tranId: 'other', timestamp: agoMs(3) });
 
     const { result } = await walkOnce({
       world,

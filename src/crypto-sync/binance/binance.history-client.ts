@@ -1,8 +1,11 @@
+import type {
+  TotalPage as ExchangeTotalPage,
+  UntrackedTotalRow,
+} from '@kiko/crypto-sync/exchange/paging';
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
 import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
-import type { TotalPage as ExchangeTotalPage } from '@kiko/crypto-sync/exchange/paging';
 
 import {
   BINANCE_ASSET,
@@ -137,7 +140,8 @@ export type HistoryPage<Row> = {
 /**
  * A page of a `{ rows, total }` endpoint, paged by `current`. `gathered` counts every row of the
  * page, of any asset and unreadable ones too: `total` counts them all, so the pager compares the
- * two. `rows` are the BTC rows that parsed.
+ * two. `rows` are the rows of the coins the read parses that did parse, and `untracked` the rows
+ * of every other coin.
  */
 export type TotalPage<Row> = ExchangeTotalPage<Row, BinancePageWeights>;
 
@@ -194,22 +198,67 @@ const btcRowOf =
       : readRow(item);
 
 /**
- * Transfer and Earn rows: the BTC rows parse strictly, and one that does not goes to
- * `unreadable` with its own time field, so a malformed row never fails the read. A malformed
- * envelope (a body or `rows` that is no list, a `total` that is no number) still does.
+ * A row is read by its `asset`, upper-cased once. A tracked asset (`isTrackedBinanceAsset`) parses
+ * strictly, and a malformed row is unreadable and owed. Any other row is counted and never parsed
+ * (`undefined`), but a SETTLED row with a blank asset cannot be told from a row of a tracked
+ * asset, so it is unreadable and owed too. A row with no string asset is rejected by the strict
+ * reader, and a row that is not settled yet (no row of it can be imported) is counted whatever
+ * its asset.
+ */
+const trackedRowOf =
+  <Row>(readRow: Reader<Row>, settledStatus: string): Reader<Row | undefined> =>
+  (item) => {
+    if (!isRecord(item) || typeof item.asset !== 'string') {
+      return readRow(item);
+    }
+
+    const ticker = binanceTickerOf(item.asset);
+
+    if (isTrackedBinanceAsset(ticker)) {
+      return readRow(item);
+    }
+
+    return ticker === '' && item.status === settledStatus ? parseFailure() : undefined;
+  };
+
+/** What a row the walk does not read says: its ticker, its status text and its time. */
+const untrackedTotalRowOf = (item: unknown, timeOf: TimeReader): UntrackedTotalRow => ({
+  ticker: isRecord(item) && typeof item.asset === 'string' ? binanceTickerOf(item.asset) : '',
+  status: isRecord(item) ? optionalText(item.status) : undefined,
+  time: timeOf(item),
+});
+
+type TotalItem<Row> = { row: Row } | { untracked: UntrackedTotalRow };
+
+/**
+ * Transfer and Earn rows: `readRow` answers a row it reads (strictly, and one that does not goes
+ * to `unreadable` with its own time field, so a malformed row never fails the read), or
+ * `undefined` for a row of a coin the walk does not read, which is counted and reported in
+ * `untracked`. A malformed envelope (a body or `rows` that is no list, a `total` that is no
+ * number) still fails the read.
  */
 const totalPage =
-  <Row>(readRow: Reader<Row>, timeOf: TimeReader) =>
+  <Row>(readRow: Reader<Row | undefined>, timeOf: TimeReader) =>
   ({ body, headers }: SignedPage): TotalPage<Row> => {
     if (!isRecord(body)) {
       return parseFailure();
     }
 
-    const readings = readingsOf(body.rows ?? [], btcRowOf(readRow), timeOf);
+    const readings = readingsOf(
+      body.rows ?? [],
+      (item): TotalItem<Row> => {
+        const row = readRow(item);
+
+        return row === undefined ? { untracked: untrackedTotalRowOf(item, timeOf) } : { row };
+      },
+      timeOf,
+    );
+    const items = valuesOf(readings);
 
     return {
-      rows: valuesOf(readings).flatMap((row) => row ?? []),
+      rows: items.flatMap((item) => ('row' in item ? [item.row] : [])),
       unreadable: unreadableOf(readings),
+      untracked: items.flatMap((item) => ('untracked' in item ? [item.untracked] : [])),
       gathered: readings.length,
       total: finiteNumber(body.total),
       ...usedWeightsFromHeaders(headers),
@@ -454,17 +503,18 @@ const walletAssetCost = (value: unknown): { walletType: number; amount: string }
   ) ?? [];
 
 /**
- * A Pay coin, upper-cased once here like a capital coin (`binanceTickerOf`). A blank one names no
- * coin, so it cannot be told from a tracked coin: it is unreadable, never an untracked one.
+ * A Pay or transfer coin, upper-cased once here like a capital coin (`binanceTickerOf`). A blank
+ * one names no coin, so it cannot be told from a tracked coin: it is unreadable, never an
+ * untracked one.
  */
-const payTicker: Reader<string> = (value) => {
+const coinTicker: Reader<string> = (value) => {
   const ticker = binanceTickerOf(text(value));
 
   return ticker === '' ? parseFailure() : ticker;
 };
 
 const readFundsDetailEntry = recordReader({
-  currency: payTicker,
+  currency: coinTicker,
   amount: text,
   walletAssetCost,
 });
@@ -474,7 +524,7 @@ const PAY_ORDER_FIELDS = {
   transactionId: identifierOrEmpty,
   transactionTime: finiteNumber,
   amount: text,
-  currency: payTicker,
+  currency: coinTicker,
   walletType: optional(walletId),
   walletTypes: optional(listOf(walletId)),
   fundsDetail: (value: unknown) => foldMap(maybe(value), listOf(readFundsDetailEntry)) ?? [],
@@ -548,7 +598,7 @@ const readPayItem: Reader<PayItem> = (value) => {
     return parseFailure();
   }
 
-  const ticker = payTicker(value.currency);
+  const ticker = coinTicker(value.currency);
   const tickers = [...new Set([ticker, ...fundsTickersOf(value.fundsDetail)])];
 
   return tickers.some(isTrackedBinanceAsset)
@@ -650,8 +700,11 @@ export const UNIVERSAL_TRANSFER_TYPES = [
 
 export type UniversalTransferType = (typeof UNIVERSAL_TRANSFER_TYPES)[number];
 
+/** The status Binance gives a transfer that went through; any other is owed, a failed one too. */
+export const TRANSFER_SETTLED_STATUS = 'CONFIRMED';
+
 const TRANSFER_FIELDS = {
-  asset: text,
+  asset: coinTicker,
   amount: text,
   type: text,
   status: text,
@@ -665,12 +718,16 @@ const TRANSFER_FIELDS = {
  */
 export type BinanceUniversalTransfer = Parsed<typeof TRANSFER_FIELDS>;
 
-const transferPage = totalPage(recordReader(TRANSFER_FIELDS), timeFieldOf('timestamp', epochTime));
+const transferPage = totalPage(
+  trackedRowOf(recordReader(TRANSFER_FIELDS), TRANSFER_SETTLED_STATUS),
+  timeFieldOf('timestamp', epochTime),
+);
 
 /**
  * `GET /sapi/v1/asset/transfer` (universal transfer history) for ONE page of ONE
  * transfer type in ONE window. The endpoint takes no `asset`, so rows of every
- * coin come back and the walk filters to BTC. Signed, read-only.
+ * coin come back: a tracked coin's rows are read, any other's are counted and reported
+ * (`untracked`). Signed, read-only.
  */
 export const fetchUniversalTransfers = async (
   apiKey: string,
@@ -813,5 +870,8 @@ export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
     options,
   );
 
-  return totalPage(readRow as Reader<EarnRecordByKind[Kind]>, timeFieldOf('time', epochTime))(page);
+  return totalPage(
+    btcRowOf(readRow as Reader<EarnRecordByKind[Kind]>),
+    timeFieldOf('time', epochTime),
+  )(page);
 };

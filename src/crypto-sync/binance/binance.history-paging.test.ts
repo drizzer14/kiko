@@ -64,6 +64,7 @@ const freshRun = () => createBinanceHistoryRun({ now: () => NOW, sleep: async ()
 const pageOf = (count: number, total: number, over: Partial<TotalPage<Row>> = {}) => ({
   rows: Array.from({ length: count }, (_unused, id) => ({ id })),
   unreadable: [],
+  untracked: [],
   gathered: count,
   total,
   usedUidWeight1m: undefined,
@@ -127,6 +128,7 @@ describe('fetchAllByTotal', () => {
       kind: 'rows',
       rows: [...pageOf(FULL_PAGE, 250).rows, { id: 100 }, { id: 200 }],
       unreadable: [],
+      untracked: [],
     });
   });
 
@@ -146,6 +148,7 @@ describe('fetchAllByTotal', () => {
       kind: 'rows',
       rows: [{ id: 0 }, { id: 1 }, { id: 2 }],
       unreadable: [],
+      untracked: [],
     });
   });
 
@@ -173,7 +176,12 @@ describe('fetchAllByTotal', () => {
   it('is empty rows for a total of zero and an empty page', async () => {
     const { fetchPage } = scripted([pageOf(0, 0)]);
 
-    expect(await pagingOf({ fetchPage })).toEqual({ kind: 'rows', rows: [], unreadable: [] });
+    expect(await pagingOf({ fetchPage })).toEqual({
+      kind: 'rows',
+      rows: [],
+      unreadable: [],
+      untracked: [],
+    });
   });
 
   it('is a drift when the rows counted pass the total', async () => {
@@ -199,7 +207,20 @@ describe('fetchAllByTotal', () => {
 
     const result = await pagingOf({ fetchPage });
 
-    expect(result).toEqual({ kind: 'rows', rows: [{ id: 0 }], unreadable });
+    expect(result).toEqual({ kind: 'rows', rows: [{ id: 0 }], unreadable, untracked: [] });
+  });
+
+  it('keeps the untracked rows of every page of a span of one millisecond', async () => {
+    const first = { ticker: 'XYZ', status: 'CONFIRMED', time: 1 };
+    const second = { ticker: 'ABC', status: undefined, time: undefined };
+    const { fetchPage } = scripted([
+      pageOf(FULL_PAGE - 1, 101, { gathered: FULL_PAGE, untracked: [first] }),
+      pageOf(0, 101, { gathered: 1, untracked: [second] }),
+    ]);
+
+    const result = await pagingOf({ fetchPage, half: () => undefined });
+
+    expect(result).toMatchObject({ kind: 'rows', untracked: [first, second] });
   });
 
   it('keeps the unreadable rows of every page of a span of one millisecond', async () => {
@@ -288,7 +309,12 @@ describe('readSeriesSpan', () => {
     expect(result).toEqual({
       kind: 'page',
       page: {
-        read: SERIES.map((series) => ({ series, rows: [{ id: 0 }], unreadable: [] })),
+        read: SERIES.map((series) => ({
+          series,
+          rows: [{ id: 0 }],
+          unreadable: [],
+          untracked: [],
+        })),
         drifted: [],
       },
     });
@@ -354,8 +380,8 @@ describe('readSeriesSpan', () => {
       kind: 'page',
       page: {
         read: [
-          { series: 'MAIN_FUNDING', rows: [{ id: 0 }, { id: 1 }], unreadable: [] },
-          { series: 'MAIN_UMFUTURE', rows: [{ id: 0 }, { id: 1 }], unreadable: [] },
+          { series: 'MAIN_FUNDING', rows: [{ id: 0 }, { id: 1 }], unreadable: [], untracked: [] },
+          { series: 'MAIN_UMFUTURE', rows: [{ id: 0 }, { id: 1 }], unreadable: [], untracked: [] },
         ],
         drifted: ['FUNDING_MAIN'],
       },
@@ -373,6 +399,21 @@ describe('readSeriesSpan', () => {
 
     expect(result).toMatchObject({
       page: { read: [{}, { series: 'FUNDING_MAIN', unreadable: [{ time: 7 }] }, {}] },
+    });
+  });
+
+  it('carries the untracked rows of each series with its rows', async () => {
+    const untracked = { ticker: 'XYZ', status: 'CONFIRMED', time: 7 };
+    const fetchPage = jest.fn(async (series: Series) =>
+      series === 'FUNDING_MAIN'
+        ? pageOf(0, 1, { gathered: 1, untracked: [untracked] })
+        : pageOf(0, 0),
+    );
+
+    const result = await readOf({ fetchPage });
+
+    expect(result).toMatchObject({
+      page: { read: [{ untracked: [] }, { series: 'FUNDING_MAIN', untracked: [untracked] }, {}] },
     });
   });
 
@@ -499,6 +540,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
           series,
           rows: [{ id: 0 }, { id: 0 }],
           unreadable: [],
+          untracked: [],
         })),
         drifted: [],
         owed: [],
@@ -593,6 +635,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
           series,
           rows: [{ id: 0 }],
           unreadable: [],
+          untracked: [],
         })),
         drifted: [],
         owed: [],
@@ -642,6 +685,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
           series,
           rows: [{ id: 0 }],
           unreadable: [],
+          untracked: [],
         })),
         drifted: [],
         owed: [],
@@ -730,6 +774,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
           series,
           rows: [{ id: 0 }],
           unreadable: [],
+          untracked: [],
         })),
         drifted: [],
         owed: [{ series: 'MAIN_FUNDING', window: DEEP }],
@@ -883,7 +928,12 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
       expect(result).toEqual({
         kind: 'page',
         page: {
-          read: SERIES.map((series) => ({ series, rows: [{ id: 0 }, { id: 1 }], unreadable: [] })),
+          read: SERIES.map((series) => ({
+            series,
+            rows: [{ id: 0 }, { id: 1 }],
+            unreadable: [],
+            untracked: [],
+          })),
           drifted: [],
           owed: [],
         },
@@ -908,7 +958,12 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
       expect(result).toEqual({
         kind: 'page',
         page: {
-          read: SERIES.map((series) => ({ series, rows: [{ id: 0 }], unreadable: [] })),
+          read: SERIES.map((series) => ({
+            series,
+            rows: [{ id: 0 }],
+            unreadable: [],
+            untracked: [],
+          })),
           drifted: [],
           owed: SERIES.map((series) => ({ series, window: BAND })),
         },
@@ -1015,7 +1070,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
       expect(result).toEqual({
         kind: 'page',
         page: {
-          read: [{ series: 'MAIN_FUNDING', rows: [{ id: 0 }], unreadable: [] }],
+          read: [{ series: 'MAIN_FUNDING', rows: [{ id: 0 }], unreadable: [], untracked: [] }],
           drifted: [],
           owed: [{ series: 'MAIN_FUNDING', window: BAND }],
         },
@@ -1035,6 +1090,23 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
 
       expect(result).toMatchObject({
         page: { read: [{ rows: [{ id: 0 }], unreadable: [{ time: 7 }] }], owed: [] },
+      });
+    });
+
+    it('carries the untracked rows of the band with those of the series', async () => {
+      const untracked = { ticker: 'XYZ', status: 'CONFIRMED', time: 7 };
+      const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) =>
+        isBandRead(span) ? pageOf(0, 1, { gathered: 1, untracked: [untracked] }) : pageOf(1, 1),
+      );
+
+      const result = await readDeep({
+        fetchPage,
+        depth: servedJustNow(),
+        series: ['MAIN_FUNDING'],
+      });
+
+      expect(result).toMatchObject({
+        page: { read: [{ rows: [{ id: 0 }], untracked: [untracked] }], owed: [] },
       });
     });
 

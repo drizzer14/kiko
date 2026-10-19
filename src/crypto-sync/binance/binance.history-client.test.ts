@@ -817,6 +817,7 @@ describe('fetchUniversalTransfers', () => {
       ['a BTC row with a numeric amount', { ...transferRow, amount: 1 }, at],
       ['a BTC row with a text timestamp', { ...transferRow, timestamp: 'now' }, undefined],
       ['a BTC row with a non-finite timestamp', { ...transferRow, timestamp: null }, undefined],
+      ['an ETH row with a numeric amount', { ...transferRow, asset: 'ETH', amount: 1 }, at],
       ['a row with no string asset', without(transferRow, 'asset'), at],
       ['a row that is not an object', 'x', undefined],
       ['a null row', null, undefined],
@@ -831,13 +832,13 @@ describe('fetchUniversalTransfers', () => {
       },
     );
 
-    it('parses the readable rows of a page beside an unreadable one and a row of another asset', async () => {
+    it('parses the readable rows of a page beside an unreadable one and a row of another tracked asset', async () => {
       const page = await transferRead({
         total: 3,
         rows: [transferRow, { ...transferRow, amount: 5 }, { ...transferRow, asset: 'ETH' }],
       }).run();
 
-      expect(page.rows).toEqual([transferRow]);
+      expect(page.rows).toEqual([transferRow, { ...transferRow, asset: 'ETH' }]);
       expect(page.unreadable).toEqual([{ time: at }]);
       expect(page.gathered).toBe(3);
     });
@@ -852,11 +853,11 @@ describe('fetchUniversalTransfers', () => {
     });
   });
 
-  describe('a row of another asset', () => {
+  describe('a row of an untracked asset', () => {
     it('is counted for the pager and never parsed, whatever else is wrong with it', async () => {
       const page = await transferRead({
         total: 4,
-        rows: [{ asset: 'ETH' }, { asset: 'USDT', amount: 7, timestamp: 'x' }, { asset: 'BNB' }],
+        rows: [{ asset: 'XYZ' }, { asset: 'PEPE', amount: 7, timestamp: 'x' }, { asset: 'ABC' }],
       }).run();
 
       expect(page.rows).toEqual([]);
@@ -864,11 +865,14 @@ describe('fetchUniversalTransfers', () => {
       expect(page.gathered).toBe(3);
       expect(page.total).toBe(4);
     });
+  });
 
-    it('is told from a BTC row by its asset alone: a row with a lowercase btc asset is another asset', async () => {
+  describe('the asset of a row', () => {
+    it('is read upper-cased once: a row with a lowercase btc asset is read as BTC', async () => {
       const page = await transferRead({ total: 1, rows: [{ ...transferRow, asset: 'btc' }] }).run();
 
-      expect(page.rows).toEqual([]);
+      expect(page.rows).toEqual([transferRow]);
+      expect(page.untracked).toEqual([]);
       expect(page.gathered).toBe(1);
     });
   });

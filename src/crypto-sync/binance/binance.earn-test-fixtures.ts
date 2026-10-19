@@ -138,6 +138,7 @@ const PAGE_SIZE = 100;
 export const pageOf = (over: Partial<TotalPage<EarnRecordByKind[EarnRecordKind]>> = {}) => ({
   rows: [],
   unreadable: [],
+  untracked: [],
   gathered: 0,
   total: 0,
   usedUidWeight1m: undefined,
