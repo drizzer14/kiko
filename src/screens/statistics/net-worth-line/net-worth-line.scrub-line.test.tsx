@@ -371,6 +371,48 @@ describe('NetWorthLine scrub line', () => {
     expect(labelStyle(view).opacity).toBe(0);
   });
 
+  it('keeps the label hidden until its own width arrives, then shows it', async () => {
+    const view = await renderLine();
+
+    await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-amount'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT),
+    );
+
+    expect(labelStyle(view).opacity).toBe(0);
+
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-label'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT),
+    );
+
+    expect(labelStyle(view).opacity).toBe(1);
+  });
+
+  it('keeps the label hidden until the plot is laid out, then shows it', async () => {
+    const view = await renderLine();
+
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-label'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT),
+    );
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-amount'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT),
+    );
+
+    expect(labelStyle(view).opacity).toBe(0);
+
+    await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
+
+    expect(labelStyle(view).opacity).toBe(1);
+  });
+
   it('shows the label fully once both are measured', async () => {
     const view = await renderLine();
     await measure(view);
