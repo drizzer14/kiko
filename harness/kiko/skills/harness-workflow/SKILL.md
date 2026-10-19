@@ -440,7 +440,8 @@ merge-conflict files".
 ## The Stop tier replays the pre-write guard
 
 The kill-guard denies Bash writes into `src/`, `__tests__/`, `rules/`,
-`e2e/`, and `drizzle/`; the denied forms and the known limits are listed in
+`e2e/`, `drizzle/`, `scripts/`, `githooks/`, and YAML files; the denied forms and the known
+limits are listed in
 kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
 it with Edit/Write; see kiko-code-style's "Folder-per-thing

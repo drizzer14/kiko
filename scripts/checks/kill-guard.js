@@ -31,13 +31,18 @@
 // own finding, `mainFastForward`: main moves only through `bash scripts/ff-main.sh <sha>`, which
 // runs after a queued verify of that commit.
 //
-// And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, or `drizzle/` at the
-// root of any worktree of this repository — `sed -i`, `perl -i`, a `>`/`>>`
+// And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
+// or `githooks/` at the root of any worktree of this repository, or into a YAML file (a final
+// segment ending in `.yml` or `.yaml`) at any depth of one, except under `node_modules/` (a YAML
+// path the text cannot resolve is denied too; one resolved outside every worktree of this
+// repository stays allowed) — `sed -i`, `perl -i`, a `>`/`>>`
 // (or `>|`, `&>`, `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner
 // (or one fed by a heredoc or here-string on its stdin)
 // that opens a file for writing, and `xargs`
-// running an in-place edit — because the pre-write guard sees only
-// Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
+// running an in-place edit, or a cp/mv whose destination the text resolves into a folder of a
+// worktree (the names xargs reads are unknown, so any of them may be a YAML file; a destination
+// outside every worktree, or under `node_modules/`, stays allowed) — because the pre-write guard
+// sees only Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
 // no shell or interpreter runs is text, never checked for writes (see `findDanger` for the
 // kinds it is checked for). The same write machinery
 // denies a write into a git config file (`.git/config`, `.git/config.worktree`, a linked
@@ -151,8 +156,9 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
 ];
 
 const SHELL_WRITE_REASON_LINES = [
-  'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, e2e/, or drizzle/ of a worktree ' +
-    'of this repository, or into a git config file (.git/config, config.worktree).',
+  'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, e2e/, drizzle/, ' +
+    'scripts/, or githooks/ of a worktree of this repository, into a YAML file (.yml, .yaml) of ' +
+    'one, or into a git config file (.git/config, config.worktree).',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
     'cp, mv, or a python or node one-liner lands unchecked; guard-replay only catches it at ' +
@@ -160,8 +166,11 @@ const SHELL_WRITE_REASON_LINES = [
   'HOW TO FIX:     use the Edit or Write tool for that file; to move a file, use `git mv` ' +
     '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
     'cannot resolve (a variable, a glob) counts when a folder in it is named src, rules, e2e, ' +
-    'drizzle, or __tests__: write the literal path, or use another folder name. Reading it, a ' +
-    'redirect to /dev/null or to a path outside those trees (your scratchpad, /tmp), git itself ' +
+    'drizzle, scripts, githooks, or __tests__, or when it ends in .yml or .yaml, and so does a ' +
+    'cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
+    'write the literal path, or use Edit or Write. Reading it, a ' +
+    'redirect to /dev/null or to a path outside those trees that is not a YAML file of a ' +
+    'worktree (your scratchpad, /tmp, docs/notes.md), git itself ' +
     '(without a redirect into those trees), and a formatter or fixer writing on its own ' +
     "(./node_modules/.bin/biome check --write, the harness's import-order --write) stay allowed. " +
     'A git config file holds core.hooksPath: leave it as ' +
@@ -1764,11 +1773,19 @@ function gitFinding(segment, invocations, rules) {
   };
 }
 
-// ---- shell writes into src/, __tests__/, rules/, e2e/, and drizzle/ ----
+// ---- shell writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, YAML ----
 
 // The folders, at the root of any worktree of this repository, that only
 // Edit/Write may change: the pre-write guard sees no other tool.
-const WRITE_GUARDED_TREES = new Set(['src', '__tests__', 'rules', 'e2e', 'drizzle']);
+const WRITE_GUARDED_TREES = new Set([
+  'src',
+  '__tests__',
+  'rules',
+  'e2e',
+  'drizzle',
+  'scripts',
+  'githooks',
+]);
 
 // The repository whose worktrees count: the one this file lives in.
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -1855,8 +1872,26 @@ function isGitConfigFile(target) {
 // A path the text cannot pin down that still spells `.git/config` (`"$D/.git/config"`).
 const namesGitConfig = (target) => /(?:^|\/)\.git\/config(?:\.worktree)?$/i.test(target);
 
+// A YAML file (the final segment ends in .yml or .yaml) anywhere in a worktree of this repository,
+// at any depth, is guarded by its extension: the Maestro flows, workflows, and rule files of the
+// harness are not all under a tree. Dependency code under node_modules/ is no project file. APFS
+// folds case, so `A.YML` is `a.yml`.
+const YAML_FILE = /\.ya?ml$/i;
+
+function isYamlInsideWorktree(target, rules) {
+  if (!YAML_FILE.test(target)) return false;
+  const segments = target.split('/');
+
+  return segments.some(
+    (_segment, index) =>
+      index > 0 &&
+      isProjectWorktree(segments.slice(0, index).join('/') || '/', rules) &&
+      !segments.slice(index, -1).some((folder) => folder.toLowerCase() === 'node_modules'),
+  );
+}
+
 // Where `target` lands from `directory` (resolved when the text allows) when
-// that is inside a tree or is a git config file, or null. A cp/mv
+// that is inside a tree, is a YAML file of a worktree, or is a git config file, or null. A cp/mv
 // `destination` may be a folder, and what it copies lands inside it, so one
 // that is a tree folder itself counts too. With `resolvedOnly`, a target the
 // text cannot resolve never counts.
@@ -1866,10 +1901,14 @@ function guardedPlace(target, directory, rules, { destination, resolvedOnly }) {
   if (resolved === null) {
     if (resolvedOnly) return null;
 
-    return namesGuardedTree(inside(target)) || namesGitConfig(target) ? target : null;
+    return namesGuardedTree(inside(target)) || namesGitConfig(target) || YAML_FILE.test(target)
+      ? target
+      : null;
   }
 
-  return isInsideGuardedTree(inside(resolved), rules) || isGitConfigFile(resolved)
+  return isInsideGuardedTree(inside(resolved), rules) ||
+    isGitConfigFile(resolved) ||
+    isYamlInsideWorktree(resolved, rules)
     ? resolved
     : null;
 }
@@ -2288,7 +2327,8 @@ const withXargsInput = (parameters, placeholder, input) =>
 // (a plain file) and once as each tree folder's name (`ls | xargs -I{} cp
 // -r {} .` may write `./src`). Those folder names are `named`; a plain cp
 // cannot copy a folder, so `canCopyFolder` is false for it and its `named`
-// targets count only where the text resolves them.
+// targets count only where the text resolves them. The input may also be a YAML file, so a
+// destination the text resolves into a worktree folder counts through a `.yml` marker (`yaml`).
 function xargsCopyMoveTargets(base, parameters, placeholder) {
   if (!COPY_MOVE_COMMANDS.has(base) || inputMayBeDestination(parameters, placeholder)) return null;
   const targetsFor = (inputs) =>
@@ -2297,6 +2337,7 @@ function xargsCopyMoveTargets(base, parameters, placeholder) {
 
   return {
     plain: targetsFor(['xargs-input']),
+    yaml: targetsFor(['xargs-input.yml']),
     named: targetsFor([...WRITE_GUARDED_TREES]),
     canCopyFolder: MOVE_COMMANDS.has(base) || options.some((option) => option.recursive),
   };
@@ -2317,6 +2358,7 @@ function commandWrite(
 
     return (
       firstGuardedWrite(targets.plain, directories, rules, { destination }) ??
+      firstGuardedWrite(targets.yaml, directories, rules, { destination, resolvedOnly: true }) ??
       firstGuardedWrite(targets.named, directories, rules, {
         destination,
         resolvedOnly: !targets.canCopyFolder,

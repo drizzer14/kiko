@@ -275,8 +275,21 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, `e2e/`, or `drizzle/`
-  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `drizzle/` is
+  `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, or `githooks/`, or into any
+  `*.yml`/`*.yaml` file (user ruling 2, 2026-10-18)
+  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; read it there for the current list.
+  `scripts/` and `githooks/` match like `src/`: resolved inside any worktree of this repository, or
+  unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
+  `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
+  worktree except under `node_modules/`, and counts when unresolved (fail closed). Resolved and
+  NOT covered: `harness/kiko/scripts/*`, non-YAML
+  `harness/kiko/hooks/*`, and a scripts folder under `ios/` or `docs/`.
+  A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
+  build the scratch from a git merge or commit, or use `git archive <sha> scripts |
+  tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
+  `sed`, `tee`, and interpreters, not the archive extractor; not run against the guard, so
+  re-verify). Formatter
+  `--write` and reads stay allowed. `drizzle/` is
   checked by the pre-write guard and guard-replay for `drizzle/migrations/*.test.ts` (`.ts` is in
   scope); a `.sql` or `.json` there has no pre-write rule, and shipped-migrations covers a shipped
   migration at Stop; `e2e/` joined
@@ -336,7 +349,24 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   folder-name fills count only for a recursive copy (`-r`, `-R`, `-a`,
   `--recursive`, `--archive`, or a GNU abbreviation such as `--recur`)
   or any `mv`, since a plain `cp` cannot copy a folder: `ls | xargs -I{} cp {} "$BK"/` passes, `ls | xargs
-  -I{} cp -r {} "$BK"/` and `… mv {} "$BK"/old/` deny. Otherwise (no
+  -I{} cp -r {} "$BK"/` and `… mv {} "$BK"/old/` deny. The input may
+  also be a YAML file, so a `cp`/`mv` behind `xargs` whose destination
+  RESOLVES inside a project worktree folder (not under `node_modules/`)
+  is denied whatever the input files are (fail closed: the names are
+  unknowable): `ls | xargs -I{} cp {} .maestro/` denies. An unresolved
+  destination gets no YAML check, only the folder-name fills above.
+  Known YAML limits: outside `xargs`, a recursive or `-T` folder copy
+  that holds YAML passes, since the folder's name cannot tell
+  (`cp -r /tmp/flows .maestro/` allowed; only a literal `*.yml` path
+  denies); an `xargs` `cp`/`mv` whose destination the text cannot
+  resolve still lets a YAML file into a worktree (`cd "$X" && ls
+  /tmp/*.yml | xargs cp -t .maestro` and `… xargs cp -t "$WT/.maestro"`
+  pass, while the tree analog `cd "$X" && ls | xargs cp -t src` denies;
+  kept so the backup forms `xargs cp -t "$BK"` and `"$(mktemp -d)"/`
+  pass, and the deny's DO NOT line forbids routing through a variable);
+  a YAML file under `node_modules/` passes; a move out of a
+  YAML path is no write. Use Edit/Write for YAML. The deny hint ends
+  "write the literal path, or use Edit or Write". Otherwise (no
   placeholder, so the input is appended last, or a destination holding
   the placeholder) it denies as a write of any file. `git mv` stays
   allowed and is the way to move a file: guard-replay follows it as a
@@ -562,6 +592,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   test-only `KIKO_PROBE_STUB_FIRST_RUN_DELAY=<seconds>` makes a stub sleep on its first call to
   prove it (read the runner's header). A tightening of the guard is proven by a differential
   over every test literal x every cwd, base against HEAD; a hand-picked sample is not proof.
+  Method: a `NODE_OPTIONS` `--require` preload, kept in the scratchpad, wraps `decide()` of the
+  worktree's `kill-guard.js`. At each call, while the test fixtures still exist, it judges the
+  same (command, options) with BASE and HEAD copies extracted by `git archive`, also across a
+  fixed set of cwds, and records every flipped pair; classify each as intended or not (H9
+  2026-10-18: 43,738 pairs, 0 deny->allow). The preload only calls `decide()`; it never executes
+  a command. Timing-bound tests may fail under the preload (overhead); the proof run of the
+  suites is the plain one.
   No real kill
   word and no real main path is ever handed to the runner; they appear
   ONLY in NON-executed parser tests (node: string -> `decide()`). The
@@ -2639,7 +2676,8 @@ On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
-forms into `src/`, `__tests__/`, `rules/`, `e2e/`, and `drizzle/`. It allows the `--write`
+forms into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, and YAML
+files (`WRITE_GUARDED_TREES`, `YAML_FILE`). It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
 `find -exec`, a path held in a variable the command does not assign (see "SHELL-WRITE deny,

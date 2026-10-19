@@ -106,7 +106,8 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     lowers, removes, or makes unreadable that version).
   - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
     `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
-    `__tests__/`, `rules/`, `e2e/`, `drizzle/` of any worktree ("SHELL-WRITE deny"); use
+    `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, or any `*.yml`/`*.yaml`
+    file of any worktree (not under `node_modules/`) ("SHELL-WRITE deny"); use
     Edit/Write, and `git add` + `git mv` to rename; a formatter's own
     `--write` stays allowed.
   - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, or a `-c` /
