@@ -1,0 +1,79 @@
+diff --git a/node_modules/@stryker-mutator/jest-runner/dist/src/jest-plugins/mixin-jest-environment.cjs b/node_modules/@stryker-mutator/jest-runner/dist/src/jest-plugins/mixin-jest-environment.cjs
+index 0755688..521b1f7 100644
+--- a/node_modules/@stryker-mutator/jest-runner/dist/src/jest-plugins/mixin-jest-environment.cjs
++++ b/node_modules/@stryker-mutator/jest-runner/dist/src/jest-plugins/mixin-jest-environment.cjs
+@@ -15,6 +15,27 @@ function fullName(test) {
+     const suiteName = fullNameDescribeBlock(test.parent);
+     return `${suiteName} ${test.name}`.trimStart();
+ }
++// kiko-patch: exact covering-test selection (Stryker's id is jest-circus jestAdapterInit's fullName, not getTestID)
++function strykerTestId(test) {
++    const names = [test.name];
++    for (let block = test.parent; block; block = block.parent) {
++        names.unshift(block.name);
++    }
++    const ancestorTitles = names.filter((name) => name !== 'ROOT_DESCRIBE_BLOCK');
++    const title = ancestorTitles.pop();
++    return title ? ancestorTitles.concat(title).join(' ') : ancestorTitles.join(' ');
++}
++// kiko-patch: exact covering-test selection (skipping at run_start keeps hooks and concurrent tests as with the regex)
++function skipUnselected(block, selected) {
++    for (const child of block.children) {
++        if (child.type === 'describeBlock') {
++            skipUnselected(child, selected);
++        }
++        else if (child.type === 'test' && child.mode !== 'skip' && child.mode !== 'todo' && !selected.has(strykerTestId(child))) {
++            child.mode = 'skip';
++        }
++    }
++}
+ const STRYKER_JEST_ENV = Symbol('StrykerJestEnvironment');
+ function mixinJestEnvironment(JestEnvironmentClass) {
+     if (JestEnvironmentClass[STRYKER_JEST_ENV]) {
+@@ -36,6 +57,10 @@ function mixinJestEnvironment(JestEnvironmentClass) {
+                 this.handleTestEvent = (async (event, eventState) => {
+                     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+                     await this.#innerHandleTestEvent?.(event, eventState);
++                    // kiko-patch: exact covering-test selection
++                    if (event.name === 'run_start' && globalThis.__kikoStrykerSelectedTestIds__ instanceof Set) {
++                        skipUnselected(eventState.rootDescribeBlock, globalThis.__kikoStrykerSelectedTestIds__);
++                    }
+                     if (messaging_cjs_1.state.coverageAnalysis === 'perTest') {
+                         if (event.name === 'test_start') {
+                             this.#strykerContext.currentTestId = fullName(event.test);
+diff --git a/node_modules/@stryker-mutator/jest-runner/dist/src/jest-test-runner.js b/node_modules/@stryker-mutator/jest-runner/dist/src/jest-test-runner.js
+index bf865ed..87a0af9 100644
+--- a/node_modules/@stryker-mutator/jest-runner/dist/src/jest-test-runner.js
++++ b/node_modules/@stryker-mutator/jest-runner/dist/src/jest-test-runner.js
+@@ -63,6 +63,8 @@ export class JestTestRunner {
+         return { reloadEnvironment: true };
+     }
+     async dryRun({ coverageAnalysis, files }) {
++        // kiko-patch: exact covering-test selection (a crashed earlier mutantRun must not leak into the dry run)
++        delete globalThis.__kikoStrykerSelectedTestIds__;
+         state.coverageAnalysis = coverageAnalysis;
+         const fileNamesUnderTest = this.enableFindRelatedTests ? files : undefined;
+         const { dryRunResult, jestResult } = await this.run({
+@@ -88,7 +90,12 @@ export class JestTestRunner {
+         const fileNameUnderTest = this.enableFindRelatedTests ? sandboxFileName : undefined;
+         state.coverageAnalysis = 'off';
+         let testNamePattern;
+-        if (testFilter) {
++        // kiko-patch: exact covering-test selection (one regex per mutant timed out above a few hundred covering tests)
++        const selectExactly = Array.isArray(testFilter) && testFilter.length > 0 && typeof hitLimit === 'number';
++        if (selectExactly) {
++            globalThis.__kikoStrykerSelectedTestIds__ = new Set(testFilter);
++        }
++        else if (testFilter) {
+             testNamePattern = testFilter.map((testId) => `(${escapeRegExp(testId)})`).join('|');
+         }
+         state.instrumenterContext.hitLimit = hitLimit;
+@@ -105,6 +112,8 @@ export class JestTestRunner {
+             return toMutantRunResult(dryRunResult, disableBail);
+         }
+         finally {
++            // kiko-patch: exact covering-test selection (the Set must not outlive one mutantRun)
++            delete globalThis.__kikoStrykerSelectedTestIds__;
+             delete process.env[INSTRUMENTER_CONSTANTS.ACTIVE_MUTANT_ENV_VARIABLE];
+             delete state.instrumenterContext.activeMutant;
+         }

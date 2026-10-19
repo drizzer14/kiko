@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 
+import { writePatchedJestRunner } from './stryker-jest-runner';
+
 // The mutation tests run a COPY of the real mutation.sh + _lib.sh inside a
 // throwaway git repository, because the wrapper computes its ROOT as
 // scripts/checks/../.. and the real worktree is far above the file cap.
@@ -173,6 +175,7 @@ export const buildMutationRepository = (
     writeFile(root, relativePath, body);
   }
 
+  writePatchedJestRunner(root);
   commitAll(root, 'base');
   runGit(root, 'checkout', '-q', '-b', 'feature');
   const entries = Object.entries(featureFiles);

@@ -227,7 +227,13 @@ TIMEOUT-HEAVY file with how it was cleared. A TIMEOUT-HEAVY file (rule and const
 failure, the gate reruns the timed-out mutants alone and the final rerun report is the
 verdict. Only if that report still fails or the rerun was skipped does the BATCH READY
 carry the failed gate with each timed-out mutant proven in plain jest or written as
-equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file").
+equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file"). Proof tables are the
+fallback for a REAL timeout only: the standing jest-runner patch removed the regex cost that
+made heavy mutants time out. A gate scratch needs `npm ci` so the patch is applied; the
+`mutation.sh` preflight exits 2 on an unpatched runner.
+A proof gate whose pass criterion is 0 Timeout lists, in the same brief, the plain-jest
+check for each remaining timeout (id, covering files, a bounded run), so one residual
+timeout gets a verdict without a second gate.
 Never raise the timeout; there is no allowlist file. `make mutable` can print a
 `warning:` line after `changed lines: N` when a merged track inflates the count;
 see "Mutation base after a track merged next".
