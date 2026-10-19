@@ -241,9 +241,10 @@ const capitalParams = (window: HistoryWindow): Record<string, string> => ({
 /**
  * A capital record of a coin the walk does not track: counted for the pager, never parsed, so it
  * can be off contract in any way without stalling the tracked rows. Only what the walk needs is
- * kept: the upper-cased ticker, the `status` (`undefined` unless it is a finite number, so the
- * walk lists the coin only once the record is settled) and the time field as it stands (a number,
- * a datetime text for a withdrawal, or `undefined`), which says where the record sits in a span.
+ * kept: the upper-cased ticker (empty for a record that is not settled and has no usable coin),
+ * the `status` (`undefined` unless it is a finite number, so the walk lists the coin only once the
+ * record is settled) and the time field as it stands (a number, a datetime text for a withdrawal,
+ * or `undefined`), which says where the record sits in a span.
  */
 export type BinanceUntrackedRecord = {
   ticker: string;
@@ -259,42 +260,52 @@ export type CapitalPage<Row> = HistoryPage<Row> & { untracked: BinanceUntrackedR
 
 type CapitalItem<Row> = { row: Row } | { untracked: BinanceUntrackedRecord };
 
+/** Binance's own settled states: a credited deposit, a completed withdrawal. */
+export const DEPOSIT_STATUS_SUCCESS = 1;
+export const WITHDRAW_STATUS_COMPLETED = 6;
+
+/** What differs between the two capital endpoints: the time field, how to read it, what settles. */
+type CapitalField = { time: string; readTime: TimeReader; settledStatus: number };
+
 /**
  * A capital row is read by its `coin`, upper-cased once. A tracked coin (`isTrackedBinanceAsset`)
- * parses strictly, and a malformed row is unreadable and owed. Any other coin with a string ticker
- * is counted and never parsed. A row with no string coin, or a blank one, cannot be told from a
- * row of a tracked coin, so it is unreadable.
+ * parses strictly, and a malformed row is unreadable and owed. Any other row is counted and never
+ * parsed, but a SETTLED row with no string coin, or a blank one, cannot be told from a row of a
+ * tracked coin, so it is unreadable and owed. A row that is not settled yet (no row of it can be
+ * imported) is counted whatever its coin, with an empty ticker when it has none.
  */
 const capitalItemOf =
-  <Row>(readRow: Reader<Row>, timeField: string, readTime: TimeReader): Reader<CapitalItem<Row>> =>
+  <Row>(
+    readRow: Reader<Row>,
+    { time: timeField, readTime, settledStatus }: CapitalField,
+  ): Reader<CapitalItem<Row>> =>
   (item) => {
-    const ticker =
-      isRecord(item) && typeof item.coin === 'string' ? binanceTickerOf(item.coin) : '';
-
-    if (!isRecord(item) || ticker === '') {
+    if (!isRecord(item)) {
       return parseFailure();
     }
+
+    const ticker = typeof item.coin === 'string' ? binanceTickerOf(item.coin) : '';
 
     if (isTrackedBinanceAsset(ticker)) {
       return { row: readRow(item) };
     }
 
-    return {
-      untracked: {
-        ticker,
-        status: optionalFiniteNumber(item.status),
-        time: readTime(item[timeField]),
-      },
-    };
+    const status = optionalFiniteNumber(item.status);
+
+    if (ticker === '' && status === settledStatus) {
+      return parseFailure();
+    }
+
+    return { untracked: { ticker, status, time: readTime(item[timeField]) } };
   };
 
 const capitalPage =
-  <Row>(readRow: Reader<Row>, timeField: string, readTime: TimeReader) =>
+  <Row>(readRow: Reader<Row>, field: CapitalField) =>
   ({ body, headers }: SignedPage): CapitalPage<Row> => {
     const readings = readingsOf(
       body,
-      capitalItemOf(readRow, timeField, readTime),
-      timeFieldOf(timeField, readTime),
+      capitalItemOf(readRow, field),
+      timeFieldOf(field.time, field.readTime),
     );
     const items = valuesOf(readings);
 
@@ -342,13 +353,17 @@ const WITHDRAWAL_FIELDS = {
 /** One withdrawal from `/sapi/v1/capital/withdraw/history`. */
 export type BinanceWithdrawal = Parsed<typeof WITHDRAWAL_FIELDS>;
 
-const depositPage = capitalPage(recordReader(DEPOSIT_FIELDS), 'insertTime', epochTime);
+const depositPage = capitalPage(recordReader(DEPOSIT_FIELDS), {
+  time: 'insertTime',
+  readTime: epochTime,
+  settledStatus: DEPOSIT_STATUS_SUCCESS,
+});
 
-const withdrawalPage = capitalPage(
-  recordReader(WITHDRAWAL_FIELDS),
-  'applyTime',
-  epochOrDatetimeTime,
-);
+const withdrawalPage = capitalPage(recordReader(WITHDRAWAL_FIELDS), {
+  time: 'applyTime',
+  readTime: epochOrDatetimeTime,
+  settledStatus: WITHDRAW_STATUS_COMPLETED,
+});
 
 /**
  * `GET /sapi/v1/capital/deposit/hisrec` (deposit history), of every coin, for

@@ -93,6 +93,57 @@ describe('the coin of a capital row', () => {
   });
 });
 
+describe('a record that is not settled is counted whatever its coin', () => {
+  it.each([
+    ['an empty coin', ''],
+    ['a coin of spaces', '   '],
+    ['a null coin', null],
+    ['a coin that is not text', 5],
+  ])('counts a cancelled deposit with %s, never parsing it', async (_label, coin) => {
+    const page = await readDeposits([{ ...depositRow, coin, status: 0 }]);
+
+    expect(page.rows).toEqual([]);
+    expect(page.unreadable).toEqual([]);
+    expect(page.untracked).toEqual([{ ticker: '', status: 0, time: NOW }]);
+  });
+
+  it.each([
+    ['an empty coin', ''],
+    ['a coin of spaces', '   '],
+    ['a null coin', null],
+    ['a coin that is not text', 5],
+  ])('counts a cancelled withdrawal with %s, never parsing it', async (_label, coin) => {
+    const page = await readWithdrawals([{ ...withdrawalRow, coin, status: 1 }]);
+
+    expect(page.rows).toEqual([]);
+    expect(page.unreadable).toEqual([]);
+    expect(page.untracked).toEqual([{ ticker: '', status: 1, time: withdrawalRow.applyTime }]);
+  });
+
+  it('counts a record with no status and no usable coin: it is not settled', async () => {
+    const page = await readDeposits([{ ...without(depositRow, 'status'), coin: '' }]);
+
+    expect(page.unreadable).toEqual([]);
+    expect(page.untracked).toEqual([{ ticker: '', status: undefined, time: NOW }]);
+  });
+
+  it('keeps the ticker of a record that is not settled, so the walk can still count it', async () => {
+    const page = await readWithdrawals([{ ...withdrawalRow, coin: 'pepe', status: 3 }]);
+
+    expect(page.untracked).toEqual([{ ticker: 'PEPE', status: 3, time: withdrawalRow.applyTime }]);
+  });
+
+  it.each([
+    ['a deposit', () => readDeposits([{ ...depositRow, coin: '' }])],
+    ['a withdrawal', () => readWithdrawals([{ ...withdrawalRow, coin: null }])],
+  ])('still reports a SETTLED %s with no usable coin as unreadable', async (_label, read) => {
+    const page = await read();
+
+    expect(page.untracked).toEqual([]);
+    expect(page.unreadable).toHaveLength(1);
+  });
+});
+
 type Case = [label: string, row: Record<string, unknown>, time: number | string | undefined];
 
 describe('an off-contract row of an untracked coin is counted and never parsed', () => {

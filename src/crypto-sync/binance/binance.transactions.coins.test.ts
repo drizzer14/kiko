@@ -424,45 +424,101 @@ describe('a page beside an off-contract row of an untracked coin, read by the re
     status: 6,
   };
 
-  it.each([
-    ['an amount that is a JSON number', { coin: 'PEPE', amount: 1000, insertTime: NOW - DAY_MS }],
-    ['no amount and no id', { coin: 'PEPE', status: 1, insertTime: NOW - DAY_MS }],
-    ['nothing but its coin', { coin: 'PEPE' }],
-  ])('imports the BTC deposit and moves the cursor past a PEPE row with %s', async (_l, pepe) => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const deps = makeDeps({
-      fetchDepositHistory: servedAtNow([pepe, btcDeposit], fetchDepositHistory),
-    });
-
-    const result = await sync(deps);
-
-    expect(addedRows(deps).map((row) => row.externalId)).toEqual(['acc-1:deposit:2']);
-    expect(result).toEqual({ imported: 1, complete: true });
-    expect(walkMarkWritesOf(deps, 'capital', 'cursor')).toEqual([NOW]);
-    expect(warn).not.toHaveBeenCalled();
-    warn.mockRestore();
+  const depositsOf = (rows: unknown[]) => ({
+    fetchDepositHistory: servedAtNow(rows, fetchDepositHistory),
+  });
+  const withdrawalsOf = (rows: unknown[]) => ({
+    fetchWithdrawHistory: servedAtNow(rows, fetchWithdrawHistory),
   });
 
-  it.each([
+  const BLANK_COINS = [
+    ['an empty coin', ''],
+    ['a coin of spaces', '   '],
+    ['no coin', undefined],
+  ] as const;
+
+  type Served = [
+    label: string,
+    serve: () => Partial<BinanceTransactionSyncDeps>,
+    externalId: string,
+    listed: string[],
+  ];
+
+  const served: Served[] = [
     [
-      'an amount that is a JSON number',
-      { coin: 'PEPE', amount: 1000, applyTime: '2024-01-03 00:00:00', status: 6 },
+      'a PEPE deposit with an amount that is a JSON number',
+      () => depositsOf([{ coin: 'PEPE', amount: 1000, insertTime: NOW - DAY_MS }, btcDeposit]),
+      'acc-1:deposit:2',
+      [],
     ],
-    ['no amount and no id', { coin: 'PEPE', status: 6, applyTime: '2024-01-03 00:00:00' }],
-    ['nothing but its coin', { coin: 'PEPE' }],
-  ])(
-    'imports the BTC withdrawal and moves the cursor past a PEPE row with %s',
-    async (_l, pepe) => {
+    [
+      'a settled PEPE deposit with no amount and no id',
+      () => depositsOf([{ coin: 'PEPE', status: 1, insertTime: NOW - DAY_MS }, btcDeposit]),
+      'acc-1:deposit:2',
+      ['PEPE'],
+    ],
+    [
+      'a PEPE deposit with nothing but its coin',
+      () => depositsOf([{ coin: 'PEPE' }, btcDeposit]),
+      'acc-1:deposit:2',
+      [],
+    ],
+    [
+      'a settled PEPE withdrawal with an amount that is a JSON number',
+      () =>
+        withdrawalsOf([
+          { coin: 'PEPE', amount: 1000, applyTime: '2024-01-03 00:00:00', status: 6 },
+          btcWithdrawal,
+        ]),
+      'acc-1:withdraw:9',
+      ['PEPE'],
+    ],
+    [
+      'a settled PEPE withdrawal with no amount and no id',
+      () =>
+        withdrawalsOf([
+          { coin: 'PEPE', status: 6, applyTime: '2024-01-03 00:00:00' },
+          btcWithdrawal,
+        ]),
+      'acc-1:withdraw:9',
+      ['PEPE'],
+    ],
+    [
+      'a PEPE withdrawal with nothing but its coin',
+      () => withdrawalsOf([{ coin: 'PEPE' }, btcWithdrawal]),
+      'acc-1:withdraw:9',
+      [],
+    ],
+    ...BLANK_COINS.map(
+      ([label, coin]): Served => [
+        `a cancelled withdrawal with ${label}`,
+        () => withdrawalsOf([{ ...btcWithdrawal, id: '8', coin, status: 1 }, btcWithdrawal]),
+        'acc-1:withdraw:9',
+        [],
+      ],
+    ),
+    ...BLANK_COINS.map(
+      ([label, coin]): Served => [
+        `a cancelled deposit with ${label}`,
+        () => depositsOf([{ ...btcDeposit, id: '3', coin, status: 0 }, btcDeposit]),
+        'acc-1:deposit:2',
+        [],
+      ],
+    ),
+  ];
+
+  it.each(served)(
+    'imports the BTC row and moves the cursor past %s',
+    async (_label, serve, externalId, listed) => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-      const deps = makeDeps({
-        fetchWithdrawHistory: servedAtNow([pepe, btcWithdrawal], fetchWithdrawHistory),
-      });
+      const deps = makeDeps(serve());
 
       const result = await sync(deps);
 
-      expect(addedRows(deps).map((row) => row.externalId)).toEqual(['acc-1:withdraw:9']);
+      expect(addedRows(deps).map((row) => row.externalId)).toEqual([externalId]);
       expect(result).toEqual({ imported: 1, complete: true });
       expect(walkMarkWritesOf(deps, 'capital', 'cursor')).toEqual([NOW]);
+      expect(coinListPatchesOf(deps).flatMap((patch) => patch.tickers)).toEqual(listed);
       expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
     },
@@ -481,6 +537,22 @@ describe('a page beside an off-contract row of an untracked coin, read by the re
     expect(coinListPatchesOf(deps)).toEqual([
       { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['PEPE'] },
     ]);
+  });
+
+  it('still stops at a SETTLED row with a blank coin, read by the real client', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = makeDeps(withdrawalsOf([{ ...btcWithdrawal, id: '8', coin: '' }, btcWithdrawal]));
+
+    const result = await sync(deps);
+
+    expect(result.complete).toBe(false);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(walkMarkWritesOf(deps, 'capital', 'cursor')).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(STOP_TAG, {
+      name: 'BinanceWalkStop',
+      code: 'capital-row-unreadable',
+    });
+    warn.mockRestore();
   });
 });
 
@@ -519,7 +591,7 @@ describe('a capital record with a blank coin', () => {
 });
 
 describe('an account with no Spot BTC holding', () => {
-  const withoutCursor = walkStateFake({ accountId: ACCOUNT_ID }).deps;
+  const withoutCursor = () => walkStateFake({ accountId: ACCOUNT_ID }).deps;
 
   it('imports a Spot deposit with no Spot BTC holding and creates it', async () => {
     let stored: HoldingRow[] = [];
@@ -551,7 +623,7 @@ describe('an account with no Spot BTC holding', () => {
   it('reads no legacy capital cursor and starts at the floor: it never ran this walk', async () => {
     const latestTransactionTime = jest.fn(async () => NOW - 89 * DAY_MS);
     const deps = makeDeps({
-      ...withoutCursor,
+      ...withoutCursor(),
       listHoldings: async () => [],
       latestTransactionTime,
     });
@@ -565,7 +637,7 @@ describe('an account with no Spot BTC holding', () => {
 
   it('still reads the legacy capital cursor of the Spot BTC holding it has', async () => {
     const latestTransactionTime = jest.fn(async () => NOW - 89 * DAY_MS);
-    const deps = makeDeps({ ...withoutCursor, latestTransactionTime });
+    const deps = makeDeps({ ...withoutCursor(), latestTransactionTime });
 
     await sync(deps);
 

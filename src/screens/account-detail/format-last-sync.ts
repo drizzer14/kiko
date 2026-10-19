@@ -20,11 +20,11 @@ export const formatLastSyncAt = (
 ): string => (lastSyncAt === null ? t('accountDetail.never') : formatDateTime(lastSyncAt, clock));
 
 /**
- * An account's last balance sync: the newest of its holdings' `syncedAt` and the stamp in its
+ * An account's last balance sync: the later of its holdings' newest `syncedAt` and the stamp in its
  * exchange state. A balance sync records `syncedAt` on the holding it wrote (never on
- * `settings.lastSyncAt`, which is Monobank's statement cursor), so the account's "last sync" is the
- * max over its holdings. A sync can leave no holding to stamp (nothing tracked above dust), and a
- * failed state write leaves the stamp one sync behind the holdings, so neither is enough.
+ * `settings.lastSyncAt`, which is Monobank's statement cursor). A sync can leave no holding to
+ * stamp (nothing tracked above dust), and a failed state write leaves the stamp one sync behind
+ * the holdings, so neither source is enough alone.
  */
 export const latestBalanceSyncAt = (
   holdings: Pick<HoldingRow, 'metadata'>[],

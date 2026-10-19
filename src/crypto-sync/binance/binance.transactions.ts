@@ -49,10 +49,12 @@ import {
   type BinanceUntrackedRecord,
   type BinanceWithdrawal,
   type CapitalPage,
+  DEPOSIT_STATUS_SUCCESS,
   fetchDepositHistory,
   fetchWithdrawHistory,
   HISTORY_PAGE_LIMIT,
   type HistoryWindow,
+  WITHDRAW_STATUS_COMPLETED,
 } from './binance.history-client';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
@@ -63,10 +65,6 @@ import { type BinanceWallet, binanceKeyOf, holdingKeyOf, SPOT_KEY } from './bina
 
 /** The stop of a row the client could not read: logged by its code alone, never its content. */
 const CAPITAL_ROW_UNREADABLE = 'capital-row-unreadable';
-
-/** Binance's own settled states: a credited deposit, a completed withdrawal. */
-const DEPOSIT_STATUS_SUCCESS = 1;
-const WITHDRAW_STATUS_COMPLETED = 6;
 
 /**
  * One history window's span. Binance rejects a `startTime`/`endTime` gap of 90
@@ -228,7 +226,7 @@ type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: string };
  */
 const plannedRowOf = (input: {
   accountId: string;
-  kind: 'deposit' | 'withdraw';
+  kind: SpanKind;
   direction: 1 | -1;
   record: {
     id: string;
@@ -320,8 +318,8 @@ type WindowContext = {
 };
 
 /**
- * One endpoint's records for a span (`rows` that parsed, `unreadable` that did not), or the half
- * to ask for instead.
+ * One endpoint's records for a span (`rows` that parsed, `unreadable` that did not, `untracked`
+ * that were counted and never parsed), or the half to ask for instead.
  */
 type Paged<Row> =
   | {
@@ -554,7 +552,7 @@ const extentOf = (entry: SpanRecord): WalkWindow | undefined =>
  * a datetime text. A time that does not parse gives an extent that is not finite, which the walk
  * reads as no time at all.
  */
-const unreadableExtentOf = (kind: SpanRecord['kind'], row: UnreadableRow): WalkWindow | undefined =>
+const unreadableExtentOf = (kind: SpanKind, row: UnreadableRow): WalkWindow | undefined =>
   foldMap(maybe(row.time), (time) =>
     kind === 'deposit' ? instantAt(Number(time)) : withdrawalExtentOf(time),
   );
