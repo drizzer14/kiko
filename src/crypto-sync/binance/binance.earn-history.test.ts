@@ -10,14 +10,16 @@ import {
   EARN_FAILED_STATUSES,
   EARN_FLOOR_MS,
   EARN_FORWARD_OWES,
-  EARN_REDEMPTION_SETTLED_STATUS,
   EARN_SERIES,
-  EARN_SUBSCRIPTION_SETTLED_STATUS,
   EARN_WINDOW_MS,
   redemptionRowsOf,
   settledEarnOf,
   subscriptionRowsOf,
 } from './binance.earn-history';
+import {
+  EARN_REDEMPTION_SETTLED_STATUS,
+  EARN_SUBSCRIPTION_SETTLED_STATUS,
+} from './binance.history-client';
 import {
   agoMs,
   entryOf,

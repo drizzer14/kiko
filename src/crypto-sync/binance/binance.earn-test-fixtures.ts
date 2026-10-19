@@ -4,6 +4,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
+import type { UntrackedTotalRow } from '@kiko/crypto-sync/exchange/paging';
 import { type WalkMarkSeed, walkStateFake } from '@kiko/test-support/walk-marks';
 
 import type {
@@ -117,10 +118,14 @@ export const stopCodeOf = (attempt: () => unknown): string | undefined => {
   return undefined;
 };
 
-/** What Binance holds: a row (or one the client could not read) and the kind it is read under. */
+/**
+ * What Binance holds: a row, one the client could not read, or one of a coin the walk does not
+ * track (as the client reports it), and the kind it is read under.
+ */
 type EarnEntry =
   | { kind: EarnRecordKind; time: number; row: EarnRecordByKind[EarnRecordKind] }
-  | { kind: EarnRecordKind; time: number | undefined; unreadable: true };
+  | { kind: EarnRecordKind; time: number | undefined; unreadable: true }
+  | { kind: EarnRecordKind; time: number; untracked: UntrackedTotalRow };
 
 export const entryOf = <Kind extends EarnRecordKind>(
   kind: Kind,
@@ -132,6 +137,34 @@ export const unreadableEntryOf = (kind: EarnRecordKind, time: number | undefined
   time,
   unreadable: true,
 });
+
+const SETTLED_STATUS: Record<EarnRecordKind, string | undefined> = {
+  flexibleSubscription: 'SUCCESS',
+  flexibleRedemption: 'PAID',
+  flexibleRewards: undefined,
+  lockedSubscription: 'SUCCESS',
+  lockedRedemption: 'PAID',
+  lockedRewards: undefined,
+};
+
+/** A record of a coin the walk does not track, settled unless `status` says otherwise. */
+export const untrackedEntryOf = (
+  kind: EarnRecordKind,
+  over: Partial<UntrackedTotalRow> & { time?: number } = {},
+): EarnEntry => {
+  const time = over.time ?? agoMs(2);
+
+  return {
+    kind,
+    time,
+    untracked: {
+      ticker: 'PEPE',
+      status: SETTLED_STATUS[kind],
+      ...over,
+      time,
+    },
+  };
+};
 
 const PAGE_SIZE = 100;
 
@@ -203,6 +236,7 @@ const serverOf = (entries: EarnEntry[], answer?: Answer, precision: Precision = 
       return pageOf({
         rows: page.flatMap((entry) => ('row' in entry ? [entry.row] : [])),
         unreadable: page.flatMap((entry) => ('unreadable' in entry ? [{ time: entry.time }] : [])),
+        untracked: page.flatMap((entry) => ('untracked' in entry ? [entry.untracked] : [])),
         gathered: page.length,
         total: inRange.length,
       });

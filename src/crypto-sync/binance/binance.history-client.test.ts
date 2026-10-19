@@ -136,7 +136,7 @@ describe('request shape', () => {
   });
 
   it.each(EARN_KINDS.filter(([kind]) => kind !== 'flexibleRewards'))(
-    'GETs %s with asset BTC, current and size 100, and no type',
+    'GETs %s with current and size 100, no asset and no type',
     async (kind, path) => {
       const { fetchImpl, sent } = recordingFetch({ total: 0 });
 
@@ -151,7 +151,6 @@ describe('request shape', () => {
       expect(sent[0].url.pathname).toBe(path);
       expect(sent[0].method).toBe('GET');
       expect(paramsOf(sent[0].url)).toEqual({
-        asset: 'BTC',
         startTime: String(START),
         endTime: String(NOW),
         current: '2',
@@ -174,7 +173,6 @@ describe('request shape', () => {
 
     expect(sent[0].url.pathname).toBe('/sapi/v1/simple-earn/flexible/history/rewardsRecord');
     expect(paramsOf(sent[0].url)).toEqual({
-      asset: 'BTC',
       type: 'ALL',
       startTime: String(START),
       endTime: String(NOW),
@@ -1110,10 +1108,21 @@ describe('fetchEarnRecords', () => {
     ]);
   });
 
-  it('counts every row of the page, and parses only the rows of BTC', async () => {
+  it('counts every row of the page, and reads an incomplete row of a tracked coin as unreadable', async () => {
     const page = await earnPage('lockedRewards', {
       total: 2,
       rows: [{ asset: 'ETH' }, { positionId: 'p', time: 1, asset: 'BTC', amount: '1', type: 't' }],
+    });
+
+    expect(page.gathered).toBe(2);
+    expect(page.rows).toHaveLength(1);
+    expect(page.unreadable).toHaveLength(1);
+  });
+
+  it('counts a row of an untracked coin and never parses it', async () => {
+    const page = await earnPage('lockedRewards', {
+      total: 2,
+      rows: [{ asset: 'XYZ' }, { positionId: 'p', time: 1, asset: 'BTC', amount: '1', type: 't' }],
     });
 
     expect(page.gathered).toBe(2);

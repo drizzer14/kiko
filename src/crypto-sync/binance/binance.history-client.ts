@@ -8,7 +8,6 @@ import { bifoldMap, eitherSync } from 'fnts/either';
 import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
-  BINANCE_ASSET,
   type FetchAccountOptions,
   type SignedPage,
   signedRequestPage,
@@ -186,16 +185,11 @@ const epochOrDatetimeTime: TimeReader = (value) =>
   typeof value === 'string' ? value : optionalFiniteNumber(value);
 
 /**
- * A row of another asset is counted for the pager and never parsed (`undefined`): it can be off
- * contract in any way without stalling the BTC rows. A row with no string asset is not one of
- * another asset, and the strict reader rejects it.
+ * Whether a row's `status` is the one its kind settles on; a kind with no status (`undefined`) is
+ * settled whatever the row says.
  */
-const btcRowOf =
-  <Row>(readRow: Reader<Row>): Reader<Row | undefined> =>
-  (item) =>
-    isRecord(item) && typeof item.asset === 'string' && item.asset !== BINANCE_ASSET
-      ? undefined
-      : readRow(item);
+const isSettledStatus = (settledStatus: string | undefined, status: unknown): boolean =>
+  settledStatus === undefined || status === settledStatus;
 
 /**
  * A row is read by its `asset`, upper-cased once. A tracked asset (`isTrackedBinanceAsset`) parses
@@ -206,7 +200,7 @@ const btcRowOf =
  * its asset.
  */
 const trackedRowOf =
-  <Row>(readRow: Reader<Row>, settledStatus: string): Reader<Row | undefined> =>
+  <Row>(readRow: Reader<Row>, settledStatus: string | undefined): Reader<Row | undefined> =>
   (item) => {
     if (!isRecord(item) || typeof item.asset !== 'string') {
       return readRow(item);
@@ -218,7 +212,9 @@ const trackedRowOf =
       return readRow(item);
     }
 
-    return ticker === '' && item.status === settledStatus ? parseFailure() : undefined;
+    return ticker === '' && isSettledStatus(settledStatus, item.status)
+      ? parseFailure()
+      : undefined;
   };
 
 /** What a row the walk does not read says: its ticker, its status text and its time. */
@@ -748,8 +744,16 @@ export const fetchUniversalTransfers = async (
 
 const EARN_HISTORY_ROOT = '/sapi/v1/simple-earn';
 
+/** The status Binance gives a subscription that went through. */
+export const EARN_SUBSCRIPTION_SETTLED_STATUS = 'SUCCESS';
+
+/** The status Binance gives a redemption that was paid out (a redemption is never `SUCCESS`). */
+export const EARN_REDEMPTION_SETTLED_STATUS = 'PAID';
+
 /**
- * The six Simple Earn history reads. Only the fields a walk uses are read; an id
+ * The six Simple Earn history reads. `settledStatus` is the status a record of the kind has once
+ * it went through; a reward has none and is always settled. Only the fields a walk uses are read;
+ * an id
  * a walk keys a row by is required, and a field it only inspects is optional. A field the
  * walk decides a wallet or a record's meaning by (the two split amounts, a `type`,
  * `isComplete`) is absent only when it is null or left out: one of another JSON type makes
@@ -761,9 +765,10 @@ const EARN_READS = {
   flexibleSubscription: {
     path: `${EARN_HISTORY_ROOT}/flexible/history/subscriptionRecord`,
     extraParams: {},
+    settledStatus: EARN_SUBSCRIPTION_SETTLED_STATUS,
     readRow: recordReader({
       amount: text,
-      asset: text,
+      asset: coinTicker,
       time: finiteNumber,
       purchaseId: identifier,
       productId: optionalText,
@@ -777,9 +782,10 @@ const EARN_READS = {
   flexibleRedemption: {
     path: `${EARN_HISTORY_ROOT}/flexible/history/redemptionRecord`,
     extraParams: {},
+    settledStatus: EARN_REDEMPTION_SETTLED_STATUS,
     readRow: recordReader({
       amount: text,
-      asset: text,
+      asset: coinTicker,
       time: finiteNumber,
       projectId: optionalText,
       redeemId: identifier,
@@ -790,8 +796,9 @@ const EARN_READS = {
   flexibleRewards: {
     path: `${EARN_HISTORY_ROOT}/flexible/history/rewardsRecord`,
     extraParams: { type: 'ALL' },
+    settledStatus: undefined,
     readRow: recordReader({
-      asset: text,
+      asset: coinTicker,
       rewards: text,
       projectId: text,
       type: text,
@@ -801,11 +808,12 @@ const EARN_READS = {
   lockedSubscription: {
     path: `${EARN_HISTORY_ROOT}/locked/history/subscriptionRecord`,
     extraParams: {},
+    settledStatus: EARN_SUBSCRIPTION_SETTLED_STATUS,
     readRow: recordReader({
       positionId: optionalIdentifier,
       purchaseId: identifier,
       time: finiteNumber,
-      asset: text,
+      asset: coinTicker,
       amount: text,
       type: strictOptionalText,
       sourceAccount: optionalText,
@@ -817,11 +825,12 @@ const EARN_READS = {
   lockedRedemption: {
     path: `${EARN_HISTORY_ROOT}/locked/history/redemptionRecord`,
     extraParams: {},
+    settledStatus: EARN_REDEMPTION_SETTLED_STATUS,
     readRow: recordReader({
       positionId: optionalIdentifier,
       redeemId: identifier,
       time: finiteNumber,
-      asset: text,
+      asset: coinTicker,
       amount: text,
       originalAmount: optionalText,
       type: strictOptionalText,
@@ -832,10 +841,11 @@ const EARN_READS = {
   lockedRewards: {
     path: `${EARN_HISTORY_ROOT}/locked/history/rewardsRecord`,
     extraParams: {},
+    settledStatus: undefined,
     readRow: recordReader({
       positionId: identifier,
       time: finiteNumber,
-      asset: text,
+      asset: coinTicker,
       amount: text,
       type: text,
     }),
@@ -850,8 +860,9 @@ export type EarnRecordByKind = {
 
 /**
  * `GET /sapi/v1/simple-earn/{flexible,locked}/history/...` for ONE page of ONE
- * record kind in ONE window (at most 30 days), filtered to BTC. Signed,
- * read-only.
+ * record kind in ONE window (at most 30 days). The reads take no `asset`, so rows of every coin
+ * come back: a tracked coin's rows are read, any other's are counted and reported (`untracked`).
+ * Signed, read-only.
  */
 export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
   apiKey: string,
@@ -860,18 +871,25 @@ export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
   query: TotalQuery,
   options: FetchAccountOptions = {},
 ): Promise<TotalPage<EarnRecordByKind[Kind]>> => {
-  const { path, extraParams, readRow } = EARN_READS[kind];
+  const { path, extraParams, readRow, settledStatus } = EARN_READS[kind];
   const page = await signedRequestPage(
     apiKey,
     secret,
     'GET',
     path,
-    { asset: BINANCE_ASSET, ...extraParams, ...totalParams(query) },
+    { ...extraParams, ...totalParams(query) },
     options,
   );
 
   return totalPage(
-    btcRowOf(readRow as Reader<EarnRecordByKind[Kind]>),
+    trackedRowOf(readRow as Reader<EarnRecordByKind[Kind]>, settledStatus),
     timeFieldOf('time', epochTime),
   )(page);
 };
+
+/**
+ * Whether a record of `kind` with this `status` text went through, so the coin of one the walk
+ * does not read is listed. A reward has no status and is always settled.
+ */
+export const isEarnRecordSettled = (kind: EarnRecordKind, status: string | undefined): boolean =>
+  isSettledStatus(EARN_READS[kind].settledStatus, status);

@@ -108,17 +108,17 @@ const EXPECTED_URLS: Record<string, string> = {
   'universal transfers':
     'https://api.binance.com/sapi/v1/asset/transfer?type=MAIN_FUNDING&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=2fe25a56f30ba63772686f5a21443a89bc306df77b1d8f9f87cc7490b8042fe0',
   'earn flexibleSubscription':
-    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/subscriptionRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/subscriptionRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
   'earn flexibleRedemption':
-    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/redemptionRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/redemptionRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
   'earn flexibleRewards':
-    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/rewardsRecord?asset=BTC&type=ALL&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=52c446f27f5fb5e96aa755baf6f28553489df9bca81a0d3bf969e34a45c250de',
+    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/rewardsRecord?type=ALL&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=ced238beaa32ec7ae2a12889d2f47923b2c63b0025419c428f3820562309eebf',
   'earn lockedSubscription':
-    'https://api.binance.com/sapi/v1/simple-earn/locked/history/subscriptionRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/locked/history/subscriptionRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
   'earn lockedRedemption':
-    'https://api.binance.com/sapi/v1/simple-earn/locked/history/redemptionRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/locked/history/redemptionRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
   'earn lockedRewards':
-    'https://api.binance.com/sapi/v1/simple-earn/locked/history/rewardsRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/locked/history/rewardsRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
 };
 
 type RequestCase = [
