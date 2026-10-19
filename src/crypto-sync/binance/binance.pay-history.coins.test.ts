@@ -668,6 +668,24 @@ describe('a Pay send whose funds entry has a negative amount', () => {
     expect(stopOf(order)?.code).toBe('pay-amount-invalid');
   });
 
+  // Turns red if the costed path goes back to a lazy entry sum: the entry text is then never read
+  // there, and each of these sends places its row instead of stopping.
+  it.each([
+    ['0.001000001', 'amount-precision'],
+    ['', 'amount-malformed'],
+    ['1e-3', 'amount-malformed'],
+  ])('reads the text of a costed entry too, so %j stops with %s', (amount, code) => {
+    const order = sentOrder({
+      amount: '-0.001',
+      walletTypes: [2],
+      fundsDetail: [
+        { currency: 'BTC', amount, walletAssetCost: [{ walletType: 2, amount: '0.001' }] },
+      ],
+    });
+
+    expect(stopOf(order)?.code).toBe(code);
+  });
+
   it('stops a negative entry of a coin other than the order coin', () => {
     const order = usdtSend({
       fundsDetail: [

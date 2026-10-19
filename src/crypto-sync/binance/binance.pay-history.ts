@@ -198,6 +198,20 @@ const addAmount = (coin: Currency, sum: string, amount: string): string => {
 };
 
 /**
+ * `addAmount`, but a negative `amount` stops the walk once its text has read: a sign error, and
+ * left to the sum it could cancel a positive amount or turn a row negative.
+ */
+const addNonNegative = (coin: Currency, sum: string, amount: string): string => {
+  const next = addAmount(coin, sum, amount);
+
+  if (compareDecimal(amount, '0') < 0) {
+    throw new BinanceWalkStop('pay-amount-invalid');
+  }
+
+  return next;
+};
+
+/**
  * What a coin's funds entries say each wallet paid, exactly: the wallets with a cost above zero.
  * Rounding happens once, on a sum (`sharesFromCosts`), never on each cost, because the costs of
  * a coin stored at a reduced scale can each round on their own to more or less than their total.
@@ -206,13 +220,10 @@ const costsOf = (coin: Currency, entries: FundsEntry[]): WalletCost[] => {
   const amountByWallet = new Map<number, string>();
 
   for (const cost of entries.flatMap((entry) => entry.walletAssetCost)) {
-    const sum = addAmount(coin, amountByWallet.get(cost.walletType) ?? '0', cost.amount);
-
-    if (compareDecimal(cost.amount, '0') < 0) {
-      throw new BinanceWalkStop('pay-amount-invalid');
-    }
-
-    amountByWallet.set(cost.walletType, sum);
+    amountByWallet.set(
+      cost.walletType,
+      addNonNegative(coin, amountByWallet.get(cost.walletType) ?? '0', cost.amount),
+    );
   }
 
   return [...amountByWallet]
@@ -324,15 +335,7 @@ const sharesOfCoin = (input: {
 }): WalletShare[] => {
   const { funds, wallets, declared, orderUnits } = input;
   const { coin, entries } = funds;
-  const entrySum = entries.reduce((sum, entry) => {
-    const next = addAmount(coin, sum, entry.amount);
-
-    if (compareDecimal(entry.amount, '0') < 0) {
-      throw new BinanceWalkStop('pay-amount-invalid');
-    }
-
-    return next;
-  }, '0');
+  const entrySum = entries.reduce((sum, entry) => addNonNegative(coin, sum, entry.amount), '0');
   const entryUnits = (): number => rowMinorUnits(coin, entrySum);
 
   if (orderUnits === 0 && entryUnits() !== 0) {
