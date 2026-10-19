@@ -223,6 +223,39 @@ describe('a Pay send whose own amount rounds to nothing', () => {
   it('imports no row and no stop for a send that lists no funds, whatever its wallets', () => {
     expect(rowsOf(dustSend({ walletTypes: [], fundsDetail: [] }))).toEqual([]);
   });
+
+  it('imports no row and no stop for a send that lists no funds and names no wallet at all', () => {
+    expect(rowsOf(dustSend({ walletType: undefined, walletTypes: [], fundsDetail: [] }))).toEqual(
+      [],
+    );
+  });
+
+  it.each([
+    ['walletTypes is not sent', undefined, []],
+    ['walletTypes names two wallets', [1, 2], []],
+    ['its only cost is zero', [2], [{ walletType: 2, amount: '0' }]],
+  ])(
+    'stops cost-less or zero-cost funds of its own coin that are not dust when %s',
+    (_title, walletTypes, walletAssetCost) => {
+      const order = dustSend({
+        walletTypes,
+        fundsDetail: [{ currency: 'XRP', amount: '5', walletAssetCost }],
+      });
+
+      expect(stopOf(order)?.code).toBe('pay-split-mismatch');
+    },
+  );
+
+  it('keeps both coins of a send whose funds are not all in its own coin', () => {
+    const order = dustSend({
+      fundsDetail: [paidFrom('XRP', '5', 2), paidFrom('USDT', '12.5', 2)],
+    });
+
+    expect(rowsOf(order).map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
+      ['XRP', -50_000],
+      ['USDT', -1_250_000_000],
+    ]);
+  });
 });
 
 describe('a Pay send paid in another coin', () => {

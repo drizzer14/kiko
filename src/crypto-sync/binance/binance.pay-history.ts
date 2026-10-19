@@ -55,6 +55,7 @@ import {
 } from './binance.transactions';
 import {
   type BinancePayOrder,
+  directionOfAmount,
   fetchPayHistory,
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
@@ -113,16 +114,6 @@ export const payFloorMs = (now: number): number => {
 
 type PayDirection = 'out' | 'in';
 
-const directionOfSign = (amount: string): PayDirection | undefined => {
-  const value = Number(amount);
-
-  if (!Number.isFinite(value) || value === 0) {
-    return undefined;
-  }
-
-  return value > 0 ? 'in' : 'out';
-};
-
 /**
  * Whether the user paid or received an order, from the user's own uid alone: the payer's
  * Binance id is the uid for an outgoing order, the receiver's for an incoming one. The
@@ -132,7 +123,7 @@ const directionOfSign = (amount: string): PayDirection | undefined => {
  * party ids are read for this rule alone; they are never stored or logged.
  */
 export const payDirection = (order: BinancePayOrder, uid: string | null): PayDirection | null => {
-  const sign = directionOfSign(order.amount);
+  const sign = directionOfAmount(order.amount);
   const isPayer = uid !== null && order.payerInfo.binanceId === uid;
   const isReceiver = uid !== null && order.receiverInfo.binanceId === uid;
 
@@ -319,6 +310,9 @@ const ownUnitsOf = (order: BinancePayOrder, amount: OrderAmount | undefined): nu
  * coin's funds add up to what it must (an empty funds detail adds up to nothing, so it cannot
  * show that the whole amount was paid in the order's coin); without a cost entry, any other
  * shape leaves the wallet unknown. An entry that rounds to nothing at the coin's scale is no row.
+ * An order amount of 0 units is dust, so funds of its own coin above dust stop whatever their cost
+ * shape: costs and wallets cannot show the dust is what was paid. Only an order whose funds are all
+ * in its own coin reaches this with `orderUnits` 0, which BTC's scale never gives.
  */
 const sharesOfCoin = (input: {
   funds: CoinFunds;
@@ -333,6 +327,10 @@ const sharesOfCoin = (input: {
       coin,
       entries.reduce((sum, entry) => addAmount(coin, sum, entry.amount), '0'),
     );
+
+  if (orderUnits === 0 && entryUnits() !== 0) {
+    throw new BinanceWalkStop('pay-split-mismatch');
+  }
 
   if (entries.every((entry) => entry.walletAssetCost.length === 0) && declared.length === 1) {
     const units = entryUnits();

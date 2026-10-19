@@ -590,7 +590,7 @@ const fundsTickersOf = (fundsDetail: unknown): string[] =>
     coinTicker(isRecord(entry) ? entry.currency : undefined),
   );
 
-const directionOfAmount = (amount: unknown): 'in' | 'out' | undefined => {
+export const directionOfAmount = (amount: unknown): 'in' | 'out' | undefined => {
   const value = typeof amount === 'string' ? Number(amount) : amount;
 
   if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) {
