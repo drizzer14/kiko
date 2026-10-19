@@ -312,8 +312,8 @@ const CAPITAL_SETTLED_STATUS: Record<CapitalKind, number> = { deposit: 1, withdr
 
 /**
  * Whether a capital record has reached Binance's settled state for its kind. The one definition,
- * for the client (which lists an unreadable settled record) and the walk (which imports or lists
- * only a settled one).
+ * for the client (which makes a settled record with no coin unreadable and owed) and the walk
+ * (which imports or lists only a settled one).
  */
 export const isCapitalSettled = (kind: CapitalKind, status: number | undefined): boolean =>
   status === CAPITAL_SETTLED_STATUS[kind];
@@ -554,14 +554,14 @@ const PAY_SUCCESS_CODE = '000000';
  * it can be off contract in any way without stalling the tracked orders. Only what the walk needs
  * is kept: the upper-cased tickers it names (its own coin first, then each coin of its funds
  * that names one), to list them, and its time as a finite number, or `undefined`, which says
- * where it sits in a span. `received` is whether its amount is a positive number: an order that
- * is never parsed has no parties to read a direction from, so its sign is the only signal, and
- * an amount that is no usable number is not a receive.
+ * where it sits in a span. `direction` is the sign of its amount: an order that is never parsed
+ * has no parties to read a direction from, so its sign is the only signal, and an amount that is
+ * zero or no usable number has none.
  */
 export type BinanceUntrackedPayOrder = {
   tickers: string[];
   transactionTime: number | undefined;
-  received: boolean;
+  direction: 'in' | 'out' | undefined;
 };
 
 /**
@@ -590,10 +590,14 @@ const fundsTickersOf = (fundsDetail: unknown): string[] =>
     coinTicker(isRecord(entry) ? entry.currency : undefined),
   );
 
-const isReceivedAmount = (amount: unknown): boolean => {
+const directionOfAmount = (amount: unknown): 'in' | 'out' | undefined => {
   const value = typeof amount === 'string' ? Number(amount) : amount;
 
-  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) {
+    return undefined;
+  }
+
+  return value > 0 ? 'in' : 'out';
 };
 
 const readPayItem: Reader<PayItem> = (value) => {
@@ -610,7 +614,7 @@ const readPayItem: Reader<PayItem> = (value) => {
         untracked: {
           tickers,
           transactionTime: optionalFiniteNumber(value.transactionTime),
-          received: isReceivedAmount(value.amount),
+          direction: directionOfAmount(value.amount),
         },
       };
 };

@@ -354,12 +354,14 @@ const sharesOfCoin = (input: {
 
 /**
  * The tracked coins a send's funds name, each with its entries, in the order they first appear.
- * A send that lists no funds at all is placed in its own coin, where it can only stop. A coin
- * the walk does not track has no row.
+ * A send that lists no funds at all is placed in its own coin, where it can only stop, unless its
+ * amount is dust, which has nothing to place. A coin the walk does not track has no row.
  */
 const fundsToPlace = (order: BinancePayOrder, amount: OrderAmount | undefined): CoinFunds[] => {
   if (order.fundsDetail.length === 0) {
-    return foldMap(maybe(amount), ({ coin }) => [{ coin, entries: [] }]) ?? [];
+    return (
+      foldMap(maybe(amount), ({ coin, units }) => (units > 0 ? [{ coin, entries: [] }] : [])) ?? []
+    );
   }
 
   const entriesByCoin = new Map<Currency, FundsEntry[]>();
@@ -400,10 +402,11 @@ const sharesOfSend = (order: BinancePayOrder, amount: OrderAmount | undefined): 
   }));
 };
 
-/** A receive is one row in the order's own coin, when that coin is tracked. */
+/** A receive is one row in the order's own coin, when that coin is tracked and it is not dust. */
 const sharesOfReceive = (order: BinancePayOrder, amount: OrderAmount | undefined): CoinShares[] =>
-  foldMap(maybe(amount), ({ coin, units }) => [{ coin, shares: shareOfReceive(order, units) }]) ??
-  [];
+  foldMap(maybe(amount), ({ coin, units }) =>
+    units > 0 ? [{ coin, shares: shareOfReceive(order, units) }] : [],
+  ) ?? [];
 
 const sharesOf = (
   order: BinancePayOrder,
@@ -423,20 +426,16 @@ const signedUnits = (direction: PayDirection, units: number): number =>
 
 /**
  * What a tracked coin's order is worth in that coin. An order of any other coin has none: its
- * scale is unknown, so its amount is never read beyond its sign (`payDirection`). Nor has an
- * order whose amount rounds to nothing at its coin's scale: it is dust that has no row, like a
- * funds entry that rounds to nothing, and it does not stop the walk.
+ * scale is unknown, so its amount is never read beyond its sign (`payDirection`). An order whose
+ * amount rounds to nothing at its coin's scale keeps its coin with 0 units: it is dust that has no
+ * row and does not stop the walk, but the funds of its own coin must still come to nothing too.
  */
 const orderAmountOf = (order: BinancePayOrder): OrderAmount | undefined => {
   const { currency } = order;
 
-  if (!isTrackedBinanceAsset(currency)) {
-    return undefined;
-  }
-
-  const units = Math.abs(rowMinorUnits(currency, order.amount));
-
-  return units === 0 ? undefined : { coin: currency, units };
+  return isTrackedBinanceAsset(currency)
+    ? { coin: currency, units: Math.abs(rowMinorUnits(currency, order.amount)) }
+    : undefined;
 };
 
 const LEADING_MINUS = /^-/;
@@ -631,7 +630,7 @@ const untrackedTickersOf = (page: PayHistoryPage, uid: string): string[] => [
     ).filter((ticker) => !isTrackedBinanceAsset(ticker)),
   ),
   ...page.untracked.flatMap((order) =>
-    order.received ? order.tickers.slice(0, 1) : order.tickers,
+    order.direction === 'out' ? order.tickers : order.tickers.slice(0, 1),
   ),
 ];
 

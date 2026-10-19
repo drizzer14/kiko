@@ -210,14 +210,12 @@ const walletOf = (walletType: number | undefined): BinanceWallet =>
       throw new BinanceWalkStop('capital-wallet-unknown');
     });
 
-type SpanKind = CapitalKind;
-
 /** A record that is not settled is neither imported nor listed, whatever its coin. */
 const isSettled = ({
   kind,
   record,
 }: {
-  kind: SpanKind;
+  kind: CapitalKind;
   record: { status: number | undefined };
 }): boolean => isCapitalSettled(kind, record.status);
 
@@ -232,7 +230,7 @@ type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: string };
  */
 const plannedRowOf = (input: {
   accountId: string;
-  kind: SpanKind;
+  kind: CapitalKind;
   direction: 1 | -1;
   record: {
     id: string;
@@ -514,7 +512,7 @@ type SpanRecord =
   | { kind: 'withdraw'; record: BinanceWithdrawal };
 
 /** A record of a coin the walk does not track, with the kind of endpoint it came from. */
-type UntrackedEntry = { kind: SpanKind; record: BinanceUntrackedRecord };
+type UntrackedEntry = { kind: CapitalKind; record: BinanceUntrackedRecord };
 
 /**
  * The ticker of a settled record of a coin the walk does not track: counted, imported as no row
@@ -558,7 +556,7 @@ const extentOf = (entry: SpanRecord): WalkWindow | undefined =>
  * a datetime text. A time that does not parse gives an extent that is not finite, which the walk
  * reads as no time at all.
  */
-const unreadableExtentOf = (kind: SpanKind, row: UnreadableRow): WalkWindow | undefined =>
+const unreadableExtentOf = (kind: CapitalKind, row: UnreadableRow): WalkWindow | undefined =>
   foldMap(maybe(row.time), (time) =>
     kind === 'deposit' ? instantAt(Number(time)) : withdrawalExtentOf(time),
   );

@@ -174,6 +174,55 @@ describe('a Pay send in a tracked coin', () => {
 
     expect(stopOf(negative)?.code).toBe('pay-amount-invalid');
   });
+
+  it('stops a negative cost of a reduced-scale coin that rounds to nothing, as BTC stops it', () => {
+    const negative = sentOrder({
+      currency: 'XRP',
+      amount: '-0.0003',
+      walletTypes: [2],
+      fundsDetail: [
+        {
+          currency: 'XRP',
+          amount: '0.0003',
+          walletAssetCost: [
+            { walletType: 2, amount: '-0.00001' },
+            { walletType: 2, amount: '0.00031' },
+          ],
+        },
+      ],
+    });
+
+    expect(stopOf(negative)?.code).toBe('pay-amount-invalid');
+  });
+});
+
+describe('a Pay send whose own amount rounds to nothing', () => {
+  const dustSend = (over: Partial<BinancePayOrder> = {}) =>
+    sentOrder({ currency: 'XRP', amount: '-0.00001', walletTypes: [2], ...over });
+
+  it('still stops funds of its own coin that are not dust: they are not the order amount', () => {
+    const order = dustSend({ fundsDetail: [paidFrom('XRP', '5', 2)] });
+
+    expect(stopOf(order)?.code).toBe('pay-split-mismatch');
+  });
+
+  it('stops cost-less funds of its own coin that are not dust, as costed ones', () => {
+    const order = dustSend({
+      fundsDetail: [{ currency: 'XRP', amount: '5', walletAssetCost: [] }],
+    });
+
+    expect(stopOf(order)?.code).toBe('pay-split-mismatch');
+  });
+
+  it('imports no row and no stop when the funds of its own coin are dust too', () => {
+    const order = dustSend({ fundsDetail: [paidFrom('XRP', '0.00001', 2)] });
+
+    expect(rowsOf(order)).toEqual([]);
+  });
+
+  it('imports no row and no stop for a send that lists no funds, whatever its wallets', () => {
+    expect(rowsOf(dustSend({ walletTypes: [], fundsDetail: [] }))).toEqual([]);
+  });
 });
 
 describe('a Pay send paid in another coin', () => {

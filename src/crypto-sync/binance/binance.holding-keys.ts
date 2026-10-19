@@ -1,6 +1,7 @@
 import type { HoldingRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
 
+import { BINANCE_ASSET } from './binance.client';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 
 /**
@@ -42,7 +43,7 @@ export const holdingKeyOf = (code: Currency, wallet: BinanceWallet): string => k
  * a BTC pair keeps the id every stored BTC pair already has.
  */
 export const exchangePairIdOf = (binanceId: string, code: Currency): string =>
-  code === SPOT_KEY ? binanceId : `${binanceId}:${code}`;
+  code === BINANCE_ASSET ? binanceId : `${binanceId}:${code}`;
 
 type HoldingKeyParts = { code: Currency; wallet: BinanceWallet };
 

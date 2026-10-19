@@ -89,27 +89,27 @@ describe('the coins of a Pay order', () => {
     expect(page.rows).toEqual([]);
     expect(page.unreadable).toEqual([]);
     expect(page.untracked).toEqual([
-      { tickers: ['XYZ', 'PEPE'], transactionTime: PAID_AT, received: true },
+      { tickers: ['XYZ', 'PEPE'], transactionTime: PAID_AT, direction: 'in' },
     ]);
     expect(page.gathered).toBe(1);
   });
 
   it.each([
-    ['a positive number', 12, true],
-    ['a positive string', '12.5', true],
-    ['a negative string', '-12.5', false],
-    ['a negative number', -12, false],
-    ['zero', '0', false],
-    ['text that is no number', 'soon', false],
-    ['an amount that is missing', undefined, false],
-    ['an infinite number', Number.POSITIVE_INFINITY, false],
+    ['a positive number', 12, 'in'],
+    ['a positive string', '12.5', 'in'],
+    ['a negative string', '-12.5', 'out'],
+    ['a negative number', -12, 'out'],
+    ['zero', '0', undefined],
+    ['text that is no number', 'soon', undefined],
+    ['an amount that is missing', undefined, undefined],
+    ['an infinite number', Number.POSITIVE_INFINITY, undefined],
   ])(
-    'marks an untracked order with %s as amount received: %s',
-    async (_label, amount, received) => {
+    'reads the direction of an untracked order with %s from its sign alone',
+    async (_label, amount, direction) => {
       const page = await readOrders({ ...orderOf('XYZ', fundsIn('ABC')), amount });
 
       expect(page.untracked).toEqual([
-        { tickers: ['XYZ', 'ABC'], transactionTime: PAID_AT, received },
+        { tickers: ['XYZ', 'ABC'], transactionTime: PAID_AT, direction },
       ]);
     },
   );
@@ -118,7 +118,7 @@ describe('the coins of a Pay order', () => {
     const page = await readOrders(orderOf('SCR', fundsIn('SCR')));
 
     expect(page.untracked).toEqual([
-      { tickers: ['SCR'], transactionTime: PAID_AT, received: false },
+      { tickers: ['SCR'], transactionTime: PAID_AT, direction: 'out' },
     ]);
   });
 
@@ -149,7 +149,7 @@ describe('the coins of a Pay order', () => {
       const page = await readOrders(orderOf('XYZ', funds));
 
       expect(page.untracked).toEqual([
-        { tickers: ['XYZ'], transactionTime: PAID_AT, received: false },
+        { tickers: ['XYZ'], transactionTime: PAID_AT, direction: 'out' },
       ]);
       expect(page.unreadable).toEqual([]);
     },
@@ -166,7 +166,7 @@ describe('the coins of a Pay order', () => {
       const page = await readOrders({ ...orderOf('XYZ', fundsIn('XYZ')), transactionTime: time });
 
       expect(page.untracked).toEqual([
-        { tickers: ['XYZ'], transactionTime: undefined, received: false },
+        { tickers: ['XYZ'], transactionTime: undefined, direction: 'out' },
       ]);
       expect(page.unreadable).toEqual([]);
     },

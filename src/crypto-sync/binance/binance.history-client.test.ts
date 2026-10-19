@@ -595,7 +595,11 @@ describe('fetchPayHistory other coins', () => {
       expect(page.rows).toEqual([parsedPayOrder]);
       expect(page.unreadable).toEqual([]);
       expect(page.untracked).toEqual([
-        { tickers: ['XYZ'], transactionTime: time, received: false },
+        {
+          tickers: ['XYZ'],
+          transactionTime: time,
+          direction: 'amount' in offContract ? 'out' : undefined,
+        },
       ]);
       expect(page.gathered).toBe(2);
     },

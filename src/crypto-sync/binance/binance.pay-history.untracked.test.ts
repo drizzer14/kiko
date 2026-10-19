@@ -43,7 +43,7 @@ const untrackedOrder = (
 ): BinanceUntrackedPayOrder => ({
   tickers: ['PEPE'],
   transactionTime: PAID_AT,
-  received: false,
+  direction: 'out',
   ...over,
 });
 
@@ -404,7 +404,7 @@ describe('a Pay order of an untracked coin paid in a tracked coin', () => {
     it('lists only the own coin of an untracked order whose amount says receive', async () => {
       const deps = makeDeps({
         fetchPayHistory: pageAtNow(
-          payPage([], [untrackedOrder({ tickers: ['XYZ', 'ABC'], received: true })]),
+          payPage([], [untrackedOrder({ tickers: ['XYZ', 'ABC'], direction: 'in' })]),
         ),
       });
 
@@ -418,7 +418,7 @@ describe('a Pay order of an untracked coin paid in a tracked coin', () => {
     it('lists the own coin and the funds coins of an untracked order whose amount says send', async () => {
       const deps = makeDeps({
         fetchPayHistory: pageAtNow(
-          payPage([], [untrackedOrder({ tickers: ['XYZ', 'ABC'], received: false })]),
+          payPage([], [untrackedOrder({ tickers: ['XYZ', 'ABC'], direction: 'out' })]),
         ),
       });
 
@@ -426,6 +426,20 @@ describe('a Pay order of an untracked coin paid in a tracked coin', () => {
 
       expect(untrackedPatchesOf(deps)).toEqual([
         { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['XYZ', 'ABC'] },
+      ]);
+    });
+
+    it('lists only the own coin of an untracked order whose amount says no direction', async () => {
+      const deps = makeDeps({
+        fetchPayHistory: pageAtNow(
+          payPage([], [untrackedOrder({ tickers: ['XYZ', 'ABC'], direction: undefined })]),
+        ),
+      });
+
+      await sync(deps);
+
+      expect(untrackedPatchesOf(deps)).toEqual([
+        { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['XYZ'] },
       ]);
     });
   });
@@ -561,6 +575,27 @@ describe('a page read by the real client beside an off-contract order of an untr
       expect(walkMarkWritesOf(deps, 'pay', 'cursor')).toEqual([NOW]);
       expect(untrackedPatchesOf(deps).flatMap((patch) => patch.tickers)).toEqual(['PEPE']);
       expect(warn).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['an amount of zero', { amount: '0' }],
+    ['an amount that is no number', { amount: 'n/a' }],
+    ['no amount', {}],
+  ])(
+    'lists XYZ alone, never the PEPE its funds name, for an XYZ order with %s',
+    async (_label, amount) => {
+      const undirected = {
+        currency: 'XYZ',
+        transactionTime: PAID_AT,
+        fundsDetail: [{ currency: 'PEPE', amount: '1' }],
+        ...amount,
+      };
+      const deps = makeDeps({ fetchPayHistory: servedAtNow([undirected, btcOrderBody]) });
+
+      await sync(deps);
+
+      expect(untrackedPatchesOf(deps).flatMap((patch) => patch.tickers)).toEqual(['XYZ']);
     },
   );
 
