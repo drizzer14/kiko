@@ -105,7 +105,7 @@ describe('a Pay send in a tracked coin', () => {
     ]);
   });
 
-  it('stops an amount that rounds to nothing at the scale of its coin, with the walk own code', () => {
+  it('imports no row for an amount that rounds to nothing at the scale of its coin, and no stop', () => {
     const dust = sentOrder({
       currency: 'XRP',
       amount: '-0.00001',
@@ -113,7 +113,30 @@ describe('a Pay send in a tracked coin', () => {
       fundsDetail: [paidFrom('XRP', '0.00001', 2)],
     });
 
-    expect(stopOf(dust)?.code).toBe('pay-amount-invalid');
+    expect(rowsOf(dust)).toEqual([]);
+  });
+
+  it('imports no row for a receive that rounds to nothing at the scale of its coin', () => {
+    const dust = receivedOrder({ currency: 'XRP', amount: '0.00001' });
+
+    expect(rowsOf(dust)).toEqual([]);
+  });
+
+  it('keeps the funds rows of another coin beside an own amount that rounds to nothing', () => {
+    const dust = sentOrder({
+      currency: 'XRP',
+      amount: '-0.00001',
+      walletType: 2,
+      fundsDetail: [paidFrom('USDT', '12.5', 2)],
+    });
+
+    expect(rowsOf(dust).map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
+      ['USDT', -1_250_000_000],
+    ]);
+  });
+
+  it.each(['-1e-5', '-5.'])('still stops an amount that is no plain decimal: %j', (amount) => {
+    expect(stopOf(sentOrder({ currency: 'XRP', amount }))?.code).toBe('amount-malformed');
   });
 
   it('stops an amount too large for its coin, naming that coin as oversized', () => {

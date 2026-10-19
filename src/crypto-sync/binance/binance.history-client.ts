@@ -581,17 +581,14 @@ type PayItem = { order: BinancePayOrder } | { untracked: BinanceUntrackedPayOrde
 const readTrackedPayOrder = recordReader(PAY_ORDER_FIELDS);
 
 /**
- * The coins a funds list names, whatever else is wrong with it: an entry that is no object or
- * names no usable coin is left out, and a list that is no list names none. An order of an
- * untracked coin must not stall the walk, so nothing here fails.
+ * The coins a funds list names. An entry that is no object or names no usable coin cannot be told
+ * from one of a tracked coin, so it makes the order unreadable and owed, whatever its own coin. A
+ * funds detail that is absent or is no list names none: the order is counted.
  */
 const fundsTickersOf = (fundsDetail: unknown): string[] =>
-  (Array.isArray(fundsDetail) ? fundsDetail : []).flatMap((entry) => {
-    const ticker =
-      isRecord(entry) && typeof entry.currency === 'string' ? binanceTickerOf(entry.currency) : '';
-
-    return ticker === '' ? [] : [ticker];
-  });
+  (Array.isArray(fundsDetail) ? fundsDetail : []).map((entry) =>
+    coinTicker(isRecord(entry) ? entry.currency : undefined),
+  );
 
 const isReceivedAmount = (amount: unknown): boolean => {
   const value = typeof amount === 'string' ? Number(amount) : amount;

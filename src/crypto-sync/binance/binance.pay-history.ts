@@ -423,7 +423,9 @@ const signedUnits = (direction: PayDirection, units: number): number =>
 
 /**
  * What a tracked coin's order is worth in that coin. An order of any other coin has none: its
- * scale is unknown, so its amount is never read beyond its sign (`payDirection`).
+ * scale is unknown, so its amount is never read beyond its sign (`payDirection`). Nor has an
+ * order whose amount rounds to nothing at its coin's scale: it is dust that has no row, like a
+ * funds entry that rounds to nothing, and it does not stop the walk.
  */
 const orderAmountOf = (order: BinancePayOrder): OrderAmount | undefined => {
   const { currency } = order;
@@ -434,11 +436,7 @@ const orderAmountOf = (order: BinancePayOrder): OrderAmount | undefined => {
 
   const units = Math.abs(rowMinorUnits(currency, order.amount));
 
-  if (units === 0) {
-    throw new BinanceWalkStop('pay-amount-invalid');
-  }
-
-  return { coin: currency, units };
+  return units === 0 ? undefined : { coin: currency, units };
 };
 
 const LEADING_MINUS = /^-/;

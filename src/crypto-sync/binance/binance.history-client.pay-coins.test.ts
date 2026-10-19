@@ -122,16 +122,38 @@ describe('the coins of a Pay order', () => {
     ]);
   });
 
-  it('lists no ticker the funds of an untracked order name with no usable currency', async () => {
-    const funds = ['x', null, { currency: 7, amount: '1' }, ...fundsIn('  ')];
+  it.each([
+    ['an entry that is no object', 'x'],
+    ['an entry that is null', null],
+    ['a currency that is not text', { currency: 7, amount: '1' }],
+    ['a blank currency', fundsIn('  ')[0]],
+  ])(
+    'owes the point of an untracked order whose funds hold %s, never listing it',
+    async (_label, entry) => {
+      const page = await readOrders(orderOf('XYZ', [...fundsIn('PEPE'), entry]));
 
-    const page = await readOrders(orderOf('XYZ', funds));
+      expect(page.rows).toEqual([]);
+      expect(page.untracked).toEqual([]);
+      expect(page.unreadable).toEqual([{ time: PAID_AT }]);
+    },
+  );
 
-    expect(page.untracked).toEqual([
-      { tickers: ['XYZ'], transactionTime: PAID_AT, received: false },
-    ]);
-    expect(page.unreadable).toEqual([]);
-  });
+  it.each([
+    ['absent', undefined],
+    ['null', null],
+    ['text', 'soon'],
+    ['an object', { currency: 'USDT' }],
+  ])(
+    'counts an untracked order whose funds detail is %s, naming only its own coin',
+    async (_label, funds) => {
+      const page = await readOrders(orderOf('XYZ', funds));
+
+      expect(page.untracked).toEqual([
+        { tickers: ['XYZ'], transactionTime: PAID_AT, received: false },
+      ]);
+      expect(page.unreadable).toEqual([]);
+    },
+  );
 
   it.each([
     ['a string', 'soon'],

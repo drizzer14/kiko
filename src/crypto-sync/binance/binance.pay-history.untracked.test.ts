@@ -482,6 +482,34 @@ describe('a Pay order of a tracked coin that is too large', () => {
   });
 });
 
+describe('a Pay order of a tracked coin whose amount rounds to nothing', () => {
+  const dust = order({
+    currency: 'XRP',
+    amount: '-0.00004',
+    walletType: 2,
+    walletTypes: [2],
+    fundsDetail: [
+      {
+        currency: 'XRP',
+        amount: '0.00004',
+        walletAssetCost: [{ walletType: 2, amount: '0.00004' }],
+      },
+    ],
+  });
+
+  it('imports no row, lists nothing, and moves the cursor past it without a stop', async () => {
+    const deps = makeDeps({ fetchPayHistory: pageAtNow(payPage([dust, order()])) });
+
+    const result = await sync(deps);
+
+    expect(addedRows(deps).map((row) => row.externalId)).toEqual(['acc-1:pay:C2C:tx-1:2']);
+    expect(coinListPatchesOf(deps)).toEqual([]);
+    expect(walkMarkWritesOf(deps, 'pay', 'cursor')).toEqual([NOW]);
+    expect(warn).not.toHaveBeenCalledWith(STOP_TAG, expect.anything());
+    expect(result).toEqual({ imported: 1, complete: true });
+  });
+});
+
 describe('a page read by the real client beside an off-contract order of an untracked coin', () => {
   const bodyFetch = (body: unknown) =>
     (async () => ({
