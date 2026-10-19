@@ -1804,10 +1804,11 @@ restated here:
   `renameFromDefaults`, rename or not, is carried by `withCarriedMetadataKeys`
   and kept through `.kiko`. A user-edited name is never overwritten.
 - **Spot is strict; the others are error-tolerant per WALLET.** Spot's read
-  failure fails the whole sync. While NO Spot BTC holding exists, a zero Spot
-  BTC anchor is written (also when the Spot BTC amount is refused); an
-  existing Spot BTC holding with a refused amount keeps its last balance. Set
-  6 removes the anchor together with the four walk guards. A Funding or Earn
+  failure fails the whole sync. No zero Spot BTC anchor is written (removed
+  in set 6 step 5): a Spot BTC below dust with no stored holding creates
+  none; an existing Spot BTC holding stays, and one with a refused amount
+  keeps its last balance. The balance-sync stamp lives in `exchange_state`
+  (`balanceSyncedAt`). A Funding or Earn
   read that fails (`walletRead` returns null) omits every holding of that
   wallet (`appendWallet`), leaving each at its last-good balance, and logs
   one `logFailure`; a refused coin skips only itself (next rule).
@@ -1878,16 +1879,20 @@ Load-bearing rules, verified in `binance.transactions.test.ts` rather
 than restated here:
 
 - **Two signed reads.** `GET /sapi/v1/capital/deposit/hisrec` and
-  `GET /sapi/v1/capital/withdraw/history`, both `coin=BTC`, both fetched
+  `GET /sapi/v1/capital/withdraw/history`, both account-wide (no `coin` param), both fetched
   by `binance.history-client.ts` and signed through `signedRequestPage`
   (`binance.client.ts`), the same HMAC as the balance reads (read-only key).
   The history reads (`fetchDepositHistory`, `fetchWithdrawHistory`) live in
   `binance.history-client.ts`, not `binance.client.ts`, and return a
-  `HistoryPage` of strictly parsed rows; only a malformed BODY throws
-  `BinanceHistoryParseError`, so the window stops and the cursor stays. A
-  malformed ROW is `capital-row-unreadable`, a per-record stop: it is owed at
-  its point (the span when it has no usable time) and the other rows of the
-  span import (spec section 7, "Strict capital parse").
+  `CapitalPage` (a `HistoryPage` plus `untracked`); only a malformed BODY throws
+  `BinanceHistoryParseError`, so the window stops and the cursor stays. A row
+  of a tracked coin (`isTrackedBinanceAsset` on `binanceTickerOf` of its coin)
+  is read strictly, and a malformed one is `capital-row-unreadable`, a
+  per-record stop: it is owed at its point (the span when it has no usable
+  time) and the other rows of the span import (spec section 7, "Strict
+  capital parse"). A row of any other string coin is counted, never parsed,
+  and lists its ticker in `untrackedCoins.history` once settled (deposit
+  status 1, withdrawal 6); a blank or non-string coin is unreadable and owed.
   Each client call is ONE offset page of ONE window; the offset-paging
   lives in `binance.transactions.ts`, not the client. The walk shared by
   every Binance history walk lives in the shared exchange layer,
@@ -1899,7 +1904,9 @@ than restated here:
   the parser's code (`AMOUNT_STOP_CODES`: `amount-malformed`, `amount-precision`,
   `amount-too-large`); `amount-too-large` also names the coin, and
   `commitSettledSpan` writes it to `oversizedCoins.history`
-  (`oversizedHistoryWriterOf`) on every span read that meets the stop. The
+  (`historyListWriterOf(deps, accountId, coins)`, one writer for `oversizedCoins`
+  and `untrackedCoins`; `commitSettledSpan` requires both) on every span read
+  that meets the stop. The
   per-record commits live in the same file (`settleRecords`,
   `commitSettledSpan`). What a
   walk reads about one exchange is an `ExchangeWalkConfig`
@@ -2083,9 +2090,9 @@ than restated here:
   `walkCursorsOf` reads the four forward cursors (capital, Pay,
   Transfer, Earn) off the parsed `exchange_state` (four nulls when it is not
   readable), `isBinanceHistoryBehind`
-  compares them against `latestSyncedAt(holdings)` (the existing balance-sync
-  stamp), true when ANY of the four walks never caught up (`null` cursor) or is behind by
-  more than a day, or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
+  compares them against `latestBalanceSyncAt(holdings, stateStamp)` (the later of the
+  holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when ANY of the four walks
+  never caught up (`null` cursor) or is behind by more than a day, or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
   passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
   the Transfer `pending` list alone), false before the account's own first balance sync.
   An owed point never
