@@ -60,9 +60,8 @@ import os
   // Where the tab bar was found and its frame in window points; `frame` is nil on every miss.
   // `tabBarIsHidden` and `tabBarFrame` are the controller's own tab bar, kept for the debug log
   // only: they say why a floating or missing bar came out as it did. `rejectedFrame` is the frame
-  // `isAcceptedBarFrame` dropped when no frame was accepted; it too is for the log only, so `frame`
-  // stays nil and the snapshot reads `none`. It prefers the floating frame over the controller's
-  // tab bar frame, which already logs as `tabBarFrame`.
+  // `isInsideWindow` dropped when no frame was accepted; it too is for the log only, so `frame`
+  // stays nil and the snapshot reads `none`.
   struct TabBarReading {
     var kind: String
     var frame: CGRect?
@@ -254,7 +253,7 @@ import os
     let ownFrame = tabBar.convert(tabBar.bounds, to: window)
 
     if let tabBarFrame = tabBarCandidate,
-      isAcceptedBarFrame(frame: tabBarFrame, windowBounds: window.bounds)
+      isInsideWindow(frame: tabBarFrame, windowBounds: window.bounds)
     {
       return TabBarReading(
         kind: "tabBar", frame: tabBarFrame, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
@@ -265,15 +264,14 @@ import os
       in: window)
 
     if let floating = floatingCandidate,
-      isAcceptedBarFrame(frame: floating, windowBounds: window.bounds)
+      isInsideWindow(frame: floating, windowBounds: window.bounds)
     {
       return TabBarReading(
         kind: "floating", frame: floating, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
     }
 
-    // Past both accept checks, a candidate that exists is one `isAcceptedBarFrame` dropped; the log
-    // keeps it so it can say a candidate was seen and refused. `rejectedFrame` takes the floating
-    // frame first because the controller's own tab bar frame already logs as `tabBarFrame`.
+    // Past both accept checks, a candidate that exists is one `isInsideWindow` dropped; the log
+    // keeps it so it can say a candidate was seen and refused.
     let rejectedKinds = [
       tabBarCandidate.map { _ in "tabBar" },
       floatingCandidate.map { _ in "floating" },
@@ -364,19 +362,6 @@ import os
   // tolerance absorbs sub-point rounding of a bar that sits flush with the window's edge.
   static func isInsideWindow(frame: CGRect, windowBounds: CGRect) -> Bool {
     return windowBounds.insetBy(dx: -windowFrameTolerance, dy: -windowFrameTolerance).contains(frame)
-  }
-
-  // A stale top or bottom bar from the size before a resize can still sit inside the new window,
-  // so the inside check alone keeps it. Every real top or bottom bar spans the window's width, so
-  // a bar that is not tall (the same split `tabBarEdgeName` makes) must match that width too; a
-  // side bar has no such width and only has to be inside the window.
-  static func isAcceptedBarFrame(frame: CGRect, windowBounds: CGRect) -> Bool {
-    guard isInsideWindow(frame: frame, windowBounds: windowBounds) else {
-      return false
-    }
-
-    return frame.height > frame.width
-      || abs(frame.width - windowBounds.width) <= windowFrameTolerance
   }
 
   // A tall bar is a side bar, and which side is read against the reading direction; otherwise the
