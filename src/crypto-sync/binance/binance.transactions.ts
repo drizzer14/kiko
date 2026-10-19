@@ -107,6 +107,8 @@ export type BinanceTransactionRow = {
   source: 'binance';
   externalId: string;
   description: string;
+  /** Written on insert only: the upsert leaves a note the user edited alone. */
+  comment?: string;
 };
 
 /**

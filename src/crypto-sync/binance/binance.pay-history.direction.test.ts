@@ -535,15 +535,20 @@ describe('payRowsOf: wallet placement', () => {
       ]);
     });
 
-    it('stops a send whose cost-less BTC funds entry is below the amount, the rest paid in another coin', () => {
+    it('places each coin of a send paid in two coins on the one wallet named', () => {
       const partFunded = [
         { currency: 'BTC', amount: '0.0004', walletAssetCost: [] },
         { currency: 'USDT', amount: '40', walletAssetCost: [] },
       ];
 
-      expect(
-        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: partFunded })),
-      ).toBe('pay-split-mismatch');
+      expect(rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: partFunded })).toMatchObject([
+        { wallet: 'BTC', amountMinorUnits: -40_000, externalId: 'acc-1:pay:C2C:tx-1:2' },
+        {
+          wallet: 'USDT',
+          amountMinorUnits: -4_000_000_000,
+          externalId: 'acc-1:pay:C2C:tx-1:2:USDT',
+        },
+      ]);
     });
 
     it('stops a send whose cost-less BTC funds entry is below the amount, with no other coin listed', () => {
@@ -581,12 +586,16 @@ describe('payRowsOf: wallet placement', () => {
       ).toBe('amount-precision');
     });
 
-    it('stops a send with no BTC funds entry at all and funds in another coin', () => {
+    it('places a send paid in another coin on the one wallet named', () => {
       const otherCoin = [{ currency: 'USDT', amount: '100', walletAssetCost: [] }];
 
-      expect(
-        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: otherCoin })),
-      ).toBe('pay-funds-not-btc');
+      expect(rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: otherCoin })).toMatchObject([
+        {
+          wallet: 'USDT',
+          amountMinorUnits: -10_000_000_000,
+          externalId: 'acc-1:pay:C2C:tx-1:2:USDT',
+        },
+      ]);
     });
 
     it('stops a send with no cost when walletTypes is absent, whatever walletType says', () => {
@@ -704,12 +713,12 @@ describe('payRowsOf: wallet placement', () => {
     expect(rowsOf({ walletType: 2, walletTypes: [2, 2] })).toMatchObject([{ wallet: 'BTC' }]);
   });
 
-  it('stops when the funds named are not BTC, so no BTC movement is guessed', () => {
+  it('stops a send paid in another coin with no cost and no declared wallet', () => {
     const paidWithTether = {
       fundsDetail: [{ currency: 'USDT', amount: '1', walletAssetCost: [] }],
     };
 
-    expect(stopCodeOf(() => rowsOf(paidWithTether))).toBe('pay-funds-not-btc');
+    expect(stopCodeOf(() => rowsOf(paidWithTether))).toBe('pay-split-mismatch');
   });
 
   it('takes a single-wallet order whose funds detail names BTC', () => {

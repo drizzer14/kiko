@@ -424,7 +424,7 @@ describe('the request windows and the external ids and rows every walk produces 
           rows: inWindow,
           unreadable: [],
           gathered: inWindow.length,
-          btcFundedOtherCoinOrders: [],
+          untracked: [],
           ...unweighted,
         };
       },

@@ -115,7 +115,7 @@ const runWalk = (orders: BinancePayOrder[]) =>
       rows: orders,
       unreadable: [],
       gathered: orders.length,
-      btcFundedOtherCoinOrders: [],
+      untracked: [],
       usedUidWeight1m: undefined,
       usedIpWeight1m: undefined,
     }),
@@ -297,7 +297,7 @@ describe('the Pay walk on real SQLite', () => {
           rows,
           unreadable: [],
           gathered: rows.length,
-          btcFundedOtherCoinOrders: [],
+          untracked: [],
           usedUidWeight1m: undefined,
           usedIpWeight1m: undefined,
         };
@@ -362,6 +362,44 @@ describe('the Pay walk on real SQLite', () => {
     await runWalk([earnSend('earn-again')]);
 
     expect(holdingByKey('BTC:earn')?.balance_minor_units).toBe(777);
+  });
+
+  it('stores a send in USDC paid in USDT on a created USDT holding, with the order in its note and the note kept on a re-run', async () => {
+    const crossCoin = payOrder({
+      transactionId: 'cross',
+      currency: 'USDC',
+      amount: '-12.5',
+      walletType: 2,
+      fundsDetail: [
+        { currency: 'USDT', amount: '12.5', walletAssetCost: [{ walletType: 2, amount: '12.5' }] },
+      ],
+    });
+    const noteOf = (): string | null =>
+      (
+        mockDatabase
+          .prepare(
+            "SELECT comment FROM transactions WHERE external_id = 'acc-1:pay:C2C:cross:2:USDT'",
+          )
+          .get() as { comment: string | null }
+      ).comment;
+
+    await runWalk([crossCoin]);
+
+    const usdt = holdingByKey('USDT');
+    expect(usdt?.balance_minor_units).toBe(0);
+    expect(storedRows()).toMatchObject([
+      {
+        external_id: 'acc-1:pay:C2C:cross:2:USDT',
+        holding_id: usdt?.id,
+        amount_minor_units: -1_250_000_000,
+      },
+    ]);
+    expect(noteOf()).toBe('12.5 USDC');
+
+    mockDatabase.prepare("UPDATE transactions SET comment = 'my own note'").run();
+    await runWalk([crossCoin]);
+
+    expect(noteOf()).toBe('my own note');
   });
 
   it('creates no holding on an account disconnected while the walk was running', async () => {

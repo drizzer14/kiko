@@ -55,7 +55,7 @@ const payPage = (rows: BinancePayOrder[], over: Partial<PayHistoryPage> = {}): P
   rows,
   unreadable: [],
   gathered: rows.length,
-  btcFundedOtherCoinOrders: [],
+  untracked: [],
   usedUidWeight1m: undefined,
   usedIpWeight1m: undefined,
   ...over,
@@ -1503,10 +1503,21 @@ describe('the pending overlap days of a walk', () => {
       expect(result.complete).toBe(false);
     });
 
-    describe('with an order of another coin that the user paid with BTC funds', () => {
+    describe('with an order of another coin that stops', () => {
       const PAID_AT = stuckAt;
-      const funded = { payerId: OWN, receiverId: OTHER, transactionTime: PAID_AT };
-      const serverWith = (orders: BinancePayOrder[], fundedOrders: unknown[]) =>
+      // A USDT order whose cost is short of its funds: the stop a BTC order gets, found per coin.
+      const unbalanced = (over: Partial<BinancePayOrder> = {}) =>
+        order({
+          transactionId: 'unbalanced',
+          transactionTime: PAID_AT,
+          currency: 'USDT',
+          amount: '-5',
+          fundsDetail: [
+            { currency: 'USDT', amount: '5', walletAssetCost: [{ walletType: 2, amount: '4' }] },
+          ],
+          ...over,
+        });
+      const serverWith = (orders: BinancePayOrder[]) =>
         jest.fn(async (_apiKey: string, _secret: string, query: PayQuery) =>
           payPage(
             orders.filter(
@@ -1514,13 +1525,6 @@ describe('the pending overlap days of a walk', () => {
                 candidate.transactionTime >= query.startTime &&
                 candidate.transactionTime <= query.endTime,
             ),
-            {
-              btcFundedOtherCoinOrders: fundedOrders.filter(
-                (entry) =>
-                  (entry as typeof funded).transactionTime >= query.startTime &&
-                  (entry as typeof funded).transactionTime <= query.endTime,
-              ) as PayHistoryPage['btcFundedOtherCoinOrders'],
-            },
           ),
         );
 
@@ -1529,47 +1533,15 @@ describe('the pending overlap days of a walk', () => {
         const beside = order({ transactionId: 'beside', transactionTime: stuckAt + 10 });
 
         const { result } = await runOver(state, [], NOW, {
-          fetchPayHistory: serverWith([beside], [funded]),
+          fetchPayHistory: serverWith([beside, unbalanced()]),
         });
 
         expect(state.imported).toEqual(new Set([keyOf(state, beside)]));
         expect(beyondWindow(state.pending)).toEqual([pointAt(PAID_AT)]);
         expect(result.complete).toBe(false);
         expect(warn.mock.calls).toEqual([
-          [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
+          [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-split-mismatch' }],
         ]);
-      });
-
-      it('owes the whole day when the order carries no time', async () => {
-        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
-        const timeless = { ...funded, transactionTime: undefined };
-        const beside = order({ transactionId: 'beside', transactionTime: stuckAt + 10 });
-        const inOwedDay = jest.fn(async (_apiKey: string, _secret: string, query: PayQuery) =>
-          query.startTime < NOW - PAY_WINDOW_MS
-            ? payPage([beside], { btcFundedOtherCoinOrders: [timeless] })
-            : payPage([]),
-        );
-
-        await runOver(state, [], NOW, { fetchPayHistory: inOwedDay });
-
-        expect(state.imported).toEqual(new Set([keyOf(state, beside)]));
-        expect(beyondWindow(state.pending)).toEqual([stuckDay]);
-      });
-
-      it('owes the whole day when the order carries a time outside the day it was read in', async () => {
-        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
-        const outside = { ...funded, transactionTime: stuckDay.end + 5 * DAY_MS };
-        const beside = order({ transactionId: 'beside', transactionTime: stuckAt + 10 });
-        const inOwedDay = jest.fn(async (_apiKey: string, _secret: string, query: PayQuery) =>
-          query.startTime < NOW - PAY_WINDOW_MS
-            ? payPage([beside], { btcFundedOtherCoinOrders: [outside] })
-            : payPage([]),
-        );
-
-        await runOver(state, [], NOW, { fetchPayHistory: inOwedDay });
-
-        expect(state.imported).toEqual(new Set([keyOf(state, beside)]));
-        expect(beyondWindow(state.pending)).toEqual([stuckDay]);
       });
 
       it('owes the order at its point in the window re-scan too, and the other orders still import', async () => {
@@ -1579,24 +1551,23 @@ describe('the pending overlap days of a walk', () => {
         const after = order({ transactionId: 'after', transactionTime: NOW - 5 * DAY_MS });
 
         const { result } = await runOver(state, [], NOW, {
-          fetchPayHistory: serverWith([beside, after], [{ ...funded, transactionTime: paidAt }]),
+          fetchPayHistory: serverWith([beside, after, unbalanced({ transactionTime: paidAt })]),
         });
 
         expect(state.imported).toEqual(new Set([keyOf(state, beside), keyOf(state, after)]));
         expect(state.pending).toEqual([pointAt(paidAt)]);
         expect(result.complete).toBe(false);
         expect(warn.mock.calls).toEqual([
-          [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
+          [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-split-mismatch' }],
         ]);
       });
 
       it('still stops the forward pass, cursor unmoved, and imports nothing of that window', async () => {
         const state = stateOf({ payCursor: NOW - 2 * DAY_MS });
         const beside = order({ transactionId: 'beside', transactionTime: NOW - DAY_MS });
-        const paid = { ...funded, transactionTime: NOW - DAY_MS + 5 };
 
         const { result } = await runOver(state, [], NOW, {
-          fetchPayHistory: serverWith([beside], [paid]),
+          fetchPayHistory: serverWith([beside, unbalanced({ transactionTime: NOW - DAY_MS + 5 })]),
         });
 
         expect(result).toEqual({ imported: 0, complete: false });
@@ -2355,18 +2326,99 @@ describe('an order the walk cannot trust stops its window', () => {
 });
 
 describe('orders paid in other coins', () => {
-  const recent = () => payWalkAt(NOW - 3_600_000);
+  const FUNDING = holdingWith('h-funding', { binanceAsset: 'BTC:funding' });
+  const USDT_SPOT = holdingWith('h-usdt', { binanceAsset: 'USDT' });
+  const recent = (alongside: HoldingRow[] = []) =>
+    payWalkWith({ cursor: NOW - 3_600_000 }, alongside);
   const PAID_AT = NOW - 1_800_000;
-  const sentByUser = { payerId: OWN, receiverId: OTHER, transactionTime: PAID_AT };
-  const receivedByUser = { payerId: OTHER, receiverId: OWN, transactionTime: PAID_AT };
+  const usdtOrder = (over: Partial<BinancePayOrder> = {}) =>
+    order({ transactionTime: PAID_AT, currency: 'USDT', ...over });
+  // A USDT order whose cost is short of its funds: the stop a BTC order gets, found per coin.
+  const unbalanced = (over: Partial<BinancePayOrder> = {}) =>
+    usdtOrder({
+      amount: '-5',
+      fundsDetail: [
+        { currency: 'USDT', amount: '5', walletAssetCost: [{ walletType: 2, amount: '4' }] },
+      ],
+      ...over,
+    });
 
-  it('stops the window, cursor unmoved, on a non-BTC order the user paid with BTC funds', async () => {
+  it('imports a non-BTC order the user paid with BTC funds as one BTC Funding row, and moves the cursor', async () => {
+    const paidWithBtc = usdtOrder({
+      amount: '-5',
+      walletType: 1,
+      fundsDetail: costOn(1, '0.0001'),
+    });
+    const deps = makeDeps({
+      ...recent([FUNDING]),
+      fetchPayHistory: forwardPageOf(NOW - 3_600_000, payPage([paidWithBtc])),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 1, complete: true });
+    expect(addedRows(deps)).toEqual([
+      expect.objectContaining({
+        holdingId: 'h-funding',
+        amountMinorUnits: -10_000,
+        externalId: `${WALK_ACCOUNT_ID}:pay:C2C:tx-1:1:BTC`,
+      }),
+    ]);
+    expect(cursorWritesOf(deps)).toEqual([NOW]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('imports a non-BTC order the user received as one receive row in the order coin', async () => {
+    const received = usdtOrder({
+      amount: '5',
+      payerInfo: party('Bob', OTHER),
+      receiverInfo: party('Me', OWN),
+      fundsDetail: costOn(2, '0.0001'),
+    });
+    const deps = makeDeps({
+      ...recent([USDT_SPOT]),
+      fetchPayHistory: jest.fn(async () => payPage([received])),
+    });
+
+    const result = await sync(deps);
+
+    expect(result.complete).toBe(true);
+    expect(addedRows(deps)).toEqual([
+      expect.objectContaining({
+        holdingId: 'h-usdt',
+        amountMinorUnits: 500_000_000,
+        externalId: `${WALK_ACCOUNT_ID}:pay:C2C:tx-1:2:USDT`,
+      }),
+    ]);
+    expect(cursorWritesOf(deps)).toEqual([NOW]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['no party is the user', party('x', '7'), party('y', '8')],
+    ['the parties name no id', party(undefined, undefined), party(undefined, undefined)],
+    ['the user is both parties', party('Me', OWN), party('Me', OWN)],
+  ])('stops on a non-BTC order when %s', async (_label, payerInfo, receiverInfo) => {
     const deps = makeDeps({
       ...recent(),
       fetchPayHistory: forwardPageOf(
         NOW - 3_600_000,
-        payPage([order()], { btcFundedOtherCoinOrders: [sentByUser] }),
+        payPage([usdtOrder({ payerInfo, receiverInfo })]),
       ),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(warn.mock.calls).toEqual([
+      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-direction-ambiguous' }],
+    ]);
+  });
+
+  it('stops the window, cursor unmoved, on a non-BTC order whose costs are not its funds', async () => {
+    const deps = makeDeps({
+      ...recent(),
+      fetchPayHistory: forwardPageOf(NOW - 3_600_000, payPage([unbalanced()])),
     });
 
     const result = await sync(deps);
@@ -2375,46 +2427,7 @@ describe('orders paid in other coins', () => {
     expect(deps.addTransactions).not.toHaveBeenCalled();
     expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([
-      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
-    ]);
-  });
-
-  it('ignores a non-BTC order the user received though the payer paid with BTC funds', async () => {
-    const deps = makeDeps({
-      ...recent(),
-      fetchPayHistory: jest.fn(async () =>
-        payPage([order()], { btcFundedOtherCoinOrders: [receivedByUser] }),
-      ),
-    });
-
-    const result = await sync(deps);
-
-    expect(result.complete).toBe(true);
-    expect(deps.addTransactions).toHaveBeenCalled();
-    expect(cursorWritesOf(deps)).toEqual([NOW]);
-    expect(warn).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['no party is the user', { payerId: '7', receiverId: '8' }],
-    ['the parties name no id', { payerId: undefined, receiverId: undefined }],
-    ['the user is both parties', { payerId: OWN, receiverId: OWN }],
-  ])('stops on a non-BTC order paid with BTC funds when %s', async (_label, parties) => {
-    const unsettled = { ...parties, transactionTime: PAID_AT };
-
-    const deps = makeDeps({
-      ...recent(),
-      fetchPayHistory: forwardPageOf(
-        NOW - 3_600_000,
-        payPage([], { btcFundedOtherCoinOrders: [receivedByUser, unsettled] }),
-      ),
-    });
-
-    const result = await sync(deps);
-
-    expect(result).toEqual({ imported: 0, complete: false });
-    expect(warn.mock.calls).toEqual([
-      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
+      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-split-mismatch' }],
     ]);
   });
 
@@ -2422,9 +2435,9 @@ describe('orders paid in other coins', () => {
     const deps = makeDeps({
       ...payWalkAt(NOW - PAY_WINDOW_MS),
       fetchPayHistory: scripted([
-        fullPage({ btcFundedOtherCoinOrders: [sentByUser] }),
+        fullPage(),
         payPage([order({ transactionId: 'clean' })]),
-        payPage([], { btcFundedOtherCoinOrders: [sentByUser] }),
+        payPage([unbalanced()]),
       ]),
     });
 
@@ -2433,7 +2446,7 @@ describe('orders paid in other coins', () => {
     expect(result).toEqual({ imported: 1, complete: false });
     expect(cursorWritesOf(deps)).toEqual([NOW - PAY_WINDOW_MS + Math.floor(PAY_WINDOW_MS / 2)]);
     expect(warn.mock.calls).toEqual([
-      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
+      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-split-mismatch' }],
     ]);
   });
 });

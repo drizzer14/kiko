@@ -412,9 +412,8 @@ export const fetchWithdrawHistory = async (
 
 /**
  * Only the nickname and the Binance id are read off a counterparty. The id is read for the
- * direction rule and the receiver check of an order paid in another coin, and is never
- * stored or logged; email, phone, account id, country, card number, institution and
- * digital-wallet id are never parsed.
+ * direction rule alone and is never stored or logged; email, phone, account id, country, card
+ * number, institution and digital-wallet id are never parsed.
  */
 const PAY_PARTY_FIELDS = {
   name: optionalText,
@@ -454,8 +453,18 @@ const walletAssetCost = (value: unknown): { walletType: number; amount: string }
       : parseFailure(),
   ) ?? [];
 
+/**
+ * A Pay coin, upper-cased once here like a capital coin (`binanceTickerOf`). A blank one names no
+ * coin, so it cannot be told from a tracked coin: it is unreadable, never an untracked one.
+ */
+const payTicker: Reader<string> = (value) => {
+  const ticker = binanceTickerOf(text(value));
+
+  return ticker === '' ? parseFailure() : ticker;
+};
+
 const readFundsDetailEntry = recordReader({
-  currency: text,
+  currency: payTicker,
   amount: text,
   walletAssetCost,
 });
@@ -465,7 +474,7 @@ const PAY_ORDER_FIELDS = {
   transactionId: identifierOrEmpty,
   transactionTime: finiteNumber,
   amount: text,
-  currency: text,
+  currency: payTicker,
   walletType: optional(walletId),
   walletTypes: optional(listOf(walletId)),
   fundsDetail: (value: unknown) => foldMap(maybe(value), listOf(readFundsDetailEntry)) ?? [],
@@ -485,71 +494,57 @@ export const PAY_PAGE_LIMIT = 100;
 const PAY_SUCCESS_CODE = '000000';
 
 /**
- * One Pay page. The history lists the orders of EVERY coin, but only a BTC order can
- * reach a row, so only `rows` (the BTC orders) are parsed strictly: an order of another
- * coin that is off-contract must not stall the BTC walk. The window walk still needs the
- * whole page, so it reads these from every coin: `gathered`, a full page of
- * `PAY_PAGE_LIMIT` meaning the window holds more orders than one page returns.
+ * A Pay order that no tracked coin is in or was paid in: counted for the pager, never parsed, so
+ * it can be off contract in any way without stalling the tracked orders. Only what the walk needs
+ * is kept: the upper-cased tickers it names (its own coin first, then each coin of its funds
+ * that names one), to list them, and its time as a finite number, or `undefined`, which says
+ * where it sits in a span.
  */
-export type PayHistoryPage = HistoryPage<BinancePayOrder> & {
-  gathered: number;
-  /**
-   * The non-BTC orders that were paid with BTC funds, by the Binance ids of their parties.
-   * Whether BTC left the user's wallet depends on who paid, which only the walk, holding
-   * the user's uid, can tell, so the client reports the parties and leaves the decision.
-   */
-  btcFundedOtherCoinOrders: BtcFundedOtherCoinOrder[];
-};
-
-/**
- * The Binance ids of a non-BTC order's payer and receiver, and its time, which says where it
- * lies in a span; a party that names none, or a time that is no finite number, has `undefined`.
- */
-export type BtcFundedOtherCoinOrder = {
-  payerId: string | undefined;
-  receiverId: string | undefined;
+export type BinanceUntrackedPayOrder = {
+  tickers: string[];
   transactionTime: number | undefined;
 };
 
-type PayItem = {
-  btcOrder: BinancePayOrder | undefined;
-  btcFunded: BtcFundedOtherCoinOrder | undefined;
+/**
+ * One Pay page. The history lists the orders of EVERY coin. An order is read strictly (`rows`)
+ * when its coin or a coin of its funds is tracked, and one that does not parse is `unreadable`,
+ * owed. Any other order is in `untracked`. The window walk needs every order of the page, so
+ * `gathered` counts all three, a full page of `PAY_PAGE_LIMIT` meaning the window holds more
+ * orders than one page returns.
+ */
+export type PayHistoryPage = HistoryPage<BinancePayOrder> & {
+  gathered: number;
+  untracked: BinanceUntrackedPayOrder[];
 };
 
-const readBtcPayOrder = recordReader(PAY_ORDER_FIELDS);
+type PayItem = { order: BinancePayOrder } | { untracked: BinanceUntrackedPayOrder };
 
-const paidWithBtc = (fundsDetail: unknown): boolean =>
-  Array.isArray(fundsDetail) &&
-  fundsDetail.some((entry) => isRecord(entry) && entry.currency === BINANCE_ASSET);
+const readTrackedPayOrder = recordReader(PAY_ORDER_FIELDS);
 
 /**
- * A malformed party reads as no id, never an error: an order of another coin must not
- * stall the walk.
+ * The coins a funds list names, whatever else is wrong with it: an entry that is no object or
+ * names no usable coin is left out, and a list that is no list names none. An order of an
+ * untracked coin must not stall the walk, so nothing here fails.
  */
-const partyIdOf = (party: unknown): string | undefined =>
-  isRecord(party) ? optionalIdentifier(party.binanceId) : undefined;
+const fundsTickersOf = (fundsDetail: unknown): string[] =>
+  (Array.isArray(fundsDetail) ? fundsDetail : []).flatMap((entry) => {
+    const ticker =
+      isRecord(entry) && typeof entry.currency === 'string' ? binanceTickerOf(entry.currency) : '';
 
-const readOtherCoinItem = (order: Record<string, unknown>): PayItem => ({
-  btcOrder: undefined,
-  btcFunded: paidWithBtc(order.fundsDetail)
-    ? {
-        payerId: partyIdOf(order.payerInfo),
-        receiverId: partyIdOf(order.receiverInfo),
-        transactionTime: optionalFiniteNumber(order.transactionTime),
-      }
-    : undefined,
-});
+    return ticker === '' ? [] : [ticker];
+  });
 
 const readPayItem: Reader<PayItem> = (value) => {
-  if (!isRecord(value) || typeof value.currency !== 'string') {
+  if (!isRecord(value)) {
     return parseFailure();
   }
 
-  if (value.currency === BINANCE_ASSET) {
-    return { btcOrder: readBtcPayOrder(value), btcFunded: undefined };
-  }
+  const ticker = payTicker(value.currency);
+  const tickers = [...new Set([ticker, ...fundsTickersOf(value.fundsDetail)])];
 
-  return readOtherCoinItem(value);
+  return tickers.some(isTrackedBinanceAsset)
+    ? { order: readTrackedPayOrder(value) }
+    : { untracked: { tickers, transactionTime: optionalFiniteNumber(value.transactionTime) } };
 };
 
 const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
@@ -561,10 +556,10 @@ const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
   const items = valuesOf(readings);
 
   return {
-    rows: items.flatMap((item) => item.btcOrder ?? []),
+    rows: items.flatMap((item) => ('order' in item ? [item.order] : [])),
     unreadable: unreadableOf(readings),
+    untracked: items.flatMap((item) => ('untracked' in item ? [item.untracked] : [])),
     gathered: readings.length,
-    btcFundedOtherCoinOrders: items.flatMap((item) => item.btcFunded ?? []),
     ...usedWeightsFromHeaders(headers),
   };
 };
