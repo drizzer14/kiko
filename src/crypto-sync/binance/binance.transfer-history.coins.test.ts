@@ -170,6 +170,24 @@ describe('a transfer of a tracked coin', () => {
 
     expect(new Set(added.map((row) => row.externalId)).size).toBe(3);
   });
+
+  it('pairs the legs of each coin of one tranId under a pair id of that coin alone', async () => {
+    const { added } = await walk({
+      MAIN_FUNDING: {
+        rows: [
+          transferOf({ type: 'MAIN_FUNDING' }),
+          transferOf({ type: 'MAIN_FUNDING', asset: 'ETH' }),
+        ],
+      },
+    });
+
+    expect(added.map((row) => [row.externalId, row.exchangePairId])).toEqual([
+      ['acc-1:xfer:MAIN_FUNDING:t-1:BTC', 'acc-1:xfer:MAIN_FUNDING:t-1'],
+      ['acc-1:xfer:MAIN_FUNDING:t-1:BTC:funding', 'acc-1:xfer:MAIN_FUNDING:t-1'],
+      ['acc-1:xfer:MAIN_FUNDING:t-1:ETH', 'acc-1:xfer:MAIN_FUNDING:t-1:ETH'],
+      ['acc-1:xfer:MAIN_FUNDING:t-1:ETH:funding', 'acc-1:xfer:MAIN_FUNDING:t-1:ETH'],
+    ]);
+  });
 });
 
 describe('a transfer of an untracked coin', () => {

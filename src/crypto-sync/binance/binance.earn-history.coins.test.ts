@@ -114,6 +114,47 @@ describe('an Earn record of a tracked coin', () => {
     expect(new Set(world.added.map((row) => row.externalId)).size).toBe(4);
   });
 
+  it('pairs the legs of two coins that share a purchase id under a pair id of that coin alone', async () => {
+    const world = worldOf(caughtUp);
+
+    await walkOnce({
+      world,
+      entries: [
+        entryOf('flexibleSubscription', flexibleSubscriptionOf()),
+        entryOf(
+          'flexibleSubscription',
+          flexibleSubscriptionOf({ asset: 'ETH', amtFromSpot: '0.001' }),
+        ),
+      ],
+    });
+
+    expect(world.added.map((row) => [row.externalId, row.exchangePairId])).toEqual([
+      ['acc-1:earn:sub:flexible:p-1:BTC', 'acc-1:earn:sub:flexible:p-1'],
+      ['acc-1:earn:sub:flexible:p-1:BTC:earn', 'acc-1:earn:sub:flexible:p-1'],
+      ['acc-1:earn:sub:flexible:p-1:ETH', 'acc-1:earn:sub:flexible:p-1:ETH'],
+      ['acc-1:earn:sub:flexible:p-1:ETH:earn', 'acc-1:earn:sub:flexible:p-1:ETH'],
+    ]);
+  });
+
+  it('pairs the legs of two coins that share a redeem id under a pair id of that coin alone', async () => {
+    const world = worldOf(caughtUp);
+
+    await walkOnce({
+      world,
+      entries: [
+        entryOf('flexibleRedemption', flexibleRedemptionOf()),
+        entryOf('flexibleRedemption', flexibleRedemptionOf({ asset: 'ETH' })),
+      ],
+    });
+
+    expect(world.added.map((row) => [row.externalId, row.exchangePairId])).toEqual([
+      ['acc-1:earn:redeem:flexible:r-1:BTC:earn', 'acc-1:earn:redeem:flexible:r-1'],
+      ['acc-1:earn:redeem:flexible:r-1:BTC', 'acc-1:earn:redeem:flexible:r-1'],
+      ['acc-1:earn:redeem:flexible:r-1:ETH:earn', 'acc-1:earn:redeem:flexible:r-1:ETH'],
+      ['acc-1:earn:redeem:flexible:r-1:ETH', 'acc-1:earn:redeem:flexible:r-1:ETH'],
+    ]);
+  });
+
   it('numbers BTC and USDT rewards of one project, type and time each in its own coin', async () => {
     const world = worldOf(caughtUp);
     const time = agoMs(2);

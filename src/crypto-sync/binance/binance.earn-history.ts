@@ -56,11 +56,11 @@ import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import type { BinanceHistoryRow } from './binance.transfer-history';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
-import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
 import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
 import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceWallet, exchangePairIdOf, holdingKeyOf } from './binance.holding-keys';
 
 /** The widest range an Earn history read takes is 30 days. */
 export const EARN_WINDOW_MS = 30 * DAY_MS;
@@ -285,9 +285,9 @@ const debitsOf = (record: SubscriptionRecord, asset: Currency, units: number): D
 };
 
 /**
- * One leg of a move between two wallets of one coin, under the pair id both legs share. Each leg
- * is keyed by the pair id and the key of the holding it sits on, which for BTC is the key it
- * always had.
+ * One leg of a move between two wallets of one coin. `pairId` is the id Binance gives the move,
+ * which two coins can share: each leg is keyed by it and the key of the holding it sits on (for
+ * BTC the key it always had), and the two legs of a coin share its `exchangePairId`.
  */
 const legOf = (input: {
   pairId: string;
@@ -305,7 +305,7 @@ const legOf = (input: {
     amountMinorUnits: input.signedUnits,
     time: input.time,
     externalId: `${input.pairId}:${wallet}`,
-    exchangePairId: input.pairId,
+    exchangePairId: exchangePairIdOf(input.pairId, input.asset),
     description: '',
   };
 };

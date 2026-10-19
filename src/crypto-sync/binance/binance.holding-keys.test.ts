@@ -1,6 +1,7 @@
 import {
   coinHoldingName,
   EARN_KEY,
+  exchangePairIdOf,
   FUNDING_KEY,
   holdingKeyOf,
   partsOfHoldingKey,
@@ -77,6 +78,23 @@ describe('coinHoldingName', () => {
     expect(coinHoldingName('BTC', 'spot')).toBe('Binance Spot · BTC');
     expect(coinHoldingName('BTC', 'funding')).toBe('Binance Funding · BTC');
     expect(coinHoldingName('BTC', 'earn')).toBe('Binance Earn · BTC');
+  });
+});
+
+describe('exchangePairIdOf', () => {
+  it('keeps the id of a BTC pair as Binance gave it', () => {
+    expect(exchangePairIdOf('acc-1:xfer:MAIN_FUNDING:t-1', 'BTC')).toBe(
+      'acc-1:xfer:MAIN_FUNDING:t-1',
+    );
+  });
+
+  it('adds the code of any other coin, so two coins of one id never share a pair', () => {
+    expect(exchangePairIdOf('acc-1:xfer:MAIN_FUNDING:t-1', 'ETH')).toBe(
+      'acc-1:xfer:MAIN_FUNDING:t-1:ETH',
+    );
+    expect(exchangePairIdOf('acc-1:xfer:MAIN_FUNDING:t-1', 'EUR')).toBe(
+      'acc-1:xfer:MAIN_FUNDING:t-1:EUR',
+    );
   });
 });
 

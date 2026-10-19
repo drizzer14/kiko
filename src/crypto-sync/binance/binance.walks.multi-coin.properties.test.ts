@@ -646,7 +646,7 @@ const servedFetch = (world: World): typeof fetch =>
     return { ok: true, status: 200, headers: new Headers(), json: async () => body };
   }) as unknown as typeof fetch;
 
-type StoredRow = { holdingKey: string; units: number; walk: Walk };
+type StoredRow = { holdingKey: string; units: number; walk: Walk; pairId: string | undefined };
 
 type ByWalk = Record<Walk, Set<string>>;
 
@@ -668,7 +668,12 @@ const noTickers = (): ByWalk => ({
 const holdingKeyOfId = (holdingId: string): string =>
   holdingId === 'h-spot' ? 'BTC' : holdingId.slice('h-'.length);
 
-type WrittenRow = { externalId: string; holdingId: string; amountMinorUnits: number };
+type WrittenRow = {
+  externalId: string;
+  holdingId: string;
+  amountMinorUnits: number;
+  exchangePairId?: string;
+};
 
 /** Runs the four walks `ROUNDS` times, a `gap` apart, against one served account and one store. */
 const walkedOver = async (world: World, gap: number): Promise<Outcome> => {
@@ -688,7 +693,12 @@ const walkedOver = async (world: World, gap: number): Promise<Outcome> => {
 
   const write = (walk: Walk) => async (rows: WrittenRow[]) => {
     for (const row of rows) {
-      const next = { holdingKey: holdingKeyOfId(row.holdingId), units: row.amountMinorUnits, walk };
+      const next = {
+        holdingKey: holdingKeyOfId(row.holdingId),
+        units: row.amountMinorUnits,
+        walk,
+        pairId: row.exchangePairId,
+      };
       const previous = outcome.stored.get(row.externalId);
 
       if (
@@ -769,8 +779,25 @@ const tickersOf = (expected: Expected[], field: 'untracked' | 'oversized'): stri
     new Set(expected.flatMap((item) => foldMap(maybe(item[field]), (ticker) => [ticker]) ?? [])),
   );
 
+/** The coins each stored pair id holds: deleting one leg deletes the pair, so it is one coin's. */
+const coinsByPairId = (outcome: Outcome): Map<string, string[]> => {
+  const coins = new Map<string, Set<string>>();
+
+  for (const { pairId, holdingKey } of outcome.stored.values()) {
+    if (pairId !== undefined) {
+      coins.set(pairId, (coins.get(pairId) ?? new Set()).add(holdingKey.split(':')[0]));
+    }
+  }
+
+  return new Map([...coins].map(([pairId, held]) => [pairId, sorted(held)]));
+};
+
 const expectMatches = (world: World, outcome: Outcome) => {
   expect(outcome.collisions).toEqual([]);
+
+  for (const [pairId, coins] of coinsByPairId(outcome)) {
+    expect({ pairId, coins: coins.length }).toEqual({ pairId, coins: 1 });
+  }
 
   for (const walk of WALKS) {
     const expected = world.expected.filter((item) => item.walk === walk);
@@ -909,5 +936,6 @@ describe.each(CLOCK_GAPS)('mixed-coin accounts walked %d ms apart', (gap) => {
 
     expectMatches(world, outcome);
     expect(outcome.stored.size).toBe(coins.length * 5);
+    expect(coinsByPairId(outcome).size).toBe(coins.length * 2);
   });
 });

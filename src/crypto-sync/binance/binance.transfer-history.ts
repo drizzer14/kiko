@@ -65,10 +65,10 @@ import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
-import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BinanceHistoryTooOldError, type FetchAccountOptions } from './binance.client';
+import { type BinanceWallet, exchangePairIdOf, holdingKeyOf } from './binance.holding-keys';
 
 /** Binance does not document the widest range a transfer read takes; 30 days is the working cap. */
 export const TRANSFER_WINDOW_MS = 30 * DAY_MS;
@@ -254,13 +254,14 @@ export const transferRowsOf = (
     throw new BinanceWalkStop(TRANSFER_AMOUNT_INVALID);
   }
 
-  const pairId = `${accountId}:xfer:${readAs}:${record.tranId}`;
+  const transferId = `${accountId}:xfer:${readAs}:${record.tranId}`;
+  const pairId = exchangePairIdOf(transferId, asset);
   const keyOf = (wallet: OwnWallet): string => holdingKeyOf(asset, WALLET_OF[wallet]);
   const legOf = (wallet: OwnWallet, signedUnits: number) => ({
     wallet: keyOf(wallet),
     amountMinorUnits: signedUnits,
     time: record.timestamp,
-    externalId: `${pairId}:${keyOf(wallet)}`,
+    externalId: `${transferId}:${keyOf(wallet)}`,
     description: '',
   });
 

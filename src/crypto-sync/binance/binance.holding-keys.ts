@@ -36,6 +36,14 @@ const keyOf = (code: string, wallet: BinanceWallet): string => `${code}${KEY_SUF
  */
 export const holdingKeyOf = (code: Currency, wallet: BinanceWallet): string => keyOf(code, wallet);
 
+/**
+ * The id the legs of one move of one coin share, from the id Binance gives the move. Two coins
+ * can share that id, and deleting a leg deletes its pair, so a coin other than BTC adds its code;
+ * a BTC pair keeps the id every stored BTC pair already has.
+ */
+export const exchangePairIdOf = (binanceId: string, code: Currency): string =>
+  code === SPOT_KEY ? binanceId : `${binanceId}:${code}`;
+
 type HoldingKeyParts = { code: Currency; wallet: BinanceWallet };
 
 /** The coin and wallet a stored key names; a key `holdingKeyOf` never makes names none. */
