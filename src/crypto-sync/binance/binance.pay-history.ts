@@ -312,7 +312,9 @@ const ownUnitsOf = (order: BinancePayOrder, amount: OrderAmount | undefined): nu
  * shape leaves the wallet unknown. An entry that rounds to nothing at the coin's scale is no row.
  * An order amount of 0 units is dust, so funds of its own coin above dust stop whatever their cost
  * shape: costs and wallets cannot show the dust is what was paid. Only an order whose funds are all
- * in its own coin reaches this with `orderUnits` 0, which BTC's scale never gives.
+ * in its own coin reaches this with `orderUnits` 0, which BTC's scale never gives. A funds entry
+ * with a negative amount stops whatever its cost shape: a sign error, as a negative cost is, and
+ * left to the sum it could cancel a positive entry or turn a row negative.
  */
 const sharesOfCoin = (input: {
   funds: CoinFunds;
@@ -322,11 +324,16 @@ const sharesOfCoin = (input: {
 }): WalletShare[] => {
   const { funds, wallets, declared, orderUnits } = input;
   const { coin, entries } = funds;
-  const entryUnits = (): number =>
-    rowMinorUnits(
-      coin,
-      entries.reduce((sum, entry) => addAmount(coin, sum, entry.amount), '0'),
-    );
+  const entrySum = entries.reduce((sum, entry) => {
+    const next = addAmount(coin, sum, entry.amount);
+
+    if (compareDecimal(entry.amount, '0') < 0) {
+      throw new BinanceWalkStop('pay-amount-invalid');
+    }
+
+    return next;
+  }, '0');
+  const entryUnits = (): number => rowMinorUnits(coin, entrySum);
 
   if (orderUnits === 0 && entryUnits() !== 0) {
     throw new BinanceWalkStop('pay-split-mismatch');

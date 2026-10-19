@@ -621,6 +621,84 @@ describe('a Pay send in a coin stored at a reduced scale', () => {
   });
 });
 
+describe('a Pay send whose funds entry has a negative amount', () => {
+  const costless = (amount: string): Funds => ({
+    currency: 'BTC',
+    amount,
+    walletAssetCost: [],
+  });
+
+  it('stops cost-less BTC entries whose sum is positive, never importing a negative row', () => {
+    const order = sentOrder({
+      amount: '-0.001',
+      walletTypes: [2],
+      fundsDetail: [costless('0.002'), costless('-0.001')],
+    });
+
+    expect(stopOf(order)?.code).toBe('pay-amount-invalid');
+  });
+
+  it('stops cost-less entries of a reduced-scale coin that sum to nothing', () => {
+    const order = sentOrder({
+      currency: 'XRP',
+      amount: '-0.00001',
+      walletTypes: [2],
+      fundsDetail: [
+        { currency: 'XRP', amount: '5', walletAssetCost: [] },
+        { currency: 'XRP', amount: '-5', walletAssetCost: [] },
+      ],
+    });
+
+    expect(stopOf(order)?.code).toBe('pay-amount-invalid');
+  });
+
+  it('stops a costed entry with a negative amount whose costs are right', () => {
+    const order = sentOrder({
+      amount: '-0.001',
+      walletTypes: [2],
+      fundsDetail: [
+        {
+          currency: 'BTC',
+          amount: '-0.001',
+          walletAssetCost: [{ walletType: 2, amount: '0.001' }],
+        },
+      ],
+    });
+
+    expect(stopOf(order)?.code).toBe('pay-amount-invalid');
+  });
+
+  it('stops a negative entry of a coin other than the order coin', () => {
+    const order = usdtSend({
+      fundsDetail: [
+        paidFrom('USDT', '12.5', 1),
+        { currency: 'XRP', amount: '-5', walletAssetCost: [] },
+      ],
+    });
+
+    expect(stopOf(order)?.code).toBe('pay-amount-invalid');
+  });
+
+  it('keeps a zero entry beside a positive one as no extra row', () => {
+    const order = sentOrder({
+      amount: '-0.001',
+      walletTypes: [2],
+      fundsDetail: [costless('0.001'), costless('0')],
+    });
+
+    expect(rowsOf(order).map((row) => row.amountMinorUnits)).toEqual([-100_000]);
+  });
+
+  it('does not read the funds of a receive, so a negative entry there changes nothing', () => {
+    const order = receivedOrder({
+      transactionTime: Date.UTC(2026, 8, 29),
+      fundsDetail: [{ currency: 'USDT', amount: '-12.5', walletAssetCost: [] }],
+    });
+
+    expect(rowsOf(order)).toMatchObject([{ wallet: 'USDT', amountMinorUnits: 1_250_000_000 }]);
+  });
+});
+
 describe('a Pay order in a coin the walk does not track', () => {
   it('imports the tracked funds rows of a send, never reading the order amount as a number of that coin', () => {
     const order = sentOrder({
