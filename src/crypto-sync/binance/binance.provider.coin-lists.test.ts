@@ -188,6 +188,19 @@ describe('binanceProvider — the not-tracked balance list', () => {
     expect(lists().untracked.balance).toEqual(['LDO']);
   });
 
+  it('lists a coin whose code only ends in a tracked coin or an Earn asset', async () => {
+    const wrapped = await run({
+      spot: [
+        ['WBETH', '1'],
+        ['BNSOL', '2'],
+      ],
+    });
+    const held = await run({ spot: [['XXPEPE', '1']], locked: [['PEPE', '1']] });
+
+    expect(wrapped.lists().untracked.balance).toEqual(['BNSOL', 'WBETH']);
+    expect(held.lists().untracked.balance).toEqual(['PEPE', 'XXPEPE']);
+  });
+
   it('hides an LD receipt token of a coin held in Simple Earn', async () => {
     const { lists } = await run({
       spot: [

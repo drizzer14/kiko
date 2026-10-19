@@ -481,6 +481,10 @@ describe('binanceProvider — Earn holding (Flexible + Locked combined)', () => 
     let balances: Awaited<ReturnType<typeof binanceProvider.fetchBalances>>;
     try {
       balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+      expect(warn).toHaveBeenCalledWith('[binance sync] skipped the earn wallet', {
+        name: 'Error',
+        code: undefined,
+      });
     } finally {
       warn.mockRestore();
     }
@@ -501,6 +505,10 @@ describe('binanceProvider — Earn holding (Flexible + Locked combined)', () => 
     let balances: Awaited<ReturnType<typeof binanceProvider.fetchBalances>>;
     try {
       balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+      expect(warn).toHaveBeenCalledWith('[binance sync] skipped the earn wallet', {
+        name: 'Error',
+        code: undefined,
+      });
     } finally {
       warn.mockRestore();
     }
@@ -759,6 +767,58 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
 
     expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('reads past a row that is no object in every wallet body', async () => {
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockResolvedValue({
+      balances: [null, { asset: 'BTC', free: '1', locked: '0' }],
+      uid: null,
+    });
+    deps.fetchFundingAsset.mockResolvedValue([
+      null,
+      { asset: 'BTC', free: '1', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [null, { asset: 'BTC', totalAmount: '1' }],
+      total: 2,
+    });
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
+    expect(byKey(balances, 'BTC:funding')?.balanceMinorUnits).toBe(100_000_000);
+    expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(100_000_000);
+    expect(warn).not.toHaveBeenCalledWith('[binance sync] skipped the funding wallet', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(warn).not.toHaveBeenCalledWith('[binance sync] skipped the earn wallet', {
+      name: 'Error',
+      code: undefined,
+    });
+  });
+
+  it('lists no coin for a Spot row whose asset is no text', async () => {
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockResolvedValue({
+      balances: [
+        { free: '1', locked: '0' },
+        { asset: 5, free: '1', locked: '0' },
+        { asset: 'BTC', free: '1', locked: '0' },
+      ],
+      uid: null,
+    });
+
+    const { balances, exchangeState } = await binanceRead.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(100_000_000);
+    expect(exchangeState).toContainEqual({
+      kind: 'coinList',
+      coins: 'untrackedCoins',
+      list: 'balance',
+      tickers: [],
+    });
   });
 });
 
