@@ -229,6 +229,7 @@ type Account = {
   id: string;
   name: string;
   kind: string;
+  currency?: string;
   institution?: string | null;
   bankId?: string | null;
   archivedAt?: number | null;
@@ -319,6 +320,8 @@ const account = (overrides: Partial<Account> = {}): Account => ({
   id: 'a',
   name: 'Monobank',
   kind: 'bank',
+  // The base currency of every fixture, so an account that names none keeps the base headline.
+  currency: 'UAH',
   institution: null,
   // `bankId` defaults to `null` here, matching the real `AccountRow`'s
   // Drizzle-inferred type (a nullable column is `string | null`, never
@@ -484,6 +487,41 @@ describe('AccountDetailScreen', () => {
     const { getByText } = await renderScreen();
     // The converted overall amount is unique to the headline MoneyText.
     expect(getByText(/3,000\.00 ₴/).props.testID).toBe('text-tone-textPrimary');
+  });
+
+  describe('the account currency', () => {
+    it('totals a USD account in dollars with the base figure beneath', async () => {
+      setLiveData({ ...multiCurrencyData, accounts: [account({ currency: 'USD' })] });
+      const { getByText, getByTestId } = await renderScreen();
+
+      expect(getByText('$75.00')).toBeTruthy();
+      expect(within(getByTestId('account-detail-converted')).getByText(/3,000\.00 ₴/)).toBeTruthy();
+      expect(getByText('UAH')).toBeTruthy();
+      expect(getByText('USD')).toBeTruthy();
+    });
+
+    it('shows no caption for an account in the base currency', async () => {
+      setLiveData(multiCurrencyData);
+      const { queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('account-detail-converted')).toBeNull();
+    });
+
+    it('shows a crypto account its own sum, with no caption and no throw', async () => {
+      setLiveData({
+        accounts: [account({ kind: 'crypto', currency: 'BTC' })],
+        holdings: [
+          { id: 'h1', name: 'Cold wallet', currency: 'BTC', balanceMinorUnits: 50_000_000 },
+        ],
+        rates: [],
+      });
+      const { getAllByText, queryByText, queryByTestId } = await renderScreen();
+
+      // The headline, the holding row and the breakdown line each show the BTC sum.
+      expect(getAllByText('₿0.50')).toHaveLength(3);
+      expect(queryByText(/0\.00 ₴/)).toBeNull();
+      expect(queryByTestId('account-detail-converted')).toBeNull();
+    });
   });
 
   it('navigates to HoldingDetail when a holding row is pressed', async () => {

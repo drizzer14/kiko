@@ -48,12 +48,13 @@ import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { removeHoldingsNoticeOf } from '@kiko/transactions/remove-notice';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
+import { accountTotal, buildRateTable } from '@kiko/rates/net-worth-view';
 import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
-import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import ConvertedCaption from '@kiko/design-system/components/converted-caption';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
@@ -284,13 +285,22 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { closeActionFor, closeSheet } = useCloseHoldingAction(account);
 
   // Reuse the accounts-list conversion path: sum this account's open holdings
-  // into the base currency, then list each currency's own total beneath.
+  // into the account's currency (the same `accountTotal` the account card shows), with the
+  // base-currency figure beneath it, then list each currency's own total beneath.
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
   // Deposit/bond holdings grow with time, so net worth is evaluated as of now —
   // otherwise their accrued value never reflects in the account balance.
   const now = Date.now();
-  const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now, priceBook);
+  // The account row may not have loaded yet; the headline reads the base currency until it has.
+  const { total: overallBalance, inBase: overallInBase } = accountTotal(
+    activeHoldings,
+    account?.currency ?? baseCurrency,
+    baseCurrency,
+    rateTable,
+    now,
+    priceBook,
+  );
   const breakdown = sumByCurrency(activeHoldings, now, priceBook);
   // The grid renders in the query's order — `listByAccountQuery` already sorts by
   // the user-controlled `sortOrder` (the drag-and-drop order), so manual drag
@@ -443,6 +453,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             money={overallBalance}
             context="balance"
             icon={<EntityHeaderIcon identity={identity} />}
+            secondary={<ConvertedCaption money={overallInBase} testID="account-detail-converted" />}
           />
           <Box style={styles.breakdown}>
             <CurrencyBreakdown items={breakdown} />
