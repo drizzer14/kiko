@@ -334,10 +334,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // the swap replaces this screen (see `handleSelectKind`).
   const [pickedImplicitKind, setPickedImplicitKind] = useState<Kind | undefined>(undefined);
   const [currency, setCurrency] = useState<Currency>(opening.currency);
-  // The account currency of every non-cash kind, on create and on edit. null = untouched: the
-  // field then shows the base, but the write gets null, so the base is read inside the write
-  // (a create) or the stored currency is left alone (an update). A cash create has no such
-  // pick: its `currency` above is both the cash holding's and the account's.
+  // The account currency of every non-cash create and of every edit, cash included (an edit
+  // seeds it from the stored value). null = untouched: the field then shows the base, but the
+  // write gets null, so the base is read inside the write (a create) or the stored currency is
+  // left alone (an update). A cash create has no such pick: its `currency` above is both the
+  // cash holding's and the account's.
   const [accountCurrency, setAccountCurrency] = useState<Currency | null>(opening.accountCurrency);
   const [initialValue, setInitialValue] = useState(opening.initialValue);
   // A create form seeds the icon with the initially-selected kind's default

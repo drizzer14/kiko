@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
@@ -12,6 +12,7 @@ import {
 } from '@kiko/test-support/navigation-props';
 import { pressSave } from '@kiko/test-support/form-header-items';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
+import { selectKind } from '@kiko/test-support/account-form-test-support';
 
 import AccountFormScreen from './account-form.screen';
 
@@ -67,16 +68,15 @@ jest.mock(
   () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
 );
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
-jest.mock('@kiko/sync/use-sync', () => ({
-  useSync: () => ({ isSyncing: false, error: undefined, sync: jest.fn() }),
-}));
-jest.mock('@kiko/sync/use-crypto-sync', () => ({
-  useCryptoSync: () => ({
-    isSyncing: false,
-    error: undefined,
-    sync: (...args: unknown[]) => mockCryptoSync(...args),
-  }),
-}));
+jest.mock('@kiko/sync/use-sync', () =>
+  require('@kiko/test-support/account-form-test-support').idleSyncModule('useSync', jest.fn()),
+);
+jest.mock('@kiko/sync/use-crypto-sync', () =>
+  require('@kiko/test-support/account-form-test-support').idleSyncModule(
+    'useCryptoSync',
+    (...args: unknown[]) => mockCryptoSync(...args),
+  ),
+);
 // The shared crypto sync form owns its fields' inputs and Keychain writes. Here the wallet field
 // is one pressable that fires the screen's Connect, and the Binance field renders nothing.
 jest.mock('@kiko/design-system/components/wallet-address-field', () => {
@@ -108,16 +108,6 @@ const renderForm = async (params: RouteParams = {}): Promise<Rendered> => {
   );
 
   return { ...view, navigation };
-};
-
-const selectKind = async (
-  getByTestId: Rendered['getByTestId'],
-  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals' | 'debt' | 'broker',
-): Promise<void> => {
-  await fireEvent.press(getByTestId('account-kind-field'));
-  const sheet = getByTestId('account-kind-field-sheet-modal');
-  await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
-  await act(async () => sheet.props.onDismiss());
 };
 
 const pickCurrency = async (view: Rendered, code: string): Promise<void> => {
@@ -189,6 +179,21 @@ describe('the account currency field on a create form', () => {
 
   it('saves null, never the base it shows, when the user picked nothing', async () => {
     const view = await renderBankForm();
+
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'bank', currency: null }),
+    );
+  });
+
+  it('shows the settings default while the settings row is not read, and still saves null', async () => {
+    mockSettings = [];
+    const view = await renderBankForm();
+
+    expect(view.getByTestId('account-currency-field')).toHaveTextContent('Ukrainian Hryvnia', {
+      exact: false,
+    });
 
     await pressSave(view.navigation.setOptions);
 

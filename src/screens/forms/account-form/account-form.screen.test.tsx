@@ -13,6 +13,7 @@ import {
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
+import { selectKind } from '@kiko/test-support/account-form-test-support';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
@@ -46,20 +47,6 @@ const selectedSwatchHex = (
   }
 
   return undefined;
-};
-
-// Opens the AccountKindField sheet and picks the given kind — every kind
-// switch goes through this trigger-press -> option-press pair, matching
-// the field's own sheet-based interaction.
-const selectKind = async (
-  getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
-  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals' | 'debt' | 'broker',
-): Promise<void> => {
-  await fireEvent.press(getByTestId('account-kind-field'));
-  const sheet = getByTestId('account-kind-field-sheet-modal');
-  await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
-  // The sheet's close animation ending, which is when a swap may navigate.
-  await act(async () => sheet.props.onDismiss());
 };
 
 // A new bank account cannot Save until a bank is picked; tests about anything
@@ -219,20 +206,18 @@ jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
-jest.mock('@kiko/sync/use-sync', () => ({
-  useSync: () => ({
-    isSyncing: false,
-    error: undefined,
-    sync: (...args: unknown[]) => mockMonobankSync(...args),
-  }),
-}));
-jest.mock('@kiko/sync/use-crypto-sync', () => ({
-  useCryptoSync: () => ({
-    isSyncing: false,
-    error: undefined,
-    sync: (...args: unknown[]) => mockCryptoSync(...args),
-  }),
-}));
+jest.mock('@kiko/sync/use-sync', () =>
+  require('@kiko/test-support/account-form-test-support').idleSyncModule(
+    'useSync',
+    (...args: unknown[]) => mockMonobankSync(...args),
+  ),
+);
+jest.mock('@kiko/sync/use-crypto-sync', () =>
+  require('@kiko/test-support/account-form-test-support').idleSyncModule(
+    'useCryptoSync',
+    (...args: unknown[]) => mockCryptoSync(...args),
+  ),
+);
 // The crypto create form now reuses the shared Wallet|Binance sync form
 // (CryptoSyncForm). Its two leaf fields own their own inputs, validation, and
 // Keychain writes (covered by their own tests); here each collapses to one

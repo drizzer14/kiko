@@ -516,9 +516,11 @@ describe('AccountDetailScreen', () => {
         ],
         rates: [],
       });
-      const { getByTestId, queryByText, queryByTestId } = await renderScreen();
+      const { getAllByText, getByTestId, queryByText, queryByTestId } = await renderScreen();
 
       expect(within(getByTestId('account-detail-headline')).getByText('₿0.50')).toBeTruthy();
+      // The headline, the holding row and the per-currency breakdown each carry the amount.
+      expect(getAllByText('₿0.50').length).toBeGreaterThan(2);
       expect(queryByText(/0\.00 ₴/)).toBeNull();
       expect(queryByTestId('account-detail-converted')).toBeNull();
     });
