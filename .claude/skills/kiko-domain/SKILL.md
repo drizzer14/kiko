@@ -1420,15 +1420,20 @@ offline seed, so an unrated crypto holding is excluded until a live
 CoinGecko price lands) — every fiat currency is covered by the bundled
 seed and effectively never drops.
 
-An account card's total is `accountTotal(holdings, account.currency,
+An account's total, on its card (`AccountTotal`) and in the
+account-detail headline
+(`src/screens/account-detail/account-detail.screen.tsx`; before the
+row loads it falls back to `account?.currency ?? baseCurrency`, hidden
+by the loading gate), is `accountTotal(holdings, account.currency,
 baseCurrency, rates, now, book)`
 (`src/rates/net-worth-view/account-total.ts`): `total` is
 `guardedNetWorth` in the ACCOUNT's currency, and `inBase` is
 `guardedNetWorth` in the base currency (not a re-conversion of
 `total`, so no double rounding through the UAH pivot); `inBase` is
 `null` when the account is in the base currency or
-`canConvert(account, base)` is false. The card's caption
-(`ConvertedCaption`) renders only for a non-null `inBase`.
+`canConvert(account, base)` is false. The caption
+(`ConvertedCaption`, card and detail alike) renders only for a
+non-null `inBase`.
 
 `buildTypeBreakdown` (`src/statistics/type-breakdown/`, the by-type
 bar) is ASSETS ONLY, the same per-HOLDING rule the account pie follows

@@ -251,8 +251,12 @@ file.
 - Modify: `src/screens/account-detail/account-detail.screen.tsx`:
   - `overallBalance` (today `guardedNetWorth(activeHoldings, baseCurrency, ...)`) becomes
     `accountTotal(activeHoldings, account.currency, baseCurrency, rateTable, now, priceBook)`.
-    Before the account row loads, it falls back to `baseCurrency`, as the screen's other
-    account-dependent reads do.
+    Before the account row loads, it falls back to `baseCurrency`
+    (`account?.currency ?? baseCurrency`); the loading gate hides this, so it renders only for
+    a row missing after load.
+    Known interim state until task 6/6: an implicit account's Property/Debts heading shows the
+    base total while its detail page shows the account currency (spec D6 parity is restored by
+    task 6/6; the merge waits for 6/6).
   - `EntityAmountHeader` takes `money={total}` and
     `secondary={<ConvertedCaption money={inBase} testID="account-detail-converted" />}`.
   - `CurrencyBreakdown` stays unchanged.
@@ -282,7 +286,8 @@ file.
   - `account({ currency: 'BTC' })` with one BTC holding and no BTC rate: the headline shows the BTC
     amount, there is no caption, and nothing throws.
 
-  Run `npx jest src/screens/account-detail/account-detail.screen.test.tsx`: the new cases FAIL.
+  Run `npx jest src/screens/account-detail/account-detail.screen.test.tsx`: the USD and BTC
+  cases FAIL; the UAH no-caption case is a negative pin and passes before the change.
 - [ ] **step 2/4: implement** as described under Files. Re-run: every case passes, and the pins
   above are unchanged.
 - [ ] **step 3/4: typecheck + scoped run.** Run `npm run check:typecheck` and
@@ -350,13 +355,17 @@ file.
     `property-total-converted` in `₴`.
   - A debt account in base: no caption, and the existing totals are unchanged.
   - An edit of an implicit property account shows `account-currency-field` and saves `currency`.
+  - An implicit property account in USD with UAH items and a rate: the section heading total and
+    caption equal the account detail's headline and `account-detail-converted` (same
+    `accountTotal` inputs). The same for a debts account.
 
   Run `npx jest src/screens/accounts src/screens/forms/account-form`: it FAILS.
 - [ ] **step 2/4: implement.**
 - [ ] **step 3/4: scoped run + typecheck.**
 - [ ] **step 4/4: commit.** `feat(accounts): property and debts totals follow their account currency`.
 
-**Checks:** tests red then green; existing section-total pins unchanged; heading a11y test (it reads
+**Checks:** tests red then green; heading/detail parity pin; existing section-total pins
+unchanged; heading a11y test (it reads
 the total) re-checked.
 
 ---

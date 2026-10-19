@@ -761,9 +761,12 @@ new component can land between reviews of this skill:
   base-currency figure under a total (caption, `textSecondary`,
   `formatMoney`). `money: null` renders nothing, so a caller passes
   `null` for "same currency" or "no rate" instead of guarding the
-  element. Consumer: the account card (`AccountTotal`, testID
-  `account-card-converted`). It follows the holding card's
-  converted-to-base caption pattern.
+  element. Consumers: `AccountTotal`
+  (`src/screens/accounts/account-total/`, the account card, testID
+  passed as `convertedTestID`), `HoldingCard`
+  (`holding-card-converted`) and the account-detail headline
+  (`account-detail-converted`, through `EntityAmountHeader`'s
+  `secondary`). Find them with `grep -rn ConvertedCaption src`.
 - **Button** — the one action button: primary/secondary/secondaryTonal/
   destructive/destructiveTonal/ghost variants (read
   `button.props.d.ts`'s `ButtonVariant` for the exact current set
