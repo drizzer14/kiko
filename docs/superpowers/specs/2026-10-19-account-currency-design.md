@@ -103,7 +103,7 @@ holding, transaction or amount is rewritten (ruling 7).
   would silently drop it. After its own later upgrade it would re-derive a different currency by
   the rule, so the older build refuses the file by its version. `migrationCount: 63`. The
   architecture skill's default (a column riding in a row and derived on restore needs no bump)
-  points the other way: see Open question Q2. The derive step is presence-gated, not
+  points the other way: see Q2. The derive step is presence-gated, not
   version-gated, so either outcome of Q2 needs no code change beyond `envelope.ts` and the test.
 - Demo `.kiko` regeneration: `KIKO_REGEN_DEMO=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts`,
   then the same command without the variable. `build-demo-snapshot.ts` sets each account's
@@ -272,7 +272,7 @@ and kept only as the backfill.
 | empty, migrated | none | any | base 0 | none | base 0 |
 | cash USD, edited to EUR | cash USD 100 | rates | €(converted) | ₴ | n/a; holding stays USD 100 |
 
-## User rulings 2026-10-19 (Q1-Q4) and orchestrator defaults (Q5-Q7)
+## User rulings (Q1, Q3, Q4: 2026-10-19; Q2: ruling 4, 2026-10-18) and orchestrator defaults (Q5-Q7)
 
 **Q1. Which holdings decide the backfill currency? USER RULING: A.**
 Open holdings only (`closed_at IS NULL`), on every account, archived ones included. This matches
@@ -280,7 +280,7 @@ what the card sums. An account whose only foreign holding is closed gets the cur
 holdings.
 - was: open question. Option B (open and closed holdings) was rejected.
 
-**Q2. EXPORT_VERSION bump for 0062? USER RULING: A.**
+**Q2. EXPORT_VERSION bump for 0062? A: USER RULING 4, 2026-10-18 (format version bump + back-compat).**
 Bump to 5, with `READABLE_EXPORT_VERSIONS` `[1, 2, 3, 4, 5]`. Every version 4 build (1.2) refuses
 every file that 1.3 writes, so a downgrade cannot silently drop the user's picks.
 - was: open question. Option B (no bump, the kiko-architecture default) was rejected. Its

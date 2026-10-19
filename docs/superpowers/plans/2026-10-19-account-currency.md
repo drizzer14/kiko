@@ -15,8 +15,8 @@ and an `AccountTotal` view.
 **Tech Stack:** Drizzle + op-sqlite (migrations through `run-migrations.ts`), `node:sqlite` tests
 (`src/test-support/real-sqlite.ts`), React Native, i18next.
 
-**Spec:** `docs/superpowers/specs/2026-10-19-account-currency-design.md` (D1-D9; Q1-Q4 are user rulings of
-2026-10-19, and Q5-Q7 are orchestrator defaults that the plan applies).
+**Spec:** `docs/superpowers/specs/2026-10-19-account-currency-design.md` (D1-D9; Q1, Q3 and Q4 are user rulings of
+2026-10-19, Q2 is USER RULING 4, 2026-10-18 (format version bump + back-compat), and Q5-Q7 are orchestrator defaults that the plan applies).
 
 ## Global Constraints
 
