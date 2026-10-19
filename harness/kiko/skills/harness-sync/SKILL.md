@@ -186,12 +186,11 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
 
 ### Environment (plugin/** edits)
 
-Settings `defaultMode: "auto"` makes role agents' `plugin/**` edits fail, even after the
-orchestrator leaves auto mode, and the mode can return by itself. The RTK PreToolUse hook
-rewrites Bash calls, so auto mode gives "no verdict" on them (git included). `/permissions`
-grants do not help. Ask the user to turn auto mode off (accept-edits worked) in that
-orchestrator's own terminal BEFORE the plugin text change set; see memory
-`harness-repo-plugin-edits-need-auto-mode-off`.
+Sync orchestrators run in AUTO MODE (user ruling 2026-10-19). The auto mode environment list
+in `~/.claude/settings.json` names drizzer14/harness as a trusted repo, so a session started after
+that entry writes `plugin/**` in auto mode. On "classifier gave no verdict", check that entry
+and start a FRESH session. Never ask the user to leave auto mode. A denial that persists goes
+to the user as a patch list. See memory `harness-repo-plugin-edits-need-auto-mode-off`.
 
 ## BATCH READY format
 
