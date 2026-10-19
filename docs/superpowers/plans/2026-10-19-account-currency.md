@@ -313,6 +313,9 @@ file.
 - Modify: `src/i18n/locales/en.ts`, `src/i18n/locales/uk.ts` (`forms.account.currencyHint`, spec D8)
 - Create or modify tests: a focused `account-form.account-currency.test.tsx`, or a few cases in
   `account-form.screen.test.tsx` (the developer picks the one that passes `dup.sh` alone)
+- Built: a focused `account-form.account-currency.test.tsx` plus fixture edits in
+  `account-form.screen.test.tsx`; the stale 'no account-currency-field for metals' pin there now
+  asserts the cash-only 'Initial value' field is absent.
 
 - [ ] **step 1/5: failing form tests.**
   - Create bank: the field shows the base (USD from settings); a pick of EUR, then Save, calls
@@ -328,7 +331,8 @@ file.
 
   Run `npx jest src/screens/forms/account-form`: it FAILS.
 - [ ] **step 2/5: implement** (spec D5). The field and hint render under the kind field, before
-  the bank/crypto sync sections.
+  the bank/crypto sync sections. Placement as built: after the cash initial-value block, before
+  the bank/broker picker.
 - [ ] **step 3/5: i18n.** Add the key in en and uk. Run
   `npx jest src/i18n/locales src/screens/forms/account-form`. The casing and full-stop suites pass,
   and there is no `TITLE_KEYS` change.
@@ -350,6 +354,9 @@ file.
   edit)
 - Modify tests: `accounts.screen.test.tsx` (a few cases), the account-form currency test file
 
+- Before adding the field to implicit kinds, grep the tests for absence pins of
+  `account-currency-field` on property/debt edit (for example `account-form.account-currency.test.tsx`
+  'no field on property/debt edit') and flip them in the same commit.
 - [ ] **step 1/4: failing tests.**
   - A property account in USD with UAH items and a rate: the section total is in `$`, with
     `property-total-converted` in `₴`.

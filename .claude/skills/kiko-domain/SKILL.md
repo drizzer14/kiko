@@ -34,7 +34,14 @@ absent** — this skill states the shape and non-enum facts only:
   (nullable), `createdAt`, `currency` (`schema.ts` `accounts.currency`,
   migration `0062`). `accountCurrencyOf` derives it only for migrated and
   restored pre-0062 rows; a new account takes the cash pick
-  (`createCashAccount`) or the base read inside the write (`null` = base).
+  (`createCashAccount`, which sets both the cash holding's and the
+  account's currency), the user's raw pick on a non-cash create
+  (`AccountFormDraft.accountCurrency`, passed as `saveFormAccount`'s
+  `currency`), or the base read inside the write when that pick is untouched
+  (`null` = base; the form never sends `pick ?? base`). An edit writes only
+  `accounts.currency`, and only when the user changed it (`currencyPatch` in
+  `src/screens/forms/account-form/account-form.screen.tsx`); holdings and
+  amounts are untouched, for a cash account too.
   Never re-derive a stored account currency after creation: a base change
   or a new foreign holding never moves it (ruling 5,
   `src/accounts/accounts.repo.currency.test.ts`). `holdingTypesForAccountKind`
@@ -101,9 +108,10 @@ absent** — this skill states the shape and non-enum facts only:
   `accountsRepo.createIfAbsent` (one write that selects the row and returns
   early when it exists, so it writes no sort order and no second writer can
   fail on the key), and Save is one `accountsRepo.saveFormAccount` call (one
-  write that selects the row and updates name, color, icon and bank, or
-  inserts it, with the sort order only on insert), never a decision from a
-  copy of component state. A fold remounts the screen but the OLD instance's
+  write that selects the row and updates name, color, icon, bank and, when
+  the pick is non-null, currency, or inserts it, with the sort order only on
+  insert), never a decision from a copy of component state. A fold remounts
+  the screen but the OLD instance's
   in-flight Connect still runs, so the draft (`AccountFormDraft`) keeps
   `pendingAccountId` and nothing about the row; the remounted form asks the
   write queue (`usePendingRowLock`) before it unlocks the kind and bank
