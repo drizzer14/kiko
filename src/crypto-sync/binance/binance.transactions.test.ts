@@ -2597,3 +2597,91 @@ describe('the pending overlap days of the capital walk', () => {
     ]);
   });
 });
+
+describe('the key of a capital record Binance sent with no id', () => {
+  const usdtHolding = { id: 'h-usdt', metadata: { binanceAsset: 'USDT' } } as unknown as HoldingRow;
+  const noId = { id: '', txId: '0xabc' };
+
+  /** A history that holds `rows` only in the span ending at now, so no span behind it reads any. */
+  const rowsAtNow = <Row>(rows: Row[]) =>
+    jest.fn(async (_apiKey: string, _secret: string, window: HistoryWindow) =>
+      historyPage(window.endTime === NOW ? rows : []),
+    );
+
+  const depsOver = (over: Partial<BinanceTransactionSyncDeps>) =>
+    makeDeps({
+      listHoldings: async () => [spotHolding, usdtHolding],
+      ...walkStateFake({ accountId: ACCOUNT_ID, marks: { capital: { cursor: NOW - 3 * DAY_MS } } })
+        .deps,
+      ...over,
+    });
+
+  it('imports a BTC and a USDT deposit of one on-chain transaction as two rows on their holdings', async () => {
+    const deps = depsOver({
+      fetchDepositHistory: rowsAtNow([
+        deposit({ ...noId, coin: 'BTC' }),
+        deposit({ ...noId, coin: 'USDT', amount: '12.5' }),
+      ]),
+    });
+
+    const result = await sync(deps);
+
+    expect(
+      addedRows(deps).map((row) => [row.externalId, row.holdingId, row.amountMinorUnits]),
+    ).toEqual([
+      ['acc-1:deposit:0xabc', 'h-spot', 50_000_000],
+      ['acc-1:deposit:0xabc:USDT', 'h-usdt', 1_250_000_000],
+    ]);
+    expect(result).toEqual({ imported: 2, complete: true });
+  });
+
+  it('imports a BTC and a USDT withdrawal of one on-chain transaction as two rows on their holdings', async () => {
+    const deps = depsOver({
+      fetchWithdrawHistory: rowsAtNow([
+        withdrawal({ ...noId, coin: 'BTC' }),
+        withdrawal({ ...noId, coin: 'USDT', amount: '1.5' }),
+      ]),
+    });
+
+    await sync(deps);
+
+    expect(
+      addedRows(deps).map((row) => [row.externalId, row.holdingId, row.amountMinorUnits]),
+    ).toEqual([
+      ['acc-1:withdraw:0xabc', 'h-spot', -25_000_000],
+      ['acc-1:withdraw:0xabc:USDT', 'h-usdt', -150_000_000],
+    ]);
+  });
+
+  it('keeps a BTC deposit and withdrawal with no id keyed by the bare transaction id', async () => {
+    const deps = depsOver({
+      fetchDepositHistory: rowsAtNow([deposit(noId)]),
+      fetchWithdrawHistory: rowsAtNow([withdrawal(noId)]),
+    });
+
+    await sync(deps);
+
+    expect(importedKeysOf(deps)).toEqual(['acc-1:deposit:0xabc', 'acc-1:withdraw:0xabc']);
+  });
+
+  it('keeps a USDT deposit and withdrawal that has an id keyed by that id alone', async () => {
+    const deps = depsOver({
+      fetchDepositHistory: rowsAtNow([deposit({ id: '42', txId: '0xabc', coin: 'USDT' })]),
+      fetchWithdrawHistory: rowsAtNow([withdrawal({ id: '7', txId: '0xabc', coin: 'USDT' })]),
+    });
+
+    await sync(deps);
+
+    expect(importedKeysOf(deps)).toEqual(['acc-1:deposit:42', 'acc-1:withdraw:7']);
+  });
+
+  it('looks a USDT row up in the store by its new key, whatever case Binance wrote the coin in', async () => {
+    const deps = depsOver({
+      fetchDepositHistory: rowsAtNow([deposit({ ...noId, coin: 'usdt' })]),
+    });
+
+    await sync(deps);
+
+    expect(deps.storedExternalIds).toHaveBeenCalledWith(['acc-1:deposit:0xabc:USDT']);
+  });
+});

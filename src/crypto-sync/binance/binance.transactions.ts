@@ -181,8 +181,18 @@ export const parseWithdrawTime = (applyTime: string | number): number => {
   return Date.parse(`${applyTime.replace(' ', 'T')}Z`);
 };
 
-/** Binance's own record id, falling back to the on-chain tx id, or '' if neither. */
-const recordKey = (record: { id: string; txId: string }): string => record.id || record.txId || '';
+/**
+ * Binance's own record id, falling back to the on-chain tx id, or '' if neither. One on-chain
+ * transaction can carry two coins, so a non-BTC row keyed by the tx id carries its coin: its key
+ * stays apart from the BTC row's, which keeps the bare tx id every stored BTC row already has.
+ */
+const recordKey = (record: { id: string; txId: string }, ticker: string): string => {
+  if (record.id) {
+    return record.id;
+  }
+
+  return record.txId && ticker !== 'BTC' ? `${record.txId}:${ticker}` : record.txId || '';
+};
 
 /**
  * A capital movement lands on the wallet Binance names: `walletType` 0 is Spot, 1
@@ -240,8 +250,8 @@ const plannedRowOf = (input: {
   time: number;
 }): PlannedRow => {
   const { accountId, kind, direction, record, time } = input;
-  const key = recordKey(record);
   const ticker = binanceTickerOf(record.coin);
+  const key = recordKey(record, ticker);
 
   if (key === '') {
     throw new BinanceWalkStop('capital-id-missing');

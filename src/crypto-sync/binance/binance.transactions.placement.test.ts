@@ -281,6 +281,50 @@ describe('capital placement on real SQLite, with no Spot BTC holding', () => {
   });
 });
 
+describe('a BTC and a USDT record of one on-chain transaction with no id, on real SQLite', () => {
+  const noId = { id: '', txId: '0xabc' };
+
+  beforeEach(() => {
+    mockDatabase = openDatabase();
+  });
+
+  it('stores two rows on their own holdings, and a second identical run stores no third', async () => {
+    const deposits = [deposit({ ...noId }), deposit({ ...noId, coin: 'USDT', amount: '12.5' })];
+
+    const firstRun = await runWalk(deposits);
+    const secondRun = await runWalk(deposits);
+
+    const usdtHolding = mockDatabase
+      .prepare("SELECT id FROM holdings WHERE json_extract(metadata, '$.binanceAsset') = 'USDT'")
+      .get() as { id: string };
+    expect(firstRun).toEqual({ imported: 2, complete: true });
+    expect(secondRun).toEqual({ imported: 0, complete: true });
+    expect(storedRows()).toEqual([
+      { external_id: 'acc-1:deposit:0xabc', holding_id: 'h-spot', amount_minor_units: 50_000_000 },
+      {
+        external_id: 'acc-1:deposit:0xabc:USDT',
+        holding_id: usdtHolding.id,
+        amount_minor_units: 1_250_000_000,
+      },
+    ]);
+  });
+
+  it('stores the withdrawal twin as two rows', async () => {
+    await runWalk(
+      [],
+      [
+        withdrawal({ ...noId, coin: 'BTC', amount: '0.25' }),
+        withdrawal({ ...noId, amount: '1.5' }),
+      ],
+    );
+
+    expect(storedRows().map((row) => row.external_id)).toEqual([
+      'acc-1:withdraw:0xabc',
+      'acc-1:withdraw:0xabc:USDT',
+    ]);
+  });
+});
+
 describe('a USDT withdrawal on real SQLite', () => {
   type SpendingRow = {
     id: string;
