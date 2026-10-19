@@ -155,7 +155,7 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    const result = await accountsRepo.create({ name: 'Savings', kind: 'bank' });
+    const result = await accountsRepo.create({ name: 'Savings', kind: 'bank', currency: 'UAH' });
 
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
@@ -166,7 +166,12 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ name: 'Savings', kind: 'bank', color: '#FFFFFF' });
+    await accountsRepo.create({
+      name: 'Savings',
+      kind: 'bank',
+      currency: 'UAH',
+      color: '#FFFFFF',
+    });
 
     expect(inserts[0]).toMatchObject({ color: '#FFFFFF' });
   });
@@ -175,7 +180,12 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ name: 'Savings', kind: 'bank', icon: 'banknote' });
+    await accountsRepo.create({
+      name: 'Savings',
+      kind: 'bank',
+      currency: 'UAH',
+      icon: 'banknote',
+    });
 
     expect(inserts[0]).toMatchObject({ icon: 'banknote' });
   });
@@ -184,7 +194,7 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(4);
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ name: 'Savings', kind: 'bank' });
+    await accountsRepo.create({ name: 'Savings', kind: 'bank', currency: 'UAH' });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 5 });
   });
@@ -193,7 +203,7 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(-1);
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ name: 'First', kind: 'bank' });
+    await accountsRepo.create({ name: 'First', kind: 'bank', currency: 'UAH' });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 0 });
   });
@@ -208,7 +218,7 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(1, 2, 2);
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ name: 'Savings', kind: 'bank' });
+    await accountsRepo.create({ name: 'Savings', kind: 'bank', currency: 'UAH' });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 2 });
     expect(updates).toHaveLength(1);
@@ -225,7 +235,7 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 2, 2);
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ name: 'Checking', kind: 'bank' });
+    await accountsRepo.create({ name: 'Checking', kind: 'bank', currency: 'UAH' });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 3 });
     expect(renderCondition(updates[0].set.sortOrder).params).toEqual([2]);
@@ -238,7 +248,7 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 5, 5);
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ name: 'Savings', kind: 'bank' });
+    await accountsRepo.create({ name: 'Savings', kind: 'bank', currency: 'UAH' });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 3 });
     expect(updates).toEqual([]);
@@ -312,7 +322,7 @@ describe('accountsRepo', () => {
       ];
       mockDatabaseTransaction = makeRealOrderDatabaseTransaction(store);
 
-      await accountsRepo.create({ id: 'C', name: 'Checking', kind: 'bank' });
+      await accountsRepo.create({ id: 'C', name: 'Checking', kind: 'bank', currency: 'UAH' });
 
       const activeOrder = store
         .filter((row) => !row.archived)
@@ -335,6 +345,7 @@ describe('accountsRepo', () => {
       id: 'pre-generated-id',
       name: 'Cold',
       kind: 'crypto',
+      currency: 'BTC',
     });
 
     expect(result).toBe('pre-generated-id');
@@ -345,7 +356,12 @@ describe('accountsRepo', () => {
     const { databaseTransaction, conflictTargets } = makeCreateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ id: 'pre-generated-id', name: 'Cold', kind: 'crypto' });
+    await accountsRepo.create({
+      id: 'pre-generated-id',
+      name: 'Cold',
+      kind: 'crypto',
+      currency: 'BTC',
+    });
 
     expect(conflictTargets).toEqual([]);
   });
@@ -359,6 +375,7 @@ describe('accountsRepo', () => {
         id: 'pending-id',
         name: 'Cold',
         kind: 'crypto',
+        currency: 'BTC',
         color: '#112233',
         icon: 'bitcoinsign',
         bankId: null,
@@ -380,7 +397,12 @@ describe('accountsRepo', () => {
       const { databaseTransaction, conflictTargets } = makeCreateDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await accountsRepo.createIfAbsent({ id: 'pending-id', name: 'Cold', kind: 'crypto' });
+      await accountsRepo.createIfAbsent({
+        id: 'pending-id',
+        name: 'Cold',
+        kind: 'crypto',
+        currency: 'BTC',
+      });
 
       expect(conflictTargets).toHaveLength(1);
       expect(conflictTargets[0] === accounts.id).toBe(true);
@@ -391,7 +413,12 @@ describe('accountsRepo', () => {
       mockDatabaseTransaction = databaseTransaction;
 
       await expect(
-        accountsRepo.createIfAbsent({ id: 'pending-id', name: 'Loan', kind: 'debt' }),
+        accountsRepo.createIfAbsent({
+          id: 'pending-id',
+          name: 'Loan',
+          kind: 'debt',
+          currency: 'UAH',
+        }),
       ).rejects.toThrow('implicit');
       expect(inserts).toEqual([]);
     });
@@ -407,6 +434,7 @@ describe('accountsRepo', () => {
         id: 'pending-id',
         name: 'Cold',
         kind: 'crypto',
+        currency: 'BTC',
       });
 
       expect(result).toBe('pending-id');
@@ -418,7 +446,12 @@ describe('accountsRepo', () => {
       const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 2, 2);
       mockDatabaseTransaction = databaseTransaction;
 
-      await accountsRepo.createIfAbsent({ id: 'pending-id', name: 'Cold', kind: 'crypto' });
+      await accountsRepo.createIfAbsent({
+        id: 'pending-id',
+        name: 'Cold',
+        kind: 'crypto',
+        currency: 'BTC',
+      });
 
       expect(updates).toHaveLength(1);
       expect(inserts[0]).toMatchObject({ id: 'pending-id', sortOrder: 3 });
@@ -452,6 +485,7 @@ describe('accountsRepo', () => {
         id: 'pending-id',
         name: 'Renamed',
         kind: 'bank',
+        currency: 'EUR',
         color: '#112233',
         icon: 'bitcoinsign',
         bankId: 'monobank',
@@ -462,6 +496,7 @@ describe('accountsRepo', () => {
       expect(updates).toHaveLength(1);
       expect(updates[0].set).toEqual({
         name: 'Renamed',
+        currency: 'EUR',
         color: '#112233',
         icon: 'bitcoinsign',
         bankId: 'monobank',
@@ -479,11 +514,12 @@ describe('accountsRepo', () => {
         id: 'pending-id',
         name: 'Renamed',
         kind: 'crypto',
+        currency: 'BTC',
         icon: null,
       });
 
       expect(updates).toHaveLength(1);
-      expect(updates[0].set).toEqual({ name: 'Renamed', icon: null });
+      expect(updates[0].set).toEqual({ name: 'Renamed', currency: 'BTC', icon: null });
     });
 
     it('creates the row when it is not stored, at the next free sort order', async () => {
@@ -494,6 +530,7 @@ describe('accountsRepo', () => {
         id: 'pending-id',
         name: 'Cold',
         kind: 'crypto',
+        currency: 'BTC',
         color: '#112233',
         icon: 'bitcoinsign',
       });
@@ -505,6 +542,7 @@ describe('accountsRepo', () => {
         id: 'pending-id',
         name: 'Cold',
         kind: 'crypto',
+        currency: 'BTC',
         color: '#112233',
         icon: 'bitcoinsign',
         sortOrder: 5,
@@ -516,7 +554,12 @@ describe('accountsRepo', () => {
       mockDatabaseTransaction = databaseTransaction;
 
       await expect(
-        accountsRepo.saveFormAccount({ id: 'pending-id', name: 'Loan', kind: 'debt' }),
+        accountsRepo.saveFormAccount({
+          id: 'pending-id',
+          name: 'Loan',
+          kind: 'debt',
+          currency: 'UAH',
+        }),
       ).rejects.toThrow('implicit');
       expect(inserts).toEqual([]);
     });
@@ -526,7 +569,7 @@ describe('accountsRepo', () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(4);
     mockDatabaseTransaction = databaseTransaction;
 
-    await accountsRepo.create({ name: 'Pinned', kind: 'bank', sortOrder: 0 });
+    await accountsRepo.create({ name: 'Pinned', kind: 'bank', currency: 'UAH', sortOrder: 0 });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 0 });
   });
@@ -580,7 +623,7 @@ describe('accountsRepo', () => {
       Record<string, unknown>,
       Record<string, unknown>,
     ];
-    expect(accountInsert).toMatchObject({ name: 'Wallet', kind: 'cash' });
+    expect(accountInsert).toMatchObject({ name: 'Wallet', kind: 'cash', currency: 'EUR' });
     expect(holdingInsert).toMatchObject({
       accountId: accountInsert.id,
       name: 'Wallet',

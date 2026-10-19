@@ -8,6 +8,7 @@ import {
   deletedImportKeys,
   holdings,
   reminders,
+  settings,
   syncState,
   transactions,
 } from '@kiko/db';
@@ -21,6 +22,7 @@ import {
   type ImplicitAccountKind,
   isImplicitAccountKind,
 } from '@kiko/holdings/implicit-account';
+import { SETTINGS_ID } from '@kiko/settings';
 import { logOnFailure } from '@kiko/diagnostics';
 import { syncStateRepo } from '@kiko/sync-state';
 import { clearToken } from '@kiko/monobank/token';
@@ -89,6 +91,17 @@ const nextSortOrder = async (
   return candidate;
 };
 
+// Read inside the write that inserts the account, so a base-currency change committed before it
+// is what the account gets. The fallback is the settings column's own default.
+const baseCurrencyOf = async (databaseTransaction: typeof database): Promise<Currency> => {
+  const rows = await databaseTransaction
+    .select({ baseCurrency: settings.baseCurrency })
+    .from(settings)
+    .where(eq(settings.id, SETTINGS_ID));
+
+  return rows.at(0)?.baseCurrency ?? 'UAH';
+};
+
 // The stored name is the fixed English sentinel until the user renames the
 // account; `accountDisplayName` shows the localized kind name for it. No icon
 // or color, so the kind defaults show (kiko-domain "The three levels").
@@ -105,6 +118,7 @@ const insertImplicitAccount = async (
     icon: null,
     color: null,
     institution: null,
+    currency: await baseCurrencyOf(databaseTransaction),
     bankId: null,
     sortOrder: await nextSortOrder(databaseTransaction, kind),
   });
@@ -112,15 +126,21 @@ const insertImplicitAccount = async (
   return accountId;
 };
 
-type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
-  Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color' | 'icon'>>;
+// `currency: null` is a caller with no currency of its own (the create form): an insert takes the
+// base currency read in the write, and an update leaves the stored one.
+type NewAccount = Pick<AccountRow, 'name' | 'kind'> & {
+  currency: Currency | null;
+} & Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color' | 'icon'>>;
 
-// The row both account creates insert: the id (the caller's, or a new one) and the next free grid
-// slot, after the implicit kinds are refused.
+// The row both account creates insert: the id (the caller's, or a new one), the next free grid
+// slot, and the currency, after the implicit kinds are refused.
 const newAccountValues = async (
   databaseTransaction: typeof database,
   input: NewAccount,
-): Promise<NewAccount & Required<Pick<NewAccount, 'id' | 'sortOrder'>>> => {
+): Promise<
+  Omit<NewAccount, 'currency'> &
+    Required<Pick<NewAccount, 'id' | 'sortOrder'>> & { currency: Currency }
+> => {
   if (isImplicitAccountKind(input.kind)) {
     throw new Error(
       'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
@@ -130,6 +150,7 @@ const newAccountValues = async (
   return {
     ...input,
     id: input.id ?? id(),
+    currency: input.currency ?? (await baseCurrencyOf(databaseTransaction)),
     sortOrder: input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.kind)),
   };
 };
@@ -285,7 +306,13 @@ export const accountsRepo = {
       if (await isAccountStored(databaseTransaction, input.id)) {
         await databaseTransaction
           .update(accounts)
-          .set({ name: input.name, color: input.color, icon: input.icon, bankId: input.bankId })
+          .set({
+            name: input.name,
+            color: input.color,
+            icon: input.icon,
+            bankId: input.bankId,
+            currency: input.currency ?? undefined,
+          })
           .where(eq(accounts.id, input.id));
 
         return input.id;
@@ -382,6 +409,7 @@ export const accountsRepo = {
         id: accountId,
         name,
         kind: 'cash',
+        currency,
         icon: icon ?? null,
         color: color ?? null,
         sortOrder,

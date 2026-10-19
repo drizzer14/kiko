@@ -396,6 +396,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // Neither cash (createCashAccount returns before this) nor property/debt
     // (the swap to the holding form leaves this form first) reaches here.
     kind,
+    // Null: the write reads the base currency itself, and never rewrites a stored one. A value
+    // read here would be the first-frame fallback or a base another tab has since changed.
+    currency: null,
     color,
     icon,
     bankId: catalogId,

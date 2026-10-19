@@ -609,7 +609,12 @@ describe('AccountFormScreen', () => {
     // The row is inserted with the screen's pre-generated id (so a field Connect
     // could have keyed a Keychain write to it); no source was connected here.
     expect(mockSaveFormAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Crypto', kind: 'crypto', color: null }),
+      expect.objectContaining({
+        name: 'My Crypto',
+        kind: 'crypto',
+        color: null,
+        currency: null,
+      }),
     );
     expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
     expect(mockCreate).not.toHaveBeenCalled();
@@ -869,6 +874,18 @@ describe('AccountFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
+  it('saves a metals account with no currency, so the write reads the base currency', async () => {
+    const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Gold');
+    await selectKind(getByTestId, 'metals');
+    await pressSave(navigation.setOptions);
+
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Gold', kind: 'metals', currency: null }),
+    );
+  });
+
   it('creates a broker account with the picked broker as its bankId, and no sync connection', async () => {
     const { getByLabelText, getByTestId, navigation, queryByText, queryByTestId } =
       await renderForm();
@@ -884,7 +901,12 @@ describe('AccountFormScreen', () => {
     await pressSave(navigation.setOptions);
 
     expect(mockSaveFormAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Trading 212', kind: 'broker', bankId: 'trading212' }),
+      expect.objectContaining({
+        name: 'My Trading 212',
+        kind: 'broker',
+        bankId: 'trading212',
+        currency: null,
+      }),
     );
     expect(
       (mockSaveFormAccount.mock.calls[0][0] as { institution?: unknown }).institution,
@@ -2237,7 +2259,9 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ bankId: 'monobank' }));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ bankId: 'monobank', currency: null }),
+    );
   });
 
   it('shows no fake connect field for an import-only bank, and creates the row tagged with its bank id on Save', async () => {
@@ -2254,7 +2278,12 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
     expect(mockSaveFormAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My PrivatBank', kind: 'bank', bankId: 'privatbank' }),
+      expect.objectContaining({
+        name: 'My PrivatBank',
+        kind: 'bank',
+        bankId: 'privatbank',
+        currency: null,
+      }),
     );
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockMonobankSync).not.toHaveBeenCalled();
