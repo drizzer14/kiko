@@ -249,7 +249,7 @@ describe('binanceProvider — the balance lists after a read', () => {
     expect(lists().untracked.balance).toEqual([]);
   });
 
-  it('returns both balance lists as the patches of one write', async () => {
+  it('returns both balance lists and the sync stamp as the patches of one write', async () => {
     const { exchangeState } = await run({ spot: [['ABC', '1']] });
 
     expect(exchangeState).toEqual([
@@ -259,6 +259,7 @@ describe('binanceProvider — the balance lists after a read', () => {
         wallets: { spot: [], funding: [], earn: [] },
         complete: true,
       },
+      { kind: 'balanceSyncedAt', value: NOW },
     ]);
   });
 
@@ -279,6 +280,7 @@ describe('binanceProvider — the balance lists after a read', () => {
 
       expect(exchangeState).toEqual([
         expect.objectContaining({ kind: 'oversizedBalance', complete: false }),
+        { kind: 'balanceSyncedAt', value: NOW },
       ]);
       expect(lists().untracked.balance).toEqual(['PEPE']);
       expect(lists().oversized).toEqual({ balance: ['SOL'], history: ['BTC'] });
@@ -337,6 +339,38 @@ describe('binanceProvider — the balance lists after a read', () => {
     const { exchangeState } = await run({ spot: [['ABC', '1']], stored }, cooling);
 
     expect(exchangeState).toBeUndefined();
+  });
+});
+
+describe('binanceProvider — the balance sync stamp', () => {
+  it('stamps the time of a good read into the stored state, beside the lists', async () => {
+    const { storedAfter } = await run({ spot: [['PEPE', '1']] });
+
+    expect(storedAfter()).toMatchObject({
+      balanceSyncedAt: NOW,
+      untrackedCoins: { balance: ['PEPE'] },
+    });
+  });
+
+  it('replaces the stamp of an earlier read', async () => {
+    const { storedAfter } = await run({ stored: { balanceSyncedAt: NOW - 60_000 } });
+
+    expect(storedAfter()).toMatchObject({ balanceSyncedAt: NOW });
+  });
+
+  it('stamps a read in which Funding failed: Spot read, which is all a good read needs', async () => {
+    const { storedAfter } = await run({ spot: [['ABC', '1']], funding: 'fails' });
+
+    expect(storedAfter()).toMatchObject({ balanceSyncedAt: NOW });
+  });
+
+  it('stamps nothing for an account cooling down: no read happened', async () => {
+    const cooling: SyncTarget = { accountId: 'acc-stamp-cooldown', holdings: [] };
+    setBinanceCooldownUntil(cooling.accountId, NOW + 60_000);
+
+    const { storedAfter } = await run({ spot: [['ABC', '1']] }, cooling);
+
+    expect(storedAfter()).not.toHaveProperty('balanceSyncedAt');
   });
 });
 

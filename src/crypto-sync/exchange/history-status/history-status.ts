@@ -31,3 +31,11 @@ export const untrackedCoinsOf = (
 /** The tickers the account detail lists as too large to store: the sorted union of both lists. */
 export const oversizedCoinsOf = (state: ParsedExchangeState): string[] =>
   unionOfKind(state, 'oversizedCoins');
+
+/** When the last good balance read ran, or `undefined`: none stamped, or the state is lost. */
+export const balanceSyncedAtOf = (state: ParsedExchangeState): number | undefined =>
+  match(state)
+    .returnType<number | undefined>()
+    .with({ kind: 'parsed' }, ({ balanceSyncedAt }) => balanceSyncedAt)
+    .with({ kind: 'malformed' }, () => undefined)
+    .exhaustive();

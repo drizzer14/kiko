@@ -37,6 +37,7 @@ const EMPTY_STATE: ReadableState = {
   trades: EMPTY_TRADES,
   untrackedCoins: { balance: [], history: [] },
   oversizedCoins: { balance: [], history: [] },
+  balanceSyncedAt: undefined,
   unreadable: [],
 };
 
@@ -918,6 +919,39 @@ describe('parseExchangeState', () => {
     });
   });
 
+  describe('the balance sync stamp', () => {
+    it('is read as stored, and names nothing', () => {
+      const parsed = readableOf(stateTextOf({ balanceSyncedAt: 1_700_000_000_000 }));
+
+      expect(parsed.balanceSyncedAt).toBe(1_700_000_000_000);
+      expect(parsed.unreadable).toEqual([]);
+    });
+
+    it('is absent when not stored, and names nothing', () => {
+      const parsed = readableOf(stateTextOf({}));
+
+      expect(parsed.balanceSyncedAt).toBeUndefined();
+      expect(parsed.unreadable).toEqual([]);
+    });
+
+    it.each([
+      ['text', '"x"'],
+      ['numeric text', '"5"'],
+      ['null', 'null'],
+      ['a list', '[5]'],
+      ['an object', '{"at":5}'],
+      ['a number past the double range, which JSON reads as infinity', '1e999'],
+    ])('reads as absent and is named when it is %s, the rest stays readable', (_label, bad) => {
+      const parsed = readableOf(
+        `{"version":1,"walks":{"pay":{"cursor":7}},"balanceSyncedAt":${bad}}`,
+      );
+
+      expect(parsed.balanceSyncedAt).toBeUndefined();
+      expect(parsed.walks.pay.cursor).toBe(7);
+      expect(parsed.unreadable).toEqual(['balanceSyncedAt']);
+    });
+  });
+
   it('names every entry it could not read, in a fixed order', () => {
     const parsed = readableOf(
       stateTextOf({
@@ -925,6 +959,7 @@ describe('parseExchangeState', () => {
         trades: 'x',
         oversizedCoins: { history: 'x' },
         untrackedCoins: { balance: 'x', history: 'x' },
+        balanceSyncedAt: 'x',
       }),
     );
 
@@ -935,6 +970,7 @@ describe('parseExchangeState', () => {
       'untrackedCoins.balance',
       'untrackedCoins.history',
       'oversizedCoins.history',
+      'balanceSyncedAt',
     ]);
   });
 });

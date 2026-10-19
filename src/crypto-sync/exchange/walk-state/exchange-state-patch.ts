@@ -26,8 +26,9 @@ type WalkFieldPatch = WalkMarkPatch & { kind: 'walk'; walkId: WalkId };
 
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
- * trade symbol, the trades' rotation or balance snapshot, or one coin list. A patch names fields,
- * never whole entries, so a field it does not name is never written from a parse.
+ * trade symbol, the trades' rotation or balance snapshot, one coin list, or the balance sync
+ * stamp. A patch names fields, never whole entries, so a field it does not name is never written
+ * from a parse.
  *
  * The oversized balance list has its own patch and no `coinList` form, so no write can set
  * `balance` apart from the wallet arrays it is derived from.
@@ -50,7 +51,8 @@ export type ExchangeStatePatch =
       wallets: Record<string, string[]>;
       /** Whether every wallet read, so no ticker stored before wallets were named can remain. */
       complete: boolean;
-    };
+    }
+  | { kind: 'balanceSyncedAt'; value: number };
 
 const withWalkField = (
   stored: StoredExchangeState,
@@ -155,6 +157,7 @@ const patchedState = (
     .with({ kind: 'oversizedBalance' }, (oversizedPatch) =>
       withOversizedBalance(stored, oversizedPatch),
     )
+    .with({ kind: 'balanceSyncedAt' }, ({ value }) => ({ ...stored, balanceSyncedAt: value }))
     .exhaustive();
 
 /**

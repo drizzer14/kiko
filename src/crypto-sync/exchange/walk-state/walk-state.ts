@@ -66,6 +66,8 @@ export type ExchangeState = {
   trades?: ExchangeTrades;
   untrackedCoins?: CoinLists;
   oversizedCoins?: OversizedCoinLists;
+  /** When the last good balance read ran (epoch ms), for an account with no holding to stamp. */
+  balanceSyncedAt?: number;
 };
 
 /**
@@ -97,6 +99,7 @@ export type ParsedExchangeState =
       trades: ExchangeTrades;
       untrackedCoins: Required<CoinLists>;
       oversizedCoins: Required<CoinLists>;
+      balanceSyncedAt: number | undefined;
       unreadable: string[];
     };
 
@@ -153,6 +156,8 @@ const tradeSymbolOf = (stored: unknown): TradeSymbol | undefined => {
 };
 
 const zero = (): number => 0;
+
+const nothing = (): undefined => undefined;
 
 const emptyList = (): string[] => [];
 
@@ -275,6 +280,12 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
   const oversizedByWallet = oversizedByWalletOf(
     recordOrEmpty(stored.oversizedCoins).balanceByWallet,
   );
+  const balanceSyncedAt = entryOf<number | undefined>(
+    'balanceSyncedAt',
+    stored.balanceSyncedAt,
+    numberOrUndefined,
+    nothing,
+  );
 
   return {
     kind: 'parsed',
@@ -285,12 +296,14 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     trades: trades.value,
     untrackedCoins: untrackedCoins.value,
     oversizedCoins: oversizedCoins.value,
+    balanceSyncedAt: balanceSyncedAt.value,
     unreadable: [
       ...walks.flatMap(({ unreadable }) => unreadable),
       ...trades.unreadable,
       ...untrackedCoins.unreadable,
       ...oversizedCoins.unreadable,
       ...oversizedByWallet.unreadable,
+      ...balanceSyncedAt.unreadable,
     ],
   };
 };

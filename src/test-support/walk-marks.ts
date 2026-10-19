@@ -28,6 +28,8 @@ export type ExchangeStateSeed = {
   version: 1;
   walks: Partial<Record<WalkName, Record<string, unknown>>>;
   oversizedCoins?: { history?: string[] };
+  /** Any value, because a test also seeds an unreadable stamp. */
+  balanceSyncedAt?: unknown;
 };
 
 const SPOT_HOLDING_ID = 'h-spot';

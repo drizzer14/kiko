@@ -608,12 +608,13 @@ describe('syncStateRepo.resetExchangeStateDatabaseTransaction', () => {
   };
   const RANGES = [{ start: 100, end: 200 }];
 
-  it('resets every walk to the floor, empties pending lists and removes the coin lists', async () => {
+  it('resets every walk to the floor, empties pending lists, removes the coin lists and the sync stamp', async () => {
     const rawDatabase = openExchangeDatabase(
       'binance',
       JSON.stringify({
         version: 1,
         futureKey: true,
+        balanceSyncedAt: 5_000,
         notImported: ['p2p-sale:1:2'],
         trades: { symbols: { BTCUSDT: { fromId: 5 } }, rotation: 2, balanceSnapshot: {} },
         untrackedCoins: { balance: ['AAA'], history: ['BBB'] },

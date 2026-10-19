@@ -32,3 +32,20 @@ export const latestSyncedAt = (holdings: Pick<HoldingRow, 'metadata'>[]): number
 
   return stamps.length > 0 ? maxOf(stamps) : null;
 };
+
+/**
+ * An exchange account's last balance sync: the later of its holdings' newest `syncedAt` and the
+ * stamp in its exchange state. A sync can leave no holding to stamp (nothing tracked above dust),
+ * and a failed state write leaves the stamp one sync behind the holdings, so neither is enough.
+ */
+export const latestBalanceSyncAt = (
+  holdings: Pick<HoldingRow, 'metadata'>[],
+  stateStamp: number | undefined,
+): number | null => {
+  const holdingStamp = latestSyncedAt(holdings);
+  const stamps = [holdingStamp, stateStamp ?? null].filter(
+    (stamp): stamp is number => stamp !== null,
+  );
+
+  return stamps.length > 0 ? maxOf(stamps) : null;
+};

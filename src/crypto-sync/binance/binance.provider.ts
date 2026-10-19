@@ -524,8 +524,14 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     });
     appendWallet(balances, 'earn', earn, existingKeys);
 
-    // The lists are returned, not written: the write needs the account marked as Binance's,
-    // which a first Connect does only after this read.
-    return { balances, exchangeState: balanceListPatches({ spot, funding, earn }) };
+    // The lists and the stamp are returned, not written: the write needs the account marked as
+    // Binance's, which a first Connect does only after this read.
+    return {
+      balances,
+      exchangeState: [
+        ...balanceListPatches({ spot, funding, earn }),
+        { kind: 'balanceSyncedAt', value: deps.now() },
+      ],
+    };
   },
 };
