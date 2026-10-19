@@ -27,3 +27,10 @@ export const idleSyncModule = (
 ) => ({
   [hookName]: () => ({ isSyncing: false, error: undefined, sync }),
 });
+
+// The mocked market data refresh a currency pick or a cash create fires after its write: the
+// test's own `refresh` spy stands in for the real network and database reach. Installed like
+// `idleSyncModule`, through a lazy `(...args) => mockRefreshMarketData(...args)` arrow.
+export const refreshMarketDataModule = (refresh: (...args: unknown[]) => unknown) => ({
+  refreshMarketData: refresh,
+});

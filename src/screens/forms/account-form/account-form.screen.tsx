@@ -30,6 +30,7 @@ import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { accountIconPool } from '@kiko/holdings/entity-icon-pool';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
@@ -215,6 +216,19 @@ const currencyPatch = (
   picked: Currency | null,
   stored: Currency | undefined,
 ): { currency?: Currency } => (picked !== null && picked !== stored ? { currency: picked } : {});
+
+// A currency the user just picked needs its rate visible without an app restart: the rate gate
+// counts a non-archived account's currency, but only a refresh fetches the rate. The SAME gated
+// refresh the holding form runs after a create, unthrottled (a deliberate user action, not a
+// background poll); it no-ops when the currency already has a rate. No metals: an account
+// currency is a fiat or a coin, and a metal price is only read for a held metal.
+// `refreshMarketData` never rejects and logs its own failure, so a committed write never turns
+// into a shown error; fire-and-forget, as Save must not sit on the network before navigating
+// back.
+const refreshAfterCurrencyWrite = (): void => {
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+  refreshMarketData({ throttled: false, metals: false });
+};
 
 // Neutral placeholder glyph shown in the create form's icon chip until the user
 // picks one (and the glyph a cleared icon falls back to). The persisted default
@@ -685,11 +699,20 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // only, so this patch never carries any of it (nor `institution`, so a
         // live-connected account's sync stays untouched). The account currency is the
         // one exception, when the user changed it.
+        const patchedCurrency = currencyPatch(accountCurrency, editingAccount?.currency);
+
         await accountsRepo.update(editId, {
           name: storedName(kind, trimmedName, t),
           color,
-          ...currencyPatch(accountCurrency, editingAccount?.currency),
+          ...patchedCurrency,
         });
+
+        // Right after the update commits, not after the icon write below: a failed icon write
+        // keeps the form open, and the retry then finds the currency stored and patches none.
+        if (patchedCurrency.currency !== undefined) {
+          refreshAfterCurrencyWrite();
+        }
+
         await accountsRepo.setIcon(editId, icon);
         navigation.goBack();
 
@@ -707,6 +730,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           icon,
           color,
         });
+        // The one pick is the cash holding's currency too, so this create needs its rate like
+        // the holding form's does.
+        refreshAfterCurrencyWrite();
         navigation.goBack();
 
         return;
@@ -724,6 +750,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // looks the row up itself, queued behind any Connect insert still waiting, so no earlier
       // read can make it update a row that is missing or insert one that is there.
       await accountsRepo.saveFormAccount(accountRow());
+
+      // A null pick stores the base, which the rates already cover.
+      if (accountCurrency !== null) {
+        refreshAfterCurrencyWrite();
+      }
+
       navigation.goBack();
     } catch {
       // A DB write failure (disk full, locked) must not vanish silently — the

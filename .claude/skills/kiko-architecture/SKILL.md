@@ -806,10 +806,10 @@ gate says there is nothing to do.
   over non-archived accounts: an account card totals in its own
   currency, so a currency only an account names, with no holding in it,
   still gets its rate or coin price). The fiat leg (Monobank/NBU) runs only
-  when `needsFiat` — some active holding's currency differs from the
-  base (display) currency, which also covers the crypto leg's own
-  USD:UAH anchor need, since a held crypto currency always differs
-  from a fiat base. The crypto leg (CoinGecko current price) runs
+  when `needsFiat` — some active holding's currency, or some non-archived
+  account's currency, differs from the base (display) currency, which also
+  covers the crypto leg's own USD:UAH anchor need, since a held or account
+  crypto currency always differs from a fiat base. The crypto leg (CoinGecko current price) runs
   only for `cryptoCurrencies`, and `fetchCryptoPrices` fetches only
   those currencies, never the full supported set. `runBackfill`
   (`history-backfill.ts`) reads the sibling `historyCurrencies()` gate
@@ -826,8 +826,8 @@ gate says there is nothing to do.
   — `holdings` before `price_points` — the same order every gated
   refresh follows.
   `shouldThrottle` (`src/rates/rates-refresh/rates-refresh.ts`) skips
-  its own throttle window when a held currency has no rate row yet —
-  a "never fetched" escape so the data-presence gate can never hide a
+  its own throttle window when a held or account currency has no rate row
+  yet — a "never fetched" escape so the data-presence gate can never hide a
   currency's rate entirely. `UAH` is filtered out of that presence
   check first: a star row's `quote` is always `UAH` and its `base`
   never is, so `presentCurrenciesQuery` (a distinct `base` read) can
@@ -910,8 +910,13 @@ gate says there is nothing to do.
   nothing is needed; it never rejects, and a failure is only
   logged, never shown, so it never turns a successful save into a shown
   error. `throttled: false`: the write is a deliberate user action, not
-  a background poll. Any other edit needs no trigger: a holding's type
-  and currency are immutable once created.
+  a background poll. A currency pick on the account form fires the same
+  refresh as the holding form, as `refreshMarketData({ throttled: false,
+  metals: false })`: after an edit that changes `accounts.currency`, a
+  create with a picked currency, and a cash create. It is never fired for
+  an unchanged pick or a failed write. An account currency is a fiat or a
+  coin, never a metal, so it needs no metal prices. Any other edit needs no
+  trigger: a holding's type and currency are immutable once created.
 - **`refreshMarketData` steps**: rates and metals; the `metals` option
   gates the second. Read each call site
   (`grep -rn "refreshMarketData(" src`) for its own flags.

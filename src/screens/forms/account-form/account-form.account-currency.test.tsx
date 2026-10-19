@@ -29,6 +29,7 @@ const mockCreateCashAccount = jest.fn();
 const mockUpdate = jest.fn();
 const mockSetIcon = jest.fn();
 const mockCryptoSync = jest.fn();
+const mockRefreshMarketData = jest.fn();
 // Every call to a holdings or transactions repo method, whatever its name: an account's currency
 // edit must reach neither.
 const mockMoneyRepoCall = jest.fn();
@@ -66,6 +67,11 @@ jest.mock('@kiko/transactions/repo', () => ({
 jest.mock(
   '@kiko/holdings/use-held-currencies',
   () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
+jest.mock('@kiko/sync/refresh-market-data', () =>
+  require('@kiko/test-support/account-form-test-support').refreshMarketDataModule(
+    (...args: unknown[]) => mockRefreshMarketData(...args),
+  ),
 );
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 jest.mock('@kiko/sync/use-sync', () =>
@@ -427,6 +433,137 @@ describe('the account currency field on an edit form', () => {
       expect(mockUpdate).toHaveBeenCalledTimes(1);
       expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('currency');
     });
+  });
+});
+
+describe('the market data refresh after an account currency pick', () => {
+  const REFRESH = { throttled: false, metals: false };
+
+  const renderCashForm = async (): Promise<Rendered> => {
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'Wallet');
+    await selectKind(view.getByTestId, 'cash');
+    await fireEvent.changeText(view.getByLabelText('Initial value'), '10');
+
+    return view;
+  };
+
+  it('runs once, unthrottled, after an edit changes the currency', async () => {
+    mockAccounts = [storedAccount({ kind: 'property', currency: 'UAH' })];
+    const view = await renderForm({ accountId: 'acc-1' });
+
+    await pickCurrency(view, 'BTC');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+    expect(mockRefreshMarketData).toHaveBeenCalledWith(REFRESH);
+  });
+
+  it('runs after the currency write commits', async () => {
+    mockAccounts = [storedAccount({ currency: 'UAH' })];
+    const view = await renderForm({ accountId: 'acc-1' });
+
+    await pickCurrency(view, 'EUR');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRefreshMarketData.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('still runs when only the icon write after a committed currency change fails', async () => {
+    mockAccounts = [storedAccount({ currency: 'UAH' })];
+    mockSetIcon.mockRejectedValue(new Error('disk full'));
+    const view = await renderForm({ accountId: 'acc-1' });
+
+    await pickCurrency(view, 'EUR');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run when an edit leaves the currency alone', async () => {
+    mockAccounts = [storedAccount({ currency: 'EUR' })];
+    const view = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'Renamed');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
+  });
+
+  it('does not run when the pick is the stored currency again', async () => {
+    mockAccounts = [storedAccount({ currency: 'EUR' })];
+    const view = await renderForm({ accountId: 'acc-1' });
+
+    await pickCurrency(view, 'USD');
+    await pickCurrency(view, 'EUR');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
+  });
+
+  it('does not run when the update throws', async () => {
+    mockAccounts = [storedAccount({ currency: 'UAH' })];
+    mockUpdate.mockRejectedValue(new Error('disk full'));
+    const view = await renderForm({ accountId: 'acc-1' });
+
+    await pickCurrency(view, 'EUR');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
+  });
+
+  it('runs once after a create with a picked currency', async () => {
+    const view = await renderBankForm();
+
+    await pickCurrency(view, 'BTC');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+    expect(mockRefreshMarketData).toHaveBeenCalledWith(REFRESH);
+  });
+
+  it('does not run after a create that picked nothing', async () => {
+    const view = await renderBankForm();
+
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
+  });
+
+  it('does not run when the create throws', async () => {
+    mockSaveFormAccount.mockRejectedValue(new Error('disk full'));
+    const view = await renderBankForm();
+
+    await pickCurrency(view, 'BTC');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
+  });
+
+  it('runs once after a cash create, whose one pick is also its holding currency', async () => {
+    const view = await renderCashForm();
+
+    await pickCurrency(view, 'EUR');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+    expect(mockRefreshMarketData).toHaveBeenCalledWith(REFRESH);
+  });
+
+  it('does not run when the cash create throws', async () => {
+    mockCreateCashAccount.mockRejectedValue(new Error('disk full'));
+    const view = await renderCashForm();
+
+    await pickCurrency(view, 'EUR');
+    await pressSave(view.navigation.setOptions);
+
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
   });
 });
 

@@ -76,6 +76,7 @@ const mockSaveCredentials = jest.fn();
 const mockClearCredentialsIfWrittenBy = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockCryptoSync = jest.fn();
+const mockRefreshMarketData = jest.fn();
 const mockFetchAccount = jest.fn();
 
 // The account the edit-mode form loads through useLiveQuery. `mock`-prefixed so
@@ -206,6 +207,12 @@ jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
+// The currency pick's and the cash create's refresh would otherwise reach the real network.
+jest.mock('@kiko/sync/refresh-market-data', () =>
+  require('@kiko/test-support/account-form-test-support').refreshMarketDataModule(
+    (...args: unknown[]) => mockRefreshMarketData(...args),
+  ),
+);
 jest.mock('@kiko/sync/use-sync', () =>
   require('@kiko/test-support/account-form-test-support').idleSyncModule(
     'useSync',

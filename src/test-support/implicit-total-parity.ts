@@ -4,8 +4,9 @@ type ImplicitKind = 'property' | 'debt';
 // USD to UAH rate of 40. The Accounts section heading and the account detail page total these
 // same rows through `accountTotal`, so each screen's own test reads the same two strings: the
 // total in the account currency and the base caption. Two more rows are NOT counted: a closed
-// item with a balance, and an open BTC item with no BTC rate. A screen that counted either
-// would read a different string, so the pair also pins which holdings each screen includes.
+// item whose metadata would add the same value, and an open BTC item with no BTC rate. A screen
+// that counted either would read a different string, so the pair also pins which holdings each
+// screen includes.
 const IMPLICIT_PARITY_RATES = [{ base: 'USD', quote: 'UAH', rate: '40' }];
 
 const PARITY = {
