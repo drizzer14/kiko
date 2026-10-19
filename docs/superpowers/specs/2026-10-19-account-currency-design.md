@@ -159,8 +159,11 @@ the edit form passes `currency` in its patch (D5).
   the sync never reads `accounts.currency`.
 - Implicit accounts (property, debt) are reached as Accounts screen section heading -> their
   `AccountDetail` -> the Edit bar item (`navigation.navigate('AccountForm', { accountId })`) -> the
-  account form in edit mode. The field shows there in task 5/5, together with the section total that
-  uses it (Q3). Task 4/5 hides it for implicit kinds, so no task tip shows a field with no effect.
+  account form in edit mode. The field shows there in task 6/6, together with the section total that
+  uses it (Q4). Task 5/6 hides it for implicit kinds, so no task tip shows a field with no effect.
+  The account-detail headline (task 4/6) already follows the stored currency of an implicit
+  account before task 6/6, from the migrated value. That is the same display rule as every other
+  account, not a field without an effect.
 - `AccountFormDraft` (`src/navigation/types/types.d.ts`) gains `accountCurrency: Currency | null`.
   A draft without the key reads `null`.
 - No money data is rewritten anywhere: no path writes `holdings.currency`, `balanceMinorUnits` or
@@ -178,20 +181,33 @@ the edit form passes `currency` in its patch (D5).
     guardedNetWorth(holdings, baseCurrency, rates, now, book) : null`. The caption is the same
     base figure the card shows today, which is what Home sums for these holdings. It is not a
     second conversion of `total` (Q5).
-- The shared view `AccountTotal` in `src/screens/accounts/account-total/` renders `MoneyText`
-  (`context="balance"`) and, when `inBase` is set, a caption `Text variant="caption"
-  tone="textSecondary"` with `formatMoney(inBase, activeLocale())`. It copies the holding card's
-  caption pattern, and its `convertedTestID` prop names the caption.
+- The caption is the shared design-system view `ConvertedCaption` in
+  `src/design-system/components/converted-caption/` (props `{ money: Money | null; testID:
+  string }`). It renders nothing for `null`; otherwise it renders `Text variant="caption"
+  tone="textSecondary"` with `formatMoney(money, activeLocale())`, the holding card's caption
+  pattern. It lives in the design system, not under `src/screens/accounts/`, because the account
+  detail screen uses it too and a cross-screen import fails `check:screen-imports`.
+- The view `AccountTotal` in `src/screens/accounts/account-total/` renders `MoneyText`
+  (`context="balance"`) with `ConvertedCaption` under it. Its `convertedTestID` prop names the
+  caption.
 - Main grid card (`renderAccountCard` in `accounts.screen.tsx`): the caption's testID is
   `account-card-converted`.
 - A one-currency BTC account with no BTC rate showed 0 today and now shows its BTC sum with no
   caption.
+- The account-detail headline follows the account currency (USER RULING Q3 = B, 2026-10-19). In
+  `account-detail.screen.tsx`, `overallBalance` becomes `accountTotal(activeHoldings,
+  account.currency, baseCurrency, rateTable, now, priceBook)`: the same helper as the card, not a
+  new conversion. `EntityAmountHeader` shows `total`, and its existing `secondary` slot shows
+  `<ConvertedCaption money={inBase} testID="account-detail-converted" />`. The caption appears
+  only when the account currency differs from the base and a rate exists. The per-currency
+  `CurrencyBreakdown` under it is unchanged. A card and its detail page always show the same total
+  and caption.
 - Stays in base (checked at 841b1ab7):
   - the Home total (`home.screen.tsx`, `guardedNetWorth(active, baseCurrency, ...)`)
-  - the account-detail headline (`account-detail.screen.tsx`, `overallBalance`) (Q4)
-  - the holding card caption
-- The Property and Debts section totals follow their implicit account's currency in task 5/5, with
-  caption testIDs `property-total-converted` and `debts-total-converted` (Q3; the brief listed them
+  - the holding card caption and the holding-detail caption (`ValueHeaderSecondary`, left as it
+    is)
+- The Property and Debts section totals follow their implicit account's currency in task 6/6, with
+  caption testIDs `property-total-converted` and `debts-total-converted` (Q4; the brief listed them
   as staying in base).
 - Fix the stale sentence in the `HoldingCard` header comment, "the account card already shows the
   base currency": the account card now shows the account's own currency.
@@ -224,7 +240,18 @@ With that default every current pin STAYS:
   Property section with ... its own section total", "keeps the Debts total stable ...")
 - the heading-row a11y test that reads the total
 
-New cases are added (task 3/5 and task 5/5). No existing assertion changes its expected text.
+`src/screens/account-detail/account-detail.screen.test.tsx`: the `account()` fixture helper
+defaults to `currency: 'UAH'` (the base in every fixture). With that default every base-headline
+pin STAYS:
+
+- "shows the holding balance as money" (`1,000.00 ₴`)
+- "shows the overall converted balance and a per-currency breakdown" (`3,000.00 ₴`)
+- "renders a positive overall balance in the balance tone" (`3,000.00 ₴`)
+- the matured-deposit tests (`1,077.00 ₴`)
+- the loading-gate test (`0.00 ₴`)
+
+New cases are added (task 3/6, task 4/6 and task 6/6). No existing assertion changes its expected
+text.
 Every test file with an `AccountRow`-typed literal gains `currency` for `tsc` (18 files reference
 `AccountRow`: a floor; `tsc` measures).
 
@@ -245,44 +272,40 @@ and kept only as the backfill.
 | empty, migrated | none | any | base 0 | none | base 0 |
 | cash USD, edited to EUR | cash USD 100 | rates | €(converted) | ₴ | n/a; holding stays USD 100 |
 
-## Open questions (plan applies the recommendation)
+## User rulings 2026-10-19 (Q1-Q3) and orchestrator defaults (Q4-Q7)
 
-**Q1. Which holdings decide the backfill currency?**
-- A. Open holdings only (`closed_at IS NULL`), on every account including archived ones.
-  Consequence: it matches what the card sums. An account whose only foreign holding is closed gets
-  the open holdings' currency.
-- B. Open and closed holdings. Consequence: "all" is read literally. A closed USD card turns a
-  UAH-only account into "mixed", so it gets the base.
-- Recommendation: A, applied.
+**Q1. Which holdings decide the backfill currency? USER RULING: A.**
+Open holdings only (`closed_at IS NULL`), on every account, archived ones included. This matches
+what the card sums. An account whose only foreign holding is closed gets the currency of its open
+holdings.
+- was: open question. Option B (open and closed holdings) was rejected.
 
-**Q2. EXPORT_VERSION bump for 0062?**
-- A. Bump to 5 (user ruling 4). Consequence: every build at version 4 (1.2) refuses every file
-  1.3 writes. A downgrade cannot silently drop the user's picks.
-- B. No bump (kiko-architecture default). Consequence: a 1.2 build restores a 1.3 file without the
-  picks and re-derives them by the rule on its own later upgrade, so the user's custom picks are
-  lost on a downgrade round trip. Older builds still read new files.
-- Recommendation: A (the user's explicit ruling; one user until the App Store pass, so the
-  refusal's cost is small). Applied. Switching to B changes only `envelope.ts` and the
-  `VERSION_DECISIONS` text.
+**Q2. EXPORT_VERSION bump for 0062? USER RULING: A.**
+Bump to 5, with `READABLE_EXPORT_VERSIONS` `[1, 2, 3, 4, 5]`. Every version 4 build (1.2) refuses
+every file that 1.3 writes, so a downgrade cannot silently drop the user's picks.
+- was: open question. Option B (no bump, the kiko-architecture default) was rejected. Its
+  `VERSION_DECISIONS` entry names this ruling.
 
-**Q3. Property/Debts (implicit) accounts.**
-- A. The section heading total is the implicit account's card: it follows the account currency,
-  with the base caption, and the field shows on the implicit edit. Consequence: ruling 4 ("every
-  kind") has a visible effect. The section totals stop being base-only, against the brief's scope
-  fact.
-- B. The field shows on the implicit edit and the section totals stay in base. Consequence: a
-  visible control with no effect.
-- C. No field for implicit accounts. Consequence: contradicts ruling 4's "every kind". The column
-  still holds the migrated value, unused.
-- Recommendation: A, applied as its own task 5/5, so B or C means dropping or trimming that one
-  task.
+**Q3. Account-detail headline. USER RULING: B.**
+The headline follows the account currency through task 3/6's `accountTotal`, not a new
+conversion. When the currency differs from the base and a rate exists, the base caption
+`account-detail-converted` shows in the `EntityAmountHeader` `secondary` slot, the same rule as
+the card (D6). It is implemented in task 4/6.
 
-**Q4. Account-detail headline.**
-- A. Stays in base (brief scope fact). Consequence: tapping a USD card opens a page headed in ₴,
-  and the per-currency breakdown under it already shows $.
-- B. Follows the account currency, with a caption. Consequence: card and page agree, at the cost of
-  more scope and more test changes in `account-detail.screen.test.tsx`.
-- Recommendation: A, applied (the user's scope list). Flag it for the device check.
+| Account currency | Holdings (open) | Rates | Headline was (A, 1st spec) | Headline now | Caption |
+|---|---|---|---|---|---|
+| UAH = base | UAH 1,000 + USD 50 | USD:UAH 40 | ₴3,000 | ₴3,000 | none |
+| USD, base UAH | UAH 1,000 + USD 50 | USD:UAH 40 | ₴3,000 | $75 | ₴3,000 |
+| BTC, base UAH | BTC 0.5 | no BTC rate | ₴0 | 0.5 BTC | none |
+
+**Q4. Property/Debts (implicit) accounts. Orchestrator default: A.**
+The section heading total acts as the implicit account's card: it follows the account currency,
+with the base caption, and the field shows on the implicit edit (task 6/6).
+- B: the field shows and the totals stay in base. That leaves a control with no effect.
+- C: no field. That contradicts ruling 4.
+
+B or C means dropping or trimming task 6/6 only. This was numbered Q3 in the first spec. The
+relayed answers number the headline question as Q3, so the two questions swapped numbers.
 
 **Q5. Caption value.**
 - A. `guardedNetWorth(holdings, base)`, today's figure. Consequence: it equals the account's share

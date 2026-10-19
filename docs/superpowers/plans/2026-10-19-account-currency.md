@@ -15,8 +15,8 @@ and an `AccountTotal` view.
 **Tech Stack:** Drizzle + op-sqlite (migrations through `run-migrations.ts`), `node:sqlite` tests
 (`src/test-support/real-sqlite.ts`), React Native, i18next.
 
-**Spec:** `docs/superpowers/specs/2026-10-19-account-currency-design.md` (D1-D9, Q1-Q7; the plan
-applies every recommendation).
+**Spec:** `docs/superpowers/specs/2026-10-19-account-currency-design.md` (D1-D9; Q1-Q3 are user rulings of
+2026-10-19, and Q4-Q7 are orchestrator defaults that the plan applies).
 
 ## Global Constraints
 
@@ -43,20 +43,20 @@ applies every recommendation).
 ## Review Focus
 
 1. An older `.kiko` restore must produce the same `accounts.currency` as the same data upgraded in
-   place (two-path test, task 1/5).
+   place (two-path test, task 1/6).
 2. A Connect (`createIfAbsent`) and then a currency pick and Save must keep the pick
-   (`saveFormAccount` update branch, task 2/5 and task 4/5).
+   (`saveFormAccount` update branch, task 2/6 and task 5/6).
 3. A cash account currency edit must leave its holding, transactions and amounts byte-identical
-   (task 4/5).
+   (task 5/6).
 4. A crypto-currency account with no rate shows its own sum and no caption. It never throws
-   (`canConvert` guard, task 3/5).
-5. A base-currency change leaves every stored account currency (task 2/5).
+   (`canConvert` guard, task 3/6).
+5. A base-currency change leaves every stored account currency (task 2/6).
 
 ## Open gaps (run-log `stats --gaps --repo kiko`, read 2026-10-19)
 
 - `20261015T1657-kiko-binance-backfill-fix/2` (no mechanized check that a migration's keyed lookups
   use an index): NOT closed. 0062 avoids the per-row lookup by design and pins its plan with an
-  `EXPLAIN QUERY PLAN` test (task 1/5). The gap asks for a mechanized check, which is harness work.
+  `EXPLAIN QUERY PLAN` test (task 1/6). The gap asks for a mechanized check, which is harness work.
 - `20261016T2009-kiko-currency-pickers/2` item (4) (inline `CASH_CURRENCY_CONTEXT`): left open.
   This plan reads the constant in `account-form.screen.tsx` but does not do that sweep's minors.
 - `20261016T2009-kiko-currency-pickers/3` (`currency-field.component.tsx` `selected` row mutants):
@@ -66,7 +66,7 @@ applies every recommendation).
 
 ---
 
-### account-currency task 1/5: column, migration 0062, restore mirror, export version
+### account-currency task 1/6: column, migration 0062, restore mirror, export version
 
 Own change set; a `kiko:reviewer` pass on the migration alone before BATCH READY.
 
@@ -149,7 +149,7 @@ Own change set; a `kiko:reviewer` pass on the migration alone before BATCH READY
 
 ---
 
-### account-currency task 2/5: every account write path sets the currency
+### account-currency task 2/6: every account write path sets the currency
 
 **Files (floor):**
 - Modify: `src/accounts/accounts.repo.ts`:
@@ -190,11 +190,15 @@ Own change set; a `kiko:reviewer` pass on the migration alone before BATCH READY
 
 ---
 
-### account-currency task 3/5: the account card in the account's currency
+### account-currency task 3/6: the account card in the account's currency
 
 **Files (floor):**
 - Create: `src/rates/net-worth-view/account-total.ts` + `account-total.test.ts`; export from
   `src/rates/net-worth-view/index.ts`
+- Create: `src/design-system/components/converted-caption/converted-caption.component.tsx`,
+  `index.ts`, `converted-caption.component.test.tsx` (the shared caption. It sits in the design
+  system because task 4/6's account detail uses it too, and a cross-screen import fails
+  `check:screen-imports`)
 - Create: `src/screens/accounts/account-total/account-total.component.tsx`,
   `account-total.props.d.ts`, `account-total.styles.ts` (if a style is needed), `index.ts`,
   `account-total.component.test.tsx`
@@ -206,6 +210,7 @@ Own change set; a `kiko:reviewer` pass on the migration alone before BATCH READY
   comment only)
 
 **Interfaces produced:** `accountTotal(holdings, accountCurrency, baseCurrency, rates, now, book): { total: Money; inBase: Money | null }`;
+`ConvertedCaption` props `{ money: Money | null; testID: string }` (renders nothing for `null`);
 `AccountTotal` props `{ total: Money; inBase: Money | null; convertedTestID: string }`.
 
 - [ ] **step 1/6: failing helper test.** Write `account-total.test.ts` covering the spec's scenario
@@ -214,9 +219,11 @@ Own change set; a `kiko:reviewer` pass on the migration alone before BATCH READY
   total and `inBase` null without throwing; empty. Run
   `npx jest src/rates/net-worth-view/account-total`: it FAILS.
 - [ ] **step 2/6: implement `accountTotal`** (D6). Run the same jest: it PASSES.
-- [ ] **step 3/6: view.** Write `account-total.component.test.tsx`: no caption when `inBase` is
-  null, a caption with the formatted text under `convertedTestID` when it is set. Watch it fail,
-  then implement it on the holding-card caption pattern.
+- [ ] **step 3/6: views.** Write `converted-caption.component.test.tsx`: `null` renders nothing; a
+  `Money` value renders `formatMoney` text, caption variant, `textSecondary` tone, under `testID`.
+  Write `account-total.component.test.tsx`: the total plus the caption under `convertedTestID`
+  only when `inBase` is set. Watch both fail, then implement `ConvertedCaption` (the holding-card
+  caption pattern) and `AccountTotal` on top of it.
 - [ ] **step 4/6: screen.** Add to `setLiveData` the default `currency: 'UAH'` per account, and add
   cases to `accounts.screen.test.tsx`:
   - a USD account with a USD:UAH rate shows `$` and `account-card-converted` with `₴`;
@@ -228,7 +235,7 @@ Own change set; a `kiko:reviewer` pass on the migration alone before BATCH READY
 - [ ] **step 5/6: comment.** Replace the stale sentence in the `HoldingCard` header comment (the
   account card now shows the account's own currency).
 - [ ] **step 6/6: scoped run + commit.** Run
-  `npx jest src/rates/net-worth-view src/screens/accounts src/design-system/components/holding-card`.
+  `npx jest src/rates/net-worth-view src/screens/accounts src/design-system/components/holding-card src/design-system/components/converted-caption`.
   Commit `feat(accounts): the account card totals in the account currency`.
 
 **Checks:** helper and view tests red then green; D9 pins unchanged; `dup.sh` on the touched test
@@ -236,7 +243,56 @@ file.
 
 ---
 
-### account-currency task 4/5: the currency field on the account form (non-implicit kinds)
+### account-currency task 4/6: the account-detail headline in the account currency (spec Q3 = B, user ruling)
+
+**Files (floor; 1 mutable source file):**
+- Modify: `src/screens/account-detail/account-detail.screen.tsx`:
+  - `overallBalance` (today `guardedNetWorth(activeHoldings, baseCurrency, ...)`) becomes
+    `accountTotal(activeHoldings, account.currency, baseCurrency, rateTable, now, priceBook)`.
+    Before the account row loads, it falls back to `baseCurrency`, as the screen's other
+    account-dependent reads do.
+  - `EntityAmountHeader` takes `money={total}` and
+    `secondary={<ConvertedCaption money={inBase} testID="account-detail-converted" />}`.
+  - `CurrencyBreakdown` stays unchanged.
+- Modify: `src/screens/account-detail/account-detail.screen.test.tsx` (2741 lines). The `account()`
+  fixture defaults to `currency: 'UAH'`. Add three new cases only; it must pass `dup.sh` alone.
+
+**Interfaces consumed:** `accountTotal` (`@kiko/rates/net-worth-view`) and `ConvertedCaption`
+(`@kiko/design-system/components/converted-caption`), both from task 3/6.
+
+**Existing tests that pin the base headline:** all STAY unchanged, because the fixture's
+`currency: 'UAH'` equals its base `UAH`.
+- "shows the holding balance as money" (`1,000.00 ₴`)
+- "shows the overall converted balance and a per-currency breakdown" (`multiCurrencyData`,
+  `3,000.00 ₴`)
+- "renders a positive overall balance in the balance tone" (`3,000.00 ₴` is `text-tone-textPrimary`)
+- the matured-deposit tests (`1,077.00 ₴`)
+- "shows a loading spinner, not the zero-balance content ..." (`0.00 ₴`)
+
+"hands the offer the account and settings rows the page already read" passes `account({ kind:
+'cash' })` as is, and still passes once the fixture carries `currency`.
+
+- [ ] **step 1/4: failing tests.**
+  - `multiCurrencyData` with `account({ currency: 'USD' })`: the headline shows `$75.00` (UAH
+    1,000 / 40 + $50), and `account-detail-converted` shows `3,000.00 ₴`. The breakdown still lists
+    `1,000.00 ₴` and `$50.00`.
+  - The same data with `currency: 'UAH'`: no `account-detail-converted`.
+  - `account({ currency: 'BTC' })` with one BTC holding and no BTC rate: the headline shows the BTC
+    amount, there is no caption, and nothing throws.
+
+  Run `npx jest src/screens/account-detail/account-detail.screen.test.tsx`: the new cases FAIL.
+- [ ] **step 2/4: implement** as described under Files. Re-run: every case passes, and the pins
+  above are unchanged.
+- [ ] **step 3/4: typecheck + scoped run.** Run `npm run check:typecheck` and
+  `npx jest src/screens/account-detail src/rates/net-worth-view`.
+- [ ] **step 4/4: commit.** `feat(account-detail): the headline totals in the account currency`.
+
+**Checks:** new cases red then green; the base-headline pins unchanged; `dup.sh` on the test file;
+`check:screen-imports` (the caption comes from the design system, not from `src/screens/accounts`).
+
+---
+
+### account-currency task 5/6: the currency field on the account form (non-implicit kinds)
 
 **Files (floor):**
 - Modify: `src/screens/forms/account-form/account-form.screen.tsx`:
@@ -259,7 +315,7 @@ file.
   - Edit a cash account to EUR: `accountsRepo.update` is called with `{ name, color, currency: 'EUR' }`,
     and no holdings or transactions repo call is made.
   - Edit a synced bank: the field is enabled and saves.
-  - Edit an implicit property account: no `account-currency-field` (task 5/5 adds it).
+  - Edit an implicit property account: no `account-currency-field` (task 6/6 adds it).
   - The hint renders except on cash create.
   - Kind switch cash -> bank shows the base, not the cash pick.
 
@@ -277,9 +333,9 @@ file.
 
 ---
 
-### account-currency task 5/5: implicit accounts follow their currency (spec Q3 = A)
+### account-currency task 6/6: implicit accounts follow their currency (spec Q4 = A, orchestrator default)
 
-Drop or trim this task if the coordinator rules Q3 = B or C.
+Drop or trim this task if the coordinator rules Q4 = B or C.
 
 **Files (floor):**
 - Modify: `src/screens/accounts/accounts.screen.tsx` (`propertyTotal`/`debtsTotal` through
@@ -308,8 +364,8 @@ the total) re-checked.
 ## After the last task (coordinator)
 
 - `make verify` once, queued, until green. `make deep` per task with its own base.
-- Device check: the cards, the caption, the form on create and edit (cash edit display-only), and
-  the Q4 account-detail headline in base.
+- Device check: the cards, the captions, the account-detail headline in the account currency
+  with its caption (Q3), and the form on create and edit (cash edit display-only).
 - Skill drift (`kiko:retrospect`, then `kiko:scribe`):
   - kiko-architecture "Storage": a 0062 bullet (add + backfill in one migration, open-only rule,
     `UPDATE ... FROM`).
@@ -319,8 +375,10 @@ the total) re-checked.
   - kiko-architecture "A create writes everything": add the currency.
   - kiko-domain "The three levels" Account bullet: `currency` is fixed and display-only, never
     re-derived after 0062 except on an old-file restore, and never follows the base.
-  - kiko-domain "Net worth": card versus Home/headline currencies.
+  - kiko-domain "Net worth": the card and the account-detail headline use the account currency
+    with a base caption; Home stays in base.
   - kiko-pricing: `accountTotal` next to `guardedNetWorth`/`canConvert`.
-  - kiko-design-system: the `AccountTotal` caption pattern beside the holding card's.
+  - kiko-design-system: the shared `ConvertedCaption` (account card, account-detail header)
+    beside the holding card's own caption.
   - kiko-compliance demo fixture: regenerated at version 5.
 - The user reviews `forms.account.currencyHint` (en/uk) before the deploy.
