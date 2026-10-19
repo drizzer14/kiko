@@ -2091,8 +2091,9 @@ than restated here:
   Transfer, Earn) off the parsed `exchange_state` (four nulls when it is not
   readable), `isBinanceHistoryBehind`
   compares them against `latestBalanceSyncAt(holdings, stateStamp)` (the later of the
-  holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when ANY of the four walks
-  never caught up (`null` cursor) or is behind by more than a day, or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
+  holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when ANY of
+  the four walks never caught up (`null` cursor) or is behind by more than a day,
+  or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
   passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
   the Transfer `pending` list alone), false before the account's own first balance sync.
   An owed point never
