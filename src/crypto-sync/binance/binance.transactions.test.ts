@@ -663,7 +663,7 @@ describe('wallet placement by walletType (C-matrix)', () => {
     expect(ensureHoldings).toHaveBeenCalledWith([
       expect.objectContaining({
         accountId: ACCOUNT_ID,
-        name: 'Binance Funding',
+        name: 'Binance Funding · BTC',
         balanceMinorUnits: 0,
         metadataField: 'binanceAsset',
         metadataKey: 'BTC:funding',

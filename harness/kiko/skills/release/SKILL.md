@@ -164,7 +164,9 @@ not touch the network). On drift, regenerate the pages
 (`npm run privacy:site -- build`, output in `docs/privacy-site/`),
 have the user approve them, and hand the user the gh-pages publish
 commands; the release does not go to upload until `check` exits 0.
-Never edit the markdown without bumping its effective date; check the
+Never edit the markdown without bumping its effective date, and re-date it
+to the PUBLISH day when gh-pages goes out later than the edit; `npm run
+privacy:site -- check` exits 0 before the upload. Check the
 data flows against `src/` and `ios/Kiko/Info.plist` (hosts, pinning,
 Keychain surviving uninstall) first. The host list lives in the code
 and the md, never copy it here.
@@ -197,7 +199,7 @@ Paste the resulting list into the App Store review notes as Guideline
 2.5.19 evidence that every screen is reachable with no flag or env gate
 (see "Guideline 2.5.19 — no hidden features" in `kiko-architecture`). Do
 not hardcode the list here — it drifts with every added screen; always
-re-run the grep at submission time. Guideline 2.3.1(a) is the per-feature duty: describe every
+re-run the grep at submission time. Guideline 2.5.19 is the per-feature duty: describe every
 NEW feature of the build specifically in the notes (generic text is rejected); on a release
 branch list only what the branch contains.
 

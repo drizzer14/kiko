@@ -142,6 +142,13 @@ is no EODHD entry (removed with the shares cut, Guideline 2.5.19). The live
 gh-pages policy may still name EODHD until the edited policy is
 published: check the live policy before an upload.
 
+The Binance public price fallback (`src/rates/binance-market/`) is a price
+call for ANY user to `BINANCE_API_ENDPOINT` (`.env`), sending only the market
+symbol and the dates, never a key, account, amount, address or device id. It
+is named in policy section 3 (`docs/privacy-policy.en.md`,
+`docs/privacy-policy.md`); App Privacy stays "Data Not Collected"
+(`resubmission-kit.md` section D).
+
 ## 5.1.5 / data storage — secrets never in `.env`, logs, or the DB
 
 Ask: does this diff put a secret (a token, an API key, a signing key)
@@ -271,6 +278,11 @@ unpinned, under-pinned, or if `NSAllowsArbitraryLoads` is not `false`
 than trusting a restated one here. A Let's Encrypt host pins two roots,
 never the rotating intermediate (see `docs/security/README.md`).
 
+A client that sends no credential header (the public Binance market
+client) is invisible to `check:plist`; it is safe only because it reuses
+the already pinned host. "Does this add a new host" stays a reviewer
+question for such a client.
+
 ## 2.5.2 — no remotely-loaded executable code
 
 Ask: does this diff add a mechanism that downloads and runs code at
@@ -293,6 +305,14 @@ account form's bank and broker pickers: each shows a "not affiliated with
 or endorsed by any bank/broker" caption under its trigger
 (`forms.account.bankDisclaimer`, which also says Kiko is not a bank, and
 `brokerDisclaimer`), and neither picker draws a logo.
+
+Binance (user ruling C2, 2026-10-18): the release hold is lifted on two
+conditions. No Binance logo appears anywhere in the app or the store
+metadata, and the public price fallback stays fail-soft (451, 403, 418,
+429 or any error is no price, never a crash or a wrong value). There is
+NO device-region check: the fallback runs for every user, a Prohibited
+Country included. The terms facts are in the crypto-exchanges spec's C2
+note (`docs/superpowers/specs/2026-10-15-crypto-exchanges-design.md`).
 
 ## No tracking/analytics SDKs
 

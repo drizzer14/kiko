@@ -814,34 +814,53 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).toHaveBeenCalled();
   });
 
-  it("hands the backfill each currency's first stored day from the history that loaded", async () => {
+  const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
+
+  // The memos behind the backfill's inputs recompute from the rows of the first read that
+  // carries history, so the run starts only once that read has landed.
+  const backfillArgumentOnceHistoryLoads = async (
+    history: HistoryRow[],
+  ): Promise<Record<string, unknown>> => {
     const baseData: LiveData = {
       accounts: [CASH, BANK],
       holdings: [UAH_HOLDING, USD_HOLDING],
       rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
     };
-    const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
     setLiveData({ ...baseData, history: [], isLoading: { currency_rate_history: true } });
 
     const { rerender } = await renderScreen();
 
-    setLiveData({
-      ...baseData,
-      history: [
-        { base: 'USD', quote: 'UAH', day: day(2), rate: '40' },
-        { base: 'USD', quote: 'UAH', day: day(5), rate: '40' },
-        { base: 'EUR', quote: 'UAH', day: day(3), rate: '45' },
-      ],
-    });
+    setLiveData({ ...baseData, history });
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
 
     expect(mockRunBackfill).toHaveBeenCalledTimes(1);
-    expect(mockRunBackfill.mock.calls[0]?.[0]).toMatchObject({
-      firstBackfilledDayByCurrency: { USD: day(5), EUR: day(3) },
-    });
+
+    return mockRunBackfill.mock.calls[0]?.[0] as Record<string, unknown>;
+  };
+
+  it("hands the backfill each currency's first stored day from the history that loaded", async () => {
+    const argument = await backfillArgumentOnceHistoryLoads([
+      { base: 'USD', quote: 'UAH', day: day(2), rate: '40' },
+      { base: 'USD', quote: 'UAH', day: day(5), rate: '40' },
+      { base: 'EUR', quote: 'UAH', day: day(3), rate: '45' },
+    ]);
+
+    expect(argument).toMatchObject({ firstBackfilledDayByCurrency: { USD: day(5), EUR: day(3) } });
+  });
+
+  it('hands the backfill the coins whose every stored row came from Binance', async () => {
+    const argument = await backfillArgumentOnceHistoryLoads([
+      { base: 'ETH', quote: 'UAH', day: day(2), rate: '120000', source: 'binance' },
+      { base: 'ETH', quote: 'UAH', day: day(1), rate: '121000', source: 'binance' },
+      { base: 'SOL', quote: 'UAH', day: day(2), rate: '6000', source: 'binance' },
+      { base: 'SOL', quote: 'UAH', day: day(1), rate: '6100', source: 'coingecko' },
+      { base: 'USD', quote: 'UAH', day: day(1), rate: '40', source: 'nbu' },
+    ]);
+
+    expect(argument.binanceOnlyCurrencies).toEqual(new Set(['ETH']));
   });
 
   // kiko-architecture: a cached display mount's rows can be one read old, and

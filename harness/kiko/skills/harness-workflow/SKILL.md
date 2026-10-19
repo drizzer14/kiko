@@ -661,7 +661,9 @@ all C2C receives).
 
 A "deferred to the scribe step" item that is not a skill edit (plan
 text, other docs) must be named explicitly in the brief handed to
-`kiko:scribe` — never left implicit for the scribe to guess at.
+`kiko:scribe` — never left implicit for the scribe to guess at. A ruling
+that reverses a spec or plan sentence names that sentence (file:line) in
+the scribe list at once, not at the end of the set.
 
 ## Write the rule into its skill, not a third brief
 

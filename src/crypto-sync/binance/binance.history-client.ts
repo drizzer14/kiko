@@ -120,6 +120,8 @@ const recordReader =
 export type BinancePageWeights = {
   usedUidWeight1m: number | undefined;
   usedIpWeight1m: number | undefined;
+  /** The `/api/*` weight (`X-MBX-USED-WEIGHT-1M`); only the public price reads carry it. */
+  usedApiWeight1m?: number | undefined;
 };
 
 /**

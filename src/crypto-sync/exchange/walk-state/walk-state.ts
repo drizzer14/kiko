@@ -35,11 +35,21 @@ export type WalkMarks = {
 };
 
 export type CoinLists = {
-  /** Replaced by each good balance read. */
+  /**
+   * Replaced by each good balance read. The oversized kind derives it from `balanceByWallet`
+   * (see `exchangeStatePatched`), so it always holds the wallet arrays and the legacy tickers.
+   */
   balance?: string[];
   /** Grows with each history read, and is cleared on disconnect. */
   history?: string[];
 };
+
+/**
+ * The oversized coins also name the wallet that refused each one (`spot`, `funding`, `earn`), so
+ * a read in which a wallet failed replaces only the arrays of the wallets that read. A `balance`
+ * ticker in no wallet array was stored before wallets were named (legacy).
+ */
+export type OversizedCoinLists = CoinLists & { balanceByWallet?: Record<string, string[]> };
 
 export type TradeSymbol = { fromId: number | null; heldOrderId?: number };
 
@@ -55,7 +65,7 @@ export type ExchangeState = {
   walks: Partial<Record<WalkId, WalkMarks>>;
   trades?: ExchangeTrades;
   untrackedCoins?: CoinLists;
-  oversizedCoins?: CoinLists;
+  oversizedCoins?: OversizedCoinLists;
 };
 
 /**
@@ -235,6 +245,14 @@ export const coinListsOf = (kind: string, stored: unknown): ReadEntry<Required<C
   };
 };
 
+/**
+ * The wallet arrays of the oversized balance list. Each wallet parses alone, so an array that is
+ * unreadable is dropped and named while the others stay; the tickers it held then read as legacy
+ * ones, since they sit in `balance` and in no wallet array.
+ */
+export const oversizedByWalletOf = (stored: unknown): ReadEntry<Record<string, string[]>> =>
+  recordOf('oversizedCoins.balanceByWallet', stored, stringListOrUndefined);
+
 /** The stored JSON as a writer sees it: raw values, so a field no build reads stays as stored. */
 export type StoredExchangeState = Metadata & { walks: Metadata };
 
@@ -254,6 +272,9 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
   const trades = tradesOf(stored.trades);
   const untrackedCoins = coinListsOf('untrackedCoins', stored.untrackedCoins);
   const oversizedCoins = coinListsOf('oversizedCoins', stored.oversizedCoins);
+  const oversizedByWallet = oversizedByWalletOf(
+    recordOrEmpty(stored.oversizedCoins).balanceByWallet,
+  );
 
   return {
     kind: 'parsed',
@@ -269,6 +290,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
       ...trades.unreadable,
       ...untrackedCoins.unreadable,
       ...oversizedCoins.unreadable,
+      ...oversizedByWallet.unreadable,
     ],
   };
 };

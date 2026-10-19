@@ -35,7 +35,7 @@
 
   <h1>Privacy Policy for Kiko</h1>
 
-  <p class="eff"><strong>Effective date:</strong> 5 October 2026</p>
+  <p class="eff"><strong>Effective date:</strong> 18 October 2026</p>
 
   <p>Kiko is a personal finance app developed by Dmytro Vasylkivskyi ("we", "us"). This policy explains how Kiko handles your information.</p>
 
@@ -63,11 +63,11 @@
 
   <h2>3. Connections to third-party services</h2>
 
-  <p>Kiko communicates directly from your device with the services below, only as far as your accounts and holdings need them. Some connections run only after you connect an account, add a Bitcoin address, or save a key (Monobank statements, Binance, Blockstream). Others run automatically to value what you track: currency exchange rates (Monobank and the National Bank of Ukraine), cryptocurrency prices (CoinGecko), and precious-metal prices and the government bond register (National Bank of Ukraine). Kiko does not route these connections through any server of ours. Like any internet connection, each service can see your device's IP address.</p>
+  <p>Kiko communicates directly from your device with the services below, only as far as your accounts and holdings need them. Some connections run only after you connect an account, add a Bitcoin address, or save a key (Monobank statements, Binance account data, Blockstream). Others run automatically to value what you track: currency exchange rates (Monobank and the National Bank of Ukraine), cryptocurrency prices (CoinGecko, and Binance public prices when CoinGecko has none), and precious-metal prices and the government bond register (National Bank of Ukraine). Kiko does not route these connections through any server of ours. Like any internet connection, each service can see your device's IP address.</p>
 
   <ul>
     <li><strong>Monobank</strong> (<code>api.monobank.ua</code>) — your bank account information and statements, using your personal token; also public currency exchange rates, for which no token or personal data is sent.</li>
-    <li><strong>Binance</strong> (<code>api.binance.com</code>) — your Binance balances (spot, funding, Simple Earn), your deposit and withdrawal history, your Binance Pay history, your transfers between your Binance wallets (universal transfer), and your Simple Earn subscriptions, redemptions and rewards, using your read-only API key.</li>
+    <li><strong>Binance</strong> (<code>api.binance.com</code>) — your Binance balances (spot, funding, Simple Earn), your deposit and withdrawal history, your Binance Pay history, your transfers between your Binance wallets (universal transfer), and your Simple Earn subscriptions, redemptions and rewards, using your read-only API key. Also, for any user, public market prices of a coin CoinGecko did not price: Kiko sends only the market symbol (for example <code>BTCUSDT</code>) and the dates of the prices it needs; no key, address, or amount is sent.</li>
     <li><strong>Blockstream</strong> (<code>blockstream.info</code>) — the public on-chain balance of a Bitcoin address you add. Kiko sends that address to Blockstream to look it up.</li>
     <li><strong>CoinGecko</strong> (<code>api.coingecko.com</code>) — the current price and the daily price history of each cryptocurrency you hold. Kiko sends only the names of those coins (for example <code>bitcoin</code>); no address, amount, or credential is sent.</li>
     <li><strong>National Bank of Ukraine</strong> (<code>bank.gov.ua</code>) — public currency exchange rates and their history, precious-metal prices, and the public register of government bonds. Kiko downloads the whole register, so the ISIN you enter is not sent. No personal data is sent.</li>

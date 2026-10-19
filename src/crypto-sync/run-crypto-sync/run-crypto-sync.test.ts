@@ -287,6 +287,57 @@ describe('runCryptoSync', () => {
     warn.mockRestore();
   });
 
+  describe('the balance lists the read returned', () => {
+    const lists = [
+      { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['PEPE'] },
+      { kind: 'oversizedBalance', wallets: { spot: ['ETH'] }, complete: false },
+    ];
+
+    it('writes them to the account once the balance sync has marked it', async () => {
+      mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 1, exchangeState: lists });
+
+      const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(result).toEqual({ syncedHoldings: 1 });
+      expect(mockPatchExchangeState).toHaveBeenCalledTimes(1);
+      expect(mockPatchExchangeState).toHaveBeenCalledWith('acc-2', 'binance', lists);
+      expect(mockRunBalanceSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPatchExchangeState.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('writes nothing when the read returned no lists', async () => {
+      await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(mockPatchExchangeState).not.toHaveBeenCalled();
+    });
+
+    it('still resolves and runs the walks when the list write fails, logging only its name', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 1, exchangeState: lists });
+      mockPatchExchangeState.mockRejectedValueOnce(new Error('Failed query: params SECRET'));
+
+      const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(result).toEqual({ syncedHoldings: 1 });
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('[binance sync] balance lists failed', {
+        name: 'Error',
+        code: undefined,
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+      warn.mockRestore();
+    });
+
+    it('never writes the lists of a wallet request', async () => {
+      mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 1, exchangeState: lists });
+
+      await runCryptoSync({ providerId: 'btc_wallet', targetAccountId: 'acc-1' });
+
+      expect(mockPatchExchangeState).not.toHaveBeenCalled();
+    });
+  });
+
   describe('a walk state this build cannot read', () => {
     // How many times each of the four walks ran, in the order capital, Pay, Transfer, Earn.
     const walkRunCounts = (): number[] =>

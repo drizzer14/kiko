@@ -4279,7 +4279,7 @@ describe('resolveWalletHoldings', () => {
     expect(ensureHoldings).toHaveBeenCalledWith([
       {
         accountId: 'acc-1',
-        name: 'Binance Funding',
+        name: 'Binance Funding · BTC',
         type: 'crypto_asset',
         currency: 'BTC',
         balanceMinorUnits: 0,
@@ -4327,8 +4327,8 @@ describe('resolveWalletHoldings', () => {
 
     const created = ensureHoldings.mock.calls[0][0] as { name: string; metadataKey: string }[];
     expect(created.map((holding) => [holding.metadataKey, holding.name])).toEqual([
-      [FUNDING_KEY, 'Binance Funding'],
-      [EARN_KEY, 'Binance Earn'],
+      [FUNDING_KEY, 'Binance Funding · BTC'],
+      [EARN_KEY, 'Binance Earn · BTC'],
     ]);
   });
 
