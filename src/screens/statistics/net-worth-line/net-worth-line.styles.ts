@@ -39,14 +39,13 @@ export const styles = StyleSheet.create((theme) => ({
   plot: {
     flex: 1,
   },
-  // The scrub line's label: pinned to the plot's top, its `left` set inline from the measured
-  // plot width (the line moves under the finger), on the card surface so it stays readable over
-  // the line and the gridlines.
+  // The scrub line's label: its `left` set inline from the measured plot width (the line moves
+  // under the finger) and its `top` from the measured amount height, so the gap between amount
+  // and date sits on the line's tip. It has no background, so the line and the gridlines show
+  // behind it.
   scrubLabel: {
     position: 'absolute',
-    top: 0,
     paddingHorizontal: theme.spacing(1),
-    backgroundColor: theme.colors.surface,
   },
   // The label's amount: caption-sized and semibold, so it reads above its date line.
   scrubAmount: {

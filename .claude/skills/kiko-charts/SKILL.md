@@ -97,7 +97,7 @@ manual mock and read its props back. A chart primitive with no `testID`
 is untestable geometry — always add one when adding a new primitive,
 following the existing `<chart-name>-<primitive>[-<key>]` naming (e.g.
 `bar-chart-bar-card`, `net-worth-line-x-grid-0.50`). The NetWorthLine scrub
-adds `net-worth-line-scrub`, `net-worth-line-scrub-label`,
+adds `net-worth-line-scrub`, `net-worth-line-scrub-label`, `net-worth-line-scrub-amount`,
 `net-worth-line-plot`, and `NET_WORTH_SCRUB_GESTURE_TEST_ID`
 (`net-worth-line-scrub-gesture`, exported by the component).
 
@@ -194,8 +194,18 @@ else clamped inside the plot, returning `left`), `scrubRangeKey`,
   `theme.colors.textSecondary`). It is always drawn, on the last point by
   default.
 - `ScrubLabel` is an overlay `View` OUTSIDE the `Svg` (`MoneyText` plus the
-  date, surface background). It measures its own width and stays at opacity 0
-  until measured.
+  date) with NO background. It measures its width AND its amount line's
+  height (`onLayout` on a wrapper `View`, since `MoneyText` does not pass
+  `onLayout`) and stays at opacity 0 until label width, amount height and
+  plot width are all measured.
+- Vertical placement (user-approved 2026-10-19): the amount/date gap sits on
+  the scrub line's top end (`tipY = PADDING_Y`), so
+  `top = max(tipY - amountHeight, -theme.spacing(spaceAbove))`. The label
+  stays fixed vertically while dragging. `spaceAbove` (spacing units,
+  default 0 = inside the plot) is the room the host gives above the plot;
+  the Statistics screen passes `NET_WORTH_CARD_GAP`, the card `Box` gap. At
+  accessibility sizes the label stops under the card title and the gap then
+  sits below the tip.
 - The selection is stored as `{ rangeKey, index }`; `rangeKey` is the first
   `t`, last `t` and point count. A period change or an empty series clears it
   during render; a live update with the same range keeps it; a navigation

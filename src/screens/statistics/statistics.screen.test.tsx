@@ -53,6 +53,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 import { i18n } from '@kiko/i18n/init';
+import { StyleSheet } from 'react-native';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
@@ -706,6 +707,29 @@ describe('StatisticsScreen', () => {
     expect(getAllByTestId(/^net-worth-line-polyline-/).length).toBeGreaterThan(0);
     expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+  });
+
+  it('lets the net-worth label reach up only as far as the gap under the card title', async () => {
+    const { getByTestId, getByText } = await renderScreen();
+    const titleGap = StyleSheet.flatten(
+      getByText(i18n.t('statistics.netWorthOverTime')).parent?.props.style,
+    ).gap;
+    const accessibilityAmountHeight = 100;
+
+    await fireEvent(getByTestId('net-worth-line-plot'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 240, height: 200 } },
+    });
+    await fireEvent(getByTestId('net-worth-line-scrub-label'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 80, height: accessibilityAmountHeight } },
+    });
+    await fireEvent(getByTestId('net-worth-line-scrub-amount'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 80, height: accessibilityAmountHeight } },
+    });
+
+    expect(titleGap).toBeGreaterThan(0);
+    expect(StyleSheet.flatten(getByTestId('net-worth-line-scrub-label').props.style).top).toBe(
+      -titleGap,
+    );
   });
 
   describe('Debts total', () => {
