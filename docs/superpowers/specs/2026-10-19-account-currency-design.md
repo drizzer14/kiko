@@ -271,6 +271,7 @@ and kept only as the backfill.
 | BTC, base UAH | BTC 0.5 + UAH 100 | no BTC rate | 0.5 BTC (UAH has no rate to BTC: left out) | none | ₴100 |
 | EUR (user-picked), base UAH | USD 100 only | USD, EUR rates | €(USD->EUR) | ₴ base total | ₴ base total |
 | empty, migrated | none | any | base 0 | none | base 0 |
+| empty USD, base UAH | none | USD:UAH 40 | $0.00 | 0.00 ₴ | n/a (D6: the caption shows for a non-base account with a rate, even at zero; orchestrator ruling, on the user's device-review list) |
 | cash USD, edited to EUR | cash USD 100 | rates | €(converted) | ₴ | n/a; holding stays USD 100 |
 
 ## User rulings (Q1, Q3, Q4: 2026-10-19; Q2: ruling 4, 2026-10-18) and orchestrator defaults (Q5-Q7)

@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, ConvertedCaption, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -235,8 +235,10 @@ an entry (date + value) the moment the user approves a new visual.
   `numberOfLines`/ellipsis: the leading cluster (icon + title) is
   `flex: 1` with `marginRight: theme.spacing(3)`, the title sits in its
   own `flex: 1` box (`rowDescription`; a `Text` does not shrink in a row
-  on its own), and the amount sits in a `flexShrink: 0` box (`rowAmount`,
-  or the holding card's `valueColumn`), right-aligned at its full width.
+  on its own), and the amount sits in a `flexShrink: 0` box (`rowAmount`;
+  the holding card's `valueColumn`; the account card's `AccountTotal`
+  `column`, `src/screens/accounts/account-total/`), right-aligned at
+  its full width.
   Short titles render exactly as before: each family keeps its own
   vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
   body-size glyph), the holding-detail ledger rows stay `center`, and
@@ -754,6 +756,14 @@ new component can land between reviews of this skill:
   applies the positive/negative/neutral money color token from its
   sign. This is the only primitive that knows about `Money` — plain
   `Text` never receives a `Money` object directly.
+- **ConvertedCaption**
+  (`src/design-system/components/converted-caption/`) — the smaller
+  base-currency figure under a total (caption, `textSecondary`,
+  `formatMoney`). `money: null` renders nothing, so a caller passes
+  `null` for "same currency" or "no rate" instead of guarding the
+  element. Consumer: the account card (`AccountTotal`, testID
+  `account-card-converted`). It follows the holding card's
+  converted-to-base caption pattern.
 - **Button** — the one action button: primary/secondary/secondaryTonal/
   destructive/destructiveTonal/ghost variants (read
   `button.props.d.ts`'s `ButtonVariant` for the exact current set
