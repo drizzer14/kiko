@@ -652,13 +652,22 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
 - Stay: an existing holding is written every good read, a zero included; it is never archived by
   the sync. A dust balance below `dustBelow` with no holding and no row creates none.
 - Spot anchor: a Spot read failure fails the balance sync as today; no zero Spot holding is created
-  for a coin never held. The zero Spot BTC anchor is written whenever NO Spot BTC holding exists
-  (also when the Spot BTC amount is refused); an existing Spot BTC holding with a refused amount
-  keeps its last balance. Set 6 removes the anchor together with the four walk guards.
+  for a coin never held. The zero Spot BTC anchor (written whenever NO Spot BTC holding existed,
+  also when the amount was refused) was removed in set 6 step 5 (`b24eaab8`) together with the four
+  walk guards; an existing Spot BTC holding with a refused amount keeps its last balance.
+  COORDINATOR RULING 2026-10-19 (Spot BTC dust): with the anchor gone, a Spot BTC below its dust
+  threshold (0.00001 BTC, `dustBelow` in `coins.ts`) with no stored holding creates no holding,
+  like every other coin (the "Appear" rule); an existing Spot BTC holding stays (the "Stay" rule).
+  Pinned by `binance.provider.coin-lists.test.ts` "writes no Spot BTC holding for a dust amount
+  while none is stored" and `binance.provider.test.ts` "writes an existing Spot BTC holding below
+  its dust threshold".
   Set 6 Q1 = B (coordinator ruling on the user's standing approval for Binance edge cases,
   2026-10-19): the balance-sync time is stamped in `exchange_state` (JSON, no migration) and "Last
   sync" reads it, so an account with no tracked holding never shows "Never" after the anchor goes.
   Steps 4 and 5 are never merged apart.
+  KNOWN LIMIT (display only), coordinator ACCEPTED 2026-10-19: an account whose `exchange_state`
+  top level is malformed cannot get the balance-sync stamp, so an account with no holding shows
+  "Last sync: Never"; that account already shows the paused-history caption.
 - Set 6 Q3 = A (coordinator ruling, standing approval, 2026-10-19): the oversized-history list
   patch is written on every span read that meets the stop, committed or not.
 - Set 6 Q5 = A (coordinator ruling, standing approval, 2026-10-19): `amount-malformed`,
