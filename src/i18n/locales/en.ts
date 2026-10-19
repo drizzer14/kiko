@@ -346,6 +346,8 @@ export const en = {
       cash: 'Cash',
       connectHint: 'Tap “{{label}}” to link this account.',
       crypto: 'Crypto',
+      currencyHint:
+        'The account card shows its total in this currency. Holdings keep their own currencies.',
       debt: 'Debt',
       editTitle: 'Edit Account',
       importOnlyBankHint: 'You can import a statement for this bank after saving.',

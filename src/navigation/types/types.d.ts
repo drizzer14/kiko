@@ -105,6 +105,8 @@ export type AccountFormDraft = {
   color: string | null;
   kind: AccountRow['kind'];
   currency: Currency;
+  // The account currency pick of a non-cash kind; null until the user picks one.
+  accountCurrency: Currency | null;
   initialValue: string;
   bankId: BankId | null;
   brokerId: BrokerId | null;

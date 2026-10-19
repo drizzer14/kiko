@@ -854,15 +854,15 @@ describe('AccountFormScreen', () => {
   it('creates a metals account with the metals kind (no bank/crypto section rendered)', async () => {
     // Metals has no extra creation fields yet, so it shares the generic
     // create path with bank/crypto: the row
-    // inserts with just name/kind/color/icon, and neither the cash currency
-    // fields nor the bank/crypto sync sections render for it.
-    const { getByLabelText, getByTestId, navigation, queryByText, queryByTestId } =
+    // inserts with just name/kind/color/icon/currency, and neither the cash initial value
+    // field nor the bank/crypto sync sections render for it.
+    const { getByLabelText, getByTestId, navigation, queryByText, queryByLabelText } =
       await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Gold');
     await selectKind(getByTestId, 'metals');
 
-    expect(queryByTestId('account-currency-field')).toBeNull();
+    expect(queryByLabelText('Initial value')).toBeNull();
     expect(queryByText('Synchronization')).toBeNull();
 
     await pressSave(navigation.setOptions);
@@ -3369,6 +3369,7 @@ describe('AccountFormScreen — draft', () => {
     color: entityColors.violet,
     kind: 'cash',
     currency: 'EUR',
+    accountCurrency: null,
     initialValue: '250.50',
     bankId: null,
     brokerId: null,
@@ -3462,6 +3463,7 @@ describe('AccountFormScreen — draft', () => {
       color: null,
       kind: 'bank',
       currency: 'UAH',
+      accountCurrency: null,
       initialValue: '',
       bankId: null,
       brokerId: null,

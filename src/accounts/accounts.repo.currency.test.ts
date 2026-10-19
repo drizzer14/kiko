@@ -150,6 +150,29 @@ describe('the currency an account write stores', () => {
     expect(currenciesByName()).toEqual({ Renamed: 'USD' });
   });
 
+  it('an edit of a cash account currency changes that column alone, never its money', async () => {
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'UAH',
+      initialBalance: Money.of('UAH', 25050),
+    });
+    const [{ id: accountId }] = mockDatabase.prepare('SELECT id FROM accounts').all() as {
+      id: string;
+    }[];
+    const rows = (table: string) => mockDatabase.prepare(`SELECT * FROM ${table}`).all();
+    const holdingsBefore = rows('holdings');
+    const transactionsBefore = rows('transactions');
+
+    await accountsRepo.update(accountId, { name: 'Wallet', color: null, currency: 'EUR' });
+
+    expect(currencyOf(accountId)).toBe('EUR');
+    expect(holdingsBefore).toHaveLength(1);
+    expect(transactionsBefore).toHaveLength(1);
+    expect(rows('holdings')).toEqual(holdingsBefore);
+    expect(rows('transactions')).toEqual(transactionsBefore);
+    expect(holdingsBefore).toEqual([expect.objectContaining({ currency: 'UAH' })]);
+  });
+
   it('the first property holding creates its account in the base currency read in the write', async () => {
     const { accountId } = await accountsRepo.createImplicitHolding('property', {
       name: 'Flat',

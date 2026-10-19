@@ -7,6 +7,7 @@ import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
 import { useSync } from '@kiko/sync/use-sync';
 import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
@@ -81,6 +82,7 @@ type CreateSeed = {
   iconIsDirty: boolean;
   color: string | null;
   currency: Currency;
+  accountCurrency: Currency | null;
   initialValue: string;
   bankId: BankId | null;
   brokerId: BrokerId | null;
@@ -97,7 +99,8 @@ const createSeed = (
   draft: FormDraft | AccountFormDraft | undefined,
 ): CreateSeed => {
   if (isSavedDraft(draft)) {
-    return draft;
+    // A draft saved before the field existed has no such key, and reads as untouched.
+    return { ...draft, accountCurrency: draft.accountCurrency ?? null };
   }
 
   const kind = initialKind ?? INITIAL_KIND;
@@ -109,6 +112,7 @@ const createSeed = (
     iconIsDirty: typeof draft?.icon === 'string',
     color: draft?.color ?? null,
     currency: 'UAH',
+    accountCurrency: null,
     initialValue: '',
     bankId: null,
     brokerId: null,
@@ -197,6 +201,21 @@ const INITIAL_KIND: Kind = 'bank';
 
 const CASH_CURRENCY_CONTEXT = { kind: 'fiat' } as const;
 
+const ACCOUNT_CURRENCY_CONTEXT = { kind: 'any' } as const;
+
+// A new cash account has one currency field, the cash one, which also sets the account currency.
+// Every other non-implicit kind has the account-currency field, on create and on edit. A property
+// or debt account's field waits for the section total that uses it.
+const hasAccountCurrencyField = (isEdit: boolean, kind: Kind): boolean =>
+  !isImplicitAccountKind(kind) && (isEdit || kind !== 'cash');
+
+// The edit patch carries the currency only when the user changed it: the write then touches
+// `accounts.currency` alone, for a cash account too, and never its holding or an amount.
+const currencyPatch = (
+  picked: Currency | null,
+  stored: Currency | undefined,
+): { currency?: Currency } => (picked !== null && picked !== stored ? { currency: picked } : {});
+
 // Neutral placeholder glyph shown in the create form's icon chip until the user
 // picks one (and the glyph a cleared icon falls back to). The persisted default
 // (a kind-derived icon) is applied by the account list rows when the stored icon
@@ -246,6 +265,52 @@ const storedName = (kind: Kind, trimmedName: string, t: TFunction): string =>
 const shownKind = (kind: Kind, pickedImplicitKind: Kind | undefined): Kind =>
   pickedImplicitKind ?? kind;
 
+// What the field shows for an untouched account currency: the base, or the settings column's own
+// default while the row is not read yet. Display only: no write reads it.
+const shownAccountCurrency = (picked: Currency | null, base: Currency | undefined): Currency =>
+  picked ?? base ?? 'UAH';
+
+type AccountCurrencyFieldProps = {
+  isEdit: boolean;
+  kind: Kind;
+  selected: Currency;
+  onSelect: (currency: Currency) => void;
+};
+
+// The account-currency field and its hint, for the kinds that have one. A component of its own,
+// with the visibility check inside, to keep that branch out of AccountFormScreen's own cognitive
+// complexity score, which already sits at Biome's cap.
+const AccountCurrencyField: FC<AccountCurrencyFieldProps> = ({
+  isEdit,
+  kind,
+  selected,
+  onSelect,
+}) => {
+  const { t } = useTranslation();
+  const groups = useCurrencyPickerGroups(ACCOUNT_CURRENCY_CONTEXT);
+
+  if (!hasAccountCurrencyField(isEdit, kind)) {
+    return null;
+  }
+
+  return (
+    <Box gap={1}>
+      <CurrencyField
+        label={t('forms.fields.currency')}
+        sheetTitle={t('forms.fields.currencySheetTitle')}
+        selected={selected}
+        onSelect={onSelect}
+        groups={groups}
+        testID="account-currency-field"
+      />
+
+      <Text variant="caption" tone="textSecondary">
+        {t('forms.account.currencyHint')}
+      </Text>
+    </Box>
+  );
+};
+
 const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) => {
   // An `accountId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing account, saving through the update path
@@ -255,7 +320,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const isEdit = editId !== undefined;
 
   const { t } = useTranslation();
-  const currencyGroups = useCurrencyPickerGroups(CASH_CURRENCY_CONTEXT);
+  const cashCurrencyGroups = useCurrencyPickerGroups(CASH_CURRENCY_CONTEXT);
 
   const { initialDraft, saveDraft } = useDraftParam<FormDraft | AccountFormDraft>(
     navigation,
@@ -269,6 +334,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // the swap replaces this screen (see `handleSelectKind`).
   const [pickedImplicitKind, setPickedImplicitKind] = useState<Kind | undefined>(undefined);
   const [currency, setCurrency] = useState<Currency>(opening.currency);
+  // The account currency of every non-cash kind, on create and on edit. null = untouched: the
+  // field then shows the base, but the write gets null, so the base is read inside the write
+  // (a create) or the stored currency is left alone (an update). A cash create has no such
+  // pick: its `currency` above is both the cash holding's and the account's.
+  const [accountCurrency, setAccountCurrency] = useState<Currency | null>(opening.accountCurrency);
   const [initialValue, setInitialValue] = useState(opening.initialValue);
   // A create form seeds the icon with the initially-selected kind's default
   // glyph so it opens on a sensible symbol; the user can still override it in
@@ -336,6 +406,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(editId ?? pendingAccountId), [
     'accounts',
   ]);
+  // Display only: the base the untouched account-currency field shows. No write reads it.
+  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const draft: AccountFormDraft = {
     saved: true,
     name,
@@ -344,6 +416,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     color,
     kind,
     currency,
+    accountCurrency,
     initialValue,
     bankId,
     brokerId,
@@ -396,9 +469,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // Neither cash (createCashAccount returns before this) nor property/debt
     // (the swap to the holding form leaves this form first) reaches here.
     kind,
-    // Null: the write reads the base currency itself, and never rewrites a stored one. A value
-    // read here would be the first-frame fallback or a base another tab has since changed.
-    currency: null,
+    // The raw pick, never `accountCurrency ?? baseCurrency`: null makes the write read the base
+    // itself and never rewrite a stored currency. A value read here would be the first-frame
+    // fallback or a base another tab has since changed.
+    currency: accountCurrency,
     color,
     icon,
     bankId: catalogId,
@@ -540,6 +614,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // entry, mirroring `isSupportedKind` above.
     setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
     setBrokerId(isBrokerId(editingAccount.bankId) ? editingAccount.bankId : null);
+    setAccountCurrency(editingAccount.currency);
   }, [isEdit, editingAccount, t]);
 
   // The stack sets the static "Add Account" title; in edit mode override it with
@@ -607,10 +682,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // account IS — its kind, its bank or broker, and the cash currency +
         // initial value of its create-time initial holding — is set on create
         // only, so this patch never carries any of it (nor `institution`, so a
-        // live-connected account's sync stays untouched).
+        // live-connected account's sync stays untouched). The account currency is the
+        // one exception, when the user changed it.
         await accountsRepo.update(editId, {
           name: storedName(kind, trimmedName, t),
           color,
+          ...currencyPatch(accountCurrency, editingAccount?.currency),
         });
         await accountsRepo.setIcon(editId, icon);
         navigation.goBack();
@@ -791,7 +868,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               sheetTitle={t('forms.fields.currencySheetTitle')}
               selected={currency}
               onSelect={setCurrency}
-              groups={currencyGroups}
+              groups={cashCurrencyGroups}
               testID="account-currency-field"
             />
 
@@ -809,6 +886,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             </View>
           </>
         )}
+
+        {/* The currency the account card shows its total in. Never locked with the kind and the
+            bank pick: a pick made after a Connect is still written by Save, and an edit of a
+            synced or cash account changes only this display currency. */}
+        <AccountCurrencyField
+          isEdit={isEdit}
+          kind={kind}
+          selected={shownAccountCurrency(accountCurrency, settingsRows.at(0)?.baseCurrency)}
+          onSelect={setAccountCurrency}
+        />
 
         {/* The "which bank does this account represent" identity picker —
             shown in BOTH create and edit mode, so the edit form shows the
