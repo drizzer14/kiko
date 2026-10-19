@@ -1893,9 +1893,15 @@ than restated here:
   every Binance history walk lives in the shared exchange layer,
   `src/crypto-sync/exchange/walk/walk.ts` (read it for its exports:
   `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, the mark
-  readers/writers, `BinanceWalkStop`); `btcSatoshis` is in
-  `binance.amounts.ts`; the per-record commits live in
-  `exchange/walk/records.ts` (`settleRecords`, `commitSettledSpan`). What a
+  readers/writers, `BinanceWalkStop`); every history row amount goes through
+  `rowMinorUnits(currency, text)` in `exchange/walk/records.ts`, which calls
+  `exchangeMinorUnits(currency, text, 'row')` and throws `BinanceWalkStop` with
+  the parser's code (`AMOUNT_STOP_CODES`: `amount-malformed`, `amount-precision`,
+  `amount-too-large`); `amount-too-large` also names the coin, and
+  `commitSettledSpan` writes it to `oversizedCoins.history`
+  (`oversizedHistoryWriterOf`) on every span read that meets the stop. The
+  per-record commits live in the same file (`settleRecords`,
+  `commitSettledSpan`). What a
   walk reads about one exchange is an `ExchangeWalkConfig`
   (`exchange/walk/walk-config.ts`; Binance's is `BINANCE_WALK_CONFIG` in
   `binance.walk-config.ts`). The other exchange units are `exchange/signing`,
