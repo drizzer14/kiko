@@ -1,3 +1,6 @@
+import { match, P } from 'ts-pattern';
+import { i18n } from '@kiko/i18n/init';
+import { transactions } from '@kiko/db';
 import {
   parseRuleMatchers,
   prepareRules,
@@ -6,12 +9,15 @@ import {
   winningRule,
 } from '@kiko/categories/category-rules';
 import maybe, { foldMap } from 'fnts/maybe';
+import { defaultDateRange } from '@kiko/dates';
 import { isCrypto } from '@kiko/currency/currency';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { bankCatalog, isBankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
+import { parseUntrackedCounterpart } from '@kiko/transactions/untracked-counterpart';
 import { draftReferences, isTemplateDraft } from '@kiko/transaction-templates/draft';
 import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
@@ -397,5 +403,191 @@ describe('buildDemoSnapshot', () => {
 
   it('applies the requested language to the settings row', () => {
     expect(buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR)).settings[0].language).toBe('en');
+  });
+
+  // The reviewer reaches every operation label only through this file (Guideline 2.5.19).
+  describe('exchange operations on the crypto account', () => {
+    const cryptoRowsOf = (demoSnapshot: typeof snapshot) => {
+      const accountId = demoSnapshot.accounts.find((account) => account.kind === 'crypto')?.id;
+      const accountHoldings = demoSnapshot.holdings.filter(
+        (holding) => holding.accountId === accountId,
+      );
+      const holdingIds = new Set(accountHoldings.map((holding) => holding.id));
+
+      return {
+        holdings: accountHoldings,
+        rows: demoSnapshot.transactions.filter((transaction) =>
+          holdingIds.has(transaction.holdingId),
+        ),
+      };
+    };
+    const { holdings: cryptoHoldings, rows } = cryptoRowsOf(snapshot);
+    const operationRows = rows.filter((row) => row.operation !== null);
+    const pairIds = new Set(
+      rows.map((row) => row.exchangePairId).filter((pairId) => pairId !== null),
+    );
+    const tradeLegs = (pairId: string) =>
+      rows.filter((row) => row.exchangePairId === pairId && row.operation !== 'trade-fee');
+
+    it('carries one row of every operation code on the crypto account', () => {
+      const codes = operationRows.map((row) => row.operation);
+
+      expect(new Set(codes)).toEqual(new Set(transactions.operation.enumValues));
+      expect(codes.filter((code) => code === 'trade-fee')).toHaveLength(1);
+      expect(codes.filter((code) => code === 'p2p')).toHaveLength(1);
+      expect(codes.filter((code) => code === 'card')).toHaveLength(1);
+    });
+
+    it("gives the legs of each pair one pair id and points each leg at the other's holding", () => {
+      expect(pairIds).toEqual(new Set(['pair-1', 'pair-2', 'pair-3']));
+
+      const legOperations = [...pairIds].map((pairId) => {
+        const [first, second, ...rest] = tradeLegs(pairId);
+
+        expect(rest).toEqual([]);
+        expect(first.holdingId).not.toBe(second.holdingId);
+        expect(first.exchangeCounterpartHoldingId).toBe(second.holdingId);
+        expect(second.exchangeCounterpartHoldingId).toBe(first.holdingId);
+        expect(first.time).toBe(second.time);
+        expect(first.operation).toBe(second.operation);
+
+        return first.operation;
+      });
+
+      expect(new Set(legOperations)).toEqual(new Set(['convert', 'trade', 'dust']));
+    });
+
+    it("points the fee row at the received leg's holding under the trade's pair id", () => {
+      const fee = rows.find((row) => row.operation === 'trade-fee');
+      const received = rows.find((row) => row.operation === 'trade' && row.amountMinorUnits > 0);
+
+      expect(fee?.exchangePairId).not.toBeNull();
+      expect(fee?.exchangePairId).toBe(received?.exchangePairId);
+      expect(fee?.exchangeCounterpartHoldingId).toBe(received?.holdingId);
+      expect(fee?.amountMinorUnits).toBeLessThan(0);
+    });
+
+    describe.each([
+      [
+        'en',
+        {
+          fee: 'Trading fee',
+          p2p: 'P2P purchase (UAH)',
+          card: 'Card purchase (UAH)',
+          fiat: ['Bank deposit (EUR)', 'Bank withdrawal (EUR)'],
+        },
+      ],
+      [
+        'uk',
+        {
+          fee: 'Торгова комісія',
+          p2p: 'Купівля P2P (UAH)',
+          card: 'Купівля карткою (UAH)',
+          fiat: ['Поповнення з банку (EUR)', 'Виведення в банк (EUR)'],
+        },
+      ],
+    ] as const)('under the %s language', (language, expected) => {
+      const languageSnapshot = buildDemoSnapshot(buildScreenshotDataset(language, ANCHOR));
+      const languageRows = cryptoRowsOf(languageSnapshot).rows;
+      const holdingNameById = new Map(
+        languageSnapshot.holdings.map((holding) => [holding.id, holding.name]),
+      );
+      const holdingCurrencyById = new Map(
+        languageSnapshot.holdings.map((holding) => [holding.id, holding.currency]),
+      );
+      const labelOf = (row: (typeof languageRows)[number]) =>
+        transactionRowDescription({
+          transaction: row,
+          holdingName: holdingNameById.get(row.holdingId) ?? '',
+          holdingNameById,
+          holdingCurrencyById,
+          t: i18n.t,
+        });
+      const labelsOf = (operation: string) =>
+        languageRows.filter((row) => row.operation === operation).map(labelOf);
+
+      beforeEach(async () => {
+        await i18n.changeLanguage(language);
+      });
+
+      afterEach(async () => {
+        await i18n.changeLanguage('en');
+      });
+
+      it('labels the fee row Trading fee and the coded rows by their code', () => {
+        expect(labelsOf('trade-fee')).toEqual([expected.fee]);
+        expect(labelsOf('p2p')).toEqual([expected.p2p]);
+        expect(labelsOf('card')).toEqual([expected.card]);
+        expect(labelsOf('fiat')).toEqual(expected.fiat);
+      });
+
+      it('names the other leg in the label of each pair leg', () => {
+        const legs = languageRows.filter((row) =>
+          ['trade', 'convert', 'dust'].includes(row.operation ?? ''),
+        );
+
+        expect(legs).toHaveLength(6);
+
+        for (const leg of legs) {
+          expect(labelOf(leg)).toContain(
+            holdingNameById.get(leg.exchangeCounterpartHoldingId ?? '') ?? 'no counterpart name',
+          );
+        }
+      });
+    });
+
+    it("writes each coded row's total in its comment, as the code reads it", () => {
+      const coded = rows.filter((row) => row.untrackedCounterpart !== null);
+
+      const totals = coded.map((row) => {
+        const counterpart = parseUntrackedCounterpart(row.untrackedCounterpart);
+
+        return match(counterpart)
+          .with(
+            { kind: P.union('p2p', 'card', 'bank') },
+            ({ fiat, totalMinorUnits }) => `${(totalMinorUnits ?? 0) / 100} ${fiat}`,
+          )
+          .otherwise(() => undefined);
+      });
+
+      expect(totals).toEqual(['2600 UAH', '4150 UAH', '100 EUR', '50 EUR']);
+      expect(coded.map((row) => row.comment)).toEqual(totals);
+    });
+
+    it('dates every exchange operation row outside the default 30-day window', () => {
+      const { from } = defaultDateRange(ANCHOR);
+
+      expect(operationRows.length).toBeGreaterThan(0);
+
+      for (const row of operationRows) {
+        expect(row.time).toBeLessThan(from.getTime());
+      }
+    });
+
+    it("keeps each existing Binance holding's end balance", () => {
+      const balanceByCurrency = Object.fromEntries(
+        cryptoHoldings.map((holding) => [holding.currency, holding.balanceMinorUnits]),
+      );
+
+      expect(balanceByCurrency).toMatchObject({
+        BTC: 1_200_000,
+        ETH: 3_000_000,
+        USDT: 5_000_000_000,
+        USDC: 3_000_000_000,
+        BNB: 500_000,
+        SOL: 500_000,
+        CGPT: 500_000_000,
+        XRP: 600_000,
+        UAH: 100_000,
+        EUR: 5_000,
+      });
+    });
+
+    it('empties the Dogecoin holding the dust row sweeps, leaving it at zero', () => {
+      const dogecoin = cryptoHoldings.filter((holding) => holding.currency === 'DOGE');
+
+      expect(dogecoin.map((holding) => holding.balanceMinorUnits)).toEqual([0]);
+      expect(rows.filter((row) => row.holdingId === dogecoin[0].id)).toHaveLength(2);
+    });
   });
 });

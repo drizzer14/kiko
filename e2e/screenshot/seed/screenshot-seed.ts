@@ -21,8 +21,8 @@ import type { AppLanguage } from '@kiko/i18n/device-language';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isCrypto, type Currency } from '@kiko/currency/currency';
 import type { TemplateDraft } from '@kiko/transaction-templates/draft';
-import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
 import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
+import type { AccountRow, BondRegisterRow, HoldingRow, TransactionRow } from '@kiko/db';
 
 import { demoText, type DemoText } from './demo-text';
 import { buildDemoCalendar, type DemoCalendar } from './demo-calendar';
@@ -61,6 +61,14 @@ type SeedTransaction = {
   description: string;
   // The `key` of the loan holding this payment pays down, linked manually.
   loanHoldingKey?: string;
+  // One leg of an exchange: the pair `key` every leg of that exchange shares, and the `key` of
+  // the other leg's holding. The snapshot builder swaps both for stored ids.
+  pair?: { key: string; counterpartHoldingKey: string };
+  // The stored code of a counterpart Kiko does not track (`p2p:`, `card:`, `bank:` ...).
+  untrackedCounterpart?: string;
+  // The label an exchange operation row shows at render time, in place of a description.
+  operation?: NonNullable<TransactionRow['operation']>;
+  comment?: string;
 };
 
 type SeedHoldingMeta = TermDepositMeta | BondMeta | PropertyMeta | MetalMeta | LoanMeta;
@@ -160,6 +168,7 @@ type SeededCurrency =
   | 'ETH'
   | 'USDT'
   | 'BNB'
+  | 'DOGE'
   | 'SOL'
   | 'XRP'
   | 'USDC'
@@ -176,6 +185,7 @@ const PRICE_IN_UAH: Record<SeededCurrency, number> = {
   ETH: 100_000,
   USDT: 41,
   BNB: 30_000,
+  DOGE: 6.6,
   SOL: 4_300,
   XRP: 55,
   USDC: 41,
@@ -190,34 +200,194 @@ const CURRENCIES: SeededCurrency[] = [
   'ETH',
   'USDT',
   'BNB',
+  'DOGE',
   'SOL',
   'XRP',
   'USDC',
   'CGPT',
 ];
 
-// What the Binance account holds beside BTC: one small deposit per coin at the coin's own scale
-// (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4 decimals), and a UAH and a EUR balance,
-// since an exchange wallet keeps fiat as a `crypto_asset` holding in a fiat currency.
-type ExchangeHolding = {
-  name: string;
-  currency: SeededCurrency;
-  amountMinorUnits: number;
-  daysAgo: number;
-};
+const BINANCE_BTC_KEY = 'binance-btc';
+const BINANCE_USDT_KEY = 'binance-usdt';
+const BINANCE_BNB_KEY = 'binance-bnb';
+const BINANCE_DOGE_KEY = 'binance-doge';
+const BINANCE_UAH_KEY = 'binance-uah';
+const BINANCE_EUR_KEY = 'binance-eur';
 
+type ExchangeOperationFields = Pick<
+  SeedTransaction,
+  'pair' | 'untrackedCounterpart' | 'operation' | 'comment'
+>;
+
+// What the Binance account holds: BTC under the account's own name, one small deposit per other
+// coin at the coin's own scale (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4, DOGE 4
+// decimals), and a UAH and a EUR balance, since an exchange wallet keeps fiat as a `crypto_asset`
+// holding in a fiat currency. The exchange operation rows (a convert, a trade with its fee, a dust
+// sweep, a P2P, card and bank row) are all dated 33 days or more before the anchor, outside the
+// default 30-day window, so Home and the charts open on the same rows as before. Each holding's
+// deposits are cut by what its operation rows add, so it ends at the balance one deposit gave it
+// before; only the Dogecoin deposit is swept away, to 0.
 // The coin names are brand names and stay Latin in both languages; the two fiat names are text.
-const buildExchangeHoldings = (text: DemoText): ExchangeHolding[] => [
-  { name: 'Ethereum', currency: 'ETH', amountMinorUnits: 3_000_000, daysAgo: 120 },
-  { name: 'USDT', currency: 'USDT', amountMinorUnits: 5_000_000_000, daysAgo: 110 },
-  { name: 'USD Coin', currency: 'USDC', amountMinorUnits: 3_000_000_000, daysAgo: 105 },
-  { name: 'BNB', currency: 'BNB', amountMinorUnits: 500_000, daysAgo: 100 },
-  { name: 'Solana', currency: 'SOL', amountMinorUnits: 500_000, daysAgo: 90 },
-  { name: 'ChainGPT', currency: 'CGPT', amountMinorUnits: 500_000_000, daysAgo: 85 },
-  { name: 'XRP', currency: 'XRP', amountMinorUnits: 600_000, daysAgo: 80 },
-  { name: text.hryvnia, currency: 'UAH', amountMinorUnits: 100_000, daysAgo: 70 },
-  { name: text.euro, currency: 'EUR', amountMinorUnits: 5_000, daysAgo: 60 },
-];
+const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHolding[] => {
+  const exchangeHolding = (
+    fields: Pick<SeedHolding, 'key' | 'name' | 'currency' | 'transactions'>,
+  ): SeedHolding => ({ ...fields, type: 'crypto_asset', color: entityColorsDark.orange });
+  const deposit = (
+    currency: SeededCurrency,
+    amountMinorUnits: number,
+    daysAgo: number,
+  ): SeedTransaction => ({
+    amountMinorUnits,
+    time: calendar.at(daysAgo),
+    category: null,
+    description: isCrypto(currency) ? text.cryptoPurchase : text.accountTopUp,
+  });
+  // An operation row stores no description: its label renders from the operation and the code.
+  const operationRow = (
+    daysAgo: number,
+    amountMinorUnits: number,
+    fields: ExchangeOperationFields,
+  ): SeedTransaction => ({
+    amountMinorUnits,
+    time: calendar.at(daysAgo),
+    category: null,
+    description: '',
+    ...fields,
+  });
+
+  return [
+    exchangeHolding({
+      key: BINANCE_BTC_KEY,
+      name: 'Binance',
+      currency: 'BTC',
+      transactions: [
+        {
+          amountMinorUnits: 790_000,
+          time: calendar.at(140),
+          category: null,
+          description: text.bitcoinPurchase,
+        },
+        {
+          amountMinorUnits: 200_000,
+          time: calendar.at(130),
+          category: null,
+          description: text.bitcoinPurchase,
+        },
+        operationRow(45, 110_000, {
+          pair: { key: 'trade', counterpartHoldingKey: BINANCE_USDT_KEY },
+          operation: 'trade',
+        }),
+        operationRow(35, 100_000, {
+          untrackedCounterpart: 'card:UAH:2600.00',
+          operation: 'card',
+          comment: '2600 UAH',
+        }),
+      ],
+    }),
+    exchangeHolding({
+      name: 'Ethereum',
+      currency: 'ETH',
+      transactions: [deposit('ETH', 3_000_000, 120)],
+    }),
+    exchangeHolding({
+      key: BINANCE_USDT_KEY,
+      name: 'USDT',
+      currency: 'USDT',
+      transactions: [
+        operationRow(110, 9_990_000_000, {
+          untrackedCounterpart: 'p2p:UAH:4150.00',
+          operation: 'p2p',
+          comment: '4150 UAH',
+        }),
+        operationRow(50, 2_400_000_000, {
+          pair: { key: 'convert', counterpartHoldingKey: BINANCE_UAH_KEY },
+          operation: 'convert',
+        }),
+        operationRow(45, -7_390_000_000, {
+          pair: { key: 'trade', counterpartHoldingKey: BINANCE_BTC_KEY },
+          operation: 'trade',
+        }),
+      ],
+    }),
+    exchangeHolding({
+      name: 'USD Coin',
+      currency: 'USDC',
+      transactions: [deposit('USDC', 3_000_000_000, 105)],
+    }),
+    exchangeHolding({
+      key: BINANCE_BNB_KEY,
+      name: 'BNB',
+      currency: 'BNB',
+      transactions: [
+        deposit('BNB', 395_000, 100),
+        operationRow(45, -5_000, {
+          pair: { key: 'trade', counterpartHoldingKey: BINANCE_BTC_KEY },
+          operation: 'trade-fee',
+        }),
+        operationRow(40, 110_000, {
+          pair: { key: 'dust', counterpartHoldingKey: BINANCE_DOGE_KEY },
+          operation: 'dust',
+        }),
+      ],
+    }),
+    exchangeHolding({
+      key: BINANCE_DOGE_KEY,
+      name: 'Dogecoin',
+      currency: 'DOGE',
+      transactions: [
+        deposit('DOGE', 500_000, 95),
+        operationRow(40, -500_000, {
+          pair: { key: 'dust', counterpartHoldingKey: BINANCE_BNB_KEY },
+          operation: 'dust',
+        }),
+      ],
+    }),
+    exchangeHolding({
+      name: 'Solana',
+      currency: 'SOL',
+      transactions: [deposit('SOL', 500_000, 90)],
+    }),
+    exchangeHolding({
+      name: 'ChainGPT',
+      currency: 'CGPT',
+      transactions: [deposit('CGPT', 500_000_000, 85)],
+    }),
+    exchangeHolding({
+      name: 'XRP',
+      currency: 'XRP',
+      transactions: [deposit('XRP', 600_000, 80)],
+    }),
+    exchangeHolding({
+      key: BINANCE_UAH_KEY,
+      name: text.hryvnia,
+      currency: 'UAH',
+      transactions: [
+        deposit('UAH', 200_000, 70),
+        operationRow(50, -100_000, {
+          pair: { key: 'convert', counterpartHoldingKey: BINANCE_USDT_KEY },
+          operation: 'convert',
+        }),
+      ],
+    }),
+    exchangeHolding({
+      key: BINANCE_EUR_KEY,
+      name: text.euro,
+      currency: 'EUR',
+      transactions: [
+        operationRow(60, 10_000, {
+          untrackedCounterpart: 'bank:EUR:100.00',
+          operation: 'fiat',
+          comment: '100 EUR',
+        }),
+        operationRow(33, -5_000, {
+          untrackedCounterpart: 'bank:EUR:50.00',
+          operation: 'fiat',
+          comment: '50 EUR',
+        }),
+      ],
+    }),
+  ];
+};
 
 const rateSource = (base: Currency, quote: Currency): 'monobank' | 'coingecko' =>
   isCrypto(base) || isCrypto(quote) ? 'coingecko' : 'monobank';
@@ -260,6 +430,7 @@ const HISTORY_PAIRS: HistoryPair[] = [
   { base: 'ETH', startUah: 85_000, endUah: PRICE_IN_UAH.ETH },
   { base: 'USDT', startUah: 40.0, endUah: PRICE_IN_UAH.USDT },
   { base: 'BNB', startUah: 24_000, endUah: PRICE_IN_UAH.BNB },
+  { base: 'DOGE', startUah: 5.2, endUah: PRICE_IN_UAH.DOGE },
   { base: 'SOL', startUah: 3_600, endUah: PRICE_IN_UAH.SOL },
   { base: 'XRP', startUah: 45, endUah: PRICE_IN_UAH.XRP },
   { base: 'USDC', startUah: 40.0, endUah: PRICE_IN_UAH.USDC },
@@ -741,44 +912,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
       name: 'Binance',
       kind: 'crypto',
       color: entityColorsDark.orange,
-      holdings: [
-        {
-          name: 'Binance',
-          type: 'crypto_asset',
-          currency: 'BTC',
-          color: entityColorsDark.orange,
-          transactions: [
-            {
-              amountMinorUnits: 1_000_000,
-              time: calendar.at(140),
-              category: null,
-              description: text.bitcoinPurchase,
-            },
-            {
-              amountMinorUnits: 200_000,
-              time: calendar.at(130),
-              category: null,
-              description: text.bitcoinPurchase,
-            },
-          ],
-        },
-        ...buildExchangeHoldings(text).map(
-          ({ name, currency, amountMinorUnits, daysAgo }): SeedHolding => ({
-            name,
-            type: 'crypto_asset',
-            currency,
-            color: entityColorsDark.orange,
-            transactions: [
-              {
-                amountMinorUnits,
-                time: calendar.at(daysAgo),
-                category: null,
-                description: isCrypto(currency) ? text.cryptoPurchase : text.accountTopUp,
-              },
-            ],
-          }),
-        ),
-      ],
+      holdings: buildExchangeHoldings(calendar, text),
     },
     {
       name: text.broker,
