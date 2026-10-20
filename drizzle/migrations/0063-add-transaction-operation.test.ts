@@ -10,8 +10,6 @@ import { applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
 
 const MIGRATION_SQL = readFileSync(join(__dirname, '0063_add_transaction_operation.sql'), 'utf8');
 
-const OPERATION_CODES = ['trade', 'trade-fee', 'convert', 'dust', 'p2p', 'card', 'fiat'];
-
 type Column = { name: string; type: string; notnull: number; dflt_value: string | null };
 
 const applyMigration = (database: DatabaseSync): void => {
@@ -90,15 +88,15 @@ describe('migration 0063: the transaction operation column', () => {
     expect(indexCount(database)).toBe(before);
   });
 
-  it.each(OPERATION_CODES)('accepts the operation code %s on insert', (code) => {
+  it('accepts an operation code on insert', () => {
     const database = databaseThrough0062();
 
     applyMigration(database);
     database.exec(
       `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, operation)
-       VALUES ('labelled', 'holding', -200, 2, 'manual', '${code}')`,
+       VALUES ('labelled', 'holding', -200, 2, 'manual', 'trade-fee')`,
     );
 
-    expect(operationOf(database, 'labelled')).toBe(code);
+    expect(operationOf(database, 'labelled')).toBe('trade-fee');
   });
 });

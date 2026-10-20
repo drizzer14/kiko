@@ -65,17 +65,20 @@ export const applyMigrationsThrough = (database: DatabaseSync, lastTag: string):
   applyMigrationsBetween(database, undefined, lastTag);
 };
 
+const firstStatementOf = (tag: string): string => {
+  const [statement = ''] = readFileSync(join(MIGRATIONS_ROOT, `${tag}.sql`), 'utf8').split(
+    STATEMENT_BREAKPOINT,
+  );
+
+  return statement;
+};
+
 /**
  * Adds `accounts.currency` to a database migrated below 0062, so a read through today's schema
  * works on it. Only the column: the backfill belongs to the test that proves it.
  */
 export const addAccountCurrencyColumn = (database: DatabaseSync): void => {
-  const [addColumn = ''] = readFileSync(
-    join(MIGRATIONS_ROOT, '0062_add_account_currency.sql'),
-    'utf8',
-  ).split(STATEMENT_BREAKPOINT);
-
-  database.exec(addColumn);
+  database.exec(firstStatementOf('0062_add_account_currency'));
 };
 
 /**
@@ -83,12 +86,7 @@ export const addAccountCurrencyColumn = (database: DatabaseSync): void => {
  * schema works on it. Only the column: it is the migration's one statement.
  */
 export const addTransactionOperationColumn = (database: DatabaseSync): void => {
-  const [addColumn = ''] = readFileSync(
-    join(MIGRATIONS_ROOT, '0063_add_transaction_operation.sql'),
-    'utf8',
-  ).split(STATEMENT_BREAKPOINT);
-
-  database.exec(addColumn);
+  database.exec(firstStatementOf('0063_add_transaction_operation'));
 };
 
 const journalIndexOf = (entries: MigrationJournalEntry[], tag: string): number => {

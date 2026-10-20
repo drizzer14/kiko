@@ -124,6 +124,7 @@ describe('addManyDedup stores the operation label', () => {
     ]);
 
     expect(storedOperation('account:transfer:1')).toBe('trade');
+    expect(storedMarkers('account:transfer:1').amount).toBe(-250_000);
   });
 
   it('stores null for a row with no operation', async () => {
