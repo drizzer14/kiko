@@ -13,7 +13,7 @@ const expectedRegularMode = (width: number, height: number): LayoutMode => {
     return 'columns';
   }
 
-  return height > width && height >= splitLength ? 'rows' : 'single';
+  return height >= splitLength ? 'rows' : 'single';
 };
 
 const mismatchesAt = (width: number, height: number): string[] => {

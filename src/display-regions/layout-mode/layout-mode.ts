@@ -35,6 +35,6 @@ export const resolveLayoutMode = (
         return 'columns';
       }
 
-      return height > width && height >= MINIMUM_SPLIT_LENGTH ? 'rows' : 'single';
+      return height >= MINIMUM_SPLIT_LENGTH ? 'rows' : 'single';
     })
     .exhaustive();

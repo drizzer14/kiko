@@ -158,7 +158,7 @@ const scenarios: Scenario[] = [
   {
     name: 'saves nothing when the window becomes large over a form the user has not changed',
     mode: 'columns',
-    steps: [setLarge(true)],
+    steps: [setLarge(true), advance(SETTLE_DELAY_MS)],
     saved: [],
   },
   {

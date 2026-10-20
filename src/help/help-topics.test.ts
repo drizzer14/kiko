@@ -374,6 +374,42 @@ describe('the choices a help step names', () => {
     [
       'en',
       enValues,
+      /"([^"]*)"/g,
+      [
+        en.statistics.netWorthOverTime,
+        en.statistics.byType,
+        en.statistics.spendingTrendByCategory,
+        en.statistics.expensesByCategory,
+        en.statistics.accountContribution,
+      ],
+    ],
+    [
+      'uk',
+      ukValues,
+      /«([^»]*)»/g,
+      [
+        uk.statistics.netWorthOverTime,
+        uk.statistics.byType,
+        uk.statistics.spendingTrendByCategory,
+        uk.statistics.expensesByCategory,
+        uk.statistics.accountContribution,
+      ],
+    ],
+  ] as const)(
+    'opens steps 2 to 6 of the viewStatistics topic with the card titles in card order in %s',
+    (_language, values, quote, titles) => {
+      const firstQuoted = [2, 3, 4, 5, 6].map(
+        (step) => quotedSpans(stepOf(values, 'viewStatistics', step), quote)[0],
+      );
+
+      expect(firstQuoted).toEqual(titles);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      enValues,
       'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending.',
     ],
     [

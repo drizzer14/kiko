@@ -1,67 +1,70 @@
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { render, within } from '@testing-library/react-native';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 
 import '@kiko/design-system/unistyles';
 
 import StatisticsGrid from '.';
-import type { GridColumns } from './grid-columns';
 
-const LEAD = <View testID="lead" />;
-const CARDS = ['bar', 'pie', 'category', 'trend'].map((name) => <View key={name} testID={name} />);
+const FULL_WIDTH = ['line', 'bar', 'trend'].map((name) => <View key={name} testID={name} />);
+const SHARED = [
+  <View key="category" testID="category" />,
+  <View key="pie" testID="pie" />,
+] as const;
 
-const CELL_IDS = ['lead', 'bar', 'pie', 'category', 'trend'];
+const CARD_IDS = ['line', 'bar', 'trend', 'category', 'pie'];
 
-const renderGrid = (columns: GridColumns) =>
+const renderGrid = (isRowShared: boolean) =>
   render(
     <View testID="root">
-      <StatisticsGrid columns={columns} lead={LEAD} cards={CARDS} />
+      <StatisticsGrid isRowShared={isRowShared} fullWidth={FULL_WIDTH} shared={SHARED} />
     </View>,
   );
 
-const cellsOf = (view: Awaited<ReturnType<typeof renderGrid>>) =>
-  testIdsInOrder(view.toJSON()).filter((id) => CELL_IDS.includes(id));
+const cardsOf = (view: Awaited<ReturnType<typeof renderGrid>>) =>
+  testIdsInOrder(view.toJSON()).filter((id) => CARD_IDS.includes(id));
 
 describe('StatisticsGrid', () => {
-  it('renders the lead and the cards in order with no row at one column', async () => {
-    const view = await renderGrid(1);
+  it('renders the five cards in order with no row when the row is not shared', async () => {
+    const view = await renderGrid(false);
 
-    expect(cellsOf(view)).toEqual(CELL_IDS);
+    expect(cardsOf(view)).toEqual(CARD_IDS);
     expect(view.queryAllByTestId('statistics-grid-row')).toHaveLength(0);
-    expect(view.queryAllByTestId('statistics-grid-spacer')).toHaveLength(0);
   });
 
-  it.each<[GridColumns, string[][], number]>([
-    [
-      2,
-      [
-        ['bar', 'pie'],
-        ['category', 'trend'],
-      ],
-      0,
-    ],
-    [3, [['bar', 'pie', 'category'], ['trend']], 2],
-  ])(
-    'renders the lead first and outside any row, then the cards by row, at %d columns',
-    async (columns, expectedRows, spacers) => {
-      const view = await renderGrid(columns);
-      const rows = view.getAllByTestId('statistics-grid-row');
+  it('renders the full-width cards, then one row holding the two shared cards, when shared', async () => {
+    const view = await renderGrid(true);
+    const rows = view.getAllByTestId('statistics-grid-row');
 
-      expect(cellsOf(view)).toEqual(CELL_IDS);
-      expect(rows.map((row) => CELL_IDS.filter((id) => within(row).queryByTestId(id)))).toEqual(
-        expectedRows,
-      );
-      expect(view.queryAllByTestId('statistics-grid-spacer')).toHaveLength(spacers);
-    },
-  );
+    expect(cardsOf(view)).toEqual(CARD_IDS);
+    expect(rows).toHaveLength(1);
+    expect(CARD_IDS.filter((id) => within(rows[0]).queryByTestId(id))).toEqual(['category', 'pie']);
+  });
 
-  it.each([2, 3] as const)(
-    'renders at %d columns without a duplicate or missing key warning',
-    async (columns) => {
+  it('keeps the full-width cards outside the shared row', async () => {
+    const view = await renderGrid(true);
+    const [row] = view.getAllByTestId('statistics-grid-row');
+
+    expect(['line', 'bar', 'trend'].filter((id) => within(row).queryByTestId(id))).toEqual([]);
+  });
+
+  it('gives the two cells of the shared row an equal share of it', async () => {
+    const view = await renderGrid(true);
+    const [row] = view.getAllByTestId('statistics-grid-row');
+    const cells = within(row)
+      .getAllByTestId(/^(category|pie)$/)
+      .map((card) => card.parent);
+
+    expect(cells.map((cell) => StyleSheet.flatten(cell?.props.style)?.flex)).toEqual([1, 1]);
+  });
+
+  it.each([true, false])(
+    'renders with the row shared: %s, without a duplicate or missing key warning',
+    async (isRowShared) => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
       try {
-        await renderGrid(columns);
+        await renderGrid(isRowShared);
 
         expect(consoleError).not.toHaveBeenCalled();
       } finally {

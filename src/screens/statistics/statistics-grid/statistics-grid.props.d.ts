@@ -1,12 +1,10 @@
 import type { ReactElement } from 'react';
 
-import type { GridColumns } from './grid-columns';
-
 export type StatisticsGridProps = {
-  /** How many cards sit side by side; at one column the grid adds no row at all. */
-  columns: GridColumns;
-  /** The net worth over time card, always the full-width first row. */
-  lead: ReactElement;
-  /** The rest of the cards, in order; each carries its own React key. */
-  cards: readonly ReactElement[];
+  /** Whether the two shared cards sit side by side in one row; otherwise the grid adds no row. */
+  isRowShared: boolean;
+  /** The cards that are one per row at their own height, in order; each carries its own key. */
+  fullWidth: readonly ReactElement[];
+  /** The two cards that share a row where there is room, in order; each carries its own key. */
+  shared: readonly [ReactElement, ReactElement];
 };

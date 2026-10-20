@@ -22,26 +22,27 @@ jest.mock('@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-n
 }));
 
 // The mount counter proves a card keeps its place in the tree across an interaction: a grid that
-// re-laid out on a filter change would unmount and remount it.
+// re-laid out on a filter change would unmount and remount it. The real chart stays inside so a
+// scrub runs the real gesture.
 const mockNetWorthLineMounts = jest.fn();
 
 jest.mock('./net-worth-line', () => {
-  const { useEffect } = jest.requireActual('react');
+  const { createElement, useEffect } = jest.requireActual('react');
+  const NetWorthLine = jest.requireActual('./net-worth-line').default;
 
   return {
     __esModule: true,
-    default: () => {
+    default: (props: Record<string, unknown>) => {
       useEffect(() => {
         mockNetWorthLineMounts();
       }, []);
 
-      return null;
+      return createElement(NetWorthLine, props);
     },
   };
 });
 
-// A row card's mount counter, for the same reason: the net worth card is the full-width lead, so
-// only a card inside a row proves the rows themselves keep their place.
+// A full-width card's mount counter, for the same reason.
 const mockBarChartMounts = jest.fn();
 
 jest.mock('./bar-chart', () => {
@@ -52,6 +53,24 @@ jest.mock('./bar-chart', () => {
     default: () => {
       useEffect(() => {
         mockBarChartMounts();
+      }, []);
+
+      return null;
+    },
+  };
+});
+
+// The shared row's two cards: the category donut passes its own test id, the account pie none.
+const mockPieChartMounts = jest.fn();
+
+jest.mock('./pie-chart', () => {
+  const { useEffect } = jest.requireActual('react');
+
+  return {
+    __esModule: true,
+    default: ({ testID }: { testID?: string }) => {
+      useEffect(() => {
+        mockPieChartMounts(testID ?? 'account-pie');
       }, []);
 
       return null;
@@ -79,6 +98,8 @@ jest.mock('@kiko/display-regions', () => {
     useDisplayRegions: () => ({ horizontalSizeClass: mockSizeClass }),
     useLayoutMode: () =>
       actual.resolveLayoutMode(mockSizeClass, mockWindow.width, mockWindow.height),
+    useIsLargeWindow: () =>
+      actual.isLargeWindow(mockSizeClass, mockWindow.width, mockWindow.height),
   };
 });
 
@@ -121,16 +142,20 @@ jest.mock('@kiko/categories/repo', () => ({
 import { DAY_MS } from '@kiko/dates';
 import { StyleSheet } from 'react-native';
 import type { ReactElement } from 'react';
+import { State } from 'react-native-gesture-handler';
 import { darkTheme } from '@kiko/design-system/theme';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { PaneContext, PaneWidthContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
 import '@kiko/design-system/unistyles';
 
 import StatisticsScreen from './statistics.screen';
+import { NET_WORTH_SCRUB_GESTURE_TEST_ID } from './net-worth-line/net-worth-line.component';
 
 const now = Date.now();
 
@@ -177,16 +202,19 @@ const tables: Record<string, unknown[]> = {
   price_points: [],
 };
 
-const BLOCKS = [
+const FULL_WIDTH_BLOCKS = [
   'statistics-block-line',
   'statistics-block-bar',
-  'statistics-block-pie',
-  'statistics-block-category',
   'statistics-block-trend',
 ];
 
-// The cards that sit in a row at two or more columns: everything but the full-width lead.
-const ROW_BLOCKS = BLOCKS.slice(1);
+// The two cards that share one row where the pane is wide enough, and stack otherwise.
+const SHARED_BLOCKS = ['statistics-block-category', 'statistics-block-pie'];
+
+const BLOCKS = [...FULL_WIDTH_BLOCKS, ...SHARED_BLOCKS];
+
+// The wrapper around the chart of each shared card, the box that centres it vertically.
+const CHART_BODIES = ['statistics-chart-body-category', 'statistics-chart-body-pie'];
 
 type Placement = {
   windowWidth: number;
@@ -195,11 +223,20 @@ type Placement = {
   paneWidth?: number;
 };
 
-const PANE_910: Placement = {
-  windowWidth: 1366,
-  windowHeight: 1024,
+// A 13-inch iPad in landscape: half of 1376 is 687.5, wide enough to share the row.
+const PANE_SHARED: Placement = {
+  windowWidth: 1376,
+  windowHeight: 1032,
   sizeClass: 'regular',
-  paneWidth: 910,
+  paneWidth: 687.5,
+};
+
+// An iPad mini in portrait: half of 744 is 371.5, too narrow to share the row.
+const PANE_STACKED: Placement = {
+  windowWidth: 744,
+  windowHeight: 1133,
+  sizeClass: 'regular',
+  paneWidth: 371.5,
 };
 
 const IPHONE_HEIGHT = 844;
@@ -223,7 +260,7 @@ const renderAt = ({
       </PaneContext.Provider>
     );
 
-  return render(inPane(<StatisticsScreen />));
+  return render(inPane(<StatisticsScreen />), { wrapper: GestureRootWrapper });
 };
 
 type View = Awaited<ReturnType<typeof renderAt>>;
@@ -270,6 +307,13 @@ const flexOf = (node: RenderedNode | string) =>
 
 const cardStyleOf = (view: View, testID: string) =>
   StyleSheet.flatten(view.getByTestId(testID).props.style);
+
+// The `flexGrow` of the first host child of a card, the body that holds its title and chart.
+const bodyGrowOf = (view: View, testID: string) => {
+  const [body] = (hostNodes(view, testID)[0].children ?? []).filter(isNode);
+
+  return StyleSheet.flatten(body.props.style)?.flexGrow;
+};
 
 describe('StatisticsScreen grid', () => {
   beforeEach(() => {
@@ -342,12 +386,26 @@ describe('StatisticsScreen grid', () => {
     expect(contentStyle(view).maxWidth).toBe(darkTheme.layout.paneMaxWidth);
   });
 
-  it('lays out two columns in a regular window too narrow to split (710x500)', async () => {
+  it('stacks every card, capped, in a regular window too narrow to split (710x500)', async () => {
     const view = await renderAt({ windowWidth: 710, windowHeight: 500, sizeClass: 'regular' });
 
-    expect(countOf(view, 'statistics-grid-row')).toBe(2);
-    expect(countOf(view, 'statistics-grid-spacer')).toBe(0);
-    expect(contentStyle(view).maxWidth).toBeUndefined();
+    expect(countOf(view, 'statistics-grid-row')).toBe(0);
+    expect(blocksOf(view)).toEqual(BLOCKS);
+    expect(contentStyle(view).maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+  });
+
+  // The pane is wide enough for a shared row (515.5 is past 480), but the window is not large: the
+  // row is shared only on a large window.
+  it('stacks every card in a pane of a window that is not large (1032x683, pane 515.5)', async () => {
+    const view = await renderAt({
+      windowWidth: 1032,
+      windowHeight: 683,
+      sizeClass: 'regular',
+      paneWidth: 515.5,
+    });
+
+    expect(countOf(view, 'statistics-grid-row')).toBe(0);
+    expect(blocksOf(view)).toEqual(BLOCKS);
   });
 
   it('leaves an iPhone window with no cap', async () => {
@@ -356,63 +414,44 @@ describe('StatisticsScreen grid', () => {
     expect(contentStyle(view).maxWidth).toBeUndefined();
   });
 
-  it('lays out two columns in a 910 pane, from the pane width and not the wider window', async () => {
-    const view = await renderAt(PANE_910);
+  it('stacks every card, with no row, in a large-window pane too narrow to share (371.5)', async () => {
+    const view = await renderAt(PANE_STACKED);
 
-    expect(countOf(view, 'statistics-grid-row')).toBe(2);
-    expect(countOf(view, 'statistics-grid-spacer')).toBe(0);
+    expect(countOf(view, 'statistics-grid-row')).toBe(0);
+    expect(blocksOf(view)).toEqual(BLOCKS);
   });
 
-  it('removes the content cap for the grid in a 910 pane', async () => {
-    const view = await renderAt(PANE_910);
+  it('shares one row between the category and account cards in a large-window pane (687.5)', async () => {
+    const view = await renderAt(PANE_SHARED);
+    const rows = hostNodes(view, 'statistics-grid-row');
+
+    expect(rows.map((row) => BLOCKS.filter((id) => nodesWithTestId(row, id).length > 0))).toEqual([
+      SHARED_BLOCKS,
+    ]);
+  });
+
+  it.each([
+    ['a stacked pane', PANE_STACKED],
+    ['a shared-row pane', PANE_SHARED],
+  ])('leaves %s of a large window uncapped', async (_name, placement) => {
+    const view = await renderAt(placement);
 
     expect(contentStyle(view).maxWidth).toBeUndefined();
   });
 
-  it('puts the filter bar above the grid in a 910 pane', async () => {
-    const ids = idsOf(await renderAt(PANE_910));
+  it('puts the filter bar above the cards in a shared-row pane', async () => {
+    const ids = idsOf(await renderAt(PANE_SHARED));
     const filter = ids.indexOf('statistics-account-filter');
 
     expect(filter).toBeGreaterThan(-1);
-    expect(ids.indexOf('statistics-grid-row')).toBeGreaterThan(-1);
     expect(filter).toBeLessThan(ids.indexOf('statistics-block-line'));
-    expect(filter).toBeLessThan(ids.indexOf('statistics-grid-row'));
   });
 
-  it('keeps the net worth over time card first, outside every row, in a 910 pane', async () => {
-    const ids = idsOf(await renderAt(PANE_910));
-
-    expect(ids.indexOf('statistics-block-line')).toBeGreaterThan(-1);
-    expect(ids.indexOf('statistics-grid-row')).toBeGreaterThan(-1);
-    expect(ids.indexOf('statistics-block-line')).toBeLessThan(ids.indexOf('statistics-grid-row'));
-  });
-
-  it('renders the five cards in order in a 910 pane', async () => {
-    expect(blocksOf(await renderAt(PANE_910))).toEqual(BLOCKS);
-  });
-
-  // Not a real state (no window this wide is `single`: a regular one is split and a compact one
-  // is a phone): it proves the pure path from the window width when no pane applies.
-  it('lays out three columns in a 1032 single window (pure-path, not an iPad state)', async () => {
-    const view = await renderAt({ windowWidth: 1032, sizeClass: 'compact' });
-
-    expect(countOf(view, 'statistics-grid-row')).toBe(2);
-    expect(countOf(view, 'statistics-grid-spacer')).toBe(2);
-    expect(blocksOf(view)).toEqual(BLOCKS);
-    expect(contentStyle(view).maxWidth).toBeUndefined();
-  });
-
-  it('lays out three columns in a 1032 pane, from the pane width (pure-path)', async () => {
-    const view = await renderAt({
-      windowWidth: 1366,
-      windowHeight: 1024,
-      sizeClass: 'regular',
-      paneWidth: 1032,
-    });
-
-    expect(countOf(view, 'statistics-grid-row')).toBe(2);
-    expect(countOf(view, 'statistics-grid-spacer')).toBe(2);
-    expect(contentStyle(view).maxWidth).toBeUndefined();
+  it.each([
+    ['a stacked pane', PANE_STACKED],
+    ['a shared-row pane', PANE_SHARED],
+  ])('renders the five cards in order in %s', async (_name, placement) => {
+    expect(blocksOf(await renderAt(placement))).toEqual(BLOCKS);
   });
 
   it('keeps the direct children of the card stack at one column to the filter bar and five cards', async () => {
@@ -422,41 +461,88 @@ describe('StatisticsScreen grid', () => {
     expect(childIdsOf(view, 'statistics-blocks')).toEqual([[undefined, ...BLOCKS]]);
   });
 
-  it('stretches a row card to its cell at two columns', async () => {
-    const view = await renderAt(PANE_910);
+  it('puts the filter bar, the three full-width cards, then the one shared row in the card stack', async () => {
+    const view = await renderAt(PANE_SHARED);
 
-    expect(ROW_BLOCKS.map((id) => cardStyleOf(view, id).flexGrow)).toEqual([1, 1, 1, 1]);
+    expect(childIdsOf(view, 'statistics-blocks')).toEqual([
+      [undefined, ...FULL_WIDTH_BLOCKS, 'statistics-grid-row'],
+    ]);
   });
 
-  it('leaves a card at its own height at one column', async () => {
-    const view = await renderAt({ windowWidth: 390, sizeClass: 'compact' });
+  it('stretches the two cards of the shared row to the row height', async () => {
+    const view = await renderAt(PANE_SHARED);
 
-    expect(ROW_BLOCKS.map((id) => cardStyleOf(view, id).flexGrow)).toEqual([
+    expect(SHARED_BLOCKS.map((id) => cardStyleOf(view, id).flexGrow)).toEqual([1, 1]);
+  });
+
+  it('centres the chart of each shared card vertically in the room under its title', async () => {
+    const view = await renderAt(PANE_SHARED);
+
+    expect(
+      CHART_BODIES.map((id) => {
+        const { flexGrow, justifyContent } = cardStyleOf(view, id);
+
+        return { flexGrow, justifyContent };
+      }),
+    ).toEqual([
+      { flexGrow: 1, justifyContent: 'center' },
+      { flexGrow: 1, justifyContent: 'center' },
+    ]);
+  });
+
+  it('lets the body of each shared card grow into the row height the chart centres in', async () => {
+    const view = await renderAt(PANE_SHARED);
+
+    expect(SHARED_BLOCKS.map((id) => bodyGrowOf(view, id))).toEqual([1, 1]);
+  });
+
+  it.each([
+    ['a stacked pane', PANE_STACKED],
+    ['an iPhone window', { windowWidth: 390, sizeClass: 'compact' } as Placement],
+  ])('leaves the chart of each shared card uncentred in %s', async (_name, placement) => {
+    const view = await renderAt(placement);
+
+    expect(CHART_BODIES.map((id) => cardStyleOf(view, id).justifyContent)).toEqual([
       undefined,
+      undefined,
+    ]);
+  });
+
+  it.each([
+    ['a shared-row pane', PANE_SHARED],
+    ['a stacked pane', PANE_STACKED],
+    ['an iPhone window', { windowWidth: 390, sizeClass: 'compact' } as Placement],
+  ])('leaves the full-width cards at their own height in %s', async (_name, placement) => {
+    const view = await renderAt(placement);
+
+    expect(FULL_WIDTH_BLOCKS.map((id) => cardStyleOf(view, id).flexGrow)).toEqual([
       undefined,
       undefined,
       undefined,
     ]);
   });
 
-  it('gives every cell of a row, a spacer included, an equal share of the row', async () => {
-    const view = await renderAt({
-      windowWidth: 1366,
-      windowHeight: 1024,
-      sizeClass: 'regular',
-      paneWidth: 1032,
-    });
+  it.each([
+    ['a stacked pane', PANE_STACKED],
+    ['an iPhone window', { windowWidth: 390, sizeClass: 'compact' } as Placement],
+  ])('leaves the two shared cards at their own height in %s', async (_name, placement) => {
+    const view = await renderAt(placement);
+
+    expect(SHARED_BLOCKS.map((id) => cardStyleOf(view, id).flexGrow)).toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it('gives the two cells of the shared row an equal share of it', async () => {
+    const view = await renderAt(PANE_SHARED);
     const rows = hostNodes(view, 'statistics-grid-row');
 
-    expect(rows).toHaveLength(2);
-    expect(rows.map((row) => (row.children ?? []).map(flexOf))).toEqual([
-      [1, 1, 1],
-      [1, 1, 1],
-    ]);
+    expect(rows.map((row) => (row.children ?? []).map(flexOf))).toEqual([[1, 1]]);
   });
 
-  it('keeps the rows and mounts the net worth card and a row card once through a filter toggle and a date range', async () => {
-    const view = await renderAt(PANE_910);
+  it('keeps the shared row and mounts every card once through a filter toggle and a date range', async () => {
+    const view = await renderAt(PANE_SHARED);
     const gridBefore = idsOf(view).filter((id) => id.startsWith('statistics-grid'));
 
     await act(async () => {
@@ -485,10 +571,43 @@ describe('StatisticsScreen grid', () => {
       await fireEvent.press(view.getByText('Apply'));
     });
 
-    expect(gridBefore).toHaveLength(2);
+    expect(gridBefore).toEqual(['statistics-grid-row']);
     expect(idsOf(view).filter((id) => id.startsWith('statistics-grid'))).toEqual(gridBefore);
     expect(blocksOf(view)).toEqual(BLOCKS);
     expect(mockNetWorthLineMounts).toHaveBeenCalledTimes(1);
     expect(mockBarChartMounts).toHaveBeenCalledTimes(1);
+    expect(mockPieChartMounts.mock.calls.map(([id]) => id).sort()).toEqual([
+      'account-pie',
+      'category-pie',
+    ]);
+  });
+
+  it('keeps the shared row and mounts every card once through a scrub of the net worth line', async () => {
+    const view = await renderAt(PANE_SHARED);
+    const gridBefore = idsOf(view).filter((id) => id.startsWith('statistics-grid'));
+    const layout = (width: number, height: number) => ({
+      nativeEvent: { layout: { x: 0, y: 0, width, height } },
+    });
+
+    await act(async () => {
+      await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layout(240, 40));
+      await fireEvent(view.getByTestId('net-worth-line-scrub-label'), 'layout', layout(80, 36));
+      await fireEvent(view.getByTestId('net-worth-line-scrub-amount'), 'layout', layout(80, 20));
+    });
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(NET_WORTH_SCRUB_GESTURE_TEST_ID), [
+        { state: State.BEGAN, x: 60 },
+        { state: State.ACTIVE, x: 60 },
+        { state: State.ACTIVE, x: 120 },
+        { state: State.END, x: 120 },
+      ]);
+    });
+
+    expect(view.queryByTestId('net-worth-line-scrub')).not.toBeNull();
+    expect(idsOf(view).filter((id) => id.startsWith('statistics-grid'))).toEqual(gridBefore);
+    expect(blocksOf(view)).toEqual(BLOCKS);
+    expect(mockNetWorthLineMounts).toHaveBeenCalledTimes(1);
+    expect(mockBarChartMounts).toHaveBeenCalledTimes(1);
+    expect(mockPieChartMounts).toHaveBeenCalledTimes(2);
   });
 });

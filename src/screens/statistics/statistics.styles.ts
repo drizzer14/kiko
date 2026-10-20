@@ -13,9 +13,15 @@ export const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // A card in a grid row fills its cell, so the cards of one row end at the tallest one's height.
+  // A card in the shared row fills its cell, so the two cards end at the taller one's height, and
+  // so does the body inside it, which gives the chart body below the room to centre in.
   gridCard: {
     flexGrow: 1,
+  },
+  // The chart, centred vertically in the room the shorter card has left under its title.
+  chartBody: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   // A chart card's title sits above the chart itself; the card's own
   // GlassSurface padding frames the whole block.

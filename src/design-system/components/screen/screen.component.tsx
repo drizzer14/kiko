@@ -21,7 +21,6 @@ const Screen: FC<ScreenProps> = ({
   onContentSizeChange,
   automaticallyAdjustKeyboardInsets = true,
   onFieldBlur,
-  uncapped = false,
 }) => {
   // The fields' way to report a blur to the screen; every layout below renders them.
   const fields = (
@@ -58,9 +57,7 @@ const Screen: FC<ScreenProps> = ({
   // below its pill. Only the plain branch uses it: the scroll and `bleedTop` branches sit under a
   // native header that already clears the bar.
   const topClearance = useTopClearance();
-  const paneCap = useContentCap();
-  // The footer follows the content: a capped footer under uncapped content would not line up.
-  const contentCap = uncapped ? undefined : paneCap;
+  const contentCap = useContentCap();
   const scrollIndicatorProps = useScrollIndicatorProps();
   const { plainEdges, largeTitleEdges } = usePaneScreen();
   // The plain branch's `content` reserves the clearance itself only when it is

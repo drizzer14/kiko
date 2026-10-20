@@ -687,7 +687,7 @@ describe('StatisticsScreen', () => {
     offsetSpy.mockRestore();
   });
 
-  it('renders the five blocks in order: net-worth line, by-type bar, account pie, category pie, spending trend', async () => {
+  it('renders the five blocks in order: net-worth line, by-type bar, spending trend, category donut, account pie', async () => {
     const { getByTestId } = await renderScreen();
 
     const order = getByTestId('statistics-blocks')
@@ -697,14 +697,14 @@ describe('StatisticsScreen', () => {
     // The net-worth line leads the screen, ahead of the by-type/category
     // charts — it is the one chart every other block on this screen relates
     // back to (a snapshot of the same net worth it plots over time). The
-    // spending-trend line closes the screen, after the category donut it shares
-    // its category filter's dimension with.
+    // category donut and the account pie close the screen: on a wide pane they
+    // share one row, so they sit together at the end on every window.
     expect(order).toEqual([
       'statistics-block-line',
       'statistics-block-bar',
-      'statistics-block-pie',
-      'statistics-block-category',
       'statistics-block-trend',
+      'statistics-block-category',
+      'statistics-block-pie',
     ]);
   });
 
@@ -3327,6 +3327,7 @@ describe('StatisticsScreen — paused while hidden', () => {
 describe('StatisticsScreen — filter sheets when the screen stops being shown', () => {
   const SHEETS = [
     ['account filter', ACCOUNT_FILTER, `${ACCOUNT_FILTER}-option-${FILTER_ALL}`],
+    ['category filter', CATEGORY_FILTER, `${CATEGORY_FILTER}-option-${FILTER_ALL}`],
     ['trend filter', 'statistics-trend-filter', 'statistics-trend-filter-save'],
   ] as const;
 
