@@ -32,5 +32,6 @@ Rules:
   there is one) first inside the message. Then include the findings with source URL and check
   date. No extra checks or silent waiting after. Run any long fetch/search in the background and
   wait only for its exit code; past 30 minutes on one step, report "still running: <step>,
-  <elapsed>" instead of going quiet. You write no files — the caller (usually the coordinator)
-  persists anything durable via `kiko:scribe`.
+  <elapsed>" instead of going quiet. You write no files — the caller records anything durable:
+  a repo fact goes to `kiko:scribe`, a candidate lesson to `.superpowers/sdd/<track>/lessons.md`
+  per harness-workflow "Memory writes".

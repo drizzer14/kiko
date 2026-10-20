@@ -16,7 +16,7 @@ Rules:
 - If no agent fits a task, report the gap. Do not do the task inline.
 - Route web research and live API checks to `kiko:researcher` (read-only,
   cites a source URL + check date per claim); it writes no files, so the
-  caller persists any durable finding via `kiko:scribe`.
+  caller records any durable finding per "Memory writes".
 - A measurement that needs a script (corpus counts, a tool run with raised limits) goes to `kiko:ops` with the script in the scratchpad; `kiko:explorer` has only Read/Grep/Glob.
 - For a device-test request, copy `kiko:ops`'s "Device verification
   checklist" section into the request to the user.
@@ -173,6 +173,21 @@ snippet, never paste the skip line as `RUN_ID`:
 RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" finish --run "$RUN_ID" --outcome done; else echo "run-log: not installed, skipped"; fi
 ```
 
+## Memory writes
+
+Every write to the global memory dir is a permission prompt the user often misses, so:
+
+- A session or agent working in a worktree (orchestrators, their scribes, retrospects, every
+  other role agent) NEVER writes the global memory dir. Candidate lessons go to
+  `.superpowers/sdd/<track>/lessons.md`, beside HANDOFF.md. The orchestrator appends what a
+  read-only agent (retrospect, reviewer, explorer, researcher) reports; a role agent with
+  write tools may append its own. All are listed in BATCH READY or the completion report.
+- Only the coordinator session writes the memory dir: ONE batch per merge or per coordinator
+  retrospect, only durable lessons not already in the repo, preferring an edit of an existing
+  memory over a new file. A scribe the coordinator spawns for that batch may do the writes.
+- Writes use Edit or Write, never Bash (no `sed -i` on the index).
+- `memory/refs/` in the main checkout is not the memory dir; this rule does not cover it.
+
 ## Skill drift rule
 
 After every completed code iteration (a feature, phase, or fix that is
@@ -182,7 +197,7 @@ run `kiko:retrospect` to verify BOTH skill locations
 `harness/kiko/agents/`) against the new code, then `kiko:scribe` fixes
 any drift found and commits it. The completion report names the
 drift-fix commit sha, or states "no drift found" with the retrospect
-result.
+result, and lists the candidate lessons per "Memory writes".
 
 ## Mutation testing: small change sets only
 
@@ -321,7 +336,7 @@ denies the common forms of both mechanically, with a
 WHAT/DETAILS/WHY/HOW/DO-NOT reason; it is a heuristic tokenizer with
 known limits (see kiko-linter's kill-guard entry), so a form it misses
 is still banned. Never chain a file write, a plugin update, and a
-memory rewrite in one Bash call — make each its own step.
+coordinator memory write in one Bash call — make each its own step.
 
 ## A commit runs a typecheck
 

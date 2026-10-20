@@ -14,7 +14,7 @@
 | designer | Owns theme tokens and shared styled components | sonnet | medium | `claude --agent designer --effort medium` |
 | explorer | Read-only codebase search | sonnet | low | `claude --agent explorer --effort low` |
 | retrospect | Gathers durable lessons after a run | sonnet | medium | `claude --agent retrospect --effort medium` |
-| scribe | Persists durable knowledge (memory, skills, agents, plugin) | sonnet | low | `claude --agent scribe --effort low` |
+| scribe | Persists durable knowledge (skills, agents, docs, plugin; memory only in a coordinator batch) | sonnet | low | `claude --agent scribe --effort low` |
 | ops | Runs builds, installs, pods, and the harness checks | sonnet | low | `claude --agent ops --effort low` |
 | pm | Reports the live task board, branches, and worktrees from Orca and git; verifies narrative docs and flags drift | sonnet | low | `claude --agent pm --effort low` |
 | auditor | Read-only whole-codebase audit (security, performance, bundle, dependencies); reports ranked findings, writes no code | sonnet | medium | `claude --agent auditor --effort medium` |
