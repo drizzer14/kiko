@@ -180,12 +180,36 @@ const waitFor = async (condition: () => boolean): Promise<void> => {
   }
 };
 
-afterEach(() => {
-  for (const sandbox of sandboxes) {
-    for (const child of sandbox.children) {
+// About 30 s (TEARDOWN_POLL_LIMIT x 20 ms), below the 120 s hook timeout and well above a green
+// teardown.
+const TEARDOWN_POLL_LIMIT = 1500;
+
+const hasExited = (child: ChildProcess): boolean =>
+  child.exitCode !== null || child.signalCode !== null;
+
+// A killed waiter's TERM trap still removes its ticket, claim, and lock in the sandbox, so the
+// folders are removed only once every child has exited: an rmSync that races the trap fails with
+// ENOTEMPTY on a loaded machine.
+afterEach(async () => {
+  const children = sandboxes.flatMap((sandbox) => sandbox.children);
+
+  for (const child of children) {
+    if (!hasExited(child)) {
       child.kill();
     }
+  }
 
+  // Bounded by a poll count, and it breaks instead of throwing (unlike waitFor) so the sandboxes
+  // are still removed: a red row can leave a stub loop that ends only when its sandbox is removed.
+  for (let poll = 0; !children.every(hasExited); poll += 1) {
+    if (poll >= TEARDOWN_POLL_LIMIT) {
+      break;
+    }
+
+    await new Promise((settle) => setTimeout(settle, 20));
+  }
+
+  for (const sandbox of sandboxes) {
     rmSync(sandbox.root, { recursive: true, force: true });
   }
 
