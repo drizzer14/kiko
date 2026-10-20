@@ -2863,7 +2863,10 @@ they land.
 A test that writes and execs a fresh script on macOS warms it once before any time bound starts
 (`warmExecutables` in `__tests__/test-support/warm-executables.ts`). The first exec of a
 never-seen script waits on XProtect: about 0.3 s alone, seconds under fan-out. Widen a time
-budget only with that measurement, never as a guess.
+budget only with that measurement, never as a guess. A suite that execs a fresh script in every
+row of a table, under a per-test jest timeout, writes and warms those scripts once in a
+describe-level `beforeAll` with its own timeout and passes per-row paths by environment variable
+(`__tests__/mutation-ranges.test.ts`, the signal rows).
 
 ## Harness and hook changes land through a worktree
 
