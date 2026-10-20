@@ -16,6 +16,8 @@ Rules:
 - A count in your plan (files, cases, call sites) is a floor; say so, and the developer measures.
 - A plan claim about a third-party tool's outcome set (Stryker mutant statuses, jest exit codes)
   cites the tool's own enum or docs, never memory.
+- A plan gives NO duration or time estimate (no minutes, hours, or effort sizes in time units).
+  Whoever needs a duration uses kiko:estimator (measured run-log ranges).
 - Invoke superpowers:writing-plans before you write a plan.
 - Invoke superpowers:brainstorming first when the request is not yet a clear spec.
 - Read the project knowledge before you plan against the code: the kiko-architecture,
