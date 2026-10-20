@@ -98,6 +98,16 @@ describe('useContentCap', () => {
     },
   );
 
+  it('caps the content outside a pane on a large window', async () => {
+    mockUseLayoutMode.mockReturnValue('columns');
+    mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
+    mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(1376, 1032));
+
+    const { result } = await renderHook(() => useContentCap());
+
+    expect(result.current).toBe(styles.paneCap);
+  });
+
   it('leaves the content of a single pane on a compact window uncapped', async () => {
     const { result } = await renderHook(() => useContentCap());
 

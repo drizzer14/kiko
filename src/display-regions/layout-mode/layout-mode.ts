@@ -10,8 +10,8 @@ export const MINIMUM_PANE_LENGTH = 360;
 // Two minimum panes plus a divider of up to 1 pt (the hairline between panes is 1 pt).
 const MINIMUM_SPLIT_LENGTH = 2 * MINIMUM_PANE_LENGTH + 1;
 
-// A window big enough for two minimum panes on its shorter side in a regular class: a full-screen
-// iPad, never a Duo inner window or a Split View window.
+// A window big enough for two minimum panes on its shorter side in a regular class: every
+// full-screen iPad is large, a Duo inner window never is (its shorter side is 669).
 export const isLargeWindow = (
   sizeClass: HorizontalSizeClass,
   width: number,

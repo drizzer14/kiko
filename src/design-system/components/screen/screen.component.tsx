@@ -121,8 +121,8 @@ const Screen: FC<ScreenProps> = ({
           // tap. "handled" fires a focusable/handled child on the first tap
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
-          // In a pane the content is capped and centred here, not on the scroll
-          // view, so the scroll view and its indicator span the whole pane.
+          // In a pane, except a pane of a large window, the content is capped and centred here,
+          // not on the scroll view, so the scroll view and its indicator span the whole pane.
           contentContainerStyle={[styles.scrollContent(footer !== undefined), contentCap]}
           {...headingScrollProps}
         >

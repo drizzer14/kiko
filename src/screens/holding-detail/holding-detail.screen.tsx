@@ -936,7 +936,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // to the SafeAreaView and gives a pane that is not at the window's bottom none.
   const bottomClearance = useBottomClearance();
   const listBottomClearance = footerAction === 'none' ? bottomClearance : 0;
-  // In a pane the list keeps the whole pane and its content is capped and centred.
+  // In a pane the list keeps the whole pane and its content is capped and centred, except in a
+  // pane of a large window.
   const contentCap = useContentCap();
   const scrollIndicatorProps = useScrollIndicatorProps();
   // A term_deposit/bond event is day-granular (a contribution, coupon, or

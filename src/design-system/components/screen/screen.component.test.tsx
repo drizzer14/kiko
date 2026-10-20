@@ -727,6 +727,15 @@ describe('Screen', () => {
       },
     );
 
+    it('leaves the footer of the bleedTop branch uncapped and uncentred in a pane of a large window', async () => {
+      mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(1376, 1032));
+      const view = await renderInPane({ bleedTop: true, footer: footerNode }, 'columns', 'primary');
+      const footer = StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style);
+
+      expect(footer.maxWidth).toBeUndefined();
+      expect(footer.alignSelf).toBeUndefined();
+    });
+
     it('keeps the horizontal padding of the plain branch in a pane of a large window', async () => {
       mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(1376, 1032));
       const view = await renderInPane({}, 'columns', 'primary');

@@ -18,7 +18,8 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  // A screen in one of two panes: centred in the pane, never wider than the pane max width.
+  // A screen in one of two panes, except a pane of a large window: centred in the pane, never
+  // wider than the pane max width.
   paneCap: {
     width: '100%',
     maxWidth: theme.layout.paneMaxWidth,
