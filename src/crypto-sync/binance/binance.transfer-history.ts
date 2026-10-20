@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
   advanceWalkMarks,
+  AMOUNT_STOP_CODES,
   BinanceWalkStop,
   commitSettledSpan,
   createDepthMemories,
@@ -9,8 +10,10 @@ import {
   dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
+  historyListWriterOf,
   instantAt,
   joinSettled,
+  multiCoinPatchesOf,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
@@ -18,6 +21,7 @@ import {
   readWalkMarks,
   readWalkRoundRobins,
   roundRobinHooksOf,
+  rowMinorUnits,
   runWalkPlan,
   type SettledSpan,
   settleRecords,
@@ -45,11 +49,6 @@ import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 
 import {
-  BINANCE_ASSET,
-  BinanceHistoryTooOldError,
-  type FetchAccountOptions,
-} from './binance.client';
-import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
   RESYNC_OVERLAP_MS,
@@ -58,16 +57,18 @@ import {
   type BinanceUniversalTransfer,
   fetchUniversalTransfers,
   type TotalPage,
+  TRANSFER_SETTLED_STATUS,
   UNIVERSAL_TRANSFER_TYPES,
   type UniversalTransferType,
 } from './binance.history-client';
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
+import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
+import { BinanceHistoryTooOldError, type FetchAccountOptions } from './binance.client';
+import { type BinanceWallet, exchangePairIdOf, holdingKeyOf } from './binance.holding-keys';
 
 /** Binance does not document the widest range a transfer read takes; 30 days is the working cap. */
 export const TRANSFER_WINDOW_MS = 30 * DAY_MS;
@@ -84,9 +85,6 @@ const MAX_WINDOWS = 12;
 
 /** Safety stop on paging one type within a span of one millisecond (100 rows x 50 pages). */
 const MAX_PAGES_PER_SPAN = 50;
-
-/** The status Binance gives a transfer that went through; any other is owed, a failed one too. */
-export const TRANSFER_SETTLED_STATUS = 'CONFIRMED';
 
 /** The status Binance gives a transfer that did not go through, and never will. */
 const TRANSFER_FAILED_STATUS = 'FAILED';
@@ -122,6 +120,7 @@ export const TRANSFER_FORWARD_OWES: readonly string[] = [
   TRANSFER_ID_MISSING,
   TRANSFER_AMOUNT_INVALID,
   TRANSFER_ROW_UNREADABLE,
+  ...AMOUNT_STOP_CODES,
 ];
 
 /**
@@ -181,18 +180,19 @@ const TRANSFER_ENDPOINTS: Record<UniversalTransferType, Endpoints> = {
   OPTION_FUNDING: receives('FUNDING', 'OPTION'),
 };
 
-const WALLET_KEY_OF: Record<OwnWallet, BinanceWalletKey> = {
-  MAIN: SPOT_KEY,
-  FUNDING: FUNDING_KEY,
+const WALLET_OF: Record<OwnWallet, BinanceWallet> = {
+  MAIN: 'spot',
+  FUNDING: 'funding',
 };
 
 /**
- * A row mapped from a transfer, before its wallets are turned into holdings: `wallet` is the one
- * it sits on, `counterpartWallet` the other leg's of a move between the two wallets Kiko tracks.
+ * A row mapped from a transfer, before its wallets are turned into holdings: `wallet` is the key
+ * of the coin's holding it sits on, `counterpartWallet` the other leg's of a move between the two
+ * wallets Kiko tracks.
  */
 type PlannedTransferRow = {
-  wallet: BinanceWalletKey;
-  counterpartWallet?: BinanceWalletKey;
+  wallet: string;
+  counterpartWallet?: string;
   amountMinorUnits: number;
   time: number;
   externalId: string;
@@ -213,20 +213,23 @@ export type BinanceHistoryRow = BinanceTransactionRow & {
 };
 
 /**
- * The rows of one transfer read under `readAs`: two legs for a move between the two tracked
- * wallets, one for a move to or from a wallet Kiko does not track, none for another asset. Each
- * leg is keyed by the type and the transfer's own id, so a `tranId` two types share never
- * refreshes the other type's row. A transfer the walk cannot trust (not the type it was read
- * under, not settled, no id, no positive amount) throws a `BinanceWalkStop`: a skipped one would
- * be silent loss.
+ * The rows of one transfer of a tracked coin read under `readAs`: two legs for a move between the
+ * two tracked wallets, one for a move to or from a wallet Kiko does not track, each on the coin's
+ * own wallet holding. Each leg is keyed by the type, the transfer's own id and the holding, so a
+ * `tranId` two types or two coins share never refreshes another row. A transfer the walk cannot
+ * trust (not the type it was read under, not settled, no id, no positive amount) throws a
+ * `BinanceWalkStop`: a skipped one would be silent loss. A transfer of a coin that is not tracked
+ * never gets here: the client counts it without parsing it (`UntrackedTotalRow`).
  */
 export const transferRowsOf = (
   accountId: string,
   record: BinanceUniversalTransfer,
   readAs: UniversalTransferType,
 ): PlannedTransferRow[] => {
-  if (record.asset !== BINANCE_ASSET) {
-    return [];
+  const { asset } = record;
+
+  if (!isTrackedBinanceAsset(asset)) {
+    throw new BinanceWalkStop(TRANSFER_ROW_UNREADABLE);
   }
 
   if (record.type !== readAs) {
@@ -245,18 +248,20 @@ export const transferRowsOf = (
     throw new BinanceWalkStop(TRANSFER_ID_MISSING);
   }
 
-  const satoshis = btcSatoshis(record.amount);
+  const units = rowMinorUnits(asset, record.amount);
 
-  if (satoshis === null || satoshis <= 0) {
+  if (units <= 0) {
     throw new BinanceWalkStop(TRANSFER_AMOUNT_INVALID);
   }
 
-  const pairId = `${accountId}:xfer:${readAs}:${record.tranId}`;
-  const legOf = (wallet: BinanceWalletKey, signedSatoshis: number) => ({
-    wallet,
-    amountMinorUnits: signedSatoshis,
+  const transferId = `${accountId}:xfer:${readAs}:${record.tranId}`;
+  const pairId = exchangePairIdOf(transferId, asset);
+  const keyOf = (wallet: OwnWallet): string => holdingKeyOf(asset, WALLET_OF[wallet]);
+  const legOf = (wallet: OwnWallet, signedUnits: number) => ({
+    wallet: keyOf(wallet),
+    amountMinorUnits: signedUnits,
     time: record.timestamp,
-    externalId: `${pairId}:${wallet}`,
+    externalId: `${transferId}:${keyOf(wallet)}`,
     description: '',
   });
 
@@ -264,19 +269,19 @@ export const transferRowsOf = (
     .returnType<PlannedTransferRow[]>()
     .with({ kind: 'paired' }, ({ source, destination }) => [
       {
-        ...legOf(WALLET_KEY_OF[source], -satoshis),
-        counterpartWallet: WALLET_KEY_OF[destination],
+        ...legOf(source, -units),
+        counterpartWallet: keyOf(destination),
         exchangePairId: pairId,
       },
       {
-        ...legOf(WALLET_KEY_OF[destination], satoshis),
-        counterpartWallet: WALLET_KEY_OF[source],
+        ...legOf(destination, units),
+        counterpartWallet: keyOf(source),
         exchangePairId: pairId,
       },
     ])
     .with({ kind: 'untracked' }, ({ tracked, other, sign }) => [
       {
-        ...legOf(WALLET_KEY_OF[tracked], sign * satoshis),
+        ...legOf(tracked, sign * units),
         untrackedCounterpart: untrackedWalletCode(other),
       },
     ])
@@ -389,7 +394,8 @@ const readSpan = async (
  * owed, as a range, in that type alone, and the types that did not drift still commit. The ground
  * a type left owed in itself (the edge band its read began above, when Binance refused it, or the
  * whole span for a type whose read stopped) is owed as a range in that type alone, and holds
- * nothing back.
+ * nothing back. A transfer of a coin that is not tracked is counted by its point and gives no row
+ * and no stop; its coin is listed once the transfer is settled.
  */
 export const settledTransfersOf = (input: {
   accountId: string;
@@ -420,6 +426,16 @@ export const settledTransfersOf = (input: {
       rowsOf: ({ type, row }) => transferRowsOf(accountId, row, type),
       extentOf: ({ row }) => instantAt(row.timestamp),
       seriesOf: ({ type }) => type,
+    }),
+    settleRecords({
+      span,
+      records: read.read.flatMap(({ series, untracked }) =>
+        untracked.map((row) => ({ type: series, row })),
+      ),
+      rowsOf: () => [],
+      extentOf: ({ row }) => foldMap(maybe(row.time), (time) => instantAt(Number(time))),
+      seriesOf: ({ type }) => type,
+      untrackedOf: ({ row }) => (row.status === TRANSFER_SETTLED_STATUS ? row.ticker : undefined),
     }),
     settleUnreadable({
       span,
@@ -464,6 +480,8 @@ const commitSpan = (
         missingCode: 'transfer-holding-missing',
       }),
     add: deps.addTransactions,
+    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
+    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
@@ -489,11 +507,9 @@ const runSync = async (
     return { imported: 0, complete: false };
   }
 
-  const holdings = await deps.listHoldings(accountId);
-  const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
   const credentials = await deps.readCredentials(accountId);
 
-  if (spot === undefined || credentials === undefined) {
+  if (credentials === undefined) {
     return { imported: 0, complete: true };
   }
 
@@ -533,7 +549,13 @@ const runSync = async (
     apiKey: credentials.apiKey,
     secret: credentials.secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor, rescanCursor, ...roundRobins, pending },
+    marks: {
+      cursor,
+      rescanCursor,
+      ...roundRobins,
+      pending,
+      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: cursor }),
+    },
     plan,
     write,
     depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
@@ -569,8 +591,9 @@ const runSync = async (
 };
 
 /**
- * Import the user's BTC universal transfers (Spot and Funding, to each other and to the wallets
- * Kiko does not track) as transactions, committing a span's rows before advancing the mark past
+ * Import the user's universal transfers of every tracked coin (Spot and Funding, to each other and
+ * to the wallets Kiko does not track) as transactions, and list the coins of the transfers it
+ * counts but does not import, committing a span's rows before advancing the mark past
  * it. A run goes forward from the watermark first, then reads the overlap ground earlier runs left
  * owed, then re-scans the last window behind the watermark, then reads the owed points, each on
  * what budget is left (see `planWalkPasses`); every span asks all 20 types. `complete: false`

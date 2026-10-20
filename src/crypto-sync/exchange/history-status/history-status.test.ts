@@ -1,6 +1,6 @@
 import { parseExchangeState } from '../walk-state';
 
-import { oversizedCoinsOf, untrackedCoinsOf } from './history-status';
+import { balanceSyncedAtOf, oversizedCoinsOf, untrackedCoinsOf } from './history-status';
 
 const stateWith = (lists: Record<string, unknown>) =>
   parseExchangeState(JSON.stringify({ version: 1, walks: {}, ...lists }));
@@ -66,5 +66,19 @@ describe('oversizedCoinsOf', () => {
     const state = stateWith({ untrackedCoins: { balance: ['PEPE'], history: ['XYZ'] } });
 
     expect(oversizedCoinsOf(state)).toEqual([]);
+  });
+});
+
+describe('balanceSyncedAtOf', () => {
+  it('reads the stamp of the last good balance read', () => {
+    expect(balanceSyncedAtOf(stateWith({ balanceSyncedAt: 1_700_000_000_000 }))).toBe(
+      1_700_000_000_000,
+    );
+  });
+
+  it('reads nothing for a state with no stamp, an unreadable stamp or a state that is lost', () => {
+    expect(balanceSyncedAtOf(stateWith({}))).toBeUndefined();
+    expect(balanceSyncedAtOf(stateWith({ balanceSyncedAt: 'x' }))).toBeUndefined();
+    expect(balanceSyncedAtOf(parseExchangeState('not json'))).toBeUndefined();
   });
 });

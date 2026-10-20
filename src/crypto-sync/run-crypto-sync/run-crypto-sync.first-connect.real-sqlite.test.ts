@@ -101,6 +101,18 @@ describe('runCryptoSync — the Binance arm over a real database', () => {
     });
   });
 
+  it('the first Connect sync stamps the balance sync time beside the lists', async () => {
+    const before = Date.now();
+
+    await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-new' });
+
+    const state = parseExchangeState(storedState('acc-new'));
+
+    expect(state).toMatchObject({ kind: 'parsed', unreadable: [] });
+    expect(state.kind === 'parsed' && state.balanceSyncedAt).toBeGreaterThanOrEqual(before);
+    expect(state.kind === 'parsed' && state.balanceSyncedAt).toBeLessThanOrEqual(Date.now());
+  });
+
   it('a re-sync of a connected account replaces both lists', async () => {
     await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-new' });
     mockFetchAccount.mockResolvedValue({

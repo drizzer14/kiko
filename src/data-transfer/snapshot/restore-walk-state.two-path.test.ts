@@ -478,6 +478,27 @@ describe('restoring a .kiko file written before the walk state column', () => {
       unreadable: [],
     });
   });
+
+  // The "Last sync" line of an account with no holding reads this stamp, so a restore that lost it
+  // would show "Never" until the next sync.
+  it('restores the balance sync stamp unchanged, and it reads', async () => {
+    const stored = JSON.stringify({ version: 1, walks: {}, balanceSyncedAt: 1_700_000_000_000 });
+    const source = freshDatabase();
+
+    seedSpot(source, 'account', { binanceHistoryCursor: 1000 });
+    source
+      .prepare("INSERT INTO sync_state (account_id, exchange_state) VALUES ('account', ?)")
+      .run(stored);
+
+    const restoredText = stateRowsOf(await restored(await exported(source)))[0]?.exchange_state;
+
+    expect(restoredText).toBe(stored);
+    expect(parseExchangeState(restoredText as string)).toMatchObject({
+      kind: 'parsed',
+      balanceSyncedAt: 1_700_000_000_000,
+      unreadable: [],
+    });
+  });
 });
 
 // Two live property accounts cannot coexist in a current database (a partial unique index), so

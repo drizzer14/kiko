@@ -28,6 +28,7 @@ const ACCOUNT = 'acc-1';
 const TIME = agoMs(2);
 
 const rewardOf = (over: Partial<EarnReward> = {}): EarnReward => ({
+  asset: 'BTC',
   ownerId: 'BTC001',
   type: 'REALTIME',
   time: TIME,
@@ -39,7 +40,7 @@ const keyOf = (product: string, owner: string, type: string, time: number, numbe
   `${ACCOUNT}:earn:reward:${product}:${owner}:${type}:${time}:${number}`;
 
 describe('rewardGroupsOf', () => {
-  it('puts the records of one product, project, type and time in one group, in the order they came', () => {
+  it('puts the records of one product, project, type, time and asset in one group, in the order they came', () => {
     const first = rewardOf({ amount: '0.00000002' });
     const second = rewardOf({ amount: '0.00000001' });
 
@@ -49,6 +50,7 @@ describe('rewardGroupsOf', () => {
         ownerId: 'BTC001',
         type: 'REALTIME',
         time: TIME,
+        asset: 'BTC',
         records: [first, second],
       },
     ]);
@@ -58,6 +60,7 @@ describe('rewardGroupsOf', () => {
     ['another project', { ownerId: 'BTC002' }],
     ['another type', { type: 'BONUS' }],
     ['another time', { time: TIME + 1 }],
+    ['another asset', { asset: 'USDT' }],
   ])('tells a record of %s apart: it is a group of its own', (_label, over) => {
     const groups = rewardGroupsOf('flexible', [rewardOf(), rewardOf(over)]);
 
@@ -115,6 +118,72 @@ describe('rewardGroupRowsOf', () => {
     ]);
   });
 
+  it('two BTC rewards of one group are keyed with the position alone, ending in 0 and 1', () => {
+    const rows = rewardGroupRowsOf(
+      ACCOUNT,
+      groupOf('flexible', rewardOf({ amount: '0.0002' }), rewardOf({ amount: '0.0001' })),
+    );
+
+    expect(rows.map((row) => [row.externalId, row.amountMinorUnits])).toEqual([
+      [keyOf('flexible', 'BTC001', 'REALTIME', TIME, 0), 10_000],
+      [keyOf('flexible', 'BTC001', 'REALTIME', TIME, 1), 20_000],
+    ]);
+  });
+
+  it('BTC and USDT rewards of one project, type and time are numbered each in its own coin, the USDT keys ending in the coin', () => {
+    const groups = rewardGroupsOf('flexible', [
+      rewardOf({ amount: '0.0001' }),
+      rewardOf({ asset: 'USDT', amount: '0.5' }),
+      rewardOf({ amount: '0.0002' }),
+      rewardOf({ asset: 'USDT', amount: '0.1' }),
+    ]);
+
+    expect(
+      groups.flatMap((group) =>
+        rewardGroupRowsOf(ACCOUNT, group).map((row) => [
+          row.wallet,
+          row.externalId,
+          row.amountMinorUnits,
+        ]),
+      ),
+    ).toEqual([
+      ['BTC:earn', keyOf('flexible', 'BTC001', 'REALTIME', TIME, 0), 10_000],
+      ['BTC:earn', keyOf('flexible', 'BTC001', 'REALTIME', TIME, 1), 20_000],
+      ['USDT:earn', `${keyOf('flexible', 'BTC001', 'REALTIME', TIME, 0)}:USDT`, 10_000_000],
+      ['USDT:earn', `${keyOf('flexible', 'BTC001', 'REALTIME', TIME, 1)}:USDT`, 50_000_000],
+    ]);
+  });
+
+  it.each([
+    ['a flexible BONUS', 'flexible', { type: 'BONUS' }],
+    ['a locked', 'locked', { ownerId: 'pos-1', type: 'Booster' }],
+  ] as const)(
+    '%s reward in USDT is income on the Spot holding of USDT',
+    (_label, product, over) => {
+      const [row] = rewardGroupRowsOf(
+        ACCOUNT,
+        groupOf(product, rewardOf({ ...over, asset: 'USDT' })),
+      );
+
+      expect(row.wallet).toBe('USDT');
+    },
+  );
+
+  it('reads a reward amount in the minor units of its own coin: a USDT amount keeps eight decimals', () => {
+    const [row] = rewardGroupRowsOf(
+      ACCOUNT,
+      groupOf('flexible', rewardOf({ asset: 'USDT', amount: '0.00000001' })),
+    );
+
+    expect(row.amountMinorUnits).toBe(1);
+  });
+
+  it('stops a reward of a coin the walk does not track, which never reaches here: no row is guessed', () => {
+    expect(
+      stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf({ asset: 'XYZ' })))),
+    ).toBe('earn-row-unreadable');
+  });
+
   it('a flexible BONUS reward is income on the Spot wallet, with no marker', () => {
     const [row] = rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf({ type: 'BONUS' })));
 
@@ -145,7 +214,7 @@ describe('rewardGroupRowsOf', () => {
     },
   );
 
-  it.each([['x'], [''], ['0'], ['0.000000001'], ['-0.00000001']])(
+  it.each([['0'], ['-0.00000001']])(
     'a reward whose amount is %p is no positive number of satoshis: the group is a stop',
     (amount) => {
       expect(
@@ -154,6 +223,18 @@ describe('rewardGroupRowsOf', () => {
     },
   );
 
+  it.each([
+    ['x', 'amount-malformed'],
+    ['', 'amount-malformed'],
+    ['1e-8', 'amount-malformed'],
+    ['0.000000001', 'amount-precision'],
+    ['90071992.54740992', 'amount-too-large'],
+  ])('a reward whose amount is %p stops its group with the parser code %s', (amount, code) => {
+    expect(
+      stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf({ amount })))),
+    ).toBe(code);
+  });
+
   it('stops the WHOLE group for one member whose amount is no number: no member is numbered without it', () => {
     const group = groupOf(
       'flexible',
@@ -161,7 +242,7 @@ describe('rewardGroupRowsOf', () => {
       rewardOf({ amount: 'x' }),
     );
 
-    expect(stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, group))).toBe('earn-amount-invalid');
+    expect(stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, group))).toBe('amount-malformed');
   });
 
   it('stops a group with no project or position id', () => {
@@ -193,6 +274,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
         series,
         rows: rows.map((record) => ({ kind: 'flexibleRewards' as const, record })),
         unreadable,
+        untracked: [],
       },
     ],
     drifted: [],
@@ -213,7 +295,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
       keyOf('flexible', 'BTC001', 'REALTIME', at + 5, 0),
     ]);
     expect(settled.owed).toEqual([pointOf(at, 'flexibleRewards')]);
-    expect(settled.codes).toEqual(['earn-amount-invalid']);
+    expect(settled.codes).toEqual(['amount-malformed']);
   });
 
   it('blocks every reward group of the kind at the time of an unreadable reward row: its group cannot be known', () => {
@@ -242,11 +324,12 @@ describe('settledEarnOf: the reward groups of a span', () => {
       span,
       read: {
         read: [
-          { series: 'flexibleRewards', rows: [], unreadable: [{ time: at }] },
+          { series: 'flexibleRewards', rows: [], unreadable: [{ time: at }], untracked: [] },
           {
             series: 'lockedRewards',
             rows: [{ kind: 'lockedRewards', record: lockedRewardOf({ time: at }) }],
             unreadable: [],
+            untracked: [],
           },
         ],
         drifted: [],
@@ -372,7 +455,7 @@ describe('the reward groups of a walk', () => {
 
     expect(world.added).toEqual([]);
     expect(listOf(world)).toEqual([pointOf(stuckAt, 'flexibleRewards')]);
-    expect(stopCodes(warn)).toEqual(['earn-amount-invalid']);
+    expect(stopCodes(warn)).toEqual(['amount-malformed']);
   });
 
   it('a reward group settled per member would shift the numbers: a group that settles later is written under 0 and 1, never 1 alone', async () => {

@@ -24,13 +24,27 @@ import {
 import type { ExchangeRun } from '../budget';
 
 /**
+ * A row of a coin the walk does not track: counted for the pager and never parsed, so it can be
+ * off contract in any way without stalling the tracked rows. Only what the walk needs is kept: the
+ * upper-cased ticker (empty for a row with no usable asset), the `status` text (`undefined` unless
+ * it is text), so the walk lists the coin only once the row is settled, and the time field as it
+ * stands, which says where the row sits in a span.
+ */
+export type UntrackedTotalRow = {
+  ticker: string;
+  status: string | undefined;
+  time: UnreadableRow['time'];
+};
+
+/**
  * One page of a read paged by `current` against the `total` the exchange reports: the rows that
- * parsed, the rows the client could not read, the rows counted (`gathered`, every row of any
- * asset) and the weights the exchange reported for the call.
+ * parsed, the rows the client could not read, the rows of untracked coins, the rows counted
+ * (`gathered`, every row of any asset) and the weights the exchange reported for the call.
  */
 export type TotalPage<Row, Weights> = {
   rows: Row[];
   unreadable: UnreadableRow[];
+  untracked: UntrackedTotalRow[];
   total: number;
   gathered: number;
 } & Weights;
@@ -41,7 +55,7 @@ export type TotalPage<Row, Weights> = {
  * server counts and the rows it showed disagree, so nothing of it can be trusted).
  */
 type TotalPaged<Row> =
-  | { kind: 'rows'; rows: Row[]; unreadable: UnreadableRow[] }
+  | { kind: 'rows'; rows: Row[]; unreadable: UnreadableRow[]; untracked: UntrackedTotalRow[] }
   | { kind: 'split'; half: WalkWindow }
   | { kind: 'drift' };
 
@@ -72,6 +86,7 @@ export const fetchAllByTotal = async <Row, Lane extends string, Cost, Weights>(i
   const { run, config, lane, cost, keep, half, maxPages, fetchPage } = input;
   const rows: Row[] = [];
   const unreadable: UnreadableRow[] = [];
+  const untracked: UntrackedTotalRow[] = [];
   let counted = 0;
 
   for (let current = 1; current <= maxPages; current += 1) {
@@ -89,6 +104,7 @@ export const fetchAllByTotal = async <Row, Lane extends string, Cost, Weights>(i
     run.budget.record(lane, page);
     rows.push(...page.rows);
     unreadable.push(...page.unreadable);
+    untracked.push(...page.untracked);
     counted += page.gathered;
 
     if (counted > page.total) {
@@ -96,7 +112,7 @@ export const fetchAllByTotal = async <Row, Lane extends string, Cost, Weights>(i
     }
 
     if (counted === page.total) {
-      return { kind: 'rows', rows, unreadable };
+      return { kind: 'rows', rows, unreadable, untracked };
     }
 
     if (page.gathered < config.totalPageSize) {
@@ -124,7 +140,12 @@ export type SeriesOwed<Series> = { series: Series; window: WalkWindow };
  * depth owes, so a lane without one has none.
  */
 export type SeriesSpan<Series, Row> = {
-  read: { series: Series; rows: Row[]; unreadable: UnreadableRow[] }[];
+  read: {
+    series: Series;
+    rows: Row[];
+    unreadable: UnreadableRow[];
+    untracked: UntrackedTotalRow[];
+  }[];
   drifted: Series[];
   owed?: SeriesOwed<Series>[];
 };
@@ -593,6 +614,7 @@ const withBandOf = async <Series extends string, Row, Lane extends string, Cost,
         kind: 'rows',
         rows: [...read.rows, ...band.rows],
         unreadable: [...read.unreadable, ...band.unreadable],
+        untracked: [...read.untracked, ...band.untracked],
         skipped: undefined,
       };
 };
@@ -753,8 +775,8 @@ export const readSeriesSpan = async <
 
           return undefined;
         })
-        .with({ kind: 'rows' }, ({ rows, unreadable, skipped }) => {
-          result.read.push({ series: name, rows, unreadable });
+        .with({ kind: 'rows' }, ({ rows, unreadable, untracked, skipped }) => {
+          result.read.push({ series: name, rows, unreadable, untracked });
           oweIn(name, skipped);
 
           return undefined;

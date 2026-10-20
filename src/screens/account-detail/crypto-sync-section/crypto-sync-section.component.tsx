@@ -8,6 +8,11 @@ import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
+import {
+  balanceSyncedAtOf,
+  oversizedCoinsOf,
+  untrackedCoinsOf,
+} from '@kiko/crypto-sync/exchange/history-status';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
@@ -23,11 +28,10 @@ import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
-import { oversizedCoinsOf, untrackedCoinsOf } from '@kiko/crypto-sync/exchange/history-status';
 
 import { styles } from '../account-detail.styles';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
-import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
+import { formatLastSyncAt, latestBalanceSyncAt } from '../format-last-sync';
 
 import { isBinanceHistoryBehind, transferOwesRange, walkCursorsOf } from './binance-history-status';
 
@@ -151,6 +155,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     // The coin lines state what the last read found, so a sync in flight keeps them; a state that
     // is malformed holds no list, and a wallet has none.
     const coinLinesShown = !syncStateLoading && connectedProvider === 'binance';
+    // An account with no tracked holding has no holding stamp, so the state's stamp is its sync
+    // time; a wallet's state holds none, so it reads its holdings alone.
+    const lastBalanceSyncAt = latestBalanceSyncAt(holdings, balanceSyncedAtOf(walkState));
     const historyBehind =
       !isSyncing &&
       !syncStateLoading &&
@@ -158,7 +165,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       connectedProvider === 'binance' &&
       isBinanceHistoryBehind({
         cursors: walkCursorsOf(walkState),
-        lastBalanceSyncAt: latestSyncedAt(holdings),
+        lastBalanceSyncAt,
         owesRange: transferOwesRange(walkState),
       });
 
@@ -176,7 +183,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
             <Text variant="body" tone="textSecondary">
               {t('accountDetail.lastSync', {
-                time: formatLastSyncAt(latestSyncedAt(holdings), t, clock),
+                time: formatLastSyncAt(lastBalanceSyncAt, t, clock),
               })}
             </Text>
           </Box>

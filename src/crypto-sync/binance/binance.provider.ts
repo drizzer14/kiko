@@ -34,7 +34,6 @@ import {
   holdingKeyOf,
   partsOfHoldingKey,
   PREVIOUS_BTC_HOLDING_NAMES,
-  SPOT_KEY,
 } from './binance.holding-keys';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
@@ -113,8 +112,7 @@ type CoinBalances = ReadonlyMap<Currency, number>;
 
 /**
  * What one wallet's read found. `refused` holds a tracked coin whose amounts are malformed or
- * add past the safe integer: such a coin is never written, and never zeroed either (a Spot BTC
- * with no holding yet is the one exception: it gets the zero anchor).
+ * add past the safe integer: such a coin is never written, and never zeroed either.
  * `untracked` holds each asset the app does not track that has a balance. `assets` holds every
  * asset the read named, whatever its amount.
  */
@@ -485,20 +483,8 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     const balances: ProviderBalance[] = [];
     const existingKeys = existingBinanceKeys(target.holdings);
 
-    // The capital, Pay, Transfer and Earn walks import nothing while no Spot BTC holding exists,
-    // so while none exists the Spot read writes it: a good read at its balance, a zero or dust
-    // one included, and a refused Spot BTC amount at a zero, which never overwrites a real
-    // balance. An existing Spot BTC holding whose amount is refused keeps its last balance.
-    // Those walks and this anchor go together.
     const spot = spotRead(spotAccount);
-    appendWallet(balances, 'spot', spot, new Set([...existingKeys, SPOT_KEY]));
-
-    if (
-      !existingKeys.has(SPOT_KEY) &&
-      !balances.some(({ metadataKey }) => metadataKey === SPOT_KEY)
-    ) {
-      balances.push(holdingOf(BINANCE_ASSET, 'spot', 0));
-    }
+    appendWallet(balances, 'spot', spot, existingKeys);
 
     // Funding: one holding per coin; a failure skips the whole wallet.
     const funding = await walletRead('funding', async () =>
@@ -524,8 +510,14 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     });
     appendWallet(balances, 'earn', earn, existingKeys);
 
-    // The lists are returned, not written: the write needs the account marked as Binance's,
-    // which a first Connect does only after this read.
-    return { balances, exchangeState: balanceListPatches({ spot, funding, earn }) };
+    // The lists and the stamp are returned, not written: the write needs the account marked as
+    // Binance's, which a first Connect does only after this read.
+    return {
+      balances,
+      exchangeState: [
+        ...balanceListPatches({ spot, funding, earn }),
+        { kind: 'balanceSyncedAt', value: deps.now() },
+      ],
+    };
   },
 };

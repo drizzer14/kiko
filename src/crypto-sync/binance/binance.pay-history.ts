@@ -8,15 +8,18 @@ import {
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
+  historyListWriterOf,
   instantAt,
   joinSettled,
   logWalkStop,
+  multiCoinPatchesOf,
   placeWalletRows,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
   roundRobinHooksOf,
+  rowMinorUnits,
   runWalkPlan,
   settleRecords,
   settleUnreadable,
@@ -33,7 +36,9 @@ import {
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { addDecimal, compareDecimal } from '@kiko/currency/decimal';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
 import {
@@ -44,27 +49,21 @@ import {
   type FetchAccountOptions,
 } from './binance.client';
 import {
-  type BinanceWalletKey,
-  binanceKeyOf,
-  EARN_KEY,
-  FUNDING_KEY,
-  SPOT_KEY,
-} from './binance.holding-keys';
-import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
   RESYNC_OVERLAP_MS,
 } from './binance.transactions';
 import {
   type BinancePayOrder,
-  type BtcFundedOtherCoinOrder,
+  directionOfAmount,
   fetchPayHistory,
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
 } from './binance.history-client';
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
+import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
+import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
@@ -115,27 +114,16 @@ export const payFloorMs = (now: number): number => {
 
 type PayDirection = 'out' | 'in';
 
-const directionOfSign = (amount: string): PayDirection | undefined => {
-  const value = Number(amount);
-
-  if (!Number.isFinite(value) || value === 0) {
-    return undefined;
-  }
-
-  return value > 0 ? 'in' : 'out';
-};
-
 /**
  * Whether the user paid or received an order, from the user's own uid alone: the payer's
  * Binance id is the uid for an outgoing order, the receiver's for an incoming one. The
  * shape of the parties is no signal (a real incoming C2C order names the counterparty as
  * payer too), so an unknown uid, a uid that matches neither party or both, and a sign
  * that disagrees with the uid are all no direction. `null` means the window stops. The
- * party ids are read for this rule and for the receiver check of an order paid in another
- * coin (`isReceivedBy`); they are never stored or logged.
+ * party ids are read for this rule alone; they are never stored or logged.
  */
 export const payDirection = (order: BinancePayOrder, uid: string | null): PayDirection | null => {
-  const sign = directionOfSign(order.amount);
+  const sign = directionOfAmount(order.amount);
   const isPayer = uid !== null && order.payerInfo.binanceId === uid;
   const isReceiver = uid !== null && order.receiverInfo.binanceId === uid;
 
@@ -172,42 +160,75 @@ const EARN_WALLET_TYPE = 5;
 const PAY_RECEIPTS_TO_SPOT_FROM_MS = Date.UTC(2026, 8, 29);
 
 /** Binance's wallet ids for a Pay order: 2 Spot, 1 Funding, 5 Earn. Any other is untracked. */
-const walletOf = (walletType: number): BinanceWalletKey =>
+const walletOf = (walletType: number): BinanceWallet =>
   match(walletType)
-    .returnType<BinanceWalletKey>()
-    .with(SPOT_WALLET_TYPE, () => SPOT_KEY)
-    .with(FUNDING_WALLET_TYPE, () => FUNDING_KEY)
-    .with(EARN_WALLET_TYPE, () => EARN_KEY)
+    .returnType<BinanceWallet>()
+    .with(SPOT_WALLET_TYPE, () => 'spot')
+    .with(FUNDING_WALLET_TYPE, () => 'funding')
+    .with(EARN_WALLET_TYPE, () => 'earn')
     .otherwise(() => {
       throw new BinanceWalkStop('pay-wallet-unknown');
     });
 
-type WalletShare = { walletType: number; satoshis: number };
+/** What a wallet paid or took, in the minor units of the coin it is placed in. */
+type WalletShare = { walletType: number; units: number };
 
-const isBtcFunds = (entry: BinancePayOrder['fundsDetail'][number]): boolean =>
-  entry.currency === BINANCE_ASSET;
+type FundsEntry = BinancePayOrder['fundsDetail'][number];
 
-const costEntriesOf = (order: BinancePayOrder) =>
-  order.fundsDetail.filter(isBtcFunds).flatMap((entry) => entry.walletAssetCost);
+/** The funds entries of one tracked coin, which are placed together. */
+type CoinFunds = { coin: Currency; entries: FundsEntry[] };
 
-/** What an order's BTC funds entries say each wallet paid: the wallets with a cost above zero. */
-const costsOf = (order: BinancePayOrder): WalletShare[] => {
-  const satoshisByWallet = new Map<number, number>();
+/** One coin of an order, placed on the wallets that paid it or took it. */
+type CoinShares = { coin: Currency; shares: WalletShare[] };
 
-  for (const cost of costEntriesOf(order)) {
-    const costSatoshis = btcSatoshis(cost.amount);
+/** What an order's amount is in its own coin, which is a tracked one. */
+type OrderAmount = { coin: Currency; units: number };
 
-    if (costSatoshis === null || costSatoshis < 0) {
-      throw new BinanceWalkStop('pay-amount-invalid');
-    }
+/** What a wallet paid, as Binance's decimal text, before any rounding to the coin's scale. */
+type WalletCost = { walletType: number; amount: string };
 
-    const stored = satoshisByWallet.get(cost.walletType) ?? 0;
-    satoshisByWallet.set(cost.walletType, stored + costSatoshis);
+/**
+ * `sum` plus `amount`, exactly. The coin's own read of `amount` comes first: it stops a text
+ * the sum could not parse, and a coin stored at its own scale refuses digits past it there.
+ */
+const addAmount = (coin: Currency, sum: string, amount: string): string => {
+  rowMinorUnits(coin, amount);
+
+  return addDecimal(sum, amount);
+};
+
+/**
+ * `addAmount`, but a negative `amount` stops the walk once its text has read: a sign error, and
+ * left to the sum it could cancel a positive amount or turn a row negative.
+ */
+const addNonNegative = (coin: Currency, sum: string, amount: string): string => {
+  const next = addAmount(coin, sum, amount);
+
+  if (compareDecimal(amount, '0') < 0) {
+    throw new BinanceWalkStop('pay-amount-invalid');
   }
 
-  return [...satoshisByWallet]
-    .filter(([, costSatoshis]) => costSatoshis > 0)
-    .map(([walletType, costSatoshis]) => ({ walletType, satoshis: costSatoshis }));
+  return next;
+};
+
+/**
+ * What a coin's funds entries say each wallet paid, exactly: the wallets with a cost above zero.
+ * Rounding happens once, on a sum (`sharesFromCosts`), never on each cost, because the costs of
+ * a coin stored at a reduced scale can each round on their own to more or less than their total.
+ */
+const costsOf = (coin: Currency, entries: FundsEntry[]): WalletCost[] => {
+  const amountByWallet = new Map<number, string>();
+
+  for (const cost of entries.flatMap((entry) => entry.walletAssetCost)) {
+    amountByWallet.set(
+      cost.walletType,
+      addNonNegative(coin, amountByWallet.get(cost.walletType) ?? '0', cost.amount),
+    );
+  }
+
+  return [...amountByWallet]
+    .filter(([, amount]) => compareDecimal(amount, '0') > 0)
+    .map(([walletType, amount]) => ({ walletType, amount }));
 };
 
 const declaredWalletsOf = (order: BinancePayOrder): number[] => [
@@ -230,25 +251,44 @@ const namedWalletsOf = (order: BinancePayOrder): number[] => {
 
 /**
  * What a send paid from: the wallets with a cost above zero. They must be among the
- * wallets the order names and their costs must add up to the order amount to the satoshi,
- * or the order is one this walk cannot place. A named wallet with no cost is left out: a
- * send is paid from the wallets that were charged, and `walletTypes` can list one that was
- * not.
+ * wallets the order names and their costs, summed exactly and rounded once, must come to `units`,
+ * or the order is one this walk cannot place. A named wallet with no cost is left out: a send is
+ * paid from the wallets that were charged, and `walletTypes` can list one that was not.
+ *
+ * Each wallet's share is the step the rounded running sum takes at it, the wallets taken in
+ * ascending order so the shares do not depend on the order Binance lists them in. The shares
+ * add up to the rounded total whatever the scale, and a share that rounds to nothing has no row.
  */
-const sharesFromCosts = (
-  order: BinancePayOrder,
-  wallets: number[],
-  satoshis: number,
-): WalletShare[] => {
-  const shares = costsOf(order);
-  const total = shares.reduce((sum, share) => sum + share.satoshis, 0);
-  const costedOnNamed = shares.every((share) => wallets.includes(share.walletType));
+const sharesFromCosts = (input: {
+  coin: Currency;
+  costs: WalletCost[];
+  wallets: number[];
+  units: number;
+}): WalletShare[] => {
+  const { coin, costs, wallets, units } = input;
+  const ascending = [...costs].sort((a, b) => a.walletType - b.walletType);
+  const runningUnits = ascending.map((_cost, index) =>
+    rowMinorUnits(
+      coin,
+      ascending.slice(0, index + 1).reduce((sum, cost) => addDecimal(sum, cost.amount), '0'),
+    ),
+  );
+  const costedOnNamed = costs.every((cost) => wallets.includes(cost.walletType));
 
-  if (!costedOnNamed || total !== satoshis) {
+  if (!costedOnNamed || (runningUnits.at(-1) ?? 0) !== units) {
     throw new BinanceWalkStop('pay-split-mismatch');
   }
 
-  return shares;
+  const unitsByWallet = new Map(
+    ascending.map((cost, index) => [
+      cost.walletType,
+      runningUnits[index] - (runningUnits[index - 1] ?? 0),
+    ]),
+  );
+
+  return costs
+    .map(({ walletType }) => ({ walletType, units: unitsByWallet.get(walletType) ?? 0 }))
+    .filter((share) => share.units > 0);
 };
 
 /**
@@ -256,102 +296,196 @@ const sharesFromCosts = (
  * `PAY_RECEIPTS_TO_SPOT_FROM_MS`). No wallet field and no cost is read: they describe the
  * payer's side, and a receive that names two wallets is placed like any other.
  */
-const shareOfReceive = (order: BinancePayOrder, satoshis: number): WalletShare[] => [
+const shareOfReceive = (order: BinancePayOrder, units: number): WalletShare[] => [
   {
     walletType:
       order.transactionTime < PAY_RECEIPTS_TO_SPOT_FROM_MS ? FUNDING_WALLET_TYPE : SPOT_WALLET_TYPE,
-    satoshis,
+    units,
   },
 ];
 
 /**
- * The satoshis the BTC funds entries of an order say were paid, together. A send part-funded
- * in another coin lists less BTC than its amount, and placing it whole on one wallet would
- * invent BTC the user never spent.
+ * What one coin of a send must add up to: the order amount when every funds entry is in the
+ * order's own coin (or none is listed), else the coin's own funds entries, since a send paid in
+ * another coin, or in several, has no amount of that coin to compare with. `undefined` is the
+ * second case.
  */
-const btcFundsSatoshisOf = (order: BinancePayOrder): number =>
-  order.fundsDetail.filter(isBtcFunds).reduce((sum, entry) => {
-    const entrySatoshis = btcSatoshis(entry.amount);
-
-    if (entrySatoshis === null) {
-      throw new BinanceWalkStop('pay-amount-invalid');
-    }
-
-    return sum + entrySatoshis;
-  }, 0);
+const ownUnitsOf = (order: BinancePayOrder, amount: OrderAmount | undefined): number | undefined =>
+  foldMap(maybe(amount), ({ coin, units }) =>
+    order.fundsDetail.every((entry) => entry.currency === coin) ? units : undefined,
+  );
 
 /**
- * A send with no wallet cost anywhere, placed whole on the one wallet `walletTypes` names.
- * Its BTC funds entries must add up to the amount. An empty funds detail adds up to nothing:
- * it cannot show that the whole amount was BTC, and a send part-funded in another coin that
- * lists no funds would be placed as BTC the user never spent.
+ * The wallets one coin of a send was paid from. An order that carries no cost entry of the coin
+ * at all, with `walletTypes` naming exactly one wallet, was paid whole from that wallet when the
+ * coin's funds add up to what it must (an empty funds detail adds up to nothing, so it cannot
+ * show that the whole amount was paid in the order's coin); without a cost entry, any other
+ * shape leaves the wallet unknown. An entry that rounds to nothing at the coin's scale is no row.
+ * An order amount of 0 units is dust, so funds of its own coin above dust stop whatever their cost
+ * shape: costs and wallets cannot show the dust is what was paid. Only an order whose funds are all
+ * in its own coin reaches this with `orderUnits` 0, which BTC's scale never gives. A funds entry
+ * with a negative amount stops whatever its cost shape: a sign error, as a negative cost is, and
+ * left to the sum it could cancel a positive entry or turn a row negative.
  */
-const wholeOnSoleWallet = (
-  order: BinancePayOrder,
-  walletType: number,
-  satoshis: number,
-): WalletShare[] => {
-  if (btcFundsSatoshisOf(order) !== satoshis) {
+const sharesOfCoin = (input: {
+  funds: CoinFunds;
+  wallets: number[];
+  declared: number[];
+  orderUnits: number | undefined;
+}): WalletShare[] => {
+  const { funds, wallets, declared, orderUnits } = input;
+  const { coin, entries } = funds;
+  const entrySum = entries.reduce((sum, entry) => addNonNegative(coin, sum, entry.amount), '0');
+  const entryUnits = (): number => rowMinorUnits(coin, entrySum);
+
+  if (orderUnits === 0 && entryUnits() !== 0) {
     throw new BinanceWalkStop('pay-split-mismatch');
   }
 
-  return [{ walletType, satoshis }];
+  if (entries.every((entry) => entry.walletAssetCost.length === 0) && declared.length === 1) {
+    const units = entryUnits();
+
+    if (units !== (orderUnits ?? units)) {
+      throw new BinanceWalkStop('pay-split-mismatch');
+    }
+
+    return units > 0 ? [{ walletType: declared[0], units }] : [];
+  }
+
+  return sharesFromCosts({
+    coin,
+    costs: costsOf(coin, entries),
+    wallets,
+    units: orderUnits ?? entryUnits(),
+  });
 };
 
 /**
- * The wallets a send's satoshis come from. A funds detail that names no BTC at all
- * means the send did not move BTC, so no BTC row is guessed from it. (A receive's funds
- * are the payer's, whatever coin they are in; they say nothing of what the user received.)
- * An order that carries no BTC cost entry at all, with `walletTypes` naming exactly one
- * wallet, was paid whole from that wallet when its BTC funds add up to the amount; without
- * a cost entry, any other shape leaves the wallet unknown.
+ * The tracked coins a send's funds name, each with its entries, in the order they first appear.
+ * A send that lists no funds at all is placed in its own coin, where it can only stop, unless its
+ * amount is dust, which has nothing to place. A coin the walk does not track has no row.
  */
-const sharesOfSend = (order: BinancePayOrder, satoshis: number): WalletShare[] => {
-  if (order.fundsDetail.length > 0 && !order.fundsDetail.some(isBtcFunds)) {
-    throw new BinanceWalkStop('pay-funds-not-btc');
+const fundsToPlace = (order: BinancePayOrder, amount: OrderAmount | undefined): CoinFunds[] => {
+  if (order.fundsDetail.length === 0) {
+    return (
+      foldMap(maybe(amount), ({ coin, units }) => (units > 0 ? [{ coin, entries: [] }] : [])) ?? []
+    );
+  }
+
+  const entriesByCoin = new Map<Currency, FundsEntry[]>();
+
+  for (const entry of order.fundsDetail) {
+    if (isTrackedBinanceAsset(entry.currency)) {
+      entriesByCoin.set(entry.currency, [...(entriesByCoin.get(entry.currency) ?? []), entry]);
+    }
+  }
+
+  return [...entriesByCoin].map(([coin, entries]) => ({ coin, entries }));
+};
+
+/**
+ * The wallets a send's money comes from, per coin: one row per tracked coin its funds name,
+ * each placed by the rules above. Funds in no tracked coin give no row. (A receive's funds are
+ * the payer's, whatever coin they are in; they say nothing of what the user received.)
+ */
+const sharesOfSend = (order: BinancePayOrder, amount: OrderAmount | undefined): CoinShares[] => {
+  const coins = fundsToPlace(order, amount);
+
+  if (coins.length === 0) {
+    return [];
   }
 
   const wallets = namedWalletsOf(order);
-  const declared = declaredWalletsOf(order);
 
   if (wallets.length === 0) {
     throw new BinanceWalkStop('pay-wallet-unknown');
   }
 
-  if (costEntriesOf(order).length === 0 && declared.length === 1) {
-    return wholeOnSoleWallet(order, declared[0], satoshis);
-  }
+  const declared = declaredWalletsOf(order);
+  const orderUnits = ownUnitsOf(order, amount);
 
-  return sharesFromCosts(order, wallets, satoshis);
+  return coins.map((funds) => ({
+    coin: funds.coin,
+    shares: sharesOfCoin({ funds, wallets, declared, orderUnits }),
+  }));
 };
+
+/** A receive is one row in the order's own coin, when that coin is tracked and it is not dust. */
+const sharesOfReceive = (order: BinancePayOrder, amount: OrderAmount | undefined): CoinShares[] =>
+  foldMap(maybe(amount), ({ coin, units }) =>
+    units > 0 ? [{ coin, shares: shareOfReceive(order, units) }] : [],
+  ) ?? [];
 
 const sharesOf = (
   order: BinancePayOrder,
   direction: PayDirection,
-  satoshis: number,
-): WalletShare[] =>
+  amount: OrderAmount | undefined,
+): CoinShares[] =>
   match(direction)
-    .with('out', () => sharesOfSend(order, satoshis))
-    .with('in', () => shareOfReceive(order, satoshis))
+    .with('out', () => sharesOfSend(order, amount))
+    .with('in', () => sharesOfReceive(order, amount))
     .exhaustive();
 
-const signedSatoshis = (direction: PayDirection, satoshis: number): number =>
+const signedUnits = (direction: PayDirection, units: number): number =>
   match(direction)
-    .with('out', () => -satoshis)
-    .with('in', () => satoshis)
+    .with('out', () => -units)
+    .with('in', () => units)
     .exhaustive();
+
+/**
+ * What a tracked coin's order is worth in that coin. An order of any other coin has none: its
+ * scale is unknown, so its amount is never read beyond its sign (`payDirection`). An order whose
+ * amount rounds to nothing at its coin's scale keeps its coin with 0 units: it is dust that has no
+ * row and does not stop the walk, but the funds of its own coin must still come to nothing too.
+ */
+const orderAmountOf = (order: BinancePayOrder): OrderAmount | undefined => {
+  const { currency } = order;
+
+  return isTrackedBinanceAsset(currency)
+    ? { coin: currency, units: Math.abs(rowMinorUnits(currency, order.amount)) }
+    : undefined;
+};
+
+const LEADING_MINUS = /^-/;
+
+/**
+ * The key of a row. The BTC row of a BTC order keeps the key it always had, so a row already
+ * stored is refreshed in place; every other row adds its coin, which keeps the rows of one
+ * order apart.
+ */
+const rowKeyOf = (input: {
+  accountId: string;
+  order: BinancePayOrder;
+  walletType: number;
+  coin: Currency;
+}): string => {
+  const { accountId, order, walletType, coin } = input;
+  const key = `${accountId}:pay:${order.orderType}:${order.transactionId}:${walletType}`;
+
+  return coin === BINANCE_ASSET && order.currency === BINANCE_ASSET ? key : `${key}:${coin}`;
+};
+
+/**
+ * A row in a coin other than the order's own says which order it paid: the order's amount as
+ * Binance wrote it, less the sign, and its code, with no words. It is written on insert only.
+ */
+const crossCoinNoteOf = (order: BinancePayOrder, coin: Currency): { comment?: string } =>
+  coin === order.currency
+    ? {}
+    : { comment: `${order.amount.trim().replace(LEADING_MINUS, '')} ${order.currency}` };
 
 /** A row mapped from an order, before its wallet is turned into a holding. */
 type PlannedPayRow = {
-  wallet: BinanceWalletKey;
+  wallet: string;
   amountMinorUnits: number;
   time: number;
   externalId: string;
   description: string;
+  comment?: string;
 };
 
 /**
- * The rows of one BTC order, one per wallet it was paid from or into. An order the
+ * The rows of one order, one per coin and wallet it was paid from or into. An order the
  * walk cannot trust (no id, no direction, no amount, an unknown or unbalanced wallet)
  * throws a `BinanceWalkStop`: a skipped order would be silent loss.
  */
@@ -372,21 +506,19 @@ export const payRowsOf = (input: {
     throw new BinanceWalkStop('pay-direction-ambiguous');
   }
 
-  const satoshis = Math.abs(btcSatoshis(order.amount) ?? 0);
-
-  if (satoshis === 0) {
-    throw new BinanceWalkStop('pay-amount-invalid');
-  }
-
+  const amount = orderAmountOf(order);
   const description = payDescription(order, direction);
 
-  return sharesOf(order, direction, satoshis).map((share) => ({
-    wallet: walletOf(share.walletType),
-    amountMinorUnits: signedSatoshis(direction, share.satoshis),
-    time: order.transactionTime,
-    externalId: `${accountId}:pay:${order.orderType}:${order.transactionId}:${share.walletType}`,
-    description,
-  }));
+  return sharesOf(order, direction, amount).flatMap(({ coin, shares }) =>
+    shares.map((share) => ({
+      wallet: holdingKeyOf(coin, walletOf(share.walletType)),
+      amountMinorUnits: signedUnits(direction, share.units),
+      time: order.transactionTime,
+      externalId: rowKeyOf({ accountId, order, walletType: share.walletType, coin }),
+      description,
+      ...crossCoinNoteOf(order, coin),
+    })),
+  );
 };
 
 /**
@@ -490,30 +622,31 @@ const fetchSpan = async (
 };
 
 /**
- * Whether the user is the receiver of an order of another coin and not its payer. Only
- * then did the BTC funds of that order leave someone else's wallet; an order the user paid,
- * or one whose parties do not settle it, may have moved the user's own BTC.
+ * The tickers the orders of a page name that the walk does not track: the coin of an order read
+ * strictly that is not tracked (a send in it is paid in a tracked coin, a receive of it has no
+ * row), a coin of the funds of a send that is not tracked, and the tickers of an order counted
+ * and never read. The funds of a receive are the payer's, and an order with no direction has
+ * none the walk can place, so each names only its own coin: the direction of an order read
+ * strictly is the uid's (`payDirection`), and that of an order never read is its amount's sign,
+ * as it has no parties.
  */
-const isReceivedBy = (uid: string, funded: BtcFundedOtherCoinOrder): boolean =>
-  funded.receiverId === uid && funded.payerId !== uid;
+const untrackedTickersOf = (page: PayHistoryPage, uid: string): string[] => [
+  ...page.rows.flatMap((order) =>
+    (payDirection(order, uid) === 'out'
+      ? [order.currency, ...order.fundsDetail.map((entry) => entry.currency)]
+      : [order.currency]
+    ).filter((ticker) => !isTrackedBinanceAsset(ticker)),
+  ),
+  ...page.untracked.flatMap((order) =>
+    order.direction === 'out' ? order.tickers : order.tickers.slice(0, 1),
+  ),
+];
 
 /**
- * The order of another coin that the user paid with BTC funds is a BTC movement with no row
- * rule yet, so it is a stop that owes the order's own point: the BTC rows of the span still
- * import, and the forward pass, which cannot pass it, stops.
- */
-const stopOnBtcPaidOrder = (uid: string, funded: BtcFundedOtherCoinOrder): PlannedPayRow[] => {
-  if (isReceivedBy(uid, funded)) {
-    return [];
-  }
-
-  throw new BinanceWalkStop('pay-btc-funded-other-coin');
-};
-
-/**
- * The orders of one page, each on its own (see `settleRecords`). A page that is still full once
- * its span cannot be halved (one millisecond) may hold more orders than it shows: that is no one
- * order's stop, so the whole span is owed.
+ * The orders of one page, each on its own (see `settleRecords`). An order counted and never read
+ * gives no row, no stop and no owed ground. A page that is still full once its span cannot be
+ * halved (one millisecond) may hold more orders than it shows: that is no one order's stop, so
+ * the whole span is owed.
  */
 const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistoryPage) =>
   joinSettled<PlannedPayRow>([
@@ -534,10 +667,17 @@ const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistory
     }),
     settleRecords({
       span,
-      records: page.btcFundedOtherCoinOrders,
-      rowsOf: (funded) => stopOnBtcPaidOrder(context.uid, funded),
-      extentOf: (funded) => instantAt(funded.transactionTime),
+      records: page.untracked,
+      rowsOf: () => [],
+      extentOf: (order) => instantAt(order.transactionTime),
     }),
+    {
+      rows: [],
+      codes: [],
+      owed: [],
+      returned: [],
+      untracked: untrackedTickersOf(page, context.uid),
+    },
   ]);
 
 /**
@@ -569,6 +709,8 @@ const commitSpan = (
         missingCode: 'pay-holding-missing',
       }),
     add: deps.addTransactions,
+    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
+    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
@@ -651,11 +793,9 @@ const runSync = async (
     return { imported: 0, complete: false };
   }
 
-  const holdings = await deps.listHoldings(accountId);
-  const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
   const credentials = await deps.readCredentials(accountId);
 
-  if (spot === undefined || credentials === undefined) {
+  if (credentials === undefined) {
     return { imported: 0, complete: true };
   }
 
@@ -695,7 +835,13 @@ const runSync = async (
     apiKey,
     secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor: payCursor, rescanCursor, ...roundRobins, pending },
+    marks: {
+      cursor: payCursor,
+      rescanCursor,
+      ...roundRobins,
+      pending,
+      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: payCursor }),
+    },
     plan,
     write,
   };
@@ -732,8 +878,8 @@ const runSync = async (
 };
 
 /**
- * Import the user's BTC Binance Pay history as transactions on the wallet each order
- * names (Spot, Funding or Earn), committing a window's rows before advancing the mark
+ * Import the user's Binance Pay history, in every tracked coin, as transactions on the wallet
+ * each order names (Spot, Funding or Earn), committing a window's rows before advancing the mark
  * past it. A run goes forward from the watermark first, then reads the overlap ground
  * earlier runs left owed, then re-scans the last window behind the watermark, each on what
  * budget is left (see `planWalkPasses`). `complete: false` means history, owed ground or

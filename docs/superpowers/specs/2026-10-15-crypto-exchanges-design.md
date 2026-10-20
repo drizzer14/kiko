@@ -145,7 +145,7 @@ Each reversal has a "was:" column in its scenario matrix (section 7).
 | A non-BTC Pay order paid with BTC stops (`pay-btc-funded-other-coin`, user ruling A2 2026-10-10) | history spec P9, Q8 | one row per debited coin (R-Q7) |
 | `currencyScale.USDT` = 2 | `currency.ts` | 8 (R-Q5) |
 | A crypto amount shows every decimal of its scale (`₿0.05000000`) | `formatMoney` (`format.ts`) | trailing zeros trimmed, at least 2 decimals (`₿0.05`; R-Display; DP1-DP5) |
-| Default names "Binance Spot/Funding/Earn" | `WALLET_HOLDING_NAMES` | "Binance <Wallet> · <COIN>" (R-Q6) |
+| Default names "Binance Spot/Funding/Earn" | `WALLET_HOLDING_NAMES` (deleted in set 6 step 3; the walk config `BINANCE_WALK_CONFIG` in `binance.walk-config.ts` now has `walletHoldingOf(key) => { currency, name }`, built from `partsOfHoldingKey` and `coinHoldingName`, and `undefined` for a key that is no holding key) | "Binance <Wallet> · <COIN>" (R-Q6) |
 | The caption shows for null/behind cursors and a Transfer owed range only (OVERNIGHT 20 = B) | history spec section 8 | also while a backfill range is owed (R-Q8) |
 | The fiat total of a P2P / card / fiat row lives in the note | R-Map | in the marker code; the note displays it (C-NR1) |
 | The 2-minute same-amount matcher (`internalTransferTransactionIds`) sees every row of the ledger | `statistics.screen.tsx` | it sees only rows with no `exchangePairId`, no `exchangeCounterpartHoldingId` and no `untrackedCounterpart` (section 6, S1) |
@@ -207,7 +207,7 @@ Not in 1.3-a by rule:
 | `exchange/walk/` | the walk engine: `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, owed ranges and points, range cursor, span hints, `settleRecords`, `commitSettledSpan`, `placeWalletRows`, depth guards; `WalkStop` codes generic, exchange codes added per exchange | `binance.history-walk.ts`, `binance.history-records.ts`, `binance.history-depth.ts` (constants become a per-exchange `DepthConfig`), `binance.walk-write-deps.ts` |
 | `exchange/walk-state/` | `ExchangeState` type, its per-walk strict parse, readers and the gated writer over `sync_state.exchange_state` (set 4) | the walk-owned metadata keys of `holding-metadata.ts` (`binanceWalkCursorFields`, `binanceWalkPendingFields`, `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields`, `binanceWalkSpanHintFields`) and `holdingsRepo.setBinanceWalkCursor`, `setBinanceWalkPending`, `setBinanceWalkSpanHints`, `resetBinanceWalkCursors` |
 | `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state, isTracked)` and `oversizedCoinsOf(state)` (each the sorted union of its kind's balance and history lists, C-NR8; `untrackedCoinsOf` leaves out a ticker that the exchange's tracked rule accepts now, `isTrackedBinanceAsset` for Binance: a curated crypto or a `BINANCE_FIAT_CODES` fiat; INR, PEN and KES stay on the list); `notImportedCountsOf(state)`, the count of `notImported` entries per kind in the fixed order of `NOT_IMPORTED_KINDS` (C-NR-A, set 8; section 6, "Not-imported line") | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
-| `exchange/amounts/` | `exchangeMinorUnits(currency, text, use: 'balance' \| 'row'): Either<AmountError, number>`: a wrapper over set 2's exact decimal-to-minor-units parser in `src/currency/decimal/decimal.ts`; both modes refuse an exponent form (`amount-malformed`) and a result above `Number.MAX_SAFE_INTEGER` (`amount-too-large`). `'balance'`: more decimals than the scale round half away from zero and log `balance-precision-rounded`. `'row'`: more decimals than the scale are refused (`amount-precision`), except on a reduced-scale coin (section 3), where they round the same way and log `row-precision-rounded` | new in set 3 with no caller; set 5 switched the balance sum in `binance.provider.ts` (`sumAmounts`, over `exchangeMinorUnits`) to it (done), set 6 switches `btcSatoshis` (`binance.history-walk.ts`) |
+| `exchange/amounts/` | `exchangeMinorUnits(currency, text, use: 'balance' \| 'row'): Either<AmountError, number>`: a wrapper over set 2's exact decimal-to-minor-units parser in `src/currency/decimal/decimal.ts`; both modes refuse an exponent form (`amount-malformed`) and a result above `Number.MAX_SAFE_INTEGER` (`amount-too-large`). `'balance'`: more decimals than the scale round half away from zero and log `balance-precision-rounded`. `'row'`: more decimals than the scale are refused (`amount-precision`), except on a reduced-scale coin (section 3), where they round the same way and log `row-precision-rounded` | new in set 3 with no caller; set 5 switched the balance sum in `binance.provider.ts` (`sumAmounts`, over `exchangeMinorUnits`) to it (done), set 6 switches `btcSatoshis` (`binance.amounts.ts`, deleted by set 6) |
 
 The Binance host constant stays in `binance.client.ts` (re-grep the `@env` host); there is no
 hosts unit in 1.3-a.
@@ -652,9 +652,30 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
 - Stay: an existing holding is written every good read, a zero included; it is never archived by
   the sync. A dust balance below `dustBelow` with no holding and no row creates none.
 - Spot anchor: a Spot read failure fails the balance sync as today; no zero Spot holding is created
-  for a coin never held. The zero Spot BTC anchor is written whenever NO Spot BTC holding exists
-  (also when the Spot BTC amount is refused); an existing Spot BTC holding with a refused amount
-  keeps its last balance. Set 6 removes the anchor together with the four walk guards.
+  for a coin never held. The zero Spot BTC anchor (written whenever NO Spot BTC holding existed,
+  also when the amount was refused) was removed in set 6 step 5 (`b24eaab8`) together with the four
+  walk guards; an existing Spot BTC holding with a refused amount keeps its last balance.
+  COORDINATOR RULING 2026-10-19 (Spot BTC dust): with the anchor gone, a Spot BTC below its dust
+  threshold (0.00001 BTC, `dustBelow` in `coins.ts`) with no stored holding creates no holding,
+  like every other coin (the "Appear" rule); an existing Spot BTC holding stays (the "Stay" rule).
+  Pinned by `binance.provider.coin-lists.test.ts` "writes no Spot BTC holding for a dust amount
+  while none is stored" and `binance.provider.test.ts` "writes an existing Spot BTC holding below
+  its dust threshold".
+  Set 6 Q1 = B (coordinator ruling on the user's standing approval for Binance edge cases,
+  2026-10-19): the balance-sync time is stamped in `exchange_state` (JSON, no migration) and "Last
+  sync" reads it, so an account with no tracked holding never shows "Never" after the anchor goes.
+  Steps 4 and 5 are never merged apart.
+  ACCEPTED DISPLAY GAP (display only, no data effect), coordinator
+  2026-10-19: an account whose `exchange_state` top level is malformed cannot get the balance-sync
+  stamp, so an account with no holding shows "Last sync: Never"; that account already shows the
+  paused-history caption.
+- Set 6 Q3 = A (coordinator ruling, standing approval, 2026-10-19): the oversized-history list
+  patch is written on every span read that meets the stop, committed or not.
+- Set 6 Q5 = A (coordinator ruling, standing approval, 2026-10-19): `amount-malformed`,
+  `amount-precision` and `amount-too-large` join `TRANSFER_FORWARD_OWES` and `EARN_FORWARD_OWES`.
+- Set 6 Q4 = B (coordinator ruling, standing approval, 2026-10-19; PINNED in step 5): a capital row
+  already stored, re-read while no Spot holding exists, is left out of the write; new rows still
+  import.
 - Wallet failures keep today's rule per wallet (`walletRead` returns `null` and leaves every
   holding of that wallet at its last good balance).
 - Names: `Binance <Wallet> · <CODE>` ("Binance Spot · USDT", "Binance Funding · EUR",
@@ -805,9 +826,15 @@ reason (R-Walk A).
 ### Capital (deposits, withdrawals)
 
 `coin=` is dropped. Placement by `walletType` (0 Spot, 1 Funding, else stop
-`capital-wallet-unknown`), settled statuses (deposit 1, withdraw 6), keys
-`${accountId}:deposit:<id>` / `${accountId}:withdraw:<id>` unchanged. Description = the coin code
-(as BTC today). Withdrawals stay spending (R-Q12).
+`capital-wallet-unknown`), settled statuses (deposit 1, withdraw 6; one rule,
+`isCapitalSettled(kind, status)`), keys `${accountId}:deposit:<id>` / `${accountId}:withdraw:<id>`
+unchanged. Description = the coin code (as BTC today). Withdrawals stay spending (R-Q12).
+Rulings (coordinator, standing approval, 2026-10-19): a record that is NOT settled is counted
+whatever its coin and never listed; a SETTLED record with a blank or non-string coin is
+unreadable and owed. m3 = A: a BTC key is byte-identical; a non-BTC record whose key falls back to
+the `txId` (Binance omitted `id`) appends `:<COIN>`, an `id` is never changed (condition checked:
+every main version that reads capital sends `coin=BTC`, and no set 6 commit reached a device, so
+no stored non-BTC capital row has the bare form).
 
 ### Pay (R-Q7)
 
@@ -820,11 +847,33 @@ reason (R-Walk A).
   `<amount> <X>` (Binance's own decimal string and code; no words), written on insert only.
 - A funds entry in an untracked coin imports no row; its ticker joins the history list of
   `untrackedCoins` (C-NR8), so the not-tracked line keeps it after the next balance read.
+- An order in an untracked coin paid with a tracked coin (set 6 Q2 = A, USER ANSWER 2026-10-19):
+  the tracked funds rows import (the Y3/Y4 cross-coin rule) and the order's ticker joins the
+  not-tracked line.
 - A receive imports one row in the order's coin (funds describe the payer side).
 - Keys: a BTC-funded row of a BTC order keeps
   `${accountId}:pay:${orderType}:${transactionId}:${walletType}` byte-identical; every other row
   is `...:${walletType}:${currency}`.
 - Stops `pay-btc-funded-other-coin` and `pay-funds-not-btc` are removed.
+- Rulings (coordinator, standing approval, 2026-10-19):
+  - Listing by direction: on a RECEIVE the not-tracked line lists only the order's own coin; the
+    coins of `fundsDetail` are listed only for a SEND (the uid's direction for a tracked order,
+    the sign of the amount for an untracked one; a zero or unreadable amount has none and lists
+    its own coin only).
+  - Split: costs add up exactly and round once, wallets in ascending order, each share the step of
+    the rounded running sum; a share of 0 units has no row.
+  - m2 = B: an order whose own amount rounds to 0 units at its coin scale imports no own-coin row,
+    is not listed and does not stop the walk; an unparseable amount still stops. The funds rows of
+    ANOTHER tracked coin beside it import per Q2 A (a mixed-coin dust send imports each coin's
+    rows); funds of its own coin that are not dust stop `pay-split-mismatch` only when ALL funds
+    are in the own coin, whatever their cost shape.
+  - m3 = C: for an untracked order only a funds entry with a blank or non-text currency (or that
+    is no object) is unreadable and owes its point; an absent or non-array `fundsDetail` is
+    counted.
+  - A negative cost (also one that rounds to 0 at a reduced scale) or a negative funds entry stops
+    `pay-amount-invalid`: a sign error, not dust, as BTC stops every negative text. A zero entry
+    keeps no row. The text of every entry is parsed on the costed path too, so an unparseable or
+    over-precise entry stops there (`addNonNegative`).
 
 ### Transfer, Simple Earn
 
@@ -840,6 +889,16 @@ ascending, as today. Key: a BTC group keeps
 other coin appends `:${asset}`. A pinned case mixes BTC and USDT rewards at one (`ownerId`, `type`,
 `time`) and asserts the BTC keys equal the keys today's BTC-only read gives. Probe P11 confirms
 whether `productId` is per asset; the rule holds either way.
+
+Rulings (coordinator, standing approval, 2026-10-19): the pair id of a Transfer or Earn move is
+`exchangePairIdOf(id, coin)`: BTC byte-identical, any other coin appends `:<COIN>` (capital and
+Pay build no shared pair id). An untracked record lists its ticker only when it is settled:
+Transfer `CONFIRMED`, Earn subscription `SUCCESS`, redemption `PAID` (a locked one listed with
+`isComplete` false, as it is never parsed), a reward always (it has no status); an unsettled one
+is counted by its point and not listed. A settled record with a blank asset (rewards included) is
+unreadable and owes its point, never untracked; an unreadable reward at time T holds every reward
+group of its kind at T whatever its coin. The settled constants live in
+`binance.history-client.ts`.
 
 ### Convert
 
@@ -966,8 +1025,8 @@ Row placement:
   buy (M14).
 - An `asset` the tracked rule (`isTrackedBinanceAsset`) does not accept: the record is COUNTED, no
   row is imported, and its ticker is added to `untrackedCoins.history` (a not-tracked line entry).
-  A history record that is skipped this way is counted, not an oversized stop; an oversized
-  history amount stops the walk (a point is owed).
+  Such a record is counted and imports no row. A tracked history record is never skipped: an
+  oversized or malformed amount stops the walk at that record and owes its point.
 
 Not-imported entries (C-P2P-SELL-MAKER B, C-NR-A):
 - Each entry is `<kind>:<orderNumber>:<createTime>`. The cursor moves past the order. The account
@@ -1309,6 +1368,15 @@ effect.
   writes either field again, so a later run after a null-cursor first run records none.
   Disconnect removes `multiCoinSince` and keeps `multiCoinSeen`: the reset cursor is the floor,
   so every coin is read from it and nothing is owed.
+  Step 10 rulings (coordinator, standing approval, 2026-10-19; `a1c51603`): a stored
+  `multiCoinSince` with a lost or malformed `multiCoinSeen` keeps the EARLIER of the stored start
+  and the plan cursor and writes seen again (`multiCoinPatchesOf`); a plan cursor at or below the
+  floor is recorded as `multiCoinSince`, an empty range the set 15 backfill reads as nothing
+  owed; the marks ride only the first FORWARD cursor write of a run.
+  Review requirement (slice B m5, no fix in set 6): a malformed `multiCoinSince` beside
+  `multiCoinSeen: true` is never rewritten, so it reads as the current cursor and moves later
+  every run; the set 15 backfill must repair the value once (or bound the range), and must treat
+  an empty or negative range as nothing owed.
 - Set 15: each of capital, Pay, Transfer, Earn with a `multiCoinSince` owes one range
   `[floor, multiCoinSince)` with `scope: 'backfill'`, read in the existing round-robin of owed
   ranges. A read in a backfill range imports every coin except BTC; BTC records there are skipped
@@ -1747,7 +1815,7 @@ sets 1 and 4 also change `envelope.test.ts`'s `VERSION_DECISIONS`).
 | 3/15 | layer extraction, Binance BTC-only, code moves only (`btcSatoshis` and `sumSatoshis` keep their behaviour; `exchangeMinorUnits` is added with no caller); `Pager`, `RunBudget`, `SignRequest`, credentials unit with Binance-specific wrappers kept in `binance/`; `offsetPager` | `src/crypto-sync/exchange/{credentials,signing,budget,paging,walk,amounts}/` (moves with `git mv` + barrels; no `registry/`, set 14 creates it), the `exchange/` container declared in `scripts/checks/feature-imports.js`, `binance.*` importers (~20-25 mutable; moves and importers in one commit). Before any other work, the developer commits the moves and importers and runs `KIKO_MUTATION_BASE=<set 3 base sha> make mutable`; over 30, set 3 is split in advance, before review (for example credentials + signing + amounts, then budget + paging + walk), each part with its own base | none | today's suites green unchanged; a byte-identical key and request snapshot test | no |
 | 4/15 | 4 (first commit: test helper): a test-only commit routes every read and seed of the old walk metadata fields in the tests (about 350 references in 18 test files) through one helper, `walkMarksOf` / `withWalkMarks` in `src/test-support/walk-marks.ts` (imported as `@kiko/test-support/walk-marks`, like `real-sqlite`), with no app change and every suite green. Then: walk state to `sync_state`, per-walk parse, `write(...)` writer, the helper switched to `exchange_state`, `exchangeHistoryPaused` copy (en + uk, translator review), the 0061 `VERSION_DECISIONS` entry (no bump, count 62) | `src/db/schema.ts`, `src/sync-state/sync-state.repo.ts`, `exchange/walk-state/`, `holding-metadata.ts`, `holdings.repo.ts`, `disconnect.ts`, `restore-snapshot.ts` (`withWalkStateMoved`), walk readers/writers, `binance-history-status.ts`, `crypto-sync-section.component.tsx`, `src/i18n/locales/{en,uk}.ts`, `envelope.test.ts`, both demo `.kiko` files regenerated for the new column (~18) | 0061 ADD COLUMN + copy; `kiko:reviewer` before BATCH READY | Z1-Z6; X1-X4 (X1 with the paused copy); two-path restore; disconnect reset; walk properties at 0 / 1 h / 1 day | no |
 | 5/15 | multi-coin balances, per-coin and fiat holdings, names and BTC rename, LD* skip, not-tracked and oversized lines, Binance price fallback, privacy policy price wording | `binance.provider.ts`, `binance.client.ts`, `binance.holding-keys.ts`, `provider.ts`, `sync.ts`, `holdings.repo.ts` (`renameFromDefaults`), `exchange/history-status/`, `crypto-sync-section.component.tsx`, `src/rates/` fallback, balance amounts switched to `exchangeMinorUnits`, `docs/privacy-policy*.md` and `docs/privacy-site/{en,index}.html` (~14) | none | H1-H13; N2; A1-A4 for balances; exact sums per coin; one coin missing a price | no (P9, P10, P13, P14 have safe defaults) |
-| 6/15 | account-wide capital, Pay, Transfer, Earn; key rules; cross-coin Pay; Earn reward grouping per asset; `multiCoinSince`; 2-minute matcher input filter; row amounts switched from `btcSatoshis` to `exchangeMinorUnits` | `binance.transactions.ts`, `binance.pay-history.ts`, `binance.history-client.ts`, `binance.transfer-history.ts`, `binance.earn-history.ts`, `exchange/walk/`, `src/statistics/internal-transfers/`, `statistics.screen.tsx` (~12) | none | Y1-Y8; E1-E2; S1-S3; W1-W2; A1-A4 for rows; key byte-identity for BTC; key uniqueness property; walk properties at 0 / 1 h / 1 day | no (P11, P12, P16 safe defaults) |
+| 6/15 | account-wide capital, Pay, Transfer, Earn; key rules; cross-coin Pay; Earn reward grouping per asset; `multiCoinSince`; 2-minute matcher input filter; row amounts switched from `btcSatoshis` to `exchangeMinorUnits` | `binance.transactions.ts`, `binance.pay-history.ts`, `binance.history-client.ts`, `binance.transfer-history.ts`, `binance.earn-history.ts`, `exchange/walk/`, `exchange/paging/`, `binance.provider.ts` (zero Spot BTC anchor removed with the four walk guards), `binance.holding-keys.ts`, `binance.walk-config.ts`, `src/statistics/internal-transfers/`, `statistics.screen.tsx` (~20-22; two deep-gate halves) | none | Y1-Y8; E1-E2; S1-S3; W1-W2; A1-A4 for rows; key byte-identity for BTC; key uniqueness property; walk properties at 0 / 1 h / 1 day | no (P11, P12, P16 safe defaults) |
 | 7/15 | `operation` column (codes without `reward`, C-Div), C-NR1 code forms and parsers, render labels (no "Reward" step; `p2p:` renders "P2P purchase" only; `transactions.p2pSale` dropped, C-NR-F), copy, demo rows (no reward row) | `src/db/schema.ts`, `untracked-counterpart.ts`, `row-description.ts`, `exchange-description.ts`, `transactions.repo.ts`, `src/i18n/locales/{en,uk}.ts` (no `transactions.reward`), migration files, demo seed + regen (~10) | 0062 ADD COLUMN; `kiko:reviewer` before BATCH READY | label order cases; code parse cases incl. N3; back-compat import of an export without the column; exclusion unchanged | no |
 | 8/15 | Convert walk: status first, then `walletType` placement (C-Convert-wallet), floor `HISTORY_FLOOR_MS` read forward with every window read (probe 5: no refusal to the floor; C-NR-C; R-Walk A); no new refusal code in `requestFailedOf` (probe 5); the `notImported` list (`NOT_IMPORTED_KINDS` tuple, type, parse, union patch, disconnect removal), `notImportedCountsOf`, the not-imported line and the `accountDetail.notImported*` copy (en + uk, translator review) | `binance.convert-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts`, `exchange/walk-state/`, `exchange/history-status/`, `disconnect.ts`, `crypto-sync-section.component.tsx`, `src/i18n/locales/{en,uk}.ts` (~10) | none | C1-C6, C8-C10 (C8: the 2026-01 conversion behind 6+ empty windows); N4, N5, N6, N7 (`convert-unrecognized` only); K8; window halving on `moreData`; walk properties at 0 / 1 h / 1 day | settled (P4) |
 | 9/15 | dust read (no dividend walk, C-Div) | `binance.dust-history.ts` (new), client, budget, run wiring (~5) | none | D1-D3 | P7 open, safe default |

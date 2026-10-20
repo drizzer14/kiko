@@ -447,7 +447,21 @@ describe('payRowsOf: wallet placement', () => {
       ]),
     };
 
-    expect(stopCodeOf(() => rowsOf(broken))).toBe('pay-amount-invalid');
+    expect(stopCodeOf(() => rowsOf(broken))).toBe('amount-malformed');
+  });
+
+  it('a cost with digits past the scale, in exponent form or too large stops with the parser code', () => {
+    const costed = (amount: string) => ({
+      walletTypes: [1, 2],
+      fundsDetail: splitFunds([
+        { walletType: 1, amount },
+        { walletType: 2, amount: '0.001' },
+      ]),
+    });
+
+    expect(stopCodeOf(() => rowsOf(costed('0.000000001')))).toBe('amount-precision');
+    expect(stopCodeOf(() => rowsOf(costed('1e-8')))).toBe('amount-malformed');
+    expect(stopCodeOf(() => rowsOf(costed('90071992.54740992')))).toBe('amount-too-large');
   });
 
   it('a negative cost stops', () => {
@@ -521,15 +535,20 @@ describe('payRowsOf: wallet placement', () => {
       ]);
     });
 
-    it('stops a send whose cost-less BTC funds entry is below the amount, the rest paid in another coin', () => {
+    it('places each coin of a send paid in two coins on the one wallet named', () => {
       const partFunded = [
         { currency: 'BTC', amount: '0.0004', walletAssetCost: [] },
         { currency: 'USDT', amount: '40', walletAssetCost: [] },
       ];
 
-      expect(
-        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: partFunded })),
-      ).toBe('pay-split-mismatch');
+      expect(rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: partFunded })).toMatchObject([
+        { wallet: 'BTC', amountMinorUnits: -40_000, externalId: 'acc-1:pay:C2C:tx-1:2' },
+        {
+          wallet: 'USDT',
+          amountMinorUnits: -4_000_000_000,
+          externalId: 'acc-1:pay:C2C:tx-1:2:USDT',
+        },
+      ]);
     });
 
     it('stops a send whose cost-less BTC funds entry is below the amount, with no other coin listed', () => {
@@ -556,15 +575,27 @@ describe('payRowsOf: wallet placement', () => {
 
       expect(
         stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: unreadable })),
-      ).toBe('pay-amount-invalid');
+      ).toBe('amount-malformed');
     });
 
-    it('stops a send with no BTC funds entry at all and funds in another coin', () => {
-      const otherCoin = [{ currency: 'USDT', amount: '100', walletAssetCost: [] }];
+    it('stops a send whose cost-less BTC funds entry has digits past the scale', () => {
+      const tooPrecise = [{ currency: 'BTC', amount: '0.0010000001', walletAssetCost: [] }];
 
       expect(
-        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: otherCoin })),
-      ).toBe('pay-funds-not-btc');
+        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: tooPrecise })),
+      ).toBe('amount-precision');
+    });
+
+    it('places a send paid in another coin on the one wallet named', () => {
+      const otherCoin = [{ currency: 'USDT', amount: '100', walletAssetCost: [] }];
+
+      expect(rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: otherCoin })).toMatchObject([
+        {
+          wallet: 'USDT',
+          amountMinorUnits: -10_000_000_000,
+          externalId: 'acc-1:pay:C2C:tx-1:2:USDT',
+        },
+      ]);
     });
 
     it('stops a send with no cost when walletTypes is absent, whatever walletType says', () => {
@@ -682,12 +713,12 @@ describe('payRowsOf: wallet placement', () => {
     expect(rowsOf({ walletType: 2, walletTypes: [2, 2] })).toMatchObject([{ wallet: 'BTC' }]);
   });
 
-  it('stops when the funds named are not BTC, so no BTC movement is guessed', () => {
+  it('stops a send paid in another coin with no cost and no declared wallet', () => {
     const paidWithTether = {
       fundsDetail: [{ currency: 'USDT', amount: '1', walletAssetCost: [] }],
     };
 
-    expect(stopCodeOf(() => rowsOf(paidWithTether))).toBe('pay-funds-not-btc');
+    expect(stopCodeOf(() => rowsOf(paidWithTether))).toBe('pay-split-mismatch');
   });
 
   it('takes a single-wallet order whose funds detail names BTC', () => {
@@ -713,7 +744,25 @@ describe('payRowsOf: stops and keys', () => {
   });
 
   it('stops on an amount that rounds to zero satoshis', () => {
-    expect(stopOf({ amount: '-0.000000001' })).toBe('pay-amount-invalid');
+    expect(stopOf({ amount: '-0.000000001' })).toBe('amount-precision');
+  });
+
+  it('stops on an amount in exponent form', () => {
+    expect(stopOf({ amount: '-1e-8' })).toBe('amount-malformed');
+  });
+
+  it('stops on an amount too large, naming the coin as oversized', () => {
+    const tooLarge = sent({ amount: '-90071992.54740992' });
+    let stop: unknown;
+
+    try {
+      payRowsOf({ accountId: ACCOUNT_ID, order: tooLarge, uid: OWN });
+    } catch (error) {
+      stop = error;
+    }
+
+    expect(stop).toBeInstanceOf(BinanceWalkStop);
+    expect(stop).toMatchObject({ code: 'amount-too-large', oversizedTicker: 'BTC' });
   });
 
   it('keys the row by account, order type, id and wallet', () => {

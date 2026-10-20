@@ -299,8 +299,9 @@ describe('syncStateRepo.patchExchangeState', () => {
   // The plan pins this title. A sibling keeps its value; as every writer stores canonical JSON,
   // which round-trips byte-identically, it keeps its bytes too, which `toBe` on the text proves.
   it('replaces only the named field and keeps a malformed sibling byte-identical', async () => {
-    // The parse drops `notImported`, `multiCoinSince` and an unknown walk id and repairs a
-    // malformed field, so none of it may travel through the parse on its way back to the column.
+    // The parse drops `notImported` and an unknown walk id, reads the malformed `multiCoinSince`
+    // as the cursor and repairs a malformed field, so none of it may travel through the parse on
+    // its way back to the column.
     const stored = JSON.stringify({
       version: 1,
       futureKey: { keep: [1, 2] },
@@ -608,12 +609,13 @@ describe('syncStateRepo.resetExchangeStateDatabaseTransaction', () => {
   };
   const RANGES = [{ start: 100, end: 200 }];
 
-  it('resets every walk to the floor, empties pending lists and removes the coin lists', async () => {
+  it('resets every walk to the floor, empties pending lists, removes the coin lists and the sync stamp, and keeps the multi-coin seen mark', async () => {
     const rawDatabase = openExchangeDatabase(
       'binance',
       JSON.stringify({
         version: 1,
         futureKey: true,
+        balanceSyncedAt: 5_000,
         notImported: ['p2p-sale:1:2'],
         trades: { symbols: { BTCUSDT: { fromId: 5 } }, rotation: 2, balanceSnapshot: {} },
         untrackedCoins: { balance: ['AAA'], history: ['BBB'] },
@@ -627,7 +629,7 @@ describe('syncStateRepo.resetExchangeStateDatabaseTransaction', () => {
             rangeCursor: 4,
             spanHints: SPAN_HINTS,
           },
-          pay: { cursor: 700, pending: RANGES },
+          pay: { cursor: 700, pending: RANGES, multiCoinSince: 600, multiCoinSeen: true },
           transfer: { pointCursor: 5, multiCoinSince: 8 },
           convert: { cursor: null, rescan: 'junk' },
           earn: 'not-an-object',
@@ -642,7 +644,7 @@ describe('syncStateRepo.resetExchangeStateDatabaseTransaction', () => {
       version: 1,
       walks: {
         capital: { cursor: FLOOR_MS, rescan: FLOOR_MS, pending: [] },
-        pay: { cursor: FLOOR_MS, pending: [] },
+        pay: { cursor: FLOOR_MS, pending: [], multiCoinSeen: true },
         transfer: {},
         convert: { cursor: FLOOR_MS, rescan: FLOOR_MS },
       },

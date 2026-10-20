@@ -1082,6 +1082,13 @@ always, and the marker only when it is manual or imported and carries none; see
   also excludes these rows from spending (read
   `src/statistics/exchange-exclusion/`). The column is insert-only: it is not in
   `BANK_OWNED_TRANSACTION_COLUMNS` (`src/transactions/repo/transactions.repo.ts`).
+- **The 2-minute same-amount matcher sees only unmarked rows.**
+  `rowsForTransferMatch` (`src/statistics/internal-transfers/internal-transfers.ts`)
+  drops every row that carries `exchangePairId`, `exchangeCounterpartHoldingId` or
+  `untrackedCounterpart` before `internalTransferTransactionIds` runs
+  (`statistics.screen.tsx`). A marked row is an exchange leg the structural rules already
+  exclude; left in the ledger it could be matched as the partner of an unmarked
+  same-amount row (a Pay send) and drop real spending.
 - **`transactionRowDescription` is the ONE owner of a blank row's label.**
   Every surface that shows it calls it: both lists, `ExampleTransaction`,
   and the transaction form. On an edit, the form pre-fills a blank

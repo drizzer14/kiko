@@ -8,14 +8,17 @@ import {
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
+  historyListWriterOf,
   instantAt,
   joinSettled,
+  multiCoinPatchesOf,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
   resolveWalletHoldings,
   roundRobinHooksOf,
+  rowMinorUnits,
   runWalkPlan,
   settleRecords,
   settleUnreadable,
@@ -44,26 +47,25 @@ import {
 } from './binance.history-budget';
 import {
   type BinanceDeposit,
+  type BinanceUntrackedRecord,
   type BinanceWithdrawal,
+  type CapitalKind,
+  type CapitalPage,
   fetchDepositHistory,
   fetchWithdrawHistory,
   HISTORY_PAGE_LIMIT,
-  type HistoryPage,
   type HistoryWindow,
+  isCapitalSettled,
 } from './binance.history-client';
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
+import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
-import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
+import { type BinanceWallet, binanceKeyOf, holdingKeyOf, SPOT_KEY } from './binance.holding-keys';
 
 /** The stop of a row the client could not read: logged by its code alone, never its content. */
 const CAPITAL_ROW_UNREADABLE = 'capital-row-unreadable';
-
-/** Binance's own settled states: a credited deposit, a completed withdrawal. */
-const DEPOSIT_STATUS_SUCCESS = 1;
-const WITHDRAW_STATUS_COMPLETED = 6;
 
 /**
  * One history window's span. Binance rejects a `startTime`/`endTime` gap of 90
@@ -106,6 +108,8 @@ export type BinanceTransactionRow = {
   source: 'binance';
   externalId: string;
   description: string;
+  /** Written on insert only: the upsert leaves a note the user edited alone. */
+  comment?: string;
 };
 
 /**
@@ -138,13 +142,13 @@ export type BinanceTransactionSyncDeps = ExchangeStateDeps & {
     secret: string,
     window: HistoryWindow,
     options?: FetchAccountOptions,
-  ) => Promise<HistoryPage<BinanceDeposit>>;
+  ) => Promise<CapitalPage<BinanceDeposit>>;
   fetchWithdrawHistory: (
     apiKey: string,
     secret: string,
     window: HistoryWindow,
     options?: FetchAccountOptions,
-  ) => Promise<HistoryPage<BinanceWithdrawal>>;
+  ) => Promise<CapitalPage<BinanceWithdrawal>>;
 };
 
 const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
@@ -178,8 +182,18 @@ export const parseWithdrawTime = (applyTime: string | number): number => {
   return Date.parse(`${applyTime.replace(' ', 'T')}Z`);
 };
 
-/** Binance's own record id, falling back to the on-chain tx id, or '' if neither. */
-const recordKey = (record: { id: string; txId: string }): string => record.id || record.txId || '';
+/**
+ * Binance's own record id, falling back to the on-chain tx id, or '' if neither. One on-chain
+ * transaction can carry two coins, so a non-BTC row keyed by the tx id carries its coin: its key
+ * stays apart from the BTC row's, which keeps the bare tx id every stored BTC row already has.
+ */
+const recordKey = (record: { id: string; txId: string }, ticker: string): string => {
+  if (record.id) {
+    return record.id;
+  }
+
+  return record.txId && ticker !== BINANCE_ASSET ? `${record.txId}:${ticker}` : record.txId || '';
+};
 
 /**
  * A capital movement lands on the wallet Binance names: `walletType` 0 is Spot, 1
@@ -187,50 +201,67 @@ const recordKey = (record: { id: string; txId: string }): string => record.id ||
  * Any other value is a wallet this walk does not know, and guessing would put a
  * row on the wrong holding.
  */
-const walletOf = (walletType: number | undefined): BinanceWalletKey =>
+const walletOf = (walletType: number | undefined): BinanceWallet =>
   match(walletType)
-    .returnType<BinanceWalletKey>()
-    .with(undefined, 0, () => SPOT_KEY)
-    .with(1, () => FUNDING_KEY)
+    .returnType<BinanceWallet>()
+    .with(undefined, 0, () => 'spot')
+    .with(1, () => 'funding')
     .otherwise(() => {
       throw new BinanceWalkStop('capital-wallet-unknown');
     });
 
+/** A record that is not settled is neither imported nor listed, whatever its coin. */
+const isSettled = ({
+  kind,
+  record,
+}: {
+  kind: CapitalKind;
+  record: { status: number | undefined };
+}): boolean => isCapitalSettled(kind, record.status);
+
 /** A row mapped from a settled record, before its wallet is turned into a holding. */
-type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: BinanceWalletKey };
+type PlannedRow = Omit<BinanceTransactionRow, 'holdingId'> & { wallet: string };
 
 /**
- * Map one SETTLED record to a row. A record the walk cannot trust (no id, a
- * non-numeric amount, an unreadable time, an unknown wallet) stops the window: a
- * skipped row would be silent loss.
+ * Map one SETTLED record of a tracked coin to a row. A record the walk cannot trust (no id, a
+ * blank coin, a non-numeric amount, an unreadable time, an unknown wallet) stops the window: a
+ * skipped row would be silent loss. A record of a coin that is not tracked never gets here: the
+ * client counts it without parsing it (`BinanceUntrackedRecord`).
  */
 const plannedRowOf = (input: {
   accountId: string;
-  kind: 'deposit' | 'withdraw';
+  kind: CapitalKind;
   direction: 1 | -1;
-  record: { id: string; txId: string; amount: string; walletType: number | undefined };
+  record: {
+    id: string;
+    txId: string;
+    amount: string;
+    coin: string;
+    walletType: number | undefined;
+  };
   time: number;
 }): PlannedRow => {
   const { accountId, kind, direction, record, time } = input;
-  const key = recordKey(record);
+  const ticker = binanceTickerOf(record.coin);
+  const key = recordKey(record, ticker);
 
   if (key === '') {
     throw new BinanceWalkStop('capital-id-missing');
   }
 
-  const satoshis = btcSatoshis(record.amount);
-
-  if (satoshis === null) {
-    throw new BinanceWalkStop('capital-amount-invalid');
+  if (!isTrackedBinanceAsset(ticker)) {
+    throw new BinanceWalkStop(CAPITAL_ROW_UNREADABLE);
   }
+
+  const minorUnits = rowMinorUnits(ticker, record.amount);
 
   if (!Number.isFinite(time)) {
     throw new BinanceWalkStop('capital-time-invalid');
   }
 
   return {
-    wallet: walletOf(record.walletType),
-    amountMinorUnits: direction * satoshis,
+    wallet: holdingKeyOf(ticker, walletOf(record.walletType)),
+    amountMinorUnits: direction * minorUnits,
     time,
     source: 'binance',
     externalId: `${accountId}:${kind}:${key}`,
@@ -240,13 +271,13 @@ const plannedRowOf = (input: {
     // match, so the sheet appears with parity to a Monobank merchant row. It
     // must stay non-localized — a localized label would change under a language
     // switch and break name matching.
-    description: BINANCE_ASSET,
+    description: ticker,
   };
 };
 
 /** The row of a deposit, or `null` while it is not settled. */
 const plannedDepositOf = (accountId: string, record: BinanceDeposit): PlannedRow | null => {
-  if (record.status !== DEPOSIT_STATUS_SUCCESS) {
+  if (!isSettled({ kind: 'deposit', record })) {
     return null;
   }
 
@@ -265,7 +296,7 @@ const plannedDepositOf = (accountId: string, record: BinanceDeposit): PlannedRow
  * user sent.
  */
 const plannedWithdrawalOf = (accountId: string, record: BinanceWithdrawal): PlannedRow | null => {
-  if (record.status !== WITHDRAW_STATUS_COMPLETED) {
+  if (!isSettled({ kind: 'withdraw', record })) {
     return null;
   }
 
@@ -282,7 +313,6 @@ type WindowContext = {
   deps: BinanceTransactionSyncDeps;
   run: BinanceHistoryRun;
   accountId: string;
-  spot: HoldingRow;
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
@@ -292,11 +322,16 @@ type WindowContext = {
 };
 
 /**
- * One endpoint's records for a span (`rows` that parsed, `unreadable` that did not), or the half
- * to ask for instead.
+ * One endpoint's records for a span (`rows` that parsed, `unreadable` that did not, `untracked`
+ * that were counted and never parsed), or the half to ask for instead.
  */
 type Paged<Row> =
-  | { kind: 'rows'; rows: Row[]; unreadable: UnreadableRow[] }
+  | {
+      kind: 'rows';
+      rows: Row[];
+      unreadable: UnreadableRow[];
+      untracked: BinanceUntrackedRecord[];
+    }
   | { kind: 'split'; half: WalkWindow };
 
 /**
@@ -316,10 +351,11 @@ type Paged<Row> =
 const fetchAllInWindow = async <Row>(
   run: BinanceHistoryRun,
   budgeted: { lane: BudgetLane; cost: CallCost; half: WalkWindow | undefined; keep?: number },
-  fetchPage: (offset: number) => Promise<HistoryPage<Row>>,
+  fetchPage: (offset: number) => Promise<CapitalPage<Row>>,
 ): Promise<Paged<Row> | undefined> => {
   const rows: Row[] = [];
   const unreadable: UnreadableRow[] = [];
+  const untracked: BinanceUntrackedRecord[] = [];
 
   for (let pageIndex = 0; pageIndex < MAX_PAGES_PER_WINDOW; pageIndex += 1) {
     if (!run.budget.canAfford(budgeted.lane, budgeted.cost, budgeted.keep)) {
@@ -331,10 +367,12 @@ const fetchAllInWindow = async <Row>(
     run.budget.record(budgeted.lane, page);
     rows.push(...page.rows);
     unreadable.push(...page.unreadable);
+    untracked.push(...page.untracked);
 
-    // An unreadable row fills the page as much as a row that parsed.
-    if (page.rows.length + page.unreadable.length < HISTORY_PAGE_LIMIT) {
-      return { kind: 'rows', rows, unreadable };
+    // An unreadable row and a record of an untracked coin fill the page as much as a row that
+    // parsed.
+    if (page.rows.length + page.unreadable.length + page.untracked.length < HISTORY_PAGE_LIMIT) {
+      return { kind: 'rows', rows, unreadable, untracked };
     }
 
     if (budgeted.half !== undefined) {
@@ -342,12 +380,14 @@ const fetchAllInWindow = async <Row>(
     }
   }
 
-  return { kind: 'rows', rows, unreadable };
+  return { kind: 'rows', rows, unreadable, untracked };
 };
 
 type SpanRecords = {
   deposits: BinanceDeposit[];
   withdrawals: BinanceWithdrawal[];
+  untrackedDeposits: BinanceUntrackedRecord[];
+  untrackedWithdrawals: BinanceUntrackedRecord[];
   unreadableDeposits: UnreadableRow[];
   unreadableWithdrawals: UnreadableRow[];
 };
@@ -396,6 +436,8 @@ const readSpan = async (
       page: {
         deposits: deposits.rows,
         withdrawals: withdrawals.rows,
+        untrackedDeposits: deposits.untracked,
+        untrackedWithdrawals: withdrawals.untracked,
         unreadableDeposits: deposits.unreadable,
         unreadableWithdrawals: withdrawals.unreadable,
       },
@@ -416,8 +458,8 @@ const readSpan = async (
  * zero first, but only for a wallet that receives a row whose key is new. A row
  * whose key is already stored keeps its stored holding (the upsert never moves it),
  * so it must not conjure an empty holding it will never sit on; if its wallet has
- * none it travels under `spot`, which the upsert ignores. A wallet that cannot be
- * resolved even after creation stops the window.
+ * none it is left out of the write, and loses only the refresh of its own columns.
+ * A wallet that cannot be resolved for a new row, even after creation, stops the window.
  */
 const placeRows = async (
   context: WindowContext,
@@ -427,10 +469,10 @@ const placeRows = async (
     return [];
   }
 
-  const { deps, accountId, spot } = context;
+  const { deps, accountId } = context;
   // This lookup runs outside the `addManyDedup` write. A user delete of a stored row in
-  // that gap re-inserts it on the placeholder holding (`spot`), exactly as a row the
-  // walk had never imported would be: nothing is lost, only the user's delete is undone.
+  // that gap re-inserts it on its wallet's holding, exactly as a row the walk had never
+  // imported would be: nothing is lost, only the user's delete is undone.
   const stored = await deps.storedExternalIds(planned.map((row) => row.externalId));
   const newRows = planned.filter((row) => !stored.has(row.externalId));
   const holdings = await resolveWalletHoldings({
@@ -442,14 +484,18 @@ const placeRows = async (
     ensureHoldings: deps.ensureHoldings,
   });
 
-  return planned.map(({ wallet, ...row }) => {
-    const holding = holdings.get(wallet) ?? (stored.has(row.externalId) ? spot : undefined);
+  return planned.flatMap(({ wallet, ...row }) => {
+    const holding = holdings.get(wallet);
 
-    if (holding === undefined) {
-      throw new BinanceWalkStop('capital-holding-missing');
+    if (holding !== undefined) {
+      return [{ ...row, holdingId: holding.id }];
     }
 
-    return { ...row, holdingId: holding.id };
+    if (stored.has(row.externalId)) {
+      return [];
+    }
+
+    throw new BinanceWalkStop('capital-holding-missing');
   });
 };
 
@@ -464,6 +510,16 @@ const APPLY_TIME_PRECISION_MS = 1_000;
 type SpanRecord =
   | { kind: 'deposit'; record: BinanceDeposit }
   | { kind: 'withdraw'; record: BinanceWithdrawal };
+
+/** A record of a coin the walk does not track, with the kind of endpoint it came from. */
+type UntrackedEntry = { kind: CapitalKind; record: BinanceUntrackedRecord };
+
+/**
+ * The ticker of a settled record of a coin the walk does not track: counted, imported as no row
+ * and listed. A record not settled yet is counted and neither imported nor listed.
+ */
+const untrackedTickerOf = (entry: UntrackedEntry): string | undefined =>
+  isSettled(entry) ? entry.record.ticker : undefined;
 
 const plannedOf = (accountId: string, entry: SpanRecord): PlannedRow[] =>
   match(entry)
@@ -500,7 +556,7 @@ const extentOf = (entry: SpanRecord): WalkWindow | undefined =>
  * a datetime text. A time that does not parse gives an extent that is not finite, which the walk
  * reads as no time at all.
  */
-const unreadableExtentOf = (kind: SpanRecord['kind'], row: UnreadableRow): WalkWindow | undefined =>
+const unreadableExtentOf = (kind: CapitalKind, row: UnreadableRow): WalkWindow | undefined =>
   foldMap(maybe(row.time), (time) =>
     kind === 'deposit' ? instantAt(Number(time)) : withdrawalExtentOf(time),
   );
@@ -532,6 +588,20 @@ const commitSpan = (
         rowsOf: (entry) => plannedOf(accountId, entry),
         extentOf,
       }),
+      settleRecords({
+        span,
+        records: [
+          ...records.untrackedDeposits.map(
+            (record): UntrackedEntry => ({ kind: 'deposit', record }),
+          ),
+          ...records.untrackedWithdrawals.map(
+            (record): UntrackedEntry => ({ kind: 'withdraw', record }),
+          ),
+        ],
+        rowsOf: () => [],
+        extentOf: ({ kind, record }) => unreadableExtentOf(kind, record),
+        untrackedOf: untrackedTickerOf,
+      }),
       settleUnreadable({
         span,
         unreadable: records.unreadableDeposits,
@@ -547,6 +617,8 @@ const commitSpan = (
     ]),
     place: (planned) => placeRows(context, planned),
     add: deps.addTransactions,
+    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
+    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
@@ -577,7 +649,7 @@ const runSync = async (
   const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
   const credentials = await deps.readCredentials(accountId);
 
-  if (spot === undefined || credentials === undefined) {
+  if (credentials === undefined) {
     return { imported: 0, complete: true };
   }
 
@@ -590,11 +662,11 @@ const runSync = async (
   const { cursor, rescan: rescanCursor } = stored;
   const write = walkMarkWriterOf(deps, accountId, 'capital');
   const roundRobins = await readWalkRoundRobins({ stored, write });
-  // An account with no capital row falls back to nothing, and so starts at the floor.
-  const latest = await deps.latestTransactionTime(spot.id, [
-    `${accountId}:deposit:`,
-    `${accountId}:withdraw:`,
-  ]);
+  // An account with no capital row falls back to nothing, and so starts at the floor. So does one
+  // with no Spot BTC holding: the walk never ran there, so no legacy capital row is on one.
+  const latest = await foldMap(maybe(spot), ({ id }) =>
+    deps.latestTransactionTime(id, [`${accountId}:deposit:`, `${accountId}:withdraw:`]),
+  );
   const planCursor = cursor ?? latest ?? null;
   const pending = await readPendingMark({
     stored: stored.pending,
@@ -617,11 +689,16 @@ const runSync = async (
     deps,
     run,
     accountId,
-    spot,
     apiKey,
     secret,
     options,
-    marks: { cursor, rescanCursor, ...roundRobins, pending },
+    marks: {
+      cursor,
+      rescanCursor,
+      ...roundRobins,
+      pending,
+      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor }),
+    },
     plan,
     write,
   };
@@ -652,15 +729,14 @@ const runSync = async (
 };
 
 /**
- * Fetch BTC deposit + withdrawal history from Binance and import it as
- * transactions on the wallet holding each movement names (Spot, or Funding for
+ * Fetch the deposit + withdrawal history of every tracked coin from Binance and import it as
+ * transactions on the coin and wallet holding each movement names (Spot, or Funding for
  * `walletType` 1), idempotently, committing each span's rows before advancing the
  * mark past it. A run goes forward from the watermark first, then reads the overlap ground
  * earlier runs left owed, then re-scans the last window behind the watermark, each on what
- * budget is left (see `planWalkPasses`). Runs AFTER the balance
- * sync (which creates/updates the Spot holding), so the Spot holding it anchors on
- * already exists. A missing Spot holding, missing credentials, or an active
- * post-429/418 cooldown is a no-op. `complete: false` means history, owed ground or the
+ * budget is left (see `planWalkPasses`). Runs AFTER the balance sync, and creates the wallet
+ * holding a new row needs when none exists. Missing credentials, or an active post-429/418
+ * cooldown, is a no-op. `complete: false` means history, owed ground or the
  * re-scan remains and a later run will resume from the stored marks; a history request failure
  * OTHER than a rate limit rejects, so the caller can log it without failing the balance
  * sync.

@@ -180,6 +180,7 @@ type Transaction = {
   category?: string | null;
   mcc?: number | null;
   counterIban?: string | null;
+  exchangePairId?: string | null;
   exchangeCounterpartHoldingId?: string | null;
   untrackedCounterpart?: string | null;
   loanHoldingId?: string | null;
@@ -215,6 +216,7 @@ const buildLiveDataByTable = (data: LiveData): Record<string, unknown[]> => ({
   // default every nullable marker the screen reads the same way — an
   // `undefined` here would be a fixture artefact the device never produces.
   transactions: (data.transactions ?? []).map((row) => ({
+    exchangePairId: null,
     exchangeCounterpartHoldingId: null,
     untrackedCounterpart: null,
     loanHoldingId: null,
@@ -2151,6 +2153,25 @@ describe('StatisticsScreen', () => {
     // Genuine spending in other categories is untouched.
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('keeps an unmarked send in the category pie when its same-amount partner is an exchange leg', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING, UAH_HOLDING_2],
+      rates: [USD_UAH_RATE],
+      transactions: [
+        ...EXPENSES,
+        { ...SELF_TRANSFER[0], id: 'pay-send' },
+        { ...SELF_TRANSFER[1], id: 'exchange-leg', exchangeCounterpartHoldingId: 'h2' },
+      ],
+      history: HISTORY,
+      categories: CATEGORIES,
+    });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('category-pie-arc-transfers')).toBeTruthy();
   });
 
   // A sync closes a jar or card absent from the bank's list; its past rows are

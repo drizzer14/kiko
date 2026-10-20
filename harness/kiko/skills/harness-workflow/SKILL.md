@@ -696,7 +696,11 @@ in another one-off brief.
 ## Load rule
 
 The load rule lives in the ops skill's "Load rule" section; see it. One heavy job runs at a
-time, queued by `scripts/job-queue.sh` (read its header for the full contract). Run
+time, queued by `scripts/job-queue.sh` (read its header for the full contract). A LOAD HOLD
+brief names the exact `__tests__` suites a role may run, never the folder. The guard suites
+(`guard-*.test.ts`, `guard-replay.test.ts`) spawn semgrep-core. The qa agent rule (a qa that
+edits a test file runs every guard suite) yields to a hold only if the brief says so by name:
+write "qa: the guard-suites rule is suspended until RESUME; owed: check:guard-replay by hand". Run
 `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
 await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in

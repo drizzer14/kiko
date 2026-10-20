@@ -240,7 +240,7 @@ describe('binanceProvider — the balance lists after a read', () => {
     });
 
     expect(lists().untracked.balance).toEqual([]);
-    expect(writtenKeys(balances)).toEqual(['BTC', 'EUR:funding']);
+    expect(writtenKeys(balances)).toEqual(['EUR:funding']);
   });
 
   it('a good balance read that finds nothing clears the balance list', async () => {
@@ -249,7 +249,7 @@ describe('binanceProvider — the balance lists after a read', () => {
     expect(lists().untracked.balance).toEqual([]);
   });
 
-  it('returns both balance lists as the patches of one write', async () => {
+  it('returns both balance lists and the sync stamp as the patches of one write', async () => {
     const { exchangeState } = await run({ spot: [['ABC', '1']] });
 
     expect(exchangeState).toEqual([
@@ -259,6 +259,7 @@ describe('binanceProvider — the balance lists after a read', () => {
         wallets: { spot: [], funding: [], earn: [] },
         complete: true,
       },
+      { kind: 'balanceSyncedAt', value: NOW },
     ]);
   });
 
@@ -279,6 +280,7 @@ describe('binanceProvider — the balance lists after a read', () => {
 
       expect(exchangeState).toEqual([
         expect.objectContaining({ kind: 'oversizedBalance', complete: false }),
+        { kind: 'balanceSyncedAt', value: NOW },
       ]);
       expect(lists().untracked.balance).toEqual(['PEPE']);
       expect(lists().oversized).toEqual({ balance: ['SOL'], history: ['BTC'] });
@@ -340,8 +342,67 @@ describe('binanceProvider — the balance lists after a read', () => {
   });
 });
 
+describe('binanceProvider — the balance sync stamp', () => {
+  it('stamps the time of a good read into the stored state, beside the lists', async () => {
+    const { storedAfter } = await run({ spot: [['PEPE', '1']] });
+
+    expect(storedAfter()).toMatchObject({
+      balanceSyncedAt: NOW,
+      untrackedCoins: { balance: ['PEPE'] },
+    });
+  });
+
+  it('replaces the stamp of an earlier read', async () => {
+    const { storedAfter } = await run({ stored: { balanceSyncedAt: NOW - 60_000 } });
+
+    expect(storedAfter()).toMatchObject({ balanceSyncedAt: NOW });
+  });
+
+  it('stamps a read in which Funding failed: Spot read, which is all a good read needs', async () => {
+    const { storedAfter } = await run({ spot: [['ABC', '1']], funding: 'fails' });
+
+    expect(storedAfter()).toMatchObject({ balanceSyncedAt: NOW });
+  });
+
+  it('stamps nothing for an account cooling down: no read happened', async () => {
+    const cooling: SyncTarget = { accountId: 'acc-stamp-cooldown', holdings: [] };
+    setBinanceCooldownUntil(cooling.accountId, NOW + 60_000);
+
+    const { storedAfter } = await run({ spot: [['ABC', '1']] }, cooling);
+
+    expect(storedAfter()).not.toHaveProperty('balanceSyncedAt');
+  });
+});
+
+describe('binanceProvider — no zero Spot BTC anchor', () => {
+  it('writes no zero Spot BTC holding for a sync with no Spot BTC', async () => {
+    const { balances } = await run({ spot: [['USDT', '10']] });
+
+    expect(writtenKeys(balances)).toEqual(['USDT']);
+  });
+
+  it('writes no zero anchor for a refused Spot BTC with no Spot BTC holding', async () => {
+    const { balances, lists } = await run({ spot: [['BTC', OVERSIZED]] });
+
+    expect(writtenKeys(balances)).toEqual([]);
+    expect(lists().oversized.balance).toEqual(['BTC']);
+  });
+
+  it('writes no Spot BTC holding for a dust amount while none is stored', async () => {
+    const { balances } = await run({ spot: [['BTC', '0.00000999']] });
+
+    expect(writtenKeys(balances)).toEqual([]);
+  });
+
+  it('still writes the Spot BTC holding it reads at or above the dust threshold', async () => {
+    const { balances } = await run({ spot: [['BTC', '0.00001']] });
+
+    expect(writtenKeys(balances)).toEqual(['BTC']);
+  });
+});
+
 describe('binanceProvider — an amount above the safe bound or malformed', () => {
-  it('an oversized Spot BTC writes the zero anchor; the other coins still write', async () => {
+  it('an oversized Spot BTC with no holding writes nothing; the other coins still write', async () => {
     const { balances, lists } = await run({
       spot: [
         ['BTC', OVERSIZED],
@@ -349,8 +410,7 @@ describe('binanceProvider — an amount above the safe bound or malformed', () =
       ],
     });
 
-    expect(writtenKeys(balances)).toEqual(['BTC', 'USDT']);
-    expect(balances.find(({ metadataKey }) => metadataKey === 'BTC')?.balanceMinorUnits).toBe(0);
+    expect(writtenKeys(balances)).toEqual(['USDT']);
     expect(lists().oversized.balance).toEqual(['BTC']);
   });
 
@@ -375,7 +435,7 @@ describe('binanceProvider — an amount above the safe bound or malformed', () =
       holding(heldBalance('ETH', 'ETH', 500)),
     );
 
-    expect(writtenKeys(balances)).toEqual(['BTC']);
+    expect(writtenKeys(balances)).toEqual([]);
     expect(lists().oversized.balance).toEqual(['ETH']);
   });
 
@@ -386,7 +446,7 @@ describe('binanceProvider — an amount above the safe bound or malformed', () =
       locked: [['ETH', '0.00000001']],
     });
 
-    expect(writtenKeys(balances)).toEqual(['BTC', 'USDT']);
+    expect(writtenKeys(balances)).toEqual(['USDT']);
     expect(lists().oversized.balance).toEqual(['ETH']);
   });
 
@@ -398,17 +458,13 @@ describe('binanceProvider — an amount above the safe bound or malformed', () =
       ],
     });
 
-    expect(writtenKeys(balances)).toEqual(['BTC', 'ETH']);
+    expect(writtenKeys(balances)).toEqual(['ETH']);
     expect(lists().oversized.balance).toEqual(['USDT']);
   });
 
   it.each([
-    [
-      'Funding',
-      { funding: [['USDT', OVERSIZED] as Row, ['ETH', '1'] as Row] },
-      ['BTC', 'ETH:funding'],
-    ],
-    ['Earn', { flexible: [['USDT', OVERSIZED] as Row, ['ETH', '1'] as Row] }, ['BTC', 'ETH:earn']],
+    ['Funding', { funding: [['USDT', OVERSIZED] as Row, ['ETH', '1'] as Row] }, ['ETH:funding']],
+    ['Earn', { flexible: [['USDT', OVERSIZED] as Row, ['ETH', '1'] as Row] }, ['ETH:earn']],
   ])('skips only the oversized coin of the %s wallet', async (_, wallet, expected) => {
     const { balances, lists } = await run(wallet);
 
@@ -430,7 +486,7 @@ describe('binanceProvider — an amount above the safe bound or malformed', () =
       ),
     );
 
-    expect(writtenKeys(balances)).toEqual(['BTC']);
+    expect(writtenKeys(balances)).toEqual([]);
   });
 
   describe('the log of a refused coin', () => {
@@ -455,7 +511,7 @@ describe('binanceProvider — an amount above the safe bound or malformed', () =
       expect(JSON.stringify(refusalLogs())).not.toMatch(/ETH|USDT|9007|"x"/);
     });
 
-    it('logs it for the refused Spot BTC that gets the zero anchor too', async () => {
+    it('logs it for the refused Spot BTC with no holding too: one line, no anchor', async () => {
       await run({ spot: [['BTC', OVERSIZED]] });
 
       expect(refusalLogs()).toEqual([[TAG, { wallet: 'spot' }]]);

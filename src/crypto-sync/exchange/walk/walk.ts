@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
-import { maxOf } from '@kiko/numbers';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import { maxOf, minOf } from '@kiko/numbers';
 import { logFailure } from '@kiko/diagnostics';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 
@@ -629,6 +629,12 @@ export type WalkMarks = {
    * it read since took ground off it: a forward span stores the list in `pending` with the cursor.
    */
   listStored?: boolean;
+  /**
+   * The multi-coin marks the first forward span of the run writes with its cursor
+   * (`multiCoinPatchesOf`), emptied by that write: no other pass writes them, so a run that commits
+   * no forward span writes neither.
+   */
+  multiCoinPatches?: WalkMarkPatch[];
 };
 
 type MarkAdvance = {
@@ -644,6 +650,33 @@ type MarkAdvance = {
   marks: WalkMarks;
   restartMs: number;
   write: WalkMarkWriter;
+};
+
+/**
+ * What a walk that was never seen writes with the cursor of its first committed forward span: the
+ * seen mark, and the cursor the run planned from (`planCursor`) as the start of the range the
+ * backfill of the other coins reads, `[floor, start)`. A null plan cursor owes no range, because
+ * the walk reads every coin from its floor anyway. A walk that was seen writes nothing, so a later
+ * run after a null-cursor first run records no start. A walk that holds a start but lost its seen
+ * mark keeps the earlier of the two starts: it is the exact start, because the ground between the
+ * two was already read for every coin, and a later start would owe that ground again.
+ */
+export const multiCoinPatchesOf = (input: {
+  stored: Pick<ParsedWalkMarks, 'multiCoinSince' | 'multiCoinSeen'>;
+  planCursor: number | null;
+}): WalkMarkPatch[] => {
+  const { stored, planCursor } = input;
+
+  if (stored.multiCoinSeen === true) {
+    return [];
+  }
+
+  const starts = [planCursor, stored.multiCoinSince].flatMap((start) => start ?? []);
+
+  const since: WalkMarkPatch[] =
+    starts.length > 0 ? [{ field: 'multiCoinSince', value: minOf(starts) }] : [];
+
+  return [{ field: 'multiCoinSeen', value: true }, ...since];
 };
 
 /** Stored lists are cut to nothing and merged to no limit: only a run's plan bounds a list. */
@@ -706,8 +739,15 @@ const advanceCursor = async (input: MarkAdvance): Promise<void> => {
       : normalizePending([...listed, ...forwardOwed], UNBOUNDED, Number.POSITIVE_INFINITY),
   );
 
+  const multiCoin = marks.multiCoinPatches ?? [];
+
   marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
-  await write([...pending, { field: 'cursor', value: marks.cursor }]);
+  await write([...pending, ...multiCoin, { field: 'cursor', value: marks.cursor }]);
+
+  if (multiCoin.length > 0) {
+    // Emptied only once the write held: a write that fails ends the run with the marks unwritten.
+    marks.multiCoinPatches = [];
+  }
 };
 
 /** Whether `outer` holds all of `inner`. */
@@ -1201,10 +1241,14 @@ export const runWalkPlan = async (input: {
 export class BinanceWalkStop extends Error {
   public readonly code: string;
 
-  constructor(code: string) {
+  /** The coin whose amount was past the safe integer, for the oversized history list. */
+  public readonly oversizedTicker: string | undefined;
+
+  constructor(code: string, oversizedTicker?: string) {
     super(code);
     this.name = 'BinanceWalkStop';
     this.code = code;
+    this.oversizedTicker = oversizedTicker;
     // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
     // `instanceof` relies on unless it is restored explicitly.
     Object.setPrototypeOf(this, BinanceWalkStop.prototype);
@@ -1398,25 +1442,28 @@ export const resolveWalletHoldings = async (input: {
 }): Promise<Map<string, HoldingRow>> => {
   const { accountId, keys, createKeys = keys, config, listHoldings, ensureHoldings } = input;
   let current = await listHoldings(accountId);
-  const missing = keys.filter(
-    (key) =>
-      createKeys.includes(key) && !current.some((holding) => config.holdingKeyOf(holding) === key),
-  );
+  const missing = keys
+    .filter(
+      (key) =>
+        createKeys.includes(key) &&
+        !current.some((holding) => config.holdingKeyOf(holding) === key),
+    )
+    .flatMap(
+      (key) =>
+        foldMap(maybe(config.walletHoldingOf(key)), (defaults): ExchangeHolding[] => [
+          {
+            accountId,
+            ...defaults,
+            type: 'crypto_asset',
+            balanceMinorUnits: 0,
+            metadataField: config.metadataField,
+            metadataKey: key,
+          },
+        ]) ?? [],
+    );
 
   if (missing.length > 0) {
-    await ensureHoldings(
-      missing.map(
-        (key): ExchangeHolding => ({
-          accountId,
-          name: config.walletHoldingNameOf(key),
-          type: 'crypto_asset',
-          currency: config.asset,
-          balanceMinorUnits: 0,
-          metadataField: config.metadataField,
-          metadataKey: key,
-        }),
-      ),
-    );
+    await ensureHoldings(missing);
     current = await listHoldings(accountId);
   }
 

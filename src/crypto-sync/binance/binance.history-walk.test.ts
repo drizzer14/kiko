@@ -42,8 +42,8 @@ import {
   parseExchangeState,
   type WalkMarkPatch,
 } from '@kiko/crypto-sync/exchange/walk-state';
+import type { ExchangeHolding } from '@kiko/holdings/repo';
 
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
@@ -1629,27 +1629,6 @@ describe('buildWalkWindows', () => {
   it('returns no window for an empty span', () => {
     expect(buildWalkWindows(500, 500, 100, 80)).toEqual([]);
     expect(buildWalkWindows(600, 500, 100, 80)).toEqual([]);
-  });
-});
-
-describe('btcSatoshis', () => {
-  it('converts a decimal string and a number to satoshis', () => {
-    expect(btcSatoshis('0.001')).toBe(100_000);
-    expect(btcSatoshis(0.5)).toBe(50_000_000);
-  });
-
-  it.each([
-    ['a word', 'x'],
-    ['an empty string', ''],
-    ['a blank string', '   '],
-    ['NaN', Number.NaN],
-    ['Infinity', Number.POSITIVE_INFINITY],
-    ['an Infinity string', 'Infinity'],
-    ['null', null],
-    ['undefined', undefined],
-    ['an object', {}],
-  ])('gives null for %s', (_label, amount) => {
-    expect(btcSatoshis(amount)).toBeNull();
   });
 });
 
@@ -4291,6 +4270,57 @@ describe('resolveWalletHoldings', () => {
     expect(listHoldings).toHaveBeenCalledWith('acc-1');
     expect(resolved.get(FUNDING_KEY)?.id).toBe('h-BTC:funding');
     expect(resolved.get(SPOT_KEY)?.id).toBe('h-BTC');
+  });
+
+  const createdBy = async (keys: string[]) => {
+    const ensureHoldings = jest.fn(async (_holdings: unknown[]) => undefined);
+    const resolved = await resolveWalletHoldings({
+      accountId: 'acc-1',
+      keys,
+      config: BINANCE_WALK_CONFIG,
+      listHoldings: async () => [],
+      ensureHoldings,
+    });
+
+    return { resolved, created: (ensureHoldings.mock.calls[0]?.[0] ?? []) as ExchangeHolding[] };
+  };
+
+  it("a walk-created USDT Funding holding is in USDT and named 'Binance Funding · USDT'", async () => {
+    const { created } = await createdBy(['USDT:funding']);
+
+    expect(created).toEqual([
+      {
+        accountId: 'acc-1',
+        name: 'Binance Funding · USDT',
+        type: 'crypto_asset',
+        currency: 'USDT',
+        balanceMinorUnits: 0,
+        metadataField: 'binanceAsset',
+        metadataKey: 'USDT:funding',
+      },
+    ]);
+  });
+
+  it("a walk-created BTC Funding holding keeps the key 'BTC:funding' and the name 'Binance Funding · BTC'", async () => {
+    const { created } = await createdBy([FUNDING_KEY]);
+
+    expect(created.map(({ metadataKey, name, currency }) => [metadataKey, name, currency])).toEqual(
+      [['BTC:funding', 'Binance Funding · BTC', 'BTC']],
+    );
+  });
+
+  it('a key that names no tracked coin creates no holding', async () => {
+    const { created, resolved } = await createdBy(['PEPE:funding', FUNDING_KEY]);
+
+    expect(created.map((holding) => holding.metadataKey)).toEqual([FUNDING_KEY]);
+    expect(resolved.has('PEPE:funding')).toBe(false);
+  });
+
+  it('writes nothing when the only missing key names no tracked coin', async () => {
+    const { created, resolved } = await createdBy(['PEPE:funding']);
+
+    expect(created).toEqual([]);
+    expect(resolved.size).toBe(0);
   });
 
   it('writes nothing when every wanted holding exists', async () => {

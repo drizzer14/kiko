@@ -476,6 +476,7 @@ const settledTransfers = (input: {
           unreadable: ofSeries(series)
             .filter((entry) => entry.unreadable !== undefined)
             .map((entry) => ({ time: entry.unreadable === 'timeless' ? undefined : entry.time })),
+          untracked: [],
         })),
       drifted: foldMap(maybe(drifted), (series) => [series as TransferType]) ?? [],
     },
@@ -623,6 +624,7 @@ const settledEarn = (input: {
               .filter((entry) => isMemberStuck(entry, run))
               .map((entry) => ({ time: entry.time })),
           ],
+          untracked: [],
         })),
       drifted: foldMap(maybe(drifted), (series) => [series as EarnRecordKind]) ?? [],
     },
@@ -933,6 +935,8 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               span,
               settled: settledOf({ lane, span, page, run, window, drift: input.drift }),
               forwardOwes,
+              writeOversized: async () => undefined,
+              writeUntracked: async () => undefined,
               place: async (planned) => planned,
               add: async (rows) => {
                 for (const row of rows) {

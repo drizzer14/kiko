@@ -1,7 +1,10 @@
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { bifoldMap, type Either, eitherSync } from 'fnts/either';
+
+import { type AmountError, exchangeMinorUnits } from '../amounts';
 
 import {
   BinanceWalkStop,
@@ -15,19 +18,65 @@ import {
   type WalkWindow,
 } from './walk';
 import type { ExchangeWalkConfig } from './walk-config';
+import type { ExchangeStateDeps } from './exchange-state-deps';
 
 /**
  * One span's records told apart: the rows of those the walk can trust, the codes of the stops
  * of those it cannot, the ground the stuck records owe, and the point of every record the read
  * returned, trusted or not (`returned`): the walk takes a point off its list only for one of
  * those. A point carries the series its record was read under, when the walk reads several.
+ * `oversized` names the coins of the records that stopped too large, and `untracked` the tickers of
+ * the records counted but imported as no row (a coin the walk does not track); each is left out
+ * when there is none.
  */
 export type SettledSpan<Row> = {
   rows: Row[];
   codes: string[];
   owed: OwedGround[];
   returned: OwedGround[];
+  oversized?: string[];
+  untracked?: string[];
 };
+
+/**
+ * Every code of the amount parser, for a lane that owes the point of a record the parser refused
+ * and goes past it in the forward pass (`forwardOwes`).
+ */
+export const AMOUNT_STOP_CODES: readonly AmountError[] = [
+  'amount-malformed',
+  'amount-precision',
+  'amount-too-large',
+];
+
+/**
+ * The exact minor units of a history row's amount text, in the coin's own scale. A text the
+ * parser refuses stops the record with the parser's code, and an amount past the safe integer
+ * names its coin, so the walk lists it as oversized.
+ */
+export const rowMinorUnits = (currency: Currency, text: string): number =>
+  bifoldMap(
+    exchangeMinorUnits(currency, text, 'row'),
+    (code): number => {
+      throw new BinanceWalkStop(code, code === 'amount-too-large' ? currency : undefined);
+    },
+    (units) => units,
+  );
+
+/**
+ * The write of the coins a history read met, to one of the two history lists: the oversized coins
+ * (a record whose amount stopped too large) or the untracked ones (a window counted them but
+ * imported no row). One union patch, as a list only grows (see `withCoinList`).
+ */
+export const historyListWriterOf =
+  (
+    deps: Pick<ExchangeStateDeps, 'patchExchangeState'>,
+    accountId: string,
+    coins: 'oversizedCoins' | 'untrackedCoins',
+  ) =>
+  (tickers: readonly string[]): Promise<void> =>
+    deps.patchExchangeState(accountId, [
+      { kind: 'coinList', coins, list: 'history', tickers: [...tickers] },
+    ]);
 
 /** The one millisecond a record with a time to the millisecond sits in, if it has a time. */
 export const instantAt = (time: number | undefined): WalkWindow | undefined =>
@@ -66,6 +115,15 @@ const withSeries = (point: WalkWindow, series: string | undefined): OwedGround =
 const owedBy = (span: WalkWindow, point: OwedGround | undefined): OwedGround =>
   foldMap(maybe(point), (found): OwedGround => ({ ...found, kind: 'point' })) ?? span;
 
+/** A record the walk counted but imports as no row: its point is returned, nothing is owed. */
+const untrackedRecord = <Row>(ticker: string, point: OwedGround | undefined): SettledSpan<Row> => ({
+  rows: [],
+  codes: [],
+  owed: [],
+  returned: foldMap(maybe(point), (found) => [found]) ?? [],
+  untracked: [ticker],
+});
+
 const settledRecord = <Row>(
   attempt: Either<unknown, Row[]>,
   span: WalkWindow,
@@ -80,7 +138,13 @@ const settledRecord = <Row>(
         throw error;
       }
 
-      return { rows: [], codes: [error.code], owed: [owedBy(span, point)], returned };
+      return {
+        rows: [],
+        codes: [error.code],
+        owed: [owedBy(span, point)],
+        returned,
+        ...foldMap(maybe(error.oversizedTicker), (ticker) => ({ oversized: [ticker] })),
+      };
     },
     (rows): SettledSpan<Row> => ({ rows, codes: [], owed: [], returned }),
   );
@@ -91,12 +155,19 @@ const settledRecord = <Row>(
  * into a range that holds it, and a range never into another entry, so the whole span owed
  * beside the point of a record in it is two entries.
  */
-export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> => ({
-  rows: parts.flatMap((part) => part.rows),
-  codes: parts.flatMap((part) => part.codes),
-  owed: distinctGround(parts.flatMap((part) => part.owed)),
-  returned: parts.flatMap((part) => part.returned),
-});
+export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> => {
+  const oversized = [...new Set(parts.flatMap((part) => part.oversized ?? []))];
+  const untracked = [...new Set(parts.flatMap((part) => part.untracked ?? []))];
+
+  return {
+    rows: parts.flatMap((part) => part.rows),
+    codes: parts.flatMap((part) => part.codes),
+    owed: distinctGround(parts.flatMap((part) => part.owed)),
+    returned: parts.flatMap((part) => part.returned),
+    ...(oversized.length > 0 ? { oversized } : {}),
+    ...(untracked.length > 0 ? { untracked } : {}),
+  };
+};
 
 /**
  * The records of one span, each on its own: a record the walk cannot trust (its `rowsOf` throws
@@ -106,7 +177,10 @@ export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> =>
  * carries it, so it is read in that series and leaves only for a record of it. A read that
  * compares a time coarser than a millisecond returns a record just before the span's start: the
  * walk gives that `reach`, the ground a read of the span returns records from, and a record in it
- * owes its own point; the whole span owed without a point is always the real span.
+ * owes its own point; the whole span owed without a point is always the real span. A record whose
+ * `untrackedOf` gives a ticker is a coin the walk does not track: it is counted (its point is
+ * returned) and never read, so it gives no row, no stop and no owed ground, and its ticker is
+ * named in `untracked`.
  */
 export const settleRecords = <Record, Row>(input: {
   span: WalkWindow;
@@ -115,19 +189,25 @@ export const settleRecords = <Record, Row>(input: {
   rowsOf: (record: Record) => Row[];
   extentOf: (record: Record) => WalkWindow | undefined;
   seriesOf?: (record: Record) => string;
+  untrackedOf?: (record: Record) => string | undefined;
 }): SettledSpan<Row> => {
-  const { span, reach = span, records, rowsOf, extentOf, seriesOf } = input;
+  const { span, reach = span, records, rowsOf, extentOf, seriesOf, untrackedOf } = input;
 
   return joinSettled(
-    records.map((record) =>
-      settledRecord(
-        eitherSync<unknown, Row[]>(() => rowsOf(record)),
-        span,
-        foldMap(maybe(pointOf(reach, extentOf(record))), (point) =>
-          withSeries(point, seriesOf?.(record)),
-        ),
-      ),
-    ),
+    records.map((record) => {
+      const point = foldMap(maybe(pointOf(reach, extentOf(record))), (found) =>
+        withSeries(found, seriesOf?.(record)),
+      );
+
+      return (
+        foldMap(maybe(untrackedOf?.(record)), (ticker) => untrackedRecord(ticker, point)) ??
+        settledRecord(
+          eitherSync<unknown, Row[]>(() => rowsOf(record)),
+          span,
+          point,
+        )
+      );
+    }),
   );
 };
 
@@ -218,7 +298,8 @@ const isOwedPast = (ground: OwedGround): boolean => isPoint(ground) || ground.se
  * record stays owed until the floor and no later read of the span would settle it differently.
  * Only a record with a usable time can be owed that way: a stop that owes more than a point (a
  * record with no time owes the whole span, and so does a stop that is no one record's) leaves the
- * span uncommitted, as does any other code beside it.
+ * span uncommitted, as does any other code beside it. The tickers the span counted but imported as
+ * no row (`untracked`) are written once its rows are.
  */
 export const commitSettledSpan = async <Planned, Row>(input: {
   pass: WalkPass;
@@ -227,12 +308,30 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   place: (planned: Planned[]) => Promise<Row[]>;
   add: (rows: Row[]) => Promise<number>;
   advance: (result: { owed: OwedGround[] }) => Promise<void>;
+  writeOversized: (tickers: readonly string[]) => Promise<void>;
+  writeUntracked: (tickers: readonly string[]) => Promise<void>;
   forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
-  const { pass, span, settled, add, advance, forwardOwes = [] } = input;
+  const {
+    pass,
+    span,
+    settled,
+    add,
+    advance,
+    writeOversized,
+    writeUntracked,
+    forwardOwes = [],
+  } = input;
   const stopsRun = (part: Pick<SettledSpan<unknown>, 'codes' | 'owed'>): boolean =>
     pass === 'forward' &&
     (part.codes.some((code) => !forwardOwes.includes(code)) || !part.owed.every(isOwedPast));
+
+  // Before any stop of the forward pass returns, which commits nothing of its span: a capital or
+  // Pay amount that is too large is met again on every run until it ages out, and would never be
+  // listed if the write waited for a commit.
+  if (settled.oversized !== undefined) {
+    await writeOversized(settled.oversized);
+  }
 
   if (stopsRun(settled)) {
     logCodes(settled.codes);
@@ -249,6 +348,12 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   }
 
   const imported = ready.rows.length > 0 ? await add(ready.rows) : 0;
+
+  // Once for the window, after its rows and before its marks: a crash between the two reads the
+  // span again, and a ticker that is already listed changes nothing.
+  if (ready.untracked !== undefined) {
+    await writeUntracked(ready.untracked);
+  }
 
   await advance({ owed: ready.owed });
 

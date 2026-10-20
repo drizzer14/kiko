@@ -1,6 +1,7 @@
 import type { HoldingRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
 
+import { BINANCE_ASSET } from './binance.client';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 
 /**
@@ -36,6 +37,14 @@ const keyOf = (code: string, wallet: BinanceWallet): string => `${code}${KEY_SUF
  */
 export const holdingKeyOf = (code: Currency, wallet: BinanceWallet): string => keyOf(code, wallet);
 
+/**
+ * The id the legs of one move of one coin share, from the id Binance gives the move. Two coins
+ * can share that id, and deleting a leg deletes its pair, so a coin other than BTC adds its code;
+ * a BTC pair keeps the id every stored BTC pair already has.
+ */
+export const exchangePairIdOf = (binanceId: string, code: Currency): string =>
+  code === BINANCE_ASSET ? binanceId : `${binanceId}:${code}`;
+
 type HoldingKeyParts = { code: Currency; wallet: BinanceWallet };
 
 /** The coin and wallet a stored key names; a key `holdingKeyOf` never makes names none. */
@@ -56,21 +65,14 @@ const WALLET_LABELS: Record<BinanceWallet, string> = {
   earn: 'Earn',
 };
 
-/** The default name of a holding the sync creates for a coin: "Binance Spot · USDT". */
+/**
+ * The default name of a holding the sync creates for a coin: "Binance Spot · USDT". 'Binance' and
+ * its wallet names are brand terms, read the same in every language, and each name is
+ * user-editable after creation: an upsert never rewrites it, except the once-per-holding rename
+ * from `PREVIOUS_BTC_HOLDING_NAMES`.
+ */
 export const coinHoldingName = (code: Currency, wallet: BinanceWallet): string =>
   `Binance ${WALLET_LABELS[wallet]} · ${code}`;
-
-/**
- * Default display names for the BTC holdings a sync creates. 'Binance' and its
- * wallet names are brand terms, read the same in every language, and each name
- * is user-editable after creation — an upsert never rewrites it, except the
- * once-per-holding rename from `PREVIOUS_BTC_HOLDING_NAMES`.
- */
-export const WALLET_HOLDING_NAMES: Record<BinanceWalletKey, string> = {
-  [SPOT_KEY]: coinHoldingName('BTC', 'spot'),
-  [FUNDING_KEY]: coinHoldingName('BTC', 'funding'),
-  [EARN_KEY]: coinHoldingName('BTC', 'earn'),
-};
 
 /**
  * The default names earlier releases gave each wallet's BTC holding, so a stored holding that

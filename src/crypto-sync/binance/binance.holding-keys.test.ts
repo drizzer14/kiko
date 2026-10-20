@@ -1,12 +1,12 @@
 import {
   coinHoldingName,
   EARN_KEY,
+  exchangePairIdOf,
   FUNDING_KEY,
   holdingKeyOf,
   partsOfHoldingKey,
   PREVIOUS_BTC_HOLDING_NAMES,
   SPOT_KEY,
-  WALLET_HOLDING_NAMES,
 } from './binance.holding-keys';
 
 describe('holdingKeyOf', () => {
@@ -73,17 +73,32 @@ describe('coinHoldingName', () => {
     expect(coinHoldingName('EUR', 'funding')).toBe('Binance Funding · EUR');
     expect(coinHoldingName('ETH', 'earn')).toBe('Binance Earn · ETH');
   });
+
+  it('names the three BTC holdings "Binance <Wallet> · BTC"', () => {
+    expect(coinHoldingName('BTC', 'spot')).toBe('Binance Spot · BTC');
+    expect(coinHoldingName('BTC', 'funding')).toBe('Binance Funding · BTC');
+    expect(coinHoldingName('BTC', 'earn')).toBe('Binance Earn · BTC');
+  });
+});
+
+describe('exchangePairIdOf', () => {
+  it('keeps the id of a BTC pair as Binance gave it', () => {
+    expect(exchangePairIdOf('acc-1:xfer:MAIN_FUNDING:t-1', 'BTC')).toBe(
+      'acc-1:xfer:MAIN_FUNDING:t-1',
+    );
+  });
+
+  it('adds the code of any other coin, so two coins of one id never share a pair', () => {
+    expect(exchangePairIdOf('acc-1:xfer:MAIN_FUNDING:t-1', 'ETH')).toBe(
+      'acc-1:xfer:MAIN_FUNDING:t-1:ETH',
+    );
+    expect(exchangePairIdOf('acc-1:xfer:MAIN_FUNDING:t-1', 'EUR')).toBe(
+      'acc-1:xfer:MAIN_FUNDING:t-1:EUR',
+    );
+  });
 });
 
 describe('the BTC holding names', () => {
-  it('name the three BTC holdings "Binance <Wallet> · BTC", keyed by the three BTC keys', () => {
-    expect(WALLET_HOLDING_NAMES).toEqual({
-      [SPOT_KEY]: 'Binance Spot · BTC',
-      [FUNDING_KEY]: 'Binance Funding · BTC',
-      [EARN_KEY]: 'Binance Earn · BTC',
-    });
-  });
-
   it('list the earlier defaults a BTC holding is renamed from, Spot from both of its two', () => {
     expect(PREVIOUS_BTC_HOLDING_NAMES).toEqual({
       spot: ['Binance BTC', 'Binance Spot'],

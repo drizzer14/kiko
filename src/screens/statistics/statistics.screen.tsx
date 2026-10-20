@@ -37,6 +37,10 @@ import {
   resolveCategoryColor,
 } from '@kiko/statistics/category-breakdown';
 import {
+  internalTransferTransactionIds,
+  rowsForTransferMatch,
+} from '@kiko/statistics/internal-transfers';
+import {
   descriptionExcludedTransferTransactionIds,
   mccExcludedTransferTransactionIds,
 } from '@kiko/statistics/transfer-exclusion';
@@ -88,7 +92,6 @@ import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
-import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
@@ -740,9 +743,11 @@ const StatisticsScreen: FC = () => {
   // holdings, same currency, near-simultaneous) are not spending. Their debit
   // legs are dropped from the category breakdown by id below; the credit legs
   // are already ignored as income. Scoped to THIS chart only — every other view
-  // (net worth, by-type, account pie) still sees the full ledger.
+  // (net worth, by-type, account pie) still sees the full ledger. The matcher
+  // sees only unmarked rows: an exchange leg is excluded by its marker, and
+  // must never pair with (and so swallow) an unmarked Pay send.
   const internalTransferIds = useMemo(
-    () => internalTransferTransactionIds(ledgerWithCurrency),
+    () => internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
     [ledgerWithCurrency],
   );
 
