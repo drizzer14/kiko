@@ -39,6 +39,9 @@ type MockScreenProps = {
     title?: string;
     tabBarIcon?: () => { sfSymbol?: string };
     tabBarButtonTestID?: string;
+    // A real NativeBottomTabNavigationOptions member (types.ts:82); the real view drops the
+    // item from the bar when it is true (NativeBottomTabView.tsx:54).
+    tabBarItemHidden?: boolean;
   };
 };
 
@@ -109,23 +112,29 @@ function Navigator({
         tabBarActiveTintColor={tabBarActiveTintColor}
         tabBarInactiveTintColor={tabBarInactiveTintColor}
       >
-        {screens.map((screen) => (
-          <Text key={screen.props.name}>{screen.props.options?.title ?? screen.props.name}</Text>
-        ))}
-        {screens.map((screen) => (
-          <TabIconView
-            key={`icon-${screen.props.name}`}
-            testID={`tab-icon-${screen.props.name}`}
-            sfSymbol={screen.props.options?.tabBarIcon?.().sfSymbol}
-          />
-        ))}
-        {screens.map((screen) => (
-          <View
-            key={`button-${screen.props.name}`}
-            testID={screen.props.options?.tabBarButtonTestID}
-            accessibilityLabel={`tab-button-${screen.props.name}`}
-          />
-        ))}
+        {screens
+          .filter((screen) => screen.props.options?.tabBarItemHidden !== true)
+          .map((screen) => (
+            <Text key={screen.props.name}>{screen.props.options?.title ?? screen.props.name}</Text>
+          ))}
+        {screens
+          .filter((screen) => screen.props.options?.tabBarItemHidden !== true)
+          .map((screen) => (
+            <TabIconView
+              key={`icon-${screen.props.name}`}
+              testID={`tab-icon-${screen.props.name}`}
+              sfSymbol={screen.props.options?.tabBarIcon?.().sfSymbol}
+            />
+          ))}
+        {screens
+          .filter((screen) => screen.props.options?.tabBarItemHidden !== true)
+          .map((screen) => (
+            <View
+              key={`button-${screen.props.name}`}
+              testID={screen.props.options?.tabBarButtonTestID}
+              accessibilityLabel={`tab-button-${screen.props.name}`}
+            />
+          ))}
       </TabBarView>
       {ActiveComponent ? <ActiveComponent /> : null}
     </>

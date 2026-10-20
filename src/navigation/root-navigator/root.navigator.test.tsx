@@ -5,16 +5,25 @@
 // manual mock at `__mocks__/@bottom-tabs/react-navigation.tsx`, which Jest
 // applies automatically for every test that pulls it in transitively — see
 // that file for why and what it renders.
+import { en } from '@kiko/i18n/locales';
 import { darkTheme } from '@kiko/design-system/theme';
 import { NavigationContainer } from '@react-navigation/native';
-import { render, within } from '@testing-library/react-native';
+import { act, render, within } from '@testing-library/react-native';
+import { reportWindow, resizeWindow } from '@kiko/test-support/window-size';
 
-import { navigationDarkTheme } from '../dark-theme';
 import '@kiko/design-system/unistyles';
+
+import { SETTLE_DELAY_MS } from '../pane-stack';
+import { navigationDarkTheme } from '../dark-theme';
+
 import RootNavigator from './root.navigator';
 
+beforeEach(() => {
+  reportWindow('compact', 390, 844);
+});
+
 describe('RootNavigator', () => {
-  it('renders the four bottom tabs', async () => {
+  it('renders the four bottom tabs on a window that is not large', async () => {
     const { findByTestId } = await render(
       <NavigationContainer theme={navigationDarkTheme}>
         <RootNavigator />
@@ -138,5 +147,112 @@ describe('RootNavigator', () => {
     expect(tabBar.props.tabBarInactiveTintColor).toBe(fakeTheme.colors.textSecondary);
 
     jest.restoreAllMocks();
+  });
+
+  describe('the tab set of a window', () => {
+    const renderRoot = () =>
+      render(
+        <NavigationContainer theme={navigationDarkTheme}>
+          <RootNavigator />
+        </NavigationContainer>,
+      );
+
+    const TAB_LABELS = [en.home.title, en.accounts.title, en.statistics.title, en.settings.title];
+
+    it.each([
+      ['an iPhone', 'compact', 390, 844],
+      ['the Duo outer window', 'compact', 466, 678],
+      ['the Duo inner window in landscape', 'regular', 951, 669],
+      ['the Duo inner window in portrait', 'regular', 669, 951],
+      ['a split-view window in landscape', 'regular', 1032, 683],
+      ['a split-view window in portrait', 'regular', 683, 909],
+      ['a regular window too small to split', 'regular', 710, 500],
+    ] as const)('shows all four tabs on %s', async (_name, sizeClass, width, height) => {
+      reportWindow(sizeClass, width, height);
+      const { findByTestId, getByTestId } = await renderRoot();
+      const tabBar = within(await findByTestId('tab-bar'));
+
+      for (const label of TAB_LABELS) {
+        expect(tabBar.getByText(label)).toBeTruthy();
+      }
+
+      expect(getByTestId('tab-statistics')).toBeTruthy();
+    });
+
+    it.each([
+      ['an iPad mini in portrait', 744, 1133],
+      ['an iPad mini in landscape', 1133, 744],
+      ['an 11-inch iPad in portrait', 820, 1180],
+      ['an 11-inch iPad in landscape', 1180, 820],
+      ['a 13-inch iPad in portrait', 1032, 1376],
+      ['a 13-inch iPad in landscape', 1376, 1032],
+    ] as const)('hides the Statistics tab on %s', async (_name, width, height) => {
+      reportWindow('regular', width, height);
+      const { findByTestId, queryByTestId } = await renderRoot();
+      const tabBar = within(await findByTestId('tab-bar'));
+
+      for (const label of TAB_LABELS.filter((label) => label !== en.statistics.title)) {
+        expect(tabBar.getByText(label)).toBeTruthy();
+      }
+
+      expect(tabBar.queryByText(en.statistics.title)).toBeNull();
+      expect(queryByTestId('tab-statistics')).toBeNull();
+    });
+
+    describe('when the window changes size', () => {
+      beforeEach(() => {
+        jest.useFakeTimers();
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      const elapse = async (milliseconds: number): Promise<void> => {
+        await act(async () => {
+          jest.advanceTimersByTime(milliseconds);
+        });
+      };
+
+      it('keeps the Statistics tab until the large window has lasted the settle delay', async () => {
+        reportWindow('regular', 1032, 683);
+        const { getByTestId, queryByTestId } = await renderRoot();
+
+        await resizeWindow(1376, 1032);
+        await elapse(SETTLE_DELAY_MS - 1);
+
+        expect(getByTestId('tab-statistics')).toBeTruthy();
+
+        await elapse(1);
+
+        expect(queryByTestId('tab-statistics')).toBeNull();
+      });
+
+      it('brings the Statistics tab back once a window that is no longer large has lasted the settle delay', async () => {
+        reportWindow('regular', 1376, 1032);
+        const { getByTestId, queryByTestId } = await renderRoot();
+
+        await resizeWindow(1032, 683);
+        await elapse(SETTLE_DELAY_MS - 1);
+
+        expect(queryByTestId('tab-statistics')).toBeNull();
+
+        await elapse(1);
+
+        expect(getByTestId('tab-statistics')).toBeTruthy();
+      });
+
+      it('never hides the Statistics tab for a large window that is gone within the settle delay', async () => {
+        reportWindow('regular', 1032, 683);
+        const { getByTestId } = await renderRoot();
+
+        await resizeWindow(1376, 1032);
+        await elapse(SETTLE_DELAY_MS - 1);
+        await resizeWindow(1032, 683);
+        await elapse(SETTLE_DELAY_MS * 2);
+
+        expect(getByTestId('tab-statistics')).toBeTruthy();
+      });
+    });
   });
 });

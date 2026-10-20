@@ -11,6 +11,7 @@ import {
   holdingFormOptions,
   restoreDefaultAnimationOfSwappedForm,
 } from '../swapped-form-options';
+import { useIsMergedHome } from '../merged-home';
 import type { HomeStackParamList } from '../types';
 import { createPaneStackNavigator } from '../pane-stack';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
@@ -33,7 +34,8 @@ const PANE_CONFIG = {
  * button) and a large title; the form drives that title itself via
  * `setOptions` (Add / Edit / read-only), so no static title is set here.
  * Statistics is registered for the companion pane of a wide window, where it
- * shows as a large-title screen.
+ * shows as a large-title screen; on a merged Home it is the cards pane of the
+ * Home tab and shows no header, so the filter bar is its first row.
  *
  * The account and holding create forms are registered here too: the transaction
  * form's empty holding pickers open them, and a switch to the Accounts tab would
@@ -41,6 +43,7 @@ const PANE_CONFIG = {
  */
 const HomeStack: FC = () => {
   const { t } = useTranslation();
+  const isMergedHome = useIsMergedHome();
 
   return (
     <Stack.Navigator
@@ -60,7 +63,11 @@ const HomeStack: FC = () => {
       <Stack.Screen
         name="Statistics"
         component={StatisticsScreen}
-        options={{ headerShown: true, ...largeTitleScreenOptions, title: t('statistics.title') }}
+        options={{
+          headerShown: !isMergedHome,
+          ...largeTitleScreenOptions,
+          title: t('statistics.title'),
+        }}
       />
 
       <Stack.Screen

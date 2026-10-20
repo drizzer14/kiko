@@ -15,6 +15,12 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+// The hook reads the tab navigator, so a plain call of the stack cannot run it.
+const mockLeaveStatisticsTabWhenMerged = jest.fn();
+jest.mock('@kiko/navigation/merged-home', () => ({
+  useLeaveStatisticsTabWhenMerged: () => mockLeaveStatisticsTabWhenMerged(),
+}));
+
 import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
@@ -54,6 +60,16 @@ const optionsOf = (name: string, params: unknown): FormOptions | undefined => {
 };
 
 describe('StatisticsStack', () => {
+  beforeEach(() => {
+    mockLeaveStatisticsTabWhenMerged.mockClear();
+  });
+
+  it('leaves the Statistics tab for Home when the window merges them', () => {
+    StatisticsStack({});
+
+    expect(mockLeaveStatisticsTabWhenMerged).toHaveBeenCalledTimes(1);
+  });
+
   it('is rooted at the Statistics screen', () => {
     expect(screenNames()).toContain('Statistics');
   });
@@ -121,7 +137,7 @@ describe('StatisticsStack', () => {
     },
   );
 
-  it('splits into equal halves: Home in the companion, no wide slot', () => {
+  it('roots Statistics in the primary pane and defaults the companion to Home', () => {
     const navigator = StatisticsStack({}) as ReactElement<{ paneConfig: object }>;
 
     expect(navigator.props.paneConfig).toEqual({

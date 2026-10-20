@@ -7,7 +7,7 @@ const HAIRLINE = 1;
 const UNEQUAL_SHARE = 2 / 3;
 
 // A fold ignores the share, so its cases pass an unequal one to prove it.
-const resolveWithWideShare = (
+const resolveWithUnequalShare = (
   mode: 'columns' | 'rows',
   window: { width: number; height: number },
   fold: { x: number; y: number; width: number; height: number },
@@ -117,7 +117,7 @@ describe('resolvePaneGeometry', () => {
 
   it('ends the panes at the fold edges in columns', () => {
     const fold = { x: 465, y: 0, width: 21, height: 669 };
-    const geometry = resolveWithWideShare('columns', { width: 951, height: 669 }, fold);
+    const geometry = resolveWithUnequalShare('columns', { width: 951, height: 669 }, fold);
 
     expect(geometry.companion).toEqual({ x: 0, y: 0, width: 465, height: 669 });
     expect(geometry.primary).toEqual({ x: 486, y: 0, width: 465, height: 669 });
@@ -126,7 +126,7 @@ describe('resolvePaneGeometry', () => {
 
   it('ends the panes at the fold edges in rows', () => {
     const fold = { x: 0, y: 470, width: 669, height: 24 };
-    const geometry = resolveWithWideShare('rows', { width: 669, height: 951 }, fold);
+    const geometry = resolveWithUnequalShare('rows', { width: 669, height: 951 }, fold);
 
     expect(geometry.companion).toEqual({ x: 0, y: 0, width: 669, height: 470 });
     expect(geometry.primary).toEqual({ x: 0, y: 494, width: 669, height: 457 });
@@ -167,7 +167,7 @@ describe('resolvePaneGeometry', () => {
 
   it('still splits at a fold a fraction of a point shorter than the window', () => {
     const fold = { x: 455.5, y: 0, width: 40, height: 668.9 };
-    const geometry = resolveWithWideShare('columns', { width: 951, height: 669 }, fold);
+    const geometry = resolveWithUnequalShare('columns', { width: 951, height: 669 }, fold);
 
     expect(geometry.isFolded).toBe(true);
     expect(geometry.companion.width).toBe(455.5);
@@ -176,7 +176,7 @@ describe('resolvePaneGeometry', () => {
 
   it('measured Duo half-open: a centred 40 pt vertical fold gives equal halves', () => {
     const fold = { x: 455.5, y: 0, width: 40, height: 669 };
-    const geometry = resolveWithWideShare('columns', { width: 951, height: 669 }, fold);
+    const geometry = resolveWithUnequalShare('columns', { width: 951, height: 669 }, fold);
 
     expect(geometry.companion).toEqual({ x: 0, y: 0, width: 455.5, height: 669 });
     expect(geometry.primary).toEqual({ x: 495.5, y: 0, width: 455.5, height: 669 });
@@ -185,7 +185,7 @@ describe('resolvePaneGeometry', () => {
 
   it('keeps an off-centre fold unequal: each pane stops at the fold edge', () => {
     const fold = { x: 300, y: 0, width: 20, height: 669 };
-    const geometry = resolveWithWideShare('columns', { width: 951, height: 669 }, fold);
+    const geometry = resolveWithUnequalShare('columns', { width: 951, height: 669 }, fold);
 
     expect(geometry.companion.width).toBe(300);
     expect(geometry.primary).toEqual({ x: 320, y: 0, width: 631, height: 669 });
@@ -193,7 +193,7 @@ describe('resolvePaneGeometry', () => {
 
   it('clamps a fold that overhangs the window so no pane goes negative', () => {
     const fold = { x: 940, y: 0, width: 40, height: 669 };
-    const geometry = resolveWithWideShare('columns', { width: 951, height: 669 }, fold);
+    const geometry = resolveWithUnequalShare('columns', { width: 951, height: 669 }, fold);
 
     expect(geometry.companion.width).toBe(940);
     expect(geometry.primary).toEqual({ x: 951, y: 0, width: 0, height: 669 });
@@ -201,7 +201,7 @@ describe('resolvePaneGeometry', () => {
 
   it('clamps a fold that starts before the window', () => {
     const fold = { x: -10, y: 0, width: 20, height: 669 };
-    const geometry = resolveWithWideShare('columns', { width: 951, height: 669 }, fold);
+    const geometry = resolveWithUnequalShare('columns', { width: 951, height: 669 }, fold);
 
     expect(geometry.companion.width).toBe(0);
     expect(geometry.primary.x).toBe(10);

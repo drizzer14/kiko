@@ -4,11 +4,11 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import { useDraftAutosave } from '.';
 
-const mockLayout: { mode: LayoutMode } = { mode: 'single' };
+const mockLayout: { mode: LayoutMode; isLarge: boolean } = { mode: 'single', isLarge: false };
 
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => mockLayout.mode,
-  useIsLargeWindow: () => false,
+  useIsLargeWindow: () => mockLayout.isLarge,
 }));
 
 type Draft = { text: string };
@@ -28,6 +28,7 @@ const renderForm = async (saveDraft: jest.Mock, restored?: Draft) => {
 describe('useDraftAutosave', () => {
   beforeEach(() => {
     mockLayout.mode = 'single';
+    mockLayout.isLarge = false;
   });
 
   it('saves nothing on mount', async () => {
@@ -188,6 +189,58 @@ describe('useDraftAutosave', () => {
     await rerender({});
 
     expect(saveDraft).not.toHaveBeenCalled();
+  });
+
+  describe('a window that becomes large or stops being large with its layout mode held', () => {
+    beforeEach(() => {
+      mockLayout.mode = 'columns';
+    });
+
+    it('saves the draft as typed when the window becomes large', async () => {
+      const saveDraft = jest.fn();
+      const { result, rerender } = await renderForm(saveDraft);
+
+      await act(async () => result.current.setText('half typed'));
+      mockLayout.isLarge = true;
+      await rerender({});
+
+      expect(saveDraft).toHaveBeenCalledTimes(1);
+      expect(saveDraft).toHaveBeenCalledWith({ text: 'half typed' });
+    });
+
+    it('saves the draft as typed when the window stops being large', async () => {
+      mockLayout.isLarge = true;
+      const saveDraft = jest.fn();
+      const { result, rerender } = await renderForm(saveDraft);
+
+      await act(async () => result.current.setText('half typed'));
+      mockLayout.isLarge = false;
+      await rerender({});
+
+      expect(saveDraft).toHaveBeenCalledTimes(1);
+      expect(saveDraft).toHaveBeenCalledWith({ text: 'half typed' });
+    });
+
+    it('saves nothing when the window becomes large over a form the user has not changed', async () => {
+      const saveDraft = jest.fn();
+      const { rerender } = await renderForm(saveDraft);
+
+      mockLayout.isLarge = true;
+      await rerender({});
+
+      expect(saveDraft).not.toHaveBeenCalled();
+    });
+
+    it('saves nothing for a rerender that leaves the window as large as it was', async () => {
+      mockLayout.isLarge = true;
+      const saveDraft = jest.fn();
+      const { result, rerender } = await renderForm(saveDraft);
+
+      await act(async () => result.current.setText('half typed'));
+      await rerender({});
+
+      expect(saveDraft).not.toHaveBeenCalled();
+    });
   });
 
   it('saves nothing for a rerender that leaves the layout mode as it was', async () => {

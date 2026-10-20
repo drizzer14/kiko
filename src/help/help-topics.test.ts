@@ -358,6 +358,19 @@ describe('the choices a help step names', () => {
   });
 
   it.each([
+    ['en', enValues, /"([^"]*)"/g, en.statistics.title, en.home.title],
+    ['uk', ukValues, /«([^»]*)»/g, uk.statistics.title, uk.home.title],
+  ] as const)(
+    'names the Home tab beside the Statistics tab in step 1 of the viewStatistics topic in %s',
+    (_language, values, quote, statisticsTab, homeTab) => {
+      const quoted = quotedSpans(stepOf(values, 'viewStatistics', 1), quote);
+
+      expect(quoted).toContain(statisticsTab);
+      expect(quoted).toContain(homeTab);
+    },
+  );
+
+  it.each([
     [
       'en',
       enValues,

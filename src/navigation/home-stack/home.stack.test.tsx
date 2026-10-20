@@ -26,6 +26,12 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+// HomeStack() is a plain call, so the window's merge state is a value the tests set.
+const mockMergedHome = { isMerged: false };
+jest.mock('@kiko/navigation/merged-home', () => ({
+  useIsMergedHome: () => mockMergedHome.isMerged,
+}));
+
 import { fittingLargeTitleLayout } from '../fitting-large-title';
 
 import HomeStack from './home.stack';
@@ -62,13 +68,17 @@ const sharedLargeTitleOptions = {
 };
 
 describe('HomeStack', () => {
+  beforeEach(() => {
+    mockMergedHome.isMerged = false;
+  });
+
   it('hides the header on the Home root', () => {
     const navigator = HomeStack({}) as ReactElement<{ screenOptions: object }>;
 
     expect(navigator.props.screenOptions).toEqual({ headerShown: false });
   });
 
-  it('splits into equal halves: Statistics in the companion, no wide slot', () => {
+  it('roots Home in the primary pane and defaults the companion to Statistics', () => {
     const navigator = HomeStack({}) as ReactElement<{ paneConfig: object }>;
 
     expect(navigator.props.paneConfig).toEqual({
@@ -90,11 +100,31 @@ describe('HomeStack', () => {
     });
   });
 
-  it('shows the Statistics header with the shared large-title options and the translated title', () => {
+  it('shows the Statistics header with the shared large-title options and the translated title on a window that is not merged', () => {
+    mockMergedHome.isMerged = false;
+
     expect(optionsOf('Statistics', undefined)).toEqual({
       headerShown: true,
       ...sharedLargeTitleOptions,
       title: 'Statistics',
+    });
+  });
+
+  it('shows no Statistics header on a merged Home, and keeps the translated title', () => {
+    mockMergedHome.isMerged = true;
+
+    expect(optionsOf('Statistics', undefined)).toMatchObject({
+      headerShown: false,
+      title: 'Statistics',
+    });
+  });
+
+  it('keeps the Transaction form header on a merged Home', () => {
+    mockMergedHome.isMerged = true;
+
+    expect(optionsOf('TransactionForm', undefined)).toEqual({
+      headerShown: true,
+      ...sharedLargeTitleOptions,
     });
   });
 

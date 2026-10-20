@@ -150,7 +150,7 @@ describe('PaneStackView', () => {
     const companionWidth = () =>
       StyleSheet.flatten(screen.getByTestId('two-pane-companion').props.style).width;
 
-    it('keeps columns, the slice route keys and one mounted detail screen from 1376 x 1032 to 1032 x 1376 and back', async () => {
+    it('splits the window in equal halves and keeps the slice route keys and one mounted detail screen from 1376 x 1032 to 1032 x 1376 and back', async () => {
       const view = await render(renderAt(1376, 1032));
 
       expect(companionWidth()).toBe((1376 - HAIRLINE) / 2);
