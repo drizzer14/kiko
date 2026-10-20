@@ -1,16 +1,19 @@
+import type {
+  TotalPage as ExchangeTotalPage,
+  UntrackedTotalRow,
+} from '@kiko/crypto-sync/exchange/paging';
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
 import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
-import type { TotalPage as ExchangeTotalPage } from '@kiko/crypto-sync/exchange/paging';
 
 import {
-  BINANCE_ASSET,
   type FetchAccountOptions,
   type SignedPage,
   signedRequestPage,
   usedWeightsFromHeaders,
 } from './binance.client';
+import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 
 /**
  * The message of every unexpected response shape. It is fixed on purpose: a URL
@@ -120,6 +123,8 @@ const recordReader =
 export type BinancePageWeights = {
   usedUidWeight1m: number | undefined;
   usedIpWeight1m: number | undefined;
+  /** The `/api/*` weight (`X-MBX-USED-WEIGHT-1M`); only the public price reads carry it. */
+  usedApiWeight1m?: number | undefined;
 };
 
 /**
@@ -134,7 +139,8 @@ export type HistoryPage<Row> = {
 /**
  * A page of a `{ rows, total }` endpoint, paged by `current`. `gathered` counts every row of the
  * page, of any asset and unreadable ones too: `total` counts them all, so the pager compares the
- * two. `rows` are the BTC rows that parsed.
+ * two. `rows` are the rows of the coins the read parses that did parse, and `untracked` the rows
+ * of every other coin.
  */
 export type TotalPage<Row> = ExchangeTotalPage<Row, BinancePageWeights>;
 
@@ -178,47 +184,77 @@ const epochTime: TimeReader = optionalFiniteNumber;
 const epochOrDatetimeTime: TimeReader = (value) =>
   typeof value === 'string' ? value : optionalFiniteNumber(value);
 
-const arrayPage =
-  <Row>(readRow: Reader<Row>, timeOf: TimeReader) =>
-  ({ body, headers }: SignedPage): HistoryPage<Row> => {
-    const readings = readingsOf(body, readRow, timeOf);
+/**
+ * Whether a row's `status` is the one its kind settles on; a kind with no status (`undefined`) is
+ * settled whatever the row says.
+ */
+const isSettledStatus = (settledStatus: string | undefined, status: unknown): boolean =>
+  settledStatus === undefined || status === settledStatus;
 
-    return {
-      rows: valuesOf(readings),
-      unreadable: unreadableOf(readings),
-      ...usedWeightsFromHeaders(headers),
-    };
+/**
+ * A row is read by its `asset`, upper-cased once. A tracked asset (`isTrackedBinanceAsset`) parses
+ * strictly, and a malformed row is unreadable and owed. Any other row is counted and never parsed
+ * (`undefined`), but a SETTLED row with a blank asset cannot be told from a row of a tracked
+ * asset, so it is unreadable and owed too. A row with no string asset is rejected by the strict
+ * reader, and a row that is not settled yet (no row of it can be imported) is counted whatever
+ * its asset.
+ */
+const trackedRowOf =
+  <Row>(readRow: Reader<Row>, settledStatus: string | undefined): Reader<Row | undefined> =>
+  (item) => {
+    if (!isRecord(item) || typeof item.asset !== 'string') {
+      return readRow(item);
+    }
+
+    const ticker = binanceTickerOf(item.asset);
+
+    if (isTrackedBinanceAsset(ticker)) {
+      return readRow(item);
+    }
+
+    return ticker === '' && isSettledStatus(settledStatus, item.status)
+      ? parseFailure()
+      : undefined;
   };
 
-/**
- * A row of another asset is counted for the pager and never parsed (`undefined`): it can be off
- * contract in any way without stalling the BTC rows. A row with no string asset is not one of
- * another asset, and the strict reader rejects it.
- */
-const btcRowOf =
-  <Row>(readRow: Reader<Row>): Reader<Row | undefined> =>
-  (item) =>
-    isRecord(item) && typeof item.asset === 'string' && item.asset !== BINANCE_ASSET
-      ? undefined
-      : readRow(item);
+/** What a row the walk does not read says: its ticker, its status text and its time. */
+const untrackedTotalRowOf = (item: unknown, timeOf: TimeReader): UntrackedTotalRow => ({
+  ticker: isRecord(item) && typeof item.asset === 'string' ? binanceTickerOf(item.asset) : '',
+  status: isRecord(item) ? optionalText(item.status) : undefined,
+  time: timeOf(item),
+});
+
+type TotalItem<Row> = { row: Row } | { untracked: UntrackedTotalRow };
 
 /**
- * Transfer and Earn rows: the BTC rows parse strictly, and one that does not goes to
- * `unreadable` with its own time field, so a malformed row never fails the read. A malformed
- * envelope (a body or `rows` that is no list, a `total` that is no number) still does.
+ * Transfer and Earn rows: `readRow` answers a row it reads (strictly, and one that does not goes
+ * to `unreadable` with its own time field, so a malformed row never fails the read), or
+ * `undefined` for a row of a coin the walk does not read, which is counted and reported in
+ * `untracked`. A malformed envelope (a body or `rows` that is no list, a `total` that is no
+ * number) still fails the read.
  */
 const totalPage =
-  <Row>(readRow: Reader<Row>, timeOf: TimeReader) =>
+  <Row>(readRow: Reader<Row | undefined>, timeOf: TimeReader) =>
   ({ body, headers }: SignedPage): TotalPage<Row> => {
     if (!isRecord(body)) {
       return parseFailure();
     }
 
-    const readings = readingsOf(body.rows ?? [], btcRowOf(readRow), timeOf);
+    const readings = readingsOf(
+      body.rows ?? [],
+      (item): TotalItem<Row> => {
+        const row = readRow(item);
+
+        return row === undefined ? { untracked: untrackedTotalRowOf(item, timeOf) } : { row };
+      },
+      timeOf,
+    );
+    const items = valuesOf(readings);
 
     return {
-      rows: valuesOf(readings).flatMap((row) => row ?? []),
+      rows: items.flatMap((item) => ('row' in item ? [item.row] : [])),
       unreadable: unreadableOf(readings),
+      untracked: items.flatMap((item) => ('untracked' in item ? [item.untracked] : [])),
       gathered: readings.length,
       total: finiteNumber(body.total),
       ...usedWeightsFromHeaders(headers),
@@ -241,7 +277,6 @@ export const HISTORY_PAGE_LIMIT = 1000;
 export type HistoryWindow = { startTime: number; endTime: number; offset: number };
 
 const capitalParams = (window: HistoryWindow): Record<string, string> => ({
-  coin: BINANCE_ASSET,
   startTime: String(window.startTime),
   endTime: String(window.endTime),
   offset: String(window.offset),
@@ -249,13 +284,103 @@ const capitalParams = (window: HistoryWindow): Record<string, string> => ({
 });
 
 /**
+ * A capital record of a coin the walk does not track: counted for the pager, never parsed, so it
+ * can be off contract in any way without stalling the tracked rows. Only what the walk needs is
+ * kept: the upper-cased ticker (empty for a record that is not settled and has no usable coin),
+ * the `status` (`undefined` unless it is a finite number, so the walk lists the coin only once the
+ * record is settled) and the time field as it stands (a number, a datetime text for a withdrawal,
+ * or `undefined`), which says where the record sits in a span.
+ */
+export type BinanceUntrackedRecord = {
+  ticker: string;
+  status: number | undefined;
+  time: UnreadableRow['time'];
+};
+
+/**
+ * One page of a capital endpoint: the tracked rows that parsed, the rows it could not read, and the
+ * records of other coins, which a full page counts like any other row.
+ */
+export type CapitalPage<Row> = HistoryPage<Row> & { untracked: BinanceUntrackedRecord[] };
+
+type CapitalItem<Row> = { row: Row } | { untracked: BinanceUntrackedRecord };
+
+export type CapitalKind = 'deposit' | 'withdraw';
+
+/** Binance's own settled states: a credited deposit, a completed withdrawal. */
+const CAPITAL_SETTLED_STATUS: Record<CapitalKind, number> = { deposit: 1, withdraw: 6 };
+
+/**
+ * Whether a capital record has reached Binance's settled state for its kind. The one definition,
+ * for the client (which makes a settled record with no coin unreadable and owed) and the walk
+ * (which imports or lists only a settled one).
+ */
+export const isCapitalSettled = (kind: CapitalKind, status: number | undefined): boolean =>
+  status === CAPITAL_SETTLED_STATUS[kind];
+
+/** What differs between the two capital endpoints: the time field, how to read it, its kind. */
+type CapitalField = { time: string; readTime: TimeReader; kind: CapitalKind };
+
+/**
+ * A capital row is read by its `coin`, upper-cased once. A tracked coin (`isTrackedBinanceAsset`)
+ * parses strictly, and a malformed row is unreadable and owed. Any other row is counted and never
+ * parsed, but a SETTLED row with no string coin, or a blank one, cannot be told from a row of a
+ * tracked coin, so it is unreadable and owed. A row that is not settled yet (no row of it can be
+ * imported) is counted whatever its coin, with an empty ticker when it has none.
+ */
+const capitalItemOf =
+  <Row>(
+    readRow: Reader<Row>,
+    { time: timeField, readTime, kind }: CapitalField,
+  ): Reader<CapitalItem<Row>> =>
+  (item) => {
+    if (!isRecord(item)) {
+      return parseFailure();
+    }
+
+    const ticker = typeof item.coin === 'string' ? binanceTickerOf(item.coin) : '';
+
+    if (isTrackedBinanceAsset(ticker)) {
+      return { row: readRow(item) };
+    }
+
+    const status = optionalFiniteNumber(item.status);
+
+    if (ticker === '' && isCapitalSettled(kind, status)) {
+      return parseFailure();
+    }
+
+    return { untracked: { ticker, status, time: readTime(item[timeField]) } };
+  };
+
+const capitalPage =
+  <Row>(readRow: Reader<Row>, field: CapitalField) =>
+  ({ body, headers }: SignedPage): CapitalPage<Row> => {
+    const readings = readingsOf(
+      body,
+      capitalItemOf(readRow, field),
+      timeFieldOf(field.time, field.readTime),
+    );
+    const items = valuesOf(readings);
+
+    return {
+      rows: items.flatMap((item) => ('row' in item ? [item.row] : [])),
+      unreadable: unreadableOf(readings),
+      untracked: items.flatMap((item) => ('untracked' in item ? [item.untracked] : [])),
+      ...usedWeightsFromHeaders(headers),
+    };
+  };
+
+/**
  * `walletType` is 0 for Spot and 1 for Funding. `txId` is empty for a movement
- * with no on-chain hash.
+ * with no on-chain hash. The read is account-wide, so `coin` names the asset of each record: a
+ * settled record with no usable coin cannot be told from one of a tracked coin, so it is
+ * unreadable and owed, and one not settled yet is counted with an empty ticker (`capitalItemOf`).
  */
 const DEPOSIT_FIELDS = {
   id: identifierOrEmpty,
   amount: text,
-  coin: textOrEmpty,
+  coin: text,
   txId: textOrEmpty,
   insertTime: finiteNumber,
   status: finiteNumber,
@@ -273,7 +398,7 @@ const WITHDRAWAL_FIELDS = {
   id: identifierOrEmpty,
   amount: text,
   transactionFee: textOrEmpty,
-  coin: textOrEmpty,
+  coin: text,
   txId: textOrEmpty,
   applyTime: textOrNumber,
   status: finiteNumber,
@@ -283,15 +408,20 @@ const WITHDRAWAL_FIELDS = {
 /** One withdrawal from `/sapi/v1/capital/withdraw/history`. */
 export type BinanceWithdrawal = Parsed<typeof WITHDRAWAL_FIELDS>;
 
-const depositPage = arrayPage(recordReader(DEPOSIT_FIELDS), timeFieldOf('insertTime', epochTime));
+const depositPage = capitalPage(recordReader(DEPOSIT_FIELDS), {
+  time: 'insertTime',
+  readTime: epochTime,
+  kind: 'deposit',
+});
 
-const withdrawalPage = arrayPage(
-  recordReader(WITHDRAWAL_FIELDS),
-  timeFieldOf('applyTime', epochOrDatetimeTime),
-);
+const withdrawalPage = capitalPage(recordReader(WITHDRAWAL_FIELDS), {
+  time: 'applyTime',
+  readTime: epochOrDatetimeTime,
+  kind: 'withdraw',
+});
 
 /**
- * `GET /sapi/v1/capital/deposit/hisrec` (deposit history), filtered to BTC, for
+ * `GET /sapi/v1/capital/deposit/hisrec` (deposit history), of every coin, for
  * ONE offset page of ONE window. Signed, read-only. Returns the page; the
  * offset-paging and window walk live in `binance.transactions.ts`.
  */
@@ -300,7 +430,7 @@ export const fetchDepositHistory = async (
   secret: string,
   window: HistoryWindow,
   options: FetchAccountOptions = {},
-): Promise<HistoryPage<BinanceDeposit>> =>
+): Promise<CapitalPage<BinanceDeposit>> =>
   depositPage(
     await signedRequestPage(
       apiKey,
@@ -313,7 +443,7 @@ export const fetchDepositHistory = async (
   );
 
 /**
- * `GET /sapi/v1/capital/withdraw/history` (withdrawal history), filtered to BTC,
+ * `GET /sapi/v1/capital/withdraw/history` (withdrawal history), of every coin,
  * for ONE offset page of ONE window. Signed, read-only. Same window/paging
  * contract as `fetchDepositHistory`; the page carries the minute's spent UID weight
  * the resumable walk budgets its next call against.
@@ -323,7 +453,7 @@ export const fetchWithdrawHistory = async (
   secret: string,
   window: HistoryWindow,
   options: FetchAccountOptions = {},
-): Promise<HistoryPage<BinanceWithdrawal>> =>
+): Promise<CapitalPage<BinanceWithdrawal>> =>
   withdrawalPage(
     await signedRequestPage(
       apiKey,
@@ -337,9 +467,8 @@ export const fetchWithdrawHistory = async (
 
 /**
  * Only the nickname and the Binance id are read off a counterparty. The id is read for the
- * direction rule and the receiver check of an order paid in another coin, and is never
- * stored or logged; email, phone, account id, country, card number, institution and
- * digital-wallet id are never parsed.
+ * direction rule alone and is never stored or logged; email, phone, account id, country, card
+ * number, institution and digital-wallet id are never parsed.
  */
 const PAY_PARTY_FIELDS = {
   name: optionalText,
@@ -379,8 +508,19 @@ const walletAssetCost = (value: unknown): { walletType: number; amount: string }
       : parseFailure(),
   ) ?? [];
 
+/**
+ * A Pay or transfer coin, upper-cased once here like a capital coin (`binanceTickerOf`). A blank
+ * one names no coin, so it cannot be told from a tracked coin: it is unreadable, never an
+ * untracked one.
+ */
+const coinTicker: Reader<string> = (value) => {
+  const ticker = binanceTickerOf(text(value));
+
+  return ticker === '' ? parseFailure() : ticker;
+};
+
 const readFundsDetailEntry = recordReader({
-  currency: text,
+  currency: coinTicker,
   amount: text,
   walletAssetCost,
 });
@@ -390,7 +530,7 @@ const PAY_ORDER_FIELDS = {
   transactionId: identifierOrEmpty,
   transactionTime: finiteNumber,
   amount: text,
-  currency: text,
+  currency: coinTicker,
   walletType: optional(walletId),
   walletTypes: optional(listOf(walletId)),
   fundsDetail: (value: unknown) => foldMap(maybe(value), listOf(readFundsDetailEntry)) ?? [],
@@ -410,71 +550,73 @@ export const PAY_PAGE_LIMIT = 100;
 const PAY_SUCCESS_CODE = '000000';
 
 /**
- * One Pay page. The history lists the orders of EVERY coin, but only a BTC order can
- * reach a row, so only `rows` (the BTC orders) are parsed strictly: an order of another
- * coin that is off-contract must not stall the BTC walk. The window walk still needs the
- * whole page, so it reads these from every coin: `gathered`, a full page of
- * `PAY_PAGE_LIMIT` meaning the window holds more orders than one page returns.
+ * A Pay order that no tracked coin is in or was paid in: counted for the pager, never parsed, so
+ * it can be off contract in any way without stalling the tracked orders. Only what the walk needs
+ * is kept: the upper-cased tickers it names (its own coin first, then each coin of its funds
+ * that names one), to list them, and its time as a finite number, or `undefined`, which says
+ * where it sits in a span. `direction` is the sign of its amount: an order that is never parsed
+ * has no parties to read a direction from, so its sign is the only signal, and an amount that is
+ * zero or no usable number has none.
+ */
+export type BinanceUntrackedPayOrder = {
+  tickers: string[];
+  transactionTime: number | undefined;
+  direction: 'in' | 'out' | undefined;
+};
+
+/**
+ * One Pay page. The history lists the orders of EVERY coin. An order is read strictly (`rows`)
+ * when its coin or a coin of its funds is tracked, and one that does not parse is `unreadable`,
+ * owed. Any other order is in `untracked`. The window walk needs every order of the page, so
+ * `gathered` counts all three, a full page of `PAY_PAGE_LIMIT` meaning the window holds more
+ * orders than one page returns.
  */
 export type PayHistoryPage = HistoryPage<BinancePayOrder> & {
   gathered: number;
-  /**
-   * The non-BTC orders that were paid with BTC funds, by the Binance ids of their parties.
-   * Whether BTC left the user's wallet depends on who paid, which only the walk, holding
-   * the user's uid, can tell, so the client reports the parties and leaves the decision.
-   */
-  btcFundedOtherCoinOrders: BtcFundedOtherCoinOrder[];
+  untracked: BinanceUntrackedPayOrder[];
 };
+
+type PayItem = { order: BinancePayOrder } | { untracked: BinanceUntrackedPayOrder };
+
+const readTrackedPayOrder = recordReader(PAY_ORDER_FIELDS);
 
 /**
- * The Binance ids of a non-BTC order's payer and receiver, and its time, which says where it
- * lies in a span; a party that names none, or a time that is no finite number, has `undefined`.
+ * The coins a funds list names. An entry that is no object or names no usable coin cannot be told
+ * from one of a tracked coin, so it makes the order unreadable and owed, whatever its own coin. A
+ * funds detail that is absent or is no list names none: the order is counted.
  */
-export type BtcFundedOtherCoinOrder = {
-  payerId: string | undefined;
-  receiverId: string | undefined;
-  transactionTime: number | undefined;
+const fundsTickersOf = (fundsDetail: unknown): string[] =>
+  (Array.isArray(fundsDetail) ? fundsDetail : []).map((entry) =>
+    coinTicker(isRecord(entry) ? entry.currency : undefined),
+  );
+
+export const directionOfAmount = (amount: unknown): 'in' | 'out' | undefined => {
+  const value = typeof amount === 'string' ? Number(amount) : amount;
+
+  if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) {
+    return undefined;
+  }
+
+  return value > 0 ? 'in' : 'out';
 };
-
-type PayItem = {
-  btcOrder: BinancePayOrder | undefined;
-  btcFunded: BtcFundedOtherCoinOrder | undefined;
-};
-
-const readBtcPayOrder = recordReader(PAY_ORDER_FIELDS);
-
-const paidWithBtc = (fundsDetail: unknown): boolean =>
-  Array.isArray(fundsDetail) &&
-  fundsDetail.some((entry) => isRecord(entry) && entry.currency === BINANCE_ASSET);
-
-/**
- * A malformed party reads as no id, never an error: an order of another coin must not
- * stall the walk.
- */
-const partyIdOf = (party: unknown): string | undefined =>
-  isRecord(party) ? optionalIdentifier(party.binanceId) : undefined;
-
-const readOtherCoinItem = (order: Record<string, unknown>): PayItem => ({
-  btcOrder: undefined,
-  btcFunded: paidWithBtc(order.fundsDetail)
-    ? {
-        payerId: partyIdOf(order.payerInfo),
-        receiverId: partyIdOf(order.receiverInfo),
-        transactionTime: optionalFiniteNumber(order.transactionTime),
-      }
-    : undefined,
-});
 
 const readPayItem: Reader<PayItem> = (value) => {
-  if (!isRecord(value) || typeof value.currency !== 'string') {
+  if (!isRecord(value)) {
     return parseFailure();
   }
 
-  if (value.currency === BINANCE_ASSET) {
-    return { btcOrder: readBtcPayOrder(value), btcFunded: undefined };
-  }
+  const ticker = coinTicker(value.currency);
+  const tickers = [...new Set([ticker, ...fundsTickersOf(value.fundsDetail)])];
 
-  return readOtherCoinItem(value);
+  return tickers.some(isTrackedBinanceAsset)
+    ? { order: readTrackedPayOrder(value) }
+    : {
+        untracked: {
+          tickers,
+          transactionTime: optionalFiniteNumber(value.transactionTime),
+          direction: directionOfAmount(value.amount),
+        },
+      };
 };
 
 const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
@@ -486,10 +628,10 @@ const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
   const items = valuesOf(readings);
 
   return {
-    rows: items.flatMap((item) => item.btcOrder ?? []),
+    rows: items.flatMap((item) => ('order' in item ? [item.order] : [])),
     unreadable: unreadableOf(readings),
+    untracked: items.flatMap((item) => ('untracked' in item ? [item.untracked] : [])),
     gathered: readings.length,
-    btcFundedOtherCoinOrders: items.flatMap((item) => item.btcFunded ?? []),
     ...usedWeightsFromHeaders(headers),
   };
 };
@@ -565,8 +707,11 @@ export const UNIVERSAL_TRANSFER_TYPES = [
 
 export type UniversalTransferType = (typeof UNIVERSAL_TRANSFER_TYPES)[number];
 
+/** The status Binance gives a transfer that went through; any other is owed, a failed one too. */
+export const TRANSFER_SETTLED_STATUS = 'CONFIRMED';
+
 const TRANSFER_FIELDS = {
-  asset: text,
+  asset: coinTicker,
   amount: text,
   type: text,
   status: text,
@@ -580,12 +725,16 @@ const TRANSFER_FIELDS = {
  */
 export type BinanceUniversalTransfer = Parsed<typeof TRANSFER_FIELDS>;
 
-const transferPage = totalPage(recordReader(TRANSFER_FIELDS), timeFieldOf('timestamp', epochTime));
+const transferPage = totalPage(
+  trackedRowOf(recordReader(TRANSFER_FIELDS), TRANSFER_SETTLED_STATUS),
+  timeFieldOf('timestamp', epochTime),
+);
 
 /**
  * `GET /sapi/v1/asset/transfer` (universal transfer history) for ONE page of ONE
  * transfer type in ONE window. The endpoint takes no `asset`, so rows of every
- * coin come back and the walk filters to BTC. Signed, read-only.
+ * coin come back: a tracked coin's rows are read, any other's are counted and reported
+ * (`untracked`). Signed, read-only.
  */
 export const fetchUniversalTransfers = async (
   apiKey: string,
@@ -606,8 +755,16 @@ export const fetchUniversalTransfers = async (
 
 const EARN_HISTORY_ROOT = '/sapi/v1/simple-earn';
 
+/** The status Binance gives a subscription that went through. */
+export const EARN_SUBSCRIPTION_SETTLED_STATUS = 'SUCCESS';
+
+/** The status Binance gives a redemption that was paid out (a redemption is never `SUCCESS`). */
+export const EARN_REDEMPTION_SETTLED_STATUS = 'PAID';
+
 /**
- * The six Simple Earn history reads. Only the fields a walk uses are read; an id
+ * The six Simple Earn history reads. `settledStatus` is the status a record of the kind has once
+ * it went through; a reward has none and is always settled. Only the fields a walk uses are read;
+ * an id
  * a walk keys a row by is required, and a field it only inspects is optional. A field the
  * walk decides a wallet or a record's meaning by (the two split amounts, a `type`,
  * `isComplete`) is absent only when it is null or left out: one of another JSON type makes
@@ -619,9 +776,10 @@ const EARN_READS = {
   flexibleSubscription: {
     path: `${EARN_HISTORY_ROOT}/flexible/history/subscriptionRecord`,
     extraParams: {},
+    settledStatus: EARN_SUBSCRIPTION_SETTLED_STATUS,
     readRow: recordReader({
       amount: text,
-      asset: text,
+      asset: coinTicker,
       time: finiteNumber,
       purchaseId: identifier,
       productId: optionalText,
@@ -635,9 +793,10 @@ const EARN_READS = {
   flexibleRedemption: {
     path: `${EARN_HISTORY_ROOT}/flexible/history/redemptionRecord`,
     extraParams: {},
+    settledStatus: EARN_REDEMPTION_SETTLED_STATUS,
     readRow: recordReader({
       amount: text,
-      asset: text,
+      asset: coinTicker,
       time: finiteNumber,
       projectId: optionalText,
       redeemId: identifier,
@@ -648,8 +807,9 @@ const EARN_READS = {
   flexibleRewards: {
     path: `${EARN_HISTORY_ROOT}/flexible/history/rewardsRecord`,
     extraParams: { type: 'ALL' },
+    settledStatus: undefined,
     readRow: recordReader({
-      asset: text,
+      asset: coinTicker,
       rewards: text,
       projectId: text,
       type: text,
@@ -659,11 +819,12 @@ const EARN_READS = {
   lockedSubscription: {
     path: `${EARN_HISTORY_ROOT}/locked/history/subscriptionRecord`,
     extraParams: {},
+    settledStatus: EARN_SUBSCRIPTION_SETTLED_STATUS,
     readRow: recordReader({
       positionId: optionalIdentifier,
       purchaseId: identifier,
       time: finiteNumber,
-      asset: text,
+      asset: coinTicker,
       amount: text,
       type: strictOptionalText,
       sourceAccount: optionalText,
@@ -675,11 +836,12 @@ const EARN_READS = {
   lockedRedemption: {
     path: `${EARN_HISTORY_ROOT}/locked/history/redemptionRecord`,
     extraParams: {},
+    settledStatus: EARN_REDEMPTION_SETTLED_STATUS,
     readRow: recordReader({
       positionId: optionalIdentifier,
       redeemId: identifier,
       time: finiteNumber,
-      asset: text,
+      asset: coinTicker,
       amount: text,
       originalAmount: optionalText,
       type: strictOptionalText,
@@ -690,10 +852,11 @@ const EARN_READS = {
   lockedRewards: {
     path: `${EARN_HISTORY_ROOT}/locked/history/rewardsRecord`,
     extraParams: {},
+    settledStatus: undefined,
     readRow: recordReader({
       positionId: identifier,
       time: finiteNumber,
-      asset: text,
+      asset: coinTicker,
       amount: text,
       type: text,
     }),
@@ -708,8 +871,9 @@ export type EarnRecordByKind = {
 
 /**
  * `GET /sapi/v1/simple-earn/{flexible,locked}/history/...` for ONE page of ONE
- * record kind in ONE window (at most 30 days), filtered to BTC. Signed,
- * read-only.
+ * record kind in ONE window (at most 30 days). The reads take no `asset`, so rows of every coin
+ * come back: a tracked coin's rows are read, any other's are counted and reported (`untracked`).
+ * Signed, read-only.
  */
 export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
   apiKey: string,
@@ -718,15 +882,25 @@ export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
   query: TotalQuery,
   options: FetchAccountOptions = {},
 ): Promise<TotalPage<EarnRecordByKind[Kind]>> => {
-  const { path, extraParams, readRow } = EARN_READS[kind];
+  const { path, extraParams, readRow, settledStatus } = EARN_READS[kind];
   const page = await signedRequestPage(
     apiKey,
     secret,
     'GET',
     path,
-    { asset: BINANCE_ASSET, ...extraParams, ...totalParams(query) },
+    { ...extraParams, ...totalParams(query) },
     options,
   );
 
-  return totalPage(readRow as Reader<EarnRecordByKind[Kind]>, timeFieldOf('time', epochTime))(page);
+  return totalPage(
+    trackedRowOf(readRow as Reader<EarnRecordByKind[Kind]>, settledStatus),
+    timeFieldOf('time', epochTime),
+  )(page);
 };
+
+/**
+ * Whether a record of `kind` with this `status` text went through, so the coin of one the walk
+ * does not read is listed. A reward has no status and is always settled.
+ */
+export const isEarnRecordSettled = (kind: EarnRecordKind, status: string | undefined): boolean =>
+  isSettledStatus(EARN_READS[kind].settledStatus, status);

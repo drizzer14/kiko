@@ -8,6 +8,11 @@ import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
+import {
+  balanceSyncedAtOf,
+  oversizedCoinsOf,
+  untrackedCoinsOf,
+} from '@kiko/crypto-sync/exchange/history-status';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
@@ -15,6 +20,7 @@ import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { isTrackedBinanceAsset } from '@kiko/crypto-sync/binance';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
@@ -25,7 +31,7 @@ import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 
 import { styles } from '../account-detail.styles';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
-import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
+import { formatLastSyncAt, latestBalanceSyncAt } from '../format-last-sync';
 
 import { isBinanceHistoryBehind, transferOwesRange, walkCursorsOf } from './binance-history-status';
 
@@ -39,6 +45,29 @@ const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string 
     .with('btc_wallet', () => t('accountDetail.disconnectProviderMessage.wallet'))
     .with('binance', () => t('accountDetail.disconnectProviderMessage.binance'))
     .exhaustive();
+
+type CoinLinesProps = { untrackedCoins: string[]; oversizedCoins: string[] };
+
+// Split out of the section so its own branches stay under the complexity budget.
+const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins }) => {
+  const { t } = useTranslation();
+
+  return (
+    <>
+      {untrackedCoins.length > 0 && (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.untrackedCoins', { tickers: untrackedCoins.join(', ') })}
+        </Text>
+      )}
+
+      {oversizedCoins.map((coin) => (
+        <Text key={coin} variant="caption" tone="textSecondary">
+          {t('accountDetail.oversizedAmount', { coin })}
+        </Text>
+      ))}
+    </>
+  );
+};
 
 // The crypto account's Synchronization section — the counterpart of the bank
 // account's Monobank token field + Connect/Sync/Disconnect row. Before a
@@ -123,6 +152,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     // a standing fact of the stored state, not a lag a sync closes, so a sync in flight keeps it.
     const historyPaused =
       !syncStateLoading && connectedProvider === 'binance' && walkState.kind === 'malformed';
+    // The coin lines state what the last read found, so a sync in flight keeps them; a state that
+    // is malformed holds no list, and a wallet has none.
+    const coinLinesShown = !syncStateLoading && connectedProvider === 'binance';
+    // An account with no tracked holding has no holding stamp, so the state's stamp is its sync
+    // time; a wallet's state holds none, so it reads its holdings alone.
+    const lastBalanceSyncAt = latestBalanceSyncAt(holdings, balanceSyncedAtOf(walkState));
     const historyBehind =
       !isSyncing &&
       !syncStateLoading &&
@@ -130,7 +165,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       connectedProvider === 'binance' &&
       isBinanceHistoryBehind({
         cursors: walkCursorsOf(walkState),
-        lastBalanceSyncAt: latestSyncedAt(holdings),
+        lastBalanceSyncAt,
         owesRange: transferOwesRange(walkState),
       });
 
@@ -148,10 +183,17 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
             <Text variant="body" tone="textSecondary">
               {t('accountDetail.lastSync', {
-                time: formatLastSyncAt(latestSyncedAt(holdings), t, clock),
+                time: formatLastSyncAt(lastBalanceSyncAt, t, clock),
               })}
             </Text>
           </Box>
+
+          {coinLinesShown && (
+            <CoinLines
+              untrackedCoins={untrackedCoinsOf(walkState, isTrackedBinanceAsset)}
+              oversizedCoins={oversizedCoinsOf(walkState)}
+            />
+          )}
 
           {historyPaused && (
             <Text variant="caption" tone="textSecondary">

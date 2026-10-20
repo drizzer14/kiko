@@ -16,9 +16,14 @@ jest.mock('@kiko/db/client', () => {
 
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import {
+  addAccountCurrencyColumn,
+  applyAllMigrations,
+  applyMigrationsThrough,
+} from '@kiko/test-support/real-sqlite';
 import { DatabaseSync } from 'node:sqlite';
 import maybe, { foldMap } from 'fnts/maybe';
-import { applyAllMigrations, applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
+import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import { EXPORT_VERSION } from '../crypto/envelope';
 
@@ -54,6 +59,7 @@ const databaseBeforeCopy = (): DatabaseSync => {
 
   applyMigrationsThrough(target, '0060_add_history_backfill_state');
   target.exec(ADD_COLUMN_STATEMENT);
+  addAccountCurrencyColumn(target);
   // A restore inserts the settings row when a file has none, and marks the import times as
   // rezoned, so the database has it the same.
   target.exec('INSERT INTO settings (id, import_times_rezoned) VALUES (1, 1);');
@@ -443,6 +449,55 @@ describe('restoring a .kiko file written before the walk state column', () => {
 
     expect(stateRowsOf(result)).toEqual(stateRowsOf(source));
     expect(stateRowsOf(result)[0]?.exchange_state).toBe(stored);
+  });
+
+  // The oversized list names wallets from this build on; a backup of either shape restores byte
+  // for byte and reads: `balance` is what the account detail lists, and nothing is unreadable.
+  it.each([
+    ['an old-shape oversized list', { balance: ['ETH'], history: ['BTC'] }],
+    [
+      'an oversized list that names its wallets',
+      { balance: ['ETH', 'SOL'], history: ['BTC'], balanceByWallet: { spot: ['ETH'], earn: [] } },
+    ],
+  ])('restores %s unchanged, and it reads', async (_title, oversizedCoins) => {
+    const stored = JSON.stringify({ version: 1, walks: {}, oversizedCoins });
+    const source = freshDatabase();
+
+    seedSpot(source, 'account', { binanceHistoryCursor: 1000 });
+    source
+      .prepare("INSERT INTO sync_state (account_id, exchange_state) VALUES ('account', ?)")
+      .run(stored);
+
+    const restoredText = stateRowsOf(await restored(await exported(source)))[0]?.exchange_state;
+    const parsed = parseExchangeState(restoredText as string);
+
+    expect(restoredText).toBe(stored);
+    expect(parsed).toMatchObject({
+      kind: 'parsed',
+      oversizedCoins: { balance: oversizedCoins.balance, history: ['BTC'] },
+      unreadable: [],
+    });
+  });
+
+  // The "Last sync" line of an account with no holding reads this stamp, so a restore that lost it
+  // would show "Never" until the next sync.
+  it('restores the balance sync stamp unchanged, and it reads', async () => {
+    const stored = JSON.stringify({ version: 1, walks: {}, balanceSyncedAt: 1_700_000_000_000 });
+    const source = freshDatabase();
+
+    seedSpot(source, 'account', { binanceHistoryCursor: 1000 });
+    source
+      .prepare("INSERT INTO sync_state (account_id, exchange_state) VALUES ('account', ?)")
+      .run(stored);
+
+    const restoredText = stateRowsOf(await restored(await exported(source)))[0]?.exchange_state;
+
+    expect(restoredText).toBe(stored);
+    expect(parseExchangeState(restoredText as string)).toMatchObject({
+      kind: 'parsed',
+      balanceSyncedAt: 1_700_000_000_000,
+      unreadable: [],
+    });
   });
 });
 

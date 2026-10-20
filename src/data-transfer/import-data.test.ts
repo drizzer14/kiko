@@ -515,7 +515,7 @@ describe('importData', () => {
     const { fileText, keyBase64 } = encryptedFixture();
     const envelope = JSON.parse(fileText) as { version: number };
 
-    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 5 }));
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 6 }));
     await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
       'data-transfer/import',
     );

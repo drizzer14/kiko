@@ -10,7 +10,12 @@ import { accountsRepo } from '@kiko/accounts';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
-import { type BalanceProvider, type BalanceProviderId, providerDisplayName } from '../provider';
+import {
+  type BalanceProvider,
+  type BalanceProviderId,
+  type ProviderRead,
+  providerDisplayName,
+} from '../provider';
 
 /**
  * The injectable data-access seams of a balance sync. Mirrors `SyncDeps` in
@@ -34,7 +39,8 @@ export interface BalanceSyncDeps {
   upsertHoldings: (holdings: ExchangeHolding[]) => Promise<unknown>;
 }
 
-export type BalanceSyncResult = { syncedHoldings: number };
+/** `exchangeState` is the read's, for the caller to write now that the account is marked. */
+export type BalanceSyncResult = Pick<ProviderRead, 'exchangeState'> & { syncedHoldings: number };
 
 const defaultDeps: BalanceSyncDeps = {
   now: () => Date.now(),
@@ -166,7 +172,10 @@ const runBalanceSyncInner = async <Deps>(
   try {
     const accountId = await resolveTargetAccount(deps, provider.id);
     const holdings = await deps.listHoldingsByAccount(accountId);
-    const balances = await provider.fetchBalances(providerDeps, { accountId, holdings });
+    const { balances, exchangeState } = await provider.fetchBalances(providerDeps, {
+      accountId,
+      holdings,
+    });
 
     await deps.updateAccount(accountId, { institution: provider.id });
     const syncedAt = deps.now();
@@ -188,16 +197,16 @@ const runBalanceSyncInner = async <Deps>(
     // call entirely rather than opening an empty write transaction.
     if (balances.length > 0) {
       await deps.upsertHoldings(
-        balances.map(({ name, balanceMinorUnits, metadataKey, renameFromDefault }) => ({
+        balances.map(({ name, currency, balanceMinorUnits, metadataKey, renameFromDefaults }) => ({
           accountId,
           name,
           type: 'crypto_asset',
-          currency: 'BTC',
+          currency,
           balanceMinorUnits,
           metadata: { syncedAt },
           metadataField: provider.metadataField,
           metadataKey,
-          renameFromDefault,
+          renameFromDefaults,
         })),
       );
     }
@@ -209,7 +218,7 @@ const runBalanceSyncInner = async <Deps>(
       commitHolding();
     });
 
-    return { syncedHoldings: balances.length };
+    return { syncedHoldings: balances.length, exchangeState };
   } finally {
     endProgressSession();
   }

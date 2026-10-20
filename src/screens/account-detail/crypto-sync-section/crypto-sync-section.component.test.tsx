@@ -43,6 +43,11 @@ jest.mock('@kiko/sync/use-crypto-sync', () => ({
 jest.mock('@kiko/crypto-sync/disconnect', () => ({
   disconnectCryptoAccount: (...args: unknown[]) => mockDisconnect(...args),
 }));
+// The section reads the tracked-coin rule through the Binance barrel, which loads the credentials
+// module and its react-native-keychain binding, absent under Jest.
+jest.mock('react-native-keychain', () => ({
+  ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
+}));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     connectedQuery: (institution: string) => ({
@@ -129,6 +134,7 @@ const account = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   color: null,
   sortOrder: 0,
   archivedAt: null,
+  currency: 'UAH',
   createdAt: 0,
   ...overrides,
 });
@@ -696,5 +702,184 @@ describe('CryptoSyncSection — paused caption localization', () => {
         'Імпорт історії Binance призупинено: Кіко не зміг прочитати збережений стан імпорту. Щоб це виправити, відключіть і знову підключіть Binance. Ваші активи й транзакції збережуться.',
       ),
     ).toBeTruthy();
+  });
+});
+
+type CoinLists = { balance?: unknown; history?: unknown };
+
+const UNTRACKED_LINE_PREFIX = 'Not tracked: ';
+
+// A piece of the oversized line that no other line holds, so a test that expects the line to be
+// absent fails when it renders; the test that shows the lines pins that this piece matches them.
+const OVERSIZED_LINE_FRAGMENT = 'could not import an amount exactly';
+
+const oversizedLine = (coin: string): string =>
+  `${coin}: Kiko could not import an amount exactly, so it was skipped.`;
+
+// The account's stored coin lists, under a state that parses.
+const renderWithLists = (
+  lists: { untrackedCoins?: CoinLists; oversizedCoins?: CoinLists },
+  institution: 'binance' | 'btc_wallet' = 'binance',
+  isLoading = false,
+) => {
+  syncStateResult = {
+    data: [{ exchangeState: JSON.stringify({ version: 1, walks: {}, ...lists }) }],
+    isLoading,
+  };
+
+  return render(
+    <CryptoSyncSection
+      account={account({ institution })}
+      holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
+    />,
+  );
+};
+
+describe('CryptoSyncSection — not-tracked and oversized lines', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    syncStateResult = { data: [], isLoading: false };
+    setConnected({});
+  });
+
+  it('shows the sorted union of the balance and history lists without duplicates', async () => {
+    const { getByText } = await renderWithLists({
+      untrackedCoins: { balance: ['PEPE', 'ABC'], history: ['PEPE', 'XYZ'] },
+    });
+
+    expect(
+      getByText(
+        'Not tracked: ABC, PEPE, XYZ. Kiko does not import a currency its Binance sync does not support.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('lists INR, a fiat code of the app that Binance does not quote, as not tracked', async () => {
+    const { getByText } = await renderWithLists({
+      untrackedCoins: { balance: ['INR'], history: [] },
+    });
+
+    expect(getByText(`${UNTRACKED_LINE_PREFIX}INR.`, { exact: false })).toBeTruthy();
+  });
+
+  it('leaves out a ticker that is a curated code now', async () => {
+    const { getByText } = await renderWithLists({
+      untrackedCoins: { balance: ['PEPE', 'USDC'], history: ['XYZ', 'DAI'] },
+    });
+
+    expect(getByText(`${UNTRACKED_LINE_PREFIX}PEPE, XYZ.`, { exact: false })).toBeTruthy();
+  });
+
+  it.each([
+    ['every stored ticker is tracked now', { untrackedCoins: { balance: ['USDC'], history: [] } }],
+    ['none is stored', {}],
+  ])('shows no not-tracked line when %s', async (_, lists) => {
+    const { queryByText } = await renderWithLists(lists);
+
+    expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
+  });
+
+  it('shows the oversized line of each coin in the sorted union of both lists', async () => {
+    const { getByText, getAllByText } = await renderWithLists({
+      oversizedCoins: { balance: ['USDT', 'BTC'], history: ['BTC', 'ETH'] },
+    });
+
+    expect(getByText(oversizedLine('BTC'))).toBeTruthy();
+    expect(getByText(oversizedLine('ETH'))).toBeTruthy();
+    expect(getByText(oversizedLine('USDT'))).toBeTruthy();
+    expect(getAllByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toHaveLength(3);
+  });
+
+  it('shows no oversized line when none is stored', async () => {
+    const { queryByText } = await renderWithLists({
+      untrackedCoins: { balance: ['PEPE'], history: [] },
+    });
+
+    expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
+  });
+
+  it('keeps both lines while a sync is in flight, since they state what the last sync found', async () => {
+    mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
+
+    const { getByText } = await renderWithLists({
+      untrackedCoins: { balance: ['PEPE'], history: [] },
+      oversizedCoins: { balance: ['BTC'], history: [] },
+    });
+
+    expect(getByText(`${UNTRACKED_LINE_PREFIX}PEPE.`, { exact: false })).toBeTruthy();
+    expect(getByText(oversizedLine('BTC'))).toBeTruthy();
+  });
+
+  it('shows neither line while the state row is loading', async () => {
+    const { queryByText } = await renderWithLists(
+      {
+        untrackedCoins: { balance: ['PEPE'], history: [] },
+        oversizedCoins: { balance: ['BTC'], history: [] },
+      },
+      'binance',
+      true,
+    );
+
+    expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
+    expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
+  });
+
+  it('shows neither line for a state this build cannot read', async () => {
+    syncStateResult = { data: [{ exchangeState: '{not json' }], isLoading: false };
+
+    const { queryByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
+      />,
+    );
+
+    expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
+    expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
+  });
+
+  it('shows neither line for a wallet account', async () => {
+    const { queryByText } = await renderWithLists(
+      {
+        untrackedCoins: { balance: ['PEPE'], history: [] },
+        oversizedCoins: { balance: ['BTC'], history: [] },
+      },
+      'btc_wallet',
+    );
+
+    expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
+    expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
+  });
+});
+
+describe('CryptoSyncSection — not-tracked and oversized lines in Ukrainian', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    setConnected({});
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders both lines from the Ukrainian catalog', async () => {
+    const { getByText } = await renderWithLists({
+      untrackedCoins: { balance: ['PEPE'], history: ['ABC'] },
+      oversizedCoins: { balance: ['BTC'], history: [] },
+    });
+
+    expect(
+      getByText(
+        'Не відстежуються: ABC, PEPE. Кіко не імпортує валюту, яку не підтримує синхронізація Binance.',
+      ),
+    ).toBeTruthy();
+    expect(getByText('BTC: Кіко не зміг точно імпортувати суму, тому її пропущено.')).toBeTruthy();
   });
 });

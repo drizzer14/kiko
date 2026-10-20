@@ -62,6 +62,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 import { i18n } from '@kiko/i18n/init';
+import { StyleSheet } from 'react-native';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
@@ -188,6 +189,7 @@ type Transaction = {
   category?: string | null;
   mcc?: number | null;
   counterIban?: string | null;
+  exchangePairId?: string | null;
   exchangeCounterpartHoldingId?: string | null;
   untrackedCounterpart?: string | null;
   loanHoldingId?: string | null;
@@ -223,6 +225,7 @@ const buildLiveDataByTable = (data: LiveData): Record<string, unknown[]> => ({
   // default every nullable marker the screen reads the same way — an
   // `undefined` here would be a fixture artefact the device never produces.
   transactions: (data.transactions ?? []).map((row) => ({
+    exchangePairId: null,
     exchangeCounterpartHoldingId: null,
     untrackedCounterpart: null,
     loanHoldingId: null,
@@ -715,6 +718,29 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
   });
 
+  it('lets the net-worth label reach up only as far as the gap under the card title', async () => {
+    const { getByTestId, getByText } = await renderScreen();
+    const titleGap = StyleSheet.flatten(
+      getByText(i18n.t('statistics.netWorthOverTime')).parent?.props.style,
+    ).gap;
+    const accessibilityAmountHeight = 100;
+
+    await fireEvent(getByTestId('net-worth-line-plot'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 240, height: 200 } },
+    });
+    await fireEvent(getByTestId('net-worth-line-scrub-label'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 80, height: accessibilityAmountHeight } },
+    });
+    await fireEvent(getByTestId('net-worth-line-scrub-amount'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 80, height: accessibilityAmountHeight } },
+    });
+
+    expect(titleGap).toBeGreaterThan(0);
+    expect(StyleSheet.flatten(getByTestId('net-worth-line-scrub-label').props.style).top).toBe(
+      -titleGap,
+    );
+  });
+
   describe('Debts total', () => {
     it('renders no Debts total under the account pie when there is no loan holding', async () => {
       const { queryByTestId } = await renderScreen();
@@ -823,34 +849,53 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).toHaveBeenCalled();
   });
 
-  it("hands the backfill each currency's first stored day from the history that loaded", async () => {
+  const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
+
+  // The memos behind the backfill's inputs recompute from the rows of the first read that
+  // carries history, so the run starts only once that read has landed.
+  const backfillArgumentOnceHistoryLoads = async (
+    history: HistoryRow[],
+  ): Promise<Record<string, unknown>> => {
     const baseData: LiveData = {
       accounts: [CASH, BANK],
       holdings: [UAH_HOLDING, USD_HOLDING],
       rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
     };
-    const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
     setLiveData({ ...baseData, history: [], isLoading: { currency_rate_history: true } });
 
     const { rerender } = await renderScreen();
 
-    setLiveData({
-      ...baseData,
-      history: [
-        { base: 'USD', quote: 'UAH', day: day(2), rate: '40' },
-        { base: 'USD', quote: 'UAH', day: day(5), rate: '40' },
-        { base: 'EUR', quote: 'UAH', day: day(3), rate: '45' },
-      ],
-    });
+    setLiveData({ ...baseData, history });
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
 
     expect(mockRunBackfill).toHaveBeenCalledTimes(1);
-    expect(mockRunBackfill.mock.calls[0]?.[0]).toMatchObject({
-      firstBackfilledDayByCurrency: { USD: day(5), EUR: day(3) },
-    });
+
+    return mockRunBackfill.mock.calls[0]?.[0] as Record<string, unknown>;
+  };
+
+  it("hands the backfill each currency's first stored day from the history that loaded", async () => {
+    const argument = await backfillArgumentOnceHistoryLoads([
+      { base: 'USD', quote: 'UAH', day: day(2), rate: '40' },
+      { base: 'USD', quote: 'UAH', day: day(5), rate: '40' },
+      { base: 'EUR', quote: 'UAH', day: day(3), rate: '45' },
+    ]);
+
+    expect(argument).toMatchObject({ firstBackfilledDayByCurrency: { USD: day(5), EUR: day(3) } });
+  });
+
+  it('hands the backfill the coins whose every stored row came from Binance', async () => {
+    const argument = await backfillArgumentOnceHistoryLoads([
+      { base: 'ETH', quote: 'UAH', day: day(2), rate: '120000', source: 'binance' },
+      { base: 'ETH', quote: 'UAH', day: day(1), rate: '121000', source: 'binance' },
+      { base: 'SOL', quote: 'UAH', day: day(2), rate: '6000', source: 'binance' },
+      { base: 'SOL', quote: 'UAH', day: day(1), rate: '6100', source: 'coingecko' },
+      { base: 'USD', quote: 'UAH', day: day(1), rate: '40', source: 'nbu' },
+    ]);
+
+    expect(argument.binanceOnlyCurrencies).toEqual(new Set(['ETH']));
   });
 
   // kiko-architecture: a cached display mount's rows can be one read old, and
@@ -2124,6 +2169,25 @@ describe('StatisticsScreen', () => {
     // Genuine spending in other categories is untouched.
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('keeps an unmarked send in the category pie when its same-amount partner is an exchange leg', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING, UAH_HOLDING_2],
+      rates: [USD_UAH_RATE],
+      transactions: [
+        ...EXPENSES,
+        { ...SELF_TRANSFER[0], id: 'pay-send' },
+        { ...SELF_TRANSFER[1], id: 'exchange-leg', exchangeCounterpartHoldingId: 'h2' },
+      ],
+      history: HISTORY,
+      categories: CATEGORIES,
+    });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('category-pie-arc-transfers')).toBeTruthy();
   });
 
   // A sync closes a jar or card absent from the bank's list; its past rows are

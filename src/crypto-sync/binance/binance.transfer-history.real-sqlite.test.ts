@@ -88,6 +88,7 @@ const fetchOf =
     return {
       rows,
       unreadable: [],
+      untracked: [],
       gathered: rows.length,
       total: rows.length,
       usedUidWeight1m: undefined,

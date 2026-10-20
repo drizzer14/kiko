@@ -1,6 +1,7 @@
 import {
   type BinanceRunBudget,
   type BudgetLane,
+  API_IP_BUDGET_1M,
   BINANCE_REQUEST_INTERVAL_MS,
   COSTS,
   createBinanceHistoryRun,
@@ -27,6 +28,7 @@ describe('LANE_CALL_CAPS', () => {
       pay: 20,
       transfer: 80,
       earn: 30,
+      market: 150,
     });
   });
 });
@@ -131,6 +133,7 @@ describe('createBinanceRunBudget — narrowing calls', () => {
       pay: 0,
       transfer: 397,
       earn: 0,
+      market: 0,
     });
   });
 
@@ -239,7 +242,63 @@ describe('createBinanceRunBudget — weight readings', () => {
       account: { ip: 20 },
       transfer: { ip: 1 },
       earn: { ip: 150 },
+      klines: { api: 2 },
     });
+  });
+
+  it('holds the /api/* IP budget at half of the 6000 a minute that endpoints share', () => {
+    expect(API_IP_BUDGET_1M).toBe(3_000);
+  });
+
+  it('affords an /api/* call that lands exactly on its budget, not one weight over', () => {
+    const atBudget = createBinanceRunBudget();
+    atBudget.record('market', { ...NO_READING, usedApiWeight1m: 2_998 });
+    const overBudget = createBinanceRunBudget();
+    overBudget.record('market', { ...NO_READING, usedApiWeight1m: 2_999 });
+
+    expect(atBudget.canAfford('market', COSTS.klines)).toBe(true);
+    expect(overBudget.canAfford('market', COSTS.klines)).toBe(false);
+  });
+
+  it('counts the calls to keep in the weight of an /api/* call too', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('market', { ...NO_READING, usedApiWeight1m: 2_996 });
+
+    expect(budget.canAfford('market', COSTS.klines, 1)).toBe(true);
+    expect(budget.canAfford('market', COSTS.klines, 2)).toBe(false);
+  });
+
+  it('judges an /api/* call by its own reading, never by the SAPI IP or UID reading', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('market', { usedUidWeight1m: 179_999, usedIpWeight1m: 6_000 });
+
+    expect(budget.canAfford('market', COSTS.klines)).toBe(true);
+  });
+
+  it('keeps the SAPI IP calls out of the /api/* reading', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('market', { ...NO_READING, usedApiWeight1m: 3_000 });
+
+    expect(budget.canAfford('capitalDeposit', COSTS.deposit)).toBe(true);
+    expect(budget.canAfford('pay', COSTS.pay)).toBe(true);
+  });
+
+  it('keeps the last /api/* reading when a later response carries none', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('market', { ...NO_READING, usedApiWeight1m: 2_999 });
+    budget.record('market', NO_READING);
+
+    expect(budget.canAfford('market', COSTS.klines)).toBe(false);
+  });
+
+  it('caps the market lane at 150 calls', () => {
+    const budget = createBinanceRunBudget();
+
+    spendCalls(budget, 'market', 149);
+    expect(budget.canAfford('market', COSTS.klines)).toBe(true);
+
+    spendCalls(budget, 'market', 1);
+    expect(budget.canAfford('market', COSTS.klines)).toBe(false);
   });
 
   it('affords a UID call that lands exactly on the ceiling, not one weight over', () => {

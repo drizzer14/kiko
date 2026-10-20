@@ -15,6 +15,7 @@ import {
   type BackfillDeps,
   type BackfillStatus,
   composeHistoryRows,
+  deriveBinanceOnlyCurrencies,
   deriveLastBackfilledDay,
   deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDayByCurrency,
@@ -22,6 +23,16 @@ import {
   planBackfillRun,
   runBackfill,
 } from './history-backfill';
+
+// Binance's public market data prices nothing here, so a coin left to the fallback never reaches
+// the real network.
+jest.mock('@kiko/rates/binance-market', () => ({
+  ...jest.requireActual('@kiko/rates/binance-market'),
+  createBinanceMarketClient: () => ({
+    currentPrice: async () => undefined,
+    dailyCloses: async () => undefined,
+  }),
+}));
 
 const day = (index: number) => Date.UTC(2026, 8, 1) + index * DAY_MS; // 2026-09-01 + n
 
@@ -82,6 +93,34 @@ describe('deriveFirstBackfilledDayByCurrency', () => {
 
   it('returns nothing when there is no history yet', () => {
     expect(deriveFirstBackfilledDayByCurrency([])).toEqual({});
+  });
+});
+
+describe('deriveBinanceOnlyCurrencies', () => {
+  it('returns the currencies whose every stored row came from Binance', () => {
+    const rows = [
+      { base: 'ETH' as const, source: 'binance' as const },
+      { base: 'ETH' as const, source: 'binance' as const },
+      { base: 'SOL' as const, source: 'binance' as const },
+      { base: 'SOL' as const, source: 'coingecko' as const },
+      { base: 'BTC' as const, source: 'coingecko' as const },
+      { base: 'USD' as const, source: 'nbu' as const },
+    ];
+
+    expect(deriveBinanceOnlyCurrencies(rows)).toEqual(new Set(['ETH']));
+  });
+
+  it('keeps a currency out once any of its rows is not from Binance, whatever the row order', () => {
+    const rows = [
+      { base: 'SOL' as const, source: 'coingecko' as const },
+      { base: 'SOL' as const, source: 'binance' as const },
+    ];
+
+    expect(deriveBinanceOnlyCurrencies(rows)).toEqual(new Set());
+  });
+
+  it('returns nothing when there is no history yet', () => {
+    expect(deriveBinanceOnlyCurrencies([])).toEqual(new Set());
   });
 });
 

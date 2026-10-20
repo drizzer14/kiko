@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, ConvertedCaption, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -194,6 +194,10 @@ not in a refactor, a cleanup, or a HIG pass — without the user's own
 explicit approval; a change request from an agent is not approval. Add
 an entry (date + value) the moment the user approves a new visual.
 
+- **NetWorthLine current-day label** (2026-10-19). No background; the
+  amount/date gap sits on the scrub line's top end; the label stays fixed
+  while dragging; at accessibility sizes it stops under the card title
+  (see `kiko-charts` "NetWorthLine scrub line").
 - **Raw-preview row height: 44pt** (2026-09-26). Every column-mapping
   raw-preview row is a real 44pt layout box (`ROW_MIN_HEIGHT`,
   `raw-preview.styles.ts`) — the one documented `minHeight` exception
@@ -235,8 +239,10 @@ an entry (date + value) the moment the user approves a new visual.
   `numberOfLines`/ellipsis: the leading cluster (icon + title) is
   `flex: 1` with `marginRight: theme.spacing(3)`, the title sits in its
   own `flex: 1` box (`rowDescription`; a `Text` does not shrink in a row
-  on its own), and the amount sits in a `flexShrink: 0` box (`rowAmount`,
-  or the holding card's `valueColumn`), right-aligned at its full width.
+  on its own), and the amount sits in a `flexShrink: 0` box (`rowAmount`;
+  the holding card's `valueColumn`; the account card's `AccountTotal`
+  `column`, `src/screens/accounts/account-total/`), right-aligned at
+  its full width.
   Short titles render exactly as before: each family keeps its own
   vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
   body-size glyph), the holding-detail ledger rows stay `center`, and
@@ -754,6 +760,20 @@ new component can land between reviews of this skill:
   applies the positive/negative/neutral money color token from its
   sign. This is the only primitive that knows about `Money` — plain
   `Text` never receives a `Money` object directly.
+- **ConvertedCaption**
+  (`src/design-system/components/converted-caption/`) — the smaller
+  base-currency figure under a total (caption, `textSecondary`,
+  `formatMoney`). `money: null` renders nothing, so a caller passes
+  `null` for "same currency" or "no rate" instead of guarding the
+  element. Consumers: `AccountTotal`
+  (`src/screens/accounts/account-total/`, the account card
+  (`account-card-converted`) and the Accounts section headings
+  (`renderHoldingSection`; `property-total-converted`,
+  `debts-total-converted`), testID passed as `convertedTestID`; find
+  them with `grep -rn convertedTestID src`), `HoldingCard`
+  (`holding-card-converted`) and the account-detail headline
+  (`account-detail-converted`, through `EntityAmountHeader`'s
+  `secondary`). Find them with `grep -rn ConvertedCaption src`.
 - **Button** — the one action button: primary/secondary/secondaryTonal/
   destructive/destructiveTonal/ghost variants (read
   `button.props.d.ts`'s `ButtonVariant` for the exact current set
@@ -1192,7 +1212,12 @@ new component can land between reviews of this skill:
   mock strips `variant` and `tone`; a layout pin that needs them imports
   `src/test-support/mock-text-variant-tone.tsx` and reads the tree with
   `layoutOf` (`src/test-support/layout-of.ts`); `src/test-support/mock-text-tone.tsx`
-  is the tone-only variant. `AccountKindField` and
+  is the tone-only variant. The `jest.mock` factory returns the helper through a getter (it is
+  read after the import ran), never an inline copy that forwards `variant`: Semgrep
+  `kiko-no-inline-text-variant-mock` denies an inline copy in the factory, but not a
+  module-level local copy returned through the getter (its known limit), so a test that
+  also pins a style imports the helper, which forwards `style` too, and never writes
+  its own copy. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`

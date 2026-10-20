@@ -5,8 +5,13 @@ import {
   type CryptoCurrency,
 } from '@kiko/currency/currency';
 import { ratesRepo } from '@kiko/rates/repo';
-import either, { bifold, isLeft } from 'fnts/either';
+import either, { bifold, bifoldr, isLeft } from 'fnts/either';
 
+import {
+  type BinanceMarketClient,
+  createBinanceMarketClient,
+  fetchFallbackPrices,
+} from '../binance-market';
 import {
   openCurrencies as defaultOpenCurrencies,
   type OpenCurrencies,
@@ -33,7 +38,7 @@ type StoredRate = {
   base: Currency;
   quote: Currency;
   rate: string;
-  source: 'monobank' | 'coingecko' | 'nbu';
+  source: 'monobank' | 'coingecko' | 'nbu' | 'binance';
   fetchedAt: number;
 };
 
@@ -67,6 +72,12 @@ export type RefreshDeps = {
    */
   fetchNbuRates?: () => Promise<RateEntry[]>;
   fetchCryptoPrices?: (currencies: CryptoCurrency[]) => Promise<RateEntry[]>;
+  /**
+   * Binance's public market data, asked only for a held or account coin CoinGecko did not price.
+   * Defaults to a client of this run, so its pacing, budget and refusals belong to this refresh
+   * alone.
+   */
+  binanceMarket?: BinanceMarketClient;
   upsertMany?: (rates: StoredRate[]) => Promise<void>;
   now?: () => number;
   lastRefreshAt?: number | null;
@@ -75,14 +86,14 @@ export type RefreshDeps = {
    * The data-presence gate (kiko-architecture: app-open/refresh work is
    * gated on data presence — no request or query for data the user does not
    * have), shared with `runBackfill` (`history-backfill.ts`) — see
-   * `open-currencies-gate.ts`. Defaults to a real read of `settingsRepo` +
-   * `holdingsRepo`'s one cheap `openCurrenciesQuery`.
+   * `open-currencies-gate.ts`. Defaults to a real read of `settingsRepo` + the one cheap
+   * `openCurrenciesQuery` of `holdingsRepo` and of `accountsRepo`.
    */
   openCurrencies?: () => Promise<OpenCurrencies>;
   /**
    * Distinct currencies with at least one stored row in `currency_rates` —
    * the cheap presence check the throttle below reads before honoring the
-   * cache window, so a currently-held currency (crypto or fiat) with NO rate
+   * cache window, so a currently-held or account currency (crypto or fiat) with NO rate
    * at all is never left stuck behind another connection's throttle window.
    * Defaults to a real read of `ratesRepo.presentCurrenciesQuery()`.
    */
@@ -154,6 +165,18 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
   return price;
 };
 
+const sourceOf = (
+  base: Currency,
+  fiatSource: 'monobank' | 'nbu',
+  binancePriced: ReadonlySet<Currency>,
+): StoredRate['source'] => {
+  if (!isCrypto(base)) {
+    return fiatSource;
+  }
+
+  return binancePriced.has(base) ? 'binance' : 'coingecko';
+};
+
 /**
  * Compose one `X:UAH` row per priced currency (`X !== 'UAH'`) from the
  * UAH-anchored prices — never a cross row between two non-UAH currencies; a
@@ -171,13 +194,15 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
  * `fiatFetchedAt` stamps the fiat rows: a pass that reuses an earlier pass's
  * fiat answer must not label it newer than it is, or it would outrank a rate
  * another refresh stored in between. A crypto row is always stamped
- * `fetchedAt`, its own fetch.
+ * `fetchedAt`, its own fetch. A coin in `binancePriced` is tagged `'binance'`
+ * instead: CoinGecko did not price it, Binance's public market data did.
  */
 const buildUahRows = (
   price: UahPrice,
   fetchedAt: number,
   fiatSource: 'monobank' | 'nbu',
   fiatFetchedAt: number,
+  binancePriced: ReadonlySet<Currency>,
 ): StoredRate[] => {
   const rows: StoredRate[] = [];
 
@@ -191,7 +216,7 @@ const buildUahRows = (
       base,
       quote: 'UAH',
       rate: String(rate),
-      source: isCrypto(base) ? 'coingecko' : fiatSource,
+      source: sourceOf(base, fiatSource, binancePriced),
       fetchedAt: isCrypto(base) ? fetchedAt : fiatFetchedAt,
     });
   }
@@ -231,7 +256,10 @@ const runFiatLeg = (
   loadFiatWithFallback: () => Promise<RateEntry[]>,
 ): Promise<RateEntry[]> => (needsFiat ? loadFiatWithFallback() : Promise.resolve([]));
 
-/** The crypto leg, gated on a non-empty held set — `[]` without ever calling `loadCrypto`. */
+/**
+ * The crypto leg, gated on a non-empty set of held or account coins — `[]` without ever calling
+ * `loadCrypto`.
+ */
 const runCryptoLeg = (
   cryptoCurrencies: CryptoCurrency[],
   loadCrypto: (currencies: CryptoCurrency[]) => Promise<RateEntry[]>,
@@ -250,11 +278,11 @@ const defaultPresentCurrencies = async (): Promise<Currency[]> => {
 
 /**
  * The throttle exists to respect Monobank's own ~5-minute cache window, not
- * to leave a currently-held currency permanently unrated — a Monobank
+ * to leave a currently-held or account currency permanently unrated — a Monobank
  * connect at t0 writes fiat only, and a Binance connect inside that window
  * must not have BTC's rate suppressed until the window elapses. Resolves
- * `true` only when the cache window is active AND every held currency
- * (crypto or fiat) already has a `currency_rates` row — a real gap (a held
+ * `true` only when the cache window is active AND every held or account currency
+ * (crypto or fiat) already has a `currency_rates` row — a real gap (a held or account
  * currency with none at all) always skips the throttle.
  *
  * `UAH` is excluded from the presence check: a star row's `quote` is always
@@ -343,8 +371,8 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   const { needsFiat, cryptoCurrencies, nonBaseCurrencies } = await openCurrencies();
 
   // kiko-architecture: no request or query for data the user does not have —
-  // nothing open that differs from the base currency, and no crypto held,
-  // means neither leg has anything to fetch this run.
+  // nothing open or on an account that differs from the base currency, and no crypto held or
+  // on an account, means neither leg has anything to fetch this run.
   if (!needsFiat && cryptoCurrencies.length === 0) {
     return { state: 'skipped', failedLegs: [] };
   }
@@ -429,13 +457,28 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   ]);
   const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
+  const uahPrice = buildUahPrice(fiat, crypto);
+  // A held or account coin CoinGecko left unpriced, or every coin of a failed CoinGecko leg, is
+  // asked of Binance's public market data. The fallback never rejects, and a coin it cannot price
+  // stays unpriced.
+  const binancePrices =
+    bifoldr(
+      await either(() =>
+        fetchFallbackPrices({
+          coins: cryptoCurrencies.filter((coin) => uahPrice[coin] === undefined),
+          anchors: { usdt: uahPrice.USDT, euro: uahPrice.EUR },
+          client: deps.binanceMarket ?? createBinanceMarketClient({ now, sleep }),
+        }),
+      ),
+    ) ?? {};
 
   await upsertUnstoredRows(
     buildUahRows(
-      buildUahPrice(fiat, crypto),
+      { ...uahPrice, ...binancePrices },
       at,
       fiatAnswer?.source ?? 'monobank',
       fiatAnswer?.fetchedAt ?? at,
+      new Set(Object.keys(binancePrices) as Currency[]),
     ),
     deps.fiatOfRun,
     upsertMany,

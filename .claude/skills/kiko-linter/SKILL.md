@@ -275,8 +275,47 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, `e2e/`, or `drizzle/`
-  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `drizzle/` is
+  `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
+  `.claude/agents/`, or any of `harness/kiko/` (its scripts, hooks, skills, agents and
+  `.claude-plugin/plugin.json`), or into any
+  `*.yml`/`*.yaml` file (user ruling 2, 2026-10-18)
+  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; read it there for the current list.
+  An entry may hold several segments (`.claude/skills`, `harness/kiko`): it matches a resolved
+  path inside any worktree of this repository, and an unresolved path fails closed when its
+  segments appear as consecutive non-final segments (as written, or with its `.` and `//`
+  segments folded); matching is case-folded. A python/node join counts each literal path as a
+  folder with a file after it, so `os.path.join('skills', n)` run from `.claude` is denied.
+  A `cp`/`mv` is also denied when a folder lands exactly on `<worktree>/.claude` or
+  `<worktree>/harness` (`cp -r /tmp/x/.claude .`: the folder may hold a tree), and when a
+  recursive copy puts a source's contents there (`cp -r`, `-R`, `-a`; `-T` counts only
+  together with one of those, and a recursive `-T` copy counts whatever the source looks
+  like): without `-T`, a source ending in `/` or `/.`, or with a glob or variable as its
+  last segment (`cp -r /tmp/x/* .claude/`). A file copied into `.claude/` and a slash-less
+  folder copied into `harness/` (`cp -r /tmp/kikox harness/`) stay allowed.
+  `scripts/` and `githooks/` match like `src/`: resolved inside any worktree of this repository, or
+  unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
+  `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
+  worktree except under `node_modules/`, and counts when unresolved (fail closed). Resolved and
+  NOT covered: a scripts folder under `ios/` or `docs/`.
+  Known limits: (a) an unquoted command-substitution prefix on a write target
+  (`echo x > $(pwd)/src/a`) tokenizes as a standalone word, so the guarded path is never seen
+  and the write is allowed, for every guarded tree; the quoted form is denied. (b) A `~/...`
+  target resolves through HOME and is judged like any resolved path (outside every worktree is
+  allowed). (c) `xargs cp`/`mv` into a resolved worktree folder, a prefix such as
+  `<wt>/harness/` included, is denied through the YAML marker (`xargs-input.yml`, a YAML file
+  inside a worktree); the tree names fill only where the text resolves them. An unresolved
+  destination such as `$X/harness/` is denied only for a recursive `cp` or a `mv`, through the
+  `src` marker (`$X/harness/src/_`); a plain `cp` there stays allowed. The parent-folder rule
+  above is not applied behind `xargs`. (d) A copy of a folder's CONTENTS into a worktree root
+  (`cp -r /tmp/x/ .`, `cp -r /tmp/x/. .`, `cp -r /tmp/x/* .`) is allowed for every tree (the
+  pinned allowed row is `cp -r /tmp/x/* .`). The parent-folder rule judges only
+  `<wt>/.claude` and `<wt>/harness` as the destination.
+  A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
+  build the scratch from a git merge or commit, or use `git archive <sha> scripts |
+  tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
+  `sed`, `tee`, and interpreters, not the archive extractor; not run against the guard, so
+  re-verify). Formatter
+  `--write` and reads stay allowed. `drizzle/` is
   checked by the pre-write guard and guard-replay for `drizzle/migrations/*.test.ts` (`.ts` is in
   scope); a `.sql` or `.json` there has no pre-write rule, and shipped-migrations covers a shipped
   migration at Stop; `e2e/` joined
@@ -336,7 +375,24 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   folder-name fills count only for a recursive copy (`-r`, `-R`, `-a`,
   `--recursive`, `--archive`, or a GNU abbreviation such as `--recur`)
   or any `mv`, since a plain `cp` cannot copy a folder: `ls | xargs -I{} cp {} "$BK"/` passes, `ls | xargs
-  -I{} cp -r {} "$BK"/` and `… mv {} "$BK"/old/` deny. Otherwise (no
+  -I{} cp -r {} "$BK"/` and `… mv {} "$BK"/old/` deny. The input may
+  also be a YAML file, so a `cp`/`mv` behind `xargs` whose destination
+  RESOLVES inside a project worktree folder (not under `node_modules/`)
+  is denied whatever the input files are (fail closed: the names are
+  unknowable): `ls | xargs -I{} cp {} .maestro/` denies. An unresolved
+  destination gets no YAML check, only the folder-name fills above.
+  Known YAML limits: outside `xargs`, a recursive folder copy
+  (`-T` included) that holds YAML passes, since the folder's name cannot tell
+  (`cp -r /tmp/flows .maestro/` allowed; only a literal `*.yml` path
+  denies); an `xargs` `cp`/`mv` whose destination the text cannot
+  resolve still lets a YAML file into a worktree (`cd "$X" && ls
+  /tmp/*.yml | xargs cp -t .maestro` and `… xargs cp -t "$WT/.maestro"`
+  pass, while the tree analog `cd "$X" && ls | xargs cp -t src` denies;
+  kept so the backup forms `xargs cp -t "$BK"` and `"$(mktemp -d)"/`
+  pass, and the deny's DO NOT line forbids routing through a variable);
+  a YAML file under `node_modules/` passes; a move out of a
+  YAML path is no write. Use Edit/Write for YAML. The deny hint ends
+  "write the literal path, or use Edit or Write". Otherwise (no
   placeholder, so the input is appended last, or a destination holding
   the placeholder) it denies as a write of any file. `git mv` stays
   allowed and is the way to move a file: guard-replay follows it as a
@@ -562,6 +618,18 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   test-only `KIKO_PROBE_STUB_FIRST_RUN_DELAY=<seconds>` makes a stub sleep on its first call to
   prove it (read the runner's header). A tightening of the guard is proven by a differential
   over every test literal x every cwd, base against HEAD; a hand-picked sample is not proof.
+  Method: a `NODE_OPTIONS` `--require` preload, kept in the scratchpad, wraps `decide()` of the
+  worktree's `kill-guard.js`. At each call, while the test fixtures still exist, it judges the
+  same (command, options) with BASE and HEAD copies extracted by `git archive`, also across a
+  fixed set of cwds, and records every flipped pair; classify each as intended or not (H9
+  2026-10-18: 43,738 pairs, 0 deny->allow). The preload only calls `decide()`; it never executes
+  a command. Timing-bound tests may fail under the preload (overhead); the proof run of the
+  suites is the plain one. Classify a probe row by the path it resolves to (and its cwd),
+  never by a regex over the command text.
+  Writing a red row for a path rule: do not assume `~/` stays unresolved (`resolveDirectory`
+  expands HOME). A tree entry of 2 or more segments needs the parent-folder `cp`/`mv` rule and
+  a resolved-candidate check in `expressionPaths`. Judge resolved paths, never literal text,
+  when a resolved path is available.
   No real kill
   word and no real main path is ever handed to the runner; they appear
   ONLY in NON-executed parser tests (node: string -> `decide()`). The
@@ -762,7 +830,14 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `mutation.sh` also CAPS the run: after the file selection and excludes
   above, it counts the files it would mutate and, above
   `MUTATION_FILE_CAP` (30, a plain assignment in the script), prints the
-  structured block and exits 2 BEFORE Stryker starts. The scorer fails a TIMEOUT-HEAVY file
+  structured block and exits 2 BEFORE Stryker starts. A patched-runner preflight (after the
+  0-file exit and the `--list` exit, before the dedup skip; a 0-file change set exits 0 on an
+  unpatched tree) exits 2 the same way when the installed
+  `@stryker-mutator/jest-runner` files lack the `kiko-patch: exact covering-test selection`
+  marker. `__tests__/stryker-jest-runner-patch.test.ts` pins `@stryker-mutator/jest-runner`,
+  `@stryker-mutator/core` and `jest-circus` versions and runs the patched code; an upgrade of
+  any of the three re-derives and re-proves the patch (`docs/harness/dependency-hygiene.md`
+  "Standing patch"). The scorer fails a TIMEOUT-HEAVY file
   (`TIMEOUT_HEAVY_SHARE`, `TIMEOUT_HEAVY_MINIMUM` in `mutation-score.js`; rule in
   `docs/harness/checks.md`): `mutation-score.js` exits 1, `mutation.sh` exits 2. When it is
   the only failure, the gate reruns the timed-out mutants alone and the final rerun report is
@@ -2034,6 +2109,62 @@ plus early-return form (`if (row.type === 'heading') { return ... }`) is not mat
 Semgrep has no type information and a statement `if` on an event's `type` is everywhere in
 handlers; no fixture can prove that form free of false positives.
 
+## `kiko-no-inline-text-variant-mock`
+
+Mechanizes kiko-design-system's "Component set": a test that reads a label's `variant` or `tone`
+mocks `Text` with the shared `src/test-support/mock-text-variant-tone.tsx` (a getter in the
+`jest.mock` factory), never with its own factory that forwards `variant` onto the host node.
+
+**Severity ERROR.** The tree holds 0 findings; re-measure with the Semgrep command in the
+`kiko-test-title-no-history` section above, filtered to this id.
+
+**Scope.** `paths.include` is `*.test.ts`, `*.test.tsx` and `src/test-support/**`; the last entry
+is only what lets the guard's probe file reach the rule, so the fixture pair is NESTED under
+`rules/fixtures/kiko-no-inline-text-variant-mock/src/test-support/`.
+
+**Known limits.** The module is matched by its text ending in `components/text` or `../text`;
+a mock through another relative path (`./text`) or through the component file
+(`components/text/text.component`) is not seen. The pattern is the two-argument `jest.mock`
+call, so a three-argument one (`{ virtual: true }`) is not seen. The factory is matched by the
+word `variant` anywhere in its text (a hyphenated name such as `mock-text-variant-tone` does not
+count), so a factory that mentions `variant` for another reason is flagged too, a factory that
+spreads `...props` onto the host node forwards `variant` without naming it and is not seen, and a
+mock that forwards only `tone` is not (it has the `mock-text-tone` helper). A factory held in a
+variable and passed by name is not seen. `jest.doMock` is not matched. A module-level local copy
+of the component returned through the sanctioned getter (`get default() { return localCopy; }`)
+names `variant` outside the factory and is not seen either: the helper
+`src/test-support/mock-text-variant-tone.tsx` forwards `variant`, `tone` and `style`, so a test
+that pins a style too imports it, never a copy of it (gap 20261019T1704/1 tracks a rule that
+flags the copy).
+
+## `kiko-component-explicit-return`
+
+Mechanizes kiko-code-style's "One component per file, each in its own folder": a component
+uses an explicit `return`, never the arrow-shorthand implicit return.
+
+**Severity ERROR.** The tree holds 0 findings; re-measure with the Semgrep command in the
+`kiko-test-title-no-history` section above, filtered to this id.
+
+**Scope.** `paths.include` is `*.tsx` and `paths.exclude` is `*.test.tsx`. The rule reads source
+text, string contents included, so a `.ts` file (a `__tests__/` harness test that embeds component
+source in a string) stays outside it; `__tests__/pre-write-guard-rules.test.ts` pins that, with a
+`.tsx` control that proves the guard's probe file (named `<rule-id>.tsx`) still reaches the rule.
+A component local to a `*.test.tsx` is test scaffolding and is exempt: kiko-code-style's "One
+component per file, each in its own folder" states it, and the entry is in
+`docs/harness/documented-exceptions.md`. The fixture pair is
+`rules/fixtures/kiko-component-explicit-return.bad.tsx` and `.good.tsx`.
+
+**Known limits.** A `pattern-regex`, because Semgrep reads `=> expr` and `=> { return expr; }`
+as one function. It reads `const <Name>: FC<...> = (<params>) =>`, also bare `FC` and `React.FC`,
+and flags a first token after `=>` that is not `{`. Not seen: a component with no `FC`
+annotation (`const Row = (props: Props) => (...)`, gap 20261019T1704/2), a component with a
+return-type annotation after the parameters (`({ a }): ReactElement => (...)`), a `function`
+declaration, a component wrapped in `memo(...)`, `React.FunctionComponent`, a generic that holds
+an `=` inside a string-literal type, and a parameter list that holds a string or a regex literal
+with an unbalanced parenthesis. False positives: a comment between `=>` and `{` (the first token
+is the comment), and example code in a comment of a non-test `.tsx` that spells an `FC` arrow
+with an expression body.
+
 ## The `docs-known-limit` invariant
 
 `__tests__/docs-known-limit.test.ts` fails when a plan or a spec under `docs/superpowers/`
@@ -2639,7 +2770,8 @@ On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
-forms into `src/`, `__tests__/`, `rules/`, `e2e/`, and `drizzle/`. It allows the `--write`
+forms into the trees in "SHELL-WRITE deny" (`WRITE_GUARDED_TREES`, including `.claude/skills/`,
+`.claude/agents/` and `harness/kiko/`) and YAML files (`YAML_FILE`). It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
 `find -exec`, a path held in a variable the command does not assign (see "SHELL-WRITE deny,
@@ -2787,7 +2919,21 @@ they land.
 A test that writes and execs a fresh script on macOS warms it once before any time bound starts
 (`warmExecutables` in `__tests__/test-support/warm-executables.ts`). The first exec of a
 never-seen script waits on XProtect: about 0.3 s alone, seconds under fan-out. Widen a time
-budget only with that measurement, never as a guess.
+budget only with that measurement, never as a guess. A suite that execs a fresh script in every
+row of a table, under a per-test jest timeout, writes and warms those scripts once in a
+describe-level `beforeAll` with its own timeout and passes per-row paths by environment variable
+(`__tests__/mutation-ranges.test.ts`, the signal rows).
+
+Warm only a stub that is harmless with an empty environment. A stub that reads its inputs from
+env is safe to warm (job-queue's git stub reads `KIKO_STUB_GIT_CALLS` / `KIKO_STUB_REAL_GIT`). A
+stub that needs env or sandbox state to be safe is not warmed (job-queue's `installMake` stubs
+write into the cwd). A stub whose cost is its own work needs no warm-up (guard-replay's slow
+Semgrep stub under a 1 s replay deadline: a slower first exec only makes the expected deadline
+more certain).
+
+A test that kills children in a teardown awaits each child's exit, with a pass-count bound (never
+a timer), before `rmSync` of the sandbox; else the removal races a live trap (ENOTEMPTY). See the
+`afterEach` in `__tests__/job-queue.test.ts`.
 
 ## Harness and hook changes land through a worktree
 
@@ -2897,6 +3043,8 @@ mechanizable (see harness-workflow's "Classify every finding").
      with `join(..., '<name>')` for a path inside it, never from the clock.
      The invariant also covers the queue tests (`job-queue.test.ts`,
      `ff-main.test.ts`): no settle sleep; prove concurrency by a rendezvous.
+     A teardown poll may break at its pass-count bound instead of failing,
+     so the sandbox removal still runs (the `job-queue.test.ts` afterEach).
      The poll-bound exemption applies only inside the braces of the loop
      that holds the bound; a renamed `timers/promises` `setTimeout` import
      counts as a sleep. Known limits: braces are counted per line, string,

@@ -11,6 +11,7 @@ import {
   type WalkId,
   type WalkMarks,
   coinListsOf,
+  oversizedByWalletOf,
   recordOrEmpty,
   storedExchangeStateOf,
   WALK_IDS,
@@ -25,8 +26,12 @@ type WalkFieldPatch = WalkMarkPatch & { kind: 'walk'; walkId: WalkId };
 
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
- * trade symbol, the trades' rotation or balance snapshot, or one coin list. A patch names fields,
- * never whole entries, so a field it does not name is never written from a parse.
+ * trade symbol, the trades' rotation or balance snapshot, one coin list, or the balance sync
+ * stamp. A patch names fields, never whole entries, so a field it does not name is never written
+ * from a parse.
+ *
+ * The oversized balance list has its own patch and no `coinList` form, so no write can set
+ * `balance` apart from the wallet arrays it is derived from.
  */
 export type ExchangeStatePatch =
   | WalkFieldPatch
@@ -35,10 +40,19 @@ export type ExchangeStatePatch =
   | { kind: 'tradesBalanceSnapshot'; value: ExchangeTrades['balanceSnapshot'] }
   | {
       kind: 'coinList';
-      coins: 'untrackedCoins' | 'oversizedCoins';
+      coins: 'untrackedCoins';
       list: keyof CoinLists;
       tickers: string[];
-    };
+    }
+  | { kind: 'coinList'; coins: 'oversizedCoins'; list: 'history'; tickers: string[] }
+  | {
+      kind: 'oversizedBalance';
+      /** The refused coins of each wallet whose read succeeded; a wallet that failed is absent. */
+      wallets: Record<string, string[]>;
+      /** Whether every wallet read, so no ticker stored before wallets were named can remain. */
+      complete: boolean;
+    }
+  | { kind: 'balanceSyncedAt'; value: number };
 
 const withWalkField = (
   stored: StoredExchangeState,
@@ -88,6 +102,46 @@ const withCoinList = (
   return { ...stored, [coins]: { ...lists, [list]: written } };
 };
 
+const sortedUnique = (tickers: readonly string[]): string[] => [...new Set(tickers)].sort();
+
+/**
+ * One write of the oversized balance list and the wallet arrays it is derived from, so the two
+ * never disagree: the arrays of the wallets that read are replaced, those of the others stay,
+ * and `balance` is rebuilt from every array plus the legacy tickers (those in `balance` that no
+ * stored wallet array names) that a read in which a wallet failed keeps and a complete one drops.
+ * A complete read also drops every stored array it did not write, so an array under a key this
+ * build never names (a hand-edited or newer file) cannot outlive it.
+ * A `balanceByWallet` that is unreadable names no ticker, so the whole stored `balance` is legacy.
+ */
+const withOversizedBalance = (
+  stored: StoredExchangeState,
+  { wallets, complete }: Extract<ExchangeStatePatch, { kind: 'oversizedBalance' }>,
+): StoredExchangeState => {
+  const lists = recordOrEmpty(stored.oversizedCoins);
+  const named = oversizedByWalletOf(lists.balanceByWallet).value;
+  const attributed = new Set(Object.values(named).flat());
+  const legacy = complete
+    ? []
+    : coinListsOf('oversizedCoins', lists).value.balance.filter(
+        (ticker) => !attributed.has(ticker),
+      );
+  const balanceByWallet = {
+    ...(complete ? {} : named),
+    ...Object.fromEntries(
+      Object.entries(wallets).map(([wallet, tickers]) => [wallet, sortedUnique(tickers)]),
+    ),
+  };
+
+  return {
+    ...stored,
+    oversizedCoins: {
+      ...lists,
+      balance: sortedUnique([...Object.values(balanceByWallet).flat(), ...legacy]),
+      balanceByWallet,
+    },
+  };
+};
+
 const patchedState = (
   stored: StoredExchangeState,
   patch: ExchangeStatePatch,
@@ -100,6 +154,10 @@ const patchedState = (
       withTradesPart(stored, { balanceSnapshot: value }),
     )
     .with({ kind: 'coinList' }, (coinListPatch) => withCoinList(stored, coinListPatch))
+    .with({ kind: 'oversizedBalance' }, (oversizedPatch) =>
+      withOversizedBalance(stored, oversizedPatch),
+    )
+    .with({ kind: 'balanceSyncedAt' }, ({ value }) => ({ ...stored, balanceSyncedAt: value }))
     .exhaustive();
 
 /**
@@ -123,14 +181,18 @@ export const exchangeStatePatched = (
  * forward watermark a reconnected DIFFERENT account would inherit), and a stored `pending` becomes
  * `[]` (ranges of the old account's history). Everything else the entry held (point and range
  * cursors, span hints) is dropped: no mark there means "start at the oldest ground, with no span
- * to resume".
+ * to resume". The multi-coin range start goes with the cursor it was recorded against, but a walk
+ * that was seen stays seen: the reset cursor is the floor, so every coin is read from it and no
+ * range is owed. A seen mark that is not `true` reads as none, so it goes too.
  */
-const marksAfterDisconnect = (entry: Metadata, floorMs: number): Metadata =>
-  Object.fromEntries(
+const marksAfterDisconnect = (entry: Metadata, floorMs: number): Metadata => ({
+  ...Object.fromEntries(
     Object.entries({ cursor: floorMs, rescan: floorMs, pending: [] }).filter(
       ([field]) => field in entry,
     ),
-  );
+  ),
+  ...(entry.multiCoinSeen === true ? { multiCoinSeen: true } : {}),
+});
 
 /**
  * The capital walk is the one walk with no mark at a cursor that is missing: it starts at the

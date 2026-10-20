@@ -17,14 +17,15 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { join } from 'node:path';
-import { asc } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import {
   applyAllMigrations,
   applyMigrationsThrough,
+  columnsWithout,
   executingDrizzle,
 } from '@kiko/test-support/real-sqlite';
 import { DatabaseSync } from 'node:sqlite';
+import { asc, getTableColumns } from 'drizzle-orm';
 import { type database, accounts } from '@kiko/db';
 
 import type { DataSnapshot } from './data-snapshot';
@@ -95,10 +96,10 @@ const bankIds = (target: DatabaseSync): Record<string, string | null> =>
 
 const snapshotOf = async (source: DatabaseSync): Promise<DataSnapshot> => ({
   ...emptySnapshot,
-  accounts: await executingDrizzle<typeof database>(source)
-    .select()
+  accounts: (await executingDrizzle<typeof database>(source)
+    .select(columnsWithout(getTableColumns(accounts), 'currency'))
     .from(accounts)
-    .orderBy(asc(accounts.id)),
+    .orderBy(asc(accounts.id))) as DataSnapshot['accounts'],
 });
 
 // A file exported before migration 0033 carries no `bankId` key at all.

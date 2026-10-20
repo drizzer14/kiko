@@ -1,6 +1,56 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐ COORDINATOR HANDOFF (2026-10-18 ~17:50) — READ THIS FIRST
+## ⭐ COORDINATOR HANDOFF (2026-10-19 ~21:30) — READ THIS FIRST
+
+Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323. Event log:
+memory/refs/night-summary-2026-10-17.md (from "12:0x NEW COORDINATOR SESSION (after /clear)").
+The 2026-10-19 ~12:00 section below is HISTORY.
+
+**FIRST ACTIONS:**
+1. ListAgents; `bash scripts/job-queue.sh status`; `pmset -g batt`.
+2. Arm: inbox watcher, pmset watcher, gauge watchers (memory/refs/gaugewatch.sh) for binance-g1,
+   acur-a2, ipad-a5, harness-sync-4, h9-a2.
+3. Full verify output to the scratchpad; log with log-event.sh.
+4. At every merge into main: re-read this table, `npx patch-package` in main,
+   `claude plugin update kiko@kiko-marketplace` + /reload-plugins typed into each track terminal
+   (orca terminal send) if plugin.json moved.
+
+| Track | State |
+|---|---|
+| main = next | df16047e (today: H9 task 4 841b1ab7, HANDOFF caa92efc, H9 task 3 32f3d0c8 (patched Stryker jest-runner; deep gates need npm ci after a main merge), net worth label df16047e). Plugin 0.4.29 on main. origin/main NOT pushed. Shared core.hooksPath fixed to `githooks` by the user 21:2x. |
+| BINANCE 1.3-a | binance-g1 = SendMessage "binance-backfill-fix-g1", term_bc1b9b60-ce95-4dfd-a8f0-dbfc5291fa7b. Set 6 steps 1-13 done; tip d9a73b78 (retro drift, plugin 0.4.30) after main merge df84a35e; npm ci was blocked by hooksPath (now fixed): next = npm ci, guard-replay + knip, queued check:all + verify, 2 deep gates (make mutable 20 files, >800 lines -> split), BATCH READY. Rulings today (rulings.md): m3 key :COIN for non-BTC txId fallback; Pay listing A; dust BTC Appear rule; transfer (1)(2) A; Earn (1)-(5) A; step 10 (1)-(3) A; Pay m2 B (own-coin dust no row; mixed sends import each coin's funds), m3 C; pair id :COIN; gap /1 funds-entry sign fixed 46d182e8 + 120df01c. Later probe: deposit status 6. BINDING SET 15: repair malformed multiCoinSince once; empty range owes nothing. |
+| ACCOUNT CURRENCY (1.3) | acur-a2 = SendMessage "account-currency-a2", term_6964b91a-0f0a-4048-a746-211b1d8ecad2. Plan 6 tasks (9bcf5392): 1/6 + 2/6 closed (verifies t1 d9b7b018, t2 9549f24d exit 0); 3/6 + 4/6 at 1eaea93a, verify account-currency-t4 QUEUED by the coordinator (log scratchpad/account-currency-t4.log); then 5/6 form field, 6/6 Property/Debts. User rulings Q1 A, Q2 A, Q3 B. D6 (empty non-base "$0.00" + "0.00 ₴") on the user device-review list. New i18n key forms.account.currencyHint for user review before deploy. Before BATCH READY: main merge, migration idx 62 check, npm ci, verify. |
+| iPAD | ipad-a5 = SendMessage "ipad-phase3-a5", term_6f993280-e26a-45e3-ad5d-db94460d40ec. Task 10/14: steps 1-7 + 9 prep done (tip 4c429991; F3 = known 105 ms transient like F1, fix reverted fab01706; native-hold follow-up owner = coordinator for 13/14-14/14). Step 8/9 OPEN: the USER reviews the layouts later (Statistics grid 3 columns, transaction in the 2/3 split, space under the top tab bar, iPad mini net worth wrap). All sims down; demo data stays in the sims. ipad-family stays unmerged. |
+| HARNESS SYNC 4 | harness-sync-4 = SendMessage "harness-sync-4", term_9adcb6a8-2aa9-41d2-ad45-01acc49c91fe (opus, auto mode, --plugin-dir). Worktree ~/orca/workspaces/harness/harness-sync-4 from harness origin/main 7a9ef0c. Brief memory/refs/brief-harness-sync-4.md. 18 change sets (est 8-12 h); done: 1 (6f6fba5), 2a (84af0e5), 2b (86a677f, persistent trie accepted over the quadratic source fold); next KG3 + KG4. USER OK to merge + push after BATCH READY + the coordinator's npm test + check:all at the tip. |
+| H9 | h9-a2 = SendMessage "harness-h9-a2", term_e7dafee1-3b3a-4767-9b4e-ab30b0ca58b8. Tasks 1-4 MERGED. Task 5 (retrospect skill drift: harness-sync SKILL auto mode + last sync point + re-read harness HEAD; hold/queue + ruling-E vs verify text; agents.md isolation note; plugin 0.4.31) dispatched 21:3x. BACKLOG (ranking with the user pending): HIGH kill-guard quadratic scope fold -> 10 s hook timeout -> command unjudged (port the sync-4 trie back); kill-guard stdin-redirect script scan; xargs cp into .git; absolute core.hooksPath origin + a postinstall check; log-event.sh stamps its own time; permission-path doctor; last-sync sha ancestor test; toMatchObject Set/Map rule; dup.sh per-file ceiling + stale ceiling documented-exceptions.md:166; task-id rule misses "set N"; full-word-identifiers misses `l`; migration header src/ path checker; queue status race; patch-package after merge hook; C-3/C-4; history-id lowercase task N/M. |
+| DUO | duo-g2 = SendMessage "duo-adaptive-g2", term_ddfc5c46-b2bf-4933-a4cb-643db770c2bd. Idle (net worth label track closed, worktree pruned). |
+| Status | term_22e8974a (fed by log-event.sh). |
+| Open for the user | iPad step 8 layout review; account currency strings + D6 at device review; H9 backlog ranking. |
+
+## ⭐ COORDINATOR HANDOFF (2026-10-19 ~12:00) — HISTORY
+Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323. Event log: memory/refs/night-summary-2026-10-17.md
+(from "18:3x NEW COORDINATOR SESSION"; overnight mode 00:4x-08:1x). Morning list: memory/refs/morning-walkthrough-2026-10-19.md
+(all answered). The 2026-10-18 ~17:50 section below is HISTORY.
+FIRST ACTIONS of the next session:
+1. ListAgents. Queue: `bash scripts/job-queue.sh status` (empty at handoff). Power: `pmset -g batt` (AC at handoff).
+2. Arm: inbox watcher (memory/refs/coordinator-inbox.log), pmset watcher, gauge watchers (memory/refs/gaugewatch.sh, 40 %)
+   for the 5 tracks below.
+3. Keep the full verify output: queue from the coordinator with `> <scratchpad>/<label>.log`, never a grep tail.
+4. Log every event with `bash memory/refs/log-event.sh "<line>"` (pushes to Status; no polling).
+5. At EVERY merge into main: re-read this table for a track whose start waits on that merge (memory
+   start-gated-tracks-on-merge), run `npx patch-package` in the main checkout, and `claude plugin update` if plugin.json moved.
+| Thing | Value |
+|---|---|
+| main = next | 841b1ab7 (since 2026-10-18 18:00: H9 task 1 4f2324ea, Duo phase 2 0e7e37f2, H9 task 2 20a203ea, Binance set 5 1eb08738, H9 task 4 841b1ab7). Plugin 0.4.28 installed + reloaded in every session (binance-f9's reload was queued while busy: check). origin/main NOT pushed. |
+| BINANCE 1.3-a | binance-f9 = SendMessage "binance-backfill-fix-f9", term_b3c3d1a0-3749-41de-a1cf-9bef022992b3. Set 5 MERGED. Set 6 RUNNING (run 20261019T0817, plan 17d3a6ed, 13 steps, 2 deep halves). Answers: Q2 = A (user), Q1 B / Q3 A / Q4 B / Q5 A (coordinator, standing approval). Steps 4+5 never merge apart. |
+| H9 | h9-a2 = SendMessage "harness-h9-a2", term_e7dafee1-3b3a-4767-9b4e-ab30b0ca58b8. Tasks 1, 2, 4 MERGED. Task 3 (Stryker jest-runner patch) at harness-h9-t3 ff4a74d6: user CONFIRMED step 6 ruling A; next = main merge 841b1ab7 + plugin 0.4.29 + verify -> BATCH READY. Backlog grew (toMatchObject Set/Map rule first; dup.sh per-file ceiling; queue status race; patch-package after merge hook; i denylist; C-3/C-4). |
+| iPAD | ipad-a4 = SendMessage "ipad-phase3-a4", term_a56c4fcc-e78f-44f7-a916-5369c888b90c. Tasks 7, 9 deep gates cleared by Method A proof tables; main merged into ipad-phase3 (1c204110). Task 10/14 steps 1-2 done at 7bcd1f58. NEXT needs the user: step 3 native build in scratch ipad-t10-sim (queue HOLD), then sim captures, Stage Manager drags, Duo poses, approval. ipad-family stays unmerged. |
+| ACCOUNT CURRENCY (1.3) | acur-a1 = SendMessage "account-currency", term_ad27b8e1-a20f-40fd-89bc-793824d03f49, worktree account-currency from 841b1ab7. STARTED 2026-10-19 ~11:50 (late: missed at the Duo merge). Step 1 = spec + plan (45-60 min). Brief memory/refs/brief-account-card-currency.md. |
+| DUO | duo-g2 = SendMessage "duo-adaptive-g2", term_ddfc5c46-b2bf-4933-a4cb-643db770c2bd. Phase 2 MERGED; idle. Deferred list for the next Duo task in its HANDOFF-orchestrator.md "DONE". |
+| Status | term_22e8974a (memory/refs/status-terminal.txt); fed by log-event.sh. |
+| Plugin versions | 0.4.28 on main; H9 task 3 = 0.4.29; a later merge bumps above main. |
+
+## ⭐ COORDINATOR HANDOFF (2026-10-18 ~17:50) — HISTORY
 Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323. Event log: memory/refs/night-summary-2026-10-17.md
 (from "00:1x NEW COORDINATOR SESSION"). Open user items: memory/refs/morning-walkthrough-2026-10-18.md (items 1-21;
 answered ones are marked in the event log). The 2026-10-18 ~00:00 section below is HISTORY.
@@ -11,6 +61,7 @@ FIRST ACTIONS of the next session:
    40 %) for binance-f8 term_1b48d115-30c5-44bf-ae41-ec4fbcaa81cd, ipad-a3 term_1c2b9d42-d515-4174-bc8b-10de40123a03,
    duo-g1 term_9337ecde-d144-4d91-a9c7-42cffe45e036.
 3. Keep the full verify output: queue verifies from the coordinator with `> <scratchpad>/<label>.log`, never a grep tail.
+4. Log every event with `bash memory/refs/log-event.sh "<line>"` (it also pushes to Status; no Status polling).
 | Thing | Value |
 |---|---|
 | main = next | e405993e (today: release 1.2 follow-ups 33c58d53, H8 task 1 ca448f54, H8 task 4 1e299e28, Binance set 4 e405993e). Plugin 0.4.23 installed. origin/main NOT pushed. |

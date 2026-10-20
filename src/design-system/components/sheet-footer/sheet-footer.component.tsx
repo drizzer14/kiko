@@ -19,10 +19,12 @@ import type { SheetFooterProps } from './sheet-footer.props';
  * vertical, full-width stacked Buttons, the standard iOS pattern for that
  * class of sheet, and never route through this component.
  */
-const SheetFooter: FC<SheetFooterProps> = ({ children, testID }) => (
-  <Box direction="row" gap={3} style={styles.footer} testID={testID}>
-    {children}
-  </Box>
-);
+const SheetFooter: FC<SheetFooterProps> = ({ children, testID }) => {
+  return (
+    <Box direction="row" gap={3} style={styles.footer} testID={testID}>
+      {children}
+    </Box>
+  );
+};
 
 export default SheetFooter;

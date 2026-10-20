@@ -426,7 +426,7 @@ const blankNoise = (source) => {
 
 // Splits an identifier into lowercase word parts on snake_case underscores,
 // a `$` prefix, and camelCase/PascalCase transitions, including the
-// acronym-run boundary (the "PAN" in "maskedPAN", the "BTC" in "isBTCEntry"
+// acronym-run boundary (the "PAN" in "maskedPAN", the "BTC" in "myBTCEntry"
 // — see kiko-code-style's "Variable naming" acronym rule): a LETTER
 // followed by an uppercase starts a new word, and an uppercase run followed
 // by a lowercase-starting word also starts a new word one character early

@@ -1,12 +1,13 @@
 import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
-import type { ReactElement } from 'react';
 import { Money } from '@kiko/currency/money';
 import { formatMoney } from '@kiko/currency/format';
 import { State } from 'react-native-gesture-handler';
+import { darkTheme } from '@kiko/design-system/theme';
 import { trigger } from 'react-native-haptic-feedback';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import { formatDate, startOfLocalDay } from '@kiko/dates';
+import type { ComponentProps, ReactElement } from 'react';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
@@ -31,16 +32,27 @@ const buildPoints = (firstDayOffset: number, amounts: number[]): NetWorthPoint[]
 
 const points = buildPoints(-3, [100, 300, 200, 400]);
 
-const layoutEvent = (width: number) => ({
-  nativeEvent: { layout: { x: 0, y: 0, width, height: 40 } },
+// Distinct line heights, as under Dynamic Type where the amount and the date scale apart. The
+// amount stays within the room above the plot, so the label is not clamped.
+const AMOUNT_HEIGHT = 20;
+const DATE_HEIGHT = 16;
+// The room the host leaves above the plot, in spacing units: the Statistics card's title gap.
+const SPACE_ABOVE = 3;
+const ACCESSIBILITY_AMOUNT_HEIGHT = 60;
+
+const layoutEvent = (width: number, height = 40) => ({
+  nativeEvent: { layout: { x: 0, y: 0, width, height } },
 });
 
 const renderLine = async (
   linePoints: NetWorthPoint[] = points,
   wrap: (node: ReactElement) => ReactElement = (node) => node,
+  roomProps: Pick<ComponentProps<typeof NetWorthLine>, 'spaceAbove'> = { spaceAbove: SPACE_ABOVE },
 ) => {
   const element = (nextPoints: NetWorthPoint[]) =>
-    wrap(<NetWorthLine points={nextPoints} startReference={50} baseCurrency="USD" />);
+    wrap(
+      <NetWorthLine points={nextPoints} startReference={50} baseCurrency="USD" {...roomProps} />,
+    );
   const view = await render(element(linePoints), { wrapper: GestureRootWrapper });
 
   return {
@@ -53,7 +65,16 @@ type RenderedLine = Awaited<ReturnType<typeof renderLine>>;
 
 const measure = async ({ getByTestId }: RenderedLine): Promise<void> => {
   await fireEvent(getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
-  await fireEvent(getByTestId('net-worth-line-scrub-label'), 'layout', layoutEvent(LABEL_WIDTH));
+  await fireEvent(
+    getByTestId('net-worth-line-scrub-label'),
+    'layout',
+    layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT),
+  );
+  await fireEvent(
+    getByTestId('net-worth-line-scrub-amount'),
+    'layout',
+    layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT),
+  );
 };
 
 // The logical x of each plotted point, read back off the rendered polyline (the series stays above
@@ -220,6 +241,116 @@ describe('NetWorthLine scrub line', () => {
     expect(labelStyle(view).left).toBe(14);
   });
 
+  it('draws the label with no background', async () => {
+    const view = await renderLine();
+    await measure(view);
+
+    expect(labelStyle(view).backgroundColor).toBeUndefined();
+  });
+
+  describe('vertical placement', () => {
+    // The gap between the amount line and the date line, in the plot's coordinates: the label's
+    // top plus the measured amount height.
+    const gapY = (view: RenderedLine, amountHeight: number): number =>
+      Number(labelStyle(view).top) + amountHeight;
+
+    const tipY = ({ getByTestId }: RenderedLine): number =>
+      Number(getByTestId('net-worth-line-scrub').props.y1);
+
+    it('puts the gap between the amount and the date on the tip of the line, at rest', async () => {
+      const view = await renderLine();
+      await measure(view);
+
+      expect(gapY(view, AMOUNT_HEIGHT)).toBe(tipY(view));
+    });
+
+    it('keeps the gap on the tip of the line after a drag to either edge', async () => {
+      const view = await renderLine();
+      await measure(view);
+
+      await drag([-50]);
+      expect(gapY(view, AMOUNT_HEIGHT)).toBe(tipY(view));
+
+      await drag([PLOT_WIDTH + 50]);
+      expect(gapY(view, AMOUNT_HEIGHT)).toBe(tipY(view));
+    });
+
+    it('follows the measured amount height, not a constant', async () => {
+      const view = await renderLine();
+      await measure(view);
+
+      await fireEvent(
+        view.getByTestId('net-worth-line-scrub-amount'),
+        'layout',
+        layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + 2),
+      );
+
+      expect(gapY(view, AMOUNT_HEIGHT + 2)).toBe(tipY(view));
+    });
+
+    it('keeps the default-size amount over the plot top, as before the clamp', async () => {
+      const view = await renderLine();
+      await measure(view);
+
+      await fireEvent(
+        view.getByTestId('net-worth-line-scrub-amount'),
+        'layout',
+        layoutEvent(LABEL_WIDTH, DATE_HEIGHT),
+      );
+
+      expect(labelStyle(view).top).toBe(tipY(view) - DATE_HEIGHT);
+      expect(labelStyle(view).top).toBe(-4);
+    });
+
+    it('stops the label at the room above the plot at an accessibility text size', async () => {
+      const view = await renderLine();
+      await measure(view);
+
+      await fireEvent(
+        view.getByTestId('net-worth-line-scrub-amount'),
+        'layout',
+        layoutEvent(LABEL_WIDTH, ACCESSIBILITY_AMOUNT_HEIGHT),
+      );
+
+      expect(labelStyle(view).top).toBe(-darkTheme.spacing(SPACE_ABOVE));
+    });
+
+    it('keeps the label inside the plot when the host leaves no room above it', async () => {
+      const view = await renderLine(points, undefined, {});
+      await measure(view);
+
+      expect(Number(labelStyle(view).top)).toBeGreaterThanOrEqual(0);
+    });
+
+    it('does not move when only the date line gets taller', async () => {
+      const view = await renderLine();
+      await measure(view);
+      const { top } = labelStyle(view);
+
+      await fireEvent(
+        view.getByTestId('net-worth-line-scrub-label'),
+        'layout',
+        layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT * 2),
+      );
+
+      expect(labelStyle(view).top).toBe(top);
+      expect(gapY(view, AMOUNT_HEIGHT)).toBe(tipY(view));
+    });
+  });
+
+  it('keeps the label hidden until the amount line is measured too', async () => {
+    const view = await renderLine();
+
+    await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-label'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT),
+    );
+
+    expect(labelStyle(view).opacity).toBe(0);
+  });
+
   it('keeps the label hidden after only the plot is measured', async () => {
     const view = await renderLine();
 
@@ -238,6 +369,48 @@ describe('NetWorthLine scrub line', () => {
     );
 
     expect(labelStyle(view).opacity).toBe(0);
+  });
+
+  it('keeps the label hidden until its own width arrives, then shows it', async () => {
+    const view = await renderLine();
+
+    await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-amount'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT),
+    );
+
+    expect(labelStyle(view).opacity).toBe(0);
+
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-label'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT),
+    );
+
+    expect(labelStyle(view).opacity).toBe(1);
+  });
+
+  it('keeps the label hidden until the plot is laid out, then shows it', async () => {
+    const view = await renderLine();
+
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-label'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT + DATE_HEIGHT),
+    );
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-amount'),
+      'layout',
+      layoutEvent(LABEL_WIDTH, AMOUNT_HEIGHT),
+    );
+
+    expect(labelStyle(view).opacity).toBe(0);
+
+    await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
+
+    expect(labelStyle(view).opacity).toBe(1);
   });
 
   it('shows the label fully once both are measured', async () => {

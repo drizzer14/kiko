@@ -27,7 +27,7 @@
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` (+ `.js`) | a shipped migration file that is modified, deleted, or renamed fails; a new migration passes; no override and no exemption list. The per-file rules, the baseline, and the known limits live in kiko-linter's "Shipped migrations are never edited" | medium (Stop/SubagentStop, before the replay and the HEAD-moved early exit) + project-wide (`check:all`) |
 | `npm run check:closure -- <table.md>` | `scripts/checks/closure-table.sh` (+ `.js`) | a closure-table row whose id cell is a range or list, a duplicate id, a fix sha that does not resolve or is not an ancestor of HEAD, a pinning test that is not an existing file:line, or a CLOSED or CLOSED-UNPROVEN row without a sha or a test, or a CLOSED row without "yes" under "Fails on pre-fix source" fails; run by hand at a round's end, not part of `check:all`, not deduped | manual |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
-| `npm run check:mutation` | Stryker (Jest runner) + `scripts/checks/mutation-score.js` | a passing run is scored on the CHANGE SET only: `mutation-score.js` reads the `json` reporter's output (`reports/mutation/mutation.json`) for the changed lines THIS run mutated (one `--mutate` entry per range, `path:start-end`) and grades only the mutants fully inside a range; it fails when the change-set total is below 75, any graded file is below 60, or the report's own recorded scope (`config.mutate`) differs from the set of `--mutate` entries (the report is not this run's); a file with no mutants is n/a, not a failure. A file whose diff has no added line (a pure rename or a pure deletion) prints `skipped (no added lines): <path>` and does not count toward the cap. User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (instrumenter `syntax-helpers.js` `locationIncluded`), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. A changed file Stryker cannot resolve (its `did not result in any files` warning) fails too. Stryker's own break threshold (60, over the whole accumulated report) stays as a whole-report floor. `src/db/schema.ts` is excluded from both the total and the floor — see `docs/harness/documented-exceptions.md`. A changed file whose diff against the merge-base touches only comments or whitespace is skipped (`scripts/checks/comment-only-changes.js`, decided from the TypeScript parse and fail-closed: any doubt, a `Stryker` or JSX-pragma comment, or a missing `typescript` keeps the file), before the cap and the scorer see the list, whatever its colocated test did (user ruling 2026-10-14, see `docs/harness/documented-exceptions.md`). More than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap; `mutation.sh --list` (`make mutable`) prints each file's changed-line ranges, `changed lines: N`, and the file count, then exits (2 above the cap) without Stryker, and any other argument exits 2. A graded file is TIMEOUT-HEAVY, and fails the gate whatever the total and the floor say, when its Timeout mutants exceed `TIMEOUT_HEAVY_SHARE` percent of its detected ones (killed + timeout) and number at least `TIMEOUT_HEAVY_MINIMUM` (both constants sit beside `CHANGE_SET_THRESHOLD` and `PER_FILE_FLOOR` in `mutation-score.js`); its line, after the GATE line (which names the rule), reads `TIMEOUT-HEAVY <path>: timeout T of D detected (P %), killed K, score without timeouts S < <floor>`. An excluded, ungraded or no-mutant file is never heavy. `mutation-score.js` exits 1 on it and `mutation.sh` exits 2 with a failure block. `mutation-score.js` exits 2 on a plain (non-range) `--mutate` entry. `__tests__/mutation-score-timeouts.test.ts` pins measured runs as fixtures | deep only |
+| `npm run check:mutation` | Stryker (Jest runner) + `scripts/checks/mutation-score.js` | a passing run is scored on the CHANGE SET only: `mutation-score.js` reads the `json` reporter's output (`reports/mutation/mutation.json`) for the changed lines THIS run mutated (one `--mutate` entry per range, `path:start-end`) and grades only the mutants fully inside a range; it fails when the change-set total is below 75, any graded file is below 60, or the report's own recorded scope (`config.mutate`) differs from the set of `--mutate` entries (the report is not this run's); a file with no mutants is n/a, not a failure. A file whose diff has no added line (a pure rename or a pure deletion) prints `skipped (no added lines): <path>` and does not count toward the cap. User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (instrumenter `syntax-helpers.js` `locationIncluded`), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. A changed file Stryker cannot resolve (its `did not result in any files` warning) fails too. Stryker's own break threshold (60, over the whole accumulated report) stays as a whole-report floor. `src/db/schema.ts` is excluded from both the total and the floor — see `docs/harness/documented-exceptions.md`. A changed file whose diff against the merge-base touches only comments or whitespace is skipped (`scripts/checks/comment-only-changes.js`, decided from the TypeScript parse and fail-closed: any doubt, a `Stryker` or JSX-pragma comment, or a missing `typescript` keeps the file), before the cap and the scorer see the list, whatever its colocated test did (user ruling 2026-10-14, see `docs/harness/documented-exceptions.md`). More than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap; `mutation.sh --list` (`make mutable`) prints each file's changed-line ranges, `changed lines: N`, and the file count, then exits (2 above the cap) without Stryker, and any other argument exits 2. A patched-runner preflight (after the `--list` exit, before Stryker) exits 2 with a failure block when the installed `@stryker-mutator/jest-runner` lacks the `kiko-patch: exact covering-test selection` marker (fix: `npm ci`; `docs/harness/dependency-hygiene.md` "Standing patch"). A graded file is TIMEOUT-HEAVY, and fails the gate whatever the total and the floor say, when its Timeout mutants exceed `TIMEOUT_HEAVY_SHARE` percent of its detected ones (killed + timeout) and number at least `TIMEOUT_HEAVY_MINIMUM` (both constants sit beside `CHANGE_SET_THRESHOLD` and `PER_FILE_FLOOR` in `mutation-score.js`); its line, after the GATE line (which names the rule), reads `TIMEOUT-HEAVY <path>: timeout T of D detected (P %), killed K, score without timeouts S < <floor>`. An excluded, ungraded or no-mutant file is never heavy. `mutation-score.js` exits 1 on it and `mutation.sh` exits 2 with a failure block. `mutation-score.js` exits 2 on a plain (non-range) `--mutate` entry. `__tests__/mutation-score-timeouts.test.ts` pins measured runs as fixtures | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
 
 Composite scripts:
@@ -46,7 +46,10 @@ Composite scripts:
   in `scripts/checks/mutation.sh`) exits 2 before Stryker starts;
   `KIKO_MUTATION_FULL=1` (whole project) and a `KIKO_MUTATION_BASE`
   that does not resolve are refused directly (exit 2), and no env var
-  bypasses the cap. There is no release-scope deep gate. **Who and when:**
+  bypasses the cap. An unpatched `@stryker-mutator/jest-runner` (patched-runner preflight,
+  marker missing) also exits 2 before Stryker starts; it runs after the 0-file exit, so a
+  0-file change set exits 0 on an unpatched tree. There is no release-scope deep gate.
+  **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached (queued with
   `scripts/job-queue.sh gate <worktree> <label> <base> <head>`), for each reviewed change set (<= 30 source files)
@@ -69,15 +72,38 @@ Composite scripts:
   below the limit; seam `KIKO_MUTATION_RERUN_WAIT_SECONDS`). The final rerun report is the
   verdict (user ruling 2026-10-17). The `RERUN` summary line shows killed, survived and timeout
   counts and `N other (<Status> n, missing m)`; a memory-filling hang can end RuntimeError, which
-  the scorer does not count and the line shows as other. Fallback, if the rerun still fails
-  or is skipped (Stryker's jest-runner forces bail:false, so a mutant runs its whole covered
-  set, and at high load the gate times out on fan-out, not only on loops): in a scratch
-  worktree with its own `npm ci`, apply each mutant with the Edit tool (kill-guard denies shell
-  writes into `src/`), run the covering test files with
-  `timeout -k 10 120 node node_modules/jest/bin/jest.js -i <files>`, and revert. Red = killed;
-  exit 134 or a heap OOM = a real infinite loop (detected). Run a control on the unmutated copy
-  first. A mutant that survives plain jest is EQUIVALENT (one-line reason in the BATCH READY) or
-  goes to qa as MISSING TEST. Never raise the timeout; there is no allowlist file. A queued gate
+  the scorer does not count and the line shows as other. Cause of the old deterministic
+  TIMEOUT-HEAVY (measured 2026-10-18): `@stryker-mutator/jest-runner` 8.7.1 built ONE
+  unanchored, case-insensitive regex alternation of every covering test name per mutant
+  (`jest-test-runner.js:90-93`) and jest-circus matched it against each test (the `.test` cost,
+  not compile), so a mutant covered by about 430 or more tests timed out on the regex alone.
+  Probe (binance set 4 half-2 case, unmutated source, covering files only; control / regex /
+  exact Set / trie regex, in seconds): walk-values mutant 101 (4997 covering tests)
+  80 / 1496 / 68 / 1204; walk.ts mutant 55 (4781) 65 / 1699 / 65 / 705; transfer-history
+  mutant 17 (449) 15 / 82 / 19 / 16. The standing patch selects the covering tests by an exact
+  Set at `run_start` and builds no regex (`docs/harness/dependency-hygiene.md` "Standing
+  patch"; the preflight above refuses an unpatched runner). To compare covering-test
+  selections offline, index the test names by prefix (a trie): matching the real unanchored
+  case-insensitive alternation against thousands of test names did not finish in 15 min.
+  So a TIMEOUT-HEAVY file is now a
+  REAL timeout (a loop or slow code), cleared by the rerun above.
+  Proof (measured 2026-10-19, binance set 4 half-2 gate with the patch, 436 mutants): 2 h 11 min
+  against 3 h 48 min for the same change set without it; change set total 94.04 (409 killed,
+  1 timeout, 26 survived, 0 no coverage); no TIMEOUT-HEAVY file (the unpatched run had 3). The
+  195 heavy mutants matched the plain-jest table (185 killed, the same 9 survived, 1 timeout).
+  The one timeout, walk.ts id 68 (4444 covering tests), also timed out unpatched and the old
+  regex and the Set select the same tests, so the regex did not cause it; plain jest killed it
+  (923 s serial). A mutant with about 4,400 covering tests can still time out on its own run
+  cost; its gate time against Stryker's budget is unmeasured (gap open).
+  Fallback, if the rerun still fails or is skipped: Method A, a plain-jest proof table. In a
+  scratch worktree with its own `npm ci`, write a scratch jest config whose resolution maps the
+  source file to the mutated copy, run `--runTestsByPath` once per covering file with bail,
+  cheapest file first, with `timeout -k 10 120` per run (about 19 min per 195 mutants).
+  Red = killed; exit 134 or a heap OOM = a real infinite loop (detected). Run a control on the
+  unmutated copy first. Table: one row per mutant (id, file:line, mutator, replacement, covering
+  files run, result killed or survived, the killing test file or the reason). A mutant that
+  survives plain jest is EQUIVALENT (one-line reason in the BATCH READY) or goes to qa as
+  MISSING TEST. Never raise the timeout; there is no allowlist file. A queued gate
   (`scripts/job-queue.sh gate`) prints, after the gate-log summary lines and before the DONE
   line, each `TIMEOUT-HEAVY` line of the gate log once, so the waiter's output shows the
   ruling. The mutation step tees its output to a
@@ -244,9 +270,13 @@ See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
 script (ruby/perl code — `-e` or a stdin script — is a known limit))
-into `src/`, `__tests__/`, `rules/`, `e2e/`, or `drizzle/` of any worktree of this
-repository, because the pre-write guard sees only Edit/Write/MultiEdit:
-use Edit or Write. Move or rename a file with `git mv` (`git add` a new
+into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
+`.claude/agents/`, or any of `harness/kiko/` of any worktree of this repository, or into a YAML
+file (a final segment ending in `.yml` or `.yaml`,
+at any depth of a worktree except under `node_modules/`; one the text cannot resolve is denied
+too; a `cp`/`mv` behind `xargs` whose destination the text resolves into a worktree folder is
+denied too, since its input names may be YAML), because the pre-write guard sees only
+Edit/Write/MultiEdit: use Edit or Write. Move or rename a file with `git mv` (`git add` a new
 file first), then edit it with Edit/Write. Reads, git itself, and a
 formatter's own `--write` stay allowed. See kiko-linter's "SHELL-WRITE
 deny" for the full rule, limits, and where it is live.

@@ -906,9 +906,9 @@ code, so they stay lower-`an`/lower-`iban` rather than becoming
 not drift to fix — do not "correct" a wire-mirrored field to match the
 acronym rule.
 
-This applies inside a compound name too, not just standalone —
-`isBTCEntry` (`src/crypto-sync/binance/binance.provider.ts`), not
-`isBtcEntry`, is a live example.
+This applies inside a compound name too, not just standalone. The
+analyzer's acronym-run rule in `scripts/checks/full-word-identifiers.js` is the source of how a
+run like `maskedPAN` splits into words; read it there.
 
 Note: the Drizzle schema's own column names (`externalId`, `mcc`)
 follow ordinary camelCase per Drizzle/SQL convention, not this rule
@@ -1081,7 +1081,12 @@ helpers, not a mock factory's own body.
 
 A component uses an explicit `return` —
 `(props) => { return (<...>); }` — never the arrow-shorthand implicit
-return `(props) => (<...>)`.
+return `(props) => (<...>)`. This applies to app components and to the components in
+`src/test-support/`. A component local to a `*.test.tsx` (a stub screen such as
+`const DetailScreen: FC = () => null;`) is test scaffolding and is exempt. Semgrep
+`kiko-component-explicit-return` denies the shorthand on a component declared
+`FC<...> = (...) =>` in a `.tsx` file other than `*.test.tsx`; its known limits are in
+kiko-linter's "`kiko-component-explicit-return`".
 
 ## Folder-per-thing co-location
 
@@ -1153,8 +1158,8 @@ To move or rename a file (into a unit folder, for example), use
 Edit/Write, so the pre-write guard checks the change. `git mv` leaves
 the content unchanged, and guard-replay follows the rename, so the
 file's pre-existing findings keep their baseline. Never use a plain
-`mv`/`cp` (the kill-guard denies it into `src/`, `__tests__/`, `rules/`, and
-`e2e/`, and a plain move reads as a new file whose every finding
+`mv`/`cp` (the kill-guard denies it into any SHELL-WRITE tree or YAML file, see
+kiko-linter "SHELL-WRITE deny", and a plain move reads as a new file whose every finding
 looks new), and never edit the moved file with sed or another Bash
 write.
 
@@ -1316,6 +1321,15 @@ Known limits:
 - A template path (`` `${__dirname}/x.csv` ``) fires even with a
   non-TypeScript extension: the rule reads only a string literal or a
   join. A safe false positive: write `join(__dirname, 'x.csv')`.
+
+## An absence assertion must not go vacuous
+
+A test that asserts a text is ABSENT (`queryByText`, `not.toContain`)
+passes for ever once a reword changes the text it hunts. Derive that text
+from the i18n key (`i18n.t(...)`) or an exported constant, never a typed
+fragment. Add a positive twin that finds the same text in the case where
+it must be there, so the matcher is proven to match. After any reword,
+grep the old fragment across `src/` and the tests.
 
 ## A rejection names its error
 

@@ -31,7 +31,20 @@ absent** — this skill states the shape and non-enum facts only:
   with no sync concept), `institution` (nullable, e.g. `monobank` —
   marks a LIVE sync connection), `bankId` (nullable, migration
   `0033`; see below), `icon`, `color`, `sortOrder`, `archivedAt`
-  (nullable), `createdAt`. `holdingTypesForAccountKind`
+  (nullable), `createdAt`, `currency` (`schema.ts` `accounts.currency`,
+  migration `0062`). `accountCurrencyOf` derives it only for migrated and
+  restored pre-0062 rows; a new account takes the cash pick
+  (`createCashAccount`, which sets both the cash holding's and the
+  account's currency), the user's raw pick on a non-cash create
+  (`AccountFormDraft.accountCurrency`, passed as `saveFormAccount`'s
+  `currency`), or the base read inside the write when that pick is untouched
+  (`null` = base; the form never sends `pick ?? base`). An edit writes only
+  `accounts.currency`, and only when the user changed it (`currencyPatch` in
+  `src/screens/forms/account-form/account-form.screen.tsx`); holdings and
+  amounts are untouched, for a cash account too.
+  Never re-derive a stored account currency after creation: a base change
+  or a new foreign holding never moves it (ruling 5,
+  `src/accounts/accounts.repo.currency.test.ts`). `holdingTypesForAccountKind`
   (`src/holdings/holding-type/`) maps each account kind to its
   allowed `Holding.type` set — `property` maps to `property_item`,
   `metals` maps to `metal`, `debt` maps to `loan` — read that file
@@ -95,9 +108,10 @@ absent** — this skill states the shape and non-enum facts only:
   `accountsRepo.createIfAbsent` (one write that selects the row and returns
   early when it exists, so it writes no sort order and no second writer can
   fail on the key), and Save is one `accountsRepo.saveFormAccount` call (one
-  write that selects the row and updates name, color, icon and bank, or
-  inserts it, with the sort order only on insert), never a decision from a
-  copy of component state. A fold remounts the screen but the OLD instance's
+  write that selects the row and updates name, color, icon, bank and, when
+  the pick is non-null, currency, or inserts it, with the sort order only on
+  insert), never a decision from a copy of component state. A fold remounts
+  the screen but the OLD instance's
   in-flight Connect still runs, so the draft (`AccountFormDraft`) keeps
   `pendingAccountId` and nothing about the row; the remounted form asks the
   write queue (`usePendingRowLock`) before it unlocks the kind and bank
@@ -1068,6 +1082,13 @@ always, and the marker only when it is manual or imported and carries none; see
   also excludes these rows from spending (read
   `src/statistics/exchange-exclusion/`). The column is insert-only: it is not in
   `BANK_OWNED_TRANSACTION_COLUMNS` (`src/transactions/repo/transactions.repo.ts`).
+- **The 2-minute same-amount matcher sees only unmarked rows.**
+  `rowsForTransferMatch` (`src/statistics/internal-transfers/internal-transfers.ts`)
+  drops every row that carries `exchangePairId`, `exchangeCounterpartHoldingId` or
+  `untrackedCounterpart` before `internalTransferTransactionIds` runs
+  (`statistics.screen.tsx`). A marked row is an exchange leg the structural rules already
+  exclude; left in the ledger it could be matched as the partner of an unmarked
+  same-amount row (a Pay send) and drop real spending.
 - **`transactionRowDescription` is the ONE owner of a blank row's label.**
   Every surface that shows it calls it: both lists, `ExampleTransaction`,
   and the transaction form. On an edit, the form pre-fills a blank
@@ -1414,6 +1435,22 @@ offline seed, so an unrated crypto holding is excluded until a live
 CoinGecko price lands) — every fiat currency is covered by the bundled
 seed and effectively never drops.
 
+An account's total, on its card (`AccountTotal`), on the
+Property/Debts section heading (implicit accounts) and in the
+account-detail headline
+(`src/screens/account-detail/account-detail.screen.tsx`; before the
+row loads it falls back to `account?.currency ?? baseCurrency`, hidden
+by the loading gate), is `accountTotal(holdings, account.currency,
+baseCurrency, rates, now, book)`
+(`src/rates/net-worth-view/account-total.ts`): `total` is
+`guardedNetWorth` in the ACCOUNT's currency, and `inBase` is
+`guardedNetWorth` in the base currency (not a re-conversion of
+`total`, so no double rounding through the UAH pivot); `inBase` is
+`null` when the account is in the base currency or
+`canConvert(account, base)` is false. The caption
+(`ConvertedCaption`, card, section heading and detail alike) renders only for a
+non-null `inBase`.
+
 `buildTypeBreakdown` (`src/statistics/type-breakdown/`, the by-type
 bar) is ASSETS ONLY, the same per-HOLDING rule the account pie follows
 (below): `loan` is excluded outright, and a non-loan holding in debit
@@ -1440,14 +1477,21 @@ SIGNED (net) sums of every holding, so the breakdown still adds up to
 the headline exactly as it always did — a debt nets into its own
 currency's cell there, unlike Statistics' assets-only pie. Accounts'
 own "Debts" section (`accounts.screen.tsx`) computes its OWN section
-total independently, via `guardedNetWorth` of the OPEN holdings of the
-implicit debt account (it holds only `loan` holdings, so this total is
-always <= 0; one card per loan); it does not call `buildDebtTotal`,
-which sums across every account kind. The implicit property account
-gets the SAME treatment: its own "Property" section (one card per open
-holding), its own `guardedNetWorth`-summed section total over that
-account's open holdings, rendered between the main grid and the Debts
-section. A section with no open holding does not render. Read `kiko-charts` for the pie/line-specific rules.
+total independently: `accountTotal` (via `useSectionTotals`) over the
+OPEN holdings of the implicit debt account, in THAT account's
+currency, rendered by `AccountTotal` with a base `ConvertedCaption`
+(testIDs `debts-total-converted`, `property-total-converted`). It is
+the same figure and caption as the account's detail headline (spec D6
+parity, pinned by `src/test-support/implicit-total-parity.ts`); it
+does not use `guardedNetWorth` as Home does. The debt account holds
+only `loan` holdings, so its total and caption are <= 0 (one card per
+loan); it does not call `buildDebtTotal`, which sums across every
+account kind. The implicit property account gets the SAME treatment:
+its own "Property" section (one card per open holding) with the same
+`accountTotal` figure and caption, rendered between the main grid and
+the Debts section. A section renders only for a live implicit account
+row with at least one open holding; with none it does not render.
+Read `kiko-charts` for the pie/line-specific rules.
 
 ### Bond funding recognition (net-worth series only)
 

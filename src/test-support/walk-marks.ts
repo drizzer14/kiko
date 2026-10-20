@@ -18,7 +18,9 @@ export type WalkField =
   | 'pending'
   | 'pointCursor'
   | 'rangeCursor'
-  | 'spanHints';
+  | 'spanHints'
+  | 'multiCoinSince'
+  | 'multiCoinSeen';
 
 /** Any value, because a test also seeds a malformed mark to prove the walk reads it as none. */
 export type WalkMarkSeed = Partial<Record<WalkField, unknown>>;
@@ -27,6 +29,9 @@ export type WalkMarkSeed = Partial<Record<WalkField, unknown>>;
 export type ExchangeStateSeed = {
   version: 1;
   walks: Partial<Record<WalkName, Record<string, unknown>>>;
+  oversizedCoins?: { history?: string[] };
+  /** Any value, because a test also seeds an unreadable stamp. */
+  balanceSyncedAt?: unknown;
 };
 
 const SPOT_HOLDING_ID = 'h-spot';
@@ -36,7 +41,13 @@ const SPOT_ASSET = 'BTC';
 /** The marks a walk writes as one number: a cursor, a re-scan mark or a round-robin's cursor. */
 export const NUMBER_MARK_FIELDS = ['cursor', 'rescan', 'pointCursor', 'rangeCursor'] as const;
 
-const FIELDS: readonly WalkField[] = [...NUMBER_MARK_FIELDS, 'pending', 'spanHints'];
+const FIELDS: readonly WalkField[] = [
+  ...NUMBER_MARK_FIELDS,
+  'pending',
+  'spanHints',
+  'multiCoinSince',
+  'multiCoinSeen',
+];
 
 export const WALK_NAMES: readonly WalkName[] = ['capital', 'pay', 'transfer', 'earn'];
 
@@ -147,7 +158,12 @@ type WalkPatch = Extract<ExchangeStatePatch, { kind: 'walk' }>;
 
 type PatchMock = jest.Mock<Promise<void>, Parameters<ExchangeStateDeps['patchExchangeState']>>;
 
+type CoinListPatch = Extract<ExchangeStatePatch, { kind: 'coinList' }>;
+
 const isWalkPatch = (patch: ExchangeStatePatch): patch is WalkPatch => patch.kind === 'walk';
+
+const isCoinListPatch = (patch: ExchangeStatePatch): patch is CoinListPatch =>
+  patch.kind === 'coinList';
 
 /** The writes of one call, in the order of its patches: each a little after the call it is in. */
 const writesOfCall = (
@@ -214,6 +230,12 @@ export const walkMarkWritesOf = (
     .map((write) => write.value);
 };
 
+/** Every coin-list patch the deps' patch writer took, in the order it took them. */
+export const coinListPatchesOf = (deps: Partial<ExchangeStateDeps>): CoinListPatch[] =>
+  ((deps.patchExchangeState as PatchMock | undefined)?.mock.calls ?? []).flatMap(([, patches]) =>
+    patches.filter(isCoinListPatch),
+  );
+
 /** Every number mark any walk wrote, so a write to a walk the run never owned is counted too. */
 export const numberMarkWritesOfAnyWalk = (deps: Partial<ExchangeStateDeps>): number[] =>
   writesOf(deps)
@@ -233,7 +255,10 @@ type WalkWorld = {
 
 type WalkStateDeps = { patchExchangeState: PatchMock; readExchangeState: jest.Mock };
 
-/** Throws on a patch no walk owns: a fake that accepted one would hide a mistyped mark. */
+/**
+ * Throws on a patch no walk owns, bar the coin lists a walk writes: a fake that accepted any other
+ * would hide a mistyped mark.
+ */
 export const walkStateFake = (world: WalkWorld = {}) => {
   const accountId = world.accountId ?? 'acc-1';
   const seeded = withWalkMarkSeeds({}, accountId, world.marks ?? {});
@@ -254,10 +279,16 @@ export const walkStateFake = (world: WalkWorld = {}) => {
     written: string,
     patches: readonly ExchangeStatePatch[],
   ): void => {
-    const other = patches.find((patch) => !isWalkPatch(patch));
+    const other = patches.find((patch) => !isWalkPatch(patch) && !isCoinListPatch(patch));
 
     if (other !== undefined) {
       throw new Error(`walkStateFake: no walk mark is stored under "${other.kind}"`);
+    }
+
+    if (written === accountId) {
+      state = JSON.parse(
+        exchangeStatePatched(JSON.stringify(state), patches.filter(isCoinListPatch)) ?? '',
+      ) as ExchangeStateSeed;
     }
 
     const walkPatches = patches.filter(isWalkPatch);

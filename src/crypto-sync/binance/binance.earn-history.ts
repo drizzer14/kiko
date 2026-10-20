@@ -2,13 +2,16 @@ import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
 import {
   advanceWalkMarks,
+  AMOUNT_STOP_CODES,
   BinanceWalkStop,
   commitSettledSpan,
   dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
+  historyListWriterOf,
   instantAt,
   joinSettled,
+  multiCoinPatchesOf,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
@@ -16,6 +19,7 @@ import {
   readWalkMarks,
   readWalkRoundRobins,
   roundRobinHooksOf,
+  rowMinorUnits,
   runWalkPlan,
   type SettledSpan,
   settleRecords,
@@ -33,32 +37,30 @@ import {
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 
 import {
-  type BinanceWalletKey,
-  binanceKeyOf,
-  EARN_KEY,
-  FUNDING_KEY,
-  SPOT_KEY,
-} from './binance.holding-keys';
-import {
+  EARN_REDEMPTION_SETTLED_STATUS,
+  EARN_SUBSCRIPTION_SETTLED_STATUS,
   type EarnRecordByKind,
   type EarnRecordKind,
   fetchEarnRecords,
+  isEarnRecordSettled,
   type TotalPage,
   type TotalQuery,
 } from './binance.history-client';
-import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
-import type { FetchAccountOptions } from './binance.client';
+import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import type { BinanceHistoryRow } from './binance.transfer-history';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
+import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
 import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceWallet, exchangePairIdOf, holdingKeyOf } from './binance.holding-keys';
 
 /** The widest range an Earn history read takes is 30 days. */
 export const EARN_WINDOW_MS = 30 * DAY_MS;
@@ -81,12 +83,6 @@ const MAX_WINDOWS = 12;
 
 /** Safety stop on paging one kind within a span of one millisecond (100 rows x 50 pages). */
 const MAX_PAGES_PER_SPAN = 50;
-
-/** The status Binance gives a subscription that went through. */
-export const EARN_SUBSCRIPTION_SETTLED_STATUS = 'SUCCESS';
-
-/** The status Binance gives a redemption that was paid out (a redemption is never `SUCCESS`). */
-export const EARN_REDEMPTION_SETTLED_STATUS = 'PAID';
 
 /** The statuses of a record that did not go through and never will: nothing is owed for it. */
 export const EARN_FAILED_STATUSES: readonly string[] = ['FAILED'];
@@ -145,6 +141,7 @@ export const EARN_FORWARD_OWES: readonly string[] = [
   EARN_REDEMPTION_TYPE_UNCONFIRMED,
   EARN_REWARD_TYPE_UNKNOWN,
   EARN_ROW_UNREADABLE,
+  ...AMOUNT_STOP_CODES,
 ];
 
 /** The description of a reward: income, so no "Transfer to/from" label applies. */
@@ -154,11 +151,12 @@ type EarnProduct = 'flexible' | 'locked';
 
 /**
  * A row mapped from an Earn record, before its wallets are turned into holdings: `wallet` is the
- * one it sits on, `counterpartWallet` the other leg's of a move between two wallets.
+ * key of the coin's holding it sits on, `counterpartWallet` the other leg's of a move between two
+ * wallets.
  */
 type PlannedEarnRow = {
-  wallet: BinanceWalletKey;
-  counterpartWallet?: BinanceWalletKey;
+  wallet: string;
+  counterpartWallet?: string;
   amountMinorUnits: number;
   time: number;
   externalId: string;
@@ -166,30 +164,42 @@ type PlannedEarnRow = {
   description: string;
 };
 
-/** The satoshis of an amount that must be above zero. */
-const positiveSatoshis = (amount: string): number => {
-  const satoshis = btcSatoshis(amount);
+/**
+ * The coin of a record the walk reads. The client reads only a tracked coin's records, so any other
+ * never gets here; if one does, it is that record's own stop, never a guessed coin.
+ */
+const trackedAssetOf = (asset: string): Currency => {
+  if (!isTrackedBinanceAsset(asset)) {
+    throw new BinanceWalkStop(EARN_ROW_UNREADABLE);
+  }
 
-  if (satoshis === null || satoshis <= 0) {
+  return asset;
+};
+
+/** The minor units of an amount in `asset` that must be above zero. */
+const positiveUnits = (asset: Currency, amount: string): number => {
+  const units = rowMinorUnits(asset, amount);
+
+  if (units <= 0) {
     throw new BinanceWalkStop(EARN_AMOUNT_INVALID);
   }
 
-  return satoshis;
+  return units;
 };
 
-/** The satoshis of one of the two split fields of a subscription: zero when it is left out. */
-const splitSatoshis = (amount: string | undefined): number => {
+/** The minor units of one of the two split fields of a subscription: zero when it is left out. */
+const splitUnits = (asset: Currency, amount: string | undefined): number => {
   if (amount === undefined) {
     return 0;
   }
 
-  const satoshis = btcSatoshis(amount);
+  const units = rowMinorUnits(asset, amount);
 
-  if (satoshis === null || satoshis < 0) {
+  if (units < 0) {
     throw new BinanceWalkStop(EARN_AMOUNT_INVALID);
   }
 
-  return satoshis;
+  return units;
 };
 
 /**
@@ -234,11 +244,11 @@ const WALLET_FUNDED_SUBSCRIPTION_TYPES: Record<EarnProduct, readonly string[]> =
 const LOCKED_REDEMPTION_TO_SPOT_TYPE = 'MATURE';
 
 /** The wallet an account name of Binance stands for, among the two Kiko tracks. */
-const walletOfAccount = (account: string | undefined): BinanceWalletKey =>
+const walletOfAccount = (account: string | undefined): BinanceWallet =>
   match(account)
-    .returnType<BinanceWalletKey>()
-    .with('SPOT', () => SPOT_KEY)
-    .with('FUNDING', () => FUNDING_KEY)
+    .returnType<BinanceWallet>()
+    .with('SPOT', () => 'spot')
+    .with('FUNDING', () => 'funding')
     .otherwise(() => {
       throw new BinanceWalkStop(EARN_ACCOUNT_UNKNOWN);
     });
@@ -251,45 +261,54 @@ type RedemptionRecord =
   | EarnRecordByKind['flexibleRedemption']
   | EarnRecordByKind['lockedRedemption'];
 
-type Debit = { wallet: BinanceWalletKey; satoshis: number };
+type Debit = { wallet: BinanceWallet; units: number };
 
 /**
  * Where a subscription's money came from: the two split fields when either is given (left out
  * reads as zero, and their sum must be the amount), else the one account it names.
  */
-const debitsOf = (record: SubscriptionRecord, satoshis: number): Debit[] => {
+const debitsOf = (record: SubscriptionRecord, asset: Currency, units: number): Debit[] => {
   if (record.amtFromSpot === undefined && record.amtFromFunding === undefined) {
-    return [{ wallet: walletOfAccount(record.sourceAccount), satoshis }];
+    return [{ wallet: walletOfAccount(record.sourceAccount), units }];
   }
 
   const debits: Debit[] = [
-    { wallet: SPOT_KEY, satoshis: splitSatoshis(record.amtFromSpot) },
-    { wallet: FUNDING_KEY, satoshis: splitSatoshis(record.amtFromFunding) },
+    { wallet: 'spot', units: splitUnits(asset, record.amtFromSpot) },
+    { wallet: 'funding', units: splitUnits(asset, record.amtFromFunding) },
   ];
 
-  if (debits[0].satoshis + debits[1].satoshis !== satoshis) {
+  if (debits[0].units + debits[1].units !== units) {
     throw new BinanceWalkStop(EARN_SPLIT_MISMATCH);
   }
 
-  return debits.filter((debit) => debit.satoshis > 0);
+  return debits.filter((debit) => debit.units > 0);
 };
 
-/** One leg of a move between two wallets, under the pair id both legs share. */
+/**
+ * One leg of a move between two wallets of one coin. `pairId` is the id Binance gives the move,
+ * which two coins can share: each leg is keyed by it and the key of the holding it sits on (for
+ * BTC the key it always had), and the two legs of a coin share its `exchangePairId`.
+ */
 const legOf = (input: {
   pairId: string;
   time: number;
-  wallet: BinanceWalletKey;
-  counterpart: BinanceWalletKey;
-  signedSatoshis: number;
-}): PlannedEarnRow => ({
-  wallet: input.wallet,
-  counterpartWallet: input.counterpart,
-  amountMinorUnits: input.signedSatoshis,
-  time: input.time,
-  externalId: `${input.pairId}:${input.wallet}`,
-  exchangePairId: input.pairId,
-  description: '',
-});
+  asset: Currency;
+  wallet: BinanceWallet;
+  counterpart: BinanceWallet;
+  signedUnits: number;
+}): PlannedEarnRow => {
+  const wallet = holdingKeyOf(input.asset, input.wallet);
+
+  return {
+    wallet,
+    counterpartWallet: holdingKeyOf(input.asset, input.counterpart),
+    amountMinorUnits: input.signedUnits,
+    time: input.time,
+    externalId: `${input.pairId}:${wallet}`,
+    exchangePairId: exchangePairIdOf(input.pairId, input.asset),
+    description: '',
+  };
+};
 
 /**
  * The rows of one subscription: a debit on Spot and Funding for what each paid, and the credit
@@ -318,9 +337,10 @@ export const subscriptionRowsOf = (
     throw new BinanceWalkStop(EARN_SUBSCRIPTION_TYPE_UNCONFIRMED);
   }
 
-  const satoshis = positiveSatoshis(record.amount);
-  const debits = debitsOf(record, satoshis);
-  const larger = debits.reduce((best, debit) => (debit.satoshis > best.satoshis ? debit : best));
+  const asset = trackedAssetOf(record.asset);
+  const units = positiveUnits(asset, record.amount);
+  const debits = debitsOf(record, asset, units);
+  const larger = debits.reduce((best, debit) => (debit.units > best.units ? debit : best));
   const pairId = `${accountId}:earn:sub:${product}:${record.purchaseId}`;
   const time = record.time;
 
@@ -329,12 +349,13 @@ export const subscriptionRowsOf = (
       legOf({
         pairId,
         time,
+        asset,
         wallet: debit.wallet,
-        counterpart: EARN_KEY,
-        signedSatoshis: -debit.satoshis,
+        counterpart: 'earn',
+        signedUnits: -debit.units,
       }),
     ),
-    legOf({ pairId, time, wallet: EARN_KEY, counterpart: larger.wallet, signedSatoshis: satoshis }),
+    legOf({ pairId, time, asset, wallet: 'earn', counterpart: larger.wallet, signedUnits: units }),
   ];
 };
 
@@ -343,7 +364,7 @@ export const subscriptionRowsOf = (
  * none: only the type `MATURE` is documented to pay Spot, and every other type, or none, is a
  * stop, as is a locked redemption that is not complete: no wallet is assumed.
  */
-const destinationOf = (record: RedemptionRecord): BinanceWalletKey => {
+const destinationOf = (record: RedemptionRecord): BinanceWallet => {
   if ('destAccount' in record) {
     return walletOfAccount(record.destAccount);
   }
@@ -356,7 +377,7 @@ const destinationOf = (record: RedemptionRecord): BinanceWalletKey => {
     throw new BinanceWalkStop(EARN_REDEMPTION_TYPE_UNCONFIRMED);
   }
 
-  return SPOT_KEY;
+  return 'spot';
 };
 
 /**
@@ -376,30 +397,39 @@ export const redemptionRowsOf = (
     throw new BinanceWalkStop(EARN_ID_MISSING);
   }
 
-  const satoshis = positiveSatoshis(record.amount);
+  const asset = trackedAssetOf(record.asset);
+  const units = positiveUnits(asset, record.amount);
   const destination = destinationOf(record);
   const pairId = `${accountId}:earn:redeem:${product}:${record.redeemId}`;
   const time = record.time;
 
   return [
-    legOf({ pairId, time, wallet: EARN_KEY, counterpart: destination, signedSatoshis: -satoshis }),
-    legOf({ pairId, time, wallet: destination, counterpart: EARN_KEY, signedSatoshis: satoshis }),
+    legOf({ pairId, time, asset, wallet: 'earn', counterpart: destination, signedUnits: -units }),
+    legOf({ pairId, time, asset, wallet: destination, counterpart: 'earn', signedUnits: units }),
   ];
 };
 
 /** One reward record of either product, as the walk reads it. */
-export type EarnReward = { ownerId: string; type: string; time: number; amount: string };
+export type EarnReward = {
+  asset: string;
+  ownerId: string;
+  type: string;
+  time: number;
+  amount: string;
+};
 
 /**
- * The rewards that share a product, a project (or position), a type and a time. Binance gives
- * a reward no id, so the rows of a group are numbered within it, and the group is the unit the
- * walk trusts or does not: its members share one time, so a read that returns one returns all.
+ * The rewards that share a product, a project (or position), a type, a time and a coin. Binance
+ * gives a reward no id, so the rows of a group are numbered within it, and the group is the unit
+ * the walk trusts or does not: its members share one time, so a read that returns one returns all.
+ * Each coin is a group of its own, so the numbering of one coin never moves with another's.
  */
 type EarnRewardGroup = {
   product: EarnProduct;
   ownerId: string;
   type: string;
   time: number;
+  asset: string;
   records: EarnReward[];
 };
 
@@ -407,7 +437,7 @@ export const rewardGroupsOf = (product: EarnProduct, records: EarnReward[]): Ear
   const groups = new Map<string, EarnRewardGroup>();
 
   for (const record of records) {
-    const key = JSON.stringify([record.ownerId, record.type, record.time]);
+    const key = JSON.stringify([record.ownerId, record.type, record.time, record.asset]);
     const group = groups.get(key);
 
     if (group === undefined) {
@@ -416,6 +446,7 @@ export const rewardGroupsOf = (product: EarnProduct, records: EarnReward[]): Ear
         ownerId: record.ownerId,
         type: record.type,
         time: record.time,
+        asset: record.asset,
         records: [record],
       });
     } else {
@@ -431,15 +462,15 @@ export const rewardGroupsOf = (product: EarnProduct, records: EarnReward[]): Ear
  * flexible `BONUS` reward and every locked reward go to Spot. Any other flexible type is a
  * stop: no wallet is guessed.
  */
-const rewardWalletOf = (group: EarnRewardGroup): BinanceWalletKey =>
+const rewardWalletOf = (group: EarnRewardGroup): BinanceWallet =>
   match(group.product)
-    .returnType<BinanceWalletKey>()
-    .with('locked', () => SPOT_KEY)
+    .returnType<BinanceWallet>()
+    .with('locked', () => 'spot')
     .with('flexible', () =>
       match(group.type)
-        .returnType<BinanceWalletKey>()
-        .with('REALTIME', () => EARN_KEY)
-        .with('BONUS', () => SPOT_KEY)
+        .returnType<BinanceWallet>()
+        .with('REALTIME', () => 'earn')
+        .with('BONUS', () => 'spot')
         .otherwise(() => {
           throw new BinanceWalkStop(EARN_REWARD_TYPE_UNKNOWN);
         }),
@@ -447,25 +478,29 @@ const rewardWalletOf = (group: EarnRewardGroup): BinanceWalletKey =>
     .exhaustive();
 
 /**
- * The rows of one reward group, numbered from 0 by their satoshis, ascending, so the same set of
- * rewards is keyed the same way in every read. One member that cannot be trusted stops the whole
- * group: a group numbered without it would be numbered two ways.
+ * The rows of one reward group, numbered from 0 by their minor units in the group's coin,
+ * ascending, so the same set of rewards is keyed the same way in every read. A BTC row keeps the
+ * key it always had; any other coin's key ends in the coin, which keeps two coins of one project,
+ * type and time apart. One member that cannot be trusted stops the whole group: a group numbered
+ * without it would be numbered two ways.
  */
 export const rewardGroupRowsOf = (accountId: string, group: EarnRewardGroup): PlannedEarnRow[] => {
   if (group.ownerId === '') {
     throw new BinanceWalkStop(EARN_ID_MISSING);
   }
 
-  const wallet = rewardWalletOf(group);
-  const satoshis = group.records.map((record) => positiveSatoshis(record.amount));
+  const asset = trackedAssetOf(group.asset);
+  const wallet = holdingKeyOf(asset, rewardWalletOf(group));
+  const coinSuffix = asset === BINANCE_ASSET ? '' : `:${asset}`;
+  const units = group.records.map((record) => positiveUnits(asset, record.amount));
 
-  return satoshis
+  return units
     .sort((left, right) => left - right)
     .map((amountMinorUnits, position) => ({
       wallet,
       amountMinorUnits,
       time: group.time,
-      externalId: `${accountId}:earn:reward:${group.product}:${group.ownerId}:${group.type}:${group.time}:${position}`,
+      externalId: `${accountId}:earn:reward:${group.product}:${group.ownerId}:${group.type}:${group.time}:${position}${coinSuffix}`,
       description: REWARD_DESCRIPTION,
     }));
 };
@@ -501,6 +536,7 @@ const rewardOf = (entry: EarnRecord): ProductReward | undefined =>
     .with({ kind: 'flexibleRewards' }, ({ record }) => ({
       product: 'flexible',
       reward: {
+        asset: record.asset,
         ownerId: record.projectId,
         type: record.type,
         time: record.time,
@@ -510,6 +546,7 @@ const rewardOf = (entry: EarnRecord): ProductReward | undefined =>
     .with({ kind: 'lockedRewards' }, ({ record }) => ({
       product: 'locked',
       reward: {
+        asset: record.asset,
         ownerId: record.positionId,
         type: record.type,
         time: record.time,
@@ -611,7 +648,8 @@ const unreadableTimesOf = (
  * or a reward group the walk cannot trust, or a row the client could not read, owes its own
  * point in the kind it was read under and the others still import. A kind whose pages drifted
  * is no one record's stop: the span is owed, as a range, in every kind, and the kinds that did
- * not drift still commit.
+ * not drift still commit. A record of a coin that is not tracked is counted by its point and gives
+ * no row and no stop; its coin is listed once the record is settled (see `isEarnRecordSettled`).
  */
 export const settledEarnOf = (input: {
   accountId: string;
@@ -640,6 +678,18 @@ export const settledEarnOf = (input: {
       rowsOf: (unit) => unit.rows(),
       extentOf: (unit) => instantAt(unit.time),
       seriesOf: (unit) => unit.series,
+    }),
+    settleRecords({
+      span,
+      reach,
+      records: read.read.flatMap(({ series, untracked }) =>
+        untracked.map((row) => ({ series, row })),
+      ),
+      rowsOf: () => [],
+      extentOf: ({ row }) => foldMap(maybe(row.time), (time) => instantAt(Number(time))),
+      seriesOf: ({ series }) => series,
+      untrackedOf: ({ series, row }) =>
+        isEarnRecordSettled(series, row.status) ? row.ticker : undefined,
     }),
     settleUnreadable({
       span,
@@ -770,6 +820,8 @@ const commitSpan = (
         missingCode: 'earn-holding-missing',
       }),
     add: deps.addTransactions,
+    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
+    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
@@ -795,11 +847,9 @@ const runSync = async (
     return { imported: 0, complete: false };
   }
 
-  const holdings = await deps.listHoldings(accountId);
-  const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
   const credentials = await deps.readCredentials(accountId);
 
-  if (spot === undefined || credentials === undefined) {
+  if (credentials === undefined) {
     return { imported: 0, complete: true };
   }
 
@@ -838,7 +888,13 @@ const runSync = async (
     apiKey: credentials.apiKey,
     secret: credentials.secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor, rescanCursor, ...roundRobins, pending },
+    marks: {
+      cursor,
+      rescanCursor,
+      ...roundRobins,
+      pending,
+      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: cursor }),
+    },
     plan,
     write,
   };
@@ -870,9 +926,10 @@ const runSync = async (
 };
 
 /**
- * Import the user's BTC Simple Earn history (subscriptions and redemptions of the flexible and
- * locked products, and their rewards) as transactions, committing a span's rows before advancing
- * the mark past it. A run goes forward from the watermark first, then reads the overlap ground
+ * Import the user's Simple Earn history of every tracked coin (subscriptions and redemptions of
+ * the flexible and locked products, and their rewards) as transactions, and list the coins of the
+ * records it counts but does not import, committing a span's rows before advancing the mark past
+ * it. A run goes forward from the watermark first, then reads the overlap ground
  * earlier runs left owed, then re-scans the last window behind the watermark, then reads the
  * owed points, each on what budget is left (see `planWalkPasses`); every span asks all six
  * kinds. `complete: false` means history, owed ground or the re-scan remains and a later run

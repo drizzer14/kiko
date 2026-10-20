@@ -19,6 +19,7 @@ import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { implicitParityFixture } from '@kiko/test-support/implicit-total-parity';
 import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -153,6 +154,7 @@ type Account = {
   id: string;
   name: string;
   kind: string;
+  currency?: string;
   institution?: string | null;
   archivedAt?: number | null;
   icon?: string | null;
@@ -192,7 +194,8 @@ const setLiveData = (data: {
   isStale?: Partial<Record<string, boolean>>;
 }): void => {
   const byTable: Record<string, unknown[]> = {
-    accounts: data.accounts ?? [],
+    // The base currency of every fixture, so an account that names none keeps the base totals.
+    accounts: (data.accounts ?? []).map((account) => ({ currency: 'UAH', ...account })),
     holdings: data.holdings ?? [],
     currency_rates: data.rates ?? [],
     settings: data.settings ?? [{ baseCurrency: 'UAH' }],
@@ -440,6 +443,94 @@ describe('AccountsScreen', () => {
     // Each account maps to its own Card (testID `account-card`),
     // so two active accounts yield two distinct cards rather than one group.
     expect(getAllByTestId('account-card')).toHaveLength(2);
+  });
+
+  describe('the account currency', () => {
+    const usdRate = [{ base: 'USD', quote: 'UAH', rate: '40' }];
+
+    it('totals a USD account in dollars with the base figure beneath', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Wise', kind: 'bank', currency: 'USD' }],
+        holdings: [{ accountId: 'a', currency: 'USD', balanceMinorUnits: 10_000 }],
+        rates: usdRate,
+      });
+      const { getByText, getByTestId } = await renderAccounts();
+
+      expect(getByText('$100.00')).toBeTruthy();
+      expect(within(getByTestId('account-card-converted')).getByText(/4,000\.00 ₴/)).toBeTruthy();
+    });
+
+    it('shows no caption for an account in the base currency', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+        holdings: [{ accountId: 'a', currency: 'USD', balanceMinorUnits: 10_000 }],
+        rates: usdRate,
+      });
+      const { getByText, queryByTestId } = await renderAccounts();
+
+      expect(getByText(/4,000\.00 ₴/)).toBeTruthy();
+      expect(queryByTestId('account-card-converted')).toBeNull();
+    });
+
+    it('shows an empty USD account as zero dollars with a zero caption in the base', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Wise', kind: 'bank', currency: 'USD' }],
+        holdings: [],
+        rates: usdRate,
+      });
+      const { getByText, getByTestId } = await renderAccounts();
+
+      expect(getByText('$0.00')).toBeTruthy();
+      expect(within(getByTestId('account-card-converted')).getByText('0.00 ₴')).toBeTruthy();
+    });
+
+    it('shows a crypto account its own sum, with no caption and no zero in the base', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Cold wallet', kind: 'crypto', currency: 'BTC' }],
+        holdings: [{ accountId: 'a', currency: 'BTC', balanceMinorUnits: 50_000_000 }],
+        rates: [],
+      });
+      const { getByText, queryByText, queryByTestId } = await renderAccounts();
+
+      expect(getByText(/0\.5/)).toBeTruthy();
+      expect(queryByText(/0\.00 ₴/)).toBeNull();
+      expect(queryByTestId('account-card-converted')).toBeNull();
+    });
+  });
+
+  // The Property and Debts headings act as their implicit account's card: the total follows the
+  // account currency, with the base caption beside it.
+  describe.each([
+    ['property', 'accounts-property-total', 'property-total-converted'],
+    ['debt', 'accounts-debts-total', 'debts-total-converted'],
+  ] as const)('the %s section total', (kind, totalTestID, captionTestID) => {
+    it('totals in the account currency with the base figure beneath', async () => {
+      const { account, holdings, rates, total, caption } = implicitParityFixture(kind, 'x');
+      // An open holding on another account is no part of this section. The detail page cannot
+      // pin that: its mocked holdings query ignores the account id.
+      const otherAccount = { id: 'other', name: 'Other', kind: 'bank', currency: 'UAH' };
+      const otherHolding = { accountId: 'other', currency: 'UAH', balanceMinorUnits: 700_000 };
+      setLiveData({
+        accounts: [account, otherAccount],
+        holdings: [...holdings, otherHolding],
+        rates,
+      });
+      const { getByTestId } = await renderAccounts();
+
+      expect(within(getByTestId(totalTestID)).getByText(total)).toBeTruthy();
+      expect(within(getByTestId(totalTestID)).getByTestId(captionTestID)).toHaveTextContent(
+        caption,
+      );
+    });
+
+    it('shows no caption for an account in the base currency', async () => {
+      const { account, holdings, rates } = implicitParityFixture(kind, 'x');
+      setLiveData({ accounts: [{ ...account, currency: 'UAH' }], holdings, rates });
+      const { getByTestId, queryByTestId } = await renderAccounts();
+
+      expect(within(getByTestId(totalTestID)).getByText(/5,000\.00 ₴/)).toBeTruthy();
+      expect(queryByTestId(captionTestID)).toBeNull();
+    });
   });
 
   it('renders an empty state when there are no active accounts', async () => {

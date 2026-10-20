@@ -7,7 +7,7 @@ import { sumByCurrency } from '../currency-totals';
 import { FIAT_RATE_SEED_TABLE } from '../fiat-rate-seed';
 import { netWorth, type RateTable, rateBetween, rateTableFromRows } from '../conversion';
 
-type ConvertibleHolding = Pick<
+export type ConvertibleHolding = Pick<
   HoldingRow,
   'currency' | 'balanceMinorUnits' | 'type' | 'metadata' | 'id'
 >;

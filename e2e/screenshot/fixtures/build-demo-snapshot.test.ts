@@ -64,6 +64,17 @@ describe('buildDemoSnapshot', () => {
     );
   });
 
+  it('gives each account the one currency its holdings share, or the base currency', () => {
+    const expected = dataset.accounts.map((account) => {
+      const currencies = new Set(account.holdings.map((holding) => holding.currency));
+
+      return currencies.size === 1 ? [...currencies][0] : dataset.baseCurrency;
+    });
+
+    expect(snapshot.accounts.map((account) => account.currency)).toEqual(expected);
+    expect(new Set(expected).size).toBeGreaterThan(1);
+  });
+
   it('carries every template the dataset describes, ided tpl-1..n in dataset order', () => {
     expect(templates.map((template) => template.id)).toEqual(
       dataset.templates.map((_template, index) => `tpl-${index + 1}`),

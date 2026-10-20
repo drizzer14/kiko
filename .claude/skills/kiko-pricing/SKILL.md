@@ -44,15 +44,33 @@ non-currency `price_points` store.
   refresh has ever run. Crypto has no seed entry — see below.
 - BTC price: CoinGecko free API, quoted in USD; derive other pairs
   from it. No offline seed for crypto; an unrated crypto holding is
-  excluded until a live CoinGecko price lands. `rate(BTC, UAH) =
+  excluded until a live price lands (CoinGecko, or the Binance fallback
+  below). `rate(BTC, UAH) =
   rate(BTC, USD) x rate(USD, UAH)` from the SAME run's fiat anchor
-  (Monobank buy rate, else NBU) — stored as ONE `BTC:UAH` row, always
-  `source = 'coingecko'`; no fiat anchor that run (both fiat providers
+  (Monobank buy rate, else NBU) — stored as ONE `BTC:UAH` row,
+  `source = 'coingecko'` (`'binance'` for a fallback price, see
+  below); no fiat anchor that run (both fiat providers
   failed) means no crypto row at all, exactly as before, until a run
   with a fiat anchor lands. Every other coin derives the same way; the
   coin ids and scales live in `curatedCoins`/`coinScale`
   (`src/currency/coins/coins.ts`), a stablecoin priced from the market,
   never 1:1.
+- **Binance public price fallback** (`src/rates/binance-market/`; read the
+  symbols there). A held or account coin CoinGecko left unpriced (all coins, when the
+  CoinGecko leg fails) is asked of Binance (`fetchFallbackPrices`, called
+  from `rates-refresh.ts`); its row has `source = 'binance'` (`sourceOf`;
+  the TS and DB enums in `src/db/schema.ts` and `history-entry.ts`, no
+  migration), never 1:1. The call is a `GET` of
+  `{BINANCE_API_ENDPOINT}/api/v3/klines?symbol=<binanceSymbol>&interval=1d&limit=1`,
+  accepted only if the candle's UTC open day is today (a halted pair
+  keeps its last candle; an older one is no price). Price = the close x
+  USDT's UAH price; with USDT unpriced, USDT is priced through `EURUSDT`
+  x the EUR anchor; nothing is asked when USDT has no price from either.
+  Budget and refusals: lane `market` (`LANE_CALL_CAPS`), `COSTS.klines`,
+  `API_IP_BUDGET_1M` (`binance.history-budget.ts`); a 418/429 sets the
+  cooldown key `'binance-public-market'` (`retryAfterMsFromHeaders`); a
+  403/451 ends this run's reads in memory only, never stored, never a
+  retry loop; any error is no price. Compliance: `kiko-compliance`.
 - Store live results in `currencyRates`, one `X:UAH` row per priced
   currency (`buildUahRows`, `rates-refresh.ts`) — never a cross row
   between two non-UAH currencies, since a cross rate resolves at READ
@@ -173,11 +191,22 @@ first stored day later than the span start means NBU had no quote before it.
 Crypto history rules (`src/rates/coingecko-history/coingecko-history.ts`,
 `history-backfill.ts`; read the symbols there):
 
-- Only HELD coins are fetched. Each coin is its own CoinGecko request,
+- Only HELD coins and coins a non-archived account totals in are fetched
+  (`src/rates/open-currencies-gate/open-currencies-gate.ts`; kiko-architecture's
+  rate refresh section). Each coin is its own CoinGecko request,
   isolated: a coin that fails or answers empty is left out and logged,
   never written as a zero row, and never discards another coin's rows. The
   ids come from `curatedCoins` (`src/currency/coins/coins.ts`); a stablecoin
   is priced from the market like any coin, never pinned 1:1.
+- Binance history fallback: `withBinanceFallback`
+  (`history-backfill.binance-fallback.ts`) asks klines for the coins
+  CoinGecko failed or gave no entry for, only if NBU did not reject.
+  `dailyCloses` drops a series whose last candle is older than yesterday
+  UTC (`untilYesterday`), missing days are carried forward, and the row
+  source is `'binance'` (`pairSource`). `cryptoLegWithBinance` wraps either
+  leg so a throw keeps the NBU and CoinGecko rows. The EUR history is read
+  lazily from NBU, only for the `EURUSDT` route (`loadEuroPriceAt`);
+  `MAX_KLINES_PER_CALL` clamps a request.
 - Requests run at most `CRYPTO_HISTORY_CONCURRENCY` at a time (the free
   tier 429s a burst; the cap was measured, see memory
   `bounds-are-measured-not-briefed`). `CoinGeckoRequestError` carries the
@@ -188,7 +217,9 @@ Crypto history rules (`src/rates/coingecko-history/coingecko-history.ts`,
   signal (429): it moves to the first rate-limited coin, never on any other
   failure, and is saved after `upsertMany`. Bound: every held coin is
   answered within `ceil(n / L)` runs (n held coins, L the concurrency),
-  across app restarts.
+  across app restarts. Exception (`withPricedCoins`): a coin leaves
+  `rateLimitedCurrencies` only when its Binance series has an entry on or
+  before the range start (`reachesStart`); otherwise it keeps its turn.
 - The per-series need is `seriesMissesEarlierDays`, shared by coins and
   fiat, from the stored first/last days and the settled marks. It runs
   BEFORE the "complete" early return, so a restart refills a series that
@@ -198,12 +229,20 @@ Crypto history rules (`src/rates/coingecko-history/coingecko-history.ts`,
   `src/settings/history-backfill-state.ts`; the repo's
   `changeHistoryBackfillState` merges in one `write()`): a mark is earned
   only from a run that began at the span start, and only for a series that
-  did not fail. It records `start` and `firstDay` (the first day the
-  provider answered), so a young coin (listed after the span start) stops
-  re-fetching. An EMPTY mark (`firstDay` null) applies only when the
-  currency has no stored rows and holds `EMPTY_MARK_HOLDS_DAYS` from
-  `checkedOn`; a future `checkedOn` counts as expired. A mark that stops
-  requests must expire and must apply only when no data exists.
+  did not fail. Marks come only from CoinGecko's own answer (`earnedMarks`
+  gets `coinGeckoResult`, never a Binance row). It records `start` and
+  `firstDay` (the first day the provider answered), so a young coin that
+  CoinGecko answered (listed after the span start) stops re-fetching. An
+  EMPTY mark (`firstDay` null) applies only when the currency has no stored
+  rows, or when every stored row of the coin is Binance's
+  (`binanceOnlyCurrencies`, from `deriveBinanceOnlyCurrencies`;
+  `emptyMarkHoldsOverRows`, only when the requested start is at or after
+  the mark's), and holds `EMPTY_MARK_HOLDS_DAYS` from `checkedOn`; a future
+  `checkedOn` counts as expired; `markOf` restamps after expiry for such a
+  coin. `BackfillDeps.binanceOnlyCurrencies` is optional and the Statistics
+  screen passes it. A mark that stops requests must expire and must apply
+  only when no data exists from that provider. Known cost: such a coin is
+  asked of CoinGecko once per 7 days and of Binance every run.
 
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
@@ -746,7 +785,7 @@ provider's own cache window (see "Currency-rate fallback chain"
 above) — do not poll faster than the upstream cache refreshes.
 
 `shouldThrottle` (`rates-refresh.ts`) treats `UAH` as always present
-in its "does every held currency already have a rate" check: a star
+in its "does every held or account currency already have a rate" check: a star
 row's `quote` is always `UAH` and its `base` never is, so
 `presentCurrenciesQuery` (a distinct `base` read) can never list
 `UAH` itself. Without this exception a base-USD user who holds UAH

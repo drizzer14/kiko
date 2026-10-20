@@ -276,16 +276,24 @@ describe('PieChart', () => {
         /222\.00/,
         { size: 240, innerRatio: 0.58 },
       ],
-    ])(
-      'stays on one line, shrinking to fit, inside the hole for %s',
-      async (_name, total, matcher, dimensions) => {
-        const { text, holeStyle } = await centerTextOf(dimensions, total, matcher);
+    ])('stays on one line, shrinking to fit, for %s', async (_name, total, matcher, dimensions) => {
+      const { text } = await centerTextOf(dimensions, total, matcher);
 
-        expect(text.props.numberOfLines).toBe(1);
-        expect(text.props.adjustsFontSizeToFit).toBe(true);
-        expect(holeStyle.maxWidth).toBe(dimensions.size * dimensions.innerRatio);
-      },
-    );
+      expect(text.props.numberOfLines).toBe(1);
+      expect(text.props.adjustsFontSizeToFit).toBe(true);
+    });
+
+    // Literal widths (75% of the hole diameter) so a changed fraction fails this test.
+    // The corners of the text box need room inside the ring.
+    it.each([
+      ['the default size and ratio', {}, 87],
+      ['a 200pt chart with the category ratio', { size: 200, innerRatio: 0.78 }, 117],
+      ['a larger chart with a thicker ring', { size: 240, innerRatio: 0.58 }, 104.4],
+    ])('bounds the total to 75% of the hole width for %s', async (_name, dimensions, expected) => {
+      const { holeStyle } = await centerTextOf(dimensions, Money.of('UAH', 222_00), /222\.00/);
+
+      expect(holeStyle.maxWidth).toBeCloseTo(expected, 6);
+    });
 
     it('leaves out minimumFontScale, which iOS ignores', async () => {
       const { text } = await centerTextOf({}, Money.of('UAH', 222_00), /222\.00/);

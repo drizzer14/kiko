@@ -14,8 +14,10 @@ Rules:
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - You write TypeScript and TSX. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
-- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`,
-  `__tests__/`, `rules/`, `e2e/`, `drizzle/`) only with Edit/Write.
+- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`; kiko-linter
+  "SHELL-WRITE deny" names them, including `.claude/skills/`, `.claude/agents/` and all of
+  `harness/kiko/`) and any `*.yml`/`*.yaml`
+  file only with Edit/Write.
   Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts,
   `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms;
   do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a

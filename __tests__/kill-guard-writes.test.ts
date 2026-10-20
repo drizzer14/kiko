@@ -4,10 +4,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
-// writes into src/, __tests__/, rules/, e2e/, or drizzle/ of any worktree of this repository
-// (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
-// one-liner) skips the pre-write guard, which sees only Edit/Write/MultiEdit,
-// so the hook denies it and points at Edit/Write.
+// writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, .claude/skills/,
+// .claude/agents/, or harness/kiko/ of any worktree of this repository, or into a YAML file
+// (final segment .yml/.yaml) anywhere in one except under node_modules/ (`sed -i`, `perl -i`, a
+// `>`/`>>` redirect, `tee`, a python or node one-liner) skips the pre-write guard, which sees
+// only Edit/Write/MultiEdit, so the hook denies it and points at Edit/Write.
 //
 // Every text here is judged, never run: `decide` is called in node as a
 // parser only, and the hook rows only pipe JSON into kill-guard.sh. The
@@ -38,10 +39,16 @@ for (const folder of [
   'main/__tests__',
   'main/rules',
   'main/drizzle/migrations/meta',
-  'main/scripts',
+  'main/scripts/checks',
+  'main/githooks',
+  'main/.maestro',
   'main/docs/src',
+  'main/docs/x',
   'main/node_modules/package/src',
   'worktree/src',
+  'worktree/scripts/checks',
+  'worktree/githooks',
+  'worktree/.maestro',
   'other/.git',
   'other/src',
   'plain/src',
@@ -261,9 +268,27 @@ const DENIED_COPY_MOVE: string[] = [
   'ls | xargs -I{} gcp --arch {} "$BK"/',
   'ls | xargs -I{} cp --recursive=x {} "$BK"/',
   'cp -r /tmp/src "$BK"/',
+  // The names xargs reads are unknowable, so a cp/mv behind it into any folder of a worktree may
+  // write a YAML file there (fail closed), whatever its text shows.
+  'ls /tmp/*.yml | xargs cp -t .maestro',
+  "printf '%s\\n' /tmp/evil.yml | xargs -I{} cp {} .github/workflows/",
+  'ls /tmp/*.yml | xargs mv --target-directory=.maestro',
+  'ls /tmp/*.txt | xargs cp -t docs/x',
+  'ls /tmp/*.txt | xargs -I{} cp {} docs/',
+  `ls /tmp/*.yml | xargs cp -t ${WORKTREE}/.maestro`,
+  `ls /tmp/*.yml | xargs -I{} mv {} ${MAIN}/.maestro/`,
 ];
 
 const ALLOWED_COPY_MOVE: string[] = [
+  // A destination outside every worktree, or under node_modules/, holds no project YAML file; a
+  // xargs command that is no cp/mv writes nothing.
+  'ls /tmp/*.yml | xargs cp -t /tmp/out',
+  'ls /tmp/*.yml | xargs -I{} cp {} /tmp/out/',
+  'ls /tmp/*.yml | xargs cp -t node_modules/package',
+  'ls /tmp/*.yml | xargs -I{} cp {} node_modules/package/',
+  `ls /tmp/*.yml | xargs cp -t ${OTHER}/docs`,
+  'ls /tmp/*.yml | xargs cat',
+  'ls /tmp/*.yml | xargs grep appId',
   "find src -name '*.snap' | xargs cp -t /tmp/snaps",
   'ls src/*.ts | xargs -I{} cp {} /tmp/backup/',
   'ls src/*.ts | xargs -I {} mv {} /tmp/backup/',
@@ -282,7 +307,6 @@ const ALLOWED_COPY_MOVE: string[] = [
   'cp /tmp/a /tmp/b',
   'cp -r /tmp/x /tmp/y',
   'cp -r /tmp/srcx .',
-  'cp -rT /tmp/x ./scripts',
   'cp -r /tmp/x ./docs/src',
   `cp -r /tmp/x ${OTHER}/src`,
   // A backup folder outside the project is no tree, whatever name the input
@@ -321,7 +345,6 @@ const ALLOWED: string[] = [
   'echo x 2>&1',
   'echo x >&2',
   'ls >&-',
-  'echo x > scripts/out.txt',
   'echo x > docs/src/x.md',
   'echo x > node_modules/package/src/x.js',
   `echo x > ${OTHER}/src/x.ts`,
@@ -358,7 +381,6 @@ const ALLOWED: string[] = [
   'cat <<< "x > src/y"',
   "find src -name '*.ts' -exec grep -l foo {} +",
   "find /tmp/x -exec sed -i 's/a/b/' {} +",
-  `sed -i 's/a/b/' ${MAIN}/scripts/x.sh`,
   "sed -i 's/a/b/' /tmp/src.txt",
 ];
 
@@ -386,7 +408,6 @@ const ALLOWED_E2E: string[] = [
   'echo x > /tmp/e2e-like/x.ts',
   "sed -i 's/a/b/' /tmp/e2e.txt",
   'echo x > docs/e2e/x.md',
-  'echo x > scripts/e2e.sh',
   `echo x > ${OTHER}/e2e/x.ts`,
   `echo x > ${PLAIN}/e2e/x.ts`,
 ];
@@ -437,7 +458,6 @@ const ALLOWED_GIT_CONFIG: string[] = [
   'git config user.name x',
   'echo x > /tmp/x/config',
   'echo x > config',
-  'echo x > scripts/config',
   'echo x > .github/config',
   'echo x > .gitignore',
   'echo x > docs/.git-notes/config',
@@ -526,8 +546,6 @@ const DENIED_WHATEVER_THE_VARIABLE_HOLDS: string[] = [
 const ALLOWED_SAME_COMMAND_VARIABLE: string[] = [
   `f=/tmp/x.ts; sed -i '' 's/a/b/' $f`,
   `f=docs/x.md; sed -i '' 's/a/b/' "$f"`,
-  'f=scripts/out.txt; echo x > $f',
-  'f=scripts/src/out.txt; echo x >> "$f"',
   'f=/tmp/out.txt; echo x | tee $f',
   'f=/tmp/a; cp /tmp/b $f',
   `f=src/x.ts; f=/tmp/a; sed -i '' 's/a/b/' $f`,
@@ -588,7 +606,616 @@ const ALLOWED_DRIZZLE: string[] = [
   ),
 ];
 
+// scripts/ and githooks/ hold the harness shell and JavaScript; Edit/Write runs the fast tier on
+// them, a Bash write skips it, and guard-replay replays only .ts/.tsx, so they are guarded like
+// the trees above (worktree-root folders, resolved in any worktree of this repository).
+const SCRIPT_AND_HOOK_FILES = ['scripts/checks/x.sh', 'scripts/x.js', 'githooks/pre-commit'];
+
+const DIRECT_WRITE_TEMPLATES: Array<(file: string) => string> = [
+  ...WRITE_TEMPLATES,
+  (file) => `perl -pi -e 's/a/b/' ${file}`,
+  (file) => `echo x >| ${file}`,
+  (file) => `python3 -c "open('${file}', 'w').write('x')"`,
+];
+
+// An `xargs sed -i` is denied whatever its target, as the DENIED_NESTED rows show, so only a
+// denied list may use these.
+const XARGS_WRITE_TEMPLATES: Array<(file: string) => string> = [
+  (file) => `echo ${file} | xargs sed -i '' 's/a/b/'`,
+  (file) => `echo x | xargs sed -i '' 's/a/b/' ${file}`,
+];
+
+const ALL_WRITE_TEMPLATES = [...DIRECT_WRITE_TEMPLATES, ...XARGS_WRITE_TEMPLATES];
+
+const DENIED_SCRIPTS_AND_GITHOOKS: string[] = [
+  ...SCRIPT_AND_HOOK_FILES.flatMap((file) =>
+    [file, `${MAIN}/${file}`, `${WORKTREE}/${file}`].flatMap((target) =>
+      ALL_WRITE_TEMPLATES.map((template) => template(target)),
+    ),
+  ),
+  "cd scripts && sed -i '' 's/a/b/' x.js",
+  'cd scripts && echo x > x.js',
+  'cd scripts/checks && echo x > x.sh',
+  'cd githooks && echo x >> pre-commit',
+  'cd scripts && cp /tmp/x .',
+  "cd githooks && perl -pi -e 's/a/b/' pre-commit",
+  `cd ${WORKTREE}/scripts && echo x | tee x.js`,
+  'echo x > "$D/scripts/a.sh"',
+  'echo x > "$D/githooks/pre-commit"',
+  "sed -i '' 's/a/b/' $D/scripts/checks/x.sh",
+  'cp -rT /tmp/x ./scripts',
+  'echo x > scripts/out.txt',
+  `sed -i 's/a/b/' ${MAIN}/scripts/x.sh`,
+  'echo x > scripts/e2e.sh',
+  'echo x > scripts/config',
+  'f=scripts/out.txt; echo x > $f',
+  'f=scripts/src/out.txt; echo x >> "$f"',
+];
+
+const ALLOWED_SCRIPTS_AND_GITHOOKS: string[] = [
+  ...SCRIPT_AND_HOOK_FILES.flatMap((file) => [
+    `cat ${file}`,
+    `grep -n foo ${file}`,
+    `sed -n '1,5p' ${file}`,
+    `bash ${file}`,
+    `bash ${file} > /dev/null 2>&1`,
+    `git mv ${file} ${file}.old`,
+    `git checkout -- ${file}`,
+    `echo x > /tmp/${file}`,
+    `./node_modules/.bin/biome check --write ${file}`,
+  ]),
+  'echo x > /dev/null',
+  `echo x > ${OTHER}/scripts/x.sh`,
+  `echo x > ${PLAIN}/githooks/pre-commit`,
+  'echo x > docs/scripts/x.sh',
+];
+
+// .claude/skills/, .claude/agents/ and all of harness/kiko/ (scripts, hooks, skills, agents, the
+// plugin manifest) hold the harness itself; they are guarded like the trees above, as a path
+// prefix at the root of a worktree of this repository.
+const PREFIX_GUARDED_FILES = [
+  'harness/kiko/scripts/run-log.mjs',
+  'harness/kiko/hooks/dispatch.sh',
+  'harness/kiko/hooks/hooks.json',
+  'harness/kiko/.claude-plugin/plugin.json',
+  'harness/kiko/skills/ops/SKILL.md',
+  'harness/kiko/agents/qa.md',
+  '.claude/skills/kiko-linter/SKILL.md',
+  '.claude/agents/developer.md',
+];
+
+const DENIED_PREFIX_GUARDED: string[] = [
+  ...PREFIX_GUARDED_FILES.flatMap((file) =>
+    [file, `${MAIN}/${file}`, `${WORKTREE}/${file}`].flatMap((target) =>
+      ALL_WRITE_TEMPLATES.map((template) => template(target)),
+    ),
+  ),
+  ...['harness/kiko/scripts/a.sh', '.claude/skills/a/SKILL.md', '.claude/agents/a.md'].flatMap(
+    (file) => [
+      `gcp /tmp/x ${file}`,
+      `gmv /tmp/x ${file}`,
+      `cp -t ${file.slice(0, file.lastIndexOf('/'))} /tmp/x`,
+      `echo x &> ${file}`,
+      `echo x >& ${file}`,
+      `echo x | sudo tee ${file}`,
+      `echo x | tee -a ${file}`,
+      `sed --in-place 's/a/b/' ${file}`,
+      `perl -pi.bak -e 's/a/b/' ${file}`,
+    ],
+  ),
+  // Case folds as it does for the trees above.
+  'echo x > HARNESS/KIKO/scripts/a.sh',
+  'echo x > Harness/Kiko/hooks/hooks.json',
+  'echo x > .CLAUDE/skills/a.md',
+  'echo x > .claude/AGENTS/a.md',
+  "sed -i 's/a/b/' HARNESS/kiko/hooks/dispatch.sh",
+  // A destination that is a prefix folder itself, or a folder inside it.
+  'cp x harness/kiko/',
+  'cp x harness/kiko',
+  'cp x harness/kiko/hooks',
+  'cp x harness/kiko/scripts/',
+  'cp x .claude/skills',
+  'mv x .claude/skills/',
+  'mv x .claude/agents',
+  'mv x .claude/agents/',
+  'cp -r /tmp/dir harness/kiko/',
+  'cp -r /tmp/dir .claude/skills/',
+  'cp -t harness/kiko/scripts x',
+  'cp -t harness/kiko x',
+  'cp -t .claude/skills x',
+  'mv -vt .claude/agents a.md',
+  'cp --target-directory=harness/kiko/hooks x',
+  'cp --target-directory .claude/skills x',
+  'cp -rT /tmp/x harness/kiko',
+  'cp -Tr /tmp/x .claude/skills',
+  'mv -T /tmp/x .claude/agents',
+  'cp --no-target-directory /tmp/x harness/kiko',
+  `cp x ${MAIN}/harness/kiko/`,
+  `cp x ${WORKTREE}/harness/kiko/hooks`,
+  `mv x ${MAIN}/.claude/skills/`,
+  `cp -t ${WORKTREE}/.claude/agents x`,
+  // A source named after the prefix's last segment lands inside it when the destination is its
+  // parent folder.
+  'cp -r /tmp/kiko harness/',
+  'cp -a /tmp/kiko harness',
+  'mv /tmp/skills .claude/',
+  'cp -r /tmp/agents .claude',
+  `cp -r /tmp/kiko ${MAIN}/harness/`,
+  // The same through xargs, whose input names are unknowable: a destination folder inside a
+  // prefix, and a recursive copy or a move into the parent of one.
+  'ls /tmp/*.sh | xargs cp -t harness/kiko/scripts',
+  'ls /tmp/*.sh | xargs cp -t harness/kiko/scripts/',
+  'ls /tmp/*.md | xargs mv --target-directory=.claude/skills',
+  'ls /tmp/*.md | xargs mv --target-directory=.claude/agents',
+  'ls /tmp/*.json | xargs cp -t harness/kiko/.claude-plugin',
+  'ls /tmp/*.sh | xargs -I{} cp {} harness/kiko/hooks/',
+  'ls /tmp/*.md | xargs -I {} mv {} .claude/skills/',
+  'ls /tmp/*.md | xargs -I{} cp {} .claude/agents/',
+  'ls /tmp/*.sh | xargs -I{} cp {} harness/kiko/',
+  'ls /tmp/*.sh | xargs cp /tmp/a.sh harness/kiko/hooks',
+  `ls /tmp/*.sh | xargs cp -t ${MAIN}/harness/kiko/scripts`,
+  `ls /tmp/*.md | xargs -I{} mv {} ${WORKTREE}/.claude/skills/`,
+  `ls /tmp/*.md | xargs mv --target-directory=${MAIN}/.claude/agents`,
+  'ls | xargs -I{} cp -r {} harness/',
+  'ls | xargs -I{} cp -r {} harness',
+  'ls | xargs -I{} cp -r {} .claude/',
+  'ls | xargs -I{} cp -R {} .claude',
+  'ls | xargs -I{} mv {} harness/',
+  'ls | xargs -I{} mv {} .claude/',
+  'ls /tmp/snap | xargs cp -r -t harness',
+  'ls /tmp/snap | xargs cp -r -t .claude',
+  `ls | xargs -I{} cp -r {} ${MAIN}/harness/`,
+  `ls | xargs -I{} mv {} ${WORKTREE}/.claude/`,
+  // A folder change into a prefix, or into the folder above it, judges the relative write after.
+  'cd harness/kiko && echo x > a.sh',
+  'cd harness/kiko && echo x >> a.sh',
+  'cd harness/kiko/hooks && echo x > hooks.json',
+  "cd harness/kiko/hooks && sed -i '' 's/a/b/' hooks.json",
+  'cd harness/kiko/scripts && cp /tmp/x .',
+  'cd harness/kiko && cp /tmp/x .',
+  'cd harness/kiko && echo x | tee a.sh',
+  'cd harness/kiko && cp -r /tmp/x hooks',
+  'cd .claude/skills && echo x > a.md',
+  'cd .claude/agents && cp /tmp/x qa.md',
+  'cd .claude/skills && cp /tmp/x .',
+  'cd .claude && echo x > skills/a.md',
+  'cd .claude && echo x > agents/a.md',
+  'cd .claude && cp /tmp/x skills/a.md',
+  'cd .claude && cp -r /tmp/x skills',
+  'cd harness && cp a kiko/b',
+  'cd harness && echo x > kiko/a.sh',
+  "cd harness && sed -i '' 's/a/b/' kiko/hooks/hooks.json",
+  'cd harness && cp -r /tmp/x kiko',
+  'cd harness && cp -r /tmp/kiko .',
+  'cd harness && mv /tmp/kiko .',
+  'cd .claude && cp -r /tmp/skills .',
+  'pushd harness/kiko && echo x > a.sh',
+  'pushd .claude && echo x > skills/a.md',
+  'pushd harness && cp a kiko/b',
+  'pushd .claude/skills && echo x > a.md',
+  `cd ${WORKTREE}/harness/kiko && echo x | tee a.sh`,
+  `cd ${MAIN}/.claude && echo x > agents/a.md`,
+  `cd ${MAIN}/harness && cp a kiko/b`,
+  '(cd harness/kiko && echo x > a.sh)',
+  'cd harness && (cd kiko && echo x > a.sh)',
+  // A variable the same command assigns, whole or as the folder in front of the rest.
+  'D=harness/kiko; echo x > $D/a',
+  'D=harness/kiko; echo x > "$D/a.sh"',
+  'D=harness; echo x > $D/kiko/a.sh',
+  'D=.claude/skills; cp /tmp/a $D/x.md',
+  'D=.claude/agents; mv /tmp/a "$D/x.md"',
+  'D=.claude; echo x > $D/agents/qa.md',
+  'D=.claude; echo x > $D/skills/a/SKILL.md',
+  'D=harness/kiko; cp /tmp/a $D',
+  'D=harness/kiko; cp -r /tmp/a $D/',
+  `f=harness/kiko/hooks/hooks.json; sed -i '' 's/a/b/' $f`,
+  'f=harness/kiko/scripts/x.mjs; echo x >> "$f"',
+  'f=.claude/skills/a/SKILL.md; echo x | tee $f',
+  'f=.claude/agents/a.md; echo x > $f',
+  'f=harness/kiko/hooks/dispatch.sh; cp /tmp/a $f',
+  `f=${MAIN}/harness/kiko/skills/ops/SKILL.md; sed -i '' 's/a/b/' $f`,
+  `f=${WORKTREE}/.claude/skills/a.md; echo x > $f`,
+  `f=harness/kiko/scripts/a.mjs; node -e "require('fs').writeFileSync('$f', 'x')"`,
+  `f=.claude/skills/a.md; python3 -c "open('$f', 'w').write('x')"`,
+  'f=harness/kiko/a.sh; true && echo x > $f',
+  'cd harness/kiko && f=a.sh && echo x > $f',
+  'f=a.sh; cd harness/kiko && echo x > $f',
+  // A path the text cannot resolve still names the prefix, whatever the command assigned.
+  'echo x > $X/harness/kiko/a',
+  'echo x > "$X/harness/kiko/a"',
+  'echo x > ~root/w/.claude/skills/a',
+  'echo x > $X/.claude/agents/a',
+  'echo x > "$X/.claude/skills/a/SKILL.md"',
+  "sed -i '' 's/a/b/' $D/harness/kiko/skills/ops/SKILL.md",
+  'cp /tmp/x $D/.claude/skills/a.md',
+  'echo x | tee $D/harness/kiko/hooks/hooks.json',
+  `echo x > \${X}/harness/kiko/a`,
+  'echo x > "$(pwd)/.claude/agents/a"',
+  'D=/tmp; echo x > $D/harness/kiko/a',
+  'D=/tmp; echo x > $D/.claude/skills/a',
+  'D=/tmp; echo x | tee "$D/.claude/agents/a.md"',
+  `D=/tmp; sed -i '' s/a/b/ $D/harness/kiko/hooks/hooks.json`,
+  `D=/tmp; for D in .; do echo x > $D/harness/kiko/a; done`,
+  `D=/tmp; unset D; echo x > $D/.claude/skills/a`,
+  // Interpreters, certain and possible.
+  `python3 -c "open('harness/kiko/scripts/a.mjs','w').write('x')"`,
+  `python3 -c "open('harness/kiko/hooks/hooks.json', 'a').write('x')"`,
+  `python3 -c "open('.claude/skills/a/SKILL.md', mode='w')"`,
+  `python3 -c "open('${MAIN}/.claude/agents/a.md', 'w')"`,
+  `python3 -c "open('${WORKTREE}/harness/kiko/.claude-plugin/plugin.json', 'w')"`,
+  `python3 -c "from pathlib import Path; Path('harness/kiko/skills/ops/SKILL.md').write_text('x')"`,
+  `python3 -c "from pathlib import Path; Path('.claude/skills/a.md').open(mode='w')"`,
+  `python3 -c "p = '/tmp/x'; open(p, 'w').write(open('harness/kiko/hooks/a.sh').read())"`,
+  `python3 -c "p = '/tmp/x'; open(p, 'w').write(open('.claude/skills/a.md').read())"`,
+  `python3 -c "import sys; open(sys.argv[1], 'w').write('x')" harness/kiko/scripts/a.mjs`,
+  `python3 -c "open(f'harness/kiko/hooks/{name}.sh', 'w')"`,
+  `python3 -c "import os; open(os.path.join('.claude', 'skills', 'a.md'), 'w')"`,
+  `python3 -c "root = '/tmp'; open(root + '/harness/kiko/hooks/a.sh', 'w')"`,
+  `python3 -c "open('.claude/agents/{}.md'.format(name), 'w')"`,
+  "python3 - <<'EOF'\nopen('harness/kiko/scripts/a.mjs', 'w').write('x')\nEOF",
+  "python3 - <<'EOF'\nfrom pathlib import Path\nfor name in ['harness/kiko/hooks/a.sh']:\n    Path(name).write_text('x')\nEOF",
+  "python3 - <<'EOF'\nfrom pathlib import Path\nPath('.claude/skills/a.md').open('w').write('x')\nEOF",
+  `python3 <<< "open('.claude/agents/a.md', 'w').write('x')"`,
+  "cd harness/kiko && python3 - <<'EOF'\nopen('a.sh', 'w').write('x')\nEOF",
+  `node -e "require('fs').writeFileSync('.claude/skills/a/SKILL.md', 'x')"`,
+  `node -e "fs.writeFileSync('harness/kiko/scripts/a.mjs', 'x')"`,
+  `node -e "require('fs').appendFileSync('harness/kiko/hooks/hooks.json', 'x')"`,
+  `node -e "require('fs').promises.writeFile('.claude/agents/a.md', 'x')"`,
+  `node --eval="fs.writeFileSync('harness/kiko/skills/a.md', 'x')"`,
+  `node -e "require('fs').createWriteStream('harness/kiko/scripts/a.mjs')"`,
+  `node -e "require('fs').writeFileSync(process.argv[1], 'x')" .claude/skills/a.md`,
+  `node -e "require('fs').writeFileSync(process.cwd() + '/harness/kiko/a.sh', 'x')"`,
+  `node -e 'require("fs").writeFileSync(\`.claude/skills/\${name}.md\`, "x")'`,
+  `node -e "require('fs').writeFileSync('${MAIN}/harness/kiko/hooks/hooks.json', 'x')"`,
+  "node - <<'EOF'\nrequire('fs').writeFileSync('harness/kiko/scripts/a.mjs', 'x')\nEOF",
+  "node <<'EOF'\nrequire('fs').writeFileSync('.claude/agents/a.md', 'x')\nEOF",
+  `bash -c "echo x > harness/kiko/a.sh"`,
+  `sh -c "sed -i 's/a/b/' .claude/skills/a.md"`,
+  'eval "echo x > .claude/agents/a.md"',
+  'echo $(echo x > harness/kiko/a.sh)',
+  'true && echo x > harness/kiko/a.sh',
+  "bash <<'EOF'\necho x > .claude/skills/a.md\nEOF",
+  // A folder that may hold a prefix (`.claude`, `harness`) copied or moved to where it lands as the
+  // parent of that prefix, in a worktree root or through a path the text cannot resolve.
+  'cp -r /tmp/x/.claude .',
+  'mv /tmp/x/harness .',
+  'cp -r /tmp/x/harness ./',
+  'cp -t . -r /tmp/x/harness',
+  `cp -r /tmp/x/.claude ${MAIN}/`,
+  `cp -r /tmp/x/harness ${WORKTREE}`,
+  `mv /tmp/x/.claude ${WORKTREE}/`,
+  'cp -a /tmp/x/.claude ./',
+  'mv /tmp/x/harness/ .',
+  'cp -r /tmp/x/.claude "$OUT"/',
+  'cp -r /tmp/x/harness $OUT',
+  'cd docs && cp -r /tmp/x/.claude ..',
+  'cd harness/kiko && cp -r /tmp/x/harness ../..',
+  'D=.; cp -r /tmp/x/.claude $D/',
+  // A recursive copy whose source contents land in the parent of a prefix: a source ending in a
+  // slash or a dot, or one the text cannot resolve.
+  'cp -R /tmp/x/.claude/ .claude',
+  'cp -r /tmp/x/.claude/. .claude/',
+  'cp -r /tmp/x/harness/* harness/',
+  'cp -r /tmp/x/* .claude',
+  'cp -r /tmp/x/harness/ harness',
+  'cp -a /tmp/x/ .claude/',
+  'cp -r /tmp/x/. harness/',
+  'cp -r "$SRC" .claude/',
+  'cp -rT /tmp/x .claude',
+  'cp -t .claude -r /tmp/x/.',
+  `cp -R /tmp/x/.claude/ ${MAIN}/.claude`,
+  `cp -r /tmp/x/harness/* ${WORKTREE}/harness/`,
+  'cd .claude && cp -r /tmp/x/* .',
+  'cd harness && cp -r /tmp/x/. .',
+  // A folder of a prefix named by a join in an interpreter, judged from the folder it runs in,
+  // or by a path with `.` or `//` segments.
+  `cd .claude && python3 -c "import os; open(os.path.join('skills', n), 'w')"`,
+  `cd .claude && python3 -c "import os; open(os.path.join('agents', n), 'w')"`,
+  `cd harness && python3 -c "import os; open(os.path.join('kiko', n), 'w')"`,
+  `cd .claude && node -e "fs.writeFileSync(path.join('agents', n), 'x')"`,
+  `cd harness && node -e "fs.writeFileSync(path.join('kiko', n), 'x')"`,
+  `python3 -c "import os; open(os.path.join('.claude/./skills', n), 'w')"`,
+  `node -e "fs.writeFileSync(path.join('harness//kiko', n), 'x')"`,
+  'echo x > $D/.claude/./skills/a',
+  'echo x > $D/.claude//skills/a',
+  'echo x > $D/harness/./kiko/a',
+  'echo x > $D/./harness/kiko/a',
+  'cp /tmp/x $D/.claude/./agents/a.md',
+  'echo x | tee "$D/harness//kiko/a"',
+];
+
+const ALLOWED_PREFIX_GUARDED: string[] = [
+  ...[
+    '.claude/settings.json',
+    '.claude/settings.local.json',
+    '.claude/skillsx/a.md',
+    '.claude/skill/a.md',
+    '.claude/agentsx/a.md',
+    '.claude/agent/a.md',
+    '.claude/commands/a.md',
+    'harness/kikox/a.sh',
+    'harness/kiko-x/a.sh',
+    'harness/other/a.sh',
+    'harness/a.sh',
+    'harness/.claude-plugin/marketplace.json',
+    'docs/harness/kiko/a.sh',
+    'docs/.claude/skills/a.md',
+    'docs/.claude/agents/a.md',
+    'node_modules/package/harness/kiko/a.sh',
+    'node_modules/package/.claude/skills/a.md',
+  ].flatMap((file) =>
+    [file, `${MAIN}/${file}`, `${WORKTREE}/${file}`].flatMap((target) =>
+      DIRECT_WRITE_TEMPLATES.map((template) => template(target)),
+    ),
+  ),
+  ...PREFIX_GUARDED_FILES.flatMap((file) =>
+    [`${OTHER}/${file}`, `${PLAIN}/${file}`, `/tmp/${file}`].flatMap((target) =>
+      DIRECT_WRITE_TEMPLATES.map((template) => template(target)),
+    ),
+  ),
+  ...PREFIX_GUARDED_FILES.flatMap((file) => [
+    `cat ${file}`,
+    `grep -n foo ${file}`,
+    `sed -n '1,5p' ${file}`,
+    `bash ${file}`,
+    `bash ${file} > /dev/null 2>&1`,
+    `cp ${file} /tmp/x`,
+    `cp ${file} /tmp/x/`,
+    `mv ${file} /tmp/x`,
+    `git mv ${file} ${file}.old`,
+    `git checkout -- ${file}`,
+    `echo x > /tmp/${file}`,
+    `./node_modules/.bin/biome check --write ${file}`,
+    `python3 -c "print(open('${file}').read())"`,
+    `python3 -c "open('/tmp/x', 'w').write(open('${file}').read())"`,
+    `node -e "fs.writeFileSync('/tmp/x', fs.readFileSync('${file}'))"`,
+  ]),
+  'cat harness/kiko/hooks/hooks.json',
+  'grep x .claude/skills/a/SKILL.md',
+  'cp harness/kiko/scripts/run-log.mjs /tmp/x',
+  'git mv harness/kiko/a.sh harness/kiko/b.sh',
+  'git checkout -- harness/kiko/hooks/hooks.json',
+  'git checkout -- .claude/skills/a/SKILL.md',
+  'cp -r harness/kiko /tmp/backup',
+  'cp -r .claude/skills /tmp/backup/',
+  'cp -r /tmp/x ./docs/harness/kiko',
+  'cp -r /tmp/kiko docs/harness',
+  `cp -r /tmp/kiko ${OTHER}/harness/`,
+  `cp -r /tmp/skills ${PLAIN}/.claude/`,
+  'cp x harness/other',
+  'cp x harness/other/',
+  'cp x .claude/commands/',
+  'cp x .claude/skillsx',
+  'cp -t .claude/commands x',
+  'cp -t harness/other x',
+  'mv x .claude/settings.json',
+  'cp -r /tmp/x harness/kikox',
+  'cp -r /tmp/kikox harness/',
+  'cp -r /tmp/x .claude/skill',
+  'ls /tmp/*.md | xargs cp -t /tmp/out/skills',
+  'ls /tmp/*.md | xargs mv --target-directory=/tmp/backup',
+  `ls /tmp/*.sh | xargs cp -t ${OTHER}/harness/kiko/scripts`,
+  `ls /tmp/*.md | xargs -I{} mv {} ${PLAIN}/.claude/skills/`,
+  'ls | xargs -I{} cp -r {} /tmp/bk/harness/',
+  'ls | xargs -I{} cp -r {} /tmp/bk/.claude/',
+  'ls | xargs -I{} cp -r {} /tmp/bk/harness/kiko/',
+  'ls harness/kiko | xargs -I{} cp {} /tmp/backup/',
+  'ls harness/kiko | xargs cat',
+  'ls .claude/skills | xargs grep foo',
+  'ls | xargs -I{} cp {} "$BK"/harness/',
+  'cd harness && echo x > other/a',
+  'cd harness && echo x > /tmp/a',
+  'cd harness && cp a other/b',
+  'cd harness && cat kiko/hooks/hooks.json',
+  'cd .claude && echo x > settings.json',
+  'cd .claude && echo x > commands/a.md',
+  'cd .claude && cp /tmp/x settings.local.json',
+  'cd .claude && cat skills/a.md',
+  'cd harness/kiko && cat hooks/hooks.json',
+  'cd harness/kiko && echo x > /tmp/a',
+  'cd harness/kiko && cp a.sh /tmp/a.sh',
+  'cd .claude/skills && grep x a/SKILL.md',
+  'cd harness/other && echo x > a',
+  'pushd harness && echo x > other/a',
+  'pushd .claude && echo x > settings.json',
+  `cd ${OTHER} && echo x > harness/kiko/a.sh`,
+  `cd ${PLAIN} && echo x > .claude/skills/a.md`,
+  `cd ${PLAIN}/harness && cp a kiko/b`,
+  'cd docs/harness/kiko && echo x > a.sh',
+  'cd docs && echo x > harness/kiko/a.sh',
+  'cd /tmp && echo x > harness/kiko/a.sh',
+  'D=harness/other; echo x > $D/a',
+  'D=harness; echo x > $D/other/a.sh',
+  'D=.claude; echo x > $D/settings.json',
+  'D=.claude; cp /tmp/x $D/commands/a.md',
+  'D=/tmp; echo x > $D/a',
+  'f=harness/other/a.sh; echo x > $f',
+  'f=.claude/settings.json; echo x > $f',
+  'f=.claude/skillsx/a.md; echo x >> "$f"',
+  'f=harness/kiko/hooks/hooks.json; cat $f',
+  'f=.claude/skills/a.md; grep x "$f"',
+  'f=harness/kiko/a.sh; cp $f /tmp/backup.sh',
+  'f=harness/kiko/a.sh; f=/tmp/a; echo x > $f',
+  `f=${OTHER}/harness/kiko/a.sh; echo x > $f`,
+  'D=harness/kiko; cat $D/a',
+  'D=harness/kiko; cp $D/a /tmp/a',
+  'echo x > $X/harness/other/a',
+  'echo x > $X/harness/kikox/a',
+  'echo x > $X/.claude/settings.json',
+  'echo x > $X/.claude/commands/a.md',
+  'echo x > $X/.claude/skillsx/a',
+  'echo "x > harness/kiko/a.sh"',
+  "echo 'x >> .claude/skills/a.md'",
+  `echo ".claude/skills/a.md" > /tmp/names.txt`,
+  `python3 -c "open('.claude/settings.json', 'w').write('x')"`,
+  `python3 -c "open('harness/other/a.sh', 'w').write('x')"`,
+  `node -e "require('fs').writeFileSync('.claude/commands/a.md', 'x')"`,
+  `node -e "require('fs').writeFileSync('harness/kikox/a.sh', 'x')"`,
+  `python3 -c "open('${OTHER}/harness/kiko/a.sh', 'w').write('x')"`,
+  `node -e "require('fs').writeFileSync('${PLAIN}/.claude/skills/a.md', 'x')"`,
+  "python3 - <<'EOF'\nopen('/tmp/out.txt', 'w').write(open('harness/kiko/a.sh').read())\nEOF",
+  "node - <<'EOF'\nconsole.log(require('fs').readFileSync('.claude/skills/a.md', 'utf8'))\nEOF",
+  // A file or a folder copied or moved beside a prefix, into its parent folder under another name,
+  // or outside the project.
+  'cp a.json .claude/',
+  'cp a.json .claude',
+  'cp a.json .claude/settings.local.json',
+  'mv a.md .claude/commands/',
+  'mv a.md .claude',
+  'cp harness.txt .',
+  'mv harness.txt ./',
+  'cp /tmp/x/* .claude/',
+  'cp -r /tmp/x/.claude /tmp/y',
+  'cp -r /tmp/x/.claude /tmp/y/',
+  `cp -r /tmp/x/harness ${OTHER}/`,
+  `cp -r /tmp/x/.claude ${PLAIN}`,
+  `mv /tmp/x/harness ${PLAIN}/`,
+  'cp -R /tmp/x/.claude/ /tmp/y/.claude',
+  'cp -r /tmp/x/harness/* /tmp/y/harness/',
+  'cp -r /tmp/x/harness/* docs/harness/',
+  'cp -r /tmp/x/.claude/. docs/.claude/',
+  `cp -R /tmp/x/.claude/ ${OTHER}/.claude`,
+  `cp -r /tmp/x/harness/* ${PLAIN}/harness/`,
+  'cp -r /tmp/x/* .claude/commands/',
+  'cp -r /tmp/x/* harness/other/',
+  'cp -r /tmp/x/.claude/ .claude/commands',
+  'cp -r /tmp/x/foo .',
+  'cp -r /tmp/x/foo/ .',
+  'cp -r /tmp/x/* docs/',
+  'cp -r /tmp/x/* .',
+  'cd docs && cp -r /tmp/x/harness .',
+  `cd ${OTHER} && cp -r /tmp/x/.claude .`,
+  `cd ${PLAIN} && cp -r /tmp/x/harness/* harness/`,
+  `cd .claude && python3 -c "import os; open(os.path.join('commands', n), 'w')"`,
+  `cd harness && python3 -c "import os; open(os.path.join('other', n), 'w')"`,
+  `cd .claude && node -e "fs.writeFileSync(path.join('commands', n), 'x')"`,
+  `cd ${PLAIN}/.claude && python3 -c "import os; open(os.path.join('skills', n), 'w')"`,
+  `cd docs/harness && node -e "fs.writeFileSync(path.join('kiko', n), 'x')"`,
+  `node -e "fs.writeFileSync(path.join('.claude/./commands', n), 'x')"`,
+  'echo x > $D/.claude/./settings.json',
+  'echo x > $D/harness/./other/a',
+  'echo x > $D/.claude//commands/a.md',
+];
+
+const DENIED_YAML: string[] = [
+  ...[
+    '.maestro/flow.yaml',
+    'docs/x/config.yml',
+    `${MAIN}/.maestro/flow.yaml`,
+    `${WORKTREE}/.maestro/a.YML`,
+    '.maestro/a.Yaml',
+    '$D/a.yaml',
+    '"$D"/b.yml',
+    'root.yml',
+    `${MAIN}/root.yaml`,
+    `${WORKTREE}/root.YML`,
+  ].flatMap((file) => ALL_WRITE_TEMPLATES.map((template) => template(file))),
+  'echo x > "$D/a.yaml"',
+  'cp a.yml .maestro/',
+  'mv a.yml .maestro/',
+  'cp -t .maestro a.yml',
+  'cp --target-directory=docs/x a.yaml',
+  `cp a.yml ${MAIN}/.maestro/`,
+  'cd .maestro && echo x > flow.yaml',
+  'cd docs/x && sed -i "" s/a/b/ config.yml',
+  'f=.maestro/flow.yaml; sed -i "" s/a/b/ $f',
+  `f=${MAIN}/docs/x/config.yml; echo x >> $f`,
+];
+
+const ALLOWED_YAML: string[] = [
+  ...[
+    '/tmp/x.yml',
+    '/tmp/x/config.yaml',
+    '/private/tmp/claude-501/-project/session/scratchpad/x.yml',
+    `${SCRATCH}/notes/x.yaml`,
+    `${OTHER}/a.yml`,
+    `${PLAIN}/a.yaml`,
+    `${MAIN}/node_modules/package/x.yml`,
+    'node_modules/package/x.yml',
+    './node_modules/package/deep/x.YAML',
+  ].flatMap((file) => DIRECT_WRITE_TEMPLATES.map((template) => template(file))),
+  'cat .maestro/flow.yaml',
+  'grep -n appId .maestro/flow.yaml',
+  "sed -n '1,5p' docs/x/config.yml",
+  'cat .maestro/flow.yaml > /tmp/flow.yaml',
+  'cp .maestro/flow.yaml /tmp/flow.yaml',
+  'git mv .maestro/a.yaml .maestro/b.yaml',
+  'npx prettier --write .maestro/flow.yaml',
+  'echo x > notes.yml.txt',
+  'echo x > .maestro/notes.yml.txt',
+  'echo x > docs/x/config.yamlx',
+  'echo x > docs/x/yml',
+  'echo x > docs/x/config.yml/readme.md',
+];
+
 describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each(DENIED_SCRIPTS_AND_GITHOOKS)(
+    'denies a write into scripts/ or githooks/: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('shellWrite');
+    },
+  );
+
+  it.each(ALLOWED_SCRIPTS_AND_GITHOOKS)(
+    'allows a read of scripts/ or githooks/, or a write outside them: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it.each(DENIED_PREFIX_GUARDED)(
+    'denies a write into .claude/skills/, .claude/agents/ or harness/kiko/: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('shellWrite');
+    },
+  );
+
+  it.each(ALLOWED_PREFIX_GUARDED)(
+    'allows a read of those prefixes, or a write beside them or outside the project: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it('judges a prefix write from a linked worktree, a prefix folder and a cwd outside the project', () => {
+    expect(decide('echo x > a.sh', { cwd: join(MAIN, 'harness/kiko/hooks') })).toBe('shellWrite');
+    expect(decide('echo x > a.md', { cwd: join(WORKTREE, '.claude/skills') })).toBe('shellWrite');
+    expect(decide('echo x > kiko/a.sh', { cwd: join(MAIN, 'harness') })).toBe('shellWrite');
+    expect(decide('echo x > agents/a.md', { cwd: join(WORKTREE, '.claude') })).toBe('shellWrite');
+    expect(decide('echo x > harness/kiko/a.sh', { cwd: WORKTREE })).toBe('shellWrite');
+    expect(decide('echo x > harness/kiko/a.sh', { cwd: OTHER })).toBe('allow');
+    expect(decide('echo x > .claude/skills/a.md', { cwd: PLAIN })).toBe('allow');
+    expect(decide('echo x > a.json', { cwd: join(MAIN, '.claude') })).toBe('allow');
+    expect(decide('echo x > a.sh', { cwd: join(MAIN, 'harness/other') })).toBe('allow');
+    expect(decide('echo x > a.sh', { cwd: join(MAIN, 'docs/harness/kiko') })).toBe('allow');
+  });
+
+  it('names the prefix file in DETAILS', () => {
+    expect(detailOf('echo x > harness/kiko/hooks/a.sh')).toContain(
+      `(writes ${MAIN}/harness/kiko/hooks/a.sh)`,
+    );
+    expect(detailOf('cp /tmp/x .claude/skills/')).toContain(`(writes ${MAIN}/.claude/skills/`);
+  });
+
+  it.each(DENIED_YAML)('denies a write into a YAML file: %s', (command) => {
+    expect(decideInMain(command)).toBe('shellWrite');
+  });
+
+  it.each(ALLOWED_YAML)(
+    'allows a read of a YAML file, or a write outside the project or under node_modules: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it('judges a YAML write from a linked worktree and a cwd outside the project', () => {
+    expect(decide('echo x > a.yml', { cwd: join(WORKTREE, '.maestro') })).toBe('shellWrite');
+    expect(decide('echo x > a.yml', { cwd: join(MAIN, 'node_modules/package') })).toBe('allow');
+    expect(decide('echo x > a.yml', { cwd: OTHER })).toBe('allow');
+    expect(decide('echo x > scripts/a.sh', { cwd: WORKTREE })).toBe('shellWrite');
+    expect(decide('echo x > scripts/a.sh', { cwd: OTHER })).toBe('allow');
+  });
+
   it.each(DENIED_DRIZZLE)('denies a write into drizzle/: %s', (command) => {
     expect(decideInMain(command)).toBe('shellWrite');
   });
@@ -683,7 +1310,7 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
 
   it('denies from a subfolder of a worktree', () => {
     expect(decide('echo x > x.ts', { cwd: join(MAIN, 'src') })).toBe('shellWrite');
-    expect(decide('echo x > x.ts', { cwd: join(MAIN, 'scripts') })).toBe('allow');
+    expect(decide('echo x > x.ts', { cwd: join(MAIN, 'scripts') })).toBe('shellWrite');
   });
 
   // A literal target writes that file; a variable or expression target may
@@ -768,6 +1395,42 @@ describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
     expect(reason).toContain(join(REPOSITORY_ROOT, 'src/App.tsx'));
     expect(reason).toContain('Edit or Write');
     expect(reason).toContain('to move a file, use `git mv` (git add a new file first)');
+  });
+
+  it('names scripts/, githooks/ and YAML in the deny text', () => {
+    const result = run(payloadIn(REPOSITORY_ROOT, 'echo x > scripts/checks/x.sh'));
+    const reason: string = JSON.parse(result.stdout.trim()).hookSpecificOutput
+      .permissionDecisionReason;
+
+    expect(reason).toContain('scripts/');
+    expect(reason).toContain('githooks/');
+    expect(reason).toContain('YAML');
+    expect(reason).toContain(
+      'into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, or githooks/',
+    );
+    expect(reason).toContain('into a YAML file (.yml, .yaml)');
+  });
+
+  it('names .claude/skills/, .claude/agents/ and harness/kiko/ in the deny text', () => {
+    const result = run(payloadIn(REPOSITORY_ROOT, 'echo x > harness/kiko/hooks/hooks.json'));
+    const reason: string = JSON.parse(result.stdout.trim()).hookSpecificOutput
+      .permissionDecisionReason;
+
+    expect(JSON.parse(result.stdout.trim()).hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(reason).toContain('.claude/skills/');
+    expect(reason).toContain('.claude/agents/');
+    expect(reason).toContain('harness/kiko/');
+  });
+
+  it('keeps the allowed scope and the fix hint true for a YAML or xargs deny', () => {
+    const result = run(payloadIn(REPOSITORY_ROOT, 'echo x > .maestro/flow.yaml'));
+    const reason: string = JSON.parse(result.stdout.trim()).hookSpecificOutput
+      .permissionDecisionReason;
+
+    expect(reason).toContain('not a YAML file of a worktree');
+    expect(reason).toContain('write the literal path, or use Edit or Write');
+    expect(reason).not.toContain('use another folder name');
+    expect(reason).not.toContain('outside the worktrees');
   });
 
   it('denies a write into .git/config and names ensure-git-hooks.sh', () => {

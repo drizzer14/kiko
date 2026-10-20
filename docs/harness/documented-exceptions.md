@@ -158,7 +158,10 @@ verified usage, not dead weight:
   debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:
   `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
   `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
-  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
+  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.77%
+  (this one figure re-measured 2026-10-19 at `d78cfccd`; the rise from 7.38% is
+  not a regression of the Binance branch: it came mostly from `62f248ed`,
+  `e7cc80f5` and main merges, so the entry moved, not the test),
   `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
   `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.55%,
   `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
@@ -170,7 +173,9 @@ verified usage, not dead weight:
   the blocking run with the default limits, and it applies to the no-argument
   (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total
   above the threshold is expected until the sweep lands, and a figure above
-  7.33% is a new regression. **Flip condition:** a separate sweep track makes
+  7.33% is a new regression. A listed file's figure is a ceiling: a later rise
+  above it is a new regression; fix the test, or re-record the figure only with
+  a reviewer finding that names the cause. **Flip condition:** a separate sweep track makes
   every large file 5% or less alone AND the combined raised total 5% or less;
   then this warning becomes a failure (`exit 2` through `print_block`) and
   this entry is deleted. The
@@ -186,7 +191,9 @@ verified usage, not dead weight:
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, `rules/`, `e2e/`, or `drizzle/`, and a while/until process-scan
+  into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`,
+  `.claude/skills/`, `.claude/agents/`, `harness/kiko/`, or a YAML
+  file, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
@@ -480,9 +487,11 @@ verified usage, not dead weight:
   0.6-2.4 s at load about 10 but 7-28 s at load 28-40; `express-ssrf` timed out on
   `src/screens/forms/holding-form/holding-form.screen.test.tsx`). Proof each
   cannot match: none of the rules checks for an `express` import. Their taint
-  sources are handler-shaped: a `function ... ($REQ, $RES)` (or a typed
-  `({ $REQ }: Request, $RES: Response) =>`) reading `$REQ.query`, `.body`,
-  `.params`, `.cookies` or `.headers`. Their sinks are an express response method
+  sources are handler-shaped: a `function ... ($REQ, $RES)` or `function ... ($REQ, $RES, $NEXT)`
+  (or a typed `({ $REQ }: Request, $RES: Response[, $NEXT: NextFunction]) =>`) reading
+  `$REQ.query`, `.body`, `.params`, `.cookies` or `.headers` (four rules also `$REQ.files`);
+  `express-res-sendfile` also takes any function with a `string`-typed parameter.
+  Their sinks are an express response method
   (`$RES.send`, `.write`, `.redirect`, `.sendFile`, `.render`, `.set`, `.header`,
   `.setHeader`, `.writeHead`), a call into a package that is imported by no tracked
   file (`puppeteer`, `phantom`, `libxmljs`, `vm2`, `request`, `xml2json`,
@@ -495,17 +504,28 @@ verified usage, not dead weight:
   generic shapes (an HTML-looking string built from a value, a dynamic
   `require(x)`, a `sequelize.query(...)` call, the identifier `sequelize` being in
   no tracked file but this harness's own pin and docs). A source can match by accident
-  (a test double reading `init.headers`), so the proof is that no sink is reachable: there is no
-  (request, response) HTTP handler anywhere in tracked code (no `createServer`,
-  `.listen(`, `http`, `https`, `express`, `koa` or `fastify` import, no
-  `(req, res)` or `(request, response)` function, no `Request`/`Response`
-  typed handler), and a scan with only these 33 rules over the repo found 0
+  (a test double reading `init.headers`), and an accidental source can reach a generic
+  sink with no HTTP handler (a fetch double
+  ``function mockFetch(request, init) { return `<html>${request.body}</html>`; }``
+  is a `raw-html-format` source and sink). So the proof has two parts. (1) No sink is
+  reachable from a handler-shaped function, meaning any 2- or 3-parameter function
+  `(request, response[, next])` reading a parameter's `query`, `body`, `params`,
+  `cookies`, `headers` or (four rules) `files`, and, for `express-res-sendfile`, any
+  function with a `string`-typed parameter: no sink-package call,
+  no express response method (no `.sendFile(` or `.sendfile(` call at all), no
+  HTML-looking string built from such a value, no
+  dynamic `require(x)` (and there is no `createServer`, `.listen(`, `http`, `https`,
+  `express`, `koa` or `fastify` import, no `(req, res)` or `(request, response)`
+  function, no `Request`/`Response` typed handler). (2) The measured run: a scan
+  with only these 33 rules over the repo found 0
   findings and 0 errors in 2092 files (semgrep 1.175.0, 2026-10-18; an earlier
   all-rules run over 2066 files had 0 findings and 2 files that timed out,
   `__tests__/pre-write-guard.test.ts` and `scripts/checks/kill-guard.js`, and a
   grep confirms neither contains `document.write`, `document.writeln` or
   `insertAdjacentHTML`). The `react-unsanitized-method` sinks are only those three
-  DOM calls, which do not exist in React Native; no tracked file calls them. The id
+  DOM calls, matched by the TEXT of a `document.write`, `document.writeln` or
+  `insertAdjacentHTML` call in any file (a jest test included), which do not exist
+  in React Native; no tracked code or test file contains that text. The id
   must be the full check_id: semgrep 1.175.0 treats it as exact, so the short form
   (`javascript.express.security.audit.express-ssrf`) excludes nothing and an
   unknown id is silently ignored; the test pins the full form. The exclusion
@@ -513,11 +533,15 @@ verified usage, not dead weight:
   lets an older pass skip a scan. Still running: `react-unsanitized-property`,
   every other `p/typescript`, `p/react` and `p/secrets` rule, and every `kiko-*`
   rule on every file. Never add a file, a `kiko-*` rule, or an id that can match
-  here. Re-check trigger: if any (request, response) HTTP handler is ever added
-  (express or not, for example a Node mock server in `scripts/` or `e2e/`), if any
-  of the sink packages above is imported, or if a DOM target (a web view that
-  renders DOM, or a web build) is added, remove the matching ids in the same
-  change.
+  here. Re-check trigger: if any (request, response[, next]) HTTP handler is ever
+  added (express or not, for example a Node mock server in `scripts/` or `e2e/`), if
+  any of the sink packages above is imported, if a dynamic `require(x)` is added, if
+  an HTML string is built from a parameter's `body`, `headers`, `query`, `params`,
+  `cookies` or `files` inside a 2- or 3-parameter function, if a `.sendFile(` or
+  `.sendfile(` call is added, if the text of a `document.write`, `document.writeln`
+  or `insertAdjacentHTML` call is added to any file (a jest test too), or if a DOM
+  target (a web view that renders DOM, or a web build) is added, remove the
+  matching ids in the same change.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
   five categories are excluded from the set of files Stryker
@@ -742,10 +766,12 @@ verified usage, not dead weight:
   `OVERRIDE_COMMENT_PATTERN` and its surrounding comments for the
   exact match rule. Every `paths.exclude` scope added to
   `rules/semgrep-prewrite.yml` (one per rule, pointing at the real
-  implementation a rule's own pattern would otherwise also flag) is
-  documented inline in that file's own comments next to each rule —
-  read the rule there rather than duplicating the list here, since a
-  new rule's exclude would otherwise drift this bullet out of date.
+  implementation a rule's own pattern would otherwise also flag) gets
+  its own bullet in this file, named by the rule id, as kiko-linter's
+  "Adding a pre-write guard rule" step 7 requires; the exact glob list
+  lives in the comments next to the rule in that file, so read the rule
+  there for it. Older rules may still have only the inline comment, and
+  gain a bullet the next time their exclude changes.
 
 - **`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`)
   excludes every test file (`*.test.ts`, `*.test.tsx`, `__tests__/**`,
@@ -766,6 +792,17 @@ verified usage, not dead weight:
   on a large array, the premise that makes `minOf`/`maxOf` necessary, so
   they must spell out the spread. `__tests__/pre-write-guard-rules.test.ts`
   proves the exclusion; the flat fixture pair still proves the rule.
+
+- **`kiko-component-explicit-return` (`rules/semgrep-prewrite.yml`) excludes
+  `*.test.tsx` and includes only `*.tsx`.** The exclude: a component local to
+  a test file is scaffolding, such as the stub screen
+  `const DetailScreen: FC = () => null;` in
+  `large-title-heading-bar.test.tsx`, and kiko-code-style's "One component per
+  file, each in its own folder" states that exemption. App components and the
+  components in `src/test-support/` are not exempt. The include: the rule reads
+  source text, string contents included, so a `.ts` harness test that quotes
+  component source stays outside it. `__tests__/pre-write-guard-rules.test.ts`
+  proves the include; the flat fixture pair proves the rule in `check:rules`.
 
 - **`kiko-no-root-calendars-value-import` (`rules/semgrep-prewrite.yml`)
   excludes `*.test.ts` and `*.test.tsx`.** The rule exists for bundle size,
@@ -1075,7 +1112,7 @@ verified usage, not dead weight:
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
 
-- **patch-package patches (`patches/`, applied by `postinstall`)**: three patches edit
+- **patch-package patches (`patches/`, applied by `postinstall`)**: four patches edit
   `node_modules` after `npm ci`; re-check each on upgrade of its package.
   - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
     `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
@@ -1098,3 +1135,9 @@ verified usage, not dead weight:
     for an entry that decompresses to 512 KB or more AND compresses to under 80% of its
     original size, Hermes has no `Worker` global, so it threw `ReferenceError` on device (never
     under Jest).
+  - `patches/@stryker-mutator+jest-runner+8.7.1.patch` (`@stryker-mutator/jest-runner@8.7.1`,
+    `dist/src/jest-test-runner.js` and `dist/src/jest-plugins/mixin-jest-environment.cjs`): a
+    mutant run selects its covering tests exactly instead of through one `testNamePattern` regex
+    per mutant, which timed out on regex cost alone above a few hundred covering tests. Pinned
+    by `__tests__/stryker-jest-runner-patch.test.ts` and the `scripts/checks/mutation.sh`
+    preflight; full rule in `docs/harness/dependency-hygiene.md` ("Standing patch").

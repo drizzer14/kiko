@@ -17,15 +17,10 @@ BATCH READY, and a coordinator-run merge and push after the user's OK.
 Re-verify before you use any value below: `git -C ~/Developer/Projects/harness log -1`, its
 changelog head, and `git -C <pff-ios> log --oneline -1 main`.
 
-- Current values (2026-10-15): harness main `d296f49` (plugin 1.5.0, pushed 2026-10-14) holds
-  pff-ios source from the range `068a1424..e2d96c17` (the h5 sync, 214 commits); pff-ios main
-  was `ad36c4cb` then. Everything on pff-ios main after `e2d96c17` is unsynced.
-- The next sync source starts after that point. It must also carry pff-ios `3331487a`,
-  `f3908902`, and `d21fbdc0`: they are in the synced range but not ported, and the range-find
-  command below does not list them, so carry them by name. They hold kill-guard cp/mv into a
-  protected folder itself, the xargs fill rule (a fill names a folder only for a recursive copy
-  or a move), and GNU abbreviations read as recursive. The xargs unresolved-destination
-  regression also exists in harness `30500db`.
+- The source of truth is `git -C ~/Developer/Projects/harness log -1` plus the head of the
+  harness CHANGELOG; the next sync source starts after the pff-ios range they record.
+- One recorded fact: the sync of 2026-10-19 started from pff-ios `e2d96c17..32f3d0c8` on
+  harness `7a9ef0c`.
 - Find the range with
   `git -C <pff-ios> log --oneline <last point>..main -- harness scripts/checks scripts/wait-load.sh rules docs/harness CLAUDE.md __tests__`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
@@ -43,6 +38,11 @@ in the harness repo):
   defer on load in `job-queue.sh`; the `ff-main.sh` rule refusing a plugin.json version
   decrease, removal or unreadable version; the `knip-ignore-documented` pin suite
   (`__tests__/knip-ignore-documented.test.ts`).
+- H9 generic port: the Stryker jest-runner exact-Set patch (`patches/@stryker-mutator+jest-runner+
+  8.7.1.patch`, `__tests__/stryker-jest-runner-patch.test.ts`, the `mutation.sh` patched-runner
+  preflight, and the `docs/harness/dependency-hygiene.md` "Standing patch" section). The
+  mechanism is generic (it touches only the installed runner, not Kiko code); port
+  it only to a repo that runs Stryker's jest runner at those exact pinned versions.
 - H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
   comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
   and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks
@@ -89,6 +89,12 @@ in the harness repo):
 - pff-ios `339a3d7c`: generic `import-order.js` change (`ambientBlockEnd`, `checkRun`,
   `fixRun`; `__tests__/import-order.test.ts` +4 cases). Portable as is; carry the gap /1
   closer widening if it lands first.
+- pff-ios commit "test(job-queue): await every killed child's exit before the sandboxes
+  go": the job-queue test teardown awaits every killed child's exit before
+  `rmSync` (the port of harness `5f126ee`), plus a pass-count bound
+  (`TEARDOWN_POLL_LIMIT` polls x 20 ms, about 30 s) that `5f126ee` lacks. Port the bound back
+  to the harness repo: without it, a red row's stub loop, which ends only on sandbox removal,
+  hangs the afterEach.
 - The CLAUDE.md trim (docs/harness/checks.md split).
 
 ## Classification
@@ -153,7 +159,10 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
    resolves; sync 2 named a dead one), the real commit count, the classification step, the
    config rulings above, the NO-BYPASS rule (never `rtk proxy git`, never `/usr/bin/git`; a
    blocked git means stop and report), the BATCH READY format, report-back lines, and an
-   expected duration. Name the permission mode (below).
+   expected duration. Name the permission mode (below). Re-read harness `origin/main` HEAD
+   (`git -C ~/Developer/Projects/harness fetch`, then `log -1 origin/main`) right before you
+   write the brief AND again before BATCH READY; the user may push to the harness repo
+   between syncs (10 commits on 2026-10-19).
 2. Create the target worktree from harness origin/main and start the orchestrator there:
    `claude --model opus --plugin-dir <worktree>/plugin`. Dispatch only the harness repo's own
    role agents (never a general-purpose, Explore, or Plan agent). A missing role is a gap to
@@ -183,12 +192,11 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
 
 ### Environment (plugin/** edits)
 
-Settings `defaultMode: "auto"` makes role agents' `plugin/**` edits fail, even after the
-orchestrator leaves auto mode, and the mode can return by itself. The RTK PreToolUse hook
-rewrites Bash calls, so auto mode gives "no verdict" on them (git included). `/permissions`
-grants do not help. Ask the user to turn auto mode off (accept-edits worked) in that
-orchestrator's own terminal BEFORE the plugin text change set; see memory
-`harness-repo-plugin-edits-need-auto-mode-off`.
+Sync orchestrators run in AUTO MODE (user ruling 2026-10-19). The auto mode environment list
+in `~/.claude/settings.json` names drizzer14/harness as a trusted repo, so a session started after
+that entry writes `plugin/**` in auto mode. On "classifier gave no verdict", check that entry
+and start a FRESH session. Never ask the user to leave auto mode. A denial that persists goes
+to the user as a patch list. See memory `harness-repo-plugin-edits-need-auto-mode-off`.
 
 ## BATCH READY format
 
@@ -216,6 +224,7 @@ LEFT OUT (with reason):
 
 REVIEW: <slices>, findings by severity, what was fixed, retrospect drift result.
 USER RULINGS applied: ...
+CANDIDATE LESSONS: see .superpowers/sdd/<track>/lessons.md; <one line per lesson, or "none">.
 CHANGELOG: <entry> / VERSION BUMP PROPOSAL: <version>, with any plugin/** line needing the user.
 FOLLOW-UPS: ...
 ```
@@ -229,8 +238,7 @@ Every count and exit code is the orchestrator's own measured result.
 - The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
   first verdict; fix in the harness repo.
 - Carried from H7: the mutation ETA split by changed-line weights; the whole history-date
-  rule; the retrospect run-log lines; the job-queue test teardown wait
-  (`tests/job-queue.test.mjs` ENOTEMPTY).
+  rule; the retrospect run-log lines.
 - Carried Minors: the doc fingerprint misses a `../fixtures/...pinned` literal
   (`harness_doc_suite_fixtures` needs a quote right before `fixtures/`; `harness_doc_suites`
   accepts `../`); `medium.sh` computes the doc lists twice per Stop.
@@ -247,6 +255,18 @@ Every count and exit code is the orchestrator's own measured result.
   NOT carry the GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file check (deleted).
 - kill-guard `drizzle/` shell-write deny (`b566307f`): the mechanism is generic, the tree list is
   kiko's, so port it as a configurable list (`WRITE_GUARDED_TREES`), not a hard-coded `drizzle`.
+  The YAML rule (`YAML_FILE`, any `*.yml`/`*.yaml` in a worktree outside `node_modules/`) is
+  also generic: port it as a configurable extension list.
+- kill-guard multi-segment `WRITE_GUARDED_TREES` entries: the generic part is the entry rule (a
+  resolved path inside any worktree matches; an unresolved path fails closed when the segments
+  appear as consecutive non-final segments, as written or with its `.` and `//` segments
+  folded; case-folded), the parent-folder rule (a `cp`/`mv` that lands a folder exactly on
+  `<worktree>/.claude` or the plugin folder's parent, or a recursive copy of a source's
+  contents there, is denied; `-T` counts only with a recursive flag), `expressionPaths`
+  judges resolved `/_` candidates and `namesGuardedTree` checks raw and normalized text, and
+  the `.claude/skills` and `.claude/agents` entries. The
+  plugin-folder entry is repo-specific: in the harness repo it is that repo's plugin folder,
+  not `harness/kiko`. Create `.claude/agents/.gitkeep` so the path resolves.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

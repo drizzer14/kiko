@@ -253,7 +253,10 @@ const readPreFeatureSnapshot = async (source: DatabaseSync): Promise<DataSnapsho
 
   return {
     ...emptySnapshot,
-    accounts: await sourceDrizzle.select().from(accounts).orderBy(asc(accounts.id)),
+    accounts: (await sourceDrizzle
+      .select(columnsWithout(getTableColumns(accounts), 'currency'))
+      .from(accounts)
+      .orderBy(asc(accounts.id))) as DataSnapshot['accounts'],
     holdings: await sourceDrizzle.select().from(holdings).orderBy(asc(holdings.id)),
     transactions: preFeatureTransactions as TransactionRow[],
   };

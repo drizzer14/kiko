@@ -18,13 +18,13 @@ import {
   type BinanceDeposit,
   type BinanceUniversalTransfer,
   type BinanceWithdrawal,
+  type CapitalPage,
   type EarnRecordKind,
   fetchDepositHistory,
   fetchEarnRecords,
   fetchPayHistory,
   fetchUniversalTransfers,
   fetchWithdrawHistory,
-  type HistoryPage,
   type HistoryWindow,
   type PayHistoryPage,
   type TotalPage,
@@ -94,31 +94,31 @@ const EXPECTED_URLS: Record<string, string> = {
   account:
     'https://api.binance.com/api/v3/account?timestamp=1791590400000&recvWindow=5000&signature=7490c3a7eb8acc21216096b21094601993e20d0f9e664482dabda0400bddd910',
   'funding asset':
-    'https://api.binance.com/sapi/v1/asset/get-funding-asset?asset=BTC&timestamp=1791590400000&recvWindow=5000&signature=eb14368637c305ce120b05bf35e037d2ddd88f4ca619319eec47920ea4a237e2',
+    'https://api.binance.com/sapi/v1/asset/get-funding-asset?timestamp=1791590400000&recvWindow=5000&signature=7490c3a7eb8acc21216096b21094601993e20d0f9e664482dabda0400bddd910',
   'flexible position':
-    'https://api.binance.com/sapi/v1/simple-earn/flexible/position?asset=BTC&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=c42d865d37f360be491740058338c38c84376a8b0c1255d15085bd791e69a2d4',
+    'https://api.binance.com/sapi/v1/simple-earn/flexible/position?current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=e84b361aece3f41ee6815a56e53e2bc9a045b432f1c910c5e5d769ea0a26f6ff',
   'locked position':
-    'https://api.binance.com/sapi/v1/simple-earn/locked/position?asset=BTC&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=c42d865d37f360be491740058338c38c84376a8b0c1255d15085bd791e69a2d4',
+    'https://api.binance.com/sapi/v1/simple-earn/locked/position?current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=e84b361aece3f41ee6815a56e53e2bc9a045b432f1c910c5e5d769ea0a26f6ff',
   'deposit history':
-    'https://api.binance.com/sapi/v1/capital/deposit/hisrec?coin=BTC&startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=9e960ba104e88789b4926156c1563c87d3230206b7b06f70b6935daf0136fc10',
+    'https://api.binance.com/sapi/v1/capital/deposit/hisrec?startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=0eca7592cf51f123fe5b3d91507d75cd6e617f68bdc9d1a43f28e031d3eaeca2',
   'withdraw history':
-    'https://api.binance.com/sapi/v1/capital/withdraw/history?coin=BTC&startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=9e960ba104e88789b4926156c1563c87d3230206b7b06f70b6935daf0136fc10',
+    'https://api.binance.com/sapi/v1/capital/withdraw/history?startTime=1788998400000&endTime=1791590400000&offset=0&limit=1000&timestamp=1791590400000&recvWindow=5000&signature=0eca7592cf51f123fe5b3d91507d75cd6e617f68bdc9d1a43f28e031d3eaeca2',
   'pay history':
     'https://api.binance.com/sapi/v1/pay/transactions?startTime=1788998400000&endTime=1791590400000&limit=100&timestamp=1791590400000&recvWindow=5000&signature=2d01a2ba5565fd5577994b6383f937f9e3f6471e127fd900b9e144da6a64c90a',
   'universal transfers':
     'https://api.binance.com/sapi/v1/asset/transfer?type=MAIN_FUNDING&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=2fe25a56f30ba63772686f5a21443a89bc306df77b1d8f9f87cc7490b8042fe0',
   'earn flexibleSubscription':
-    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/subscriptionRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/subscriptionRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
   'earn flexibleRedemption':
-    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/redemptionRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/redemptionRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
   'earn flexibleRewards':
-    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/rewardsRecord?asset=BTC&type=ALL&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=52c446f27f5fb5e96aa755baf6f28553489df9bca81a0d3bf969e34a45c250de',
+    'https://api.binance.com/sapi/v1/simple-earn/flexible/history/rewardsRecord?type=ALL&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=ced238beaa32ec7ae2a12889d2f47923b2c63b0025419c428f3820562309eebf',
   'earn lockedSubscription':
-    'https://api.binance.com/sapi/v1/simple-earn/locked/history/subscriptionRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/locked/history/subscriptionRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
   'earn lockedRedemption':
-    'https://api.binance.com/sapi/v1/simple-earn/locked/history/redemptionRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/locked/history/redemptionRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
   'earn lockedRewards':
-    'https://api.binance.com/sapi/v1/simple-earn/locked/history/rewardsRecord?asset=BTC&startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=6e3a3e4abd21a2b58e72792014d965262bc4fc5ec03da38af277e9e85db54c52',
+    'https://api.binance.com/sapi/v1/simple-earn/locked/history/rewardsRecord?startTime=1788998400000&endTime=1791590400000&current=1&size=100&timestamp=1791590400000&recvWindow=5000&signature=de2141717accd9ee313600c4320b14fc27c00d26803f738ed20c160c86c441af',
 };
 
 type RequestCase = [
@@ -334,12 +334,13 @@ describe('the request windows and the external ids and rows every walk produces 
       storedExternalIds: async () => new Set(),
       latestTransactionTime: async () => undefined,
       readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
-      fetchDepositHistory: async (_key, _secret, window): Promise<HistoryPage<BinanceDeposit>> => {
+      fetchDepositHistory: async (_key, _secret, window): Promise<CapitalPage<BinanceDeposit>> => {
         record('deposit', window);
 
         return {
           rows: DEPOSITS.filter((deposit) => within(window, deposit.insertTime)),
           unreadable: [],
+          untracked: [],
           ...unweighted,
         };
       },
@@ -347,12 +348,13 @@ describe('the request windows and the external ids and rows every walk produces 
         _key,
         _secret,
         window,
-      ): Promise<HistoryPage<BinanceWithdrawal>> => {
+      ): Promise<CapitalPage<BinanceWithdrawal>> => {
         record('withdraw', window);
 
         return {
           rows: within(window, WITHDRAWN_AT) ? WITHDRAWALS : [],
           unreadable: [],
+          untracked: [],
           ...unweighted,
         };
       },
@@ -422,7 +424,7 @@ describe('the request windows and the external ids and rows every walk produces 
           rows: inWindow,
           unreadable: [],
           gathered: inWindow.length,
-          btcFundedOtherCoinOrders: [],
+          untracked: [],
           ...unweighted,
         };
       },
@@ -475,6 +477,7 @@ describe('the request windows and the external ids and rows every walk produces 
         return {
           rows: inRead,
           unreadable: [],
+          untracked: [],
           gathered: inRead.length,
           total: inRead.length,
           ...unweighted,
@@ -552,6 +555,168 @@ describe('the request windows and the external ids and rows every walk produces 
     expect(placed(uniqueByKey(world.added))).toEqual([
       ['acc-1:earn:sub:flexible:p-1:BTC', 'h-spot', -100_000],
       ['acc-1:earn:sub:flexible:p-1:BTC:earn', 'h-earn', 100_000],
+    ]);
+  });
+});
+
+const ETH_HOLDINGS = [
+  holdingWith('h-ETH', { binanceAsset: 'ETH' }),
+  holdingWith('h-ETH:funding', { binanceAsset: 'ETH:funding' }),
+  holdingWith('h-ETH:earn', { binanceAsset: 'ETH:earn' }),
+];
+
+const WITH_ETH = [FUNDING, EARN, ...ETH_HOLDINGS];
+
+const BTC_HOLDING_IDS = new Set(['h-spot', 'h-funding', 'h-earn']);
+
+const btcRowsOf = (rows: BinanceTransactionRow[]) =>
+  rows.filter((row) => BTC_HOLDING_IDS.has(row.holdingId));
+
+const ethRowsOf = (rows: BinanceTransactionRow[]) =>
+  rows.filter((row) => !BTC_HOLDING_IDS.has(row.holdingId));
+
+const ALONGSIDE_DEPS = {
+  now: () => NOW,
+  ensureHoldings: async () => undefined,
+  readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
+};
+
+const EMPTY_PAGE = {
+  rows: [],
+  unreadable: [],
+  untracked: [],
+  gathered: 0,
+  total: 0,
+  ...unweighted,
+};
+
+// A record of another coin that shares every id the BTC record has (a txId, an order id, a
+// transfer id, a purchase id): the BTC row must keep the key the same record has today, and the
+// other coin's row must not take it.
+describe("every BTC key equals today's key for the same record when another coin rides along", () => {
+  it('capital: a BTC deposit with no id keeps its bare hash, an ETH one with that hash adds its coin', async () => {
+    const ethDeposit: BinanceDeposit = JSON.parse(
+      `{"id":"","amount":"0.25","coin":"ETH","txId":"dep-tx-2","insertTime":${TWO_DAYS_AGO},"status":1,"walletType":1}`,
+    );
+    const { rows, addTransactions } = collector();
+    const overrides: Partial<BinanceTransactionSyncDeps> = {
+      ...walkedOver('capital', { cursor: NOW - 5 * DAY_MS }, WITH_ETH),
+      ...ALONGSIDE_DEPS,
+      addTransactions,
+      storedExternalIds: async () => new Set(),
+      latestTransactionTime: async () => undefined,
+      fetchDepositHistory: async (_key, _secret, window) => ({
+        ...EMPTY_PAGE,
+        rows: [...DEPOSITS, ethDeposit].filter((deposit) => within(window, deposit.insertTime)),
+      }),
+      fetchWithdrawHistory: async () => EMPTY_PAGE,
+    };
+
+    await syncBinanceTransactions({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
+
+    expect(placed(btcRowsOf(rows()))).toEqual([
+      ['acc-1:deposit:d-1', 'h-spot', 50_000_000],
+      ['acc-1:deposit:dep-tx-2', 'h-funding', 25_000_000],
+    ]);
+    expect(ethRowsOf(rows()).map((row) => row.externalId)).toEqual(['acc-1:deposit:dep-tx-2:ETH']);
+  });
+
+  it('pay: a BTC send keeps its key, an ETH send of the same order id adds its coin', async () => {
+    const ethOrder = payOrder({
+      currency: 'ETH',
+      amount: '-0.001',
+      fundsDetail: [
+        { currency: 'ETH', amount: '0.001', walletAssetCost: [{ walletType: 2, amount: '0.001' }] },
+      ],
+    });
+    const { rows, addTransactions } = collector();
+    const overrides: Partial<BinancePayHistoryDeps> = {
+      ...walkedOver('pay', { cursor: NOW - 30 * DAY_MS }, WITH_ETH),
+      ...ALONGSIDE_DEPS,
+      addTransactions,
+      fetchAccount: async () => ({ balances: [], uid: OWN }),
+      fetchPayHistory: async (_key, _secret, window) => {
+        const held = [payOrder(), ethOrder].filter((order) =>
+          within(window, order.transactionTime),
+        );
+
+        return { ...EMPTY_PAGE, rows: held, gathered: held.length };
+      },
+    };
+
+    await syncBinancePayHistory({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
+
+    expect(placed(btcRowsOf(rows()))).toEqual([['acc-1:pay:C2C:tx-1:2', 'h-spot', -100_000]]);
+    expect(ethRowsOf(rows()).map((row) => row.externalId)).toEqual(['acc-1:pay:C2C:tx-1:2:ETH']);
+  });
+
+  it('transfer: a BTC pair keeps its keys, an ETH pair of the same transfer id adds its coin', async () => {
+    const transfer = (asset: string, type: string): BinanceUniversalTransfer => ({
+      asset,
+      amount: '0.001',
+      type,
+      status: 'CONFIRMED',
+      tranId: 't-1',
+      timestamp: TWO_DAYS_AGO,
+    });
+    const transfers = [
+      transfer('BTC', 'MAIN_FUNDING'),
+      transfer('ETH', 'MAIN_FUNDING'),
+      transfer('BTC', 'FUNDING_MAIN'),
+      transfer('ETH', 'FUNDING_MAIN'),
+    ];
+    const { rows, addTransactions } = collector<BinanceHistoryRow>();
+    const overrides: Partial<BinanceTransferHistoryDeps> = {
+      ...walkedOver('transfer', { cursor: NOW - 5 * DAY_MS }, WITH_ETH),
+      ...ALONGSIDE_DEPS,
+      addTransactions,
+      fetchUniversalTransfers: async (_key, _secret, query) => {
+        const held = transfers.filter(
+          (one) => one.type === query.type && within(query, one.timestamp),
+        );
+
+        return { ...EMPTY_PAGE, rows: held, gathered: held.length, total: held.length };
+      },
+    };
+
+    await syncBinanceTransferHistory({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
+
+    expect(placed(btcRowsOf(rows()))).toEqual([
+      ['acc-1:xfer:FUNDING_MAIN:t-1:BTC', 'h-spot', 100_000],
+      ['acc-1:xfer:FUNDING_MAIN:t-1:BTC:funding', 'h-funding', -100_000],
+      ['acc-1:xfer:MAIN_FUNDING:t-1:BTC', 'h-spot', -100_000],
+      ['acc-1:xfer:MAIN_FUNDING:t-1:BTC:funding', 'h-funding', 100_000],
+    ]);
+    expect(ethRowsOf(rows()).map((row) => row.externalId)).toEqual([
+      'acc-1:xfer:FUNDING_MAIN:t-1:ETH',
+      'acc-1:xfer:FUNDING_MAIN:t-1:ETH:funding',
+      'acc-1:xfer:MAIN_FUNDING:t-1:ETH',
+      'acc-1:xfer:MAIN_FUNDING:t-1:ETH:funding',
+    ]);
+  });
+
+  it('earn: a BTC subscription and reward keep their keys, the ETH ones of the same ids add the coin', async () => {
+    const world = worldOf({ cursor: NOW - 5 * DAY_MS });
+
+    await walkOnce({
+      world,
+      entries: [
+        entryOf('flexibleSubscription', flexibleSubscriptionOf()),
+        entryOf('flexibleSubscription', flexibleSubscriptionOf({ asset: 'ETH' })),
+        entryOf('flexibleRewards', flexibleRewardOf()),
+        entryOf('flexibleRewards', flexibleRewardOf({ asset: 'ETH' })),
+      ],
+    });
+
+    expect(placed(btcRowsOf(uniqueByKey(world.added)))).toEqual([
+      ['acc-1:earn:reward:flexible:BTC001:REALTIME:1791417600000:0', 'h-earn', 12],
+      ['acc-1:earn:sub:flexible:p-1:BTC', 'h-spot', -100_000],
+      ['acc-1:earn:sub:flexible:p-1:BTC:earn', 'h-earn', 100_000],
+    ]);
+    expect(ethRowsOf(uniqueByKey(world.added)).map((row) => row.externalId)).toEqual([
+      'acc-1:earn:reward:flexible:BTC001:REALTIME:1791417600000:0:ETH',
+      'acc-1:earn:sub:flexible:p-1:ETH',
+      'acc-1:earn:sub:flexible:p-1:ETH:earn',
     ]);
   });
 });

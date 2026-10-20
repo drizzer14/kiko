@@ -1,4 +1,8 @@
-import { internalTransferTransactionIds, TRANSFER_MATCH_WINDOW_MS } from './internal-transfers';
+import {
+  internalTransferTransactionIds,
+  rowsForTransferMatch,
+  TRANSFER_MATCH_WINDOW_MS,
+} from './internal-transfers';
 
 type Transaction = {
   id: string;
@@ -451,5 +455,105 @@ describe('internalTransferTxIds', () => {
     // makes reads scale with bucket size, which itself grows with ledger
     // size, so a 4x ledger blows well past that bound.
     expect(quadrupled).toBeGreaterThan(base * 3);
+  });
+});
+
+type Markers = {
+  exchangePairId: string | null;
+  exchangeCounterpartHoldingId: string | null;
+  untrackedCounterpart: string | null;
+};
+
+type LedgerRow = Transaction & Markers;
+
+const MARKER_NAMES: (keyof Markers)[] = [
+  'exchangePairId',
+  'exchangeCounterpartHoldingId',
+  'untrackedCounterpart',
+];
+
+const ledgerRow = (
+  id: string,
+  holdingId: string,
+  amountMinorUnits: number,
+  time: number,
+  currency: Transaction['currency'],
+  markers: Partial<Markers> = {},
+): LedgerRow => ({
+  ...transaction(id, holdingId, amountMinorUnits, time, currency),
+  exchangePairId: null,
+  exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
+  ...markers,
+});
+
+const matchedIdsOf = (rows: LedgerRow[]): Set<string> =>
+  internalTransferTransactionIds(rowsForTransferMatch(rows));
+
+describe('rowsForTransferMatch', () => {
+  it('keeps only the rows with none of the three markers, in their original order', () => {
+    const plain = ledgerRow('plain', 'h1', -100, T, 'BTC');
+    const alsoPlain = ledgerRow('alsoPlain', 'h2', 100, T, 'BTC');
+    const rows = [
+      ledgerRow('pair', 'h1', -100, T, 'BTC', { exchangePairId: 'p1' }),
+      plain,
+      ledgerRow('counterpart', 'h3', 100, T, 'BTC', { exchangeCounterpartHoldingId: 'h9' }),
+      ledgerRow('untracked', 'h3', 100, T, 'BTC', { untrackedCounterpart: 'wallet:FUTURES' }),
+      alsoPlain,
+    ];
+
+    expect(rowsForTransferMatch(rows)).toEqual([plain, alsoPlain]);
+  });
+});
+
+describe('internal transfer matching beside exchange legs', () => {
+  it('counts a Pay send when the same-amount rows nearby are exchange legs', () => {
+    const rows = [
+      ledgerRow('paySend', 'h1', -5000, T, 'USD'),
+      ledgerRow('convertCredit', 'h2', 5000, T + 1_000, 'USD', {
+        exchangeCounterpartHoldingId: 'h3',
+      }),
+      ledgerRow('walletCredit', 'h3', 5000, T + 2_000, 'USD', {
+        untrackedCounterpart: 'wallet:FUTURES',
+      }),
+    ];
+
+    expect(matchedIdsOf(rows)).toEqual(new Set());
+  });
+
+  it('counts a BTC Pay send beside a Transfer pair', () => {
+    const rows = [
+      ledgerRow('paySend', 'h1', -100_000, T, 'BTC'),
+      ledgerRow('transferOut', 'h2', -100_000, T + 1_000, 'BTC', { exchangePairId: 'pair' }),
+      ledgerRow('transferIn', 'h3', 100_000, T + 1_000, 'BTC', { exchangePairId: 'pair' }),
+    ];
+
+    expect(matchedIdsOf(rows)).toEqual(new Set());
+  });
+
+  it('still matches two unmarked opposite rows', () => {
+    const rows = [
+      ledgerRow('debit', 'h1', -2500, T, 'UAH'),
+      ledgerRow('credit', 'h2', 2500, T + 1_000, 'UAH'),
+    ];
+
+    expect(matchedIdsOf(rows)).toEqual(new Set(['debit', 'credit']));
+  });
+
+  it.each(MARKER_NAMES)('a row with only %s is never a partner', (marker) => {
+    const markers = { [marker]: 'marked' };
+
+    expect(
+      matchedIdsOf([
+        ledgerRow('debit', 'h1', -2500, T, 'UAH'),
+        ledgerRow('credit', 'h2', 2500, T + 1_000, 'UAH', markers),
+      ]),
+    ).toEqual(new Set());
+    expect(
+      matchedIdsOf([
+        ledgerRow('debit', 'h1', -2500, T, 'UAH', markers),
+        ledgerRow('credit', 'h2', 2500, T + 1_000, 'UAH'),
+      ]),
+    ).toEqual(new Set());
   });
 });

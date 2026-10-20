@@ -1,7 +1,9 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import type { HoldingRow } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeMetadataField } from '@kiko/holdings/holding-metadata';
+import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
 
 /**
  * The single source of truth for the balance-provider ids. Each id doubles as
@@ -28,7 +30,9 @@ export const providerDisplayName = (providerId: BalanceProviderId, t: TFunction)
     .exhaustive();
 
 export type ProviderBalance = {
-  /** Satoshis. */
+  /** The currency the balance and the holding it writes are in. */
+  currency: Currency;
+  /** Minor units of `currency`. */
   balanceMinorUnits: number;
   /**
    * Provider-specific key the sync matches and upserts the target holding by:
@@ -38,18 +42,20 @@ export type ProviderBalance = {
   /**
    * Display name for the holding the first sync inserts. An existing holding
    * keeps its (possibly user-edited) name — the upsert never rewrites it, EXCEPT
-   * the one-time transition rename below.
+   * the once-per-holding transition rename below.
    */
   name: string;
   /**
-   * One-time transition rename. When set, the upsert rewrites an EXISTING
-   * matched holding's name to `name` ONLY IF its current name still equals this
-   * exact string. A user-edited name never matches, so it is
-   * preserved. Binance's Spot balance sets this to the pre-split default
-   * ('Binance BTC') so a legacy aggregated holding is relabeled to 'Binance
-   * Spot' on the first post-split sync; every other provider omits it.
+   * Transition rename, once per holding. When set, the FIRST upsert of a holding
+   * rewrites an EXISTING matched holding's name to `name` ONLY IF its current
+   * name equals one of these exact strings, and marks the holding whether or not
+   * it renamed it; no later upsert renames it again, so a name the user sets
+   * afterwards, even one of these strings, is preserved. Binance's BTC balances
+   * set this to the earlier default names of their wallet (Spot: 'Binance BTC'
+   * and 'Binance Spot') so a stored holding is relabeled to
+   * 'Binance <Wallet> · BTC'; every other provider omits it.
    */
-  renameFromDefault?: string;
+  renameFromDefaults?: readonly string[];
 };
 
 /**
@@ -58,9 +64,20 @@ export type ProviderBalance = {
  */
 export type SyncTarget = { accountId: string; holdings: HoldingRow[] };
 
+/** What one balance read found. */
+export type ProviderRead = {
+  balances: ProviderBalance[];
+  /**
+   * Writes to the account's exchange state that wait for the sync to mark the account: the
+   * write is gated on `accounts.institution`, which a first Connect sets only after the read.
+   * Absent when the read has nothing to write.
+   */
+  exchangeState?: readonly ExchangeStatePatch[];
+};
+
 export interface BalanceProvider<Deps> {
   id: BalanceProviderId;
   /** The `holdings.metadata` field the provider's `metadataKey` is stored under. */
   metadataField: ExchangeMetadataField;
-  fetchBalances: (deps: Deps, target: SyncTarget) => Promise<ProviderBalance[]>;
+  fetchBalances: (deps: Deps, target: SyncTarget) => Promise<ProviderRead>;
 }

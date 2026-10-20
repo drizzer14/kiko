@@ -32,14 +32,28 @@ export type WalkMarks = {
   pointCursor?: number;
   rangeCursor?: number;
   spanHints?: BinanceSpanHints;
+  /** The cursor the walk's first multi-coin run planned from: ground before it holds BTC only. */
+  multiCoinSince?: number;
+  /** The walk's first multi-coin run committed a window, so it never records a start again. */
+  multiCoinSeen?: true;
 };
 
 export type CoinLists = {
-  /** Replaced by each good balance read. */
+  /**
+   * Replaced by each good balance read. The oversized kind derives it from `balanceByWallet`
+   * (see `exchangeStatePatched`), so it always holds the wallet arrays and the legacy tickers.
+   */
   balance?: string[];
   /** Grows with each history read, and is cleared on disconnect. */
   history?: string[];
 };
+
+/**
+ * The oversized coins also name the wallet that refused each one (`spot`, `funding`, `earn`), so
+ * a read in which a wallet failed replaces only the arrays of the wallets that read. A `balance`
+ * ticker in no wallet array was stored before wallets were named (legacy).
+ */
+export type OversizedCoinLists = CoinLists & { balanceByWallet?: Record<string, string[]> };
 
 export type TradeSymbol = { fromId: number | null; heldOrderId?: number };
 
@@ -55,7 +69,9 @@ export type ExchangeState = {
   walks: Partial<Record<WalkId, WalkMarks>>;
   trades?: ExchangeTrades;
   untrackedCoins?: CoinLists;
-  oversizedCoins?: CoinLists;
+  oversizedCoins?: OversizedCoinLists;
+  /** When the last good balance read ran (epoch ms), for an account with no holding to stamp. */
+  balanceSyncedAt?: number;
 };
 
 /**
@@ -63,7 +79,9 @@ export type ExchangeState = {
  * the tri-state of the rule that reads it: `undefined` is a value that is stored but unreadable
  * (the walk logs a fixed code and writes the repair of that one field), where an absent field
  * reads as its empty value. A `pending` list that is defined can still fail its walk's series
- * check (`readPendingMark`, `hasKnownSeries`), which repairs it in the walk, not here.
+ * check (`readPendingMark`, `hasKnownSeries`), which repairs it in the walk, not here. The two
+ * multi-coin marks are absent keys when the walk has none, and a malformed one is never repaired:
+ * it reads as the fail-safe value (`multiCoinSinceOf`; a seen mark that is not `true` is absent).
  */
 export type ParsedWalkMarks = {
   cursor: number | null;
@@ -72,6 +90,8 @@ export type ParsedWalkMarks = {
   pointCursor: number | null | undefined;
   rangeCursor: number | null | undefined;
   spanHints: BinanceSpanHints | undefined;
+  multiCoinSince?: number;
+  multiCoinSeen?: true;
 };
 
 /**
@@ -87,6 +107,7 @@ export type ParsedExchangeState =
       trades: ExchangeTrades;
       untrackedCoins: Required<CoinLists>;
       oversizedCoins: Required<CoinLists>;
+      balanceSyncedAt: number | undefined;
       unreadable: string[];
     };
 
@@ -111,15 +132,33 @@ const recordOrUndefined = (value: unknown): Metadata | undefined =>
 const stringListOrUndefined = (value: unknown): string[] | undefined =>
   isStringList(value) ? value : undefined;
 
+/**
+ * A stored range start that is no finite number reads as the entry's cursor, and as none when that
+ * is null: the later start owes a range rather than none, so a malformed one never skips ground.
+ */
+const multiCoinSinceOf = (entry: Metadata, cursor: number | null): number | undefined => {
+  if (!('multiCoinSince' in entry)) {
+    return undefined;
+  }
+
+  return numberOrUndefined(entry.multiCoinSince) ?? cursor ?? undefined;
+};
+
 /** Each field parses with the one rule that decides what is readable and what a walk repairs. */
-const marksOf = (entry: Metadata): ParsedWalkMarks => ({
-  cursor: finiteNumberOrNull(entry.cursor),
-  rescan: finiteNumberOrNull(entry.rescan),
-  pending: binanceWalkPendingValueOf(entry.pending),
-  pointCursor: binanceWalkRoundRobinValueOf(entry.pointCursor),
-  rangeCursor: binanceWalkRoundRobinValueOf(entry.rangeCursor),
-  spanHints: binanceWalkSpanHintsValueOf(entry.spanHints),
-});
+const marksOf = (entry: Metadata): ParsedWalkMarks => {
+  const cursor = finiteNumberOrNull(entry.cursor);
+
+  return {
+    cursor,
+    rescan: finiteNumberOrNull(entry.rescan),
+    pending: binanceWalkPendingValueOf(entry.pending),
+    pointCursor: binanceWalkRoundRobinValueOf(entry.pointCursor),
+    rangeCursor: binanceWalkRoundRobinValueOf(entry.rangeCursor),
+    spanHints: binanceWalkSpanHintsValueOf(entry.spanHints),
+    ...foldMap(maybe(multiCoinSinceOf(entry, cursor)), (multiCoinSince) => ({ multiCoinSince })),
+    ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
+  };
+};
 
 const emptyMarks = (): ParsedWalkMarks => marksOf({});
 
@@ -143,6 +182,8 @@ const tradeSymbolOf = (stored: unknown): TradeSymbol | undefined => {
 };
 
 const zero = (): number => 0;
+
+const nothing = (): undefined => undefined;
 
 const emptyList = (): string[] => [];
 
@@ -235,6 +276,14 @@ export const coinListsOf = (kind: string, stored: unknown): ReadEntry<Required<C
   };
 };
 
+/**
+ * The wallet arrays of the oversized balance list. Each wallet parses alone, so an array that is
+ * unreadable is dropped and named while the others stay; the tickers it held then read as legacy
+ * ones, since they sit in `balance` and in no wallet array.
+ */
+export const oversizedByWalletOf = (stored: unknown): ReadEntry<Record<string, string[]>> =>
+  recordOf('oversizedCoins.balanceByWallet', stored, stringListOrUndefined);
+
 /** The stored JSON as a writer sees it: raw values, so a field no build reads stays as stored. */
 export type StoredExchangeState = Metadata & { walks: Metadata };
 
@@ -254,6 +303,15 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
   const trades = tradesOf(stored.trades);
   const untrackedCoins = coinListsOf('untrackedCoins', stored.untrackedCoins);
   const oversizedCoins = coinListsOf('oversizedCoins', stored.oversizedCoins);
+  const oversizedByWallet = oversizedByWalletOf(
+    recordOrEmpty(stored.oversizedCoins).balanceByWallet,
+  );
+  const balanceSyncedAt = entryOf<number | undefined>(
+    'balanceSyncedAt',
+    stored.balanceSyncedAt,
+    numberOrUndefined,
+    nothing,
+  );
 
   return {
     kind: 'parsed',
@@ -264,11 +322,14 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     trades: trades.value,
     untrackedCoins: untrackedCoins.value,
     oversizedCoins: oversizedCoins.value,
+    balanceSyncedAt: balanceSyncedAt.value,
     unreadable: [
       ...walks.flatMap(({ unreadable }) => unreadable),
       ...trades.unreadable,
       ...untrackedCoins.unreadable,
       ...oversizedCoins.unreadable,
+      ...oversizedByWallet.unreadable,
+      ...balanceSyncedAt.unreadable,
     ],
   };
 };

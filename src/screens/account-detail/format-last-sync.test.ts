@@ -1,7 +1,7 @@
 import { i18n } from '@kiko/i18n/init';
 import { formatDateTime, type TimeClock } from '@kiko/dates';
 
-import { formatLastSyncAt, latestSyncedAt } from './format-last-sync';
+import { formatLastSyncAt, latestBalanceSyncAt } from './format-last-sync';
 
 const TWENTY_FOUR_HOUR: TimeClock = { uses24Hour: true };
 const TWELVE_HOUR: TimeClock = { uses24Hour: false, beforeNoon: 'AM', afterNoon: 'PM' };
@@ -30,22 +30,42 @@ describe('formatLastSyncAt', () => {
   });
 });
 
-describe('latestSyncedAt', () => {
+describe('latestBalanceSyncAt', () => {
+  const held = [{ metadata: { binanceAsset: 'BTC', syncedAt: 3_000 } }];
+
   it('returns the newest syncedAt across the holdings', () => {
     expect(
-      latestSyncedAt([
-        { metadata: { walletAddress: 'bc1q', syncedAt: 1_000 } },
-        { metadata: { iban: 'UA1' } },
-        { metadata: { binanceAsset: 'BTC', syncedAt: 3_000 } },
-        { metadata: null },
-      ]),
+      latestBalanceSyncAt(
+        [
+          { metadata: { walletAddress: 'bc1q', syncedAt: 1_000 } },
+          { metadata: { iban: 'UA1' } },
+          { metadata: { binanceAsset: 'BTC', syncedAt: 3_000 } },
+          { metadata: null },
+        ],
+        undefined,
+      ),
     ).toBe(3_000);
   });
 
   it('returns null when no holding carries a syncedAt', () => {
     expect(
-      latestSyncedAt([{ metadata: { walletAddress: 'bc1q' } }, { metadata: null }]),
+      latestBalanceSyncAt([{ metadata: { walletAddress: 'bc1q' } }, { metadata: null }], undefined),
     ).toBeNull();
-    expect(latestSyncedAt([])).toBeNull();
+    expect(latestBalanceSyncAt([], undefined)).toBeNull();
+  });
+
+  it('returns the later of the newest holding stamp and the state stamp', () => {
+    expect(latestBalanceSyncAt(held, 5_000)).toBe(5_000);
+    expect(latestBalanceSyncAt(held, 2_000)).toBe(3_000);
+  });
+
+  it('returns the state stamp when no holding carries a syncedAt', () => {
+    expect(latestBalanceSyncAt([], 5_000)).toBe(5_000);
+    expect(latestBalanceSyncAt([{ metadata: null }], 5_000)).toBe(5_000);
+  });
+
+  it('returns the holding stamp when the state holds none, and null when neither does', () => {
+    expect(latestBalanceSyncAt(held, undefined)).toBe(3_000);
+    expect(latestBalanceSyncAt([], undefined)).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import { minOf } from '@kiko/numbers';
 import {
   type BackfillStatus,
+  deriveBinanceOnlyCurrencies,
   deriveLastBackfilledDay,
   deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDayByCurrency,
@@ -35,6 +36,10 @@ import {
   type CategorySlice,
   resolveCategoryColor,
 } from '@kiko/statistics/category-breakdown';
+import {
+  internalTransferTransactionIds,
+  rowsForTransferMatch,
+} from '@kiko/statistics/internal-transfers';
 import {
   descriptionExcludedTransferTransactionIds,
   mccExcludedTransferTransactionIds,
@@ -88,7 +93,6 @@ import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
-import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
@@ -161,6 +165,10 @@ const CATEGORY_DONUT_INNER_RATIO = 0.78;
 // to reveal the rest. The ring still draws every category. The
 // account-contribution pie passes no threshold, so its legend is uncropped.
 const CATEGORY_LEGEND_MIN_SHARE = 0.05;
+
+// The gap between the net-worth card's title and its chart, in spacing units. The chart's scrub
+// label may reach up into it, so the same value goes to both the `Box` and `NetWorthLine`.
+const NET_WORTH_CARD_GAP = 3;
 
 /**
  * The Statistics tab: four blocks, in order — a converted net-worth line over
@@ -446,6 +454,14 @@ const StatisticsScreen: FC = () => {
   );
   const firstBackfilledDayByCurrencyRef = useRef(firstBackfilledDayByCurrency);
   firstBackfilledDayByCurrencyRef.current = firstBackfilledDayByCurrency;
+  // The coins whose rows are all Binance's: an unexpired empty CoinGecko mark still holds for
+  // them, so the backfill does not repeat the whole span on every run.
+  const binanceOnlyCurrencies = useMemo(
+    () => deriveBinanceOnlyCurrencies(historyRows),
+    [historyRows],
+  );
+  const binanceOnlyCurrenciesRef = useRef(binanceOnlyCurrencies);
+  binanceOnlyCurrenciesRef.current = binanceOnlyCurrencies;
 
   // The distinct set of currencies the backfill's own history must now cover:
   // every held holding's currency plus the base, sorted so the key stays
@@ -569,6 +585,7 @@ const StatisticsScreen: FC = () => {
         today: now,
         lastBackfilledDayByCurrency: lastBackfilledDayByCurrencyRef.current,
         firstBackfilledDayByCurrency: firstBackfilledDayByCurrencyRef.current,
+        binanceOnlyCurrencies: binanceOnlyCurrenciesRef.current,
       }),
     ).then((result) => {
       if (!isMountedRef.current || token !== runTokenRef.current) {
@@ -757,9 +774,11 @@ const StatisticsScreen: FC = () => {
   // holdings, same currency, near-simultaneous) are not spending. Their debit
   // legs are dropped from the category breakdown by id below; the credit legs
   // are already ignored as income. Scoped to THIS chart only — every other view
-  // (net worth, by-type, account pie) still sees the full ledger.
+  // (net worth, by-type, account pie) still sees the full ledger. The matcher
+  // sees only unmarked rows: an exchange leg is excluded by its marker, and
+  // must never pair with (and so swallow) an unmarked Pay send.
   const internalTransferIds = useMemo(
-    () => internalTransferTransactionIds(ledgerWithCurrency),
+    () => internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
     [ledgerWithCurrency],
   );
 
@@ -1258,7 +1277,7 @@ const StatisticsScreen: FC = () => {
           columns={columns}
           lead={
             <Card testID="statistics-block-line" padding={4} radius="lg">
-              <Box gap={3}>
+              <Box gap={NET_WORTH_CARD_GAP}>
                 <Text variant="heading" style={styles.cardTitle}>
                   {t('statistics.netWorthOverTime')}
                 </Text>
@@ -1268,6 +1287,7 @@ const StatisticsScreen: FC = () => {
                   startReference={netWorth.startReference}
                   baseCurrency={baseCurrency}
                   loading={backfillStatus.state === 'loading'}
+                  spaceAbove={NET_WORTH_CARD_GAP}
                 />
               </Box>
             </Card>

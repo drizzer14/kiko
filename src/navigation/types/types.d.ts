@@ -105,6 +105,9 @@ export type AccountFormDraft = {
   color: string | null;
   kind: AccountRow['kind'];
   currency: Currency;
+  // The account currency pick; null means untouched. An edit seeds it from the stored value, and
+  // a cash edit uses it too, while a cash create keeps its pick in `currency`.
+  accountCurrency: Currency | null;
   initialValue: string;
   bankId: BankId | null;
   brokerId: BrokerId | null;

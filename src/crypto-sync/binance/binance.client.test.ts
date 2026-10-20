@@ -6,6 +6,8 @@ import {
   fetchFlexiblePosition,
   fetchFundingAsset,
   fetchLockedPosition,
+  retryAfterMsFromHeaders,
+  usedApiWeightFromHeaders,
   usedWeightsFromHeaders,
 } from './binance.client';
 
@@ -259,9 +261,8 @@ describe('BinanceHistoryTooOldError', () => {
 });
 
 // The base `timestamp=…&recvWindow=…` signing is pinned to EXPECTED_SIGNATURE by
-// the fetchAccount tests above; the SAPI reads add an `asset=BTC` filter (and the
-// position reads add pagination params), so these assert the param set and that a
-// signature is present rather than re-deriving the HMAC.
+// the fetchAccount tests above; the position reads add pagination params, so these assert the
+// param set and that a signature is present rather than re-deriving the HMAC.
 type SpyInit = { method?: string; headers: Record<string, string> };
 
 // A fetch that answers `body` and keeps the one request it was given.
@@ -296,7 +297,7 @@ const expectSignedRequest = (
 };
 
 describe('fetchFundingAsset', () => {
-  it('POSTs to /sapi/v1/asset/get-funding-asset filtered to BTC, signed, with the api-key header', async () => {
+  it('POSTs to /sapi/v1/asset/get-funding-asset for every asset, signed, with the api-key header', async () => {
     const spy = spyFetch([]);
 
     await fetchFundingAsset('api-key-fixture', 'secret-fixture', {
@@ -305,10 +306,10 @@ describe('fetchFundingAsset', () => {
     });
 
     expectSignedRequest(spy.sent(), 'POST', '/sapi/v1/asset/get-funding-asset', {
-      asset: 'BTC',
       recvWindow: '5000',
       timestamp: String(NOW),
     });
+    expect(spy.sent().url.searchParams.has('asset')).toBe(false);
   });
 
   it('returns the parsed funding-asset array', async () => {
@@ -352,7 +353,7 @@ const pagedFetch = (
 const flexRow = { asset: 'BTC', totalAmount: '0.01' };
 
 describe('fetchFlexiblePosition', () => {
-  it('GETs the first page filtered to BTC, size 100, current 1, signed, with the api-key header', async () => {
+  it('GETs the first page for every asset, size 100, current 1, signed, with the api-key header', async () => {
     const spy = spyFetch({ rows: [], total: 0 });
 
     await fetchFlexiblePosition('api-key-fixture', 'secret-fixture', {
@@ -361,12 +362,12 @@ describe('fetchFlexiblePosition', () => {
     });
 
     expectSignedRequest(spy.sent(), 'GET', '/sapi/v1/simple-earn/flexible/position', {
-      asset: 'BTC',
       current: '1',
       size: '100',
       recvWindow: '5000',
       timestamp: String(NOW),
     });
+    expect(spy.sent().url.searchParams.has('asset')).toBe(false);
   });
 
   it('stops once the gathered rows cover the reported total', async () => {
@@ -516,8 +517,43 @@ describe('usedWeightsFromHeaders', () => {
   });
 });
 
+describe('usedApiWeightFromHeaders', () => {
+  it('reads the /api/* weight of the minute', () => {
+    expect(usedApiWeightFromHeaders(new Headers({ 'X-MBX-USED-WEIGHT-1M': '42' }))).toBe(42);
+  });
+
+  it('reads a missing or non-numeric header as undefined', () => {
+    expect(usedApiWeightFromHeaders(new Headers())).toBeUndefined();
+    expect(
+      usedApiWeightFromHeaders(new Headers({ 'X-MBX-USED-WEIGHT-1M': 'abc' })),
+    ).toBeUndefined();
+  });
+
+  it('does not read the SAPI headers', () => {
+    const headers = new Headers({ 'X-SAPI-USED-IP-WEIGHT-1M': '420' });
+
+    expect(usedApiWeightFromHeaders(headers)).toBeUndefined();
+  });
+});
+
+describe('retryAfterMsFromHeaders', () => {
+  it('converts the Retry-After seconds to milliseconds', () => {
+    expect(retryAfterMsFromHeaders(new Headers({ 'Retry-After': '30' }))).toBe(30_000);
+  });
+
+  it('falls back to the default for a missing, zero or non-numeric header', () => {
+    expect(retryAfterMsFromHeaders(new Headers())).toBe(DEFAULT_RETRY_AFTER_MS);
+    expect(retryAfterMsFromHeaders(new Headers({ 'Retry-After': '0' }))).toBe(
+      DEFAULT_RETRY_AFTER_MS,
+    );
+    expect(retryAfterMsFromHeaders(new Headers({ 'Retry-After': 'soon' }))).toBe(
+      DEFAULT_RETRY_AFTER_MS,
+    );
+  });
+});
+
 describe('fetchLockedPosition', () => {
-  it('GETs the first page of /simple-earn/locked/position filtered to BTC, size 100, current 1', async () => {
+  it('GETs the first page of /simple-earn/locked/position for every asset, size 100, current 1', async () => {
     const spy = spyFetch({ rows: [], total: 0 });
 
     await fetchLockedPosition('api-key-fixture', 'secret-fixture', {
@@ -526,10 +562,10 @@ describe('fetchLockedPosition', () => {
     });
 
     expectSignedRequest(spy.sent(), 'GET', '/sapi/v1/simple-earn/locked/position', {
-      asset: 'BTC',
       current: '1',
       size: '100',
     });
+    expect(spy.sent().url.searchParams.has('asset')).toBe(false);
   });
 
   it('walks `current` until the gathered rows cover `total`, accumulating every page', async () => {

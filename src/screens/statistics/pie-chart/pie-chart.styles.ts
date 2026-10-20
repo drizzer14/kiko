@@ -73,9 +73,9 @@ export const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The total figure itself, at the section-title token. It sets no `lineHeight`: iOS shrinks
-  // an `adjustsFontSizeToFit` text only while both its width and height overflow, and a fixed
-  // line height equal to the font size never shrinks. The component bounds its width to the hole.
+  // The total figure itself, at the section-title token. It sets no `lineHeight`: the iOS font
+  // scaler shrinks only the font, so a fixed line height can keep the height overflowing.
+  // The component bounds its width to `CENTER_TOTAL_WIDTH_FRACTION` of the hole width.
   // `MoneyText` still owns the tone color, so this omits `color`.
   centerAmount: {
     ...theme.typography.title,

@@ -168,6 +168,7 @@ const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   bankId: null,
   sortOrder: 0,
   archivedAt: null,
+  currency: 'UAH',
   createdAt: 0,
   ...overrides,
   // A `Partial`/optional spread reintroduces `undefined` into every nullable

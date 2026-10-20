@@ -28,9 +28,15 @@ Rules:
   changed lines are mutated. `scripts/checks/mutation.sh` exits 2 before Stryker
   starts when more than 30 files would be mutated (`MUTATION_FILE_CAP`);
   `KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not
-  resolve are refused directly (exit 2), and no env var bypasses the cap.
+  resolve are refused directly (exit 2), and no env var bypasses the cap. A patched-runner
+  preflight also exits 2 when the installed `@stryker-mutator/jest-runner` lacks the standing
+  patch marker (`npm ci` applies it; a gate scratch must run `npm ci` too).
   On that failure, split the run into smaller change sets — never raise
   the cap.
+  If `npm ci` in a gate scratch prints that install scripts were not run, the patch is NOT
+  applied (patch-package runs from `postinstall` and exits 0 on a failed apply): run
+  `npx patch-package` and confirm the `@stryker-mutator/jest-runner@8.7.1` line, or let the
+  mutation.sh preflight exit 2. Never start a gate without the marker.
 - A running gate can be paused with `kill -STOP` on its own pids (the
   stryker parent plus its `child-process-proxy-worker` children) and
   resumed with `kill -CONT` (verified 2026-10-10/11: kill-guard allows it
@@ -50,7 +56,8 @@ Rules:
   mode or a simulator session only when the score has headroom.
 - When TIMEOUT-HEAVY is the only failure, the gate itself reruns the timed-out mutants and its
   final rerun report is the verdict. Only if that report still fails, or the rerun was skipped,
-  does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file").
+  does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file"). A
+  proof table is the fallback for a real timeout only, not for regex cost (the patch removed it).
   Ops reports the failure block as is, never starts its own rerun, and never raises the timeout.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
@@ -265,6 +272,10 @@ about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass
 
 ## Load rule
 
+During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
+`check:all` or `make verify` outside the queue, and no other pass replaces a green queued
+verify line (harness-workflow skill, "Load rule").
+
 Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queue.sh`, which
 serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
 load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
@@ -275,7 +286,12 @@ the 5-minute load is at the limit, for at most the maximum wait (`GATE_START_MAX
 starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. A
 TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
 `docs/harness/checks.md`). Do not
-add your own limit. Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
+add your own limit. Never run a whole-repo semgrep, a full jest run, or stryker outside
+`scripts/job-queue.sh`: a brief that asks for one is refused and goes to the coordinator for a
+queued job (2026-10-18: two parallel whole-repo semgrep runs outside the queue overlapped a
+queued check-all and made it fail on registry timeouts at load 106; their counts had 45-68
+Timeout entries, so they were not evidence either). Run a lone security run as
+`scripts/job-queue.sh security`. Use `bash scripts/wait-load.sh <max>` only for a small
 direct run outside the queue (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
 optional second argument, passes first, 3 when it cannot read the load,
@@ -293,7 +309,10 @@ never raise a timeout. See memory `check-security-timeout-under-load`.
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full
 contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
-await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in
+await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. A per-rule
+Class B count comes from queued `scripts/job-queue.sh security <worktree> <label>` jobs, one per
+tree (a clean detached worktree for main); the job prints every finding with its rule id. Compare
+the repo-relative finding sets; the first finding sits on the `DETAILS:` line. State lives in
 `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first,
 then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a
 `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold

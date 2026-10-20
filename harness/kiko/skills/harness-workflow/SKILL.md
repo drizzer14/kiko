@@ -16,7 +16,7 @@ Rules:
 - If no agent fits a task, report the gap. Do not do the task inline.
 - Route web research and live API checks to `kiko:researcher` (read-only,
   cites a source URL + check date per claim); it writes no files, so the
-  caller persists any durable finding via `kiko:scribe`.
+  caller records any durable finding per "Memory writes".
 - A measurement that needs a script (corpus counts, a tool run with raised limits) goes to `kiko:ops` with the script in the scratchpad; `kiko:explorer` has only Read/Grep/Glob.
 - For a device-test request, copy `kiko:ops`'s "Device verification
   checklist" section into the request to the user.
@@ -173,6 +173,21 @@ snippet, never paste the skip line as `RUN_ID`:
 RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" finish --run "$RUN_ID" --outcome done; else echo "run-log: not installed, skipped"; fi
 ```
 
+## Memory writes
+
+Every write to the global memory dir is a permission prompt the user often misses, so:
+
+- A session or agent working in a worktree (orchestrators, their scribes, retrospects, every
+  other role agent) NEVER writes the global memory dir. Candidate lessons go to
+  `.superpowers/sdd/<track>/lessons.md`, beside HANDOFF.md. The orchestrator appends what a
+  read-only agent (retrospect, reviewer, explorer, researcher) reports; a role agent with
+  write tools may append its own. All are listed in BATCH READY or the completion report.
+- Only the coordinator session writes the memory dir: ONE batch per merge or per coordinator
+  retrospect, only durable lessons not already in the repo, preferring an edit of an existing
+  memory over a new file. A scribe the coordinator spawns for that batch may do the writes.
+- Writes use Edit or Write, never Bash (no `sed -i` on the index).
+- `memory/refs/` in the main checkout is not the memory dir; this rule does not cover it.
+
 ## Skill drift rule
 
 After every completed code iteration (a feature, phase, or fix that is
@@ -182,7 +197,7 @@ run `kiko:retrospect` to verify BOTH skill locations
 `harness/kiko/agents/`) against the new code, then `kiko:scribe` fixes
 any drift found and commits it. The completion report names the
 drift-fix commit sha, or states "no drift found" with the retrospect
-result.
+result, and lists the candidate lessons per "Memory writes".
 
 ## Mutation testing: small change sets only
 
@@ -227,7 +242,13 @@ TIMEOUT-HEAVY file with how it was cleared. A TIMEOUT-HEAVY file (rule and const
 failure, the gate reruns the timed-out mutants alone and the final rerun report is the
 verdict. Only if that report still fails or the rerun was skipped does the BATCH READY
 carry the failed gate with each timed-out mutant proven in plain jest or written as
-equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file").
+equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file"). Proof tables are the
+fallback for a REAL timeout only: the standing jest-runner patch removed the regex cost that
+made heavy mutants time out. A gate scratch needs `npm ci` so the patch is applied; the
+`mutation.sh` preflight exits 2 on an unpatched runner.
+A proof gate whose pass criterion is 0 Timeout lists, in the same brief, the plain-jest
+check for each remaining timeout (id, covering files, a bounded run), so one residual
+timeout gets a verdict without a second gate.
 Never raise the timeout; there is no allowlist file. `make mutable` can print a
 `warning:` line after `changed lines: N` when a merged track inflates the count;
 see "Mutation base after a track merged next".
@@ -279,6 +300,8 @@ a test in the fix commit.
 
 - A ruling that narrows a rule or a guard is proven by a differential, base against HEAD, over
   the cases the rule decides; a sample the author picked is not proof.
+- Before dispatching a ruling that changes a guard decision, grep the test file's ALLOWED rows
+  for a case it would flip (a pinned `cp -r /tmp/kikox harness/` allowed row).
 - Plan text follows later decisions: the orchestrator updates the plan file in the same step that
   records the ruling, so the plan never contradicts it.
 - A guard change that alters a command the coordinator runs ships its CLAUDE.md change in the
@@ -313,7 +336,7 @@ denies the common forms of both mechanically, with a
 WHAT/DETAILS/WHY/HOW/DO-NOT reason; it is a heuristic tokenizer with
 known limits (see kiko-linter's kill-guard entry), so a form it misses
 is still banned. Never chain a file write, a plugin update, and a
-memory rewrite in one Bash call — make each its own step.
+coordinator memory write in one Bash call — make each its own step.
 
 ## A commit runs a typecheck
 
@@ -440,7 +463,9 @@ merge-conflict files".
 ## The Stop tier replays the pre-write guard
 
 The kill-guard denies Bash writes into `src/`, `__tests__/`, `rules/`,
-`e2e/`, and `drizzle/`; the denied forms and the known limits are listed in
+`e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`, `.claude/agents/`, all of
+`harness/kiko/`, and YAML files; the denied forms and the known
+limits are listed in
 kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
 it with Edit/Write; see kiko-code-style's "Folder-per-thing
@@ -522,9 +547,11 @@ that reads the handoff file.
   dotted compare; an unreadable or missing version refuses). It also refuses any commit that
   lowers, removes, or makes unreadable that version while main has a readable one (user ruling
   2026-10-18); a missing manifest at main never refuses by this rule.
-- Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
-  checkout in place. Build the new file in scratch, run `bash -n`, grep
-  it for conflict markers, then install it with one `mv`.
+- Hook changes reach main only through `bash scripts/ff-main.sh <sha>` (a git fast-forward,
+  allowed). Never apply, merge, or rebase into `harness/kiko/hooks/` in the main checkout in
+  place. An emergency repair of a hook file there uses Edit/Write, checked with `bash -n` and a
+  grep for conflict markers. A shell `mv`/`cp` into `harness/kiko/` is denied by the SHELL-WRITE
+  rule.
 - A coordinator edit or commit of hook/harness code may be
   classifier-denied, but do not assume it. Offer to commit it yourself
   in one line, because it changes the guards and the user decides. On
@@ -655,7 +682,9 @@ all C2C receives).
 
 A "deferred to the scribe step" item that is not a skill edit (plan
 text, other docs) must be named explicitly in the brief handed to
-`kiko:scribe` — never left implicit for the scribe to guess at.
+`kiko:scribe` — never left implicit for the scribe to guess at. A ruling
+that reverses a spec or plan sentence names that sentence (file:line) in
+the scribe list at once, not at the end of the set.
 
 ## Write the rule into its skill, not a third brief
 
@@ -667,7 +696,11 @@ in another one-off brief.
 ## Load rule
 
 The load rule lives in the ops skill's "Load rule" section; see it. One heavy job runs at a
-time, queued by `scripts/job-queue.sh` (read its header for the full contract). Run
+time, queued by `scripts/job-queue.sh` (read its header for the full contract). A LOAD HOLD
+brief names the exact `__tests__` suites a role may run, never the folder. The guard suites
+(`guard-*.test.ts`, `guard-replay.test.ts`) spawn semgrep-core. The qa agent rule (a qa that
+edits a test file runs every guard suite) yields to a hold only if the brief says so by name:
+write "qa: the guard-suites rule is suspended until RESUME; owed: check:guard-replay by hand". Run
 `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
 await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in
@@ -692,6 +725,12 @@ run only. A queued check:all or verify reads the worktree until
 the job is DONE; keep that tree untouched from the queue time until DONE, and never queue one while
 a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
 START or at the end, or HEAD moved.
+
+During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
+`check:all` or `make verify` outside the queue; brief every subagent so. A green jest of a
+verify plus a standalone queued `check:all` (ruling E), or a sim pass, never replaces a green
+queued verify line, which `scripts/ff-main.sh` requires for the sha. The same rule is in the
+ops skill's "Load rule" section.
 
 A gate's forwarded warning and `TIMEOUT-HEAVY` lines, and their order against the DONE line,
 are in the ops skill's "Load rule" section.

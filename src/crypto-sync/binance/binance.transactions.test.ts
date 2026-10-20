@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import {
+  coinListPatchesOf,
   expectWalkMarkWritten,
   numberMarkWritesOfAnyWalk,
   type WalkField,
@@ -33,8 +34,8 @@ import {
   type BinanceDeposit,
   BinanceHistoryParseError,
   type BinanceWithdrawal,
+  type CapitalPage,
   HISTORY_PAGE_LIMIT,
-  type HistoryPage,
   type HistoryWindow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
@@ -80,9 +81,10 @@ const historyPage = <Row>(
   rows: Row[],
   usedUidWeight1m?: number,
   usedIpWeight1m?: number,
-): HistoryPage<Row> => ({
+): CapitalPage<Row> => ({
   rows,
   unreadable: [],
+  untracked: [],
   usedUidWeight1m,
   usedIpWeight1m,
 });
@@ -172,9 +174,13 @@ const makeStatefulSpotAccount = (accountId = ACCOUNT_ID) => {
 
 type StatefulSpotAccount = ReturnType<typeof makeStatefulSpotAccount>;
 
+/** The multi-coin marks ride the first cursor write, so a crash order leaves them out. */
+const isMultiCoinField = (field: WalkField): boolean =>
+  field === 'multiCoinSeen' || field === 'multiCoinSince';
+
 /** Logs the writes a crash order is about: a number mark is a 'cursor', a list a 'pending'. */
 const logWrite = (log: string[], walkName: WalkName, field: WalkField): void => {
-  if (field !== 'spanHints') {
+  if (field !== 'spanHints' && !isMultiCoinField(field)) {
     log.push(`${walkName}:${field === 'pending' ? 'pending' : 'cursor'}`);
   }
 };
@@ -492,19 +498,6 @@ describe('syncBinanceTransactions', () => {
     expectWalkMarkWritten(deps, ACCOUNT_ID, 'capital', 'cursor', NOW);
   });
 
-  it('does nothing when the account has no Spot BTC holding', async () => {
-    const deps = makeDeps({
-      listHoldings: async () => [fundingHolding],
-      fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
-    });
-
-    const result = await sync(deps);
-
-    expect(result).toEqual({ imported: 0, complete: true });
-    expect(deps.fetchDepositHistory).not.toHaveBeenCalled();
-    expect(deps.addTransactions).not.toHaveBeenCalled();
-  });
-
   it('does nothing when no Binance credentials are stored', async () => {
     const deps = makeDeps({
       readCredentials: async () => undefined,
@@ -663,7 +656,7 @@ describe('wallet placement by walletType (C-matrix)', () => {
     expect(ensureHoldings).toHaveBeenCalledWith([
       expect.objectContaining({
         accountId: ACCOUNT_ID,
-        name: 'Binance Funding',
+        name: 'Binance Funding · BTC',
         balanceMinorUnits: 0,
         metadataField: 'binanceAsset',
         metadataKey: 'BTC:funding',
@@ -685,10 +678,8 @@ describe('wallet placement by walletType (C-matrix)', () => {
     expect(deps.storedExternalIds).toHaveBeenCalledTimes(1);
     expect(deps.storedExternalIds).toHaveBeenCalledWith(['acc-1:deposit:1']);
     expect(deps.ensureHoldings).not.toHaveBeenCalled();
-    expect(addedRows(deps).map((row) => [row.externalId, row.holdingId])).toEqual([
-      ['acc-1:deposit:1', 'h-spot'],
-    ]);
-    expect(result).toEqual({ imported: 1, complete: true });
+    expect(importedKeysOf(deps)).toEqual([]);
+    expect(result).toEqual({ imported: 0, complete: true });
   });
 
   it('creates the wallet holding once when one of its rows is new', async () => {
@@ -781,10 +772,16 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
   const BAD_ROWS: [string, string, () => Partial<BinanceTransactionSyncDeps>][] = [
     ['C4 deposit', 'capital-wallet-unknown', () => badDeposit({ walletType: 7 })],
     ['C4w withdrawal', 'capital-wallet-unknown', () => badWithdrawal({ walletType: 7 })],
-    ['C5 deposit', 'capital-amount-invalid', () => badDeposit({ amount: 'abc' })],
-    ['C5w withdrawal', 'capital-amount-invalid', () => badWithdrawal({ amount: 'abc' })],
-    ['C5 blank deposit', 'capital-amount-invalid', () => badDeposit({ amount: '' })],
-    ['C5 blank withdrawal', 'capital-amount-invalid', () => badWithdrawal({ amount: '  ' })],
+    ['C5 deposit', 'amount-malformed', () => badDeposit({ amount: 'abc' })],
+    ['C5w withdrawal', 'amount-malformed', () => badWithdrawal({ amount: 'abc' })],
+    ['C5 blank deposit', 'amount-malformed', () => badDeposit({ amount: '' })],
+    ['C5 blank withdrawal', 'amount-malformed', () => badWithdrawal({ amount: '  ' })],
+    ['A2 deposit', 'amount-precision', () => badDeposit({ amount: '0.000000001' })],
+    ['A2w withdrawal', 'amount-precision', () => badWithdrawal({ amount: '0.000000001' })],
+    ['A3 deposit', 'amount-malformed', () => badDeposit({ amount: '1e-8' })],
+    ['A3w withdrawal', 'amount-malformed', () => badWithdrawal({ amount: '1e-8' })],
+    ['A1 deposit', 'amount-too-large', () => badDeposit({ amount: '90071992.54740992' })],
+    ['A1w withdrawal', 'amount-too-large', () => badWithdrawal({ amount: '90071992.54740992' })],
     ['C6 deposit', 'capital-time-invalid', () => badDeposit({ insertTime: Number.NaN })],
     ['C6w withdrawal', 'capital-time-invalid', () => badWithdrawal({ applyTime: 'not a date' })],
     ['C7 deposit', 'capital-id-missing', () => badDeposit({ id: '', txId: '' })],
@@ -800,6 +797,39 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
     expect(deps.addTransactions).not.toHaveBeenCalled();
     expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([[STOP_TAG, { name: 'BinanceWalkStop', code }]]);
+  });
+
+  it('adds the coin of an amount too large to the oversized history list, though the forward stop commits nothing of the span', async () => {
+    const fake = walkStateFake({ accountId: ACCOUNT_ID });
+    const deps = makeDeps({
+      ...fake.deps,
+      latestTransactionTime: RECENT_CURSOR,
+      ...badDeposit({ amount: '90071992.54740992' }),
+    });
+
+    await sync(deps);
+
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(coinListPatchesOf(deps)).toContainEqual({
+      kind: 'coinList',
+      coins: 'oversizedCoins',
+      list: 'history',
+      tickers: ['BTC'],
+    });
+    expect(JSON.parse((await deps.readExchangeState(ACCOUNT_ID)) ?? '{}').oversizedCoins).toEqual({
+      history: ['BTC'],
+    });
+  });
+
+  it.each([
+    ['an amount past the scale', '0.000000001'],
+    ['an amount in exponent form', '1e-8'],
+  ])('writes no oversized coin for %s', async (_label, amount) => {
+    const deps = makeDeps({ latestTransactionTime: RECENT_CURSOR, ...badDeposit({ amount }) });
+
+    await sync(deps);
+
+    expect(coinListPatchesOf(deps)).toEqual([]);
   });
 
   it('ignores an UNSETTLED row with the same defects instead of stopping', async () => {
@@ -1602,7 +1632,7 @@ describe('a capital cursor older than the re-scan window', () => {
 
     const writes = state.account
       .writes()
-      .filter((write) => write.field !== 'spanHints')
+      .filter((write) => write.field !== 'spanHints' && !isMultiCoinField(write.field))
       .map((write) => `${write.walkName}:${write.field}`);
     expect(writes.slice(0, 2)).toEqual(['capital:pending', 'capital:cursor']);
     expect(walkMarkWritesOf(state.account.deps, 'capital', 'pending')[0]).toEqual([
@@ -1992,6 +2022,26 @@ describe('the pending overlap days of the capital walk', () => {
       expect(result.complete).toBe(false);
     });
 
+    it.each([
+      ['an amount past the scale', '0.000000001'],
+      ['an amount in exponent form', '1e-8'],
+      ['an amount too large', '90071992.54740992'],
+    ])(
+      'owes a withdrawal with %s at its point in the re-scan, and imports the records around it',
+      async (_label, amount) => {
+        const unparsed = withdrawal({ id: 'unparsed', applyTime: NOW - 10 * DAY_MS, amount });
+        const later = withdrawal({ id: 'later', applyTime: NOW - 5 * DAY_MS });
+        const earlier = withdrawal({ id: 'earlier', applyTime: NOW - 20 * DAY_MS });
+        const state = await stateOf(NOW - 2 * DAY_MS);
+
+        const { result } = await runOver(state, [earlier, unparsed, later]);
+
+        expect(state.imported).toEqual(new Set([keyOf(earlier), keyOf(later)]));
+        expect(state.account.pending()).toEqual([pointAt(NOW - 10 * DAY_MS)]);
+        expect(result.complete).toBe(false);
+      },
+    );
+
     describe('with a new owed range behind stuck ranges that are older', () => {
       const stuckRangesOf = (count: number): WalkWindow[] =>
         Array.from({ length: count }, (_unused, index) => ({
@@ -2211,7 +2261,7 @@ describe('the pending overlap days of the capital walk', () => {
 
       /** A read that also reports the unreadable rows in the span (all those with no time). */
       const reporting = <Row>(
-        serve: (apiKey: string, secret: string, window: HistoryWindow) => Promise<HistoryPage<Row>>,
+        serve: (apiKey: string, secret: string, window: HistoryWindow) => Promise<CapitalPage<Row>>,
         unreadable: UnreadableRow[],
       ) =>
         jest.fn(async (apiKey: string, secret: string, window: HistoryWindow) => ({
@@ -2549,5 +2599,93 @@ describe('the pending overlap days of the capital walk', () => {
       another,
       { start: NOW - 3 * DAY_MS, end: NOW - 2 * DAY_MS },
     ]);
+  });
+});
+
+describe('the key of a capital record Binance sent with no id', () => {
+  const usdtHolding = { id: 'h-usdt', metadata: { binanceAsset: 'USDT' } } as unknown as HoldingRow;
+  const noId = { id: '', txId: '0xabc' };
+
+  /** A history that holds `rows` only in the span ending at now, so no span behind it reads any. */
+  const rowsAtNow = <Row>(rows: Row[]) =>
+    jest.fn(async (_apiKey: string, _secret: string, window: HistoryWindow) =>
+      historyPage(window.endTime === NOW ? rows : []),
+    );
+
+  const depsOver = (over: Partial<BinanceTransactionSyncDeps>) =>
+    makeDeps({
+      listHoldings: async () => [spotHolding, usdtHolding],
+      ...walkStateFake({ accountId: ACCOUNT_ID, marks: { capital: { cursor: NOW - 3 * DAY_MS } } })
+        .deps,
+      ...over,
+    });
+
+  it('imports a BTC and a USDT deposit of one on-chain transaction as two rows on their holdings', async () => {
+    const deps = depsOver({
+      fetchDepositHistory: rowsAtNow([
+        deposit({ ...noId, coin: 'BTC' }),
+        deposit({ ...noId, coin: 'USDT', amount: '12.5' }),
+      ]),
+    });
+
+    const result = await sync(deps);
+
+    expect(
+      addedRows(deps).map((row) => [row.externalId, row.holdingId, row.amountMinorUnits]),
+    ).toEqual([
+      ['acc-1:deposit:0xabc', 'h-spot', 50_000_000],
+      ['acc-1:deposit:0xabc:USDT', 'h-usdt', 1_250_000_000],
+    ]);
+    expect(result).toEqual({ imported: 2, complete: true });
+  });
+
+  it('imports a BTC and a USDT withdrawal of one on-chain transaction as two rows on their holdings', async () => {
+    const deps = depsOver({
+      fetchWithdrawHistory: rowsAtNow([
+        withdrawal({ ...noId, coin: 'BTC' }),
+        withdrawal({ ...noId, coin: 'USDT', amount: '1.5' }),
+      ]),
+    });
+
+    await sync(deps);
+
+    expect(
+      addedRows(deps).map((row) => [row.externalId, row.holdingId, row.amountMinorUnits]),
+    ).toEqual([
+      ['acc-1:withdraw:0xabc', 'h-spot', -25_000_000],
+      ['acc-1:withdraw:0xabc:USDT', 'h-usdt', -150_000_000],
+    ]);
+  });
+
+  it('keeps a BTC deposit and withdrawal with no id keyed by the bare transaction id', async () => {
+    const deps = depsOver({
+      fetchDepositHistory: rowsAtNow([deposit(noId)]),
+      fetchWithdrawHistory: rowsAtNow([withdrawal(noId)]),
+    });
+
+    await sync(deps);
+
+    expect(importedKeysOf(deps)).toEqual(['acc-1:deposit:0xabc', 'acc-1:withdraw:0xabc']);
+  });
+
+  it('keeps a USDT deposit and withdrawal that has an id keyed by that id alone', async () => {
+    const deps = depsOver({
+      fetchDepositHistory: rowsAtNow([deposit({ id: '42', txId: '0xabc', coin: 'USDT' })]),
+      fetchWithdrawHistory: rowsAtNow([withdrawal({ id: '7', txId: '0xabc', coin: 'USDT' })]),
+    });
+
+    await sync(deps);
+
+    expect(importedKeysOf(deps)).toEqual(['acc-1:deposit:42', 'acc-1:withdraw:7']);
+  });
+
+  it('looks a USDT row up in the store by its new key, whatever case Binance wrote the coin in', async () => {
+    const deps = depsOver({
+      fetchDepositHistory: rowsAtNow([deposit({ ...noId, coin: 'usdt' })]),
+    });
+
+    await sync(deps);
+
+    expect(deps.storedExternalIds).toHaveBeenCalledWith(['acc-1:deposit:0xabc:USDT']);
   });
 });

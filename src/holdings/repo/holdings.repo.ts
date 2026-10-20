@@ -37,6 +37,8 @@ import {
   syncClosedFromOf,
   STATEMENT_FROM_FIELD,
   SYNC_CLOSED_FROM_FIELD,
+  DEFAULT_NAME_RENAME_FIELD,
+  isDefaultNameRenameSettled,
   withCarriedMetadataKeys,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
@@ -95,10 +97,11 @@ type SyncBalanceHolding = NewHoldingBase & {
 type SyncedHolding = SyncBalanceHolding & {
   metadataField: SyncedMetadataField;
   metadataKey: string;
-  // One-time transition rename: rewrite an EXISTING matched holding's name to
-  // `name` ONLY IF its current name still equals this exact old default (a
-  // user-edited name never matches). See `renameFromDefault` in provider.ts.
-  renameFromDefault?: string;
+  // Transition rename, once per holding: on the first upsert that carries this field, rewrite an
+  // EXISTING matched holding's name to `name` ONLY IF its current name still equals one of these
+  // exact old defaults. That upsert also marks the holding, so no later upsert renames it again.
+  // See `renameFromDefaults` in provider.ts.
+  renameFromDefaults?: readonly string[];
 };
 
 export type MonobankHolding = SyncBalanceHolding & { monobankId: string };
@@ -106,7 +109,7 @@ export type MonobankHolding = SyncBalanceHolding & { monobankId: string };
 export type ExchangeHolding = SyncBalanceHolding & {
   metadataField: ExchangeMetadataField;
   metadataKey: string;
-  renameFromDefault?: string;
+  renameFromDefaults?: readonly string[];
 };
 
 /**
@@ -170,7 +173,7 @@ const metadataKeyMatch = (metadataField: SyncedMetadataField, metadataKey: strin
 const insertSyncedHolding = async (
   databaseTransaction: typeof database,
   merged: Record<string, unknown>,
-  rest: Omit<SyncedHolding, 'metadataField' | 'metadataKey' | 'metadata' | 'renameFromDefault'>,
+  rest: Omit<SyncedHolding, 'metadataField' | 'metadataKey' | 'metadata' | 'renameFromDefaults'>,
 ): Promise<void> => {
   const sortOrder = rest.sortOrder ?? (await nextSortOrder(databaseTransaction, rest.accountId));
   await databaseTransaction
@@ -182,23 +185,24 @@ const insertSyncedHolding = async (
 // update balance + metadata in place on a hit, insert with a fresh sortOrder on
 // a miss. The holding's name is written on insert and otherwise preserved on
 // update — a user rename survives a re-sync — with ONE exception: the transition
-// rename, applied only when the stored name still equals `renameFromDefault` (see
-// provider.ts).
+// rename, applied once per holding, on the first upsert that carries `renameFromDefaults`
+// and only when the stored name still equals one of them (see provider.ts). That upsert
+// marks the holding (`DEFAULT_NAME_RENAME_FIELD`) whether or not it renamed it.
 //
 // The update branch also reads the row's OWN stored metadata (not just
-// `id`/`name`) so `withCarriedMetadataKeys` can carry a sync-owned key
-// (a reopened card's or jar's `statementFromMs`) over the
-// caller's `merged` object — a routine balance sync's `metadata: { syncedAt }`
-// would otherwise wipe it every run, since `merged` is built from the
-// CALLER-supplied `metadata` alone, never the stored row.
+// `id`/`name`) so `withCarriedMetadataKeys` can carry a sync-owned key over the
+// caller's `merged` object: a reopened card's or jar's `statementFromMs`, and the
+// default-name rename mark `defaultNameRenameSettled`. A routine balance sync's
+// `metadata: { syncedAt }` would otherwise wipe them every run, since `merged` is built
+// from the CALLER-supplied `metadata` alone, never the stored row.
 //
 // The update branch also REOPENS a holding the sync closed (the Monobank
 // reconcile's `closeManyBySync`), and only that one: a row is reopened when it
 // is closed AND carries `syncClosedFromMs`, which the user's own close never
 // writes, so a user-closed holding stays closed and a Binance or wallet row
-// (no mark, ever) never reopens. The reopen clears `closedAt`, drops the mark
-// (an upsert carries only the sync-owned keys, so the mark is not carried), and
-// hands the mark on as `statementFromMs`, the from-cursor of its next statement
+// (no `syncClosedFromMs`, ever) never reopens. The reopen clears `closedAt`, drops
+// `syncClosedFromMs` (an upsert carries only the sync-owned keys, so it is not carried), and
+// hands its value on as `statementFromMs`, the from-cursor of its next statement
 // fetch, for a card and a jar alike (both are statement sources): while it was
 // absent no run fetched its statements, and the closing run graduated the
 // normal cursor past the gap. It moves no balance; the balance written here is
@@ -213,9 +217,13 @@ const insertSyncedHolding = async (
 // stated on `reconcileClosedHoldings` in the Monobank sync.
 const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
-  { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
+  { metadataField, metadataKey, metadata, renameFromDefaults, ...rest }: SyncedHolding,
 ): Promise<void> => {
-  const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
+  const merged = {
+    ...(metadata as Record<string, unknown> | null),
+    [metadataField]: metadataKey,
+    ...(renameFromDefaults === undefined ? {} : { [DEFAULT_NAME_RENAME_FIELD]: true }),
+  };
   const keyMatch = metadataKeyMatch(metadataField, metadataKey);
   const existing = await databaseTransaction
     .select({
@@ -231,9 +239,13 @@ const upsertByMetadataKey = async (
 
   if (current) {
     // Name is preserved on update (a user rename survives a re-sync), EXCEPT the
-    // one-time transition rename: rewrite it only when the stored name still
-    // equals the exact old default `renameFromDefault` names.
-    const rename = renameFromDefault !== undefined && current.name === renameFromDefault;
+    // transition rename: rewrite it only on the first upsert that offers
+    // `renameFromDefaults` (before the mark is set), and only when the stored name still
+    // equals one of those exact old defaults. The mark is written on that first upsert
+    // either way, so a user who later renames back to an old default is never renamed again.
+    const rename =
+      !isDefaultNameRenameSettled(current.metadata) &&
+      (renameFromDefaults ?? []).includes(current.name);
     const syncClosedFrom = syncClosedFromOf(current.metadata);
     const reopenFrom = current.closedAt !== null && syncClosedFrom !== null ? syncClosedFrom : null;
     const carried = withCarriedMetadataKeys(merged, current.metadata);
@@ -1182,7 +1194,7 @@ export const holdingsRepo = {
    * flight when the user disconnects must not create a holding on the disconnected
    * account.
    */
-  ensureExchangeHoldings: (holdingsList: Omit<ExchangeHolding, 'renameFromDefault'>[]) =>
+  ensureExchangeHoldings: (holdingsList: Omit<ExchangeHolding, 'renameFromDefaults'>[]) =>
     write(async (databaseTransaction) => {
       for (const { metadataField, metadataKey, metadata, ...rest } of holdingsList) {
         const accountRows = await databaseTransaction

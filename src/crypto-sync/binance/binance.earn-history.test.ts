@@ -10,14 +10,16 @@ import {
   EARN_FAILED_STATUSES,
   EARN_FLOOR_MS,
   EARN_FORWARD_OWES,
-  EARN_REDEMPTION_SETTLED_STATUS,
   EARN_SERIES,
-  EARN_SUBSCRIPTION_SETTLED_STATUS,
   EARN_WINDOW_MS,
   redemptionRowsOf,
   settledEarnOf,
   subscriptionRowsOf,
 } from './binance.earn-history';
+import {
+  EARN_REDEMPTION_SETTLED_STATUS,
+  EARN_SUBSCRIPTION_SETTLED_STATUS,
+} from './binance.history-client';
 import {
   agoMs,
   entryOf,
@@ -85,6 +87,9 @@ describe('the Earn walk constants', () => {
 
   it('owes and goes past in the forward pass every stop of one record, and no stop of the span as a whole', () => {
     expect([...EARN_FORWARD_OWES].sort()).toEqual([
+      'amount-malformed',
+      'amount-precision',
+      'amount-too-large',
       'earn-account-unknown',
       'earn-amount-invalid',
       'earn-id-missing',
@@ -206,12 +211,13 @@ describe('subscriptionRowsOf', () => {
     expect(rows.map((row) => row.wallet)).toEqual([FUNDING_KEY, EARN_KEY]);
   });
 
-  it.each([['x'], ['-0.001']])(
-    'stops a subscription whose split field is %p: it is no amount of satoshis',
-    (split) => {
-      expect(stopCodeOf(() => rowsOf({ amtFromSpot: split }))).toBe('earn-amount-invalid');
-    },
-  );
+  it.each([
+    ['x', 'amount-malformed'],
+    ['0.000000001', 'amount-precision'],
+    ['-0.001', 'earn-amount-invalid'],
+  ])('stops a subscription whose split field is %p: it is no amount of satoshis', (split, code) => {
+    expect(stopCodeOf(() => rowsOf({ amtFromSpot: split }))).toBe(code);
+  });
 
   it('a FAILED subscription is ignored: no row, and nothing owed', () => {
     expect(rowsOf({ status: 'FAILED' })).toEqual([]);
@@ -267,12 +273,22 @@ describe('subscriptionRowsOf', () => {
     expect(stopCodeOf(() => rowsOf({ purchaseId: '' }))).toBe('earn-id-missing');
   });
 
-  it.each([['0'], ['0.00000000'], ['-0.5'], ['x'], ['']])(
+  it.each([['0'], ['0.00000000'], ['-0.5']])(
     'stops a settled subscription whose amount is %p: it is no positive number of satoshis',
     (amount) => {
       expect(stopCodeOf(() => rowsOf({ amount }))).toBe('earn-amount-invalid');
     },
   );
+
+  it.each([
+    ['x', 'amount-malformed'],
+    ['', 'amount-malformed'],
+    ['1e-8', 'amount-malformed'],
+    ['0.000000001', 'amount-precision'],
+    ['90071992.54740992', 'amount-too-large'],
+  ])('stops a settled subscription whose amount is %p with the parser code %s', (amount, code) => {
+    expect(stopCodeOf(() => rowsOf({ amount }))).toBe(code);
+  });
 
   it('keys a flexible and a locked subscription of one purchase id apart, and two accounts apart', () => {
     const flexible = rowsOf({}, 'flexible').map((row) => row.externalId);
@@ -618,17 +634,30 @@ describe('the rows of a settled record, written', () => {
     expect(stopCodes(warn)).toEqual([]);
   });
 
-  it('writes nothing for an account with no Spot holding or no credentials', async () => {
-    const noSpot = await walkOnce({ world: worldOf(), over: { listHoldings: async () => [] } });
+  it('writes nothing for an account with no credentials', async () => {
     const noKeys = await walkOnce({
       world: worldOf(),
       over: { readCredentials: async () => undefined },
     });
 
-    expect(noSpot.requests).toEqual([]);
     expect(noKeys.requests).toEqual([]);
-    expect(noSpot.result).toEqual({ imported: 0, complete: true });
     expect(noKeys.result).toEqual({ imported: 0, complete: true });
+  });
+
+  it('imports a flexible reward with no Spot BTC holding', async () => {
+    const world = worldOf(cursorBehind, []);
+
+    const { result } = await walkOnce({
+      world,
+      entries: [entryOf('flexibleRewards', flexibleRewardOf())],
+      over: { listHoldings: async () => world.others },
+    });
+
+    expect(world.events.filter((event) => event.startsWith('ensure:'))).toEqual([
+      'ensure:BTC:earn',
+    ]);
+    expect(world.added.map((row) => row.holdingId)).toEqual(['created-BTC:earn']);
+    expect(result.imported).toBe(1);
   });
 });
 
@@ -849,7 +878,7 @@ describe('a record the walk cannot trust', () => {
       pointOf(stuckAt, 'flexibleSubscription'),
       pointOf(later, 'flexibleRedemption'),
     ]);
-    expect(stopCodes(warn).sort()).toEqual(['earn-amount-invalid', 'earn-id-missing']);
+    expect(stopCodes(warn).sort()).toEqual(['amount-malformed', 'earn-id-missing']);
   });
 
   it('owes a redemption to an account Kiko does not track at its point', async () => {
@@ -1428,6 +1457,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
                 record: flexibleSubscriptionOf({ type: undefined, ...record }),
               })),
               unreadable,
+              untracked: [],
             },
           ],
           drifted: [],

@@ -13,7 +13,7 @@ import {
 import { i18n } from '@kiko/i18n/init';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 
-import type { BalanceProvider, ProviderBalance, SyncTarget } from '../provider';
+import type { BalanceProvider, ProviderBalance, ProviderRead, SyncTarget } from '../provider';
 
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
 
@@ -30,17 +30,22 @@ const cryptoAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   color: null,
   sortOrder: 0,
   archivedAt: null,
+  currency: 'UAH',
   createdAt: 0,
   ...overrides,
 });
 
 const walletBalance = (balanceMinorUnits: number): ProviderBalance => ({
+  currency: 'BTC',
   balanceMinorUnits,
   metadataKey: ADDRESS,
   name: 'BTC Wallet',
 });
 
-type FakeDeps = { balances: ProviderBalance[] | Error };
+type FakeDeps = {
+  balances: ProviderBalance[] | Error;
+  exchangeState?: ProviderRead['exchangeState'];
+};
 
 /**
  * A wallet-shaped provider whose result is injected through its deps; records
@@ -59,7 +64,7 @@ const makeProvider = (id: BalanceProvider<FakeDeps>['id'] = 'btc_wallet') => {
         throw deps.balances;
       }
 
-      return deps.balances;
+      return { balances: deps.balances, exchangeState: deps.exchangeState };
     },
   };
 
@@ -185,6 +190,70 @@ describe('runBalanceSync', () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({ accountId: 'acc-1', holdings: [] });
+  });
+
+  it('returns the exchange state the read carried, with the account already marked', async () => {
+    const exchangeState: ProviderRead['exchangeState'] = [
+      { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['PEPE'] },
+    ];
+    const { provider } = makeProvider('binance');
+    const { deps, accountsStore } = makeInMemoryDeps([cryptoAccount()]);
+    deps.targetAccountId = 'acc-1';
+
+    const result = await runBalanceSync(
+      provider,
+      { balances: [walletBalance(1)], exchangeState },
+      deps,
+    );
+
+    expect(result).toEqual({ syncedHoldings: 1, exchangeState });
+    expect(accountsStore[0].institution).toBe('binance');
+  });
+
+  it("writes the balance in the provider's currency", async () => {
+    const { provider } = makeProvider('binance');
+    const { deps, holdingsStore } = makeInMemoryDeps([cryptoAccount()]);
+    deps.targetAccountId = 'acc-1';
+
+    await runBalanceSync(
+      provider,
+      {
+        balances: [
+          { ...walletBalance(25), currency: 'ETH' },
+          { ...walletBalance(7), metadataKey: 'USDT', currency: 'USDT' },
+        ],
+      },
+      deps,
+    );
+
+    expect(
+      holdingsStore.map(({ currency, balanceMinorUnits }) => [currency, balanceMinorUnits]),
+    ).toEqual([
+      ['ETH', 25],
+      ['USDT', 7],
+    ]);
+  });
+
+  it('hands a balance renameFromDefaults on to the upsert', async () => {
+    const { provider } = makeProvider('binance');
+    const { deps } = makeInMemoryDeps([cryptoAccount()]);
+    deps.targetAccountId = 'acc-1';
+    const upserted: Parameters<BalanceSyncDeps['upsertHoldings']>[0][] = [];
+    const inMemoryUpsert = deps.upsertHoldings;
+    deps.upsertHoldings = async (holdingsList) => {
+      upserted.push(holdingsList);
+      await inMemoryUpsert?.(holdingsList);
+    };
+
+    await runBalanceSync(
+      provider,
+      { balances: [{ ...walletBalance(1), renameFromDefaults: ['Binance BTC', 'Binance Spot'] }] },
+      deps,
+    );
+
+    expect(upserted.flat().map(({ renameFromDefaults }) => renameFromDefaults)).toEqual([
+      ['Binance BTC', 'Binance Spot'],
+    ]);
   });
 
   it('with no target id, syncs into the account already connected under the provider institution and hands it its holdings', async () => {
@@ -339,6 +408,7 @@ describe('runBalanceSync', () => {
     // Distinct match keys so three Spot/Funding/Earn balances upsert as three
     // holdings, not one (the in-memory double keys on metadataKey).
     const btcBalance = (metadataKey: string, balanceMinorUnits: number): ProviderBalance => ({
+      currency: 'BTC',
       balanceMinorUnits,
       metadataKey,
       name: metadataKey,
