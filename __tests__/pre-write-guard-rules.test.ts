@@ -79,6 +79,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-whole-price-points-read',
   'kiko-holding-delete-needs-cascade',
   'kiko-no-pane-blind-bottom-clearance',
+  'kiko-top-bar-band-only-in-two-pane-layout',
   'kiko-no-focus-hook-in-pane-default-screen',
   'kiko-no-change-language-in-test-body',
   'kiko-no-typed-jest-require-actual',

@@ -21,10 +21,3 @@ export const usedBindings: [typeof Screen, typeof useBottomClearance] = [
   Screen,
   useBottomClearance,
 ];
-
-// The band hook, as a type-only re-export, a mock target and prose, never loads at run time.
-export type { useTopBarBand as ReExportedBand } from '@kiko/design-system/components/screen/use-top-bar-band';
-
-jest.mock('@kiko/design-system/components/screen/use-top-bar-band');
-
-export const bandDescription = "see useTopBarBand in '../screen/use-top-bar-band'";

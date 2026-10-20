@@ -947,6 +947,16 @@ verified usage, not dead weight:
   exclude is right here because every file in it is part of the sink; the rule
   still reaches every consumer (Home, HoldingDetail).
 
+- **`src/design-system/components/screen/**` and
+  `src/design-system/components/two-pane-layout/**` — the two folders
+  `kiko-top-bar-band-only-in-two-pane-layout`'s `paths.exclude` lists.** The rule denies
+  importing `useTopBarBand` (or its `use-top-bar-band` module): a screen that adds the band
+  inside a pane counts it twice, because `TwoPaneLayout` already starts each pane frame below
+  it. The Screen folder owns the hook (`use-top-bar-band.ts` and its test), and
+  `two-pane-layout.component.tsx` is its one consumer. A whole-folder exclude is right for
+  both because each holds only the hook's owner or its sanctioned consumer and their tests;
+  the rule still reaches every other importer.
+
 - **`sf-symbols-typescript` — a transitive package read by path in a test,
   invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
   reads `node_modules/sf-symbols-typescript/dist/index.d.ts` as text, because

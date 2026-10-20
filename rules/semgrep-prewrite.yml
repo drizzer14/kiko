@@ -1154,22 +1154,15 @@ rules:
       - pattern-regex: |-
           (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeDisplayRegions(?:\.tsx?)?['"]
   # kiko-design-system's Screen: `resolveBottomClearance` and `resolveTopClearance`
-  # are the pane-BLIND arithmetic behind `useBottomClearance` and `useTopClearance`,
-  # and `useTopBarBand` is the same top clearance read as a window-level band.
+  # are the pane-BLIND arithmetic behind `useBottomClearance` and `useTopClearance`.
   # A bleedBottom/bleedTop child that calls one directly puts a tab-bar clearance
   # under the last row of a pane that is not at the bottom of the window (the top
-  # pane of rows mode), or above the first row of a pane that is not at the top;
-  # a screen that adds the band inside a pane counts it twice, because the pane
-  # frame already starts below it.
-  # Only the Screen folder may import the functions; a bottom consumer calls the
-  # hook, and the top clearance has no import outside Screen's plain branch and
-  # `TwoPaneLayout`, the one consumer of `useTopBarBand`, which starts its pane
-  # frames below the band. `src/design-system/components/two-pane-layout/**` is
-  # excluded for that reason, which also leaves the function arms silent there.
-  # Two arms: a value import or re-export that names either function or
-  # `useTopBarBand`, and a value import, re-export, require or dynamic import of
-  # a module file named `bottom-clearance`, `top-clearance` or `use-top-bar-band`.
-  # `import type` and prose never match.
+  # pane of rows mode), or above the first row of a pane that is not at the top.
+  # Only the Screen folder may import them; a bottom consumer calls the hook, and the
+  # top clearance has no import outside Screen's plain branch.
+  # Two arms: a value import or re-export that names either function, and a value
+  # import, re-export, require or dynamic import of a module file named
+  # `bottom-clearance` or `top-clearance`. `import type` and prose never match.
   - id: kiko-no-pane-blind-bottom-clearance
     languages: [typescript]
     severity: ERROR
@@ -1180,20 +1173,40 @@ rules:
       `useBottomClearance()` from `@kiko/design-system/components/screen`
       instead. `resolveTopClearance` is never imported: the top clearance
       belongs to Screen's plain branch, so render the content in `Screen`.
-      Only the Screen folder imports the functions. `useTopBarBand` is
-      pane-blind band arithmetic too: `TwoPaneLayout` already starts each pane
-      frame below the band, so a screen that adds it inside a pane counts the
-      band twice. Only `TwoPaneLayout` imports it.
+      Only the Screen folder imports the functions.
     metadata:
-      fix: "For `resolveBottomClearance` or `bottom-clearance`, use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; `resolveTopClearance`, `top-clearance`, `useTopBarBand` or `use-top-bar-band` is never imported: render the content in `Screen`, whose plain branch owns the top clearance, and `TwoPaneLayout` already clears the band for a pane."
+      fix: "For `resolveBottomClearance` or `bottom-clearance`, use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; `resolveTopClearance` or `top-clearance` is never imported: render the content in `Screen`, whose plain branch owns the top clearance."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/screen/**"
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\bresolve(?:Bottom|Top)Clearance\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/(?:bottom|top)-clearance(?:\.ts)?['"]
+  # kiko-design-system's Screen: `useTopBarBand` is the top clearance read as a window-level
+  # band. `TwoPaneLayout` is its one consumer: it starts each pane frame below the band, so
+  # a screen that adds the band inside a pane counts it twice. Only the Screen folder (the
+  # owner) and the two-pane-layout folder may import it. Two arms, like the clearance rule:
+  # a value import or re-export that names `useTopBarBand`, and a value import, re-export,
+  # require or dynamic import of a module file named `use-top-bar-band`. `import type` and
+  # prose never match.
+  - id: kiko-top-bar-band-only-in-two-pane-layout
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `useTopBarBand` is pane-blind band arithmetic: `TwoPaneLayout` already
+      starts each pane frame below the top tab bar band, so a screen that adds
+      the band inside a pane counts it twice. Only `TwoPaneLayout` imports it.
+    metadata:
+      fix: "Never import `useTopBarBand` or `use-top-bar-band`: render the content in `Screen` inside a pane, whose frame `TwoPaneLayout` already starts below the band."
       skill: "kiko-design-system › Component set"
     paths:
       exclude:
         - "src/design-system/components/screen/**"
         - "src/design-system/components/two-pane-layout/**"
     pattern-either:
-      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\b(?:resolve(?:Bottom|Top)Clearance|useTopBarBand)\b[^;'"]*?\bfrom\s*['"]
-      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/(?:(?:bottom|top)-clearance|use-top-bar-band)(?:\.ts)?['"]
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buseTopBarBand\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-top-bar-band(?:\.ts)?['"]
   # kiko-architecture's "Pane navigation": on a wide window a screen can be the default
   # of a pane (Statistics and Home as each other's companion, Categories as the Settings
   # primary), and the Accounts list sits under the default it fills the primary pane
