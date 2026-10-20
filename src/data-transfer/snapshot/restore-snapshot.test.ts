@@ -188,7 +188,7 @@ describe('restoreDataSnapshot', () => {
       'settings',
     ]);
     expect(insertedRows.settings).toEqual([{ id: 1, ...NO_LIVE_DEVICE_SETTINGS }]);
-    expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
+    expect(insertedRows.accounts).toEqual([{ id: 'a1', currency: 'UAH' }]);
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
     // (see the dedicated tests below) stamps `null` since `t1` (this test's
     // only transaction row) has no matching `holdingId`/shape.
@@ -622,7 +622,7 @@ describe('restoreDataSnapshot', () => {
     ]);
     expect(insertedTables).toEqual(['accounts', 'holdings', 'categories', 'settings']);
     expect(insertedRows.accounts).toEqual([
-      sourceAccount,
+      { ...sourceAccount, currency: 'UAH' },
       {
         id: 'crypto-from-a1',
         name: 'Wallet',
@@ -634,6 +634,7 @@ describe('restoreDataSnapshot', () => {
         sortOrder: 0,
         archivedAt: null,
         createdAt: 1_700_000_000_000,
+        currency: 'BTC',
       },
     ]);
     expect(insertedRows.holdings).toEqual([
@@ -699,8 +700,8 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(insertedRows.accounts).toEqual([
-      reuseTargetAccount,
-      archivedSourceAccount,
+      { ...reuseTargetAccount, currency: 'UAH' },
+      { ...archivedSourceAccount, currency: 'UAH' },
       {
         id: 'crypto-from-old-wallet',
         name: 'Old wallet',
@@ -712,6 +713,7 @@ describe('restoreDataSnapshot', () => {
         sortOrder: 5,
         archivedAt: 1_690_000_000_000,
         createdAt: 1_600_000_000_000,
+        currency: 'USDT',
       },
     ]);
     expect(insertedRows.holdings).toEqual([

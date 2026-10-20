@@ -1081,7 +1081,12 @@ helpers, not a mock factory's own body.
 
 A component uses an explicit `return` —
 `(props) => { return (<...>); }` — never the arrow-shorthand implicit
-return `(props) => (<...>)`.
+return `(props) => (<...>)`. This applies to app components and to the components in
+`src/test-support/`. A component local to a `*.test.tsx` (a stub screen such as
+`const DetailScreen: FC = () => null;`) is test scaffolding and is exempt. Semgrep
+`kiko-component-explicit-return` denies the shorthand on a component declared
+`FC<...> = (...) =>` in a `.tsx` file other than `*.test.tsx`; its known limits are in
+kiko-linter's "`kiko-component-explicit-return`".
 
 ## Folder-per-thing co-location
 

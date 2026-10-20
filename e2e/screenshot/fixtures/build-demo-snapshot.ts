@@ -21,6 +21,7 @@ import { SETTINGS_ID } from '@kiko/settings';
 import type { DataSnapshot } from '@kiko/data-transfer';
 import { OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { entityColorsDark } from '@kiko/design-system/palette';
+import { accountCurrencyOf } from '@kiko/holdings/account-currency';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
@@ -178,22 +179,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
 
   dataset.accounts.forEach((account, accountIndex) => {
     const accountId = `acc-${accountIndex + 1}`;
-
-    accounts.push({
-      id: accountId,
-      name: account.name,
-      kind: account.kind,
-      institution: null,
-      // Migration 0049, the create form's required pick, the edit form's
-      // keep-as-stored, and restore leave no bank account without a bank id.
-      // The demo names the real ones so Monobank's page shows Connect.
-      bankId: account.kind === 'bank' ? (account.bankId ?? OTHER_BANK_ID) : null,
-      icon: null,
-      color: account.color,
-      sortOrder: accountIndex,
-      archivedAt: null,
-      createdAt: dataset.anchor,
-    });
+    const accountHoldings: HoldingRow[] = [];
 
     account.holdings.forEach((holding, holdingIndex) => {
       holdingCount += 1;
@@ -203,7 +189,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
         0,
       );
 
-      holdings.push({
+      const holdingRow: HoldingRow = {
         id: holdingId,
         accountId,
         name: holding.name,
@@ -219,7 +205,10 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
         sortOrder: holdingIndex,
         closedAt: null,
         createdAt: dataset.anchor,
-      });
+      };
+
+      holdings.push(holdingRow);
+      accountHoldings.push(holdingRow);
 
       for (const transaction of holding.transactions) {
         transactionCount += 1;
@@ -251,6 +240,24 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
           createdAt: dataset.anchor,
         });
       }
+    });
+
+    accounts.push({
+      id: accountId,
+      name: account.name,
+      kind: account.kind,
+      institution: null,
+      // Migration 0049, the create form's required pick, the edit form's
+      // keep-as-stored, and restore leave no bank account without a bank id.
+      // The demo names the real ones so Monobank's page shows Connect.
+      bankId: account.kind === 'bank' ? (account.bankId ?? OTHER_BANK_ID) : null,
+      icon: null,
+      color: account.color,
+      sortOrder: accountIndex,
+      archivedAt: null,
+      // The rule a restore of an older file applies, so the demo reads as one a device upgraded.
+      currency: accountCurrencyOf(accountHoldings, dataset.baseCurrency),
+      createdAt: dataset.anchor,
     });
   });
 

@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react-native';
-
 import '@kiko/design-system/unistyles';
+import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 
 import FieldTrigger from '.';
 
@@ -9,21 +9,18 @@ import FieldTrigger from '.';
 // through `styles.useVariants(...)`, which the mock does not compute — the
 // same caveat documented in
 // `trend-filter-field.section-header-tone.test.tsx`. Mock the shared `Text`
-// primitive with a passthrough that forwards its `variant` prop onto the
+// primitive with the shared passthrough that forwards its `variant` prop onto the
 // host node instead, so the leading text mark's type step can be asserted
 // from the PROP that actually drives it rather than a resolved `fontSize`
 // the mock cannot produce. Kept in its own file (rather than inside
 // `field-trigger.component.test.tsx`) so this file-wide module mock never
 // touches that file's other assertions, which render the real `Text`.
-jest.mock('@kiko/design-system/components/text', () => {
-  const React = require('react');
-  const { Text: RNText } = require('react-native');
-
-  const MockText = ({ children, variant }: { children: React.ReactNode; variant?: string }) =>
-    React.createElement(RNText, { variant }, children);
-
-  return { __esModule: true, default: MockText };
-});
+jest.mock('@kiko/design-system/components/text', () => ({
+  __esModule: true,
+  get default() {
+    return mockTextVariantTone;
+  },
+}));
 
 // The leading text mark (e.g.
 // CurrencyField's trigger currency symbol) must not be sized to

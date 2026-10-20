@@ -13,6 +13,7 @@ import {
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
+import { selectKind } from '@kiko/test-support/account-form-test-support';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
@@ -48,20 +49,6 @@ const selectedSwatchHex = (
   return undefined;
 };
 
-// Opens the AccountKindField sheet and picks the given kind — every kind
-// switch goes through this trigger-press -> option-press pair, matching
-// the field's own sheet-based interaction.
-const selectKind = async (
-  getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
-  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals' | 'debt' | 'broker',
-): Promise<void> => {
-  await fireEvent.press(getByTestId('account-kind-field'));
-  const sheet = getByTestId('account-kind-field-sheet-modal');
-  await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
-  // The sheet's close animation ending, which is when a swap may navigate.
-  await act(async () => sheet.props.onDismiss());
-};
-
 // A new bank account cannot Save until a bank is picked; tests about anything
 // else on the bank form pick the catalog's fallback, "Other bank".
 const pickOtherBank = async (
@@ -89,6 +76,7 @@ const mockSaveCredentials = jest.fn();
 const mockClearCredentialsIfWrittenBy = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockCryptoSync = jest.fn();
+const mockRefreshMarketData = jest.fn();
 const mockFetchAccount = jest.fn();
 
 // The account the edit-mode form loads through useLiveQuery. `mock`-prefixed so
@@ -219,20 +207,24 @@ jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
-jest.mock('@kiko/sync/use-sync', () => ({
-  useSync: () => ({
-    isSyncing: false,
-    error: undefined,
-    sync: (...args: unknown[]) => mockMonobankSync(...args),
-  }),
-}));
-jest.mock('@kiko/sync/use-crypto-sync', () => ({
-  useCryptoSync: () => ({
-    isSyncing: false,
-    error: undefined,
-    sync: (...args: unknown[]) => mockCryptoSync(...args),
-  }),
-}));
+// The currency pick's and the cash create's refresh would otherwise reach the real network.
+jest.mock('@kiko/sync/refresh-market-data', () =>
+  require('@kiko/test-support/account-form-test-support').refreshMarketDataModule(
+    (...args: unknown[]) => mockRefreshMarketData(...args),
+  ),
+);
+jest.mock('@kiko/sync/use-sync', () =>
+  require('@kiko/test-support/account-form-test-support').idleSyncModule(
+    'useSync',
+    (...args: unknown[]) => mockMonobankSync(...args),
+  ),
+);
+jest.mock('@kiko/sync/use-crypto-sync', () =>
+  require('@kiko/test-support/account-form-test-support').idleSyncModule(
+    'useCryptoSync',
+    (...args: unknown[]) => mockCryptoSync(...args),
+  ),
+);
 // The crypto create form now reuses the shared Wallet|Binance sync form
 // (CryptoSyncForm). Its two leaf fields own their own inputs, validation, and
 // Keychain writes (covered by their own tests); here each collapses to one
@@ -609,7 +601,12 @@ describe('AccountFormScreen', () => {
     // The row is inserted with the screen's pre-generated id (so a field Connect
     // could have keyed a Keychain write to it); no source was connected here.
     expect(mockSaveFormAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Crypto', kind: 'crypto', color: null }),
+      expect.objectContaining({
+        name: 'My Crypto',
+        kind: 'crypto',
+        color: null,
+        currency: null,
+      }),
     );
     expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
     expect(mockCreate).not.toHaveBeenCalled();
@@ -849,15 +846,15 @@ describe('AccountFormScreen', () => {
   it('creates a metals account with the metals kind (no bank/crypto section rendered)', async () => {
     // Metals has no extra creation fields yet, so it shares the generic
     // create path with bank/crypto: the row
-    // inserts with just name/kind/color/icon, and neither the cash currency
-    // fields nor the bank/crypto sync sections render for it.
-    const { getByLabelText, getByTestId, navigation, queryByText, queryByTestId } =
+    // inserts with just name/kind/color/icon/currency, and neither the cash initial value
+    // field nor the bank/crypto sync sections render for it.
+    const { getByLabelText, getByTestId, navigation, queryByText, queryByLabelText } =
       await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Gold');
     await selectKind(getByTestId, 'metals');
 
-    expect(queryByTestId('account-currency-field')).toBeNull();
+    expect(queryByLabelText('Initial value')).toBeNull();
     expect(queryByText('Synchronization')).toBeNull();
 
     await pressSave(navigation.setOptions);
@@ -867,6 +864,18 @@ describe('AccountFormScreen', () => {
     );
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('saves a metals account with no currency, so the write reads the base currency', async () => {
+    const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Gold');
+    await selectKind(getByTestId, 'metals');
+    await pressSave(navigation.setOptions);
+
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Gold', kind: 'metals', currency: null }),
+    );
   });
 
   it('creates a broker account with the picked broker as its bankId, and no sync connection', async () => {
@@ -884,7 +893,12 @@ describe('AccountFormScreen', () => {
     await pressSave(navigation.setOptions);
 
     expect(mockSaveFormAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Trading 212', kind: 'broker', bankId: 'trading212' }),
+      expect.objectContaining({
+        name: 'My Trading 212',
+        kind: 'broker',
+        bankId: 'trading212',
+        currency: null,
+      }),
     );
     expect(
       (mockSaveFormAccount.mock.calls[0][0] as { institution?: unknown }).institution,
@@ -2237,7 +2251,9 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ bankId: 'monobank' }));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ bankId: 'monobank', currency: null }),
+    );
   });
 
   it('shows no fake connect field for an import-only bank, and creates the row tagged with its bank id on Save', async () => {
@@ -2254,7 +2270,12 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
     expect(mockSaveFormAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My PrivatBank', kind: 'bank', bankId: 'privatbank' }),
+      expect.objectContaining({
+        name: 'My PrivatBank',
+        kind: 'bank',
+        bankId: 'privatbank',
+        currency: null,
+      }),
     );
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockMonobankSync).not.toHaveBeenCalled();
@@ -3340,6 +3361,7 @@ describe('AccountFormScreen — draft', () => {
     color: entityColors.violet,
     kind: 'cash',
     currency: 'EUR',
+    accountCurrency: null,
     initialValue: '250.50',
     bankId: null,
     brokerId: null,
@@ -3433,6 +3455,7 @@ describe('AccountFormScreen — draft', () => {
       color: null,
       kind: 'bank',
       currency: 'UAH',
+      accountCurrency: null,
       initialValue: '',
       bankId: null,
       brokerId: null,

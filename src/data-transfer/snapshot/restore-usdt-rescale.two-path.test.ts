@@ -17,11 +17,15 @@ jest.mock('@kiko/db/client', () => {
 
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import {
+  addAccountCurrencyColumn,
+  applyAllMigrations,
+  applyMigrationsThrough,
+} from '@kiko/test-support/real-sqlite';
 import { DatabaseSync } from 'node:sqlite';
 import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
 import { rezoneImportTimes } from '@kiko/statement-import/rezone-import-times';
 import { upgradeStoredDedupKeys } from '@kiko/statement-import/upgrade-stored-dedup-keys';
-import { applyAllMigrations, applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
 
 import { EXPORT_VERSION } from '../crypto/envelope';
 
@@ -229,6 +233,7 @@ const scaleTwoDatabase = (): DatabaseSync => {
   applyMigrationsThrough(target, '0058_add_untracked_counterpart');
   target.exec(HISTORY_BACKFILL_CURSOR_SQL);
   target.exec(EXCHANGE_STATE_SQL);
+  addAccountCurrencyColumn(target);
   seedScaleTwoDatabase(target);
 
   return target;

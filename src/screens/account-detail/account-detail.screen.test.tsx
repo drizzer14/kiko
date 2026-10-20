@@ -16,6 +16,7 @@ import {
 import { dropCard, liftCard } from '@kiko/test-support/lift-grid-card';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
+import { implicitParityFixture } from '@kiko/test-support/implicit-total-parity';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountDetailScreen from './account-detail.screen';
@@ -229,6 +230,7 @@ type Account = {
   id: string;
   name: string;
   kind: string;
+  currency?: string;
   institution?: string | null;
   bankId?: string | null;
   archivedAt?: number | null;
@@ -319,6 +321,8 @@ const account = (overrides: Partial<Account> = {}): Account => ({
   id: 'a',
   name: 'Monobank',
   kind: 'bank',
+  // The base currency of every fixture, so an account that names none keeps the base headline.
+  currency: 'UAH',
   institution: null,
   // `bankId` defaults to `null` here, matching the real `AccountRow`'s
   // Drizzle-inferred type (a nullable column is `string | null`, never
@@ -484,6 +488,57 @@ describe('AccountDetailScreen', () => {
     const { getByText } = await renderScreen();
     // The converted overall amount is unique to the headline MoneyText.
     expect(getByText(/3,000\.00 ₴/).props.testID).toBe('text-tone-textPrimary');
+  });
+
+  describe('the account currency', () => {
+    it('totals a USD account in dollars with the base figure beneath', async () => {
+      setLiveData({ ...multiCurrencyData, accounts: [account({ currency: 'USD' })] });
+      const { getAllByText, getByTestId } = await renderScreen();
+
+      expect(within(getByTestId('account-detail-headline')).getByText('$75.00')).toBeTruthy();
+      expect(within(getByTestId('account-detail-converted')).getByText(/3,000\.00 ₴/)).toBeTruthy();
+      // Each amount shows in its holding row and in the unchanged per-currency breakdown.
+      expect(getAllByText('1,000.00 ₴').length).toBeGreaterThan(1);
+      expect(getAllByText('$50.00').length).toBeGreaterThan(1);
+    });
+
+    // The Accounts section heading reads the same two strings from the same fixture.
+    it.each(['property', 'debt'] as const)(
+      'totals an implicit %s account as its Accounts section heading does',
+      async (kind) => {
+        const fixture = implicitParityFixture(kind, 'a');
+        const { total, caption } = fixture;
+        setLiveData({ ...fixture, accounts: [account(fixture.account)] });
+        const { getByTestId } = await renderScreen();
+
+        expect(within(getByTestId('account-detail-headline')).getByText(total)).toBeTruthy();
+        expect(getByTestId('account-detail-converted')).toHaveTextContent(caption);
+      },
+    );
+
+    it('shows no caption for an account in the base currency', async () => {
+      setLiveData(multiCurrencyData);
+      const { queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('account-detail-converted')).toBeNull();
+    });
+
+    it('shows a crypto account its own sum, with no caption and no throw', async () => {
+      setLiveData({
+        accounts: [account({ kind: 'crypto', currency: 'BTC' })],
+        holdings: [
+          { id: 'h1', name: 'Cold wallet', currency: 'BTC', balanceMinorUnits: 50_000_000 },
+        ],
+        rates: [],
+      });
+      const { getAllByText, getByTestId, queryByText, queryByTestId } = await renderScreen();
+
+      expect(within(getByTestId('account-detail-headline')).getByText('₿0.50')).toBeTruthy();
+      // The headline, the holding row and the per-currency breakdown each carry the amount.
+      expect(getAllByText('₿0.50')).toHaveLength(3);
+      expect(queryByText(/0\.00 ₴/)).toBeNull();
+      expect(queryByTestId('account-detail-converted')).toBeNull();
+    });
   });
 
   it('navigates to HoldingDetail when a holding row is pressed', async () => {

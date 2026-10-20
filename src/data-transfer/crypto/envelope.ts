@@ -10,13 +10,13 @@ export const EXPORT_FORMAT = 'kiko-export';
 // and then run the change's one-time upgrade a second time (the 1.2 import-time
 // rezone did, on a file restored by 1.1). `envelope.test.ts` fails when a
 // migration lands without a decision here.
-export const EXPORT_VERSION = 4;
+export const EXPORT_VERSION = 5;
 
 // Every version this build reads, spelled out so a bump of EXPORT_VERSION
 // cannot drop the previous one: a file keeps its version, and an older file's
 // rows restore the same way (the whole row is serialized and a restore derives
 // what an older file lacks).
-const READABLE_EXPORT_VERSIONS: readonly number[] = [1, 2, 3, 4];
+const READABLE_EXPORT_VERSIONS: readonly number[] = [1, 2, 3, 4, 5];
 
 export const isReadableExportVersion = (version: unknown): boolean =>
   typeof version === 'number' && READABLE_EXPORT_VERSIONS.includes(version);

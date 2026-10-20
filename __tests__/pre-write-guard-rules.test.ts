@@ -3,6 +3,11 @@ import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
+
 // Every other pre-write-guard test stubs semgrep entirely (see
 // pre-write-guard.test.ts), so nothing else in the suite proves
 // rules/semgrep-prewrite.yml itself — the file the hook loads by default —
@@ -87,6 +92,8 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-sortable-grid-lone-card-lifts',
   'kiko-kind-ternary-prefers-match',
   'kiko-type-ternary-prefers-match',
+  'kiko-no-inline-text-variant-mock',
+  'kiko-component-explicit-return',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -122,6 +129,8 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
   'kiko-test-title-no-history': 'kiko-test-title-no-history/src/test-support/title-example',
   'kiko-rejects-to-throw-needs-error':
     'kiko-rejects-to-throw-needs-error/src/test-support/rejects-example',
+  'kiko-no-inline-text-variant-mock':
+    'kiko-no-inline-text-variant-mock/src/test-support/text-mock-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -143,6 +152,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-change-language-in-test-body': 'src/test-support',
   'kiko-test-title-no-history': 'src/test-support',
   'kiko-rejects-to-throw-needs-error': 'src/test-support',
+  'kiko-no-inline-text-variant-mock': 'src/test-support',
 };
 
 function fixturePrefix(ruleId: string): string {
@@ -267,6 +277,44 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       ],
     ])('leaves %s alone', (_name, content) => {
       expect(findingsFor(content)).not.toContain(RULE_ID);
+    });
+  });
+
+  // kiko-component-explicit-return reads source text, so its scope has to be the `.tsx` files
+  // that hold components: a harness test under `__tests__/` that quotes component source inside
+  // a string is `.ts` and must stay outside it. The `.tsx` control proves the same text is
+  // denied where a component can live.
+  describe('kiko-component-explicit-return scope (real semgrep)', () => {
+    const RULE_ID = 'kiko-component-explicit-return';
+    const componentSource = [
+      'const Row: FC<{ label: string }> = ({ label }) => (',
+      '  <Text>{label}</Text>',
+      ');',
+    ].join('\n');
+
+    afterEach(removeTemporaryDirectories);
+
+    function guardFor(relativePath: string, content: string): SpawnSyncReturns<string> {
+      const project = createTemporaryDirectory('kiko-explicit-return-scope-');
+      const target = join(project, relativePath);
+      mkdirSync(join(target, '..'), { recursive: true });
+
+      return runGuard(payloadFor(target, content), project);
+    }
+
+    it('denies the component text in a `.tsx` file, which proves the scope reaches the rule', () => {
+      const result = guardFor(`src/probe/${RULE_ID}.tsx`, `${componentSource}\n`);
+
+      expect(result.status).toBe(2);
+      expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason).toContain(
+        `rule ${RULE_ID} at `,
+      );
+    });
+
+    it('leaves a `__tests__` .ts file that quotes the component text in a string alone', () => {
+      const content = ['export const source = `', componentSource, '`;', ''].join('\n');
+
+      expect(guardFor('__tests__/quoted-component.test.ts', content).status).toBe(0);
     });
   });
 

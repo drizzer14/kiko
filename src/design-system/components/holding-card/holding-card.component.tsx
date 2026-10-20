@@ -18,6 +18,7 @@ import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import { holdingTypeLabel } from '@kiko/holdings/holding-type-label';
 import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
+import ConvertedCaption from '@kiko/design-system/components/converted-caption';
 
 import { styles } from './holding-card.styles';
 
@@ -31,7 +32,7 @@ import { styles } from './holding-card.styles';
 // a stored balance of 0), matching the account headline and the holding-detail
 // page. A holding in a currency OTHER than the base (main) currency shows a
 // smaller converted base-currency value beneath its own-currency value, so the
-// user reads both figures; the account card already shows the base currency.
+// user reads both figures; the account card shows the account's own currency.
 const HoldingCard: FC<{
   holding: HoldingRow;
   now: number;
@@ -95,13 +96,7 @@ const HoldingCard: FC<{
             </Box>
           )}
 
-          {convertedToBase && (
-            <Box testID="holding-card-converted">
-              <Text variant="caption" tone="textSecondary">
-                {formatMoney(convertedToBase, activeLocale())}
-              </Text>
-            </Box>
-          )}
+          <ConvertedCaption money={convertedToBase} testID="holding-card-converted" />
         </Box>
       </Pressable>
     </Card>

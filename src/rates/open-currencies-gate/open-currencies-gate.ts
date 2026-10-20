@@ -1,16 +1,23 @@
 import { settingsRepo } from '@kiko/settings';
+import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { isFiat, isCrypto, type Currency, type CryptoCurrency } from '@kiko/currency/currency';
 
 /** The data-presence gate result a rate/price refresh reads before running. */
 export type OpenCurrencies = {
-  /** Some ACTIVE holding's currency differs from the base (display) currency. */
+  /**
+   * Some ACTIVE holding's or non-archived account's currency differs from the base (display)
+   * currency.
+   */
   needsFiat: boolean;
-  /** The distinct crypto currencies (BTC/ETH/USDT) an ACTIVE holding holds. */
+  /**
+   * The distinct crypto currencies (BTC/ETH/USDT) an ACTIVE holding holds or a non-archived
+   * account totals in.
+   */
   cryptoCurrencies: CryptoCurrency[];
   /**
-   * Every distinct ACTIVE-holding currency (fiat or crypto) that differs from
-   * the base — the raw set `needsFiat` is derived from
+   * Every distinct ACTIVE-holding or non-archived-account currency (fiat or crypto) that
+   * differs from the base — the raw set `needsFiat` is derived from
    * (`needsFiat === nonBaseCurrencies.length > 0`). `refreshRates` reads this
    * directly to check whether a currently-held currency still has no
    * `currency_rates` row at all, a case its own throttle must never suppress.
@@ -24,7 +31,10 @@ export type OpenCurrencies = {
 /**
  * kiko-architecture: app-open and refresh work is gated on data presence —
  * one `settings` read plus ONE cheap `SELECT DISTINCT currency` over active
- * holdings (`holdingsRepo.openCurrenciesQuery`), never a per-holding loop.
+ * holdings (`holdingsRepo.openCurrenciesQuery`) and one over non-archived
+ * accounts (`accountsRepo.openCurrenciesQuery`), never a per-holding loop. An
+ * account card totals in the account's own currency, so that currency needs its
+ * rate or coin price even when no holding is in it.
  * Read directly by `refreshRates` (`rates-refresh.ts`); `historyCurrencies`
  * below is the SAME gate pattern, scoped to what `runBackfill` needs instead.
  *
@@ -36,12 +46,15 @@ export type OpenCurrencies = {
  * gate hardcoding a dependency on the other.
  */
 export const openCurrencies = async (): Promise<OpenCurrencies> => {
-  const [settingsRows, currencyRows] = await Promise.all([
+  const [settingsRows, currencyRows, accountCurrencyRows] = await Promise.all([
     settingsRepo.getQuery(),
     holdingsRepo.openCurrenciesQuery(),
+    accountsRepo.openCurrenciesQuery(),
   ]);
   const base = settingsRows.at(0)?.baseCurrency ?? 'UAH';
-  const currencies = currencyRows.map((row) => row.currency);
+  const currencies = [
+    ...new Set([...currencyRows, ...accountCurrencyRows].map((row) => row.currency)),
+  ];
   const nonBaseCurrencies = currencies.filter((currency) => currency !== base);
 
   return {

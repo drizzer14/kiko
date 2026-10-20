@@ -24,7 +24,6 @@ import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { Pressable, type ScrollViewInstance } from 'react-native';
-import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -33,12 +32,12 @@ import type { AccountsStackParamList } from '@kiko/navigation/types';
 import HoldingCard from '@kiko/design-system/components/holding-card';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
+import { accountTotal, buildRateTable } from '@kiko/rates/net-worth-view';
 import { removeHoldingsNoticeOf } from '@kiko/transactions/remove-notice';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
-import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
@@ -50,6 +49,7 @@ import { useCloseHoldingAction } from '@kiko/design-system/components/close-hold
 import { OnAccentContext, selectedSurfaceStyles } from '@kiko/design-system/selected-surface';
 
 import { styles } from './accounts.styles';
+import AccountTotal from './account-total';
 import { useAccountsPane } from './use-accounts-pane';
 import ImplicitAccountHeading from './implicit-account-heading';
 
@@ -59,6 +59,31 @@ const openHoldingsOf = (
   holdingsByAccount: Map<string, HoldingRow[]>,
   account: AccountRow | undefined,
 ): HoldingRow[] => foldMap(maybe(account), (found) => holdingsByAccount.get(found.id)) ?? [];
+
+type SectionTotalsContext = {
+  baseCurrency: Currency;
+  rateTable: ReturnType<typeof buildRateTable>;
+  now: number;
+  priceBook: Parameters<typeof accountTotal>[5];
+};
+
+const useSectionTotals = (
+  holdings: HoldingRow[],
+  account: AccountRow | undefined,
+  { baseCurrency, rateTable, now, priceBook }: SectionTotalsContext,
+) =>
+  useMemo(
+    () =>
+      accountTotal(
+        holdings,
+        account?.currency ?? baseCurrency,
+        baseCurrency,
+        rateTable,
+        now,
+        priceBook,
+      ),
+    [holdings, account, baseCurrency, rateTable, now, priceBook],
+  );
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
@@ -96,7 +121,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     liveOptions,
   );
   // Stable across a re-render, refreshed only when the screen becomes visible — a bare
-  // `Date.now()` here recomputed `debtsTotal`'s (and every card's) time-dependent value on
+  // `Date.now()` here recomputed `debtsTotals`' (and every card's) time-dependent value on
   // EVERY render, not just when the screen actually returns.
   const now = useVisibleRefreshedNow(isVisible);
   // kiko-architecture: skip the price_points read while nothing rendered on
@@ -194,17 +219,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   );
 
   // Each section shows a SECTION total: the sum of its own cards' values
-  // through `guardedNetWorth`. A property section holds only `property_item`
+  // through `accountTotal`, in its implicit account's currency with the base caption, as that
+  // account's detail page shows it. A property section holds only `property_item`
   // holdings and the debts section only `loan` holdings
-  // (`holdingTypesForAccountKind`), so the debts total is negative.
-  const propertyTotal = useMemo(
-    () => guardedNetWorth(propertyHoldings, baseCurrency, rateTable, now, priceBook),
-    [propertyHoldings, baseCurrency, rateTable, now, priceBook],
-  );
-  const debtsTotal = useMemo(
-    () => guardedNetWorth(debtHoldings, baseCurrency, rateTable, now, priceBook),
-    [debtHoldings, baseCurrency, rateTable, now, priceBook],
-  );
+  // (`holdingTypesForAccountKind`), so the debts total is negative, and so is its caption.
+  // A section renders only for a live account, so the base fallback is never shown.
+  const totalsContext = { baseCurrency, rateTable, now, priceBook };
+  const propertyTotals = useSectionTotals(propertyHoldings, propertyAccount, totalsContext);
+  const debtsTotals = useSectionTotals(debtHoldings, debtAccount, totalsContext);
 
   // One close hook per implicit account: its sync check reads that account.
   // Each hook's own `closeSheet` must render, or "Close" in that section
@@ -253,7 +275,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // render here: their holdings are the cards of their own sections below.
   const renderAccountCard = (item: (typeof activeAccounts)[number]) => {
     const accountHoldings = holdingsByAccount.get(item.id) ?? [];
-    const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now, priceBook);
+    const { total, inBase } = accountTotal(
+      accountHoldings,
+      item.currency,
+      baseCurrency,
+      rateTable,
+      now,
+      priceBook,
+    );
     const { icon, color } = accountIdentity(item);
 
     return (
@@ -307,9 +336,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 </Text>
               </Box>
             </Box>
-            <Box style={styles.rowAmount}>
-              <MoneyText money={balance} context="balance" />
-            </Box>
+            <AccountTotal total={total} inBase={inBase} convertedTestID="account-card-converted" />
           </Pressable>
         </Card>
       </CardContextMenu>
@@ -325,9 +352,10 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const renderHoldingSection = ({
     account,
     sectionHoldings,
-    total,
+    totals,
     headingTestID,
     totalTestID,
+    convertedTestID,
     openTestID,
     chevronTestID,
     gridTestID,
@@ -336,9 +364,10 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   }: {
     account: AccountRow;
     sectionHoldings: HoldingRow[];
-    total: ReturnType<typeof guardedNetWorth>;
+    totals: ReturnType<typeof accountTotal>;
     headingTestID: string;
     totalTestID: string;
+    convertedTestID: string;
     openTestID: string;
     chevronTestID: string;
     gridTestID: string;
@@ -377,7 +406,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             <ImplicitAccountHeading account={account} testID={headingTestID} />
 
             <Box testID={totalTestID} style={styles.rowAmount}>
-              <MoneyText money={total} context="balance" />
+              <AccountTotal
+                total={totals.total}
+                inBase={totals.inBase}
+                convertedTestID={convertedTestID}
+              />
             </Box>
 
             {/* Decorative: the row's button role already says it navigates. */}
@@ -548,9 +581,10 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               renderHoldingSection({
                 account: propertyAccount,
                 sectionHoldings: propertyHoldings,
-                total: propertyTotal,
+                totals: propertyTotals,
                 headingTestID: 'accounts-property-heading',
                 totalTestID: 'accounts-property-total',
+                convertedTestID: 'property-total-converted',
                 openTestID: 'accounts-property-open',
                 chevronTestID: 'accounts-property-chevron',
                 gridTestID: 'accounts-property-grid',
@@ -563,9 +597,10 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               renderHoldingSection({
                 account: debtAccount,
                 sectionHoldings: debtHoldings,
-                total: debtsTotal,
+                totals: debtsTotals,
                 headingTestID: 'accounts-debts-heading',
                 totalTestID: 'accounts-debts-total',
+                convertedTestID: 'debts-total-converted',
                 openTestID: 'accounts-debts-open',
                 chevronTestID: 'accounts-debts-chevron',
                 gridTestID: 'accounts-debts-grid',

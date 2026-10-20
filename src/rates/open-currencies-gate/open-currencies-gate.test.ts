@@ -1,8 +1,12 @@
 let mockSettingsRows: { baseCurrency: string }[] = [{ baseCurrency: 'UAH' }];
 let mockCurrencyRows: { currency: string }[] = [];
+let mockAccountCurrencyRows: { currency: string }[] = [];
 
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => Promise.resolve(mockSettingsRows) },
+}));
+jest.mock('@kiko/accounts', () => ({
+  accountsRepo: { openCurrenciesQuery: () => Promise.resolve(mockAccountCurrencyRows) },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
@@ -17,6 +21,7 @@ describe('openCurrencies', () => {
   beforeEach(() => {
     mockSettingsRows = [{ baseCurrency: 'UAH' }];
     mockCurrencyRows = [];
+    mockAccountCurrencyRows = [];
   });
 
   it('reports needsFiat=false and no crypto when no currency is active', async () => {
@@ -90,6 +95,66 @@ describe('openCurrencies', () => {
       needsFiat: true,
       cryptoCurrencies: ['BTC'],
       nonBaseCurrencies: ['USD', 'BTC'],
+    });
+  });
+
+  // An account's own currency is what its card totals in, so its rate or coin price is wanted
+  // even when no holding is in that currency. `mockAccountCurrencyRows` is what
+  // `accountsRepo.openCurrenciesQuery` returns: it excludes an archived account's currency, which
+  // its own SQL test pins.
+  describe('with an account currency no holding is in', () => {
+    it('adds a crypto account currency to the coin list and to needsFiat', async () => {
+      mockAccountCurrencyRows = [{ currency: 'UAH' }, { currency: 'BTC' }];
+
+      await expect(openCurrencies()).resolves.toEqual({
+        needsFiat: true,
+        cryptoCurrencies: ['BTC'],
+        nonBaseCurrencies: ['BTC'],
+      });
+    });
+
+    it('adds a foreign fiat account currency to the fiat leg', async () => {
+      mockCurrencyRows = [{ currency: 'UAH' }];
+      mockAccountCurrencyRows = [{ currency: 'EUR' }];
+
+      await expect(openCurrencies()).resolves.toEqual({
+        needsFiat: true,
+        cryptoCurrencies: [],
+        nonBaseCurrencies: ['EUR'],
+      });
+    });
+
+    it('wants nothing when every account and holding currency is the base', async () => {
+      mockCurrencyRows = [{ currency: 'UAH' }];
+      mockAccountCurrencyRows = [{ currency: 'UAH' }];
+
+      await expect(openCurrencies()).resolves.toEqual({
+        needsFiat: false,
+        cryptoCurrencies: [],
+        nonBaseCurrencies: [],
+      });
+    });
+
+    it('keeps the holding currencies and lists a currency both sides share once', async () => {
+      mockCurrencyRows = [{ currency: 'USD' }, { currency: 'BTC' }];
+      mockAccountCurrencyRows = [{ currency: 'BTC' }, { currency: 'USD' }, { currency: 'ETH' }];
+
+      await expect(openCurrencies()).resolves.toEqual({
+        needsFiat: true,
+        cryptoCurrencies: ['BTC', 'ETH'],
+        nonBaseCurrencies: ['USD', 'BTC', 'ETH'],
+      });
+    });
+
+    it('compares an account currency with the base read from settings', async () => {
+      mockSettingsRows = [{ baseCurrency: 'EUR' }];
+      mockAccountCurrencyRows = [{ currency: 'EUR' }];
+
+      await expect(openCurrencies()).resolves.toEqual({
+        needsFiat: false,
+        cryptoCurrencies: [],
+        nonBaseCurrencies: [],
+      });
     });
   });
 });

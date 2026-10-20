@@ -64,7 +64,6 @@
     "  whose marker names a deleted holding is cleared. The delete keeps the pair id and moves no balance: a",
     "  `exchange` sentence already names is not named again there; with a split, the exchange sentences that say",
     "`settings.lockEnabled` is LIVE (a `.kiko` restore never changes it) — wired through `src/auth/use-app-lock.ts`",
-    "section. A section with no open holding does not render. Read `kiko-charts` for the pie/line-specific rules.",
     "tell the two modes apart; `BondMeta.entryMode` does (below). Once saved, the holding's stored terms never depend",
     "result `null`; an edit's own stored ISIN is exempt, above); `isinCurrencyMismatchError` in edit mode per the currency-lock rule above.",
     "  one at a time counted a split installment's interest twice. A payment MORE THAN ONE PERIOD outside the",

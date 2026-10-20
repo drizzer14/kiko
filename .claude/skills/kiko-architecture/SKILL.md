@@ -100,7 +100,11 @@ project-level pointer to this section.
   generate, and run `./node_modules/.bin/biome check --write` (never `npx biome`: RTK
   rewrites it in agent Bash and it fails) over the generated
   artifacts: the snapshot and journal JSON are lint-checked like any
-  other file.
+  other file. Then run `npm run check:shipped-migrations` before
+  committing, and keep only inserted lines.
+- A pure rule several features need lives in a folder whose own barrel
+  exports it (`src/holdings/account-currency`), never a sub-barrel of a
+  plain feature: the import is denied as alias-skips-barrel.
 - Bundle migrations into the app and apply them on launch through
   `src/db/run-migrations.ts` — NOT drizzle's own
   `drizzle-orm/op-sqlite/migrator` + `useMigrations`, which misreads
@@ -246,6 +250,10 @@ project-level pointer to this section.
   (`src/test-support/real-sqlite.ts`). Proven on both paths by
   `drizzle/migrations/0047-add-sets-balance.test.ts` and
   `restore-sets-balance.two-path.test.ts`.
+  A test that seeds a database below 0062 and reads accounts through today's
+  schema calls `addAccountCurrencyColumn` (`src/test-support/real-sqlite.ts`);
+  a seed at 0061 modelling a pre-0050 file drops `accounts_implicit_kind`
+  first (see `restore-account-currency.two-path.test.ts`).
 - **A NULL meaning replaced by a stored sentinel id is a kind-scoped
   data-only migration, mirrored on restore.** `0049` is hand-authored SQL
   with no snapshot: it sets `bank_id = 'other'` on `kind = 'bank'` rows
@@ -662,6 +670,11 @@ the row re-read inside its own write.
 query.** Disable Save while the query's `isLoading` is true; saving
 early writes a value built from missing data (the loan edit once saved
 before the price book loaded and wrote a permanent manual point).
+The allowed alternative: the form passes `null` and the repo write reads
+the value inside its own transaction (`newAccountValues` and
+`baseCurrencyOf` in `src/accounts/accounts.repo.ts`). A create form
+never writes a fallback taken from a live query that may not have
+loaded.
 
 **A write started from a cached display screen must not trust its
 rows.** `useLiveQuery` also returns `isFresh`: `true` once THIS
@@ -788,11 +801,15 @@ gate says there is nothing to do.
   cryptoCurrencies }` from a single `settings` read plus
   `holdingsRepo.openCurrenciesQuery()` (a `SELECT DISTINCT currency`
   over ACTIVE holdings — open, and whose account is not archived,
-  mirroring `activeHoldings`). The fiat leg (Monobank/NBU) runs only
-  when `needsFiat` — some active holding's currency differs from the
-  base (display) currency, which also covers the crypto leg's own
-  USD:UAH anchor need, since a held crypto currency always differs
-  from a fiat base. The crypto leg (CoinGecko current price) runs
+  mirroring `activeHoldings`) plus
+  `accountsRepo.openCurrenciesQuery()` (a `SELECT DISTINCT currency`
+  over non-archived accounts: an account card totals in its own
+  currency, so a currency only an account names, with no holding in it,
+  still gets its rate or coin price). The fiat leg (Monobank/NBU) runs only
+  when `needsFiat` — some active holding's currency, or some non-archived
+  account's currency, differs from the base (display) currency, which also
+  covers the crypto leg's own USD:UAH anchor need, since a held or account
+  crypto currency always differs from a fiat base. The crypto leg (CoinGecko current price) runs
   only for `cryptoCurrencies`, and `fetchCryptoPrices` fetches only
   those currencies, never the full supported set. `runBackfill`
   (`history-backfill.ts`) reads the sibling `historyCurrencies()` gate
@@ -809,8 +826,8 @@ gate says there is nothing to do.
   — `holdings` before `price_points` — the same order every gated
   refresh follows.
   `shouldThrottle` (`src/rates/rates-refresh/rates-refresh.ts`) skips
-  its own throttle window when a held currency has no rate row yet —
-  a "never fetched" escape so the data-presence gate can never hide a
+  its own throttle window when a held or account currency has no rate row
+  yet — a "never fetched" escape so the data-presence gate can never hide a
   currency's rate entirely. `UAH` is filtered out of that presence
   check first: a star row's `quote` is always `UAH` and its `base`
   never is, so `presentCurrenciesQuery` (a distinct `base` read) can
@@ -885,7 +902,8 @@ gate says there is nothing to do.
   (`src/sync/refresh-market-data/`) right after the write commits. Rule:
   every user write that can add, re-date, or re-source a priced holding
   or lot calls it. Find the current callers with
-  `git grep -n 'throttled: false, metals: true' src`. Restoring a `.kiko`
+  `git grep -n 'refreshMarketData(' src` (the account form passes
+  `metals: false`). Restoring a `.kiko`
   export (`importData`, `src/data-transfer/import-data.ts`) calls
   `refreshMarketData` itself. None of these runs through the sync
   fan-out that otherwise triggers this, so the price/rate appears without
@@ -893,8 +911,13 @@ gate says there is nothing to do.
   nothing is needed; it never rejects, and a failure is only
   logged, never shown, so it never turns a successful save into a shown
   error. `throttled: false`: the write is a deliberate user action, not
-  a background poll. Any other edit needs no trigger: a holding's type
-  and currency are immutable once created.
+  a background poll. A currency pick on the account form fires the same
+  refresh as the holding form, as `refreshMarketData({ throttled: false,
+  metals: false })`: after an edit that changes `accounts.currency`, a
+  create with a picked currency, and a cash create. It is never fired for
+  an unchanged pick or a failed write. An account currency is a fiat or a
+  coin, never a metal, so it needs no metal prices. Any other edit needs no
+  trigger: a holding's type and currency are immutable once created.
 - **`refreshMarketData` steps**: rates and metals; the `metals` option
   gates the second. Read each call site
   (`grep -rn "refreshMarketData(" src`) for its own flags.
@@ -2731,6 +2754,10 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   A non-idempotent data rewrite bumps `EXPORT_VERSION`; its restore mirror is
   version-gated: `restoreDataSnapshot(snapshot, version)` and `withUsdtRescaled`
   are the model.
+  A backfill derived from rows already in the file uses a per-FILE presence
+  check instead: `withAccountCurrencyDerived`
+  (`snapshot/with-account-currency-derived.ts`) fills `currency` only when
+  none of the file's accounts carries it.
   The decision per migration, each optional snapshot key included, is recorded in
   `VERSION_DECISIONS` in `src/data-transfer/crypto/envelope.test.ts`: read it there.
   A new table the file carries as an OPTIONAL key needs no bump: an older build
@@ -2755,6 +2782,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   stay. Read `restore-walk-state.two-path.test.ts`,
   `drizzle/migrations/0061-exchange-state.test.ts` and its `VERSION_DECISIONS`
   entry in `envelope.test.ts`.
+  Migration 0062 (`accounts.currency`, NOT NULL DEFAULT 'UAH') backfills by
+  USER RULING 2026-10-19: open holdings only, every account, archived
+  included. One currency among them gives that currency; several or none
+  give `settings.base_currency`. The pure rule is `accountCurrencyOf`
+  (`src/holdings/account-currency/`); it backfills and restores only, and
+  create paths do not use it (see the kiko-domain Account bullet). Its restore mirror
+  `withAccountCurrencyDerived` runs after `withImplicitAccountsMerged`.
+  `assertKnownCurrencies` covers `accounts.currency`. Export version 5; read
+  the decision in `VERSION_DECISIONS` in `envelope.test.ts`.
   Worked example of a device-local settings column: 0060
   `settings.history_backfill_state` (nullable; the history backfill's resume
   state). It is listed in `KEPT_FROM_LIVE_ON_RESTORE`, so a file never

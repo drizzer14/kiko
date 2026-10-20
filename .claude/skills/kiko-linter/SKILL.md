@@ -2109,6 +2109,62 @@ plus early-return form (`if (row.type === 'heading') { return ... }`) is not mat
 Semgrep has no type information and a statement `if` on an event's `type` is everywhere in
 handlers; no fixture can prove that form free of false positives.
 
+## `kiko-no-inline-text-variant-mock`
+
+Mechanizes kiko-design-system's "Component set": a test that reads a label's `variant` or `tone`
+mocks `Text` with the shared `src/test-support/mock-text-variant-tone.tsx` (a getter in the
+`jest.mock` factory), never with its own factory that forwards `variant` onto the host node.
+
+**Severity ERROR.** The tree holds 0 findings; re-measure with the Semgrep command in the
+`kiko-test-title-no-history` section above, filtered to this id.
+
+**Scope.** `paths.include` is `*.test.ts`, `*.test.tsx` and `src/test-support/**`; the last entry
+is only what lets the guard's probe file reach the rule, so the fixture pair is NESTED under
+`rules/fixtures/kiko-no-inline-text-variant-mock/src/test-support/`.
+
+**Known limits.** The module is matched by its text ending in `components/text` or `../text`;
+a mock through another relative path (`./text`) or through the component file
+(`components/text/text.component`) is not seen. The pattern is the two-argument `jest.mock`
+call, so a three-argument one (`{ virtual: true }`) is not seen. The factory is matched by the
+word `variant` anywhere in its text (a hyphenated name such as `mock-text-variant-tone` does not
+count), so a factory that mentions `variant` for another reason is flagged too, a factory that
+spreads `...props` onto the host node forwards `variant` without naming it and is not seen, and a
+mock that forwards only `tone` is not (it has the `mock-text-tone` helper). A factory held in a
+variable and passed by name is not seen. `jest.doMock` is not matched. A module-level local copy
+of the component returned through the sanctioned getter (`get default() { return localCopy; }`)
+names `variant` outside the factory and is not seen either: the helper
+`src/test-support/mock-text-variant-tone.tsx` forwards `variant`, `tone` and `style`, so a test
+that pins a style too imports it, never a copy of it (gap 20261019T1704/1 tracks a rule that
+flags the copy).
+
+## `kiko-component-explicit-return`
+
+Mechanizes kiko-code-style's "One component per file, each in its own folder": a component
+uses an explicit `return`, never the arrow-shorthand implicit return.
+
+**Severity ERROR.** The tree holds 0 findings; re-measure with the Semgrep command in the
+`kiko-test-title-no-history` section above, filtered to this id.
+
+**Scope.** `paths.include` is `*.tsx` and `paths.exclude` is `*.test.tsx`. The rule reads source
+text, string contents included, so a `.ts` file (a `__tests__/` harness test that embeds component
+source in a string) stays outside it; `__tests__/pre-write-guard-rules.test.ts` pins that, with a
+`.tsx` control that proves the guard's probe file (named `<rule-id>.tsx`) still reaches the rule.
+A component local to a `*.test.tsx` is test scaffolding and is exempt: kiko-code-style's "One
+component per file, each in its own folder" states it, and the entry is in
+`docs/harness/documented-exceptions.md`. The fixture pair is
+`rules/fixtures/kiko-component-explicit-return.bad.tsx` and `.good.tsx`.
+
+**Known limits.** A `pattern-regex`, because Semgrep reads `=> expr` and `=> { return expr; }`
+as one function. It reads `const <Name>: FC<...> = (<params>) =>`, also bare `FC` and `React.FC`,
+and flags a first token after `=>` that is not `{`. Not seen: a component with no `FC`
+annotation (`const Row = (props: Props) => (...)`, gap 20261019T1704/2), a component with a
+return-type annotation after the parameters (`({ a }): ReactElement => (...)`), a `function`
+declaration, a component wrapped in `memo(...)`, `React.FunctionComponent`, a generic that holds
+an `=` inside a string-literal type, and a parameter list that holds a string or a regex literal
+with an unbalanced parenthesis. False positives: a comment between `=>` and `{` (the first token
+is the comment), and example code in a comment of a non-test `.tsx` that spells an `FC` arrow
+with an expression body.
+
 ## The `docs-known-limit` invariant
 
 `__tests__/docs-known-limit.test.ts` fails when a plan or a spec under `docs/superpowers/`

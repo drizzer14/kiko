@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   columnsWithout,
+  addAccountCurrencyColumn,
   applyMigrationsThrough,
   executingDrizzle,
 } from '@kiko/test-support/real-sqlite';
@@ -52,6 +53,7 @@ const newMigratedDatabase = (): DatabaseSync => {
   const rawDatabase = new DatabaseSync(':memory:');
 
   applyMigrationsThrough(rawDatabase, '0043_add_import_times_rezoned');
+  addAccountCurrencyColumn(rawDatabase);
   rawDatabase.exec('PRAGMA foreign_keys = ON;');
 
   return rawDatabase;

@@ -32,6 +32,7 @@ jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
+  addAccountCurrencyColumn,
   applyAllMigrations,
   applyMigrationsThrough,
   columnsWithout,
@@ -162,7 +163,10 @@ const freshDatabase = (): DatabaseSync => {
 const versionTwoFile = async (source: DatabaseSync): Promise<{ text: string; key: string }> => {
   const sourceDrizzle = executingDrizzle<typeof database>(source);
   const tables = {
-    accounts: await sourceDrizzle.select().from(accounts).orderBy(asc(accounts.id)),
+    accounts: await sourceDrizzle
+      .select(columnsWithout(getTableColumns(accounts), 'currency'))
+      .from(accounts)
+      .orderBy(asc(accounts.id)),
     holdings: await sourceDrizzle.select().from(holdings).orderBy(asc(holdings.id)),
     transactions: await sourceDrizzle
       .select(
@@ -306,6 +310,7 @@ describe('restoring a .kiko file this build exported', () => {
     exported.exec(MIGRATION_0058_SQL);
     exported.exec(HISTORY_BACKFILL_CURSOR_SQL);
     exported.exec(EXCHANGE_STATE_SQL);
+    addAccountCurrencyColumn(exported);
 
     await restoreExportOf(exported);
 

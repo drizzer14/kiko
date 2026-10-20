@@ -40,6 +40,7 @@ import { withUsdtRescaled } from './with-usdt-rescaled';
 import { withWalkStateMoved } from './with-walk-state-moved';
 import { assertKnownCurrencies } from './assert-known-currencies';
 import { withImplicitAccountsMerged } from './with-implicit-accounts-merged';
+import { withAccountCurrencyDerived } from './with-account-currency-derived';
 
 /** Migration 0036's `MAX(time)` per holding, computed in one pass over
  * `allTransactions` rather than re-filtering the whole array per holding. */
@@ -729,6 +730,8 @@ export const withCryptoCashHoldingsMoved = (
       sortOrder: source.sortOrder,
       archivedAt: source.archivedAt,
       createdAt: source.createdAt,
+      // Undefined for a file written before the column: `withAccountCurrencyDerived` replaces it.
+      currency: source.currency,
     });
   }
 
@@ -818,7 +821,7 @@ export const restoreDataSnapshot = (
     // neither read nor rewrite those fields, so they take its holdings and
     // settings as their input.
     const {
-      accounts: accountsToInsert,
+      accounts: accountsAfterImplicitMerge,
       holdings: holdingsAfterImplicitMerge,
       reminders: remindersToInsert,
       settings: settingsAfterImplicitMerge,
@@ -829,6 +832,15 @@ export const restoreDataSnapshot = (
       reminders: snapshot.reminders ?? [],
       settings: snapshot.settings,
       syncState: snapshot.syncState,
+    });
+    // After the merge, as 0062 runs after 0050 and 0044: the rule reads each account's holdings
+    // as they now stand, and writes only the account currency. A file with no settings row
+    // restores one with the schema default, which is the base used here.
+    const accountsToInsert = withAccountCurrencyDerived({
+      fileAccounts: snapshot.accounts,
+      accounts: accountsAfterImplicitMerge,
+      holdings: holdingsAfterImplicitMerge,
+      baseCurrency: settingsAfterImplicitMerge[0]?.baseCurrency ?? 'UAH',
     });
     // After the merge, as 0061 runs after 0050: a merged account's Spot BTC holding now sits on
     // the kept account, which is where its walk state belongs. Reads only the holdings' account,

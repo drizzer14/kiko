@@ -6,8 +6,8 @@ import { Text as RNText } from 'react-native';
 // A screen test that needs to assert the resolved MoneyText `tone` mocks Text
 // with this component, exposing the tone via a testID while still rendering the
 // amount as plain text so every getByText assertion is unaffected.
-const MockTextTone = ({ tone, children }: { tone: string; children: ReactNode }) => (
-  <RNText testID={`text-tone-${tone}`}>{children}</RNText>
-);
+const MockTextTone = ({ tone, children }: { tone: string; children: ReactNode }) => {
+  return <RNText testID={`text-tone-${tone}`}>{children}</RNText>;
+};
 
 export default MockTextTone;

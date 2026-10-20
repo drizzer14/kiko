@@ -13,6 +13,7 @@ jest.mock('@kiko/db/client', () => {
 
 import { DatabaseSync } from 'node:sqlite';
 import { Money } from '@kiko/currency/money';
+import { settingsRepo } from '@kiko/settings';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { accountsRepo } from './accounts.repo';
@@ -80,6 +81,8 @@ beforeEach(() => {
 
 describe('accountsRepo.createImplicitHolding', () => {
   it('the first property create makes the sentinel account and the holding in it', async () => {
+    await settingsRepo.ensure();
+    await settingsRepo.setBaseCurrency('EUR');
     const { accountId, holdingId } = await accountsRepo.createImplicitHolding('property', flat);
 
     expect(accountsOfKind('property')).toEqual([
@@ -90,6 +93,7 @@ describe('accountsRepo.createImplicitHolding', () => {
         icon: null,
         color: null,
         institution: null,
+        currency: 'EUR',
         bank_id: null,
         sort_order: 0,
         archived_at: null,
@@ -258,21 +262,25 @@ describe('accountsRepo.createImplicitHolding: a holding type of the other kind',
 
 describe('accountsRepo.create', () => {
   it('refuses a property account, which is implicit', async () => {
-    await expect(accountsRepo.create({ name: 'Flats', kind: 'property' })).rejects.toThrow(
+    await expect(
+      accountsRepo.create({ name: 'Flats', kind: 'property', currency: 'UAH' }),
+    ).rejects.toThrow(
       'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
     );
     expect(count('accounts')).toBe(0);
   });
 
   it('refuses a debt account, which is implicit', async () => {
-    await expect(accountsRepo.create({ name: 'Loans', kind: 'debt' })).rejects.toThrow(
+    await expect(
+      accountsRepo.create({ name: 'Loans', kind: 'debt', currency: 'UAH' }),
+    ).rejects.toThrow(
       'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
     );
     expect(count('accounts')).toBe(0);
   });
 
   it('still creates an account of every other kind', async () => {
-    const accountId = await accountsRepo.create({ name: 'Wallet', kind: 'cash' });
+    const accountId = await accountsRepo.create({ name: 'Wallet', kind: 'cash', currency: 'UAH' });
 
     expect(accountsOfKind('cash').map((account) => account.id)).toEqual([accountId]);
   });

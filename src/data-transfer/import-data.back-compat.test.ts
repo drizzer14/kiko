@@ -115,6 +115,10 @@ const earlierBuildPayload = async (
     delete row.categorySetByHand;
   }
 
+  for (const row of tables.accounts as Record<string, unknown>[]) {
+    delete row.currency;
+  }
+
   for (const row of tables.settings as Record<string, unknown>[]) {
     for (const column of EARLIER_BUILD_SETTINGS_COLUMNS) {
       delete row[column];
@@ -140,6 +144,40 @@ const storedAccountIds = (): string[] =>
   (mockDatabase.prepare('SELECT id FROM accounts ORDER BY id').all() as { id: string }[]).map(
     ({ id }) => id,
   );
+
+const accountCurrencies = (): Record<string, string> =>
+  Object.fromEntries(
+    (
+      mockDatabase.prepare('SELECT id, currency FROM accounts ORDER BY id').all() as {
+        id: string;
+        currency: string;
+      }[]
+    ).map(({ id, currency }) => [id, currency]),
+  );
+
+// The rule restated from the stored rows, so the demo's accounts are checked against the data
+// itself and not against the function that derived them.
+const expectedAccountCurrencies = (): Record<string, string> => {
+  const baseCurrency = (
+    mockDatabase.prepare('SELECT base_currency AS value FROM settings WHERE id = 1').get() as {
+      value: string;
+    }
+  ).value;
+
+  return Object.fromEntries(
+    Object.keys(accountCurrencies()).map((accountId) => {
+      const openCurrencies = (
+        mockDatabase
+          .prepare(
+            'SELECT DISTINCT currency FROM holdings WHERE account_id = ? AND closed_at IS NULL',
+          )
+          .all(accountId) as { currency: string }[]
+      ).map(({ currency }) => currency);
+
+      return [accountId, openCurrencies.length === 1 ? (openCurrencies[0] ?? '') : baseCurrency];
+    }),
+  );
+};
 
 const storedImportTime = (): number =>
   (mockDatabase.prepare("SELECT time FROM transactions WHERE id = 't1'").get() as { time: number })
@@ -298,6 +336,24 @@ describe('importing a version 1 file an earlier build wrote', () => {
     });
   });
 
+  describe('a file written before accounts carried a currency', () => {
+    it('gives each account the currency of its open holdings, or the base currency', async () => {
+      const payload = await earlierBuildPayload(undefined, (database) => {
+        database.exec("UPDATE settings SET base_currency = 'USD'");
+        database.exec(`
+          INSERT INTO holdings (id, account_id, name, type, currency, closed_at)
+          VALUES ('open-eur', 'mono1', 'Card', 'card', 'EUR', NULL),
+                 ('closed-gbp', 'mono1', 'Old card', 'card', 'GBP', 1700000000000)
+        `);
+      });
+      mockDatabase = openDatabase();
+
+      await importVersionOne(payload);
+
+      expect(accountCurrencies()).toEqual({ bin1: 'USD', mono1: 'EUR' });
+    });
+  });
+
   describe('the demo file release 1.1 wrote', () => {
     // A frozen copy of the English demo file as 1.1 wrote it: export version 1,
     // none of the settings columns of 1.2. It shares the demo key.
@@ -316,6 +372,8 @@ describe('importing a version 1 file an earlier build wrote', () => {
       expect(summary.holdingsRestored).toBe(13);
       expect(summary.transactionsRestored).toBe(71);
       expect(storedAccountIds()).toHaveLength(8);
+      expect(accountCurrencies()).toEqual(expectedAccountCurrencies());
+      expect(new Set(Object.values(accountCurrencies())).size).toBeGreaterThan(1);
       expect(summary.unrestoredCredentials).toEqual([]);
       expect(importTimesRezoned()).toBe(1);
     });

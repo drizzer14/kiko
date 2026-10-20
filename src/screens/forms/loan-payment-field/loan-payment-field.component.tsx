@@ -27,39 +27,41 @@ const LoanPaymentField = ({
   undoLabel,
   onUndo,
   testID,
-}: LoanPaymentFieldProps): ReactElement => (
-  <Box gap={1}>
-    <PaymentHoldingField
-      label={label}
-      sheetTitle={sheetTitle}
-      noneLabel={noneLabel}
-      options={options}
-      selectedId={selectedId}
-      onSelect={onSelect}
-      testID={testID}
-    />
+}: LoanPaymentFieldProps): ReactElement => {
+  return (
+    <Box gap={1}>
+      <PaymentHoldingField
+        label={label}
+        sheetTitle={sheetTitle}
+        noneLabel={noneLabel}
+        options={options}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        testID={testID}
+      />
 
-    {/* An auto-suggested link (the matcher's own `setAutoLoanLinks` path)
-      surfaces its own caption + an Undo action here. A manual link (the
-      user's own pick, above) needs neither — it was already an explicit
-      choice, so undoing it is just picking a different option. */}
-    {linkSource === 'auto' && (
-      <Box gap={1}>
-        <Text variant="caption" tone="textSecondary">
-          {autoLinkedCaption}
-        </Text>
-        <Button
-          variant="secondaryTonal"
-          size="small"
-          fullWidth={false}
-          onPress={onUndo}
-          testID={testID ? `${testID}-undo` : undefined}
-        >
-          {undoLabel}
-        </Button>
-      </Box>
-    )}
-  </Box>
-);
+      {/* An auto-suggested link (the matcher's own `setAutoLoanLinks` path)
+        surfaces its own caption + an Undo action here. A manual link (the
+        user's own pick, above) needs neither — it was already an explicit
+        choice, so undoing it is just picking a different option. */}
+      {linkSource === 'auto' && (
+        <Box gap={1}>
+          <Text variant="caption" tone="textSecondary">
+            {autoLinkedCaption}
+          </Text>
+          <Button
+            variant="secondaryTonal"
+            size="small"
+            fullWidth={false}
+            onPress={onUndo}
+            testID={testID ? `${testID}-undo` : undefined}
+          >
+            {undoLabel}
+          </Button>
+        </Box>
+      )}
+    </Box>
+  );
+};
 
 export default LoanPaymentField;

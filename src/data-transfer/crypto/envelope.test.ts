@@ -97,7 +97,7 @@ describe('encryptEnvelope / decryptEnvelope', () => {
 // record the new length alone with the reason beside it.
 describe('the export version against the migration journal', () => {
   const VERSION_DECISIONS = {
-    version: 4,
+    version: 5,
     // Through 0050_implicit_property_debt_accounts, which merges each kind's
     // live property/debt accounts into one: a file that carries the merged rows
     // is an ordinary set of accounts to an older build (one property account
@@ -149,7 +149,11 @@ describe('the export version against the migration journal', () => {
     // Through 0061_exchange_state, a nullable column riding inside the sync state row, derived on
     // restore: an older build drops the key and its walks read from their floors, where keys
     // dedupe; so it needed no bump.
-    migrationCount: 62,
+    // Through 0062_add_account_currency, a column riding inside the account row (`currency`)
+    // that carries the user's own pick: an older build restoring such a file would drop the key
+    // and, on its own later upgrade, derive a different currency by the rule, so it must refuse
+    // the file by its version. This build restores an older file by deriving the currency.
+    migrationCount: 63,
   };
 
   it('has a version decision for every migration', () => {
