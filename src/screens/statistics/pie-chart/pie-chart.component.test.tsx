@@ -283,8 +283,8 @@ describe('PieChart', () => {
       expect(text.props.adjustsFontSizeToFit).toBe(true);
     });
 
-    // Literal widths (75% of the hole diameter) so a changed fraction fails here, not only
-    // in the component. The corners of the text box need room inside the ring.
+    // Literal widths (75% of the hole diameter) so a changed fraction fails this test.
+    // The corners of the text box need room inside the ring.
     it.each([
       ['the default size and ratio', {}, 87],
       ['a 200pt chart with the category ratio', { size: 200, innerRatio: 0.78 }, 117],

@@ -242,8 +242,7 @@ const PieChart: FC<PieChartProps> = ({
             pointerEvents="none"
             style={[styles.centerTotal, { width: size, height: size }]}
           >
-            {/* The text may use a fraction of the hole's width, so a long total shrinks early and
-                leaves a gap to the ring. */}
+            {/* Width capped to a fraction of the hole. */}
             <View style={{ maxWidth: size * innerRatio * CENTER_TOTAL_WIDTH_FRACTION }}>
               <MoneyText
                 money={centerTotal}
