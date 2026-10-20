@@ -87,15 +87,15 @@ export const signedMinorUnits = (currency: Currency, amount: string, sign: Sign)
 // "Trading fee" for a fee row) rather than a holding-name expense the list
 // never shows. Only the polarity of the sign matters to that helper, so the
 // current `mode` maps to a representative signed value (a negative for expense,
-// non-negative otherwise). Falls back to a concrete example ("Coffee") when no holding has
-// resolved yet, so there is nothing to preview — an example the user can type,
-// not an echo of the field's own label. Kept module-level and pure so its
-// branch stays out of the screen component's cognitive-complexity budget. Both
-// `expense` and `split` are expenses (a split's payment is negative), so each
-// maps to a negative representative value; only a plain income maps to
-// non-negative. Only an EDITED row carries the exchange marker — a duplicate is
-// written through `recordManual` without one, so its source's marker is not
-// read here.
+// non-negative otherwise). Falls back to a concrete example ("Coffee") when no
+// holding has resolved yet, so there is nothing to preview — an example the
+// user can type, not an echo of the field's own label. Kept module-level and
+// pure so its branch stays out of the screen component's cognitive-complexity
+// budget. Both `expense` and `split` are expenses (a split's payment is
+// negative), so each maps to a negative representative value; only a plain
+// income maps to non-negative. Only an EDITED row carries the exchange marker —
+// a duplicate is written through `recordManual` without one, so its source's
+// marker is not read here.
 export const resolveDescriptionPlaceholder = (input: {
   holding: Pick<HoldingRow, 'id' | 'name'> | undefined;
   existing:
