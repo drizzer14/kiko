@@ -15,7 +15,7 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // A card in the shared row fills its cell, so the two cards end at the taller one's height, and
   // so does the body inside it, which gives the chart body below the room to centre in.
-  gridCard: {
+  sharedRowFill: {
     flexGrow: 1,
   },
   // The chart, centred vertically in the room the shorter card has left under its title.

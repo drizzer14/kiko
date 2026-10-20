@@ -1,6 +1,7 @@
-// Two cards across need about 232 pt each with the gap and the padding. The user's simulator look
-// decides the final number.
-export const SHARED_ROW_MIN_PANE_WIDTH = 480;
+// Each card needs the pie legend's fixed columns (192 pt: value, percent, swatch and their gaps),
+// about 80 pt for the name label and the card padding. Two cards plus the row gap and the screen
+// padding come to 656 pt; a narrower pane leaves a name no room in the legend.
+export const SHARED_ROW_MIN_PANE_WIDTH = 656;
 
 /**
  * Whether Expenses by category and Account contribution share one row. Only a large window with a

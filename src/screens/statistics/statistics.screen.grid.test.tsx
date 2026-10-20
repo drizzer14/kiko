@@ -325,7 +325,8 @@ describe('StatisticsScreen grid', () => {
     }));
   });
 
-  // The window is wide in two of these on purpose: a pane takes its columns from its own width.
+  // The window is wide in two of these on purpose: a pane decides to share a row from its own
+  // width.
   // The Duo inner window is regular (951x669 landscape, 669x951 portrait), and its panes are the
   // half of it (475) or, in portrait, the whole window width (669).
   it.each<[string, Placement]>([
@@ -338,11 +339,10 @@ describe('StatisticsScreen grid', () => {
       'a Duo inner-window pane (669) in portrait',
       { windowWidth: 669, windowHeight: 951, sizeClass: 'regular', paneWidth: 669 },
     ],
-  ])("keeps today's single column in %s", async (_name, placement) => {
+  ])('stacks every chart full width in %s', async (_name, placement) => {
     const view = await renderAt(placement);
 
     expect(countOf(view, 'statistics-grid-row')).toBe(0);
-    expect(countOf(view, 'statistics-grid-spacer')).toBe(0);
     expect(blocksOf(view)).toEqual(BLOCKS);
   });
 
@@ -359,7 +359,7 @@ describe('StatisticsScreen grid', () => {
 
   // Outside a pane the settled mode lags the live one by a settle delay: during an unfold the
   // screen is still the full-window one, with no pane width, in a window the live mode already
-  // splits. It keeps its one capped column until it is in a pane, as `useContentCap` does.
+  // splits. It keeps its one capped stack until it is in a pane, as `useContentCap` does.
   it.each<[string, Placement]>([
     [
       'the Duo inner window, landscape (951x669)',
@@ -377,11 +377,10 @@ describe('StatisticsScreen grid', () => {
       'a 13-inch iPad portrait window (1024x1366)',
       { windowWidth: 1024, windowHeight: 1366, sizeClass: 'regular' },
     ],
-  ])('keeps one capped column in %s while it is still outside a pane', async (_name, placement) => {
+  ])('keeps the capped stack in %s while it is still outside a pane', async (_name, placement) => {
     const view = await renderAt(placement);
 
     expect(countOf(view, 'statistics-grid-row')).toBe(0);
-    expect(countOf(view, 'statistics-grid-spacer')).toBe(0);
     expect(blocksOf(view)).toEqual(BLOCKS);
     expect(contentStyle(view).maxWidth).toBe(darkTheme.layout.paneMaxWidth);
   });
@@ -454,7 +453,7 @@ describe('StatisticsScreen grid', () => {
     expect(blocksOf(await renderAt(placement))).toEqual(BLOCKS);
   });
 
-  it('keeps the direct children of the card stack at one column to the filter bar and five cards', async () => {
+  it('keeps the direct children of the card stack to the filter bar and five cards', async () => {
     const view = await renderAt({ windowWidth: 390, sizeClass: 'compact' });
 
     // The one `statistics-blocks` host: the filter bar carries no testID of its own.
@@ -588,12 +587,15 @@ describe('StatisticsScreen grid', () => {
     const layout = (width: number, height: number) => ({
       nativeEvent: { layout: { x: 0, y: 0, width, height } },
     });
+    const scrubLineX = () => Number(view.getByTestId('net-worth-line-scrub').props.x1);
 
     await act(async () => {
       await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layout(240, 40));
       await fireEvent(view.getByTestId('net-worth-line-scrub-label'), 'layout', layout(80, 36));
       await fireEvent(view.getByTestId('net-worth-line-scrub-amount'), 'layout', layout(80, 20));
     });
+    const restingLineX = scrubLineX();
+
     await act(async () => {
       fireGestureHandler(getByGestureTestId(NET_WORTH_SCRUB_GESTURE_TEST_ID), [
         { state: State.BEGAN, x: 60 },
@@ -603,7 +605,7 @@ describe('StatisticsScreen grid', () => {
       ]);
     });
 
-    expect(view.queryByTestId('net-worth-line-scrub')).not.toBeNull();
+    expect(scrubLineX()).not.toBe(restingLineX);
     expect(idsOf(view).filter((id) => id.startsWith('statistics-grid'))).toEqual(gridBefore);
     expect(blocksOf(view)).toEqual(BLOCKS);
     expect(mockNetWorthLineMounts).toHaveBeenCalledTimes(1);

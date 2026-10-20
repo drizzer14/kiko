@@ -171,15 +171,16 @@ const CATEGORY_LEGEND_MIN_SHARE = 0.05;
 const NET_WORTH_CARD_GAP = 3;
 
 /**
- * The Statistics tab: four blocks, in order — a converted net-worth line over
+ * The Statistics tab: five blocks, in order — a converted net-worth line over
  * time (historical rates), a by-type horizontal bar chart of current value, a
- * per-account pie of current net worth, and an "Expenses by Category" donut. A
- * shared account multi-select scopes all four blocks. The date range bounds
- * the net-worth line's window AND the category donut's transaction set; the
- * by-type bar and the account pie are "now" snapshots of current value and
- * read no range at all. The category donut additionally has its own,
- * separate category filter (title, then filter, then chart) and shows the
- * summed spend at its center. The bar and pies render immediately off the
+ * spending trend by category, an "Expenses by Category" donut, and a
+ * per-account pie of current net worth. A shared account multi-select scopes
+ * the blocks. The date range bounds the net-worth line's window, the trend's
+ * window AND the category donut's transaction set; the by-type bar and the
+ * account pie are "now" snapshots of current value and read no range at all.
+ * The category donut additionally has its own, separate category filter
+ * (title, then filter, then chart) and shows the summed spend at its center,
+ * and the trend has its own filter. The bar and pies render immediately off the
  * current rate table; the line reads the historical rate-history table and
  * shows a loading state while an incremental, non-blocking backfill fills it
  * in. All the chart math lives in `src/statistics/`; this screen only shapes
@@ -192,7 +193,7 @@ const StatisticsScreen: FC = () => {
   const isRowShared = isChartRowShared(useIsLargeWindow(), usePaneWidth());
   // A card keeps its own height, except in the shared row, where both cards take the row's and
   // each chart is centred in what is left under its title.
-  const sharedCardStyle = isRowShared ? styles.gridCard : undefined;
+  const sharedCardStyle = isRowShared ? styles.sharedRowFill : undefined;
   const sharedChartStyle = isRowShared ? styles.chartBody : undefined;
   // This screen sits in its own tab's stack; the stack hands a navigate it
   // cannot answer (a jump to the Accounts tab) up to the tab navigator.

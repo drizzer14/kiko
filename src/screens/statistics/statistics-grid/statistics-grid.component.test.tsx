@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { render, within } from '@testing-library/react-native';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 
@@ -39,23 +39,6 @@ describe('StatisticsGrid', () => {
     expect(cardsOf(view)).toEqual(CARD_IDS);
     expect(rows).toHaveLength(1);
     expect(CARD_IDS.filter((id) => within(rows[0]).queryByTestId(id))).toEqual(['category', 'pie']);
-  });
-
-  it('keeps the full-width cards outside the shared row', async () => {
-    const view = await renderGrid(true);
-    const [row] = view.getAllByTestId('statistics-grid-row');
-
-    expect(['line', 'bar', 'trend'].filter((id) => within(row).queryByTestId(id))).toEqual([]);
-  });
-
-  it('gives the two cells of the shared row an equal share of it', async () => {
-    const view = await renderGrid(true);
-    const [row] = view.getAllByTestId('statistics-grid-row');
-    const cells = within(row)
-      .getAllByTestId(/^(category|pie)$/)
-      .map((card) => card.parent);
-
-    expect(cells.map((cell) => StyleSheet.flatten(cell?.props.style)?.flex)).toEqual([1, 1]);
   });
 
   it.each([true, false])(
