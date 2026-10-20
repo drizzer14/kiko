@@ -1,7 +1,7 @@
 import maybe, { foldMap } from 'fnts/maybe';
-import { useDisplayRegions } from '@kiko/display-regions';
 import type { Edge } from 'react-native-safe-area-context';
 import { usePaneContext } from '@kiko/design-system/pane-context';
+import { useDisplayRegions, useIsLargeWindow } from '@kiko/display-regions';
 
 import { styles } from './screen.styles';
 
@@ -17,9 +17,10 @@ const LARGE_TITLE_EDGES: readonly Edge[] = ['left', 'right', 'bottom'];
 /**
  * The style that centres content and caps it at the pane max width, in a pane or anywhere on a
  * regular window (where one screen would otherwise stretch across the whole window), and nothing
- * on a compact window. It reads the size class, never the live layout mode: the panes follow the
- * settled mode, which lags the live one, so a screen that has not yet moved into a pane keeps its
- * cap through a resize into a split. A scrollable surface applies it to its content container,
+ * on a compact window. A pane of a large window is the exception: its content spans the pane. It
+ * reads the size class, never the live layout mode: the panes follow the settled mode, which lags
+ * the live one, so a screen that has not yet moved into a pane keeps its cap through a resize
+ * into a split. A scrollable surface applies it to its content container,
  * never to itself, so the scroll view and its indicator span the whole pane; a screen with no
  * scroll view takes it on its root, so the native header and bars, which are not inside it, still
  * span the pane.
@@ -27,6 +28,11 @@ const LARGE_TITLE_EDGES: readonly Edge[] = ['left', 'right', 'bottom'];
 export const useContentCap = () => {
   const pane = usePaneContext();
   const { horizontalSizeClass } = useDisplayRegions();
+  const isLarge = useIsLargeWindow();
+
+  if (pane !== null && isLarge) {
+    return undefined;
+  }
 
   if (pane !== null || horizontalSizeClass === 'regular') {
     return styles.paneCap;

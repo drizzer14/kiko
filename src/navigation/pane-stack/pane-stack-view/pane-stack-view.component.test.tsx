@@ -16,6 +16,7 @@ const mockUseFoldRegion = jest.fn((): FoldRegion => null);
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => 'single',
   useFoldRegion: () => mockUseFoldRegion(),
+  useIsLargeWindow: () => false,
 }));
 
 jest.mock('@react-navigation/native', () => ({

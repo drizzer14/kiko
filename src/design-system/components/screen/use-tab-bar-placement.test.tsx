@@ -7,6 +7,7 @@ const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'n
 jest.mock('@kiko/display-regions', () => ({
   useTabBarEdge: () => mockUseTabBarEdge(),
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+  useIsLargeWindow: () => false,
 }));
 
 let mockTabBarHeight = 0;

@@ -8,6 +8,7 @@ const mockLayout: { mode: LayoutMode } = { mode: 'single' };
 
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => mockLayout.mode,
+  useIsLargeWindow: () => false,
 }));
 
 type Draft = { text: string };

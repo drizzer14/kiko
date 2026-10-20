@@ -1,6 +1,6 @@
 import type { HorizontalSizeClass } from '../display-regions-native';
 
-import { type LayoutMode, resolveLayoutMode } from '.';
+import { isLargeWindow, type LayoutMode, resolveLayoutMode } from '.';
 
 describe('resolveLayoutMode', () => {
   it.each<[string, HorizontalSizeClass, number, number, LayoutMode]>([
@@ -22,5 +22,24 @@ describe('resolveLayoutMode', () => {
     ['a 13-inch-class landscape regular window', 'regular', 1366, 1024, 'columns'],
   ])('resolves %s', (_name, sizeClass, width, height, expected) => {
     expect(resolveLayoutMode(sizeClass, width, height)).toBe(expected);
+  });
+});
+
+describe('isLargeWindow', () => {
+  it.each<[string, HorizontalSizeClass, number, number, boolean]>([
+    ['an iPad mini in portrait', 'regular', 744, 1133, true],
+    ['an iPad mini in landscape', 'regular', 1133, 744, true],
+    ['an 11-inch iPad in portrait', 'regular', 820, 1180, true],
+    ['a 13-inch iPad in portrait', 'regular', 1032, 1376, true],
+    ['a 13-inch iPad in landscape', 'regular', 1376, 1032, true],
+    ['a square regular window at the split minimum', 'regular', 721, 721, true],
+    ['the Duo inner window in landscape', 'regular', 951, 669, false],
+    ['the Duo inner window in portrait', 'regular', 669, 951, false],
+    ['a split-view window in landscape', 'regular', 1032, 683, false],
+    ['a split-view window in portrait', 'regular', 683, 909, false],
+    ['a tall regular window one point below the split minimum', 'regular', 720, 1376, false],
+    ['a compact window as large as an iPad', 'compact', 1032, 1376, false],
+  ])('classifies %s', (_name, sizeClass, width, height, expected) => {
+    expect(isLargeWindow(sizeClass, width, height)).toBe(expected);
   });
 });

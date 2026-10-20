@@ -19,6 +19,7 @@ import {
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+  useIsLargeWindow: () => false,
 }));
 
 // Plain `createElement` (not JSX) — this module stays a `.ts` file, so JSX

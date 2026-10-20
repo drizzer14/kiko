@@ -37,6 +37,7 @@ jest.mock('@kiko/display-regions', () => {
         },
         () => mockModeStore.mode,
       ),
+    useIsLargeWindow: () => false,
   };
 });
 
