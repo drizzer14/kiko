@@ -315,11 +315,12 @@ that hole) — the Expenses-by-Category donut is the current caller.
 Read that file directly for the default ratio and exact prop shape
 rather than trusting a restated number here.
 
-The centre total uses `typography.title` with no `lineHeight`: iOS shrinks an
-`adjustsFontSizeToFit` text only when its width and height both overflow, so a fixed line
-height leaves it at the minimum scale. The text sits in a view whose `maxWidth` is the hole's
-width (`size * innerRatio`), so a long total shrinks inside the hole. See `pie-chart.styles.ts`
-(`centerAmount`) and `pie-chart.component.tsx`.
+The centre total uses `typography.title` with no `lineHeight`: the font scaler scales only the
+font, never the line height, so a fixed line height that overflows the box keeps it shrinking to
+the minimum scale (see `NSTextStorage+FontScaling.m` in react-native). The text sits in a view
+whose `maxWidth` is the hole's width (`size * innerRatio`) scaled by `CENTER_TOTAL_WIDTH_FRACTION`
+(read its value in `pie-chart.component.tsx`), because the box has height, so its corners need
+room inside the circle. See `pie-chart.styles.ts` (`centerAmount`).
 
 It also supports an opt-in `legendMinShare` prop: when set, the LEGEND
 (never the ring) crops to slices whose `share` is at or above that

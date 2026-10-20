@@ -47,6 +47,9 @@ const DEFAULT_SIZE = 200;
 const DEFAULT_TEST_ID = 'pie-chart';
 // The donut hole as a fraction of the outer radius — 0 would be a full pie.
 const DEFAULT_INNER_RATIO = 0.58;
+// The centre total may use this fraction of the hole's width: a line through the circle's centre
+// touches the ring only at its ends, but the text box has height, so its corners need room.
+const CENTER_TOTAL_WIDTH_FRACTION = 0.75;
 const FULL_TURN = 360;
 // A single full-circle slice (share ~1) would collapse an SVG arc to a
 // zero-length command (start point == end point), rendering nothing; cap the
@@ -239,8 +242,8 @@ const PieChart: FC<PieChartProps> = ({
             pointerEvents="none"
             style={[styles.centerTotal, { width: size, height: size }]}
           >
-            {/* The text may use at most the hole's width, so a long total shrinks to fit. */}
-            <View style={{ maxWidth: size * innerRatio }}>
+            {/* Width capped to a fraction of the hole. */}
+            <View style={{ maxWidth: size * innerRatio * CENTER_TOTAL_WIDTH_FRACTION }}>
               <MoneyText
                 money={centerTotal}
                 context="balance"
