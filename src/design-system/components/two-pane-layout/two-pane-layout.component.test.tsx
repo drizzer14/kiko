@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { render, screen } from '@testing-library/react-native';
@@ -52,6 +53,27 @@ const PaneProbe = ({ name }: { name: string }) => (
     <Text testID={`width-${name}`}>{String(usePaneWidth())}</Text>
   </>
 );
+
+const InsetProbe = ({ name }: { name: string }) => {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <>
+      <Text testID={`inset-${name}`}>{JSON.stringify(insets)}</Text>
+      <PaneProbe name={name} />
+    </>
+  );
+};
+
+// Records every mount of a pane child, so a remount shows as a second entry.
+const mountLog: string[] = [];
+const MountProbe = ({ name }: { name: string }) => {
+  useEffect(() => {
+    mountLog.push(name);
+  }, [name]);
+
+  return <Text>{name}</Text>;
+};
 
 const renderProbes = (mode?: 'rows') =>
   render(
@@ -211,17 +233,6 @@ describe('TwoPaneLayout', () => {
   describe('under a floating top tab bar, 1376x1032 with a 32 pt top inset', () => {
     const ROOT_INSETS = { top: 32, right: 0, bottom: 20, left: 0 };
 
-    const InsetProbe = ({ name }: { name: string }) => {
-      const insets = useSafeAreaInsets();
-
-      return (
-        <>
-          <Text testID={`inset-${name}`}>{JSON.stringify(insets)}</Text>
-          <PaneProbe name={name} />
-        </>
-      );
-    };
-
     const renderUnderBar = () =>
       render(
         <SafeAreaInsetsContext.Provider value={ROOT_INSETS}>
@@ -304,12 +315,13 @@ describe('TwoPaneLayout', () => {
   });
 
   it('keeps the frames at the window top and the insets under a bottom tab bar (Duo 951x669)', async () => {
+    const windowInsets = { top: 24, right: 0, bottom: 0, left: 0 };
     mockUseTabBarEdge.mockReturnValue('bottom');
     await render(
-      <SafeAreaInsetsContext.Provider value={{ top: 24, right: 0, bottom: 0, left: 0 }}>
+      <SafeAreaInsetsContext.Provider value={windowInsets}>
         <TwoPaneLayout
-          companion={<PaneProbe name="companion" />}
-          primary={<PaneProbe name="primary" />}
+          companion={<InsetProbe name="companion" />}
+          primary={<InsetProbe name="primary" />}
         />
       </SafeAreaInsetsContext.Provider>,
     );
@@ -317,9 +329,56 @@ describe('TwoPaneLayout', () => {
     expect(frameOf('two-pane-companion').y).toBe(0);
     expect(frameOf('two-pane-primary').y).toBe(0);
     expect(frameOf('two-pane-primary').height).toBe(669);
-    expect(screen.getByTestId('probe-primary').children).toEqual([
-      JSON.stringify(paneContextOf('columns', 'primary')),
-    ]);
+
+    for (const name of ['companion', 'primary'] as const) {
+      expect(JSON.parse(screen.getByTestId(`inset-${name}`).children.join(''))).toEqual(
+        windowInsets,
+      );
+      expect(screen.getByTestId(`probe-${name}`).children).toEqual([
+        JSON.stringify(paneContextOf('columns', name)),
+      ]);
+    }
+  });
+
+  // A pane child keeps its state across a band flip and a mode switch: the wrapper must not
+  // change the element type above it.
+  describe('keeps each pane child mounted', () => {
+    const tree = () => (
+      <SafeAreaInsetsContext.Provider value={{ top: 32, right: 0, bottom: 20, left: 0 }}>
+        <TwoPaneLayout
+          companion={<MountProbe name="companion" />}
+          primary={<MountProbe name="primary" />}
+        />
+      </SafeAreaInsetsContext.Provider>
+    );
+
+    beforeEach(() => {
+      mountLog.length = 0;
+      mockWindow.width = 1376;
+      mockWindow.height = 1032;
+    });
+
+    it('across a tab bar edge flip top, bottom, top', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      const view = await render(tree());
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      await view.rerender(tree());
+      mockUseTabBarEdge.mockReturnValue('top');
+      await view.rerender(tree());
+
+      expect([...mountLog].sort()).toEqual(['companion', 'primary']);
+    });
+
+    it('across columns to rows under a top bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      const view = await render(tree());
+      mockUseLayoutMode.mockReturnValue('rows');
+      mockWindow.width = 683;
+      mockWindow.height = 909;
+      await view.rerender(tree());
+
+      expect([...mountLog].sort()).toEqual(['companion', 'primary']);
+    });
   });
 
   describe('wideSlot companion on a 1366 x 1024 window', () => {

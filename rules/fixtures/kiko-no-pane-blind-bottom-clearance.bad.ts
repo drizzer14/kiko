@@ -73,3 +73,33 @@ export const requiredTopClearance = require('../../src/design-system/components/
 
 // EXPECT-FINDING
 export const loadTopClearanceLater = () => import('../../src/design-system/components/screen/top-clearance');
+
+// `useTopBarBand` is the top clearance read as a window band: a screen that adds it inside a pane
+// counts the band twice, so only `TwoPaneLayout` imports it. A named import from the Screen barrel.
+// EXPECT-FINDING
+import { useTopBarBand } from '@kiko/design-system/components/screen';
+
+export const barrelBand = useTopBarBand;
+
+// The band hook under an alias, from its module file.
+// EXPECT-FINDING
+import { useTopBarBand as useBand } from '@kiko/design-system/components/screen/use-top-bar-band';
+
+export const aliasedBand = useBand;
+
+// The band hook's module file, loaded by namespace, naming no function.
+// EXPECT-FINDING
+import * as bandModule from '../../src/design-system/components/screen/use-top-bar-band';
+
+export const bandModuleBinding = bandModule;
+
+// A value re-export of the band hook through the barrel.
+// EXPECT-FINDING
+export { useTopBarBand as reExportedBand } from '@kiko/design-system/components/screen';
+
+// The band hook's module file, loaded by CommonJS and by a dynamic import.
+// EXPECT-FINDING
+export const requiredBand = require('../../src/design-system/components/screen/use-top-bar-band').useTopBarBand;
+
+// EXPECT-FINDING
+export const loadBandLater = () => import('../../src/design-system/components/screen/use-top-bar-band');

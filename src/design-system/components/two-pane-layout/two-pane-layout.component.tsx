@@ -28,20 +28,22 @@ type PaneProps = {
 };
 
 // A pane that starts below the top-bar band already clears it, so it must not reserve the window's
-// top inset a second time: its screens read the inset from the context.
+// top inset a second time: its screens read the inset from the context. The provider is always
+// rendered and only its value switches, so a band flip never changes the element type and the
+// screens below keep their state.
 const Pane: FC<PaneProps> = ({ mode, pane, width, isBelowTopBand, children }) => {
   const insets = useSafeAreaInsets();
-  const paneInsets = useMemo(() => ({ ...insets, top: 0 }), [insets]);
-  const content = (
-    <PaneContext.Provider value={paneContextOf(mode, pane, isBelowTopBand)}>
-      <PaneWidthContext.Provider value={width}>{children}</PaneWidthContext.Provider>
-    </PaneContext.Provider>
+  const value = useMemo(
+    () => (isBelowTopBand ? { ...insets, top: 0 } : insets),
+    [insets, isBelowTopBand],
   );
 
-  return isBelowTopBand ? (
-    <SafeAreaInsetsContext.Provider value={paneInsets}>{content}</SafeAreaInsetsContext.Provider>
-  ) : (
-    content
+  return (
+    <SafeAreaInsetsContext.Provider value={value}>
+      <PaneContext.Provider value={paneContextOf(mode, pane, isBelowTopBand)}>
+        <PaneWidthContext.Provider value={width}>{children}</PaneWidthContext.Provider>
+      </PaneContext.Provider>
+    </SafeAreaInsetsContext.Provider>
   );
 };
 
@@ -82,7 +84,7 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
           mode={mode}
           pane="companion"
           width={geometry.companion.width}
-          isBelowTopBand={geometry.companion !== flat.companion}
+          isBelowTopBand={geometry.companion.y !== flat.companion.y}
         >
           {companion}
         </Pane>
@@ -98,7 +100,7 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
           mode={mode}
           pane="primary"
           width={geometry.primary.width}
-          isBelowTopBand={geometry.primary !== flat.primary}
+          isBelowTopBand={geometry.primary.y !== flat.primary.y}
         >
           {primary}
         </Pane>
