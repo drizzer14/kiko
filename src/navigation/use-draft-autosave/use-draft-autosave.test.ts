@@ -2,6 +2,10 @@ import { useState } from 'react';
 import type { LayoutMode } from '@kiko/display-regions';
 import { act, renderHook } from '@testing-library/react-native';
 
+import '@kiko/design-system/unistyles';
+
+import { SETTLE_DELAY_MS } from '../pane-stack';
+
 import { useDraftAutosave } from '.';
 
 const mockLayout: { mode: LayoutMode; isLarge: boolean } = { mode: 'single', isLarge: false };
@@ -193,22 +197,28 @@ describe('useDraftAutosave', () => {
 
   describe('a window that becomes large or stops being large with its layout mode held', () => {
     beforeEach(() => {
+      jest.useFakeTimers();
       mockLayout.mode = 'columns';
     });
 
-    it('saves the draft as typed when the window becomes large', async () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('saves the draft as typed once the window that became large has settled', async () => {
       const saveDraft = jest.fn();
       const { result, rerender } = await renderForm(saveDraft);
 
       await act(async () => result.current.setText('half typed'));
       mockLayout.isLarge = true;
       await rerender({});
+      await act(async () => jest.advanceTimersByTime(SETTLE_DELAY_MS));
 
       expect(saveDraft).toHaveBeenCalledTimes(1);
       expect(saveDraft).toHaveBeenCalledWith({ text: 'half typed' });
     });
 
-    it('saves the draft as typed when the window stops being large', async () => {
+    it('saves the draft as typed once the window that stopped being large has settled', async () => {
       mockLayout.isLarge = true;
       const saveDraft = jest.fn();
       const { result, rerender } = await renderForm(saveDraft);
@@ -216,6 +226,7 @@ describe('useDraftAutosave', () => {
       await act(async () => result.current.setText('half typed'));
       mockLayout.isLarge = false;
       await rerender({});
+      await act(async () => jest.advanceTimersByTime(SETTLE_DELAY_MS));
 
       expect(saveDraft).toHaveBeenCalledTimes(1);
       expect(saveDraft).toHaveBeenCalledWith({ text: 'half typed' });
@@ -240,6 +251,44 @@ describe('useDraftAutosave', () => {
       await rerender({});
 
       expect(saveDraft).not.toHaveBeenCalled();
+    });
+  });
+
+  // The Home and Statistics tabs merge only when the large window has settled, and that is the
+  // moment the form is carried, so the draft saved then must hold what was typed during the wait.
+  describe('a window that becomes large, which merges the tabs after the settle delay', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      mockLayout.mode = 'columns';
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('saves nothing before the large window has lasted the settle delay', async () => {
+      const saveDraft = jest.fn();
+      const { result, rerender } = await renderForm(saveDraft);
+
+      await act(async () => result.current.setText('ab'));
+      mockLayout.isLarge = true;
+      await rerender({});
+      await act(async () => jest.advanceTimersByTime(SETTLE_DELAY_MS - 1));
+
+      expect(saveDraft).not.toHaveBeenCalled();
+    });
+
+    it('saves the text typed during the settle delay once the tabs merge', async () => {
+      const saveDraft = jest.fn();
+      const { result, rerender } = await renderForm(saveDraft);
+
+      await act(async () => result.current.setText('ab'));
+      mockLayout.isLarge = true;
+      await rerender({});
+      await act(async () => result.current.setText('typed during the delay'));
+      await act(async () => jest.advanceTimersByTime(SETTLE_DELAY_MS));
+
+      expect(saveDraft.mock.calls).toEqual([[{ text: 'typed during the delay' }]]);
     });
   });
 

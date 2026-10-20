@@ -216,6 +216,16 @@ const StatisticsScreen: FC = () => {
   const isVisible = useIsScreenVisible();
   const liveOptions = { cached: true, paused: !isVisible } as const;
 
+  // A filter sheet is a native Modal: it stays presented over whatever tab the user switched to.
+  // Both controls keep their open state to themselves, so they are mounted afresh, closed, each
+  // time the screen stops being shown. Visibility, not focus, as above.
+  const [sheetGeneration, setSheetGeneration] = useState(0);
+  useEffect(() => {
+    if (!isVisible) {
+      setSheetGeneration((generation) => generation + 1);
+    }
+  }, [isVisible]);
+
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.listQuery(),
     ['accounts'],
@@ -1209,6 +1219,7 @@ const StatisticsScreen: FC = () => {
       <Box gap={4} testID="statistics-blocks">
         <Box direction="row" gap={3} style={styles.filterBar}>
           <FilterMenu
+            key={sheetGeneration}
             label={t('statistics.filterAccounts')}
             sheetTitle={t('statistics.filterAccountsSheetTitle')}
             testID="statistics-account-filter"
@@ -1309,6 +1320,7 @@ const StatisticsScreen: FC = () => {
 
                 <Box direction="row" gap={3} style={styles.filterBar}>
                   <FilterMenu
+                    key={sheetGeneration}
                     label={t('statistics.filterCategories')}
                     sheetTitle={t('statistics.filterCategoriesSheetTitle')}
                     testID="statistics-category-filter"
@@ -1345,6 +1357,7 @@ const StatisticsScreen: FC = () => {
 
                 <Box direction="row" style={styles.filterBar}>
                   <TrendFilterField
+                    key={sheetGeneration}
                     testID="statistics-trend-filter"
                     filter={appliedTrendFilter}
                     categoryOptions={categoryOptions}

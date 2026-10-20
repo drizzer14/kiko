@@ -15,31 +15,17 @@ import type { TabParamList } from '../types';
 import { useIsMergedHome } from './use-is-merged-home';
 
 type StackState = NavigationState | PartialState<NavigationState>;
-type RouteInState = StackState['routes'][number];
 type CarriedRoute = { name: string; params?: object };
 type TabNavigation = NavigationProp<TabParamList>;
 type Container = NavigationContainerRef<TabParamList>;
 
+const carriedRoutes = (stack: StackState | undefined): CarriedRoute[] =>
+  (stack?.routes ?? []).slice(1).map(({ name, params }) => ({ name, params }));
+
 // The container's state, not the tab's own: the tab's `getState` lags a nested navigator that has
 // just mounted, so it would not show the Home stack of a tab shown for the first time.
-const routeWhere = (
-  state: StackState | undefined,
-  matches: (route: RouteInState) => boolean,
-): RouteInState | undefined =>
-  state?.routes
-    .map((route) => (matches(route) ? route : routeWhere(route.state, matches)))
-    .find((found) => found !== undefined);
-
-// Home is the Statistics stack's companion default, and Home is the primary pane of the Home tab:
-// carrying it would put a second Home in the stack.
-const carriedRoutes = (stack: StackState | undefined): CarriedRoute[] =>
-  (stack?.routes ?? [])
-    .slice(1)
-    .filter(({ name }) => name !== 'Home')
-    .map(({ name, params }) => ({ name, params }));
-
 const homeStackOf = (container: Container): StackState | undefined =>
-  routeWhere(container.getRootState(), ({ name }) => name === 'HomeTab')?.state;
+  container.getRootState()?.routes.find(({ name }) => name === 'HomeTab')?.state;
 
 // Each route opens above the one before it, so the opener is read again after every dispatch.
 // Returns false while the Home stack does not exist yet.
@@ -84,15 +70,26 @@ export const useLeaveStatisticsTabWhenMerged = (): void => {
   const [carrying, setCarrying] = useState<readonly CarriedRoute[]>([]);
 
   useEffect(() => {
-    if (!isMergedHome || navigation?.isFocused() !== true || container === undefined) {
-      return;
+    if (!isMergedHome || navigation === undefined || container === undefined) {
+      return undefined;
     }
 
-    const statistics = routeWhere(container.getRootState(), ({ key }) => key === route?.key);
+    const leave = (): void => {
+      if (!navigation.isFocused()) {
+        return;
+      }
 
-    // Read before the tab is left: the stack pops back to its root when its tab blurs.
-    setCarrying(carriedRoutes(statistics?.state));
-    navigation.navigate('HomeTab');
+      const statistics = container.getRootState()?.routes.find(({ key }) => key === route?.key);
+
+      // Read before the tab is left: the stack pops back to its root when its tab blurs.
+      setCarrying(carriedRoutes(statistics?.state));
+      navigation.navigate('HomeTab');
+    };
+
+    leave();
+
+    // A tab mounted before the window merged stays mounted, so a later visit to it is a focus.
+    return navigation.addListener('focus', leave);
   }, [isMergedHome, navigation, container, route?.key]);
 
   useEffect(() => {

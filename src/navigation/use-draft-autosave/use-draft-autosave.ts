@@ -1,5 +1,7 @@
+import { useLayoutMode } from '@kiko/display-regions';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useIsLargeWindow, useLayoutMode } from '@kiko/display-regions';
+
+import { useIsMergedHome } from '../merged-home';
 
 /**
  * Decides when a form's draft is saved: after a field blurs, when the window changes between
@@ -15,7 +17,9 @@ import { useIsLargeWindow, useLayoutMode } from '@kiko/display-regions';
  * because a fold or unfold remounts the screen a moment later: a field still being typed in, or a
  * choice made since the last blur, would be lost without it. A window that turns large keeps the
  * layout mode (columns stay columns) yet merges the Home and Statistics tabs, and the form is
- * carried to the Home tab with only what its route params hold.
+ * carried to the Home tab with only what its route params hold. The merge comes after the large
+ * window has settled, so that is when the draft is saved: what is typed while the window is still
+ * resizing goes along.
  */
 export const useDraftAutosave = <Draft>(
   draft: Draft,
@@ -28,8 +32,8 @@ export const useDraftAutosave = <Draft>(
   const [blurs, setBlurs] = useState(0);
   const layoutMode = useLayoutMode();
   const previousLayoutMode = useRef(layoutMode);
-  const isLargeWindow = useIsLargeWindow();
-  const previousIsLargeWindow = useRef(isLargeWindow);
+  const isMergedHome = useIsMergedHome();
+  const previousIsMergedHome = useRef(isMergedHome);
 
   const save = useCallback(() => {
     const text = JSON.stringify(latest.current);
@@ -53,13 +57,13 @@ export const useDraftAutosave = <Draft>(
   useEffect(() => {
     if (
       previousLayoutMode.current !== layoutMode ||
-      previousIsLargeWindow.current !== isLargeWindow
+      previousIsMergedHome.current !== isMergedHome
     ) {
       previousLayoutMode.current = layoutMode;
-      previousIsLargeWindow.current = isLargeWindow;
+      previousIsMergedHome.current = isMergedHome;
       save();
     }
-  }, [layoutMode, isLargeWindow, save]);
+  }, [layoutMode, isMergedHome, save]);
 
   return useCallback(() => setBlurs((count) => count + 1), []);
 };

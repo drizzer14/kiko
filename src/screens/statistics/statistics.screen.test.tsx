@@ -3227,3 +3227,54 @@ describe('StatisticsScreen — paused while hidden', () => {
     expect(mockRunBackfill.mock.calls.length).toBe(callsBefore);
   });
 });
+
+// A sheet is a native Modal: it stays presented over whatever tab the user switched to, unless the
+// screen closes it when its tab stops being shown.
+describe('StatisticsScreen — filter sheets when the screen stops being shown', () => {
+  const SHEETS = [
+    ['account filter', ACCOUNT_FILTER, `${ACCOUNT_FILTER}-option-${FILTER_ALL}`],
+    ['trend filter', 'statistics-trend-filter', 'statistics-trend-filter-save'],
+  ] as const;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsScreenVisible.mockReturnValue(true);
+    seedFull();
+  });
+
+  const openSheet = async (
+    view: Awaited<ReturnType<typeof renderScreen>>,
+    trigger: string,
+  ): Promise<void> => {
+    await act(async () => {
+      await fireEvent.press(view.getByTestId(trigger));
+    });
+  };
+
+  it.each(SHEETS)(
+    'keeps the %s sheet open across a rerender while shown',
+    async (_name, trigger, content) => {
+      const view = await renderScreen();
+
+      await openSheet(view, trigger);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).not.toBeNull();
+    },
+  );
+
+  it.each(SHEETS)(
+    'closes the %s sheet when the screen stops being shown',
+    async (_name, trigger, content) => {
+      const view = await renderScreen();
+
+      await openSheet(view, trigger);
+      expect(view.queryByTestId(content)).not.toBeNull();
+
+      mockUseIsScreenVisible.mockReturnValue(false);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).toBeNull();
+    },
+  );
+});

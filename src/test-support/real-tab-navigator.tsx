@@ -1,52 +1,19 @@
 // The REAL React Navigation routers for the navigator tests: a spy cannot show
 // which screens end up on the Accounts stack, or what happens when the tab has
 // not mounted yet. The Accounts tab's screens are stubs that print their params.
-import {
-  createNavigatorFactory,
-  NavigationContainer,
-  TabRouter,
-  useNavigationBuilder,
-} from '@react-navigation/native';
+import type { FC } from 'react';
+import { Text } from 'react-native';
 import {
   createNativeStackNavigator,
   type NativeStackScreenProps,
 } from '@react-navigation/native-stack';
-import { Text, View } from 'react-native';
 import { render } from '@testing-library/react-native';
-import { type FC, type ReactNode, useState } from 'react';
 import { navigationRef } from '@kiko/navigation/navigation-ref';
 import { resetTabStackOnBlur } from '@kiko/navigation/reset-tab-stack-on-blur';
 import type { AccountsStackParamList, TabParamList } from '@kiko/navigation/types';
+import { createNavigatorFactory, NavigationContainer } from '@react-navigation/native';
 
-// Mounts a tab only once it is first focused and keeps it mounted after, as
-// the native bottom tabs do, on the real TabRouter.
-const LazyTabs: FC<{ children: ReactNode; initialRouteName?: string }> = ({
-  children,
-  initialRouteName,
-}) => {
-  const { state, descriptors, NavigationContent } = useNavigationBuilder(TabRouter, {
-    children,
-    initialRouteName,
-  });
-  const focusedKey = state.routes[state.index]?.key ?? '';
-  const [loadedKeys, setLoadedKeys] = useState([focusedKey]);
-
-  if (!loadedKeys.includes(focusedKey)) {
-    setLoadedKeys([...loadedKeys, focusedKey]);
-  }
-
-  return (
-    <NavigationContent>
-      {state.routes
-        .filter((route) => loadedKeys.includes(route.key))
-        .map((route) => (
-          <View key={route.key} style={route.key === focusedKey ? undefined : { display: 'none' }}>
-            {descriptors[route.key]?.render()}
-          </View>
-        ))}
-    </NavigationContent>
-  );
-};
+import LazyTabs from './lazy-tabs';
 
 const Tabs = createNavigatorFactory(LazyTabs)();
 const AccountsStack = createNativeStackNavigator<AccountsStackParamList>();

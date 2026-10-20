@@ -19,8 +19,10 @@ jest.mock('react-i18next', () => ({
 const mockLeaveStatisticsTabWhenMerged = jest.fn();
 jest.mock('@kiko/navigation/merged-home', () => ({
   useLeaveStatisticsTabWhenMerged: () => mockLeaveStatisticsTabWhenMerged(),
+  useIsMergedHome: () => true,
 }));
 
+import HomeStack from '../home-stack';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
@@ -68,6 +70,18 @@ describe('StatisticsStack', () => {
     StatisticsStack({});
 
     expect(mockLeaveStatisticsTabWhenMerged).toHaveBeenCalledTimes(1);
+  });
+
+  // A merged window carries the Statistics stack's routes into the Home stack, and a pane open of
+  // a name the Home stack does not register is dropped.
+  it('registers on the Home stack every screen it registers itself', () => {
+    const navigator = HomeStack({}) as ReactElement<{ children: ScreenElement[] }>;
+    const homeScreenNames = [navigator.props.children]
+      .flat()
+      .filter(isValidElement)
+      .map((screen) => (screen as ScreenElement).props.name);
+
+    expect(homeScreenNames).toEqual(expect.arrayContaining(screenNames()));
   });
 
   it('is rooted at the Statistics screen', () => {

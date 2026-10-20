@@ -376,6 +376,49 @@ describe('TwoPaneLayout', () => {
     });
   });
 
+  describe('the top inset a pane child reads, as the tab bar edge flips', () => {
+    const WINDOW_INSETS = { top: 32, right: 0, bottom: 20, left: 0 };
+
+    const tree = () => (
+      <SafeAreaInsetsContext.Provider value={WINDOW_INSETS}>
+        <TwoPaneLayout
+          companion={<InsetProbe name="companion" />}
+          primary={<InsetProbe name="primary" />}
+        />
+      </SafeAreaInsetsContext.Provider>
+    );
+
+    const topInsetOf = (name: 'companion' | 'primary'): number =>
+      JSON.parse(screen.getByTestId(`inset-${name}`).children.join('')).top;
+
+    beforeEach(() => {
+      mockWindow.width = 1376;
+      mockWindow.height = 1032;
+    });
+
+    it('goes from zero back to the window inset when the bar moves from top to bottom', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      const view = await render(tree());
+      const before = [topInsetOf('companion'), topInsetOf('primary')];
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      await view.rerender(tree());
+
+      expect(before).toEqual([0, 0]);
+      expect([topInsetOf('companion'), topInsetOf('primary')]).toEqual([32, 32]);
+    });
+
+    it('goes from the window inset to zero when the bar moves from bottom to top', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      const view = await render(tree());
+      const before = [topInsetOf('companion'), topInsetOf('primary')];
+      mockUseTabBarEdge.mockReturnValue('top');
+      await view.rerender(tree());
+
+      expect(before).toEqual([32, 32]);
+      expect([topInsetOf('companion'), topInsetOf('primary')]).toEqual([0, 0]);
+    });
+  });
+
   describe.each([
     [1376, 1032],
     [1100, 820],

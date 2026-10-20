@@ -4,12 +4,11 @@ import {
   createNavigatorFactory,
   NavigationContainer,
   type ParamListBase,
-  TabRouter,
-  useNavigationBuilder,
 } from '@react-navigation/native';
 import { View } from 'react-native';
+import { type FC, useEffect } from 'react';
+import LazyTabs from '@kiko/test-support/lazy-tabs';
 import { act, render } from '@testing-library/react-native';
-import { type FC, type ReactNode, useEffect, useState } from 'react';
 
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -75,35 +74,6 @@ const elapse = async (milliseconds: number): Promise<void> => {
 };
 
 const settle = (): Promise<void> => elapse(SETTLE_DELAY_MS);
-
-// Mounts a tab on its first focus and keeps it mounted, as the native bottom tabs do.
-const LazyTabs: FC<{ children: ReactNode; initialRouteName?: string }> = ({
-  children,
-  initialRouteName,
-}) => {
-  const { state, descriptors, NavigationContent } = useNavigationBuilder(TabRouter, {
-    children,
-    initialRouteName,
-  });
-  const focusedKey = state.routes[state.index]?.key ?? '';
-  const [loadedKeys, setLoadedKeys] = useState([focusedKey]);
-
-  if (!loadedKeys.includes(focusedKey)) {
-    setLoadedKeys([...loadedKeys, focusedKey]);
-  }
-
-  return (
-    <NavigationContent>
-      {state.routes
-        .filter((route) => loadedKeys.includes(route.key))
-        .map((route) => (
-          <View key={route.key} style={route.key === focusedKey ? undefined : { display: 'none' }}>
-            {descriptors[route.key]?.render()}
-          </View>
-        ))}
-    </NavigationContent>
-  );
-};
 
 // The key a pane navigator gives the default of an empty companion pane.
 const COMPANION_DEFAULT_KEY = 'pane-default:companion';
@@ -323,6 +293,17 @@ describe('the Statistics tab when the window turns into a merged Home', () => {
       await settle();
 
       expect(focusedTab()).toBe('AccountsTab');
+    });
+
+    it('leaves the Statistics tab when it is navigated to while merged, after it mounted', async () => {
+      await renderTabs('StatisticsTab');
+      await goToTab('AccountsTab');
+      await setLargeWindow(true);
+      await settle();
+      await goToTab('StatisticsTab');
+      await settle();
+
+      expect(focusedTab()).toBe('HomeTab');
     });
   });
 
