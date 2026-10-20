@@ -180,12 +180,36 @@ const waitFor = async (condition: () => boolean): Promise<void> => {
   }
 };
 
-afterEach(() => {
-  for (const sandbox of sandboxes) {
-    for (const child of sandbox.children) {
+// About 30 s (TEARDOWN_POLL_LIMIT x 20 ms), below the 120 s hook timeout and well above a green
+// teardown.
+const TEARDOWN_POLL_LIMIT = 1500;
+
+const hasExited = (child: ChildProcess): boolean =>
+  child.exitCode !== null || child.signalCode !== null;
+
+// A killed waiter's TERM trap still removes its ticket, claim, and lock in the sandbox, so the
+// folders are removed only once every child has exited: an rmSync that races the trap fails with
+// ENOTEMPTY on a loaded machine.
+afterEach(async () => {
+  const children = sandboxes.flatMap((sandbox) => sandbox.children);
+
+  for (const child of children) {
+    if (!hasExited(child)) {
       child.kill();
     }
+  }
 
+  // Bounded by a poll count, and it breaks instead of throwing (unlike waitFor) so the sandboxes
+  // are still removed: a red row can leave a stub loop that ends only when its sandbox is removed.
+  for (let poll = 0; !children.every(hasExited); poll += 1) {
+    if (poll >= TEARDOWN_POLL_LIMIT) {
+      break;
+    }
+
+    await new Promise((settle) => setTimeout(settle, 20));
+  }
+
+  for (const sandbox of sandboxes) {
     rmSync(sandbox.root, { recursive: true, force: true });
   }
 
@@ -1654,10 +1678,12 @@ describe('scripts/job-queue.sh battery power', () => {
 
   it('asks pmset for the battery state', () => {
     const sandbox = createSandbox();
-    writeExecutable(
-      join(sandbox.root, 'bin/pmset'),
-      '#!/usr/bin/env bash\nprintf "pmset %s\\n" "$*" >> "$KIKO_STUB_CALLS"\ncat "$KIKO_STUB_POWER"\n',
-    );
+    warmExecutables([
+      writeExecutable(
+        join(sandbox.root, 'bin/pmset'),
+        '#!/usr/bin/env bash\nprintf "pmset %s\\n" "$*" >> "$KIKO_STUB_CALLS"\ncat "$KIKO_STUB_POWER"\n',
+      ),
+    ]);
 
     runQueue(sandbox, 'verify', createWorktree(sandbox, 'one'), 'one');
 
@@ -2042,15 +2068,21 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
     const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
     const calls = join(sandbox.root, 'git-calls');
-    writeExecutable(
-      join(sandbox.root, 'bin/git'),
-      [
-        '#!/usr/bin/env bash',
-        `printf '%s\\n' "$*" >> '${calls}'`,
-        `exec '${realGit}' "$@"`,
-        '',
-      ].join('\n'),
-    );
+    // The paths travel in the environment so the warm-up run, which has none, appends nothing
+    // and execs nothing.
+    sandbox.environment.KIKO_STUB_GIT_CALLS = calls;
+    sandbox.environment.KIKO_STUB_REAL_GIT = realGit;
+    warmExecutables([
+      writeExecutable(
+        join(sandbox.root, 'bin/git'),
+        [
+          '#!/usr/bin/env bash',
+          'printf \'%s\\n\' "$*" >> "$KIKO_STUB_GIT_CALLS"',
+          'exec "$KIKO_STUB_REAL_GIT" "$@"',
+          '',
+        ].join('\n'),
+      ),
+    ]);
 
     runQueue(sandbox, 'verify', worktree, 'one');
 

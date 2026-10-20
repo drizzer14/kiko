@@ -2919,7 +2919,21 @@ they land.
 A test that writes and execs a fresh script on macOS warms it once before any time bound starts
 (`warmExecutables` in `__tests__/test-support/warm-executables.ts`). The first exec of a
 never-seen script waits on XProtect: about 0.3 s alone, seconds under fan-out. Widen a time
-budget only with that measurement, never as a guess.
+budget only with that measurement, never as a guess. A suite that execs a fresh script in every
+row of a table, under a per-test jest timeout, writes and warms those scripts once in a
+describe-level `beforeAll` with its own timeout and passes per-row paths by environment variable
+(`__tests__/mutation-ranges.test.ts`, the signal rows).
+
+Warm only a stub that is harmless with an empty environment. A stub that reads its inputs from
+env is safe to warm (job-queue's git stub reads `KIKO_STUB_GIT_CALLS` / `KIKO_STUB_REAL_GIT`). A
+stub that needs env or sandbox state to be safe is not warmed (job-queue's `installMake` stubs
+write into the cwd). A stub whose cost is its own work needs no warm-up (guard-replay's slow
+Semgrep stub under a 1 s replay deadline: a slower first exec only makes the expected deadline
+more certain).
+
+A test that kills children in a teardown awaits each child's exit, with a pass-count bound (never
+a timer), before `rmSync` of the sandbox; else the removal races a live trap (ENOTEMPTY). See the
+`afterEach` in `__tests__/job-queue.test.ts`.
 
 ## Harness and hook changes land through a worktree
 
@@ -3029,6 +3043,8 @@ mechanizable (see harness-workflow's "Classify every finding").
      with `join(..., '<name>')` for a path inside it, never from the clock.
      The invariant also covers the queue tests (`job-queue.test.ts`,
      `ff-main.test.ts`): no settle sleep; prove concurrency by a rendezvous.
+     A teardown poll may break at its pass-count bound instead of failing,
+     so the sandbox removal still runs (the `job-queue.test.ts` afterEach).
      The poll-bound exemption applies only inside the braces of the loop
      that holds the bound; a renamed `timers/promises` `setTimeout` import
      counts as a sleep. Known limits: braces are counted per line, string,

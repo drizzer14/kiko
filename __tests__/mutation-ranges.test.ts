@@ -287,6 +287,16 @@ const LOGGING_REMOVE_STUB = [
 
 type SignalledRun = { state: string; removals: string; exitCode: number | null };
 
+// The stubs are written and warmed once for the signal rows, in a hook with its own generous
+// budget: the first exec of a never-seen script on macOS waits on a security scan, which under
+// load outlasts a row's 20 s. The stubs read their per-row paths from environment variables, so
+// a row runs no never-seen script.
+const SIGNAL_STUBS_HOOK_TIMEOUT = 120_000;
+
+let stubDirectory = '';
+let stubBinDirectory = '';
+let stubStryker = '';
+
 const signalDuringRangesReader = async (
   mode: '--list' | 'a run',
   signal: 'TERM' | 'INT',
@@ -296,13 +306,6 @@ const signalDuringRangesReader = async (
   const { script, root } = buildChangedLinesRepository(join(sandbox, 'project'));
   const state = join(sandbox, 'state');
   mkdirSync(state);
-  mkdirSync(join(sandbox, 'bin'));
-  const stryker = writeExecutable(join(sandbox, 'stryker'), '#!/usr/bin/env bash\nexit 0\n');
-  warmExecutables([
-    writeExecutable(join(sandbox, 'bin/node'), HOLDING_NODE_STUB),
-    writeExecutable(join(sandbox, 'bin/rm'), LOGGING_REMOVE_STUB),
-    stryker,
-  ]);
   const ready = join(sandbox, 'ready');
   const removals = join(sandbox, 'removals');
 
@@ -310,11 +313,11 @@ const signalDuringRangesReader = async (
     cwd: root,
     env: {
       ...process.env,
-      PATH: `${join(sandbox, 'bin')}:${process.env.PATH}`,
+      PATH: `${stubBinDirectory}:${process.env.PATH}`,
       TMPDIR: state,
       KIKO_MUTATION_BASE: 'main',
       KIKO_MUTATION_FULL: undefined,
-      KIKO_MUTATION_BIN: stryker,
+      KIKO_MUTATION_BIN: stubStryker,
       KIKO_REAL_NODE: process.execPath,
       KIKO_STUB_READY: ready,
       KIKO_STUB_RELEASE: join(sandbox, 'release'),
@@ -337,6 +340,22 @@ const signalDuringRangesReader = async (
 };
 
 describe('mutation.sh signals while the changed-line reader runs', () => {
+  beforeAll(() => {
+    stubDirectory = mkdtempSync(join(tmpdir(), 'kiko-mutation-signal-stubs-'));
+    stubBinDirectory = join(stubDirectory, 'bin');
+    mkdirSync(stubBinDirectory);
+    stubStryker = writeExecutable(join(stubDirectory, 'stryker'), '#!/usr/bin/env bash\nexit 0\n');
+    warmExecutables([
+      writeExecutable(join(stubBinDirectory, 'node'), HOLDING_NODE_STUB),
+      writeExecutable(join(stubBinDirectory, 'rm'), LOGGING_REMOVE_STUB),
+      stubStryker,
+    ]);
+  }, SIGNAL_STUBS_HOOK_TIMEOUT);
+
+  afterAll(() => {
+    rmSync(stubDirectory, { recursive: true, force: true });
+  });
+
   it.each([
     ['--list', 'TERM', 143],
     ['--list', 'INT', 130],
