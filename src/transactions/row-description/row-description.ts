@@ -1,5 +1,6 @@
 import { match, P } from 'ts-pattern';
 import type { TFunction } from 'i18next';
+import maybe, { foldMap } from 'fnts/maybe';
 import type { TransactionRow } from '@kiko/db';
 
 import {
@@ -17,23 +18,19 @@ const codeCounterpartDescription = (
   amountMinorUnits: number,
   t: TFunction,
 ): string | undefined => {
-  const counterpart = parseUntrackedCounterpart(untrackedCounterpart);
-
-  if (counterpart === undefined) {
-    return undefined;
-  }
-
-  return match(counterpart)
-    .with({ kind: 'wallet' }, ({ name }) =>
-      transferLegDescription({ counterpartName: name, amountMinorUnits, t }),
-    )
-    .with({ kind: 'asset' }, ({ code }) =>
-      exchangeLegDescription({ counterpartName: code, amountMinorUnits, sameCurrency: false, t }),
-    )
-    .with({ kind: P.union('p2p', 'card', 'bank') }, ({ kind, fiat }) =>
-      fiatCounterpartDescription({ kind, fiat, amountMinorUnits, t }),
-    )
-    .exhaustive();
+  return foldMap(maybe(parseUntrackedCounterpart(untrackedCounterpart)), (counterpart) =>
+    match(counterpart)
+      .with({ kind: 'wallet' }, ({ name }) =>
+        transferLegDescription({ counterpartName: name, amountMinorUnits, t }),
+      )
+      .with({ kind: 'asset' }, ({ code }) =>
+        exchangeLegDescription({ counterpartName: code, amountMinorUnits, sameCurrency: false, t }),
+      )
+      .with({ kind: P.union('p2p', 'card', 'bank') }, ({ kind, fiat }) =>
+        fiatCounterpartDescription({ kind, fiat, amountMinorUnits, t }),
+      )
+      .exhaustive(),
+  );
 };
 
 /**

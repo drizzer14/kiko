@@ -210,12 +210,17 @@ describe('transactionRowDescription', () => {
     ).toBe('Transfer to Binance Funding');
   });
 
-  it.each([['wallet:FOO'], ['asset:'], ['p2p:'], ['p2p::5'], ['foo:UAH:1'], ['']])(
-    'falls back to the default label for the unknown code %p',
-    (untrackedCounterpart) => {
-      expect(labelOf({ untrackedCounterpart })).toBe('Black card expense');
-    },
-  );
+  it.each([
+    ['wallet:FOO'],
+    ['asset:'],
+    ['asset:ETH:BSC'],
+    ['p2p:'],
+    ['p2p::5'],
+    ['foo:UAH:1'],
+    [''],
+  ])('falls back to the default label for the unknown code %p', (untrackedCounterpart) => {
+    expect(labelOf({ untrackedCounterpart })).toBe('Black card expense');
+  });
 
   it('keeps a stored description over a trading fee', () => {
     expect(

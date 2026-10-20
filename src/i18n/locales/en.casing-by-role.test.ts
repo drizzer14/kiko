@@ -191,7 +191,7 @@ describe('an acronym with a digit inside', () => {
     expect(sentenceCaseViolations('Open the P2P order')).toEqual([]);
   });
 
-  it('still rejects a capitalized plain word after a digit-led word', () => {
+  it('still rejects a capitalized plain word after a number', () => {
     expect(sentenceCaseViolations('Wait 5 Minutes')).toEqual(['Minutes']);
   });
 });

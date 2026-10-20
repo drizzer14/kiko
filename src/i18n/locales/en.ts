@@ -1329,8 +1329,8 @@ export const en = {
     },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',
-    // A row whose counterpart is a stored code, not a holding: `currency` is the
-    // fiat of the code (P2P, card, bank), or nothing for a trading fee.
+    // A trading fee, or a row whose counterpart is a stored code: `currency` is
+    // the fiat of the code (P2P, card, bank), or nothing for a trading fee.
     tradingFee: 'Trading fee',
     p2pPurchase: 'P2P purchase ({{currency}})',
     cardPurchase: 'Card purchase ({{currency}})',

@@ -43,8 +43,8 @@ const splitOnce = (text: string): [string, string | undefined] => {
 
 // A total that is malformed, over-precise, zero or negative is dropped, never repaired, so a
 // reader falls back to the label without it. Only a known fiat has a scale to read it at.
-const totalMinorUnitsOf = (fiat: string, totalText: string | undefined): number | undefined => {
-  if (totalText === undefined || !isCurrency(fiat) || isCrypto(fiat)) {
+const totalMinorUnitsOf = (fiat: string, totalText: string): number | undefined => {
+  if (!isCurrency(fiat) || isCrypto(fiat)) {
     return undefined;
   }
 
@@ -63,7 +63,7 @@ const fiatCounterpartOf = (
   kind: 'p2p' | 'card' | 'bank',
   rest: string,
 ): UntrackedCounterpart | undefined => {
-  const [fiat, totalText] = splitOnce(rest);
+  const [fiat, totalText = ''] = splitOnce(rest);
 
   return fiat === ''
     ? undefined
@@ -83,7 +83,7 @@ export const parseUntrackedCounterpart = (code: string | null): UntrackedCounter
     return match(kind)
       .with('wallet', () => walletCounterpartOf(rest))
       .with('asset', (): UntrackedCounterpart | undefined =>
-        rest === '' ? undefined : { kind: 'asset', code: rest },
+        rest === '' || rest.includes(':') ? undefined : { kind: 'asset', code: rest },
       )
       .with('p2p', 'card', 'bank', (fiatKind) => fiatCounterpartOf(fiatKind, rest))
       .otherwise(() => undefined);
