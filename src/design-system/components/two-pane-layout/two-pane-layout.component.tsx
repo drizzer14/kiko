@@ -4,11 +4,7 @@ import {
   PaneWidthContext,
   paneContextOf,
 } from '@kiko/design-system/pane-context';
-import {
-  belowTopBand,
-  resolveCompanionShare,
-  resolvePaneGeometry,
-} from '@kiko/design-system/pane-geometry';
+import { EQUAL_SHARE, belowTopBand, resolvePaneGeometry } from '@kiko/design-system/pane-geometry';
 import { useUnistyles } from 'react-native-unistyles';
 import { type FC, type ReactNode, useMemo } from 'react';
 import { useWindowDimensions, View } from 'react-native';
@@ -51,12 +47,7 @@ const Pane: FC<PaneProps> = ({ mode, pane, width, isBelowTopBand, children }) =>
 // so this must mount at the window origin, at the full window size. It positions the panes and
 // nothing else: each pane child fills its frame, so native bars span the pane. It tells each child
 // which pane it is in, for the screen content to cap and inset itself.
-const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
-  companion,
-  primary,
-  mode: pinnedMode,
-  wideSlot,
-}) => {
+const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({ companion, primary, mode: pinnedMode }) => {
   const { theme } = useUnistyles();
   const windowMode = useLayoutMode();
   const mode = pinnedMode ?? windowMode;
@@ -68,13 +59,7 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
     return <>{primary}</>;
   }
 
-  const flat = resolvePaneGeometry(
-    mode,
-    window,
-    foldRegion,
-    theme.layout.hairline,
-    resolveCompanionShare(mode, window, wideSlot),
-  );
+  const flat = resolvePaneGeometry(mode, window, foldRegion, theme.layout.hairline, EQUAL_SHARE);
   const geometry = belowTopBand(flat, band);
 
   return (

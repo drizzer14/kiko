@@ -121,12 +121,13 @@ describe('StatisticsStack', () => {
     },
   );
 
-  it('gives the primary pane the wide share of a wide split', () => {
-    const navigator = StatisticsStack({}) as ReactElement<{
-      paneConfig: { wideSlot?: string };
-    }>;
+  it('splits into equal halves: Home in the companion, no wide slot', () => {
+    const navigator = StatisticsStack({}) as ReactElement<{ paneConfig: object }>;
 
-    expect(navigator.props.paneConfig.wideSlot).toBe('primary');
+    expect(navigator.props.paneConfig).toEqual({
+      rootPane: 'primary',
+      companionDefault: { name: 'Home', isDefault: true },
+    });
   });
 
   it('wraps every screen in the fitting large-title layout', () => {

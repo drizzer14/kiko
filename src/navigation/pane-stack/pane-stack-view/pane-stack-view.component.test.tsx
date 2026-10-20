@@ -88,6 +88,7 @@ const HOME: PaneConfig = {
   companionDefault: { name: 'Statistics', isDefault: true },
 };
 const ACCOUNTS: PaneConfig = { rootPane: 'companion' };
+const HOME_ROOT: PaneConfig = { rootPane: 'primary' };
 
 const navigation = { dispatch: jest.fn() } as never as NativeStackViewProps['navigation'];
 const descriptors = { shared: true } as never as NativeStackViewProps['descriptors'];
@@ -124,20 +125,15 @@ describe('PaneStackView', () => {
     mockWindow.height = 669;
   });
 
-  describe('a wide split crossing the 1100 pt threshold', () => {
-    const WIDE_HOME: PaneConfig = { rootPane: 'primary', wideSlot: 'companion' };
+  describe('a large window rotating between landscape and portrait', () => {
     const state = stackState([route('home', 'Home'), route('detail', 'WideDetail')], {
       home: 'primary',
       detail: 'companion',
     });
 
-    const showWindow = (width: number) => {
+    const renderAt = (width: number, height: number) => {
       mockWindow.width = width;
-      mockWindow.height = 820;
-    };
-
-    const renderAt = (width: number) => {
-      showWindow(width);
+      mockWindow.height = height;
 
       return (
         <PaneStackView
@@ -146,7 +142,7 @@ describe('PaneStackView', () => {
           navigation={navigation}
           descriptors={descriptors}
           describe={describeRoute}
-          paneConfig={WIDE_HOME}
+          paneConfig={HOME_ROOT}
         />
       );
     };
@@ -154,21 +150,21 @@ describe('PaneStackView', () => {
     const companionWidth = () =>
       StyleSheet.flatten(screen.getByTestId('two-pane-companion').props.style).width;
 
-    it('keeps columns, the slice route keys and one mounted detail screen across 1099, 1100, 1366', async () => {
-      const view = await render(renderAt(1099));
+    it('keeps columns, the slice route keys and one mounted detail screen from 1376 x 1032 to 1032 x 1376 and back', async () => {
+      const view = await render(renderAt(1376, 1032));
 
-      expect(companionWidth()).toBeCloseTo((1099 - HAIRLINE) / 2, 5);
+      expect(companionWidth()).toBe((1376 - HAIRLINE) / 2);
 
-      await view.rerender(renderAt(1100));
+      await view.rerender(renderAt(1032, 1376));
 
-      expect(companionWidth()).toBeCloseTo(((1100 - HAIRLINE) * 2) / 3, 5);
+      expect(companionWidth()).toBe((1032 - HAIRLINE) / 2);
+      expect(StyleSheet.flatten(screen.getByTestId('two-pane-primary').props.style).left).toBe(
+        (1032 - HAIRLINE) / 2 + HAIRLINE,
+      );
 
-      await view.rerender(renderAt(1366));
+      await view.rerender(renderAt(1376, 1032));
 
-      expect(companionWidth()).toBeCloseTo(((1366 - HAIRLINE) * 2) / 3, 5);
-      expect(
-        StyleSheet.flatten(screen.getByTestId('two-pane-primary').props.style).left,
-      ).toBeCloseTo(((1366 - HAIRLINE) * 2) / 3 + HAIRLINE, 5);
+      expect(companionWidth()).toBe((1376 - HAIRLINE) / 2);
       expect(screen.getByTestId('stack-detail')).toBeTruthy();
       expect(screen.getByTestId('stack-home')).toBeTruthy();
       expect(screen.getAllByTestId('detail-screen')).toHaveLength(1);

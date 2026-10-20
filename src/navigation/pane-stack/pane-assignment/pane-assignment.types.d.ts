@@ -1,5 +1,3 @@
-import type { PaneName } from '@kiko/design-system/pane-context';
-
 import type { Pane } from './pane-assignment';
 
 // A pane for each route key. A key without an entry takes the root pane when its route is the
@@ -24,6 +22,4 @@ export type PaneConfig = {
   rootPane: Pane;
   companionDefault?: PaneDefault;
   primaryDefault?: PaneDefault;
-  // The pane this tab gives the wider share on a wide window.
-  wideSlot?: PaneName;
 };

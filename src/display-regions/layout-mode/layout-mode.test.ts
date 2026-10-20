@@ -11,7 +11,7 @@ describe('resolveLayoutMode', () => {
     ['the Duo inner window in portrait, never single', 'regular', 669, 951, 'rows'],
     ['a square regular window', 'regular', 721, 721, 'columns'],
     ['a regular window one point wider', 'regular', 722, 721, 'columns'],
-    ['a regular window one point taller', 'regular', 721, 722, 'rows'],
+    ['a regular window one point taller', 'regular', 721, 722, 'columns'],
     ['a square regular window below two minimum panes', 'regular', 700, 700, 'single'],
     ['a narrow wide regular window below two minimum panes', 'regular', 720, 500, 'single'],
     ['a wide regular window at two minimum panes and a divider', 'regular', 721, 500, 'columns'],
@@ -20,6 +20,12 @@ describe('resolveLayoutMode', () => {
     ['a regular window just below the wide companion share', 'regular', 1099, 820, 'columns'],
     ['a regular window at the wide companion share', 'regular', 1100, 820, 'columns'],
     ['a 13-inch-class landscape regular window', 'regular', 1366, 1024, 'columns'],
+    ['an iPad mini in portrait', 'regular', 744, 1133, 'columns'],
+    ['an 11-inch iPad in portrait', 'regular', 820, 1180, 'columns'],
+    ['a 13-inch iPad in portrait', 'regular', 1032, 1376, 'columns'],
+    ['a left or right half-screen window in portrait', 'regular', 683, 909, 'rows'],
+    ['a tall window at two minimum panes and a divider', 'regular', 721, 1376, 'columns'],
+    ['a tall window one point below two minimum panes', 'regular', 720, 1376, 'rows'],
   ])('resolves %s', (_name, sizeClass, width, height, expected) => {
     expect(resolveLayoutMode(sizeClass, width, height)).toBe(expected);
   });

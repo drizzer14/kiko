@@ -20,12 +20,10 @@ import { largeTitleScreenOptions } from '../large-title-screen-options';
 const Stack = createPaneStackNavigator<StatisticsStackParamList>();
 
 // Statistics is what the outer display shows, so it takes the primary pane; Home fills the
-// companion until something else opens there. The primary is the wide pane on a wide window, so
-// Statistics is the 2/3 pane on both tabs.
+// companion until something else opens there.
 const PANE_CONFIG = {
   rootPane: 'primary',
   companionDefault: { name: 'Home', isDefault: true },
-  wideSlot: 'primary',
 } as const;
 
 /**

@@ -68,7 +68,6 @@ const PaneStackView: FC<PaneStackViewProps> = ({
         {isSplit ? (
           <TwoPaneLayout
             mode={mode}
-            wideSlot={paneConfig.wideSlot}
             companion={
               companion && (
                 <NativeStackView

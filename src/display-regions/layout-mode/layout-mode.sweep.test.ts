@@ -7,14 +7,13 @@ const DIVIDER = 1;
 const MISMATCHES_REPORTED = 10;
 
 const expectedRegularMode = (width: number, height: number): LayoutMode => {
-  const isWide = width >= height;
-  const splitLength = isWide ? width : height;
+  const splitLength = 2 * MINIMUM_PANE_LENGTH + DIVIDER;
 
-  if ((splitLength - DIVIDER) / 2 < MINIMUM_PANE_LENGTH) {
-    return 'single';
+  if (width >= splitLength) {
+    return 'columns';
   }
 
-  return isWide ? 'columns' : 'rows';
+  return height > width && height >= splitLength ? 'rows' : 'single';
 };
 
 const mismatchesAt = (width: number, height: number): string[] => {

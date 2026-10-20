@@ -1,16 +1,17 @@
 import { MINIMUM_PANE_LENGTH } from '@kiko/display-regions';
 
+import { EQUAL_SHARE } from './companion-share';
 import { belowTopBand, resolvePaneGeometry } from '.';
-import { EQUAL_SHARE, WIDE_SHARE } from './companion-share';
 
 const HAIRLINE = 1;
+const UNEQUAL_SHARE = 2 / 3;
 
-// A fold ignores the share, so its cases pass the widest one to prove it.
+// A fold ignores the share, so its cases pass an unequal one to prove it.
 const resolveWithWideShare = (
   mode: 'columns' | 'rows',
   window: { width: number; height: number },
   fold: { x: number; y: number; width: number; height: number },
-) => resolvePaneGeometry(mode, window, fold, HAIRLINE, WIDE_SHARE);
+) => resolvePaneGeometry(mode, window, fold, HAIRLINE, UNEQUAL_SHARE);
 
 describe('resolvePaneGeometry', () => {
   describe('the Duo fixtures keep every pane at the minimum pane length or more', () => {
@@ -84,19 +85,19 @@ describe('resolvePaneGeometry', () => {
     expect(geometry.isFolded).toBe(false);
   });
 
-  it('gives the companion two thirds of a flat 1366 x 1024 columns window at share 2/3', () => {
+  it('gives each pane half of a flat 1366 x 1024 columns window at the equal share', () => {
     const geometry = resolvePaneGeometry(
       'columns',
       { width: 1366, height: 1024 },
       null,
       HAIRLINE,
-      WIDE_SHARE,
+      EQUAL_SHARE,
     );
 
-    expect(geometry.companion.width).toBeCloseTo(910, 5);
-    expect(geometry.divider.x).toBeCloseTo(910, 5);
-    expect(geometry.primary.x).toBeCloseTo(911, 5);
-    expect(geometry.primary.width).toBeCloseTo(455, 5);
+    expect(geometry.companion.width).toBe(682.5);
+    expect(geometry.divider.x).toBe(682.5);
+    expect(geometry.primary.x).toBe(683.5);
+    expect(geometry.primary.width).toBe(682.5);
   });
 
   it('puts the companion on top and the primary at the bottom of a flat rows window', () => {

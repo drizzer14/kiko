@@ -18,10 +18,11 @@ export const isLargeWindow = (
   height: number,
 ): boolean => sizeClass === 'regular' && Math.min(width, height) >= MINIMUM_SPLIT_LENGTH;
 
-// Only the horizontal size class and the window's shape decide the mode, never the device, its
-// idiom, or its orientation, so a later device that reports a regular class gets the same rule.
-// A square window is a wide one: `columns`. A regular window too short on its split axis for two
-// minimum panes stays `single`.
+// Only the horizontal size class and the window's size decide the mode, never the device or its
+// idiom, so a later device that reports a regular class gets the same rule. A window wide enough
+// for two minimum panes side by side is `columns`, whatever its orientation (a portrait iPad
+// included). A narrower, taller window stacks its panes (`rows`) when it is tall enough for two
+// minimum panes; any other regular window stays `single`.
 export const resolveLayoutMode = (
   sizeClass: HorizontalSizeClass,
   width: number,
@@ -30,12 +31,10 @@ export const resolveLayoutMode = (
   match(sizeClass)
     .with('compact', (): LayoutMode => 'single')
     .with('regular', (): LayoutMode => {
-      const isTall = height > width;
-
-      if ((isTall ? height : width) < MINIMUM_SPLIT_LENGTH) {
-        return 'single';
+      if (width >= MINIMUM_SPLIT_LENGTH) {
+        return 'columns';
       }
 
-      return isTall ? 'rows' : 'columns';
+      return height > width && height >= MINIMUM_SPLIT_LENGTH ? 'rows' : 'single';
     })
     .exhaustive();
