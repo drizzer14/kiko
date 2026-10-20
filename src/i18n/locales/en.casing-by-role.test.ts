@@ -156,7 +156,7 @@ const sentenceCaseViolations = (value: string): string[] => {
   const stripped = withoutQuotedTitles(value).replace(/\{\{[^}]*\}\}/g, (match) =>
     ' '.repeat(match.length),
   );
-  const wordPattern = /[A-Za-z']+/g;
+  const wordPattern = /[A-Za-z0-9']+/g;
   const violations: string[] = [];
   let match: RegExpExecArray | null = wordPattern.exec(stripped);
 
@@ -184,6 +184,17 @@ const sentenceCaseViolations = (value: string): string[] => {
 
   return violations;
 };
+
+describe('an acronym with a digit inside', () => {
+  it('reads P2P as one acronym, wherever it stands', () => {
+    expect(sentenceCaseViolations('P2P purchase')).toEqual([]);
+    expect(sentenceCaseViolations('Open the P2P order')).toEqual([]);
+  });
+
+  it('still rejects a capitalized plain word after a digit-led word', () => {
+    expect(sentenceCaseViolations('Wait 5 Minutes')).toEqual(['Minutes']);
+  });
+});
 
 describe('a sentence that quotes a Title-role value', () => {
   it('accepts a quoted span that is exactly the value of a Title-role key', () => {

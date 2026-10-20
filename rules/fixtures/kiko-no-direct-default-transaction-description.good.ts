@@ -19,6 +19,7 @@ export const placeholderFor = (
       amountMinorUnits: -1,
       exchangeCounterpartHoldingId,
       untrackedCounterpart: null,
+      operation: null,
     },
     holdingName,
     holdingNameById,

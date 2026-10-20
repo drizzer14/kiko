@@ -537,6 +537,7 @@ describe('the rows of a settled record, written', () => {
           amountMinorUnits: row.amountMinorUnits,
           exchangeCounterpartHoldingId: row.exchangeCounterpartHoldingId ?? null,
           untrackedCounterpart: null,
+          operation: null,
         },
         holdingName: names.get(row.holdingId) ?? '',
         holdingNameById: names,

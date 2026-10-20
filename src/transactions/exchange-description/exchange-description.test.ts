@@ -1,6 +1,10 @@
 import { i18n } from '@kiko/i18n/init';
 
-import { exchangeLegDescription, transferLegDescription } from './exchange-description';
+import {
+  exchangeLegDescription,
+  fiatCounterpartDescription,
+  transferLegDescription,
+} from './exchange-description';
 
 describe('transferLegDescription', () => {
   afterEach(async () => {
@@ -113,5 +117,89 @@ describe('exchangeLegDescription', () => {
         t: i18n.t,
       }),
     ).not.toBe('Exchange to Ощадний');
+  });
+});
+
+describe('fiatCounterpartDescription', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it.each([-415_000, 415_000])('reads a P2P purchase for either sign (%d)', (amountMinorUnits) => {
+    expect(
+      fiatCounterpartDescription({ kind: 'p2p', fiat: 'UAH', amountMinorUnits, t: i18n.t }),
+    ).toBe('P2P purchase (UAH)');
+  });
+
+  it('reads a card purchase for a positive row and a sale to card for a negative one', () => {
+    expect(
+      fiatCounterpartDescription({
+        kind: 'card',
+        fiat: 'UAH',
+        amountMinorUnits: 260_000,
+        t: i18n.t,
+      }),
+    ).toBe('Card purchase (UAH)');
+    expect(
+      fiatCounterpartDescription({
+        kind: 'card',
+        fiat: 'UAH',
+        amountMinorUnits: -260_000,
+        t: i18n.t,
+      }),
+    ).toBe('Sale to card (UAH)');
+  });
+
+  it('reads a bank deposit and a bank withdrawal by sign', () => {
+    expect(
+      fiatCounterpartDescription({
+        kind: 'bank',
+        fiat: 'EUR',
+        amountMinorUnits: 10_000,
+        t: i18n.t,
+      }),
+    ).toBe('Bank deposit (EUR)');
+    expect(
+      fiatCounterpartDescription({
+        kind: 'bank',
+        fiat: 'EUR',
+        amountMinorUnits: -5_000,
+        t: i18n.t,
+      }),
+    ).toBe('Bank withdrawal (EUR)');
+  });
+
+  it('reads zero as the positive wording', () => {
+    expect(
+      fiatCounterpartDescription({ kind: 'card', fiat: 'UAH', amountMinorUnits: 0, t: i18n.t }),
+    ).toBe('Card purchase (UAH)');
+    expect(
+      fiatCounterpartDescription({ kind: 'bank', fiat: 'EUR', amountMinorUnits: 0, t: i18n.t }),
+    ).toBe('Bank deposit (EUR)');
+    expect(
+      exchangeLegDescription({
+        counterpartName: 'ETH',
+        amountMinorUnits: 0,
+        sameCurrency: false,
+        t: i18n.t,
+      }),
+    ).toBe('Exchange from ETH');
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    it('resolves against the active language', () => {
+      expect(
+        fiatCounterpartDescription({
+          kind: 'p2p',
+          fiat: 'UAH',
+          amountMinorUnits: 415_000,
+          t: i18n.t,
+        }),
+      ).toBe('Купівля P2P (UAH)');
+    });
   });
 });

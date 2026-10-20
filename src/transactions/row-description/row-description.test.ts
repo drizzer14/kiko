@@ -23,8 +23,20 @@ const row = (
   amountMinorUnits: -1_000_000,
   exchangeCounterpartHoldingId: null,
   untrackedCounterpart: null,
+  operation: null,
   ...overrides,
 });
+
+const labelOf = (
+  overrides: Partial<Parameters<typeof transactionRowDescription>[0]['transaction']>,
+): string =>
+  transactionRowDescription({
+    transaction: row(overrides),
+    holdingName: 'Black card',
+    holdingNameById,
+    holdingCurrencyById,
+    t: i18n.t,
+  });
 
 describe('transactionRowDescription', () => {
   afterEach(async () => {
@@ -198,20 +210,111 @@ describe('transactionRowDescription', () => {
     ).toBe('Transfer to Binance Funding');
   });
 
-  it.each([['wallet:FOO'], ['asset:ETH'], ['']])(
+  it.each([['wallet:FOO'], ['asset:'], ['p2p:'], ['p2p::5'], ['foo:UAH:1'], ['']])(
     'falls back to the default label for the unknown code %p',
     (untrackedCounterpart) => {
-      expect(
-        transactionRowDescription({
-          transaction: row({ untrackedCounterpart }),
-          holdingName: 'Black card',
-          holdingNameById,
-          holdingCurrencyById,
-          t: i18n.t,
-        }),
-      ).toBe('Black card expense');
+      expect(labelOf({ untrackedCounterpart })).toBe('Black card expense');
     },
   );
+
+  it('keeps a stored description over a trading fee', () => {
+    expect(
+      labelOf({
+        description: 'Fee',
+        operation: 'trade-fee',
+        exchangeCounterpartHoldingId: 'h-usd',
+      }),
+    ).toBe('Fee');
+  });
+
+  it('labels a trading fee that pairs with a counterpart holding', () => {
+    expect(labelOf({ operation: 'trade-fee', exchangeCounterpartHoldingId: 'h-usd' })).toBe(
+      'Trading fee',
+    );
+  });
+
+  it('labels a trading fee of an asset with no counterpart holding', () => {
+    expect(labelOf({ operation: 'trade-fee', untrackedCounterpart: 'asset:PEPE' })).toBe(
+      'Trading fee',
+    );
+  });
+
+  it.each([['trade'], ['convert'], ['dust']] as const)(
+    'reads a %s leg with a counterpart holding as an exchange',
+    (operation) => {
+      expect(labelOf({ operation, exchangeCounterpartHoldingId: 'h-usd' })).toBe(
+        'Exchange to Savings',
+      );
+    },
+  );
+
+  it('reads an outgoing asset leg with no counterpart holding as an exchange to the coin', () => {
+    expect(labelOf({ amountMinorUnits: -100_000, untrackedCounterpart: 'asset:ETH' })).toBe(
+      'Exchange to ETH',
+    );
+  });
+
+  it('reads an incoming asset leg with no counterpart holding as an exchange from the coin', () => {
+    expect(labelOf({ amountMinorUnits: 100_000, untrackedCounterpart: 'asset:ETH' })).toBe(
+      'Exchange from ETH',
+    );
+  });
+
+  it('prefers the counterpart holding over an asset code', () => {
+    expect(
+      labelOf({ exchangeCounterpartHoldingId: 'h-usd', untrackedCounterpart: 'asset:ETH' }),
+    ).toBe('Exchange to Savings');
+  });
+
+  it.each([-415_000, 415_000])('labels a P2P code as a purchase for either sign (%d)', (amount) => {
+    expect(labelOf({ amountMinorUnits: amount, untrackedCounterpart: 'p2p:UAH:4150.00' })).toBe(
+      'P2P purchase (UAH)',
+    );
+  });
+
+  it('labels a P2P code with a malformed total by its fiat alone', () => {
+    expect(labelOf({ amountMinorUnits: 100, untrackedCounterpart: 'p2p:UAH:abc' })).toBe(
+      'P2P purchase (UAH)',
+    );
+  });
+
+  it.each([
+    [260_000, 'card:UAH:2600.00', 'Card purchase (UAH)'],
+    [-260_000, 'card:UAH:2600.00', 'Sale to card (UAH)'],
+    [10_000, 'bank:EUR:100.00', 'Bank deposit (EUR)'],
+    [-5_000, 'bank:EUR:50.00', 'Bank withdrawal (EUR)'],
+  ])('labels the amount %d of %s as %s', (amountMinorUnits, untrackedCounterpart, label) => {
+    expect(labelOf({ amountMinorUnits, untrackedCounterpart })).toBe(label);
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    it.each([
+      [{ operation: 'trade-fee' as const }, 'Торгова комісія'],
+      [{ amountMinorUnits: 100, untrackedCounterpart: 'p2p:UAH:4150.00' }, 'Купівля P2P (UAH)'],
+      [
+        { amountMinorUnits: 100, untrackedCounterpart: 'card:UAH:2600.00' },
+        'Купівля карткою (UAH)',
+      ],
+      [
+        { amountMinorUnits: -100, untrackedCounterpart: 'card:UAH:2600.00' },
+        'Продаж на картку (UAH)',
+      ],
+      [
+        { amountMinorUnits: 100, untrackedCounterpart: 'bank:EUR:100.00' },
+        'Поповнення з банку (EUR)',
+      ],
+      [
+        { amountMinorUnits: -100, untrackedCounterpart: 'bank:EUR:50.00' },
+        'Виведення в банк (EUR)',
+      ],
+    ])('reads the label of %o in Ukrainian', (overrides, label) => {
+      expect(labelOf(overrides)).toBe(label);
+    });
+  });
 
   it('falls back to the holding-name default for an ordinary unlabelled row', () => {
     expect(

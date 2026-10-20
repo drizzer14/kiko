@@ -28,18 +28,6 @@ const NAME_BY_WALLET: Readonly<Record<UntrackedWallet, string>> = {
 export const untrackedWalletCode = (wallet: UntrackedWallet): `wallet:${UntrackedWallet}` =>
   `wallet:${wallet}`;
 
-/**
- * The product name a stored `transactions.untracked_counterpart` code stands
- * for, or `undefined` for a code this build does not know (a newer build's, or a
- * code of another kind), so the caller falls back to the plain label instead of
- * printing a raw code.
- */
-export const untrackedCounterpartName = (code: string | null): string | undefined =>
-  foldMap(
-    maybe(UNTRACKED_WALLETS.find((wallet) => untrackedWalletCode(wallet) === code)),
-    (wallet) => NAME_BY_WALLET[wallet],
-  );
-
 type UntrackedCounterpart =
   | { kind: 'wallet'; name: string }
   | { kind: 'asset'; code: string }

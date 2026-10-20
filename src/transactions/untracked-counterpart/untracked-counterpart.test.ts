@@ -1,6 +1,5 @@
 import {
   UNTRACKED_WALLETS,
-  untrackedCounterpartName,
   untrackedWalletCode,
   parseUntrackedCounterpart,
 } from './untracked-counterpart';
@@ -19,33 +18,11 @@ describe('untrackedWalletCode', () => {
   });
 });
 
-describe('untrackedCounterpartName', () => {
+describe('parseUntrackedCounterpart', () => {
   it('knows exactly the five Binance wallets Kiko does not track', () => {
     expect([...UNTRACKED_WALLETS]).toEqual(Object.keys(NAME_BY_WALLET));
   });
 
-  it.each(UNTRACKED_WALLETS)('maps the code of %s to its product name', (wallet) => {
-    expect(untrackedCounterpartName(untrackedWalletCode(wallet))).toBe(NAME_BY_WALLET[wallet]);
-  });
-
-  it.each([['asset:ETH'], ['wallet:FOO'], ['wallet:'], ['UMFUTURE'], ['wallet:umfuture'], ['']])(
-    'gives no name for the unknown code %p',
-    (code) => {
-      expect(untrackedCounterpartName(code)).toBeUndefined();
-    },
-  );
-
-  it('gives no name when there is no code', () => {
-    expect(untrackedCounterpartName(null)).toBeUndefined();
-  });
-
-  it('gives no name for an inherited object key', () => {
-    expect(untrackedCounterpartName('wallet:constructor')).toBeUndefined();
-    expect(untrackedCounterpartName('wallet:toString')).toBeUndefined();
-  });
-});
-
-describe('parseUntrackedCounterpart', () => {
   it.each(UNTRACKED_WALLETS)('reads the code of %s as a wallet with its product name', (wallet) => {
     expect(parseUntrackedCounterpart(untrackedWalletCode(wallet))).toEqual({
       kind: 'wallet',

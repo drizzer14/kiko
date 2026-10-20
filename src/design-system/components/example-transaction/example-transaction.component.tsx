@@ -74,6 +74,7 @@ const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingN
       amountMinorUnits: transaction.amountMinorUnits,
       exchangeCounterpartHoldingId: null,
       untrackedCounterpart: null,
+      operation: null,
     },
     holdingName: holdingName ?? '',
     holdingNameById: new Map(),

@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 
 /**
@@ -47,4 +48,26 @@ export const exchangeLegDescription = (input: {
   const key = input.amountMinorUnits < 0 ? 'transactions.exchangeTo' : 'transactions.exchangeFrom';
 
   return input.t(key, { name: input.counterpartName });
+};
+
+/**
+ * The label for a row whose counterpart is a P2P, card or bank code, resolved at RENDER time.
+ * A P2P purchase reads the same for either sign; a card or bank row reads by the sign of the
+ * amount (`< 0` is the outgoing wording, zero the incoming one), as its neighbours do. The
+ * currency is the code's own fiat, kept as stored.
+ */
+export const fiatCounterpartDescription = (input: {
+  kind: 'p2p' | 'card' | 'bank';
+  fiat: string;
+  amountMinorUnits: number;
+  t: TFunction;
+}): string => {
+  const isOutgoing = input.amountMinorUnits < 0;
+  const key = match(input.kind)
+    .with('p2p', () => 'transactions.p2pPurchase' as const)
+    .with('card', () => (isOutgoing ? 'transactions.cardSale' : 'transactions.cardPurchase'))
+    .with('bank', () => (isOutgoing ? 'transactions.bankWithdrawal' : 'transactions.bankDeposit'))
+    .exhaustive();
+
+  return input.t(key, { currency: input.fiat });
 };

@@ -153,6 +153,18 @@ describe('the windowed ledger Home reads', () => {
     });
   });
 
+  it('carries the operation label of each row', async () => {
+    mockDatabase.exec(`
+      INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, operation)
+      VALUES ('fee-row', 'h-1', -5, ${NOW}, 'manual', 'trade-fee')
+    `);
+    const rows = await fullLedger();
+    const operationOf = (id: string) => rows.find((row) => row.id === id)?.operation;
+
+    expect(operationOf('fee-row')).toBe('trade-fee');
+    expect(operationOf('same-0')).toBeNull();
+  });
+
   it('keeps the order of rows that share one exact time', async () => {
     const range = bounds(new Date(2026, 8, 10), new Date(2026, 8, 10));
     const windowed = await transactionsRepo.listWithContextBetweenQuery(range.from, range.to);

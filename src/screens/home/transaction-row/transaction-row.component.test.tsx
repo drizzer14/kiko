@@ -40,6 +40,7 @@ const baseItem: HomeTransactionRow = {
   description: 'Coffee',
   exchangeCounterpartHoldingId: null,
   untrackedCounterpart: null,
+  operation: null,
   holdingId: 'h-1',
   changeGroupId: null,
   category: 'food',

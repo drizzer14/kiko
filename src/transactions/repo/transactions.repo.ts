@@ -1954,6 +1954,8 @@ const contextRowsQuery = () =>
       exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
       // The untracked-wallet code travels with it, for the same two readers.
       untrackedCounterpart: transactions.untrackedCounterpart,
+      // The operation label travels with them: Home reads it to label a trading fee.
+      operation: transactions.operation,
       // With the marker, what the row label needs to compare the leg's own
       // currency to its counterpart's (`holdingCurrencyById`).
       holdingId: transactions.holdingId,

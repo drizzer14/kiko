@@ -83,8 +83,9 @@ export const signedMinorUnits = (currency: Currency, amount: string, sign: Sign)
 // carry if its description is left blank, resolved by the SAME
 // `transactionRowDescription` the Home and Holding-detail lists render — so an
 // edited exchange leg previews its "Exchange to/from <counterpart>" label (or
-// "Transfer to/from" for a same-currency pair or an untracked wallet) rather
-// than a holding-name expense the list never shows. Only the polarity of
+// "Transfer to/from" for a same-currency pair or an untracked wallet, or
+// "Trading fee" for a fee row) rather than a holding-name expense the list
+// never shows. Only the polarity of
 // the sign matters to that helper, so the current `mode` maps to a
 // representative signed value (a negative for expense, non-negative
 // otherwise). Falls back to a concrete example ("Coffee") when no holding has
@@ -99,7 +100,7 @@ export const signedMinorUnits = (currency: Currency, amount: string, sign: Sign)
 export const resolveDescriptionPlaceholder = (input: {
   holding: Pick<HoldingRow, 'id' | 'name'> | undefined;
   existing:
-    | Pick<TransactionRow, 'exchangeCounterpartHoldingId' | 'untrackedCounterpart'>
+    | Pick<TransactionRow, 'exchangeCounterpartHoldingId' | 'untrackedCounterpart' | 'operation'>
     | undefined;
   holdings: readonly Pick<HoldingRow, 'id' | 'name' | 'currency'>[];
   mode: FormMode;
@@ -118,6 +119,7 @@ export const resolveDescriptionPlaceholder = (input: {
       amountMinorUnits: mode === 'expense' || mode === 'split' ? -1 : 0,
       exchangeCounterpartHoldingId: existing?.exchangeCounterpartHoldingId ?? null,
       untrackedCounterpart: existing?.untrackedCounterpart ?? null,
+      operation: existing?.operation ?? null,
     },
     holdingName: holding.name,
     holdingNameById: buildHoldingNameById(holdings),
@@ -139,7 +141,8 @@ const buildHoldingCurrencyById = (
 // The text an edited row with a BLANK stored description opens with: the label
 // the transaction lists show for it (an exchange leg's "Exchange to/from
 // <counterpart>", "Transfer to/from <counterpart>" for a same-currency pair or
-// an untracked wallet, else the holding-name default), so the field never reads
+// an untracked wallet, "Trading fee" for a fee row, else the holding-name
+// default), so the field never reads
 // empty while the list reads a label. Null when nothing is pre-filled — no
 // edit, a description of the row's own, or a holding not yet resolved.
 export const resolveBlankLabel = (input: {
@@ -151,6 +154,7 @@ export const resolveBlankLabel = (input: {
         | 'amountMinorUnits'
         | 'exchangeCounterpartHoldingId'
         | 'untrackedCounterpart'
+        | 'operation'
       >
     | undefined;
   holding: Pick<HoldingRow, 'name'> | undefined;
