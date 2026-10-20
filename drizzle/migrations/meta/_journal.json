@@ -442,6 +442,13 @@
       "when": 1792401339483,
       "tag": "0062_add_account_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1792536397746,
+      "tag": "0063_add_transaction_operation",
+      "breakpoints": true
     }
   ]
 }

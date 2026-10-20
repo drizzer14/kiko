@@ -28,7 +28,7 @@ import { transactionsRepo } from './transactions.repo';
 
 // The newest migration the repository's own columns need: the last one that
 // added a column `transactions` is read with.
-const LAST_MIGRATION_TAG = '0058_add_untracked_counterpart';
+const LAST_MIGRATION_TAG = '0063_add_transaction_operation';
 
 const MIGRATION_0052_SQL = readFileSync(
   join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0052_add_exchange_pair_id.sql'),

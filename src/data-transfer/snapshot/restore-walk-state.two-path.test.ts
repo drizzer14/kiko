@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
 } from '@kiko/test-support/real-sqlite';
@@ -60,6 +61,7 @@ const databaseBeforeCopy = (): DatabaseSync => {
   applyMigrationsThrough(target, '0060_add_history_backfill_state');
   target.exec(ADD_COLUMN_STATEMENT);
   addAccountCurrencyColumn(target);
+  addTransactionOperationColumn(target);
   // A restore inserts the settings row when a file has none, and marks the import times as
   // rezoned, so the database has it the same.
   target.exec('INSERT INTO settings (id, import_times_rezoned) VALUES (1, 1);');

@@ -78,6 +78,19 @@ export const addAccountCurrencyColumn = (database: DatabaseSync): void => {
   database.exec(addColumn);
 };
 
+/**
+ * Adds `transactions.operation` to a database migrated below 0063, so a read through today's
+ * schema works on it. Only the column: it is the migration's one statement.
+ */
+export const addTransactionOperationColumn = (database: DatabaseSync): void => {
+  const [addColumn = ''] = readFileSync(
+    join(MIGRATIONS_ROOT, '0063_add_transaction_operation.sql'),
+    'utf8',
+  ).split(STATEMENT_BREAKPOINT);
+
+  database.exec(addColumn);
+};
+
 const journalIndexOf = (entries: MigrationJournalEntry[], tag: string): number => {
   const index = entries.findIndex((entry) => entry.tag === tag);
 

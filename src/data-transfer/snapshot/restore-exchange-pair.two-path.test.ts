@@ -246,6 +246,7 @@ const readPreFeatureSnapshot = async (source: DatabaseSync): Promise<DataSnapsho
         'exchangePairId',
         'categorySetByHand',
         'untrackedCounterpart',
+        'operation',
       ),
     )
     .from(transactions)

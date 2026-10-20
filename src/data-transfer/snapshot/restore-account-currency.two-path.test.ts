@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsBetween,
   applyMigrationsThrough,
@@ -218,6 +219,7 @@ const restoredFromOlderFile = async (seed: Scenario['seed']): Promise<DatabaseSy
 
   seed(source);
   addAccountCurrencyColumn(source);
+  addTransactionOperationColumn(source);
   mockDatabase = source;
 
   const exported = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
@@ -250,6 +252,7 @@ describe('restoring a .kiko file written before the account currency column', ()
 
     seedEveryClass(source);
     addAccountCurrencyColumn(source);
+    addTransactionOperationColumn(source);
     source.exec(
       "UPDATE accounts SET currency = 'GBP' WHERE id IN ('mixed', 'empty', 'one-currency')",
     );
