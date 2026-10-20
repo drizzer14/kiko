@@ -101,3 +101,34 @@ describe('addManyDedup stores the movement markers', () => {
     });
   });
 });
+
+describe('addManyDedup stores the operation label', () => {
+  const storedOperation = (externalId: string): string | null =>
+    (
+      mockDatabase
+        .prepare('SELECT operation AS value FROM transactions WHERE external_id = ?')
+        .get(externalId) as { value: string | null }
+    ).value;
+
+  it('stores the operation a new row carries', async () => {
+    await transactionsRepo.addManyDedup([leg({ operation: 'trade-fee' })]);
+
+    expect(storedOperation('account:transfer:1')).toBe('trade-fee');
+  });
+
+  it('keeps the stored operation when the same key is upserted with another', async () => {
+    await transactionsRepo.addManyDedup([leg({ operation: 'trade' })]);
+
+    await transactionsRepo.addManyDedup([
+      leg({ amountMinorUnits: -250_000, operation: 'convert' }),
+    ]);
+
+    expect(storedOperation('account:transfer:1')).toBe('trade');
+  });
+
+  it('stores null for a row with no operation', async () => {
+    await transactionsRepo.addManyDedup([leg({})]);
+
+    expect(storedOperation('account:transfer:1')).toBeNull();
+  });
+});
