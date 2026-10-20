@@ -83,7 +83,6 @@ import SummaryTable from '@kiko/design-system/components/summary-table';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
-import { toggleFilterValue } from '@kiko/design-system/toggle-filter-value';
 import { type ScrollViewInstance, useWindowDimensions } from 'react-native';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
@@ -95,6 +94,7 @@ import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshe
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
+import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
 import BarChart from './bar-chart';
 import PieChart from './pie-chart';
@@ -272,16 +272,19 @@ const StatisticsScreen: FC = () => {
     liveOptions,
   );
 
-  // An empty set means "all accounts"; any names in it narrow all three charts.
-  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
-
+  // An empty account set means "all accounts"; any names in it narrow all three charts.
+  //
   // The spending pie's own category filter, in the SAME "empty means all" model
   // the account FilterMenu uses: an empty set includes every category; any
   // stable category KEYS in it narrow the pie to just those (never the
   // language-dependent display title — see categoryOptions below). Scoped to
   // that chart alone — the account filter and date range do not touch it, nor
   // it them.
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  //
+  // Both selections are shared with the other mounted Statistics screen (the tab
+  // and the Home companion), like the date range below.
+  const { selectedAccounts, selectedCategories, toggleAccount, toggleCategory } =
+    useStatisticsFilterSelection();
 
   // `now` is seeded at mount and REFRESHED every time the screen becomes visible (see
   // useVisibleRefreshedNow): the default date-range seed, the default line window,
@@ -1225,7 +1228,7 @@ const StatisticsScreen: FC = () => {
             testID="statistics-account-filter"
             options={accountOptions}
             selected={filtered.visibleSelectedAccounts}
-            onToggle={(value) => setSelectedAccounts(toggleFilterValue(value))}
+            onToggle={toggleAccount}
             triggerIcon="tray"
           />
 
@@ -1326,7 +1329,7 @@ const StatisticsScreen: FC = () => {
                     testID="statistics-category-filter"
                     options={categoryOptions}
                     selected={selectedCategories}
-                    onToggle={(value) => setSelectedCategories(toggleFilterValue(value))}
+                    onToggle={toggleCategory}
                     triggerIcon={genericEntitySymbol.category}
                   />
                 </Box>
