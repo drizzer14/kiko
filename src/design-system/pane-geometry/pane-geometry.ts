@@ -45,6 +45,23 @@ const AXES: Record<SplitMode, Axis> = {
 const clamp = (value: number, lowest: number, highest: number) =>
   Math.min(Math.max(value, lowest), highest);
 
+const moveBelowBand = (frame: PaneFrame, band: number): PaneFrame =>
+  frame.y === 0 ? { ...frame, y: band, height: frame.height - band } : frame;
+
+/**
+ * The geometry with every frame that touches the window top moved below the top-bar band (both
+ * panes and the divider in columns, the companion in rows). A band of 0 changes nothing.
+ */
+export const belowTopBand = (geometry: PaneGeometry, band: number): PaneGeometry =>
+  band === 0
+    ? geometry
+    : {
+        ...geometry,
+        companion: moveBelowBand(geometry.companion, band),
+        divider: moveBelowBand(geometry.divider, band),
+        primary: moveBelowBand(geometry.primary, band),
+      };
+
 // Pure pane geometry. Flat: the companion takes `companionShare` of the length less the hairline
 // divider. Folded: each pane ends at the fold edge, so the panes are equal only when the fold is
 // centred. A fold ignores the share. The divider is then the fold's own gap, which the caller does

@@ -1,6 +1,6 @@
 import { MINIMUM_PANE_LENGTH } from '@kiko/display-regions';
 
-import { resolvePaneGeometry } from '.';
+import { belowTopBand, resolvePaneGeometry } from '.';
 import { EQUAL_SHARE, WIDE_SHARE } from './companion-share';
 
 const HAIRLINE = 1;
@@ -204,5 +204,69 @@ describe('resolvePaneGeometry', () => {
 
     expect(geometry.companion.width).toBe(0);
     expect(geometry.primary.x).toBe(10);
+  });
+});
+
+describe('belowTopBand', () => {
+  const BAND = 76;
+
+  it('moves the companion, divider and primary of flat 1376x1032 columns below the band', () => {
+    const flat = resolvePaneGeometry(
+      'columns',
+      { width: 1376, height: 1032 },
+      null,
+      HAIRLINE,
+      EQUAL_SHARE,
+    );
+    const moved = belowTopBand(flat, BAND);
+
+    for (const name of ['companion', 'divider', 'primary'] as const) {
+      expect(moved[name]).toEqual({ ...flat[name], y: BAND, height: 956 });
+    }
+    expect(moved.isFolded).toBe(false);
+  });
+
+  it('moves both panes of a folded columns window, and keeps the fold flag', () => {
+    const fold = { x: 455.5, y: 0, width: 40, height: 669 };
+    const folded = resolvePaneGeometry(
+      'columns',
+      { width: 951, height: 669 },
+      fold,
+      HAIRLINE,
+      EQUAL_SHARE,
+    );
+    const moved = belowTopBand(folded, BAND);
+
+    expect(moved.companion).toEqual({ ...folded.companion, y: BAND, height: 669 - BAND });
+    expect(moved.primary).toEqual({ ...folded.primary, y: BAND, height: 669 - BAND });
+    expect(moved.isFolded).toBe(true);
+  });
+
+  it('moves only the companion of 683x909 rows: the primary already lies below the top', () => {
+    const rows = resolvePaneGeometry(
+      'rows',
+      { width: 683, height: 909 },
+      null,
+      HAIRLINE,
+      EQUAL_SHARE,
+    );
+    const moved = belowTopBand(rows, BAND);
+
+    expect(moved.companion).toEqual({
+      ...rows.companion,
+      y: BAND,
+      height: rows.companion.height - BAND,
+    });
+    expect(moved.divider).toEqual(rows.divider);
+    expect(moved.primary).toEqual(rows.primary);
+  });
+
+  it.each([
+    ['columns', { width: 1376, height: 1032 }],
+    ['rows', { width: 683, height: 909 }],
+  ] as const)('returns the %s geometry unchanged at band 0', (mode, window) => {
+    const geometry = resolvePaneGeometry(mode, window, null, HAIRLINE, EQUAL_SHARE);
+
+    expect(belowTopBand(geometry, 0)).toEqual(geometry);
   });
 });

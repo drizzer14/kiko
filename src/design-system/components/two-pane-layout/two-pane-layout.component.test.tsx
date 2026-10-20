@@ -2,6 +2,7 @@ import { StyleSheet, Text } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { render, screen } from '@testing-library/react-native';
 import type { FoldRegion, LayoutMode } from '@kiko/display-regions';
+import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { paneContextOf, usePaneContext, usePaneWidth } from '@kiko/design-system/pane-context';
 
 import '@kiko/design-system/unistyles';
@@ -12,11 +13,12 @@ import TwoPaneLayout from '.';
 
 const mockUseLayoutMode = jest.fn((): LayoutMode => 'columns');
 const mockUseFoldRegion = jest.fn((): FoldRegion => null);
+const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => mockUseLayoutMode(),
   useFoldRegion: () => mockUseFoldRegion(),
   useVerticalBarEdge: () => 'none',
-  useTabBarEdge: () => 'none',
+  useTabBarEdge: () => mockUseTabBarEdge(),
   useDisplayRegions: () => ({ horizontalSizeClass: 'regular' }),
   useIsLargeWindow: () => false,
 }));
@@ -70,6 +72,7 @@ describe('TwoPaneLayout', () => {
   beforeEach(() => {
     mockUseLayoutMode.mockReturnValue('columns');
     mockUseFoldRegion.mockReturnValue(null);
+    mockUseTabBarEdge.mockReturnValue('none');
     mockWindow.width = 951;
     mockWindow.height = 669;
   });
@@ -201,6 +204,122 @@ describe('TwoPaneLayout', () => {
 
       expect(screen.getByTestId('probe-primary').children).toEqual(['null']);
     });
+  });
+
+  // The floating top tab bar covers the native header of a pane that touches the window top, so
+  // the frames start below it and the pane drops its own top inset.
+  describe('under a floating top tab bar, 1376x1032 with a 32 pt top inset', () => {
+    const ROOT_INSETS = { top: 32, right: 0, bottom: 20, left: 0 };
+
+    const InsetProbe = ({ name }: { name: string }) => {
+      const insets = useSafeAreaInsets();
+
+      return (
+        <>
+          <Text testID={`inset-${name}`}>{JSON.stringify(insets)}</Text>
+          <PaneProbe name={name} />
+        </>
+      );
+    };
+
+    const renderUnderBar = () =>
+      render(
+        <SafeAreaInsetsContext.Provider value={ROOT_INSETS}>
+          <TwoPaneLayout
+            companion={<InsetProbe name="companion" />}
+            primary={<InsetProbe name="primary" />}
+          />
+        </SafeAreaInsetsContext.Provider>,
+      );
+
+    beforeEach(() => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      mockWindow.width = 1376;
+      mockWindow.height = 1032;
+    });
+
+    it('starts both pane frames and the divider at the band bottom, y 76', async () => {
+      await renderUnderBar();
+
+      for (const testID of ['two-pane-companion', 'two-pane-divider', 'two-pane-primary']) {
+        expect(frameOf(testID)).toMatchObject({ y: 76, height: 956 });
+      }
+    });
+
+    it('hands the primary pane a zero top inset and the other window insets', async () => {
+      await renderUnderBar();
+
+      expect(JSON.parse(screen.getByTestId('inset-primary').children.join(''))).toEqual({
+        ...ROOT_INSETS,
+        top: 0,
+      });
+      expect(JSON.parse(screen.getByTestId('inset-companion').children.join(''))).toEqual({
+        ...ROOT_INSETS,
+        top: 0,
+      });
+    });
+
+    it('tells both panes that the top edge is not the window top', async () => {
+      await renderUnderBar();
+
+      expect(screen.getByTestId('probe-primary').children).toEqual([
+        JSON.stringify(paneContextOf('columns', 'primary', true)),
+      ]);
+      expect(screen.getByTestId('probe-companion').children).toEqual([
+        JSON.stringify(paneContextOf('columns', 'companion', true)),
+      ]);
+    });
+
+    it('moves only the companion in rows, and zeroes only its top inset', async () => {
+      mockUseLayoutMode.mockReturnValue('rows');
+      mockWindow.width = 683;
+      mockWindow.height = 909;
+      await renderUnderBar();
+
+      expect(frameOf('two-pane-companion').y).toBe(76);
+      expect(frameOf('two-pane-primary').y).toBe(
+        frameOf('two-pane-companion').y + frameOf('two-pane-companion').height + HAIRLINE,
+      );
+      expect(JSON.parse(screen.getByTestId('inset-companion').children.join('')).top).toBe(0);
+      expect(JSON.parse(screen.getByTestId('inset-primary').children.join(''))).toEqual(
+        ROOT_INSETS,
+      );
+      expect(screen.getByTestId('probe-primary').children).toEqual([
+        JSON.stringify(paneContextOf('rows', 'primary')),
+      ]);
+    });
+
+    it('keeps a 10 pt inset window band at 54', async () => {
+      await render(
+        <SafeAreaInsetsContext.Provider value={{ ...ROOT_INSETS, top: 10 }}>
+          <TwoPaneLayout
+            companion={<InsetProbe name="companion" />}
+            primary={<InsetProbe name="primary" />}
+          />
+        </SafeAreaInsetsContext.Provider>,
+      );
+
+      expect(frameOf('two-pane-primary')).toMatchObject({ y: 54, height: 1032 - 54 });
+    });
+  });
+
+  it('keeps the frames at the window top and the insets under a bottom tab bar (Duo 951x669)', async () => {
+    mockUseTabBarEdge.mockReturnValue('bottom');
+    await render(
+      <SafeAreaInsetsContext.Provider value={{ top: 24, right: 0, bottom: 0, left: 0 }}>
+        <TwoPaneLayout
+          companion={<PaneProbe name="companion" />}
+          primary={<PaneProbe name="primary" />}
+        />
+      </SafeAreaInsetsContext.Provider>,
+    );
+
+    expect(frameOf('two-pane-companion').y).toBe(0);
+    expect(frameOf('two-pane-primary').y).toBe(0);
+    expect(frameOf('two-pane-primary').height).toBe(669);
+    expect(screen.getByTestId('probe-primary').children).toEqual([
+      JSON.stringify(paneContextOf('columns', 'primary')),
+    ]);
   });
 
   describe('wideSlot companion on a 1366 x 1024 window', () => {

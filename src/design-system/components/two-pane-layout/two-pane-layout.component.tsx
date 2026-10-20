@@ -1,12 +1,49 @@
-import type { FC } from 'react';
+import {
+  PaneContext,
+  type PaneName,
+  PaneWidthContext,
+  paneContextOf,
+} from '@kiko/design-system/pane-context';
+import {
+  belowTopBand,
+  resolveCompanionShare,
+  resolvePaneGeometry,
+} from '@kiko/design-system/pane-geometry';
 import { useUnistyles } from 'react-native-unistyles';
+import { type FC, type ReactNode, useMemo } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { useFoldRegion, useLayoutMode } from '@kiko/display-regions';
-import { resolveCompanionShare, resolvePaneGeometry } from '@kiko/design-system/pane-geometry';
-import { PaneContext, PaneWidthContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { useTopBarBand } from '@kiko/design-system/components/screen';
+import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { styles } from './two-pane-layout.styles';
 import type { TwoPaneLayoutProps } from './two-pane-layout.props';
+
+type PaneProps = {
+  mode: Exclude<NonNullable<TwoPaneLayoutProps['mode']>, 'single'>;
+  pane: PaneName;
+  width: number;
+  isBelowTopBand: boolean;
+  children: ReactNode;
+};
+
+// A pane that starts below the top-bar band already clears it, so it must not reserve the window's
+// top inset a second time: its screens read the inset from the context.
+const Pane: FC<PaneProps> = ({ mode, pane, width, isBelowTopBand, children }) => {
+  const insets = useSafeAreaInsets();
+  const paneInsets = useMemo(() => ({ ...insets, top: 0 }), [insets]);
+  const content = (
+    <PaneContext.Provider value={paneContextOf(mode, pane, isBelowTopBand)}>
+      <PaneWidthContext.Provider value={width}>{children}</PaneWidthContext.Provider>
+    </PaneContext.Provider>
+  );
+
+  return isBelowTopBand ? (
+    <SafeAreaInsetsContext.Provider value={paneInsets}>{content}</SafeAreaInsetsContext.Provider>
+  ) : (
+    content
+  );
+};
 
 // The pane frames are in window coordinates (useWindowDimensions) and the root is never measured,
 // so this must mount at the window origin, at the full window size. It positions the panes and
@@ -23,27 +60,32 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
   const mode = pinnedMode ?? windowMode;
   const foldRegion = useFoldRegion();
   const window = useWindowDimensions();
+  const band = useTopBarBand();
 
   if (mode === 'single') {
     return <>{primary}</>;
   }
 
-  const geometry = resolvePaneGeometry(
+  const flat = resolvePaneGeometry(
     mode,
     window,
     foldRegion,
     theme.layout.hairline,
     resolveCompanionShare(mode, window, wideSlot),
   );
+  const geometry = belowTopBand(flat, band);
 
   return (
     <View style={styles.root}>
       <View style={styles.pane(geometry.companion)} testID="two-pane-companion">
-        <PaneContext.Provider value={paneContextOf(mode, 'companion')}>
-          <PaneWidthContext.Provider value={geometry.companion.width}>
-            {companion}
-          </PaneWidthContext.Provider>
-        </PaneContext.Provider>
+        <Pane
+          mode={mode}
+          pane="companion"
+          width={geometry.companion.width}
+          isBelowTopBand={geometry.companion !== flat.companion}
+        >
+          {companion}
+        </Pane>
       </View>
       {!geometry.isFolded && (
         <View
@@ -52,11 +94,14 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
         />
       )}
       <View style={styles.pane(geometry.primary)} testID="two-pane-primary">
-        <PaneContext.Provider value={paneContextOf(mode, 'primary')}>
-          <PaneWidthContext.Provider value={geometry.primary.width}>
-            {primary}
-          </PaneWidthContext.Provider>
-        </PaneContext.Provider>
+        <Pane
+          mode={mode}
+          pane="primary"
+          width={geometry.primary.width}
+          isBelowTopBand={geometry.primary !== flat.primary}
+        >
+          {primary}
+        </Pane>
       </View>
     </View>
   );

@@ -46,6 +46,8 @@ jest.mock('@kiko/display-regions', () => {
       ),
     useFoldRegion: () => null,
     useIsLargeWindow: () => false,
+    useTabBarEdge: () => 'none',
+    useVerticalBarEdge: () => 'none',
   };
 });
 

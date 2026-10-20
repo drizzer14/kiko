@@ -17,6 +17,8 @@ jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => 'single',
   useFoldRegion: () => mockUseFoldRegion(),
   useIsLargeWindow: () => false,
+  useTabBarEdge: () => 'none',
+  useVerticalBarEdge: () => 'none',
 }));
 
 jest.mock('@react-navigation/native', () => ({

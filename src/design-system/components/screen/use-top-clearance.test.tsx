@@ -28,9 +28,11 @@ jest.mock('@kiko/display-regions', () => ({
 }));
 
 const inPane =
-  (mode: 'columns' | 'rows', pane: 'companion' | 'primary') =>
+  (mode: 'columns' | 'rows', pane: 'companion' | 'primary', isBelowTopBand?: boolean) =>
   ({ children }: { children: ReactNode }) => (
-    <PaneContext.Provider value={paneContextOf(mode, pane)}>{children}</PaneContext.Provider>
+    <PaneContext.Provider value={paneContextOf(mode, pane, isBelowTopBand)}>
+      {children}
+    </PaneContext.Provider>
   );
 
 const withHeader =
@@ -66,6 +68,21 @@ describe('useTopClearance', () => {
       });
 
       expect(result.current).toBe(44);
+    },
+  );
+
+  it.each([
+    ['columns', 'primary'],
+    ['columns', 'companion'],
+    ['rows', 'companion'],
+  ] as const)(
+    'is zero in a %s %s pane flagged below the top-bar band, which the frame already clears',
+    async (mode, pane) => {
+      const { result } = await renderHook(() => useTopClearance(), {
+        wrapper: inPane(mode, pane, true),
+      });
+
+      expect(result.current).toBe(0);
     },
   );
 

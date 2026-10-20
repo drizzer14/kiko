@@ -15,6 +15,33 @@ describe('paneContextOf', () => {
   it('hands out one object for a pane, so a consumer is not re-rendered by a new identity', () => {
     expect(paneContextOf('rows', 'primary')).toBe(paneContextOf('rows', 'primary'));
   });
+
+  it.each([
+    ['columns', 'companion', { top: false, right: false, bottom: true, left: true }],
+    ['columns', 'primary', { top: false, right: true, bottom: true, left: false }],
+    ['rows', 'companion', { top: false, right: true, bottom: false, left: true }],
+    ['rows', 'primary', { top: false, right: true, bottom: true, left: true }],
+  ] as const)(
+    'drops only the top edge of the %s %s pane when it lies below the top-bar band',
+    (mode, pane, edges) => {
+      expect(paneContextOf(mode, pane, true)).toEqual({ edges });
+    },
+  );
+
+  it('hands out one flagged object per pane, distinct from the unflagged one', () => {
+    expect(paneContextOf('columns', 'primary', true)).toBe(
+      paneContextOf('columns', 'primary', true),
+    );
+    expect(paneContextOf('columns', 'primary', true)).not.toBe(paneContextOf('columns', 'primary'));
+    expect(paneContextOf('columns', 'primary', true)).not.toBe(
+      paneContextOf('columns', 'companion', true),
+    );
+  });
+
+  it('keeps the unflagged context when the flag is false', () => {
+    expect(paneContextOf('columns', 'primary', false)).toBe(paneContextOf('columns', 'primary'));
+    expect(paneContextOf('columns', 'primary', false).edges.top).toBe(true);
+  });
 });
 
 describe('usePaneContext', () => {
