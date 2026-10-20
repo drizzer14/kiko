@@ -1,5 +1,6 @@
 import '@kiko/design-system/unistyles';
-import { act, renderHook } from '@testing-library/react-native';
+import { createElement, Fragment } from 'react';
+import { act, render, renderHook } from '@testing-library/react-native';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 
 import { useStatisticsFilterSelection } from './use-statistics-filter-selection';
@@ -68,5 +69,66 @@ describe('useStatisticsFilterSelection', () => {
     const second = await renderHook(() => useStatisticsFilterSelection());
 
     expect(second.result.current.selectedAccounts).toEqual(new Set());
+  });
+
+  it('keeps the pick while one reader unmounts and another stays mounted', async () => {
+    const first = await renderHook(() => useStatisticsFilterSelection());
+    const second = await renderHook(() => useStatisticsFilterSelection());
+
+    await act(async () => {
+      first.result.current.toggleAccount('a');
+      first.result.current.toggleCategory('groceries');
+    });
+    await first.unmount();
+
+    expect(second.result.current.selectedAccounts).toEqual(new Set(['a']));
+    expect(second.result.current.selectedCategories).toEqual(new Set(['groceries']));
+
+    // A reset writes no notification, so a reader that reads the store afresh shows whether it ran.
+    const late = await renderHook(() => useStatisticsFilterSelection());
+
+    expect(late.result.current.selectedAccounts).toEqual(new Set(['a']));
+    expect(late.result.current.selectedCategories).toEqual(new Set(['groceries']));
+  });
+
+  describe('when every reader is replaced in one commit', () => {
+    const latest: Record<string, ReturnType<typeof useStatisticsFilterSelection>> = {};
+
+    const SwapReader = ({ name }: { name: string }): null => {
+      latest[name] = useStatisticsFilterSelection();
+
+      return null;
+    };
+
+    // A new key replaces both readers in one commit, like a fold/unfold that rebuilds the tree.
+    const SwapPair = ({ generation }: { generation: number }) =>
+      createElement(
+        Fragment,
+        { key: generation },
+        createElement(SwapReader, { name: 'first' }),
+        createElement(SwapReader, { name: 'second' }),
+      );
+
+    it('keeps the pick', async () => {
+      const rendered = await render(createElement(SwapPair, { generation: 0 }));
+
+      await act(async () => {
+        latest.first.toggleAccount('a');
+        latest.first.toggleCategory('groceries');
+      });
+      await rendered.rerender(createElement(SwapPair, { generation: 1 }));
+
+      expect(latest.first.selectedAccounts).toEqual(new Set(['a']));
+      expect(latest.first.selectedCategories).toEqual(new Set(['groceries']));
+      expect(latest.second.selectedAccounts).toEqual(new Set(['a']));
+      expect(latest.second.selectedCategories).toEqual(new Set(['groceries']));
+
+      // The deferred reset writes no notification, so only a reader that reads the store afresh
+      // shows whether it ran.
+      const late = await renderHook(() => useStatisticsFilterSelection());
+
+      expect(late.result.current.selectedAccounts).toEqual(new Set(['a']));
+      expect(late.result.current.selectedCategories).toEqual(new Set(['groceries']));
+    });
   });
 });

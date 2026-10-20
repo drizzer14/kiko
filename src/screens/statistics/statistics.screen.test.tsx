@@ -2405,6 +2405,36 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId(`${CATEGORY_FILTER}-option-groceries`)).toBeNull();
   });
 
+  it('filters nothing and shows no count once the only selected category is deleted', async () => {
+    seedSpending();
+
+    const { getByTestId, getByText, queryByText, queryByTestId, rerender } = await renderScreen();
+
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
+    expect(queryByTestId('category-pie-arc-transport')).toBeNull();
+    expect(getByText('Categories · 1')).toBeTruthy();
+
+    // categoriesRepo.delete reassigns the deleted category's transactions to the default key.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: EXPENSES.map((row) =>
+        row.category === 'groceries' ? { ...row, category: 'other' } : row,
+      ),
+      history: HISTORY,
+      categories: [CATEGORIES[1], OTHER_CATEGORY],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+    expect(getByTestId('category-pie-arc-other')).toBeTruthy();
+    expect(getByText('Categories')).toBeTruthy();
+    expect(queryByText(/^Categories · /)).toBeNull();
+  });
+
   it('excludes an expense outside the active date range from the donut center total', async () => {
     // One expense inside the default 30-day window, one 60 days back (well
     // outside it). If the donut summed the whole ledger instead of the active

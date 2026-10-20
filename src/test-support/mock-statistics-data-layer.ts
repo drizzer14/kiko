@@ -4,6 +4,12 @@
  * `mockUseLiveQuery` (set it to `answerFilterData` from `statistics-filter-data`), the rate
  * backfill never settles, and the visible-refreshed `now` stays the mount-time clock. Import it
  * BEFORE the screen under test, so the mocks register first.
+ *
+ * The `jest.mock` calls below register when this helper is evaluated, so a test must import it
+ * before any module that loads a mocked module. That holds while the module under test is a
+ * relative import, because relative imports sort after `@kiko/*` imports. A new `@kiko/*` value
+ * import that loads a mocked module and sorts ahead of this helper would silently keep the real
+ * binding.
  */
 export const mockUseLiveQuery = jest.fn();
 

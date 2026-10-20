@@ -272,7 +272,7 @@ const StatisticsScreen: FC = () => {
     liveOptions,
   );
 
-  // An empty account set means "all accounts"; any names in it narrow all three charts.
+  // An empty account set means "all accounts"; any account ids in it narrow all three charts.
   //
   // The spending pie's own category filter, in the SAME "empty means all" model
   // the account FilterMenu uses: an empty set includes every category; any
@@ -1040,17 +1040,29 @@ const StatisticsScreen: FC = () => {
     return Array.from(byKey.values()).sort((a, b) => rank(a.value) - rank(b.value));
   }, [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter]);
 
+  // The stored selection can name a category deleted since, with no checked row left to clear it,
+  // so it is pruned against the KNOWN keys (the category rows and the slices, which carry the
+  // synthetic default). A key that merely fell out of the range is still known and stays selected.
+  const visibleSelectedCategories = useMemo(
+    () =>
+      visibleSelection(selectedCategories, [
+        ...categoryByKey.keys(),
+        ...allCategorySlices.map((slice) => slice.key),
+      ]),
+    [selectedCategories, categoryByKey, allCategorySlices],
+  );
+
   const excludedCategoryKeys = useMemo(() => {
-    if (selectedCategories.size === 0) {
+    if (visibleSelectedCategories.size === 0) {
       return new Set<string>();
     }
 
     return new Set(
       allCategorySlices
-        .filter((slice) => !selectedCategories.has(slice.key))
+        .filter((slice) => !visibleSelectedCategories.has(slice.key))
         .map((slice) => slice.key),
     );
-  }, [allCategorySlices, selectedCategories]);
+  }, [allCategorySlices, visibleSelectedCategories]);
 
   const categorySlices = useMemo(
     () =>
@@ -1328,7 +1340,7 @@ const StatisticsScreen: FC = () => {
                     sheetTitle={t('statistics.filterCategoriesSheetTitle')}
                     testID="statistics-category-filter"
                     options={categoryOptions}
-                    selected={selectedCategories}
+                    selected={visibleSelectedCategories}
                     onToggle={toggleCategory}
                     triggerIcon={genericEntitySymbol.category}
                   />
