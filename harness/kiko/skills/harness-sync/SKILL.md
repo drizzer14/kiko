@@ -89,6 +89,12 @@ in the harness repo):
 - pff-ios `339a3d7c`: generic `import-order.js` change (`ambientBlockEnd`, `checkRun`,
   `fixRun`; `__tests__/import-order.test.ts` +4 cases). Portable as is; carry the gap /1
   closer widening if it lands first.
+- pff-ios commit "test(job-queue): await every killed child's exit before the sandboxes
+  go": the job-queue test teardown awaits every killed child's exit before
+  `rmSync` (the port of harness `5f126ee`), plus a pass-count bound
+  (`TEARDOWN_POLL_LIMIT` polls x 20 ms, about 30 s) that `5f126ee` lacks. Port the bound back
+  to the harness repo: without it, a red row's stub loop, which ends only on sandbox removal,
+  hangs the afterEach.
 - The CLAUDE.md trim (docs/harness/checks.md split).
 
 ## Classification
@@ -232,8 +238,7 @@ Every count and exit code is the orchestrator's own measured result.
 - The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
   first verdict; fix in the harness repo.
 - Carried from H7: the mutation ETA split by changed-line weights; the whole history-date
-  rule; the retrospect run-log lines; the job-queue test teardown wait
-  (`__tests__/job-queue.test.ts` ENOTEMPTY).
+  rule; the retrospect run-log lines.
 - Carried Minors: the doc fingerprint misses a `../fixtures/...pinned` literal
   (`harness_doc_suite_fixtures` needs a quote right before `fixtures/`; `harness_doc_suites`
   accepts `../`); `medium.sh` computes the doc lists twice per Stop.
