@@ -222,11 +222,12 @@ type ExchangeOperationFields = Pick<
 // What the Binance account holds: BTC under the account's own name, one small deposit per other
 // coin at the coin's own scale (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4, DOGE 4
 // decimals), and a UAH and a EUR balance, since an exchange wallet keeps fiat as a `crypto_asset`
-// holding in a fiat currency. The exchange operation rows (a convert, a trade with its fee, a dust
-// sweep, a P2P, card and bank row) are all dated 33 days or more before the anchor, outside the
-// default 30-day window, so Home and the charts open on the same rows as before. Each holding's
-// deposits are cut by what its operation rows add, so it ends at the balance one deposit gave it
-// before; only the Dogecoin deposit is swept away, to 0.
+// holding in a fiat currency. The exchange operation rows (a convert, a trade with its fee, a trade
+// with a coin not held, a dust sweep, a P2P, card purchase, card sale and bank rows) are all dated
+// 33 days or more before the anchor, outside the default 30-day window, so Home and the charts
+// open on the same rows as before. Each holding's deposits are cut by what its operation rows
+// add, so it ends at the balance one deposit gave it before; only the Dogecoin deposit is swept
+// away, to 0.
 // The coin names are brand names and stay Latin in both languages; the two fiat names are text.
 const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHolding[] => {
   const exchangeHolding = (
@@ -287,7 +288,14 @@ const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHold
     exchangeHolding({
       name: 'Ethereum',
       currency: 'ETH',
-      transactions: [deposit('ETH', 3_000_000, 120)],
+      transactions: [
+        deposit('ETH', 4_300_000, 120),
+        operationRow(38, -1_300_000, {
+          untrackedCounterpart: 'card:UAH:1300.00',
+          operation: 'card',
+          comment: '1300 UAH',
+        }),
+      ],
     }),
     exchangeHolding({
       key: BINANCE_USDT_KEY,
@@ -345,7 +353,11 @@ const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHold
     exchangeHolding({
       name: 'Solana',
       currency: 'SOL',
-      transactions: [deposit('SOL', 500_000, 90)],
+      // PEPE is a coin the demo does not hold, so this trade has one tracked leg and an asset code.
+      transactions: [
+        deposit('SOL', 700_000, 90),
+        operationRow(42, -200_000, { untrackedCounterpart: 'asset:PEPE', operation: 'trade' }),
+      ],
     }),
     exchangeHolding({
       name: 'ChainGPT',

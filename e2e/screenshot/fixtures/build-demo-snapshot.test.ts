@@ -435,7 +435,26 @@ describe('buildDemoSnapshot', () => {
       expect(new Set(codes)).toEqual(new Set(transactions.operation.enumValues));
       expect(codes.filter((code) => code === 'trade-fee')).toHaveLength(1);
       expect(codes.filter((code) => code === 'p2p')).toHaveLength(1);
-      expect(codes.filter((code) => code === 'card')).toHaveLength(1);
+      expect(codes.filter((code) => code === 'card')).toHaveLength(2);
+    });
+
+    it('holds a card sale and a trade whose other side is a coin the demo does not hold', () => {
+      const sale = rows.find((row) => row.operation === 'card' && row.amountMinorUnits < 0);
+      const untracked = rows.find((row) => row.untrackedCounterpart?.startsWith('asset:'));
+      const heldCodes = new Set<string>(cryptoHoldings.map((holding) => holding.currency));
+
+      expect(parseUntrackedCounterpart(sale?.untrackedCounterpart ?? null)).toMatchObject({
+        kind: 'card',
+        fiat: 'UAH',
+      });
+      expect(untracked?.operation).toBe('trade');
+      expect(untracked?.exchangeCounterpartHoldingId).toBeNull();
+      expect(untracked?.exchangePairId).toBeNull();
+
+      const counterpart = parseUntrackedCounterpart(untracked?.untrackedCounterpart ?? null);
+
+      expect(counterpart).toEqual({ kind: 'asset', code: 'PEPE' });
+      expect(heldCodes.has('PEPE')).toBe(false);
     });
 
     it("gives the legs of each pair one pair id and points each leg at the other's holding", () => {
@@ -473,7 +492,8 @@ describe('buildDemoSnapshot', () => {
         {
           fee: 'Trading fee',
           p2p: 'P2P purchase (UAH)',
-          card: 'Card purchase (UAH)',
+          card: ['Card purchase (UAH)', 'Sale to card (UAH)'],
+          asset: 'Exchange to PEPE',
           fiat: ['Bank deposit (EUR)', 'Bank withdrawal (EUR)'],
         },
       ],
@@ -482,7 +502,8 @@ describe('buildDemoSnapshot', () => {
         {
           fee: 'Торгова комісія',
           p2p: 'Купівля P2P (UAH)',
-          card: 'Купівля карткою (UAH)',
+          card: ['Купівля карткою (UAH)', 'Продаж на картку (UAH)'],
+          asset: 'Обмін на PEPE',
           fiat: ['Поповнення з банку (EUR)', 'Виведення в банк (EUR)'],
         },
       ],
@@ -517,13 +538,18 @@ describe('buildDemoSnapshot', () => {
       it('labels the fee row Trading fee and the coded rows by their code', () => {
         expect(labelsOf('trade-fee')).toEqual([expected.fee]);
         expect(labelsOf('p2p')).toEqual([expected.p2p]);
-        expect(labelsOf('card')).toEqual([expected.card]);
+        expect(labelsOf('card')).toEqual(expected.card);
         expect(labelsOf('fiat')).toEqual(expected.fiat);
+        expect(
+          languageRows.filter((row) => row.untrackedCounterpart?.startsWith('asset:')).map(labelOf),
+        ).toEqual([expected.asset]);
       });
 
       it('names the other leg in the label of each pair leg', () => {
-        const legs = languageRows.filter((row) =>
-          ['trade', 'convert', 'dust'].includes(row.operation ?? ''),
+        const legs = languageRows.filter(
+          (row) =>
+            ['trade', 'convert', 'dust'].includes(row.operation ?? '') &&
+            row.exchangeCounterpartHoldingId !== null,
         );
 
         expect(legs).toHaveLength(6);
@@ -537,7 +563,7 @@ describe('buildDemoSnapshot', () => {
     });
 
     it("writes each coded row's total in its comment, as the code reads it", () => {
-      const coded = rows.filter((row) => row.untrackedCounterpart !== null);
+      const coded = rows.filter((row) => /^(p2p|card|bank):/.test(row.untrackedCounterpart ?? ''));
 
       const totals = coded.map((row) => {
         const counterpart = parseUntrackedCounterpart(row.untrackedCounterpart);
@@ -550,7 +576,7 @@ describe('buildDemoSnapshot', () => {
           .otherwise(() => undefined);
       });
 
-      expect(totals).toEqual(['2600 UAH', '4150 UAH', '100 EUR', '50 EUR']);
+      expect(totals).toEqual(['2600 UAH', '1300 UAH', '4150 UAH', '100 EUR', '50 EUR']);
       expect(coded.map((row) => row.comment)).toEqual(totals);
     });
 
