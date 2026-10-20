@@ -4,13 +4,13 @@ import {
   PaneWidthContext,
   paneContextOf,
 } from '@kiko/design-system/pane-context';
-import { EQUAL_SHARE, belowTopBand, resolvePaneGeometry } from '@kiko/design-system/pane-geometry';
 import { useUnistyles } from 'react-native-unistyles';
 import { type FC, type ReactNode, useMemo } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { useFoldRegion, useLayoutMode } from '@kiko/display-regions';
 import { useTopBarBand } from '@kiko/design-system/components/screen';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EQUAL_SHARE, belowTopBand, resolvePaneGeometry } from '@kiko/design-system/pane-geometry';
 
 import { styles } from './two-pane-layout.styles';
 import type { TwoPaneLayoutProps } from './two-pane-layout.props';
