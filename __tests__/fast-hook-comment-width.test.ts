@@ -131,6 +131,44 @@ describe('fast.sh on a write to a .js file', () => {
   });
 });
 
+// The project-wide check reads a .js file only under scripts/ and rules/fixtures/, so a .js write
+// elsewhere (the drizzle-generated header of drizzle/migrations/migrations.js is 109 columns) must
+// not block on a comment the project-wide check never reads.
+describe('fast.sh on a write to a .js file the project-wide check does not read', () => {
+  it.each([
+    ['drizzle/migrations/migrations.js'],
+    ['metro.config.js'],
+    ['harness/kiko/probe.js'],
+    ['src/probe.js'],
+    ['scriptsx/probe.js'],
+  ])('passes a // comment over 100 columns in %s', (path) => {
+    const source = `${wordsOfWidth('// ', LIMIT + 9)}\nexport const probe = 1;\n`;
+
+    expect(runFast(path, source)).toMatchObject({ status: 0, stderr: '' });
+  });
+
+  it('still runs the rest of the fast tier on such a write', () => {
+    const result = runFast('drizzle/migrations/migrations.js', 'export const probe: any = 1;\n');
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Biome (lint + format)');
+  });
+
+  it.each([
+    ['scripts/checks/probe.js'],
+    ['harness/kiko/scripts/probe.js'],
+    ['rules/fixtures/probe.js'],
+    ['rules/fixtures/deep/probe.js'],
+    ['githooks/probe.js'],
+    ['nested/githooks/probe.js'],
+  ])('blocks on a // comment line over 100 columns in %s', (path) => {
+    const result = runFast(path, `${wordsOfWidth('// ', LIMIT + 1)}\n`);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(`${path}:1: 101 columns:`);
+  });
+});
+
 // An explicit `any` fails Biome's lint, so a lint block in the output shows the write reached
 // lint.sh and not only the comment-width check.
 describe('fast.sh on a TypeScript or JavaScript write under a githooks segment', () => {

@@ -5,7 +5,8 @@ payload="$(cat)"
 file="$(printf '%s' "$payload" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);process.stdout.write((j.tool_input&&j.tool_input.file_path)||"")}catch{process.stdout.write("")}})')"
 [ -z "$file" ] && exit 0
 # The pre-write guard reads only TypeScript, so a `//` comment in a .js file and a `#` comment in
-# a shell, YAML or githooks file get their per-edit width check here, and the history-word rules in
+# a shell, YAML or githooks file get their per-edit width check here (comment-line-width.sh skips a
+# .js file the project-wide check does not read), and the history-word rules in
 # rules/semgrep-mobile.yml run through security.sh.
 case "$file" in
   *.ts | *.tsx) : ;;
