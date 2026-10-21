@@ -64,7 +64,6 @@ import { useIsLargeWindow } from '@kiko/display-regions';
 import { ibanOf } from '@kiko/holdings/holding-metadata';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
-import Screen from '@kiko/design-system/components/screen';
 import type { TabParamList } from '@kiko/navigation/types';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
@@ -72,7 +71,6 @@ import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { localMidnightOfDayKey } from '@kiko/prices/price-book';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
-import { usePaneWidth } from '@kiko/design-system/pane-context';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -92,6 +90,7 @@ import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
+import Screen, { usePaneContentWidth } from '@kiko/design-system/components/screen';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
@@ -188,9 +187,9 @@ const NET_WORTH_CARD_GAP = 3;
  */
 const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
-  // The shared row follows the window and the width of the pane the screen is in, and nothing
-  // else: a filter or a date range never moves a card.
-  const isRowShared = isChartRowShared(useIsLargeWindow(), usePaneWidth());
+  // The shared row follows the window and the width the pane's content has (the pane's, limited by
+  // the content cap), and nothing else: a filter or a date range never moves a card.
+  const isRowShared = isChartRowShared(useIsLargeWindow(), usePaneContentWidth());
   // A card keeps its own height, except in the shared row, where both cards take the row's and
   // each chart is centred in what is left under its title.
   const sharedCardStyle = isRowShared ? styles.sharedRowFill : undefined;

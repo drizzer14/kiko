@@ -52,6 +52,14 @@ import { useIsTabBarAtTop } from '@kiko/design-system/components/screen';
 
 export const barrelAtTop = useIsTabBarAtTop;
 
+// A CommonJS destructure of the hook from the barrel.
+// EXPECT-FINDING
+export const { useIsTabBarAtTop: requiredAtTop } = require('@kiko/design-system/components/screen');
+
+// A CommonJS property read of the hook from the barrel.
+// EXPECT-FINDING
+export const requiredAtTopProperty = require('@kiko/design-system/components/screen').useIsTabBarAtTop;
+
 // The boolean hook's module file.
 // EXPECT-FINDING
 import * as atTopModule from '../../src/design-system/components/screen/use-is-tab-bar-at-top';

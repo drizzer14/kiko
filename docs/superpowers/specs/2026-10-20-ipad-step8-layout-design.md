@@ -128,7 +128,9 @@ The merged Home (C) and the chart rows (D) apply only on a large window that spl
   up with the native title.
 - Everywhere else the 600 pt cap stays, centred (user, 2026-10-20): the Duo inner panes (~475 and
   669 pt; the 669 pt pane keeps its ~34.5 pt title offset) and a regular `single` window
-  (widest under 721 pt, offset at most ~44 pt).
+  (widest under 721 pt, offset at most ~44 pt). A large window with a SIDE tab bar stays capped
+  at 600 pt too, with no large-window exception (user, 2026-10-21); its shared chart row follows
+  the content width (the pane's, limited by the cap), so a capped pane stacks the charts.
 
 ### F. Bug fixes first (points 5 and 7)
 

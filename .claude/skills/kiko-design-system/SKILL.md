@@ -124,7 +124,8 @@ The token categories, defined once in a single theme module (read
   `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
   checkmark beside caption text), never an inline literal like `18`.
 - **layout** — `paneMaxWidth` caps a pane's SCREEN CONTENT (lists,
-  forms) and never native bars; `hairline` is the flat two-pane divider
+  forms) and never native bars (except in a pane under a top tab bar:
+  see the Screen entry under "Component set"); `hairline` is the flat two-pane divider
   width. Read `theme.ts` for the values; never restate them. Pane code
   reads `theme.layout`, never an inline width literal or
   `StyleSheet.hairlineWidth`. The divider keeps the ordinary hairline
@@ -711,7 +712,12 @@ new component can land between reviews of this skill:
   cap there, so the content spans the pane from the 16 pt margin where
   the native large title starts, because `PaneStackView` gives the stacks
   that margin on the same `useIsTabBarAtTop()` value. A Duo pose (bar at
-  the bottom or a side) keeps the cap and UIKit's title margin. The
+  the bottom or a side) keeps the cap and UIKit's title margin, and so
+  does a large window with a SIDE tab bar: it stays capped at 600 pt,
+  with no large-window exception (user ruling 2026-10-21). A screen
+  that sizes itself by the room its content has (the Statistics shared
+  chart row) reads `usePaneContentWidth()` (the Screen barrel: the pane
+  width limited by that cap), never the pane or window width alone. The
   vertical-bar signal it consumes is
   `useVerticalBarEdge` from `@kiko/display-regions`
   (`src/display-regions/`); `scroll-to-field` reads it through

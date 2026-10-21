@@ -1152,32 +1152,35 @@ verified usage, not dead weight:
     Every other stack (iPhone, single-pane, a stack outside
     `PaneStackView`) and the panes of any window whose tab bar is at the bottom or a side (every
     Surface Duo pose: inner 951x669 and 669x951), which keeps its look completely, read 0. The
-    placement is the one `Screen` clears, read from the bar's real frame, so the margin can show
-    UIKit's or the content's for about 0.1 s while the placement read is stale (on a split change
-    or a large-to-large rotation, and on cold start until the first read), then settles.
+    placement is the one `Screen` clears, read from the bar's real frame, so the margin and the
+    content cap can both lag for about 0.1 s while the placement read is stale (on a split change
+    or a large-to-large rotation, and on cold start until the first read), then settle. A large
+    window with a SIDE tab bar stays capped at 600 pt and keeps UIKit's margin, with no
+    large-window exception (user ruling 2026-10-21).
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or
     `viewRespectsSystemMinimumLayoutMargins` is touched; the native stack gets the prop's codegen
     default. Going back to 0 restores the view and bar margins captured when the value first went
-    above 0, and `viewRespectsSystemMinimumLayoutMargins = YES`. That restore path runs on a
-    normal resize, not only when a stack view is recycled: a window that goes from a top-bar split
-    to a bottom- or side-bar one keeps the split mounted, so the same native stacks get 0 and
-    return to stock. Only the Fabric (new architecture) path is patched, as the stack takes its
-    props in `updateProps`; `lib/module` is not patched (nothing here loads it). The patch was
-    derived against the pristine tarball (`npm pack react-native-screens@4.27.0`): applying it to
-    that tarball gives the installed tree.
+    above 0, and `viewRespectsSystemMinimumLayoutMargins = YES`. Without a stack view being
+    recycled, that restore path is reached only by the stale placement read above (about 0.1 s,
+    the mounted split briefly reads a bar that is not at the top) or by a Duo read of `top`; an
+    iPad window keeps its tab bar at the top, so no resize reaches it. Only the Fabric (new
+    architecture) path is patched, as the stack takes its props in `updateProps`; `lib/module` is
+    not patched (nothing here loads it). The patch was derived against the pristine tarball
+    (`npm pack react-native-screens@4.27.0`): applying it to that tarball gives the installed
+    tree.
     Pinned by `__tests__/react-native-patch.test.ts` ("the react-native-screens fixed content
     margin patch": the patch touches only react-native-screens, the version is exactly `4.27.0`,
     the installed files carry the patch, and the context reads 0 outside a provider) and by
     `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, the single stack 0).
     Re-check rule: `docs/harness/dependency-hygiene.md` ("Standing patch: react-native-screens").
     A device re-measurement is the real proof (Jest cannot see native margins), and it covers:
-    a resize between a top-bar split and a bottom- or side-bar one and back (pane titles back to
-    stock, then 16 pt); idle CPU with a pane open (the bar margin is written in
-    `viewDidLayoutSubviews`, which must not cause continuous re-layout); and the bar items and
-    the back button, which UIKit also places by the bar's `directionalLayoutMargins`, so they may
-    move by up to 16 pt (measure it, do not claim it).
+    the restore path (pane titles back to stock, then 16 pt) on a split change and on a
+    large-to-large rotation, where the stale read can take it; idle CPU with a pane open (the bar
+    margin is written in `viewDidLayoutSubviews`, which must not cause continuous re-layout); and
+    the bar items and the back button, which UIKit also places by the bar's
+    `directionalLayoutMargins`, so they may move by up to 16 pt (measure it, do not claim it).
   - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
     `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
     `ScrollView` with `automaticallyAdjustKeyboardInsets` shifted its content offset by the

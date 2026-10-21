@@ -9,7 +9,6 @@ const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'n
 jest.mock('@kiko/display-regions', () => ({
   useTabBarEdge: () => mockUseTabBarEdge(),
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
-  useIsLargeWindow: () => false,
 }));
 
 jest.mock('react-native-bottom-tabs', () => ({ useBottomTabBarHeight: () => 64 }));

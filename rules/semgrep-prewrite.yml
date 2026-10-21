@@ -1213,7 +1213,9 @@ rules:
   # (the Screen folder) read them, and `PaneStackView` reads `useIsTabBarAtTop` once, above
   # both panes, to give the native large title the content's margin. Same two arms as the
   # band rule, for the two hook names and for the `use-tab-bar-placement` and
-  # `use-is-tab-bar-at-top` module files. `import type` and prose never match.
+  # `use-is-tab-bar-at-top` module files, and a third arm for a CommonJS load of the barrel that
+  # names a hook (a `require(…)` destructure or property read). `import type` and prose never
+  # match.
   - id: kiko-tab-bar-placement-only-in-screen-and-pane-stack-view
     languages: [typescript]
     severity: ERROR
@@ -1231,6 +1233,7 @@ rules:
     pattern-either:
       - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buse(?:TabBarPlacement|IsTabBarAtTop)\b[^;'"]*?\bfrom\s*['"]
       - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-(?:tab-bar-placement|is-tab-bar-at-top)(?:\.ts)?['"]
+      - pattern-regex: (?m)\b(?:const|let|var)\s*\{[^}]*\buse(?:TabBarPlacement|IsTabBarAtTop)\b[^}]*\}\s*=\s*require\s*\(|\brequire\s*\([^)]*\)\s*\.\s*use(?:TabBarPlacement|IsTabBarAtTop)\b
   # kiko-architecture's "Pane navigation": on a wide window a screen can be the default
   # of a pane (Statistics and Home as each other's companion, Categories as the Settings
   # primary), and the Accounts list sits under the default it fills the primary pane

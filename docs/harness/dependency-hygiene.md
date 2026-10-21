@@ -289,8 +289,9 @@ rotation, and on cold start until the first read, so the margin and the cap can 
 briefly.
 
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
-runs on a normal resize, not only when a stack view is recycled: a window that goes from a
-top-bar split to a bottom- or side-bar one keeps the split mounted, so its stacks get 0 again.
+is reached without a stack view being recycled only by the stale placement read above (about
+0.1 s, the mounted split briefly reads a bar that is not at the top) or by a Duo read of `top`;
+an iPad window keeps its tab bar at the top, so no resize reaches it.
 
 How it is pinned: `__tests__/react-native-patch.test.ts` fails unless `react-native-screens` is
 exactly `4.27.0` in `package.json`, the patch touches only `node_modules/react-native-screens/`
@@ -310,11 +311,11 @@ react-native-screens`, which needs the version to pass the `.npmrc` minimum age)
 patch file and update the version in the pin test. Re-prove it: applying the patch to the pristine
 tarball must reproduce the installed tree, and re-measure on a simulator or device: a pane's large
 title leading edge equals the content's leading edge in both panes of an iPad; an iPhone and a
-Duo are unchanged; a resize between a top-bar split and a bottom- or side-bar one and back (pane
-titles back to stock, then 16 pt); idle CPU with a pane open (no continuous re-layout from the
-bar margin write in `viewDidLayoutSubviews`); and the bar items and the back button positions
-(UIKit places them by the bar's `directionalLayoutMargins` too, so they may move by up to 16 pt:
-measure it, do not claim it).
+Duo are unchanged; the restore path (pane titles back to stock, then 16 pt) on a split change
+and on a large-to-large rotation, where the stale read can take it; idle CPU with a pane open (no
+continuous re-layout from the bar margin write in `viewDidLayoutSubviews`); and the bar items and
+the back button positions (UIKit places them by the bar's `directionalLayoutMargins` too, so they
+may move by up to 16 pt: measure it, do not claim it).
 
 ## `.env` is public-only
 

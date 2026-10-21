@@ -440,11 +440,28 @@ describe('StatisticsScreen grid', () => {
   it.each([
     ['a stacked pane', PANE_STACKED],
     ['a shared-row pane', PANE_SHARED],
-  ])('leaves %s of a large window uncapped', async (_name, placement) => {
+  ])('leaves %s under a top tab bar uncapped', async (_name, placement) => {
     const view = await renderAt(placement);
 
     expect(contentStyle(view).maxWidth).toBeUndefined();
   });
+
+  // The pane is 687.5 wide, but a side bar (or a bar not read yet) leaves the content capped at
+  // 600, which has no room for two cards: the row follows the content, not the pane.
+  it.each([
+    ['a leading side bar', 'leading'],
+    ['a trailing side bar', 'trailing'],
+    ['no bar read', 'none'],
+  ] as const)(
+    'stacks every card, capped, in a pane of a large window with %s',
+    async (_name, tabBarEdge) => {
+      const view = await renderAt({ ...PANE_SHARED, tabBarEdge });
+
+      expect(countOf(view, 'statistics-grid-row')).toBe(0);
+      expect(blocksOf(view)).toEqual(BLOCKS);
+      expect(contentStyle(view).maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+    },
+  );
 
   it('puts the filter bar above the cards in a shared-row pane', async () => {
     const ids = idsOf(await renderAt(PANE_SHARED));

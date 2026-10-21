@@ -747,12 +747,9 @@ describe('Screen', () => {
       expect(content.padding).toBe(darkTheme.spacing(4));
     });
 
-    it.each([
-      ['rows', 669, 951],
-      ['columns', 951, 669],
-    ] as const)(
-      'caps and centres every branch in a Duo inner pane of the %s window (%i x %i)',
-      async (mode, _width, _height) => {
+    it.each(['rows', 'columns'] as const)(
+      'caps and centres every branch in a Duo inner pane of the %s window',
+      async (mode) => {
         mockUseTabBarEdge.mockReturnValue('bottom');
 
         const plain = await renderInPane({}, mode, 'primary');

@@ -1,7 +1,8 @@
 import maybe, { foldMap } from 'fnts/maybe';
+import { useUnistyles } from 'react-native-unistyles';
 import { useDisplayRegions } from '@kiko/display-regions';
 import type { Edge } from 'react-native-safe-area-context';
-import { usePaneContext } from '@kiko/design-system/pane-context';
+import { usePaneContext, usePaneWidth } from '@kiko/design-system/pane-context';
 
 import { styles } from './screen.styles';
 import { useIsTabBarAtTop } from './use-is-tab-bar-at-top';
@@ -40,6 +41,22 @@ export const useContentCap = () => {
   }
 
   return undefined;
+};
+
+/**
+ * The width a pane's content can use, for what sizes itself by the room it has (a shared chart
+ * row): the pane's width, limited by the cap `useContentCap` puts on it. Null outside a pane.
+ */
+export const usePaneContentWidth = (): number | null => {
+  const paneWidth = usePaneWidth();
+  const { theme } = useUnistyles();
+  const contentCap = useContentCap();
+
+  if (paneWidth === null || contentCap === undefined) {
+    return paneWidth;
+  }
+
+  return Math.min(paneWidth, theme.layout.paneMaxWidth);
 };
 
 const STOP_INDICATOR_INSETS = { automaticallyAdjustsScrollIndicatorInsets: false } as const;

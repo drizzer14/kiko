@@ -4,8 +4,10 @@
 export const SHARED_ROW_MIN_PANE_WIDTH = 656;
 
 /**
- * Whether Expenses by category and Account contribution share one row. Only a large window with a
- * cards pane wide enough for two cards does; every other window stacks every chart full width.
+ * Whether Expenses by category and Account contribution share one row. Only a large window whose
+ * cards have room for two cards does (`contentWidth`: the pane's width limited by the content cap,
+ * so a capped pane never counts the width the cap takes away); every other window stacks every
+ * chart full width.
  */
-export const isChartRowShared = (isLargeWindow: boolean, paneWidth: number | null): boolean =>
-  isLargeWindow && paneWidth !== null && paneWidth >= SHARED_ROW_MIN_PANE_WIDTH;
+export const isChartRowShared = (isLargeWindow: boolean, contentWidth: number | null): boolean =>
+  isLargeWindow && contentWidth !== null && contentWidth >= SHARED_ROW_MIN_PANE_WIDTH;

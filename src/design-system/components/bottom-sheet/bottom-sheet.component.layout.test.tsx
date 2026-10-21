@@ -16,7 +16,6 @@ jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => mockUseLayoutMode(),
   useFoldRegion: () => mockUseFoldRegion(),
   useDisplayRegions: () => mockUseDisplayRegions(),
-  useIsLargeWindow: () => false,
 }));
 
 const mockWindow = { width: 466, height: 678, scale: 3, fontScale: 1 };
