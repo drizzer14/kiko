@@ -125,7 +125,8 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
   - a pkill/killall/pattern kill, a raw main `--ff-only`, or a move of main, inside a script
     file a command runs, including a script a shell reads from a `< file` redirect (one
     level; "Script-content kill scan").
-  - a command the guard cannot judge (an internal error): denied, never allowed.
+  - a command the guard cannot judge (an internal error), or the guard cannot load:
+    denied, never allowed.
   - a `while`/`until` loop that scans the process table for make verify,
     check:all, jest, stryker, semgrep, or xcodebuild ("WAIT-LOOP deny"); wait
     with `bash scripts/wait-load.sh <load> <timeout>` or a background job.
