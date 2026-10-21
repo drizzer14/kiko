@@ -1177,6 +1177,12 @@ const DENIED_MISSING_TREE_PARENT: string[] = [
   `cp -r ${PAYLOAD} "$D"/.claude`,
   `cp -r ${PAYLOAD} $D/harness/`,
   `mv ${PAYLOAD} "$D"/.claude`,
+  `gmv -T ${PAYLOAD} .claude`,
+  `gmv -T ${PAYLOAD} harness`,
+  `gmv -T ${PAYLOAD} harness/`,
+  `gmv --no-target-directory ${PAYLOAD} .claude`,
+  `mv -T ${PAYLOAD} ${WORKTREE}/harness`,
+  `gmv -T ${PAYLOAD} "$D"/.claude`,
   // The over-deny: a file moved to a name that is not yet a folder is told apart from a folder
   // only once the source is read, so it is denied too (Write creates the file).
   'mv a.md .claude',
@@ -1195,6 +1201,10 @@ const ALLOWED_MISSING_TREE_PARENT: string[] = [
   'mv a.md .claude/commands/',
   `cp -r ${PAYLOAD} /tmp/y/.claude`,
   `mv ${PAYLOAD} /tmp/y/harness`,
+  `gmv -T ${PAYLOAD} harnessx`,
+  `gmv -T ${PAYLOAD} .claude/commands`,
+  `gmv -T ${PAYLOAD} /tmp/y/harness`,
+  `cp -T ${PAYLOAD} .claude`,
 ];
 
 // With the folder already there the copy lands inside it, under the source's own name.
@@ -1206,6 +1216,8 @@ const ALLOWED_EXISTING_TREE_PARENT: string[] = [
   `mv ${PAYLOAD} .claude`,
   'mv a.md .claude',
   'mv a.md harness',
+  `gmv -T ${PAYLOAD} .claude`,
+  `gmv --no-target-directory ${PAYLOAD} harness`,
 ];
 
 // A folder that is no worktree of this repository has no tree parent to protect.
@@ -1215,6 +1227,8 @@ const ALLOWED_OUTSIDE_PROJECT: string[] = [
   `mv ${PAYLOAD} .claude`,
   `mv ${PAYLOAD} harness`,
   'mv a.md .claude',
+  `gmv -T ${PAYLOAD} .claude`,
+  `gmv -T ${PAYLOAD} harness`,
 ];
 
 // A copy or move through xargs into a `.git` folder can write `.git/config` (core.hooksPath) under
@@ -1252,6 +1266,7 @@ const DENIED_CONTENTS_INTO_GIT: string[] = [
   'gcp -rT /tmp/x .git',
   'cp -aT /tmp/x /tmp/r/.git',
   'cp -rT "$SRC" "$D"/.git',
+  'gmv -T /tmp/x /tmp/r/.git',
   'cp --recursive --no-target-directory /tmp/x .git',
   'cp -t .git /tmp/cfg/*',
   'cp /tmp/cfg/* .git/worktrees/w/',
@@ -1266,6 +1281,9 @@ const DENIED_MISSING_GIT_FOLDER: string[] = [
   'cp -r /tmp/gitdir .git/',
   'mv /tmp/gitdir .git',
   'cp -R /tmp/gitdir ./.git',
+  'gmv -T /tmp/x .git',
+  'gmv --no-target-directory /tmp/x .git',
+  'mv -T /tmp/x .git/',
 ];
 
 const ALLOWED_CONTENTS_BESIDE_GIT: string[] = [
@@ -1283,6 +1301,10 @@ const ALLOWED_CONTENTS_BESIDE_GIT: string[] = [
   'cp -rT /tmp/x .git/hooks',
   'cp -rT /tmp/x .github',
   'cp -T /tmp/x /tmp/backup',
+  'gmv -T /tmp/x /tmp/y',
+  'gmv -T /tmp/x .git/hooks/old',
+  'gmv -T /tmp/x /tmp/r/.git/hooks',
+  'gmv -T /tmp/x .github',
   'cp /tmp/cfg/* .git/worktrees/w/logs',
   'cp /tmp/cfg/* .git/worktrees/',
   'cp /tmp/cfg/* /tmp/r/.gitx/worktrees/w/',

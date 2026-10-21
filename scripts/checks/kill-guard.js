@@ -2268,13 +2268,12 @@ function copyMovePlan(parameters) {
 // The destination of a copy of one folder or a move, which becomes that folder itself when it does
 // not exist (macOS `cp -R src dst/` and `mv src dst/`, with or without the slash, make `dst` a
 // copy of `src`, measured), so the text cannot tell what lands there. Plain `cp` copies no folder,
-// and `-t` and `-T` name the destination as a folder.
+// and `-t` names the destination as a folder. `-T` does not: `mv -T src dst` still makes `dst` a
+// copy of `src` when `dst` is missing.
 function createdFolders(base, parameters) {
   if (!COPY_MOVE_COMMANDS.has(base)) return [];
   const { options, operands } = splitOptions(parameters, readCopyMoveOption);
-  const namesFolder = options.some(
-    (option) => option.targetDirectory !== undefined || option.noTargetDirectory,
-  );
+  const namesFolder = options.some((option) => option.targetDirectory !== undefined);
   const copiesFolder = MOVE_COMMANDS.has(base) || options.some((option) => option.recursive);
 
   return operands.length === 2 && copiesFolder && !namesFolder ? [operands[1]] : [];
