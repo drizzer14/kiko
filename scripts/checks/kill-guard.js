@@ -82,7 +82,8 @@
 // their own reason: leave core.hooksPath as scripts/ensure-git-hooks.sh sets it. A
 // GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file is not judged: the key sits in the local scope, which
 // outranks both and what they include. `git commit-tree` is denied in every form: it writes a
-// commit no hook runs for (`git update-ref` stays allowed).
+// commit no hook runs for (`git update-ref` is no hook skip; it is judged as `mainMove` when it
+// moves `main`).
 // A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.

@@ -1207,7 +1207,9 @@ const ALLOWED_MISSING_TREE_PARENT: string[] = [
   `cp -T ${PAYLOAD} .claude`,
 ];
 
-// With the folder already there the copy lands inside it, under the source's own name.
+// With the folder already there a plain copy or move lands inside it, under the source's own name.
+// A `-T` move never lands inside; its allow holds because the folder exists, is tracked and is
+// not empty, so the move cannot replace it.
 const ALLOWED_EXISTING_TREE_PARENT: string[] = [
   `cp -r ${PAYLOAD} .claude`,
   `cp -r ${PAYLOAD} .claude/`,

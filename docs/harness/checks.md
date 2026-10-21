@@ -21,7 +21,7 @@
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import (`kiko-no-cross-screen-import`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
-| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` (+ `.js`) | a physical line over 100 columns holding comment text (`kiko-comment-line-width`; a `#` comment of a shell or YAML file too) fails project-wide, unless the comment has no wrap point (one long URL) or the exact line is in `scripts/checks/comment-line-width.pinned` (shrink-only; a stale pin fails); a path argument runs per-file mode; no override of any kind (kiko-code-style "Wrap comments at 100 columns", kiko-linter's `comment-line-width.js` bullet for the scope) | project-wide (`check:all`) + pre-write guard (TypeScript) + fast (shell, YAML, githooks write; with `security.sh` too) |
+| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` (+ `.js`) | a physical line over 100 columns holding comment text (`kiko-comment-line-width`; a `#` comment of a shell or YAML file too) fails project-wide, unless the comment has no wrap point (one long URL) or the exact line is in `scripts/checks/comment-line-width.pinned` (shrink-only; a stale pin fails); a path argument runs per-file mode; no override of any kind (kiko-code-style "Wrap comments at 100 columns", kiko-linter's `comment-line-width.js` bullet for the scope) | project-wide (`check:all`) + pre-write guard (TypeScript) + fast (shell, YAML, githooks write, and a `.js` write under a `scripts/` folder, `rules/fixtures/` or `githooks/`; with `security.sh` too) |
 | `npm run check:component-i18n-namespace` | `scripts/checks/component-i18n-namespace.sh` (+ `.js`) | a file under `src/design-system/components/<name>/` that reads an i18n key `components.<other>.*`, where `<other>` is not the camelCase form of `<name>` (`kiko-component-i18n-namespace`), fails project-wide; no per-file mode, no exemption list (kiko-translator "A string moved into a shared component changes namespace") | project-wide (`check:all`) + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest session commit (one that no worktree's passed-replay mark ref `refs/kiko/guard-replay/<worktree id>` reaches and that is newer than the floor ref `refs/kiko/guard-replay-floor` or has a session commit as a parent; through a merge commit, a file the merge kept from one parent takes that parent's baseline, and a file it left different from every parent is checked against both parents' baselines (see `guard-replay.js`'s header)), and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed), and so does the Stop tier's deadline (at most 150 s) | medium (Stop/SubagentStop) + project-wide (`check:all`, no deadline) |
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` (+ `.js`) | a shipped migration file that is modified, deleted, or renamed fails; a new migration passes; no override and no exemption list. The per-file rules, the baseline, and the known limits live in kiko-linter's "Shipped migrations are never edited" | medium (Stop/SubagentStop, before the replay and the HEAD-moved early exit) + project-wide (`check:all`) |
@@ -123,7 +123,9 @@ Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 (`scripts/checks/fast.sh`: lint, security, secrets, import-order,
 full-word-identifiers on the touched file) runs on `PostToolUse` for
 `Edit|Write|MultiEdit`; for a `.sh`, `.bash`, `.yml`, `.yaml` or githooks write it runs
-`comment-line-width.sh` and `security.sh` on that file instead (read `fast.sh`). The medium
+`comment-line-width.sh` and `security.sh` on that file instead (read `fast.sh`); a `.js` write
+runs `comment-line-width.sh` first, but only where the project-wide check reads a `.js` (below
+a `scripts/` folder, `rules/fixtures/`, `githooks/`; other `.js` files skip it). The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
 session's changed source files; knip, deps, the Semgrep rule
 fixtures, the Info.plist security assertions, and typecheck
@@ -242,15 +244,29 @@ cooperating agents), and `KIKO_QUEUE_DIR` redirects the evidence to another dire
 kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits, and the
 `scripts/ff-main.sh` header for the checks in order.
 
-The same hook also denies a write into a git config file (`.git/config`, `config.worktree`). A
+The same hook also denies any other git command that moves the branch `main` (finding
+`mainMove`): in the main checkout a `reset`, `symbolic-ref HEAD <ref>` or `update-ref HEAD` (it
+moves the branch of its work tree; `git reset --soft HEAD~1` there is denied, user ruling "any
+reset that moves HEAD of main"), and from ANY worktree of this repository a command that writes
+the ref by name (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`, `fetch`/`push`
+into it, `worktree add -B`), since the worktrees share the refs. A `-C`/`cd` target or git folder
+the text cannot name, or a missing cwd, fails closed; an unrelated repository or a plain folder
+is no target. The way out is `bash scripts/ff-main.sh <sha>`. Source:
+`scripts/checks/kill-guard-main-moves.js`; kiko-linter's "MAIN-CHECKOUT deny" has the rule and
+the known limits.
+
+The same hook also denies a write into a git config file (`.git/config`, `config.worktree`), and
+a `cp`/`mv` that makes a `.git` folder, or copies a folder's contents into one (it may carry a
+config). A
 variable the same command assigns is expanded only into write targets and git directories (`-C
 $d`): a segment is judged as written, then expanded, and the expansion can only add a deny; a
 kill target and a command word are never expanded. It reads a script file a shell runs (`bash
-<file>`, `source`, a shebang path; one level, at most 256 KiB) and denies a kill in it (a
-heredoc in it is judged for the `SCRIPT_KINDS` kinds in kill-guard.js: kills and a raw main
-fast-forward). `kill -0` and `kill -s 0` are harmless only when no later
-word before the targets can be an option: a `-X` word, a word that may expand, or a `-N` word
-with more words after it (`sendsNoSignal`; `kill -0 -s KILL -1` denies), and
+<file>`, `source`, a shebang path, or a shell fed by a `< file` redirect; one level, at most
+256 KiB) and denies a kill in it (a heredoc in it is judged for the `SCRIPT_KINDS` kinds in
+kill-guard.js; read the set there: kills, a raw main fast-forward, a move of main). Not read:
+`cat f | bash`, a script path in a variable. `kill -0` and `kill -s 0` are harmless only when
+no later word before the targets can be an option: a `-X` word, a word that may expand, or a
+`-N` word with more words after it (`sendsNoSignal`; `kill -0 -s KILL -1` denies), and
 `$1`..`$9` is a caller's own pid, in a typed command as in a script;
 `scripts/job-queue.sh` of this repository is exempt (`scripts/ff-main.sh` needs no exemption:
 its merge uses a variable target). It also
@@ -270,8 +286,9 @@ See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
 script (ruby/perl code — `-e` or a stdin script — is a known limit))
-into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
-`.claude/agents/`, or any of `harness/kiko/` of any worktree of this repository, or into a YAML
+into a guarded tree (`WRITE_GUARDED_TREES` in kill-guard.js; read it there) of any worktree of
+this repository, or a `cp -r`/`mv` of one folder onto a missing `.claude`, `harness` or `.git`
+(the destination becomes that folder), or into a YAML
 file (a final segment ending in `.yml` or `.yaml`,
 at any depth of a worktree except under `node_modules/`; one the text cannot resolve is denied
 too; a `cp`/`mv` behind `xargs` whose destination the text resolves into a worktree folder is

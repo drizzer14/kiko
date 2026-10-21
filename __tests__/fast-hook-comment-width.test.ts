@@ -11,8 +11,9 @@ import { writeExecutable } from './test-support/mutation-repository';
 // scripts/checks/fast.sh is the PostToolUse tier. A write to a shell, YAML or githooks file runs
 // comment-line-width.sh on that file alone: it blocks (exit 2) on a `#` comment line over 100
 // columns, and never on a code line, a shebang, or a file of another type. It then runs
-// security.sh on the file. A write to a .js file runs comment-line-width.sh and then the full
-// tier.
+// security.sh on the file. A write to a .js file below a scripts/ folder, rules/fixtures/ or
+// githooks/ also runs comment-line-width.sh, then the full tier; any other .js skips the width
+// check.
 const FAST = join(__dirname, '../scripts/checks/fast.sh');
 const LIMIT = 100;
 const NO_FINDINGS = '{"results":[],"errors":[],"paths":{"scanned":[]}}';
@@ -131,9 +132,10 @@ describe('fast.sh on a write to a .js file', () => {
   });
 });
 
-// The project-wide check reads a .js file only under scripts/ and rules/fixtures/, so a .js write
-// elsewhere (the drizzle-generated header of drizzle/migrations/migrations.js is 109 columns) must
-// not block on a comment the project-wide check never reads.
+// The project-wide check reads a .js file only under a scripts/ folder, rules/fixtures/ and
+// githooks/, so a .js write elsewhere (the drizzle-generated header of
+// drizzle/migrations/migrations.js is 109 columns) must not block on a comment the project-wide
+// check never reads.
 describe('fast.sh on a write to a .js file the project-wide check does not read', () => {
   it.each([
     ['drizzle/migrations/migrations.js'],

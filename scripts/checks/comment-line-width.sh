@@ -37,8 +37,9 @@ if [ -n "$pinned" ]; then
 fi
 
 # Per-file mode (one file argument; fast.sh calls it for a .js, shell, YAML or githooks write). A
-# file of a type or in a folder the project-wide mode does not read is out of scope: a .js file
-# counts only under scripts/, rules/fixtures/ or githooks/ (a generated header such as the one in
+# file of a type or in a folder the project-wide mode does not read is out of scope. The case
+# below is the scope: a .js file counts only below any scripts/ path segment (at any depth),
+# rules/fixtures/ or githooks/ (a generated header such as the one in
 # drizzle/migrations/migrations.js would otherwise block every edit of it). A path that is not an
 # existing regular file (deleted, or a directory) exits 2 with a block. Content dedup is not used:
 # one file is cheaper to read than to fingerprint.

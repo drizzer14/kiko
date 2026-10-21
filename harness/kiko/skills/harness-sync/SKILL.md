@@ -267,6 +267,18 @@ Every count and exit code is the orchestrator's own measured result.
   the `.claude/skills` and `.claude/agents` entries. The
   plugin-folder entry is repo-specific: in the harness repo it is that repo's plugin folder,
   not `harness/kiko`. Create `.claude/agents/.gitkeep` so the path resolves.
+- kill-guard H10 task 1 (guard gaps), port items:
+  - the `mainMove` module `scripts/checks/kill-guard-main-moves.js` (`mainMoveTarget`) and its
+    wiring in `kill-guard.js` (`mainMoveFinding`, the `mainMove` kind in `SCRIPT_KINDS`,
+    `SCRIPT_GIT_KINDS` and `EXPANDED_KINDS`, not in `DATA_KINDS`) with the fail-closed rule for
+    an unresolved `-C`/`cd` target or a missing cwd. `MAIN_CHECKOUT_PATH` and the folder list are
+    repo-specific: set them to the target repository's own.
+  - the missing-destination rule (a `cp -r`/`mv` of one folder onto a missing tree parent or
+    `.git` folder denies, `-T` included) and the `.git` contents/config copy rules
+    (`namesGitFolder`, `namesWorktreeGitFolder`, `gitConfigsIn`).
+  - the script-scan stdin forms (a shell or `source /dev/stdin` fed by a `< file` redirect).
+  - the `fast.sh` `.js` arm plus the per-file `.js` scope of `comment-line-width.sh` (only
+    where the project-wide check reads a `.js`; the folder list is repo-specific).
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the
