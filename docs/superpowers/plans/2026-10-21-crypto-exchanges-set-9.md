@@ -118,17 +118,17 @@ on the final 1.3-a tip can confirm only the empty answer.
 | D4 | `transferedAmount` "0.000441", `serviceChargeAmount` "0.000009" | BNB leg +0.000441 exactly (net, never minus fee) |
 | D5 | a tracked side's amount absent, malformed or negative | that entry: no row; logged once per code (S9-Q1 A) |
 | D5 | (cont.) | the other entries and records import |
-| D5b | an amount of 0 units: "0", or BNB "0.00000004" at scale 7 | that entry: no row, no log (S9-Q2 A) |
+| D5b | an amount of 0 units: "0", or BNB "0.00000004" at scale 7 | that entry: no row for either leg, no log (S9-Q2 A) |
 | D5c | an over-precise amount on a coin stored at full scale | `amount-precision` logged; that entry no row |
 | D6 | record `transId` missing, `''` or past 2^53; no finite `operateTime` | no row of it; `dust-row-unreadable` logged |
-| D7 | entry `fromAsset` blank, BNB, or twice in one record | those entries: no row; `dust-row-unreadable` logged |
-| D8 | an amount past the safe integer | its coin joins the oversized list; that entry no row |
-| D9 | a body with no list or a non-array list (S9-Q3 A) | `BinanceHistoryParseError`; logged `dust history failed`; nothing written |
-| D10 | an empty list | nothing written, nothing logged |
-| D11 | cooling down; no credentials; lane already spent | no request |
-| D12 | the read answers a rate limit | cooldown set from `retryAfterMs`; clean stop, no log, nothing written |
+| D7 | entry `fromAsset` blank, BNB, or twice in one record; `targetAsset` absent, blank or not BNB (S9-Q7) | those entries: no row; `dust-row-unreadable` logged |
+| D5d | an amount past the safe integer | its coin joins the oversized list; that entry no row |
+| D9b | a body with no list or a non-array list (S9-Q3 A) | `BinanceHistoryParseError`; logged `dust history failed`; nothing written |
+| D9 | an empty list | nothing written, nothing logged |
+| D10 | cooling down; no credentials; lane already spent | no request |
+| D11 | the read answers a rate limit | cooldown set from `retryAfterMs`; clean stop, no log, nothing written |
 | D13 | a holding the placement cannot find even after it creates a missing one (defensive `missingCode` only; a missing Spot holding is created at zero, D1b) | `dust-holding-missing` logged; no row of the read; next run reads again |
-| D14 | newest-100 slides: run 2 drops the oldest and adds one new record | exactly the new record's rows import |
+| D12 | newest-100 slides: run 2 drops the oldest and adds one new record | exactly the new record's rows import |
 | R1 | run order | balance, capital, Pay, Transfer, Earn, Convert, dust, all on one run object |
 | R2 | Convert fails | dust still runs; each logs its own failure by name only |
 
@@ -183,12 +183,13 @@ Files: `src/crypto-sync/binance/binance.history-client.ts`, `binance.history-cli
       string, `operateTime`, entries `fromAsset` upper-cased once through `binanceTickerOf`, `amount`,
       `transferedAmount`); "never reads `serviceChargeAmount`" (absent from the parsed entry); D6 at the client:
       a record with an unusable `transId` or `operateTime` is in `unreadable`, the others parse; "reads an entry
-      whose amounts are absent as undefined" (decided by the read, not the parser); D9 "fails the read for a body
-      with no list" (`BinanceHistoryParseError`); D10; "sends no query parameter but the signature's"; weights
+      whose amounts are absent as undefined" (decided by the read, not the parser); D9b "fails the read for a body
+      with no list" (`BinanceHistoryParseError`); D9; "sends no query parameter but the signature's"; weights
       from the headers.
 - [ ] Code: `DustHistoryPage = HistoryPage<BinanceDustRecord>`; `BinanceDustRecord = { transId: string;
       operateTime: number; entries: BinanceDustEntry[] }`; `BinanceDustEntry = { fromAsset: string | undefined;
-      amount: string | undefined; transferedAmount: string | undefined }` through `recordReader` (field names as
+      amount: string | undefined; transferedAmount: string | undefined;
+      targetAsset: string | undefined }` through `recordReader` (field names as
       Binance spells them; `transfered` is Binance's spelling); `fetchDustHistory(apiKey, secret, options)` via
       `signedRequestPage('GET', '/sapi/v1/asset/dribblet', {})`. Empty-answer rule (S9-Q3 A, probe 7): the
       body must be an object with a `userAssetDribblets` array; anything else throws `BinanceHistoryParseError`;
@@ -200,7 +201,7 @@ Files: `src/crypto-sync/binance/binance.history-client.ts`, `binance.history-cli
 
 Files: `src/crypto-sync/binance/binance.dust-history.ts` (new), `binance.dust-history.test.ts` (new).
 - [ ] Tests first through `dustRowsOf({ accountId, record })`: D1 (pair ids, keys, counterparts, `operation`),
-      D2, D4, D5 (each case), D5b, D5c, D7 (each case), D8 (the stop names the coin). "carries `operation` dust on
+      D2, D4, D5 (each case), D5b, D5c, D7 (each case, with `targetAsset`), D5d (the stop names the coin). "carries `operation` dust on
       each leg"; "description is empty". Red count quoted.
 - [ ] Code: `dustRowsOf` returns, per entry, either planned rows (`PlannedDustRow`, the Convert planned-row shape
       with `operation: 'dust'`) with the untracked ticker, or a stop code; never throws past the record. A
@@ -219,14 +220,14 @@ Files: `src/crypto-sync/binance/binance.dust-history.ts` (new), `binance.dust-hi
 
 Files: `binance.dust-history.ts`, `binance.dust-history.test.ts`, `binance.dust-history.real-sqlite.test.ts`
 (new), `binance.dust-history.properties.test.ts` (new).
-- [ ] Tests first (fake deps): D3, D9 (nothing written), D10, D11 (each case), D12, D13, "logs each stop code
+- [ ] Tests first (fake deps): D3, D9b (nothing written), D9, D10 (each case), D11, D13, "logs each stop code
       once per run", "writes the untracked list after the rows, the oversized list before them" (call order),
       "writes no walk mark and no not-imported entry" (no `walk` or `notImported` patch is ever sent), "reads
       once per run" (one fetch even with two records failing). Real sqlite: D1 lands on "Binance Spot · TRX",
       "Binance Spot · DOGE", "Binance Spot · BNB", excluded through `exchangeExcludedTransactionIds`; D1b; D2's
       lone leg excluded; D3 counts 0 the second run. Properties at run gaps 0 / 1 h / 1 day (`RUN_GAPS` as in
       `binance.earn-history.test.ts`), random record sets (up to 100, mixed tracked, untracked and malformed,
-      reduced-scale amounts) over several runs with D14's sliding newest-100, through `syncBinanceDustHistory`
+      reduced-scale amounts) over several runs with D12's sliding newest-100, through `syncBinanceDustHistory`
       itself: every importable entry imported exactly once (unique keys), no row for a refused one, the BNB legs
       sum exactly to the imported entries' `transferedAmount` in minor units.
 - [ ] Code: `syncBinanceDustHistory({ targetAccountId, run }, overrides)`; deps `BinanceDustHistoryDeps`
@@ -302,11 +303,11 @@ Reviews run per task group, after the group's last step is committed (harness-wo
 ## Review focus
 
 1. A dust conversion imported twice: an id that changes between reads (a `transId` as integer one day, as text the
-   next must give the same text), the newest-100 window sliding (D14), a run that crashes between rows and lists.
+   next must give the same text), the newest-100 window sliding (D12), a run that crashes between rows and lists.
 2. A row on the wrong side: BNB leg net vs gross (D4), the source leg's sign, Spot vs Funding.
 3. A refused entry hiding a loss: D5-D7 must log; one bad entry must never block the record's other entries or the
    other records.
-4. The empty answer: D9/D10 must not fail every run for an account that never converted dust (S9-Q3).
+4. The empty answer: D9b/D9 must not fail every run for an account that never converted dust (S9-Q3).
 5. Statistics: no dust leg counts as spending (both legs carry a pair id or an `asset:` code).
 
 ## Pre-flight self-check (planner)

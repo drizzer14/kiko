@@ -169,7 +169,7 @@ Source of S8-Q1 ... S8-C1 (S8-Q1, S8-Q2, F5 and S8-C1 sit in "User rulings"):
 | Ruling | Answer | Sets |
 |---|---|---|
 | S9-Q1 A (COORDINATOR) | An unimportable dust record is logged once per code per run and left out; no new `notImported` kind | 9 |
-| S9-Q2 A (COORDINATOR) | A dust leg that rounds to 0 units writes no row and no log | 9 |
+| S9-Q2 A (COORDINATOR) | An entry with a leg that rounds to 0 units gives no row for either leg (no half pair), and no log | 9 |
 | S9-Q3 A (USER, probe 7) | The empty answer is `{"userAssetDribblets":[]}` with `total` absent. `[]` is no dust; a missing or non-array list fails closed; `total` is never read | 9, 12 |
 | S9-Q4 A (USER) | AMENDS R-Q6 "dust creates none": a tracked source coin with no Spot holding gets it created at zero by `placeWalletRows` (the R-Q6 row and section 4 "Appear" say so) | 4, 9 |
 | S9-Q5 A (COORDINATOR) | The dust read keeps its own short rate-limit try/catch; the set 8 duplicate stays deferred | 9 |
@@ -1037,7 +1037,8 @@ rows; `addManyDedup` keys drop the ones already imported.
   entries still import. Stop codes are the constants in `binance.dust-history.ts`
   (`dust-row-unreadable`, `dust-amount-invalid`, `dust-holding-missing`), each logged once per code
   per run.
-- Zero rule (S9-Q2): a leg that rounds to 0 units gives no row and no log. A negative amount is
+- Zero rule (S9-Q2): an entry with a leg that rounds to 0 units gives no row for either
+  leg (no half pair) and no log. A negative amount is
   `dust-amount-invalid`; an amount past the safe integer joins the oversized list.
 - Empty shape (S9-Q3, probe 7): `{"userAssetDribblets":[]}`, `total` absent, is no dust: nothing is
   written or logged. A missing or non-array list fails closed (a parse error, logged under the
@@ -1666,11 +1667,13 @@ round changes it.
 | C10 | FAIL with `walletType` missing or another word | no row, no entry (status first) | none | n/a |
 | D1 | dust TRX + DOGE -> BNB | two pairs on Spot | excluded | not imported |
 | D1b | D1 with no Spot TRX holding stored (S9-Q4 A) | "Binance Spot · TRX" created at zero, then the pair lands | excluded | not imported; spec was: dust creates none |
-| D2 | dust of an untracked coin | BNB +, `asset:`; the coin joins the not-tracked line (S9-Q10) | none | not imported |
+| D2 | dust of an untracked coin | BNB +, `asset:`; the coin joins the not-tracked line (S9-Q10) | excluded | not imported |
 | D3 | the same 100 dust records on the next run | no new row (keys) | - | not imported |
 | D4 | `transferedAmount` "0.000441", `serviceChargeAmount` "0.000009" | BNB leg +0.000441 (net) | - | not imported |
 | D5 | a tracked side's amount absent, malformed or negative | that entry no row, logged once per code; the others import | - | not imported |
-| D5b | an amount that rounds to 0 units (S9-Q2) | that entry no row, no log | - | not imported |
+| D5b | an amount that rounds to 0 units (S9-Q2) | that entry no row for either leg, no log | - | not imported |
+| D5c | an over-precise amount on a coin stored at full scale | `amount-precision` logged; that entry no row | - | not imported |
+| D5d | an amount past the safe integer | its coin joins the oversized list; that entry no row | - | not imported |
 | D6 | record `transId` missing, blank or past 2^53, or no finite `operateTime` | no row of it; `dust-row-unreadable` | - | not imported |
 | D7 | entry `fromAsset` blank, BNB or repeated in its record; `targetAsset` absent, blank or not BNB (S9-Q7) | those entries no row; `dust-row-unreadable` | - | not imported |
 | D8 | a record with an empty details list (S9-Q8) | unreadable, logged | - | not imported |
@@ -1679,6 +1682,7 @@ round changes it.
 | D10 | cooling down, no credentials, or the lane spent | no request | - | not imported |
 | D11 | the read answers a rate limit | cooldown set; clean stop, no log | - | not imported |
 | D12 | newest-100 slides by one record | exactly the new record's rows import | - | not imported |
+| D13 | a Spot holding the placement cannot find even after creating a missing one (defensive only; D1b) | `dust-holding-missing` logged; no row of the read; the next run reads again | - | not imported |
 | P1 | BUY TAKER COMPLETED, USDT, `amount` "100", `takerCommission` "0.1", `takerAmount` "99.9", `totalPrice` "4150", fiat UAH | Funding USDT +99.9; `p2p:UAH:4150.00`; comment "4150 UAH"; `operation = 'p2p'` | none | not imported; spec was: owed point (commission before P5) |
 | P1b | same, `takerCommission` "0", `takerAmount` "100" | Funding USDT +100 | none | not imported; spec was: +100 |
 | P1c | `takerAmount` absent, `amount` "100", `takerCommission` "0.1" | Funding USDT +99.9 (exact, in minor units) | none | not imported; spec was: owed point |
