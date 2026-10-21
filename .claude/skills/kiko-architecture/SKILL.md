@@ -1903,7 +1903,7 @@ the order there). Each runs in its own `logOnFailure` (tags `capital history fai
 `convert history failed`, each prefixed `[binance sync]`) and all share one `run`.
 TRADES are out of scope. Convert reads `/sapi/v1/convert/tradeFlow`
 (`binance.history-client.ts`) and places each row by `walletType` FUNDING or SPOT
-(`convert-history.ts`). `recordExchangeCounterpart` (Convert-mode) in `kiko-domain` is
+(`binance.convert-history.ts`). `recordExchangeCounterpart` (Convert-mode) in `kiko-domain` is
 the app's manual Convert.
 
 Load-bearing rules, verified in `binance.transactions.test.ts` rather
@@ -1939,7 +1939,8 @@ than restated here:
   `amount-too-large`); `amount-too-large` also names the coin, and
   `commitSettledSpan` writes it to `oversizedCoins.history`
   (`historyListWriterOf(deps, accountId, coins)`, one writer for `oversizedCoins`
-  and `untrackedCoins`; `commitSettledSpan` requires both) on every span read
+  and `untrackedCoins`; `commitSettledSpan` requires the writers it types, including
+  `writeNotImported` from `notImportedWriterOf`) on every span read
   that meets the stop. The
   per-record commits live in the same file (`settleRecords`,
   `commitSettledSpan`). What a
@@ -1975,7 +1976,8 @@ than restated here:
   `capitalItemOf`, Transfer and Earn in `trackedRowOf`, Pay in `readPayItem`
   (`binance.history-client.ts`); Transfer and Earn pages carry `untracked` rows
   (`TotalPage.untracked`) beside `rows` and `unreadable`. Convert reads the tracked rule in
-  `settledOutcomeOf` (`convert-history.ts`; `convertOutcomeOf` returns the untracked tickers),
+  `settledOutcomeOf` (`binance.convert-history.ts`;
+  `convertOutcomeOf` returns the untracked tickers),
   with no `trackedRowOf` and no `TotalPage.untracked`.
 - **`multiCoinSince` and `multiCoinSeen` mark where the other coins start.** Each walk entry
   may hold `multiCoinSince` (the cursor the walk's first multi-coin run planned from: ground
@@ -2071,7 +2073,7 @@ than restated here:
   no usable time, owes the whole span; every record the walk can trust
   imports either way. The forward pass leaves a span uncommitted on any
   stop, except in the lanes that pass `forwardOwes` (read each `*_FORWARD_OWES`
-  constant, e.g. `CONVERT_FORWARD_OWES` in `convert-history.ts`), where a stop tied to one
+  constant, e.g. `CONVERT_FORWARD_OWES` in `binance.convert-history.ts`), where a stop tied to one
   record with a usable time owes that point and the span commits. `patchExchangeState` also
   gates the write on the account still being `institution = 'binance'`
   (read in the same write) and is a no-op otherwise — a walk holds the
@@ -2160,7 +2162,7 @@ than restated here:
   (`binance-history-status.ts`) off the parsed `exchange_state` (nulls when it is not
   readable), `isBinanceHistoryBehind`
   compares them against `latestBalanceSyncAt(holdings, stateStamp)` (the later of the
-  holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when ANY of
+  holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when
   any of those walks never caught up (`null` cursor) or is behind by more than a day,
   or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
   passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
@@ -2199,9 +2201,12 @@ than restated here:
   `binance.transactions.ts`): a wallet that only receives rows already stored
   elsewhere is not created as an empty holding. `placeWalletRows`
   (`exchange/walk/records.ts`), which places the rows of every walk except
-  capital (Convert too, `convert-history.ts`), passes none and so creates every
+  capital (Convert too, `binance.convert-history.ts`), passes none and so creates every
   missing wallet holding at zero, whatever its coin.
-- **Pairing and untracked wallets.** Transfer and Earn legs share an
+- **Pairing and untracked wallets.** A Convert pair id is
+  `${accountId}:convert:<quoteId>` (one id over two coins, not built by `exchangePairIdOf`);
+  a lone Convert leg carries `asset:<CODE>` (`untrackedAssetCode`), both in
+  `binance.convert-history.ts`. Transfer and Earn legs share an
   `exchangePairId` (`binance.transfer-history.ts`, `binance.earn-history.ts`:
   read `pairId` there, built by `exchangePairIdOf` in `binance.holding-keys.ts`: BTC keeps
   the bare id, any other coin appends `:<COIN>`; capital and Pay build no shared pair id);
@@ -2256,7 +2261,8 @@ stop codes live in
 `binance.transfer-history.ts`; the design is in the spec and plan named under "Binance Pay".
 Convert differs: a settled SUCCESS record on an allowed wallet with a blank asset on either side
 is refused for good as a `convert-unrecognized` not-imported entry, not owed; a 0 or negative
-amount stays owed (`convert-amount-invalid`). Read `settledOutcomeOf` in `convert-history.ts`.
+amount stays owed (`convert-amount-invalid`).
+Read `settledOutcomeOf` in `binance.convert-history.ts`.
 
 - **Transfer depth (Q3).** Binance refuses a `startTime` older than it keeps (HTTP 400, code
   -5026): the client throws `BinanceHistoryTooOldError` (the generic request-failed message), and

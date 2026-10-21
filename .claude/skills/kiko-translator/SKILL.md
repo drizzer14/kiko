@@ -99,7 +99,8 @@ string ('дн.', 'days') reads wrong at 1, 2-4 and 21 in Ukrainian.
 Abbreviated units ('г', '%', 'шт.', 'міс.') do not decline and stay single
 keys (read `forms.units` in `src/i18n/locales/uk.ts` for the current set).
 A label that ends in `({{count}})` and does not decline is a single key, not a plural; use
-`_one`/`_other` only where the noun agrees (see `src/i18n/locales/en.ts` around line 822).
+`_one`/`_other` only where the noun agrees (see the key `accountDetail.notImportedKind`
+in `src/i18n/locales/en.ts`).
 
 **An error message that states a count is a plural key.** For example the
 allowed decimals: `t('...', { count })` takes `count` from the error value
