@@ -28,6 +28,7 @@ describe('LANE_CALL_CAPS', () => {
       pay: 20,
       transfer: 80,
       earn: 30,
+      convert: 20,
       market: 150,
     });
   });
@@ -56,6 +57,7 @@ describe('createBinanceRunBudget — per-lane call caps', () => {
     ['pay', COSTS.pay, 20],
     ['transfer', COSTS.transfer, 80],
     ['earn', COSTS.earn, 30],
+    ['convert', COSTS.convert, 20],
   ] as const)('caps the %s lane at %i calls', (lane, cost, cap) => {
     const budget = createBinanceRunBudget();
 
@@ -114,6 +116,15 @@ describe('createBinanceRunBudget — calls kept for later', () => {
     expect(budget.canAfford('pay', COSTS.pay, 1)).toBe(true);
   });
 
+  it('gives the Convert lane no narrowing call past its cap, and 20 calls fit the UID ceiling', () => {
+    const budget = createBinanceRunBudget();
+
+    spendCalls(budget, 'convert', 20);
+
+    expect(budget.canAfford('convert', COSTS.convert, 0, true)).toBe(false);
+    expect(LANE_CALL_CAPS.convert * COSTS.convert.uid).toBeLessThanOrEqual(UID_WEIGHT_BUDGET_1M);
+  });
+
   it('counts the calls to keep in the weight of an IP call too', () => {
     const budget = createBinanceRunBudget();
     budget.record('earn', { ...NO_READING, usedIpWeight1m: 5_701 });
@@ -133,6 +144,7 @@ describe('createBinanceRunBudget — narrowing calls', () => {
       pay: 0,
       transfer: 397,
       earn: 0,
+      convert: 0,
       market: 0,
     });
   });
@@ -242,6 +254,7 @@ describe('createBinanceRunBudget — weight readings', () => {
       account: { ip: 20 },
       transfer: { ip: 1 },
       earn: { ip: 150 },
+      convert: { uid: 3_000 },
       klines: { api: 2 },
     });
   });

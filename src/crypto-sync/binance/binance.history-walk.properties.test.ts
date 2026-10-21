@@ -937,6 +937,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               forwardOwes,
               writeOversized: async () => undefined,
               writeUntracked: async () => undefined,
+              writeNotImported: async () => undefined,
               place: async (planned) => planned,
               add: async (rows) => {
                 for (const row of rows) {

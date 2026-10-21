@@ -10,7 +10,7 @@ import {
 import type { DatabaseSync } from 'node:sqlite';
 import type { ExchangeStateDeps } from '@kiko/crypto-sync/exchange/walk';
 
-export type WalkName = 'capital' | 'pay' | 'transfer' | 'earn';
+export type WalkName = 'capital' | 'pay' | 'transfer' | 'earn' | 'convert';
 
 export type WalkField =
   | 'cursor'
@@ -30,6 +30,7 @@ export type ExchangeStateSeed = {
   version: 1;
   walks: Partial<Record<WalkName, Record<string, unknown>>>;
   oversizedCoins?: { history?: string[] };
+  notImported?: string[];
   /** Any value, because a test also seeds an unreadable stamp. */
   balanceSyncedAt?: unknown;
 };
@@ -49,7 +50,7 @@ const FIELDS: readonly WalkField[] = [
   'multiCoinSeen',
 ];
 
-export const WALK_NAMES: readonly WalkName[] = ['capital', 'pay', 'transfer', 'earn'];
+export const WALK_NAMES: readonly WalkName[] = ['capital', 'pay', 'transfer', 'earn', 'convert'];
 
 const isNumberField = (field: WalkField): boolean =>
   NUMBER_MARK_FIELDS.some((numberField) => numberField === field);
@@ -165,6 +166,11 @@ const isWalkPatch = (patch: ExchangeStatePatch): patch is WalkPatch => patch.kin
 const isCoinListPatch = (patch: ExchangeStatePatch): patch is CoinListPatch =>
   patch.kind === 'coinList';
 
+const isNotImportedPatch = (patch: ExchangeStatePatch): boolean => patch.kind === 'notImported';
+
+const isListPatch = (patch: ExchangeStatePatch): boolean =>
+  isCoinListPatch(patch) || isNotImportedPatch(patch);
+
 /** The writes of one call, in the order of its patches: each a little after the call it is in. */
 const writesOfCall = (
   accountId: string,
@@ -279,7 +285,7 @@ export const walkStateFake = (world: WalkWorld = {}) => {
     written: string,
     patches: readonly ExchangeStatePatch[],
   ): void => {
-    const other = patches.find((patch) => !isWalkPatch(patch) && !isCoinListPatch(patch));
+    const other = patches.find((patch) => !isWalkPatch(patch) && !isListPatch(patch));
 
     if (other !== undefined) {
       throw new Error(`walkStateFake: no walk mark is stored under "${other.kind}"`);
@@ -287,7 +293,7 @@ export const walkStateFake = (world: WalkWorld = {}) => {
 
     if (written === accountId) {
       state = JSON.parse(
-        exchangeStatePatched(JSON.stringify(state), patches.filter(isCoinListPatch)) ?? '',
+        exchangeStatePatched(JSON.stringify(state), patches.filter(isListPatch)) ?? '',
       ) as ExchangeStateSeed;
     }
 
@@ -337,6 +343,7 @@ export const walkStateFake = (world: WalkWorld = {}) => {
     seed,
     writes: (): WalkWrite[] => [...writes],
     marksOf: (walkName: WalkName): WalkMarkSeed => walkMarksOf(state, accountId, walkName),
+    notImported: (): string[] => state.notImported ?? [],
     listHoldings,
   };
 };

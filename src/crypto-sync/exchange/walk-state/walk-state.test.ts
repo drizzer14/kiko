@@ -38,6 +38,7 @@ const EMPTY_STATE: ReadableState = {
   untrackedCoins: { balance: [], history: [] },
   oversizedCoins: { balance: [], history: [] },
   balanceSyncedAt: undefined,
+  notImported: [],
   unreadable: [],
 };
 

@@ -234,7 +234,9 @@ reach first, inputs claiming in (time, external id) order
 UPDATE by the import row's id writes the bank-owned columns, `source` and
 `external_id` onto it: the row keeps its id, its category and comment (a
 missing one is filled from the sync) and every structural column, including a
-loan link and an exchange pair with its marker. The adopted input is not
+loan link and an exchange pair with its marker. A plain twin (no marker) also takes the sync
+input's four exchange columns as one unit; a marked twin keeps its own
+(`adoptedExchangeValuesOf`, `transactions.repo.ts`). The adopted input is not
 inserted and not counted, no `holdings` row is written (the sync overwrites the
 stored balance from the bank), and the row is bank-owned from then on, so the
 ledger keeps one row per purchase and no balance moves. The marker stays only

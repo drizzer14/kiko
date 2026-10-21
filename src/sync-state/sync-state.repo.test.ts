@@ -16,8 +16,12 @@ jest.mock('@kiko/db/client', () => {
 
 import { match, P } from 'ts-pattern';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  type ExchangeStatePatch,
+  type NotImportedKind,
+  notImportedEntry,
+} from '@kiko/crypto-sync/exchange/walk-state';
 import { database, type syncState, write } from '@kiko/db';
-import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
 
 import { syncStateRepo } from './sync-state.repo';
@@ -299,13 +303,13 @@ describe('syncStateRepo.patchExchangeState', () => {
   // The plan pins this title. A sibling keeps its value; as every writer stores canonical JSON,
   // which round-trips byte-identically, it keeps its bytes too, which `toBe` on the text proves.
   it('replaces only the named field and keeps a malformed sibling byte-identical', async () => {
-    // The parse drops `notImported` and an unknown walk id, reads the malformed `multiCoinSince`
-    // as the cursor and repairs a malformed field, so none of it may travel through the parse on
-    // its way back to the column.
+    // The parse drops an entry of a kind this build does not know and an unknown walk id, reads
+    // the malformed `multiCoinSince` as the cursor and repairs a malformed field, so none of it
+    // may travel through the parse on its way back to the column.
     const stored = JSON.stringify({
       version: 1,
       futureKey: { keep: [1, 2] },
-      notImported: ['p2p-sale:1:2'],
+      notImported: ['p2p-sale:1:2', 'bybit-x:1:2'],
       walks: {
         pay: {
           cursor: 123_456,
@@ -522,6 +526,33 @@ describe('syncStateRepo.patchExchangeState', () => {
         [coins]: written,
       });
     });
+  });
+
+  const KIND: NotImportedKind = 'convert-unrecognized';
+  const ENTRY = notImportedEntry(KIND, '3', 4);
+
+  it.each([
+    ['starts the list', undefined, [ENTRY]],
+    [
+      'adds to the list, and keeps the entry of a kind this build does not know',
+      ['bybit-x:1:2', 'p2p-sale:1:2'],
+      ['bybit-x:1:2', 'p2p-sale:1:2', ENTRY],
+    ],
+  ])('%s and leaves every other field byte-identical', async (_title, seed, written) => {
+    const siblings = {
+      futureKey: { keep: [1, 2] },
+      walks: { pay: { cursor: 123_456, pointCursor: 'junk' }, mystery: { cursor: 9 } },
+    };
+    const rawDatabase = openExchangeDatabase(
+      'binance',
+      JSON.stringify({ version: 1, ...siblings, ...(seed ? { notImported: seed } : {}) }),
+    );
+
+    await patchInOrder({ kind: 'notImported', entries: [ENTRY] });
+
+    expect(storedExchangeState(rawDatabase)).toBe(
+      JSON.stringify({ version: 1, ...siblings, notImported: written }),
+    );
   });
 
   describe('the account gate', () => {

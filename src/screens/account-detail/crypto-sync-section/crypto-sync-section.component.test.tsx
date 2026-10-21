@@ -198,7 +198,7 @@ const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 const PAUSED_CAPTION =
   'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to fix this. Your holdings and transactions are kept.';
 
-// The four forward cursors of the history walks, each `behindMs` behind the balance sync.
+// The five forward cursors of the history walks, each `behindMs` behind the balance sync.
 const walkCursors = (
   behindMs: number,
   over: Partial<Record<WalkName, number>> = {},
@@ -487,6 +487,23 @@ describe('CryptoSyncSection', () => {
   it('shows the caption when only the Earn walk is behind: the other three cursors are current', async () => {
     const { getByText } = await renderBinance(
       walkCursors(HOUR_MS, { earn: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS }),
+    );
+
+    expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
+  });
+
+  it('shows the caption when only the Convert walk has no cursor yet: the other four are current', async () => {
+    const { getByText } = await renderBinance(
+      withWalkMarkSeeds(
+        {},
+        ACCOUNT_ID,
+        Object.fromEntries(
+          WALK_NAMES.filter((walkName) => walkName !== 'convert').map((walkName) => [
+            walkName,
+            { cursor: CONNECTED_WALLET_SYNCED_AT - HOUR_MS },
+          ]),
+        ),
+      ),
     );
 
     expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
