@@ -926,9 +926,13 @@ describe('a start Binance refuses', () => {
 
   describe('when time passes between the narrowing and the read', () => {
     /** A world whose clock moves `stepMs` with every request, as time passes while a run waits. */
-    const clockedWorld = (stepMs: number) => {
+    const clockedWorld = (
+      stepMs: number,
+      depthMs = DEPTH,
+      records: BinanceConvertRecord[] = [],
+    ) => {
       const world = worldOf();
-      const server = convertServerOf([], DEPTH);
+      const server = convertServerOf(records, depthMs);
       let clockMs = NOW;
       const fetchConvertHistory = jest.fn(async (apiKey: string, secret: string, query: Query) => {
         clockMs += stepMs;
@@ -975,6 +979,23 @@ describe('a start Binance refuses', () => {
       expect(afterNarrowing).toEqual([]);
       expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
       expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('skips no conversion when the pause moves the start to the end of the span', async () => {
+      const windowEnd = HISTORY_FLOOR_MS + CONVERT_WINDOW_MS;
+      const depthMs = windowEnd - 60_000;
+      const kept = convertRecordOf({ createTime: depthMs + 30_000 });
+      const { world, deps } = clockedWorld(DEPTH_EXTRAPOLATION_MAX_MS + 1, depthMs, [kept]);
+
+      await world.walk(deps, freshRun());
+
+      expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
+      expect(deps.addTransactions).not.toHaveBeenCalled();
+
+      const next = world.depsOf({ fetchConvertHistory: convertServerOf([kept], depthMs) });
+      await world.walk(next, freshRun());
+
+      expect(addedRows(next)).toHaveLength(2);
     });
 
     it('narrows the window again in the next run, which reads it from its served start', async () => {

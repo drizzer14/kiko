@@ -426,9 +426,10 @@ const readOf = (span: WalkWindow, page: ConvertHistoryPage): SpanRead<ConvertRea
  * (`narrowRefusedStart`) and read the span from there. The ground below that start is ground
  * Binance does not keep, so it is not owed and the walk goes on; a span it serves none of is an
  * empty page. The depth may move with the clock, so the read begins at the start found moved on
- * by the time that passed and the depth margin (`knownStartOf`), and a read Binance still refuses
- * is a clean stop: no mark moves and the next run narrows again. `undefined` is a clean stop, the
- * narrowing out of calls or rate-limited.
+ * by the time that passed and the depth margin (`knownStartOf`). `undefined` is a clean stop, no
+ * mark moves and the next run narrows again, and there are three: the narrowing out of calls or
+ * rate-limited, the last served start older than a start is moved on for (`hasDepthLapsed`), which
+ * is checked before any page, an empty one too, and a read Binance still refuses.
  */
 const readFromServedStart = async (
   context: ConvertContext,
@@ -459,6 +460,14 @@ const readFromServedStart = async (
   }
 
   const nowMs = context.deps.now();
+
+  // After a pause longer than a start is moved on for, a depth that stood still would put the
+  // start above ground Binance serves, and the commit would move the marks past it unread, an
+  // empty page included. A floor or a refused end leaves the memory empty, so those stay empty.
+  if (hasDepthLapsed(lastServed, nowMs)) {
+    return undefined;
+  }
+
   const served = match(narrowed)
     .returnType<WalkWindow>()
     .with({ kind: 'floor' }, () => ({ start: span.end, end: span.end }))
@@ -470,12 +479,6 @@ const readFromServedStart = async (
 
   if (served.start >= served.end) {
     return { kind: 'page', page: { page: NOTHING_SERVED, span: served } };
-  }
-
-  // After a pause longer than a start is moved on for, a depth that stood still would put the
-  // start above ground Binance serves, and the commit would move the marks past it unread.
-  if (hasDepthLapsed(lastServed, nowMs)) {
-    return undefined;
   }
 
   try {
