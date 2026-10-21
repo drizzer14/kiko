@@ -280,6 +280,11 @@ Every count and exit code is the orchestrator's own measured result.
   - the `fast.sh` `.js` arm plus the per-file `.js` scope of `comment-line-width.sh` (the
     per-file case pattern: `scripts/*.js`, `*/scripts/*.js`, `rules/fixtures/*.js`, `githooks/*`;
     wider than the project-wide check; the list is repo-specific).
+  - the `kill-guard.sh` node-status deny (node runs but `kill-guard.js` cannot load: the
+    wrapper prints a deny, DETAILS names the status and first error line; node missing and a
+    malformed payload stay allows), the rows in `__tests__/kill-guard-hook-load.test.ts`, and
+    the `__tests__/test-support/copy-kill-guard.ts` helper (a fixture copies the guard plus
+    every required sibling, derived from the requires; `hook-dispatch.test.ts` uses it).
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

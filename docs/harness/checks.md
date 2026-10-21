@@ -198,7 +198,9 @@ A `PreToolUse` hook (`scripts/checks/kill-guard.sh`) runs on every
 process-group `kill` (including via `xargs`, `$(...)`, or a
 `sh -c`/`bash -c` string) before the command runs. Stop only a
 process ID you started yourself (`kill <pid>`), or let the tool
-timeout end a hung command. The hook is not part of the
+timeout end a hung command. When node runs but `kill-guard.js` cannot load (missing module,
+syntax error, non-zero node exit, a signal), the wrapper denies ("kill-guard could not
+load ...", DETAILS names node's status and first error line). The hook is not part of the
 fast/medium/deep tiers and has no dedup fingerprint.
 
 The same hook (user-approved; it binds the user's own sessions too)
@@ -282,7 +284,8 @@ core.hooksPath that `scripts/ensure-git-hooks.sh` writes outranks both. A heredo
 runs is judged only for the `DATA_KINDS` kinds (the set in kill-guard.js; read it there), so
 text documenting other commands is allowed there; a body a
 shell or eval runs is judged in full. An error while judging denies (`internalError`); a
-malformed payload, an empty command, and a missing node allow. `git rebase`, `cherry-pick`,
+malformed payload, an empty command, and a missing node allow; a guard that cannot load (node
+runs, `kill-guard.js` fails) denies. `git rebase`, `cherry-pick`,
 and `am` replay commits without
 pre-commit (a known limit).
 See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill scan".

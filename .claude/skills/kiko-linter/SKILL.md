@@ -98,7 +98,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   fail-loud/`exit 2` half of the contract either: it ALWAYS exits 0, prints
   nothing on allow, and prints the documented `permissionDecision: "deny"`
   JSON on stdout (never stderr) when the command is a pkill/killall or a
-  pattern/process-group kill. It has no `print_block`/`_lib.sh` dependency
+  pattern/process-group kill, and also when node runs but `kill-guard.js`
+  cannot load (a failed node run: any non-zero status or signal; fail-closed).
+  It has no `print_block`/`_lib.sh` dependency
   and no content-dedup fingerprint — a `PreToolUse` hook runs on every Bash
   call by design, and skipping one because "nothing changed" would mean
   skipping the one call the guard exists to catch. See `docs/harness/checks.md` "Automatic
@@ -583,6 +585,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `internalError` finding (`INTERNAL_ERROR_REASON_LINES`) and the command is denied. A
   malformed or unreadable payload, an empty command, and a missing node still allow.
   `kill-guard.sh` exits 0 always and denies through its JSON, also when judging crashed.
+  A load failure is not an `internalError` finding: when node runs but `kill-guard.js` cannot
+  load (missing sibling module, syntax error, any non-zero node exit, a signal), the wrapper
+  itself prints a deny ("kill-guard could not load ..."); its DETAILS line names node's status
+  and the first error line. Node missing and a malformed payload stay allows. Rows:
+  `__tests__/kill-guard-hook-load.test.ts`. A test fixture that copies the guard uses the
+  `__tests__/test-support/copy-kill-guard.ts` helper, which copies the guard plus every sibling
+  module it requires (derived from the `require('./x')` calls, transitively), never a hand list.
 
   NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
   `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
@@ -827,7 +836,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `pre-write-guard.js` reports a NEW finding against the proposed post-edit
   content; a check that could not run at all (a Semgrep/Node crash,
   malformed stdin, a timeout) also denies — fail-closed, the opposite of
-  `kill-guard.sh`'s always-allow default. It has NO content-dedup
+  `kill-guard.sh`'s allows (a malformed payload, a missing node), though
+  kill-guard.sh now also fails closed on a load failure. It has NO content-dedup
   fingerprint, for the same reason `kill-guard.sh` has none: a pre-write
   check must run on every single write by design, not just when something
   changed since last time. Env seams override its defaults for testing
