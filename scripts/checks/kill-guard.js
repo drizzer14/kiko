@@ -88,11 +88,13 @@
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
 //
 // And it reads a script file a command runs (`bash|sh|zsh|dash <file>`, `source <file>`,
-// `. <file>`, or a path run directly whose first line names a shell) and denies a pkill, killall,
-// or pattern or process-group kill in it: a script in a scratchpad outside the project is a place
+// `. <file>`, a path run directly whose first line names a shell, or a shell or `source
+// /dev/stdin` that a `< <file>` redirect feeds) and denies a pkill, killall, or pattern or
+// process-group kill in it: a script in a scratchpad outside the project is a place
 // the pre-write guard never looks. One level only (a script the script runs is not
-// read), a regular file of at most 256 KiB, and kills and a raw `mainFastForward` only (a
-// `git stash` or a write inside the file is not judged). `scripts/job-queue.sh` at the root of a
+// read), a regular file of at most 256 KiB, and kills, a move of `main`, and a raw
+// `mainFastForward` only (a `git stash` or a write inside the file is not judged).
+// `scripts/job-queue.sh` at the root of a
 // worktree of this repository is exempt: its own group TERM is the one allowed group kill.
 // `scripts/ff-main.sh` needs no exemption: its merge uses a variable target, which this scan does
 // not resolve. A script built in the same command, a missing file, and a path held in a variable
@@ -2673,6 +2675,9 @@ function leaveSubshell(location) {
   Object.assign(location, location.saved.pop());
 }
 
+const runsCommandString = (rest) =>
+  rest.some((word, index) => index > 0 && SHELL_COMMAND_FLAG.test(word));
+
 // A shell runs its `-c` string or, without `-c`, the heredoc bodies and
 // here-strings it reads as its script.
 function queueShellScript(rest, nested, stdinScripts) {
@@ -2749,7 +2754,7 @@ const SHELL_OPTION = /^[-+]./;
 // The script file `bash [options] <file>` runs: its first operand. A `-c` flag (anywhere, as
 // `queueShellScript` reads it) or `-s` means the script is text, not a file.
 function shellScriptOperand(rest) {
-  if (rest.some((word, index) => index > 0 && SHELL_COMMAND_FLAG.test(word))) return undefined;
+  if (runsCommandString(rest)) return undefined;
   let index = 1;
   while (index < rest.length) {
     const word = rest[index];
@@ -2838,6 +2843,27 @@ function scriptKillFinding(scriptFile, context) {
   return null;
 }
 
+// The files a `<` redirect feeds to a command's stdin (a here-document is not one). A shell with
+// no script of its own, or `source /dev/stdin`, runs what the file holds.
+const stdinFilesOf = (redirects) =>
+  redirects.filter(({ operator }) => /^<>?$/.test(operator)).map(({ target }) => target);
+
+function shellReadsStdin(rest) {
+  const operand = shellScriptOperand(rest);
+  const namesStdin = operand === undefined || operand === '-' || STDIN_FILES.has(operand);
+
+  return namesStdin && !runsCommandString(rest);
+}
+
+function stdinFileFinding(context) {
+  for (const target of context.stdinFiles) {
+    const found = scriptKillFinding({ operand: target, requireShebang: false }, context);
+    if (found !== null) return found;
+  }
+
+  return null;
+}
+
 // A pkill/killall (or the probe's sentinel), or a `kill` aimed at a pattern or a process group.
 function killFinding(base, { tokens: rest, viaXargs }, context) {
   const aimsAtMany = () => viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
@@ -2856,6 +2882,25 @@ function assignmentFinding({ tokens: rest, environment }, context) {
   return environmentFinding(assigned, context);
 }
 
+// A shell runs the script file it names, or, with none, the heredoc bodies, here-strings, and
+// `<` file on its stdin.
+function shellFinding(base, rest, context) {
+  queueShellScript(rest, context.scripts, context.stdinScripts);
+
+  return (
+    scriptKillFinding(scriptFileOf(base, rest), context) ??
+    (shellReadsStdin(rest) ? stdinFileFinding(context) : null)
+  );
+}
+
+function sourceFinding(base, rest, context) {
+  const scriptFile = scriptFileOf(base, rest);
+  if (!STDIN_FILES.has(scriptFile.operand)) return scriptKillFinding(scriptFile, context);
+  context.scripts.push(...context.stdinScripts);
+
+  return stdinFileFinding(context);
+}
+
 // The finding for one unwrapped command (see `segmentFinding`).
 function commandFinding(command, context) {
   const { tokens: rest, environment } = command;
@@ -2864,11 +2909,7 @@ function commandFinding(command, context) {
   const base = basename(rest[0]);
   if (ASSIGNING_COMMANDS.has(base)) return assignmentFinding(command, context);
 
-  if (SHELLS.has(base)) {
-    queueShellScript(rest, context.scripts, context.stdinScripts);
-
-    return scriptKillFinding(scriptFileOf(base, rest), context);
-  }
+  if (SHELLS.has(base)) return shellFinding(base, rest, context);
 
   // `eval "$(cat)" <<'EOF'` runs what its stdin holds, as `source /dev/stdin <<'EOF'` does.
   if (base === 'eval') {
@@ -2879,12 +2920,7 @@ function commandFinding(command, context) {
   const kill = killFinding(base, command, context);
   if (kill !== null || base === 'kill') return kill;
 
-  if (base === 'source' || base === '.') {
-    const scriptFile = scriptFileOf(base, rest);
-    if (STDIN_FILES.has(scriptFile.operand)) context.scripts.push(...context.stdinScripts);
-
-    return scriptKillFinding(scriptFile, context);
-  }
+  if (base === 'source' || base === '.') return sourceFinding(base, rest, context);
 
   if (base === 'git') {
     const invocations = context.directories.map((directory) =>
@@ -2936,6 +2972,7 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) 
       segment,
       scripts: queue,
       stdinScripts,
+      stdinFiles: stdinFilesOf(targets),
       spans,
       directories,
       rules: judgedRules,
