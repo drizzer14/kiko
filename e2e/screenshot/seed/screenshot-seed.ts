@@ -169,7 +169,6 @@ type SeededCurrency =
   | 'ETH'
   | 'USDT'
   | 'BNB'
-  | 'DOGE'
   | 'SOL'
   | 'XRP'
   | 'USDC'
@@ -186,7 +185,6 @@ const PRICE_IN_UAH: Record<SeededCurrency, number> = {
   ETH: 100_000,
   USDT: 41,
   BNB: 30_000,
-  DOGE: 6.6,
   SOL: 4_300,
   XRP: 55,
   USDC: 41,
@@ -201,7 +199,6 @@ const CURRENCIES: SeededCurrency[] = [
   'ETH',
   'USDT',
   'BNB',
-  'DOGE',
   'SOL',
   'XRP',
   'USDC',
@@ -211,7 +208,7 @@ const CURRENCIES: SeededCurrency[] = [
 const BINANCE_BTC_KEY = 'binance-btc';
 const BINANCE_USDT_KEY = 'binance-usdt';
 const BINANCE_BNB_KEY = 'binance-bnb';
-const BINANCE_DOGE_KEY = 'binance-doge';
+const BINANCE_XRP_KEY = 'binance-xrp';
 const BINANCE_UAH_KEY = 'binance-uah';
 const BINANCE_EUR_KEY = 'binance-eur';
 
@@ -221,13 +218,13 @@ type ExchangeOperationFields = Pick<
 >;
 
 // What the Binance account holds: BTC under the account's own name, one small deposit per other
-// coin at the coin's own scale (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4, DOGE 4
-// decimals), and a UAH and a EUR balance, since an exchange wallet keeps fiat as a `crypto_asset`
-// holding in a fiat currency. The exchange operation rows (a convert, a trade with its fee, a trade
-// with a coin not held, a dust sweep, a P2P, card purchase, card sale and bank rows) are all dated
-// 33 days or more before the anchor, outside the default 30-day window, so Home and the 30-day
-// charts show none of these rows. Each holding's deposits are cut by what its operation rows
-// add, so each holding ends at its pinned balance; only the Dogecoin deposit is swept away, to 0.
+// coin at the coin's own scale (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4 decimals), and
+// a UAH and a EUR balance, since an exchange wallet keeps fiat as a `crypto_asset` holding in a
+// fiat currency. The exchange operation rows (a convert, a trade with its fee, a trade with a coin
+// not held, an XRP dust sweep into BNB, a P2P, card purchase, card sale and bank rows) are all
+// dated 33 days or more before the anchor, outside the default 30-day window, so Home and the
+// 30-day charts show none of these rows. Each holding's deposits are cut by what its operation
+// rows add, so each holding ends at its pinned balance.
 // The coin names are brand names and stay Latin in both languages; the two fiat names are text.
 const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHolding[] => {
   const exchangeHolding = (
@@ -333,19 +330,7 @@ const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHold
           operation: 'trade-fee',
         }),
         operationRow(40, 110_000, {
-          pair: { key: 'dust', counterpartHoldingKey: BINANCE_DOGE_KEY },
-          operation: 'dust',
-        }),
-      ],
-    }),
-    exchangeHolding({
-      key: BINANCE_DOGE_KEY,
-      name: 'Dogecoin',
-      currency: 'DOGE',
-      transactions: [
-        deposit('DOGE', 500_000, 95),
-        operationRow(40, -500_000, {
-          pair: { key: 'dust', counterpartHoldingKey: BINANCE_BNB_KEY },
+          pair: { key: 'dust', counterpartHoldingKey: BINANCE_XRP_KEY },
           operation: 'dust',
         }),
       ],
@@ -365,9 +350,16 @@ const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHold
       transactions: [deposit('CGPT', 500_000_000, 85)],
     }),
     exchangeHolding({
+      key: BINANCE_XRP_KEY,
       name: 'XRP',
       currency: 'XRP',
-      transactions: [deposit('XRP', 600_000, 80)],
+      transactions: [
+        deposit('XRP', 660_000, 80),
+        operationRow(40, -60_000, {
+          pair: { key: 'dust', counterpartHoldingKey: BINANCE_BNB_KEY },
+          operation: 'dust',
+        }),
+      ],
     }),
     exchangeHolding({
       key: BINANCE_UAH_KEY,
@@ -442,7 +434,6 @@ const HISTORY_PAIRS: HistoryPair[] = [
   { base: 'ETH', startUah: 85_000, endUah: PRICE_IN_UAH.ETH },
   { base: 'USDT', startUah: 40.0, endUah: PRICE_IN_UAH.USDT },
   { base: 'BNB', startUah: 24_000, endUah: PRICE_IN_UAH.BNB },
-  { base: 'DOGE', startUah: 5.2, endUah: PRICE_IN_UAH.DOGE },
   { base: 'SOL', startUah: 3_600, endUah: PRICE_IN_UAH.SOL },
   { base: 'XRP', startUah: 45, endUah: PRICE_IN_UAH.XRP },
   { base: 'USDC', startUah: 40.0, endUah: PRICE_IN_UAH.USDC },

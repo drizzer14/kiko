@@ -151,7 +151,6 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       'USDT',
       'USD Coin',
       'BNB',
-      'Dogecoin',
       'Solana',
       'ChainGPT',
       'XRP',
@@ -178,7 +177,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     );
   });
 
-  it('seeds nine plain manual accounts spread across UAH/USD/EUR and nine coins', () => {
+  it('seeds nine plain manual accounts spread across UAH/USD/EUR and eight coins', () => {
     const { accounts } = buildScreenshotDataset('uk', ANCHOR);
     const currencies = accounts.flatMap((account) =>
       account.holdings.map((holding) => holding.currency),
@@ -186,20 +185,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
 
     expect(accounts).toHaveLength(9);
     expect(new Set(currencies)).toEqual(
-      new Set([
-        'UAH',
-        'USD',
-        'EUR',
-        'BTC',
-        'ETH',
-        'USDT',
-        'BNB',
-        'DOGE',
-        'SOL',
-        'XRP',
-        'USDC',
-        'CGPT',
-      ]),
+      new Set(['UAH', 'USD', 'EUR', 'BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP', 'USDC', 'CGPT']),
     );
   });
 
@@ -252,12 +238,12 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(rebuilt).toEqual(times);
   });
 
-  it('pins every ordered currency pair (132) at one fixed fetchedAt', () => {
+  it('pins every ordered currency pair (110) at one fixed fetchedAt', () => {
     const { rates } = buildScreenshotDataset('uk', ANCHOR);
     const fetchedAts = new Set(rates.map((rate) => rate.fetchedAt));
     const requiredPairs = ['BTC:UAH', 'USD:UAH', 'EUR:UAH', 'BTC:USD', 'UAH:BTC', 'USD:BTC'];
 
-    expect(rates).toHaveLength(132);
+    expect(rates).toHaveLength(110);
     expect(fetchedAts.size).toBe(1);
 
     for (const pair of requiredPairs) {
@@ -277,7 +263,6 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
         'ETH:UAH',
         'USDT:UAH',
         'BNB:UAH',
-        'DOGE:UAH',
         'SOL:UAH',
         'XRP:UAH',
         'USDC:UAH',
@@ -285,7 +270,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       ]),
     );
     // 27 weekly points (weeks 0..26) per pair.
-    expect(history).toHaveLength(11 * 27);
+    expect(history).toHaveLength(10 * 27);
   });
 
   it('keeps the invented-ISIN bond its coupons once a register refresh drops the ISIN', () => {
