@@ -15,6 +15,7 @@ import {
   syncBinanceEarnHistory,
   syncBinancePayHistory,
   syncBinanceTransactions,
+  syncBinanceConvertHistory,
   syncBinanceTransferHistory,
 } from '../binance';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
@@ -61,9 +62,12 @@ const runBinanceHistoryWalks = async (
   await logOnFailure('[binance sync] transfer history failed', () =>
     syncBinanceTransferHistory({ targetAccountId, run }),
   );
-  // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too.
   await logOnFailure('[binance sync] earn history failed', () =>
     syncBinanceEarnHistory({ targetAccountId, run }),
+  );
+  // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too.
+  await logOnFailure('[binance sync] convert history failed', () =>
+    syncBinanceConvertHistory({ targetAccountId, run }),
   );
 };
 

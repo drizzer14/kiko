@@ -50,7 +50,7 @@ const FIELDS: readonly WalkField[] = [
   'multiCoinSeen',
 ];
 
-export const WALK_NAMES: readonly WalkName[] = ['capital', 'pay', 'transfer', 'earn'];
+export const WALK_NAMES: readonly WalkName[] = ['capital', 'pay', 'transfer', 'earn', 'convert'];
 
 const isNumberField = (field: WalkField): boolean =>
   NUMBER_MARK_FIELDS.some((numberField) => numberField === field);
