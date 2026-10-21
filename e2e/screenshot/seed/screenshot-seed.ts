@@ -61,8 +61,9 @@ type SeedTransaction = {
   description: string;
   // The `key` of the loan holding this payment pays down, linked manually.
   loanHoldingKey?: string;
-  // One leg of an exchange: the pair `key` every leg of that exchange shares, and the `key` of
-  // the other leg's holding. The snapshot builder swaps both for stored ids.
+  // One row of an exchange: the pair `key` every row of that exchange shares, and the `key` of the
+  // holding the row names as its counterpart (the other leg's; a fee row's is the received leg's).
+  // The snapshot builder swaps both for stored ids.
   pair?: { key: string; counterpartHoldingKey: string };
   // The stored code of a counterpart Kiko does not track (`p2p:`, `card:`, `bank:` ...).
   untrackedCounterpart?: string;
@@ -224,10 +225,9 @@ type ExchangeOperationFields = Pick<
 // decimals), and a UAH and a EUR balance, since an exchange wallet keeps fiat as a `crypto_asset`
 // holding in a fiat currency. The exchange operation rows (a convert, a trade with its fee, a trade
 // with a coin not held, a dust sweep, a P2P, card purchase, card sale and bank rows) are all dated
-// 33 days or more before the anchor, outside the default 30-day window, so Home and the charts
-// open on the same rows as before. Each holding's deposits are cut by what its operation rows
-// add, so it ends at the balance one deposit gave it before; only the Dogecoin deposit is swept
-// away, to 0.
+// 33 days or more before the anchor, outside the default 30-day window, so Home and the 30-day
+// charts show no set 7 row. Each holding's deposits are cut by what its operation rows add, so
+// each holding ends at its pinned balance; only the Dogecoin deposit is swept away, to 0.
 // The coin names are brand names and stay Latin in both languages; the two fiat names are text.
 const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHolding[] => {
   const exchangeHolding = (
