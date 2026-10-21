@@ -162,7 +162,8 @@ Source of S7-Q1 ... S7-Q8: `memory/refs/binance-multicoin-sdd-2026-10-21/rulings
 | S8-Q7 A (COORDINATOR) | An unreadable `notImported` name is kept, with no log line (run-log gap) | 8 |
 | S8-Q8 A (COORDINATOR) | Row C3 reads "never adds a second entry" | 8 |
 
-Source of S8-Q1 ... S8-C1 (S8-Q1, S8-Q2, F5 and S8-C1 sit in "User rulings"): `memory/refs/binance-multicoin-sdd-2026-10-21/rulings.md`, section
+Source of S8-Q1 ... S8-C1 (S8-Q1, S8-Q2, F5 and S8-C1 sit in "User rulings"):
+`memory/refs/binance-multicoin-sdd-2026-10-21/rulings.md`, section
 "Set 8 plan questions".
 
 ### Rulings this spec reverses
@@ -355,7 +356,7 @@ Parse, per walk (set 4):
   another (`tradesOf`, `walk-state.ts`). Each of the four coin lists (`untrackedCoins.balance`, `untrackedCoins.history`,
   `oversizedCoins.balance`, `oversizedCoins.history`) and `notImported` parse on their own, and
   `oversizedCoins.balanceByWallet` is parsed per wallet (`oversizedByWalletOf`). A
-  malformed coin list reads as its empty value and logs the same tag with the entry name.
+  malformed coin list reads as its empty value; its name goes into `unreadable` with no log line.
   `notImportedOf` (`walk-state.ts`) drops every `notImported` entry that is not text of a known
   kind in `NOT_IMPORTED_KINDS` (a newer build's kind included) and keeps only its NAME
   (`notImported.<index>`) in `ParsedExchangeState.unreadable`. Nothing logs it (S8-Q7: names only,
@@ -1611,7 +1612,7 @@ round changes it.
 | C9 | a start answered -5026 (S8-C1; probe 5 saw no refusal) | the run fails, logged; marks stay; the history caption shows once the Convert cursor lags more than a day; no narrowing | - | not imported; spec was: narrowed by `DepthGuard`, the walk went on |
 | C12 | SUCCESS record with no `quoteId` (S8-Q1), or no `createTime` | unreadable: owes its point, or the span when it has no time; no row, no entry | - | not imported |
 | C6c | SUCCESS, USDT -> USDT (S8-Q6) | one `convert-unrecognized` entry, no row | none | not imported |
-| C6e | SUCCESS on FUNDING with a blank (`''` or absent) `fromAsset` or `toAsset` (F5) | one `convert-unrecognized` entry, no row, owes nothing; a zero or negative amount stays owed | none | not imported |
+| C6e | SUCCESS on FUNDING with a blank (`''` or absent) `fromAsset` or `toAsset` (F5) | one `convert-unrecognized` entry, no row, owes nothing, even with a zero amount (the asset check runs before amounts); a record with both assets and a zero or negative tracked amount stays owed (C6d) | none | not imported |
 | C9b | a window answered with another 4xx (for example -1127, or any code other than -5026); probe 5 saw none | a failure: the window and cursor stay, and the next run reads it again; the walk does not end | - | not imported |
 | C9c | R-Walk A: a first Convert walk on UA-1 (113 windows, lane cap 20) | recent records arrive last; the 2026-01 conversion (window about 104) appears at run 6 of 6 | - | not imported |
 | C10 | FAIL with `walletType` missing or another word | no row, no entry (status first) | none | n/a |

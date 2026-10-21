@@ -101,12 +101,12 @@ Convert records (step 7/14 unless noted). "was:" for every C row: not imported (
 | C6c | SUCCESS, USDT -> USDT | one `convert-unrecognized` entry, no row (answered A, S8-Q6) |
 | C6d | SUCCESS, a tracked side's amount `0`, `-1`, `1e-3`, over-precise, absent | owes its point; others import |
 | C8 | one conversion in 2026-01, every other window empty (step 8/14) | every window read once; imported as C1 |
-| C9 | a start answered -5026 (step 8/14) | narrowed to the served start; nothing owed below; the walk goes on (SUPERSEDED by S8-C1: the run fails, logged, marks stay, the caption shows) |
+| C9 | a start answered -5026 (step 8/14) | narrowed to the served start; nothing owed below; the walk goes on (SUPERSEDED by S8-C1: the run fails) |
 | C9b | a window answered -1127 (step 8/14) | a failure: window and cursor stay; the next run reads it again |
 | C9c | first walk, 113 windows, lane cap 20 (step 8/14) | the window 104 conversion imports at run 6 of 6 |
 | C10 | FAIL, `walletType` missing or `MAIN` | no row, no entry (status first) |
 | C11 | `moreData` true (step 8/14) | the span halves; 1 ms still `moreData` owes the span (`convert-page-stuck`) |
-| C12 | no usable record id (S8-Q1), or no `createTime` | unreadable: owes its point, or the span when it has no time (S8-Q1 ruled: the id is the `quoteId` only) |
+| C12 | no usable record id (S8-Q1), or no `createTime` | unreadable: owes its point, or the span when it has no time (S8-Q1: `quoteId` only) |
 
 State, line and caption (steps 3/14, 9/14, 10/14):
 
@@ -255,7 +255,7 @@ Files: `src/crypto-sync/binance/binance.history-client.ts`, `binance.history-cli
 - [ ] First: quote Binance's doc text for `GET /sapi/v1/convert/tradeFlow` in the commit body (parameters,
       30-day limit, `limit` maximum, `moreData`, the `orderStatus` values, the JSON type of `orderId` and
       `quoteId`). S8-Q1: when the coordinator runs probe 6, its measured `orderId` type decides the key; until
-      then build the DEFAULT (answered A, S8-Q1): id = `orderId` as a string or safe integer, else `quoteId`, else
+      then build the DEFAULT (was the default, pending S8-Q1): id = `orderId` as a string or safe integer, else `quoteId`, else
       unreadable. (SUPERSEDED: S8-Q1 = A, probe 6; the id is the `quoteId` only, never `orderId`.)
       A doc that contradicts G-5's status words: stop and ask.
 - [ ] Tests first: "reads a SUCCESS record with every field" (record fields `orderId`/`quoteId` -> `recordId`,
@@ -391,7 +391,8 @@ Reviews run per task group, after the group's last step is committed (harness-wo
 
 ### step 13/14: skill text (kiko:retrospect, then kiko:scribe)
 
-- [ ] `kiko-architecture`: the Convert walk (lane, window, status-first rule, depth safety net (SUPERSEDED by S8-C1: a Convert -5026 fails the run)), the
+- [ ] `kiko-architecture`: the Convert walk (lane, window,
+      status-first rule, depth safety net (SUPERSEDED by S8-C1: a Convert -5026 fails the run)), the
       `notImported` list (kinds, parse, union patch beside the marks, disconnect), the line. `kiko-domain`: Convert
       rows and markers; the adoption rule (S8-Q2) beside "The sync adopts its import twin" in
       `kiko-statement-import`. Pointers, no code copies. The report names the drift-fix sha or "no drift found".
