@@ -277,25 +277,21 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `mainMoveFinding` in `kill-guard.js` calls it), rows in `__tests__/kill-guard-main-moves.test.ts`.
   Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
   move the branch of the work tree they run in, so they count only against the main checkout;
-  `git reset --soft HEAD~1` there is denied now (user ruling: "any reset that moves HEAD of
-  main"), while `--hard` with no moving ref and a `-- <path>` reset stay allowed. A command that
+  `git reset --soft HEAD~1` there is denied (user ruling: "any reset that moves HEAD of
+  main"), while `--hard` with no commit (or `HEAD`/`@`) and a `-- <path>` reset stay allowed.
+  A command that
   writes the ref by name (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`,
   `fetch`/`push` into it, `symbolic-ref refs/heads/main`, `worktree add -B`) counts from ANY
   worktree of this repository, since all worktrees share the refs. In both scopes a place the text
-  cannot name (a `-C` or `cd` target held in a variable, or a relative one with no payload `cwd`)
-  fails closed, even when the command assigns the variable (the "an assignment can only ADD a
-  deny" invariant below). An unrelated repository or a plain folder is no target, so a reset
-  there is allowed; a no-cwd move with an absolute `--git-dir` of an unrelated repository is
-  allowed, while cwd in main with `--git-dir=<other>` stays denied. `mainMove` is in
+  cannot name (a `-C` or `cd` target held in a variable, a relative one with no payload `cwd`,
+  or a plain command with no `-C` and no `cwd`) fails closed, even when the command assigns the
+  variable (the "an assignment can only ADD a deny" invariant below). An unrelated repository
+  or a plain folder is no target, so a reset there is allowed; a no-cwd move with an absolute
+  `--git-dir` of an unrelated repository is allowed. With cwd in main and `--git-dir=<other>`, a
+  reset, `symbolic-ref HEAD` and `update-ref HEAD` stay denied, while a ref-name command is
+  judged on the named git directory only and is allowed. `mainMove` is in
   `SCRIPT_KINDS` and `EXPANDED_KINDS` (read both in `kill-guard.js`) and is NOT in `DATA_KINDS`.
-  The way out is `bash scripts/ff-main.sh <sha>`. Known limits, NOT denied: a ref held in a
-  variable; `update-ref --stdin`; an abbreviated long option; a push to a remote (it moves the
-  remote); git directories are compared as text, so a symlink, firmlink or `commondir` alias of
-  main's git folder passes (gap 20261021T0832-kiko-harness-h10/1); `--git-dir=~/x` is read as an
-  absolute path, not expanded; a `-c remote.<n>.fetch` refspec into main (gap /2) and a linked
-  worktree that puts HEAD on main, then resets (gap /3), both fixed in task 2/4; `push -d . main`.
-  Over-denied: a reset in a repository nested inside main's folder, and a `-C`/`cd` held in a
-  variable.
+  The way out is `bash scripts/ff-main.sh <sha>`. Known limits are in "Known limits" below.
 
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
@@ -322,8 +318,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `<worktree>/harness`, or a `.git` folder (`createdFolders`, `guardedPlace` with `missing`);
   it is allowed when the folder exists: without `-T` the copy lands inside it, and a `-T` move
   never lands inside, but it cannot replace a tracked, non-empty `.claude` or `harness`.
-  The same `.git`
-  rules: a copy of a folder's CONTENTS into a `.git` folder or a linked worktree's
+  The same `.git` rules: a copy of a folder's CONTENTS into a `.git` folder or a linked worktree's
   `.git/worktrees/<n>/` (a glob, `src/.`, a variable, `cp -rT`, `cp -t .git <glob>`) is
   denied, because it may write `config`, `config.worktree` or the hooks setting
   (`namesGitFolder`, `namesWorktreeGitFolder`, `gitConfigsIn`); a write to a path that names a
@@ -537,7 +532,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 
   Script-content kill scan. The guard reads a script file a command runs (`bash|sh|zsh|dash
   <file>`, `source <file>` or `. <file>`, a path run directly whose first line names a
-  shell, or a shell or `source /dev/stdin` that a `< <file>` redirect feeds, including
+  shell, or a shell or `source /dev/stdin` that a `< file` redirect feeds, including
   `bash < f`) and denies a pkill, killall, or pattern or process-group kill in it (kind
   `scriptKill`; `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`).
   One level only, a regular file of at most 256 KiB, and only the kinds in `SCRIPT_KINDS`
@@ -715,12 +710,19 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     merges); `cd $VAR` (counts as not main); a span as the `cd` target
     (`cd "$(echo <main>)" && git merge x`).
   - `mainMove` deny, NOT denied: a ref held in a variable, `update-ref --stdin`, an abbreviated
-    long option, a push to a remote, `push -d . main`, a git folder that aliases main's through
-    a symlink, firmlink or `commondir` (compared as text; gap 20261021T0832-kiko-harness-h10/1),
-    `--git-dir=~/x` (read as an absolute path), a `-c remote.<n>.fetch` refspec into main (gap
-    /2) and a linked worktree that puts HEAD on main, then resets (gap /3); /2 and /3 are fixed
-    in task 2/4. Script scan: `cat f | bash`, a script path in a variable. Over-denied: a
-    reset in a repository nested inside main's folder, and a `-C`/`cd` target held in a
+    long option, a push to a remote, `push -d . main` (no colon, so `refspecWritesMain` misses
+    it; git itself refuses it while main is checked out, by its receive deny-current-branch
+    and deny-delete-current defaults, measured on git 2.38.1; `push . :main` is denied), a git
+    folder that aliases main's through a symlink, firmlink or `commondir` (compared as text;
+    gap 20261021T0832-kiko-harness-h10/1), `--git-dir=~/x` (the guard reads `~` as the home
+    folder, `HOME_PREFIX` in `resolveDirectory`; the shell leaves `~` as is after `--git-dir=`
+    and git reads `<cwd>/~/x`), a `-c remote.<n>.fetch` refspec into main (open, gap
+    20261021T0832-kiko-harness-h10/2: nothing reads it) and a linked worktree whose
+    `symbolic-ref HEAD refs/heads/main` is allowed, then a reset (open, gap
+    20261021T0832-kiko-harness-h10/3). Script scan: `cat f | bash`, a script path in a
+    variable. Over-denied: `isInsideProjectWorktree` matches any prefix folder that is a
+    project worktree, so a reset in a repository nested in main's folder and a ref-name move of
+    main in a repository nested in ANY worktree are denied; and a `-C`/`cd` target held in a
     variable (fails closed). Detail: "The `mainMove` kind" above.
   - Nested unquoted heredoc in `cat <<'EOF' | bash`,
     `eval "$(cat <<'EOF' …)"`, or `bash -c "$(cat <<'EOF' …)"`: not
@@ -2667,8 +2669,11 @@ a pre-existing finding points at. A Semgrep deny names
   stale) and a line that can wrap is wrapped, never pinned. `__tests__/pin-count-ceilings.test.ts`
   caps how many pins each pin file (this one and the markdown prose-width one) may hold; read
   the test for the ceilings. `fast.sh` runs the per-file mode on
-  a shell, YAML or githooks write, and on a `.js` write only where the project-wide check reads
-  it (a `.js` under any `scripts/` path segment, `rules/fixtures/` or `githooks/`; the
+  a shell, YAML or githooks write, and on a `.js` write only for the per-file case pattern in
+  `comment-line-width.sh` (`scripts/*.js` or `*/scripts/*.js`, so a nested
+  `scripts/` folder counts;
+  `rules/fixtures/*.js`; `githooks/*`), wider than the project-wide check, which reads only root
+  `scripts/`, `rules/fixtures` and `githooks` (the
   generated header of `drizzle/migrations/migrations.js` is 109 columns and must not block
   an edit of it). A tool directive keeps its `OVERRIDE(...)` on ONE
   line directly above the statement: a continuation comment between a `biome-ignore lint/...`

@@ -124,8 +124,11 @@ Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 full-word-identifiers on the touched file) runs on `PostToolUse` for
 `Edit|Write|MultiEdit`; for a `.sh`, `.bash`, `.yml`, `.yaml` or githooks write it runs
 `comment-line-width.sh` and `security.sh` on that file instead (read `fast.sh`); a `.js` write
-runs `comment-line-width.sh` first, but only where the project-wide check reads a `.js` (below
-a `scripts/` folder, `rules/fixtures/`, `githooks/`; other `.js` files skip it). The medium
+runs `comment-line-width.sh` first, but only for its per-file case pattern (`scripts/*.js`,
+`*/scripts/*.js` so a nested
+`scripts/` folder counts, `rules/fixtures/*.js`, `githooks/*`; other `.js`
+files skip it); the project-wide check reads only root `scripts/`, `rules/fixtures`,
+`githooks`. The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
 session's changed source files; knip, deps, the Semgrep rule
 fixtures, the Info.plist security assertions, and typecheck
@@ -249,7 +252,8 @@ The same hook also denies any other git command that moves the branch `main` (fi
 moves the branch of its work tree; `git reset --soft HEAD~1` there is denied, user ruling "any
 reset that moves HEAD of main"), and from ANY worktree of this repository a command that writes
 the ref by name (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`, `fetch`/`push`
-into it, `worktree add -B`), since the worktrees share the refs. A `-C`/`cd` target or git folder
+into it, `symbolic-ref refs/heads/main`, `worktree add -B`), since the worktrees share the refs. A
+`-C`/`cd` target or git folder
 the text cannot name, or a missing cwd, fails closed; an unrelated repository or a plain folder
 is no target. The way out is `bash scripts/ff-main.sh <sha>`. Source:
 `scripts/checks/kill-guard-main-moves.js`; kiko-linter's "MAIN-CHECKOUT deny" has the rule and

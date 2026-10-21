@@ -211,8 +211,9 @@ verified usage, not dead weight:
   `scripts/checks/kill-guard.js` above `require`s it, but `kill-guard.js` is itself on the
   ignore list and reached only from the `kill-guard.sh` wrapper's `node` invocation, so
   Knip's graph never walks from an entry point to this file and reports it as unused. It is
-  exercised by `__tests__/kill-guard-main-moves.test.ts`, which spawns `kill-guard.sh` as a
-  subprocess, not an import, so Jest's coverage does not make Knip see it as reachable either.
+  exercised by `__tests__/kill-guard-main-moves.test.ts`, which runs `kill-guard.js` (and
+  `kill-guard.sh`) in a subprocess, not an import, so Jest's coverage does not make Knip see it
+  as reachable either.
 - **`knip.json` `ignore`**: `scripts/checks/pre-write-guard.js` — the
   PreToolUse hook script that `scripts/checks/pre-write-guard.sh` invokes
   (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to

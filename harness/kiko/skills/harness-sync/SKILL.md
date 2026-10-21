@@ -277,8 +277,9 @@ Every count and exit code is the orchestrator's own measured result.
     `.git` folder denies, `-T` included) and the `.git` contents/config copy rules
     (`namesGitFolder`, `namesWorktreeGitFolder`, `gitConfigsIn`).
   - the script-scan stdin forms (a shell or `source /dev/stdin` fed by a `< file` redirect).
-  - the `fast.sh` `.js` arm plus the per-file `.js` scope of `comment-line-width.sh` (only
-    where the project-wide check reads a `.js`; the folder list is repo-specific).
+  - the `fast.sh` `.js` arm plus the per-file `.js` scope of `comment-line-width.sh` (the
+    per-file case pattern: `scripts/*.js`, `*/scripts/*.js`, `rules/fixtures/*.js`, `githooks/*`;
+    wider than the project-wide check; the list is repo-specific).
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the
