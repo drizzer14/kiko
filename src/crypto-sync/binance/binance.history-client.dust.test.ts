@@ -42,7 +42,8 @@ const readBodyText = (text: string): Promise<DustHistoryPage> =>
 
 const recordBodyTextOf = (transIdField: string): string =>
   `{"userAssetDribblets":[{${transIdField},"operateTime":${DUST_OPERATED_AT},` +
-  '"userAssetDribbletDetails":[]}]}';
+  '"userAssetDribbletDetails":[{"fromAsset":"TRX","targetAsset":"BNB",' +
+  '"amount":"0.0009","transferedAmount":"0.000441"}]}]}';
 
 describe('fetchDustHistory', () => {
   it.each([
@@ -95,6 +96,7 @@ describe('fetchDustHistory', () => {
     expect(Object.keys(page.rows[0]?.entries[0] ?? {}).sort()).toEqual([
       'amount',
       'fromAsset',
+      'targetAsset',
       'transferedAmount',
     ]);
     expect(JSON.stringify(page.rows)).not.toContain('0.00000984');
@@ -115,29 +117,63 @@ describe('fetchDustHistory', () => {
   });
 
   it.each([
+    ['BNB', 'BNB', 'BNB'],
+    ['a coin other than BNB', 'USDT', 'USDT'],
+    ['a lower-case target', ' bnb ', 'BNB'],
+    ['a blank target', '  ', ''],
+  ])('reads %s as an entry target, never refusing it: %p', async (_name, wire, read) => {
+    const page = await readRecords(
+      wireDustRecordOf({ userAssetDribbletDetails: [wireDustEntryOf({ targetAsset: wire })] }),
+    );
+
+    expect(page.unreadable).toEqual([]);
+    expect(page.rows[0]?.entries.map((entry) => entry.targetAsset)).toEqual([read]);
+  });
+
+  it.each([
     ['missing', undefined],
     ['null', null],
     ['of another JSON type', 7],
-  ])('reads an entry whose asset and amounts are %s as undefined', async (_name, value) => {
+  ])('reads an entry whose asset, target and amounts are %s as undefined', async (_name, value) => {
     const page = await readRecords(
       wireDustRecordOf({
         userAssetDribbletDetails: [
-          wireDustEntryOf({ fromAsset: value, amount: value, transferedAmount: value }),
+          wireDustEntryOf({
+            fromAsset: value,
+            targetAsset: value,
+            amount: value,
+            transferedAmount: value,
+          }),
         ],
       }),
     );
 
     expect(page.unreadable).toEqual([]);
     expect(page.rows[0]?.entries).toEqual([
-      { fromAsset: undefined, amount: undefined, transferedAmount: undefined },
+      {
+        fromAsset: undefined,
+        targetAsset: undefined,
+        amount: undefined,
+        transferedAmount: undefined,
+      },
     ]);
   });
 
-  it('reads a record with an empty entry list', async () => {
+  it('reads a record with an empty entry list as unreadable, keeping its time', async () => {
     const page = await readRecords(wireDustRecordOf({ userAssetDribbletDetails: [] }));
 
-    expect(page.unreadable).toEqual([]);
-    expect(page.rows).toEqual([dustRecordOf({ entries: [] })]);
+    expect(page.rows).toEqual([]);
+    expect(page.unreadable).toEqual([{ time: DUST_OPERATED_AT }]);
+  });
+
+  it('reads the records beside one with an empty entry list', async () => {
+    const page = await readRecords(
+      wireDustRecordOf({ transId: 'a' }),
+      wireDustRecordOf({ transId: 'b', userAssetDribbletDetails: [] }),
+    );
+
+    expect(page.rows.map((row) => row.transId)).toEqual(['a']);
+    expect(page.unreadable).toEqual([{ time: DUST_OPERATED_AT }]);
   });
 
   it.each([
@@ -163,9 +199,7 @@ describe('fetchDustHistory', () => {
   it('reads a record with a safe-integer transId in the body text as its digits', async () => {
     const page = await readBodyText(recordBodyTextOf('"transId":940708407462087'));
 
-    expect(page.rows).toEqual([
-      { transId: '940708407462087', operateTime: DUST_OPERATED_AT, entries: [] },
-    ]);
+    expect(page.rows).toEqual([dustRecordOf({ transId: '940708407462087' })]);
   });
 
   it.each([

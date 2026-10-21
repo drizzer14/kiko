@@ -997,13 +997,15 @@ export const fetchConvertHistory = async (
   );
 
 /**
- * Binance spells `transfered` with one `r` on both amount fields. An entry's own `transId`,
- * `operateTime` and `serviceChargeAmount` are never read: the record's `transId` keys the pair,
- * and `transferedAmount` is the net BNB received. A coin or an amount that is absent is
- * `undefined`, because the read of a record decides what to do with it, not the parser.
+ * Binance spells `transfered` with one `r` on both amount fields. The record totals and an
+ * entry's `serviceChargeAmount`, `transId` and `operateTime` are never read: the record's
+ * `transId` keys the pair, and `transferedAmount` is the net amount received in `targetAsset`.
+ * A coin or an amount that is absent is `undefined`, because the read of a record decides what to
+ * do with it, not the parser.
  */
 const DUST_ENTRY_FIELDS = {
   fromAsset: optionalTicker,
+  targetAsset: optionalTicker,
   amount: optionalText,
   transferedAmount: optionalText,
 };
@@ -1018,13 +1020,20 @@ export type BinanceDustRecord = {
   entries: BinanceDustEntry[];
 };
 
-const readDustEntries = listOf(recordReader(DUST_ENTRY_FIELDS));
+const readDustEntryList = listOf(recordReader(DUST_ENTRY_FIELDS));
+
+const readDustEntries: Reader<BinanceDustEntry[]> = (value) => {
+  const entries = readDustEntryList(value);
+
+  return entries.length > 0 ? entries : parseFailure();
+};
 
 /**
  * The record's own `transId` keys its pairs, so it must be a non-empty text or a safe integer
  * (`identifier`): a record without one is unreadable, never keyed on a fallback. Its `operateTime`
- * says where the record sits, so it is required too. An entry list that is absent, or holds an
- * item that is no object, makes the record unreadable: a record's coins are never half-read.
+ * says where the record sits, so it is required too. An entry list that is absent, empty, or holds
+ * an item that is no object makes the record unreadable: a record's coins are never half-read, and
+ * a conversion of no coin is never skipped silently.
  */
 const readDustRecord: Reader<BinanceDustRecord> = (item) =>
   isRecord(item)
