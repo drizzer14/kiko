@@ -912,14 +912,14 @@ const optionalTicker: Reader<string | undefined> = (value) =>
   foldMap(maybe(optionalText(value)), binanceTickerOf);
 
 /**
- * The key of a Convert record: its `orderId` when that reads as text or as a safe integer, else
- * its `quoteId` when that is a non-empty text, else none. The doc shows `orderId` as a JSON integer
- * past 2^53, which `JSON.parse` has already rounded, so such a record keys by its `quoteId`. It is
- * one function so a live reading of the type can narrow the rule in one place.
+ * The key of a Convert record: its `quoteId` when that is a non-empty text, else none. A live read
+ * measured `orderId` as a JSON integer past 2^53, which `JSON.parse` has already rounded, so it
+ * cannot name a record, and `quoteId` as a non-empty text. The key must never change once shipped:
+ * the pair id and the external ids derive from it, so a different key makes a re-read insert a
+ * second pair of rows.
  */
 const convertRecordIdOf = (item: Record<string, unknown>): string | undefined =>
-  optionalIdentifier(item.orderId) ??
-  (typeof item.quoteId === 'string' && item.quoteId !== '' ? item.quoteId : undefined);
+  typeof item.quoteId === 'string' && item.quoteId !== '' ? item.quoteId : undefined;
 
 /**
  * The status and the wallet are optional text, and so are the assets and amounts: the walk decides

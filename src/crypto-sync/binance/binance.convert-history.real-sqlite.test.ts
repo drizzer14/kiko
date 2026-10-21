@@ -22,10 +22,14 @@ import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 
+import {
+  CONVERT_CREATED_AT,
+  convertRecordOf,
+  convertServerOf,
+} from './binance.convert-test-fixtures';
 import { NOW } from './binance.pay-test-fixtures';
 import { createBinanceHistoryRun } from './binance.history-budget';
 import { syncBinanceConvertHistory } from './binance.convert-history';
-import { convertRecordOf, convertServerOf } from './binance.convert-test-fixtures';
 
 const ACCOUNT_ID = 'acc-1';
 const HOUR_MS = 3_600_000;
@@ -66,6 +70,38 @@ const runWalk = (fetchConvertHistory: ReturnType<typeof convertServerOf>) =>
       now: () => NOW,
       readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
       fetchConvertHistory,
+    },
+  );
+
+// A record as Binance writes it: `orderId` is a JSON integer past 2^53, which `JSON.stringify`
+// cannot produce and `JSON.parse` rounds, so only the `quoteId` identifies the conversion.
+const rawRecordOf = (quoteId: string, walletType: string): string =>
+  `{"quoteId":"${quoteId}","orderId":1940000000000000001,"orderStatus":"SUCCESS",` +
+  `"walletType":"${walletType}","fromAsset":"UAH","fromAmount":"1000","toAsset":"USDT",` +
+  `"toAmount":"24.1","ratio":"0.0241","inverseRatio":"41.49","createTime":${CONVERT_CREATED_AT}}`;
+
+const rawBodyFetch = (records: string[]) =>
+  (async (url: string) => {
+    const { searchParams } = new URL(url);
+    const startTime = Number(searchParams.get('startTime'));
+    const endTime = Number(searchParams.get('endTime'));
+    const text = `{"list":[${
+      CONVERT_CREATED_AT >= startTime && CONVERT_CREATED_AT <= endTime ? records.join(',') : ''
+    }],"moreData":false}`;
+
+    return { ok: true, status: 200, headers: new Headers(), json: async () => JSON.parse(text) };
+  }) as unknown as typeof fetch;
+
+const runWalkOverRawBody = (fetchImpl: typeof fetch) =>
+  syncBinanceConvertHistory(
+    {
+      targetAccountId: ACCOUNT_ID,
+      run: createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined }),
+    },
+    {
+      now: () => NOW,
+      readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+      fetchImpl,
     },
   );
 
@@ -168,6 +204,26 @@ describe('the Convert walk on real SQLite', () => {
 
     expect(second.imported).toBe(0);
     expect(storedRows()).toHaveLength(2);
+  });
+
+  it('keys a conversion by its quoteId when the body carries an orderId past 2^53', async () => {
+    const fetchImpl = rawBodyFetch([
+      rawRecordOf('quote-funding', 'FUNDING'),
+      rawRecordOf('quote-main', 'MAIN'),
+    ]);
+
+    await runWalkOverRawBody(fetchImpl);
+    const second = await runWalkOverRawBody(fetchImpl);
+
+    expect(second.imported).toBe(0);
+    expect(storedRows().map((row) => row.exchange_pair_id)).toEqual([
+      'acc-1:convert:quote-funding',
+      'acc-1:convert:quote-funding',
+    ]);
+    expect(
+      storedRows().every((row) => row.external_id.startsWith('acc-1:convert:quote-funding:')),
+    ).toBe(true);
+    expect(notImportedOf()).toEqual([`convert-unrecognized:quote-main:${CONVERT_CREATED_AT}`]);
   });
 
   it('holds a refused conversion once, and lists it once again after a disconnect and a new walk', async () => {

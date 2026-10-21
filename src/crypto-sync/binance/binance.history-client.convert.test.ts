@@ -45,13 +45,29 @@ const recordOf = (overrides: Record<string, unknown> = {}): Record<string, unkno
 const readRecords = (...records: unknown[]): Promise<ConvertHistoryPage> =>
   readPage({ list: records, moreData: false });
 
+const QUOTE_FIELD = '"quoteId":"f3b91c525b2644c7bc1e1cd31b6e1aa6"';
+
+// Raw body text, because `JSON.stringify` cannot write an integer past 2^53 as Binance does.
+const bodyTextOf = (...identifierFields: string[]): string =>
+  `{"list":[{${identifierFields.join(',')},"orderStatus":"SUCCESS","walletType":"FUNDING",` +
+  '"fromAsset":"UAH","fromAmount":"1000","toAsset":"USDT","toAmount":"24.1","ratio":"0.0241",' +
+  `"inverseRatio":"41.49","createTime":${CREATED_AT}}],"moreData":false}`;
+
+const readBodyText = (text: string): Promise<ConvertHistoryPage> =>
+  fetchConvertHistory(
+    'api-key-fixture',
+    'secret-fixture',
+    { startTime: NOW - 5_000, endTime: NOW },
+    { fetchImpl: textFetch(text), now: () => NOW },
+  );
+
 describe('fetchConvertHistory', () => {
   it('reads a SUCCESS record with every field', async () => {
     const page = await readRecords(recordOf());
 
     expect(page.rows).toEqual([
       {
-        recordId: 'order-1',
+        recordId: 'quote-1',
         orderStatus: 'SUCCESS',
         walletType: 'FUNDING',
         fromAsset: 'UAH',
@@ -99,7 +115,7 @@ describe('fetchConvertHistory', () => {
     expect(page.unreadable).toEqual([]);
     expect(page.rows).toEqual([
       {
-        recordId: 'order-1',
+        recordId: 'quote-1',
         orderStatus,
         walletType: 'FUNDING',
         fromAsset: undefined,
@@ -111,19 +127,9 @@ describe('fetchConvertHistory', () => {
     ]);
   });
 
-  it('keys a record by its orderId when it reads as text', async () => {
-    const page = await readRecords(recordOf({ orderId: 'order-2', quoteId: 'quote-2' }));
-
-    expect(page.rows).toMatchObject([{ recordId: 'order-2' }]);
-  });
-
-  it('keys a record by its orderId when it is a safe integer', async () => {
-    const page = await readRecords(recordOf({ orderId: 940_708_407_462_087, quoteId: 'quote-2' }));
-
-    expect(page.rows).toMatchObject([{ recordId: '940708407462087' }]);
-  });
-
   it.each([
+    ['a text orderId', { orderId: 'order-2' }],
+    ['a safe-integer orderId', { orderId: 940_708_407_462_087 }],
     ['an empty orderId', { orderId: '' }],
     ['a missing orderId', { orderId: undefined }],
     ['a null orderId', { orderId: null }],
@@ -135,27 +141,28 @@ describe('fetchConvertHistory', () => {
   });
 
   it('keys a record by its quoteId when its orderId is an integer past 2^53 in the body text', async () => {
-    const text =
-      '{"list":[{"quoteId":"f3b91c525b2644c7bc1e1cd31b6e1aa6","orderId":940708407462087200,' +
-      '"orderStatus":"SUCCESS","walletType":"FUNDING","fromAsset":"UAH","fromAmount":"1000",' +
-      '"toAsset":"USDT","toAmount":"24.1","ratio":"0.0241","inverseRatio":"41.49",' +
-      `"createTime":${CREATED_AT}}],"moreData":false}`;
-
-    const page = await fetchConvertHistory(
-      'api-key-fixture',
-      'secret-fixture',
-      { startTime: NOW - 5_000, endTime: NOW },
-      { fetchImpl: textFetch(text), now: () => NOW },
-    );
+    const page = await readBodyText(bodyTextOf(QUOTE_FIELD, '"orderId":1940000000000000001'));
 
     expect(page.rows).toMatchObject([{ recordId: 'f3b91c525b2644c7bc1e1cd31b6e1aa6' }]);
     expect(page.unreadable).toEqual([]);
   });
 
   it.each([
+    ['a text orderId', '"orderId":"order-2"'],
+    ['a safe-integer orderId', '"orderId":940708407462087'],
+    ['an orderId past 2^53', '"orderId":1940000000000000001'],
+  ])('reads a record with %s and no quoteId as unreadable, keeping its time', async (_name, id) => {
+    const page = await readBodyText(bodyTextOf(id));
+
+    expect(page.rows).toEqual([]);
+    expect(page.unreadable).toEqual([{ time: CREATED_AT }]);
+  });
+
+  it.each([
     ['no orderId and no quoteId', { orderId: undefined, quoteId: undefined }],
     ['an empty quoteId', { orderId: undefined, quoteId: '' }],
     ['a quoteId that is no text', { orderId: undefined, quoteId: 7 }],
+    ['an orderId and an empty quoteId', { orderId: 'order-2', quoteId: '' }],
   ])('reads a record with %s as unreadable, keeping its time', async (_name, overrides) => {
     const page = await readRecords(recordOf(overrides));
 
@@ -179,9 +186,9 @@ describe('fetchConvertHistory', () => {
 
   it('keeps the readable records of a page beside an unreadable one', async () => {
     const page = await readRecords(
-      recordOf({ orderId: 'a' }),
+      recordOf({ quoteId: 'a' }),
       recordOf({ orderId: undefined, quoteId: undefined, createTime: CREATED_AT - 1 }),
-      recordOf({ orderId: 'c' }),
+      recordOf({ quoteId: 'c' }),
     );
 
     expect(page.rows.map((row) => row.recordId)).toEqual(['a', 'c']);
