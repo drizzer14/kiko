@@ -15,8 +15,9 @@ C-NR1 ... C-NR9, C-NR-A ... C-NR-F, C-P5 and the other C- ids. C-NR2 and C-P2P-S
 confirmed by the user. Base: branch `binance-backfill-fix`. Track: `crypto-exchanges-1.3-a`.
 
 Every code fact below names a symbol or an anchor text, never a line. The base moves: the developer
-re-greps every fact on the actual base before relying on it. Migration numbers 0059-0062 follow
-the base's last migration (0058); they are re-checked against main's
+re-greps every fact on the actual base before relying on it. Migration numbers 0059-0061 and 0063 follow
+the base's last migration (0058), set 7's being 0063 because main's 0062 is account currency;
+they are re-checked against main's
 `drizzle/migrations/meta/_journal.json` at each merge and renumbered (files, journal, tests) if main
 has moved.
 
@@ -132,6 +133,17 @@ These are the coordinator's rulings, not the user's, except C-NR2, which the use
 | C-NR-E A (2026-10-16) | The fiat walks ship on the documented shapes with a strict status allowlist. An unknown word is owed and visible (the not-imported list, `fiat-unrecognized`). The spec marks each fiat stream "no real row observed" | 5, 7, 12 |
 | C-NR-F A (2026-10-16) | Set 7 drops `transactions.p2pSale`: no negative `p2p:` row can be written in 1.3-a. The follow-up adds it back | 6, 10, 11 |
 | C-P2P-stop A (2026-10-16) | The P2P walk covers `HISTORY_FLOOR_MS` to now, read forward (R-Walk A); empty windows never stop it; a -5026 start is narrowed by `DepthGuard` (safety net) and never ends the walk: the same rule as Convert (C-NR-C). It replaces the stop of "6 empty or refused windows in a row" in C-P2P-depth. A test pins that an order behind 7 or more empty windows is found (P6). Probe 5 found no refusal to the floor (see C-NR-C for its scope) | 5, 7, 12 |
+| S7-Q1 A (2026-10-21) | The demo dust source is a new DOGE holding ("Dogecoin"): a deposit, then the dust row DOGE -> BNB empties it; it stays at 0. Seed pins: eight -> nine coins, 110 -> 132 currency pairs | 9 |
+| S7-Q2 A (2026-10-21) | Every existing demo holding keeps its end balance (a deposit amount adjusted; a `bank:EUR:50.00` fiat withdrawal keeps EUR at 50); every set 7 demo row is dated more than 30 days before the anchor, so the approved Home / net-worth screenshots do not change | 9 |
+| S7-Q3 A (2026-10-21) | Code parse rules: the fiat is the segment as written, non-empty and free of `:`; a total exists only for a known non-crypto currency when the rest parses exactly at its scale to a value above zero; else no total and the label renders. `asset:` needs a non-empty code free of `:` (a code with `:` is unknown: default label) | 6 |
+| S7-Q4 A (2026-10-21) | `operation` is not a rewrite guard field (`REWRITE_GUARD_FIELDS`); it labels only, and every operation row carries another marker | 6 |
+| S7-Q5 A (2026-10-21) | The P2P cover rule keys on the `p2p:` code through `parseUntrackedCounterpart` plus the row's amount and holding currency, never on `operation`; set 7 adds nothing for it | 6 |
+| S7-Q6 A (2026-10-21) | Parsers only in set 7; the demo seed writes literal codes; each walk set adds its own builder (with the section 5 marker-total normalization) | 6 |
+| S7-Q7 A (2026-10-21) | No export version bump: `EXPORT_VERSION` stays 5; `VERSION_DECISIONS` `{ version: 5, migrationCount: 64 }` | 7 |
+| S7-Q8 A (2026-10-21) | The `transactions.matched*` keys wait for set 13 (their consumer); set 7 adds the six row labels only | 10 |
+
+Source of S7-Q1 ... S7-Q8: `memory/refs/binance-multicoin-sdd-2026-10-21/rulings.md`, section "Set 7 plan
+questions", the "S7-Q<n>" line, coordinator 2026-10-21.
 
 ### Rulings this spec reverses
 
@@ -1174,13 +1186,14 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
 
 ## 6. Row mapping and statistics
 
-### The `operation` column (set 7, migration 0062)
+### The `operation` column (set 7, migration 0063)
 
 `ALTER TABLE transactions ADD operation text` (nullable, no index, no backfill; R-Map). Codes:
 `trade`, `trade-fee`, `convert`, `dust`, `p2p`, `card`, `fiat`. There is no `reward` code, because
 the dividend walk is not in 1.3-a (C-Div). Insert-only (not in
 `BANK_OWNED_TRANSACTION_COLUMNS`), exported by the snapshot (every column), restored as null from
-an older file. It labels; it never decides statistics.
+an older file. It labels; it never decides statistics, and it is not a rewrite guard field
+(`REWRITE_GUARD_FIELDS`; S7-Q4), because every operation row already carries another marker.
 
 ### Untracked-counterpart codes (no migration)
 
@@ -1188,7 +1201,13 @@ an older file. It labels; it never decides statistics.
 `p2p:<FIAT>:<TOTAL>`, `card:<FIAT>:<TOTAL>`, `bank:<FIAT>:<TOTAL>` beside `wallet:<TYPE>` (C-NR1;
 `<TOTAL>` a major-unit decimal at the fiat's scale), each with a parser that returns the fiat code
 and the total in minor units through the exact decimal parser. A code with a malformed total parses
-to the fiat code with no total (the label still renders; the matcher skips it). An unknown code
+to the fiat code with no total (the label still renders; the matcher skips it). Parse rules
+(S7-Q3): the fiat is the segment as written, non-empty and free of `:`; a total exists only when
+the fiat is a known non-crypto currency and the rest parses exactly at its scale to a value above
+zero; `asset:` needs a non-empty code free of `:`, so an `asset:` code containing `:` is unknown
+(default label). An empty fiat or code is an unknown code. Set 7 ships the parsers only; the demo
+seed writes literal codes and each walk set adds its own builder with the section 5 marker-total
+normalization (S7-Q6). An unknown code
 still renders the default label. `exchangeExcludedTransactionIds` already excludes any row with a
 code.
 
@@ -1208,7 +1227,9 @@ The order is:
 5. `defaultTransactionDescription`.
 
 A negative `p2p:` row cannot be written in 1.3-a (C-P2P-SELL-MAKER B); it would render "P2P
-purchase (<FIAT>)" as well. Set 7 drops `transactions.p2pSale` (C-NR-F), and the follow-up adds the
+purchase (<FIAT>)" as well. The P2P cover rule keys on the `p2p:` code through
+`parseUntrackedCounterpart` (kind, fiat, total) plus the row's amount and holding currency, never
+on `operation` (S7-Q5). Set 7 drops `transactions.p2pSale` (C-NR-F), and the follow-up adds the
 sale label back.
 
 ### Mapping and statistics per operation
@@ -1345,8 +1366,11 @@ effect.
 - Export version (set 4): 0061 adds a no-bump `VERSION_DECISIONS` entry (`envelope.test.ts`;
   version 4, migration count 62). The column rides inside the `sync_state` row, and
   `withWalkStateMoved` derives it for a file without it. An older build drops the key, and its walks
-  read from their floors, where keys dedupe. 0062 (set 7) records its own decision: no bump,
-  because a nullable column on the transaction row restores as null, as 0058 does (count 63).
+  read from their floors, where keys dedupe. 0063 (set 7) records its own decision: no bump
+  (version 5, after account currency's 0062 bump), because a nullable column on the transaction row
+  restores as null, as 0058 does (count 64): `{ version: 5, migrationCount: 64 }`, `EXPORT_VERSION`
+  stays 5 (S7-Q7). A version 5 build restoring a new file drops `operation`; only "Trading fee"
+  falls back to the exchange label.
   Set 4 regenerates both demo `.kiko` files in the same commit.
 - Disconnect: `disconnectCryptoAccount` resets `exchange_state` (cursors to the floor, lists empty,
   point/range cursors, hints, trade cursors and coin lists removed, a malformed value replaced),
@@ -1696,7 +1720,7 @@ Caption (set 15):
 | App Privacy label | stays "Data Not Collected" (everything stays on device); the review is recorded in `memory/refs/resubmission-kit.md` section D |
 | Stored counterparty data | Pay nickname only (D4). The P2P fields `counterPartNickName`, `advNo`, `payMethodName` and `additionalKycVerify` (probes 2-4 key list) and fiat payment method details are never read into a type. A not-imported entry stores the record id and time only |
 | API terms gate | Before set 15 merges, read and record (URL, date, clauses) Binance's Terms of Use, its API terms (the clauses on read-only third-party apps) and its market-data display terms (the clauses on showing Binance price data in a third-party app, attribution included); scribe records them in kiko-compliance. A clause that forbids the price display removes the fallback before ship. Bybit's terms (PDF in `research-bybit.md`) gate 1.3-b. **C2 note (set 5, 2026-10-18).** Terms read: Binance Terms of Use, ADGM Binance entities (NEL/NCCL/NTL), effective 21 July 2026 (the version served to this region; other regions can get other terms); PDF `https://bin.bnbstatic.com/static/cms/cg08ou2ak0tn7mcplvfg/file/bf4879710c904b991848972ec4818ba2cf9e4ce314c09adae84fa2750d3477f7.pdf`, checked 2026-10-18 (the `/en/terms` page is a pdf.js iframe). Cl. 27: IP licence non-exclusive, only as necessary to receive Binance Services, non-commercial personal or internal business use; trade marks EXCLUDED. Cl. 14.1.2(b): account access via APIs is "subject to separate API terms and our approval". Cl. 31.1(d): no IP infringement. Cl. 31.1(e) and 25.5: no use from the List of Prohibited Countries, no VPN circumvention. Cl. 33.6: third-party apps are the user's own risk, no endorsement. Cl. 33.11: market data is "for information purposes", no accuracy or availability warranty. NOT found: a clause on keyless public market data, attribution text, or an explicit redistribution or display ban. Prohibited Countries (updated 5 Jan 2026): United States (also citizens), Canada, Netherlands, Cuba, North Korea, Iran, Crimea, so-called DPR and LPR. NOT read: the separate API terms, the Prohibited Use Policy. Docs read: market-data-endpoints (no licence text); general-api-information ("please use the base endpoint https://data-api.binance.vision" for public market data; 429/418 bans of 2 minutes to 3 days with Retry-After; 403 WAF; per IP). Ruling D1: keep `api.binance.com`; `data-api.binance.vision` is a later option. **User ruling C2 (2026-10-18):** the release hold is LIFTED on two conditions: (1) no Binance logo anywhere in the app or the metadata; (2) the fallback stays fail-soft (451, 403, 418, 429 or any error is no price this sync, never a crash or a wrong value, never a retry loop). There is NO device-region check: the fallback runs for every user, also in a Prohibited Country. |
-| Demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`, `kiko-demo-uk.kiko`, built by `build-demo-snapshot.ts`) | a crypto account (`institution` null) with manual holdings in at least five curated coins incl. USDT, USDC, ETH, BNB and a non-top coin (one with a dated price history), plus UAH and EUR holdings; on that account (set 7) an Exchange pair USDT -> BTC with `operation = 'trade'` and its third-coin fee row (BNB, `operation = 'trade-fee'`, same pair id, labelled "Trading fee"), a Convert pair UAH -> USDT (`operation = 'convert'`), a dust pair DOGE -> BNB (`operation = 'dust'`), a P2P buy row with `p2p:UAH:4150.00` and `operation = 'p2p'`, a card buy row with `card:UAH:2600.00` (`operation = 'card'`), a fiat deposit row on the EUR holding with `bank:EUR:100.00` (`operation = 'fiat'`), and a matching bank debit on a bank account so the statistics matcher shows (set 13). Two connectable demo accounts, both with `institution` null so `useAutoSync` never runs: a crypto account with `bankId = 'binance'` so the reviewer reaches the Binance connect field (set 14), and one with `bankId = 'btc_wallet'` (set 14); `build-demo-snapshot.ts` maps `bankId` to null for every non-bank account today (`account.kind === 'bank' ? ... : null`), so set 14 changes that mapping. Regenerated (`KIKO_REGEN_DEMO=1`) with each snapshot-shape change: set 1 (`EXPORT_VERSION` 4; `generate-demo-kiko.test.ts` pins `envelope.version` to it), set 4 (`exchange_state` column), set 7 (rows, `operation`), set 13, set 14 |
+| Demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`, `kiko-demo-uk.kiko`, built by `build-demo-snapshot.ts`) | a crypto account (`institution` null) with manual holdings in at least five curated coins incl. USDT, USDC, ETH, BNB and a non-top coin (one with a dated price history), plus UAH and EUR holdings; on that account (set 7) an Exchange pair USDT -> BTC with `operation = 'trade'` and its third-coin fee row (BNB, `operation = 'trade-fee'`, same pair id, labelled "Trading fee"), a Convert pair UAH -> USDT (`operation = 'convert'`), a dust pair DOGE -> BNB (`operation = 'dust'`; a new DOGE holding "Dogecoin" with a deposit, emptied by the dust row and kept at 0, S7-Q1), a P2P buy row with `p2p:UAH:4150.00` and `operation = 'p2p'`, a card buy row with `card:UAH:2600.00` (`operation = 'card'`), a card SALE row (Ethereum, `card:UAH:1300.00`) and a trade with an untracked side (Solana, `asset:PEPE`, `operation = 'trade'`) so every label set 7 adds is reachable (orchestrator ruling R6, Guideline 2.5.19), a fiat deposit row on the EUR holding with `bank:EUR:100.00` (`operation = 'fiat'`), a fiat withdrawal `bank:EUR:50.00` (EUR stays at 50), every set 7 row older than the 30-day window, every existing holding keeping its end balance (S7-Q2), and a matching bank debit on a bank account so the statistics matcher shows (set 13). Two connectable demo accounts, both with `institution` null so `useAutoSync` never runs: a crypto account with `bankId = 'binance'` so the reviewer reaches the Binance connect field (set 14), and one with `bankId = 'btc_wallet'` (set 14); `build-demo-snapshot.ts` maps `bankId` to null for every non-bank account today (`account.kind === 'bank' ? ... : null`), so set 14 changes that mapping. Regenerated (`KIKO_REGEN_DEMO=1`) with each snapshot-shape change: set 1 (`EXPORT_VERSION` 4; `generate-demo-kiko.test.ts` pins `envelope.version` to it), set 4 (`exchange_state` column), set 7 (rows, `operation`), set 13, set 14 |
 | 3.1.5 | read-only viewer; the notes state no trading, withdrawal or transfer is possible |
 
 Notes for Review (en, appended to the reviewer kit in set 15):
@@ -1757,7 +1781,7 @@ not in 1.3-a (C-Div).
 | `transactions.p2pPurchase` (no `p2pSale` in 1.3-a, C-NR-F) | P2P purchase ({{currency}}) | Купівля P2P ({{currency}}) |
 | `transactions.cardPurchase` / `cardSale` | Card purchase ({{currency}}) / Sale to card ({{currency}}) | Купівля карткою ({{currency}}) / Продаж на картку ({{currency}}) |
 | `transactions.bankDeposit` / `bankWithdrawal` | Bank deposit ({{currency}}) / Bank withdrawal ({{currency}}) | Поповнення з банку ({{currency}}) / Виведення в банк ({{currency}}) |
-| `transactions.matchedP2pPurchase` | Matched to P2P purchase | Зіставлено з купівлею P2P |
+| `transactions.matchedP2pPurchase` (set 13, not set 7, S7-Q8) | Matched to P2P purchase | Зіставлено з купівлею P2P |
 | `transactions.matchedCardPurchase` | Matched to card purchase | Зіставлено з купівлею карткою |
 | `transactions.matchedExchangeDeposit` | Matched to exchange deposit | Зіставлено з поповненням біржі |
 | `accountDetail.notImported` (set 8) | Not imported: {{items}}. Kiko does not import these {{exchange}} records yet. | Не імпортовано: {{items}}. Кіко поки не імпортує ці записи {{exchange}}. |
@@ -1816,7 +1840,7 @@ sets 1 and 4 also change `envelope.test.ts`'s `VERSION_DECISIONS`).
 | 4/15 | 4 (first commit: test helper): a test-only commit routes every read and seed of the old walk metadata fields in the tests (about 350 references in 18 test files) through one helper, `walkMarksOf` / `withWalkMarks` in `src/test-support/walk-marks.ts` (imported as `@kiko/test-support/walk-marks`, like `real-sqlite`), with no app change and every suite green. Then: walk state to `sync_state`, per-walk parse, `write(...)` writer, the helper switched to `exchange_state`, `exchangeHistoryPaused` copy (en + uk, translator review), the 0061 `VERSION_DECISIONS` entry (no bump, count 62) | `src/db/schema.ts`, `src/sync-state/sync-state.repo.ts`, `exchange/walk-state/`, `holding-metadata.ts`, `holdings.repo.ts`, `disconnect.ts`, `restore-snapshot.ts` (`withWalkStateMoved`), walk readers/writers, `binance-history-status.ts`, `crypto-sync-section.component.tsx`, `src/i18n/locales/{en,uk}.ts`, `envelope.test.ts`, both demo `.kiko` files regenerated for the new column (~18) | 0061 ADD COLUMN + copy; `kiko:reviewer` before BATCH READY | Z1-Z6; X1-X4 (X1 with the paused copy); two-path restore; disconnect reset; walk properties at 0 / 1 h / 1 day | no |
 | 5/15 | multi-coin balances, per-coin and fiat holdings, names and BTC rename, LD* skip, not-tracked and oversized lines, Binance price fallback, privacy policy price wording | `binance.provider.ts`, `binance.client.ts`, `binance.holding-keys.ts`, `provider.ts`, `sync.ts`, `holdings.repo.ts` (`renameFromDefaults`), `exchange/history-status/`, `crypto-sync-section.component.tsx`, `src/rates/` fallback, balance amounts switched to `exchangeMinorUnits`, `docs/privacy-policy*.md` and `docs/privacy-site/{en,index}.html` (~14) | none | H1-H13; N2; A1-A4 for balances; exact sums per coin; one coin missing a price | no (P9, P10, P13, P14 have safe defaults) |
 | 6/15 | account-wide capital, Pay, Transfer, Earn; key rules; cross-coin Pay; Earn reward grouping per asset; `multiCoinSince`; 2-minute matcher input filter; row amounts switched from `btcSatoshis` to `exchangeMinorUnits` | `binance.transactions.ts`, `binance.pay-history.ts`, `binance.history-client.ts`, `binance.transfer-history.ts`, `binance.earn-history.ts`, `exchange/walk/`, `exchange/paging/`, `binance.provider.ts` (zero Spot BTC anchor removed with the four walk guards), `binance.holding-keys.ts`, `binance.walk-config.ts`, `src/statistics/internal-transfers/`, `statistics.screen.tsx` (~20-22; two deep-gate halves) | none | Y1-Y8; E1-E2; S1-S3; W1-W2; A1-A4 for rows; key byte-identity for BTC; key uniqueness property; walk properties at 0 / 1 h / 1 day | no (P11, P12, P16 safe defaults) |
-| 7/15 | `operation` column (codes without `reward`, C-Div), C-NR1 code forms and parsers, render labels (no "Reward" step; `p2p:` renders "P2P purchase" only; `transactions.p2pSale` dropped, C-NR-F), copy, demo rows (no reward row) | `src/db/schema.ts`, `untracked-counterpart.ts`, `row-description.ts`, `exchange-description.ts`, `transactions.repo.ts`, `src/i18n/locales/{en,uk}.ts` (no `transactions.reward`), migration files, demo seed + regen (~10) | 0062 ADD COLUMN; `kiko:reviewer` before BATCH READY | label order cases; code parse cases incl. N3; back-compat import of an export without the column; exclusion unchanged | no |
+| 7/15 | `operation` column (codes without `reward`, C-Div), C-NR1 code forms and parsers, render labels (no "Reward" step; `p2p:` renders "P2P purchase" only; `transactions.p2pSale` dropped, C-NR-F), copy, demo rows (no reward row) | `src/db/schema.ts`, `untracked-counterpart.ts`, `row-description.ts`, `exchange-description.ts`, `transactions.repo.ts`, `src/i18n/locales/{en,uk}.ts` (no `transactions.reward`), migration files, demo seed + regen (~10) | 0063 ADD COLUMN; `kiko:reviewer` before BATCH READY | label order cases; code parse cases incl. N3; back-compat import of an export without the column; exclusion unchanged | no |
 | 8/15 | Convert walk: status first, then `walletType` placement (C-Convert-wallet), floor `HISTORY_FLOOR_MS` read forward with every window read (probe 5: no refusal to the floor; C-NR-C; R-Walk A); no new refusal code in `requestFailedOf` (probe 5); the `notImported` list (`NOT_IMPORTED_KINDS` tuple, type, parse, union patch, disconnect removal), `notImportedCountsOf`, the not-imported line and the `accountDetail.notImported*` copy (en + uk, translator review) | `binance.convert-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts`, `exchange/walk-state/`, `exchange/history-status/`, `disconnect.ts`, `crypto-sync-section.component.tsx`, `src/i18n/locales/{en,uk}.ts` (~10) | none | C1-C6, C8-C10 (C8: the 2026-01 conversion behind 6+ empty windows); N4, N5, N6, N7 (`convert-unrecognized` only); K8; window halving on `moreData`; walk properties at 0 / 1 h / 1 day | settled (P4) |
 | 9/15 | dust read (no dividend walk, C-Div) | `binance.dust-history.ts` (new), client, budget, run wiring (~5) | none | D1-D3 | P7 open, safe default |
 | 10/15 | trades 1/2: symbol discovery, rotation with the reserved call, `idCursorPager` | `exchange/paging/id-cursor-pager.ts`, `binance.trade-symbols.ts` (new), public `exchangeInfo` read, `walk-state` trades part (~7) | none | rotation bound `ceil(S / L)` property with `L >= 1` when changed symbols fill the lane; discovery cases; pager pages | settled (P1, P2) |

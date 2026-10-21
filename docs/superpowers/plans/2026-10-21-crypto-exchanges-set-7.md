@@ -41,7 +41,9 @@ a symbol or anchor text. **The developer re-greps every fact on the actual base 
 - Every backticked `src/` path in the migration header names a real file (run-log gap
   `20261019T0912-kiko-account-currency/1`: no checker yet; the reviewer step checks it by hand).
 - Tests: TDD, failing test first and shown red (quote the red count), then code. Test names and comments carry no
-  scenario id, no migration number and no history text; the commit message carries them. Tests never read `src`
+  scenario id, no migration number and no history text; the commit message carries them. Exception (orchestrator
+  ruling R5): a migration's own test title may name its migration number (16 neighbours do;
+  kiko-code-style is silent). Tests never read `src`
   source text.
 - A pin changed by a behaviour change is updated in the same step (table "Pins this set changes"); never in a fix
   round.
@@ -128,6 +130,7 @@ Each pin, by file and test name:
 | P3 | moved to `parseUntrackedCounterpart`; `asset:ETH` parses as an asset | `asset:ETH` -> `undefined` |
 | P4 | nine coins (DOGE) (S7-Q1, coordinator 2026-10-21) | eight coins |
 | P5 | 132 (12 currencies) (S7-Q1, coordinator 2026-10-21) | 110 |
+| P6 | "seeds rate history for each foreign:UAH pair": 11*27 rows, DOGE:UAH in the set (S7-Q1) | 10*27 rows |
 
 Retitle each changed test so its name states the new rule; no "was" text in a title.
 
@@ -294,6 +297,11 @@ name: "Dogecoin", Latin in both languages, no text entry).
       | 40 | DOGE / BNB | -50 / +0.011 | dust pair, each leg names the other | - | `dust` | - |
       | 35 | BTC | +0.001 | - | `card:UAH:2600.00` | `card` | 2600 UAH |
       | 33 | EUR | -50.00 | - | `bank:EUR:50.00` | `fiat` | 50 EUR |
+      | 38 | ETH | -0.013 (ETH deposit 0.043, was 0.03) | - | `card:UAH:1300.00` | `card` | 1300 UAH |
+      | 42 | SOL | -0.2 (SOL deposit 0.7, was 0.5) | none, no counterpart holding | `asset:PEPE` | `trade` | - |
+      The last two rows are orchestrator ruling R6: a card SALE and a trade with an untracked side, so every label
+      set 7 adds is reachable (Guideline 2.5.19). Both holdings keep their end balance. DOGE also needs a
+      `HISTORY_PAIRS` rate-history pair (DOGE:UAH, 5.2 -> 6.6), so the history row count goes 10x27 -> 11x27.
       The set 13 bank debit is not added here.
 - [ ] Tests first (`build-demo-snapshot.test.ts`): "carries one row of every operation code on the crypto account"
       (the seven codes); "gives the legs of each pair one pair id and points each leg at the other's holding";
