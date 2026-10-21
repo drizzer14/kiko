@@ -62,8 +62,10 @@ describe('parseUntrackedCounterpart', () => {
   });
 
   it.each([
+    ['asset'],
     ['asset:'],
     ['asset:ETH:BSC'],
+    ['p2p'],
     ['p2p:'],
     ['p2p::5'],
     ['wallet:FOO'],

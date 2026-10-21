@@ -226,8 +226,8 @@ type ExchangeOperationFields = Pick<
 // holding in a fiat currency. The exchange operation rows (a convert, a trade with its fee, a trade
 // with a coin not held, a dust sweep, a P2P, card purchase, card sale and bank rows) are all dated
 // 33 days or more before the anchor, outside the default 30-day window, so Home and the 30-day
-// charts show no set 7 row. Each holding's deposits are cut by what its operation rows add, so
-// each holding ends at its pinned balance; only the Dogecoin deposit is swept away, to 0.
+// charts show none of these rows. Each holding's deposits are cut by what its operation rows
+// add, so each holding ends at its pinned balance; only the Dogecoin deposit is swept away, to 0.
 // The coin names are brand names and stay Latin in both languages; the two fiat names are text.
 const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHolding[] => {
   const exchangeHolding = (

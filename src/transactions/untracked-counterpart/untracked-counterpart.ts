@@ -43,14 +43,16 @@ const splitOnce = (text: string): [string, string | undefined] => {
 
 // A total that is malformed, over-precise, zero or negative is dropped, never repaired, so a
 // reader falls back to the label without it. Only a known fiat has a scale to read it at.
-const totalMinorUnitsOf = (fiat: string, totalText: string): number | undefined => {
+const totalMinorUnitsOf = (fiat: string, totalText: string | undefined): number | undefined => {
   if (!isCurrency(fiat) || isCrypto(fiat)) {
     return undefined;
   }
 
-  const minorUnits = bifoldr(decimalToMinorUnits(totalText, currencyScale[fiat], 'exact'));
+  const minorUnits = foldMap(maybe(totalText), (text) =>
+    bifoldr(decimalToMinorUnits(text, currencyScale[fiat], 'exact')),
+  );
 
-  return minorUnits !== undefined && minorUnits > 0 ? minorUnits : undefined;
+  return (minorUnits ?? 0) > 0 ? minorUnits : undefined;
 };
 
 const walletCounterpartOf = (name: string): UntrackedCounterpart | undefined =>
@@ -63,7 +65,7 @@ const fiatCounterpartOf = (
   kind: 'p2p' | 'card' | 'bank',
   rest: string,
 ): UntrackedCounterpart | undefined => {
-  const [fiat, totalText = ''] = splitOnce(rest);
+  const [fiat, totalText] = splitOnce(rest);
 
   return fiat === ''
     ? undefined
