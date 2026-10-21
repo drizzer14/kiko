@@ -1,6 +1,34 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐ COORDINATOR HANDOFF (2026-10-19 ~21:30) — READ THIS FIRST
+## ⭐ COORDINATOR HANDOFF (2026-10-21 ~11:45) — READ THIS FIRST
+
+Coordinator = SendMessage "pff-ios-8a" (Orca profile 915a0295), terminal term_a7c31323. Every track session now
+runs in Orca profile 8ce40d3d: SendMessage does NOT cross profiles. Tracks report by appending ONE line to
+memory/refs/coordinator-inbox.log; the coordinator answers with `orca terminal send --terminal <id> --enter`.
+Morning list (answered 2026-10-21): memory/refs/morning-walkthrough-2026-10-21.md. The 2026-10-19 section below is HISTORY.
+
+**FIRST ACTIONS:**
+1. `bash scripts/job-queue.sh status` (a HOLD may still be set for the user's iPad look: release it after the iPad
+   session writes SIMS DONE); `pmset -g batt`; `orca terminal list`.
+2. Arm: an inbox watcher (new lines of memory/refs/coordinator-inbox.log), a pmset watcher (CHARGER BACK only after
+   3 min of stable AC), gauge watchers (memory/refs/gaugewatch.sh) for the three tracks below.
+3. After every READY line, queue the ticket at once and confirm it in `job-queue.sh status` (two iPad gate READY lines
+   were missed overnight).
+4. At every main merge: `npx patch-package` in main, `claude plugin update kiko@kiko-marketplace` + /reload-plugins in
+   each track terminal if plugin.json moved; one memory batch (coordinator only, Edit tool).
+
+| Track | State |
+|---|---|
+| main = next | 172f35c2 (2026-10-20/21: integration 4577a619 = account currency + Binance set 6 + donut total + planner no-estimate rule + test-flake fixes; then Binance set 7 172f35c2). Plugin 0.4.36. origin/main NOT pushed. Phone: Kiko 1.2.0 (31) from 4577a619. USER: no deploy until ALL Binance sets are done. |
+| BINANCE 1.3-a | binance-set7-a1, term_c837e750 (worktree binance-set7). Set 7 MERGED. Now the follow-up branch binance-set7-followup from 172f35c2: uk «Купівля через P2P ({{currency}})» + demo dust from XRP (no DOGE holding), then review, then a queued verify (0 mutable files, no gate). Then set 8 needs a plan. Rulings: memory/refs/binance-multicoin-sdd-2026-10-21/rulings.md (incl. the user's P2P cover rule for the category chart: a P2P BUY and a later USDT send cancel out, both rows recorded; P2P stays in sets 8-12). |
+| iPAD | ipad-phase3-a5, term_c33a6be0 (worktree ipad-phase3, tip 7c3232ab; main 4577a619 merged in). Fix rounds 3-8 DONE; gates r3-r8 cleared (r3/r6 by Method A proof tables in memory/refs/); verify ipad-t10-followup 871/871 exit 0. OPEN: (a) user's look + Duo poses (the sim hung at load 200+ on 2026-10-21 11:3x; retry when the machine is quiet); (b) USER: fix the title margin in SMALL two-pane windows too while the Duo stays unchanged (session brings a design: a device/fold signal, not a size rule); (c) USER: fix the Home-tab left pane nav bar at y 96 (10 pt lower than Settings). New Semgrep WARNING (test-support mock) -> H10 task 4. ipad-family stays unmerged. |
+| H10 | harness-h10-a1, term_ed44a58c (worktree harness-h10 from 172f35c2). Brief memory/refs/brief-h10.md: 4 tasks in the user's order: guard gaps (incl. USER: deny reset/checkout -B/switch -C/update-ref moving main), flaky verifies (port the harness trie fold; Semgrep timeouts on kill-guard.js), ops safety, linter rules. Task 1 planning. |
+| HARNESS REPO | drizzer14/harness main 18721cb PUSHED (sync 4 merged). NOT STARTED: set P (plugin/** texts, plugin version > 1.6.0, list in the sync-4 notes) + USER: add `plugin` to killGuard.writeGuardedTrees in the harness repo's harness.config.json. Start it in a fresh session (auto mode) when H10 load allows. |
+| DUO | duo-adaptive-g2 idle. |
+| Status | term_22e8974a (log-event.sh). |
+| Open for the user | iPad look + Duo poses; help texts en + uk (iPad step 8) with that look. |
+
+## ⭐ COORDINATOR HANDOFF (2026-10-19 ~21:30) — HISTORY
 
 Coordinator = SendMessage "pff-ios-8a", Orca terminal term_a7c31323. Event log:
 memory/refs/night-summary-2026-10-17.md (from "12:0x NEW COORDINATOR SESSION (after /clear)").
