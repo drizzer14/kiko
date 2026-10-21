@@ -50,7 +50,8 @@ const storedRows = () =>
         external_id AS externalId, description, category, comment, mcc, hold,
         counter_iban AS counterIban, loan_holding_id AS loanHoldingId,
         loan_link_source AS loanLinkSource, loan_link_rejected AS loanLinkRejected,
-        exchange_pair_id AS pairId, exchange_counterpart_holding_id AS marker
+        exchange_pair_id AS pairId, exchange_counterpart_holding_id AS marker,
+        untracked_counterpart AS untrackedCode, operation
        FROM transactions ORDER BY time, source, id`,
     )
     .all() as {
@@ -71,6 +72,8 @@ const storedRows = () =>
     loanLinkRejected: number;
     pairId: string | null;
     marker: string | null;
+    untrackedCode: string | null;
+    operation: string | null;
   }[];
 
 const sourcesOf = (): string[] => storedRows().map((row) => row.source);
@@ -115,10 +118,10 @@ const sync = (items: SyncItem[]): Promise<number> => transactionsRepo.addManyDed
 
 const excludedIds = (): Set<string> =>
   exchangeExcludedTransactionIds(
-    storedRows().map(({ id, marker }) => ({
+    storedRows().map(({ id, marker, untrackedCode }) => ({
       id,
       exchangeCounterpartHoldingId: marker,
-      untrackedCounterpart: null,
+      untrackedCounterpart: untrackedCode,
     })),
   );
 
@@ -486,6 +489,108 @@ describe('a sync item adopts its import twin', () => {
 
     expect(inserted).toBe(0);
     expect(storedRows()).toMatchObject([{ id: 'i1', source: 'binance', externalId: 'b1' }]);
+  });
+
+  it('carries the pair, the counterpart and the operation of an exchange leg onto a plain import row', async () => {
+    insertRow({ id: 'i1', time: T });
+
+    const inserted = await sync([
+      syncItem('b1', T + SECOND, {
+        source: 'binance',
+        mcc: null,
+        exchangePairId: 'pair-1',
+        exchangeCounterpartHoldingId: 'usd',
+        operation: 'convert',
+      }),
+    ]);
+
+    expect(inserted).toBe(0);
+    expect(storedRows()).toMatchObject([
+      {
+        id: 'i1',
+        source: 'binance',
+        pairId: 'pair-1',
+        marker: 'usd',
+        untrackedCode: null,
+        operation: 'convert',
+      },
+    ]);
+  });
+
+  it('carries the untracked code and the operation of a lone leg', async () => {
+    insertRow({ id: 'i1', time: T });
+
+    await sync([
+      syncItem('b1', T + SECOND, {
+        source: 'binance',
+        mcc: null,
+        untrackedCounterpart: 'asset:PEPE',
+        operation: 'convert',
+      }),
+    ]);
+
+    expect(storedRows()).toMatchObject([
+      { id: 'i1', pairId: null, marker: null, untrackedCode: 'asset:PEPE', operation: 'convert' },
+    ]);
+  });
+
+  it('keeps the adopted leg out of spending', async () => {
+    insertRow({ id: 'i1', time: T });
+    insertRow({ id: 'i2', time: T + 10 * 60 * SECOND, amount_minor_units: -7_000 });
+
+    await sync([
+      syncItem('b1', T + SECOND, {
+        source: 'binance',
+        mcc: null,
+        exchangePairId: 'pair-1',
+        exchangeCounterpartHoldingId: 'usd',
+        operation: 'convert',
+      }),
+      syncItem('b2', T + 10 * 60 * SECOND, {
+        amountMinorUnits: -7_000,
+        source: 'binance',
+        mcc: null,
+        untrackedCounterpart: 'asset:PEPE',
+        operation: 'convert',
+      }),
+    ]);
+
+    expect(excludedIds()).toEqual(new Set(['i1', 'i2']));
+  });
+
+  it('keeps the pair the user made on the import row, with no operation', async () => {
+    insertRow({ id: 'i1', time: T, amount_minor_units: -40_000 });
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'usd',
+      counterpartType: 'card',
+      amountMinorUnits: 1_000,
+      existingTransactionId: 'i1',
+      existingHoldingId: 'card',
+      time: T,
+    });
+    const userPairId = storedRows().find((row) => row.id === 'i1')?.pairId;
+
+    await sync([
+      syncItem('b1', T + SECOND, {
+        amountMinorUnits: -40_000,
+        source: 'binance',
+        mcc: null,
+        exchangePairId: 'pair-other',
+        exchangeCounterpartHoldingId: 'cash',
+        untrackedCounterpart: 'asset:PEPE',
+        operation: 'convert',
+      }),
+    ]);
+
+    expect(userPairId).toEqual(expect.any(String));
+    expect(storedRows().find((row) => row.id === 'i1')).toMatchObject({
+      source: 'binance',
+      pairId: userPairId,
+      marker: 'usd',
+      untrackedCode: null,
+      operation: null,
+    });
   });
 
   it('adopts for one copy of an item an overlapping page carried twice', async () => {
