@@ -206,9 +206,11 @@ actually landed.
   (2026-10-16, sim A9850113; cause unproven, evidence deleted).
 - After the first launch, confirm the app's first screen (the user or an allowed check) before
   you report the sim as ready.
-- The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) is built from
-  `e2e/screenshot/seed/screenshot-seed.ts`: read its holdings there, and tell the user to add by
-  hand any holding a check needs that it lacks.
+- The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) holds what
+  `e2e/screenshot/seed/screenshot-seed.ts` builds: read the seed for the holdings and coins it
+  has, and do not assume a single coin. `generate-demo-kiko.test.ts` decrypts the committed file
+  and compares it with the seed, so the two agree. Tell the user to add by hand any holding a
+  check needs that the seed lacks.
 
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
 after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes

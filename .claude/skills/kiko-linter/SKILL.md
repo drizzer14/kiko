@@ -98,7 +98,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   fail-loud/`exit 2` half of the contract either: it ALWAYS exits 0, prints
   nothing on allow, and prints the documented `permissionDecision: "deny"`
   JSON on stdout (never stderr) when the command is a pkill/killall or a
-  pattern/process-group kill. It has no `print_block`/`_lib.sh` dependency
+  pattern/process-group kill, and also when node runs but `kill-guard.js`
+  cannot load (a failed node run: any non-zero status or signal; fail-closed).
+  It has no `print_block`/`_lib.sh` dependency
   and no content-dedup fingerprint — a `PreToolUse` hook runs on every Bash
   call by design, and skipping one because "nothing changed" would mean
   skipping the one call the guard exists to catch. See `docs/harness/checks.md` "Automatic
@@ -272,15 +274,34 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   in the main checkout gets this deny only after the guard merges to
   main, because it runs main's own `kill-guard.js`.
 
+  The `mainMove` kind (user ruling: any command that moves the branch `main` goes through
+  `scripts/ff-main.sh`). Source: `scripts/checks/kill-guard-main-moves.js` (`mainMoveTarget`;
+  `mainMoveFinding` in `kill-guard.js` calls it), rows in `__tests__/kill-guard-main-moves.test.ts`.
+  Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
+  move the branch of the work tree they run in, so they count only against the main checkout;
+  `git reset --soft HEAD~1` there is denied (user ruling: "any reset that moves HEAD of
+  main"), while `--hard` with no commit (or `HEAD`/`@`) and a `-- <path>` reset stay allowed.
+  A command that
+  writes the ref by name (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`,
+  `fetch`/`push` into it, `symbolic-ref refs/heads/main`, `worktree add -B`) counts from ANY
+  worktree of this repository, since all worktrees share the refs. In both scopes a place the text
+  cannot name (a `-C` or `cd` target held in a variable, a relative one with no payload `cwd`,
+  or a plain command with no `-C` and no `cwd`) fails closed, even when the command assigns the
+  variable (the "an assignment can only ADD a deny" invariant below). An unrelated repository
+  or a plain folder is no target, so a reset there is allowed; a no-cwd move with an absolute
+  `--git-dir` of an unrelated repository is allowed. With cwd in main and `--git-dir=<other>`, a
+  reset, `symbolic-ref HEAD` and `update-ref HEAD` stay denied, while a ref-name command is
+  judged on the named git directory only and is allowed. `mainMove` is in
+  `SCRIPT_KINDS` and `EXPANDED_KINDS` (read both in `kill-guard.js`) and is NOT in `DATA_KINDS`.
+  The way out is `bash scripts/ff-main.sh <sha>`. Known limits are in "Known limits" below.
+
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
-  guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
-  `.claude/agents/`, or any of `harness/kiko/` (its scripts, hooks, skills, agents and
-  `.claude-plugin/plugin.json`), or into any
-  `*.yml`/`*.yaml` file (user ruling 2, 2026-10-18)
-  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; read it there for the current list.
-  An entry may hold several segments (`.claude/skills`, `harness/kiko`): it matches a resolved
+  guard-replay at Stop). Rule: deny a Bash write into a guarded tree (read
+  `WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js` for the current list; `harness/kiko/`
+  is whole, its scripts, hooks, skills, agents and `.claude-plugin/plugin.json` included), or
+  into any `*.yml`/`*.yaml` file (user ruling 2, 2026-10-18).
+  (An entry may hold several segments (`.claude/skills`, `harness/kiko`): it matches a resolved
   path inside any worktree of this repository, and an unresolved path fails closed when its
   segments appear as consecutive non-final segments (as written, or with its `.` and `//`
   segments folded); matching is case-folded. A python/node join counts each literal path as a
@@ -292,6 +313,19 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   like): without `-T`, a source ending in `/` or `/.`, or with a glob or variable as its
   last segment (`cp -r /tmp/x/* .claude/`). A file copied into `.claude/` and a slash-less
   folder copied into `harness/` (`cp -r /tmp/kikox harness/`) stay allowed.
+  Missing-destination rule: a `cp -r` or `mv` of ONE folder onto a destination that does not
+  exist makes the destination a copy of that folder (measured on macOS; `-T` and
+  `--no-target-directory` included, so a `gmv -T` twin denies too), so the text cannot say what
+  lands there. It is denied when the destination is a missing `<worktree>/.claude`,
+  `<worktree>/harness`, or a `.git` folder (`createdFolders`, `guardedPlace` with `missing`);
+  it is allowed when the folder exists: without `-T` the copy lands inside it, and a `-T` move
+  never lands inside, but it cannot replace a tracked, non-empty `.claude` or `harness`.
+  The same `.git` rules: a copy of a folder's CONTENTS into a `.git` folder or a linked worktree's
+  `.git/worktrees/<n>/` (a glob, `src/.`, a variable, `cp -rT`, `cp -t .git <glob>`) is
+  denied, because it may write `config`, `config.worktree` or the hooks setting
+  (`namesGitFolder`, `namesWorktreeGitFolder`, `gitConfigsIn`); a write to a path that names a
+  git config file is judged by `namesGitConfig` (`GIT_CONFIG_PATH`: `.git/config`,
+  `.git/config.worktree`, `.git/worktrees/<n>/config.worktree`), also when unresolved.
   `scripts/` and `githooks/` match like `src/`: resolved inside any worktree of this repository, or
   unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
   `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
@@ -306,10 +340,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   inside a worktree); the tree names fill only where the text resolves them. An unresolved
   destination such as `$X/harness/` is denied only for a recursive `cp` or a `mv`, through the
   `src` marker (`$X/harness/src/_`); a plain `cp` there stays allowed. The parent-folder rule
-  above is not applied behind `xargs`. (d) A copy of a folder's CONTENTS into a worktree root
+  above is not applied behind `xargs`. (d) A copy of a folder's CONTENTS into a worktree ROOT
   (`cp -r /tmp/x/ .`, `cp -r /tmp/x/. .`, `cp -r /tmp/x/* .`) is allowed for every tree (the
-  pinned allowed row is `cp -r /tmp/x/* .`). The parent-folder rule judges only
-  `<wt>/.claude` and `<wt>/harness` as the destination.
+  pinned allowed row is `cp -r /tmp/x/* .`); the contents rule above reaches only the
+  destinations it names (`<wt>/.claude`, `<wt>/harness`, a `.git` folder, a linked
+  worktree's `.git/worktrees/<n>/`).
   A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
   build the scratch from a git merge or commit, or use `git archive <sha> scripts |
   tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
@@ -486,8 +521,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `findDanger`'s place is `{ directories, variables }`). The expansion reaches only write
   targets (words and redirect targets) and git directories (`git -C $d`). `segmentFinding`
   judges a segment as written first, then, when the command assigned a variable the segment
-  reads, once more with the values filled in; the second reading reports only `shellWrite` and
-  `mainCheckout` (`EXPANDED_KINDS`), so an assignment can only ADD a deny, never remove one.
+  reads, once more with the values filled in (`expandedReading`); the second reading reports
+  only the kinds in `EXPANDED_KINDS` (read the set in `kill-guard.js`), so an assignment can
+  only ADD a deny, never remove one. A git folder the text cannot name (a `-C`/`cd` target in
+  a variable) fails closed for `mainMove` even when the command assigns the variable.
   A kill target and a command word are never expanded: `pid=-1; kill -9 $pid` is judged as
   written (an unknown `$pid` is the agent's own) and is not denied. A value that is itself an
   expansion (`$!`, `$(...)`, `$other`) stays unknown; a value over 4 KiB
@@ -499,14 +536,18 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   would deny `tmp=$(mktemp); cp x "$tmp"` and existing allow rows.
 
   Script-content kill scan. The guard reads a script file a command runs (`bash|sh|zsh|dash
-  <file>`, `source <file>` or `. <file>`, or a path run directly whose first line names a
-  shell) and denies a pkill, killall, or pattern or process-group kill in it (kind `scriptKill`;
-  `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`). One level only,
-  a regular file of at most 256 KiB, kills and a raw `mainFastForward` only (`rules.kinds` is
-  `SCRIPT_KINDS`, read it in `kill-guard.js`: a stash or write inside it is not judged). The
+  <file>`, `source <file>` or `. <file>`, a path run directly whose first line names a
+  shell, or a shell or `source /dev/stdin` that a `< file` redirect feeds, including
+  `bash < f`) and denies a pkill, killall, or pattern or process-group kill in it (kind
+  `scriptKill`; `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`).
+  One level only, a regular file of at most 256 KiB, and only the kinds in `SCRIPT_KINDS`
+  (read the set in `kill-guard.js`: kills, a raw `mainFastForward`, and a `mainMove`; a stash
+  or write inside it is not judged). A `mainFastForward` or `mainMove` found in a script keeps
+  its own kind (`SCRIPT_GIT_KINDS`); any other finding is reported as `scriptKill`. The
   script scan tracks no variables; a data heredoc in a script that prints a raw main
   fast-forward is denied; a non-ff main merge held in a script is not judged. A heredoc inside
   a scanned script is judged for those kinds too; `DATA_KINDS` applies to typed commands only.
+  Not read: `cat f | bash` (text piped into a shell) and a script path held in a variable.
   `kill -0`
   and `kill -s 0` send no signal and are harmless ONLY when no later word before the targets can be
   an option: a word matching `/^-[A-Za-z]/`, a word that may expand (a leading `~`, or `$`,
@@ -530,9 +571,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 
   Heredoc bodies and `rules.kinds` (null judges every kind; `SCRIPT_KINDS` and `DATA_KINDS` in
   `kill-guard.js` are the closed sets; read them there). A body no shell runs (`cat > f
-  <<'EOF'`, `ssh host <<'EOF'`) is data: `nestedFinding` judges it for `DATA_KINDS` (the kinds
-  the guard judged there before the newer denies: kill, stash, noVerify, hooksConfig,
-  mainCheckout, mainFastForward, waitLoop) by the base triggers only, with no variable
+  <<'EOF'`, `ssh host <<'EOF'`) is data: `nestedFinding` judges it for `DATA_KINDS` (read the
+  set in `kill-guard.js`: the kinds the guard judged there before the newer denies; `mainMove`
+  is deliberately not in it, so a note that documents a `git reset` is allowed) by the base
+  triggers only, with no variable
   tracking, no shell-write
   check, no script scan, and none of the newer triggers (`git commit-tree`, a `GIT_CONFIG_*`
   export, `include.path`, a prefix-resolved `git config` option). So a note or commit message
@@ -546,6 +588,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `internalError` finding (`INTERNAL_ERROR_REASON_LINES`) and the command is denied. A
   malformed or unreadable payload, an empty command, and a missing node still allow.
   `kill-guard.sh` exits 0 always and denies through its JSON, also when judging crashed.
+  A load failure is not an `internalError` finding: when node runs but `kill-guard.js` cannot
+  load (missing sibling module, syntax error, any non-zero node exit, a signal), the wrapper
+  itself prints a deny ("kill-guard could not load ..."); its DETAILS line names node's status
+  and the first error line. Node missing and a malformed payload stay allows. Rows:
+  `__tests__/kill-guard-hook-load.test.ts`. A test fixture that copies the guard uses the
+  `__tests__/test-support/copy-kill-guard.ts` helper, which copies the guard plus every sibling
+  module it requires (derived from the `require('./x')` calls, transitively), never a hand list.
 
   NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
   `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
@@ -575,7 +624,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `__tests__/ensure-git-hooks.test.ts`, `__tests__/kill-guard-hook-skips.test.ts`.
 
   The `noVerify` kind covers `--no-verify`, `-n`, and `git commit-tree` in every form (it
-  writes a commit no hook runs for; `git update-ref` stays allowed). The kind `hooksConfig`
+  writes a commit no hook runs for; `git update-ref` is no `noVerify`, and stays allowed unless
+  it moves `main`, which is `mainMove`). The kind `hooksConfig`
   (entry points `rewritesHooksPath`, `environmentSetsHooksPath`, `environmentFinding`) carries a
   reason naming
   `scripts/ensure-git-hooks.sh`. A `git config` long option resolves by git's unique-prefix rule
@@ -671,6 +721,21 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     used as another option's value (`git merge -m --abort x` really
     merges); `cd $VAR` (counts as not main); a span as the `cd` target
     (`cd "$(echo <main>)" && git merge x`).
+  - `mainMove` deny, NOT denied: a ref held in a variable, `update-ref --stdin`, an abbreviated
+    long option, a push to a remote, `push -d . main` (no colon, so `refspecWritesMain` misses
+    it; git itself refuses it while main is checked out, by its receive deny-current-branch
+    and deny-delete-current defaults, measured on git 2.38.1; `push . :main` is denied), a git
+    folder that aliases main's through a symlink, firmlink or `commondir` (compared as text;
+    gap 20261021T0832-kiko-harness-h10/1), `--git-dir=~/x` (the guard reads `~` as the home
+    folder, `HOME_PREFIX` in `resolveDirectory`; the shell leaves `~` as is after `--git-dir=`
+    and git reads `<cwd>/~/x`), a `-c remote.<n>.fetch` refspec into main (open, gap
+    20261021T0832-kiko-harness-h10/2: nothing reads it) and a linked worktree whose
+    `symbolic-ref HEAD refs/heads/main` is allowed, then a reset (open, gap
+    20261021T0832-kiko-harness-h10/3). Script scan: `cat f | bash`, a script path in a
+    variable. Over-denied: `isInsideProjectWorktree` matches any prefix folder that is a
+    project worktree, so a reset in a repository nested in main's folder and a ref-name move of
+    main in a repository nested in ANY worktree are denied; and a `-C`/`cd` target held in a
+    variable (fails closed). Detail: "The `mainMove` kind" above.
   - Nested unquoted heredoc in `cat <<'EOF' | bash`,
     `eval "$(cat <<'EOF' …)"`, or `bash -c "$(cat <<'EOF' …)"`: not
     denied. Heredoc delimiter corner cases beyond those modeled above
@@ -774,7 +839,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `pre-write-guard.js` reports a NEW finding against the proposed post-edit
   content; a check that could not run at all (a Semgrep/Node crash,
   malformed stdin, a timeout) also denies — fail-closed, the opposite of
-  `kill-guard.sh`'s always-allow default. It has NO content-dedup
+  `kill-guard.sh`'s allows (a malformed payload, a missing node), though
+  kill-guard.sh now also fails closed on a load failure. It has NO content-dedup
   fingerprint, for the same reason `kill-guard.sh` has none: a pre-write
   check must run on every single write by design, not just when something
   changed since last time. Env seams override its defaults for testing
@@ -2616,8 +2682,13 @@ a pre-existing finding points at. A Semgrep deny names
   stale) and a line that can wrap is wrapped, never pinned. `__tests__/pin-count-ceilings.test.ts`
   caps how many pins each pin file (this one and the markdown prose-width one) may hold; read
   the test for the ceilings. `fast.sh` runs the per-file mode on
-  a shell, YAML or githooks write; a `.js` write is not checked in the fast tier, so
-  `check:comment-line-width` catches it. A tool directive keeps its `OVERRIDE(...)` on ONE
+  a shell, YAML or githooks write, and on a `.js` write only for the per-file case pattern in
+  `comment-line-width.sh` (`scripts/*.js` or `*/scripts/*.js`, so a nested
+  `scripts/` folder counts;
+  `rules/fixtures/*.js`; `githooks/*`), wider than the project-wide check, which reads only root
+  `scripts/`, `rules/fixtures` and `githooks` (the
+  generated header of `drizzle/migrations/migrations.js` is 109 columns and must not block
+  an edit of it). A tool directive keeps its `OVERRIDE(...)` on ONE
   line directly above the statement: a continuation comment between a `biome-ignore lint/...`
   directive and its statement breaks the suppression, so put the explanation above the
   directive. A `biome-ignore format` directive may continue on a second comment line and

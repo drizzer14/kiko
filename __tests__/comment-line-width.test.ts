@@ -567,6 +567,13 @@ describe('scripts/checks/comment-line-width.sh', () => {
       expect(runWrapper([writeProbe('notes.md', `${longComment}\n`)]).status).toBe(0);
     });
 
+    it('leaves a .js file the project-wide mode does not read out of scope', () => {
+      const generated = writeProbe('drizzle/migrations/migrations.js', `${longComment}\n`);
+
+      expect(runWrapper([generated])).toMatchObject({ status: 0, stdout: '', stderr: '' });
+      expect(runWrapper([writeProbe('scripts/probe.js', `${longComment}\n`)]).status).toBe(2);
+    });
+
     it('honors a pin and does not call a pin of another file stale', () => {
       const fixture = 'rules/fixtures/probe.bad.ts';
       const file = writeProbe(fixture, `${longComment}\n`);

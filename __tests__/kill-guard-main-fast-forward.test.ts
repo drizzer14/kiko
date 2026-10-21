@@ -262,6 +262,8 @@ describe('kill-guard script scan: a raw fast-forward of the main checkout', () =
     'bash holds-ff-heredoc.sh',
     'sh -c "bash holds-ff.sh"',
     'true && bash holds-ff.sh',
+    'bash < holds-ff.sh',
+    'source /dev/stdin < holds-ff.sh',
   ])('denies a script that holds one: %s', (command) => {
     expect(decide(command, inScratch)).toBe('mainFastForward');
   });

@@ -35,7 +35,7 @@ row is the short form; read the full row there before relying on edge cases.
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import fails | project-wide + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` | an import crossing a feature without its barrel, or a `--tree` layout finding, fails | project-wide + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation fails | project-wide + pre-write guard |
-| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` | a comment line over 100 columns (`//`, `/* */`, and `#` in shell/YAML/githooks files) fails; no override, only exact-line pins in `comment-line-width.pinned` (shrink-only) | project-wide + pre-write guard (TypeScript) + fast (shell, YAML, githooks) |
+| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` | a comment line over 100 columns (`//`, `/* */`, and `#` in shell/YAML/githooks files) fails; no override, only exact-line pins in `comment-line-width.pinned` (shrink-only) | project-wide + pre-write guard (TypeScript) + fast (shell, YAML, githooks; `.js` under `scripts/`, `rules/fixtures/`, `githooks/`) |
 | `npm run check:component-i18n-namespace` | `scripts/checks/component-i18n-namespace.sh` | a component reading another component's i18n namespace fails | project-wide + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` | any finding a change ADDED (a write that bypassed the pre-write guard) fails; fail-closed (on the Stop deadline failure, run `npm run check:guard-replay` by hand) | medium + project-wide |
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` | a shipped migration modified, deleted, or renamed fails; no override | medium + project-wide |
@@ -82,7 +82,8 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
 
 - `PostToolUse` (`Edit|Write|MultiEdit`): `scripts/checks/fast.sh` (lint,
   security, secrets, import-order, full-word-identifiers on the touched file; a shell, YAML or
-  githooks write runs `comment-line-width.sh` and `security.sh` on that file instead).
+  githooks write runs `comment-line-width.sh` and `security.sh` on that file instead; a `.js`
+  write under `scripts/`, `rules/fixtures/` or `githooks/` also runs `comment-line-width.sh`).
 - `Stop`/`SubagentStop`: `scripts/checks/medium.sh` (dup, overrides, knip,
   deps, rules, plist, typecheck, shipped-migrations, guard replay; and, when the skill, agent,
   docs or CLAUDE.md text changed since the last recorded pass, the doc-reading jest suites: on a
@@ -104,21 +105,28 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     (a raw `merge --ff-only`/`pull --ff-only` on main is denied; the script refuses a
     `harness/kiko` change whose `plugin.json` version is not above main's, and any commit that
     lowers, removes, or makes unreadable that version).
+    - any other git command that moves the branch `main` ("The `mainMove` kind"): a `reset`
+      to a commit in main; `update-ref`, `branch -f`, `checkout -B`, a fetch or push into it
+      from any worktree; an unresolved `-C`/`cd` or a missing cwd fails closed.
   - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
     `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
     `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
     `.claude/agents/`, all of `harness/kiko/` (its scripts and hooks too), or any
-    `*.yml`/`*.yaml` file of any worktree (not under `node_modules/`) ("SHELL-WRITE deny"); use
+    `*.yml`/`*.yaml` file of any worktree (not under `node_modules/`), or a `cp -r`/`mv` of a
+    folder onto a missing `.claude`, `harness` or `.git` ("SHELL-WRITE deny"); use
     Edit/Write, and `git add` + `git mv` to rename; a formatter's own
     `--write` stays allowed.
   - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, or a `-c` /
     `GIT_CONFIG_*` entry for `core.hooksPath` or `include.path`), `git commit-tree`, or a
     `git config` that writes or unsets core.hooksPath (any scope) ("NO-VERIFY deny"); repair
     with `bash scripts/ensure-git-hooks.sh` or `npm ci`.
-  - a shell write to a git config file (`.git/config`; it holds core.hooksPath).
-  - a pkill/killall/pattern kill, or a raw main `--ff-only`, inside a script file a command
-    runs (one level; "Script-content kill scan").
-  - a command the guard cannot judge (an internal error): denied, never allowed.
+  - a shell write to a git config file (`.git/config`; it holds core.hooksPath), or a copy of
+    a folder's contents into a `.git` folder.
+  - a pkill/killall/pattern kill, a raw main `--ff-only`, or a move of main, inside a script
+    file a command runs, including a script a shell reads from a `< file` redirect (one
+    level; "Script-content kill scan").
+  - a command the guard cannot judge (an internal error), or the guard cannot load:
+    denied, never allowed.
   - a `while`/`until` loop that scans the process table for make verify,
     check:all, jest, stryker, semgrep, or xcodebuild ("WAIT-LOOP deny"); wait
     with `bash scripts/wait-load.sh <load> <timeout>` or a background job.

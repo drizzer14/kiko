@@ -45,10 +45,11 @@
 # degrade to "extract nothing, fall back to CLAUDE_PROJECT_DIR, still invoke
 # the target script" rather than a bespoke deny path here — each target script already
 # has its own tested contract for exactly that input (pre-write-guard.sh
-# already denies on malformed JSON or a node crash; kill-guard.sh already
-# always exits 0). Replaying the same bytes through the fallback root reaches
+# already denies on malformed JSON or a node crash; kill-guard.sh always exits 0
+# but denies when its node run fails). Replaying the same bytes through the fallback root reaches
 # that SAME contract, so the required outcome (a crash denies for
-# pre-write-guard.sh; the other hooks keep their current fail-open semantics)
+# pre-write-guard.sh; kill-guard.sh denies when its node run fails, and allows on a
+# missing node or a malformed payload; the other hooks keep their current fail-open semantics)
 # holds without a second copy of that logic here. The dispatcher-own
 # crashes this cannot delegate away — failing to even BUFFER stdin (mktemp
 # itself failing), or any OTHER git failure while resolving the root — go

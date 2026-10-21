@@ -190,9 +190,9 @@ verified usage, not dead weight:
   hook script that `scripts/checks/kill-guard.sh` invokes (`node
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
-  delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`,
-  `.claude/skills/`, `.claude/agents/`, `harness/kiko/`, or a YAML
+  delimiter, a git history change on the main checkout or any git command
+  that moves the branch main, a shell write
+  into a guarded tree (`WRITE_GUARDED_TREES` in the file), or a YAML
   file, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
@@ -206,6 +206,14 @@ verified usage, not dead weight:
   `__tests__/kill-guard-wait-loops.test.ts`, which spawn `kill-guard.sh` (and
   so `kill-guard.js`) or `node` on it as a subprocess, not an import,
   so Jest's coverage does not make Knip see it as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/kill-guard-main-moves.js` — the
+  module that decides whether a git invocation moves the branch `main` (`mainMoveTarget`).
+  `scripts/checks/kill-guard.js` above `require`s it, but `kill-guard.js` is itself on the
+  ignore list and reached only from the `kill-guard.sh` wrapper's `node` invocation, so
+  Knip's graph never walks from an entry point to this file and reports it as unused. It is
+  exercised by `__tests__/kill-guard-main-moves.test.ts`, which runs `kill-guard.js` (and
+  `kill-guard.sh`) in a subprocess, not an import, so Jest's coverage does not make Knip see it
+  as reachable either.
 - **`knip.json` `ignore`**: `scripts/checks/pre-write-guard.js` — the
   PreToolUse hook script that `scripts/checks/pre-write-guard.sh` invokes
   (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to

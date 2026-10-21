@@ -8,7 +8,9 @@
 // hook does NOT follow: it must ALWAYS exit 0, even on a crash or malformed
 // payload, so a failure of the hook process never breaks the Bash tool. An error thrown while
 // judging a command is a deny (`internalError`), not an allow: the command that crashed the guard
-// may be the one it stops; an unreadable payload still allows. Wired from
+// may be the one it stops; an unreadable payload still allows. A failure while node LOADS this file
+// (a sibling module missing, a syntax error) cannot be caught here, so kill-guard.sh denies on any
+// node exit status other than 0 (every run below ends in exit 0). Wired from
 // harness/kiko/hooks/hooks.json via scripts/checks/kill-guard.sh.
 //
 // Incident this guards against: a reviewer subagent ran
@@ -29,7 +31,11 @@
 // there, so a conflict marker in it once broke every hook in every session. The recovery options
 // and help stay allowed. A fast-forward-only update (`merge --ff-only`, `pull --ff-only`) is its
 // own finding, `mainFastForward`: main moves only through `bash scripts/ff-main.sh <sha>`, which
-// runs after a queued verify of that commit.
+// runs after a queued verify of that commit. Any other git command that moves the branch `main`
+// (a `reset` to a commit in the main checkout; `update-ref`, `checkout -B`, `switch -C`,
+// `branch -m|-f|-d`, a fetch or push into it, `symbolic-ref`, `worktree add -B` naming it from any
+// worktree of this repository) is the finding `mainMove`; the rules live in
+// `kill-guard-main-moves.js`.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
 // `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
@@ -78,17 +84,20 @@
 // their own reason: leave core.hooksPath as scripts/ensure-git-hooks.sh sets it. A
 // GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file is not judged: the key sits in the local scope, which
 // outranks both and what they include. `git commit-tree` is denied in every form: it writes a
-// commit no hook runs for (`git update-ref` stays allowed).
+// commit no hook runs for (`git update-ref` is no hook skip; it is judged as `mainMove` when it
+// moves `main`).
 // A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
 //
 // And it reads a script file a command runs (`bash|sh|zsh|dash <file>`, `source <file>`,
-// `. <file>`, or a path run directly whose first line names a shell) and denies a pkill, killall,
-// or pattern or process-group kill in it: a script in a scratchpad outside the project is a place
+// `. <file>`, a path run directly whose first line names a shell, or a shell or `source
+// /dev/stdin` that a `< <file>` redirect feeds) and denies a pkill, killall, or pattern or
+// process-group kill in it: a script in a scratchpad outside the project is a place
 // the pre-write guard never looks. One level only (a script the script runs is not
-// read), a regular file of at most 256 KiB, and kills and a raw `mainFastForward` only (a
-// `git stash` or a write inside the file is not judged). `scripts/job-queue.sh` at the root of a
+// read), a regular file of at most 256 KiB, and kills, a move of `main`, and a raw
+// `mainFastForward` only (a `git stash` or a write inside the file is not judged).
+// `scripts/job-queue.sh` at the root of a
 // worktree of this repository is exempt: its own group TERM is the one allowed group kill.
 // `scripts/ff-main.sh` needs no exemption: its merge uses a variable target, which this scan does
 // not resolve. A script built in the same command, a missing file, and a path held in a variable
@@ -103,6 +112,8 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+
+const { mainMoveTarget } = require('./kill-guard-main-moves');
 
 const MAIN_CHECKOUT_PATH = '/Users/drizzer14/Developer/Projects/pff-ios';
 
@@ -153,6 +164,22 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
     '--abort, --quit, --skip, and --continue stay allowed.',
   'DO NOT:         reach the main checkout through a script file, an alias, or a variable, edit ' +
     "the queue's done.log, or look for a bypass flag to get past this guard.",
+];
+
+const MAIN_MOVE_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a git command that moves the branch main (a reset to a ' +
+    'commit in the main checkout, or update-ref, checkout -B, switch -C, branch -m|-f|-d, a ' +
+    'fetch or push into main, symbolic-ref, worktree add -B naming it).',
+  `WHY IT MATTERS: main (${MAIN_CHECKOUT_PATH}) must move only to a commit a queued verify passed ` +
+    'on, and its hooks run for every session; every worktree shares the ref, so a move from ' +
+    'any of them reaches the main checkout.',
+  'HOW TO FIX:     do the work in a separate detached worktree, queue `bash scripts/job-queue.sh ' +
+    'verify <worktree at the sha> <label>`, wait for exit 0, then run `bash scripts/ff-main.sh ' +
+    '<sha>`. Moving main back, or any other move of it, needs the user. A reset without a ' +
+    'commit (`git reset --hard`), `git reset -- <path>`, a branch other than main, and help ' +
+    'stay allowed.',
+  'DO NOT:         move main through a script file, an alias, or a variable, or look for another ' +
+    'spelling of the move, to get past this guard.',
 ];
 
 const SHELL_WRITE_REASON_LINES = [
@@ -261,6 +288,7 @@ const REASON_BY_KIND = {
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
   mainFastForward: (finding) => blockReason(MAIN_FAST_FORWARD_REASON_LINES, finding.detail),
+  mainMove: (finding) => blockReason(MAIN_MOVE_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
@@ -1361,6 +1389,8 @@ function gitInvocation(rest, directory, environment) {
     arguments: rest.slice(i + 1),
     configs: invocation.configs,
     environment,
+    hasGitDirectory: invocation.gitDirectory !== undefined,
+    hasWorkTree: invocation.workTree !== undefined,
     targets: [locate(invocation.workTree), locate(invocation.gitDirectory)],
   };
 }
@@ -1754,6 +1784,37 @@ function hookFinding(git, invocations, segment) {
   return null;
 }
 
+// Whether `directory` is a worktree of this repository or a folder inside one: a ref-name command
+// run there reaches the refs every worktree shares.
+function isInsideProjectWorktree(directory, rules) {
+  const segments = directory.split('/');
+
+  return segments.some(
+    (_segment, index) =>
+      index > 0 && isProjectWorktree(segments.slice(0, index + 1).join('/') || '/', rules),
+  );
+}
+
+const pathExistsFrom = (directory, operand) => {
+  const resolved = resolveDirectory(directory, operand);
+
+  return resolved !== null && fs.existsSync(resolved);
+};
+
+// A command that moves the branch `main` (see kill-guard-main-moves.js).
+function mainMoveFinding(segment, invocations, rules) {
+  if (invocations[0].arguments.some((parameter) => HELP_OPTIONS.has(parameter))) return null;
+  const target = mainMoveTarget(invocations, {
+    isMainCheckout: (directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath),
+    isInRepository: (directory) => isInsideProjectWorktree(directory, rules),
+    pathExists: pathExistsFrom,
+  });
+
+  if (target === null) return null;
+
+  return { kind: 'mainMove', detail: `${segment.trim()} (runs in ${target})` };
+}
+
 // One invocation per directory the command may run in; the subcommand is
 // the same in each.
 function gitFinding(segment, invocations, rules) {
@@ -1763,7 +1824,10 @@ function gitFinding(segment, invocations, rules) {
     ? dataBodyHookFinding(git, segment)
     : hookFinding(git, invocations, segment);
   if (skipped !== null) return skipped;
-  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
+  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand)) {
+    return mainMoveFinding(segment, invocations, rules);
+  }
+  if (leavesMainCheckoutSafe(git)) return null;
   const target = invocations
     .flatMap((invocation) => invocation.targets)
     .find((directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath));
@@ -1921,8 +1985,27 @@ function isGitConfigFile(target) {
   );
 }
 
-// A path the text cannot pin down that still spells `.git/config` (`"$D/.git/config"`).
-const namesGitConfig = (target) => /(?:^|\/)\.git\/config(?:\.worktree)?$/i.test(target);
+// A path the text cannot pin down that still spells a git config file (`"$D/.git/config"`,
+// `.git/worktrees/w/config.worktree`).
+const GIT_CONFIG_PATH =
+  /(?:^|\/)\.git\/(?:config(?:\.worktree)?|worktrees\/[^/]+\/config\.worktree)$/i;
+const namesGitConfig = (target) => GIT_CONFIG_PATH.test(target);
+
+// A path whose last folder is `.git`: what is copied into it, or what becomes it, may be a config.
+const namesGitFolder = (target) => /(?:^|\/)\.git\/*$/i.test(target);
+
+// A linked worktree's folder in the repository config, `.git/worktrees/<name>`, which holds its
+// `config.worktree`.
+const namesWorktreeGitFolder = (target) => /(?:^|\/)\.git\/worktrees\/[^/]+\/*$/i.test(target);
+
+// The config files a copy of a folder's contents (a glob, `src/.`, a variable) into `folder` may
+// write when `folder` is a `.git` or a linked worktree's folder in it.
+function gitConfigsIn(folder) {
+  const base = folder.replace(/\/+$/, '');
+  if (namesGitFolder(folder)) return [...GIT_CONFIG_FILES].map((name) => `${base}/${name}`);
+
+  return namesWorktreeGitFolder(folder) ? [`${base}/config.worktree`] : [];
+}
 
 // A YAML file (the final segment ends in .yml or .yaml) anywhere in a worktree of this repository,
 // at any depth, is guarded by its extension: the Maestro flows, workflows, and rule files of the
@@ -1942,23 +2025,34 @@ function isYamlInsideWorktree(target, rules) {
   );
 }
 
+function isExistingDirectory(target) {
+  try {
+    return fs.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 // Where `target` lands from `directory` (resolved when the text allows) when
 // that is inside a tree, is a YAML file of a worktree, or is a git config file, or null. A cp/mv
 // `destination` may be a folder, and what it copies lands inside it, so one
 // that is a tree folder itself counts too. With `resolvedOnly`, a target the
 // text cannot resolve never counts. A `folder` target (a copied or moved folder, or the
 // destination of a copy of a folder's contents) counts too when it is a folder that may hold a
-// tree (`<worktree>/.claude`): what lands there whole may carry one.
-function guardedPlace(target, directory, rules, { destination, resolvedOnly, folder }) {
+// tree (`<worktree>/.claude`): what lands there whole may carry one. A `missing` target counts only
+// while it is no existing directory: a copy lands inside a directory that is there.
+function guardedPlace(target, directory, rules, { destination, resolvedOnly, folder, missing }) {
   const resolved = resolveDirectory(directory, target);
   const inside = (place) => (destination ? `${place.replace(/\/+$/, '')}/_` : place);
+  if (missing && resolved !== null && isExistingDirectory(resolved)) return null;
   if (resolved === null) {
     if (resolvedOnly) return null;
 
     return namesGuardedTree(inside(target)) ||
       namesGitConfig(target) ||
       YAML_FILE.test(target) ||
-      (folder && namesTreeParentFolder(target))
+      (folder && namesTreeParentFolder(target)) ||
+      (missing && namesGitFolder(target))
       ? target
       : null;
   }
@@ -1966,7 +2060,8 @@ function guardedPlace(target, directory, rules, { destination, resolvedOnly, fol
   return isInsideGuardedTree(inside(resolved), rules) ||
     isGitConfigFile(resolved) ||
     isYamlInsideWorktree(resolved, rules) ||
-    (folder && isTreeParentFolder(resolved, rules))
+    (folder && isTreeParentFolder(resolved, rules)) ||
+    (missing && namesGitFolder(resolved))
     ? resolved
     : null;
 }
@@ -1977,11 +2072,18 @@ function firstGuardedWrite(
   targets,
   directories,
   rules,
-  { verb = 'writes', destination = false, resolvedOnly = false, folder = false } = {},
+  {
+    verb = 'writes',
+    destination = false,
+    resolvedOnly = false,
+    folder = false,
+    missing = false,
+  } = {},
 ) {
   for (const target of targets) {
     for (const directory of directories) {
-      const where = guardedPlace(target, directory, rules, { destination, resolvedOnly, folder });
+      const mode = { destination, resolvedOnly, folder, missing };
+      const where = guardedPlace(target, directory, rules, mode);
       if (where !== null) return { verb, where };
     }
   }
@@ -2135,8 +2237,11 @@ const copiesContents = (source) =>
 function copyMovePlan(parameters) {
   const { options, operands } = splitOptions(parameters, readCopyMoveOption);
   const recursive = options.some((option) => option.recursive);
-  const contentsInto = (folder, sources) =>
-    recursive && sources.some(copiesContents) ? [folder] : [];
+  const contentsInto = (folder, sources) => {
+    if (!sources.some(copiesContents)) return [];
+
+    return [...(recursive ? [folder] : []), ...gitConfigsIn(folder)];
+  };
   const targetDirectory = options.findLast((option) => option.targetDirectory !== undefined);
   if (targetDirectory !== undefined) {
     const landed = intoFolder(targetDirectory.targetDirectory, operands);
@@ -2150,13 +2255,32 @@ function copyMovePlan(parameters) {
   const destination = operands.at(-1);
   const sources = operands.slice(0, -1);
   if (options.some((option) => option.noTargetDirectory)) {
-    return { targets: [destination], folders: recursive ? [destination] : [] };
+    // A recursive copy onto the destination itself merges the source's contents into it, as a glob
+    // does.
+    return {
+      targets: [destination],
+      folders: recursive ? [destination, ...gitConfigsIn(destination)] : [],
+    };
   }
   const landed = intoFolder(destination, sources);
   const folders = [...landed, ...contentsInto(destination, sources)];
   if (sources.length > 1 || destination.endsWith('/')) return { targets: landed, folders };
 
   return { targets: [destination, ...landed], folders };
+}
+
+// The destination of a copy of one folder or a move, which becomes that folder itself when it does
+// not exist (macOS `cp -R src dst/` and `mv src dst/`, with or without the slash, make `dst` a
+// copy of `src`, measured), so the text cannot tell what lands there. Plain `cp` copies no folder,
+// and `-t` names the destination as a folder. `-T` does not: `mv -T src dst` still makes `dst` a
+// copy of `src` when `dst` is missing.
+function createdFolders(base, parameters) {
+  if (!COPY_MOVE_COMMANDS.has(base)) return [];
+  const { options, operands } = splitOptions(parameters, readCopyMoveOption);
+  const namesFolder = options.some((option) => option.targetDirectory !== undefined);
+  const copiesFolder = MOVE_COMMANDS.has(base) || options.some((option) => option.recursive);
+
+  return operands.length === 2 && copiesFolder && !namesFolder ? [operands[1]] : [];
 }
 
 // The files a command writes (`sed -i`, `perl -i`, `tee`), or null when it is none of them or
@@ -2403,7 +2527,9 @@ const withXargsInput = (parameters, placeholder, input) =>
 // -r {} .` may write `./src`). Those folder names are `named`; a plain cp
 // cannot copy a folder, so `canCopyFolder` is false for it and its `named`
 // targets count only where the text resolves them. The input may also be a YAML file, so a
-// destination the text resolves into a worktree folder counts through a `.yml` marker (`yaml`).
+// destination the text resolves into a worktree folder counts through a `.yml` marker (`yaml`),
+// and the input may be a git config file, which counts wherever the destination is a `.git` folder
+// (`gitConfig`, resolved or not, in any repository).
 function xargsCopyMoveTargets(base, parameters, placeholder) {
   if (!COPY_MOVE_COMMANDS.has(base) || inputMayBeDestination(parameters, placeholder)) return null;
   const targetsFor = (inputs) =>
@@ -2413,6 +2539,7 @@ function xargsCopyMoveTargets(base, parameters, placeholder) {
   return {
     plain: targetsFor(['xargs-input']),
     yaml: targetsFor(['xargs-input.yml']),
+    gitConfig: targetsFor([...GIT_CONFIG_FILES]),
     named: targetsFor([...WRITE_GUARDED_TREES]),
     canCopyFolder: MOVE_COMMANDS.has(base) || options.some((option) => option.recursive),
   };
@@ -2436,6 +2563,7 @@ function commandWrite(
     return (
       firstGuardedWrite(targets.plain, directories, rules, { destination }) ??
       firstGuardedWrite(targets.yaml, directories, rules, { destination, resolvedOnly: true }) ??
+      firstGuardedWrite(targets.gitConfig, directories, rules, { destination }) ??
       firstGuardedWrite(targets.named, directories, rules, {
         destination,
         resolvedOnly: !targets.canCopyFolder,
@@ -2445,7 +2573,11 @@ function commandWrite(
   if (files !== null) {
     return (
       firstGuardedWrite(files, directories, rules, { destination }) ??
-      firstGuardedWrite(folders, directories, rules, { destination, folder: true })
+      firstGuardedWrite(folders, directories, rules, { destination, folder: true }) ??
+      firstGuardedWrite(createdFolders(base, parameters), directories, rules, {
+        folder: true,
+        missing: true,
+      })
     );
   }
   const program = interpreterProgramOf(base, parameters, stdinScripts);
@@ -2576,6 +2708,9 @@ function leaveSubshell(location) {
   Object.assign(location, location.saved.pop());
 }
 
+const runsCommandString = (rest) =>
+  rest.some((word, index) => index > 0 && SHELL_COMMAND_FLAG.test(word));
+
 // A shell runs its `-c` string or, without `-c`, the heredoc bodies and
 // here-strings it reads as its script.
 function queueShellScript(rest, nested, stdinScripts) {
@@ -2652,7 +2787,7 @@ const SHELL_OPTION = /^[-+]./;
 // The script file `bash [options] <file>` runs: its first operand. A `-c` flag (anywhere, as
 // `queueShellScript` reads it) or `-s` means the script is text, not a file.
 function shellScriptOperand(rest) {
-  if (rest.some((word, index) => index > 0 && SHELL_COMMAND_FLAG.test(word))) return undefined;
+  if (runsCommandString(rest)) return undefined;
   let index = 1;
   while (index < rest.length) {
     const word = rest[index];
@@ -2708,9 +2843,12 @@ function readScriptFile(file, rules, requireShebang) {
   }
 }
 
-// A kill or a raw main fast-forward in the script file a command runs (one level: a script it runs
-// or sources in turn is not read). A file the text cannot name (a variable), a missing one, one
-// over the size limit, and one built in the same command are not read.
+// The git findings a scanned script keeps under their own kind; any other finding in one is a kill.
+const SCRIPT_GIT_KINDS = new Set(['mainFastForward', 'mainMove']);
+
+// A kill, a raw main fast-forward, or a move of main in the script file a command runs (one level:
+// a script it runs or sources in turn is not read). A file the text cannot name (a variable), a
+// missing one, one over the size limit, and one built in the same command are not read.
 function scriptKillFinding(scriptFile, context) {
   if (scriptFile === null || !context.rules.scanScripts) return null;
   const { operand, requireShebang } = scriptFile;
@@ -2729,10 +2867,31 @@ function scriptKillFinding(scriptFile, context) {
     );
     if (found !== null) {
       return {
-        kind: found.kind === 'mainFastForward' ? 'mainFastForward' : 'scriptKill',
+        kind: SCRIPT_GIT_KINDS.has(found.kind) ? found.kind : 'scriptKill',
         detail: `${file} holds \`${found.detail}\``,
       };
     }
+  }
+
+  return null;
+}
+
+// The files a `<` redirect feeds to a command's stdin (a here-document is not one). A shell with
+// no script of its own, or `source /dev/stdin`, runs what the file holds.
+const stdinFilesOf = (redirects) =>
+  redirects.filter(({ operator }) => /^<>?$/.test(operator)).map(({ target }) => target);
+
+function shellReadsStdin(rest) {
+  const operand = shellScriptOperand(rest);
+  const namesStdin = operand === undefined || operand === '-' || STDIN_FILES.has(operand);
+
+  return namesStdin && !runsCommandString(rest);
+}
+
+function stdinFileFinding(context) {
+  for (const target of context.stdinFiles) {
+    const found = scriptKillFinding({ operand: target, requireShebang: false }, context);
+    if (found !== null) return found;
   }
 
   return null;
@@ -2756,6 +2915,25 @@ function assignmentFinding({ tokens: rest, environment }, context) {
   return environmentFinding(assigned, context);
 }
 
+// A shell runs the script file it names, or, with none, the heredoc bodies, here-strings, and
+// `<` file on its stdin.
+function shellFinding(base, rest, context) {
+  queueShellScript(rest, context.scripts, context.stdinScripts);
+
+  return (
+    scriptKillFinding(scriptFileOf(base, rest), context) ??
+    (shellReadsStdin(rest) ? stdinFileFinding(context) : null)
+  );
+}
+
+function sourceFinding(base, rest, context) {
+  const scriptFile = scriptFileOf(base, rest);
+  if (!STDIN_FILES.has(scriptFile.operand)) return scriptKillFinding(scriptFile, context);
+  context.scripts.push(...context.stdinScripts);
+
+  return stdinFileFinding(context);
+}
+
 // The finding for one unwrapped command (see `segmentFinding`).
 function commandFinding(command, context) {
   const { tokens: rest, environment } = command;
@@ -2764,11 +2942,7 @@ function commandFinding(command, context) {
   const base = basename(rest[0]);
   if (ASSIGNING_COMMANDS.has(base)) return assignmentFinding(command, context);
 
-  if (SHELLS.has(base)) {
-    queueShellScript(rest, context.scripts, context.stdinScripts);
-
-    return scriptKillFinding(scriptFileOf(base, rest), context);
-  }
+  if (SHELLS.has(base)) return shellFinding(base, rest, context);
 
   // `eval "$(cat)" <<'EOF'` runs what its stdin holds, as `source /dev/stdin <<'EOF'` does.
   if (base === 'eval') {
@@ -2779,12 +2953,7 @@ function commandFinding(command, context) {
   const kill = killFinding(base, command, context);
   if (kill !== null || base === 'kill') return kill;
 
-  if (base === 'source' || base === '.') {
-    const scriptFile = scriptFileOf(base, rest);
-    if (STDIN_FILES.has(scriptFile.operand)) context.scripts.push(...context.stdinScripts);
-
-    return scriptKillFinding(scriptFile, context);
-  }
+  if (base === 'source' || base === '.') return sourceFinding(base, rest, context);
 
   if (base === 'git') {
     const invocations = context.directories.map((directory) =>
@@ -2812,7 +2981,7 @@ function redirectWrite(redirects, directories, rules) {
 }
 
 // The kinds the second, variable-expanded reading of a segment reports (see `segmentFinding`).
-const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward']);
+const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward', 'mainMove']);
 
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
 // `{ kind: 'stash' | 'mainCheckout' | 'shellWrite', detail }` — or null
@@ -2825,7 +2994,8 @@ const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward']
 // guard cannot follow (a loop variable, `read`, `+=`) still denies what its raw text denied. The
 // second reading reports only a write or a main-checkout finding: a variable's value says where a
 // write lands or a git command runs, but never which command runs or what a kill aims at (an
-// unknown `$pid` is the agent's own).
+// unknown `$pid` is the agent's own). A git folder the first reading cannot name fails closed
+// there, whatever the command assigned to the variable.
 function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) {
   const { directories, variables } = place;
   const { words: tokens, hereStrings, redirects } = tokenize(segment);
@@ -2835,6 +3005,7 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) 
       segment,
       scripts: queue,
       stdinScripts,
+      stdinFiles: stdinFilesOf(targets),
       spans,
       directories,
       rules,
@@ -2844,22 +3015,26 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) 
 
     return write === null ? null : shellWriteFinding(segment, write);
   };
+  const expanded = expandedReading(tokens, redirects, variables);
   const finding = judge(tokens, redirects, scripts);
-  if (finding !== null || !hasVariables(variables)) return finding;
-  const expand = (word) => expandVariables(word, variables);
-  const expandedWords = tokens.map(expand);
-  const expandedTargets = redirects.map((redirect) => ({
-    ...redirect,
-    target: expand(redirect.target),
-  }));
-  const unchanged =
-    expandedWords.every((word, index) => word === tokens[index]) &&
-    expandedTargets.every((redirect, index) => redirect.target === redirects[index].target);
-
-  if (unchanged) return null;
-  const added = judge(expandedWords, expandedTargets, []);
+  if (finding !== null || expanded === null) return finding;
+  const added = judge(expanded.words, expanded.targets, []);
 
   return EXPANDED_KINDS.has(added?.kind) ? added : null;
+}
+
+// The words and redirect targets of a segment with the variables the command assigned filled in,
+// or null when none of them reads one.
+function expandedReading(tokens, redirects, variables) {
+  if (!hasVariables(variables)) return null;
+  const expand = (word) => expandVariables(word, variables);
+  const words = tokens.map(expand);
+  const targets = redirects.map((redirect) => ({ ...redirect, target: expand(redirect.target) }));
+  const unchanged =
+    words.every((word, index) => word === tokens[index]) &&
+    targets.every((redirect, index) => redirect.target === redirects[index].target);
+
+  return unchanged ? null : { words, targets };
 }
 
 // ---- wait loops that scan the process table ----
@@ -3040,12 +3215,12 @@ function observeWaitLoops(watch, segment, spans) {
   return closed.find((finding) => finding !== null) ?? null;
 }
 
-// The finding kinds a pass reports: a script file is read for kills and a raw main fast-forward
-// only, a heredoc body that no shell is known to run is read for the kinds in `DATA_KINDS` (a kill,
-// a git stash, a hook skip by option or core.hooksPath, a main-checkout change or fast-forward, a
-// wait loop), and every other finding in either is not that pass's business. `null` reports every
-// kind.
-const SCRIPT_KINDS = new Set(['kill', 'mainFastForward']);
+// The finding kinds a pass reports: a script file is read for kills, a raw main fast-forward, and
+// a move of main only, a heredoc body that no shell is known to run is read for the kinds in
+// `DATA_KINDS` (a kill, a git stash, a hook skip by option or core.hooksPath, a main-checkout
+// change or fast-forward, a wait loop), and every other finding in either is not that pass's
+// business. `null` reports every kind.
+const SCRIPT_KINDS = new Set(['kill', 'mainFastForward', 'mainMove']);
 const DATA_KINDS = new Set([
   'kill',
   'stash',
