@@ -30,6 +30,7 @@ import { BinanceRateLimitError } from './binance.client';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { DEPTH_EXTRAPOLATION_MAX_MS, DEPTH_MARGIN_MS } from './binance.depth-config';
 import { type BinanceRunBudget, createBinanceHistoryRun } from './binance.history-budget';
 import { type BinanceConvertRecord, BinanceHistoryParseError } from './binance.history-client';
 
@@ -278,7 +279,8 @@ describe('convertOutcomeOf', () => {
     expect(outcomeOf({ orderStatus: 'FAIL', fromAsset: '' })).toEqual({ kind: 'none' });
   });
 
-  it('still owes the amount of a tracked side next to a blank coin that is not read', () => {
+  it('refuses a blank coin before it reads any amount, and owes the amount of a tracked pair', () => {
+    expect(outcomeOf({ fromAsset: '', toAmount: undefined })).toEqual(REFUSED);
     expect(outcomeOf({ fromAsset: '', fromAmount: undefined })).toEqual(REFUSED);
     expect(codeOf({ toAmount: undefined })).toBe('convert-row-unreadable');
     expect(codeOf({ fromAmount: '0' })).toBe('convert-amount-invalid');
@@ -867,6 +869,9 @@ describe('a start Binance refuses', () => {
 
   describe('when the depth moves with every request', () => {
     const MOVES_MS = 500;
+    // More per request than the read's start is moved on by (the margin and the resolution), so
+    // the read after a narrowing is always refused.
+    const ALWAYS_PAST_MARGIN_MS = 10_000;
 
     it('reads the window from the served start moved on, and writes its mark within two runs', async () => {
       const world = worldOf();
@@ -889,7 +894,7 @@ describe('a start Binance refuses', () => {
       const world = worldOf();
       const run = freshRun();
       const record = jest.spyOn(run.budget, 'record');
-      const server = convertServerOf([], DEPTH, 5 * MOVES_MS * 4);
+      const server = convertServerOf([], DEPTH, ALWAYS_PAST_MARGIN_MS);
       const deps = world.depsOf({ fetchConvertHistory: server });
 
       await expect(world.walk(deps, run)).resolves.toMatchObject({ complete: false });
@@ -906,7 +911,7 @@ describe('a start Binance refuses', () => {
 
     it('narrows the window again in the next run', async () => {
       const world = worldOf();
-      const server = convertServerOf([], DEPTH, 5 * MOVES_MS * 4);
+      const server = convertServerOf([], DEPTH, ALWAYS_PAST_MARGIN_MS);
 
       await world.walk(world.depsOf({ fetchConvertHistory: server }));
       const second = world.depsOf({ fetchConvertHistory: server });
@@ -916,6 +921,70 @@ describe('a start Binance refuses', () => {
         queriesOf(second).filter(({ startTime, endTime }) => endTime - startTime === 1),
       ).not.toEqual([]);
       expect(numberMarkWritesOfAnyWalk(second)).toEqual([]);
+    });
+  });
+
+  describe('when time passes between the narrowing and the read', () => {
+    /** A world whose clock moves `stepMs` with every request, as time passes while a run waits. */
+    const clockedWorld = (stepMs: number) => {
+      const world = worldOf();
+      const server = convertServerOf([], DEPTH);
+      let clockMs = NOW;
+      const fetchConvertHistory = jest.fn(async (apiKey: string, secret: string, query: Query) => {
+        clockMs += stepMs;
+
+        return server(apiKey, secret, query);
+      });
+
+      return { world, deps: world.depsOf({ now: () => clockMs, fetchConvertHistory }) };
+    };
+
+    const isProbe = ({ startTime, endTime }: Query) => endTime - startTime === 1;
+
+    it('moves the start on by the time that passed since it was served, and the margin', async () => {
+      const stepMs = 2_000;
+      const { world, deps } = clockedWorld(stepMs);
+
+      await world.walk(deps, freshRun());
+
+      const queries = queriesOf(deps);
+      const readIndex = queries.findIndex(
+        (query) => !isProbe(query) && query.startTime > HISTORY_FLOOR_MS,
+      );
+      const servedStarts = queries
+        .slice(0, readIndex)
+        .map((query, index) => ({ query, index }))
+        .filter(({ query }) => isProbe(query) && query.startTime >= DEPTH);
+      const lastServed = servedStarts.reduce((oldest, found) =>
+        found.query.startTime < oldest.query.startTime ? found : oldest,
+      );
+
+      expect(queries[readIndex].startTime).toBe(
+        lastServed.query.startTime + (readIndex - lastServed.index) * stepMs + DEPTH_MARGIN_MS,
+      );
+    });
+
+    it('reads nothing and moves no mark after a pause longer than the start is moved on for', async () => {
+      const { world, deps } = clockedWorld(DEPTH_EXTRAPOLATION_MAX_MS + 1);
+
+      await expect(world.walk(deps, freshRun())).resolves.toMatchObject({ complete: false });
+
+      const afterNarrowing = queriesOf(deps).filter(
+        (query) => !isProbe(query) && query.startTime > HISTORY_FLOOR_MS,
+      );
+      expect(afterNarrowing).toEqual([]);
+      expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('narrows the window again in the next run, which reads it from its served start', async () => {
+      const { world, deps } = clockedWorld(DEPTH_EXTRAPOLATION_MAX_MS + 1);
+      await world.walk(deps, freshRun());
+
+      const next = world.depsOf({ fetchConvertHistory: convertServerOf([], DEPTH) });
+      await world.walk(next, freshRun());
+
+      expect(CURSOR(world)).toBeGreaterThanOrEqual(HISTORY_FLOOR_MS + CONVERT_WINDOW_MS);
     });
   });
 });

@@ -11,6 +11,7 @@ import {
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
+  hasDepthLapsed,
   historyListWriterOf,
   instantAt,
   joinSettled,
@@ -457,20 +458,24 @@ const readFromServedStart = async (
     return undefined;
   }
 
+  const nowMs = context.deps.now();
   const served = match(narrowed)
     .returnType<WalkWindow>()
     .with({ kind: 'floor' }, () => ({ start: span.end, end: span.end }))
     .with({ kind: 'start' }, ({ startMs }) => ({
-      start: Math.min(
-        Math.max(startMs, knownStartOf(lastServed, context.deps.now()) ?? startMs),
-        span.end,
-      ),
+      start: Math.min(knownStartOf(lastServed, nowMs) ?? startMs, span.end),
       end: span.end,
     }))
     .exhaustive();
 
   if (served.start >= served.end) {
     return { kind: 'page', page: { page: NOTHING_SERVED, span: served } };
+  }
+
+  // After a pause longer than a start is moved on for, a depth that stood still would put the
+  // start above ground Binance serves, and the commit would move the marks past it unread.
+  if (hasDepthLapsed(lastServed, nowMs)) {
+    return undefined;
   }
 
   try {
@@ -561,7 +566,9 @@ const settledConversionsOf = (
  * Commit one span's page: place and write the rows of the conversions the walk can trust, then
  * move the walk's marks past the span that was asked for (see `commitSettledSpan`: rows first,
  * marks second, so a crash between the two just re-imports idempotently). The marks move past the
- * whole span even when the page was read from a later start, as the ground below it is not kept.
+ * whole span even when the page was read from a later start: the ground below it was refused when
+ * asked, within the resolution, or lies within the margin and the time that passed since that
+ * start was served (`readFromServedStart`), which a depth that moves drops from what is served.
  */
 const commitSpan = (
   context: ConvertContext,
