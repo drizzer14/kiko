@@ -45,6 +45,7 @@ symbol or anchor text. **The developer re-greps every fact on the actual base be
 - G-6 Walk: 30-day windows from `HISTORY_FLOOR_MS` read forward; empty windows never stop it; no new refusal code
   in `requestFailedOf` (probe 5); a -5026 start is narrowed by the depth search and never ends the walk; any other
   4xx keeps the window and its cursor.
+  SUPERSEDED for Convert by S8-C1 (rulings.md, section Set 8 plan questions): a -5026 fails the run, no narrowing.
 - G-7 Lane `convert`: cap 20, no narrowing calls, cost `{ uid: 3_000 }` (20 x 3000 = 60000 <= 180000).
 - G-8 Every Convert row (both legs, and a lone tracked leg) carries `operation = 'convert'`, insert-only
   (`addManyDedup`'s upsert never refreshes it, set 7). Description `''` (the label renders).
@@ -100,12 +101,12 @@ Convert records (step 7/14 unless noted). "was:" for every C row: not imported (
 | C6c | SUCCESS, USDT -> USDT | one `convert-unrecognized` entry, no row (DEFAULT, pending S8-Q6) |
 | C6d | SUCCESS, a tracked side's amount `0`, `-1`, `1e-3`, over-precise, absent | owes its point; others import |
 | C8 | one conversion in 2026-01, every other window empty (step 8/14) | every window read once; imported as C1 |
-| C9 | a start answered -5026 (step 8/14) | narrowed to the served start; nothing owed below; the walk goes on |
+| C9 | a start answered -5026 (step 8/14) | narrowed to the served start; nothing owed below; the walk goes on (SUPERSEDED by S8-C1: the run fails, logged, marks stay, the caption shows) |
 | C9b | a window answered -1127 (step 8/14) | a failure: window and cursor stay; the next run reads it again |
 | C9c | first walk, 113 windows, lane cap 20 (step 8/14) | the window 104 conversion imports at run 6 of 6 |
 | C10 | FAIL, `walletType` missing or `MAIN` | no row, no entry (status first) |
 | C11 | `moreData` true (step 8/14) | the span halves; 1 ms still `moreData` owes the span (`convert-page-stuck`) |
-| C12 | no usable record id (S8-Q1), or no `createTime` | unreadable: owes its point, or the span when it has no time |
+| C12 | no usable record id (S8-Q1), or no `createTime` | unreadable: owes its point, or the span when it has no time (S8-Q1 ruled: the id is the `quoteId` only) |
 
 State, line and caption (steps 3/14, 9/14, 10/14):
 
@@ -255,7 +256,7 @@ Files: `src/crypto-sync/binance/binance.history-client.ts`, `binance.history-cli
       30-day limit, `limit` maximum, `moreData`, the `orderStatus` values, the JSON type of `orderId` and
       `quoteId`). S8-Q1: when the coordinator runs probe 6, its measured `orderId` type decides the key; until
       then build the DEFAULT (pending S8-Q1): id = `orderId` as a string or safe integer, else `quoteId`, else
-      unreadable. A doc that contradicts G-5's status words: stop and ask.
+      unreadable. (SUPERSEDED: S8-Q1 = A, probe 6; the id is the `quoteId` only, never `orderId`.) A doc that contradicts G-5's status words: stop and ask.
 - [ ] Tests first: "reads a SUCCESS record with every field" (record fields `orderId`/`quoteId` -> `recordId`,
       `orderStatus`, `walletType`, `fromAsset`, `fromAmount`, `toAsset`, `toAmount`, `createTime`); "reads a
       missing or null `walletType` as undefined"; "reads a record whose assets or amounts are absent, status
@@ -289,7 +290,7 @@ Files: `src/crypto-sync/binance/binance.convert-history.ts` (new), `binance.conv
 Files: `binance.convert-history.ts`, `binance.convert-history.test.ts`, `binance.convert-history.real-sqlite.test.ts`
 (new), `binance.convert-history.properties.test.ts` (new).
 - [ ] Tests first (fake deps): C8 (every window read, fetch count = window count); C9 (fake refuses starts below
-      a depth: the walk narrows, imports a record above it, owes nothing below); C9b; C9c (runs to window 104 =
+      a depth: the walk narrows, imports a record above it, owes nothing below; SUPERSEDED by S8-C1: the run fails); C9b; C9c (runs to window 104 =
       6); C11 (halving and `convert-page-stuck`); C3's second run; "reads nothing while cooling down"; "reads
       nothing without credentials"; "stops on a rate limit and sets the cooldown"; "writes no multi-coin marks"
       (spec section 7: Convert needs no backfill range). Real sqlite: C1 lands on "Binance Funding · UAH" and
@@ -301,7 +302,7 @@ Files: `binance.convert-history.ts`, `binance.convert-history.test.ts`, `binance
       without the uid read: `readWalkMarks(deps, accountId, 'convert')`, `planWalkPasses` (`floorMs:
       HISTORY_FLOOR_MS`, `windowMs: CONVERT_WINDOW_MS = 30 * DAY_MS`, `overlapMs: RESYNC_OVERLAP_MS`,
       `maxWindows: CONVERT_MAX_WINDOWS = 20`), `runWalkPlan` + `walkSpans`; `readSpan` splits on `moreData`
-      (`halfOf`); on `BinanceHistoryTooOldError` it calls `narrowRefusedStart` (`floorMs: HISTORY_FLOOR_MS`,
+      (`halfOf`); (SUPERSEDED by S8-C1: a `BinanceHistoryTooOldError` fails the run, no narrowing) on `BinanceHistoryTooOldError` it calls `narrowRefusedStart` (`floorMs: HISTORY_FLOOR_MS`,
       `config: BINANCE_DEPTH_CONFIG`, a probe that spends the lane) and commits the span read from the served
       start; `commitSpan` uses `commitSettledSpan` with `forwardOwes: CONVERT_FORWARD_OWES`,
       `writeNotImported: notImportedWriterOf(...)`, `placeWalletRows` (`missingCode: 'convert-holding-missing'`),
