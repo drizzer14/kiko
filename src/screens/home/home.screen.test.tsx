@@ -712,6 +712,93 @@ describe('HomeScreen', () => {
     expect(queryByText('BTC')).toBeNull();
   });
 
+  // The breakdown hides a currency whose amount DISPLAYS as zero, with the precision
+  // `formatMoney` renders: measured, a value below 0.5 minor unit shows "0.00" / "-0.00" in
+  // every currency (fiat scale 2, USDT and BTC scale 8), and 0.5 minor unit shows non-zero.
+  const DISPLAYED_ZERO_CASES = [
+    ['USD', 'exact zero', 0],
+    ['USD', 'a tiny positive remainder', 1e-9],
+    ['USD', 'a tiny negative remainder', -1e-9],
+    ['USD', 'just below half a minor unit', 0.4],
+    ['USD', 'just below half a negative minor unit', -0.4],
+    ['USDT', 'exact zero', 0],
+    ['USDT', 'a tiny positive remainder', 1e-9],
+    ['USDT', 'a tiny negative remainder', -1e-9],
+    ['USDT', 'just below half a minor unit', 0.4],
+    ['BTC', 'a tiny negative remainder', -1e-9],
+  ] as const;
+
+  it.each(DISPLAYED_ZERO_CASES)(
+    'hides %s from the breakdown when its total is %s, while non-zero rows render',
+    async (currency, _label, balanceMinorUnits) => {
+      seed({
+        holdings: [UAH_HOLDING, { accountId: 'a', currency, balanceMinorUnits }],
+        rates: [{ base: currency, quote: 'UAH', rate: '40' }],
+        transactions: [],
+      });
+
+      const { getByText, queryByText } = await renderHome();
+
+      expect(getByText('UAH')).toBeTruthy();
+      expect(queryByText(currency)).toBeNull();
+    },
+  );
+
+  const DISPLAYED_NON_ZERO_CASES = [
+    ['USD', 'half a minor unit', 0.5],
+    ['USD', 'one minor unit', 1],
+    ['USD', 'a negative half minor unit', -0.5],
+    ['USDT', 'half a minor unit', 0.5],
+    ['USDT', 'one minor unit', 1],
+    ['BTC', 'half a minor unit', 0.5],
+    ['BTC', 'a negative minor unit', -1],
+  ] as const;
+
+  it.each(DISPLAYED_NON_ZERO_CASES)(
+    'keeps %s in the breakdown when its total is %s',
+    async (currency, _label, balanceMinorUnits) => {
+      seed({
+        holdings: [UAH_HOLDING, { accountId: 'a', currency, balanceMinorUnits }],
+        rates: [{ base: currency, quote: 'UAH', rate: '40' }],
+        transactions: [],
+      });
+
+      const { getByText } = await renderHome();
+
+      expect(getByText(currency)).toBeTruthy();
+    },
+  );
+
+  it('keeps a currency with a negative total (debt) in the breakdown', async () => {
+    seed({
+      holdings: [UAH_HOLDING, { accountId: 'a', currency: 'USD', balanceMinorUnits: -5000 }],
+      rates: [{ base: 'USD', quote: 'UAH', rate: '40' }],
+      transactions: [],
+    });
+
+    const { getByText } = await renderHome();
+
+    expect(getByText('USD')).toBeTruthy();
+    expect(getByText(/\$50\.00/)).toBeTruthy();
+  });
+
+  it('renders no breakdown rows but keeps the headline when every currency totals zero', async () => {
+    seed({
+      holdings: [
+        { ...UAH_HOLDING, balanceMinorUnits: 0 },
+        { accountId: 'a', currency: 'USD', balanceMinorUnits: 0 },
+      ],
+      rates: [{ base: 'USD', quote: 'UAH', rate: '40' }],
+      transactions: [],
+    });
+
+    const { getAllByText, queryByText } = await renderHome();
+
+    expect(queryByText('UAH')).toBeNull();
+    expect(queryByText('USD')).toBeNull();
+    expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
+  });
+
   it('lists only the currencies the headline total includes', async () => {
     seed({
       holdings: [UAH_HOLDING, { accountId: 'a', currency: 'BTC', balanceMinorUnits: 50_000_000 }],
