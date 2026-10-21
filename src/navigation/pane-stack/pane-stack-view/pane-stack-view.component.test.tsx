@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { render, screen } from '@testing-library/react-native';
-import type { FoldRegion, LayoutMode } from '@kiko/display-regions';
+import type { FoldRegion, LayoutMode, TabBarEdge, VerticalBarEdge } from '@kiko/display-regions';
 
 import '@kiko/design-system/unistyles';
 
@@ -13,12 +13,11 @@ import type { NativeStackViewProps } from './pane-stack-view.props';
 
 // The window reports one pane; the view is given the mode it shows, which wins.
 const mockUseFoldRegion = jest.fn((): FoldRegion => null);
-const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
-const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+const mockUseTabBarEdge = jest.fn((): TabBarEdge => 'none');
+const mockUseVerticalBarEdge = jest.fn((): VerticalBarEdge => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => 'single',
   useFoldRegion: () => mockUseFoldRegion(),
-  useIsLargeWindow: () => false,
   useTabBarEdge: () => mockUseTabBarEdge(),
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
 }));

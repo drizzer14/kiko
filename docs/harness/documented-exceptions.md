@@ -994,6 +994,17 @@ verified usage, not dead weight:
   both because each holds only the hook's owner or its sanctioned consumer and their tests;
   the rule still reaches every other importer.
 
+- **`src/design-system/components/screen/**` and `src/navigation/pane-stack/pane-stack-view/**`
+  — the two folders `kiko-tab-bar-placement-only-in-screen-and-pane-stack-view`'s
+  `paths.exclude` lists.** The rule denies importing `useTabBarPlacement` (or its
+  `use-tab-bar-placement` module): it is a pane-blind read of the window's tab bar, so a screen
+  that branches on it inside a pane reads another pane's answer. The Screen folder owns the hook
+  and its siblings read it (`use-top-clearance.ts`, `use-bottom-clearance.ts`,
+  `use-top-bar-band.ts`), and `pane-stack-view.component.tsx` is the one consumer outside it: it
+  reads the placement once, above both panes, to give their native large titles the content's
+  margin. A whole-folder exclude is right for both because each holds only the hook's owner or
+  sanctioned consumer and their tests; the rule still reaches every other importer.
+
 - **`sf-symbols-typescript` — a transitive package read by path in a test,
   invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
   reads `node_modules/sf-symbols-typescript/dist/index.d.ts` as text, because
@@ -1134,10 +1145,11 @@ verified usage, not dead weight:
     window's size (user ruling 2026-10-21). Every other stack (iPhone, single-pane, a stack outside
     `PaneStackView`) and the panes of any window whose tab bar is at the bottom or a side (every
     Surface Duo pose: inner 951x669 and 669x951), which keeps its look completely, read 0. The
-    placement is the one `Screen` clears, read from the bar's real frame, so a resize can show
-    UIKit's margin or the content's for about 0.1 s while the placement read is stale (F1, F3),
-    then settles. How the default path stays the same: with 0 `updateProps` still assigns the
-    property, but the setter returns on its first line for an equal value,
+    placement is the one `Screen` clears, read from the bar's real frame, so the margin can show
+    UIKit's or the content's for about 0.1 s while the placement read is stale (on a split change
+    or a large-to-large rotation, and on cold start until the first read), then settles.
+    How the default path stays the same: with 0 `updateProps` still assigns the property, but
+    the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or
     `viewRespectsSystemMinimumLayoutMargins` is touched; the native stack gets the prop's codegen
     default. Going back to 0 restores the view and bar margins captured when the value first went
