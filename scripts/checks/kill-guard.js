@@ -1984,8 +1984,21 @@ function isGitConfigFile(target) {
   );
 }
 
-// A path the text cannot pin down that still spells `.git/config` (`"$D/.git/config"`).
-const namesGitConfig = (target) => /(?:^|\/)\.git\/config(?:\.worktree)?$/i.test(target);
+// A path the text cannot pin down that still spells a git config file (`"$D/.git/config"`,
+// `.git/worktrees/w/config.worktree`).
+const GIT_CONFIG_PATH =
+  /(?:^|\/)\.git\/(?:config(?:\.worktree)?|worktrees\/[^/]+\/config\.worktree)$/i;
+const namesGitConfig = (target) => GIT_CONFIG_PATH.test(target);
+
+// A path whose last folder is `.git`: what is copied into it, or what becomes it, may be a config.
+const namesGitFolder = (target) => /(?:^|\/)\.git\/*$/i.test(target);
+
+// The config files a copy of a folder's contents (a glob, `src/.`, a variable) into `folder` may
+// write when `folder` is a `.git`.
+const gitConfigsIn = (folder) =>
+  namesGitFolder(folder)
+    ? [...GIT_CONFIG_FILES].map((name) => `${folder.replace(/\/+$/, '')}/${name}`)
+    : [];
 
 // A YAML file (the final segment ends in .yml or .yaml) anywhere in a worktree of this repository,
 // at any depth, is guarded by its extension: the Maestro flows, workflows, and rule files of the
@@ -2031,7 +2044,8 @@ function guardedPlace(target, directory, rules, { destination, resolvedOnly, fol
     return namesGuardedTree(inside(target)) ||
       namesGitConfig(target) ||
       YAML_FILE.test(target) ||
-      (folder && namesTreeParentFolder(target))
+      (folder && namesTreeParentFolder(target)) ||
+      (missing && namesGitFolder(target))
       ? target
       : null;
   }
@@ -2039,7 +2053,8 @@ function guardedPlace(target, directory, rules, { destination, resolvedOnly, fol
   return isInsideGuardedTree(inside(resolved), rules) ||
     isGitConfigFile(resolved) ||
     isYamlInsideWorktree(resolved, rules) ||
-    (folder && isTreeParentFolder(resolved, rules))
+    (folder && isTreeParentFolder(resolved, rules)) ||
+    (missing && namesGitFolder(resolved))
     ? resolved
     : null;
 }
@@ -2215,8 +2230,11 @@ const copiesContents = (source) =>
 function copyMovePlan(parameters) {
   const { options, operands } = splitOptions(parameters, readCopyMoveOption);
   const recursive = options.some((option) => option.recursive);
-  const contentsInto = (folder, sources) =>
-    recursive && sources.some(copiesContents) ? [folder] : [];
+  const contentsInto = (folder, sources) => {
+    if (!sources.some(copiesContents)) return [];
+
+    return [...(recursive ? [folder] : []), ...gitConfigsIn(folder)];
+  };
   const targetDirectory = options.findLast((option) => option.targetDirectory !== undefined);
   if (targetDirectory !== undefined) {
     const landed = intoFolder(targetDirectory.targetDirectory, operands);
@@ -2498,7 +2516,9 @@ const withXargsInput = (parameters, placeholder, input) =>
 // -r {} .` may write `./src`). Those folder names are `named`; a plain cp
 // cannot copy a folder, so `canCopyFolder` is false for it and its `named`
 // targets count only where the text resolves them. The input may also be a YAML file, so a
-// destination the text resolves into a worktree folder counts through a `.yml` marker (`yaml`).
+// destination the text resolves into a worktree folder counts through a `.yml` marker (`yaml`),
+// and the input may be a git config file, which counts wherever the destination is a `.git` folder
+// (`gitConfig`, resolved or not, in any repository).
 function xargsCopyMoveTargets(base, parameters, placeholder) {
   if (!COPY_MOVE_COMMANDS.has(base) || inputMayBeDestination(parameters, placeholder)) return null;
   const targetsFor = (inputs) =>
@@ -2508,6 +2528,7 @@ function xargsCopyMoveTargets(base, parameters, placeholder) {
   return {
     plain: targetsFor(['xargs-input']),
     yaml: targetsFor(['xargs-input.yml']),
+    gitConfig: targetsFor([...GIT_CONFIG_FILES]),
     named: targetsFor([...WRITE_GUARDED_TREES]),
     canCopyFolder: MOVE_COMMANDS.has(base) || options.some((option) => option.recursive),
   };
@@ -2531,6 +2552,7 @@ function commandWrite(
     return (
       firstGuardedWrite(targets.plain, directories, rules, { destination }) ??
       firstGuardedWrite(targets.yaml, directories, rules, { destination, resolvedOnly: true }) ??
+      firstGuardedWrite(targets.gitConfig, directories, rules, { destination }) ??
       firstGuardedWrite(targets.named, directories, rules, {
         destination,
         resolvedOnly: !targets.canCopyFolder,
