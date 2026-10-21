@@ -124,7 +124,8 @@
     "brace-expansion@2": "2.1.7",
     "moment": "2.31.0",
     "source-map-js": "1.2.2",
-    "shell-quote": "1.11.0"
+    "shell-quote": "1.11.0",
+    "launch-editor": "2.14.2"
   },
   "op-sqlite": {
     "sqlcipher": true

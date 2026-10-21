@@ -202,7 +202,7 @@ later on their own:
 (GHSA-pqg4-j6r4-53mv, CVSS 9.2, fixed in 1.11.0, published 2026-09-29).
 It has two parents: `react-native` -> `react-devtools-core` 6.1.5
 (`^1.6.1`) and `@react-native-community/cli-tools` -> `launch-editor`
-2.14.1 (`^1.8.4`). Both ranges accept 1.11.0, so it is pinned with a
+2.14.2 (`^1.10.0`, itself overridden below). Both ranges accept 1.11.0, so it is pinned with a
 top-level override. It is installed in the production dependency tree
 (`npm ls shell-quote --all --omit=dev` shows both paths), but it is
 Node-side tooling and does not reach the app bundle: `launch-editor`
@@ -217,6 +217,24 @@ parents resolve 1.11.0 or later on their own:
 ```json
 "overrides": {
   "shell-quote": "1.11.0"
+}
+```
+
+`bash scripts/checks/osv.sh` also flagged `launch-editor` 2.14.1
+(GHSA-587h-7wmj-h5pm, CVSS 7.5; also GHSA-698v-4r3x-3vcv and
+GHSA-r825-w8mm-5pxw), fixed in 2.14.2 (published 2026-10-06, which passes
+the `.npmrc` 7-day minimum age). Its one parent chain is
+`@react-native-community/cli` 20.2.0 -> `@react-native-community/cli-tools`
+20.2.0 -> `launch-editor`. It is Node-side CLI tooling that opens an editor
+from the dev server: `cli-tools` requires it only in `build/launchEditor.js`,
+which runs in the CLI process, so it does not reach the app bundle. It is
+pinned with a top-level override. Drop the override once
+`@react-native-community/cli-tools` resolves `launch-editor` 2.14.2 or
+later on its own:
+
+```json
+"overrides": {
+  "launch-editor": "2.14.2"
 }
 ```
 
