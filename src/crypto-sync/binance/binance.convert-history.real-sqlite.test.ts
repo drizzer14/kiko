@@ -170,7 +170,7 @@ describe('the Convert walk on real SQLite', () => {
       ['Binance Funding · UAH', -100_000, 'convert'],
       ['Binance Funding · USDT', 2_410_000_000, 'convert'],
     ]);
-    expect(storedRows().every((row) => row.exchange_pair_id === 'acc-1:convert:order-1')).toBe(
+    expect(storedRows().every((row) => row.exchange_pair_id === 'acc-1:convert:quote-1')).toBe(
       true,
     );
     expect(excludedIds().size).toBe(2);
@@ -229,7 +229,7 @@ describe('the Convert walk on real SQLite', () => {
   it('holds a refused conversion once, and lists it once again after a disconnect and a new walk', async () => {
     const refused = convertRecordOf({ walletType: 'MAIN' });
     const server = convertServerOf([refused]);
-    const entry = `convert-unrecognized:order-1:${refused.createTime}`;
+    const entry = `convert-unrecognized:quote-1:${refused.createTime}`;
 
     await runWalk(server);
     await runWalk(server);

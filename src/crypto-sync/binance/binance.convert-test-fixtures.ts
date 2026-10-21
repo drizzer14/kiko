@@ -9,7 +9,7 @@ export const CONVERT_CREATED_AT = NOW - 600_000;
 export const convertRecordOf = (
   over: Partial<BinanceConvertRecord> = {},
 ): BinanceConvertRecord => ({
-  recordId: 'order-1',
+  recordId: 'quote-1',
   orderStatus: 'SUCCESS',
   walletType: 'FUNDING',
   fromAsset: 'UAH',
@@ -35,16 +35,22 @@ export const convertPageOf = (
 
 /**
  * A Convert history as Binance serves it: the records whose `createTime` is in the window asked
- * for, and a refusal of a `startTime` older than `depthMs` (the history it keeps).
+ * for, and a refusal of a `startTime` older than `depthMs` (the history it keeps). A depth that
+ * moves with the clock moves `depthMovesMs` forward with every request the server has answered.
  */
-export const convertServerOf = (records: BinanceConvertRecord[], depthMs = 0) =>
-  jest.fn(
+export const convertServerOf = (records: BinanceConvertRecord[], depthMs = 0, depthMovesMs = 0) => {
+  let requests = 0;
+
+  return jest.fn(
     async (
       _apiKey: string,
       _secret: string,
       query: { startTime: number; endTime: number },
     ): Promise<ConvertHistoryPage> => {
-      if (query.startTime < depthMs) {
+      const depthNowMs = depthMs + requests * depthMovesMs;
+      requests += 1;
+
+      if (query.startTime < depthNowMs) {
         throw new BinanceHistoryTooOldError('Binance request failed: 400');
       }
 
@@ -55,3 +61,4 @@ export const convertServerOf = (records: BinanceConvertRecord[], depthMs = 0) =>
       );
     },
   );
+};

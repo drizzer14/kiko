@@ -5,6 +5,7 @@ import {
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
   commitSettledSpan,
+  createDepthMemory,
   type DepthProbe,
   dropReadPoints,
   type ExchangeStateDeps,
@@ -13,6 +14,7 @@ import {
   historyListWriterOf,
   instantAt,
   joinSettled,
+  knownStartOf,
   narrowRefusedStart,
   notImportedWriterOf,
   placeWalletRows,
@@ -20,6 +22,7 @@ import {
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
+  rememberServedStart,
   roundRobinHooksOf,
   rowMinorUnits,
   runWalkPlan,
@@ -428,19 +431,33 @@ const readOf = (span: WalkWindow, page: ConvertHistoryPage): SpanRead<ConvertRea
  * Read a span whose start Binance refused as older than it keeps: find the start it serves
  * (`narrowRefusedStart`) and read the span from there. The ground below that start is ground
  * Binance does not keep, so it is not owed and the walk goes on; a span it serves none of is an
- * empty page. `undefined` is a clean stop, the narrowing out of calls or rate-limited.
+ * empty page. The depth may move with the clock, so the read begins at the start found moved on
+ * by the time that passed and the depth margin (`knownStartOf`), and a read Binance still refuses
+ * is a clean stop: no mark moves and the next run narrows again. `undefined` is a clean stop, the
+ * narrowing out of calls or rate-limited.
  */
 const readFromServedStart = async (
   context: ConvertContext,
   span: WalkWindow,
   keep: number,
 ): Promise<SpanRead<ConvertRead> | undefined> => {
+  const lastServed = createDepthMemory(BINANCE_DEPTH_CONFIG);
+  const probe = probeOf(context, keep);
   const narrowed = await narrowRefusedStart({
     refusedMs: span.start,
     endMs: span.end,
     floorMs: HISTORY_FLOOR_MS,
     config: BINANCE_DEPTH_CONFIG,
-    probe: probeOf(context, keep),
+    probe: async (startMs) => {
+      const requestedAtMs = context.deps.now();
+      const isServed = await probe(startMs);
+
+      if (isServed) {
+        rememberServedStart(lastServed, { startMs, servedAtMs: requestedAtMs });
+      }
+
+      return isServed;
+    },
   });
 
   if (narrowed === undefined) {
@@ -451,7 +468,10 @@ const readFromServedStart = async (
     .returnType<WalkWindow>()
     .with({ kind: 'floor' }, () => ({ start: span.end, end: span.end }))
     .with({ kind: 'start' }, ({ startMs }) => ({
-      start: Math.min(startMs, span.end),
+      start: Math.min(
+        Math.max(startMs, knownStartOf(lastServed, context.deps.now()) ?? startMs),
+        span.end,
+      ),
       end: span.end,
     }))
     .exhaustive();
@@ -460,9 +480,19 @@ const readFromServedStart = async (
     return { kind: 'page', page: { page: NOTHING_SERVED, span: served } };
   }
 
-  const page = await fetchSpan(context, served, keep);
+  try {
+    const page = await fetchSpan(context, served, keep);
 
-  return foldMap(maybe(page), (found) => readOf(served, found));
+    return foldMap(maybe(page), (found) => readOf(served, found));
+  } catch (error) {
+    if (!(error instanceof BinanceHistoryTooOldError)) {
+      throw error;
+    }
+
+    context.run.budget.record('convert', BINANCE_WALK_CONFIG.refusedCallWeights, true);
+
+    return undefined;
+  }
 };
 
 const readSpan = async (

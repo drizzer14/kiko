@@ -28,16 +28,17 @@ import {
 import { NOW } from './binance.pay-test-fixtures';
 import { BinanceRateLimitError } from './binance.client';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceRunBudget, createBinanceHistoryRun } from './binance.history-budget';
 import { type BinanceConvertRecord, BinanceHistoryParseError } from './binance.history-client';
 
 const ACCOUNT = 'acc-1';
-const PAIR = `${ACCOUNT}:convert:order-1`;
+const PAIR = `${ACCOUNT}:convert:quote-1`;
 const UAH_OUT = -100_000;
 const REFUSED = {
   kind: 'refused',
-  entry: `convert-unrecognized:order-1:${CONVERT_CREATED_AT}`,
+  entry: `convert-unrecognized:quote-1:${CONVERT_CREATED_AT}`,
 };
 
 const outcomeOf = (over: Partial<BinanceConvertRecord> = {}) =>
@@ -124,7 +125,7 @@ describe('convertOutcomeOf', () => {
     const other = convertOutcomeOf({ accountId: 'acc-2', record: convertRecordOf() });
 
     expect(other).toMatchObject({
-      rows: [{ externalId: 'acc-2:convert:order-1:UAH:funding' }, {}],
+      rows: [{ externalId: 'acc-2:convert:quote-1:UAH:funding' }, {}],
     });
   });
 
@@ -489,7 +490,7 @@ describe('what the Convert walk imports', () => {
   it('imports a Funding conversion as two legs on the Funding holdings, each naming the other', async () => {
     const { accountId, depsOf, walk } = recentWorld();
     const deps = depsOf({ fetchConvertHistory: convertServerOf([convertRecordOf()]) });
-    const pairId = `${accountId}:convert:order-1`;
+    const pairId = `${accountId}:convert:quote-1`;
 
     const result = await walk(deps);
 
@@ -578,7 +579,7 @@ describe('what the Convert walk imports', () => {
     expect(result.imported).toBe(0);
     expect(deps.addTransactions).not.toHaveBeenCalled();
     expect(world.fake.notImported()).toEqual([
-      `convert-unrecognized:order-1:${CONVERT_CREATED_AT}`,
+      `convert-unrecognized:quote-1:${CONVERT_CREATED_AT}`,
     ]);
     expect(CURSOR(world)).toBe(NOW);
   });
@@ -593,7 +594,7 @@ describe('what the Convert walk imports', () => {
 
     expect(queriesOf(second).length).toBeGreaterThan(0);
     expect(world.fake.notImported()).toEqual([
-      `convert-unrecognized:order-1:${CONVERT_CREATED_AT}`,
+      `convert-unrecognized:quote-1:${CONVERT_CREATED_AT}`,
     ]);
   });
 
@@ -801,6 +802,71 @@ describe('a start Binance refuses', () => {
 
     expect(queriesOf(deps).length).toBeGreaterThan(24);
     expect(record).toHaveBeenCalledTimes(queriesOf(deps).length);
+  });
+
+  it('reads 20 forward windows of a run when the depth stands at the floor plus 10 days', async () => {
+    const world = worldOf();
+    const deps = world.depsOf({ fetchConvertHistory: convertServerOf([], DEPTH) });
+
+    await world.walk(deps, freshRun());
+
+    // The refused read and the 22 halvings and the end probe come from the lane's narrowing calls;
+    // the read above the depth and the 19 windows after it come from its 20 calls.
+    expect(CURSOR(world)).toBe(HISTORY_FLOOR_MS + 20 * CONVERT_WINDOW_MS);
+  });
+
+  describe('when the depth moves with every request', () => {
+    const MOVES_MS = 500;
+
+    it('reads the window from the served start moved on, and writes its mark within two runs', async () => {
+      const world = worldOf();
+      const server = convertServerOf([], DEPTH, MOVES_MS);
+      const marks: unknown[] = [];
+
+      for (let run = 0; run < 2; run += 1) {
+        await world.walk(world.depsOf({ fetchConvertHistory: server }));
+        marks.push(CURSOR(world));
+      }
+
+      expect(
+        marks.some(
+          (mark) => typeof mark === 'number' && mark >= HISTORY_FLOOR_MS + CONVERT_WINDOW_MS,
+        ),
+      ).toBe(true);
+    });
+
+    it('ends the run cleanly when the read after the narrowing is refused, and records it', async () => {
+      const world = worldOf();
+      const run = freshRun();
+      const record = jest.spyOn(run.budget, 'record');
+      const server = convertServerOf([], DEPTH, 5 * MOVES_MS * 4);
+      const deps = world.depsOf({ fetchConvertHistory: server });
+
+      await expect(world.walk(deps, run)).resolves.toMatchObject({ complete: false });
+
+      expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
+      expect(record).toHaveBeenCalledTimes(queriesOf(deps).length);
+      expect(record).toHaveBeenLastCalledWith(
+        'convert',
+        BINANCE_WALK_CONFIG.refusedCallWeights,
+        true,
+      );
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('narrows the window again in the next run', async () => {
+      const world = worldOf();
+      const server = convertServerOf([], DEPTH, 5 * MOVES_MS * 4);
+
+      await world.walk(world.depsOf({ fetchConvertHistory: server }));
+      const second = world.depsOf({ fetchConvertHistory: server });
+      await expect(world.walk(second)).resolves.toMatchObject({ complete: false });
+
+      expect(
+        queriesOf(second).filter(({ startTime, endTime }) => endTime - startTime === 1),
+      ).not.toEqual([]);
+      expect(numberMarkWritesOfAnyWalk(second)).toEqual([]);
+    });
   });
 });
 
