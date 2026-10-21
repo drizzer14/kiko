@@ -1,6 +1,8 @@
 import { type FC, useMemo } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
+import { useUnistyles } from 'react-native-unistyles';
 import { useIsFocused } from '@react-navigation/native';
+import { FixedContentMarginContext } from 'react-native-screens';
 import { NativeStackView } from '@react-navigation/native-stack';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
 
@@ -10,6 +12,9 @@ import { PaneVisibilityContext } from '../pane-visibility';
 
 import { paneSlice, withoutDefaultRoutes } from './pane-slice';
 import type { PaneStackViewProps } from './pane-stack-view.props';
+
+// The step of the theme's spacing that a screen pads its content's sides by.
+const CONTENT_MARGIN_STEP = 4;
 
 /**
  * The view of a pane navigator: the native stack with the whole state on a narrow window, and on
@@ -24,6 +29,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   mode,
 }) => {
   const isTabFocused = useIsFocused();
+  const { theme } = useUnistyles();
   const isSplit = mode !== 'single';
   const { dispatch } = navigation;
   const companion = isSplit
@@ -66,29 +72,33 @@ const PaneStackView: FC<PaneStackViewProps> = ({
     <OpenInPaneContext.Provider value={dispatch}>
       <PaneVisibilityContext.Provider value={visibility}>
         {isSplit ? (
-          <TwoPaneLayout
-            mode={mode}
-            companion={
-              companion && (
-                <NativeStackView
-                  state={companion.state}
-                  navigation={navigation}
-                  descriptors={companion.descriptors}
-                  describe={describe}
-                />
-              )
-            }
-            primary={
-              primary && (
-                <NativeStackView
-                  state={primary.state}
-                  navigation={navigation}
-                  descriptors={primary.descriptors}
-                  describe={describe}
-                />
-              )
-            }
-          />
+          // UIKit insets a pane's native large title by the pane's distance to the window's edge,
+          // so the title and the content line up only if the stack is told the content's margin.
+          <FixedContentMarginContext.Provider value={theme.spacing(CONTENT_MARGIN_STEP)}>
+            <TwoPaneLayout
+              mode={mode}
+              companion={
+                companion && (
+                  <NativeStackView
+                    state={companion.state}
+                    navigation={navigation}
+                    descriptors={companion.descriptors}
+                    describe={describe}
+                  />
+                )
+              }
+              primary={
+                primary && (
+                  <NativeStackView
+                    state={primary.state}
+                    navigation={navigation}
+                    descriptors={primary.descriptors}
+                    describe={describe}
+                  />
+                )
+              }
+            />
+          </FixedContentMarginContext.Provider>
         ) : (
           <NativeStackView
             state={withoutDefaultRoutes(state)}

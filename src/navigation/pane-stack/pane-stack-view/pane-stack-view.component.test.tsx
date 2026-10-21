@@ -36,9 +36,11 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 
 const mockDetailMounted = jest.fn();
 const mockNativeStackView = jest.fn();
+const mockFixedContentMargin = jest.fn();
 jest.mock('@react-navigation/native-stack', () => {
   const { useContext, useEffect } = require('react');
   const { View } = require('react-native');
+  const { FixedContentMarginContext } = require('react-native-screens');
   const { OpenInPaneContext } = require('../open-in-pane');
   const { PaneVisibilityContext } = require('../pane-visibility');
 
@@ -53,6 +55,7 @@ jest.mock('@react-navigation/native-stack', () => {
   return {
     NativeStackView: (props: { state: { routes: { key: string; name: string }[] } }) => {
       mockNativeStackView(props, useContext(PaneVisibilityContext), useContext(OpenInPaneContext));
+      mockFixedContentMargin(useContext(FixedContentMarginContext));
 
       return (
         <View testID={`stack-${props.state.routes.map((route) => route.key).join('+')}`}>
@@ -257,6 +260,33 @@ describe('PaneStackView', () => {
 
     expect(renderedProps()).toHaveLength(1);
     expect(screen.getByTestId('two-pane-primary').children).toHaveLength(0);
+  });
+
+  // A pane's native large title takes its leading inset from the pane's distance to the window's
+  // edge, so each pane's stack asks the native side for the content's fixed margin instead.
+  describe('the fixed content margin of a pane’s native stack', () => {
+    it.each(['columns', 'rows'] as const)(
+      'is the content’s side padding in both panes in %s',
+      async (mode) => {
+        const state = stackState([route('accounts'), route('account')], {
+          accounts: 'companion',
+          account: 'primary',
+        });
+
+        await renderView(state, ACCOUNTS, mode);
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([
+          [darkTheme.spacing(4)],
+          [darkTheme.spacing(4)],
+        ]);
+      },
+    );
+
+    it('is 0, which leaves UIKit’s margins alone, for the single native stack', async () => {
+      await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
+
+      expect(mockFixedContentMargin.mock.calls).toEqual([[0]]);
+    });
   });
 
   describe('context for the screens', () => {

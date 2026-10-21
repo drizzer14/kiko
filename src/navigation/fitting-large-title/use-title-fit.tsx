@@ -6,7 +6,10 @@ import { usePaneWidth } from '@kiko/design-system/pane-context';
 import TitleMeasurer from './title-measurer';
 import { estimatedTitleFits } from './title-fit';
 
-// The native large title sits inside the same side margin as the screen's content.
+// The native large title sits inside the same side margin as the screen's content only where
+// the stack is told that margin: on an iPhone UIKit's own margin happens to match, and in a pane
+// UIKit would inset the title by the pane's distance to the window's edge, so PaneStackView gives
+// each pane's stack the content's margin (the react-native-screens patch).
 const LARGE_TITLE_MARGIN_STEP = 4;
 
 type TitleFit = {

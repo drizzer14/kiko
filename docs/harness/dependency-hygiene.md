@@ -269,6 +269,38 @@ versions in the pin test and the patch file name. Re-prove it: the covering-test
 Stryker's `fullName`, and the patch applies exactly to the pristine files of
 `npm pack @stryker-mutator/jest-runner@<version>`. Only then change the expected versions.
 
+## Standing patch: `react-native-screens` 4.27.0 (a pane's fixed content margin)
+
+`patches/react-native-screens+4.27.0.patch` is a `patch-package` patch that `postinstall` applies
+on every `npm ci`. Why, what, and the scope are in `docs/harness/documented-exceptions.md`
+("patch-package patches"); in short: it makes a pane's native large title keep the content's side
+margin, and only for the stacks `PaneStackView` wraps in `FixedContentMarginContext`.
+
+The pane-only scope: the context default is 0, `ScreenStack` passes it as the `fixedContentMargin`
+prop (codegen default 0), and native does nothing for 0 (no setter call, no margin write, no
+change to `viewRespectsSystemMinimumLayoutMargins`), so an iPhone, single-pane or Duo-single stack
+runs the stock code path.
+
+How it is pinned: `__tests__/react-native-patch.test.ts` fails unless `react-native-screens` is
+exactly `4.27.0` in `package.json`, the patch touches only `node_modules/react-native-screens/`
+(the native stack among them), and the INSTALLED files carry the patch (native stack, header,
+codegen spec, context, `ScreenStack`, `index`, and the `lib/commonjs` and `lib/typescript` copies),
+so a failed or missing apply fails Jest (`patch-package` exits 0 on a failed apply locally).
+After merging or branching across this commit run `npx patch-package` before the pin test.
+
+Upgrade rule: a `react-native-screens` bump fails the pin until the patch is re-derived. Re-derive
+it: `npm pack react-native-screens@<version>` and unpack it; re-apply the same edits to the
+installed files (the seven source files above plus the `lib` copies; the iOS side changed
+`RNSNavigationController` and `RNSScreenStackView updateProps`); check that the library still
+provides the layout (a new `RNSScreenStack.mm` that sets layout margins itself, or an upstream
+prop for a stack's content margin, makes the patch removable); diff the pristine tree against the
+patched one into `patches/react-native-screens+<version>.patch` (or `npx patch-package
+react-native-screens`, which needs the version to pass the `.npmrc` minimum age), delete the old
+patch file and update the version in the pin test. Re-prove it: applying the patch to the pristine
+tarball must reproduce the installed tree, and re-measure on a simulator or device (a pane's large
+title leading edge equals the content's leading edge in both panes, on an iPad and a Duo; bar
+items and the back button do not move; an iPhone is unchanged).
+
 ## `.env` is public-only
 
 `react-native-dotenv` inlines every `.env` value into the JS bundle at

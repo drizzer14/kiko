@@ -1,0 +1,282 @@
+diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.h b/node_modules/react-native-screens/ios/RNSScreenStack.h
+index 9ae11c3..f16c51b 100644
+--- a/node_modules/react-native-screens/ios/RNSScreenStack.h
++++ b/node_modules/react-native-screens/ios/RNSScreenStack.h
+@@ -18,6 +18,13 @@ NS_ASSUME_NONNULL_BEGIN
+ #endif // !TARGET_OS_TV
+                                                              >
+ 
++/**
++ * Kiko patch (docs/harness/documented-exceptions.md, "patch-package patches"): the side margin, in
++ * points, forced on this controller's view and navigation bar so a large title keeps the content's
++ * margin wherever the stack sits in the window. 0 (the default) leaves UIKit's margins alone.
++ */
++@property (nonatomic) CGFloat fixedContentMargin;
++
+ @end
+ 
+ @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
+diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
+index c233036..66ae64f 100644
+--- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
++++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
+@@ -38,7 +38,58 @@ namespace react = facebook::react;
+ 
+ @end
+ 
+-@implementation RNSNavigationController
++@implementation RNSNavigationController {
++  NSDirectionalEdgeInsets _viewMarginsBeforeFixedContentMargin;
++  NSDirectionalEdgeInsets _barMarginsBeforeFixedContentMargin;
++}
++
++// UIKit insets a large title by the navigation bar's layout margin, which it derives from the
++// stack's distance to the window's edge (20 pt at the window's leading edge, 0 elsewhere), so a
++// stack that is one pane of a split window would not line up with its content. With a fixed
++// margin the view stops respecting the system minimum and both the view and the bar take that
++// margin on the leading and trailing edges, whatever the stack's position. Nothing here runs
++// while `fixedContentMargin` is 0.
++- (void)setFixedContentMargin:(CGFloat)fixedContentMargin
++{
++  if (_fixedContentMargin == fixedContentMargin) {
++    return;
++  }
++
++  BOOL wasFixed = _fixedContentMargin > 0;
++  _fixedContentMargin = fixedContentMargin;
++
++  if (fixedContentMargin > 0) {
++    if (!wasFixed) {
++      _viewMarginsBeforeFixedContentMargin = self.view.directionalLayoutMargins;
++      _barMarginsBeforeFixedContentMargin = self.navigationBar.directionalLayoutMargins;
++    }
++    [self applyFixedContentMargin];
++  } else if (wasFixed) {
++    self.viewRespectsSystemMinimumLayoutMargins = YES;
++    self.view.directionalLayoutMargins = _viewMarginsBeforeFixedContentMargin;
++    self.navigationBar.directionalLayoutMargins = _barMarginsBeforeFixedContentMargin;
++  }
++}
++
++- (void)applyFixedContentMargin
++{
++  if (_fixedContentMargin <= 0) {
++    return;
++  }
++
++  self.viewRespectsSystemMinimumLayoutMargins = NO;
++
++  NSDirectionalEdgeInsets viewMargins = self.view.directionalLayoutMargins;
++  viewMargins.leading = _fixedContentMargin;
++  viewMargins.trailing = _fixedContentMargin;
++  self.view.directionalLayoutMargins = viewMargins;
++
++  // UIKit lays the bar out and sets its margins on its own, so they are set again after each layout.
++  NSDirectionalEdgeInsets barMargins = self.navigationBar.directionalLayoutMargins;
++  barMargins.leading = _fixedContentMargin;
++  barMargins.trailing = _fixedContentMargin;
++  self.navigationBar.directionalLayoutMargins = barMargins;
++}
+ 
+ #if !TARGET_OS_TV
+ - (UIViewController *)childViewControllerForStatusBarStyle
+@@ -59,6 +110,7 @@ namespace react = facebook::react;
+ - (void)viewDidLayoutSubviews
+ {
+   [super viewDidLayoutSubviews];
++  [self applyFixedContentMargin];
+   if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
+     RNSScreen *screenController = (RNSScreen *)self.topViewController;
+     BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
+@@ -1279,6 +1331,11 @@ RNS_IGNORE_SUPER_CALL_END
+     _controller.view.backgroundColor = _nativeContainerBackgroundColor;
+   }
+ 
++  RNSNavigationController *navigationController = static_cast<RNSNavigationController *>(_controller);
++  if (newScreenProps.fixedContentMargin != navigationController.fixedContentMargin) {
++    navigationController.fixedContentMargin = newScreenProps.fixedContentMargin;
++  }
++
+   [super updateProps:props oldProps:oldProps];
+ }
+ 
+diff --git a/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js b/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js
+index 93efd74..c75f231 100644
+--- a/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js
++++ b/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js
+@@ -35,6 +35,7 @@ function ScreenStack(props) {
+   const screensRefs = _react.default.useRef(passedScreenRefs?.current ?? {});
+   const ref = _react.default.useRef(null);
+   const ScreenGestureDetector = _react.default.useContext(_contexts.GHContext);
++  const fixedContentMargin = _react.default.useContext(_contexts.FixedContentMarginContext);
+   const gestureDetectorBridge = _react.default.useRef({
+     stackUseEffectCallback: _stackRef => {
+       // this method will be overriden in GestureDetector
+@@ -55,6 +56,7 @@ function ScreenStack(props) {
+     screensRefs: screensRefs,
+     currentScreenId: currentScreenId
+   }, /*#__PURE__*/_react.default.createElement(_ScreenStackNativeComponent.default, _extends({}, rest, {
++    fixedContentMargin: fixedContentMargin,
+     nativeContainerBackgroundColor: nativeContainerStyle?.backgroundColor
+     /**
+      * This messy override is to conform NativeProps used by codegen and
+diff --git a/node_modules/react-native-screens/lib/commonjs/contexts.js b/node_modules/react-native-screens/lib/commonjs/contexts.js
+index e52ee8f..f35445d 100644
+--- a/node_modules/react-native-screens/lib/commonjs/contexts.js
++++ b/node_modules/react-native-screens/lib/commonjs/contexts.js
+@@ -3,9 +3,13 @@
+ Object.defineProperty(exports, "__esModule", {
+   value: true
+ });
+-exports.RNSScreensRefContext = exports.GHContext = void 0;
++exports.RNSScreensRefContext = exports.GHContext = exports.FixedContentMarginContext = void 0;
+ var _react = _interopRequireDefault(require("react"));
+ function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+ const GHContext = exports.GHContext = /*#__PURE__*/_react.default.createContext(props => /*#__PURE__*/_react.default.createElement(_react.default.Fragment, null, props.children));
+ const RNSScreensRefContext = exports.RNSScreensRefContext = /*#__PURE__*/_react.default.createContext(null);
++
++// Kiko patch: the side margin, in points, that every stack below keeps for its navigation bar and
++// large title wherever it sits in the window; 0 leaves UIKit's margins alone.
++const FixedContentMarginContext = exports.FixedContentMarginContext = /*#__PURE__*/_react.default.createContext(0);
+ //# sourceMappingURL=contexts.js.map
+\ No newline at end of file
+diff --git a/node_modules/react-native-screens/lib/commonjs/index.js b/node_modules/react-native-screens/lib/commonjs/index.js
+index 7f083ae..a983446 100644
+--- a/node_modules/react-native-screens/lib/commonjs/index.js
++++ b/node_modules/react-native-screens/lib/commonjs/index.js
+@@ -21,6 +21,7 @@ var _exportNames = {
+   SearchBar: true,
+   ScreenContainer: true,
+   ScreenStack: true,
++  FixedContentMarginContext: true,
+   ScreenStackItem: true,
+   FullWindowOverlay: true,
+   ScreenFooter: true,
+@@ -73,6 +74,12 @@ Object.defineProperty(exports, "ScreenFooter", {
+     return _ScreenFooter.default;
+   }
+ });
++Object.defineProperty(exports, "FixedContentMarginContext", {
++  enumerable: true,
++  get: function () {
++    return _contexts.FixedContentMarginContext;
++  }
++});
+ Object.defineProperty(exports, "ScreenStack", {
+   enumerable: true,
+   get: function () {
+@@ -194,6 +201,7 @@ var _ScreenStackHeaderConfig = require("./components/ScreenStackHeaderConfig");
+ var _SearchBar = _interopRequireDefault(require("./components/SearchBar"));
+ var _ScreenContainer = _interopRequireDefault(require("./components/ScreenContainer"));
+ var _ScreenStack = _interopRequireDefault(require("./components/ScreenStack"));
++var _contexts = require("./contexts");
+ var _ScreenStackItem = _interopRequireDefault(require("./components/ScreenStackItem"));
+ var _FullWindowOverlay = _interopRequireDefault(require("./components/FullWindowOverlay"));
+ var _ScreenFooter = _interopRequireDefault(require("./components/ScreenFooter"));
+diff --git a/node_modules/react-native-screens/lib/typescript/contexts.d.ts b/node_modules/react-native-screens/lib/typescript/contexts.d.ts
+index 6781448..ab82dd7 100644
+--- a/node_modules/react-native-screens/lib/typescript/contexts.d.ts
++++ b/node_modules/react-native-screens/lib/typescript/contexts.d.ts
+@@ -2,4 +2,5 @@ import React, { PropsWithChildren } from 'react';
+ import { GestureProviderProps, ScreensRefsHolder } from './types';
+ export declare const GHContext: React.Context<(props: PropsWithChildren<GestureProviderProps>) => React.JSX.Element>;
+ export declare const RNSScreensRefContext: React.Context<React.MutableRefObject<ScreensRefsHolder> | null>;
++export declare const FixedContentMarginContext: React.Context<number>;
+ //# sourceMappingURL=contexts.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts b/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts
+index b314d17..1382540 100644
+--- a/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts
++++ b/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts
+@@ -2,6 +2,7 @@ import type { CodegenTypes as CT, HostComponent, ViewProps, ColorValue } from 'r
+ type FinishTransitioningEvent = Readonly<{}>;
+ export interface NativeProps extends ViewProps {
+     nativeContainerBackgroundColor?: ColorValue | undefined;
++    fixedContentMargin?: CT.WithDefault<CT.Float, 0>;
+     onFinishTransitioning?: CT.DirectEventHandler<FinishTransitioningEvent> | undefined;
+ }
+ declare const _default: HostComponent<NativeProps>;
+diff --git a/node_modules/react-native-screens/lib/typescript/index.d.ts b/node_modules/react-native-screens/lib/typescript/index.d.ts
+index e9e7af6..3a6cf8c 100644
+--- a/node_modules/react-native-screens/lib/typescript/index.d.ts
++++ b/node_modules/react-native-screens/lib/typescript/index.d.ts
+@@ -12,6 +12,7 @@ export { ScreenStackHeaderConfig, ScreenStackHeaderSubview, ScreenStackHeaderLef
+ export { default as SearchBar } from './components/SearchBar';
+ export { default as ScreenContainer } from './components/ScreenContainer';
+ export { default as ScreenStack } from './components/ScreenStack';
++export { FixedContentMarginContext } from './contexts';
+ export { default as ScreenStackItem } from './components/ScreenStackItem';
+ export { default as FullWindowOverlay } from './components/FullWindowOverlay';
+ export { default as ScreenFooter } from './components/ScreenFooter';
+diff --git a/node_modules/react-native-screens/src/components/ScreenStack.tsx b/node_modules/react-native-screens/src/components/ScreenStack.tsx
+index f43254c..ed9c03c 100644
+--- a/node_modules/react-native-screens/src/components/ScreenStack.tsx
++++ b/node_modules/react-native-screens/src/components/ScreenStack.tsx
+@@ -8,7 +8,11 @@ import {
+   GoBackGesture,
+   ScreenStackProps,
+ } from '../types';
+-import { GHContext, RNSScreensRefContext } from '../contexts';
++import {
++  FixedContentMarginContext,
++  GHContext,
++  RNSScreensRefContext,
++} from '../contexts';
+ import warnOnce from 'warn-once';
+ 
+ // Native components
+@@ -64,6 +68,7 @@ function ScreenStack(props: ScreenStackProps) {
+   );
+   const ref = React.useRef(null);
+   const ScreenGestureDetector = React.useContext(GHContext);
++  const fixedContentMargin = React.useContext(FixedContentMarginContext);
+   const gestureDetectorBridge = React.useRef<GestureDetectorBridge>({
+     stackUseEffectCallback: _stackRef => {
+       // this method will be overriden in GestureDetector
+@@ -93,6 +98,7 @@ function ScreenStack(props: ScreenStackProps) {
+         currentScreenId={currentScreenId}>
+         <ScreenStackNativeComponent
+           {...rest}
++          fixedContentMargin={fixedContentMargin}
+           nativeContainerBackgroundColor={nativeContainerStyle?.backgroundColor}
+           /**
+            * This messy override is to conform NativeProps used by codegen and
+diff --git a/node_modules/react-native-screens/src/contexts.tsx b/node_modules/react-native-screens/src/contexts.tsx
+index 9dfa106..b547f61 100644
+--- a/node_modules/react-native-screens/src/contexts.tsx
++++ b/node_modules/react-native-screens/src/contexts.tsx
+@@ -7,3 +7,7 @@ export const GHContext = React.createContext(
+ 
+ export const RNSScreensRefContext =
+   React.createContext<React.MutableRefObject<ScreensRefsHolder> | null>(null);
++
++// Kiko patch: the side margin, in points, that every stack below keeps for its navigation bar and
++// large title wherever it sits in the window; 0 leaves UIKit's margins alone.
++export const FixedContentMarginContext = React.createContext(0);
+diff --git a/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts b/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts
+index a09fa8c..538d415 100644
+--- a/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts
++++ b/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts
+@@ -14,6 +14,10 @@ type FinishTransitioningEvent = Readonly<{}>;
+ export interface NativeProps extends ViewProps {
+   nativeContainerBackgroundColor?: ColorValue | undefined;
+ 
++  // Kiko patch: the side margin, in points, the navigation bar and its large title keep wherever
++  // the stack sits in the window; 0 leaves UIKit's margins alone.
++  fixedContentMargin?: CT.WithDefault<CT.Float, 0>;
++
+   onFinishTransitioning?:
+     | CT.DirectEventHandler<FinishTransitioningEvent>
+     | undefined;
+diff --git a/node_modules/react-native-screens/src/index.tsx b/node_modules/react-native-screens/src/index.tsx
+index e40cffb..732c4e0 100644
+--- a/node_modules/react-native-screens/src/index.tsx
++++ b/node_modules/react-native-screens/src/index.tsx
+@@ -39,6 +39,7 @@ export {
+ export { default as SearchBar } from './components/SearchBar';
+ export { default as ScreenContainer } from './components/ScreenContainer';
+ export { default as ScreenStack } from './components/ScreenStack';
++export { FixedContentMarginContext } from './contexts';
+ export { default as ScreenStackItem } from './components/ScreenStackItem';
+ export { default as FullWindowOverlay } from './components/FullWindowOverlay';
+ export { default as ScreenFooter } from './components/ScreenFooter';

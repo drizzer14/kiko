@@ -1112,8 +1112,37 @@ verified usage, not dead weight:
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
 
-- **patch-package patches (`patches/`, applied by `postinstall`)**: four patches edit
+- **patch-package patches (`patches/`, applied by `postinstall`)**: five patches edit
   `node_modules` after `npm ci`; re-check each on upgrade of its package.
+  - `patches/react-native-screens+4.27.0.patch` (`react-native-screens@4.27.0`; `ios/RNSScreenStack.h`
+    and `.mm`, the codegen spec `src/fabric/ScreenStackNativeComponent.ts`, `src/contexts.tsx`,
+    `src/components/ScreenStack.tsx`, `src/index.tsx`, and their `lib/commonjs` and `lib/typescript`
+    copies, which Jest and `tsc` load): a pane's native large title lines up with its content.
+    UIKit insets the large title by the navigation bar's layout margin, which it derives from the
+    stack's distance to the window's edge (20 pt for the pane at the window's leading edge, 0
+    for the other pane), while the content pads its sides by a fixed 16 pt. The patch adds a
+    `fixedContentMargin` prop (a Float, default 0) to `RNSScreenStack`, a
+    `FixedContentMarginContext` (default 0) that `ScreenStack` reads and passes as that prop, and
+    on iOS a `fixedContentMargin` property on `RNSNavigationController`. While it is above 0 the
+    controller stops respecting the system minimum layout margins and sets the leading and
+    trailing margins of its view and of its navigation bar to that value, again after each
+    `viewDidLayoutSubviews`. Scope: only `PaneStackView` (two-pane `columns`/`rows`) provides a
+    value (`theme.spacing(4)`, the content's side padding), around both panes' stacks. Every
+    other stack (iPhone, single-pane, a stack outside `PaneStackView`) reads 0. The default path is
+    unchanged: with 0 the `updateProps` compare is equal so the setter never runs, `applyFixedContentMargin`
+    returns on its first line, and no margin or `viewRespectsSystemMinimumLayoutMargins` is touched;
+    the native stack gets the prop's codegen default. Revert: going back to 0 (a recycled stack view)
+    restores the view and bar margins captured when the value first went above 0 and
+    `viewRespectsSystemMinimumLayoutMargins = YES`. Only the Fabric (new architecture) path is
+    patched, as `RNSScreenStack.mm` takes the prop only in `updateProps`; `lib/module` is not
+    patched (nothing here loads it). The patch was derived against the pristine tarball
+    (`npm pack react-native-screens@4.27.0`): applying it to that tarball gives the installed tree.
+    Pinned by `__tests__/react-native-patch.test.ts` ("the react-native-screens fixed content
+    margin patch": the patch touches only react-native-screens, the version is exactly `4.27.0`,
+    the installed files carry the patch, and the context reads 0 outside a provider) and by
+    `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, the single stack 0).
+    Full re-check rule: `docs/harness/dependency-hygiene.md` ("Standing patch: react-native-screens").
+    A device re-measurement is the real proof (Jest cannot see native margins).
   - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
     `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
     `ScrollView` with `automaticallyAdjustKeyboardInsets` shifted its content offset by the
