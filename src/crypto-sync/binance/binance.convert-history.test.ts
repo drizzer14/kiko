@@ -815,6 +815,21 @@ describe('a start Binance refuses', () => {
     expect(CURSOR(world)).toBe(HISTORY_FLOOR_MS + 20 * CONVERT_WINDOW_MS);
   });
 
+  it('narrows the 20th window of a run when the 19 before it have spent the call cap', async () => {
+    const world = worldOf();
+    const crossingStart = HISTORY_FLOOR_MS + 19 * CONVERT_WINDOW_MS;
+    const crossing = convertServerOf([], crossingStart + 10 * DAY_MS);
+    const deps = world.depsOf({
+      fetchConvertHistory: jest.fn(async (apiKey: string, secret: string, query: Query) =>
+        query.startTime < crossingStart ? convertPageOf() : crossing(apiKey, secret, query),
+      ),
+    });
+
+    await world.walk(deps, freshRun());
+
+    expect(CURSOR(world)).toBe(HISTORY_FLOOR_MS + 20 * CONVERT_WINDOW_MS);
+  });
+
   describe('when the depth moves with every request', () => {
     const MOVES_MS = 500;
 
