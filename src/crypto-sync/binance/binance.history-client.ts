@@ -904,3 +904,94 @@ export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
  */
 export const isEarnRecordSettled = (kind: EarnRecordKind, status: string | undefined): boolean =>
   isSettledStatus(EARN_READS[kind].settledStatus, status);
+
+/** Binance's cap on `limit` for the Convert trade flow; a window with `moreData` holds more. */
+export const CONVERT_PAGE_LIMIT = 1000;
+
+const optionalTicker: Reader<string | undefined> = (value) =>
+  foldMap(maybe(optionalText(value)), binanceTickerOf);
+
+/**
+ * The key of a Convert record: its `orderId` when that reads as text or as a safe integer, else
+ * its `quoteId` when that is a non-empty text, else none. The doc shows `orderId` as a JSON integer
+ * past 2^53, which `JSON.parse` has already rounded, so such a record keys by its `quoteId`. It is
+ * one function so a live reading of the type can narrow the rule in one place.
+ */
+const convertRecordIdOf = (item: Record<string, unknown>): string | undefined =>
+  optionalIdentifier(item.orderId) ??
+  (typeof item.quoteId === 'string' && item.quoteId !== '' ? item.quoteId : undefined);
+
+/**
+ * The status and the wallet are optional text, and so are the assets and amounts: the walk decides
+ * on the status first, so a record that is not settled never fails on a field it does not use.
+ * `createTime` is required, because it says where the record sits in a window.
+ */
+const CONVERT_FIELDS = {
+  orderStatus: optionalText,
+  walletType: optionalText,
+  fromAsset: optionalTicker,
+  fromAmount: optionalText,
+  toAsset: optionalTicker,
+  toAmount: optionalText,
+  createTime: finiteNumber,
+};
+
+/** One conversion from `/sapi/v1/convert/tradeFlow`, keyed by `recordId` (`convertRecordIdOf`). */
+export type BinanceConvertRecord = Parsed<typeof CONVERT_FIELDS> & { recordId: string };
+
+const readConvertFields = recordReader(CONVERT_FIELDS);
+
+const readConvertRecord: Reader<BinanceConvertRecord> = (item) => {
+  const recordId = isRecord(item) ? convertRecordIdOf(item) : undefined;
+
+  return recordId === undefined ? parseFailure() : { recordId, ...readConvertFields(item) };
+};
+
+/**
+ * One Convert page. Every record of the window is read whatever its coins, because a record's
+ * coins are decided by the walk, so `rows` holds each record that parsed and `unreadable` each one
+ * that did not, with its `createTime` when that is usable. `moreData` says the window holds more
+ * records than `limit` returned.
+ */
+export type ConvertHistoryPage = HistoryPage<BinanceConvertRecord> & { moreData: boolean };
+
+const convertPage = ({ body, headers }: SignedPage): ConvertHistoryPage => {
+  if (!isRecord(body)) {
+    return parseFailure();
+  }
+
+  const readings = readingsOf(body.list, readConvertRecord, timeFieldOf('createTime', epochTime));
+
+  return {
+    rows: valuesOf(readings),
+    unreadable: unreadableOf(readings),
+    moreData: flag(body.moreData),
+    ...usedWeightsFromHeaders(headers),
+  };
+};
+
+/**
+ * `GET /sapi/v1/convert/tradeFlow` (Convert trade history) for ONE page of ONE window, at most 30
+ * days wide. Signed, read-only. The body must carry a `list` array and a `moreData` flag, or the
+ * read throws `BinanceHistoryParseError`.
+ */
+export const fetchConvertHistory = async (
+  apiKey: string,
+  secret: string,
+  query: { startTime: number; endTime: number },
+  options: FetchAccountOptions = {},
+): Promise<ConvertHistoryPage> =>
+  convertPage(
+    await signedRequestPage(
+      apiKey,
+      secret,
+      'GET',
+      '/sapi/v1/convert/tradeFlow',
+      {
+        startTime: String(query.startTime),
+        endTime: String(query.endTime),
+        limit: String(CONVERT_PAGE_LIMIT),
+      },
+      options,
+    ),
+  );

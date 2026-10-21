@@ -17,6 +17,7 @@ export type BudgetLane =
   | 'pay'
   | 'transfer'
   | 'earn'
+  | 'convert'
   | 'market';
 
 /**
@@ -63,6 +64,7 @@ export const LANE_CALL_CAPS: Record<BudgetLane, number> = {
   pay: 20,
   transfer: 80,
   earn: 30,
+  convert: 20,
   market: 150,
 };
 
@@ -81,6 +83,7 @@ export const LANE_NARROWING_CALLS: Record<BudgetLane, number> = {
   pay: 0,
   transfer: 397,
   earn: 0,
+  convert: 0,
   market: 0,
 };
 
@@ -92,6 +95,7 @@ export const COSTS = {
   account: { ip: 20 },
   transfer: { ip: 1 },
   earn: { ip: 150 },
+  convert: { uid: 3_000 },
   klines: { api: 2 },
 } as const satisfies Record<string, CallCost>;
 
@@ -108,6 +112,7 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
     pay: 0,
     transfer: 0,
     earn: 0,
+    convert: 0,
     market: 0,
   };
   const narrowingCallsByLane: Record<BudgetLane, number> = {
@@ -116,6 +121,7 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
     pay: 0,
     transfer: 0,
     earn: 0,
+    convert: 0,
     market: 0,
   };
   let usedUidWeight: number | undefined;
