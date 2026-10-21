@@ -116,13 +116,27 @@ describe('createBinanceRunBudget — calls kept for later', () => {
     expect(budget.canAfford('pay', COSTS.pay, 1)).toBe(true);
   });
 
-  it('gives the Convert lane no narrowing call past its cap, and 20 calls fit the UID ceiling', () => {
+  it('gives the Convert lane its narrowing calls past its cap, and the calls of both fit the UID ceiling', () => {
     const budget = createBinanceRunBudget();
 
     spendCalls(budget, 'convert', 20);
 
+    expect(budget.canAfford('convert', COSTS.convert)).toBe(false);
+    expect(budget.canAfford('convert', COSTS.convert, 0, true)).toBe(true);
+    expect(
+      (LANE_CALL_CAPS.convert + LANE_NARROWING_CALLS.convert) * COSTS.convert.uid,
+    ).toBeLessThanOrEqual(UID_WEIGHT_BUDGET_1M);
+  });
+
+  it('refuses a Convert narrowing call once its narrowing calls and its cap are spent', () => {
+    const budget = createBinanceRunBudget();
+
+    for (let call = 0; call < LANE_NARROWING_CALLS.convert; call += 1) {
+      budget.record('convert', NO_READING, true);
+    }
+    spendCalls(budget, 'convert', LANE_CALL_CAPS.convert);
+
     expect(budget.canAfford('convert', COSTS.convert, 0, true)).toBe(false);
-    expect(LANE_CALL_CAPS.convert * COSTS.convert.uid).toBeLessThanOrEqual(UID_WEIGHT_BUDGET_1M);
   });
 
   it('counts the calls to keep in the weight of an IP call too', () => {
@@ -137,14 +151,14 @@ describe('createBinanceRunBudget — calls kept for later', () => {
 describe('createBinanceRunBudget — narrowing calls', () => {
   const NARROWING_CALLS = LANE_NARROWING_CALLS.transfer;
 
-  it('holds the narrowing calls of each lane: only the Transfer lane has any', () => {
+  it('holds the narrowing calls of each lane: only the Transfer and Convert lanes have any', () => {
     expect(LANE_NARROWING_CALLS).toEqual({
       capitalWithdraw: 0,
       capitalDeposit: 0,
       pay: 0,
       transfer: 397,
       earn: 0,
-      convert: 0,
+      convert: 24,
       market: 0,
     });
   });

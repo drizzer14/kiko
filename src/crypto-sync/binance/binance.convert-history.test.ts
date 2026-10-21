@@ -779,15 +779,28 @@ describe('a start Binance refuses', () => {
     );
   });
 
-  it('holds the window and the cursor when the lane cannot afford the narrowing', async () => {
+  it('finishes the narrowing of a window holding the depth under the lane budget and goes on', async () => {
     const world = worldOf();
     const deps = world.depsOf({ fetchConvertHistory: convertServerOf([], DEPTH) });
 
-    const result = await world.walk(deps);
+    await world.walk(deps, freshRun());
 
-    expect(result).toEqual({ imported: 0, complete: false });
-    expect(queriesOf(deps)).toHaveLength(20);
-    expect(CURSOR(world)).toBeUndefined();
+    expect(numberMarkWritesOfAnyWalk(deps)[0]).toBe(HISTORY_FLOOR_MS + CONVERT_WINDOW_MS);
+    expect(queriesOf(deps).map(({ startTime }) => startTime)).toContain(
+      HISTORY_FLOOR_MS + CONVERT_WINDOW_MS,
+    );
+  });
+
+  it('records every request on the lane, the refused read of a span too', async () => {
+    const run = freshRun();
+    const record = jest.spyOn(run.budget, 'record');
+    const world = worldOf();
+    const deps = world.depsOf({ fetchConvertHistory: convertServerOf([], DEPTH) });
+
+    await world.walk(deps, run);
+
+    expect(queriesOf(deps).length).toBeGreaterThan(24);
+    expect(record).toHaveBeenCalledTimes(queriesOf(deps).length);
   });
 });
 

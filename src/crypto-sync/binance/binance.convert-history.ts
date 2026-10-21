@@ -369,16 +369,16 @@ const fetchSpan = async (
 };
 
 /**
- * Whether Binance serves a start: a request of one millisecond at it, which spends a call of the
- * lane, refused ones too, and leaves the read of the span after it affordable (`undefined`: it
- * cannot, or Binance rate-limited, a clean stop).
+ * Whether Binance serves a start: a request of one millisecond at it, which spends a narrowing call
+ * of the lane (`LANE_NARROWING_CALLS`), refused ones too, and leaves the read of the span after it
+ * affordable (`undefined`: it cannot, or Binance rate-limited, a clean stop).
  */
 const probeOf =
   (context: ConvertContext, keep: number): DepthProbe =>
   async (startMs) => {
     const { deps, run, apiKey, secret, options } = context;
 
-    if (!run.budget.canAfford('convert', COSTS.convert, keep + 1)) {
+    if (!run.budget.canAfford('convert', COSTS.convert, keep + 1, true)) {
       return undefined;
     }
 
@@ -392,12 +392,13 @@ const probeOf =
           { startTime: startMs, endTime: startMs + 1 },
           options,
         ),
+        true,
       );
 
       return true;
     } catch (error) {
       if (error instanceof BinanceHistoryTooOldError) {
-        run.budget.record('convert', BINANCE_WALK_CONFIG.refusedCallWeights);
+        run.budget.record('convert', BINANCE_WALK_CONFIG.refusedCallWeights, true);
 
         return false;
       }
@@ -477,6 +478,8 @@ const readSpan = async (
     if (!(error instanceof BinanceHistoryTooOldError)) {
       throw error;
     }
+
+    context.run.budget.record('convert', BINANCE_WALK_CONFIG.refusedCallWeights, true);
 
     return readFromServedStart(context, span, keep);
   }
