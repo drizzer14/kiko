@@ -1564,7 +1564,8 @@ new component can land between reviews of this skill:
   else `AccountForm`. `useSelectCreatedHolding` (`use-select-created-holding.ts`) selects only the
   holding created between the tap and the return focus (a `createdAt` window), never after a cancel.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
-  left, formatted `MoneyText` right), filled row-major.
+  left, formatted `MoneyText` right), filled row-major. It renders every
+  Money it is given; Home filters exact-zero totals first (see `kiko-domain`).
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the
   one shared "label left, value right" summary block: an optional `title`
   heading row, then a stack of `rows` (row shape: read `summary-table.props.d.ts`), each split
