@@ -8,7 +8,9 @@
 // hook does NOT follow: it must ALWAYS exit 0, even on a crash or malformed
 // payload, so a failure of the hook process never breaks the Bash tool. An error thrown while
 // judging a command is a deny (`internalError`), not an allow: the command that crashed the guard
-// may be the one it stops; an unreadable payload still allows. Wired from
+// may be the one it stops; an unreadable payload still allows. A failure while node LOADS this file
+// (a sibling module missing, a syntax error) cannot be caught here, so kill-guard.sh denies on any
+// node exit status other than 0 (every run below ends in exit 0). Wired from
 // harness/kiko/hooks/hooks.json via scripts/checks/kill-guard.sh.
 //
 // Incident this guards against: a reviewer subagent ran
