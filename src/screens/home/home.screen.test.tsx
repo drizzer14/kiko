@@ -712,32 +712,13 @@ describe('HomeScreen', () => {
     expect(queryByText('BTC')).toBeNull();
   });
 
-  // The breakdown hides a currency whose amount DISPLAYS as zero, with the precision
-  // `formatMoney` renders. Money.of truncates a fractional balance on the way in, so on the Home
-  // chain anything under one whole minor unit shows "0.00" / "-0.00" in every currency (fiat
-  // scale 2, USDT and BTC scale 8), and 1 / -1 minor unit is the smallest value that stays.
-  const DISPLAYED_ZERO_CASES = [
-    ['USD', 'exact zero', 0],
-    ['USD', 'a tiny positive remainder', 1e-9],
-    ['USD', 'a tiny negative remainder', -1e-9],
-    ['USD', 'just below half a minor unit', 0.4],
-    ['USD', 'just below half a negative minor unit', -0.4],
-    ['USDT', 'exact zero', 0],
-    ['USDT', 'a tiny positive remainder', 1e-9],
-    ['USDT', 'a tiny negative remainder', -1e-9],
-    ['USDT', 'just below half a minor unit', 0.4],
-    ['BTC', 'a tiny negative remainder', -1e-9],
-    ['USD', 'half a minor unit, truncated to zero on the way in', 0.5],
-    ['USD', 'a negative half minor unit, truncated to zero on the way in', -0.5],
-    ['USDT', 'half a minor unit, truncated to zero on the way in', 0.5],
-    ['BTC', 'half a minor unit, truncated to zero on the way in', 0.5],
-  ] as const;
-
-  it.each(DISPLAYED_ZERO_CASES)(
-    'hides %s from the breakdown when its total is %s, while non-zero rows render',
-    async (currency, _label, balanceMinorUnits) => {
+  // The breakdown hides a currency only when its total is exactly 0 minor units; any non-zero
+  // integer total keeps its row and shows its real digits.
+  it.each(['USD', 'USDT'] as const)(
+    'hides %s from the breakdown when its total is exactly zero, while non-zero rows render',
+    async (currency) => {
       seed({
-        holdings: [UAH_HOLDING, { accountId: 'a', currency, balanceMinorUnits }],
+        holdings: [UAH_HOLDING, { accountId: 'a', currency, balanceMinorUnits: 0 }],
         rates: [{ base: currency, quote: 'UAH', rate: '40' }],
         transactions: [],
       });
@@ -749,18 +730,41 @@ describe('HomeScreen', () => {
     },
   );
 
-  const DISPLAYED_NON_ZERO_CASES = [
-    ['USD', 'one minor unit', 1],
-    ['USD', 'a negative minor unit', -1],
-    ['USDT', 'one minor unit', 1],
-    ['USDT', 'a negative minor unit', -1],
-    ['BTC', 'one minor unit', 1],
-    ['BTC', 'a negative minor unit', -1],
-  ] as const;
+  // Home values a holding from its stored balance, never from the ledger window, so the USDT
+  // transactions that net to zero sit beside a stored balance of exactly zero.
+  it('hides USDT when its transactions net to exactly zero', async () => {
+    seed({
+      holdings: [
+        UAH_HOLDING,
+        { id: 'h-usdt', accountId: 'a', currency: 'USDT', balanceMinorUnits: 0 },
+      ],
+      rates: [{ base: 'USDT', quote: 'UAH', rate: '40' }],
+      transactions: [
+        transaction({ id: 'usdt-in', currency: 'USDT', amountMinorUnits: 30, holdingId: 'h-usdt' }),
+        transaction({
+          id: 'usdt-out',
+          currency: 'USDT',
+          amountMinorUnits: -30,
+          holdingId: 'h-usdt',
+        }),
+      ],
+    });
 
-  it.each(DISPLAYED_NON_ZERO_CASES)(
-    'keeps %s in the breakdown when its total is %s',
-    async (currency, _label, balanceMinorUnits) => {
+    const { getByText, queryByText } = await renderHome();
+
+    expect(getByText('UAH')).toBeTruthy();
+    expect(queryByText('USDT')).toBeNull();
+  });
+
+  it.each([
+    ['USD', 1, '$0.01'],
+    ['USD', -1, '-$0.01'],
+    ['USDT', 30, '₮0.0000003'],
+    ['USDT', -30, '-₮0.0000003'],
+    ['BTC', 1, '₿0.00000001'],
+  ] as const)(
+    'keeps %s in the breakdown, with its real digits, when its total is %i minor units',
+    async (currency, balanceMinorUnits, text) => {
       seed({
         holdings: [UAH_HOLDING, { accountId: 'a', currency, balanceMinorUnits }],
         rates: [{ base: currency, quote: 'UAH', rate: '40' }],
@@ -770,6 +774,7 @@ describe('HomeScreen', () => {
       const { getByText } = await renderHome();
 
       expect(getByText(currency)).toBeTruthy();
+      expect(getByText(text)).toBeTruthy();
     },
   );
 
