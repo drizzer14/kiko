@@ -1,5 +1,6 @@
 import {
   UNTRACKED_WALLETS,
+  untrackedAssetCode,
   untrackedWalletCode,
   parseUntrackedCounterpart,
 } from './untracked-counterpart';
@@ -16,6 +17,29 @@ describe('untrackedWalletCode', () => {
   it.each(UNTRACKED_WALLETS)('prefixes %s with "wallet:"', (wallet) => {
     expect(untrackedWalletCode(wallet)).toBe(`wallet:${wallet}`);
   });
+});
+
+describe('untrackedAssetCode', () => {
+  it('prefixes a ticker with "asset:"', () => {
+    expect(untrackedAssetCode('PEPE')).toBe('asset:PEPE');
+  });
+
+  it.each([
+    ['empty', ''],
+    ['holding a colon', 'A:B'],
+  ])('builds no code for a ticker that is %s', (_label, ticker) => {
+    expect(untrackedAssetCode(ticker)).toBeUndefined();
+  });
+
+  it.each(['PEPE', '1000SATS', 'ETH'])(
+    'builds a code that parses back to the asset %s',
+    (ticker) => {
+      expect(parseUntrackedCounterpart(untrackedAssetCode(ticker) ?? null)).toEqual({
+        kind: 'asset',
+        code: ticker,
+      });
+    },
+  );
 });
 
 describe('parseUntrackedCounterpart', () => {

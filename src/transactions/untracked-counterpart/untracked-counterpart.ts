@@ -28,6 +28,14 @@ const NAME_BY_WALLET: Readonly<Record<UntrackedWallet, string>> = {
 export const untrackedWalletCode = (wallet: UntrackedWallet): `wallet:${UntrackedWallet}` =>
   `wallet:${wallet}`;
 
+// One rule for the code a ticker builds and the code a read accepts: no ticker is empty or holds
+// the separator, so no code reads as another kind or as a longer one.
+const isAssetTicker = (ticker: string): boolean => ticker !== '' && !ticker.includes(':');
+
+/** The `asset:<CODE>` of a coin the account does not track, or `undefined` for no usable ticker. */
+export const untrackedAssetCode = (ticker: string): `asset:${string}` | undefined =>
+  isAssetTicker(ticker) ? `asset:${ticker}` : undefined;
+
 type UntrackedCounterpart =
   | { kind: 'wallet'; name: string }
   | { kind: 'asset'; code: string }
@@ -85,7 +93,7 @@ export const parseUntrackedCounterpart = (code: string | null): UntrackedCounter
     return match(kind)
       .with('wallet', () => walletCounterpartOf(rest))
       .with('asset', (): UntrackedCounterpart | undefined =>
-        rest === '' || rest.includes(':') ? undefined : { kind: 'asset', code: rest },
+        isAssetTicker(rest) ? { kind: 'asset', code: rest } : undefined,
       )
       .with('p2p', 'card', 'bank', (fiatKind) => fiatCounterpartOf(fiatKind, rest))
       .otherwise(() => undefined);
