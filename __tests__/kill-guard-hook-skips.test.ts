@@ -121,7 +121,8 @@ const ALLOWED_INCLUDE_COMMANDS: string[] = [
 ];
 
 // `git commit-tree` writes a commit object without running any hook; it is denied in every form.
-// `git update-ref` stays allowed (scripts/checks/guard-replay.sh uses it inside a script).
+// `git update-ref` of a ref other than `main` stays allowed (scripts/checks/guard-replay.sh uses it
+// inside a script); a move of `main` is judged in kill-guard-main-moves.test.ts.
 const DENIED_COMMIT_TREE_COMMANDS: string[] = [
   'git commit-tree HEAD^{tree} -m x',
   'git commit-tree -p HEAD HEAD^{tree} -m x',
