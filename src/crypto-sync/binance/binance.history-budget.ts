@@ -9,7 +9,8 @@ import type { BinancePageWeights } from './binance.history-client';
 /**
  * One lane per walk, so a long backfill in one walk cannot starve the others. The
  * capital walk has two: its withdraw reads are the expensive ones, its deposit
- * reads are not. `market` is the public price reads of `src/rates/binance-market/`.
+ * reads are not. `dust` is no walk: one read of the newest records per run, so its cap is 1.
+ * `market` is the public price reads of `src/rates/binance-market/`.
  */
 export type BudgetLane =
   | 'capitalWithdraw'
@@ -18,6 +19,7 @@ export type BudgetLane =
   | 'transfer'
   | 'earn'
   | 'convert'
+  | 'dust'
   | 'market';
 
 /**
@@ -65,6 +67,7 @@ export const LANE_CALL_CAPS: Record<BudgetLane, number> = {
   transfer: 80,
   earn: 30,
   convert: 20,
+  dust: 1,
   market: 150,
 };
 
@@ -85,6 +88,7 @@ export const LANE_NARROWING_CALLS: Record<BudgetLane, number> = {
   transfer: 397,
   earn: 0,
   convert: 0,
+  dust: 0,
   market: 0,
 };
 
@@ -97,6 +101,7 @@ export const COSTS = {
   transfer: { ip: 1 },
   earn: { ip: 150 },
   convert: { uid: 3_000 },
+  dust: { ip: 1 },
   klines: { api: 2 },
 } as const satisfies Record<string, CallCost>;
 
@@ -114,6 +119,7 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
     transfer: 0,
     earn: 0,
     convert: 0,
+    dust: 0,
     market: 0,
   };
   const narrowingCallsByLane: Record<BudgetLane, number> = {
@@ -123,6 +129,7 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
     transfer: 0,
     earn: 0,
     convert: 0,
+    dust: 0,
     market: 0,
   };
   let usedUidWeight: number | undefined;
