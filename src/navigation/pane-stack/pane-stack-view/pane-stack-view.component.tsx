@@ -2,9 +2,9 @@ import { type FC, useMemo } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useUnistyles } from 'react-native-unistyles';
 import { useIsFocused } from '@react-navigation/native';
-import { useIsLargeWindow } from '@kiko/display-regions';
 import { FixedContentMarginContext } from 'react-native-screens';
 import { NativeStackView } from '@react-navigation/native-stack';
+import { useTabBarPlacement } from '@kiko/design-system/components/screen';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
 
 import { oppositePane } from '../pane-assignment';
@@ -31,7 +31,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
 }) => {
   const isTabFocused = useIsFocused();
   const { theme } = useUnistyles();
-  const isLargeWindow = useIsLargeWindow();
+  const isTabBarAtTop = useTabBarPlacement() === 'top';
   const isSplit = mode !== 'single';
   const { dispatch } = navigation;
   const companion = isSplit
@@ -76,10 +76,10 @@ const PaneStackView: FC<PaneStackViewProps> = ({
         {isSplit ? (
           // UIKit insets a pane's native large title by the pane's distance to the window's edge,
           // so the title and the content line up only if the stack is told the content's margin.
-          // The Surface Duo's panes keep their look completely, so only a large window's panes
-          // are told.
+          // The Surface Duo's panes keep their look completely (its tab bar is at the bottom or a
+          // side), so only panes under a top tab bar, whatever the window's size, are told.
           <FixedContentMarginContext.Provider
-            value={isLargeWindow ? theme.spacing(CONTENT_MARGIN_STEP) : 0}
+            value={isTabBarAtTop ? theme.spacing(CONTENT_MARGIN_STEP) : 0}
           >
             <TwoPaneLayout
               mode={mode}

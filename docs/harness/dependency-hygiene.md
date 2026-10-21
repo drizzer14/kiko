@@ -275,19 +275,20 @@ Stryker's `fullName`, and the patch applies exactly to the pristine files of
 on every `npm ci`. Why, what, and the scope are in `docs/harness/documented-exceptions.md`
 ("patch-package patches"); in short: it makes a pane's native large title keep the content's side
 margin, and only for the stacks `PaneStackView` wraps in `FixedContentMarginContext`: the panes of
-a large window (regular, shorter side >= 721).
+two-pane window whose tab bar is at the top (every regular iPad window, small Stage Manager
+splits included; user ruling 2026-10-21).
 
 The pane-only scope: the context default is 0, `ScreenStack` passes it as the `fixedContentMargin`
 prop (codegen default 0), and native does nothing for 0 (the setter returns on its first line
 for an equal value, no margin write, no change to `viewRespectsSystemMinimumLayoutMargins`), so
-an iPhone, single-pane or Surface Duo stack (the Duo's inner window is not large, and the user
-ruled it keeps its look completely) runs the stock code path. A non-large split window (for
-example 1032x683) keeps UIKit's margin as well, so the title stays near the divider there: the
-large-window test is what keeps the Duo's look.
+an iPhone, single-pane or Surface Duo stack (the Duo's tab bar is at the bottom or a side, and the
+user ruled it keeps its look completely) runs the stock code path. The value follows the native
+tab bar placement (`useTabBarPlacement`), not the window's size. On some resizes the placement
+read is stale for about 0.1 s, so the margin can lag the layout briefly (F1, F3).
 
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
-runs on a normal resize, not only when a stack view is recycled: a window that goes from full
-screen to a non-large split keeps the split mounted, so its stacks get 0 again.
+runs on a normal resize, not only when a stack view is recycled: a window that goes from a
+top-bar split to a bottom- or side-bar one keeps the split mounted, so its stacks get 0 again.
 
 How it is pinned: `__tests__/react-native-patch.test.ts` fails unless `react-native-screens` is
 exactly `4.27.0` in `package.json`, the patch touches only `node_modules/react-native-screens/`
@@ -307,11 +308,11 @@ react-native-screens`, which needs the version to pass the `.npmrc` minimum age)
 patch file and update the version in the pin test. Re-prove it: applying the patch to the pristine
 tarball must reproduce the installed tree, and re-measure on a simulator or device: a pane's large
 title leading edge equals the content's leading edge in both panes of an iPad; an iPhone and a
-Duo are unchanged; a resize from full screen to a non-large split and back (pane titles back to
-stock, then 16 pt); idle CPU with a pane open (no continuous re-layout from the bar margin write
-in `viewDidLayoutSubviews`); and the bar items and the back button positions (UIKit places them
-by the bar's `directionalLayoutMargins` too, so they may move by up to 16 pt: measure it, do not
-claim it).
+Duo are unchanged; a resize between a top-bar split and a bottom- or side-bar one and back (pane
+titles back to stock, then 16 pt); idle CPU with a pane open (no continuous re-layout from the
+bar margin write in `viewDidLayoutSubviews`); and the bar items and the back button positions
+(UIKit places them by the bar's `directionalLayoutMargins` too, so they may move by up to 16 pt:
+measure it, do not claim it).
 
 ## `.env` is public-only
 

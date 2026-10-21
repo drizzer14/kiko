@@ -13,13 +13,19 @@ import type { NativeStackViewProps } from './pane-stack-view.props';
 
 // The window reports one pane; the view is given the mode it shows, which wins.
 const mockUseFoldRegion = jest.fn((): FoldRegion => null);
-const mockUseIsLargeWindow = jest.fn(() => false);
+const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
+const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => 'single',
   useFoldRegion: () => mockUseFoldRegion(),
-  useIsLargeWindow: () => mockUseIsLargeWindow(),
-  useTabBarEdge: () => 'none',
-  useVerticalBarEdge: () => 'none',
+  useIsLargeWindow: () => false,
+  useTabBarEdge: () => mockUseTabBarEdge(),
+  useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+}));
+
+const mockTabBarHeight = 64;
+jest.mock('react-native-bottom-tabs', () => ({
+  useBottomTabBarHeight: () => mockTabBarHeight,
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -125,7 +131,8 @@ describe('PaneStackView', () => {
     mockNativeStackView.mockClear();
     mockDetailMounted.mockClear();
     mockUseFoldRegion.mockReturnValue(null);
-    mockUseIsLargeWindow.mockReturnValue(false);
+    mockUseTabBarEdge.mockReturnValue('none');
+    mockUseVerticalBarEdge.mockReturnValue('none');
     mockWindow.width = 951;
     mockWindow.height = 669;
   });
@@ -265,10 +272,9 @@ describe('PaneStackView', () => {
   });
 
   // A pane's native large title takes its leading inset from the pane's distance to the window's
-  // edge, so each pane's stack of a large window asks the native side for the content's fixed
-  // margin instead. The Surface Duo keeps its look completely, so its panes are not asked.
+  // edge, so each pane's stack asks the native side for the content's fixed margin instead,
+  // wherever the native tab bar is at the top. The Surface Duo's bottom bar keeps its look.
   describe('the fixed content margin of a pane’s native stack', () => {
-    const { isLargeWindow } = jest.requireActual('@kiko/display-regions/layout-mode');
     const state = stackState([route('accounts'), route('account')], {
       accounts: 'companion',
       account: 'primary',
@@ -277,7 +283,6 @@ describe('PaneStackView', () => {
     const renderInWindow = async (width: number, height: number, mode: LayoutMode) => {
       mockWindow.width = width;
       mockWindow.height = height;
-      mockUseIsLargeWindow.mockReturnValue(isLargeWindow('regular', width, height));
 
       await renderView(state, ACCOUNTS, mode);
     };
@@ -285,9 +290,13 @@ describe('PaneStackView', () => {
     it.each([
       ['a 13-inch iPad in landscape', 1376, 1032, 'columns'],
       ['a 13-inch iPad in portrait', 1032, 1376, 'columns'],
+      ['a small Stage Manager column split', 1032, 683, 'columns'],
+      ['a small Stage Manager row split', 683, 909, 'rows'],
     ] as const)(
-      'is the content’s side padding in both panes of %s',
+      'is the content’s side padding in both panes of %s when the tab bar is at the top',
       async (_name, width, height, mode) => {
+        mockUseTabBarEdge.mockReturnValue('top');
+
         await renderInWindow(width, height, mode);
 
         expect(mockFixedContentMargin.mock.calls).toEqual([
@@ -298,16 +307,33 @@ describe('PaneStackView', () => {
     );
 
     it.each([
-      ['the Duo inner window in landscape', 951, 669, 'columns'],
-      ['the Duo inner window in portrait', 669, 951, 'rows'],
-    ] as const)('is 0 in both panes of %s', async (_name, width, height, mode) => {
+      ['the Duo inner window in landscape, bar at the bottom', 951, 669, 'columns', 'bottom'],
+      ['the Duo inner window in portrait, bar at the bottom', 669, 951, 'rows', 'bottom'],
+      ['the Duo inner window in landscape, no bar found', 951, 669, 'columns', 'none'],
+      ['the Duo inner window in portrait, no bar found', 669, 951, 'rows', 'none'],
+    ] as const)('is 0 in both panes of %s', async (_name, width, height, mode, tabBarEdge) => {
+      mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+
       await renderInWindow(width, height, mode);
 
       expect(mockFixedContentMargin.mock.calls).toEqual([[0], [0]]);
     });
 
-    it('is 0, which leaves UIKit’s margins alone, for the single native stack', async () => {
-      mockUseIsLargeWindow.mockReturnValue(true);
+    it.each([
+      ['a leading side bar', 'leading', 'none'],
+      ['a trailing side bar', 'trailing', 'none'],
+      ['a vertical bar trait with no native bar found', 'none', 'leading'],
+    ] as const)('is 0 in both panes with %s', async (_name, tabBarEdge, verticalBarEdge) => {
+      mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+      mockUseVerticalBarEdge.mockReturnValue(verticalBarEdge);
+
+      await renderInWindow(1376, 1032, 'columns');
+
+      expect(mockFixedContentMargin.mock.calls).toEqual([[0], [0]]);
+    });
+
+    it('is 0, which leaves UIKit’s margins alone, for the single native stack even with a top bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
 
       await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
 

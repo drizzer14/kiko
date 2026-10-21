@@ -9,7 +9,7 @@ import { estimatedTitleFits } from './title-fit';
 // The native large title is inset by the stack's margin, which UIKit derives itself unless the
 // stack is told one: an iPhone stack keeps UIKit's (not known to equal the content's padding on
 // every iPhone width), and in a pane UIKit would inset the title by the pane's distance to
-// the window's edge, so PaneStackView gives each pane's stack of a large window the content's
+// the window's edge, so PaneStackView gives each pane's stack under a top tab bar the content's
 // margin (the react-native-screens patch; the Duo's panes keep UIKit's).
 const LARGE_TITLE_MARGIN_STEP = 4;
 
