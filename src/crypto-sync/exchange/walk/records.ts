@@ -310,7 +310,7 @@ const isOwedPast = (ground: OwedGround): boolean => isPoint(ground) || ground.se
  * record with no time owes the whole span, and so does a stop that is no one record's) leaves the
  * span uncommitted, as does any other code beside it. The tickers the span counted but imported as
  * no row (`untracked`) are written once its rows are, and then the not-imported entries
- * (`notImported`, when the walk gives `writeNotImported`), still before the marks move.
+ * (`notImported`, through `writeNotImported`), still before the marks move.
  */
 export const commitSettledSpan = async <Planned, Row>(input: {
   pass: WalkPass;
@@ -321,7 +321,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   advance: (result: { owed: OwedGround[] }) => Promise<void>;
   writeOversized: (tickers: readonly string[]) => Promise<void>;
   writeUntracked: (tickers: readonly string[]) => Promise<void>;
-  writeNotImported?: (entries: readonly string[]) => Promise<void>;
+  writeNotImported: (entries: readonly string[]) => Promise<void>;
   forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
   const {
@@ -371,7 +371,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   // Its own write, as the entries are not coins: same order, so a crash re-reads the span and
   // an entry that is already listed changes nothing.
   if (ready.notImported !== undefined) {
-    await writeNotImported?.(ready.notImported);
+    await writeNotImported(ready.notImported);
   }
 
   await advance({ owed: ready.owed });

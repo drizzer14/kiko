@@ -618,6 +618,7 @@ describe('commitSettledSpan', () => {
       advance,
       writeOversized,
       writeUntracked: async () => undefined,
+      writeNotImported: async () => undefined,
     });
 
   it.each(['pending', 'rescan'] as const)(
@@ -737,6 +738,7 @@ describe('commitSettledSpan', () => {
         advance,
         writeOversized,
         writeUntracked: async () => undefined,
+        writeNotImported: async () => undefined,
         forwardOwes: ['owed-only'],
       });
 

@@ -102,18 +102,19 @@ describe('commitSettledSpan with not-imported entries', () => {
     expect(calls).toEqual([]);
   });
 
-  it('commits a span whose entries have no writer, as a walk with no refused records does', async () => {
-    const committed = await commitSettledSpan({
-      pass: 'forward',
-      span: SPAN,
-      settled: settled({ rows: ['a'] }),
-      place: async (planned: string[]) => planned,
-      add: async (rows: string[]) => rows.length,
-      advance: async () => undefined,
-      writeOversized: async () => undefined,
-      writeUntracked: async () => undefined,
-    });
+  it('hands a span that holds entries to the writer, all of them, before the marks move', async () => {
+    const committed = await commit(
+      'forward',
+      settled({ rows: ['a'], notImported: ['p2p-sale:1:2', 'convert-unrecognized:3:4'] }),
+    );
 
+    expect(writeNotImported).toHaveBeenCalledTimes(1);
+    expect(writeNotImported).toHaveBeenCalledWith(['p2p-sale:1:2', 'convert-unrecognized:3:4']);
+    expect(calls).toEqual([
+      'add:a',
+      'notImported:p2p-sale:1:2,convert-unrecognized:3:4',
+      'advance',
+    ]);
     expect(committed?.imported).toBe(1);
   });
 });

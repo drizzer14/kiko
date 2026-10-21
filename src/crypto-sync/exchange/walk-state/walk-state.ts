@@ -316,7 +316,7 @@ export const oversizedByWalletOf = (stored: unknown): ReadEntry<Record<string, s
 
 /**
  * Every entry parses alone: one that is no text of a known kind is dropped and named
- * `notImported.<index>`, and a list stored twice over reads once, so a read never double-counts.
+ * `notImported.<index>`, and an entry stored twice reads once, so a read never double-counts.
  */
 const notImportedOf = (stored: unknown): ReadEntry<string[]> => {
   const container = entryOf('notImported', stored, listOrUndefined, emptyList);

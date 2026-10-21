@@ -146,8 +146,8 @@ const withOversizedBalance = (
 const isText = (value: unknown): value is string => typeof value === 'string';
 
 /**
- * The list only grows: a stored entry that is text stays, a kind this build does not know too (a
- * newer build wrote it), and one that is no text, or a list that is no list, starts from nothing.
+ * A stored text entry stays, an unknown kind too (a newer build wrote it); an entry that is no
+ * text is dropped, and a value that is no list starts from nothing.
  */
 const withNotImported = (
   stored: StoredExchangeState,

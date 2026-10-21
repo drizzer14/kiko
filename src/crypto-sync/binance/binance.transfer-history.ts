@@ -14,6 +14,7 @@ import {
   instantAt,
   joinSettled,
   multiCoinPatchesOf,
+  notImportedWriterOf,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
@@ -482,6 +483,7 @@ const commitSpan = (
     add: deps.addTransactions,
     writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
     writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
+    writeNotImported: notImportedWriterOf(deps, accountId),
     advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
