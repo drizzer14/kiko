@@ -109,6 +109,12 @@ const MOVING_SUBCOMMANDS: string[] = [
   "fetch -u . '+refs/heads/*:refs/heads/*'",
   "fetch -u . 'refs/*:refs/*'",
   "fetch -u . 'refs/heads/m*:refs/heads/m*'",
+  "fetch -u --refmap='refs/heads/*:refs/heads/*' . main",
+  'fetch -u --refmap=refs/heads/x:refs/heads/main . x',
+  'fetch -u --refmap refs/heads/x:refs/heads/main . x',
+  "fetch -u --refmap 'refs/heads/*:refs/heads/*' origin main",
+  'fetch --refmap=refs/heads/x:main . x',
+  'fetch --refmap= --refmap=refs/heads/x:refs/heads/main . x',
   'push -f . x:main',
   'push . x:refs/heads/main',
   'push --force . +x:main',
@@ -166,6 +172,11 @@ const STAYING_SUBCOMMANDS: string[] = [
   'fetch origin main',
   "fetch -u . 'refs/heads/*:refs/remotes/x/*'",
   "fetch -u . 'refs/heads/*:refs/heads/feature/*'",
+  "fetch -u --refmap='refs/heads/*:refs/remotes/x/*' . main",
+  "fetch -u --refmap 'refs/heads/*:refs/remotes/x/*' origin main",
+  'fetch --refmap= origin main',
+  'fetch --refmap= . x:feat',
+  'fetch -u --refmap=refs/heads/x:refs/heads/feat . x',
   'fetch --depth 1 origin main',
   'fetch -j 4 origin',
   'push origin x:main',
@@ -364,6 +375,77 @@ const FOREIGN_PLACEMENTS: Placement[] = [
     (s) => `git --git-dir=${OTHER}/.git ${s}`,
   ],
   ['inside sh -c in an unrelated repository', optionsIn(OTHER), (s) => `sh -c "git ${s}"`],
+  [
+    'no cwd and --git-dir names an unrelated repository',
+    withoutDirectory,
+    (s) => `git --git-dir=${OTHER}/.git ${s}`,
+  ],
+  [
+    'no cwd and GIT_DIR names an unrelated repository',
+    withoutDirectory,
+    (s) => `GIT_DIR=${OTHER}/.git git ${s}`,
+  ],
+  [
+    'no cwd and --git-dir names an unrelated repository beside -c',
+    withoutDirectory,
+    (s) => `git -c core.pager=cat --git-dir ${OTHER}/.git ${s}`,
+  ],
+  ['no cwd and -C names an unrelated repository', withoutDirectory, (s) => `git -C ${OTHER} ${s}`],
+  ['no cwd and -C names a plain folder', withoutDirectory, (s) => `git -C ${PLAIN} ${s}`],
+];
+
+// A git directory the text names decides the repository a branch-bound command moves, so an
+// unrelated one with no cwd is no target (the FOREIGN rows), while this repository's own git
+// directory, a work tree or cwd inside it, and a git directory the text cannot name still are.
+const GIT_DIRECTORY_OF_THIS_REPOSITORY: Placement[] = [
+  [
+    'no cwd and --git-dir names this repository',
+    withoutDirectory,
+    (s) => `git --git-dir=${MAIN}/.git ${s}`,
+  ],
+  [
+    'no cwd and GIT_DIR names this repository',
+    withoutDirectory,
+    (s) => `GIT_DIR=${MAIN}/.git git ${s}`,
+  ],
+  [
+    'no cwd and --git-dir names a worktree of this repository',
+    withoutDirectory,
+    (s) => `git --git-dir=${MAIN}/.git/worktrees/linked ${s}`,
+  ],
+  [
+    'no cwd and --git-dir names this repository with a trailing slash',
+    withoutDirectory,
+    (s) => `git --git-dir=${MAIN}/.git/ ${s}`,
+  ],
+  ['no cwd and --git-dir holds a variable', withoutDirectory, (s) => `git --git-dir="$X" ${s}`],
+  ['no cwd and GIT_DIR holds a variable', withoutDirectory, (s) => `GIT_DIR=$X git ${s}`],
+  ['no cwd and --git-dir is relative', withoutDirectory, (s) => `git --git-dir=.git ${s}`],
+  [
+    'no cwd and --work-tree holds a variable',
+    withoutDirectory,
+    (s) => `git --git-dir=${OTHER}/.git --work-tree="$X" ${s}`,
+  ],
+  [
+    'no cwd and --work-tree names the main checkout',
+    withoutDirectory,
+    (s) => `git --git-dir=${OTHER}/.git --work-tree=${MAIN} ${s}`,
+  ],
+  [
+    'no cwd and GIT_WORK_TREE holds a variable',
+    withoutDirectory,
+    (s) => `GIT_DIR=${OTHER}/.git GIT_WORK_TREE=$X git ${s}`,
+  ],
+  [
+    'cwd is the main checkout and --git-dir names an unrelated repository',
+    optionsIn(MAIN),
+    (s) => `git --git-dir=${OTHER}/.git ${s}`,
+  ],
+  [
+    'cwd is a folder in the main checkout and GIT_DIR names an unrelated repository',
+    optionsIn(`${MAIN}/src`),
+    (s) => `GIT_DIR=${OTHER}/.git git ${s}`,
+  ],
 ];
 
 describe('kill-guard: a ref-name move of main from any place in this repository', () => {
@@ -402,7 +484,7 @@ describe('kill-guard: a ref-name move of main from any place in this repository'
     },
   );
 
-  it.each(UNRESOLVED_PLACEMENTS)(
+  it.each([...UNRESOLVED_PLACEMENTS, ...GIT_DIRECTORY_OF_THIS_REPOSITORY])(
     'allows a reset that moves nothing and a HEAD that stays: %s',
     (_label, options, wrap) => {
       const stays = [
@@ -420,6 +502,17 @@ describe('kill-guard: a ref-name move of main from any place in this repository'
     },
   );
 
+  it.each(GIT_DIRECTORY_OF_THIS_REPOSITORY)(
+    'denies a reset, symbolic-ref HEAD or update-ref HEAD that names a commit: %s',
+    (_label, options, wrap) => {
+      const kinds = decideAll(BRANCH_BOUND_SUBCOMMANDS.map((s) => [wrap(s), options]));
+
+      expect(BRANCH_BOUND_SUBCOMMANDS.filter((_s, index) => kinds[index] !== 'mainMove')).toEqual(
+        [],
+      );
+    },
+  );
+
   it.each(NAMED_PLACEMENTS.filter(([label]) => label !== 'cwd is a folder in the main checkout'))(
     'lets a linked worktree move its own branch and its own HEAD: %s',
     (_label, options, wrap) => {
@@ -428,12 +521,6 @@ describe('kill-guard: a ref-name move of main from any place in this repository'
       expect(BRANCH_BOUND_SUBCOMMANDS.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
     },
   );
-
-  it('lets a linked worktree move its own branch and its own HEAD', () => {
-    expect(decide(`git reset --hard ${COMMIT}`, optionsIn(LINKED))).toBe('allow');
-    expect(decide('git reset --soft HEAD~1', optionsIn(`${LINKED}/src`))).toBe('allow');
-    expect(decide('git symbolic-ref HEAD refs/heads/feat', optionsIn(LINKED))).toBe('allow');
-  });
 
   it('still denies the main checkout from a linked worktree', () => {
     expect(decide(`git -C ${MAIN} reset --hard ${COMMIT}`, optionsIn(LINKED))).toBe('mainMove');

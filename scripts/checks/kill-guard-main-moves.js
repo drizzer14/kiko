@@ -148,12 +148,30 @@ function refspecWritesMain(parameters, valueOptions = new Set(), localOnly = fal
   const [repository, ...refspecs] = operandsOf(parameters, valueOptions);
   if (repository === undefined || (localOnly && !LOCAL_REPOSITORY.test(repository))) return false;
 
-  return refspecs.some((refspec) => {
-    const colon = refspec.indexOf(':');
-    const destination = refspec.slice(colon + 1);
+  return refspecs.some(destinationIsMain);
+}
 
-    return colon !== -1 && (isMainRef(destination) || globMatchesMain(destination));
-  });
+function destinationIsMain(refspec) {
+  const colon = refspec.indexOf(':');
+  const destination = refspec.slice(colon + 1);
+
+  return colon !== -1 && (isMainRef(destination) || globMatchesMain(destination));
+}
+
+const FETCH_VALUE_OPTIONS = new Set(['--refmap']);
+const REFMAP_OPTION = { valueLetters: '', recordLetters: '', longNames: ['--refmap'] };
+
+// Measured on git 2.38.1: `git fetch -u --refmap=refs/heads/feat:refs/heads/main . feat` and the
+// two-word `--refmap <value>` both move `main`, because a refmap maps the ref a command-line
+// refspec fetches to its destination; a glob refmap (`refs/heads/*:refs/heads/*`) writes `main`
+// when the fetched ref is `main` (from a remote, `fetch -u origin main`); a refmap to
+// `refs/remotes/x/*` and an empty `--refmap=` (it only drops the configured refspecs) write nothing
+// in `refs/heads`; and a `--refmap` with no refspec is a fatal error. A destination that can be
+// `main` counts, whichever ref the refspec fetches.
+function fetchWritesMain(parameters) {
+  const refmaps = optionValues(parameters, REFMAP_OPTION).filter((value) => value !== undefined);
+
+  return refspecWritesMain(parameters, FETCH_VALUE_OPTIONS) || refmaps.some(destinationIsMain);
 }
 
 const UPDATE_REF_VALUE_OPTIONS = new Set(['-m']);
@@ -192,7 +210,7 @@ function moveScope(git, pathExists) {
     checkout: () => optionValues(parameters, CHECKOUT_BRANCH_OPTIONS).some(isMainBranch),
     switch: () => optionValues(parameters, SWITCH_BRANCH_OPTIONS).some(isMainBranch),
     branch: () => branchNamesMain(parameters),
-    fetch: () => refspecWritesMain(parameters),
+    fetch: () => fetchWritesMain(parameters),
     push: () => refspecWritesMain(parameters, PUSH_VALUE_OPTIONS, true),
     worktree: () =>
       parameters[0] === 'add' &&
@@ -203,15 +221,24 @@ function moveScope(git, pathExists) {
 }
 
 // A ref-name command writes the repository its git directory names, else the one its work tree
-// is in; the work tree and the git directory both count for a command bound to a checkout.
-const placesOf = (git, scope) =>
-  scope === 'mainCheckout' || !git.hasGitDirectory ? git.targets : [git.targets[1]];
+// is in; the work tree and the git directory both count for a command bound to a checkout. With
+// no work tree option git takes the folder it runs in as the work tree, so a folder the text cannot
+// name next to a git directory it can name leaves only that git directory: an unrelated repository
+// is no target (a git directory or a work tree the text cannot name still fails closed).
+function placesOf(git, scope) {
+  const [workTree, gitDirectory] = git.targets;
+  if (!git.hasGitDirectory) return git.targets;
+  if (scope === 'repository') return [gitDirectory];
+  const runsInUnknownFolder = workTree === null && !git.hasWorkTree && gitDirectory !== null;
+
+  return runsInUnknownFolder ? [gitDirectory] : git.targets;
+}
 
 const UNRESOLVED_PLACE = 'a folder the command does not name';
 
-// The folder where a git command moves `main`, the text `UNRESOLVED_PLACE` for a ref-name command
-// that runs where the text cannot say, or null. `invocations` hold one entry per folder the
-// command may run in. `helpers`: `isMainCheckout(folder)`, `isInRepository(folder)`,
+// The folder where a git command moves `main`, the text `UNRESOLVED_PLACE` for a command, in
+// either scope, that runs where the text cannot say, or null. `invocations` hold one entry per
+// folder the command may run in. `helpers`: `isMainCheckout(folder)`, `isInRepository(folder)`,
 // and `pathExists(folder, operand)`.
 function mainMoveTarget(invocations, helpers) {
   for (const git of invocations) {

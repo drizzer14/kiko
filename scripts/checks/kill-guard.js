@@ -1387,6 +1387,7 @@ function gitInvocation(rest, directory, environment) {
     configs: invocation.configs,
     environment,
     hasGitDirectory: invocation.gitDirectory !== undefined,
+    hasWorkTree: invocation.workTree !== undefined,
     targets: [locate(invocation.workTree), locate(invocation.gitDirectory)],
   };
 }
