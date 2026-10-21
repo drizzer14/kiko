@@ -1358,6 +1358,7 @@ function applyGitOption(invocation, option, next) {
   const value = equals === -1 ? next : option.slice(equals + 1);
   if (value === undefined) return;
   if (GIT_CONFIG_OPTIONS.has(name)) invocation.configs.push(value);
+  if (name === '--config-env') invocation.environmentConfigs.push(value);
   const field = GIT_PATH_OPTIONS.get(name);
   if (field === undefined) return;
   if (field === 'directory') invocation.directory = resolveDirectory(invocation.directory, value);
@@ -1373,6 +1374,7 @@ function gitInvocation(rest, directory, environment) {
     gitDirectory: environment.GIT_DIR,
     workTree: environment.GIT_WORK_TREE,
     configs: [],
+    environmentConfigs: [],
   };
   let i = 1;
   while (i < rest.length && rest[i].startsWith('-')) {
@@ -1388,6 +1390,7 @@ function gitInvocation(rest, directory, environment) {
     subcommand: rest[i],
     arguments: rest.slice(i + 1),
     configs: invocation.configs,
+    environmentConfigs: invocation.environmentConfigs,
     environment,
     hasGitDirectory: invocation.gitDirectory !== undefined,
     hasWorkTree: invocation.workTree !== undefined,
@@ -1801,12 +1804,39 @@ const pathExistsFrom = (directory, operand) => {
   return resolved !== null && fs.existsSync(resolved);
 };
 
+// Whether the work tree at or above `directory` is a worktree of this repository whose HEAD file
+// names `main`, which a `reset` there moves.
+function headNamesMain(directory, rules) {
+  const segments = directory.split('/');
+  for (let length = segments.length; length > 1; length -= 1) {
+    const root = segments.slice(0, length).join('/');
+    if (!fs.existsSync(path.join(root, '.git'))) continue;
+
+    return isProjectWorktree(root, rules) && headFileNamesMain(root);
+  }
+
+  return false;
+}
+
+// A linked worktree's `.git` file points at the git directory that holds its HEAD.
+function headFileNamesMain(root) {
+  try {
+    const pointer = fs.readFileSync(path.join(root, '.git'), 'utf8').match(/^gitdir:\s*(.+)$/m)[1];
+    const head = fs.readFileSync(path.join(path.resolve(root, pointer.trim()), 'HEAD'), 'utf8');
+
+    return /^ref:\s*refs\/heads\/main\s*$/i.test(head);
+  } catch {
+    return false;
+  }
+}
+
 // A command that moves the branch `main` (see kill-guard-main-moves.js).
 function mainMoveFinding(segment, invocations, rules) {
   if (invocations[0].arguments.some((parameter) => HELP_OPTIONS.has(parameter))) return null;
   const target = mainMoveTarget(invocations, {
     isMainCheckout: (directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath),
     isInRepository: (directory) => isInsideProjectWorktree(directory, rules),
+    headNamesMain: (directory) => headNamesMain(directory, rules),
     pathExists: pathExistsFrom,
   });
 

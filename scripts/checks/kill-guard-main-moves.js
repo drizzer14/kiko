@@ -3,17 +3,25 @@
 // else that moves the ref is the finding `mainMove`.
 //
 // Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
-// move the branch of the work tree they run in, so they count only against the main checkout. A
-// command that writes the ref by name (`update-ref`, `checkout -B`, `switch -C`,
-// `branch -m|-f|-d`, `fetch`/`push` into it, `symbolic-ref refs/heads/main`, `worktree add -B`)
-// moves it from any worktree of this repository, since every worktree shares the refs, so it
-// counts against the whole repository. In both scopes a place the text cannot name fails closed,
-// even when the command assigns the variable it comes from. An unrelated repository or a plain
-// folder is no target. Pure functions: kill-guard.js passes the parsed git invocations and the
-// probes.
+// move the branch of the work tree they run in, so they count against the main checkout and a
+// linked worktree whose HEAD file already names `main`. A command that writes the ref by name
+// (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`, `fetch`/`push` into it,
+// `symbolic-ref refs/heads/main`, `worktree add -B`) moves it from any worktree of this
+// repository, since every worktree shares the refs, so it counts against the whole repository.
+// So does a command that puts a linked worktree onto `main` (`symbolic-ref HEAD <main ref>`,
+// `checkout|switch --ignore-other-worktrees main`, `worktree add -f` onto `main`), after which a
+// `reset` there moves it; `symbolic-ref HEAD <main ref>` is judged in both scopes. A `fetch` is a
+// ref-name command when a `remote.<name>.fetch` refspec set by `-c`, `--config-env` (its value is
+// not shown, so it counts) or `GIT_CONFIG_*` can write `main`. In every scope a place the text
+// cannot name fails closed, even when the command assigns the variable it comes from. An
+// unrelated repository or a plain folder is no target. Pure functions: kill-guard.js passes the
+// parsed git invocations and the probes.
 //
-// Not judged: a ref held in a variable, `update-ref --stdin`, an abbreviated long option, and a
-// push to a remote (it moves the remote, not this repository).
+// Not judged: a ref held in a variable, `update-ref --stdin`, an abbreviated long option, a push to
+// a remote (it moves the remote, not this repository), and a `git config remote.<name>.fetch`
+// that sets the refspec for a later `fetch`.
+
+const path = require('node:path');
 
 const HEAD_NAMES = new Set(['head', '@']);
 
@@ -158,6 +166,48 @@ function destinationIsMain(refspec) {
   return colon !== -1 && (isMainRef(destination) || globMatchesMain(destination));
 }
 
+const FETCH_CONFIG_KEY = /^remote\..+\.fetch$/i;
+const GIT_CONFIG_KEY_NAME = /^GIT_CONFIG_KEY_(\d+)$/;
+const GIT_CONFIG_PARAMETER_ENTRY = /(remote\.[^='"\s]+\.fetch)['"]?='?([^'"]*)/gi;
+const UNSHOWN_VALUE = /[$`]|__SUBSHELL__/;
+const QUOTES = /^['"]|['"]$/g;
+
+// The `[key, value]` config entries the environment sets through `GIT_CONFIG_KEY_<n>` /
+// `GIT_CONFIG_VALUE_<n>` and the quoted `'key=value'` entries of `GIT_CONFIG_PARAMETERS`. A key
+// with no value variable has an unknown value.
+function environmentConfigEntries(environment) {
+  const pairs = Object.entries(environment).flatMap(([name, key]) => {
+    const index = GIT_CONFIG_KEY_NAME.exec(name)?.[1];
+    const value = environment[`GIT_CONFIG_VALUE_${index}`]?.replace(QUOTES, '');
+
+    return index === undefined ? [] : [[key.replace(QUOTES, ''), value]];
+  });
+  const parameters = (environment.GIT_CONFIG_PARAMETERS ?? '').matchAll(GIT_CONFIG_PARAMETER_ENTRY);
+
+  return [...pairs, ...[...parameters].map(([, key, value]) => [key, value])];
+}
+
+const splitEntry = (entry) => {
+  const [key, ...value] = entry.split('=');
+
+  return [key, value.join('=')];
+};
+
+// Whether a `remote.<name>.fetch` refspec set on the command line or in the environment has a
+// destination that can be `main`. A `--config-env` entry (`environmentConfigs`) names the variable
+// that holds the refspec, and so does an unresolved variable: the value is not shown, so it counts.
+// A refspec configured for the remote is the refmap of `fetch <remote> <ref>` and of a plain
+// `fetch <remote>`; `--refmap=` drops it, but denying that command too is the safer side.
+function configuredFetchWritesMain({ configs, environmentConfigs, environment }) {
+  const unshown = environmentConfigs.map((entry) => [splitEntry(entry)[0], undefined]);
+
+  return [...configs.map(splitEntry), ...unshown, ...environmentConfigEntries(environment)].some(
+    ([key, value]) =>
+      FETCH_CONFIG_KEY.test(key) &&
+      (value === undefined || UNSHOWN_VALUE.test(value) || destinationIsMain(value)),
+  );
+}
+
 const FETCH_VALUE_OPTIONS = new Set(['--refmap']);
 const REFMAP_OPTION = { valueLetters: '', recordLetters: '', longNames: ['--refmap'] };
 
@@ -184,40 +234,73 @@ const SWITCH_BRANCH_OPTIONS = {
 
 // `update-ref` writes the ref it names; `HEAD` is a symbolic ref, so unless `--no-deref` is given
 // it writes the branch the work tree is on (the file of a case-insensitive volume folds case).
-function updateRefScope(parameters) {
+function updateRefScopes(parameters) {
   const [name] = operandsOf(parameters, UPDATE_REF_VALUE_OPTIONS);
-  if (isMainRef(name)) return 'repository';
+  if (isMainRef(name)) return ['repository'];
   const writesBranchOfHead =
     name?.toLowerCase() === 'head' && !hasLongOption(parameters, ['--no-deref']);
 
-  return writesBranchOfHead ? 'mainCheckout' : null;
+  return writesBranchOfHead ? ['mainCheckout'] : [];
 }
 
-// Which place a command moves `main` in: `'repository'` for a command that writes the ref by
-// name, `'mainCheckout'` for one that moves the branch of the work tree it runs in, or null.
-function moveScope(git, pathExists) {
-  const { subcommand, arguments: parameters } = git;
-  if (subcommand === 'reset') return resetMovesBranch(git, pathExists) ? 'mainCheckout' : null;
-  if (subcommand === 'symbolic-ref') {
-    const [target, source] = operandsOf(parameters, UPDATE_REF_VALUE_OPTIONS);
-    if (source === undefined) return null;
-    if (isMainRef(target)) return 'repository';
+// `symbolic-ref HEAD <ref>` moves the branch of the work tree, and onto `main` it also attaches a
+// linked worktree to a branch the main checkout holds, so it counts in both scopes.
+function symbolicRefScopes(parameters) {
+  const [target, source] = operandsOf(parameters, UPDATE_REF_VALUE_OPTIONS);
+  if (source === undefined) return [];
+  if (isMainRef(target)) return ['repository'];
+  if (target !== 'HEAD') return [];
 
-    return target === 'HEAD' ? 'mainCheckout' : null;
+  return isMainRef(source) ? ['mainCheckout', 'repository'] : ['mainCheckout'];
+}
+
+const IGNORE_OTHER_WORKTREES = ['--ignore-other-worktrees'];
+
+// `--ignore-other-worktrees` lets `checkout`/`switch` take a branch another worktree holds; the
+// branch is the first operand.
+const checkoutIgnoresMain = (parameters) =>
+  hasLongOption(parameters, IGNORE_OTHER_WORKTREES) &&
+  isMainBranch(operandsOf(beforeDashes(parameters))[0]);
+
+const WORKTREE_ADD_VALUE_OPTIONS = new Set(['--reason']);
+
+// Measured on git 2.38.1: `worktree add -f <path>` checks out the branch `main` when `<path>` ends
+// in `main` and no commit-ish is given, as `worktree add -f <path> main` does; without `-f` git
+// refuses a branch held elsewhere. A new branch (`-b`, `-B`) or `--detach` checks out no branch.
+function worktreeAddForcesMain(parameters) {
+  const forces = hasShortLetter(parameters, 'f') || hasLongOption(parameters, ['--force']);
+  if (!forces || hasShortLetter(parameters, 'bBd') || hasLongOption(parameters, ['--detach'])) {
+    return false;
   }
-  if (subcommand === 'update-ref') return updateRefScope(parameters);
+  const [folder = '', commitish] = operandsOf(parameters, WORKTREE_ADD_VALUE_OPTIONS);
+
+  return isMainBranch(commitish ?? path.posix.basename(folder));
+}
+
+// Which places a command moves `main` in: `'repository'` for a command that writes the ref by
+// name, `'mainCheckout'` for one that moves the branch of the work tree it runs in.
+function moveScopes(git, pathExists) {
+  const { subcommand, arguments: parameters } = git;
+  if (subcommand === 'reset') return resetMovesBranch(git, pathExists) ? ['mainCheckout'] : [];
+  if (subcommand === 'symbolic-ref') return symbolicRefScopes(parameters);
+  if (subcommand === 'update-ref') return updateRefScopes(parameters);
   const namesMain = {
-    checkout: () => optionValues(parameters, CHECKOUT_BRANCH_OPTIONS).some(isMainBranch),
-    switch: () => optionValues(parameters, SWITCH_BRANCH_OPTIONS).some(isMainBranch),
+    checkout: () =>
+      optionValues(parameters, CHECKOUT_BRANCH_OPTIONS).some(isMainBranch) ||
+      checkoutIgnoresMain(parameters),
+    switch: () =>
+      optionValues(parameters, SWITCH_BRANCH_OPTIONS).some(isMainBranch) ||
+      checkoutIgnoresMain(parameters),
     branch: () => branchNamesMain(parameters),
-    fetch: () => fetchWritesMain(parameters),
+    fetch: () => fetchWritesMain(parameters) || configuredFetchWritesMain(git),
     push: () => refspecWritesMain(parameters, PUSH_VALUE_OPTIONS, true),
     worktree: () =>
       parameters[0] === 'add' &&
-      optionValues(parameters.slice(1), CHECKOUT_BRANCH_OPTIONS).some(isMainBranch),
+      (optionValues(parameters.slice(1), CHECKOUT_BRANCH_OPTIONS).some(isMainBranch) ||
+        worktreeAddForcesMain(parameters.slice(1))),
   }[subcommand];
 
-  return namesMain?.() ? 'repository' : null;
+  return namesMain?.() ? ['repository'] : [];
 }
 
 // A ref-name command writes the repository its git directory names, else the one its work tree
@@ -239,12 +322,14 @@ const UNRESOLVED_PLACE = 'a folder the command does not name';
 // The folder where a git command moves `main`, the text `UNRESOLVED_PLACE` for a command, in
 // either scope, that runs where the text cannot say, or null. `invocations` hold one entry per
 // folder the command may run in. `helpers`: `isMainCheckout(folder)`, `isInRepository(folder)`,
-// and `pathExists(folder, operand)`.
+// `headNamesMain(folder)` (the work tree at or above `folder` is a linked worktree of this
+// repository whose HEAD file names `main`), and `pathExists(folder, operand)`.
 function mainMoveTarget(invocations, helpers) {
   for (const git of invocations) {
-    const scope = moveScope(git, helpers.pathExists);
-    const target = scope === null ? null : firstMovedPlace(placesOf(git, scope), scope, helpers);
-    if (target !== null) return target;
+    for (const scope of moveScopes(git, helpers.pathExists)) {
+      const target = firstMovedPlace(placesOf(git, scope), scope, helpers);
+      if (target !== null) return target;
+    }
   }
 
   return null;
@@ -255,6 +340,7 @@ function firstMovedPlace(places, scope, helpers) {
     if (place === null) return UNRESOLVED_PLACE;
     if (helpers.isMainCheckout(place)) return place;
     if (scope === 'repository' && helpers.isInRepository(place)) return place;
+    if (scope === 'mainCheckout' && helpers.headNamesMain(place)) return place;
   }
 
   return null;

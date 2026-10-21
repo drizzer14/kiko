@@ -26,8 +26,10 @@
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 command -v node >/dev/null 2>&1 || exit 0
 
+# The trap removes the stderr file on a signal too; /dev/null is the fallback and stays.
+errors=/dev/null
+trap '[ "$errors" = /dev/null ] || rm -f "$errors"' EXIT
 errors="$(mktemp 2>/dev/null)" || errors=/dev/null
-[ -n "$errors" ] || errors=/dev/null
 output="$(node "$DIR/kill-guard.js" 2>"$errors")"
 status=$?
 
@@ -52,5 +54,4 @@ else
   printf '%s' 'DO NOT:         wrap the command in a script file, an alias, or a variable to get '
   printf '%s' 'past this guard."}}'
 fi
-[ "$errors" = /dev/null ] || rm -f "$errors"
 exit 0
