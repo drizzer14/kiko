@@ -37,16 +37,16 @@ export const untrackedCoinsOf = (
 export const oversizedCoinsOf = (state: ParsedExchangeState): string[] =>
   unionOfKind(state, 'oversizedCoins');
 
+export type NotImportedCount = { kind: NotImportedKind; count: number };
+
 /**
  * How many refused records the account detail lists per kind, in the order of
  * `NOT_IMPORTED_KINDS`; a kind with none is left out. The parse keeps each entry once, so a
  * count never doubles a record.
  */
-export const notImportedCountsOf = (
-  state: ParsedExchangeState,
-): { kind: NotImportedKind; count: number }[] =>
+export const notImportedCountsOf = (state: ParsedExchangeState): NotImportedCount[] =>
   match(state)
-    .returnType<{ kind: NotImportedKind; count: number }[]>()
+    .returnType<NotImportedCount[]>()
     .with({ kind: 'parsed' }, ({ notImported }) =>
       NOT_IMPORTED_KINDS.map((kind) => ({
         kind,

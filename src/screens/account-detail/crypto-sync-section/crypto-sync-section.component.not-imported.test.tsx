@@ -124,6 +124,14 @@ describe('CryptoSyncSection: the not-imported line', () => {
     ).toBeTruthy();
   });
 
+  it('names the known kind only when an entry of an unknown kind sits beside it', async () => {
+    const { getByText } = await renderWith({ notImported: ['bybit-x:1:2', 'p2p-sale:1:2'] });
+
+    expect(
+      getByText('Not imported: P2P sales (1). Kiko does not import these Binance records yet.'),
+    ).toBeTruthy();
+  });
+
   it.each([
     ['p2p-sale:1:2', 'P2P sales (1)'],
     ['p2p-advertiser:1:2', 'P2P orders as advertiser (1)'],

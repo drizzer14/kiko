@@ -107,6 +107,12 @@ describe('notImportedCountsOf', () => {
     ]);
   });
 
+  it('counts a known kind and leaves out an entry of a kind this build does not know', () => {
+    const state = stateWith({ notImported: ['bybit-x:1:2', 'p2p-sale:1:2'] });
+
+    expect(notImportedCountsOf(state)).toEqual([{ kind: 'p2p-sale', count: 1 }]);
+  });
+
   it('counts nothing for a state with no entry', () => {
     expect(notImportedCountsOf(stateWith({}))).toEqual([]);
     expect(notImportedCountsOf(stateWith({ notImported: [] }))).toEqual([]);

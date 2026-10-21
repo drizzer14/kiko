@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
 import {
   balanceSyncedAtOf,
+  type NotImportedCount,
   notImportedCountsOf,
   oversizedCoinsOf,
   untrackedCoinsOf,
@@ -80,7 +81,7 @@ const notImportedKindCopyKeys: Record<NotImportedKind, ParseKeys> = {
 };
 
 type NotImportedLineProps = {
-  counts: { kind: NotImportedKind; count: number }[];
+  counts: NotImportedCount[];
   exchange: string;
 };
 
