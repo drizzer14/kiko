@@ -32,7 +32,6 @@ import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
-import { displaysAsZero } from '@kiko/currency/format';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { activeHoldings } from '@kiko/rates/active-holdings';
@@ -314,9 +313,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
   const active = activeHoldings(holdings, accounts);
   const total = guardedNetWorth(active, baseCurrency, rateTable, now, priceBook);
-  // A currency whose total shows as zero is noise in the breakdown; the headline still counts it.
+  // A currency whose total is exactly zero is noise in the breakdown; the headline still counts it.
   const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now, priceBook).filter(
-    (money) => !displaysAsZero(money),
+    (money) => !money.isZero(),
   );
 
   // The full span of transaction dates, shown as the date-range field's default

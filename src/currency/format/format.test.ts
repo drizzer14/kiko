@@ -1,6 +1,6 @@
 import { Money } from '../money';
 
-import { displaysAsZero, formatMoney, splitMinorUnits } from './format';
+import { formatMoney, splitMinorUnits } from './format';
 
 describe('formatMoney', () => {
   it('formats fiat with two decimals and code', () => {
@@ -131,46 +131,5 @@ describe('formatMoney USDT amounts', () => {
 
   it('shows the largest storable USDT amount exactly', () => {
     expect(formatMoney(Money.of('USDT', Number.MAX_SAFE_INTEGER))).toBe('₮90,071,992.54740991');
-  });
-});
-
-describe('displaysAsZero', () => {
-  const CURRENCIES = ['UAH', 'USD', 'USDT', 'BTC'] as const;
-
-  // Money.of truncates, so a stored real (a seeded or converted value) reaches the formatter as a
-  // cast.
-  const stored = (currency: (typeof CURRENCIES)[number], minorUnits: number): Money =>
-    ({ currency, minorUnits }) as unknown as Money;
-
-  it.each(CURRENCIES)('is true for an exact zero in %s', (currency) => {
-    expect(displaysAsZero(stored(currency, 0))).toBe(true);
-    expect(displaysAsZero(stored(currency, -0))).toBe(true);
-  });
-
-  it.each(CURRENCIES)('is true below half a minor unit, either sign, in %s', (currency) => {
-    expect(displaysAsZero(stored(currency, 0.4))).toBe(true);
-    expect(displaysAsZero(stored(currency, -0.4))).toBe(true);
-    expect(displaysAsZero(stored(currency, 1e-9))).toBe(true);
-    expect(displaysAsZero(stored(currency, -1e-9))).toBe(true);
-  });
-
-  it.each(CURRENCIES)('is false from half a minor unit up, either sign, in %s', (currency) => {
-    expect(displaysAsZero(stored(currency, 0.5))).toBe(false);
-    expect(displaysAsZero(stored(currency, -0.5))).toBe(false);
-    expect(displaysAsZero(stored(currency, 1))).toBe(false);
-    expect(displaysAsZero(stored(currency, -1))).toBe(false);
-  });
-
-  it('is false for a negative debt and for a visible crypto amount', () => {
-    expect(displaysAsZero(Money.of('USD', -5000))).toBe(false);
-    expect(displaysAsZero(Money.of('BTC', 50_000_000))).toBe(false);
-  });
-
-  it.each(CURRENCIES)('agrees with formatMoney showing no non-zero digit in %s', (currency) => {
-    [0, 1e-9, -1e-9, 0.4, -0.4, 0.5, -0.5, 0.6, 1, -1, 12, 100, 123_456].forEach((minorUnits) => {
-      const money = stored(currency, minorUnits);
-
-      expect(displaysAsZero(money)).toBe(!/[1-9]/.test(formatMoney(money)));
-    });
   });
 });

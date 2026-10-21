@@ -39,15 +39,6 @@ const formatFiatBody = (minorUnits: number, scale: number, locale: string): stri
     maximumFractionDigits: scale,
   });
 
-// True when `formatMoney` prints this amount as a zero ("0.00", "-0.00", "₿0.00"): the same
-// integer rounding of the stored minor units that the body formatters apply, so a hide-zero
-// filter never disagrees with what the row would show.
-export const displaysAsZero = (money: Money): boolean => {
-  const { whole, fraction } = splitMinorUnits(money.minorUnits, currencyScale[money.currency]);
-
-  return whole === 0 && /^0*$/.test(fraction);
-};
-
 export const formatMoney = (money: Money, locale = 'en-US'): string => {
   const scale = currencyScale[money.currency];
   const formatted = isCrypto(money.currency)
