@@ -1,3 +1,4 @@
+import { useIsLargeWindow } from '@kiko/display-regions';
 import { act, renderHook } from '@testing-library/react-native';
 import { reportWindow, resizeWindow } from '@kiko/test-support/window-size';
 
@@ -11,6 +12,14 @@ const elapse = async (milliseconds: number): Promise<void> => {
   await act(async () => {
     jest.advanceTimersByTime(milliseconds);
   });
+};
+
+const expectTrueOnlyOnceTheDelayEnds = async (result: { current: boolean }): Promise<void> => {
+  expect(result.current).toBe(false);
+
+  await elapse(1);
+
+  expect(result.current).toBe(true);
 };
 
 describe('useIsMergedHome', () => {
@@ -51,18 +60,27 @@ describe('useIsMergedHome', () => {
     expect(result.current).toBe(false);
   });
 
+  it('keeps no timer pending while the window does not change', async () => {
+    reportWindow('regular', 1376, 1032);
+    const timersAddedBy = async (useHook: () => unknown): Promise<number> => {
+      const before = jest.getTimerCount();
+
+      await renderHook(useHook);
+
+      return jest.getTimerCount() - before;
+    };
+    const addedByMountingAnyHook = await timersAddedBy(() => useIsLargeWindow());
+
+    expect(await timersAddedBy(() => useIsMergedHome())).toBe(addedByMountingAnyHook);
+  });
+
   it('turns true only after the large window has lasted the settle delay', async () => {
     reportWindow('regular', 1032, 683);
     const { result } = await renderHook(() => useIsMergedHome());
 
     await resizeWindow(1376, 1032);
     await elapse(SETTLE_DELAY_MS - 1);
-
-    expect(result.current).toBe(false);
-
-    await elapse(1);
-
-    expect(result.current).toBe(true);
+    await expectTrueOnlyOnceTheDelayEnds(result);
   });
 
   it('turns false only after a window that is no longer large has lasted the settle delay', async () => {
@@ -104,11 +122,6 @@ describe('useIsMergedHome', () => {
     await resizeWindow(1032, 683);
     await resizeWindow(1376, 1032);
     await elapse(SETTLE_DELAY_MS - 1);
-
-    expect(result.current).toBe(false);
-
-    await elapse(1);
-
-    expect(result.current).toBe(true);
+    await expectTrueOnlyOnceTheDelayEnds(result);
   });
 });

@@ -2469,6 +2469,23 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId(`${CATEGORY_FILTER}-option-groceries`)).toBeNull();
   });
 
+  it('keeps a selected category that has no category row', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: EXPENSES.map((row) => ({ ...row, category: null })),
+      history: HISTORY,
+      categories: [],
+    });
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'other');
+
+    expect(getByText('Categories · 1')).toBeTruthy();
+  });
+
   it('filters nothing and shows no count once the only selected category is deleted', async () => {
     seedSpending();
 
@@ -3364,6 +3381,45 @@ describe('StatisticsScreen — filter sheets when the screen stops being shown',
       const view = await renderScreen();
 
       await openSheet(view, trigger);
+      expect(view.queryByTestId(content)).not.toBeNull();
+
+      mockUseIsScreenVisible.mockReturnValue(false);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).toBeNull();
+    },
+  );
+
+  it.each(SHEETS)(
+    'does not close the %s sheet when the screen becomes shown',
+    async (_name, trigger, content) => {
+      mockUseIsScreenVisible.mockReturnValue(false);
+      const view = await renderScreen();
+
+      await view.rerender(<StatisticsScreen />);
+      await openSheet(view, trigger);
+      mockUseIsScreenVisible.mockReturnValue(true);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).not.toBeNull();
+    },
+  );
+
+  it.each(SHEETS)(
+    'closes the %s sheet every time the screen stops being shown',
+    async (_name, trigger, content) => {
+      const view = await renderScreen();
+
+      await openSheet(view, trigger);
+      mockUseIsScreenVisible.mockReturnValue(false);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).toBeNull();
+
+      mockUseIsScreenVisible.mockReturnValue(true);
+      await view.rerender(<StatisticsScreen />);
+      await openSheet(view, trigger);
+
       expect(view.queryByTestId(content)).not.toBeNull();
 
       mockUseIsScreenVisible.mockReturnValue(false);
