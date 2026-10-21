@@ -1,12 +1,72 @@
+import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
+import {
+  advanceWalkMarks,
+  AMOUNT_STOP_CODES,
+  BinanceWalkStop,
+  commitSettledSpan,
+  type DepthProbe,
+  dropReadPoints,
+  type ExchangeStateDeps,
+  exchangeStateDepsOf,
+  halfOf,
+  historyListWriterOf,
+  instantAt,
+  joinSettled,
+  narrowRefusedStart,
+  notImportedWriterOf,
+  placeWalletRows,
+  planWalkPasses,
+  readPendingMark,
+  readWalkMarks,
+  readWalkRoundRobins,
+  roundRobinHooksOf,
+  rowMinorUnits,
+  runWalkPlan,
+  type SettledSpan,
+  type SpanCommit,
+  type SpanRead,
+  settleRecords,
+  settleUnreadable,
+  type WalkMarkWriter,
+  type WalkMarks,
+  type WalkPass,
+  type WalkPlan,
+  type WalkResult,
+  type WalkWindow,
+  walkMarkWriterOf,
+  walkSpans,
+} from '@kiko/crypto-sync/exchange/walk';
+import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { notImportedEntry } from '@kiko/crypto-sync/exchange/walk-state';
+import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { untrackedAssetCode } from '@kiko/transactions/untracked-counterpart';
-import { AMOUNT_STOP_CODES, BinanceWalkStop, rowMinorUnits } from '@kiko/crypto-sync/exchange/walk';
 
+import {
+  BinanceHistoryTooOldError,
+  BinanceRateLimitError,
+  type FetchAccountOptions,
+} from './binance.client';
+import {
+  type BinanceTransactionRow,
+  HISTORY_FLOOR_MS,
+  RESYNC_OVERLAP_MS,
+} from './binance.transactions';
+import {
+  type BinanceConvertRecord,
+  type ConvertHistoryPage,
+  fetchConvertHistory,
+} from './binance.history-client';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
+import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
-import type { BinanceConvertRecord } from './binance.history-client';
+import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
+import { type BinanceCredentials, readCredentials } from './binance.credentials';
+import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
 /** The stop of a conversion that waits on Binance: its point is owed until it settles. */
 const CONVERT_NOT_SETTLED = 'convert-not-settled';
@@ -34,7 +94,7 @@ export const CONVERT_FORWARD_OWES: readonly string[] = [
  * of the coin's holding it sits on, `counterpartWallet` the other leg's. A lone leg (the other coin
  * is not tracked) has `untrackedCounterpart` instead of a counterpart and a pair id.
  */
-export type PlannedConvertRow = {
+type PlannedConvertRow = {
   wallet: string;
   counterpartWallet?: string;
   amountMinorUnits: number;
@@ -51,7 +111,7 @@ export type PlannedConvertRow = {
  * (`rows`, none when neither side is tracked), the entry of a record a rule refuses for good
  * (`refused`), or nothing at all (`none`, a conversion that failed).
  */
-export type ConvertOutcome =
+type ConvertOutcome =
   | { kind: 'rows'; rows: PlannedConvertRow[]; untracked: string[] }
   | { kind: 'refused'; entry: string }
   | { kind: 'none' };
@@ -177,3 +237,438 @@ export const convertOutcomeOf = (input: {
     .with('FAIL', () => ({ kind: 'none' }))
     .otherwise(() => refusedOutcomeOf(record));
 };
+
+/** Binance rejects a Convert `startTime`/`endTime` gap of more than 30 days. */
+export const CONVERT_WINDOW_MS = 30 * DAY_MS;
+
+/**
+ * Safety stop on the plan of a run: the lane reads 20 windows at most in a run, so a plan holds no
+ * more than that.
+ */
+const CONVERT_MAX_WINDOWS = 20;
+
+/** The stop of a span that is still full at one millisecond, which may hold more than it shows. */
+const CONVERT_PAGE_STUCK = 'convert-page-stuck';
+
+const CONVERT_HOLDING_MISSING = 'convert-holding-missing';
+
+/** The imported-transaction shape the Convert walk hands to `transactionsRepo.addManyDedup`. */
+type BinanceConvertRow = BinanceTransactionRow & {
+  exchangeCounterpartHoldingId?: string;
+  exchangePairId?: string;
+  untrackedCounterpart?: string;
+  operation: 'convert';
+};
+
+/**
+ * The injectable seams of the Convert walk: the credential and holding reads, the Convert read,
+ * the insert-only holding creation, the deduping import, and the walk state read and write. Pacing
+ * and the weight budget come from the run.
+ */
+export type BinanceConvertHistoryDeps = ExchangeStateDeps & {
+  now: () => number;
+  fetchImpl: typeof fetch;
+  readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
+  listHoldings: (accountId: string) => Promise<HoldingRow[]>;
+  fetchConvertHistory: (
+    apiKey: string,
+    secret: string,
+    query: { startTime: number; endTime: number },
+    options?: FetchAccountOptions,
+  ) => Promise<ConvertHistoryPage>;
+  ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
+  addTransactions: (rows: BinanceConvertRow[]) => Promise<number>;
+};
+
+const defaultConvertHistoryDeps: BinanceConvertHistoryDeps = {
+  ...exchangeStateDepsOf('binance'),
+  now: () => Date.now(),
+  fetchImpl: fetch,
+  readCredentials,
+  listHoldings: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
+  fetchConvertHistory,
+  ensureHoldings: (holdings) => holdingsRepo.ensureExchangeHoldings(holdings),
+  addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
+};
+
+type ConvertContext = {
+  deps: BinanceConvertHistoryDeps;
+  run: BinanceHistoryRun;
+  accountId: string;
+  apiKey: string;
+  secret: string;
+  options: FetchAccountOptions;
+  marks: WalkMarks;
+  plan: WalkPlan;
+  write: WalkMarkWriter;
+};
+
+/**
+ * A page and the span it was read for. A start Binance refused is read from the start it serves,
+ * so the span of the page is then narrower than the span asked for; the ground below it is ground
+ * Binance does not keep, and is not owed.
+ */
+type ConvertRead = { page: ConvertHistoryPage; span: WalkWindow };
+
+const NOTHING_SERVED: ConvertHistoryPage = {
+  rows: [],
+  unreadable: [],
+  moreData: false,
+  usedUidWeight1m: undefined,
+  usedIpWeight1m: undefined,
+};
+
+/** Whether `error` is Binance's rate limit, which also puts the account on its shared cooldown. */
+const stopOnRateLimit = (
+  context: Pick<ConvertContext, 'deps' | 'accountId'>,
+  error: unknown,
+): boolean => {
+  if (!(error instanceof BinanceRateLimitError)) {
+    return false;
+  }
+
+  setBinanceCooldownUntil(context.accountId, context.deps.now() + error.retryAfterMs);
+
+  return true;
+};
+
+/**
+ * One request for the span. `undefined` is a clean stop: the call budget ran out (each request
+ * records a call on the lane, so its per-run cap ends the walk), or Binance rate-limited. `keep`
+ * calls stay unspent for the passes that come later in the run.
+ */
+const fetchSpan = async (
+  context: ConvertContext,
+  span: WalkWindow,
+  keep: number,
+): Promise<ConvertHistoryPage | undefined> => {
+  const { deps, run, apiKey, secret, options } = context;
+
+  if (!run.budget.canAfford('convert', COSTS.convert, keep)) {
+    return undefined;
+  }
+
+  try {
+    await run.gate.wait();
+    const page = await deps.fetchConvertHistory(
+      apiKey,
+      secret,
+      { startTime: span.start, endTime: span.end },
+      options,
+    );
+    run.budget.record('convert', page);
+
+    return page;
+  } catch (error) {
+    if (stopOnRateLimit(context, error)) {
+      return undefined;
+    }
+
+    throw error;
+  }
+};
+
+/**
+ * Whether Binance serves a start: a request of one millisecond at it, which spends a call of the
+ * lane, refused ones too, and leaves the read of the span after it affordable (`undefined`: it
+ * cannot, or Binance rate-limited, a clean stop).
+ */
+const probeOf =
+  (context: ConvertContext, keep: number): DepthProbe =>
+  async (startMs) => {
+    const { deps, run, apiKey, secret, options } = context;
+
+    if (!run.budget.canAfford('convert', COSTS.convert, keep + 1)) {
+      return undefined;
+    }
+
+    try {
+      await run.gate.wait();
+      run.budget.record(
+        'convert',
+        await deps.fetchConvertHistory(
+          apiKey,
+          secret,
+          { startTime: startMs, endTime: startMs + 1 },
+          options,
+        ),
+      );
+
+      return true;
+    } catch (error) {
+      if (error instanceof BinanceHistoryTooOldError) {
+        run.budget.record('convert', BINANCE_WALK_CONFIG.refusedCallWeights);
+
+        return false;
+      }
+
+      if (stopOnRateLimit(context, error)) {
+        return undefined;
+      }
+
+      throw error;
+    }
+  };
+
+/**
+ * What one read of `span` gave: a page that is not full is the whole of its span whatever order
+ * Binance sorts in, so a page with `moreData` is answered with the half to read instead. A span of
+ * one millisecond that still has more data is committed as it is, and stops the walk there.
+ */
+const readOf = (span: WalkWindow, page: ConvertHistoryPage): SpanRead<ConvertRead> => {
+  const half = halfOf(span);
+
+  return page.moreData && half !== undefined
+    ? { kind: 'split', half }
+    : { kind: 'page', page: { page, span } };
+};
+
+/**
+ * Read a span whose start Binance refused as older than it keeps: find the start it serves
+ * (`narrowRefusedStart`) and read the span from there. The ground below that start is ground
+ * Binance does not keep, so it is not owed and the walk goes on; a span it serves none of is an
+ * empty page. `undefined` is a clean stop, the narrowing out of calls or rate-limited.
+ */
+const readFromServedStart = async (
+  context: ConvertContext,
+  span: WalkWindow,
+  keep: number,
+): Promise<SpanRead<ConvertRead> | undefined> => {
+  const narrowed = await narrowRefusedStart({
+    refusedMs: span.start,
+    endMs: span.end,
+    floorMs: HISTORY_FLOOR_MS,
+    config: BINANCE_DEPTH_CONFIG,
+    probe: probeOf(context, keep),
+  });
+
+  if (narrowed === undefined) {
+    return undefined;
+  }
+
+  const served = match(narrowed)
+    .returnType<WalkWindow>()
+    .with({ kind: 'floor' }, () => ({ start: span.end, end: span.end }))
+    .with({ kind: 'start' }, ({ startMs }) => ({
+      start: Math.min(startMs, span.end),
+      end: span.end,
+    }))
+    .exhaustive();
+
+  if (served.start >= served.end) {
+    return { kind: 'page', page: { page: NOTHING_SERVED, span: served } };
+  }
+
+  const page = await fetchSpan(context, served, keep);
+
+  return foldMap(maybe(page), (found) => readOf(served, found));
+};
+
+const readSpan = async (
+  context: ConvertContext,
+  span: WalkWindow,
+  keep: number,
+): Promise<SpanRead<ConvertRead> | undefined> => {
+  try {
+    const page = await fetchSpan(context, span, keep);
+
+    return foldMap(maybe(page), (found) => readOf(span, found));
+  } catch (error) {
+    if (!(error instanceof BinanceHistoryTooOldError)) {
+      throw error;
+    }
+
+    return readFromServedStart(context, span, keep);
+  }
+};
+
+/** What one conversion adds to its span: its rows, the tickers it names, and its refusal entry. */
+type OutcomeParts = { rows: PlannedConvertRow[]; untracked: string[]; notImported: string[] };
+
+const partsOf = (outcome: ConvertOutcome): OutcomeParts =>
+  match(outcome)
+    .returnType<OutcomeParts>()
+    .with({ kind: 'rows' }, ({ rows, untracked }) => ({ rows, untracked, notImported: [] }))
+    .with({ kind: 'refused' }, ({ entry }) => ({ rows: [], untracked: [], notImported: [entry] }))
+    .with({ kind: 'none' }, () => ({ rows: [], untracked: [], notImported: [] }))
+    .exhaustive();
+
+/**
+ * The records of one span, each on its own (see `settleRecords`): a conversion the walk cannot
+ * trust, or a row the client could not read, owes its own point and the others still import. A
+ * conversion a rule refuses for good is listed once it is settled, and the tickers of the coins the
+ * walk does not track are named. A page that is still full once its span cannot be halved may hold
+ * more conversions than it shows: that is no one record's stop, so the whole span is owed.
+ */
+const settledConversionsOf = (
+  context: ConvertContext,
+  { page, span }: ConvertRead,
+): SettledSpan<PlannedConvertRow> => {
+  const settled = settleRecords<BinanceConvertRecord, ConvertOutcome>({
+    span,
+    records: page.rows,
+    rowsOf: (record) => [convertOutcomeOf({ accountId: context.accountId, record })],
+    extentOf: (record) => instantAt(record.createTime),
+  });
+  const parts = settled.rows.map(partsOf);
+
+  return joinSettled<PlannedConvertRow>([
+    ...(page.moreData
+      ? [{ rows: [], codes: [CONVERT_PAGE_STUCK], owed: [span], returned: [] }]
+      : []),
+    {
+      ...settled,
+      rows: parts.flatMap((part) => part.rows),
+      untracked: parts.flatMap((part) => part.untracked),
+      notImported: parts.flatMap((part) => part.notImported),
+    },
+    settleUnreadable({
+      span,
+      unreadable: page.unreadable,
+      code: CONVERT_ROW_UNREADABLE,
+      extentOf: (row) => foldMap(maybe(row.time), (time) => instantAt(Number(time))),
+    }),
+  ]);
+};
+
+/**
+ * Commit one span's page: place and write the rows of the conversions the walk can trust, then
+ * move the walk's marks past the span that was asked for (see `commitSettledSpan`: rows first,
+ * marks second, so a crash between the two just re-imports idempotently). The marks move past the
+ * whole span even when the page was read from a later start, as the ground below it is not kept.
+ */
+const commitSpan = (
+  context: ConvertContext,
+  span: WalkWindow,
+  read: ConvertRead,
+  pass: WalkPass,
+): Promise<SpanCommit | undefined> => {
+  const { deps, accountId, plan, marks, write } = context;
+
+  return commitSettledSpan({
+    pass,
+    span: read.span,
+    settled: settledConversionsOf(context, read),
+    place: (planned) =>
+      placeWalletRows({
+        accountId,
+        planned,
+        config: BINANCE_WALK_CONFIG,
+        listHoldings: deps.listHoldings,
+        ensureHoldings: deps.ensureHoldings,
+        missingCode: CONVERT_HOLDING_MISSING,
+      }),
+    add: deps.addTransactions,
+    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
+    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
+    writeNotImported: notImportedWriterOf(deps, accountId),
+    forwardOwes: CONVERT_FORWARD_OWES,
+    advance: ({ owed }) =>
+      advanceWalkMarks({
+        pass,
+        span,
+        // No `series`: a window is never narrowed to some series, so a span reads all of it.
+        series: undefined,
+        owed,
+        plan,
+        marks,
+        restartMs: HISTORY_FLOOR_MS,
+        write,
+      }),
+  });
+};
+
+const runSync = async (
+  deps: BinanceConvertHistoryDeps,
+  accountId: string,
+  run: BinanceHistoryRun,
+): Promise<WalkResult> => {
+  if (isBinanceCoolingDown(accountId, deps.now())) {
+    return { imported: 0, complete: false };
+  }
+
+  const credentials = await deps.readCredentials(accountId);
+
+  if (credentials === undefined) {
+    return { imported: 0, complete: true };
+  }
+
+  const stored = await readWalkMarks(deps, accountId, 'convert');
+  const { cursor, rescan: rescanCursor } = stored;
+  const write = walkMarkWriterOf(deps, accountId, 'convert');
+  const roundRobins = await readWalkRoundRobins({ stored, write });
+  const pending = await readPendingMark({
+    stored: stored.pending,
+    owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: cursor ?? HISTORY_FLOOR_MS },
+    write,
+  });
+  const endTime = deps.now();
+  const plan = planWalkPasses({
+    cursor,
+    rescanCursor,
+    pointCursor: roundRobins.pointCursor,
+    rangeCursor: roundRobins.rangeCursor,
+    pending,
+    floorMs: HISTORY_FLOOR_MS,
+    endTime,
+    windowMs: CONVERT_WINDOW_MS,
+    overlapMs: RESYNC_OVERLAP_MS,
+    maxWindows: CONVERT_MAX_WINDOWS,
+  });
+
+  if (plan.forward.length === 0 && plan.rescan.length === 0) {
+    return { imported: 0, complete: false };
+  }
+
+  const context: ConvertContext = {
+    deps,
+    run,
+    accountId,
+    ...credentials,
+    options: { fetchImpl: deps.fetchImpl, now: deps.now },
+    marks: { cursor, rescanCursor, ...roundRobins, pending },
+    plan,
+    write,
+  };
+
+  const result = await runWalkPlan({
+    plan,
+    canAfford: (keep) =>
+      run.budget.canAfford('convert', COSTS.convert, keep) &&
+      !isBinanceCoolingDown(accountId, deps.now()),
+    runWindow: (window, pass, keep, hint) =>
+      walkSpans({
+        window,
+        read: (span, keepCalls) => readSpan(context, span, keepCalls),
+        commit: (span, read) => commitSpan(context, span, read, pass),
+        keep,
+        hint,
+        onComplete: (read) => dropReadPoints({ pass, window, read, marks: context.marks, write }),
+      }),
+    ...roundRobinHooksOf({ marks: context.marks, write }),
+  });
+  const lastWindowEnd = plan.forward.at(-1)?.end;
+
+  // A plan holds `CONVERT_MAX_WINDOWS` windows at most, so one that ends before now has more
+  // history behind it than the windows it read.
+  return {
+    ...result,
+    complete: result.complete && (lastWindowEnd === undefined || lastWindowEnd >= endTime),
+  };
+};
+
+/**
+ * Import the user's Binance Convert history as transactions on the wallet each conversion names
+ * (Funding or Spot), committing a window's rows before advancing the mark past it. The walk reads
+ * 30-day windows forward from the history floor, empty ones too, because Binance has no refusal to
+ * the floor to stop at; a run reads at most the lane's 20 windows, so the first walk takes
+ * several runs. A start Binance refuses as older than it keeps is narrowed to the start it serves
+ * and never ends the walk. `complete: false` means history, owed ground or the re-scan remains
+ * and a later run resumes from the stored marks; a failure other than a rate limit rejects, so
+ * the caller can log it without failing the balance sync.
+ */
+export const syncBinanceConvertHistory = (
+  request: { targetAccountId: string; run: BinanceHistoryRun },
+  overrides: Partial<BinanceConvertHistoryDeps> = {},
+): Promise<WalkResult> =>
+  runSync({ ...defaultConvertHistoryDeps, ...overrides }, request.targetAccountId, request.run);
