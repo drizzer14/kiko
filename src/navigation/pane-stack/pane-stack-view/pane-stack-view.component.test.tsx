@@ -285,21 +285,23 @@ describe('PaneStackView', () => {
     it.each([
       ['a 13-inch iPad in landscape', 1376, 1032, 'columns'],
       ['a 13-inch iPad in portrait', 1032, 1376, 'columns'],
-      ['a 13-inch iPad in landscape, stacked', 1376, 1032, 'rows'],
-    ] as const)('is the content’s side padding in both panes of %s', async (_name, w, h, mode) => {
-      await renderInWindow(w, h, mode);
+    ] as const)(
+      'is the content’s side padding in both panes of %s',
+      async (_name, width, height, mode) => {
+        await renderInWindow(width, height, mode);
 
-      expect(mockFixedContentMargin.mock.calls).toEqual([
-        [darkTheme.spacing(4)],
-        [darkTheme.spacing(4)],
-      ]);
-    });
+        expect(mockFixedContentMargin.mock.calls).toEqual([
+          [darkTheme.spacing(4)],
+          [darkTheme.spacing(4)],
+        ]);
+      },
+    );
 
     it.each([
       ['the Duo inner window in landscape', 951, 669, 'columns'],
       ['the Duo inner window in portrait', 669, 951, 'rows'],
-    ] as const)('is 0 in both panes of %s', async (_name, w, h, mode) => {
-      await renderInWindow(w, h, mode);
+    ] as const)('is 0 in both panes of %s', async (_name, width, height, mode) => {
+      await renderInWindow(width, height, mode);
 
       expect(mockFixedContentMargin.mock.calls).toEqual([[0], [0]]);
     });

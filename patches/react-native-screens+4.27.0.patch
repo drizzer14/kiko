@@ -88,14 +88,12 @@ index c233036..66ae64f 100644
    if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
      RNSScreen *screenController = (RNSScreen *)self.topViewController;
      BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
-@@ -1279,6 +1331,11 @@ RNS_IGNORE_SUPER_CALL_END
+@@ -1279,6 +1331,9 @@ RNS_IGNORE_SUPER_CALL_END
      _controller.view.backgroundColor = _nativeContainerBackgroundColor;
    }
- 
+
 +  RNSNavigationController *navigationController = static_cast<RNSNavigationController *>(_controller);
-+  if (newScreenProps.fixedContentMargin != navigationController.fixedContentMargin) {
-+    navigationController.fixedContentMargin = newScreenProps.fixedContentMargin;
-+  }
++  navigationController.fixedContentMargin = newScreenProps.fixedContentMargin;
 +
    [super updateProps:props oldProps:oldProps];
  }

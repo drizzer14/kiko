@@ -35,6 +35,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 import { fittingLargeTitleLayout } from '../fitting-large-title';
+import { nonPushPresentations } from '../pane-stack-presentation';
 
 import AccountsStack from './accounts.stack';
 
@@ -89,6 +90,12 @@ describe('AccountsStack', () => {
       headerBlurEffect: 'systemChromeMaterialDark',
       headerLargeStyle: { backgroundColor: 'transparent' },
     });
+  });
+
+  // A modal presented from a pane's stack would inherit the pane's content margin through
+  // FixedContentMarginContext, so a pane-stack screen stays a push.
+  it('presents every screen as a push, never a modal', () => {
+    expect(nonPushPresentations(AccountsStack({}))).toEqual([]);
   });
 
   it('wraps every screen in the fitting large-title layout', () => {

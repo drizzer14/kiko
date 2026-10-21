@@ -72,7 +72,7 @@ describe('the react-native-screens fixed content margin patch', () => {
     expect(source).toContain('barMargins.trailing = _fixedContentMargin;');
     expect(source).toContain('if (_fixedContentMargin <= 0) {');
     expect(source).toContain(
-      'if (newScreenProps.fixedContentMargin != navigationController.fixedContentMargin) {',
+      'navigationController.fixedContentMargin = newScreenProps.fixedContentMargin;',
     );
     expect(read('ios/RNSScreenStack.h')).toContain(
       '@property (nonatomic) CGFloat fixedContentMargin;',

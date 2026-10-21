@@ -24,6 +24,7 @@ jest.mock('@kiko/navigation/merged-home', () => ({
 
 import HomeStack from '../home-stack';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
+import { nonPushPresentations } from '../pane-stack-presentation';
 import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
 import StatisticsStack from './statistics.stack';
@@ -82,6 +83,12 @@ describe('StatisticsStack', () => {
       .map((screen) => (screen as ScreenElement).props.name);
 
     expect(homeScreenNames).toEqual(expect.arrayContaining(screenNames()));
+  });
+
+  // A modal presented from a pane's stack would inherit the pane's content margin through
+  // FixedContentMarginContext, so a pane-stack screen stays a push.
+  it('presents every screen as a push, never a modal', () => {
+    expect(nonPushPresentations(StatisticsStack({}))).toEqual([]);
   });
 
   it('is rooted at the Statistics screen', () => {

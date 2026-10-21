@@ -33,6 +33,7 @@ jest.mock('@kiko/navigation/merged-home', () => ({
 }));
 
 import { fittingLargeTitleLayout } from '../fitting-large-title';
+import { nonPushPresentations } from '../pane-stack-presentation';
 
 import HomeStack from './home.stack';
 
@@ -70,6 +71,12 @@ const sharedLargeTitleOptions = {
 describe('HomeStack', () => {
   beforeEach(() => {
     mockMergedHome.isMerged = false;
+  });
+
+  // A modal presented from a pane's stack would inherit the pane's content margin through
+  // FixedContentMarginContext, so a pane-stack screen stays a push.
+  it('presents every screen as a push, never a modal', () => {
+    expect(nonPushPresentations(HomeStack({}))).toEqual([]);
   });
 
   it('hides the header on the Home root', () => {

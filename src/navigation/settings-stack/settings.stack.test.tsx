@@ -35,6 +35,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 import { fittingLargeTitleLayout } from '../fitting-large-title';
+import { nonPushPresentations } from '../pane-stack-presentation';
 
 import SettingsStack from './settings.stack';
 
@@ -85,6 +86,12 @@ const titleByScreen = (): Record<string, string | undefined> =>
   );
 
 describe('SettingsStack', () => {
+  // A modal presented from a pane's stack would inherit the pane's content margin through
+  // FixedContentMarginContext, so a pane-stack screen stays a push.
+  it('presents every screen as a push, never a modal', () => {
+    expect(nonPushPresentations(SettingsStack({}), { topicId: 'addAccount' })).toEqual([]);
+  });
+
   it('gives the Settings, System, and Categories screens a static, localized title', () => {
     const titles = titleByScreen();
     expect(titles.Settings).toBe('Settings');
