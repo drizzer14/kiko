@@ -27,8 +27,8 @@ type WalkFieldPatch = WalkMarkPatch & { kind: 'walk'; walkId: WalkId };
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
  * trade symbol, the trades' rotation or balance snapshot, one coin list, or the balance sync
- * stamp. A patch names fields, never whole entries, so a field it does not name is never written
- * from a parse.
+ * stamp, or entries to add to the not-imported list. A patch names fields, never whole entries, so
+ * a field it does not name is never written from a parse.
  *
  * The oversized balance list has its own patch and no `coinList` form, so no write can set
  * `balance` apart from the wallet arrays it is derived from.
@@ -52,7 +52,8 @@ export type ExchangeStatePatch =
       /** Whether every wallet read, so no ticker stored before wallets were named can remain. */
       complete: boolean;
     }
-  | { kind: 'balanceSyncedAt'; value: number };
+  | { kind: 'balanceSyncedAt'; value: number }
+  | { kind: 'notImported'; entries: string[] };
 
 const withWalkField = (
   stored: StoredExchangeState,
@@ -142,6 +143,25 @@ const withOversizedBalance = (
   };
 };
 
+const isText = (value: unknown): value is string => typeof value === 'string';
+
+/**
+ * The list only grows: a stored entry that is text stays, a kind this build does not know too (a
+ * newer build wrote it), and one that is no text, or a list that is no list, starts from nothing.
+ */
+const withNotImported = (
+  stored: StoredExchangeState,
+  { entries }: Extract<ExchangeStatePatch, { kind: 'notImported' }>,
+): StoredExchangeState => ({
+  ...stored,
+  notImported: [
+    ...new Set([
+      ...(Array.isArray(stored.notImported) ? stored.notImported : []).filter(isText),
+      ...entries,
+    ]),
+  ],
+});
+
 const patchedState = (
   stored: StoredExchangeState,
   patch: ExchangeStatePatch,
@@ -158,15 +178,17 @@ const patchedState = (
       withOversizedBalance(stored, oversizedPatch),
     )
     .with({ kind: 'balanceSyncedAt' }, ({ value }) => ({ ...stored, balanceSyncedAt: value }))
+    .with({ kind: 'notImported' }, (notImportedPatch) => withNotImported(stored, notImportedPatch))
     .exhaustive();
 
 /**
  * The column text after `patches`, applied in order to the one stored state, or `undefined` when
  * the top level is malformed: the patches then write nothing, because the stored text is never
  * overwritten by a walk (only a disconnect replaces it). It patches the RAW stored JSON, never the
- * parse, which drops what this build does not read (`notImported`, an unknown walk id) and repairs
- * what is malformed: every field the patches do not name keeps its stored value. Every writer
- * stores canonical JSON, which round-trips byte-identically, so an untouched part keeps its bytes.
+ * parse, which drops what this build does not read (a `notImported` entry of an unknown kind, an
+ * unknown walk id) and repairs what is malformed: every field the patches do not name keeps its
+ * stored value. Every writer stores canonical JSON, which round-trips byte-identically, so an
+ * untouched part keeps its bytes.
  */
 export const exchangeStatePatched = (
   text: string | null,

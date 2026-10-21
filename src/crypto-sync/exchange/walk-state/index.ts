@@ -5,6 +5,9 @@ export {
   type WalkMarkPatch,
 } from './exchange-state-patch';
 export {
+  NOT_IMPORTED_KINDS,
+  type NotImportedKind,
+  notImportedEntry,
   type ParsedExchangeState,
   type ParsedWalkMarks,
   parseExchangeState,
