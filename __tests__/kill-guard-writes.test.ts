@@ -1247,6 +1247,18 @@ const DENIED_CONTENTS_INTO_GIT: string[] = [
   'cp -r /tmp/x/* /tmp/r/.git/',
   'cp -r "$SRC" .git/',
   'cp -r /tmp/x/. "$D"/.git/',
+  'cp -rT /tmp/x .git',
+  'cp -rT /tmp/x .git/',
+  'gcp -rT /tmp/x .git',
+  'cp -aT /tmp/x /tmp/r/.git',
+  'cp -rT "$SRC" "$D"/.git',
+  'cp --recursive --no-target-directory /tmp/x .git',
+  'cp -t .git /tmp/cfg/*',
+  'cp /tmp/cfg/* .git/worktrees/w/',
+  'cp /tmp/cfg/* .git/worktrees/w',
+  'cp -r /tmp/x/. /tmp/r/.git/worktrees/w/',
+  'cp -rT /tmp/x .git/worktrees/w',
+  'cp -t .git/worktrees/w /tmp/cfg/*',
 ];
 
 const DENIED_MISSING_GIT_FOLDER: string[] = [
@@ -1266,6 +1278,15 @@ const ALLOWED_CONTENTS_BESIDE_GIT: string[] = [
   'cp -r /tmp/x/. .git/hooks/',
   'cp -r /tmp/gitdir /tmp/r/.gitx',
   'cp -r /tmp/x/. /tmp/r/.gitignore.d/',
+  'cp -rT /tmp/x /tmp/backup',
+  'cp -rT /tmp/x /tmp/r/.git/hooks',
+  'cp -rT /tmp/x .git/hooks',
+  'cp -rT /tmp/x .github',
+  'cp -T /tmp/x /tmp/backup',
+  'cp /tmp/cfg/* .git/worktrees/w/logs',
+  'cp /tmp/cfg/* .git/worktrees/',
+  'cp /tmp/cfg/* /tmp/r/.gitx/worktrees/w/',
+  'cp -t /tmp/backup /tmp/cfg/*',
 ];
 
 const GIT_FOLDER_DIRECTORIES: [label: string, options: Record<string, unknown>][] = [

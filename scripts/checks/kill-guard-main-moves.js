@@ -2,13 +2,15 @@
 // through `bash scripts/ff-main.sh <sha>`, after a queued verify passed on the commit; anything
 // else that moves the ref is the finding `mainMove`.
 //
-// Two scopes. A `reset` and `symbolic-ref HEAD <ref>` move the branch of the work tree they run
-// in, so they count only against the main checkout. A command that writes the ref by name
-// (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`, `fetch`/`push` into it,
-// `symbolic-ref refs/heads/main`, `worktree add -B`) moves it from any worktree of this
-// repository, since every worktree shares the refs, so it counts against the whole repository;
-// a place the text cannot name fails closed. An unrelated repository or a plain folder is no
-// target. Pure functions: kill-guard.js passes the parsed git invocations and the probes.
+// Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
+// move the branch of the work tree they run in, so they count only against the main checkout. A
+// command that writes the ref by name (`update-ref`, `checkout -B`, `switch -C`,
+// `branch -m|-f|-d`, `fetch`/`push` into it, `symbolic-ref refs/heads/main`, `worktree add -B`)
+// moves it from any worktree of this repository, since every worktree shares the refs, so it
+// counts against the whole repository. In both scopes a place the text cannot name fails closed,
+// even when the command assigns the variable it comes from. An unrelated repository or a plain
+// folder is no target. Pure functions: kill-guard.js passes the parsed git invocations and the
+// probes.
 //
 // Not judged: a ref held in a variable, `update-ref --stdin`, an abbreviated long option, and a
 // push to a remote (it moves the remote, not this repository).
@@ -113,20 +115,6 @@ function branchNamesMain(parameters) {
   return forces && isMainBranch(names[0]);
 }
 
-const FETCH_VALUE_OPTIONS = new Set([
-  '-j',
-  '--jobs',
-  '--depth',
-  '--deepen',
-  '--upload-pack',
-  '--refmap',
-  '-o',
-  '--server-option',
-  '--filter',
-  '--shallow-since',
-  '--shallow-exclude',
-  '--negotiation-tip',
-]);
 const PUSH_VALUE_OPTIONS = new Set([
   '--repo',
   '--receive-pack',
@@ -137,16 +125,34 @@ const PUSH_VALUE_OPTIONS = new Set([
 ]);
 const LOCAL_REPOSITORY = /^(?:\.\.?(?:\/|$)|\/|~|file:)/;
 
+const MAIN_SPELLINGS = ['main', 'heads/main', 'refs/heads/main'];
+
+const escapeRegularExpression = (text) => text.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+
+// A destination glob (`refs/heads/*`) names every ref it matches, `main` among them.
+function globMatchesMain(destination) {
+  if (!destination.includes('*')) return false;
+  const pattern = new RegExp(
+    `^${destination.split('*').map(escapeRegularExpression).join('.*')}$`,
+    'i',
+  );
+
+  return MAIN_SPELLINGS.some((spelling) => pattern.test(spelling));
+}
+
 // A refspec `[+]<source>:<destination>` writes its destination in the repository it is fetched
-// into or pushed to. Push counts only into a local repository (`.` or a path).
-function refspecWritesMain(parameters, valueOptions, localOnly) {
+// into or pushed to. The words after the repository are all read as refspecs, so the value of an
+// option that takes one (a fetch's `--depth 1`) is only a refspec without a colon. Push counts
+// only into a local repository (`.` or a path) and skips the values of its own options.
+function refspecWritesMain(parameters, valueOptions = new Set(), localOnly = false) {
   const [repository, ...refspecs] = operandsOf(parameters, valueOptions);
   if (repository === undefined || (localOnly && !LOCAL_REPOSITORY.test(repository))) return false;
 
   return refspecs.some((refspec) => {
     const colon = refspec.indexOf(':');
+    const destination = refspec.slice(colon + 1);
 
-    return colon !== -1 && isMainRef(refspec.slice(colon + 1));
+    return colon !== -1 && (isMainRef(destination) || globMatchesMain(destination));
   });
 }
 
@@ -157,6 +163,17 @@ const SWITCH_BRANCH_OPTIONS = {
   recordLetters: 'C',
   longNames: ['--force-create'],
 };
+
+// `update-ref` writes the ref it names; `HEAD` is a symbolic ref, so unless `--no-deref` is given
+// it writes the branch the work tree is on (the file of a case-insensitive volume folds case).
+function updateRefScope(parameters) {
+  const [name] = operandsOf(parameters, UPDATE_REF_VALUE_OPTIONS);
+  if (isMainRef(name)) return 'repository';
+  const writesBranchOfHead =
+    name?.toLowerCase() === 'head' && !hasLongOption(parameters, ['--no-deref']);
+
+  return writesBranchOfHead ? 'mainCheckout' : null;
+}
 
 // Which place a command moves `main` in: `'repository'` for a command that writes the ref by
 // name, `'mainCheckout'` for one that moves the branch of the work tree it runs in, or null.
@@ -170,12 +187,12 @@ function moveScope(git, pathExists) {
 
     return target === 'HEAD' ? 'mainCheckout' : null;
   }
+  if (subcommand === 'update-ref') return updateRefScope(parameters);
   const namesMain = {
-    'update-ref': () => isMainRef(operandsOf(parameters, UPDATE_REF_VALUE_OPTIONS)[0]),
     checkout: () => optionValues(parameters, CHECKOUT_BRANCH_OPTIONS).some(isMainBranch),
     switch: () => optionValues(parameters, SWITCH_BRANCH_OPTIONS).some(isMainBranch),
     branch: () => branchNamesMain(parameters),
-    fetch: () => refspecWritesMain(parameters, FETCH_VALUE_OPTIONS, false),
+    fetch: () => refspecWritesMain(parameters),
     push: () => refspecWritesMain(parameters, PUSH_VALUE_OPTIONS, true),
     worktree: () =>
       parameters[0] === 'add' &&
@@ -195,8 +212,7 @@ const UNRESOLVED_PLACE = 'a folder the command does not name';
 // The folder where a git command moves `main`, the text `UNRESOLVED_PLACE` for a ref-name command
 // that runs where the text cannot say, or null. `invocations` hold one entry per folder the
 // command may run in. `helpers`: `isMainCheckout(folder)`, `isInRepository(folder)`,
-// `pathExists(folder, operand)`, and `deferUnresolved`, set when a reading with the command's own
-// variables filled in follows and judges the folder it cannot name now.
+// and `pathExists(folder, operand)`.
 function mainMoveTarget(invocations, helpers) {
   for (const git of invocations) {
     const scope = moveScope(git, helpers.pathExists);
@@ -209,11 +225,9 @@ function mainMoveTarget(invocations, helpers) {
 
 function firstMovedPlace(places, scope, helpers) {
   for (const place of places) {
-    if (place === null && scope === 'repository' && !helpers.deferUnresolved) {
-      return UNRESOLVED_PLACE;
-    }
-    if (place !== null && helpers.isMainCheckout(place)) return place;
-    if (place !== null && scope === 'repository' && helpers.isInRepository(place)) return place;
+    if (place === null) return UNRESOLVED_PLACE;
+    if (helpers.isMainCheckout(place)) return place;
+    if (scope === 'repository' && helpers.isInRepository(place)) return place;
   }
 
   return null;

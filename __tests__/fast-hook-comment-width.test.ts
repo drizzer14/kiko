@@ -11,7 +11,8 @@ import { writeExecutable } from './test-support/mutation-repository';
 // scripts/checks/fast.sh is the PostToolUse tier. A write to a shell, YAML or githooks file runs
 // comment-line-width.sh on that file alone: it blocks (exit 2) on a `#` comment line over 100
 // columns, and never on a code line, a shebang, or a file of another type. It then runs
-// security.sh on the file.
+// security.sh on the file. A write to a .js file runs comment-line-width.sh and then the full
+// tier.
 const FAST = join(__dirname, '../scripts/checks/fast.sh');
 const LIMIT = 100;
 const NO_FINDINGS = '{"results":[],"errors":[],"paths":{"scanned":[]}}';
@@ -98,6 +99,35 @@ describe.each([
       status: 0,
       stderr: '',
     });
+  });
+});
+
+// The pre-write guard reads only TypeScript, so a `//` comment over 100 columns in a JavaScript
+// file (the guard and the checkers under scripts/ are .js) reaches the width check only here,
+// before the rest of the fast tier.
+describe('fast.sh on a write to a .js file', () => {
+  const path = 'scripts/probe.js';
+
+  it('blocks on a // comment line over 100 columns and names the line', () => {
+    const result = runFast(path, `export const probe = 1;\n${wordsOfWidth('// ', LIMIT + 1)}\n`);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Comment line width');
+    expect(result.stderr).toContain(`${path}:2: 101 columns:`);
+  });
+
+  it('blocks on a line of a block comment over 100 columns', () => {
+    const source = `/*\n${wordsOfWidth(' * ', LIMIT + 1)}\n */\nexport const probe = 1;\n`;
+    const result = runFast(path, source);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(`${path}:2: 101 columns:`);
+  });
+
+  it('passes a // comment of exactly 100 columns and a code line over it', () => {
+    const source = `${wordsOfWidth('// ', LIMIT)}\nexport const probe =\n  '${'a'.repeat(LIMIT)}';\n`;
+
+    expect(runFast(path, source)).toMatchObject({ status: 0, stderr: '' });
   });
 });
 

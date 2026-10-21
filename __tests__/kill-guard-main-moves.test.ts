@@ -52,6 +52,14 @@ const optionsIn = (directory: string): Record<string, unknown> => ({
 
 const COMMIT = '1a2b3c4';
 
+// `update-ref HEAD` follows the symbolic HEAD, so it writes the branch the work tree is on.
+const HEAD_UPDATE_REFS: string[] = [
+  `update-ref HEAD ${COMMIT}`,
+  'update-ref -d HEAD',
+  `update-ref -m message HEAD ${COMMIT}`,
+  `update-ref head ${COMMIT}`,
+];
+
 // The git subcommand text (after `git `) that moves `main` wherever it runs against the checkout.
 const MOVING_SUBCOMMANDS: string[] = [
   `reset --hard ${COMMIT}`,
@@ -80,6 +88,7 @@ const MOVING_SUBCOMMANDS: string[] = [
   `update-ref main ${COMMIT}`,
   `update-ref heads/main ${COMMIT}`,
   `update-ref refs/heads/Main ${COMMIT}`,
+  ...HEAD_UPDATE_REFS,
   'branch -m main old',
   'branch -M main old',
   'branch -m old main',
@@ -95,9 +104,15 @@ const MOVING_SUBCOMMANDS: string[] = [
   'fetch -fu . x:main',
   'fetch . +x:main',
   'fetch --update-head-ok . x:refs/heads/main',
+  'fetch --depth 1 . x:main',
+  "fetch -u . 'refs/heads/*:refs/heads/*'",
+  "fetch -u . '+refs/heads/*:refs/heads/*'",
+  "fetch -u . 'refs/*:refs/*'",
+  "fetch -u . 'refs/heads/m*:refs/heads/m*'",
   'push -f . x:main',
   'push . x:refs/heads/main',
   'push --force . +x:main',
+  "push . 'refs/heads/*:refs/heads/*'",
   'symbolic-ref refs/heads/main refs/heads/feat',
   'symbolic-ref HEAD refs/heads/feat',
   'worktree add -B main ../z x',
@@ -134,6 +149,8 @@ const STAYING_SUBCOMMANDS: string[] = [
   `update-ref refs/remotes/origin/main ${COMMIT}`,
   `update-ref $ref ${COMMIT}`,
   'update-ref -h',
+  `update-ref --no-deref HEAD ${COMMIT}`,
+  'update-ref --no-deref -d HEAD',
   'branch',
   'branch -vv',
   'branch -f x main',
@@ -147,7 +164,12 @@ const STAYING_SUBCOMMANDS: string[] = [
   'fetch',
   'fetch origin',
   'fetch origin main',
+  "fetch -u . 'refs/heads/*:refs/remotes/x/*'",
+  "fetch -u . 'refs/heads/*:refs/heads/feature/*'",
+  'fetch --depth 1 origin main',
+  'fetch -j 4 origin',
   'push origin x:main',
+  "push origin 'refs/heads/*:refs/heads/*'",
   'push origin main',
   'push . x:feat',
   'symbolic-ref --short HEAD',
@@ -238,14 +260,23 @@ describe('kill-guard: a move of main the verify gate never saw (parser only)', (
       expect(decide(wrap('reset HANDOFF.md'), options)).toBe('allow');
       expect(decide(wrap('reset src'), options)).toBe('allow');
       expect(decide(wrap('reset -- NEWFILE.md'), options)).toBe('allow');
-      expect(decide(wrap('reset NEWFILE.md'), options)).toBe('mainMove');
     },
   );
 
-  it('moves only the branch main, not the other branches', () => {
+  it.each(PATH_OPERAND_CONTEXTS)(
+    'reads a lone reset operand that is no path in the work tree as a commit: %s',
+    (_label, directory, wrap) => {
+      expect(decide(wrap('reset NEWFILE.md'), optionsIn(directory))).toBe('mainMove');
+    },
+  );
+
+  it('denies a move of the branch main', () => {
     expect(decide('git checkout -B main 1a2b3c4', optionsIn(MAIN))).toBe('mainMove');
-    expect(decide('git checkout -B feat 1a2b3c4', optionsIn(MAIN))).toBe('allow');
     expect(decide('git update-ref refs/heads/main 1a2b3c4', optionsIn(MAIN))).toBe('mainMove');
+  });
+
+  it('allows a move of the other branches', () => {
+    expect(decide('git checkout -B feat 1a2b3c4', optionsIn(MAIN))).toBe('allow');
     expect(decide('git update-ref refs/heads/feat 1a2b3c4', optionsIn(MAIN))).toBe('allow');
   });
 
@@ -258,30 +289,56 @@ describe('kill-guard: a move of main the verify gate never saw (parser only)', (
 });
 
 // The refs are shared by every worktree of a repository, so a command that names the ref `main`
-// moves it from a linked worktree too; a `reset` or `symbolic-ref HEAD` moves only the branch of
-// the work tree it runs in.
+// moves it from a linked worktree too; a `reset`, `symbolic-ref HEAD` or `update-ref HEAD` moves
+// only the branch of the work tree it runs in.
+const isBranchBound = (subcommand: string): boolean =>
+  subcommand.startsWith('reset') ||
+  subcommand === 'symbolic-ref HEAD refs/heads/feat' ||
+  HEAD_UPDATE_REFS.includes(subcommand);
+
 const REF_MOVING_SUBCOMMANDS = MOVING_SUBCOMMANDS.filter(
-  (subcommand) =>
-    !subcommand.startsWith('reset') && subcommand !== 'symbolic-ref HEAD refs/heads/feat',
+  (subcommand) => !isBranchBound(subcommand),
 );
+const BRANCH_BOUND_SUBCOMMANDS = MOVING_SUBCOMMANDS.filter(isBranchBound);
 
 type Placement = [label: string, options: Record<string, unknown>, wrap: Context[2]];
 
 const bare = (subcommand: string): string => `git ${subcommand}`;
 const withoutDirectory: Record<string, unknown> = { mainCheckoutPath: MAIN, projectRoot: MAIN };
 
-// Where a ref-name command reaches this repository: a linked worktree or a folder in one, a
-// directory the text names inside one, no directory, or one the text cannot resolve (fail closed).
-const REPOSITORY_PLACEMENTS: Placement[] = [
+// Where a ref-name command reaches this repository: a linked worktree or a folder in one, or a
+// directory the text names inside one.
+const NAMED_PLACEMENTS: Placement[] = [
   ['cwd is a linked worktree', optionsIn(LINKED), bare],
   ['cwd is a folder in a linked worktree', optionsIn(`${LINKED}/src`), bare],
   ['cwd is a folder in the main checkout', optionsIn(`${MAIN}/src`), bare],
-  ['the payload has no cwd', withoutDirectory, bare],
   ['-C names a linked worktree', optionsIn(PLAIN), (s) => `git -C ${LINKED} ${s}`],
   ['-C names a folder in a linked worktree', optionsIn(OTHER), (s) => `git -C ${LINKED}/src ${s}`],
   ['cd into a linked worktree', optionsIn(PLAIN), (s) => `cd ${LINKED} && git ${s}`],
-  ['a variable the command assigns', optionsIn(PLAIN), (s) => `d=${LINKED}; git -C $d ${s}`],
   ['inside sh -c from a linked worktree', optionsIn(LINKED), (s) => `sh -c "git ${s}"`],
+];
+
+// No directory, or one the text cannot resolve on its own reading: the command fails closed, even
+// when it assigns the variable a folder comes from (a loop variable, `+=` and `read` are not
+// followed), and even when the value it was given names an unrelated repository.
+const UNRESOLVED_PLACEMENTS: Placement[] = [
+  ['the payload has no cwd', withoutDirectory, bare],
+  ['a variable the command assigns', optionsIn(PLAIN), (s) => `d=${LINKED}; git -C $d ${s}`],
+  [
+    'a variable the command assigns, naming an unrelated repository',
+    optionsIn(LINKED),
+    (s) => `d=${OTHER}; git -C $d ${s}`,
+  ],
+  [
+    'a variable the loop reassigns',
+    optionsIn(PLAIN),
+    (s) => `d=${PLAIN}; for d in ${LINKED}; do git -C "$d" ${s}; done`,
+  ],
+  [
+    'a variable the command appends to',
+    optionsIn(PLAIN),
+    (s) => `d=${PLAIN}; d+=/..${LINKED}; git -C "$d" ${s}`,
+  ],
   ['-C holds a variable', optionsIn(PLAIN), (s) => `git -C "$X" ${s}`],
   ['-C holds a variable in an unrelated repository', optionsIn(OTHER), (s) => `git -C $X ${s}`],
   ['--git-dir holds a variable', optionsIn(PLAIN), (s) => `git --git-dir="$X/.git" ${s}`],
@@ -289,6 +346,8 @@ const REPOSITORY_PLACEMENTS: Placement[] = [
   ['cd holds a variable', optionsIn(OTHER), (s) => `cd "$X" && git ${s}`],
   ['no cwd and -C holds a variable', withoutDirectory, (s) => `git -C "$X" ${s}`],
 ];
+
+const REPOSITORY_PLACEMENTS: Placement[] = [...NAMED_PLACEMENTS, ...UNRESOLVED_PLACEMENTS];
 
 // A repository that shares nothing with this one, or no repository: its own `main` is its own.
 const FOREIGN_PLACEMENTS: Placement[] = [
@@ -305,7 +364,6 @@ const FOREIGN_PLACEMENTS: Placement[] = [
     (s) => `git --git-dir=${OTHER}/.git ${s}`,
   ],
   ['inside sh -c in an unrelated repository', optionsIn(OTHER), (s) => `sh -c "git ${s}"`],
-  ['a variable the command assigns', optionsIn(LINKED), (s) => `d=${OTHER}; git -C $d ${s}`],
 ];
 
 describe('kill-guard: a ref-name move of main from any place in this repository', () => {
@@ -332,6 +390,44 @@ describe('kill-guard: a ref-name move of main from any place in this repository'
 
     expect(STAYING_SUBCOMMANDS.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
   });
+
+  it.each(UNRESOLVED_PLACEMENTS)(
+    'denies a reset, symbolic-ref HEAD or update-ref HEAD that names a commit: %s',
+    (_label, options, wrap) => {
+      const kinds = decideAll(BRANCH_BOUND_SUBCOMMANDS.map((s) => [wrap(s), options]));
+
+      expect(BRANCH_BOUND_SUBCOMMANDS.filter((_s, index) => kinds[index] !== 'mainMove')).toEqual(
+        [],
+      );
+    },
+  );
+
+  it.each(UNRESOLVED_PLACEMENTS)(
+    'allows a reset that moves nothing and a HEAD that stays: %s',
+    (_label, options, wrap) => {
+      const stays = [
+        'reset',
+        'reset --hard',
+        'reset --hard HEAD',
+        'reset -- HANDOFF.md',
+        'reset -p',
+        'symbolic-ref HEAD',
+        `update-ref --no-deref HEAD ${COMMIT}`,
+      ];
+      const kinds = decideAll(stays.map((s) => [wrap(s), options]));
+
+      expect(stays.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+    },
+  );
+
+  it.each(NAMED_PLACEMENTS.filter(([label]) => label !== 'cwd is a folder in the main checkout'))(
+    'lets a linked worktree move its own branch and its own HEAD: %s',
+    (_label, options, wrap) => {
+      const kinds = decideAll(BRANCH_BOUND_SUBCOMMANDS.map((s) => [wrap(s), options]));
+
+      expect(BRANCH_BOUND_SUBCOMMANDS.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+    },
+  );
 
   it('lets a linked worktree move its own branch and its own HEAD', () => {
     expect(decide(`git reset --hard ${COMMIT}`, optionsIn(LINKED))).toBe('allow');
@@ -433,7 +529,28 @@ scriptWith(
   `# git -C ${MAIN} reset --hard ${COMMIT}\necho "git -C ${MAIN} reset"\n`,
 );
 
+scriptWith('holds-variable-folder.sh', `git -C "$1" update-ref refs/heads/main ${COMMIT}\n`);
+scriptWith('holds-variable-reset.sh', `git -C "$1" reset --hard ${COMMIT}\n`);
+scriptWith('holds-variable-other-ref.sh', `git -C "$1" update-ref refs/heads/x ${COMMIT}\n`);
+
 describe('kill-guard script scan: a move of main (parser only)', () => {
+  it.each([
+    'bash holds-variable-folder.sh',
+    'bash holds-variable-folder.sh /tmp',
+    'bash holds-variable-reset.sh',
+    'o=-c; bash holds-variable-folder.sh $o',
+    'o=-c; bash holds-variable-reset.sh $o',
+  ])('denies a script that moves main in a folder it is handed: %s', (command) => {
+    expect(decide(command, optionsIn(SCRATCH))).toBe('mainMove');
+  });
+
+  it.each(['bash holds-variable-other-ref.sh', 'o=-c; bash holds-variable-other-ref.sh $o'])(
+    'allows a script that moves another branch in a folder it is handed: %s',
+    (command) => {
+      expect(decide(command, optionsIn(SCRATCH))).toBe('allow');
+    },
+  );
+
   it.each([
     'bash holds-reset.sh',
     'sh holds-reset.sh',
