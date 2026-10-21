@@ -1,5 +1,9 @@
+import type {
+  BinanceDustEntry,
+  BinanceDustRecord,
+  DustHistoryPage,
+} from './binance.history-client';
 import { NOW } from './binance.pay-test-fixtures';
-import type { BinanceDustEntry, BinanceDustRecord } from './binance.history-client';
 
 /** When the fixture dust conversion was made: ten minutes before `NOW`. */
 export const DUST_OPERATED_AT = NOW - 600_000;
@@ -18,6 +22,18 @@ export const dustRecordOf = (over: Partial<BinanceDustRecord> = {}): BinanceDust
   transId: 'record-1',
   operateTime: DUST_OPERATED_AT,
   entries: [dustEntryOf()],
+  ...over,
+});
+
+/** One dust page of `rows`, with no unreadable record and no weight reading. */
+export const dustPageOf = (
+  rows: BinanceDustRecord[] = [],
+  over: Partial<DustHistoryPage> = {},
+): DustHistoryPage => ({
+  rows,
+  unreadable: [],
+  usedUidWeight1m: undefined,
+  usedIpWeight1m: undefined,
   ...over,
 });
 

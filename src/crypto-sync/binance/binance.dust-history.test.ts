@@ -1,6 +1,27 @@
-import { type DustEntryOutcome, dustRowsOf } from './binance.dust-history';
-import type { BinanceDustEntry, BinanceDustRecord } from './binance.history-client';
-import { DUST_OPERATED_AT, dustEntryOf, dustRecordOf } from './binance.dust-test-fixtures';
+import type { HoldingRow } from '@kiko/db';
+import { coinListPatchesOf, walkStateFake } from '@kiko/test-support/walk-marks';
+
+import {
+  type BinanceDustHistoryDeps,
+  type DustEntryOutcome,
+  dustRowsOf,
+  syncBinanceDustHistory,
+} from './binance.dust-history';
+import {
+  type BinanceDustEntry,
+  type BinanceDustRecord,
+  BinanceHistoryParseError,
+} from './binance.history-client';
+import {
+  DUST_OPERATED_AT,
+  dustEntryOf,
+  dustPageOf,
+  dustRecordOf,
+} from './binance.dust-test-fixtures';
+import { NOW } from './binance.pay-test-fixtures';
+import { BinanceRateLimitError } from './binance.client';
+import { createBinanceHistoryRun } from './binance.history-budget';
+import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
 const ACCOUNT = 'acc-1';
 const PAIR_PREFIX = `${ACCOUNT}:dust:record-1`;
@@ -267,5 +288,408 @@ describe('dustRowsOf', () => {
     ]);
 
     expect(outcomes.map((outcome) => outcome.kind)).toEqual(['stopped', 'rows']);
+  });
+});
+
+const holdingWith = (id: string, key: string): HoldingRow =>
+  ({ id, metadata: { binanceAsset: key } }) as unknown as HoldingRow;
+
+const SPOT_HOLDINGS = ['TRX', 'DOGE', 'BNB'].map((coin) =>
+  holdingWith(`h-${coin.toLowerCase()}`, coin),
+);
+
+type AddedRow = {
+  holdingId: string;
+  exchangeCounterpartHoldingId?: string;
+  amountMinorUnits: number;
+  time: number;
+  source: string;
+  externalId: string;
+  exchangePairId?: string;
+  untrackedCounterpart?: string;
+  description: string;
+  operation: string;
+};
+
+let accountSequence = 0;
+
+/** A connected account with its walk state, and the dust read's deps over that one state. */
+const worldOf = (alongside: HoldingRow[] = SPOT_HOLDINGS) => {
+  accountSequence += 1;
+  const accountId = `acc-dust-${accountSequence}`;
+  const fake = walkStateFake({ accountId, alongside });
+  const depsOf = (over: Partial<BinanceDustHistoryDeps> = {}): BinanceDustHistoryDeps => ({
+    now: () => NOW,
+    fetchImpl: (async () => ({})) as unknown as typeof fetch,
+    readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+    ensureHoldings: jest.fn(async () => undefined),
+    addTransactions: jest.fn(async (rows: unknown[]) => rows.length),
+    fetchDustHistory: jest.fn(async () => dustPageOf()),
+    ...fake.freshDeps(),
+    listHoldings: fake.listHoldings,
+    ...over,
+  });
+  const freshRun = () => createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined });
+  const sync = (deps: BinanceDustHistoryDeps, run = freshRun()) =>
+    syncBinanceDustHistory({ targetAccountId: accountId, run }, deps);
+
+  return { accountId, fake, depsOf, freshRun, sync };
+};
+
+const serverOf = (...records: BinanceDustRecord[]) => jest.fn(async () => dustPageOf(records));
+
+const addedRows = (deps: BinanceDustHistoryDeps): AddedRow[] =>
+  (deps.addTransactions as jest.Mock).mock.calls.flatMap((call) => call[0] as AddedRow[]);
+
+const patchKinds = (deps: BinanceDustHistoryDeps): string[] =>
+  (deps.patchExchangeState as jest.Mock).mock.calls.flatMap(([, patches]) =>
+    (patches as { kind: string }[]).map(({ kind }) => kind),
+  );
+
+describe('syncBinanceDustHistory', () => {
+  let warn: jest.SpyInstance;
+
+  const stopCodes = (): string[] => warn.mock.calls.map(([, detail]) => detail.code);
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('imports each tracked entry as a pair on the Spot holdings, each leg naming the other', async () => {
+    const { accountId, depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: serverOf(
+        dustRecordOf({
+          entries: [dustEntryOf(), dustEntryOf({ fromAsset: 'DOGE', amount: '0.0002' })],
+        }),
+      ),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 4 });
+    expect(
+      addedRows(deps).map(
+        ({ holdingId, exchangeCounterpartHoldingId, externalId, exchangePairId }) => [
+          holdingId,
+          exchangeCounterpartHoldingId,
+          externalId,
+          exchangePairId,
+        ],
+      ),
+    ).toEqual([
+      ['h-trx', 'h-bnb', `${accountId}:dust:record-1:TRX:TRX`, `${accountId}:dust:record-1:TRX`],
+      ['h-bnb', 'h-trx', `${accountId}:dust:record-1:TRX:BNB`, `${accountId}:dust:record-1:TRX`],
+      [
+        'h-doge',
+        'h-bnb',
+        `${accountId}:dust:record-1:DOGE:DOGE`,
+        `${accountId}:dust:record-1:DOGE`,
+      ],
+      ['h-bnb', 'h-doge', `${accountId}:dust:record-1:DOGE:BNB`, `${accountId}:dust:record-1:DOGE`],
+    ]);
+    expect(addedRows(deps).every(({ operation }) => operation === 'dust')).toBe(true);
+    expect(addedRows(deps).every(({ source }) => source === 'binance')).toBe(true);
+  });
+
+  it('imports the BNB leg alone for a coin it does not track, and lists that coin', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: serverOf(
+        dustRecordOf({ entries: [dustEntryOf({ fromAsset: 'PEPE', amount: 'oops' })] }),
+      ),
+    });
+
+    await sync(deps);
+
+    expect(addedRows(deps)).toEqual([
+      expect.objectContaining({
+        holdingId: 'h-bnb',
+        amountMinorUnits: 4410,
+        untrackedCounterpart: 'asset:PEPE',
+        operation: 'dust',
+      }),
+    ]);
+    expect(addedRows(deps)[0]?.exchangePairId).toBeUndefined();
+    expect(addedRows(deps)[0]?.exchangeCounterpartHoldingId).toBeUndefined();
+    expect(coinListPatchesOf(deps)).toEqual([
+      { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['PEPE'] },
+    ]);
+  });
+
+  it('imports no row on a second run that reads the same records again', async () => {
+    const { depsOf, sync, freshRun } = worldOf();
+    const stored = new Set<string>();
+    const deps = depsOf({
+      fetchDustHistory: serverOf(dustRecordOf(), dustRecordOf({ transId: 'record-2' })),
+      addTransactions: jest.fn(async (rows: { externalId: string }[]) => {
+        const added = rows.filter(({ externalId }) => !stored.has(externalId));
+
+        for (const { externalId } of added) {
+          stored.add(externalId);
+        }
+
+        return added.length;
+      }),
+    });
+
+    const first = await sync(deps, freshRun());
+    const second = await sync(deps, freshRun());
+
+    expect(first.imported).toBe(4);
+    expect(second.imported).toBe(0);
+    expect(stored.size).toBe(4);
+  });
+
+  it('rejects with the parse error and writes nothing when the body has no list', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: jest.fn(async () => {
+        throw new BinanceHistoryParseError();
+      }),
+    });
+
+    await expect(sync(deps)).rejects.toBeInstanceOf(BinanceHistoryParseError);
+
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(deps.patchExchangeState).not.toHaveBeenCalled();
+  });
+
+  it('does not set a cooldown on a failure that is not a rate limit', async () => {
+    const { accountId, depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: jest.fn(async () => {
+        throw new BinanceHistoryParseError();
+      }),
+    });
+
+    await expect(sync(deps)).rejects.toBeInstanceOf(BinanceHistoryParseError);
+
+    expect(isBinanceCoolingDown(accountId, NOW)).toBe(false);
+  });
+
+  it('writes and logs nothing for an empty list', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({ fetchDustHistory: serverOf() });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0 });
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(deps.patchExchangeState).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('makes no request while the account is cooling down', async () => {
+    const { accountId, depsOf, sync } = worldOf();
+    setBinanceCooldownUntil(accountId, NOW + 60_000);
+    const deps = depsOf();
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0 });
+    expect(deps.fetchDustHistory).not.toHaveBeenCalled();
+  });
+
+  it('makes no request without credentials', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({ readCredentials: async () => undefined });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0 });
+    expect(deps.fetchDustHistory).not.toHaveBeenCalled();
+  });
+
+  it('makes no request once the run has spent its one dust call', async () => {
+    const { depsOf, sync, freshRun } = worldOf();
+    const deps = depsOf({ fetchDustHistory: serverOf(dustRecordOf()) });
+    const run = freshRun();
+
+    await sync(deps, run);
+    const second = await sync(deps, run);
+
+    expect(second).toEqual({ imported: 0 });
+    expect(deps.fetchDustHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes no request when the IP weight reading leaves no room for the call', async () => {
+    const { depsOf, sync, freshRun } = worldOf();
+    const run = freshRun();
+    run.budget.record('market', { usedUidWeight1m: undefined, usedIpWeight1m: 6_000 });
+    const deps = depsOf();
+
+    await sync(deps, run);
+
+    expect(deps.fetchDustHistory).not.toHaveBeenCalled();
+  });
+
+  it('reads once per run even when several records fail', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: serverOf(
+        dustRecordOf({ transId: 'a', entries: [dustEntryOf({ amount: 'abc' })] }),
+        dustRecordOf({ transId: 'b', entries: [dustEntryOf({ amount: 'abc' })] }),
+      ),
+    });
+
+    await sync(deps);
+
+    expect(deps.fetchDustHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads with the stored credentials and the run options', async () => {
+    const { depsOf, sync } = worldOf();
+    const fetchImpl = (async () => ({})) as unknown as typeof fetch;
+    const deps = depsOf({ fetchImpl });
+
+    await sync(deps);
+
+    expect(deps.fetchDustHistory).toHaveBeenCalledWith('api-key', 'secret', {
+      fetchImpl,
+      now: deps.now,
+    });
+  });
+
+  it('sets the cooldown from the rate limit and stops cleanly, writing and logging nothing', async () => {
+    const { accountId, depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: jest.fn(async () => {
+        throw new BinanceRateLimitError(429, 30_000);
+      }),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0 });
+    expect(isBinanceCoolingDown(accountId, NOW + 29_000)).toBe(true);
+    expect(isBinanceCoolingDown(accountId, NOW + 30_000)).toBe(false);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(deps.patchExchangeState).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('logs the missing holding and writes no row of the read, then imports once it exists', async () => {
+    const { depsOf, sync, freshRun } = worldOf([]);
+    const deps = depsOf({ fetchDustHistory: serverOf(dustRecordOf()) });
+
+    const first = await sync(deps, freshRun());
+
+    expect(first).toEqual({ imported: 0 });
+    expect(stopCodes()).toEqual(['dust-holding-missing']);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+
+    const found = depsOf({
+      fetchDustHistory: serverOf(dustRecordOf()),
+      listHoldings: async () => SPOT_HOLDINGS,
+    });
+    const second = await sync(found, freshRun());
+
+    expect(second).toEqual({ imported: 2 });
+  });
+
+  it('logs each stop code once per run, the unreadable records of the page included', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: jest.fn(async () =>
+        dustPageOf(
+          [
+            dustRecordOf({
+              transId: 'a',
+              entries: [
+                dustEntryOf({ amount: 'abc' }),
+                dustEntryOf({ fromAsset: 'DOGE', amount: 'abc' }),
+              ],
+            }),
+            dustRecordOf({ transId: 'b', entries: [dustEntryOf({ amount: '-1' })] }),
+          ],
+          { unreadable: [{ time: undefined }, { time: DUST_OPERATED_AT }] },
+        ),
+      ),
+    });
+
+    await sync(deps);
+
+    expect([...stopCodes()].sort()).toEqual([
+      'amount-malformed',
+      'dust-amount-invalid',
+      'dust-row-unreadable',
+    ]);
+  });
+
+  it('imports the other entries and records when one entry or one record is refused', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: jest.fn(async () =>
+        dustPageOf(
+          [
+            dustRecordOf({ transId: 'a', entries: [dustEntryOf({ amount: 'abc' })] }),
+            dustRecordOf({ transId: 'b' }),
+          ],
+          { unreadable: [{ time: undefined }] },
+        ),
+      ),
+    });
+
+    const result = await sync(deps);
+
+    expect(result.imported).toBe(2);
+    expect(addedRows(deps).map(({ externalId }) => externalId.split(':')[2])).toEqual(['b', 'b']);
+  });
+
+  it('writes the oversized list before the rows and the untracked list after them', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: serverOf(
+        dustRecordOf({
+          entries: [
+            dustEntryOf({ amount: '9007199254741' }),
+            dustEntryOf({ fromAsset: 'PEPE' }),
+            dustEntryOf({ fromAsset: 'DOGE', amount: '0.0002' }),
+          ],
+        }),
+      ),
+    });
+
+    await sync(deps);
+
+    const patchMock = deps.patchExchangeState as jest.Mock;
+    const lists = patchMock.mock.calls.map(([, patches]) => patches[0].coins);
+    const [oversizedAt, untrackedAt] = patchMock.mock.invocationCallOrder;
+    const [addedAt] = (deps.addTransactions as jest.Mock).mock.invocationCallOrder;
+
+    expect(lists).toEqual(['oversizedCoins', 'untrackedCoins']);
+    expect(coinListPatchesOf(deps).map(({ tickers }) => tickers)).toEqual([['TRX'], ['PEPE']]);
+    expect(oversizedAt).toBeLessThan(addedAt ?? 0);
+    expect(addedAt).toBeLessThan(untrackedAt ?? 0);
+  });
+
+  it('writes no walk mark and no not-imported entry, only the two coin lists', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: jest.fn(async () =>
+        dustPageOf(
+          [
+            dustRecordOf({
+              entries: [
+                dustEntryOf(),
+                dustEntryOf({ fromAsset: 'PEPE' }),
+                dustEntryOf({ fromAsset: 'DOGE', amount: 'abc' }),
+                dustEntryOf({ fromAsset: 'BTC', amount: '9007199254741' }),
+              ],
+            }),
+          ],
+          { unreadable: [{ time: undefined }] },
+        ),
+      ),
+    });
+
+    await sync(deps);
+
+    expect(new Set(patchKinds(deps))).toEqual(new Set(['coinList']));
   });
 });
