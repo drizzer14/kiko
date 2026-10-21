@@ -1,6 +1,6 @@
 import { join } from 'node:path';
-import { symlinkSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { chmodSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 
 import {
   createTemporaryDirectory,
@@ -11,8 +11,8 @@ import { copyKillGuard } from './test-support/copy-kill-guard';
 // kill-guard.sh runs kill-guard.js, and a failure while node LOADS the guard (a sibling module
 // that is missing, a syntax error) happens outside the guard's own try/catch. The hook must
 // deny then, as it does for an error thrown while judging a command, because a guard that
-// cannot load cannot clear anything. The two documented allows stay: node missing, and a payload
-// that is malformed (the malformed row also lives in kill-guard.test.ts).
+// cannot load cannot clear anything. The documented allow stays for node missing; the malformed
+// payload allow is pinned in kill-guard.test.ts.
 const payloadFor = (command: string): string => JSON.stringify({ tool_input: { command } });
 
 const runHook = (
@@ -85,11 +85,53 @@ describe('scripts/checks/kill-guard.sh when kill-guard.js cannot load', () => {
     expect(reason).toContain('SyntaxError');
   });
 
-  it('still allows a malformed payload when the guard loads', () => {
-    const result = runHook(copiedHook(), '{not json');
+  describe('the temporary file that holds the guard stderr', () => {
+    // The stub stands in for kill-guard.js and signals the hook process itself: the topmost
+    // ancestor that is a bash running kill-guard.sh (command substitution forks a subshell with
+    // the same command line), so the kill lands mid-run without any wait on a clock.
+    const KILLS_THE_HOOK = [
+      "const { execFileSync } = require('node:child_process');",
+      'const ps = (field, pid) =>',
+      "  execFileSync('ps', ['-o', field + '=', '-p', String(pid)], { encoding: 'utf8' }).trim();",
+      'const isHook = (pid) =>',
+      "  ps('comm', pid).endsWith('bash') && ps('args', pid).includes('kill-guard.sh');",
+      'let hook = process.ppid;',
+      "while (isHook(Number(ps('ppid', hook)))) hook = Number(ps('ppid', hook));",
+      "process.kill(hook, 'SIGTERM');",
+      '',
+    ].join('\n');
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toBe('');
+    // Bare `mktemp` ignores TMPDIR on macOS, so a shim on PATH pins the file into a folder the
+    // test can list.
+    const leftBehind = (hook: string, payload: string): string[] => {
+      const temporaryFolder = createTemporaryDirectory('kiko-kill-guard-tmp-');
+      const shimFolder = createTemporaryDirectory('kiko-kill-guard-shim-');
+      const realMktemp = spawnSync('which', ['mktemp'], { encoding: 'utf8' }).stdout.trim();
+      const shim = join(shimFolder, 'mktemp');
+      writeFileSync(shim, `#!/bin/bash\nexec ${realMktemp} "${temporaryFolder}/guard.XXXXXXXX"\n`);
+      chmodSync(shim, 0o755);
+      runHook(hook, payload, { ...process.env, PATH: `${shimFolder}:${process.env.PATH}` });
+
+      return readdirSync(temporaryFolder);
+    };
+
+    it('is removed after a normal run', () => {
+      expect(leftBehind(copiedHook(), payloadFor('ls'))).toEqual([]);
+    });
+
+    it('is removed after a run that denies because the guard cannot load', () => {
+      const hook = copiedHook();
+      writeFileSync(join(hook, '..', 'kill-guard.js'), 'const = ;\n');
+
+      expect(leftBehind(hook, payloadFor('ls'))).toEqual([]);
+    });
+
+    it('is removed when the hook is killed mid-run', () => {
+      const hook = copiedHook();
+      writeFileSync(join(hook, '..', 'kill-guard.js'), KILLS_THE_HOOK);
+
+      expect(leftBehind(hook, payloadFor('ls'))).toEqual([]);
+    });
   });
 
   it('still allows when node is not installed', () => {

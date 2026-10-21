@@ -30,10 +30,19 @@ const PLAIN = join(SCRATCH, 'plain');
 const LINKED = join(SCRATCH, 'linked');
 const OTHER = join(SCRATCH, 'other');
 
+// A linked worktree whose HEAD file already names `main` (an earlier session put it there), and
+// one on a detached commit.
+const ON_MAIN = join(SCRATCH, 'on-main');
+const DETACHED = join(SCRATCH, 'detached');
+
 for (const folder of [
   'main/.git/worktrees/linked',
+  'main/.git/worktrees/on-main',
+  'main/.git/worktrees/detached',
   'main/src',
   'linked/src',
+  'on-main/src',
+  'detached/src',
   'other/.git',
   'other/src',
   'plain',
@@ -41,8 +50,16 @@ for (const folder of [
   mkdirSync(join(SCRATCH, folder), { recursive: true });
 }
 writeFileSync(join(MAIN, 'HANDOFF.md'), 'notes\n');
-writeFileSync(join(MAIN, '.git/worktrees/linked/commondir'), '../..\n');
-writeFileSync(join(LINKED, '.git'), `gitdir: ${join(MAIN, '.git/worktrees/linked')}\n`);
+
+const linkWorktree = (worktree: string, name: string, head: string): void => {
+  writeFileSync(join(MAIN, '.git/worktrees', name, 'commondir'), '../..\n');
+  writeFileSync(join(MAIN, '.git/worktrees', name, 'HEAD'), `${head}\n`);
+  writeFileSync(join(worktree, '.git'), `gitdir: ${join(MAIN, '.git/worktrees', name)}\n`);
+};
+
+linkWorktree(LINKED, 'linked', 'ref: refs/heads/feat');
+linkWorktree(ON_MAIN, 'on-main', 'ref: refs/heads/main');
+linkWorktree(DETACHED, 'detached', '1a2b3c4d5e6f1a2b3c4d5e6f1a2b3c4d5e6f1a2b');
 
 const optionsIn = (directory: string): Record<string, unknown> => ({
   cwd: directory,
@@ -526,6 +543,233 @@ describe('kill-guard: a ref-name move of main from any place in this repository'
     expect(decide(`git -C ${MAIN} reset --hard ${COMMIT}`, optionsIn(LINKED))).toBe('mainMove');
     expect(decide(`cd ${MAIN} && git reset --soft HEAD~1`, optionsIn(LINKED))).toBe('mainMove');
   });
+});
+
+const MAIN_CHECKOUT_PLACEMENT: Placement = ['cwd is the main checkout', optionsIn(MAIN), bare];
+const REPOSITORY_AND_MAIN_PLACEMENTS: Placement[] = [
+  MAIN_CHECKOUT_PLACEMENT,
+  ...REPOSITORY_PLACEMENTS,
+];
+
+const GLOB_INTO_HEADS = '+refs/heads/*:refs/heads/*';
+const GLOB_INTO_REMOTES = '+refs/heads/*:refs/remotes/origin/*';
+
+// A fetch refspec set on the command line with `-c` is the refspec of the remote, so a plain
+// `fetch -u <remote>` writes whatever its destination names.
+const CONFIGURED_FETCH_MOVES: string[] = [
+  `-c 'remote.origin.fetch=${GLOB_INTO_HEADS}' fetch -u origin`,
+  '-c remote.origin.fetch=refs/heads/x:refs/heads/main fetch -u origin',
+  '-c remote.origin.fetch=refs/heads/x:main fetch -u origin',
+  `-c 'remote.origin.fetch=${GLOB_INTO_HEADS}' fetch -u origin main`,
+  `-c core.pager=cat -c 'remote.origin.fetch=${GLOB_INTO_HEADS}' fetch -u origin`,
+  `-c 'remote.upstream.fetch=${GLOB_INTO_HEADS}' fetch -u upstream`,
+  "-c 'remote.origin.fetch=+refs/*:refs/*' fetch -u origin",
+  `-c 'remote.origin.fetch=${GLOB_INTO_HEADS}' fetch --refmap= origin feat`,
+  '--config-env=remote.origin.fetch=SPEC fetch -u origin',
+  '-c core.pager=cat --config-env=remote.origin.fetch=SPEC fetch -u origin',
+];
+
+const CONFIGURED_FETCH_STAYS: string[] = [
+  `-c 'remote.origin.fetch=${GLOB_INTO_REMOTES}' fetch origin`,
+  `-c 'remote.origin.fetch=${GLOB_INTO_REMOTES}' fetch -u origin`,
+  `-c 'remote.origin.fetch=${GLOB_INTO_REMOTES}' fetch -u origin main`,
+  '-c remote.origin.fetch=refs/heads/x:refs/heads/feat fetch -u origin',
+  "-c 'remote.origin.fetch=+refs/heads/*:refs/heads/feature/*' fetch -u origin",
+  '-c remote.origin.url=/tmp/x fetch origin',
+  `-c 'remote.origin.push=${GLOB_INTO_HEADS}' fetch -u origin`,
+  '-c core.pager=cat fetch -u origin',
+  '--config-env=core.pager=PAGER fetch origin',
+  '--config-env=remote.origin.url=URL fetch -u origin',
+];
+
+// A command that sets the configuration through the environment cannot be wrapped as a `git`
+// argument, so each is a whole command.
+const CONFIGURED_FETCH_ENVIRONMENT_MOVES: string[] = [
+  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch GIT_CONFIG_VALUE_0='${GLOB_INTO_HEADS}' git fetch -u origin`,
+  `env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch GIT_CONFIG_VALUE_0='${GLOB_INTO_HEADS}' git fetch -u origin`,
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch GIT_CONFIG_VALUE_0=$SPEC git fetch -u origin',
+  `GIT_CONFIG_PARAMETERS="'remote.origin.fetch=${GLOB_INTO_HEADS}'" git fetch -u origin`,
+];
+
+const CONFIGURED_FETCH_ENVIRONMENT_STAYS: string[] = [
+  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch GIT_CONFIG_VALUE_0='${GLOB_INTO_REMOTES}' git fetch -u origin`,
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=$PAGER git fetch -u origin',
+  `GIT_CONFIG_PARAMETERS="'remote.origin.fetch=${GLOB_INTO_REMOTES}'" git fetch -u origin`,
+];
+
+const withoutWrapper = ([, , wrap]: Placement): boolean => wrap === bare;
+
+describe('kill-guard: a fetch refspec set with -c writes the ref main', () => {
+  it.each(REPOSITORY_AND_MAIN_PLACEMENTS)(
+    'denies every moving form: %s',
+    (_label, options, wrap) => {
+      const kinds = decideAll(CONFIGURED_FETCH_MOVES.map((s) => [wrap(s), options]));
+
+      expect(CONFIGURED_FETCH_MOVES.filter((_s, index) => kinds[index] !== 'mainMove')).toEqual([]);
+    },
+  );
+
+  it.each([...REPOSITORY_AND_MAIN_PLACEMENTS, ...FOREIGN_PLACEMENTS])(
+    'allows every form that writes elsewhere: %s',
+    (_label, options, wrap) => {
+      const kinds = decideAll(CONFIGURED_FETCH_STAYS.map((s) => [wrap(s), options]));
+
+      expect(CONFIGURED_FETCH_STAYS.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+    },
+  );
+
+  it.each(FOREIGN_PLACEMENTS)(
+    'allows every moving form in a repository that shares nothing: %s',
+    (_label, options, wrap) => {
+      const kinds = decideAll(CONFIGURED_FETCH_MOVES.map((s) => [wrap(s), options]));
+
+      expect(CONFIGURED_FETCH_MOVES.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+    },
+  );
+
+  it.each(REPOSITORY_AND_MAIN_PLACEMENTS.filter(withoutWrapper))(
+    'denies a refspec set through the environment: %s',
+    (_label, options) => {
+      const kinds = decideAll(CONFIGURED_FETCH_ENVIRONMENT_MOVES.map((s) => [s, options]));
+
+      expect(
+        CONFIGURED_FETCH_ENVIRONMENT_MOVES.filter((_s, index) => kinds[index] !== 'mainMove'),
+      ).toEqual([]);
+    },
+  );
+
+  it.each([...REPOSITORY_AND_MAIN_PLACEMENTS, ...FOREIGN_PLACEMENTS].filter(withoutWrapper))(
+    'allows an environment setting that writes elsewhere: %s',
+    (_label, options) => {
+      const kinds = decideAll(CONFIGURED_FETCH_ENVIRONMENT_STAYS.map((s) => [s, options]));
+
+      expect(
+        CONFIGURED_FETCH_ENVIRONMENT_STAYS.filter((_s, index) => kinds[index] !== 'allow'),
+      ).toEqual([]);
+    },
+  );
+
+  it.each(FOREIGN_PLACEMENTS.filter(withoutWrapper))(
+    'allows an environment setting in a repository that shares nothing: %s',
+    (_label, options) => {
+      const kinds = decideAll(CONFIGURED_FETCH_ENVIRONMENT_MOVES.map((s) => [s, options]));
+
+      expect(
+        CONFIGURED_FETCH_ENVIRONMENT_MOVES.filter((_s, index) => kinds[index] !== 'allow'),
+      ).toEqual([]);
+    },
+  );
+});
+
+// These attach a linked worktree to `main` (or write `HEAD` to it), after which a `reset` in that
+// worktree moves `main` itself.
+const WORKTREE_ONTO_MAIN: string[] = [
+  'symbolic-ref HEAD refs/heads/main',
+  'symbolic-ref HEAD main',
+  'symbolic-ref HEAD heads/main',
+  'checkout --ignore-other-worktrees main',
+  'checkout -f --ignore-other-worktrees main',
+  'switch --ignore-other-worktrees main',
+  'worktree add -f ../z main',
+  'worktree add --force ../z main',
+  'worktree add -f ../main',
+  'worktree add --force ../main',
+];
+
+const WORKTREE_STAYS_OFF_MAIN: string[] = [
+  'symbolic-ref HEAD refs/heads/feat',
+  'symbolic-ref --short HEAD',
+  'checkout --ignore-other-worktrees feat',
+  'switch --ignore-other-worktrees feat',
+  'checkout main',
+  'switch main',
+  `worktree add ../z main`,
+  `worktree add -f ../z ${COMMIT}`,
+  'worktree add --force ../z feat',
+  'worktree add -f -b feat ../z main',
+  'worktree add -f ../main -b feat',
+];
+
+describe('kill-guard: a worktree put onto main, or HEAD written to it', () => {
+  it.each(REPOSITORY_AND_MAIN_PLACEMENTS)('denies every form: %s', (_label, options, wrap) => {
+    const kinds = decideAll(WORKTREE_ONTO_MAIN.map((s) => [wrap(s), options]));
+
+    expect(WORKTREE_ONTO_MAIN.filter((_s, index) => kinds[index] !== 'mainMove')).toEqual([]);
+  });
+
+  it.each([
+    ...NAMED_PLACEMENTS.filter(([label]) => label !== 'cwd is a folder in the main checkout'),
+    ...FOREIGN_PLACEMENTS,
+  ])('allows a worktree that stays off main: %s', (_label, options, wrap) => {
+    const kinds = decideAll(WORKTREE_STAYS_OFF_MAIN.map((s) => [wrap(s), options]));
+
+    expect(WORKTREE_STAYS_OFF_MAIN.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+  });
+
+  it.each(FOREIGN_PLACEMENTS)(
+    'allows every form in a repository that shares nothing: %s',
+    (_label, options, wrap) => {
+      const kinds = decideAll(WORKTREE_ONTO_MAIN.map((s) => [wrap(s), options]));
+
+      expect(WORKTREE_ONTO_MAIN.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+    },
+  );
+
+  // A git directory the text names decides which repository `symbolic-ref HEAD` writes; the main
+  // checkout as cwd with another repository's git directory still counts as the main checkout.
+  it.each([
+    ['--git-dir names another repository', (s: string) => `git --git-dir=${OTHER}/.git ${s}`],
+    ['GIT_DIR names another repository', (s: string) => `GIT_DIR=${OTHER}/.git git ${s}`],
+  ])('keeps the verdict of HEAD written from the main checkout: %s', (_label, wrap) => {
+    for (const target of ['refs/heads/main', 'refs/heads/feat']) {
+      expect(decide(wrap(`symbolic-ref HEAD ${target}`), optionsIn(MAIN))).toBe('mainMove');
+    }
+  });
+});
+
+const ON_MAIN_PLACEMENTS: Placement[] = [
+  ['cwd is a worktree whose HEAD names main', optionsIn(ON_MAIN), bare],
+  ['cwd is a folder in it', optionsIn(`${ON_MAIN}/src`), bare],
+  ['-C names it', optionsIn(PLAIN), (s) => `git -C ${ON_MAIN} ${s}`],
+  ['cd into it', optionsIn(PLAIN), (s) => `cd ${ON_MAIN} && git ${s}`],
+];
+
+const OWN_BRANCH_PLACEMENTS: Placement[] = [
+  ['cwd is a worktree on its own branch', optionsIn(LINKED), bare],
+  ['cwd is a worktree on a detached commit', optionsIn(DETACHED), bare],
+  ['cwd is a folder in a detached worktree', optionsIn(`${DETACHED}/src`), bare],
+  ['-C names a detached worktree', optionsIn(PLAIN), (s) => `git -C ${DETACHED} ${s}`],
+];
+
+describe('kill-guard: a branch-bound move in a worktree whose HEAD already names main', () => {
+  it.each(ON_MAIN_PLACEMENTS)('denies the moving forms: %s', (_label, options, wrap) => {
+    const kinds = decideAll(BRANCH_BOUND_SUBCOMMANDS.map((s) => [wrap(s), options]));
+
+    expect(BRANCH_BOUND_SUBCOMMANDS.filter((_s, index) => kinds[index] !== 'mainMove')).toEqual([]);
+  });
+
+  it.each(ON_MAIN_PLACEMENTS)('allows the forms that move nothing: %s', (_label, options, wrap) => {
+    const stays = [
+      'reset',
+      'reset --hard',
+      'reset -- HANDOFF.md',
+      'reset -p',
+      'symbolic-ref HEAD',
+      `update-ref --no-deref HEAD ${COMMIT}`,
+    ];
+    const kinds = decideAll(stays.map((s) => [wrap(s), options]));
+
+    expect(stays.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+  });
+
+  it.each(OWN_BRANCH_PLACEMENTS)(
+    'allows a worktree on its own branch: %s',
+    (_label, options, wrap) => {
+      const kinds = decideAll(BRANCH_BOUND_SUBCOMMANDS.map((s) => [wrap(s), options]));
+
+      expect(BRANCH_BOUND_SUBCOMMANDS.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+    },
+  );
 });
 
 const BODY_LINES: string[] = [
