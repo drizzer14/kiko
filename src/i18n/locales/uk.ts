@@ -1150,7 +1150,7 @@ export const uk: typeof en = {
     exchangeFrom: 'Обмін з {{name}}',
     exchangeTo: 'Обмін на {{name}}',
     tradingFee: 'Торгова комісія',
-    p2pPurchase: 'Купівля P2P ({{currency}})',
+    p2pPurchase: 'Купівля через P2P ({{currency}})',
     cardPurchase: 'Купівля карткою ({{currency}})',
     cardSale: 'Продаж на картку ({{currency}})',
     bankDeposit: 'Поповнення з банку ({{currency}})',

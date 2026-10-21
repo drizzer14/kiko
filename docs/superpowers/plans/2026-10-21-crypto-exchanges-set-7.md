@@ -99,7 +99,7 @@ Each gap, then this plan:
 | L16 | each row above, in Statistics | excluded exactly when it carries a marker or code; | same |
 | L16 | (cont.) | `operation` alone changes nothing | same |
 | L17 | uk: L2 | «Торгова комісія» | n/a |
-| L17 | uk: L8 | «Купівля P2P (UAH)» | n/a |
+| L17 | uk: L8 | «Купівля через P2P (UAH)» | n/a |
 | L17 | uk: L10 | «Купівля карткою (UAH)» / «Продаж на картку (UAH)» | n/a |
 | L17 | uk: L11 | «Поповнення з банку (EUR)» / «Виведення в банк (EUR)» | n/a |
 
@@ -128,9 +128,9 @@ Each pin, by file and test name:
 | P1 | `{ version: 5, migrationCount: 64 }` | `migrationCount: 63` |
 | P2 | cases `wallet:FOO`, `''` (and the L14 codes); `asset:ETH` moves to L6 | `asset:ETH` -> "Black card expense" |
 | P3 | moved to `parseUntrackedCounterpart`; `asset:ETH` parses as an asset | `asset:ETH` -> `undefined` |
-| P4 | nine coins (DOGE) (S7-Q1, coordinator 2026-10-21) | eight coins |
-| P5 | 132 (12 currencies) (S7-Q1, coordinator 2026-10-21) | 110 |
-| P6 | "seeds rate history for each foreign:UAH pair": 11*27 rows, DOGE:UAH in the set (S7-Q1) | 10*27 rows |
+| P4 | eight coins (U3 reverted the DOGE pins) | eight coins |
+| P5 | 110 (U3 reverted the DOGE pins) | 110 |
+| P6 | "seeds rate history for each foreign:UAH pair": 10*27 rows (U3 reverted the DOGE pins) | 10*27 rows |
 
 Retitle each changed test so its name states the new rule; no "was" text in a title.
 
@@ -245,7 +245,7 @@ Files: `src/i18n/locales/en.ts`, `uk.ts`; `src/transactions/exchange-description
       | key | en | uk |
       |---|---|---|
       | `tradingFee` | Trading fee | Торгова комісія |
-      | `p2pPurchase` | P2P purchase ({{currency}}) | Купівля P2P ({{currency}}) |
+      | `p2pPurchase` | P2P purchase ({{currency}}) | Купівля через P2P ({{currency}}) |
       | `cardPurchase` | Card purchase ({{currency}}) | Купівля карткою ({{currency}}) |
       | `cardSale` | Sale to card ({{currency}}) | Продаж на картку ({{currency}}) |
       | `bankDeposit` | Bank deposit ({{currency}}) | Поповнення з банку ({{currency}}) |
@@ -270,38 +270,37 @@ Files: `src/i18n/locales/en.ts`, `uk.ts`; `src/transactions/exchange-description
       `en.uk.parity`, `en.casing-by-role`, `uk.casing`, `uk.catalog-rules` suites green. Commit
       `feat(transactions): labels for exchange operations`.
 
-### step 5/9: demo rows (S7-Q1 and S7-Q2, coordinator 2026-10-21)
+### step 5/9: demo rows (S7-Q2 coordinator 2026-10-21; S7-Q1 replaced by user answer U3)
 
 Files: `e2e/screenshot/seed/screenshot-seed.ts` (+ test), `e2e/screenshot/fixtures/build-demo-snapshot.ts` (+ test),
-both demo `.kiko` files; `e2e/screenshot/seed/demo-text.ts` only if a new holding name needs text (DOGE is a brand
-name: "Dogecoin", Latin in both languages, no text entry).
+both demo `.kiko` files; no `e2e/screenshot/seed/demo-text.ts` change (no new holding).
 - [ ] Seed shape: `SeedTransaction` gains optional `pair?: { key: string; counterpartHoldingKey: string }`,
       `untrackedCounterpart?: string`, `operation?: NonNullable<TransactionRow['operation']>`, `comment?: string`; the
       Binance holdings gain `key`s; `buildLedger` maps a pair key to `pair-<n>` (dataset order, deterministic), a
-      counterpart key to its `hold-n` id, and the other three fields as given (null when absent). DOGE joins
-      `SeededCurrency`, `PRICE_IN_UAH` (6.6) and `CURRENCIES`; a "Dogecoin" holding joins `buildExchangeHoldings`.
+      counterpart key to its `hold-n` id, and the other three fields as given (null when absent). The dust source
+      is the existing XRP holding (user answer U3): no new coin, no Dogecoin holding.
 - [ ] Rows on the Binance account. Operation rows store an empty description (the label renders); every set 7 row
       is dated more than 30 days before the anchor, and every existing holding ends at today's balance. Minor units
-      at each coin's `currencyScale` (re-check: BTC 8, USDT 8, BNB 7, DOGE 4, UAH 2, EUR 2):
+      at each coin's `currencyScale` (re-check: BTC 8, USDT 8, BNB 7, XRP 4, UAH 2, EUR 2):
       | Day | Holding | Amount | Pair / counterpart | Code | Operation | Comment |
       |---|---|---|---|---|---|---|
       | 140 | BTC | +0.0079 (was +0.01) | - | - | - | - |
       | 110 | USDT | +99.9 (replaces the +50 deposit) | - | `p2p:UAH:4150.00` | `p2p` | 4150 UAH |
       | 100 | BNB | +0.0395 (was +0.05) | - | - | - | - |
-      | 95 | DOGE | +50 | - | - | - | - |
+      | 80 | XRP | +66 (was +60) | - | - | - | - |
       | 70 | UAH | +2000.00 (was +1000.00) | - | - | - | - |
       | 60 | EUR | +100.00 (replaces the +50.00 top-up) | - | `bank:EUR:100.00` | `fiat` | 100 EUR |
       | 50 | UAH / USDT | -1000.00 / +24 | convert pair, each leg names the other | - | `convert` | - |
       | 45 | USDT / BTC | -73.9 / +0.0011 | trade pair, each leg names the other | - | `trade` | - |
       | 45 | BNB | -0.0005 | trade pair id, counterpart BTC holding | - | `trade-fee` | - |
-      | 40 | DOGE / BNB | -50 / +0.011 | dust pair, each leg names the other | - | `dust` | - |
+      | 40 | XRP / BNB | -6 / +0.011 | dust pair, each leg names the other | - | `dust` | - |
       | 35 | BTC | +0.001 | - | `card:UAH:2600.00` | `card` | 2600 UAH |
       | 33 | EUR | -50.00 | - | `bank:EUR:50.00` | `fiat` | 50 EUR |
       | 38 | ETH | -0.013 (ETH deposit 0.043, was 0.03) | - | `card:UAH:1300.00` | `card` | 1300 UAH |
       | 42 | SOL | -0.2 (SOL deposit 0.7, was 0.5) | none, no counterpart holding | `asset:PEPE` | `trade` | - |
       The last two rows are orchestrator ruling R6: a card SALE and a trade with an untracked side, so every label
-      set 7 adds is reachable (Guideline 2.5.19). Both holdings keep their end balance. DOGE also needs a
-      `HISTORY_PAIRS` rate-history pair (DOGE:UAH, 5.2 -> 6.6), so the history row count goes 10x27 -> 11x27.
+      set 7 adds is reachable (Guideline 2.5.19). Both holdings keep their end balance. XRP keeps its end
+      balance of 60 and the history stays 10x27 rows (no new `HISTORY_PAIRS` pair).
       The set 13 bank debit is not added here.
 - [ ] Tests first (`build-demo-snapshot.test.ts`): "carries one row of every operation code on the crypto account"
       (the seven codes); "gives the legs of each pair one pair id and points each leg at the other's holding";
@@ -326,7 +325,8 @@ Files: `docs/superpowers/specs/2026-10-15-crypto-exchanges-design.md`.
       (`memory/refs/binance-multicoin-sdd-2026-10-21/rulings.md`, section "Set 7 plan questions", the "S7-Q<n>"
       line, coordinator 2026-10-21; never the gitignored worktree copy), so the spec never
       contradicts them, and align the text each one touches:
-      S7-Q1 and S7-Q2 in section 9 row "Demo `.kiko`" (DOGE dust source; end balances kept; rows older than 30 days);
+      S7-Q1 and S7-Q2 in section 9 row "Demo `.kiko`" (S7-Q1 replaced by user answer U3: XRP dust source, no Dogecoin
+      holding; end balances kept; rows older than 30 days);
       S7-Q3 and S7-Q6 in section 6 "Untracked-counterpart codes" (parse rules; parsers only, builders per walk set);
       S7-Q4 and S7-Q5 in section 6 "The `operation` column" and "Mapping and statistics per operation" (not a
       rewrite guard field; labels only; the P2P cover rule keys on the `p2p:` code);

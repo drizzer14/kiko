@@ -501,7 +501,7 @@ describe('buildDemoSnapshot', () => {
         'uk',
         {
           fee: 'Торгова комісія',
-          p2p: 'Купівля P2P (UAH)',
+          p2p: 'Купівля через P2P (UAH)',
           card: ['Купівля карткою (UAH)', 'Продаж на картку (UAH)'],
           asset: 'Обмін на PEPE',
           fiat: ['Поповнення з банку (EUR)', 'Виведення в банк (EUR)'],
@@ -595,7 +595,7 @@ describe('buildDemoSnapshot', () => {
         cryptoHoldings.map((holding) => [holding.currency, holding.balanceMinorUnits]),
       );
 
-      expect(balanceByCurrency).toMatchObject({
+      expect(balanceByCurrency).toEqual({
         BTC: 1_200_000,
         ETH: 3_000_000,
         USDT: 5_000_000_000,
@@ -609,11 +609,20 @@ describe('buildDemoSnapshot', () => {
       });
     });
 
-    it('empties the Dogecoin holding the dust row sweeps, leaving it at zero', () => {
-      const dogecoin = cryptoHoldings.filter((holding) => holding.currency === 'DOGE');
+    it('sweeps XRP dust into BNB on the two existing holdings, with no Dogecoin holding', () => {
+      const dustRows = rows.filter((row) => row.operation === 'dust');
+      const currencyOf = (holdingId: string) =>
+        cryptoHoldings.find((holding) => holding.id === holdingId)?.currency;
+      const swept = dustRows.find((row) => row.amountMinorUnits < 0);
+      const received = dustRows.find((row) => row.amountMinorUnits > 0);
 
-      expect(dogecoin.map((holding) => holding.balanceMinorUnits)).toEqual([0]);
-      expect(rows.filter((row) => row.holdingId === dogecoin[0].id)).toHaveLength(2);
+      expect(dustRows).toHaveLength(2);
+      expect(currencyOf(swept?.holdingId ?? '')).toBe('XRP');
+      expect(currencyOf(received?.holdingId ?? '')).toBe('BNB');
+      expect(received?.amountMinorUnits).toBe(110_000);
+      expect(swept?.exchangeCounterpartHoldingId).toBe(received?.holdingId);
+      expect(received?.exchangeCounterpartHoldingId).toBe(swept?.holdingId);
+      expect(cryptoHoldings.map((holding) => holding.name)).not.toContain('Dogecoin');
     });
   });
 });
