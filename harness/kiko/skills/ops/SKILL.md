@@ -206,8 +206,9 @@ actually landed.
   (2026-10-16, sim A9850113; cause unproven, evidence deleted).
 - After the first launch, confirm the app's first screen (the user or an allowed check) before
   you report the sim as ready.
-- The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) has a BTC holding only, with no
-  USDT. Tell the user to add a USDT holding by hand when a check needs one.
+- The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) is built from
+  `e2e/screenshot/seed/screenshot-seed.ts`: read its holdings there, and tell the user to add by
+  hand any holding a check needs that it lacks.
 
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
 after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes

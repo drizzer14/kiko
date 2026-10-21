@@ -1896,16 +1896,15 @@ SEPARATE step imports the ledger: `syncBinanceTransactions`
 holding already exists. It is SUPPLEMENTARY — the arm runs it under
 `logOnFailure('[binance sync] capital history failed', …)`
 (`@kiko/diagnostics`, name and code only), so a 429 or a permission gap never
-fails the balance sync. The Binance arm runs four walks in this order, in
-`runBinanceSyncAndImport` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`):
-`syncBinanceTransactions` (capital), `syncBinancePayHistory`,
-`syncBinanceTransferHistory`, `syncBinanceEarnHistory`. Each runs in its own
-`logOnFailure` (tags `capital history failed`, `pay history failed`,
-`transfer history failed`, `earn history failed`) and all four share one `run`.
-TRADES are out of scope. Convert is not imported either: Convert history has
-no wallet field, so the holding a Convert moved cannot be known (spec D7 and
-S6). `recordExchangeCounterpart` (Convert-mode) in `kiko-domain` is the app's
-manual Convert, not Binance Convert.
+fails the balance sync. The Binance arm runs five walks, Convert last, in
+`runBinanceSyncAndImport` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`: read
+the order there). Each runs in its own `logOnFailure` (tags `capital history failed`,
+`pay history failed`, `transfer history failed`, `earn history failed`,
+`convert history failed`, each prefixed `[binance sync]`) and all share one `run`.
+TRADES are out of scope. Convert reads `/sapi/v1/convert/tradeFlow`
+(`binance.history-client.ts`) and places each row by `walletType` FUNDING or SPOT
+(`convert-history.ts`). `recordExchangeCounterpart` (Convert-mode) in `kiko-domain` is
+the app's manual Convert.
 
 Load-bearing rules, verified in `binance.transactions.test.ts` rather
 than restated here:
@@ -1965,7 +1964,7 @@ than restated here:
   helpers live in `exchange/paging/paging.ts` (`fetchAllByTotal`,
   `readSeriesSpan`) and the walk-state seam in `exchange/walk/exchange-state-deps.ts`
   (`ExchangeStateDeps`, `exchangeStateDepsOf`).
-- **The history tracked rule, in all four walks.** A row whose ticker
+- **The history tracked rule, in all five walks.** A row whose ticker
   (`binanceTickerOf`, upper-cased once where the client reads it) is accepted by
   `isTrackedBinanceAsset` is read strictly: a malformed, too-precise or oversized amount stops
   the walk at that record and owes its point, so a tracked record is never skipped. Any other
@@ -1975,7 +1974,9 @@ than restated here:
   The rule is the balance rule's, not the curated list's. Capital reads this in
   `capitalItemOf`, Transfer and Earn in `trackedRowOf`, Pay in `readPayItem`
   (`binance.history-client.ts`); Transfer and Earn pages carry `untracked` rows
-  (`TotalPage.untracked`) beside `rows` and `unreadable`.
+  (`TotalPage.untracked`) beside `rows` and `unreadable`. Convert reads the tracked rule in
+  `settledOutcomeOf` (`convert-history.ts`; `convertOutcomeOf` returns the untracked tickers),
+  with no `trackedRowOf` and no `TotalPage.untracked`.
 - **`multiCoinSince` and `multiCoinSeen` mark where the other coins start.** Each walk entry
   may hold `multiCoinSince` (the cursor the walk's first multi-coin run planned from: ground
   before it was read for BTC only) and `multiCoinSeen: true` (that run committed a forward
@@ -2004,8 +2005,8 @@ than restated here:
   (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`); every walk
   reads windows under 90 days. A run is the FORWARD pass (the cursor to
   now, moving the cursor) and the window RE-SCAN (a stored mark; never
-  writes the forward cursor). Every walk (capital, Pay, Transfer, Earn)
-  runs it. `WalkPass` is `'forward' | 'pending' | 'rescan'` plus the points
+  writes the forward cursor). Every walk runs it.
+  `WalkPass` is `'forward' | 'pending' | 'rescan'` plus the points
   pass (read it in `exchange/walk/walk.ts`); a run reads the forward pass, the owed
   ranges (`pending`, in a round-robin from the range cursor), the re-scan,
   then the owed points last.
@@ -2028,7 +2029,8 @@ than restated here:
   (`exchange/walk-state/`) are the reader, `syncStateRepo.patchExchangeState`
   (a list of patches in one write) the writer. A patch applies to the RAW
   stored JSON, never the re-serialized parse (the parse drops any field this
-  build does not read, such as `notImported` or an unknown walk id, and
+  build does not read, such as an unknown walk id or a `notImported` entry of a kind this
+  build does not read (`walk-state.ts` reads `notImported`), and
   repairs malformed fields;
   `exchange-state-patch.ts`); a malformed top level makes a patch write
   nothing, only a disconnect replaces it. The plan comes from
@@ -2068,9 +2070,9 @@ than restated here:
   the span owes only that record's point; any other stop, or a record with
   no usable time, owes the whole span; every record the walk can trust
   imports either way. The forward pass leaves a span uncommitted on any
-  stop, except in the Transfer and Earn lanes, where a stop tied to one record
-  with a usable time owes that point and the span commits
-  (`TRANSFER_FORWARD_OWES`, `EARN_FORWARD_OWES`). `patchExchangeState` also
+  stop, except in the lanes that pass `forwardOwes` (read each `*_FORWARD_OWES`
+  constant, e.g. `CONVERT_FORWARD_OWES` in `convert-history.ts`), where a stop tied to one
+  record with a usable time owes that point and the span commits. `patchExchangeState` also
   gates the write on the account still being `institution = 'binance'`
   (read in the same write) and is a no-op otherwise — a walk holds the
   account's credentials for its whole run, so a disconnect can commit while
@@ -2154,12 +2156,12 @@ than restated here:
   `walkCursorsOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
   derive from the account's `sync_state` row (`CryptoSyncSection` reads it with
   its own `useLiveQuery` and shows no caption while it is loading):
-  `walkCursorsOf` reads the four forward cursors (capital, Pay,
-  Transfer, Earn) off the parsed `exchange_state` (four nulls when it is not
+  `walkCursorsOf` reads the forward cursors of `CAPTION_WALKS`
+  (`binance-history-status.ts`) off the parsed `exchange_state` (nulls when it is not
   readable), `isBinanceHistoryBehind`
   compares them against `latestBalanceSyncAt(holdings, stateStamp)` (the later of the
   holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when ANY of
-  the four walks never caught up (`null` cursor) or is behind by more than a day,
+  any of those walks never caught up (`null` cursor) or is behind by more than a day,
   or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
   passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
   the Transfer `pending` list alone), false before the account's own first balance sync.
@@ -2172,6 +2174,10 @@ than restated here:
   renders the `accountDetail.binanceHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
   account never evaluates or shows it.
+- **The not-imported line.** `crypto-sync-section.component.tsx` shows it only when the
+  coin lines show, and keeps it during a sync. The counts come from
+  `notImportedCountsOf(walkState)`, the copy from `notImportedKindCopyKeys`, and the kinds
+  from `NOT_IMPORTED_KINDS` (`exchange/walk-state/walk-state.ts`): read the kinds there.
 - **Settled records only, on the wallet Binance names.** Only a credited
   deposit and a completed withdrawal (`isCapitalSettled`) are
   imported. `walletOf` in `binance.transactions.ts` places each row by
@@ -2192,9 +2198,9 @@ than restated here:
   the capital walk passes `createKeys` (`placeRows` in
   `binance.transactions.ts`): a wallet that only receives rows already stored
   elsewhere is not created as an empty holding. `placeWalletRows`
-  (`exchange/walk/records.ts`), which places the rows of the Pay, Transfer
-  and Earn walks, passes none and so creates every missing wallet holding at
-  zero, whatever its coin.
+  (`exchange/walk/records.ts`), which places the rows of every walk except
+  capital (Convert too, `convert-history.ts`), passes none and so creates every
+  missing wallet holding at zero, whatever its coin.
 - **Pairing and untracked wallets.** Transfer and Earn legs share an
   `exchangePairId` (`binance.transfer-history.ts`, `binance.earn-history.ts`:
   read `pairId` there, built by `exchangePairIdOf` in `binance.holding-keys.ts`: BTC keeps
@@ -2248,6 +2254,9 @@ record of an untracked coin lists its ticker only when it is settled; an unsettl
 by its point and not listed, and a settled one with a blank asset is unreadable and owed. The
 stop codes live in
 `binance.transfer-history.ts`; the design is in the spec and plan named under "Binance Pay".
+Convert differs: a settled SUCCESS record on an allowed wallet with a blank asset on either side
+is refused for good as a `convert-unrecognized` not-imported entry, not owed; a 0 or negative
+amount stays owed (`convert-amount-invalid`). Read `settledOutcomeOf` in `convert-history.ts`.
 
 - **Transfer depth (Q3).** Binance refuses a `startTime` older than it keeps (HTTP 400, code
   -5026): the client throws `BinanceHistoryTooOldError` (the generic request-failed message), and
@@ -2302,7 +2311,8 @@ stop codes live in
   between one type's band read and the next type's read). `canAfford` judges
   every narrowing call by the weight readings: a Transfer call weighs IP 1 and the gate allows 172
   requests a minute, so the walk adds at most 172 IP a minute. A band Binance refuses stays owed
-  in its type and is read by a later run.
+  in its type and is read by a later run. Convert has no depth handling: a -5026 fails the run
+  (as Pay); see `LANE_NARROWING_CALLS` in `binance.history-budget.ts`.
 
 - **Transfer forward stops (O1; the Earn lane does the same with `EARN_FORWARD_OWES`).** A stop tied to ONE transfer with a usable
   time is owed at that transfer's own point and the forward pass goes past it
