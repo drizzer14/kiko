@@ -1,6 +1,11 @@
-import { parseExchangeState } from '../walk-state';
+import { notImportedEntry, parseExchangeState } from '../walk-state';
 
-import { balanceSyncedAtOf, oversizedCoinsOf, untrackedCoinsOf } from './history-status';
+import {
+  balanceSyncedAtOf,
+  notImportedCountsOf,
+  oversizedCoinsOf,
+  untrackedCoinsOf,
+} from './history-status';
 
 const stateWith = (lists: Record<string, unknown>) =>
   parseExchangeState(JSON.stringify({ version: 1, walks: {}, ...lists }));
@@ -80,5 +85,38 @@ describe('balanceSyncedAtOf', () => {
     expect(balanceSyncedAtOf(stateWith({}))).toBeUndefined();
     expect(balanceSyncedAtOf(stateWith({ balanceSyncedAt: 'x' }))).toBeUndefined();
     expect(balanceSyncedAtOf(parseExchangeState('not json'))).toBeUndefined();
+  });
+});
+
+describe('notImportedCountsOf', () => {
+  it('counts the entries per kind in the order of the kind list, leaving out a kind with none', () => {
+    const state = stateWith({
+      notImported: [
+        notImportedEntry('fiat-unrecognized', 'f1', 5),
+        notImportedEntry('convert-unrecognized', 'c1', 1),
+        notImportedEntry('p2p-sale', 's1', 2),
+        notImportedEntry('convert-unrecognized', 'c2', 3),
+        notImportedEntry('convert-unrecognized', 'c3', 4),
+      ],
+    });
+
+    expect(notImportedCountsOf(state)).toEqual([
+      { kind: 'p2p-sale', count: 1 },
+      { kind: 'convert-unrecognized', count: 3 },
+      { kind: 'fiat-unrecognized', count: 1 },
+    ]);
+  });
+
+  it('counts nothing for a state with no entry', () => {
+    expect(notImportedCountsOf(stateWith({}))).toEqual([]);
+    expect(notImportedCountsOf(stateWith({ notImported: [] }))).toEqual([]);
+  });
+
+  it('counts nothing for a state that cannot be read', () => {
+    expect(notImportedCountsOf(parseExchangeState('not json'))).toEqual([]);
+  });
+
+  it('counts nothing for a list that is no list', () => {
+    expect(notImportedCountsOf(stateWith({ notImported: 'p2p-sale:1:2' }))).toEqual([]);
   });
 });

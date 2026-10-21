@@ -1,1 +1,6 @@
-export { balanceSyncedAtOf, oversizedCoinsOf, untrackedCoinsOf } from './history-status';
+export {
+  balanceSyncedAtOf,
+  notImportedCountsOf,
+  oversizedCoinsOf,
+  untrackedCoinsOf,
+} from './history-status';

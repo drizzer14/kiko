@@ -4,15 +4,16 @@ import {
   isBalanceProviderId,
   providerDisplayName,
 } from '@kiko/crypto-sync/provider';
-import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
 import {
   balanceSyncedAtOf,
+  notImportedCountsOf,
   oversizedCoinsOf,
   untrackedCoinsOf,
 } from '@kiko/crypto-sync/exchange/history-status';
+import type { ParseKeys, TFunction } from 'i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
@@ -25,9 +26,9 @@ import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
-import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+import { type NotImportedKind, parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import { styles } from '../account-detail.styles';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
@@ -66,6 +67,40 @@ const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins }) => {
         </Text>
       ))}
     </>
+  );
+};
+
+const notImportedKindCopyKeys: Record<NotImportedKind, ParseKeys> = {
+  'p2p-sale': 'accountDetail.notImportedKind.p2pSale',
+  'p2p-advertiser': 'accountDetail.notImportedKind.p2pAdvertiser',
+  'p2p-amount': 'accountDetail.notImportedKind.p2pAmount',
+  'p2p-unrecognized': 'accountDetail.notImportedKind.p2pUnrecognized',
+  'convert-unrecognized': 'accountDetail.notImportedKind.convertUnrecognized',
+  'fiat-unrecognized': 'accountDetail.notImportedKind.fiatUnrecognized',
+};
+
+type NotImportedLineProps = {
+  counts: { kind: NotImportedKind; count: number }[];
+  exchange: string;
+};
+
+// Split out of the section so its own branches stay under the complexity budget.
+const NotImportedLine: FC<NotImportedLineProps> = ({ counts, exchange }) => {
+  const { t } = useTranslation();
+
+  if (counts.length === 0) {
+    return null;
+  }
+
+  return (
+    <Text variant="caption" tone="textSecondary">
+      {t('accountDetail.notImported', {
+        items: counts
+          .map(({ kind, count }) => t(notImportedKindCopyKeys[kind], { count }))
+          .join(', '),
+        exchange,
+      })}
+    </Text>
   );
 };
 
@@ -192,6 +227,13 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             <CoinLines
               untrackedCoins={untrackedCoinsOf(walkState, isTrackedBinanceAsset)}
               oversizedCoins={oversizedCoinsOf(walkState)}
+            />
+          )}
+
+          {coinLinesShown && (
+            <NotImportedLine
+              counts={notImportedCountsOf(walkState)}
+              exchange={providerDisplayName(connectedProvider, t)}
             />
           )}
 
