@@ -29,7 +29,11 @@
 // there, so a conflict marker in it once broke every hook in every session. The recovery options
 // and help stay allowed. A fast-forward-only update (`merge --ff-only`, `pull --ff-only`) is its
 // own finding, `mainFastForward`: main moves only through `bash scripts/ff-main.sh <sha>`, which
-// runs after a queued verify of that commit.
+// runs after a queued verify of that commit. Any other git command that moves the branch `main`
+// (a `reset` to a commit in the main checkout; `update-ref`, `checkout -B`, `switch -C`,
+// `branch -m|-f|-d`, a fetch or push into it, `symbolic-ref`, `worktree add -B` naming it from any
+// worktree of this repository) is the finding `mainMove`; the rules live in
+// `kill-guard-main-moves.js`.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
 // `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
@@ -104,6 +108,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const { mainMoveTarget } = require('./kill-guard-main-moves');
+
 const MAIN_CHECKOUT_PATH = '/Users/drizzer14/Developer/Projects/pff-ios';
 
 const KILL_REASON =
@@ -153,6 +159,22 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
     '--abort, --quit, --skip, and --continue stay allowed.',
   'DO NOT:         reach the main checkout through a script file, an alias, or a variable, edit ' +
     "the queue's done.log, or look for a bypass flag to get past this guard.",
+];
+
+const MAIN_MOVE_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a git command that moves the branch main (a reset to a ' +
+    'commit in the main checkout, or update-ref, checkout -B, switch -C, branch -m|-f|-d, a ' +
+    'fetch or push into main, symbolic-ref, worktree add -B naming it).',
+  `WHY IT MATTERS: main (${MAIN_CHECKOUT_PATH}) must move only to a commit a queued verify passed ` +
+    'on, and its hooks run for every session; every worktree shares the ref, so a move from ' +
+    'any of them reaches the main checkout.',
+  'HOW TO FIX:     do the work in a separate detached worktree, queue `bash scripts/job-queue.sh ' +
+    'verify <worktree at the sha> <label>`, wait for exit 0, then run `bash scripts/ff-main.sh ' +
+    '<sha>`. Moving main back, or any other move of it, needs the user. A reset without a ' +
+    'commit (`git reset --hard`), `git reset -- <path>`, a branch other than main, and help ' +
+    'stay allowed.',
+  'DO NOT:         move main through a script file, an alias, or a variable, or look for another ' +
+    'spelling of the move, to get past this guard.',
 ];
 
 const SHELL_WRITE_REASON_LINES = [
@@ -261,6 +283,7 @@ const REASON_BY_KIND = {
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
   mainFastForward: (finding) => blockReason(MAIN_FAST_FORWARD_REASON_LINES, finding.detail),
+  mainMove: (finding) => blockReason(MAIN_MOVE_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
@@ -1361,6 +1384,7 @@ function gitInvocation(rest, directory, environment) {
     arguments: rest.slice(i + 1),
     configs: invocation.configs,
     environment,
+    hasGitDirectory: invocation.gitDirectory !== undefined,
     targets: [locate(invocation.workTree), locate(invocation.gitDirectory)],
   };
 }
@@ -1754,6 +1778,40 @@ function hookFinding(git, invocations, segment) {
   return null;
 }
 
+// Whether `directory` is a worktree of this repository or a folder inside one: a ref-name command
+// run there reaches the refs every worktree shares.
+function isInsideProjectWorktree(directory, rules) {
+  const segments = directory.split('/');
+
+  return segments.some(
+    (_segment, index) =>
+      index > 0 && isProjectWorktree(segments.slice(0, index + 1).join('/') || '/', rules),
+  );
+}
+
+const pathExistsFrom = (directory, operand) => {
+  const resolved = resolveDirectory(directory, operand);
+
+  return resolved !== null && fs.existsSync(resolved);
+};
+
+// A command that moves the branch `main` (see kill-guard-main-moves.js). `deferUnresolved` is set
+// on the reading made before a variable the command assigned is filled in: the reading after it
+// judges a folder that variable names.
+function mainMoveFinding(segment, invocations, rules) {
+  if (invocations[0].arguments.some((parameter) => HELP_OPTIONS.has(parameter))) return null;
+  const target = mainMoveTarget(invocations, {
+    isMainCheckout: (directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath),
+    isInRepository: (directory) => isInsideProjectWorktree(directory, rules),
+    pathExists: pathExistsFrom,
+    deferUnresolved: rules.deferUnresolved === true,
+  });
+
+  if (target === null) return null;
+
+  return { kind: 'mainMove', detail: `${segment.trim()} (runs in ${target})` };
+}
+
 // One invocation per directory the command may run in; the subcommand is
 // the same in each.
 function gitFinding(segment, invocations, rules) {
@@ -1763,7 +1821,10 @@ function gitFinding(segment, invocations, rules) {
     ? dataBodyHookFinding(git, segment)
     : hookFinding(git, invocations, segment);
   if (skipped !== null) return skipped;
-  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
+  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand)) {
+    return mainMoveFinding(segment, invocations, rules);
+  }
+  if (leavesMainCheckoutSafe(git)) return null;
   const target = invocations
     .flatMap((invocation) => invocation.targets)
     .find((directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath));
@@ -2708,8 +2769,11 @@ function readScriptFile(file, rules, requireShebang) {
   }
 }
 
-// A kill or a raw main fast-forward in the script file a command runs (one level: a script it runs
-// or sources in turn is not read). A file the text cannot name (a variable), a missing one, one
+// The git findings a scanned script keeps under their own kind; any other finding in one is a kill.
+const SCRIPT_GIT_KINDS = new Set(['mainFastForward', 'mainMove']);
+
+// A kill, a raw main fast-forward, or a move of main in the script file a command runs (one level:
+// a script it runs or sources in turn is not read). A file the text cannot name (a variable), a missing one, one
 // over the size limit, and one built in the same command are not read.
 function scriptKillFinding(scriptFile, context) {
   if (scriptFile === null || !context.rules.scanScripts) return null;
@@ -2729,7 +2793,7 @@ function scriptKillFinding(scriptFile, context) {
     );
     if (found !== null) {
       return {
-        kind: found.kind === 'mainFastForward' ? 'mainFastForward' : 'scriptKill',
+        kind: SCRIPT_GIT_KINDS.has(found.kind) ? found.kind : 'scriptKill',
         detail: `${file} holds \`${found.detail}\``,
       };
     }
@@ -2812,7 +2876,7 @@ function redirectWrite(redirects, directories, rules) {
 }
 
 // The kinds the second, variable-expanded reading of a segment reports (see `segmentFinding`).
-const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward']);
+const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward', 'mainMove']);
 
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
 // `{ kind: 'stash' | 'mainCheckout' | 'shellWrite', detail }` — or null
@@ -2825,41 +2889,51 @@ const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward']
 // guard cannot follow (a loop variable, `read`, `+=`) still denies what its raw text denied. The
 // second reading reports only a write or a main-checkout finding: a variable's value says where a
 // write lands or a git command runs, but never which command runs or what a kill aims at (an
-// unknown `$pid` is the agent's own).
+// unknown `$pid` is the agent's own). The first reading leaves a git folder it cannot name to the
+// second, which names it or fails closed.
 function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) {
   const { directories, variables } = place;
   const { words: tokens, hereStrings, redirects } = tokenize(segment);
   const stdinScripts = [...stdinBodies, ...hereStrings];
-  const judge = (words, targets, queue) => {
+  const judge = (words, targets, queue, judgedRules = rules) => {
     const finding = commandFinding(unwrap(words), {
       segment,
       scripts: queue,
       stdinScripts,
       spans,
       directories,
-      rules,
+      rules: judgedRules,
     });
     if (finding !== null) return finding;
     const write = redirectWrite(targets, directories, rules);
 
     return write === null ? null : shellWriteFinding(segment, write);
   };
-  const finding = judge(tokens, redirects, scripts);
-  if (finding !== null || !hasVariables(variables)) return finding;
-  const expand = (word) => expandVariables(word, variables);
-  const expandedWords = tokens.map(expand);
-  const expandedTargets = redirects.map((redirect) => ({
-    ...redirect,
-    target: expand(redirect.target),
-  }));
-  const unchanged =
-    expandedWords.every((word, index) => word === tokens[index]) &&
-    expandedTargets.every((redirect, index) => redirect.target === redirects[index].target);
-
-  if (unchanged) return null;
-  const added = judge(expandedWords, expandedTargets, []);
+  const expanded = expandedReading(tokens, redirects, variables);
+  const finding = judge(
+    tokens,
+    redirects,
+    scripts,
+    expanded === null ? rules : { ...rules, deferUnresolved: true },
+  );
+  if (finding !== null || expanded === null) return finding;
+  const added = judge(expanded.words, expanded.targets, []);
 
   return EXPANDED_KINDS.has(added?.kind) ? added : null;
+}
+
+// The words and redirect targets of a segment with the variables the command assigned filled in,
+// or null when none of them reads one.
+function expandedReading(tokens, redirects, variables) {
+  if (!hasVariables(variables)) return null;
+  const expand = (word) => expandVariables(word, variables);
+  const words = tokens.map(expand);
+  const targets = redirects.map((redirect) => ({ ...redirect, target: expand(redirect.target) }));
+  const unchanged =
+    words.every((word, index) => word === tokens[index]) &&
+    targets.every((redirect, index) => redirect.target === redirects[index].target);
+
+  return unchanged ? null : { words, targets };
 }
 
 // ---- wait loops that scan the process table ----
@@ -3040,12 +3114,12 @@ function observeWaitLoops(watch, segment, spans) {
   return closed.find((finding) => finding !== null) ?? null;
 }
 
-// The finding kinds a pass reports: a script file is read for kills and a raw main fast-forward
-// only, a heredoc body that no shell is known to run is read for the kinds in `DATA_KINDS` (a kill,
+// The finding kinds a pass reports: a script file is read for kills, a raw main fast-forward, and
+// a move of main only, a heredoc body that no shell is known to run is read for the kinds in `DATA_KINDS` (a kill,
 // a git stash, a hook skip by option or core.hooksPath, a main-checkout change or fast-forward, a
 // wait loop), and every other finding in either is not that pass's business. `null` reports every
 // kind.
-const SCRIPT_KINDS = new Set(['kill', 'mainFastForward']);
+const SCRIPT_KINDS = new Set(['kill', 'mainFastForward', 'mainMove']);
 const DATA_KINDS = new Set([
   'kill',
   'stash',
