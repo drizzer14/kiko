@@ -27,7 +27,8 @@ import type { ExchangeStateDeps } from './exchange-state-deps';
  * those. A point carries the series its record was read under, when the walk reads several.
  * `oversized` names the coins of the records that stopped too large, and `untracked` the tickers of
  * the records counted but imported as no row (a coin the walk does not track); each is left out
- * when there is none.
+ * when there is none. `notImported` holds the entries of the records a rule refused for good (see
+ * `notImportedEntry`), also left out when there is none.
  */
 export type SettledSpan<Row> = {
   rows: Row[];
@@ -36,6 +37,7 @@ export type SettledSpan<Row> = {
   returned: OwedGround[];
   oversized?: string[];
   untracked?: string[];
+  notImported?: string[];
 };
 
 /**
@@ -77,6 +79,12 @@ export const historyListWriterOf =
     deps.patchExchangeState(accountId, [
       { kind: 'coinList', coins, list: 'history', tickers: [...tickers] },
     ]);
+
+/** The write of a span's not-imported entries: one union patch, as the list only grows. */
+export const notImportedWriterOf =
+  (deps: Pick<ExchangeStateDeps, 'patchExchangeState'>, accountId: string) =>
+  (entries: readonly string[]): Promise<void> =>
+    deps.patchExchangeState(accountId, [{ kind: 'notImported', entries: [...entries] }]);
 
 /** The one millisecond a record with a time to the millisecond sits in, if it has a time. */
 export const instantAt = (time: number | undefined): WalkWindow | undefined =>
@@ -158,6 +166,7 @@ const settledRecord = <Row>(
 export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> => {
   const oversized = [...new Set(parts.flatMap((part) => part.oversized ?? []))];
   const untracked = [...new Set(parts.flatMap((part) => part.untracked ?? []))];
+  const notImported = [...new Set(parts.flatMap((part) => part.notImported ?? []))];
 
   return {
     rows: parts.flatMap((part) => part.rows),
@@ -166,6 +175,7 @@ export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> =>
     returned: parts.flatMap((part) => part.returned),
     ...(oversized.length > 0 ? { oversized } : {}),
     ...(untracked.length > 0 ? { untracked } : {}),
+    ...(notImported.length > 0 ? { notImported } : {}),
   };
 };
 
@@ -299,7 +309,8 @@ const isOwedPast = (ground: OwedGround): boolean => isPoint(ground) || ground.se
  * Only a record with a usable time can be owed that way: a stop that owes more than a point (a
  * record with no time owes the whole span, and so does a stop that is no one record's) leaves the
  * span uncommitted, as does any other code beside it. The tickers the span counted but imported as
- * no row (`untracked`) are written once its rows are.
+ * no row (`untracked`) are written once its rows are, and then the not-imported entries
+ * (`notImported`, when the walk gives `writeNotImported`), still before the marks move.
  */
 export const commitSettledSpan = async <Planned, Row>(input: {
   pass: WalkPass;
@@ -310,6 +321,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   advance: (result: { owed: OwedGround[] }) => Promise<void>;
   writeOversized: (tickers: readonly string[]) => Promise<void>;
   writeUntracked: (tickers: readonly string[]) => Promise<void>;
+  writeNotImported?: (entries: readonly string[]) => Promise<void>;
   forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
   const {
@@ -320,6 +332,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
     advance,
     writeOversized,
     writeUntracked,
+    writeNotImported,
     forwardOwes = [],
   } = input;
   const stopsRun = (part: Pick<SettledSpan<unknown>, 'codes' | 'owed'>): boolean =>
@@ -353,6 +366,12 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   // span again, and a ticker that is already listed changes nothing.
   if (ready.untracked !== undefined) {
     await writeUntracked(ready.untracked);
+  }
+
+  // Its own write, as the entries are not coins: same order, so a crash re-reads the span and
+  // an entry that is already listed changes nothing.
+  if (ready.notImported !== undefined) {
+    await writeNotImported?.(ready.notImported);
   }
 
   await advance({ owed: ready.owed });
