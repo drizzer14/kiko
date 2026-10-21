@@ -1127,9 +1127,11 @@ verified usage, not dead weight:
     While it is above 0 the controller stops respecting the system minimum layout margins and
     sets the leading and trailing margins of its view and of its navigation bar to that value,
     again after each `viewDidLayoutSubviews`.
-    Scope: only `PaneStackView` (two-pane `columns`/`rows`) provides a value
-    (`theme.spacing(4)`, the content's side padding), around both panes' stacks. Every other
-    stack (iPhone, single-pane, a stack outside `PaneStackView`) reads 0. How the default path
+    Scope: only `PaneStackView` in a split (`columns`/`rows`) of a large window (regular, shorter
+    side >= 721, `useIsLargeWindow`) provides a value (`theme.spacing(4)`, the content's side
+    padding), around both panes' stacks. Every other stack (iPhone, single-pane, a stack outside
+    `PaneStackView`) and the panes of a Surface Duo inner window (951x669, 669x951), which keeps
+    its look completely, read 0. How the default path
     stays the same: with 0 the `updateProps` compare is equal so the setter never runs,
     `applyFixedContentMargin` returns on its first line, and no margin or
     `viewRespectsSystemMinimumLayoutMargins` is touched; the native stack gets the prop's codegen

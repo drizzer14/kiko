@@ -13,10 +13,11 @@ import type { NativeStackViewProps } from './pane-stack-view.props';
 
 // The window reports one pane; the view is given the mode it shows, which wins.
 const mockUseFoldRegion = jest.fn((): FoldRegion => null);
+const mockUseIsLargeWindow = jest.fn(() => false);
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => 'single',
   useFoldRegion: () => mockUseFoldRegion(),
-  useIsLargeWindow: () => false,
+  useIsLargeWindow: () => mockUseIsLargeWindow(),
   useTabBarEdge: () => 'none',
   useVerticalBarEdge: () => 'none',
 }));
@@ -124,6 +125,7 @@ describe('PaneStackView', () => {
     mockNativeStackView.mockClear();
     mockDetailMounted.mockClear();
     mockUseFoldRegion.mockReturnValue(null);
+    mockUseIsLargeWindow.mockReturnValue(false);
     mockWindow.width = 951;
     mockWindow.height = 669;
   });
@@ -263,26 +265,48 @@ describe('PaneStackView', () => {
   });
 
   // A pane's native large title takes its leading inset from the pane's distance to the window's
-  // edge, so each pane's stack asks the native side for the content's fixed margin instead.
+  // edge, so each pane's stack of a large window asks the native side for the content's fixed
+  // margin instead. The Surface Duo keeps its look completely, so its panes are not asked.
   describe('the fixed content margin of a pane’s native stack', () => {
-    it.each(['columns', 'rows'] as const)(
-      'is the content’s side padding in both panes in %s',
-      async (mode) => {
-        const state = stackState([route('accounts'), route('account')], {
-          accounts: 'companion',
-          account: 'primary',
-        });
+    const { isLargeWindow } = jest.requireActual('@kiko/display-regions/layout-mode');
+    const state = stackState([route('accounts'), route('account')], {
+      accounts: 'companion',
+      account: 'primary',
+    });
 
-        await renderView(state, ACCOUNTS, mode);
+    const renderInWindow = async (width: number, height: number, mode: LayoutMode) => {
+      mockWindow.width = width;
+      mockWindow.height = height;
+      mockUseIsLargeWindow.mockReturnValue(isLargeWindow('regular', width, height));
 
-        expect(mockFixedContentMargin.mock.calls).toEqual([
-          [darkTheme.spacing(4)],
-          [darkTheme.spacing(4)],
-        ]);
-      },
-    );
+      await renderView(state, ACCOUNTS, mode);
+    };
+
+    it.each([
+      ['a 13-inch iPad in landscape', 1376, 1032, 'columns'],
+      ['a 13-inch iPad in portrait', 1032, 1376, 'columns'],
+      ['a 13-inch iPad in landscape, stacked', 1376, 1032, 'rows'],
+    ] as const)('is the content’s side padding in both panes of %s', async (_name, w, h, mode) => {
+      await renderInWindow(w, h, mode);
+
+      expect(mockFixedContentMargin.mock.calls).toEqual([
+        [darkTheme.spacing(4)],
+        [darkTheme.spacing(4)],
+      ]);
+    });
+
+    it.each([
+      ['the Duo inner window in landscape', 951, 669, 'columns'],
+      ['the Duo inner window in portrait', 669, 951, 'rows'],
+    ] as const)('is 0 in both panes of %s', async (_name, w, h, mode) => {
+      await renderInWindow(w, h, mode);
+
+      expect(mockFixedContentMargin.mock.calls).toEqual([[0], [0]]);
+    });
 
     it('is 0, which leaves UIKit’s margins alone, for the single native stack', async () => {
+      mockUseIsLargeWindow.mockReturnValue(true);
+
       await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
 
       expect(mockFixedContentMargin.mock.calls).toEqual([[0]]);

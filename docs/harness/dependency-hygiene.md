@@ -274,12 +274,14 @@ Stryker's `fullName`, and the patch applies exactly to the pristine files of
 `patches/react-native-screens+4.27.0.patch` is a `patch-package` patch that `postinstall` applies
 on every `npm ci`. Why, what, and the scope are in `docs/harness/documented-exceptions.md`
 ("patch-package patches"); in short: it makes a pane's native large title keep the content's side
-margin, and only for the stacks `PaneStackView` wraps in `FixedContentMarginContext`.
+margin, and only for the stacks `PaneStackView` wraps in `FixedContentMarginContext`: the panes of
+a large window (regular, shorter side >= 721).
 
 The pane-only scope: the context default is 0, `ScreenStack` passes it as the `fixedContentMargin`
 prop (codegen default 0), and native does nothing for 0 (no setter call, no margin write, no
-change to `viewRespectsSystemMinimumLayoutMargins`), so an iPhone, single-pane or Duo-single stack
-runs the stock code path.
+change to `viewRespectsSystemMinimumLayoutMargins`), so an iPhone, single-pane or Surface Duo
+stack (the Duo's inner window is not large, and the user ruled it keeps its look completely) runs
+the stock code path.
 
 How it is pinned: `__tests__/react-native-patch.test.ts` fails unless `react-native-screens` is
 exactly `4.27.0` in `package.json`, the patch touches only `node_modules/react-native-screens/`
@@ -298,8 +300,8 @@ patched one into `patches/react-native-screens+<version>.patch` (or `npx patch-p
 react-native-screens`, which needs the version to pass the `.npmrc` minimum age), delete the old
 patch file and update the version in the pin test. Re-prove it: applying the patch to the pristine
 tarball must reproduce the installed tree, and re-measure on a simulator or device (a pane's large
-title leading edge equals the content's leading edge in both panes, on an iPad and a Duo; bar
-items and the back button do not move; an iPhone is unchanged).
+title leading edge equals the content's leading edge in both panes of an iPad; bar items and the
+back button do not move; an iPhone and a Duo are unchanged).
 
 ## `.env` is public-only
 
