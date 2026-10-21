@@ -1541,8 +1541,7 @@ type ImportTwin = Pick<
   | 'untrackedCounterpart'
 >;
 
-// The three columns that mark a row as a leg of an exchange movement. An adopted row takes the
-// sync input's markers and its `operation` only when the import row carries none of these.
+// The three columns that mark a row as a leg of an exchange movement.
 const EXCHANGE_MARKER_KEYS = [
   'exchangePairId',
   'exchangeCounterpartHoldingId',
@@ -1618,17 +1617,16 @@ const adoptedValuesOf = (twin: ImportTwin, input: NewTransaction) => ({
 /**
  * Turn the statement-import twin of each of these NEW sync inputs into the
  * sync's own row, in place, and return the inputs it adopted so the insert skips
- * them. The rule
- * (which import row a sync input adopts, the residual it leaves) is
- * `pairSyncInputsWithImportRows`'s. One UPDATE by the import row's id: every
+ * them. The rule (which import row a sync input adopts, the residual it leaves)
+ * is `pairSyncInputsWithImportRows`'s. One UPDATE by the import row's id: every
  * structural column (`id`, `holding_id`, the loan link, `change_group_id`,
  * `sets_balance`, `created_at`) stays, and so do the exchange pair and its
  * markers when the import row carries one; a plain import row takes the sync
  * input's own (`adoptedExchangeValuesOf`). No `holdings` row is written. The
- * sync overwrites the stored balance from the
- * bank's own figure, and an adoption adds no amount anywhere, so the ledger keeps
- * one row per purchase without moving any balance. Runs only on the sync insert
- * path: a statement import never adopts.
+ * sync overwrites the stored balance from the bank's own figure, and an
+ * adoption adds no amount anywhere, so the ledger keeps one row per purchase
+ * without moving any balance. Runs only on the sync insert path: a statement
+ * import never adopts.
  */
 const adoptImportTwinsDatabaseTransaction = async (
   databaseTransaction: typeof database,
