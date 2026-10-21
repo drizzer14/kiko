@@ -2003,16 +2003,26 @@ function isYamlInsideWorktree(target, rules) {
   );
 }
 
+function isExistingDirectory(target) {
+  try {
+    return fs.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 // Where `target` lands from `directory` (resolved when the text allows) when
 // that is inside a tree, is a YAML file of a worktree, or is a git config file, or null. A cp/mv
 // `destination` may be a folder, and what it copies lands inside it, so one
 // that is a tree folder itself counts too. With `resolvedOnly`, a target the
 // text cannot resolve never counts. A `folder` target (a copied or moved folder, or the
 // destination of a copy of a folder's contents) counts too when it is a folder that may hold a
-// tree (`<worktree>/.claude`): what lands there whole may carry one.
-function guardedPlace(target, directory, rules, { destination, resolvedOnly, folder }) {
+// tree (`<worktree>/.claude`): what lands there whole may carry one. A `missing` target counts only
+// while it is no existing directory: a copy lands inside a directory that is there.
+function guardedPlace(target, directory, rules, { destination, resolvedOnly, folder, missing }) {
   const resolved = resolveDirectory(directory, target);
   const inside = (place) => (destination ? `${place.replace(/\/+$/, '')}/_` : place);
+  if (missing && resolved !== null && isExistingDirectory(resolved)) return null;
   if (resolved === null) {
     if (resolvedOnly) return null;
 
@@ -2038,11 +2048,18 @@ function firstGuardedWrite(
   targets,
   directories,
   rules,
-  { verb = 'writes', destination = false, resolvedOnly = false, folder = false } = {},
+  {
+    verb = 'writes',
+    destination = false,
+    resolvedOnly = false,
+    folder = false,
+    missing = false,
+  } = {},
 ) {
   for (const target of targets) {
     for (const directory of directories) {
-      const where = guardedPlace(target, directory, rules, { destination, resolvedOnly, folder });
+      const mode = { destination, resolvedOnly, folder, missing };
+      const where = guardedPlace(target, directory, rules, mode);
       if (where !== null) return { verb, where };
     }
   }
@@ -2218,6 +2235,21 @@ function copyMovePlan(parameters) {
   if (sources.length > 1 || destination.endsWith('/')) return { targets: landed, folders };
 
   return { targets: [destination, ...landed], folders };
+}
+
+// The destination of a copy of one folder or a move, which becomes that folder itself when it does
+// not exist (macOS `cp -R src dst/` and `mv src dst/`, with or without the slash, make `dst` a
+// copy of `src`, measured), so the text cannot tell what lands there. Plain `cp` copies no folder,
+// and `-t` and `-T` name the destination as a folder.
+function createdFolders(base, parameters) {
+  if (!COPY_MOVE_COMMANDS.has(base)) return [];
+  const { options, operands } = splitOptions(parameters, readCopyMoveOption);
+  const namesFolder = options.some(
+    (option) => option.targetDirectory !== undefined || option.noTargetDirectory,
+  );
+  const copiesFolder = MOVE_COMMANDS.has(base) || options.some((option) => option.recursive);
+
+  return operands.length === 2 && copiesFolder && !namesFolder ? [operands[1]] : [];
 }
 
 // The files a command writes (`sed -i`, `perl -i`, `tee`), or null when it is none of them or
@@ -2506,7 +2538,11 @@ function commandWrite(
   if (files !== null) {
     return (
       firstGuardedWrite(files, directories, rules, { destination }) ??
-      firstGuardedWrite(folders, directories, rules, { destination, folder: true })
+      firstGuardedWrite(folders, directories, rules, { destination, folder: true }) ??
+      firstGuardedWrite(createdFolders(base, parameters), directories, rules, {
+        folder: true,
+        missing: true,
+      })
     );
   }
   const program = interpreterProgramOf(base, parameters, stdinScripts);
