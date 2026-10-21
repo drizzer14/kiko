@@ -268,8 +268,20 @@ describe('convertOutcomeOf', () => {
     ['a missing to coin', { toAsset: undefined }],
     ['a blank to coin', { toAsset: '' }],
     ['two blank coins', { fromAsset: '', toAsset: '' }],
-  ])('owes the point of a settled conversion with %s: it is unreadable', (_name, over) => {
-    expect(codeOf(over)).toBe('convert-row-unreadable');
+  ])('refuses a settled conversion with %s into one entry, and owes nothing', (_name, over) => {
+    expect(outcomeOf(over)).toEqual(REFUSED);
+  });
+
+  it('reads the status and the wallet before a blank coin', () => {
+    expect(codeOf({ orderStatus: 'PROCESS', fromAsset: '' })).toBe('convert-not-settled');
+    expect(outcomeOf({ walletType: 'MAIN', fromAsset: '' })).toEqual(REFUSED);
+    expect(outcomeOf({ orderStatus: 'FAIL', fromAsset: '' })).toEqual({ kind: 'none' });
+  });
+
+  it('still owes the amount of a tracked side next to a blank coin that is not read', () => {
+    expect(outcomeOf({ fromAsset: '', fromAmount: undefined })).toEqual(REFUSED);
+    expect(codeOf({ toAmount: undefined })).toBe('convert-row-unreadable');
+    expect(codeOf({ fromAmount: '0' })).toBe('convert-amount-invalid');
   });
 
   it('owes the point of a lone leg whose other coin has no usable code', () => {
@@ -596,6 +608,29 @@ describe('what the Convert walk imports', () => {
     expect(world.fake.notImported()).toEqual([
       `convert-unrecognized:quote-1:${CONVERT_CREATED_AT}`,
     ]);
+  });
+
+  it('writes a conversion with a blank coin as one entry, goes past it, and owes nothing', async () => {
+    const world = recentWorld();
+    const server = convertServerOf([convertRecordOf({ toAsset: '' })]);
+
+    const first = world.depsOf({ fetchConvertHistory: server });
+    await world.walk(first);
+
+    expect(first.addTransactions).not.toHaveBeenCalled();
+    expect(world.fake.notImported()).toEqual([
+      `convert-unrecognized:quote-1:${CONVERT_CREATED_AT}`,
+    ]);
+    expect(CURSOR(world)).toBe(NOW);
+    expect(world.fake.marksOf('convert').pending ?? []).toEqual([]);
+
+    await world.walk(world.depsOf({ fetchConvertHistory: server }));
+
+    expect(world.fake.notImported()).toEqual([
+      `convert-unrecognized:quote-1:${CONVERT_CREATED_AT}`,
+    ]);
+    expect(world.fake.marksOf('convert').pending ?? []).toEqual([]);
+    expect(stopCodes()).toEqual([]);
   });
 
   it.each(['FAIL', 'PROCESS', 'ACCEPT_SUCCESS'])(

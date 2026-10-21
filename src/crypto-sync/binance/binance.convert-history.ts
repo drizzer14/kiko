@@ -74,7 +74,7 @@ import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldow
 /** The stop of a conversion that waits on Binance: its point is owed until it settles. */
 const CONVERT_NOT_SETTLED = 'convert-not-settled';
 
-/** The stop of a settled conversion that lacks a coin, an amount, or a code to mark a lone leg. */
+/** The stop of a settled conversion that lacks an amount, or a code to mark a lone leg. */
 const CONVERT_ROW_UNREADABLE = 'convert-row-unreadable';
 
 const CONVERT_AMOUNT_INVALID = 'convert-amount-invalid';
@@ -137,15 +137,6 @@ const walletOf = (walletType: string | undefined): BinanceWallet | undefined =>
     .with('SPOT', () => 'spot')
     .otherwise(() => undefined);
 
-// The client keeps '' for a ticker that trims to nothing, so a blank one reads like an absent one.
-const requiredAsset = (asset: string | undefined): string => {
-  if (asset === undefined || asset === '') {
-    throw new BinanceWalkStop(CONVERT_ROW_UNREADABLE);
-  }
-
-  return asset;
-};
-
 const isTracked = (side: ConvertSide): side is TrackedSide => isTrackedBinanceAsset(side.asset);
 
 const legOf = (side: TrackedSide): ConvertLeg => {
@@ -169,10 +160,12 @@ const settledOutcomeOf = (accountId: string, record: BinanceConvertRecord): Conv
     return refusedOutcomeOf(record);
   }
 
-  const fromAsset = requiredAsset(record.fromAsset);
-  const toAsset = requiredAsset(record.toAsset);
+  // The client keeps '' for a ticker that trims to nothing, so a blank one reads like an absent
+  // one; neither changes on a re-read, so the record is refused for good rather than owed.
+  const fromAsset = record.fromAsset ?? '';
+  const toAsset = record.toAsset ?? '';
 
-  if (fromAsset === toAsset) {
+  if (fromAsset === '' || toAsset === '' || fromAsset === toAsset) {
     return refusedOutcomeOf(record);
   }
 
@@ -219,9 +212,9 @@ const settledOutcomeOf = (accountId: string, record: BinanceConvertRecord): Conv
 /**
  * What one Convert record comes to, decided in the order the status, the wallet, the coins (spec
  * "Convert"). `FAIL` is nothing; a conversion that waits on Binance, or one the walk cannot trust
- * (a coin or amount missing or not above zero on a tracked side), throws a `BinanceWalkStop` and
- * owes its point, because a skipped one would be silent loss; a status or wallet outside the
- * allowlist, and a conversion of a coin into itself, are refused for good into one entry. A side
+ * (an amount missing or not above zero on a tracked side), throws a `BinanceWalkStop` and owes its
+ * point, because a skipped one would be silent loss; a status or wallet outside the allowlist, a
+ * blank coin, and a conversion of a coin into itself, are refused for good into one entry. A side
  * whose coin is not tracked is never read for its amount: the tracked leg stands alone, marked with
  * the other coin, and a conversion of two such coins gives no row.
  */
