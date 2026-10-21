@@ -713,8 +713,9 @@ describe('HomeScreen', () => {
   });
 
   // The breakdown hides a currency whose amount DISPLAYS as zero, with the precision
-  // `formatMoney` renders: measured, a value below 0.5 minor unit shows "0.00" / "-0.00" in
-  // every currency (fiat scale 2, USDT and BTC scale 8), and 0.5 minor unit shows non-zero.
+  // `formatMoney` renders. Money.of truncates a fractional balance on the way in, so on the Home
+  // chain anything under one whole minor unit shows "0.00" / "-0.00" in every currency (fiat
+  // scale 2, USDT and BTC scale 8), and 1 / -1 minor unit is the smallest value that stays.
   const DISPLAYED_ZERO_CASES = [
     ['USD', 'exact zero', 0],
     ['USD', 'a tiny positive remainder', 1e-9],
@@ -726,6 +727,10 @@ describe('HomeScreen', () => {
     ['USDT', 'a tiny negative remainder', -1e-9],
     ['USDT', 'just below half a minor unit', 0.4],
     ['BTC', 'a tiny negative remainder', -1e-9],
+    ['USD', 'half a minor unit, truncated to zero on the way in', 0.5],
+    ['USD', 'a negative half minor unit, truncated to zero on the way in', -0.5],
+    ['USDT', 'half a minor unit, truncated to zero on the way in', 0.5],
+    ['BTC', 'half a minor unit, truncated to zero on the way in', 0.5],
   ] as const;
 
   it.each(DISPLAYED_ZERO_CASES)(
@@ -745,12 +750,11 @@ describe('HomeScreen', () => {
   );
 
   const DISPLAYED_NON_ZERO_CASES = [
-    ['USD', 'half a minor unit', 0.5],
     ['USD', 'one minor unit', 1],
-    ['USD', 'a negative half minor unit', -0.5],
-    ['USDT', 'half a minor unit', 0.5],
+    ['USD', 'a negative minor unit', -1],
     ['USDT', 'one minor unit', 1],
-    ['BTC', 'half a minor unit', 0.5],
+    ['USDT', 'a negative minor unit', -1],
+    ['BTC', 'one minor unit', 1],
     ['BTC', 'a negative minor unit', -1],
   ] as const;
 
