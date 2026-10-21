@@ -309,6 +309,15 @@ const denyJson = (reason) =>
 
 // ---- pieces both scanners share ----
 
+// Test-only work counter. `decide` points it at `options.workCounter` (an in-process option; the
+// hook payload never reaches it) for the length of one call, and the hot loops call `tick()`, so a
+// test can count real work and prove the scan stays linear without reading a clock. Absent, `tick`
+// is one null check.
+let workCounter = null;
+function tick() {
+  if (workCounter !== null) workCounter.steps++;
+}
+
 // An unquoted `#` that starts a word comments out the rest of its line —
 // quotes in it included, so an apostrophe there must not open a string that
 // hides every later line. Skips to (not past) the newline, which still ends
@@ -404,6 +413,7 @@ function queueHeredoc(state, operator, segmentIndex) {
 function readHeredocBody(text, start, heredoc) {
   let lineStart = start;
   while (lineStart <= text.length) {
+    tick();
     const newline = text.indexOf('\n', lineStart);
     const lineEnd = newline === -1 ? text.length : newline;
     const line = text.slice(lineStart, lineEnd);
@@ -785,6 +795,7 @@ function scanLevel(text) {
     separators: [],
   };
   while (context.i < context.n) {
+    tick();
     if (context.quote === "'") {
       stepSingleQuote(context);
       continue;
@@ -932,6 +943,7 @@ function tokenize(segment) {
     redirects: [],
   };
   while (context.i < context.segment.length) {
+    tick();
     if (context.quote) {
       stepWordQuoted(context);
       continue;
@@ -2457,6 +2469,7 @@ function statementBefore(code, index) {
 function writeCallTargets(code) {
   const targets = [];
   for (const match of code.matchAll(WRITE_CALL)) {
+    tick();
     const { content } = matchDelimited(code, match.index + match[0].length, '(', ')');
     const [first, rest] = splitFirstArgument(content);
     if (!OPEN_CALL.test(match[1]) || WRITING_MODE.test(rest)) targets.push(first);
@@ -2472,7 +2485,12 @@ function writeCallTargets(code) {
   return targets;
 }
 
-const literalsOf = (text) => [...text.matchAll(STRING_LITERAL)].map((match) => match[2]);
+const literalsOf = (text) =>
+  [...text.matchAll(STRING_LITERAL)].map((match) => {
+    tick();
+
+    return match[2];
+  });
 
 const BARE_NAME = /^\s*[A-Za-z_$][\w$]*\s*$/;
 const ARGV_READ = /\b(?:sys|process)\.argv\b/;
@@ -3334,6 +3352,7 @@ const hasVariables = (scope) => scope.parent !== null || scope.own.size > 0;
 
 function lookupVariable(scope, name) {
   for (let link = scope; link !== null; link = link.parent) {
+    tick();
     if (link.own.has(name)) return link.own.get(name);
   }
 
@@ -3344,7 +3363,12 @@ function foldScope(scope) {
   const links = [];
   for (let link = scope; link !== null; link = link.parent) links.unshift(link);
   const own = new Map();
-  for (const link of links) for (const [name, value] of link.own) own.set(name, value);
+  for (const link of links) {
+    for (const [name, value] of link.own) {
+      tick();
+      own.set(name, value);
+    }
+  }
 
   return { own, parent: null, depth: 0 };
 }
@@ -3450,6 +3474,7 @@ function findDanger(line, depth, checkHeredoc, place, rules) {
   let before = '';
 
   for (const [index, segment] of segments.entries()) {
+    tick();
     enterSubshells(location, opens[index]);
     const here = { directories: location.directories, variables: location.variables };
     placesAt.push(here);
@@ -3526,7 +3551,8 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // folder in place of the main checkout, and the guard judges it with those.
 // `options.projectRoot` is test-only too: a fake repository in a scratch
 // folder stands in for this one, so the shell-write tests never name a real
-// file. The hook entry point below never passes any of them.
+// file. `options.workCounter` (`{ steps }`) is test-only as well: the scan steps of that one call
+// are added to it. The hook entry point below never passes any of them.
 //
 // A `$"…"` heredoc delimiter ends at `EOF` in bash and at `$EOF` in zsh, so
 // every command is judged once per reading, and either finding counts. The
@@ -3537,13 +3563,23 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // not take) is an `internalError` finding that denies, never an allow, because the command that
 // crashed the guard may be the one it exists to stop.
 function decide(command, options = {}) {
+  const previousCounter = workCounter;
   try {
+    workCounter =
+      typeof options.workCounter === 'object' &&
+      options.workCounter !== null &&
+      !Array.isArray(options.workCounter)
+        ? options.workCounter
+        : null;
+
     return judge(command, options);
   } catch (error) {
     return {
       kind: 'internalError',
       detail: `${error?.name}: ${String(error?.message).slice(0, 200)}`,
     };
+  } finally {
+    workCounter = previousCounter;
   }
 }
 
