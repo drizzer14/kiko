@@ -10,11 +10,28 @@ const holdings = [card, wallet, savings];
 const legTo = (counterpartId: string) => ({
   exchangeCounterpartHoldingId: counterpartId,
   untrackedCounterpart: null,
+  operation: null,
 });
 
 describe('resolveDescriptionPlaceholder', () => {
   afterEach(async () => {
     await i18n.changeLanguage('en');
+  });
+
+  it('previews Trading fee for an edited fee row', () => {
+    expect(
+      resolveDescriptionPlaceholder({
+        holding: card,
+        existing: {
+          exchangeCounterpartHoldingId: null,
+          untrackedCounterpart: 'asset:PEPE',
+          operation: 'trade-fee',
+        },
+        holdings,
+        mode: 'expense',
+        t: i18n.t,
+      }),
+    ).toBe('Trading fee');
   });
 
   it('previews "Transfer to" for a leg between two holdings of one currency, so the field shows what the list shows', () => {
@@ -96,6 +113,21 @@ describe('resolveBlankLabel', () => {
         t: i18n.t,
       }),
     ).toBe('Exchange to Savings');
+  });
+
+  it('opens a blank trading-fee row with Trading fee', () => {
+    expect(
+      resolveBlankLabel({
+        existing: leg({
+          exchangeCounterpartHoldingId: null,
+          untrackedCounterpart: 'asset:PEPE',
+          operation: 'trade-fee',
+        }),
+        holding: card,
+        holdings,
+        t: i18n.t,
+      }),
+    ).toBe('Trading fee');
   });
 
   it('pre-fills nothing for a row with a description of its own', () => {

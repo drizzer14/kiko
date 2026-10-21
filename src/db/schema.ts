@@ -227,6 +227,13 @@ export const transactions = sqliteTable(
     // code later. Null on every other row, and `addManyDedup`'s upsert never
     // refreshes it: the key that carries it never changes.
     untrackedCounterpart: text('untracked_counterpart'),
+    // The label of an exchange operation (a trade, its fee, a convert, a dust sweep, a P2P
+    // purchase, a card purchase, a fiat deposit or withdrawal), written once on insert and never
+    // refreshed. It only picks the render-time label; statistics never read it, since exclusion
+    // stays on the stored markers above. Null on every other row.
+    operation: text('operation', {
+      enum: ['trade', 'trade-fee', 'convert', 'dust', 'p2p', 'card', 'fiat'],
+    }),
     // The loan holding this payment counts against — null for an ordinary
     // transaction. A loan holding writes no ledger rows of its own
     // (`isLedgerlessHoldingType`), so every payment lives on the LINKED

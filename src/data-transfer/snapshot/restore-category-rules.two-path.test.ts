@@ -33,6 +33,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
   columnsWithout,
@@ -170,7 +171,12 @@ const versionTwoFile = async (source: DatabaseSync): Promise<{ text: string; key
     holdings: await sourceDrizzle.select().from(holdings).orderBy(asc(holdings.id)),
     transactions: await sourceDrizzle
       .select(
-        columnsWithout(getTableColumns(transactions), 'categorySetByHand', 'untrackedCounterpart'),
+        columnsWithout(
+          getTableColumns(transactions),
+          'categorySetByHand',
+          'untrackedCounterpart',
+          'operation',
+        ),
       )
       .from(transactions)
       .orderBy(asc(transactions.id)),
@@ -311,6 +317,7 @@ describe('restoring a .kiko file this build exported', () => {
     exported.exec(HISTORY_BACKFILL_CURSOR_SQL);
     exported.exec(EXCHANGE_STATE_SQL);
     addAccountCurrencyColumn(exported);
+    addTransactionOperationColumn(exported);
 
     await restoreExportOf(exported);
 

@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
 } from '@kiko/test-support/real-sqlite';
@@ -234,6 +235,7 @@ const scaleTwoDatabase = (): DatabaseSync => {
   target.exec(HISTORY_BACKFILL_CURSOR_SQL);
   target.exec(EXCHANGE_STATE_SQL);
   addAccountCurrencyColumn(target);
+  addTransactionOperationColumn(target);
   seedScaleTwoDatabase(target);
 
   return target;

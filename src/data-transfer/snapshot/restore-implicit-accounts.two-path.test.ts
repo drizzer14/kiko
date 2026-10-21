@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
   columnsWithout,
@@ -107,6 +108,7 @@ const databaseBefore0050 = (): DatabaseSync => {
   target.exec(HISTORY_BACKFILL_CURSOR_SQL);
   target.exec(EXCHANGE_STATE_SQL);
   addAccountCurrencyColumn(target);
+  addTransactionOperationColumn(target);
   target.exec('PRAGMA foreign_keys = ON;');
 
   return target;

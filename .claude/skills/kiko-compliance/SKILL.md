@@ -88,7 +88,10 @@ category in the snapshot (`build-demo-snapshot.test.ts`), reachable from the Tem
 (Settings > Transaction templates), the demo holds at
 least one bank account per connectable catalog bank (derived from `bankCatalog`,
 not a count) plus one Other bank, and every demo account keeps `institution`
-null (no auto-sync starts on a demo account). A diff that adds an account
+null (no auto-sync starts on a demo account). The same file's describe 'exchange operations on the
+crypto account' fails unless every `transactions.operation` code appears on the crypto account,
+and its label test fails unless the fee row and the coded rows render their label in en and uk
+(read it there). A diff that adds an account
 kind or a holding type must add it to the dataset and regenerate both
 `.kiko` files (`KIKO_REGEN_DEMO=1 npx jest
 e2e/screenshot/fixtures/generate-demo-kiko.test.ts`), or any change to

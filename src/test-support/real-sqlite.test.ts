@@ -4,6 +4,7 @@ import { accounts, type database, holdings } from '@kiko/db';
 
 import {
   addAccountCurrencyColumn,
+  addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
   executingDrizzle,
@@ -36,6 +37,32 @@ describe('addAccountCurrencyColumn', () => {
 
     expect(rawDatabase.prepare('SELECT id, currency FROM accounts').all()).toEqual([
       { id: 'a-1', currency: 'UAH' },
+    ]);
+  });
+});
+
+describe('addTransactionOperationColumn', () => {
+  it('adds the column to a database below 0063 and nothing else', () => {
+    const rawDatabase = new DatabaseSync(':memory:');
+
+    applyMigrationsThrough(rawDatabase, '0062_add_account_currency');
+    rawDatabase
+      .prepare("INSERT INTO accounts (id, name, kind) VALUES ('a-1', 'Cash', 'cash')")
+      .run();
+    rawDatabase
+      .prepare(
+        "INSERT INTO holdings (id, account_id, name, type, currency) VALUES ('h-1', 'a-1', 'Cash', 'cash', 'UAH')",
+      )
+      .run();
+    rawDatabase
+      .prepare(
+        "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source) VALUES ('t-1', 'h-1', -100, 1, 'manual')",
+      )
+      .run();
+    addTransactionOperationColumn(rawDatabase);
+
+    expect(rawDatabase.prepare('SELECT id, operation FROM transactions').all()).toEqual([
+      { id: 't-1', operation: null },
     ]);
   });
 });

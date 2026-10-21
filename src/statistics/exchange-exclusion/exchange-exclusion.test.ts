@@ -35,6 +35,23 @@ describe('exchangeExcludedTransactionIds', () => {
     ).toEqual(new Set(['futures']));
   });
 
+  it.each([
+    ['asset:PEPE'],
+    ['p2p:UAH:4150.00'],
+    ['card:UAH:2600.00'],
+    ['bank:EUR:100.00'],
+    ['p2p:UAH:abc'],
+  ])(
+    'excludes a row with each new code form, a malformed total included: %s',
+    (untrackedCounterpart) => {
+      expect(
+        exchangeExcludedTransactionIds([
+          { id: 'row', exchangeCounterpartHoldingId: null, untrackedCounterpart },
+        ]),
+      ).toEqual(new Set(['row']));
+    },
+  );
+
   it('returns an empty set for an ordinary ledger', () => {
     expect(
       exchangeExcludedTransactionIds([

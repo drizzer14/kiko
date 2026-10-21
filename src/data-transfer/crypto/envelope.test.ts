@@ -153,7 +153,11 @@ describe('the export version against the migration journal', () => {
     // that carries the user's own pick: an older build restoring such a file would drop the key
     // and, on its own later upgrade, derive a different currency by the rule, so it must refuse
     // the file by its version. This build restores an older file by deriving the currency.
-    migrationCount: 63,
+    // Through 0063_add_transaction_operation, a nullable column riding inside the transaction row
+    // (`operation`), a label only: an older build restoring a file that carries it drops the key,
+    // its rows keep their markers, and this build restores an older file without it as null, so
+    // it needed no bump.
+    migrationCount: 64,
   };
 
   it('has a version decision for every migration', () => {

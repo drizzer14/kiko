@@ -235,13 +235,16 @@ string:
   Untracked-wallet product names (`UNTRACKED_WALLETS`,
   `src/transactions/untracked-counterpart/`) are kept out of the i18n
   catalogue: code-side proper nouns; only the 'Transfer to/from {{name}}'
-  sentence (`transactions.transferTo`/`transactions.transferFrom`) is translated.
+  sentence (`transactions.transferTo`/`transactions.transferFrom`) is translated. The fiat-code
+  and fee labels (`tradingFee` and the P2P, card and bank labels taking a `{{currency}}`) are
+  catalogue keys beside them in `src/i18n/locales/en.ts`; read them there.
   uk writes coin and network brand names in Latin, identical to en
   (Bitcoin, USDT), never transliterated; the uk coin names are pinned
   uk = en. The uk proper nouns that keep a capital mid-sentence live in
   `PROPER_NOUNS` in `uk.casing.test.ts`: read it there, never copy its
   members into this skill. Also
-  acronyms (ISIN, API, CSV, BTC, ISO codes), a unit in
+  acronyms (ISIN, API, CSV, BTC, P2P, ISO codes; the tokenizer in
+  `en.casing-by-role.test.ts` reads a digit inside an acronym), a unit in
   parentheses cases per the rule of the role it sits inside, and a
   capital letter standing for a user-chosen number ("Every N days" /
   "Кожні N днів"; `NUMBER_PLACEHOLDER_LETTERS` in

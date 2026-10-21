@@ -323,6 +323,8 @@ const makeInMemoryDeps = (
         // by the manual Exchange/Convert paths.
         exchangeCounterpartHoldingId: null,
         untrackedCounterpart: null,
+        // A synced row is no exchange operation.
+        operation: null,
         // A synced row is never part of a split-change group — that marker is
         // written only by the manual `recordManualWithReturns` path.
         changeGroupId: null,

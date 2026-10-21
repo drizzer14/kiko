@@ -254,6 +254,10 @@ project-level pointer to this section.
   schema calls `addAccountCurrencyColumn` (`src/test-support/real-sqlite.ts`);
   a seed at 0061 modelling a pre-0050 file drops `accounts_implicit_kind`
   first (see `restore-account-currency.two-path.test.ts`).
+  A seed below 0063 that reads transactions calls `addTransactionOperationColumn`, and a
+  pre-0063 source read of `transactions` selects
+  `columnsWithout(getTableColumns(transactions), ..., 'operation')` (both in
+  `src/test-support/real-sqlite.ts`).
 - **A NULL meaning replaced by a stored sentinel id is a kind-scoped
   data-only migration, mirrored on restore.** `0049` is hand-authored SQL
   with no snapshot: it sets `bank_id = 'other'` on `kind = 'bank'` rows
@@ -2201,7 +2205,11 @@ than restated here:
   carries `untrackedCounterpart` = `wallet:<TYPE>` (`UNTRACKED_WALLETS` in
   `src/transactions/untracked-counterpart/untracked-counterpart.ts`; migration
   `drizzle/migrations/0058_add_untracked_counterpart.sql`; the data-transfer
-  decision is the 0058 `untrackedCounterpart` note on the snapshot version in this file). The label and the exclusion are in
+  decision is the 0058 `untrackedCounterpart` note on the snapshot version in this file). The
+  column holds a stored counterpart code, not only a wallet; the forms and parse rules are
+  `parseUntrackedCounterpart` in that file. The demo seed rows carry a pair key, a counterpart
+  key, `untrackedCounterpart`, `operation` and a comment (read
+  `e2e/screenshot/seed/screenshot-seed.ts`). The label and the exclusion are in
   `kiko-domain` (the `untrackedCounterpart` bullet); the name rule is in
   `kiko-translator`.
 - **Idempotent via `(source, external_id)`.** Each row is
@@ -2903,6 +2911,10 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `withAccountCurrencyDerived` runs after `withImplicitAccountsMerged`.
   `assertKnownCurrencies` covers `accounts.currency`. Export version 5; read
   the decision in `VERSION_DECISIONS` in `envelope.test.ts`.
+  Migration 0063 (`transactions.operation`, nullable, insert-only; files
+  `drizzle/migrations/0063_add_transaction_operation.sql` and its test) is a label column
+  riding inside the transaction row, like 0058; its data-transfer decision is the
+  `VERSION_DECISIONS` entry in `envelope.test.ts`: read it there.
   Worked example of a device-local settings column: 0060
   `settings.history_backfill_state` (nullable; the history backfill's resume
   state). It is listed in `KEPT_FROM_LIVE_ON_RESTORE`, so a file never

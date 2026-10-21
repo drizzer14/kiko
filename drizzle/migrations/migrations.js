@@ -64,6 +64,7 @@ import m0059 from './0059_usdt_scale_8.sql';
 import m0060 from './0060_add_history_backfill_state.sql';
 import m0061 from './0061_exchange_state.sql';
 import m0062 from './0062_add_account_currency.sql';
+import m0063 from './0063_add_transaction_operation.sql';
 
 export default {
   journal,
@@ -131,5 +132,6 @@ export default {
     m0060,
     m0061,
     m0062,
+    m0063,
   },
 };

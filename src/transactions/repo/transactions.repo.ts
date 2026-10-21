@@ -73,9 +73,9 @@ import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '..
 // this feature importing the templates one.
 type Alongside = (databaseTransaction: typeof database) => Promise<void>;
 
-// The three movement markers are insert-only: the upsert's update set
+// The three movement markers and the operation label are insert-only: the upsert's update set
 // (`BANK_OWNED_TRANSACTION_COLUMNS`) leaves them out, since the deterministic key
-// of a history row never changes the movement it names.
+// of a history row never changes the movement it names or the label it carries.
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
     Pick<
@@ -90,6 +90,7 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
       | 'exchangeCounterpartHoldingId'
       | 'exchangePairId'
       | 'untrackedCounterpart'
+      | 'operation'
     >
   >;
 
@@ -1953,6 +1954,8 @@ const contextRowsQuery = () =>
       exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
       // The untracked-wallet code travels with it, for the same two readers.
       untrackedCounterpart: transactions.untrackedCounterpart,
+      // The operation label travels with them: Home reads it to label a trading fee.
+      operation: transactions.operation,
       // With the marker, what the row label needs to compare the leg's own
       // currency to its counterpart's (`holdingCurrencyById`).
       holdingId: transactions.holdingId,

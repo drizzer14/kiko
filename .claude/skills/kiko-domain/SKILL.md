@@ -1064,24 +1064,27 @@ always, and the marker only when it is manual or imported and carries none; see
   the matched-pair matcher rejects.
 - **The repository never writes a description for a leg.** The label is
   resolved at render time through `t`. `transactionRowDescription`
-  (`src/transactions/row-description/`) applies this order: (1) a stored
-  description wins; (2) a row with `exchangeCounterpartHoldingId` gets the
-  paired leg's label from `exchangeLegDescription` / `transferLegDescription`
-  (`src/transactions/exchange-description/`): 'Transfer to/from <name>' when
-  both holdings have the same currency, 'Exchange to/from <name>' otherwise or
-  when either currency is unknown; (3) a row with a known `untrackedCounterpart`
-  code (`wallet:<TYPE>`, `src/transactions/untracked-counterpart/`; wallet
-  names are proper nouns kept in code, not in i18n) gets 'Transfer to/from
-  <wallet>'; (4) otherwise `defaultTransactionDescription`. Same-currency legs,
+  (`src/transactions/row-description/`) applies the ordered steps its JSDoc lists in
+  `row-description.ts`: read the order there, never from this skill. Pair legs take
+  their label from `exchangeLegDescription` / `transferLegDescription`
+  (`src/transactions/exchange-description/`); wallet names are proper nouns kept in code,
+  not in i18n. Same-currency legs,
   including manual ones, read 'Transfer', not 'Exchange'. The caller supplies
   `holdingNameById` and `holdingCurrencyById`, both built from the holdings live
   query. A persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
-- `transactions.untrackedCounterpart` (0058, nullable `wallet:<TYPE>`) marks a
-  leg whose other side is an untracked wallet. The exchange-exclusion module
+- `transactions.untrackedCounterpart` (0058, nullable) holds a stored counterpart code for
+  a leg whose other side the app does not track: a wallet, an asset, or a P2P, card or bank
+  fiat. The forms and parse rules are `parseUntrackedCounterpart`
+  (`src/transactions/untracked-counterpart/untracked-counterpart.ts`); an unknown code,
+  such as an `asset:` code with a `:` in it, parses to nothing. The exchange-exclusion module
   also excludes these rows from spending (read
   `src/statistics/exchange-exclusion/`). The column is insert-only: it is not in
   `BANK_OWNED_TRANSACTION_COLUMNS` (`src/transactions/repo/transactions.repo.ts`).
+- `transactions.operation` (0063, nullable) is the exchange operation code of a row. It is
+  insert-only (not in `BANK_OWNED_TRANSACTION_COLUMNS`) and is not a rewrite guard field
+  (`REWRITE_GUARD_FIELDS` in `src/categories/category-rules/plan-rule-rewrite.ts`). It is read
+  only for the Trading fee label and is never a statistics input.
 - **The 2-minute same-amount matcher sees only unmarked rows.**
   `rowsForTransferMatch` (`src/statistics/internal-transfers/internal-transfers.ts`)
   drops every row that carries `exchangePairId`, `exchangeCounterpartHoldingId` or

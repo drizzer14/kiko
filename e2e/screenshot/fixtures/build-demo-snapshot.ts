@@ -161,12 +161,23 @@ const holdingIdOf = (idsByKey: ReadonlyMap<string, string>, key: string): string
   return id;
 };
 
+// The pair keys in dataset order (the first row naming a key places it), so `pair-1..n` never
+// depends on a clock or a hash.
+const pairKeysOf = (dataset: ScreenshotDataset): string[] => [
+  ...new Set(
+    dataset.accounts
+      .flatMap((account) => account.holdings)
+      .flatMap((holding) => holding.transactions)
+      .flatMap((transaction) => foldMap(maybe(transaction.pair), ({ key }) => [key]) ?? []),
+  ),
+];
+
 /**
  * Flattens the dataset's nested accounts/holdings/transactions into
  * deterministically-ided rows: `acc-1..n` for accounts, `hold-1..n` numbered
  * across every account (not per-account), `txn-1..n` numbered across every
- * transaction. Every `createdAt` is the dataset's own `anchor`, never a
- * clock, so the mapping never churns run to run. A transaction that pays a
+ * transaction, `pair-1..n` numbered across every exchange. Every `createdAt` is the dataset's
+ * own `anchor`, never a clock, so the mapping never churns run to run. A transaction that pays a
  * loan is linked to it manually.
  */
 const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
@@ -174,6 +185,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
   const holdings: HoldingRow[] = [];
   const transactions: TransactionRow[] = [];
   const idsByKey = holdingIdsByKey(dataset);
+  const pairKeys = pairKeysOf(dataset);
   let holdingCount = 0;
   let transactionCount = 0;
 
@@ -225,16 +237,22 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
           mcc: null,
           hold: null,
           counterIban: null,
-          exchangeCounterpartHoldingId: null,
+          exchangeCounterpartHoldingId:
+            foldMap(maybe(transaction.pair), ({ counterpartHoldingKey }) =>
+              holdingIdOf(idsByKey, counterpartHoldingKey),
+            ) ?? null,
           changeGroupId: null,
-          exchangePairId: null,
-          untrackedCounterpart: null,
+          exchangePairId:
+            foldMap(maybe(transaction.pair), ({ key }) => `pair-${pairKeys.indexOf(key) + 1}`) ??
+            null,
+          untrackedCounterpart: transaction.untrackedCounterpart ?? null,
+          operation: transaction.operation ?? null,
           loanHoldingId,
           loanLinkSource: loanHoldingId === null ? null : 'manual',
           loanLinkRejected: false,
           setsBalance: false,
           categorySetByHand: false,
-          comment: null,
+          comment: transaction.comment ?? null,
           source: 'manual',
           externalId: null,
           createdAt: dataset.anchor,

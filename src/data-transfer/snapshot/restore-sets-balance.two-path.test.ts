@@ -168,6 +168,7 @@ const readPreMarkerSnapshot = async (source: DatabaseSync): Promise<DataSnapshot
         'exchangePairId',
         'categorySetByHand',
         'untrackedCounterpart',
+        'operation',
       ),
     )
     .from(transactions)

@@ -336,6 +336,51 @@ describe('importing a version 1 file an earlier build wrote', () => {
     });
   });
 
+  describe('a file written before transactions carried an operation', () => {
+    it('restores every transaction with a null operation', async () => {
+      const payload = (await earlierBuildPayload(undefined, (database) => {
+        insertLegacyImportRow(database);
+        database
+          .prepare(
+            `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, operation)
+             VALUES ('t2', 'h1', -200, ?, 'manual', 'trade-fee')`,
+          )
+          .run(LEGACY_IMPORT_TIME);
+      })) as { tables: { transactions: Record<string, unknown>[] } };
+
+      for (const row of payload.tables.transactions) {
+        delete row.operation;
+      }
+      mockDatabase = openDatabase();
+
+      await importVersionOne(payload);
+
+      expect(mockDatabase.prepare('SELECT operation AS value FROM transactions').all()).toEqual([
+        { value: null },
+        { value: null },
+      ]);
+    });
+
+    it('restores the operation a file carries', async () => {
+      const payload = await earlierBuildPayload(undefined, (database) => {
+        insertLegacyImportRow(database);
+        database
+          .prepare(
+            `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, operation)
+             VALUES ('t2', 'h1', -200, ?, 'manual', 'trade-fee')`,
+          )
+          .run(LEGACY_IMPORT_TIME);
+      });
+      mockDatabase = openDatabase();
+
+      await importVersionOne(payload);
+
+      expect(
+        mockDatabase.prepare('SELECT operation AS value FROM transactions ORDER BY id').all(),
+      ).toEqual([{ value: null }, { value: 'trade-fee' }]);
+    });
+  });
+
   describe('a file written before accounts carried a currency', () => {
     it('gives each account the currency of its open holdings, or the base currency', async () => {
       const payload = await earlierBuildPayload(undefined, (database) => {
