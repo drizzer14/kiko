@@ -12,6 +12,7 @@ import {
   binanceProvider,
   createBinanceHistoryRun,
   defaultBinanceDeps,
+  syncBinanceDustHistory,
   syncBinanceEarnHistory,
   syncBinancePayHistory,
   syncBinanceTransactions,
@@ -65,9 +66,12 @@ const runBinanceHistoryWalks = async (
   await logOnFailure('[binance sync] earn history failed', () =>
     syncBinanceEarnHistory({ targetAccountId, run }),
   );
-  // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too.
   await logOnFailure('[binance sync] convert history failed', () =>
     syncBinanceConvertHistory({ targetAccountId, run }),
+  );
+  // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too.
+  await logOnFailure('[binance sync] dust history failed', () =>
+    syncBinanceDustHistory({ targetAccountId, run }),
   );
 };
 
