@@ -1010,7 +1010,7 @@ const DUST_ENTRY_FIELDS = {
   transferedAmount: optionalText,
 };
 
-/** One coin of a dust conversion from `/sapi/v1/asset/dribblet`, converted into BNB. */
+/** One coin of a dust conversion from `/sapi/v1/asset/dribblet`, converted into `targetAsset`. */
 export type BinanceDustEntry = Parsed<typeof DUST_ENTRY_FIELDS>;
 
 /** One dust conversion record, one `userAssetDribblets` item, read from its named fields only. */
