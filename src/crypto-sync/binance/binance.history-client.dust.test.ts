@@ -1,15 +1,15 @@
 import {
+  BinanceHistoryParseError,
+  type DustHistoryPage,
+  fetchDustHistory,
+} from './binance.history-client';
+import {
   DUST_OPERATED_AT,
   dustEntryOf,
   dustRecordOf,
   wireDustEntryOf,
   wireDustRecordOf,
 } from './binance.dust-test-fixtures';
-import {
-  BinanceHistoryParseError,
-  type DustHistoryPage,
-  fetchDustHistory,
-} from './binance.history-client';
 
 const NOW = 1_704_326_400_000;
 
