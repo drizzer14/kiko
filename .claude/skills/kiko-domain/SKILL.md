@@ -1438,6 +1438,13 @@ offline seed, so an unrated crypto holding is excluded until a live
 CoinGecko price lands) — every fiat currency is covered by the bundled
 seed and effectively never drops.
 
+Home hides a breakdown currency whose total is exactly 0 minor units
+(`.filter((money) => !money.isZero())` after `guardedBreakdown` in
+`home.screen.tsx`). The headline still counts it. A negative total and a
+tiny non-zero total stay and show their real digits. If every currency is
+zero, the breakdown is empty and the headline is unchanged.
+`guardedBreakdown` itself and account detail are not filtered.
+
 An account's total, on its card (`AccountTotal`), on the
 Property/Debts section heading (implicit accounts) and in the
 account-detail headline
@@ -1476,8 +1483,8 @@ by sign alone, no type check. `buildDebtTotal` is called ONLY on
 Statistics (`statistics.screen.tsx`, rendered under the account pie).
 Home has no separate debts line: its `guardedNetWorth`
 headline and its `guardedBreakdown` per-currency breakdown both stay
-SIGNED (net) sums of every holding, so the breakdown still adds up to
-the headline exactly as it always did — a debt nets into its own
+SIGNED (net) sums of every holding, so the breakdown rows still sum to
+the headline (a currency netting to exactly 0 is hidden by Home's filter and adds 0) — a debt nets into its own
 currency's cell there, unlike Statistics' assets-only pie. Accounts'
 own "Debts" section (`accounts.screen.tsx`) computes its OWN section
 total independently: `accountTotal` (via `useSectionTotals`) over the
