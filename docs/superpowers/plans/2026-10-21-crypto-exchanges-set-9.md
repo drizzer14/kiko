@@ -25,8 +25,7 @@ fnts `maybe`/`Either`, ts-pattern.
 "Mapping and statistics per operation" (Dust rows); section 7 rows D1-D3 and "New streams ... (dust: no cursor)";
 section 9 "Demo `.kiko`" (dust pair already seeded, U3); section 12 P7. Rulings (`memory/refs/binance-multicoin-sdd-
 2026-10-21/rulings.md`, main checkout): R-Q6, R-Map, C-Div, U1, U3, S7-Q3, S7-Q6, S8-Q2, PAY m2 B. Set 9 questions
-S9-Q1 ... S9-Q6 go to the coordinator with this plan; the plan applies each recommendation, marked
-"(DEFAULT, pending S9-Q<n>)".
+S9-Q1 ... S9-Q10 are answered (rulings.md, section Set 9 plan questions); the spec section 1 records them.
 
 **Base:** branch `binance-set9` at main `88040f05` (sets 1-8 merged). Every code fact names a symbol or anchor
 text. **The developer re-greps every fact on the actual base before relying on it.**
@@ -42,7 +41,7 @@ text. **The developer re-greps every fact on the actual base before relying on i
   consumer yet needs a cross-folder test consumer in the same commit (set 8 lesson).
 - G-4 No migration, no index, so no migration review and no EXPLAIN QUERY PLAN test. Stop and ask if one appears.
 - G-5 Dust is not a walk: no `WALK_IDS` member, no `CAPTION_WALKS` member, no `exchange_state.walks` entry, no
-  `NOT_IMPORTED_KINDS` member (DEFAULT, pending S9-Q1), no backfill range, no `multiCoinSince` mark. A plan step
+  `NOT_IMPORTED_KINDS` member (S9-Q1 A), no backfill range, no `multiCoinSince` mark. A plan step
   that seems to need one: stop and ask.
 - G-6 Lane `dust`: cap 1, no narrowing calls, cost `{ ip: 1 }` (probe 2). One call per run at most.
 - G-7 Rows: Spot on both legs (spec "### Dust"); `operation = 'dust'` on every leg, insert-only (as Convert);
@@ -54,8 +53,9 @@ text. **The developer re-greps every fact on the actual base before relying on i
 - G-8 Amounts: the source leg is `-amount`, the BNB leg `+transferedAmount`, each through `rowMinorUnits`;
   `serviceChargeAmount` is never read or subtracted (P7 default: `transferedAmount` is net, spec section 12).
 - G-9 Holdings: a leg whose Spot holding does not exist creates it at zero through `placeWalletRows` (section 4
-  "Appear": "on its first imported row") (DEFAULT, pending S9-Q4).
-- G-10 No copy change: no i18n key, no translator review (unless S9-Q1 is answered B).
+  "Appear": "on its first imported row") (S9-Q4 A, user: amends R-Q6). `placeWalletRows` needs no special
+  code; `DUST_HOLDING_MISSING` stays only as its defensive `missingCode` (step 4).
+- G-10 No copy change: no i18n key, no translator review (S9-Q1 A: no new kind).
 - G-11 U1: no device deploy and no device step in this set.
 - G-12 Guideline 2.5.19: no flag. Dust rows render with the set 7 labels; the demo `.kiko` already carries the dust
   pair XRP -> BNB (U3), so a reviewer sees a dust row without a connected account. Same Binance host, so no new SPKI
@@ -80,22 +80,23 @@ text. **The developer re-greps every fact on the actual base before relying on i
   closed it; set 9 does not touch it. Coordinator note in the handback (close it in the run log with the set 8 sha).
 - `20261015T1657-kiko-binance-backfill-fix/2`, `20261019T0912-kiko-account-currency/1` (migrations): not touched.
 - Every other open gap (harness, Duo, iPad, scrub, pickers, account-currency, ops text): LEFT OPEN, unrelated.
-- New gap to file in step 9/9 only if S9-Q1 is answered A: "a dust record the rules refuse is logged only; once it
+- New gap to file in step 9/9 (S9-Q1 A): "a dust record the rules refuse is logged only; once it
   falls out of the newest 100 it is gone with no visible trace".
 
 ## P7: open fact, safe default, probe and fixture plan
 
-P7 is OPEN (probe 2: 0 dust records on the user's account, every 180-day window back to 2020-12-01 served, one
--1021 retry failure). Nothing about a real dust record was ever observed. Safe defaults, each pinned by a test:
+P7 is PARTLY SETTLED: probe 2 saw 0 dust records (every 180-day window back to 2020-12-01 served, one -1021
+retry failure); probe 7 (S9-Q3 A) measured the empty answer. No real dust record was ever observed. Safe
+defaults, each pinned by a test:
 - Newest 100 only; nothing older is read (spec scope; the set 15 not-listed note names the loss).
 - `transferedAmount` is the net BNB the wallet received; `serviceChargeAmount` is never subtracted (D4).
 - `transId` (record level) reads as a non-empty string or a JSON safe integer (`optionalIdentifier` in
   `binance.history-client.ts`); an integer past 2^53, a blank or a missing one makes the record unreadable (no row,
   logged), never a fallback key (set 8 lesson: no fallback for a case never seen live).
 - `operateTime` (record level) is a finite number (epoch ms), else the record is unreadable.
-- The response shape is the documented one (step 2/9 quotes it). The empty answer's shape is unmeasured: probe 2
-  printed `total` through `(.total // 0)` and the list through `(.userAssetDribblets // [])`, so it cannot tell a
-  missing key from an empty one (DEFAULT, pending S9-Q3).
+- The response shape is the documented one (step 2/9 quotes it). The empty answer is measured (probe 7, S9-Q3 A):
+  `{"userAssetDribblets":[]}` with `total` absent; `[]` is no dust, a missing or non-array list fails closed, and
+  `total` is never read.
 
 Fixture plan: `binance.dust-test-fixtures.ts` (new; excluded from mutation by its `-test-fixtures.ts` suffix) builds
 records on the documented shape quoted in step 2/9, with values per test (two-coin record, untracked coin,
@@ -110,23 +111,23 @@ on the final 1.3-a tip can confirm only the empty answer.
 | D1 | one record, entries TRX and DOGE (both tracked) -> BNB | two pairs on Spot: TRX -, BNB +; DOGE -, BNB + |
 | D1 | (cont.) | pair ids `${accountId}:dust:${transId}:TRX` and `...:DOGE`; keys `${pairId}:TRX`, `${pairId}:BNB` |
 | D1 | (cont.) | each leg names the other's holding; both excluded from statistics |
-| D1b | D1 with no Spot TRX holding stored | "Binance Spot · TRX" created at zero, then the row (S9-Q4) |
+| D1b | D1 with no Spot TRX holding stored | "Binance Spot · TRX" created at zero, then the row (S9-Q4 A) |
 | D2 | entry of an untracked coin (PEPE) | BNB + alone, `asset:PEPE`, no pair id, key `${pairId}:BNB` |
 | D2 | (cont.) | PEPE on the not-tracked line |
 | D3 | the same 100 records on the next run | no new row; `addManyDedup` returns 0; the lists unchanged |
 | D4 | `transferedAmount` "0.000441", `serviceChargeAmount` "0.000009" | BNB leg +0.000441 exactly (net, never minus fee) |
-| D5 | a tracked side's amount absent, malformed or negative | that entry: no row; logged once per code (S9-Q1) |
+| D5 | a tracked side's amount absent, malformed or negative | that entry: no row; logged once per code (S9-Q1 A) |
 | D5 | (cont.) | the other entries and records import |
-| D5b | an amount of 0 units: "0", or BNB "0.00000004" at scale 7 | that entry: no row, no log (S9-Q2) |
+| D5b | an amount of 0 units: "0", or BNB "0.00000004" at scale 7 | that entry: no row, no log (S9-Q2 A) |
 | D5c | an over-precise amount on a coin stored at full scale | `amount-precision` logged; that entry no row |
 | D6 | record `transId` missing, `''` or past 2^53; no finite `operateTime` | no row of it; `dust-row-unreadable` logged |
 | D7 | entry `fromAsset` blank, BNB, or twice in one record | those entries: no row; `dust-row-unreadable` logged |
 | D8 | an amount past the safe integer | its coin joins the oversized list; that entry no row |
-| D9 | a body with no list (shape per S9-Q3) | `BinanceHistoryParseError`; logged `dust history failed`; nothing written |
+| D9 | a body with no list or a non-array list (S9-Q3 A) | `BinanceHistoryParseError`; logged `dust history failed`; nothing written |
 | D10 | an empty list | nothing written, nothing logged |
 | D11 | cooling down; no credentials; lane already spent | no request |
 | D12 | the read answers a rate limit | cooldown set from `retryAfterMs`; clean stop, no log, nothing written |
-| D13 | a holding the placement cannot find | `dust-holding-missing` logged; no row of the read; next run reads again |
+| D13 | a holding the placement cannot find even after it creates a missing one (defensive `missingCode` only; a missing Spot holding is created at zero, D1b) | `dust-holding-missing` logged; no row of the read; next run reads again |
 | D14 | newest-100 slides: run 2 drops the oldest and adds one new record | exactly the new record's rows import |
 | R1 | run order | balance, capital, Pay, Transfer, Earn, Convert, dust, all on one run object |
 | R2 | Convert fails | dust still runs; each logs its own failure by name only |
@@ -146,6 +147,7 @@ on the final 1.3-a tip can confirm only the empty answer.
 | P1 | `dust: 1` cap, `dust: 0` narrowing | no `dust` lane |
 | P2 | order ends Convert, dust; five walks and the dust read | five walks |
 | P2 | (cont.) no dust read for a wallet request or a malformed state | (cont.) no dust read existed |
+| P3 | the `COSTS` `toEqual` pin in `binance.history-budget.test.ts` gains `dust: { ip: 1 }` | no `dust` cost |
 
 ## Files (measured floor; the developer measures the real list)
 
@@ -188,8 +190,9 @@ Files: `src/crypto-sync/binance/binance.history-client.ts`, `binance.history-cli
       operateTime: number; entries: BinanceDustEntry[] }`; `BinanceDustEntry = { fromAsset: string | undefined;
       amount: string | undefined; transferedAmount: string | undefined }` through `recordReader` (field names as
       Binance spells them; `transfered` is Binance's spelling); `fetchDustHistory(apiKey, secret, options)` via
-      `signedRequestPage('GET', '/sapi/v1/asset/dribblet', {})`. Empty-answer rule (DEFAULT, pending S9-Q3): the
-      body must be an object with a `userAssetDribblets` array; anything else throws `BinanceHistoryParseError`.
+      `signedRequestPage('GET', '/sapi/v1/asset/dribblet', {})`. Empty-answer rule (S9-Q3 A, probe 7): the
+      body must be an object with a `userAssetDribblets` array; anything else throws `BinanceHistoryParseError`;
+      `total` is never read.
 - [ ] Check: suite green; `tsc` clean; `dup.sh` alone on the new test file. Commit
       `feat(binance): read the dust conversions`.
 
@@ -205,7 +208,7 @@ Files: `src/crypto-sync/binance/binance.dust-history.ts` (new), `binance.dust-hi
       tracked -> that leg alone with `untrackedAssetCode(<other ticker>)` (BNB is curated, so in practice the BNB
       leg); neither -> no row, the tickers listed. Amounts through
       `rowMinorUnits` (its `BinanceWalkStop` caught per entry: the code, and the ticker for `amount-too-large`);
-      a result of `0` units -> no row, no code (DEFAULT, pending S9-Q2); a negative result ->
+      a result of `0` units -> no row, no code (S9-Q2 A); a negative result ->
       `dust-amount-invalid`; an absent amount on a tracked side -> `dust-row-unreadable`. Stop codes as named
       constants in the file: `DUST_ROW_UNREADABLE = 'dust-row-unreadable'`,
       `DUST_AMOUNT_INVALID = 'dust-amount-invalid'`, `DUST_HOLDING_MISSING = 'dust-holding-missing'`.
@@ -231,8 +234,9 @@ Files: `binance.dust-history.ts`, `binance.dust-history.test.ts`, `binance.dust-
       `ensureHoldings`, `addTransactions`), defaults as `defaultConvertHistoryDeps`. Order: cooldown check ->
       credentials -> `run.budget.canAfford('dust', COSTS.dust)` -> `run.gate.wait()` -> fetch ->
       `run.budget.record('dust', page)`; a `BinanceRateLimitError` sets the cooldown and returns (own try/catch;
-      DEFAULT, pending S9-Q5); every other error rejects. Then: oversized list write (if any) -> `placeWalletRows`
-      (`missingCode: DUST_HOLDING_MISSING`; on its stop: log, return) -> `addTransactions` -> untracked list write.
+      S9-Q5 A); every other error rejects. Then: oversized list write (if any) -> `placeWalletRows`
+      (`missingCode: DUST_HOLDING_MISSING`, defensive only: a missing holding is created at zero; on its stop: log,
+      return) -> `addTransactions` -> untracked list write.
       `logWalkStop` once per distinct code (unreadable rows of the page included). Returns `{ imported }`.
 - [ ] Check: the three suites green; `dup.sh` alone on each new test file; the Convert and Pay suites untouched.
       Commit `feat(binance): dust read`.
@@ -290,7 +294,7 @@ Reviews run per task group, after the group's last step is committed (harness-wo
       equivalent. Never raise the timeout.
 - [ ] `make verify` once at the set tip through the queue (`bash scripts/job-queue.sh verify <worktree>
       "crypto-exchanges-1.3-a task 9/15 verify"`, tree clean, HEAD unchanged until DONE), re-run until green.
-- [ ] File the run-log gap of the "Run-log gaps" section if S9-Q1 is answered A.
+- [ ] File the run-log gap of the "Run-log gaps" section (S9-Q1 A).
 - [ ] BATCH READY names the base sha, the deep run id, the `make mutable` count, the reviewer verdicts, the scribe
       sha, the S9-Q rulings applied, the P7 status (documented shape only, or probe 7's result), and the G-12
       reviewer-notes line for the coordinator.
