@@ -299,7 +299,10 @@ describe('transactionRowDescription', () => {
 
     it.each([
       [{ operation: 'trade-fee' as const }, 'Торгова комісія'],
-      [{ amountMinorUnits: 100, untrackedCounterpart: 'p2p:UAH:4150.00' }, 'Купівля P2P (UAH)'],
+      [
+        { amountMinorUnits: 100, untrackedCounterpart: 'p2p:UAH:4150.00' },
+        'Купівля через P2P (UAH)',
+      ],
       [
         { amountMinorUnits: 100, untrackedCounterpart: 'card:UAH:2600.00' },
         'Купівля карткою (UAH)',

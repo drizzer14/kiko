@@ -199,7 +199,7 @@ describe('fiatCounterpartDescription', () => {
           amountMinorUnits: 415_000,
           t: i18n.t,
         }),
-      ).toBe('Купівля P2P (UAH)');
+      ).toBe('Купівля через P2P (UAH)');
     });
   });
 });
