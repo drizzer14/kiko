@@ -1,4 +1,5 @@
 import { isValidElement, type ReactElement } from 'react';
+import { nonPushPresentations } from '@kiko/test-support/pane-stack-presentation';
 
 // The real screens wired into this stack pull in db/client, which opens a real
 // op-sqlite connection at module load, so stub it the way accounts.stack.test
@@ -33,7 +34,6 @@ jest.mock('@kiko/navigation/merged-home', () => ({
 }));
 
 import { fittingLargeTitleLayout } from '../fitting-large-title';
-import { nonPushPresentations } from '../pane-stack-presentation';
 
 import HomeStack from './home.stack';
 

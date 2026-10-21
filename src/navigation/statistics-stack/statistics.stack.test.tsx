@@ -1,4 +1,5 @@
 import { isValidElement, type ReactElement } from 'react';
+import { nonPushPresentations } from '@kiko/test-support/pane-stack-presentation';
 
 // The real Statistics screen wired into this stack pulls in db/client, which
 // opens a real op-sqlite connection at module load. op-sqlite has no Jest
@@ -24,7 +25,6 @@ jest.mock('@kiko/navigation/merged-home', () => ({
 
 import HomeStack from '../home-stack';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
-import { nonPushPresentations } from '../pane-stack-presentation';
 import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
 import StatisticsStack from './statistics.stack';

@@ -1,4 +1,5 @@
 import { isValidElement, type ReactElement } from 'react';
+import { nonPushPresentations } from '@kiko/test-support/pane-stack-presentation';
 
 // The real screens wired into this stack pull in db/client, which opens a real
 // op-sqlite connection at module load. op-sqlite has no Jest binary, so stub it
@@ -35,7 +36,6 @@ jest.mock('react-i18next', () => ({
 }));
 
 import { fittingLargeTitleLayout } from '../fitting-large-title';
-import { nonPushPresentations } from '../pane-stack-presentation';
 
 import AccountsStack from './accounts.stack';
 
