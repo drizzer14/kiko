@@ -5,25 +5,19 @@ import {
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
   commitSettledSpan,
-  createDepthMemory,
-  type DepthProbe,
   dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
-  hasDepthLapsed,
   historyListWriterOf,
   instantAt,
   joinSettled,
-  knownStartOf,
-  narrowRefusedStart,
   notImportedWriterOf,
   placeWalletRows,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
-  rememberServedStart,
   roundRobinHooksOf,
   rowMinorUnits,
   runWalkPlan,
@@ -50,11 +44,6 @@ import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { untrackedAssetCode } from '@kiko/transactions/untracked-counterpart';
 
 import {
-  BinanceHistoryTooOldError,
-  BinanceRateLimitError,
-  type FetchAccountOptions,
-} from './binance.client';
-import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
   RESYNC_OVERLAP_MS,
@@ -65,12 +54,12 @@ import {
   fetchConvertHistory,
 } from './binance.history-client';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
-import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 
 /** The stop of a conversion that waits on Binance: its point is owed until it settles. */
 const CONVERT_NOT_SETTLED = 'convert-not-settled';
@@ -300,21 +289,6 @@ type ConvertContext = {
   write: WalkMarkWriter;
 };
 
-/**
- * A page and the span it was read for. A start Binance refused is read from the start it serves,
- * so the span of the page is then narrower than the span asked for; the ground below it is ground
- * Binance does not keep, and is not owed.
- */
-type ConvertRead = { page: ConvertHistoryPage; span: WalkWindow };
-
-const NOTHING_SERVED: ConvertHistoryPage = {
-  rows: [],
-  unreadable: [],
-  moreData: false,
-  usedUidWeight1m: undefined,
-  usedIpWeight1m: undefined,
-};
-
 /** Whether `error` is Binance's rate limit, which also puts the account on its shared cooldown. */
 const stopOnRateLimit = (
   context: Pick<ConvertContext, 'deps' | 'accountId'>,
@@ -366,155 +340,22 @@ const fetchSpan = async (
 };
 
 /**
- * Whether Binance serves a start: a request of one millisecond at it, which spends a narrowing call
- * of the lane (`LANE_NARROWING_CALLS`), refused ones too, and leaves the read of the span after it
- * affordable (`undefined`: it cannot, or Binance rate-limited, a clean stop).
- */
-const probeOf =
-  (context: ConvertContext, keep: number): DepthProbe =>
-  async (startMs) => {
-    const { deps, run, apiKey, secret, options } = context;
-
-    if (!run.budget.canAfford('convert', COSTS.convert, keep + 1, true)) {
-      return undefined;
-    }
-
-    try {
-      await run.gate.wait();
-      run.budget.record(
-        'convert',
-        await deps.fetchConvertHistory(
-          apiKey,
-          secret,
-          { startTime: startMs, endTime: startMs + 1 },
-          options,
-        ),
-        true,
-      );
-
-      return true;
-    } catch (error) {
-      if (error instanceof BinanceHistoryTooOldError) {
-        run.budget.record('convert', BINANCE_WALK_CONFIG.refusedCallWeights, true);
-
-        return false;
-      }
-
-      if (stopOnRateLimit(context, error)) {
-        return undefined;
-      }
-
-      throw error;
-    }
-  };
-
-/**
  * What one read of `span` gave: a page that is not full is the whole of its span whatever order
  * Binance sorts in, so a page with `moreData` is answered with the half to read instead. A span of
  * one millisecond that still has more data is committed as it is, and stops the walk there.
  */
-const readOf = (span: WalkWindow, page: ConvertHistoryPage): SpanRead<ConvertRead> => {
+const readOf = (span: WalkWindow, page: ConvertHistoryPage): SpanRead<ConvertHistoryPage> => {
   const half = halfOf(span);
 
-  return page.moreData && half !== undefined
-    ? { kind: 'split', half }
-    : { kind: 'page', page: { page, span } };
-};
-
-/**
- * Read a span whose start Binance refused as older than it keeps: find the start it serves
- * (`narrowRefusedStart`) and read the span from there. The ground below that start is ground
- * Binance does not keep, so it is not owed and the walk goes on; a span it serves none of is an
- * empty page. The depth may move with the clock, so the read begins at the start found moved on
- * by the time that passed and the depth margin (`knownStartOf`). `undefined` is a clean stop, no
- * mark moves and the next run narrows again, and there are three: the narrowing out of calls or
- * rate-limited, the last served start older than a start is moved on for (`hasDepthLapsed`), which
- * is checked before any page, an empty one too, and a read Binance still refuses.
- */
-const readFromServedStart = async (
-  context: ConvertContext,
-  span: WalkWindow,
-  keep: number,
-): Promise<SpanRead<ConvertRead> | undefined> => {
-  const lastServed = createDepthMemory(BINANCE_DEPTH_CONFIG);
-  const probe = probeOf(context, keep);
-  const narrowed = await narrowRefusedStart({
-    refusedMs: span.start,
-    endMs: span.end,
-    floorMs: HISTORY_FLOOR_MS,
-    config: BINANCE_DEPTH_CONFIG,
-    probe: async (startMs) => {
-      const requestedAtMs = context.deps.now();
-      const isServed = await probe(startMs);
-
-      if (isServed) {
-        rememberServedStart(lastServed, { startMs, servedAtMs: requestedAtMs });
-      }
-
-      return isServed;
-    },
-  });
-
-  if (narrowed === undefined) {
-    return undefined;
-  }
-
-  const nowMs = context.deps.now();
-
-  // After a pause longer than a start is moved on for, a depth that stood still would put the
-  // start above ground Binance serves, and the commit would move the marks past it unread, an
-  // empty page included. A floor or a refused end leaves the memory empty, so those stay empty.
-  if (hasDepthLapsed(lastServed, nowMs)) {
-    return undefined;
-  }
-
-  const served = match(narrowed)
-    .returnType<WalkWindow>()
-    .with({ kind: 'floor' }, () => ({ start: span.end, end: span.end }))
-    .with({ kind: 'start' }, ({ startMs }) => ({
-      start: Math.min(knownStartOf(lastServed, nowMs) ?? startMs, span.end),
-      end: span.end,
-    }))
-    .exhaustive();
-
-  if (served.start >= served.end) {
-    return { kind: 'page', page: { page: NOTHING_SERVED, span: served } };
-  }
-
-  try {
-    const page = await fetchSpan(context, served, keep);
-
-    return foldMap(maybe(page), (found) => readOf(served, found));
-  } catch (error) {
-    if (!(error instanceof BinanceHistoryTooOldError)) {
-      throw error;
-    }
-
-    context.run.budget.record('convert', BINANCE_WALK_CONFIG.refusedCallWeights, true);
-
-    return undefined;
-  }
+  return page.moreData && half !== undefined ? { kind: 'split', half } : { kind: 'page', page };
 };
 
 const readSpan = async (
   context: ConvertContext,
   span: WalkWindow,
   keep: number,
-): Promise<SpanRead<ConvertRead> | undefined> => {
-  try {
-    const page = await fetchSpan(context, span, keep);
-
-    return foldMap(maybe(page), (found) => readOf(span, found));
-  } catch (error) {
-    if (!(error instanceof BinanceHistoryTooOldError)) {
-      throw error;
-    }
-
-    context.run.budget.record('convert', BINANCE_WALK_CONFIG.refusedCallWeights, true);
-
-    return readFromServedStart(context, span, keep);
-  }
-};
+): Promise<SpanRead<ConvertHistoryPage> | undefined> =>
+  foldMap(maybe(await fetchSpan(context, span, keep)), (found) => readOf(span, found));
 
 /** What one conversion adds to its span: its rows, the tickers it names, and its refusal entry. */
 type OutcomeParts = { rows: PlannedConvertRow[]; untracked: string[]; notImported: string[] };
@@ -536,7 +377,8 @@ const partsOf = (outcome: ConvertOutcome): OutcomeParts =>
  */
 const settledConversionsOf = (
   context: ConvertContext,
-  { page, span }: ConvertRead,
+  span: WalkWindow,
+  page: ConvertHistoryPage,
 ): SettledSpan<PlannedConvertRow> => {
   const settled = settleRecords<BinanceConvertRecord, ConvertOutcome>({
     span,
@@ -568,23 +410,20 @@ const settledConversionsOf = (
 /**
  * Commit one span's page: place and write the rows of the conversions the walk can trust, then
  * move the walk's marks past the span that was asked for (see `commitSettledSpan`: rows first,
- * marks second, so a crash between the two just re-imports idempotently). The marks move past the
- * whole span even when the page was read from a later start: the ground below it was refused when
- * asked, within the resolution, or lies within the margin and the time that passed since that
- * start was served (`readFromServedStart`), which a depth that moves drops from what is served.
+ * marks second, so a crash between the two just re-imports idempotently).
  */
 const commitSpan = (
   context: ConvertContext,
   span: WalkWindow,
-  read: ConvertRead,
+  page: ConvertHistoryPage,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> => {
   const { deps, accountId, plan, marks, write } = context;
 
   return commitSettledSpan({
     pass,
-    span: read.span,
-    settled: settledConversionsOf(context, read),
+    span,
+    settled: settledConversionsOf(context, span, page),
     place: (planned) =>
       placeWalletRows({
         accountId,
@@ -698,8 +537,8 @@ const runSync = async (
  * (Funding or Spot), committing a window's rows before advancing the mark past it. The walk reads
  * 30-day windows forward from the history floor, empty ones too, because Binance has no refusal to
  * the floor to stop at; a run reads at most the lane's 20 windows, so the first walk takes
- * several runs. A start Binance refuses as older than it keeps is narrowed to the start it serves
- * and never ends the walk. `complete: false` means history, owed ground or the re-scan remains
+ * several runs. A start Binance refuses as older than it keeps rejects the run with no mark moved,
+ * as Pay does. `complete: false` means history, owed ground or the re-scan remains
  * and a later run resumes from the stored marks; a failure other than a rate limit rejects, so
  * the caller can log it without failing the balance sync.
  */

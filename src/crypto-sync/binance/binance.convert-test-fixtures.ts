@@ -35,22 +35,16 @@ export const convertPageOf = (
 
 /**
  * A Convert history as Binance serves it: the records whose `createTime` is in the window asked
- * for, and a refusal of a `startTime` older than `depthMs` (the history it keeps). A depth that
- * moves with the clock moves `depthMovesMs` forward with every request the server has answered.
+ * for, and a refusal of a `startTime` older than `depthMs` (the history it keeps).
  */
-export const convertServerOf = (records: BinanceConvertRecord[], depthMs = 0, depthMovesMs = 0) => {
-  let requests = 0;
-
-  return jest.fn(
+export const convertServerOf = (records: BinanceConvertRecord[], depthMs = 0) =>
+  jest.fn(
     async (
       _apiKey: string,
       _secret: string,
       query: { startTime: number; endTime: number },
     ): Promise<ConvertHistoryPage> => {
-      const depthNowMs = depthMs + requests * depthMovesMs;
-      requests += 1;
-
-      if (query.startTime < depthNowMs) {
+      if (query.startTime < depthMs) {
         throw new BinanceHistoryTooOldError('Binance request failed: 400');
       }
 
@@ -61,4 +55,3 @@ export const convertServerOf = (records: BinanceConvertRecord[], depthMs = 0, de
       );
     },
   );
-};

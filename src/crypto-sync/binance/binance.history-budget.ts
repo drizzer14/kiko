@@ -74,12 +74,8 @@ export const LANE_CALL_CAPS: Record<BudgetLane, number> = {
  * asked has each of the 20 Transfer types find its own depth in the span that crosses it, and the
  * ground just above the depth is lost to a type that is read in a later run. Only those calls come
  * from here, so a run that narrows nothing spends `LANE_CALL_CAPS` alone, and the cap stays whole
- * for the reads that follow. The Convert lane has 24, which funds the narrowing of a 30-day window
- * that crosses the depth: the refused read, the probe at the end of the span and 22 halvings down
- * to the depth's one second resolution (`ceil(log2(30 days / 1 s))` is 22). 24 is one crossing:
- * it finishes in the run where it is the first refused window; a later crossing of the same run
- * finds the 24 spent and is read in the next run, with nothing lost or doubled, as the marks move
- * only on a commit.
+ * for the reads that follow. The Convert lane has none: it does not narrow, a start Binance
+ * refuses fails the run, as Pay's does.
  * Every such call is judged by the weight reading as any other.
  */
 export const LANE_NARROWING_CALLS: Record<BudgetLane, number> = {
@@ -88,7 +84,7 @@ export const LANE_NARROWING_CALLS: Record<BudgetLane, number> = {
   pay: 0,
   transfer: 397,
   earn: 0,
-  convert: 24,
+  convert: 0,
   market: 0,
 };
 
