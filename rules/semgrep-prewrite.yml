@@ -1207,29 +1207,30 @@ rules:
     pattern-either:
       - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buseTopBarBand\b[^;'"]*?\bfrom\s*['"]
       - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-top-bar-band(?:\.ts)?['"]
-  # kiko-design-system's Screen: `useTabBarPlacement` reads the whole window's tab bar
-  # (the native bar's real frame), not the pane's, so a screen that branches on it inside
-  # a pane reads another pane's answer. `Screen` and its siblings (the Screen folder) read
-  # it, and `PaneStackView` reads it once, above both panes, to give the native large title
-  # the content's margin. Same two arms as the band rule, for the hook name and for the
-  # `use-tab-bar-placement` module file. `import type` and prose never match.
+  # kiko-design-system's Screen: `useTabBarPlacement` and `useIsTabBarAtTop` read the whole
+  # window's tab bar (the native bar's real frame), not the pane's, so a screen that
+  # branches on either inside a pane reads another pane's answer. `Screen` and its siblings
+  # (the Screen folder) read them, and `PaneStackView` reads `useIsTabBarAtTop` once, above
+  # both panes, to give the native large title the content's margin. Same two arms as the
+  # band rule, for the two hook names and for the `use-tab-bar-placement` and
+  # `use-is-tab-bar-at-top` module files. `import type` and prose never match.
   - id: kiko-tab-bar-placement-only-in-screen-and-pane-stack-view
     languages: [typescript]
     severity: ERROR
     message: >
-      `useTabBarPlacement` is a pane-blind window read: it says where the tab bar
-      is for the whole window, whatever pane the caller is in. Only the Screen folder and
-      `PaneStackView` (which reads it above both panes) import it.
+      `useTabBarPlacement` and `useIsTabBarAtTop` are pane-blind window reads: they say where
+      the tab bar is for the whole window, whatever pane the caller is in. Only the Screen
+      folder and `PaneStackView` (which reads it above both panes) import them.
     metadata:
-      fix: "Never import `useTabBarPlacement` or `use-tab-bar-placement`: render the content in `Screen` and take clearances from `useBottomClearance()`; a value for both panes belongs in `PaneStackView`."
+      fix: "Never import `useTabBarPlacement`, `useIsTabBarAtTop` or their modules (`use-tab-bar-placement`, `use-is-tab-bar-at-top`): render the content in `Screen` and take clearances from `useBottomClearance()`; a value for both panes belongs in `PaneStackView`."
       skill: "kiko-design-system › Component set"
     paths:
       exclude:
         - "src/design-system/components/screen/**"
         - "src/navigation/pane-stack/pane-stack-view/**"
     pattern-either:
-      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buseTabBarPlacement\b[^;'"]*?\bfrom\s*['"]
-      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-tab-bar-placement(?:\.ts)?['"]
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buse(?:TabBarPlacement|IsTabBarAtTop)\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-(?:tab-bar-placement|is-tab-bar-at-top)(?:\.ts)?['"]
   # kiko-architecture's "Pane navigation": on a wide window a screen can be the default
   # of a pane (Statistics and Home as each other's companion, Categories as the Settings
   # primary), and the Accounts list sits under the default it fills the primary pane

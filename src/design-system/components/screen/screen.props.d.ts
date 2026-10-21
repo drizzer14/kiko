@@ -38,7 +38,7 @@ export type ScreenProps = {
   // takes the amount from `useBottomClearance()`, which gives a pane that is
   // not at the window's bottom none. Only meaningful in the plain (non-scroll)
   // branch when there is no `footer` (which already claims the bottom edge on
-  // its own); ignored in `scroll` mode. In a pane, except a pane of a large window, the child
+  // its own); ignored in `scroll` mode. In a pane, except a pane under a top tab bar, the child
   // also caps and centres its own content with `useContentCap()` (the root is left the whole
   // pane so the list's scroll indicator stays at the pane edge); a `footer` is capped by Screen
   // itself.
@@ -58,7 +58,7 @@ export type ScreenProps = {
   // padding (for the collapse), its own horizontal padding, AND — the
   // `bleedBottom` contract — its own floating tab-bar bottom clearance via
   // `useBottomClearance()` when it has no `footer` (e.g. HoldingDetail's
-  // ledger FlatList). In a pane, except a pane of a large window, it also caps and centres its
+  // ledger FlatList). In a pane, except a pane under a top tab bar, it also caps and centres its
   // own content container with `useContentCap()`, so the list keeps the whole pane. A `footer`
   // still pins below the child as a sibling with its own clearance.
   // Only meaningful in the plain (non-scroll) branch; ignored in `scroll` mode

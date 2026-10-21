@@ -87,6 +87,7 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 }));
 
 let mockSizeClass: 'compact' | 'regular' = 'compact';
+let mockTabBarEdge: TabBarEdge = 'none';
 
 // `useLayoutMode` is mocked too, from the same window and size class by the real rule: the real
 // hook reads the native module through an import this mock cannot reach.
@@ -100,6 +101,7 @@ jest.mock('@kiko/display-regions', () => {
       actual.resolveLayoutMode(mockSizeClass, mockWindow.width, mockWindow.height),
     useIsLargeWindow: () =>
       actual.isLargeWindow(mockSizeClass, mockWindow.width, mockWindow.height),
+    useTabBarEdge: () => mockTabBarEdge,
   };
 });
 
@@ -144,6 +146,7 @@ import { StyleSheet } from 'react-native';
 import type { ReactElement } from 'react';
 import { State } from 'react-native-gesture-handler';
 import { darkTheme } from '@kiko/design-system/theme';
+import type { TabBarEdge } from '@kiko/display-regions';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
@@ -221,6 +224,7 @@ type Placement = {
   windowHeight?: number;
   sizeClass: 'compact' | 'regular';
   paneWidth?: number;
+  tabBarEdge?: TabBarEdge;
 };
 
 // A 13-inch iPad in landscape: half of 1376 is 687.5, wide enough to share the row.
@@ -229,6 +233,7 @@ const PANE_SHARED: Placement = {
   windowHeight: 1032,
   sizeClass: 'regular',
   paneWidth: 687.5,
+  tabBarEdge: 'top',
 };
 
 // An iPad mini in portrait: half of 744 is 371.5, too narrow to share the row.
@@ -237,6 +242,7 @@ const PANE_STACKED: Placement = {
   windowHeight: 1133,
   sizeClass: 'regular',
   paneWidth: 371.5,
+  tabBarEdge: 'top',
 };
 
 const IPHONE_HEIGHT = 844;
@@ -246,10 +252,12 @@ const renderAt = ({
   windowHeight = IPHONE_HEIGHT,
   sizeClass,
   paneWidth,
+  tabBarEdge = 'none',
 }: Placement) => {
   mockWindow.width = windowWidth;
   mockWindow.height = windowHeight;
   mockSizeClass = sizeClass;
+  mockTabBarEdge = tabBarEdge;
 
   const inPane = (children: ReactElement) =>
     paneWidth === undefined ? (

@@ -34,20 +34,9 @@ jest.mock('react-native-bottom-tabs', () => ({
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
 // An unknown native edge keeps today's rule, which every case but the top-bar ones pins.
 const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
-// Fed per test from the real `isLargeWindow` over a window value; a test that sets none is not on
-// a large window.
-const mockUseIsLargeWindow = jest.fn((): boolean => false);
-const isLargeWindowOf = (width: number, height: number): boolean => {
-  const actual = jest.requireActual('@kiko/display-regions') as {
-    isLargeWindow: (sizeClass: 'regular', width: number, height: number) => boolean;
-  };
-
-  return actual.isLargeWindow('regular', width, height);
-};
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
   useTabBarEdge: () => mockUseTabBarEdge(),
-  useIsLargeWindow: () => mockUseIsLargeWindow(),
   // The content cap reads the layout mode and the size class: a compact single window, as on an
   // iPhone, caps nothing.
   useLayoutMode: () => 'single',
@@ -675,12 +664,12 @@ describe('Screen', () => {
       ['bleedTop', { bleedTop: true }],
     ] as const;
 
-    beforeEach(() => {
-      mockUseIsLargeWindow.mockReturnValue(false);
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
     });
 
     it('caps and centres the plain branch at the pane max width', async () => {
-      mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(951, 669));
+      mockUseTabBarEdge.mockReturnValue('bottom');
       const view = await renderInPane({}, 'columns', 'primary');
       const root = StyleSheet.flatten(rootOf(view, {})?.props.style);
 
@@ -690,7 +679,7 @@ describe('Screen', () => {
     });
 
     it('caps and centres the content of the scroll branch, and leaves the scroll view the whole pane', async () => {
-      mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(669, 951));
+      mockUseTabBarEdge.mockReturnValue('bottom');
       const view = await renderInPane({ scroll: true }, 'rows', 'primary');
       const root = StyleSheet.flatten(rootOf(view, { scroll: true })?.props.style);
       const content = StyleSheet.flatten(
@@ -706,9 +695,9 @@ describe('Screen', () => {
     });
 
     it.each(BRANCHES)(
-      'leaves the %s branch uncapped and uncentred in a pane of a large window',
+      'leaves the %s branch uncapped and uncentred in a pane under a top tab bar',
       async (_name, props) => {
-        mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(1376, 1032));
+        mockUseTabBarEdge.mockReturnValue('top');
         const view = await renderInPane(props, 'columns', 'primary');
         const root = StyleSheet.flatten(rootOf(view, props)?.props.style);
 
@@ -727,8 +716,8 @@ describe('Screen', () => {
       },
     );
 
-    it('leaves the footer of the bleedTop branch uncapped and uncentred in a pane of a large window', async () => {
-      mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(1376, 1032));
+    it('leaves the footer of the bleedTop branch uncapped and uncentred in a pane under a top tab bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
       const view = await renderInPane({ bleedTop: true, footer: footerNode }, 'columns', 'primary');
       const footer = StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style);
 
@@ -736,12 +725,26 @@ describe('Screen', () => {
       expect(footer.alignSelf).toBeUndefined();
     });
 
-    it('keeps the horizontal padding of the plain branch in a pane of a large window', async () => {
-      mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(1376, 1032));
+    it('keeps the horizontal padding of the plain branch in a pane under a top tab bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
       const view = await renderInPane({}, 'columns', 'primary');
       const content = StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style);
 
       expect(content.paddingHorizontal).toBe(darkTheme.spacing(4));
+    });
+
+    // A small Stage Manager row split (683 x 909) is not a large window, yet its title sits at the
+    // content's margin like a large window's, so its content has to start there too.
+    it('starts the scroll content of a row split pane at the title margin under a top tab bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      const view = await renderInPane({ scroll: true }, 'rows', 'primary');
+      const content = StyleSheet.flatten(
+        view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+      );
+
+      expect(content.maxWidth).toBeUndefined();
+      expect(content.alignSelf).toBeUndefined();
+      expect(content.padding).toBe(darkTheme.spacing(4));
     });
 
     it.each([
@@ -749,8 +752,8 @@ describe('Screen', () => {
       ['columns', 951, 669],
     ] as const)(
       'caps and centres every branch in a Duo inner pane of the %s window (%i x %i)',
-      async (mode, width, height) => {
-        mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(width, height));
+      async (mode, _width, _height) => {
+        mockUseTabBarEdge.mockReturnValue('bottom');
 
         const plain = await renderInPane({}, mode, 'primary');
         const scroll = await renderInPane({ scroll: true }, mode, 'primary');

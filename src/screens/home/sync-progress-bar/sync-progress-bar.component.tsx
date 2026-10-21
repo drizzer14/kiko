@@ -59,7 +59,7 @@ const SyncProgressBar: FC = () => {
 
   return (
     // In a pane the list takes the whole pane, so the bar caps itself like the header above it
-    // (`useContentCap` leaves a pane of a large window uncapped).
+    // (`useContentCap` leaves a pane under a top tab bar uncapped).
     <Box gap={1} style={contentCap}>
       <Text variant="caption" tone="textSecondary">
         {t('home.syncingHoldings', { completed, total })}

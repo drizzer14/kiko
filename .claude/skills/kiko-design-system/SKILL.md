@@ -694,9 +694,9 @@ new component can land between reviews of this skill:
   The hook is pane-aware: a pane that is not at the window's bottom has
   no tab bar over it and gets 0. `resolveBottomClearance` is pane-blind,
   so nothing outside `src/design-system/components/screen/` may import
-  it (`kiko-no-pane-blind-bottom-clearance`). `useTabBarPlacement` (the Screen barrel) is a
+  it (`kiko-no-pane-blind-bottom-clearance`). `useIsTabBarAtTop` (the Screen barrel) is a
   pane-blind window read too: only `src/design-system/components/screen/` and
-  `src/navigation/pane-stack/pane-stack-view/` may import it
+  `src/navigation/pane-stack/pane-stack-view/` may import it, or `useTabBarPlacement`
   (`kiko-tab-bar-placement-only-in-screen-and-pane-stack-view`). In a pane (a
   `PaneContext` from `TwoPaneLayout`), the `SafeAreaView` keeps only the
   window edges the pane touches (`use-pane-screen.ts`), a footer is
@@ -705,7 +705,14 @@ new component can land between reviews of this skill:
   centres its content container at `theme.layout.paneMaxWidth` and the
   ScrollView keeps the whole pane; a `bleedTop` child does the same on
   its own content container with `useContentCap()`; the plain branch
-  caps its root. The vertical-bar signal it consumes is
+  caps its root. The one exception is a pane whose tab bar is at the top
+  (`useIsTabBarAtTop()`, every regular iPad window, small Stage Manager
+  splits included; user ruling 2026-10-21): `useContentCap()` returns no
+  cap there, so the content spans the pane from the 16 pt margin where
+  the native large title starts, because `PaneStackView` gives the stacks
+  that margin on the same `useIsTabBarAtTop()` value. A Duo pose (bar at
+  the bottom or a side) keeps the cap and UIKit's title margin. The
+  vertical-bar signal it consumes is
   `useVerticalBarEdge` from `@kiko/display-regions`
   (`src/display-regions/`); `scroll-to-field` reads it through
   `@kiko/display-regions` too. `useScrollIndicatorProps()` (`use-pane-screen.ts`, exported by

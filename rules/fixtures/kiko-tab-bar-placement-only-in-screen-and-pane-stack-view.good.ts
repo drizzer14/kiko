@@ -12,6 +12,10 @@ export type { useTabBarPlacement as ReExportedPlacement } from '@kiko/design-sys
 
 // Jest names the file to mock it; it never loads the real module this way.
 jest.mock('@kiko/design-system/components/screen/use-tab-bar-placement');
+jest.mock('@kiko/design-system/components/screen/use-is-tab-bar-at-top');
+
+// A type-only re-export of the boolean hook is erased too.
+export type { useIsTabBarAtTop as ReExportedAtTop } from '@kiko/design-system/components/screen/use-is-tab-bar-at-top';
 
 // Prose that names the hook or the file is not an import statement.
 export const placementDescription = "see useTabBarPlacement in '../screen/use-tab-bar-placement'";

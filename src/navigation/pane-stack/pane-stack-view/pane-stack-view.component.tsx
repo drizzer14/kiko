@@ -4,7 +4,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { useIsFocused } from '@react-navigation/native';
 import { FixedContentMarginContext } from 'react-native-screens';
 import { NativeStackView } from '@react-navigation/native-stack';
-import { useTabBarPlacement } from '@kiko/design-system/components/screen';
+import { useIsTabBarAtTop } from '@kiko/design-system/components/screen';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
 
 import { oppositePane } from '../pane-assignment';
@@ -31,7 +31,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
 }) => {
   const isTabFocused = useIsFocused();
   const { theme } = useUnistyles();
-  const isTabBarAtTop = useTabBarPlacement() === 'top';
+  const isTabBarAtTop = useIsTabBarAtTop();
   const isSplit = mode !== 'single';
   const { dispatch } = navigation;
   const companion = isSplit

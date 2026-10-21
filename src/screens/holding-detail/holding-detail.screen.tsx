@@ -937,7 +937,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const bottomClearance = useBottomClearance();
   const listBottomClearance = footerAction === 'none' ? bottomClearance : 0;
   // In a pane the list keeps the whole pane and its content is capped and centred, except in a
-  // pane of a large window.
+  // pane under a top tab bar.
   const contentCap = useContentCap();
   const scrollIndicatorProps = useScrollIndicatorProps();
   // A term_deposit/bond event is day-granular (a contribution, coupon, or

@@ -283,9 +283,10 @@ prop (codegen default 0), and native does nothing for 0 (the setter returns on i
 for an equal value, no margin write, no change to `viewRespectsSystemMinimumLayoutMargins`), so
 an iPhone, single-pane or Surface Duo stack (the Duo's tab bar is at the bottom or a side, and the
 user ruled it keeps its look completely) runs the stock code path. The value follows the native
-tab bar placement (`useTabBarPlacement`), not the window's size. The placement read is stale
-for about 0.1 s on a split change or a large-to-large rotation, and on cold start until the first
-read, so the margin can lag the layout briefly.
+tab bar placement (`useIsTabBarAtTop`, which the pane content cap uses too), not the window's
+size. The placement read is stale for about 0.1 s on a split change or a large-to-large
+rotation, and on cold start until the first read, so the margin and the cap can lag the layout
+briefly.
 
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
 runs on a normal resize, not only when a stack view is recycled: a window that goes from a

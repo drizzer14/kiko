@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { renderHook } from '@testing-library/react-native';
-import type { HorizontalSizeClass, LayoutMode } from '@kiko/display-regions';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import type { HorizontalSizeClass, LayoutMode, TabBarEdge } from '@kiko/display-regions';
 
 import '@kiko/design-system/unistyles';
 
@@ -12,22 +12,18 @@ const mockUseLayoutMode = jest.fn((): LayoutMode => 'single');
 const mockUseDisplayRegions = jest.fn((): { horizontalSizeClass: HorizontalSizeClass } => ({
   horizontalSizeClass: 'compact',
 }));
-
-const mockUseIsLargeWindow = jest.fn((): boolean => false);
+const mockUseTabBarEdge = jest.fn((): TabBarEdge => 'none');
 
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => mockUseLayoutMode(),
   useDisplayRegions: () => mockUseDisplayRegions(),
-  useIsLargeWindow: () => mockUseIsLargeWindow(),
+  useTabBarEdge: () => mockUseTabBarEdge(),
+  useVerticalBarEdge: () => 'none',
 }));
 
-const isLargeWindowOf = (width: number, height: number): boolean => {
-  const actual = jest.requireActual('@kiko/display-regions') as {
-    isLargeWindow: (sizeClass: 'regular', width: number, height: number) => boolean;
-  };
-
-  return actual.isLargeWindow('regular', width, height);
-};
+jest.mock('react-native-bottom-tabs', () => ({
+  useBottomTabBarHeight: () => 64,
+}));
 
 const inPane = ({ children }: { children: ReactNode }) => (
   <PaneContext.Provider value={paneContextOf('columns', 'companion')}>
@@ -39,34 +35,40 @@ describe('useContentCap', () => {
   beforeEach(() => {
     mockUseLayoutMode.mockReturnValue('single');
     mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'compact' });
-    mockUseIsLargeWindow.mockReturnValue(false);
+    mockUseTabBarEdge.mockReturnValue('none');
   });
 
   it.each([
-    ['columns', 951, 669],
-    ['rows', 669, 951],
-  ] as const)(
-    'caps the content in a pane of a %s window that is not large (%i x %i)',
-    async (mode, width, height) => {
-      mockUseLayoutMode.mockReturnValue(mode);
-      mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
-      mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(width, height));
-
-      const { result } = await renderHook(() => useContentCap(), { wrapper: inPane });
-
-      expect(result.current).toBe(styles.paneCap);
-    },
-  );
-
-  it('leaves the content of a pane on a large window uncapped', async () => {
-    mockUseLayoutMode.mockReturnValue('columns');
+    ['the Duo inner landscape window', 'columns', 'bottom'],
+    ['the Duo inner portrait window', 'rows', 'bottom'],
+    ['the Duo inner landscape window with no bar found', 'columns', 'none'],
+    ['a regular window with a side bar', 'columns', 'leading'],
+  ] as const)('caps the content in a pane of %s', async (_name, mode, tabBarEdge) => {
+    mockUseLayoutMode.mockReturnValue(mode);
     mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
-    mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(1376, 1032));
+    mockUseTabBarEdge.mockReturnValue(tabBarEdge);
 
     const { result } = await renderHook(() => useContentCap(), { wrapper: inPane });
 
-    expect(result.current).toBeUndefined();
+    expect(result.current).toBe(styles.paneCap);
   });
+
+  it.each([
+    ['a 13-inch iPad in landscape', 'columns'],
+    ['a small Stage Manager column split (1032 x 683)', 'columns'],
+    ['a small Stage Manager row split (683 x 909)', 'rows'],
+  ] as const)(
+    'leaves the content of a pane of %s uncapped when the tab bar is at the top',
+    async (_name, mode) => {
+      mockUseLayoutMode.mockReturnValue(mode);
+      mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
+      mockUseTabBarEdge.mockReturnValue('top');
+
+      const { result } = await renderHook(() => useContentCap(), { wrapper: inPane });
+
+      expect(result.current).toBeUndefined();
+    },
+  );
 
   it('caps the content in a pane on a compact window', async () => {
     mockUseLayoutMode.mockReturnValue('columns');
@@ -98,10 +100,10 @@ describe('useContentCap', () => {
     },
   );
 
-  it('caps the content outside a pane on a large window', async () => {
+  it('caps the content outside a pane on a regular window with the tab bar at the top', async () => {
     mockUseLayoutMode.mockReturnValue('columns');
     mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
-    mockUseIsLargeWindow.mockReturnValue(isLargeWindowOf(1376, 1032));
+    mockUseTabBarEdge.mockReturnValue('top');
 
     const { result } = await renderHook(() => useContentCap());
 

@@ -35,11 +35,14 @@ points (5 and 7) are bugs; they are fixed first (section F).
    top/bottom split.
 9. **One card order everywhere (Q8 = a)**, iPhone too: Net worth, By type, Trend by category,
    Expenses by category, Account contribution.
-10. **No content cap in a pane of a large window (point 5, Q9 = b; scope narrowed by the user
-    2026-10-20).** Inside a pane of a large window (section A) the content spans the full pane
-    width (16 pt padding). This changes the locked `paneMaxWidth` cap rule and TwoPaneLayout rule
-    R13 for those panes (kiko-design-system), with the user's approval. The Duo inner panes and
-    every other window keep the 600 pt cap, centred.
+10. **No content cap in a pane under a top tab bar (point 5, Q9 = b; scope narrowed by the user
+    2026-10-20, widened by the user 2026-10-21).** Inside a pane whose tab bar is at the top
+    (`useIsTabBarAtTop()`: every regular iPad window, small Stage Manager splits included, not
+    only a large window of section A) the content spans the full pane width (16 pt padding), the
+    same test that gives the native large title the content's margin, so title and content start
+    at the same x. This changes the locked `paneMaxWidth` cap rule and TwoPaneLayout rule R13 for
+    those panes (kiko-design-system), with the user's approval. The Duo inner panes (tab bar at
+    the bottom) and every other window keep the 600 pt cap, centred.
 11. **Bug 7 scope (user).** Every LEADING (left) header button in the RIGHT pane is hidden: back
     buttons and the form Cancel button.
 
@@ -119,19 +122,20 @@ The merged Home (C) and the chart rows (D) apply only on a large window that spl
 
 ### E. Content width in a pane (decision 10)
 
-- Inside a pane of a LARGE window (`usePaneContext() !== null` and section A), Screen applies no
-  `paneMaxWidth` cap: content spans the pane with its 16 pt padding, so it lines up with the native
-  title.
+- Inside a pane whose tab bar is at the top (`usePaneContext() !== null` and
+  `useIsTabBarAtTop()`, user 2026-10-21; the panes of a non-large Stage Manager window included),
+  Screen applies no `paneMaxWidth` cap: content spans the pane with its 16 pt padding, so it lines
+  up with the native title.
 - Everywhere else the 600 pt cap stays, centred (user, 2026-10-20): the Duo inner panes (~475 and
-  669 pt; the 669 pt pane keeps its ~34.5 pt title offset), a regular `single` window (widest
-  under 721 pt, offset at most ~44 pt), and the panes of a non-large Stage Manager window.
+  669 pt; the 669 pt pane keeps its ~34.5 pt title offset) and a regular `single` window
+  (widest under 721 pt, offset at most ~44 pt).
 
 ### F. Bug fixes first (points 5 and 7)
 
 - **Point 5:** section E is the fix. Red tests first: `screen.component.test.tsx` renders `Screen`
-  (scroll, bleedTop, plain) inside a `PaneContext` of a large window and asserts no cap and the
+  (scroll, bleedTop, plain) inside a `PaneContext` under a top tab bar and asserts no cap and the
   16 pt leading edge; the same render in a Duo inner pane (669 x 951, 951 x 669) keeps the cap. The
-  current pin "caps the content in a pane" is rewritten on purpose for large windows only
+  current pin "caps the content in a pane" is rewritten on purpose for panes under a top tab bar
   (acceptance-pin rewrite, named in the plan).
 - **Point 7:** in `columns` with the tab bar at the TOP, the native header of the RIGHT (primary)
   pane sits in the same band as the floating tab bar (y 32-76), so its leading items (back, form
@@ -153,8 +157,8 @@ locked "Header bar items" and "Form Save and Cancel" rules.
 - Jest: the layout-mode table (iPad portrait widths -> `columns`; 669 x 951 and 683 x 909 ->
   `rows`; 951 x 669 -> `columns`); the large-window predicate (744, 820, 1032 large; 669, 683 not);
   share 1/2 at every width; the tab set per window; the route mapping on size change; the chart
-  row plan at 371.5 / 479 / 480 / 688 pt and on non-large windows; no cap in a pane of a large
-  window and the cap kept in a Duo inner pane; pane frames below the top bar band.
+  row plan at 371.5 / 479 / 480 / 688 pt and on non-large windows; no cap in a pane under a top
+  tab bar and the cap kept in a Duo inner pane; pane frames below the top bar band.
 - Simulator (after the fixes and after the design): the user's look on the iPad Pro 13-inch and the
   iPad mini, portrait and landscape; the bug 7 taps; the Duo inner poses unchanged (one read each).
 

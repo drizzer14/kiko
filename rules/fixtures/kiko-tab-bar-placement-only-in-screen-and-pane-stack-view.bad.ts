@@ -4,11 +4,11 @@
 // `kiko-tab-bar-placement-only-in-screen-and-pane-stack-view` MUST report a finding on every
 // pinned line below.
 
-// A named import from the Screen barrel.
+// A named import, from the module file by its package path.
 // EXPECT-FINDING
-import { useTabBarPlacement } from '@kiko/design-system/components/screen';
+import { useTabBarPlacement } from '@kiko/design-system/components/screen/use-tab-bar-placement';
 
-export const barrelPlacement = useTabBarPlacement;
+export const namedPlacement = useTabBarPlacement;
 
 // The hook under an alias, from its module file.
 // EXPECT-FINDING
@@ -34,9 +34,9 @@ export const placementModuleBinding = placementModule;
 // EXPECT-FINDING
 import '../../src/design-system/components/screen/use-tab-bar-placement';
 
-// A value re-export of the hook through the barrel.
+// A value re-export of the hook.
 // EXPECT-FINDING
-export { useTabBarPlacement as reExportedPlacement } from '@kiko/design-system/components/screen';
+export { useTabBarPlacement as reExportedPlacement } from '@kiko/design-system/components/screen/use-tab-bar-placement';
 
 // A CommonJS load of the module file.
 // EXPECT-FINDING
@@ -45,3 +45,15 @@ export const requiredPlacement = require('../../src/design-system/components/scr
 // A dynamic load of the module file.
 // EXPECT-FINDING
 export const loadPlacementLater = () => import('../../src/design-system/components/screen/use-tab-bar-placement');
+
+// The boolean hook built on it, from the Screen barrel.
+// EXPECT-FINDING
+import { useIsTabBarAtTop } from '@kiko/design-system/components/screen';
+
+export const barrelAtTop = useIsTabBarAtTop;
+
+// The boolean hook's module file.
+// EXPECT-FINDING
+import * as atTopModule from '../../src/design-system/components/screen/use-is-tab-bar-at-top';
+
+export const atTopModuleBinding = atTopModule;
