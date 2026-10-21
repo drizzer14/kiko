@@ -959,10 +959,30 @@ describe('kill-guard decide() test-only options (parser only)', () => {
     expect(decide('git merge feat/x', options)).toBe(decision);
   });
 
+  // The guard throws on a getter, so the counter set on the same options must still be restored.
+  it('restores the work counter after a throw', () => {
+    const script = [
+      'const { decide } = require(process.argv[1]);',
+      'const counter = { steps: 0 };',
+      "const options = { workCounter: counter, get mainCheckoutPath() { throw new Error('x'); } };",
+      "decide('ls', options);",
+      'const before = counter.steps;',
+      "decide('echo hi');",
+      'process.stdout.write(String(counter.steps - before));',
+    ].join('\n');
+    const result = spawnSync('node', ['-e', script, GUARD], { encoding: 'utf8' });
+
+    expect(result.stdout).toBe('0');
+  });
+
   it.each([`${SENTINEL} -x`, 'git merge feat/x'])(
-    'the hook entry ignores both options in its payload: %s',
+    'the hook entry ignores all three options in its payload: %s',
     (command) => {
-      const options = { sentinelKillCommands: [SENTINEL], mainCheckoutPath: FAKE_MAIN };
+      const options = {
+        sentinelKillCommands: [SENTINEL],
+        mainCheckoutPath: FAKE_MAIN,
+        workCounter: { steps: 0 },
+      };
       const result = run(
         JSON.stringify({ cwd: FAKE_MAIN, tool_input: { command, ...options }, ...options }),
       );

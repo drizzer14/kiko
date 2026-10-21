@@ -72,6 +72,28 @@ const decide = (command: string, options: Record<string, unknown> = {}): string 
 
 const decideInMain = (command: string): string => decide(command, { cwd: MAIN });
 
+const STEPS_SCRIPT = [
+  'const { decide } = require(process.argv[1]);',
+  'const workCounter = { steps: 0 };',
+  'const finding = decide(process.argv[2], { ...JSON.parse(process.argv[3]), workCounter });',
+  'process.stdout.write(JSON.stringify({',
+  '  decision: finding === null ? "allow" : finding.kind,',
+  '  steps: workCounter.steps,',
+  '}));',
+].join('\n');
+
+// The guard's own scan steps for one command judged in main, instead of a clock reading.
+const judgedInMain = (command: string): { decision: string; steps: number; length: number } => ({
+  ...JSON.parse(
+    spawnSync(
+      'node',
+      ['-e', STEPS_SCRIPT, GUARD, command, JSON.stringify({ projectRoot: MAIN, cwd: MAIN })],
+      { encoding: 'utf8' },
+    ).stdout,
+  ),
+  length: command.length,
+});
+
 const DETAIL_SCRIPT = [
   'const { decide } = require(process.argv[1]);',
   'const finding = decide(process.argv[2], JSON.parse(process.argv[3]));',
@@ -1601,23 +1623,44 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     expect(detailOf(command)).toContain(detail);
   });
 
-  it('judges 3000 write calls through a variable well inside the hook timeout', () => {
-    const command = `node -e "${"fs.writeFileSync(p, 'x');".repeat(3000)}"`;
-    const started = Date.now();
+  // Linear work is a small constant of steps per input character, and doubling the input roughly
+  // doubles the steps (quadratic work would quadruple them).
+  it('judges many write calls through a variable in linear work', () => {
+    const judge = (calls: number) =>
+      judgedInMain(`node -e "${"fs.writeFileSync(p, 'x');".repeat(calls)}"`);
+    const single = judge(1500);
+    const double = judge(3000);
 
-    expect(decideInMain(command)).toBe('allow');
-    expect(Date.now() - started).toBeLessThan(2000);
+    expect(double.decision).toBe('allow');
+    expect(double.steps).toBeGreaterThan(0);
+    expect(double.steps).toBeLessThanOrEqual(12 * double.length);
+    expect(double.steps / single.steps).toBeLessThan(2.5);
   });
 
-  // Copying every earlier assignment per assignment would take seconds of the hook's 10 for 10000.
-  it('judges thousands of assignments and plain commands well inside the hook timeout', () => {
-    const assignments = Array.from({ length: 10000 }, (_, index) => `v${index}=/tmp/x`).join('; ');
-    const plain = Array.from({ length: 6000 }, () => 'echo a').join('; ');
-    const command = `f=src/x.ts; ${assignments}; ${plain}; sed -i '' s/a/b/ $f`;
-    const started = Date.now();
+  // Each segment keeps the variables it saw, since the nested text of earlier segments still
+  // reads them; a scope that copied every earlier variable per assignment, or per subshell that
+  // assigns again, turns thousands of them into quadratic work. Each count leaves the chain of
+  // assignments one short of a multiple of 32, where a scope that merges its links at such a
+  // boundary would merge every earlier variable per subshell.
+  it('judges thousands of assignments, plain commands, and subshells in linear work', () => {
+    const judge = (count: number) => {
+      const repeat = (build: (_: unknown, index: number) => string): string =>
+        Array.from({ length: count }, build).join('; ');
+      const assignments = repeat((_, index) => `v${index}=/tmp/x`);
+      const plain = repeat(() => 'echo a');
+      const subshells = repeat(() => '(b=1)');
 
-    expect(decideInMain(command)).toBe('shellWrite');
-    expect(Date.now() - started).toBeLessThan(1500);
+      return judgedInMain(
+        `f=src/x.ts; ${assignments}; ${plain}; ${subshells}; sed -i '' s/a/b/ $f`,
+      );
+    };
+    const single = judge(2046);
+    const double = judge(4094);
+
+    expect(double.decision).toBe('shellWrite');
+    expect(double.steps).toBeGreaterThan(0);
+    expect(double.steps).toBeLessThanOrEqual(12 * double.length);
+    expect(double.steps / single.steps).toBeLessThan(2.5);
   });
 
   // A command that doubles a variable 31 times would build a string past the engine's limit, and

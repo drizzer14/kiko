@@ -167,34 +167,65 @@ describe('kill-guard.sh wait-loop deny (hook)', () => {
   });
 });
 
-// The guard runs on every Bash call, so the scan must stay linear: an input
-// long enough to show a quadratic pass must still finish well inside the
-// hook's timeout.
-describe('kill-guard wait-loop deny timing (linear)', () => {
-  const judgedWithin = (command: string, decision: string): void => {
-    const started = Date.now();
+const STEPS_SCRIPT = [
+  'const { decide } = require(process.argv[1]);',
+  'const workCounter = { steps: 0 };',
+  'const finding = decide(process.argv[2], { ...JSON.parse(process.argv[3]), workCounter });',
+  'process.stdout.write(JSON.stringify({',
+  '  decision: finding === null ? "allow" : finding.kind,',
+  '  steps: workCounter.steps,',
+  '}));',
+].join('\n');
 
-    expect(decide(command)).toBe(decision);
-    expect(Date.now() - started).toBeLessThan(2000);
-  };
+const stepsFor = (
+  command: string,
+  options: Record<string, unknown> = {},
+): { decision: string; steps: number } =>
+  JSON.parse(
+    spawnSync('node', ['-e', STEPS_SCRIPT, GUARD, command, JSON.stringify(options)], {
+      encoding: 'utf8',
+    }).stdout,
+  );
 
-  it('judges 3000 loops that scan nothing', () => {
-    judgedWithin('while true; do sleep 1; done; '.repeat(3000), 'allow');
-  });
+// The guard runs on every Bash call, so the scan must stay linear. The guard's own scan steps are
+// counted instead of a clock read: the wait-loop scan at most doubles the work the guard does
+// with the rule off, and doubling the input roughly doubles the steps (quadratic would
+// quadruple them).
+describe('kill-guard wait-loop scan stays linear', () => {
+  it.each([
+    [
+      'loops that scan nothing',
+      (count: number) => 'while true; do sleep 1; done; '.repeat(count),
+      'allow',
+    ],
+    [
+      'nested loops that scan nothing',
+      (count: number) => `${'while true; do '.repeat(count)}sleep 1; ${'done; '.repeat(count)}`,
+      'allow',
+    ],
+    [
+      'one loop holding spans that scan nothing',
+      (count: number) => `while true; do echo ${'$(date) '.repeat(count)}; done`,
+      'allow',
+    ],
+    [
+      'a scan after plain commands',
+      (count: number) => `${'echo x; '.repeat(count)}until pgrep -f jest; do sleep 1; done`,
+      'waitLoop',
+    ],
+    [
+      'a scan in a loop holding other commands',
+      (count: number) => `while true; do ${'echo x; '.repeat(count)}pgrep -f jest; done`,
+      'waitLoop',
+    ],
+  ])('judges %s in linear work', (_name, build, decision) => {
+    const single = stepsFor(build(1500));
+    const double = stepsFor(build(3000));
+    const ruleOff = stepsFor(build(3000), { waitLoopJobs: [] });
 
-  it('judges 2000 nested loops that scan nothing', () => {
-    judgedWithin(`${'while true; do '.repeat(2000)}sleep 1; ${'done; '.repeat(2000)}`, 'allow');
-  });
-
-  it('judges one loop holding 3000 spans that scan nothing', () => {
-    judgedWithin(`while true; do echo ${'$(date) '.repeat(3000)}; done`, 'allow');
-  });
-
-  it('finds a scan after 5000 plain commands', () => {
-    judgedWithin(`${'echo x; '.repeat(5000)}until pgrep -f jest; do sleep 1; done`, 'waitLoop');
-  });
-
-  it('finds a scan in a loop holding 3000 other commands', () => {
-    judgedWithin(`while true; do ${'echo x; '.repeat(3000)}pgrep -f jest; done`, 'waitLoop');
+    expect(double.decision).toBe(decision);
+    expect(ruleOff.steps).toBeGreaterThan(0);
+    expect(double.steps).toBeLessThanOrEqual(2 * ruleOff.steps);
+    expect(double.steps / single.steps).toBeLessThan(2.5);
   });
 });
