@@ -1484,7 +1484,8 @@ Statistics (`statistics.screen.tsx`, rendered under the account pie).
 Home has no separate debts line: its `guardedNetWorth`
 headline and its `guardedBreakdown` per-currency breakdown both stay
 SIGNED (net) sums of every holding, so the breakdown rows still sum to
-the headline (a currency netting to exactly 0 is hidden by Home's filter and adds 0) — a debt nets into its own
+the headline (a currency netting to exactly 0 is hidden by Home's
+filter and adds 0) — a debt nets into its own
 currency's cell there, unlike Statistics' assets-only pie. Accounts'
 own "Debts" section (`accounts.screen.tsx`) computes its OWN section
 total independently: `accountTotal` (via `useSectionTotals`) over the
