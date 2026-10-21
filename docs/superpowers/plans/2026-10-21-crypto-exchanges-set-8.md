@@ -67,7 +67,7 @@ symbol or anchor text. **The developer re-greps every fact on the actual base be
 ## Run-log gaps (`run-log.mjs stats --gaps --repo kiko`, read 2026-10-21)
 
 - `20261020T2124-kiko-binance-set7/1` (adoption drops `operation` and the markers): CLOSED by step 2/14
-  (DEFAULT, pending S8-Q2). The BATCH READY names the closing sha.
+  (answered A, S8-Q2). The BATCH READY names the closing sha.
 - `20261017T1639-kiko-binance-backfill-fix/1` (walk-state gate checks the institution, not the connection): LEFT
   OPEN; the Convert walk writes through the same gated `patchExchangeState`, so it inherits the gap, no worse.
 - `20261015T1119-kiko-harness-h7/2`, `20261017T1639-kiko-binance-backfill-fix/7`,
@@ -78,7 +78,7 @@ symbol or anchor text. **The developer re-greps every fact on the actual base be
   only if it meets a real TIMEOUT-HEAVY file (the BATCH READY says which).
 - `20261015T1657-kiko-binance-backfill-fix/2`, `20261019T0912-kiko-account-currency/1` (migrations): not touched
   (no migration).
-- New gap to file in step 14/14 (DEFAULT, pending S8-Q7): no code logs `ParsedExchangeState.unreadable`.
+- New gap to file in step 14/14 (answered A, S8-Q7): no code logs `ParsedExchangeState.unreadable`.
 - Every other open gap (harness, Duo, iPad, scrub, pickers, ops skill text): LEFT OPEN, unrelated.
 
 ## Scenario matrix (each row is a Jest case; "was:" shows the result before set 8 where it changes)
@@ -98,7 +98,7 @@ Convert records (step 7/14 unless noted). "was:" for every C row: not imported (
 | C6 | SUCCESS, FUNDING, USDT -> PEPE | Funding USDT - alone, `asset:PEPE`, no pair id, key `${pairId}:USDT:funding` |
 | C6 | (cont.) | PEPE on the not-tracked line |
 | C6b | SUCCESS, PEPE -> SHIB | no row, no entry; both tickers on the not-tracked line |
-| C6c | SUCCESS, USDT -> USDT | one `convert-unrecognized` entry, no row (DEFAULT, pending S8-Q6) |
+| C6c | SUCCESS, USDT -> USDT | one `convert-unrecognized` entry, no row (answered A, S8-Q6) |
 | C6d | SUCCESS, a tracked side's amount `0`, `-1`, `1e-3`, over-precise, absent | owes its point; others import |
 | C8 | one conversion in 2026-01, every other window empty (step 8/14) | every window read once; imported as C1 |
 | C9 | a start answered -5026 (step 8/14) | narrowed to the served start; nothing owed below; the walk goes on (SUPERSEDED by S8-C1: the run fails, logged, marks stay, the caption shows) |
@@ -119,9 +119,9 @@ State, line and caption (steps 3/14, 9/14, 10/14):
 | N7a | `notImported` is `"x"`, `{}`, `null` | reads empty; name `notImported`; siblings intact | n/a |
 | N7b | entries `bybit-x:1:2`, `5`, `''` beside a good one | each dropped, name `notImported.<index>` | n/a |
 | K8 | every cursor current, only entries | caption hidden; line shown | n/a |
-| K2c | Convert cursor null, the four others current | caption shown (DEFAULT, pending S8-Q5) | hidden |
+| K2c | Convert cursor null, the four others current | caption shown (answered A, S8-Q5) | hidden |
 
-Adoption (step 2/14, DEFAULT, pending S8-Q2):
+Adoption (step 2/14, answered A, S8-Q2):
 
 | # | Sync input adopting a plain import twin | Adopted row | was: |
 |---|---|---|---|
@@ -179,7 +179,7 @@ Files: `e2e/screenshot/fixtures/build-demo-snapshot.test.ts`.
 - [ ] Check: `npx jest e2e/screenshot/fixtures/build-demo-snapshot.test.ts` green, same test count. No demo
       regeneration (data unchanged). Commit `test(demo): pin the crypto holding count, drop the name check`.
 
-### step 2/14: the adoption keeps an exchange row's markers (DEFAULT, pending S8-Q2)
+### step 2/14: the adoption keeps an exchange row's markers (answered A, S8-Q2)
 
 Files: `src/transactions/repo/transactions.repo.ts`, `src/transactions/repo/transactions.repo.sync-adoption.test.ts`.
 - [ ] Tests first (real sqlite, beside "adopts for a Binance row the same way"): A1 "carries the pair, the
@@ -216,7 +216,7 @@ full `ParsedExchangeState` literal `tsc` names (P6).
       `notImportedEntry(kind, recordId, timeMs)` -> `` `${kind}:${recordId}:${timeMs}` ``, `notImportedKindOf(entry)`
       (the text before the first `:`, when it is a kind; else `undefined`); `ExchangeState.notImported?: string[]`;
       `ParsedExchangeState` (parsed arm) gains `notImported: string[]` (known-kind entries, unique, stored order);
-      unreadable names `notImported` (not a list) and `notImported.<index>` (DEFAULT, pending S8-Q7: names only,
+      unreadable names `notImported` (not a list) and `notImported.<index>` (answered A, S8-Q7: names only,
       no log line). In `exchange-state-patch.ts`: patch `{ kind: 'notImported'; entries: string[] }`, applied by
       `withNotImported` in `patchedState`; reword the two doc comments that say the parse drops `notImported`.
       Barrel: export `NOT_IMPORTED_KINDS`, `NotImportedKind`, `notImportedEntry`.
@@ -230,7 +230,7 @@ Files: `src/crypto-sync/exchange/walk/records.ts`, `src/crypto-sync/exchange/wal
 - [ ] Tests first: "joins the entries of every part once"; "writes the entries after the rows and before the
       marks" (call order through fakes); "writes no entry for a forward span that stops"; "writes nothing when
       the span holds no entry". Red: the field is missing.
-- [ ] Code (DEFAULT, pending S8-Q3): `SettledSpan.notImported?: string[]`, unioned in `joinSettled` like
+- [ ] Code (answered A, S8-Q3): `SettledSpan.notImported?: string[]`, unioned in `joinSettled` like
       `untracked`; `commitSettledSpan` takes optional `writeNotImported` and calls it once, after
       `writeUntracked`, before `advance`; `notImportedWriterOf(deps, accountId)` beside `historyListWriterOf`
       (one `{ kind: 'notImported' }` patch). Extend the `commitSettledSpan` doc comment by one sentence.
@@ -255,8 +255,9 @@ Files: `src/crypto-sync/binance/binance.history-client.ts`, `binance.history-cli
 - [ ] First: quote Binance's doc text for `GET /sapi/v1/convert/tradeFlow` in the commit body (parameters,
       30-day limit, `limit` maximum, `moreData`, the `orderStatus` values, the JSON type of `orderId` and
       `quoteId`). S8-Q1: when the coordinator runs probe 6, its measured `orderId` type decides the key; until
-      then build the DEFAULT (pending S8-Q1): id = `orderId` as a string or safe integer, else `quoteId`, else
-      unreadable. (SUPERSEDED: S8-Q1 = A, probe 6; the id is the `quoteId` only, never `orderId`.) A doc that contradicts G-5's status words: stop and ask.
+      then build the DEFAULT (answered A, S8-Q1): id = `orderId` as a string or safe integer, else `quoteId`, else
+      unreadable. (SUPERSEDED: S8-Q1 = A, probe 6; the id is the `quoteId` only, never `orderId`.)
+      A doc that contradicts G-5's status words: stop and ask.
 - [ ] Tests first: "reads a SUCCESS record with every field" (record fields `orderId`/`quoteId` -> `recordId`,
       `orderStatus`, `walletType`, `fromAsset`, `fromAmount`, `toAsset`, `toAmount`, `createTime`); "reads a
       missing or null `walletType` as undefined"; "reads a record whose assets or amounts are absent, status
@@ -290,7 +291,8 @@ Files: `src/crypto-sync/binance/binance.convert-history.ts` (new), `binance.conv
 Files: `binance.convert-history.ts`, `binance.convert-history.test.ts`, `binance.convert-history.real-sqlite.test.ts`
 (new), `binance.convert-history.properties.test.ts` (new).
 - [ ] Tests first (fake deps): C8 (every window read, fetch count = window count); C9 (fake refuses starts below
-      a depth: the walk narrows, imports a record above it, owes nothing below; SUPERSEDED by S8-C1: the run fails); C9b; C9c (runs to window 104 =
+      a depth: the walk narrows, imports a record above it, owes nothing below; SUPERSEDED by S8-C1:
+      the run fails); C9b; C9c (runs to window 104 =
       6); C11 (halving and `convert-page-stuck`); C3's second run; "reads nothing while cooling down"; "reads
       nothing without credentials"; "stops on a rate limit and sets the cooldown"; "writes no multi-coin marks"
       (spec section 7: Convert needs no backfill range). Real sqlite: C1 lands on "Binance Funding · UAH" and
@@ -302,7 +304,8 @@ Files: `binance.convert-history.ts`, `binance.convert-history.test.ts`, `binance
       without the uid read: `readWalkMarks(deps, accountId, 'convert')`, `planWalkPasses` (`floorMs:
       HISTORY_FLOOR_MS`, `windowMs: CONVERT_WINDOW_MS = 30 * DAY_MS`, `overlapMs: RESYNC_OVERLAP_MS`,
       `maxWindows: CONVERT_MAX_WINDOWS = 20`), `runWalkPlan` + `walkSpans`; `readSpan` splits on `moreData`
-      (`halfOf`); (SUPERSEDED by S8-C1: a `BinanceHistoryTooOldError` fails the run, no narrowing) on `BinanceHistoryTooOldError` it calls `narrowRefusedStart` (`floorMs: HISTORY_FLOOR_MS`,
+      (`halfOf`); (SUPERSEDED by S8-C1: a `BinanceHistoryTooOldError` fails the run, no narrowing)
+      on `BinanceHistoryTooOldError` it calls `narrowRefusedStart` (`floorMs: HISTORY_FLOOR_MS`,
       `config: BINANCE_DEPTH_CONFIG`, a probe that spends the lane) and commits the span read from the served
       start; `commitSpan` uses `commitSettledSpan` with `forwardOwes: CONVERT_FORWARD_OWES`,
       `writeNotImported: notImportedWriterOf(...)`, `placeWalletRows` (`missingCode: 'convert-holding-missing'`),
@@ -317,13 +320,13 @@ Files: `src/crypto-sync/binance/index.ts`, `src/crypto-sync/run-crypto-sync/run-
 `binance-history-status.test.ts`, `crypto-sync-section.component.test.tsx` (P4 helper).
 - [ ] Tests first: P5 (order capital, Pay, Transfer, Earn, Convert on one run object); "still resolves with the
       balance result when the Convert walk fails, logging only its name"; "runs the Convert walk even when the
-      Earn walk failed". Caption (DEFAULT, pending S8-Q5): P3, K2c; P4's helper writes a `convert` cursor.
+      Earn walk failed". Caption (answered A, S8-Q5): P3, K2c; P4's helper writes a `convert` cursor.
 - [ ] Code: export `syncBinanceConvertHistory`; `runBinanceHistoryWalks` runs it after Earn in its own
       `logOnFailure('[binance sync] convert history failed', ...)`; move the "Last, so ..." comment to it.
       `CAPTION_WALKS` gains `'convert'`; its doc comments name five walks.
 - [ ] Check: suites green. Commit `feat(binance): run the Convert walk after Earn`.
 
-### step 10/14: the not-imported line and its copy (DEFAULT, pending S8-Q4)
+### step 10/14: the not-imported line and its copy (answered A, S8-Q4)
 
 Files: `src/crypto-sync/exchange/history-status/history-status.ts`, `index.ts`, `history-status.test.ts`;
 `src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.tsx`,
@@ -388,7 +391,7 @@ Reviews run per task group, after the group's last step is committed (harness-wo
 
 ### step 13/14: skill text (kiko:retrospect, then kiko:scribe)
 
-- [ ] `kiko-architecture`: the Convert walk (lane, window, status-first rule, depth safety net), the
+- [ ] `kiko-architecture`: the Convert walk (lane, window, status-first rule, depth safety net (SUPERSEDED by S8-C1: a Convert -5026 fails the run)), the
       `notImported` list (kinds, parse, union patch beside the marks, disconnect), the line. `kiko-domain`: Convert
       rows and markers; the adoption rule (S8-Q2) beside "The sync adopts its import twin" in
       `kiko-statement-import`. Pointers, no code copies. The report names the drift-fix sha or "no drift found".
