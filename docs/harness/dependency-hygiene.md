@@ -290,8 +290,8 @@ After merging or branching across this commit run `npx patch-package` before the
 
 Upgrade rule: a `react-native-screens` bump fails the pin until the patch is re-derived. Re-derive
 it: `npm pack react-native-screens@<version>` and unpack it; re-apply the same edits to the
-installed files (the seven source files above plus the `lib` copies; the iOS side changed
-`RNSNavigationController` and `RNSScreenStackView updateProps`); check that the library still
+installed files (the files the pin test lists; the iOS side changed `RNSNavigationController`
+and `RNSScreenStackView updateProps`); check that the library still
 provides the layout (a new `RNSScreenStack.mm` that sets layout margins itself, or an upstream
 prop for a stack's content margin, makes the patch removable); diff the pristine tree against the
 patched one into `patches/react-native-screens+<version>.patch` (or `npx patch-package
