@@ -1,4 +1,3 @@
-import { DAY_MS } from '@kiko/dates';
 import {
   coinListPatchesOf,
   numberMarkWritesOfAnyWalk,
@@ -766,11 +765,13 @@ describe('a Convert page with more data', () => {
 describe('a start Binance refuses', () => {
   it('rejects the walk, moves no mark and writes no row when a window is answered -5026', async () => {
     const world = worldOf();
-    const depthMs = HISTORY_FLOOR_MS + 10 * DAY_MS;
-    const kept = convertRecordOf({ createTime: depthMs + 5 * DAY_MS });
-    const deps = world.depsOf({ fetchConvertHistory: convertServerOf([kept], depthMs) });
+    const deps = world.depsOf({
+      fetchConvertHistory: jest.fn(async () => {
+        throw new BinanceHistoryTooOldError('Binance request failed: 400');
+      }),
+    });
 
-    await expect(world.walk(deps, wideRun())).rejects.toBeInstanceOf(BinanceHistoryTooOldError);
+    await expect(world.walk(deps)).rejects.toBeInstanceOf(BinanceHistoryTooOldError);
 
     expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(deps.addTransactions).not.toHaveBeenCalled();

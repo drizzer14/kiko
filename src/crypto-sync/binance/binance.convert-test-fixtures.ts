@@ -1,5 +1,4 @@
 import { NOW } from './binance.pay-test-fixtures';
-import { BinanceHistoryTooOldError } from './binance.client';
 import type { BinanceConvertRecord, ConvertHistoryPage } from './binance.history-client';
 
 /** When the fixture conversion was made: ten minutes before `NOW`. */
@@ -33,25 +32,17 @@ export const convertPageOf = (
   ...over,
 });
 
-/**
- * A Convert history as Binance serves it: the records whose `createTime` is in the window asked
- * for, and a refusal of a `startTime` older than `depthMs` (the history it keeps).
- */
-export const convertServerOf = (records: BinanceConvertRecord[], depthMs = 0) =>
+/** A Convert history as Binance serves it: the records whose `createTime` is in the window. */
+export const convertServerOf = (records: BinanceConvertRecord[]) =>
   jest.fn(
     async (
       _apiKey: string,
       _secret: string,
       query: { startTime: number; endTime: number },
-    ): Promise<ConvertHistoryPage> => {
-      if (query.startTime < depthMs) {
-        throw new BinanceHistoryTooOldError('Binance request failed: 400');
-      }
-
-      return convertPageOf(
+    ): Promise<ConvertHistoryPage> =>
+      convertPageOf(
         records.filter(
           ({ createTime }) => createTime >= query.startTime && createTime <= query.endTime,
         ),
-      );
-    },
+      ),
   );

@@ -64,7 +64,10 @@ import { BinanceRateLimitError, type FetchAccountOptions } from './binance.clien
 /** The stop of a conversion that waits on Binance: its point is owed until it settles. */
 const CONVERT_NOT_SETTLED = 'convert-not-settled';
 
-/** The stop of a settled conversion that lacks an amount, or a code to mark a lone leg. */
+/**
+ * The stop of a settled conversion that lacks an amount, of a code to mark a lone leg, and of a
+ * page row the client could not read, such as one with no quoteId.
+ */
 const CONVERT_ROW_UNREADABLE = 'convert-row-unreadable';
 
 const CONVERT_AMOUNT_INVALID = 'convert-amount-invalid';
@@ -515,7 +518,7 @@ const runSync = async (
       walkSpans({
         window,
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
-        commit: (span, read) => commitSpan(context, span, read, pass),
+        commit: (span, page) => commitSpan(context, span, page, pass),
         keep,
         hint,
         onComplete: (read) => dropReadPoints({ pass, window, read, marks: context.marks, write }),
@@ -537,10 +540,10 @@ const runSync = async (
  * (Funding or Spot), committing a window's rows before advancing the mark past it. The walk reads
  * 30-day windows forward from the history floor, empty ones too, because Binance has no refusal to
  * the floor to stop at; a run reads at most the lane's 20 windows, so the first walk takes
- * several runs. A start Binance refuses as older than it keeps rejects the run with no mark moved,
- * as Pay does. `complete: false` means history, owed ground or the re-scan remains
- * and a later run resumes from the stored marks; a failure other than a rate limit rejects, so
- * the caller can log it without failing the balance sync.
+ * several runs. A start Binance refuses as older than it keeps rejects the run, and the refused
+ * span moves no mark, as Pay does. `complete: false` means history, owed ground or the re-scan
+ * remains and a later run resumes from the stored marks; a failure other than a rate limit
+ * rejects, so the caller can log it without failing the balance sync.
  */
 export const syncBinanceConvertHistory = (
   request: { targetAccountId: string; run: BinanceHistoryRun },
