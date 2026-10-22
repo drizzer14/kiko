@@ -262,7 +262,6 @@ describe('scripts/checks/permission-doctor.sh: ** slots and ? segments', () => {
     expect(result.status).toBe(2);
     expect(blockOf(result)).toContain('partly protected');
     expect(blockOf(result)).not.toContain('"remove"');
-    expect(blockOf(result)).not.toContain('never pre-approves');
   });
 
   it('still reports a fully protected rule with a ** as a protected path to remove', () => {
@@ -275,17 +274,6 @@ describe('scripts/checks/permission-doctor.sh: ** slots and ? segments', () => {
     expect(blockOf(result)).toContain('protected path');
     expect(blockOf(result)).toContain(`"remove":${JSON.stringify(rule)}`);
     expect(blockOf(result)).not.toContain('partly protected');
-  });
-
-  it('suggests the Markdown form with a * project slot for the user rule', () => {
-    const rule = `Edit(//${layout.home}/.claude/projects/**/memory/**)`;
-    writeSettings([rule]);
-
-    const result = runDoctor();
-
-    expect(blockOf(result)).toContain(
-      `"with":${JSON.stringify(`Edit(//${layout.home}/.claude/projects/*/memory/**/*.md)`)}`,
-    );
   });
 
   it('removes a rule with a ? segment that can only name a protected file', () => {
@@ -305,7 +293,79 @@ describe('scripts/checks/permission-doctor.sh: ** slots and ? segments', () => {
     const result = runDoctor();
 
     expect(blockOf(result)).not.toContain('?.md');
+    expect(blockOf(result)).toContain('"remove"');
   });
+});
+
+// A rule already ending in .md is a Markdown form: the suggestion only rewrites the project slot.
+describe('scripts/checks/permission-doctor.sh: the Markdown suggestion for a .md rule', () => {
+  it.each([
+    ['Edit(~/.claude/projects/**/memory/**/*.md)', 'Edit(~/.claude/projects/*/memory/**/*.md)'],
+    ['Edit(~/.claude/projects/**/memory/*.md)', 'Edit(~/.claude/projects/*/memory/*.md)'],
+  ])('suggests %s as %s', (rule, replacement) => {
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(blockOf(result)).toContain(`"with":${JSON.stringify(replacement)}`);
+    expect(blockOf(result)).not.toContain('.md.md');
+  });
+
+  it('never suggests note.md.md for a named Markdown file behind a ** project slot', () => {
+    writeSettings(['Edit(~/.claude/projects/**/memory/note.md)']);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).not.toContain('.md.md');
+  });
+});
+
+// A rule is read as a folder rule (gitignore reading): when its match can be an exception folder
+// or an ancestor of one, it covers that folder's files.
+describe('scripts/checks/permission-doctor.sh: rules that can name an exception folder', () => {
+  it.each([
+    ['Edit(~/.claude/plans)'],
+    ['Edit(~/.claude/plan?)'],
+    ['Edit(~/.claude/pla*)'],
+    ['Edit(~/.claude/jobs/*/tmp)'],
+    ['Edit(~/.claude/jobs/*/tm?)'],
+  ])('passes %s, every file it covers is exempt', (rule) => {
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it.each([
+    ['Edit(~/.claude/jobs)'],
+    ['Edit(~/.claude/jobs/x)'],
+    ['Edit(~/.claude/projects/p/memory)'],
+    ['Edit(~/.claude/*)'],
+  ])('reports %s as partly protected, never remove', (rule) => {
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(blockOf(result)).toContain('partly protected');
+    expect(blockOf(result)).not.toContain('"remove"');
+  });
+
+  it.each([['Edit(~/.claude/agents)'], ['Edit(~/.claude/hooks)']])(
+    'still removes %s, a fully protected folder',
+    (rule) => {
+      writeSettings([rule]);
+
+      const result = runDoctor();
+
+      expect(result.status).toBe(2);
+      expect(blockOf(result)).toContain(`"remove":${JSON.stringify(rule)}`);
+      expect(blockOf(result)).not.toContain('partly protected');
+    },
+  );
 });
 
 describe('scripts/checks/permission-doctor.sh: a symlinked .claude folder', () => {
