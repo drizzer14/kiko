@@ -16,6 +16,12 @@ gets a cross-folder test consumer, set 8 lesson). The candidate list is never st
 `ExchangeTrades` in `walk-state.ts`; patch kinds `tradeSymbol`, `tradesRotation`, `tradesBalanceSnapshot` in
 `exchange-state-patch.ts`). Set 10 writes no patch to the database; it builds patches as values for set 11.
 
+**Rulings applied (after the plan was written):** S10-Q5b B, replaced by G1-A A3 (`exchangeInfo` with
+`showPermissionSets=false` and no `permissions` filter); G1-B B1 (pager `stopAt` and `fromId` refusals); G1-C C1
+(0 readable and more than 0 unreadable throws); G2-A B (per-symbol errors end one symbol `failed`, other errors stop
+the run); G2-B B (a candidate needs one touched coin). Source: `rulings.md`, section "Set 10 plan questions"; the
+spec records them in section 1. Where a row or bullet below differs, the spec and the code win.
+
 **Tech stack:** React Native, op-sqlite + Drizzle, Jest (`fast-check` where the suites already use it), fnts
 `maybe`/`Either`, ts-pattern.
 
@@ -57,7 +63,7 @@ text. **The developer re-greps every fact on the actual base before relying on i
   visible), never a fallback or a rounded cursor. S10-Q4 asks for the type probe before set 11.
 - G-9 No fallback for a case never seen live (set 8 lesson 2): an `exchangeInfo` read that fails gives no
   candidates this run; stored symbols are not read on a guess (S10-Q3).
-- G-10 Point skill and spec text at constants (`TRADE_MAIN_QUOTES`, `TRADE_SYMBOL_STATUSES`, `LANE_CALL_CAPS`,
+- G-10 Point skill and spec text at constants (`TRADE_MAIN_QUOTES`, `TRADING_SYMBOL_STATUSES`, `LANE_CALL_CAPS`,
   `COSTS`), never at a copied list (set 8 lesson 9).
 - G-11 U1: no device deploy and no device step. No copy change, no i18n key, no translator review.
 - G-12 Every commit passes the pre-commit typecheck; Bash `timeout: 300000` for commits; never `--no-verify`.
@@ -126,7 +132,7 @@ text. **The developer re-greps every fact on the actual base before relying on i
 |---|---|---|
 | TS1 | UA-1 touched (BTC, CGPT, UAH, USDT); listing BTCUSDT TRADING, BNBBTC TRADING, BTCUAH BREAK, ETHBTC TRADING, XYZBTC TRADING, CGPTUSDT HALT | candidates BNBBTC, BTCUAH, BTCUSDT, ETHBTC (XYZ untouched, HALT left out) |
 | TS2 | each touched source alone: a holding at 0, each of the four coin lists, a stored `fromId` symbol's base | that coin's symbols are candidates |
-| TS3 | a symbol with a stored numeric `fromId`, now HALT or END_TRADING and still listed | still a candidate (S10-Q2 A) |
+| TS3 | a symbol with a stored numeric `fromId`, now HALT or END_OF_DAY and still listed | still a candidate (S10-Q2 A) |
 | TS4 | a symbol with a stored `fromId` that the listing no longer has | no candidate; its stored entry untouched |
 | TS5 | body not an object; `symbols` absent or not an array | `BinanceHistoryParseError`; no candidate |
 | TS6 | an item with `symbol`, `status`, `baseAsset` or `quoteAsset` absent or not text | left out, counted in `unreadable`; the others read |
@@ -147,7 +153,7 @@ text. **The developer re-greps every fact on the actual base before relying on i
 | TP3 | exactly 1000 rows, then an empty page | 2 calls; `nextFromId` = last id + 1 |
 | TP4 | the lane refuses page 2 | no request; end `budget`; `nextFromId` after page 1 |
 | TP5 | `onPage` answers a stop at id X | no further request; end `stopped`; `nextFromId` = X |
-| TP6 | an id not a safe integer, not ascending, repeated, below `fromId`; more rows than the limit | `IdCursorPageError`; that page never reaches `onPage`; earlier pages stay committed |
+| TP6 | an id not a safe integer, not ascending, repeated, below `fromId`; more rows than the limit | `IdCursorPageError` (`not-ascending` for an id below `fromId`); that page never reaches `onPage`; earlier pages stay committed |
 | TP7 | the fetch rejects on page 2 | the error propagates; page 1 was committed through `onPage` |
 | TP8 | every page | `gate.wait()` before it; `canAfford(lane, cost, keep)` before it; `record(lane, page)` after it |
 | TP9 | property: random ascending id sets cut into random pages | every row reaches `onPage` once, ascending; the last `nextFromId` = max id + 1 |
@@ -340,7 +346,7 @@ Reviews run per task group, after the group's last step is committed (harness-wo
   removed before the index skips one symbol for a whole cycle, so the bound breaks under churn). B: the text of
   the last round-robin symbol read (`> cursor`, then wrap; bound holds under churn; pins P4-P7 change; no stored
   value exists). Recommend B: the bound must hold when the user touches a new coin.
-- S10-Q2 a symbol with a stored `fromId` whose status left TRADING/BREAK (HALT, END_TRADING) but is still listed.
+- S10-Q2 a symbol with a stored `fromId` whose status left TRADING/BREAK (HALT, END_OF_DAY) but is still listed.
   A: stays a candidate (its last trades are still read). B: spec as written (dropped). Recommend A: a halted pair
   may hold trades made before the halt.
 - S10-Q3 `exchangeInfo` failure or cache. A: one read per run, no cache; a failure reads no symbol that run (logged
