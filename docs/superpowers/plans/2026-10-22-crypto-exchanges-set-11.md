@@ -336,16 +336,18 @@ Files: `docs/superpowers/specs/2026-10-15-crypto-exchanges-design.md`.
 
 ### step 12/12: gates and BATCH READY
 
-- [ ] `bash scripts/job-queue.sh check-all <worktree> "crypto-exchanges-1.3-a task 11/15 check-all"` exit 0.
-- [ ] `KIKO_MUTATION_BASE=3d0df6d4 make mutable`: quote the file list, `mutable files: N (cap 30)` and the timeout
-      share line. Above 30: stop and split.
+- [ ] Coordinator (not the developer): `bash scripts/job-queue.sh check-all <worktree> "crypto-exchanges-1.3-a task
+      11/15 check-all"` exit 0; agents wait for the result.
+- [ ] Orchestrator, only after CHARGER BACK (a count, not a queued job): `KIKO_MUTATION_BASE=3d0df6d4 make mutable`:
+      quote the file list, `mutable files: N (cap 30)` and the timeout share line. Above 30: stop and split.
 - [ ] Coordinator (not the developer): `bash scripts/job-queue.sh gate <worktree> "crypto-exchanges-1.3-a task 11/15
       deep" 3d0df6d4 <head>` (`KIKO_MUTATION_BASE=3d0df6d4 make deep`), detached; agents wait for the exit code.
       TIMEOUT-HEAVY (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file"): the gate's own rerun is the
       verdict; only if it still fails, prove each timed-out mutant in plain jest or write it as equivalent. Never
       raise the timeout.
-- [ ] `make verify` once at the set tip through the queue (`bash scripts/job-queue.sh verify <worktree>
-      "crypto-exchanges-1.3-a task 11/15 verify"`), tree clean, re-run until green.
+- [ ] Coordinator (not the developer): `make verify` once at the set tip through the queue (`bash
+      scripts/job-queue.sh verify <worktree> "crypto-exchanges-1.3-a task 11/15 verify"`), tree clean, re-run until
+      green; agents wait for the result.
 - [ ] BATCH READY names the base sha, the deep run id, the `make mutable` count, the reviewer verdicts, the scribe
       sha, the S11-Q rulings, the probe 9 report, and the survivor classification of step 1/12.
 
