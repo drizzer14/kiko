@@ -661,6 +661,67 @@ describe('kill-guard: a fetch refspec set with -c writes the ref main', () => {
   );
 });
 
+const LINKED_OPTIONS = optionsIn(LINKED);
+
+// `git pull` runs `fetch --update-head-ok`, so a refspec into `main` moves it from a worktree.
+const PULL_MOVES: string[] = [
+  'git pull --no-rebase origin main:main',
+  'git pull origin +main:main',
+  'git pull origin refs/heads/main:refs/heads/main',
+  `git -c 'remote.origin.fetch=${GLOB_INTO_HEADS}' pull --no-rebase`,
+  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch GIT_CONFIG_VALUE_0='${GLOB_INTO_HEADS}' git pull --no-rebase`,
+  'git --config-env=remote.origin.fetch=SPEC pull --no-rebase',
+];
+
+const PULL_STAYS: string[] = [
+  'git pull',
+  'git pull --rebase origin main',
+  'git pull --no-rebase origin main',
+  'git pull origin feature:refs/remotes/origin/feature',
+  'git pull --ff-only',
+  `git -c 'remote.origin.fetch=${GLOB_INTO_REMOTES}' pull --no-rebase`,
+];
+
+describe('kill-guard: a pull refspec into main from a linked worktree', () => {
+  it('denies every pull that writes the ref main', () => {
+    const kinds = decideAll(PULL_MOVES.map((s) => [s, LINKED_OPTIONS]));
+
+    expect(PULL_MOVES.filter((_s, index) => kinds[index] !== 'mainMove')).toEqual([]);
+  });
+
+  it('allows every pull that writes elsewhere', () => {
+    const kinds = decideAll(PULL_STAYS.map((s) => [s, LINKED_OPTIONS]));
+
+    expect(PULL_STAYS.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+  });
+});
+
+const EXPORTED_FETCH_MOVES: string[] = [
+  `export GIT_CONFIG_PARAMETERS="'remote.origin.fetch=${GLOB_INTO_HEADS}'"; git fetch -u origin`,
+  `export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch GIT_CONFIG_VALUE_0='${GLOB_INTO_HEADS}'; git fetch -u origin`,
+  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch GIT_CONFIG_VALUE_0='${GLOB_INTO_HEADS}'; export GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0; git fetch -u origin`,
+];
+
+const EXPORTED_FETCH_STAYS: string[] = [
+  'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.url GIT_CONFIG_VALUE_0=/tmp/x; git fetch -u origin',
+  `export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch GIT_CONFIG_VALUE_0='${GLOB_INTO_REMOTES}'; git fetch -u origin`,
+  `export GIT_CONFIG_PARAMETERS="'remote.origin.fetch=${GLOB_INTO_REMOTES}'"; git fetch -u origin`,
+];
+
+describe('kill-guard: a fetch refspec exported in an earlier segment', () => {
+  it('denies every exported refspec into main', () => {
+    const kinds = decideAll(EXPORTED_FETCH_MOVES.map((s) => [s, LINKED_OPTIONS]));
+
+    expect(EXPORTED_FETCH_MOVES.filter((_s, index) => kinds[index] !== 'mainMove')).toEqual([]);
+  });
+
+  it('allows every exported setting that writes elsewhere', () => {
+    const kinds = decideAll(EXPORTED_FETCH_STAYS.map((s) => [s, LINKED_OPTIONS]));
+
+    expect(EXPORTED_FETCH_STAYS.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+  });
+});
+
 // These attach a linked worktree to `main` (or write `HEAD` to it), after which a `reset` in that
 // worktree moves `main` itself.
 const WORKTREE_ONTO_MAIN: string[] = [
