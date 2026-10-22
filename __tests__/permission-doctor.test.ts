@@ -254,7 +254,7 @@ describe('scripts/checks/permission-doctor.sh: ** slots and ? segments', () => {
     ['Edit(~/.claude/projects/**)'],
     ['Edit(~/.claude/projects/**/*.md)'],
     ['Edit(~/.claude/jobs/**/tmp/**)'],
-  ])('reports %s as partly protected, not remove or never', (rule) => {
+  ])('reports %s as partly protected, never remove', (rule) => {
     writeSettings([rule]);
 
     const result = runDoctor();
@@ -318,26 +318,80 @@ describe('scripts/checks/permission-doctor.sh: the Markdown suggestion for a .md
     const result = runDoctor();
 
     expect(blockOf(result)).not.toContain('.md.md');
+    expect(blockOf(result)).toContain('"with":"Edit(~/.claude/projects/*/memory/note.md)"');
+  });
+});
+
+// A rule ending at the .claude folder itself is partly protected and gets the hand fix, never an
+// unrelated `.claude.md` file.
+describe('scripts/checks/permission-doctor.sh: a rule ending at the .claude folder', () => {
+  it.each([['Edit(~/.claude)'], ['Edit(//HOME/.claude)']])(
+    'never suggests .claude.md for %s',
+    (template) => {
+      const rule = template.replace('HOME', layout.home.slice(1));
+      writeSettings([rule]);
+
+      const result = runDoctor();
+
+      expect(result.status).toBe(2);
+      expect(blockOf(result)).toContain('partly protected');
+      expect(blockOf(result)).not.toContain('.claude.md');
+      expect(blockOf(result)).not.toContain('"remove"');
+    },
+  );
+});
+
+// A `[..]` class matches one character, so a class segment can spell a protected folder's name.
+describe('scripts/checks/permission-doctor.sh: bracket classes in a folder segment', () => {
+  it.each([['Edit(~/.claude/[ab]gents)'], ['Edit(~/.claude/age[n]ts)']])(
+    'removes %s, it can only name the protected agents folder',
+    (rule) => {
+      writeSettings([rule]);
+
+      const result = runDoctor();
+
+      expect(result.status).toBe(2);
+      expect(blockOf(result)).toContain(`"remove":${JSON.stringify(rule)}`);
+      expect(blockOf(result)).not.toContain('partly protected');
+    },
+  );
+
+  it('does not remove Edit(~/.claude/[p]lans), a class that can name an exception folder', () => {
+    writeSettings(['Edit(~/.claude/[p]lans)']);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).not.toContain('"remove"');
   });
 });
 
 // A rule is read as a folder rule (gitignore reading): when its match can be an exception folder
 // or an ancestor of one, it covers that folder's files.
 describe('scripts/checks/permission-doctor.sh: rules that can name an exception folder', () => {
-  it.each([
-    ['Edit(~/.claude/plans)'],
-    ['Edit(~/.claude/plan?)'],
-    ['Edit(~/.claude/pla*)'],
-    ['Edit(~/.claude/jobs/*/tmp)'],
-    ['Edit(~/.claude/jobs/*/tm?)'],
-  ])('passes %s, every file it covers is exempt', (rule) => {
-    writeSettings([rule]);
+  it.each([['Edit(~/.claude/plans)'], ['Edit(~/.claude/jobs/*/tmp)']])(
+    'passes %s, every file it covers is exempt',
+    (rule) => {
+      writeSettings([rule]);
 
-    const result = runDoctor();
+      const result = runDoctor();
 
-    expect(blockOf(result)).toBe('');
-    expect(result.status).toBe(0);
-  });
+      expect(blockOf(result)).toBe('');
+      expect(result.status).toBe(0);
+    },
+  );
+
+  it.each([['Edit(~/.claude/plan?)'], ['Edit(~/.claude/pla*)'], ['Edit(~/.claude/jobs/*/tm?)']])(
+    'reports %s as partly protected, never remove, a glob can also name a protected folder',
+    (rule) => {
+      writeSettings([rule]);
+
+      const result = runDoctor();
+
+      expect(result.status).toBe(2);
+      expect(blockOf(result)).toContain('partly protected');
+      expect(blockOf(result)).not.toContain('"remove"');
+    },
+  );
 
   it.each([
     ['Edit(~/.claude/jobs)'],
