@@ -24,6 +24,28 @@ export const decideAll = (cases: [string, DecideOptions][]): string[] =>
     }).stdout,
   );
 
+const STEPS_SCRIPT = [
+  'const { decide } = require(process.argv[1]);',
+  'const workCounter = { steps: 0 };',
+  'const finding = decide(process.argv[2], { ...JSON.parse(process.argv[3]), workCounter });',
+  'process.stdout.write(JSON.stringify({',
+  '  decision: finding === null ? "allow" : finding.kind,',
+  '  steps: workCounter.steps,',
+  '}));',
+].join('\n');
+
+// The finding kind of one command and the guard's own scan steps to judge it, which a linearity
+// row counts instead of reading a clock.
+export const stepsFor = (
+  command: string,
+  options: DecideOptions = {},
+): { decision: string; steps: number } =>
+  JSON.parse(
+    spawnSync('node', ['-e', STEPS_SCRIPT, GUARD, command, JSON.stringify(options)], {
+      encoding: 'utf8',
+    }).stdout,
+  );
+
 // The finding kind of one command, or 'allow'.
 export const decide = (command: string, options: DecideOptions = {}): string =>
   decideAll([[command, options]])[0];

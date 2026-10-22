@@ -20,7 +20,8 @@
 #              and create the lock, so two waiters never remove each other's fresh lock
 #   hold       present while held; its text is the reason. `hold` writes it, then reads the lock; a
 #              waiter takes the lock, then looks for the file and gives the lock back if it is
-#              there. So a start either backs off or is the `running:` line `hold` prints.
+#              there. So a start that began before the file existed either backs off or is the
+#              `running:` line `hold` prints; the start that line names may still back off.
 #   logs/      gate-<label>.log, the whole output of a gate (other jobs print to stdout)
 #   done.log   one line per finished job: kind label exit start end head. head is the full
 #              40-character HEAD of the worktree, read at START only when `git status --porcelain`
@@ -119,7 +120,7 @@
 # caffeinate; a missing pmset means AC power, a missing caffeinate means none), and
 # KIKO_QUEUE_FORK_HOOK (a test-only program, empty in production, run with the queue's pid between
 # the fork of a job and the read of its pid), and KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS (the longest a
-# job of any class waits for the load, default 1200; the name is from when only a gate waited; a
+# job of any class waits for the load, default 1200; the name says gate and covers every class; a
 # value that is not a whole number is refused for a job command, exit 2).
 set -uo pipefail
 
@@ -506,10 +507,10 @@ acquire_lock() {
   ln -s "$(lock_record -)" "$LOCK_PATH" 2> /dev/null
   lock_code=$?
   # A hold written after this waiter's hold check and before its lock is seen here: the hold
-  # command writes the file and then reads the lock, so either it names this job or this start
-  # backs off.
+  # command writes the file and then reads the lock, so either this start backs off or the hold
+  # names its lock (and the start it names may still back off here).
   if [ "$lock_code" -eq 0 ] && [ -f "$HOLD_FILE" ]; then
-    holds_lock && rm -f "$LOCK_PATH"
+    rm -f "$LOCK_PATH"
     release_claim
     return 1
   fi

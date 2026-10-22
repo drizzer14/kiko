@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
+import { stepsFor } from './test-support/kill-guard-decide';
+
 // The wait-loop deny of scripts/checks/kill-guard.js: a `while` or `until`
 // loop that scans the process table (`ps`, `pgrep -f`) for make verify,
 // check:all, jest, stryker, semgrep, or xcodebuild matches its own command
@@ -166,26 +168,6 @@ describe('kill-guard.sh wait-loop deny (hook)', () => {
     expect(result.stdout.trim()).toBe('');
   });
 });
-
-const STEPS_SCRIPT = [
-  'const { decide } = require(process.argv[1]);',
-  'const workCounter = { steps: 0 };',
-  'const finding = decide(process.argv[2], { ...JSON.parse(process.argv[3]), workCounter });',
-  'process.stdout.write(JSON.stringify({',
-  '  decision: finding === null ? "allow" : finding.kind,',
-  '  steps: workCounter.steps,',
-  '}));',
-].join('\n');
-
-const stepsFor = (
-  command: string,
-  options: Record<string, unknown> = {},
-): { decision: string; steps: number } =>
-  JSON.parse(
-    spawnSync('node', ['-e', STEPS_SCRIPT, GUARD, command, JSON.stringify(options)], {
-      encoding: 'utf8',
-    }).stdout,
-  );
 
 // The guard runs on every Bash call, so the scan must stay linear. The guard's own scan steps are
 // counted instead of a clock read: the wait-loop scan at most doubles the work the guard does

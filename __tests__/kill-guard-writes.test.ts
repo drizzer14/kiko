@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
+import { stepsFor } from './test-support/kill-guard-decide';
+
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
 // writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, .claude/skills/,
 // .claude/agents/, or harness/kiko/ of any worktree of this repository, or into a YAML file
@@ -72,25 +74,9 @@ const decide = (command: string, options: Record<string, unknown> = {}): string 
 
 const decideInMain = (command: string): string => decide(command, { cwd: MAIN });
 
-const STEPS_SCRIPT = [
-  'const { decide } = require(process.argv[1]);',
-  'const workCounter = { steps: 0 };',
-  'const finding = decide(process.argv[2], { ...JSON.parse(process.argv[3]), workCounter });',
-  'process.stdout.write(JSON.stringify({',
-  '  decision: finding === null ? "allow" : finding.kind,',
-  '  steps: workCounter.steps,',
-  '}));',
-].join('\n');
-
 // The guard's own scan steps for one command judged in main, instead of a clock reading.
 const judgedInMain = (command: string): { decision: string; steps: number; length: number } => ({
-  ...JSON.parse(
-    spawnSync(
-      'node',
-      ['-e', STEPS_SCRIPT, GUARD, command, JSON.stringify({ projectRoot: MAIN, cwd: MAIN })],
-      { encoding: 'utf8' },
-    ).stdout,
-  ),
+  ...stepsFor(command, { projectRoot: MAIN, cwd: MAIN }),
   length: command.length,
 });
 

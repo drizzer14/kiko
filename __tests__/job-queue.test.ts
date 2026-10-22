@@ -1820,10 +1820,10 @@ describe('scripts/job-queue.sh battery power', () => {
   });
 });
 
-// A gate at the head of the queue waits while the 5-minute load is at or above its start limit
-// (10), for at most KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS (1200 s in production), then starts anyway.
-// Only a gate defers: a gate's first mutants time out on drift between its dry run and its run.
-describe('scripts/job-queue.sh gate start load defer', () => {
+// A job of any class (verify, check-all, security, gate) at the head of the queue waits while the
+// 5-minute load is at or above its start limit (10), for at most KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS
+// (1200 s in production), then starts anyway.
+describe('scripts/job-queue.sh start load defer', () => {
   const stubLoad = (sandbox: Sandbox, high: string, highCalls: number): void => {
     writeSysctlStub(join(sandbox.root, 'bin'), high, LOW_LOAD, highCalls);
     warmExecutables([join(sandbox.root, 'bin/sysctl')]);
