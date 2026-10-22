@@ -336,6 +336,7 @@ describe('scripts/checks/permission-doctor.sh: a rule ending at the .claude fold
       expect(result.status).toBe(2);
       expect(blockOf(result)).toContain('partly protected');
       expect(blockOf(result)).not.toContain('.claude.md');
+      expect(blockOf(result)).toContain('"fix"');
       expect(blockOf(result)).not.toContain('"remove"');
     },
   );
@@ -361,7 +362,32 @@ describe('scripts/checks/permission-doctor.sh: bracket classes in a folder segme
 
     const result = runDoctor();
 
+    expect(blockOf(result)).toContain('partly protected');
     expect(blockOf(result)).not.toContain('"remove"');
+  });
+});
+
+// A trailing slash names the folder, so the suggestion narrows to its Markdown files and never
+// appends a bare `.md` segment after the slash.
+describe('scripts/checks/permission-doctor.sh: a trailing-slash folder rule', () => {
+  it.each([
+    ['agent-memory/', 'Edit(~/.claude/agent-memory/**/*.md)'],
+    ['projects/**/memory/', 'Edit(~/.claude/projects/*/memory/**/*.md)'],
+  ])('suggests the Markdown form for %s', (tail, narrowed) => {
+    writeSettings([`Edit(~/.claude/${tail})`]);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).toContain(`"with":${JSON.stringify(narrowed)}`);
+    expect(blockOf(result)).not.toContain('/.md"');
+  });
+
+  it('never suggests a /.md segment for Edit(~/.claude/projects/p/memory/)', () => {
+    writeSettings(['Edit(~/.claude/projects/p/memory/)']);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).not.toContain('/.md"');
   });
 });
 
