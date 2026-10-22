@@ -34,7 +34,8 @@ Rules:
   On that failure, split the run into smaller change sets — never raise
   the cap.
   If `npm ci` in a gate scratch prints that install scripts were not run, the patch is NOT
-  applied (patch-package runs from `postinstall` and exits 0 on a failed apply): run
+  applied (patch-package runs from `postinstall` with `--error-on-fail`, so a failed apply fails
+  `npm ci`, but a skipped `postinstall` applies nothing): run
   `npx patch-package` and confirm the `@stryker-mutator/jest-runner@8.7.1` line, or let the
   mutation.sh preflight exit 2. Never start a gate without the marker.
 - A running gate can be paused with `kill -STOP` on its own pids (the
