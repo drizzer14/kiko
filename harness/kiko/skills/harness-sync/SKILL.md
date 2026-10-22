@@ -35,9 +35,14 @@ in the harness repo):
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
 - H8 generic ports (pff-ios branch harness-h8): the TIMEOUT-HEAVY rerun inside the mutation gate
   (`mutation.sh`, `mutation-score.js --rerun-candidates`, `mutation-rerun.js`); the gate start
-  defer on load in `job-queue.sh`; the `ff-main.sh` rule refusing a plugin.json version
-  decrease, removal or unreadable version; the `knip-ignore-documented` pin suite
-  (`__tests__/knip-ignore-documented.test.ts`).
+  defer on load in `job-queue.sh` (every job class, one cap); the `ff-main.sh` rule refusing a
+  plugin.json version decrease, removal or unreadable version; the `knip-ignore-documented` pin
+  suite (`__tests__/knip-ignore-documented.test.ts`).
+- H10 task 2 generic ports (check against harness HEAD before porting; the trie and the step
+  counter are already in the harness): the main-move forms of `kill-guard-main-moves.js` (a pull
+  and an exported or `-c` fetch refspec into main, a linked worktree put onto main); the
+  `job-queue.sh` `hold` `running:` line, the `status` read order and the load-wait fix; the
+  `kill-guard.sh` EXIT trap on its stderr temp file; the harness `32913f8` status change.
 - H9 generic port: the Stryker jest-runner exact-Set patch (`patches/@stryker-mutator+jest-runner+
   8.7.1.patch`, `__tests__/stryker-jest-runner-patch.test.ts`, the `mutation.sh` patched-runner
   preflight, and the `docs/harness/dependency-hygiene.md` "Standing patch" section). The

@@ -283,10 +283,12 @@ Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queu
 serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
 load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
 agent until RESUME, and a RESUME names its limits (one agent, targeted jest with
-`--maxWorkers=2`). The one exception is built into the queue: a gate at the head waits while
-the 5-minute load is at the limit, for at most the maximum wait (`GATE_START_MAX_LOAD`,
-`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`), then
-starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. A
+`--maxWorkers=2`). The one exception is built into the queue: a job of every class (verify,
+check-all, security, gate) at the head waits while the 5-minute load is at the limit, for at most
+`KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS` (default 1200; the one cap for every class, no alias;
+`GATE_START_MAX_LOAD`, `GATE_START_MAX_WAIT` in `scripts/job-queue.sh`), with one WAITING line,
+then starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. An unknown
+load prints a NOTE and does not defer. A
 TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
 `docs/harness/checks.md`). Do not
 add your own limit. Never run a whole-repo semgrep, a full jest run, or stryker outside
@@ -320,16 +322,19 @@ the repo-relative finding sets; the first finding sits on the `DETAILS:` line. S
 then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a
 `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold
 <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status`
-shows the hold, the power state, the running job, and the tickets. On battery NO job of any class
-starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
-too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit
-2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Queue
-from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch: the queue
-directory's `format` stamp makes an older copy refuse with exit 2, and a copy that differs from the
-target worktree's own script prints a WARNING. Closing a session kills its queue waiters: the next
-waiter that prunes a dead waiter's ticket writes one `lost` done.log line, and a reclaimed dead
-lock writes a lock-form `lost` line (its job may have run fully). At handover or
-close run `scripts/job-queue.sh status`, re-queue or hand over your own tickets. Keep
+shows the hold, the power state, the running job, and the tickets (it reads the tickets before
+the lock). `hold` stops no running job: for one that holds the lock it prints a `running:` line,
+and a start racing the hold backs off, the one that line names included. On battery NO job of any
+class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power
+state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list`
+("merge main first", exit 2) and a moved HEAD (exit 3); the queue never checks out files (the
+old H6 overlay is gone). Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a
+copy from another branch: the queue directory's `format` stamp makes an older copy refuse with
+exit 2, and a copy that differs from the target worktree's own script prints a WARNING.
+Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's ticket
+writes one `lost` done.log line, and a reclaimed dead lock writes a lock-form `lost` line (its
+job may have run fully). At handover or close run `scripts/job-queue.sh status`, re-queue or
+hand over your own tickets. Keep
 `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm ->
 bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all
 or verify reads the worktree throughout the run; never queue one while a developer still edits that

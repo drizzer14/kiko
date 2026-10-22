@@ -106,7 +106,8 @@ Composite scripts:
   MISSING TEST. Never raise the timeout; there is no allowlist file. A queued gate
   (`scripts/job-queue.sh gate`) prints, after the gate-log summary lines and before the DONE
   line, each `TIMEOUT-HEAVY` line of the gate log once, so the waiter's output shows the
-  ruling. The mutation step tees its output to a
+  ruling. A queued job of any class may wait for low load first: see "The in-repo job queue" in
+  `docs/harness/checks-internals.md`. The mutation step tees its output to a
   stable, tailable progress log and prints an ETA from run history (shared by all
   worktrees) — a split of normal-mutant cost and the timeout share at a fitted
   timed-out cost, times this run's actual mutant count, printed live the moment

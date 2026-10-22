@@ -278,13 +278,22 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `scripts/ff-main.sh`). Source: `scripts/checks/kill-guard-main-moves.js` (`mainMoveTarget`;
   `mainMoveFinding` in `kill-guard.js` calls it), rows in `__tests__/kill-guard-main-moves.test.ts`.
   Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
-  move the branch of the work tree they run in, so they count only against the main checkout;
+  move the branch of the work tree they run in, so they count against the main checkout and
+  against a linked worktree whose HEAD names `main` (`headNamesMain`);
   `git reset --soft HEAD~1` there is denied (user ruling: "any reset that moves HEAD of
   main"), while `--hard` with no commit (or `HEAD`/`@`) and a `-- <path>` reset stay allowed.
   A command that
   writes the ref by name (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`,
-  `fetch`/`push` into it, `symbolic-ref refs/heads/main`, `worktree add -B`) counts from ANY
-  worktree of this repository, since all worktrees share the refs. In both scopes a place the text
+  `fetch`/`pull`/`push` into it, `symbolic-ref refs/heads/main`, `worktree add -B`) counts from
+  ANY worktree of this repository, since all worktrees share the refs; a `pull` runs
+  `fetch --update-head-ok`. A fetch or pull counts too when a `remote.<n>.fetch` refspec from
+  `-c`, `--config-env` (value unseen, so it counts) or `GIT_CONFIG_*` can write `main`; an
+  `export` or bare assignment of such a refspec is denied by itself
+  (`environmentFetchWritesMain`), as one for core.hooksPath is. A command that puts a linked
+  worktree onto `main` (`symbolic-ref HEAD <main ref>`, `checkout|switch
+  --ignore-other-worktrees main`, `worktree add -f` onto `main`) is a main move, since a reset
+  there then moves it. The header of `kill-guard-main-moves.js` is the full list.
+  In both scopes a place the text
   cannot name (a `-C` or `cd` target held in a variable, a relative one with no payload `cwd`,
   or a plain command with no `-C` and no `cwd`) fails closed, even when the command assigns the
   variable (the "an assignment can only ADD a deny" invariant below). An unrelated repository
@@ -487,7 +496,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   or in another loop, never counts. The
   walk runs at every nesting level the other denies reach (a `-c`
   string, a span, a heredoc body, `eval`), once per segment (linear;
-  `__tests__/kill-guard-wait-loops.test.ts` has the timing rows). Reason:
+  `__tests__/kill-guard-wait-loops.test.ts` has the step-count rows, `stepsFor`). Reason:
   the standard WHAT/DETAILS/WHY/HOW/DO-NOT block; HOW points to
   `bash scripts/wait-load.sh <load> <timeout>` (chain it with `&&`) for
   a load wait, and to the tool's own `run_in_background` and its exit
@@ -586,7 +595,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   The `internalError` kind: `decide` fails closed, so an error thrown while judging returns an
   `internalError` finding (`INTERNAL_ERROR_REASON_LINES`) and the command is denied. A
   malformed or unreadable payload, an empty command, and a missing node still allow.
-  `kill-guard.sh` exits 0 always and denies through its JSON, also when judging crashed.
+  `kill-guard.sh` exits 0 always and denies through its JSON, also when judging crashed. An EXIT
+  trap removes its stderr temp file, so a signalled run strands no file.
   A load failure is not an `internalError` finding: when node runs but `kill-guard.js` cannot
   load (missing sibling module, syntax error, any non-zero node exit, a signal), the wrapper
   itself prints a deny ("kill-guard could not load ..."); its DETAILS line names node's status
@@ -727,10 +737,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     folder that aliases main's through a symlink, firmlink or `commondir` (compared as text;
     gap 20261021T0832-kiko-harness-h10/1), `--git-dir=~/x` (the guard reads `~` as the home
     folder, `HOME_PREFIX` in `resolveDirectory`; the shell leaves `~` as is after `--git-dir=`
-    and git reads `<cwd>/~/x`), a `-c remote.<n>.fetch` refspec into main (open, gap
-    20261021T0832-kiko-harness-h10/2: nothing reads it) and a linked worktree whose
-    `symbolic-ref HEAD refs/heads/main` is allowed, then a reset (open, gap
-    20261021T0832-kiko-harness-h10/3). Script scan: `cat f | bash`, a script path in a
+    and git reads `<cwd>/~/x`), `git config remote.<n>.fetch <refspec into main>` (not
+    judged), a key held in a variable (`GIT_CONFIG_KEY_0=$K`), `git -c "$X" fetch -u`, a value
+    option before `--ignore-other-worktrees`, and a linked worktree whose HEAD file cannot be
+    read (allowed). Script scan: `cat f | bash`, a script path in a
     variable. Over-denied: `isInsideProjectWorktree` matches any prefix folder that is a
     project worktree, so a reset in a repository nested in main's folder and a ref-name move of
     main in a repository nested in ANY worktree are denied; and a `-C`/`cd` target held in a
@@ -3108,8 +3118,10 @@ mechanizable (see harness-workflow's "Classify every finding").
    - A guard test proves concurrency or speed by counting work or by a
      file rendezvous between stubs, never by a clock. The invariant
      `__tests__/guard-tests-no-wall-clock.test.ts` fails a clock reading
-     in a pre-write-guard test; read its `CLOCK_READINGS` for the banned
-     forms. It fails every `Date.now()` read in a guard test, a
+     in a pre-write-guard or kill-guard test; read its `CLOCK_READINGS` for the banned
+     forms. A kill-guard test counts work with `options.workCounter` (`{ steps }`, test-only,
+     `decide` only) through `stepsFor` in `__tests__/test-support/kill-guard-decide.ts`.
+     It fails every `Date.now()` read in a guard test, a
      `${Date.now() - start}` delta included, and also `Date.now` without a
      call, `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
      A unique temporary name comes from `createTemporaryDirectory(prefix)`,
