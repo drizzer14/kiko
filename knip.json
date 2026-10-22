@@ -24,6 +24,7 @@
     "scripts/checks/guard-replay.js",
     "scripts/checks/shipped-migrations.js",
     "scripts/checks/closure-table.js",
+    "scripts/checks/permission-doctor.js",
     "scripts/checks/deps-ranges.js",
     "scripts/checks/mutation-score.js",
     "scripts/checks/mutation-rerun.js",

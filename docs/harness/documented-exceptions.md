@@ -324,6 +324,13 @@ verified usage, not dead weight:
   so Knip reports it as unused. Exercised by `__tests__/closure-table.test.ts`,
   which runs the script as a subprocess in a throwaway git repository, not an
   import.
+- **`knip.json` `ignore`**: `scripts/checks/permission-doctor.js` — the same
+  shape as `closure-table.js` above. `scripts/checks/permission-doctor.sh`
+  (`check:permissions`, run by hand against the user's permission settings, not
+  part of `check:all`) reaches it only via a `node` invocation, never a static
+  `import`/`require`, so Knip reports it as unused. Exercised by
+  `__tests__/permission-doctor.test.ts`, which runs the script as a subprocess
+  against a temporary HOME and `CLAUDE_CONFIG_DIR`, not an import.
 - **`knip.json` `ignore`**: `scripts/checks/comment-only-changes.js` — the
   same shape as `shipped-migrations.js` above. `scripts/checks/mutation.sh`
   reaches it only via a `node` invocation, never a static `import`/`require`,
