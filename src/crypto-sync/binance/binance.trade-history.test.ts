@@ -1,4 +1,3 @@
-import type { HoldingRow } from '@kiko/db';
 import {
   type ExchangeStatePatch,
   exchangeStatePatched,
@@ -14,6 +13,7 @@ import {
 import { COSTS, createBinanceHistoryRun } from './binance.history-budget';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BinanceInvalidSymbolError, BinanceRateLimitError } from './binance.client';
+import { fillOf, fillsBetween, holdingWith, listed } from './binance.trade-test-fixtures';
 import { type BinanceTradeHistoryDeps, syncBinanceTradeHistory } from './binance.trade-history';
 
 type Deps = BinanceTradeHistoryDeps;
@@ -21,7 +21,6 @@ type Deps = BinanceTradeHistoryDeps;
 type StoredRow = Parameters<Deps['addTransactions']>[0][number];
 
 const NOW = 1_704_326_400_000;
-const FIRST_FILL_AT = 1_700_000_000_000;
 const PAGE_LIMIT = 3;
 const FAILURE_TAG = '[binance sync] trade symbol failed';
 const HELD_KEYS = ['BTC', 'ETH', 'BNB', 'USDT'];
@@ -42,42 +41,6 @@ const ORDER_B = 200;
 const ORDER_X = 300;
 
 let accountSequence = 0;
-
-const fillOf = (
-  id: number,
-  orderId: number,
-  over: Partial<BinanceMyTrade> = {},
-): BinanceMyTrade => ({
-  id,
-  orderId,
-  qty: '0.01',
-  quoteQty: '600',
-  commission: '0',
-  commissionAsset: 'BTC',
-  isBuyer: true,
-  time: FIRST_FILL_AT + id,
-  ...over,
-});
-
-const fillsBetween = (
-  orderId: number,
-  first: number,
-  last: number,
-  over: Partial<BinanceMyTrade> = {},
-): BinanceMyTrade[] =>
-  Array.from({ length: last - first + 1 }, (_unused, offset) =>
-    fillOf(first + offset, orderId, over),
-  );
-
-const listed = (
-  symbol: string,
-  baseAsset: string,
-  quoteAsset: string,
-  status = 'TRADING',
-): BinanceExchangeSymbol => ({ symbol, status, baseAsset, quoteAsset });
-
-const holdingWith = (key: string): HoldingRow =>
-  ({ id: `holding-${key}`, metadata: { binanceAsset: key } }) as unknown as HoldingRow;
 
 type WorldSeed = {
   listing?: BinanceExchangeSymbol[];

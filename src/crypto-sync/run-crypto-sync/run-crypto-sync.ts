@@ -17,6 +17,7 @@ import {
   syncBinancePayHistory,
   syncBinanceTransactions,
   syncBinanceConvertHistory,
+  syncBinanceTradeHistory,
   syncBinanceTransferHistory,
 } from '../binance';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
@@ -36,6 +37,7 @@ const sleep = (milliseconds: number): Promise<void> =>
 const runBinanceHistoryWalks = async (
   targetAccountId: string,
   run: BinanceHistoryRun,
+  spotBalanceTexts: BalanceSyncResult['spotBalanceTexts'],
 ): Promise<void> => {
   // Read once, for the whole run: a state this build cannot read is no state a walk can write
   // to, so every walk would start from its floor again on every run. A read that fails is
@@ -69,14 +71,18 @@ const runBinanceHistoryWalks = async (
   await logOnFailure('[binance sync] convert history failed', () =>
     syncBinanceConvertHistory({ targetAccountId, run }),
   );
-  // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too.
   await logOnFailure('[binance sync] dust history failed', () =>
     syncBinanceDustHistory({ targetAccountId, run }),
+  );
+  // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too, and
+  // with the Spot texts of this run's balance read, which decide the order it reads symbols in.
+  await logOnFailure('[binance sync] trade history failed', () =>
+    syncBinanceTradeHistory({ targetAccountId, run, spotBalanceTexts }),
   );
 };
 
 const runBinanceSyncAndImport = async (targetAccountId: string): Promise<BalanceSyncResult> => {
-  const { syncedHoldings, exchangeState } = await runBalanceSync(
+  const { syncedHoldings, exchangeState, spotBalanceTexts } = await runBalanceSync(
     binanceProvider,
     defaultBinanceDeps,
     { targetAccountId },
@@ -100,7 +106,7 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
   // be read — must NOT fail the balance sync, so it is only logged. The balance result is
   // returned regardless.
   await logOnFailure('[binance sync] walk state read failed', () =>
-    runBinanceHistoryWalks(targetAccountId, run),
+    runBinanceHistoryWalks(targetAccountId, run, spotBalanceTexts),
   );
 
   return { syncedHoldings };
