@@ -6,6 +6,7 @@
 #   job-queue.sh verify|check-all|security <worktree> <label>
 #   job-queue.sh gate <worktree> <label> <mutation-base> <expected-head> [--long]
 #   job-queue.sh hold <reason>    stop every start until `release`; running jobs are not stopped
+#                                 (one holding the lock when `hold` returns is named on stdout)
 #   job-queue.sh release
 #   job-queue.sh status           the hold, the power state, the running job, the queued tickets
 # A label holds only letters, digits, dot, underscore, and dash.
@@ -17,7 +18,9 @@
 #              without its owner
 #   claim      a symlink whose target text is a pid; held for the milliseconds that check, remove,
 #              and create the lock, so two waiters never remove each other's fresh lock
-#   hold       present while held; its text is the reason
+#   hold       present while held; its text is the reason. `hold` writes it, then reads the lock; a
+#              waiter takes the lock, then looks for the file and gives the lock back if it is
+#              there. So a start either backs off or is the `running:` line `hold` prints.
 #   logs/      gate-<label>.log, the whole output of a gate (other jobs print to stdout)
 #   done.log   one line per finished job: kind label exit start end head. head is the full
 #              40-character HEAD of the worktree, read at START only when `git status --porcelain`
@@ -226,7 +229,7 @@ warn_short_done_lines() {
 }
 
 queue_status() {
-  local busy=0 ticket power
+  local busy=0 ticket power tickets
   if [ -f "$HOLD_FILE" ]; then
     printf 'hold: %s\n' "$(head -1 "$HOLD_FILE")"
   fi
@@ -234,11 +237,15 @@ queue_status() {
   if [ -n "$power" ]; then
     printf '%s: no job starts\n' "$power"
   fi
+  # The tickets are read before the lock: a waiter removes its ticket only after it holds the lock,
+  # so a job that moves from queued to running between the two reads shows as running, never as
+  # neither.
+  tickets="$(ticket_names)"
   if [ -L "$LOCK_PATH" ]; then
     busy=1
     printf 'running: %s\n' "$(readlink "$LOCK_PATH")"
   fi
-  for ticket in $(ticket_names); do
+  for ticket in $tickets; do
     busy=1
     printf 'queued: %s\n' "$ticket"
   done
@@ -277,6 +284,10 @@ case "$command_name" in
     shift
     mkdir -p "$QUEUE_DIRECTORY"
     printf '%s\n' "$*" > "$HOLD_FILE"
+    # Read after the write: a start that took the lock before the file existed is named here.
+    if [ -L "$LOCK_PATH" ]; then
+      printf 'running: %s (a hold does not stop a running job)\n' "$(readlink "$LOCK_PATH")"
+    fi
     exit 0
     ;;
   release)
@@ -491,6 +502,14 @@ acquire_lock() {
   fi
   ln -s "$(lock_record -)" "$LOCK_PATH" 2> /dev/null
   lock_code=$?
+  # A hold written after this waiter's hold check and before its lock is seen here: the hold
+  # command writes the file and then reads the lock, so either it names this job or this start
+  # backs off.
+  if [ "$lock_code" -eq 0 ] && [ -f "$HOLD_FILE" ]; then
+    holds_lock && rm -f "$LOCK_PATH"
+    release_claim
+    return 1
+  fi
   release_claim
   [ "$lock_code" -eq 0 ]
 }
