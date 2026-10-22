@@ -4,20 +4,22 @@
 #
 # Usage: bash scripts/log-event.sh "<event text>"      (one argument, the whole line; no option)
 #
-# The script stamps the time itself from `date +%H:%M` and writes `- HH:MM <event text>`. A leading
-# `- HH:MM ` the caller typed is replaced by the current time and one stderr note names both times,
-# because a time typed from memory is the bug this script removes; a leading `- ` with no time is
-# only stamped. There is no way to pass a time. No argument, an empty line (or one that is empty
-# once a leading stamp is removed) and a newline inside the line print a failure block and exit 2,
+# The script stamps the time itself from `date +%H:%M` and always writes `- HH:MM <event text>`. A
+# leading time the caller typed (`- 09:15 `, `- 9:15 `, `09:15 `) is replaced by the current time
+# and one stderr note names both times, because a time typed from memory is the bug this script
+# removes; a leading `- ` with no time is only stamped, and a time that does not lead the event is
+# text. There is no way to pass a time. No argument, an empty line (or one that is empty once a
+# leading time is removed) and a newline inside the line print a failure block and exit 2,
 # appending and pushing nothing.
 #
 # The log and the Status handle live in the MAIN checkout, the first `worktree` entry of
 # `git worktree list --porcelain` of this script's own repository (as scripts/ff-main.sh finds it),
-# so a run from a linked worktree never creates a memory folder there. A missing handle file, an
-# empty one, or a failed push logs the line, names the cause on stderr and exits 1.
+# so a run from a linked worktree never creates a memory folder there. A missing memory/refs
+# folder (the append fails, nothing is pushed), a missing handle file, an empty one, or a failed
+# push exits 1 with the cause on stderr; all but the first log the line.
 #
-# memory/refs/log-event.sh (gitignored, main checkout only) becomes an `exec` shim to this script;
-# the coordinator does that, and the callers keep their command line.
+# memory/refs/log-event.sh (gitignored, main checkout only) may `exec` this script, so callers
+# keep their command line.
 set -uo pipefail
 
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,7 +29,7 @@ source "$SCRIPT_DIRECTORY/checks/_lib.sh"
 CHECK_NAME='log-event.sh'
 LOG_NAME='night-summary-2026-10-17.md'
 HANDLE_NAME='status-terminal.txt'
-STAMP_PATTERN='^-[[:space:]]+([0-9][0-9]:[0-9][0-9])([[:space:]]+(.*))?$'
+STAMP_PATTERN='^(-[[:space:]]+)?([0-9]{1,2}:[0-9][0-9])([[:space:]]+(.*))?$'
 DASH_PATTERN='^-[[:space:]]+(.*)$'
 
 # fail <what> <details> <why> <how to fix>
@@ -59,8 +61,8 @@ esac
 event="$line"
 passed_time=''
 if [[ "$line" =~ $STAMP_PATTERN ]]; then
-  passed_time="${BASH_REMATCH[1]}"
-  event="${BASH_REMATCH[3]}"
+  passed_time="${BASH_REMATCH[2]}"
+  event="${BASH_REMATCH[4]}"
 elif [[ "$line" =~ $DASH_PATTERN ]]; then
   event="${BASH_REMATCH[1]}"
 fi

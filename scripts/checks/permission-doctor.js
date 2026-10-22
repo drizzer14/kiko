@@ -18,12 +18,24 @@
 //                   protected directory (.git, .claude, .husky, ...) or is a protected file
 //                   (.npmrc, ...). Writes there are never auto-approved, so the rule can never
 //                   pre-approve one. "Allow rules apply only when both the requested path and
-//                   the file it resolves to match": the path is checked as written and after
-//                   resolving symlinks (the deepest existing parent, then the rest appended),
-//                   and a glob segment is expanded against the folder listing. The documented
-//                   exceptions pass: .claude/worktrees/, .claude/plans/, .claude/jobs/<id>/tmp/,
-//                   and Markdown files in .claude/projects/<project>/memory/ or
-//                   .claude/agent-memory/.
+//                   the file it resolves to match": the literal prefix of the rule (the part
+//                   before its first glob segment) is checked as written and after resolving
+//                   symlinks (the deepest existing parent, then the rest appended); a glob is
+//                   never expanded against the folder listing, because a glob can match more
+//                   than the folders that exist. The documented exceptions pass:
+//                   <home>/.claude/plans/ (the session's plan files),
+//                   <home>/.claude/jobs/<id>/tmp/, .claude/worktrees/, and, in a session started
+//                   without --restricted, Markdown files in
+//                   <home>/.claude/projects/<project>/memory/ (the memory folder directly under
+//                   the project folder) or .claude/agent-memory/. The plans, jobs and projects
+//                   exceptions are anchored to <home>/.claude, a copy of those folder names
+//                   elsewhere is protected.
+//   partly protected path
+//                   A rule of that kind whose glob can still match an exception and also paths
+//                   that are never pre-approved (".claude/projects/**/memory/**"). It is not
+//                   removed: the suggestion replaces it with the Markdown form
+//                   (".../memory/**/*.md") when that form is fully excepted, and otherwise asks
+//                   for a hand narrowing.
 //   path form       In a user settings file a Read, Edit, Write or NotebookEdit rule with one
 //                   leading slash whose literal folder exists at the filesystem root. "/path" is
 //                   relative to the settings source and "//path" is the absolute path, so the
@@ -33,7 +45,9 @@
 //
 // Known limits: Bash rules are not judged. A relative rule ("/x", "./x", "x") in a user settings
 // file has no known base and is skipped for the protected-path finding. A rule with no literal
-// leading folder ("**/.claude/**") is skipped. A project settings file's relative rule is read
+// leading folder ("**/.claude/**") is skipped, and only the literal prefix is judged for a
+// protected folder ("~/repo/*/.git/**" is not). A glob in the project slot of
+// projects/<project>/memory is read as one folder. A project settings file's relative rule is read
 // against that project's root, which is the documented base only for "/x". Managed settings,
 // additionalDirectories and --plugin-dir are not read.
 //
@@ -78,7 +92,16 @@ const PROTECTED_FILES = [
 const RULE_PATTERN = /^([A-Za-z]+)\(([\s\S]*)\)$/;
 const GLOB_PATTERN = /[*?[]/;
 const MARKDOWN_PATTERN = /\.md$/i;
-const EXPANSION_LIMIT = 200;
+const ANY_FOLDER = '*';
+// The documented exceptions under a .claude folder, as the folder names that lead to the excepted
+// files. Plans, jobs and projects are the ones under <home>/.claude, so they only count there.
+const EXCEPTION_FOLDERS = [
+  { anchored: false, prefix: ['worktrees'], markdown: false },
+  { anchored: true, prefix: ['plans'], markdown: false },
+  { anchored: true, prefix: ['jobs', ANY_FOLDER, 'tmp'], markdown: false },
+  { anchored: false, prefix: ['agent-memory'], markdown: true },
+  { anchored: true, prefix: ['projects', ANY_FOLDER, 'memory'], markdown: true },
+];
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -238,147 +261,216 @@ function absolutePattern(pattern, root) {
   return root === undefined ? undefined : splitSegments(`${root}/${pattern}`);
 }
 
-function globExpression(segment) {
-  const source = segment
-    .replace(/[.+^${}()|\\]/g, '\\$&')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]');
+function splitLiteralPrefix(segments) {
+  const globIndex = segments.findIndex((segment) => GLOB_PATTERN.test(segment));
+  const literalCount = globIndex === -1 ? segments.length : globIndex;
 
-  return new RegExp(`^${source}$`);
+  return { literal: segments.slice(0, literalCount), rest: segments.slice(literalCount) };
 }
 
-function listDirectory(directory) {
-  try {
-    return fs.readdirSync(directory);
-  } catch {
-    return [];
-  }
+function sameSegments(left, right) {
+  return left.length === right.length && left.every((name, index) => name === right[index]);
 }
 
-function expand(literal, segments, budget) {
-  const literalCount = segments.findIndex((segment) => GLOB_PATTERN.test(segment));
+// A glob segment can match a name when the characters around its globs fit the name. A bracket
+// class gives no fixed tail, so only the head is compared then. Too generous is the safe error:
+// the rule is then reported as partly protected, never as one to remove.
+function globTail(segment) {
+  return segment.includes('[') ? '' : segment.slice(segment.search(/[^*?]*$/));
+}
 
-  if (literalCount === -1) {
-    return [{ literal: [...literal, ...segments], rest: [] }];
+function segmentCanBe(segment, name) {
+  if (!GLOB_PATTERN.test(segment)) {
+    return segment === name;
   }
 
-  const base = [...literal, ...segments.slice(0, literalCount)];
-  const rest = segments.slice(literalCount);
+  const head = segment.slice(0, segment.search(GLOB_PATTERN));
+  const tail = globTail(segment);
 
-  if (rest[0].includes('**') || budget.remaining <= 0) {
-    return [{ literal: base, rest }];
-  }
+  return name.length >= head.length + tail.length && name.startsWith(head) && name.endsWith(tail);
+}
 
-  const expression = globExpression(rest[0]);
-  const matches = listDirectory(joinSegments(base)).filter((entry) => expression.test(entry));
+function canBeMarkdown(segment) {
+  return GLOB_PATTERN.test(segment)
+    ? '.md'.endsWith(globTail(segment).toLowerCase()) || MARKDOWN_PATTERN.test(globTail(segment))
+    : MARKDOWN_PATTERN.test(segment);
+}
 
-  if (matches.length === 0) {
-    return [{ literal: base, rest }];
-  }
+function prefixFits(after, prefix, strict) {
+  return prefix.every((name, index) => {
+    const segment = after[index];
 
-  return matches.flatMap((entry) => {
-    budget.remaining -= 1;
+    if (segment === undefined) {
+      return false;
+    }
 
-    return expand([...base, entry], rest.slice(1), budget);
+    return name === ANY_FOLDER || (strict ? segment === name : segmentCanBe(segment, name));
   });
 }
 
-function isMarkdownTarget(segments) {
-  return MARKDOWN_PATTERN.test(segments[segments.length - 1] ?? '');
+function matchesExceptionFolder(after, folder, strict) {
+  // A "**" in a named slot can span the folders in between, so the slots behind it are unknown.
+  const hiddenAt = strict
+    ? -1
+    : folder.prefix.findIndex((name, index) => name !== ANY_FOLDER && after[index] === '**');
+
+  if (hiddenAt !== -1) {
+    return prefixFits(after, folder.prefix.slice(0, hiddenAt), false);
+  }
+
+  if (!prefixFits(after, folder.prefix, strict)) {
+    return false;
+  }
+
+  const last = after[after.length - 1];
+
+  if (strict) {
+    return !folder.markdown || (after.length > folder.prefix.length && MARKDOWN_PATTERN.test(last));
+  }
+
+  return after.length > folder.prefix.length && (!folder.markdown || canBeMarkdown(last));
 }
 
-function isExemptClaudeDirectory(after) {
-  const [first, , third] = after;
+// 'exempt': every file the rule names is an exception. 'partial': the glob can reach an
+// exception and other files. 'none': no exception can match.
+function exceptionVerdict(after, anchored) {
+  const folders = EXCEPTION_FOLDERS.filter((folder) => anchored || !folder.anchored);
 
-  if (first === 'worktrees' || first === 'plans') {
-    return true;
+  if (folders.some((folder) => matchesExceptionFolder(after, folder, true))) {
+    return 'exempt';
   }
 
-  if (first === 'jobs') {
-    return third === 'tmp';
-  }
-
-  if (first === 'agent-memory') {
-    return after.length > 1 && isMarkdownTarget(after);
-  }
-
-  if (first === 'projects') {
-    const memoryIndex = after.indexOf('memory', 2);
-
-    return memoryIndex !== -1 && memoryIndex < after.length - 1 && isMarkdownTarget(after);
-  }
-
-  return false;
+  return folders.some((folder) => matchesExceptionFolder(after, folder, false))
+    ? 'partial'
+    : 'none';
 }
 
-function protectedName(segments, literalCount, configSegments) {
-  const literal = segments.slice(0, literalCount);
-
-  for (let index = 0; index < literal.length; index += 1) {
-    const name = literal[index];
-
-    if (name === '.config' && literal[index + 1] === 'git') {
-      return '.config/git';
-    }
-
-    if (PROTECTED_DIRECTORIES.includes(name)) {
-      if (name !== '.claude' || !isExemptClaudeDirectory(segments.slice(index + 1))) {
-        return name;
-      }
-    }
+function directoryVerdict(segments, index, context) {
+  if (segments[index] !== '.claude') {
+    return 'none';
   }
 
+  const anchored = context.anchors.some((anchor) => sameSegments(anchor, segments.slice(0, index)));
+
+  return exceptionVerdict(segments.slice(index + 1), anchored);
+}
+
+function protectedFileName(segments, literalCount, configSegments) {
   const last = segments[segments.length - 1];
 
   if (literalCount === segments.length && PROTECTED_FILES.includes(last)) {
     return last;
   }
 
+  const literal = segments.slice(0, literalCount);
   const developmentModifications = [...configSegments, 'dev-mods'];
 
-  if (
-    configSegments.length > 0 &&
+  return configSegments.length > 0 &&
     developmentModifications.every((name, index) => literal[index] === name)
-  ) {
-    return 'dev-mods';
-  }
-
-  return undefined;
+    ? 'dev-mods'
+    : undefined;
 }
 
-function protectedPathReason(pattern, root, configSegments) {
+function protectedName(segments, literalCount, context) {
+  let partial;
+
+  for (let index = 0; index < literalCount; index += 1) {
+    const name = segments[index];
+
+    if (name === '.config' && index + 1 < literalCount && segments[index + 1] === 'git') {
+      return { name: '.config/git', partial: false };
+    }
+
+    if (PROTECTED_DIRECTORIES.includes(name)) {
+      const verdict = directoryVerdict(segments, index, context);
+
+      if (verdict === 'none') {
+        return { name, partial: false };
+      }
+
+      partial = verdict === 'partial' ? (partial ?? { name, partial: true }) : partial;
+    }
+  }
+
+  const fileName = protectedFileName(segments, literalCount, context.configSegments);
+
+  return fileName === undefined ? partial : { name: fileName, partial: false };
+}
+
+// A hard finding (no exception can match) wins over a partial one, whichever spelling it is in.
+function protectedPathReason(pattern, root, context) {
   const segments = absolutePattern(pattern, root);
 
   if (segments === undefined) {
     return undefined;
   }
 
-  const budget = { remaining: EXPANSION_LIMIT };
+  const { literal, rest } = splitLiteralPrefix(segments);
+  const resolved = splitSegments(resolveDeepest(joinSegments(literal)));
+  const variants = [
+    { label: 'as written', literal },
+    { label: 'after symlinks', literal: resolved },
+  ];
+  let partial;
 
-  for (const { literal, rest } of expand([], segments, budget)) {
-    const resolved = splitSegments(resolveDeepest(joinSegments(literal)));
-    const variants = [
-      { label: 'as written', literal, rest },
-      { label: 'after symlinks', literal: resolved, rest },
-    ];
+  for (const variant of variants) {
+    const full = [...variant.literal, ...rest];
+    const found = protectedName(full, variant.literal.length, context);
 
-    for (const variant of variants) {
-      const name = protectedName(
-        [...variant.literal, ...variant.rest],
-        variant.literal.length,
-        configSegments,
-      );
+    if (found !== undefined) {
+      const reason = {
+        partial: found.partial,
+        text: `${variant.label}, ${joinSegments(full)} ${found.partial ? 'can land' : 'lands'} under protected ${found.name}`,
+      };
 
-      if (name !== undefined) {
-        return `${variant.label}, ${joinSegments([...variant.literal, ...variant.rest])} lands under protected ${name}`;
+      if (!found.partial) {
+        return reason;
       }
+
+      partial = partial ?? reason;
     }
   }
 
-  return undefined;
+  return partial;
 }
 
-function protectedPathFindings(settings, configSegments) {
+function narrowToMarkdown(pattern) {
+  return pattern.endsWith('/**') ? `${pattern}/*.md` : `${pattern}.md`;
+}
+
+const EXCEPTION_LIST =
+  "the session's plan files in ~/.claude/plans/ (or plansDirectory), ~/.claude/jobs/<id>/tmp/, .claude/worktrees/, and, in a session started without --restricted, Markdown files in ~/.claude/projects/<project>/memory/ or .claude/agent-memory/";
+
+function protectedPathFinding(settings, parsed, rule, reason, context) {
+  const base = { file: settings.file, rule };
+
+  if (!reason.partial) {
+    return {
+      ...base,
+      kind: 'protected path',
+      detail: `${reason.text}; writes there are never auto-approved, so this allow rule can never pre-approve one. The exceptions are ${EXCEPTION_LIST}, and none of them can match this rule.`,
+      suggestion: { file: settings.file, list: 'allow', remove: rule },
+    };
+  }
+
+  const narrowed = narrowToMarkdown(parsed.pattern);
+  const narrowsCleanly = protectedPathReason(narrowed, settings.root, context) === undefined;
+
+  return {
+    ...base,
+    kind: 'partly protected path',
+    detail: `${reason.text}; this rule also matches a file that is never auto-approved, so it pre-approves only the part inside an exception. The exceptions are ${EXCEPTION_LIST}.`,
+    suggestion: narrowsCleanly
+      ? { file: settings.file, list: 'allow', replace: rule, with: `${parsed.tool}(${narrowed})` }
+      : {
+          file: settings.file,
+          list: 'allow',
+          fix: 'narrow the rule by hand to the exception folders; no single replacement fits it',
+        },
+  };
+}
+
+function protectedPathFindings(settings, context) {
   return settings.rules.allow.flatMap((rule) => {
     const parsed = parseRule(rule);
 
@@ -386,19 +478,11 @@ function protectedPathFindings(settings, configSegments) {
       return [];
     }
 
-    const reason = protectedPathReason(parsed.pattern, settings.root, configSegments);
+    const reason = protectedPathReason(parsed.pattern, settings.root, context);
 
     return reason === undefined
       ? []
-      : [
-          {
-            kind: 'protected path',
-            file: settings.file,
-            rule,
-            detail: `${reason}; writes there are never auto-approved, so this allow rule can never pre-approve one. The exceptions are .claude/worktrees/, .claude/plans/, .claude/jobs/<id>/tmp/ and Markdown files in .claude/projects/<project>/memory/ or .claude/agent-memory/.`,
-            suggestion: { file: settings.file, list: 'allow', remove: rule },
-          },
-        ];
+      : [protectedPathFinding(settings, parsed, rule, reason, context)];
   });
 }
 
@@ -470,6 +554,16 @@ function main() {
   const configSegments = configDirectory
     ? splitSegments(resolveDeepest(path.resolve(configDirectory)))
     : [];
+  const context = {
+    configSegments,
+    anchors: [
+      splitSegments(homeDirectory()),
+      splitSegments(resolveDeepest(homeDirectory())),
+      ...(configSegments[configSegments.length - 1] === '.claude'
+        ? [configSegments.slice(0, -1)]
+        : []),
+    ],
+  };
   const loaded = settingsFiles().flatMap(({ file, source, root }) => {
     const settings = readSettings(file, source, root);
 
@@ -487,7 +581,7 @@ function main() {
         detail: `${settings.problem}; a file that cannot be read cannot be checked, so it is reported instead of read as clean.`,
         suggestion: { file: settings.file, fix: 'repair the file by hand' },
       })),
-    ...readable.flatMap((settings) => protectedPathFindings(settings, configSegments)),
+    ...readable.flatMap((settings) => protectedPathFindings(settings, context)),
     ...userSettings.flatMap(pathFormFindings),
     ...(userSettings.length === 2 && loaded.every((settings) => settings.problem === undefined)
       ? driftFindings(userSettings[0], userSettings[1])

@@ -33,9 +33,9 @@
 #   8. After the move, when the main checkout has a patches folder, main's own
 #      node_modules/.bin/patch-package --error-on-fail runs there (never a package runner), so
 #      main's node_modules get the patches of the commit it moved to. A missing binary or a nonzero
-#      exit exits 2 with a WHAT line saying main DID move. A package-lock.json that differs
-#      between the old main and the commit prints one WARNING naming npm ci; the script never
-#      runs it, because it deletes node_modules under every hook that runs from main.
+#      exit exits 2 with a WHAT line saying main DID move. A package-lock.json or patches/ file
+#      that differs between the old main and the commit prints one WARNING naming npm ci; the
+#      script never runs it, because it deletes node_modules under every hook that runs from main.
 #
 # Known limit: a hand-written done.log line passes. The file belongs to cooperating agents and is
 # not defended against one that forges it. Its blocks say "DO NOT edit done.log".
@@ -196,28 +196,26 @@ fi
 printf '%s\n' "$merge_output"
 git -C "$main_checkout" log -1 --oneline
 
-if ! git -C "$main_checkout" diff --quiet "$main_commit" "$full_commit" -- package-lock.json 2> /dev/null; then
-  printf 'WARNING: package-lock.json changed between %s and %s; run npm ci in %s by hand, this script never does\n' \
+if ! git -C "$main_checkout" diff --quiet "$main_commit" "$full_commit" \
+  -- package-lock.json patches 2> /dev/null; then
+  printf 'WARNING: package-lock.json or patches changed between %s and %s; run npm ci in %s by hand, this script never does\n' \
     "$main_commit" "$full_commit" "$main_checkout" >&2
 fi
+
+# $1 details
+patch_failed() {
+  fail \
+    "main moved to $full_commit, but patch-package failed after the move" \
+    "$1" \
+    'The fast-forward is done and cannot be undone here, but main'"'"'s node_modules lack the patches of the new commit.' \
+    "Main is already at $full_commit, so a re-run only retries the patch step. Run npm ci in $main_checkout by hand (the user or the Coordinator decides), or fix the patch named in DETAILS."
+}
 
 # The binary is main's own installed copy; a package runner could fetch a missing one from the
 # registry. It runs after the move because a refused fast-forward must leave node_modules as it was.
 if [ -d "$main_checkout/patches" ]; then
   patch_binary="$main_checkout/node_modules/.bin/patch-package"
-  if [ ! -x "$patch_binary" ]; then
-    patch_output="$patch_binary is missing or not executable"
-    patch_applied=false
-  elif patch_output="$(cd "$main_checkout" && "$patch_binary" --error-on-fail 2>&1)"; then
-    patch_applied=true
-  else
-    patch_applied=false
-  fi
-  if [ "$patch_applied" = false ]; then
-    fail \
-      "main moved to $full_commit, but patch-package failed after the move" \
-      "$(printf '%s' "$patch_output" | tr '\n' ' ')" \
-      'The fast-forward is done and cannot be undone here, but main'"'"'s node_modules lack the patches of the new commit.' \
-      "Do not re-run this script (main is already at $full_commit). Run npm ci in $main_checkout by hand (the user or the Coordinator decides), or fix the patch named in DETAILS."
-  fi
+  [ -x "$patch_binary" ] || patch_failed "$patch_binary is missing or not executable"
+  patch_output="$(cd "$main_checkout" && "$patch_binary" --error-on-fail 2>&1)" \
+    || patch_failed "$(printf '%s' "$patch_output" | tr '\n' ' ')"
 fi

@@ -7,11 +7,13 @@
 # already githooks       -> nothing
 # unreadable             -> the standard block and exit 2: only `git config --get` exit 1 is unset
 # same folder, other     -> rewritten to githooks with one NOTICE line on stderr, exit 0: the value
-# spelling                  resolves (realpath; a relative value against the repository root) to
-#                           the githooks folder of a worktree of THIS repository AND the last value
-#                           is set in this repository's common config file (an absolute path made
-#                           the H9 worktrees fail). A global, config.worktree or include value, or
-#                           another repository's folder, is a different case: the row below
+# spelling                  resolves (realpath; a relative value against the repository root; git
+#                           expands a leading ~) to the githooks folder of a worktree of THIS
+#                           repository AND the last value is set in this repository's common
+#                           config file (the relative githooks resolves in every worktree, an
+#                           absolute path only in one). A global, config.worktree or include
+#                           value, or another repository's folder, is a different case: the row
+#                           below
 # any other value        -> the standard block and exit 2: two hook systems must be merged by hand
 # not a repository root  -> silent exit 0: no commit is possible from there, so there is nothing
 #                           to guard (a scratch copy without .git, a source tarball)
@@ -83,7 +85,10 @@ names_own_githooks_folder() {
   common_config="$(resolve_file "$common_config/config")" || return 1
   [ "$origin" = "$common_config" ] || return 1
 
-  value="${current%/}"
+  # --type=path expands a leading ~ the way git itself reads the setting; $current stays raw for
+  # the messages.
+  value="$(git -C "$ROOT" config --type=path --get core.hooksPath 2> /dev/null)" || return 1
+  value="${value%/}"
   case "$value" in /*) ;; *) value="$ROOT/$value" ;; esac
   value="$(resolve_folder "$value")" || return 1
   while IFS= read -r worktree_line; do

@@ -32,7 +32,7 @@
     "check:deep": "npm run check:mutation && bash scripts/checks/osv.sh",
     "start": "react-native start",
     "test": "jest",
-    "postinstall": "patch-package --error-on-fail &&node scripts/ensure-env.js && bash scripts/ensure-git-hooks.sh",
+    "postinstall": "patch-package --error-on-fail && node scripts/ensure-env.js && bash scripts/ensure-git-hooks.sh",
     "deploy:device": "bash scripts/deploy-device.sh"
   },
   "dependencies": {
