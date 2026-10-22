@@ -1652,6 +1652,78 @@ describe('scripts/job-queue.sh hold and release', () => {
     expect(result.code).toBe(0);
     expect(startedWorktrees(sandbox)).toEqual([worktree]);
   });
+
+  // The power check runs after the hold-file check and before the lock is taken, so a hold placed
+  // inside it lands in the gap a start must still back off from.
+  it('starts no job when a hold lands between its hold check and its lock', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    const holdingPmset = writeExecutable(
+      join(sandbox.root, 'bin/holding-pmset'),
+      [
+        '#!/usr/bin/env bash',
+        '[ -e "$KIKO_STUB_HOLD_MARKER" ] || {',
+        '  : > "$KIKO_STUB_HOLD_MARKER"',
+        '  bash "$KIKO_STUB_QUEUE_SCRIPT" hold race > /dev/null',
+        '}',
+        'cat "$KIKO_STUB_POWER"',
+        '',
+      ].join('\n'),
+    );
+    warmExecutables([holdingPmset]);
+    sandbox.environment.KIKO_QUEUE_PMSET = holdingPmset;
+    sandbox.environment.KIKO_STUB_QUEUE_SCRIPT = SCRIPT;
+    sandbox.environment.KIKO_STUB_HOLD_MARKER = join(sandbox.root, 'hold-placed');
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    await waitFor(
+      () => waiter.stdout().includes('WAITING one: hold (race)') || hasExited(waiter.child),
+    );
+
+    expect(waiter.stdout()).toContain('WAITING one: hold (race)');
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    runQueue(sandbox, 'release');
+    const result = await waiter.finished;
+    expect(result.code).toBe(0);
+    expect(startedWorktrees(sandbox)).toEqual([worktree]);
+  });
+
+  it('status shows a job that takes the lock while the ticket list is being read', () => {
+    const sandbox = createSandbox();
+    const record = `${process.pid} - verify other /elsewhere`;
+    const stubBin = join(sandbox.root, 'ls-bin');
+    mkdirSync(stubBin);
+    mkdirSync(sandbox.queue, { recursive: true });
+    warmExecutables([
+      writeExecutable(
+        join(stubBin, 'ls'),
+        [
+          '#!/usr/bin/env bash',
+          'ln -s "$KIKO_STUB_LOCK_RECORD" "$KIKO_QUEUE_DIR/lock" 2> /dev/null',
+          'exec /bin/ls "$@"',
+          '',
+        ].join('\n'),
+      ),
+    ]);
+    sandbox.environment.PATH = `${stubBin}:${sandbox.environment.PATH}`;
+    sandbox.environment.KIKO_STUB_LOCK_RECORD = record;
+
+    const result = runQueue(sandbox, 'status');
+
+    expect(result.stdout).toContain(`running: ${record}`);
+    expect(result.stdout).not.toContain('queue empty');
+  });
+
+  it('hold names the running job and says the hold does not stop it', () => {
+    const sandbox = createSandbox();
+    const record = `${process.pid} 4242 gate other-label /elsewhere`;
+    holdLock(sandbox, record);
+
+    const result = runQueue(sandbox, 'hold', 'busy');
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`running: ${record} (a hold does not stop a running job)`);
+  });
 });
 
 describe('scripts/job-queue.sh battery power', () => {
