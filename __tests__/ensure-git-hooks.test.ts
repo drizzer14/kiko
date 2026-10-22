@@ -270,6 +270,20 @@ describe('scripts/ensure-git-hooks.sh, a hooks path that names this repository g
     },
   );
 
+  it('rewrites a home-relative spelling of its own githooks folder', () => {
+    makeFolder(root, 'githooks');
+    mustGit(root, 'config', 'core.hooksPath', '~/repository/githooks');
+
+    expectRepaired(ensure(root, { HOME: realpathSync(base) }), root);
+  });
+
+  it('refuses a home-relative githooks folder that is not this repository', () => {
+    makeFolder(realpathSync(base), 'elsewhere/githooks');
+    mustGit(root, 'config', 'core.hooksPath', '~/elsewhere/githooks');
+
+    expectRefused(ensure(root, { HOME: realpathSync(base) }), root, '~/elsewhere/githooks');
+  });
+
   it('rewrites the main checkout githooks path set in the common config, from a linked worktree', () => {
     const own = makeFolder(realpathSync(root), 'githooks');
     mustGit(root, 'add', '-A');

@@ -154,6 +154,119 @@ describe('scripts/checks/permission-doctor.sh: protected paths', () => {
   });
 });
 
+// A rule with a glob is judged by its literal prefix (the part before the first glob) and by
+// symlinks, never by expanding the glob against the folder listing. A glob whose literal prefix
+// is an exception folder but whose target is not narrowed to Markdown is only partly protected:
+// the finding suggests the Markdown form instead of removing the rule.
+describe('scripts/checks/permission-doctor.sh: glob rules', () => {
+  it.each([
+    ['projects/**/memory/**', 'projects/**/memory/**/*.md'],
+    ['agent-memory/**', 'agent-memory/**/*.md'],
+  ])('reports %s as partly protected and suggests the Markdown form', (tail, narrowed) => {
+    const rule = `Edit(//${layout.home}/.claude/${tail})`;
+    const replacement = `Edit(//${layout.home}/.claude/${narrowed})`;
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(blockOf(result)).toContain('partly protected');
+    expect(blockOf(result)).toContain(rule);
+    expect(blockOf(result)).toContain(`"replace":${JSON.stringify(rule)}`);
+    expect(blockOf(result)).toContain(`"with":${JSON.stringify(replacement)}`);
+    expect(blockOf(result)).not.toContain('"remove"');
+  });
+
+  it.each([
+    ['Edit(//HOME/.claude/projects/**/memory/**/*.md)'],
+    ['Edit(//HOME/.claude/agent-memory/**/*.md)'],
+  ])('passes the Markdown-narrowed rule %s', (template) => {
+    writeSettings([template.replace('HOME', layout.home)]);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it.each([
+    ['an absolute rule', (home: string) => `Edit(//${home}/repo/*)`],
+    ['a home rule with a glob folder', () => 'Edit(~/repo/*/x.ts)'],
+  ])('does not expand the glob of %s into the .git folder it would list', (_title, rule) => {
+    mkdirSync(join(layout.home, 'repo/.git'), { recursive: true });
+    writeSettings([rule(layout.home)]);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('still removes a rule for a protected file with no glob', () => {
+    const rule = `Edit(//${layout.home}/.claude/settings.json)`;
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(blockOf(result)).toContain('protected path');
+    expect(blockOf(result)).toContain(`"remove":${JSON.stringify(rule)}`);
+    expect(blockOf(result)).not.toContain('partly protected');
+  });
+});
+
+// The documented exceptions are anchored to <home>/.claude (or CLAUDE_CONFIG_DIR): a copy of the
+// same folder names under a project is protected.
+describe('scripts/checks/permission-doctor.sh: exception anchors', () => {
+  it.each([
+    ['a memory folder nested below the project folder', `.claude/projects/p/sub/memory/x.md`],
+    ['a project-level plans folder', `repo/.claude/plans/x.md`],
+  ])('flags %s', (_title, tail) => {
+    const rule = `Edit(//${layout.home}/${tail})`;
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(blockOf(result)).toContain('protected path');
+    expect(blockOf(result)).toContain(rule);
+  });
+
+  it.each([
+    ['a memory folder directly under the project folder', `.claude/projects/p/memory/x.md`],
+    ['the home plans folder', `.claude/plans/x.md`],
+  ])('passes %s', (_title, tail) => {
+    writeSettings([`Edit(//${layout.home}/${tail})`]);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).toBe('');
+    expect(result.status).toBe(0);
+  });
+});
+
+describe('scripts/checks/permission-doctor.sh: checker failure', () => {
+  it('exits 3 from the checker and says the checker failed when it throws', () => {
+    // An unterminated bracket class is a glob segment the checker cannot compile.
+    writeSettings([`Edit(//${layout.home}/shared/[abc/x.txt)`]);
+
+    const direct = spawnSync('node', [CHECKER], {
+      encoding: 'utf8',
+      cwd: layout.working,
+      env: { PATH: process.env.PATH, HOME: layout.home, CLAUDE_CONFIG_DIR: layout.profile },
+    });
+    const result = runDoctor();
+    const what = blockOf(result)
+      .split('\n')
+      .find((line) => line.startsWith('WHAT FAILED:'));
+
+    expect(direct.status).toBe(3);
+    expect(result.status).toBe(2);
+    expect(what).toContain('could not run');
+    expect(what).not.toContain('cannot work');
+  });
+});
+
 describe('scripts/checks/permission-doctor.sh: path forms', () => {
   it('flags a single-slash absolute-looking rule and suggests the double-slash form', () => {
     // Permission docs, path patterns: "`/path` Path relative to the settings source" and

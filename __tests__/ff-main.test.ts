@@ -872,6 +872,21 @@ describe('scripts/ff-main.sh runs main patch-package after the fast-forward', ()
     expect(stubCalls(stub)).toHaveLength(1);
   });
 
+  it('warns naming npm ci when only a file under patches/ changed, and still runs the stub', () => {
+    const fixture = createFixture();
+    const stub = installPatchStub(fixture);
+    const head = commitFile(fixture, fixture.work, 'patches/added.patch', 'added patch\n');
+    record(fixture, doneLine(head));
+
+    const result = runScript(fixture, [head]);
+    const warnings = warningsOf(result.stderr);
+
+    expect(result.status).toBe(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('npm ci');
+    expect(stubCalls(stub)).toHaveLength(1);
+  });
+
   it('prints no WARNING when package-lock.json is unchanged', () => {
     const fixture = createFixture();
     installPatchStub(fixture);
@@ -922,6 +937,14 @@ describe('scripts/ff-main.sh runs main patch-package after the fast-forward', ()
 });
 
 describe('package.json postinstall', () => {
+  it('is exactly the patch, environment and hooks steps joined by spaced &&', () => {
+    const manifest = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
+
+    expect(manifest.scripts.postinstall).toBe(
+      'patch-package --error-on-fail && node scripts/ensure-env.js && bash scripts/ensure-git-hooks.sh',
+    );
+  });
+
   it('starts with patch-package --error-on-fail', () => {
     const manifest = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
 

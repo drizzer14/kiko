@@ -130,6 +130,30 @@ describe('scripts/log-event.sh', () => {
     expect(result.stderr).toContain(STUB_TIME);
   });
 
+  it.each([
+    ['a dash and a one-digit hour', '- 9:05 text', '9:05'],
+    ['a time with no dash', '14:00 text', '14:00'],
+  ])('replaces a caller-passed time written as %s and names it on stderr', (_title, line, time) => {
+    const fixture = createFixture();
+
+    const result = runScript(fixture, [line]);
+
+    expect(result.status).toBe(0);
+    expect(logOf(fixture)).toBe(`- ${STUB_TIME} text\n`);
+    expect(result.stderr).toContain(time);
+    expect(result.stderr).toContain(STUB_TIME);
+  });
+
+  it('keeps a time that does not lead the event as text, without a stderr note', () => {
+    const fixture = createFixture();
+
+    const result = runScript(fixture, ['- text 14:00']);
+
+    expect(result.status).toBe(0);
+    expect(logOf(fixture)).toBe(`- ${STUB_TIME} text 14:00\n`);
+    expect(result.stderr).toBe('');
+  });
+
   it('stamps a dash-led event that has no time without a stderr note', () => {
     const fixture = createFixture();
 
