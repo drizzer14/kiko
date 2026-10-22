@@ -47,8 +47,8 @@
 // Known limits: Bash rules are not judged. A relative rule ("/x", "./x", "x") in a user settings
 // file has no known base and is skipped for the protected-path finding. A rule with no literal
 // leading folder ("**/.claude/**") is skipped, and only the literal prefix is judged for a
-// protected folder ("~/repo/*/.git/**" is not). A glob that can name a whole excepted folder
-// (".claude/pla*") is judged by that folder alone, however many other names it can match. A
+// protected folder ("~/repo/*/.git/**" is not). A subfolder rule under a Markdown exception
+// ("projects/<p>/memory/sub", "memory/?") is reported remove, although it can cover .md files. A
 // project settings file's relative rule is read against that project's root, which is the
 // documented base only for "/x". Managed settings, additionalDirectories, --plugin-dir and
 // plansDirectory are not read.
@@ -277,26 +277,44 @@ function sameSegments(left, right) {
   return left.length === right.length && left.every((name, index) => name === right[index]);
 }
 
-// A glob segment can match a name when the characters around its globs fit the name. A bracket
-// class gives no fixed tail, so only the head is compared then. Too generous is the safe error:
-// the rule is then reported as partly protected, never as one to remove.
-function globTail(segment) {
-  return segment.includes('[') ? '' : segment.slice(segment.search(/[^*?]*$/));
+// A glob segment is read as one name: "*" is any run of characters, "?" one character, and a
+// "[..]" class ("[!..]" or "[^..]" negated) one character of the set. A class that does not parse
+// matches any name, the safe error: the rule is then reported as partly protected, never removed.
+const GLOB_TOKEN = /\[[!^]?[^\]]+\]|[\s\S]/g;
+
+function segmentExpression(segment) {
+  const source = segment.replace(GLOB_TOKEN, (token) => {
+    if (token === '*') {
+      return '.*';
+    }
+
+    if (token === '?') {
+      return '.';
+    }
+
+    if (token.length === 1) {
+      return token.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+
+    const negated = /^\[[!^]/.test(token);
+
+    return `[${negated ? '^' : ''}${token.slice(negated ? 2 : 1, -1).replace(/\\/g, '\\\\')}]`;
+  });
+
+  try {
+    return new RegExp(`^${source}$`);
+  } catch {
+    return /^/;
+  }
 }
 
 function segmentCanBe(segment, name) {
-  if (!GLOB_PATTERN.test(segment)) {
-    return segment === name;
-  }
+  return segmentExpression(segment).test(name);
+}
 
-  if (!VARIABLE_LENGTH_PATTERN.test(segment) && name.length !== segment.length) {
-    return false;
-  }
-
-  const head = segment.slice(0, segment.search(GLOB_PATTERN));
-  const tail = globTail(segment);
-
-  return name.length >= head.length + tail.length && name.startsWith(head) && name.endsWith(tail);
+// A bracket class gives no fixed tail, so only the characters before it are compared.
+function globTail(segment) {
+  return segment.includes('[') ? '' : segment.slice(segment.search(/[^*?]*$/));
 }
 
 // A "?" is exactly one character, so a segment without "*" or "[" can end in ".md" only when its
@@ -336,25 +354,6 @@ function prefixFits(after, prefix, strict) {
   });
 }
 
-function hasLiteralCharacter(segment) {
-  return segment.replace(/[*?[\]]/g, '') !== '';
-}
-
-// A rule ending exactly at a folder that is excepted whole, with a literal character in every
-// segment but the any-folder slots, names that folder: a glob like "pla*" is judged by it alone.
-function namesExceptionFolder(after, folder) {
-  return (
-    !folder.markdown &&
-    after.length === folder.prefix.length &&
-    after.every(
-      (segment, index) =>
-        segment !== RECURSIVE_SEGMENT &&
-        (folder.prefix[index] === ANY_FOLDER || hasLiteralCharacter(segment)),
-    ) &&
-    matchesExceptionFolder(after, folder, false)
-  );
-}
-
 function matchesExceptionFolder(after, folder, strict) {
   // A "**" in any slot can span the folders in between, so the slots behind it are unknown.
   const hiddenAt = strict ? -1 : after.slice(0, folder.prefix.length).indexOf(RECURSIVE_SEGMENT);
@@ -377,7 +376,7 @@ function matchesExceptionFolder(after, folder, strict) {
 }
 
 function folderVerdict(after, folder) {
-  if (matchesExceptionFolder(after, folder, true) || namesExceptionFolder(after, folder)) {
+  if (matchesExceptionFolder(after, folder, true)) {
     return 'exempt';
   }
 
@@ -515,8 +514,12 @@ function protectedPathFinding(settings, parsed, rule, reason, context) {
     };
   }
 
+  const segments = splitSegments(parsed.pattern);
   const narrowed = narrowToMarkdown(parsed.pattern);
-  const narrowsCleanly = protectedPathReason(narrowed, settings.root, context) === undefined;
+  // A rule that ends at the .claude folder has no name to put ".md" on.
+  const narrowsCleanly =
+    segments[segments.length - 1] !== '.claude' &&
+    protectedPathReason(narrowed, settings.root, context) === undefined;
 
   return {
     ...base,
