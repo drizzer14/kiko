@@ -266,7 +266,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
   sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
   version strictly above main's, and no commit may lower, remove, or make unreadable that
-  version while main has a readable one, user ruling 2026-10-18).
+  version while main has a readable one, user ruling 2026-10-18). After the move, when main
+  has a `patches/` folder, it runs main's own `node_modules/.bin/patch-package --error-on-fail`
+  (header step 8); a missing binary or a failed patch exits 2 AFTER main moved ("main DID
+  move"), and a re-run only retries the patch step. A `package-lock.json` or `patches/`
+  difference prints one WARNING naming `npm ci`, which the script never runs.
   `scripts/ff-main.sh` needs no exemption: its merge uses
   a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
@@ -628,7 +632,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   option's value or after `--`, text in a commit message (within the data-body rule below), and
   `git log -n`. The repair route for an unset core.hooksPath
   is `bash scripts/ensure-git-hooks.sh` or `npm ci`; a direct `git config core.hooksPath githooks`
-  is denied too. The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
+  is denied too. That script also rewrites a same-folder spelling (`~`, an absolute path) to
+  `githooks` with one NOTICE and exit 0, only when the last value is in this repository's common
+  config and resolves to a githooks folder of a worktree of this repository; any other value
+  exits 2 (its header). The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
   staged index to a temporary folder and runs `tsc --noEmit` there; it fails closed and skips a
   commit whose staged diff touches no file tsc reads (see `docs/harness/checks-internals.md`).
   A person may bypass in their own shell; the deny binds agent Bash calls only. Rows:
@@ -650,8 +657,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   key. An `export`, `declare -x`, `typeset`, `local`, `readonly`, or bare assignment of
   `GIT_CONFIG_KEY_<n>` to those keys, or of `GIT_CONFIG_PARAMETERS` holding them, denies by
   itself. A `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` file swap is not judged:
-  `scripts/ensure-git-hooks.sh` writes core.hooksPath in the local scope, which outranks the
-  global and system scopes and every file they include, so a swapped file switches nothing off.
+  `scripts/ensure-git-hooks.sh` writes core.hooksPath in the local scope (or rewrites a
+  same-folder spelling), which outranks the global
+  and system scopes and every file they include, so a swapped file switches nothing off.
   Known limits, NOT denied: a bypass built at run time.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
@@ -3512,8 +3520,18 @@ write time (it is the `projectCheck` of a `NODE_RULES` row in
 `pre-write-guard.js`). Every wrapper `fast.sh` or `medium.sh` runs must
 be a `check:all` entry. The expected mapping is read from those files,
 never hard-coded, so a new check added to one place and missed in
-another fails here. `check:closure`, `check:mutation`, and `check:deep`
+another fails here. `check:closure`, `check:permissions`, `check:mutation`, and `check:deep`
 are outside `check:all` by design.
+
+## Permission doctor — check:permissions
+
+`npm run check:permissions` (`scripts/checks/permission-doctor.sh`, which runs
+`permission-doctor.js`) is manual: no hook, not in `check:all`. It reads the permission path rules
+of the user and project settings files and fails on a rule that cannot work as written. The
+`.js` exits 0 (clean), 1 (findings) or 3 (crash); the wrapper maps 1 and 3 to exit 2, so run the
+wrapper. The finding kinds, suggestions and Known limits are in the `permission-doctor.js` header;
+the short form is the `check:permissions` row of `docs/harness/checks.md`. An agent never edits a
+permission settings file: the user applies the suggested JSON by hand.
 
 ## Harness-test fixtures never read as an import of src
 

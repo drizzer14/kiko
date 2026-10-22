@@ -277,6 +277,8 @@ nothing):
   file or a missing marker prints a failure block (naming the marker, `npm ci` and `patch-package`)
   and exits 2. `--list` (`make mutable`) skips it, because it never starts Stryker and counting
   must work on an unpatched tree.
+- A failed apply fails `npm ci`; a tree installed with `--ignore-scripts` holds no patch (the
+  `mutation.sh` preflight catches it).
 - `npm ci` re-applies the patch; read the `patch-package` output for the
   `@stryker-mutator/jest-runner@8.7.1` line with its check mark.
 

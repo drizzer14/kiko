@@ -8,6 +8,8 @@ Run project commands and report results.
 Rules:
 - Report the exact command, its output, and the result.
 - Use the check scripts: check:lint, check:all, check:deep.
+- `check:permissions` is manual (not in `check:all`, no hook). Run the wrapper and report its
+  block; the user edits permission settings by hand, and an agent never edits them.
 - Do not write app code. Hand code changes to the developer.
 - Run a long-running command ONCE and wait for its return. The EXIT CODE
   is the result: 0 = pass, non-zero = fail. Every check script and npm

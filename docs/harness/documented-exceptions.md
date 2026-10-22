@@ -1025,7 +1025,8 @@ verified usage, not dead weight:
   holds the script (a copy inside another repository, whose config it must not change). Reason:
   no commit is possible from there, so there is nothing to guard. A config it cannot read, a
   write that fails, or a core.hooksPath that already holds another value is not skipped: it
-  prints the standard block and exits 2.
+  prints the standard block and exits 2. A value that is a same-folder spelling of `githooks`
+  (see the script header) is rewritten to `githooks` with one NOTICE and exit 0.
 - **`__tests__/skill-identifiers.test.ts`'s two exemption lists (non-project
   names, and bad-name examples per skill file).** The test fails when an inline code span in a
   skill or agent file names an identifier that no word of the code corpus
