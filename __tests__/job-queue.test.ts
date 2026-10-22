@@ -1880,6 +1880,12 @@ describe('scripts/job-queue.sh gate start load defer', () => {
     expect(startedWorktrees(sandbox)).toEqual([gate.worktree]);
   });
 
+  const firstRunnerCall = {
+    verify: (worktree: string) => `make -C ${worktree} verify`,
+    'check-all': (worktree: string) => `npm --prefix ${worktree} run check:all`,
+    security: () => 'npm run check:security',
+  };
+
   describe.each(['verify', 'check-all', 'security'] as const)('a queued %s job', (jobClass) => {
     it('waits at the head while the load is high, then starts with the load on its START line', async () => {
       const sandbox = createSandbox();
@@ -1901,7 +1907,9 @@ describe('scripts/job-queue.sh gate start load defer', () => {
       expect(result.stdout).toMatch(
         /^START one at \d\d:\d\d head (?:[0-9a-f]{12}|unknown) \(load: 1\.50 2\.50 3\.50\)$/m,
       );
-      expect(startedWorktrees(sandbox)).toEqual([worktree]);
+      expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)[0]).toBe(
+        firstRunnerCall[jobClass](worktree),
+      );
     });
 
     it('starts anyway after the wait limit, printing LOAD WAIT EXPIRED before START', () => {
@@ -1923,7 +1931,9 @@ describe('scripts/job-queue.sh gate start load defer', () => {
       expect(waiting).toBeGreaterThanOrEqual(0);
       expect(expired).toBeGreaterThan(waiting);
       expect(start).toBeGreaterThan(expired);
-      expect(startedWorktrees(sandbox)).toEqual([worktree]);
+      expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)[0]).toBe(
+        firstRunnerCall[jobClass](worktree),
+      );
     });
   });
 
