@@ -4,7 +4,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -206,6 +208,137 @@ describe('scripts/ensure-git-hooks.sh', () => {
       'githooks\n',
     );
     expect(hooksPath(root)).toBe('githooks\n');
+  });
+});
+
+// Invariant: only a value whose realpath is a githooks folder of this repository, set in its own
+// common config file, may be rewritten to githooks. Every other value keeps the refusal.
+describe('scripts/ensure-git-hooks.sh, a hooks path that names this repository githooks folder', () => {
+  const makeFolder = (directory: string, name: string): string => {
+    const folder = join(directory, name);
+
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'pre-commit'), '#!/bin/sh\n');
+
+    return folder;
+  };
+
+  const noticeLines = (result: SpawnSyncReturns<string>): string[] =>
+    result.stderr.split('\n').filter((line) => line.includes('NOTICE'));
+
+  const expectRepaired = (result: SpawnSyncReturns<string>, directory: string): void => {
+    expect(result.status).toBe(0);
+    expect(noticeLines(result)).toHaveLength(1);
+    expect(result.stderr).not.toContain('CHECK FAILED');
+    expect(hooksPath(directory)).toBe('githooks\n');
+  };
+
+  const expectRefused = (
+    result: SpawnSyncReturns<string>,
+    directory: string,
+    value: string,
+  ): void => {
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(`CHECK FAILED: ${BLOCK_TITLE}`);
+    expect(noticeLines(result)).toHaveLength(0);
+    expect(hooksPath(directory)).toBe(`${value}\n`);
+  };
+
+  it('rewrites the absolute path of its own githooks folder to githooks, with one notice', () => {
+    const own = makeFolder(realpathSync(root), 'githooks');
+    mustGit(root, 'config', 'core.hooksPath', own);
+
+    expectRepaired(ensure(root), root);
+  });
+
+  it('rewrites a symlinked spelling of its own githooks folder', () => {
+    makeFolder(realpathSync(root), 'githooks');
+    const alias = join(base, 'alias');
+    symlinkSync(realpathSync(root), alias);
+    mustGit(root, 'config', 'core.hooksPath', join(alias, 'githooks'));
+
+    expectRepaired(ensure(root), root);
+  });
+
+  it.each(['githooks/', './githooks/', './githooks'])(
+    'rewrites the relative spelling %s of its own githooks folder',
+    (spelling) => {
+      makeFolder(root, 'githooks');
+      mustGit(root, 'config', 'core.hooksPath', spelling);
+
+      expectRepaired(ensure(root), root);
+    },
+  );
+
+  it('rewrites the main checkout githooks path set in the common config, from a linked worktree', () => {
+    const own = makeFolder(realpathSync(root), 'githooks');
+    mustGit(root, 'add', '-A');
+    mustGit(root, 'commit', '-q', '-m', 'hooks');
+    const linked = join(base, 'linked');
+    mustGit(root, 'worktree', 'add', '-q', '-b', 'linked', linked);
+    mustGit(root, 'config', 'core.hooksPath', own);
+
+    const result = ensure(linked);
+
+    expect(result.status).toBe(0);
+    expect(noticeLines(result)).toHaveLength(1);
+    expect(mustGit(root, 'config', '--file', join(root, '.git/config'), 'core.hooksPath')).toBe(
+      'githooks\n',
+    );
+  });
+
+  it('refuses the githooks folder of another repository and leaves the value', () => {
+    const foreign = join(base, 'foreign');
+    mkdirSync(foreign);
+    mustGit(foreign, 'init', '-q', '-b', 'main');
+    const foreignHooks = makeFolder(realpathSync(foreign), 'githooks');
+    mustGit(root, 'config', 'core.hooksPath', foreignHooks);
+
+    expectRefused(ensure(root), root, foreignHooks);
+  });
+
+  it('refuses the own githooks path when only the global config sets it', () => {
+    const own = makeFolder(realpathSync(root), 'githooks');
+    writeFileSync(join(home, '.gitconfig'), `[core]\n\thooksPath = ${own}\n`);
+
+    const result = ensure(root);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(`CHECK FAILED: ${BLOCK_TITLE}`);
+    expect(noticeLines(result)).toHaveLength(0);
+    expect(git(root, 'config', '--local', '--get', 'core.hooksPath').status).toBe(1);
+    expect(readFileSync(join(home, '.gitconfig'), 'utf8')).toContain(own);
+  });
+
+  it('refuses the own githooks path when only config.worktree sets it', () => {
+    const own = makeFolder(realpathSync(root), 'githooks');
+    mustGit(root, 'config', 'extensions.worktreeConfig', 'true');
+    mustGit(root, 'config', '--worktree', 'core.hooksPath', own);
+
+    const result = ensure(root);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(`CHECK FAILED: ${BLOCK_TITLE}`);
+    expect(noticeLines(result)).toHaveLength(0);
+    expect(hooksPath(root)).toBe(`${own}\n`);
+    expect(git(root, 'config', '--local', '--get', 'core.hooksPath').status).toBe(1);
+  });
+
+  it.each(['.husky', 'scripts'])(
+    'refuses %s, another folder of this repository, by absolute path',
+    (name) => {
+      const other = makeFolder(realpathSync(root), name);
+      mustGit(root, 'config', 'core.hooksPath', other);
+
+      expectRefused(ensure(root), root, other);
+    },
+  );
+
+  it('refuses a githooks path that does not exist', () => {
+    const missing = join(realpathSync(root), 'githooks');
+    mustGit(root, 'config', 'core.hooksPath', missing);
+
+    expectRefused(ensure(root), root, missing);
   });
 });
 
