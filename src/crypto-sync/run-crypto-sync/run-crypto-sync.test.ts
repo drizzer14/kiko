@@ -4,12 +4,13 @@ const mockSyncBinancePayHistory = jest.fn();
 const mockSyncBinanceTransferHistory = jest.fn();
 const mockSyncBinanceEarnHistory = jest.fn();
 const mockSyncBinanceConvertHistory = jest.fn();
+const mockSyncBinanceDustHistory = jest.fn();
 
 // `./sync` pulls the repos (and so op-sqlite) into the graph; replacing the
 // whole module keeps this a pure dispatch test. `./binance/binance.transactions`,
 // `./binance/binance.pay-history`, `./binance/binance.transfer-history`,
-// `./binance/binance.earn-history` and `./binance/binance.convert-history` are replaced for the
-// same reason. The Binance
+// `./binance/binance.earn-history`, `./binance/binance.convert-history` and
+// `./binance/binance.dust-history` are replaced for the same reason. The Binance
 // credentials module imports react-native-keychain, whose native binding is absent
 // under Jest.
 jest.mock('@kiko/crypto-sync/sync', () => ({
@@ -29,6 +30,9 @@ jest.mock('@kiko/crypto-sync/binance/binance.earn-history', () => ({
 }));
 jest.mock('@kiko/crypto-sync/binance/binance.convert-history', () => ({
   syncBinanceConvertHistory: (...args: unknown[]) => mockSyncBinanceConvertHistory(...args),
+}));
+jest.mock('@kiko/crypto-sync/binance/binance.dust-history', () => ({
+  syncBinanceDustHistory: (...args: unknown[]) => mockSyncBinanceDustHistory(...args),
 }));
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
@@ -61,6 +65,7 @@ describe('runCryptoSync', () => {
     mockSyncBinanceTransferHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBinanceEarnHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBinanceConvertHistory.mockResolvedValue({ imported: 0, complete: true });
+    mockSyncBinanceDustHistory.mockResolvedValue({ imported: 0 });
   });
 
   it('runs the wallet provider with the connect-time address on a wallet request', async () => {
@@ -128,16 +133,19 @@ describe('runCryptoSync', () => {
     );
   });
 
-  it('runs the walks in order, capital, Pay, Transfer, Earn, Convert, all on one run object', async () => {
+  it('runs the walks in order, capital, Pay, Transfer, Earn, Convert, then the dust read, all on one run object', async () => {
     await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
     const [capitalCall] = mockSyncBinanceTransactions.mock.calls;
     const [earnCall] = mockSyncBinanceEarnHistory.mock.calls;
     const [convertCall] = mockSyncBinanceConvertHistory.mock.calls;
+    const [dustCall] = mockSyncBinanceDustHistory.mock.calls;
     expect(earnCall[0]).toEqual({ targetAccountId: 'acc-2', run: capitalCall[0].run });
     expect(earnCall[0].run).toBe(capitalCall[0].run);
     expect(convertCall[0]).toEqual({ targetAccountId: 'acc-2', run: capitalCall[0].run });
     expect(convertCall[0].run).toBe(capitalCall[0].run);
+    expect(dustCall[0]).toEqual({ targetAccountId: 'acc-2', run: capitalCall[0].run });
+    expect(dustCall[0].run).toBe(capitalCall[0].run);
     expect(
       [
         mockSyncBinanceTransactions,
@@ -145,6 +153,7 @@ describe('runCryptoSync', () => {
         mockSyncBinanceTransferHistory,
         mockSyncBinanceEarnHistory,
         mockSyncBinanceConvertHistory,
+        mockSyncBinanceDustHistory,
       ].map((mock) => mock.mock.invocationCallOrder[0]),
     ).toEqual(
       [
@@ -153,6 +162,7 @@ describe('runCryptoSync', () => {
         mockSyncBinanceTransferHistory,
         mockSyncBinanceEarnHistory,
         mockSyncBinanceConvertHistory,
+        mockSyncBinanceDustHistory,
       ]
         .map((mock) => mock.mock.invocationCallOrder[0])
         .sort((left, right) => left - right),
@@ -277,6 +287,36 @@ describe('runCryptoSync', () => {
     warn.mockRestore();
   });
 
+  it('still resolves with the balance result when the dust read fails, logging only its name', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSyncBinanceDustHistory.mockRejectedValue(new Error('Record 123 SECRET'));
+
+    const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+    expect(result).toEqual({ syncedHoldings: 1 });
+    expect(warn).toHaveBeenCalledWith('[binance sync] dust history failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+    warn.mockRestore();
+  });
+
+  it('runs the dust read even when the Convert walk failed: each logs its own failure', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSyncBinanceConvertHistory.mockRejectedValue(new Error('convert boom'));
+    mockSyncBinanceDustHistory.mockRejectedValue(new Error('dust boom'));
+
+    await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+    expect(mockSyncBinanceDustHistory).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      '[binance sync] convert history failed',
+      '[binance sync] dust history failed',
+    ]);
+    warn.mockRestore();
+  });
+
   it('runs the Convert walk even when the Earn walk failed: each walk logs its own failure', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockSyncBinanceEarnHistory.mockRejectedValue(new Error('earn boom'));
@@ -377,8 +417,8 @@ describe('runCryptoSync', () => {
   });
 
   describe('a walk state this build cannot read', () => {
-    // How many times each of the five walks ran, in the order capital, Pay, Transfer, Earn,
-    // Convert.
+    // How many times each of the five walks and the dust read ran, in the order capital, Pay,
+    // Transfer, Earn, Convert, dust.
     const walkRunCounts = (): number[] =>
       [
         mockSyncBinanceTransactions,
@@ -386,6 +426,7 @@ describe('runCryptoSync', () => {
         mockSyncBinanceTransferHistory,
         mockSyncBinanceEarnHistory,
         mockSyncBinanceConvertHistory,
+        mockSyncBinanceDustHistory,
       ].map((walk) => walk.mock.calls.length);
 
     it.each([
@@ -402,7 +443,7 @@ describe('runCryptoSync', () => {
 
         expect(result).toEqual({ syncedHoldings: 1 });
         expect(mockRunBalanceSync).toHaveBeenCalledTimes(1);
-        expect(walkRunCounts()).toEqual([0, 0, 0, 0, 0]);
+        expect(walkRunCounts()).toEqual([0, 0, 0, 0, 0, 0]);
         expect(mockPatchExchangeState).not.toHaveBeenCalled();
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn).toHaveBeenCalledWith('[binance sync] walk state unreadable', {
@@ -427,7 +468,7 @@ describe('runCryptoSync', () => {
       warn.mockRestore();
     });
 
-    it('logs nothing and runs all five walks on a state that parses, an unreadable entry too', async () => {
+    it('logs nothing and runs all five walks and the dust read on a state that parses, an unreadable entry too', async () => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
       mockGetSyncState.mockResolvedValue([
         { exchangeState: '{"version":1,"walks":{"pay":"oops"}}' },
@@ -435,7 +476,7 @@ describe('runCryptoSync', () => {
 
       await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
-      expect(walkRunCounts()).toEqual([1, 1, 1, 1, 1]);
+      expect(walkRunCounts()).toEqual([1, 1, 1, 1, 1, 1]);
       expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
     });
@@ -447,7 +488,7 @@ describe('runCryptoSync', () => {
       const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
       expect(result).toEqual({ syncedHoldings: 1 });
-      expect(walkRunCounts()).toEqual([0, 0, 0, 0, 0]);
+      expect(walkRunCounts()).toEqual([0, 0, 0, 0, 0, 0]);
       expect(warn).toHaveBeenCalledWith('[binance sync] walk state read failed', {
         name: 'Error',
         code: undefined,
@@ -457,13 +498,14 @@ describe('runCryptoSync', () => {
     });
   });
 
-  it('does not run the Pay, the Transfer, the Earn or the Convert walk for a wallet request', async () => {
+  it('does not run the Pay, the Transfer, the Earn or the Convert walk or the dust read for a wallet request', async () => {
     await runCryptoSync({ providerId: 'btc_wallet', targetAccountId: 'acc-1' });
 
     expect(mockSyncBinancePayHistory).not.toHaveBeenCalled();
     expect(mockSyncBinanceTransferHistory).not.toHaveBeenCalled();
     expect(mockSyncBinanceEarnHistory).not.toHaveBeenCalled();
     expect(mockSyncBinanceConvertHistory).not.toHaveBeenCalled();
+    expect(mockSyncBinanceDustHistory).not.toHaveBeenCalled();
   });
 
   // An account-detail Connect overlapping a pull-to-refresh fan-out can
@@ -488,6 +530,7 @@ describe('runCryptoSync', () => {
       expect(mockSyncBinanceTransferHistory).toHaveBeenCalledTimes(1);
       expect(mockSyncBinanceEarnHistory).toHaveBeenCalledTimes(1);
       expect(mockSyncBinanceConvertHistory).toHaveBeenCalledTimes(1);
+      expect(mockSyncBinanceDustHistory).toHaveBeenCalledTimes(1);
     });
 
     it('runs independently for two DIFFERENT Binance accounts', async () => {

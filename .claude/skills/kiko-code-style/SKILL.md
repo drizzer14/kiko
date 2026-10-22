@@ -351,7 +351,9 @@ A single boolean guard used exactly once (an `if`/`else` with no
 closed-set enum behind it) may stay as-is. A ternary on one `kind` literal of a closed union
 (`x.kind === 'a' ? p : q`) is an `if`/`else` chain and uses `match(...).exhaustive()`; it is
 mechanized as an ERROR by `kiko-kind-ternary-prefers-match` (re-measure with the command in
-kiko-linter's `kiko-kind-ternary-prefers-match` section),
+kiko-linter's `kiko-kind-ternary-prefers-match` section; that rule does not scan test files,
+`__tests__`, `e2e`, `scripts` or `harness`, so in those the rule still applies and only the
+mechanical check is absent),
 and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. A ternary on one `type`
 tag follows the same rule, flagged by `kiko-type-ternary-prefers-match` (WARNING until the tree is
 swept; see kiko-linter's section for it). Every branch over a closed

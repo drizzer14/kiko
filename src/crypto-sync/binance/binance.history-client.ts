@@ -995,3 +995,91 @@ export const fetchConvertHistory = async (
       options,
     ),
   );
+
+/**
+ * Binance spells `transfered` with one `r` on both amount fields. The record totals and an
+ * entry's `serviceChargeAmount`, `transId` and `operateTime` are never read: the record's
+ * `transId` keys the pair, and `transferedAmount` is the net amount received in `targetAsset`.
+ * A coin or an amount that is absent is `undefined`, because the read of a record decides what to
+ * do with it, not the parser.
+ */
+const DUST_ENTRY_FIELDS = {
+  fromAsset: optionalTicker,
+  targetAsset: optionalTicker,
+  amount: optionalText,
+  transferedAmount: optionalText,
+};
+
+/** One coin of a dust conversion from `/sapi/v1/asset/dribblet`, converted into `targetAsset`. */
+export type BinanceDustEntry = Parsed<typeof DUST_ENTRY_FIELDS>;
+
+/** One dust conversion record, one `userAssetDribblets` item, read from its named fields only. */
+export type BinanceDustRecord = {
+  transId: string;
+  operateTime: number;
+  entries: BinanceDustEntry[];
+};
+
+const readDustEntryList = listOf(recordReader(DUST_ENTRY_FIELDS));
+
+const readDustEntries: Reader<BinanceDustEntry[]> = (value) => {
+  const entries = readDustEntryList(value);
+
+  return entries.length > 0 ? entries : parseFailure();
+};
+
+/**
+ * The record's own `transId` keys its pairs, so it must be a non-empty text or a safe integer
+ * (`identifier`): a record without one is unreadable, never keyed on a fallback. Its `operateTime`
+ * says where the record sits, so it is required too. An entry list that is absent, empty, or holds
+ * an item that is no object makes the record unreadable: a record's coins are never half-read, and
+ * a conversion of no coin is never skipped silently.
+ */
+const readDustRecord: Reader<BinanceDustRecord> = (item) =>
+  isRecord(item)
+    ? {
+        transId: identifier(item.transId),
+        operateTime: finiteNumber(item.operateTime),
+        entries: readDustEntries(item.userAssetDribbletDetails),
+      }
+    : parseFailure();
+
+/**
+ * One dust page: the newest records Binance keeps. `rows` holds each record that parsed and
+ * `unreadable` each one that did not, with its `operateTime` when that is usable.
+ */
+export type DustHistoryPage = HistoryPage<BinanceDustRecord>;
+
+/**
+ * An empty log is an object with `userAssetDribblets` present as an empty array and no `total`
+ * (measured live). `total` is never required or read; a body without the list array is malformed.
+ */
+const dustPage = ({ body, headers }: SignedPage): DustHistoryPage => {
+  if (!isRecord(body)) {
+    return parseFailure();
+  }
+
+  const readings = readingsOf(
+    body.userAssetDribblets,
+    readDustRecord,
+    timeFieldOf('operateTime', epochTime),
+  );
+
+  return {
+    rows: valuesOf(readings),
+    unreadable: unreadableOf(readings),
+    ...usedWeightsFromHeaders(headers),
+  };
+};
+
+/**
+ * `GET /sapi/v1/asset/dribblet` (dust log) with no parameter: Binance returns the last 100 records
+ * after 2020/12/01 of the Spot account. Signed, read-only. The body must be an object with a
+ * `userAssetDribblets` array, or the read throws `BinanceHistoryParseError`.
+ */
+export const fetchDustHistory = async (
+  apiKey: string,
+  secret: string,
+  options: FetchAccountOptions = {},
+): Promise<DustHistoryPage> =>
+  dustPage(await signedRequestPage(apiKey, secret, 'GET', '/sapi/v1/asset/dribblet', {}, options));

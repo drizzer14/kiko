@@ -1896,11 +1896,10 @@ SEPARATE step imports the ledger: `syncBinanceTransactions`
 holding already exists. It is SUPPLEMENTARY — the arm runs it under
 `logOnFailure('[binance sync] capital history failed', …)`
 (`@kiko/diagnostics`, name and code only), so a 429 or a permission gap never
-fails the balance sync. The Binance arm runs five walks, Convert last, in
-`runBinanceSyncAndImport` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`: read
-the order there). Each runs in its own `logOnFailure` (tags `capital history failed`,
-`pay history failed`, `transfer history failed`, `earn history failed`,
-`convert history failed`, each prefixed `[binance sync]`) and all share one `run`.
+fails the balance sync. The Binance arm runs its history reads in
+`runBinanceHistoryWalks` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`: read
+the order and the `logOnFailure` tags there). Each runs in its own `logOnFailure` and
+all share one `run`; a rate limit met by an earlier read puts the shared cooldown on the later ones.
 TRADES are out of scope. Convert reads `/sapi/v1/convert/tradeFlow`
 (`binance.history-client.ts`) and places each row by `walletType` FUNDING or SPOT
 (`binance.convert-history.ts`). `recordExchangeCounterpart` (Convert-mode) in `kiko-domain` is
@@ -1965,7 +1964,14 @@ than restated here:
   helpers live in `exchange/paging/paging.ts` (`fetchAllByTotal`,
   `readSeriesSpan`) and the walk-state seam in `exchange/walk/exchange-state-deps.ts`
   (`ExchangeStateDeps`, `exchangeStateDepsOf`).
-- **The history tracked rule, in all five walks.** A row whose ticker
+- **Dust is a read, not a walk** (`binance.dust-history.ts`): no WalkId, cursor,
+  `CAPTION_WALKS` entry, forward-owes or not-imported kind. It reads the newest 100 records every
+  run. An entry is accepted only when `targetAsset` is BNB (`DUST_TARGET`); a repeated
+  `fromAsset` refuses all its entries; an entry with a leg that rounds to 0 gives no row for
+  either leg; an untracked coin is listed only when its BNB leg imports. A rate limit sets the
+  cooldown and logs nothing. A dust row for a tracked coin with no Spot holding creates that
+  holding at zero through `placeWalletRows` (amends R-Q6).
+- **The history tracked rule, in every walk (`runBinanceHistoryWalks`).** A row whose ticker
   (`binanceTickerOf`, upper-cased once where the client reads it) is accepted by
   `isTrackedBinanceAsset` is read strictly: a malformed, too-precise or oversized amount stops
   the walk at that record and owes its point, so a tracked record is never skipped. Any other

@@ -451,7 +451,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   a folder in it is named like a tree. Allowed: reads, a redirect to
   `/dev/null` or outside the trees, git itself, a script file, and a
   formatter's or fixer's own `--write` (guard-replay re-checks what it
-  changes at Stop). Rows: `__tests__/kill-guard-writes.test.ts`
+  changes at Stop). After any `biome check --write`, run
+  `node scripts/checks/import-order.js <file>` on each touched file: biome can re-wrap an
+  import into a shape kiko-import-order rejects, and only guard-replay at Stop sees it.
+  Rows: `__tests__/kill-guard-writes.test.ts`
   (`projectRoot` is a test-only `decide` option). Where it is live:
   `dispatch.sh` runs `kill-guard.js` from the Bash call's own worktree,
   so `hooks.json` is unchanged and no plugin reinstall is needed; a

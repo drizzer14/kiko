@@ -91,7 +91,7 @@ gap `binance-backfill-fix/2`.
 | R-Q4 A | List = the user's coins (inventory probe) + top ~30 by market cap + USDT, USDC, FDUSD, DAI; stablecoins priced from the market, never 1:1 | 3 |
 | R-Q5 A | USDT, USDC, FDUSD, DAI at 8 decimals; exact rescale migration of USDT holdings, rows, price points and `.kiko` imports; reviewer step; exact-parity test | 3, 7 |
 | R-Picker | The manual holding form lists every curated coin; a crypto base currency stays not selectable | 3 |
-| R-Q6 A | One holding per coin per wallet ("Binance Spot · USDT"); appears on first non-zero balance or first row; stays at 0 when emptied; dust creates none; default-named BTC holdings renamed, user renames kept | 4 |
+| R-Q6 A | One holding per coin per wallet ("Binance Spot · USDT"); appears on first non-zero balance or first row; stays at 0 when emptied; a dust row for a tracked source coin with no Spot holding creates it at zero (S9-Q4 A, user, 2026-10-21; was: dust creates none); default-named BTC holdings renamed, user renames kept | 4 |
 | R-Q15 A | Binance fiat balances as holdings per fiat currency per wallet, with fiat deposit/withdraw rows | 4, 5 |
 | R-Q7 A | Pay order paid with another coin: one row per coin actually debited, on that coin's wallet holding, the order amount in the row note | 5, 6 |
 | R-Q8 A | Backfill old ground for the new coins only, over the next syncs, to Binance's floors; BTC not read twice; caption meanwhile | 7 |
@@ -165,6 +165,21 @@ Source of S7-Q1 ... S7-Q8: `memory/refs/binance-multicoin-sdd-2026-10-21/rulings
 Source of S8-Q1 ... S8-C1 (S8-Q1, S8-Q2, F5 and S8-C1 sit in "User rulings"):
 `memory/refs/binance-multicoin-sdd-2026-10-21/rulings.md`, section
 "Set 8 plan questions".
+
+| Ruling | Answer | Sets |
+|---|---|---|
+| S9-Q1 A (COORDINATOR) | An unimportable dust record is logged once per code per run and left out; no new `notImported` kind | 9 |
+| S9-Q2 A (COORDINATOR) | An entry with a leg that rounds to 0 units gives no row for either leg (no half pair), and no log | 9 |
+| S9-Q3 A (USER, probe 7) | The empty answer is `{"userAssetDribblets":[]}` with `total` absent. `[]` is no dust; a missing or non-array list fails closed; `total` is never read | 9, 12 |
+| S9-Q4 A (USER) | AMENDS R-Q6 "dust creates none": a tracked source coin with no Spot holding gets it created at zero by `placeWalletRows` (the R-Q6 row and section 4 "Appear" say so) | 4, 9 |
+| S9-Q5 A (COORDINATOR) | The dust read keeps its own short rate-limit try/catch; the set 8 duplicate stays deferred | 9 |
+| S9-Q6 A (COORDINATOR) | The convert-history survivor triage is a separate test-only change set after set 9 | 9 |
+| S9-Q7 A (COORDINATOR) | An entry is accepted only when `targetAsset` is BNB; absent, blank or another coin is refused as `dust-row-unreadable`. A non-BNB target is a later-set question | 9 |
+| S9-Q8 A (COORDINATOR) | A record with an empty details list is unreadable and logged | 9 |
+| S9-Q9 A (COORDINATOR) | The repeated `row-precision-rounded` console warning (about 200 lines per sync with dust) is accepted; run-log gap `20261021T1839-kiko-binance-set9/2` | 9 |
+| S9-Q10 A (COORDINATOR) | DECISION: an untracked coin's dust entry joins the not-tracked line only when its BNB leg imports; a 0-amount or malformed entry lists nothing | 9 |
+
+Source of S9-Q1 ... S9-Q10: `rulings.md`, section "Set 9 plan questions".
 
 ### Rulings this spec reverses
 
@@ -687,8 +702,11 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
   the funding and Earn reads).
 - Appear: a holding is created on the coin's first balance at or above `dustBelow` (fiat: any
   non-zero balance) or on its first imported row (`placeWalletRows` creates the target at zero).
+  A dust row is a first imported row: a tracked source coin with no Spot holding gets it created
+  at zero by the dust read (S9-Q4 A, user; it amends R-Q6 "dust creates none").
 - Stay: an existing holding is written every good read, a zero included; it is never archived by
-  the sync. A dust balance below `dustBelow` with no holding and no row creates none.
+  the sync. A balance below `dustBelow` with no holding and no row creates none (a dust
+  conversion row is a row: see "Appear").
 - Spot anchor: a Spot read failure fails the balance sync as today; no zero Spot holding is created
   for a coin never held. The zero Spot BTC anchor (written whenever NO Spot BTC holding existed,
   also when the amount was refused) was removed in set 6 step 5 (`b24eaab8`) together with the four
@@ -751,7 +769,7 @@ and their safe defaults.
 | Transfer | `GET /sapi/v1/asset/transfer` x 20 types | 30 d / 179 d | `current`, 100 | IP 1 | 80 + 397 narrowing | `walks.transfer` | - |
 | Simple Earn | 6 history endpoints | 30 d / 2022-01-01 | `current`, 100 | IP 150 budgeted (probe 2 measured 50 on `rewardsRecord` and on each position read; the budget stays at 150) | 30 | `walks.earn` | P11 open (no reward row) |
 | Convert | `GET /sapi/v1/convert/tradeFlow` | 30 d / `HISTORY_FLOOR_MS`; empty windows never stop the walk; probe 5: no refusal back to the floor (C-NR-C; R-Walk A) | `limit` 1000 + `moreData`: a window with `moreData` halves | UID 3000 (probes 3-5) | 20 | `walks.convert` | P4 settled |
-| Dust | `GET /sapi/v1/asset/dribblet` | last 100 records, after 2020-12-01 | none | IP 1 (probe 2) | 1 | none (every run; keys dedupe) | P7 open (no dust on the account) |
+| Dust | `GET /sapi/v1/asset/dribblet` | last 100 records, after 2020-12-01 | none | IP 1 (probe 2) | 1 | none (every run; keys dedupe) | P7 partly settled (empty shape measured; no dust record on the account) |
 | P2P | `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory`, `tradeType` BUY and SELL (2 series) | 30 d / `HISTORY_FLOOR_MS`; empty windows never stop the walk; probe 5: no refusal back to the floor (C-P2P-stop; R-Walk A) | `page`/`rows` 100 | UID 900 (probes 3-5) | 10 | `walks.p2p` | P5 settled |
 | Fiat orders (no real row observed) | `GET /sapi/v1/fiat/orders`, `transactionType` 0 deposit, 1 withdraw (2 series) | 2 years (probe 3: a 2-year span was accepted) / `HISTORY_FLOOR_MS`; probe 5: no refusal back to the floor (C-NR-D; R-Walk A) | `page`/`rows` 500 | UID 45000 (probes 2, 3, 5) | 3 | `walks.fiatOrders` | P6 partly open (C-NR-E) |
 | Fiat payments (no real row observed) | `GET /sapi/v1/fiat/payments`, `transactionType` 0 buy, 1 sell (2 series) | 2 years (probe 3: accepted) / `HISTORY_FLOOR_MS`; probe 5: no refusal back to the floor (C-NR-D; R-Walk A) | `page`/`rows` 100 | IP 1 (probe 3: 18 at most over 22 calls; probe 5) | 10 | `walks.fiatPayments` | P6 partly open (C-NR-E) |
@@ -996,13 +1014,44 @@ Window and depth:
 
 ### Dust
 
-One read, no params, every run (cap 1, no cursor). Every `userAssetDribbletDetails` entry maps to
-rows; `addManyDedup` keys drop the ones already imported. Per entry: an Exchange pair
-`fromAsset -amount` (Spot) / BNB `+received` (Spot), where `received` = the BNB that entry added
-to the wallet (`transferedAmount`, net of `serviceChargeAmount` per probe P7). Pair id
-`${accountId}:dust:${transId}:${fromAsset}`. An untracked `fromAsset`: the BNB leg alone with
-`untrackedCounterpart = asset:<fromAsset>`. Records beyond the last 100 are lost; the not-listed
-note names them.
+One read, no params, every run (`LANE_CALL_CAPS`, `COSTS` in `binance.history-budget.ts`; no
+cursor, no walk entry). It is no walk: it runs after Convert in `runBinanceHistoryWalks`
+(`run-crypto-sync.ts`; read the order there), under its own failure tag
+`[binance sync] dust history failed`. Every `userAssetDribbletDetails` entry of a record maps to
+rows; `addManyDedup` keys drop the ones already imported.
+- Record: `transId` is the RECORD's (a non-empty text or a safe integer; else the record is
+  unreadable) and `operateTime` a finite number. The entry list must be a non-empty array of
+  objects: an absent, empty or malformed one makes the record unreadable (S9-Q8), logged, never
+  half-read. An unreadable record is logged as `dust-row-unreadable` and re-read while it is among
+  the newest 100.
+- Rows: per entry, an Exchange pair `fromAsset -amount` (Spot) / BNB `+received` (Spot), both legs
+  on Spot, where `received` is `transferedAmount`, the net BNB the wallet got (`serviceChargeAmount`
+  is never read). Pair id `${accountId}:dust:${transId}:${fromAsset}`; leg key
+  `${pairId}:<Spot holding key>`; `operation = 'dust'`. An untracked `fromAsset`: the BNB leg alone
+  with `untrackedCounterpart = asset:<fromAsset>`, no pair id, and its amount never read.
+- `targetAsset` (S9-Q7): an entry is accepted only when it is BNB (the match ignores case and
+  padding). Absent, blank or another coin is refused as `dust-row-unreadable`; a non-BNB target is
+  a later-set question.
+- Refused entry: a blank `fromAsset`, BNB as `fromAsset`, or a `fromAsset` that repeats in the
+  record refuses ALL its entries (two entries of a coin would share a pair id). The record's other
+  entries still import. Stop codes are the constants in `binance.dust-history.ts`
+  (`dust-row-unreadable`, `dust-amount-invalid`, `dust-holding-missing`), each logged once per code
+  per run.
+- Zero rule (S9-Q2): an entry with a leg that rounds to 0 units gives no row for either
+  leg (no half pair) and no log. A negative amount is
+  `dust-amount-invalid`; an amount past the safe integer joins the oversized list.
+- Empty shape (S9-Q3, probe 7): `{"userAssetDribblets":[]}`, `total` absent, is no dust: nothing is
+  written or logged. A missing or non-array list fails closed (a parse error, logged under the
+  failure tag). `total` is never read.
+- Rate limit: it sets the account's cooldown and ends the read with no log, as Convert and Pay do.
+- Holdings: a tracked source coin with no Spot holding gets it created at zero (S9-Q4 A);
+  `dust-holding-missing` is only the placement's defensive code.
+- Not-tracked line (S9-Q10, decision): an untracked coin's dust entry joins the line only when its
+  BNB leg imports; a 0-amount or malformed entry lists nothing.
+- Console (S9-Q9): `row-precision-rounded` is logged per rounded amount on every run, so a sync
+  with dust prints many lines (console only); accepted, with a run-log gap.
+
+Records beyond the last 100 are lost; the not-listed note names them.
 
 ### Dividends (removed from 1.3-a)
 
@@ -1616,9 +1665,24 @@ round changes it.
 | C9b | a window answered with another 4xx (for example -1127, or any code other than -5026); probe 5 saw none | a failure: the window and cursor stay, and the next run reads it again; the walk does not end | - | not imported |
 | C9c | R-Walk A: a first Convert walk on UA-1 (113 windows, lane cap 20) | recent records arrive last; the 2026-01 conversion (window about 104) appears at run 6 of 6 | - | not imported |
 | C10 | FAIL with `walletType` missing or another word | no row, no entry (status first) | none | n/a |
-| D1 | dust TRX + DOGE -> BNB | two pairs | excluded | not imported |
-| D2 | dust of an untracked coin | BNB +, `asset:` | none | not imported |
+| D1 | dust TRX + DOGE -> BNB | two pairs on Spot | excluded | not imported |
+| D1b | D1 with no Spot TRX holding stored (S9-Q4 A) | "Binance Spot · TRX" created at zero, then the pair lands | excluded | not imported; spec was: dust creates none |
+| D2 | dust of an untracked coin | BNB +, `asset:`; the coin joins the not-tracked line (S9-Q10) | excluded | not imported |
 | D3 | the same 100 dust records on the next run | no new row (keys) | - | not imported |
+| D4 | `transferedAmount` "0.000441", `serviceChargeAmount` "0.000009" | BNB leg +0.000441 (net) | - | not imported |
+| D5 | a tracked side's amount absent, malformed or negative | that entry no row, logged once per code; the others import | - | not imported |
+| D5b | an amount that rounds to 0 units (S9-Q2) | that entry no row for either leg, no log | - | not imported |
+| D5c | an over-precise amount on a coin stored at full scale | `amount-precision` logged; that entry no row | - | not imported |
+| D5d | an amount past the safe integer | its coin joins the oversized list; that entry no row | - | not imported |
+| D6 | record `transId` missing, blank or past 2^53, or no finite `operateTime` | no row of it; `dust-row-unreadable` | - | not imported |
+| D7 | entry `fromAsset` blank, BNB or repeated in its record; `targetAsset` absent, blank or not BNB (S9-Q7) | those entries no row; `dust-row-unreadable` | - | not imported |
+| D8 | a record with an empty details list (S9-Q8) | unreadable, logged | - | not imported |
+| D9 | `{"userAssetDribblets":[]}` (S9-Q3) | nothing written or logged | - | not imported |
+| D9b | a body with no list or a non-array list | the read fails, logged under `dust history failed`; nothing written | - | not imported |
+| D10 | cooling down, no credentials, or the lane spent | no request | - | not imported |
+| D11 | the read answers a rate limit | cooldown set; clean stop, no log | - | not imported |
+| D12 | newest-100 slides by one record | exactly the new record's rows import | - | not imported |
+| D13 | a Spot holding the placement cannot find even after creating a missing one (defensive only; D1b) | `dust-holding-missing` logged; no row of the read; the next run reads again | - | not imported |
 | P1 | BUY TAKER COMPLETED, USDT, `amount` "100", `takerCommission` "0.1", `takerAmount` "99.9", `totalPrice` "4150", fiat UAH | Funding USDT +99.9; `p2p:UAH:4150.00`; comment "4150 UAH"; `operation = 'p2p'` | none | not imported; spec was: owed point (commission before P5) |
 | P1b | same, `takerCommission` "0", `takerAmount` "100" | Funding USDT +100 | none | not imported; spec was: +100 |
 | P1c | `takerAmount` absent, `amount` "100", `takerCommission` "0.1" | Funding USDT +99.9 (exact, in minor units) | none | not imported; spec was: owed point |
@@ -1897,7 +1961,7 @@ sets 1 and 4 also change `envelope.test.ts`'s `VERSION_DECISIONS`).
 | 6/15 | account-wide capital, Pay, Transfer, Earn; key rules; cross-coin Pay; Earn reward grouping per asset; `multiCoinSince`; 2-minute matcher input filter; row amounts switched from `btcSatoshis` to `exchangeMinorUnits` | `binance.transactions.ts`, `binance.pay-history.ts`, `binance.history-client.ts`, `binance.transfer-history.ts`, `binance.earn-history.ts`, `exchange/walk/`, `exchange/paging/`, `binance.provider.ts` (zero Spot BTC anchor removed with the four walk guards), `binance.holding-keys.ts`, `binance.walk-config.ts`, `src/statistics/internal-transfers/`, `statistics.screen.tsx` (~20-22; two deep-gate halves) | none | Y1-Y8; E1-E2; S1-S3; W1-W2; A1-A4 for rows; key byte-identity for BTC; key uniqueness property; walk properties at 0 / 1 h / 1 day | no (P11, P12, P16 safe defaults) |
 | 7/15 | `operation` column (codes without `reward`, C-Div), C-NR1 code forms and parsers, render labels (no "Reward" step; `p2p:` renders "P2P purchase" only; `transactions.p2pSale` dropped, C-NR-F), copy, demo rows (no reward row) | `src/db/schema.ts`, `untracked-counterpart.ts`, `row-description.ts`, `exchange-description.ts`, `transactions.repo.ts`, `src/i18n/locales/{en,uk}.ts` (no `transactions.reward`), migration files, demo seed + regen (47 changed files; 7 mutable source files, `make mutable`) | 0063 ADD COLUMN; `kiko:reviewer` before BATCH READY | label order cases; code parse cases incl. N3; back-compat import of an export without the column; exclusion unchanged | no |
 | 8/15 | Convert walk: status first, then `walletType` placement (C-Convert-wallet), floor `HISTORY_FLOOR_MS` read forward with every window read (probe 5: no refusal to the floor; C-NR-C; R-Walk A); no new refusal code in `requestFailedOf` (probe 5); the `notImported` list (`NOT_IMPORTED_KINDS` tuple, type, parse, union patch, disconnect removal), `notImportedCountsOf`, the not-imported line and the `accountDetail.notImported*` copy (en + uk, translator review) | `binance.convert-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts`, `exchange/walk-state/`, `exchange/history-status/`, `disconnect.ts`, `crypto-sync-section.component.tsx`, `src/i18n/locales/{en,uk}.ts` (measured: 45 files changed under `src`, `git diff --stat df5475f6..HEAD -- src`; Convert -5026 fails the run, S8-C1) | none | C1-C6, C8-C10 (C8: the 2026-01 conversion behind 6+ empty windows); N4, N5, N6, N7 (`convert-unrecognized` only); K8; window halving on `moreData`; walk properties at 0 / 1 h / 1 day | settled (P4) |
-| 9/15 | dust read (no dividend walk, C-Div) | `binance.dust-history.ts` (new), client, budget, run wiring (~5) | none | D1-D3 | P7 open, safe default |
+| 9/15 | dust read (no dividend walk, C-Div) | `binance.dust-history.ts` (new), client, budget, run wiring (4 mutable files, measured: `KIKO_MUTATION_BASE=a730a322 make mutable`) | none | D1-D12 (D1b, D5b, D9b included) | P7 partly settled (empty shape); record shape, `transId` type and non-BNB targets open |
 | 10/15 | trades 1/2: symbol discovery, rotation with the reserved call, `idCursorPager` | `exchange/paging/id-cursor-pager.ts`, `binance.trade-symbols.ts` (new), public `exchangeInfo` read, `walk-state` trades part (~7) | none | rotation bound `ceil(S / L)` property with `L >= 1` when changed symbols fill the lane; discovery cases; pager pages | settled (P1, P2) |
 | 11/15 | trades 2/2: order aggregation, `orderId` + `fromId` re-read (P15b PASS), rows, fee rules (C-NR2, C-NR5), `/api/*` IP budget at the measured weights (20 / 5 / 5), lane caps measured; may raise the P2P lane cap only with a measured reason (R-Walk A) | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | T1-T12b and T14 exact parity; properties at 0 / 1 h / 1 day; measured run report | settled (P1, P3, P15, P15b) |
 | 12/15 | P2P walk: status first, then side, role and amount (C-P5, C-NR-B), BUY TAKER only, SELL and MAKER into `notImported`, fiat-asset rows on the fiat holding, floor `HISTORY_FLOOR_MS` read forward with every window read (probe 5: no refusal to the floor; C-P2P-stop; R-Walk A), UID 900. Fiat orders and payments walks (no real row observed): 2-year windows from `HISTORY_FLOOR_MS` read forward with every window read (probe 5; C-NR-D; R-Walk A), the strict status allowlist with the doc-quote rule (C-NR-E), UID 45000 lane. First step: quote Binance's doc text for the ignored fiat words | `binance.p2p-history.ts`, `binance.fiat-history.ts` (new), client, budget, run wiring (~7) | none | P1-P11 (P1b-P1h, P2b-P2d, P3b-P3d, P7b, P8b included), F1-F6; N5b; the fiat-orders budget cases (section 5); properties at 0 / 1 h / 1 day; measured P2P first-walk report (calls, runs) | P5 settled; P6 open (no real row observed), allowlist defaults |
@@ -1934,7 +1998,7 @@ per endpoint (P2P BUY; fiat `transactionType` 0) with one 30-day floor window, n
 | P4 | Convert span, lookback, wallet | SETTLED, probes 3-5: 30 d (a 31 d span was also accepted), 24 months read with 0 failures, the `walletType` field present (FUNDING=1); no refusal to the floor (probe 5; the 2017-07 floor window is served empty) | 30 d windows; floor `HISTORY_FLOOR_MS` read forward, every window read (C-NR-C, R-Walk A); wallet from `walletType` (C-Convert-wallet) | 8 |
 | P5 | P2P paging, statuses, wallet, net or gross, `totalPrice` | SETTLED, probes 3-5: `page`/`rows` with a response total; statuses COMPLETED / CANCELLED / CANCELLED_BY_SYSTEM; no wallet field; `takerAmount = amount - takerCommission` 69/69; `totalPrice` independent of `amount x unitPrice` (2/69); BUY and TAKER only; rows back to about 2023-09; no refusal to the floor (probe 5; the 2017-07 floor window is served empty) | C-P5; C-NR-B; C-P2P-SELL-MAKER B; C-NR3 Funding; floor `HISTORY_FLOOR_MS` read forward, every window read (C-P2P-stop, R-Walk A) | 12 |
 | P6 | fiat orders and payments: span, lookback, statuses, credited wallet, withdraw fee | PARTLY SETTLED: no refusal to the floor (probe 5; the 2017-07 floor window is served empty); probe 3: a 2-year span accepted; UID 45000 (orders), IP 1 (payments). OPEN: no real row observed (0 rows in 2 years), so statuses, wallet and fee are unobserved | 2-year windows from `HISTORY_FLOOR_MS` (C-NR-D); the strict status allowlist with the doc-quote rule (C-NR-E); Spot (C-NR3) | 12 |
-| P7 | dribblet beyond the last 100; `transferedAmount` net | OPEN, probe 2: 0 dust records (180-day windows back to 2020-12-01 accepted) | newest 100; net | 9 |
+| P7 | dribblet beyond the last 100; `transferedAmount` net | PARTLY SETTLED. Probe 2: 0 dust records (180-day windows back to 2020-12-01 accepted). Probe 7 (S9-Q3): the empty answer is `{"userAssetDribblets":[]}`, `total` absent. The connector doc quote (binance-connector-js wallet `dustlog`) gives the documented record shape and `targetAsset` BNB. OPEN: the record shape and the `transId` type (no real record seen), non-BNB targets | newest 100; net; empty list = no dust, a missing list fails closed; `targetAsset` must be BNB (S9-Q7) | 9 |
 | P8 | `assetDividend` `enInfo` values | SETTLED, probes 2-3: 0 dividends in 3 years | walk removed (C-Div) | 9 |
 | P9 | LD* tokens in `/api/v3/account` | SETTLED, probe 2: 0 assets start with LD | skip rule (section 3) | 5 |
 | P10 | max decimals per coin | SETTLED for the account's coins, probes 2-3: Spot BTC 8; Funding BTC 7, CGPT 2; Pay BTC 8, USDT 8 | registry scales | 5, 6 |
@@ -1948,7 +2012,7 @@ per endpoint (P2P BUY; fiat `transactionType` 0) with one 30-day floor window, n
 
 Still open (no data on the user's account; safe defaults in force):
 - P6: fiat statuses, wallet and fee (no real row observed);
-- P7: dust;
+- P7: dust (the empty shape is settled by probe 7; record shape, `transId` type, non-BNB targets);
 - P11: the Earn product id;
 - P16: the deposit wallet;
 - the doc quotes for the ignored fiat words (set 12, first step);

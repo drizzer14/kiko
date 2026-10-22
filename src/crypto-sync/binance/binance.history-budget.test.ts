@@ -29,6 +29,7 @@ describe('LANE_CALL_CAPS', () => {
       transfer: 80,
       earn: 30,
       convert: 20,
+      dust: 1,
       market: 150,
     });
   });
@@ -125,6 +126,27 @@ describe('createBinanceRunBudget — calls kept for later', () => {
     expect(LANE_CALL_CAPS.convert * COSTS.convert.uid).toBeLessThanOrEqual(UID_WEIGHT_BUDGET_1M);
   });
 
+  it('allows one dust call and refuses the second', () => {
+    const budget = createBinanceRunBudget();
+
+    expect(budget.canAfford('dust', COSTS.dust)).toBe(true);
+
+    spendCalls(budget, 'dust', 1);
+
+    expect(budget.canAfford('dust', COSTS.dust)).toBe(false);
+    expect(budget.canAfford('dust', COSTS.dust, 0, true)).toBe(false);
+  });
+
+  it('judges a dust call by the SAPI IP reading', () => {
+    const refused = createBinanceRunBudget();
+    const allowed = createBinanceRunBudget();
+    refused.record('pay', { ...NO_READING, usedIpWeight1m: 6_000 });
+    allowed.record('pay', { ...NO_READING, usedIpWeight1m: 5_999 });
+
+    expect(refused.canAfford('dust', COSTS.dust)).toBe(false);
+    expect(allowed.canAfford('dust', COSTS.dust)).toBe(true);
+  });
+
   it('counts the calls to keep in the weight of an IP call too', () => {
     const budget = createBinanceRunBudget();
     budget.record('earn', { ...NO_READING, usedIpWeight1m: 5_701 });
@@ -145,6 +167,7 @@ describe('createBinanceRunBudget — narrowing calls', () => {
       transfer: 397,
       earn: 0,
       convert: 0,
+      dust: 0,
       market: 0,
     });
   });
@@ -255,6 +278,7 @@ describe('createBinanceRunBudget — weight readings', () => {
       transfer: { ip: 1 },
       earn: { ip: 150 },
       convert: { uid: 3_000 },
+      dust: { ip: 1 },
       klines: { api: 2 },
     });
   });
