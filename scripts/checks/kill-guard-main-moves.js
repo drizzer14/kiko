@@ -5,14 +5,17 @@
 // Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
 // move the branch of the work tree they run in, so they count against the main checkout and a
 // linked worktree whose HEAD file already names `main`. A command that writes the ref by name
-// (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`, `fetch`/`push` into it,
+// (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`, `fetch`/`pull`/`push` into it,
 // `symbolic-ref refs/heads/main`, `worktree add -B`) moves it from any worktree of this
 // repository, since every worktree shares the refs, so it counts against the whole repository.
+// (A `pull` runs `fetch --update-head-ok`, so its refspecs write the ref from a linked worktree.)
 // So does a command that puts a linked worktree onto `main` (`symbolic-ref HEAD <main ref>`,
 // `checkout|switch --ignore-other-worktrees main`, `worktree add -f` onto `main`), after which a
 // `reset` there moves it; `symbolic-ref HEAD <main ref>` is judged in both scopes. A `fetch` is a
 // ref-name command when a `remote.<name>.fetch` refspec set by `-c`, `--config-env` (its value is
-// not shown, so it counts) or `GIT_CONFIG_*` can write `main`. In every scope a place the text
+// not shown, so it counts) or `GIT_CONFIG_*` can write `main`; an `export` or a bare assignment
+// that sets such a refspec denies by itself (kill-guard.js), as one for core.hooksPath does, but a
+// key held in a variable (`GIT_CONFIG_KEY_0=$K`) is not read. In every scope a place the text
 // cannot name fails closed, even when the command assigns the variable it comes from. An
 // unrelated repository or a plain folder is no target. Pure functions: kill-guard.js passes the
 // parsed git invocations and the probes.
@@ -208,7 +211,34 @@ function configuredFetchWritesMain({ configs, environmentConfigs, environment })
   );
 }
 
+// Whether the variables an `export` or a bare assignment sets name a `remote.<name>.fetch` refspec
+// that can write `main`: the fetch or pull that runs after them reads it, whichever repository.
+function environmentFetchWritesMain(environment) {
+  return configuredFetchWritesMain({ configs: [], environmentConfigs: [], environment });
+}
+
 const FETCH_VALUE_OPTIONS = new Set(['--refmap']);
+// `git pull` hands its fetch options on (`git pull --help`, git 2.38.1). Only an option whose
+// value is the NEXT word is listed, so the repository operand is not swallowed: an optional value
+// (`--rebase[=...]`, `--log[=<n>]`, `-S[<keyid>]`) is only ever glued to its option.
+const PULL_VALUE_OPTIONS = new Set([
+  ...FETCH_VALUE_OPTIONS,
+  '-s',
+  '--strategy',
+  '-X',
+  '--strategy-option',
+  '--cleanup',
+  '--depth',
+  '--deepen',
+  '--shallow-since',
+  '--shallow-exclude',
+  '--negotiation-tip',
+  '-j',
+  '--jobs',
+  '--upload-pack',
+  '-o',
+  '--server-option',
+]);
 const REFMAP_OPTION = { valueLetters: '', recordLetters: '', longNames: ['--refmap'] };
 
 // Measured on git 2.38.1: `git fetch -u --refmap=refs/heads/feat:refs/heads/main . feat` and the
@@ -218,10 +248,10 @@ const REFMAP_OPTION = { valueLetters: '', recordLetters: '', longNames: ['--refm
 // `refs/remotes/x/*` and an empty `--refmap=` (it only drops the configured refspecs) write nothing
 // in `refs/heads`; and a `--refmap` with no refspec is a fatal error. A destination that can be
 // `main` counts, whichever ref the refspec fetches.
-function fetchWritesMain(parameters) {
+function fetchWritesMain(parameters, valueOptions = FETCH_VALUE_OPTIONS) {
   const refmaps = optionValues(parameters, REFMAP_OPTION).filter((value) => value !== undefined);
 
-  return refspecWritesMain(parameters, FETCH_VALUE_OPTIONS) || refmaps.some(destinationIsMain);
+  return refspecWritesMain(parameters, valueOptions) || refmaps.some(destinationIsMain);
 }
 
 const UPDATE_REF_VALUE_OPTIONS = new Set(['-m']);
@@ -293,6 +323,9 @@ function moveScopes(git, pathExists) {
       checkoutIgnoresMain(parameters),
     branch: () => branchNamesMain(parameters),
     fetch: () => fetchWritesMain(parameters) || configuredFetchWritesMain(git),
+    // `pull` runs `fetch --update-head-ok`, so its refspecs write `refs/heads/main` from a linked
+    // worktree too; the refspecs follow the repository operand as a fetch's do.
+    pull: () => fetchWritesMain(parameters, PULL_VALUE_OPTIONS) || configuredFetchWritesMain(git),
     push: () => refspecWritesMain(parameters, PUSH_VALUE_OPTIONS, true),
     worktree: () =>
       parameters[0] === 'add' &&
@@ -346,4 +379,4 @@ function firstMovedPlace(places, scope, helpers) {
   return null;
 }
 
-module.exports = { mainMoveTarget };
+module.exports = { mainMoveTarget, environmentFetchWritesMain };

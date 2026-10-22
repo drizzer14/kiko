@@ -722,6 +722,49 @@ describe('kill-guard: a fetch refspec exported in an earlier segment', () => {
   });
 });
 
+const PULL_OPTION_MOVES: string[] = [
+  'git pull --rebase origin main:main',
+  'git pull -s ours --no-rebase origin main:main',
+  'git pull --depth 1 --no-rebase origin main:main',
+  'git pull --no-rebase --refmap=refs/heads/feature:refs/heads/main origin feature',
+];
+
+const PULL_OPTION_STAYS: string[] = [
+  'git pull --depth 1 --no-rebase origin feature:refs/remotes/origin/feature',
+  'git pull -X theirs --no-rebase origin main',
+  'git pull --jobs 4 --rebase origin main',
+  'git pull --no-rebase --refmap=refs/heads/feature:refs/remotes/origin/feature origin feature',
+];
+
+describe('kill-guard: a pull with options of its own', () => {
+  it('denies a refspec into main after the options of a pull', () => {
+    const kinds = decideAll(PULL_OPTION_MOVES.map((s) => [s, LINKED_OPTIONS]));
+
+    expect(PULL_OPTION_MOVES.filter((_s, index) => kinds[index] !== 'mainMove')).toEqual([]);
+  });
+
+  it('allows a pull whose options and refspecs write elsewhere', () => {
+    const kinds = decideAll(PULL_OPTION_STAYS.map((s) => [s, LINKED_OPTIONS]));
+
+    expect(PULL_OPTION_STAYS.filter((_s, index) => kinds[index] !== 'allow')).toEqual([]);
+  });
+});
+
+const EXPORTED_KEY_ONLY = 'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.fetch';
+// The key sits in a variable, so the text cannot say it names a fetch refspec (a known limit).
+const EXPORTED_UNKNOWN_KEY =
+  'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=$KEY GIT_CONFIG_VALUE_0=x; git fetch -u origin';
+
+describe('kill-guard: an exported fetch refspec whose value is not shown', () => {
+  it('denies a refspec key exported with no value in the statement', () => {
+    expect(decideAll([[EXPORTED_KEY_ONLY, LINKED_OPTIONS]])).toEqual(['mainMove']);
+  });
+
+  it('allows a key held in a variable', () => {
+    expect(decideAll([[EXPORTED_UNKNOWN_KEY, LINKED_OPTIONS]])).toEqual(['allow']);
+  });
+});
+
 // These attach a linked worktree to `main` (or write `HEAD` to it), after which a `reset` in that
 // worktree moves `main` itself.
 const WORKTREE_ONTO_MAIN: string[] = [

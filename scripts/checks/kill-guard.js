@@ -113,7 +113,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { mainMoveTarget } = require('./kill-guard-main-moves');
+const { mainMoveTarget, environmentFetchWritesMain } = require('./kill-guard-main-moves');
 
 const MAIN_CHECKOUT_PATH = '/Users/drizzer14/Developer/Projects/pff-ios';
 
@@ -1873,7 +1873,10 @@ function gitFinding(segment, invocations, rules) {
   const target = invocations
     .flatMap((invocation) => invocation.targets)
     .find((directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath));
-  if (target === undefined) return null;
+  if (target === undefined) {
+    // A `pull` outside the main checkout still fetches, and its refspec can write the ref `main`.
+    return git.subcommand === 'pull' ? mainMoveFinding(segment, invocations, rules) : null;
+  }
 
   return {
     kind: isFastForwardOnly(git) ? 'mainFastForward' : 'mainCheckout',
@@ -2814,11 +2817,16 @@ function substitutedCommandFinding(command, context) {
 }
 
 // A statement that only sets variables (a bare `NAME=value`, or an `export`/`declare`) denies by
-// itself when they set core.hooksPath through GIT_CONFIG_*, whatever git command runs after it.
+// itself when they set core.hooksPath through GIT_CONFIG_*, whatever git command runs after it,
+// and, as a `mainMove`, when they set a `remote.<name>.fetch` refspec that can write `main` for
+// the fetch or pull after it (in whichever repository: the text cannot say where that runs).
 function environmentFinding(environment, context) {
-  if (context.rules.dataBody || !environmentSetsHooksPath(environment)) return null;
+  if (context.rules.dataBody) return null;
+  const detail = context.segment.trim();
+  if (environmentSetsHooksPath(environment)) return { kind: 'hooksConfig', detail };
+  if (!environmentFetchWritesMain(environment)) return null;
 
-  return { kind: 'hooksConfig', detail: context.segment.trim() };
+  return { kind: 'mainMove', detail: `${detail} (sets a fetch refspec that can write main)` };
 }
 
 // ---- a script file a shell runs ----
