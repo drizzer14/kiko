@@ -121,8 +121,20 @@ const readBody = guard(
 /** The asset the history reads still filter to; the balance reads take every asset. */
 export const BINANCE_ASSET = 'BTC';
 
-/** A signed request's parsed body alongside its response headers. */
+/** A request's parsed body alongside its response headers. */
 export type SignedPage = { body: unknown; headers: Headers };
+
+/**
+ * A 429 (weight limit) or 418 (IP ban) is checked BEFORE the body is read, so both throw
+ * `BinanceRateLimitError` for the caller's cooldown, in a signed and in a public read alike.
+ */
+const pageOf = async (response: Response): Promise<SignedPage> => {
+  if (response.status === 429 || response.status === 418) {
+    throw new BinanceRateLimitError(response.status, retryAfterMsFromHeaders(response.headers));
+  }
+
+  return { body: await readBody(response), headers: response.headers };
+};
 
 /**
  * One signed Binance request. HMAC-SHA256 over the full query
@@ -163,11 +175,25 @@ export const signedRequestPage = async (
     },
   );
 
-  if (response.status === 429 || response.status === 418) {
-    throw new BinanceRateLimitError(response.status, retryAfterMsFromHeaders(response.headers));
-  }
+  return pageOf(response);
+};
 
-  return { body: await readBody(response), headers: response.headers };
+/**
+ * One public (market data) Binance request: no key header and no signature, so nothing of the
+ * user reaches it. The 429 and 418 checks are those of `signedRequestPage`, the same typed error
+ * for the caller's cooldown; any other non-ok answer rejects like a signed read.
+ */
+export const publicRequestPage = async (
+  path: string,
+  params: Record<string, string>,
+  { fetchImpl = fetch }: Pick<FetchAccountOptions, 'fetchImpl'> = {},
+): Promise<SignedPage> => {
+  const response = await fetchImpl(
+    `${BINANCE_API_ENDPOINT}${path}?${new URLSearchParams(params).toString()}`,
+    { method: 'GET', headers: { 'Cache-Control': 'no-store' } },
+  );
+
+  return pageOf(response);
 };
 
 const signedRequest = async (

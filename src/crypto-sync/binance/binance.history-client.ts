@@ -10,7 +10,9 @@ import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
 import {
   type FetchAccountOptions,
   type SignedPage,
+  publicRequestPage,
   signedRequestPage,
+  usedApiWeightFromHeaders,
   usedWeightsFromHeaders,
 } from './binance.client';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
@@ -1083,3 +1085,72 @@ export const fetchDustHistory = async (
   options: FetchAccountOptions = {},
 ): Promise<DustHistoryPage> =>
   dustPage(await signedRequestPage(apiKey, secret, 'GET', '/sapi/v1/asset/dribblet', {}, options));
+
+const tickerText: Reader<string> = (value) => binanceTickerOf(text(value));
+
+/**
+ * Only these four fields of a listed symbol are read, so the rest of its large entry (filters,
+ * order types, precisions) is never kept. The coins are upper-cased once here, the symbol is kept
+ * as Binance sent it, and a field that is not text makes the item unreadable.
+ */
+const EXCHANGE_SYMBOL_FIELDS = {
+  symbol: text,
+  status: text,
+  baseAsset: tickerText,
+  quoteAsset: tickerText,
+};
+
+/** One symbol of `/api/v3/exchangeInfo`: its name, status and its two coins as tickers. */
+export type BinanceExchangeSymbol = Parsed<typeof EXCHANGE_SYMBOL_FIELDS>;
+
+/**
+ * The listed Spot symbols, each name once, with the number of items that did not read and the
+ * minute's spent `/api/*` weight when Binance reports it.
+ */
+export type ExchangeSymbolsPage = {
+  symbols: BinanceExchangeSymbol[];
+  unreadable: number;
+  usedApiWeight1m: number | undefined;
+};
+
+const readExchangeSymbol = recordReader(EXCHANGE_SYMBOL_FIELDS);
+
+const exchangeSymbolsPage = ({ body, headers }: SignedPage): ExchangeSymbolsPage => {
+  if (!isRecord(body)) {
+    return parseFailure();
+  }
+
+  const readings = readingsOf(body.symbols, readExchangeSymbol, () => undefined);
+  const seen = new Set<string>();
+
+  return {
+    symbols: valuesOf(readings).filter(({ symbol }) => {
+      if (seen.has(symbol)) {
+        return false;
+      }
+
+      seen.add(symbol);
+
+      return true;
+    }),
+    unreadable: unreadableOf(readings).length,
+    usedApiWeight1m: usedApiWeightFromHeaders(headers),
+  };
+};
+
+/**
+ * `GET /api/v3/exchangeInfo?permissions=SPOT&showPermissionSets=false`, public (no key, no
+ * signature), weight 20. The filter is always sent, so the body holds the Spot-permission symbols
+ * without their permission sets. A body that is no object, or with no `symbols` array, throws
+ * `BinanceHistoryParseError`; a 429 or 418 throws `BinanceRateLimitError`.
+ */
+export const fetchExchangeSymbols = async (
+  options: Pick<FetchAccountOptions, 'fetchImpl'> = {},
+): Promise<ExchangeSymbolsPage> =>
+  exchangeSymbolsPage(
+    await publicRequestPage(
+      '/api/v3/exchangeInfo',
+      { permissions: 'SPOT', showPermissionSets: 'false' },
+      options,
+    ),
+  );
