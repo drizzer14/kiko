@@ -3339,50 +3339,57 @@ function assignedVariables(segment, variables, separator) {
 const isLiteralValue = (value) =>
   value.length <= VARIABLE_VALUE_LIMIT && !/[$`]|__SUBSHELL__/.test(value);
 
-// The variables at one point of a command: `own` entries over the `parent` scope. A segment's
-// scope must stay as it was, because the nested text of earlier segments still reads it, so a later
-// assignment adds a link instead of copying every earlier variable (thousands of assignments
-// copied quadratically, seconds of the hook's 10). Every SCOPE_DEPTH_LIMIT links the chain is
-// folded into one map, so a lookup walks a few links at most.
-const SCOPE_DEPTH_LIMIT = 32;
+// The variables at one point of a command: a persistent trie over the characters of each name, a
+// node per character holding the value of the name that ends there (`null`: assigned, value
+// unknown). A segment's scope must stay as it was, because the nested text of earlier segments
+// still reads it, so an assignment copies only the nodes on its name's path and shares every other
+// node. An assignment and a lookup each cost the name's length, however many variables came before
+// and however often a subshell goes back to an earlier scope; a copy of every earlier variable per
+// assignment (or a merge of them every few links) turns thousands of assignments into quadratic
+// work, past the hook's timeout. `null` is the scope with no variable.
+const noVariables = () => null;
 
-const noVariables = () => ({ own: new Map(), parent: null, depth: 0 });
-
-const hasVariables = (scope) => scope.parent !== null || scope.own.size > 0;
+const hasVariables = (scope) => scope !== null;
 
 function lookupVariable(scope, name) {
-  for (let link = scope; link !== null; link = link.parent) {
+  let node = scope;
+  for (const character of name) {
     tick();
-    if (link.own.has(name)) return link.own.get(name);
+    node = node?.children.get(character);
+    if (node === undefined) return undefined;
   }
 
-  return undefined;
+  return node?.value;
 }
 
-function foldScope(scope) {
-  const links = [];
-  for (let link = scope; link !== null; link = link.parent) links.unshift(link);
-  const own = new Map();
-  for (const link of links) {
-    for (const [name, value] of link.own) {
-      tick();
-      own.set(name, value);
-    }
-  }
+const copyNode = (node) => {
+  tick();
 
-  return { own, parent: null, depth: 0 };
+  return { value: node?.value, children: new Map(node?.children) };
+};
+
+function setVariable(scope, name, value) {
+  const root = copyNode(scope);
+  let copy = root;
+  let original = scope;
+  for (const character of name) {
+    original = original?.children.get(character);
+    const child = copyNode(original);
+    copy.children.set(character, child);
+    copy = child;
+  }
+  copy.value = value;
+
+  return root;
 }
 
 // A later assignment of a name wins, in the order the command runs them. A segment that assigns
 // nothing shares its scope.
-function withVariables(scope, assigned) {
-  const entries = Object.entries(assigned);
-  if (entries.length === 0) return scope;
-  const own = new Map(entries.map(([name, value]) => [name, isLiteralValue(value) ? value : null]));
-  const next = { own, parent: scope, depth: scope.depth + 1 };
-
-  return next.depth >= SCOPE_DEPTH_LIMIT ? foldScope(next) : next;
-}
+const withVariables = (scope, assigned) =>
+  Object.entries(assigned).reduce(
+    (next, [name, value]) => setVariable(next, name, isLiteralValue(value) ? value : null),
+    scope,
+  );
 
 // The variables after one segment. Only a write or a directory is judged through a variable, and
 // a pass that reports kills and stashes alone judges neither, so it tracks none.
