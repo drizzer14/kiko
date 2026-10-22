@@ -2101,10 +2101,6 @@ export const transactionsRepo = {
     source: TransactionRow['source'],
     prefixes: string[],
   ): Promise<Set<string>> => {
-    if (prefixes.length === 0) {
-      return new Set();
-    }
-
     const stored: string[] = [];
 
     for (const prefixChunk of chunkRows(prefixes, ORDER_PREFIX_CHUNK_SIZE)) {

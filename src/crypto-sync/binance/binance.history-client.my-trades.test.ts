@@ -1,7 +1,6 @@
 import {
   type BinanceMyTrade,
   BinanceHistoryParseError,
-  TRADE_PAGE_LIMIT,
   fetchMyTrades,
   fetchOrderFills,
 } from './binance.history-client';
@@ -119,10 +118,6 @@ describe('fetchMyTrades', () => {
     expect(paramsOf(sent[0]).get('symbol')).toBe('ETHBTC');
   });
 
-  it('pages at the most Binance serves', () => {
-    expect(TRADE_PAGE_LIMIT).toBe(1_000);
-  });
-
   it('reads the eight fields of each trade and the weights Binance reports', async () => {
     const page = await readTrades(
       [wireTradeOf(), wireTradeOf({ id: 28_458, isBuyer: false, commissionAsset: ' bnb ' })],
@@ -206,6 +201,18 @@ describe('fetchMyTrades', () => {
     ['a fractional orderId', [wireTradeOf({ orderId: 1.5 })]],
     ['an orderId past 2^53', [wireTradeOf({ orderId: 2 ** 53 })]],
     ['no orderId', [wireTradeOf({ orderId: undefined })]],
+    ...['qty', 'quoteQty', 'commission'].flatMap((field) =>
+      [
+        ['an empty', ''],
+        ['a double-dot', '1.2.3'],
+        ['an exponent', '1e-8'],
+        ['a negative', '-1'],
+        ['a padded', ' 1'],
+      ].map(([name, value]): [string, unknown] => [
+        `${name} ${field}`,
+        [wireTradeOf({ [field]: value })],
+      ]),
+    ),
   ])('fails the whole page for %s', async (_name, body) => {
     await expect(readTrades(body)).rejects.toBeInstanceOf(BinanceHistoryParseError);
   });

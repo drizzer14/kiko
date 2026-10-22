@@ -1088,6 +1088,18 @@ export const fetchDustHistory = async (
 
 const tickerText: Reader<string> = (value) => binanceTickerOf(text(value));
 
+const PLAIN_DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
+
+/**
+ * An amount is summed with `addDecimal`, which reads an empty, signed or exponent text as a
+ * number without failing, so only Binance's plain unsigned decimal text is let through, as sent.
+ */
+const decimalText: Reader<string> = (value) => {
+  const amount = text(value);
+
+  return PLAIN_DECIMAL_PATTERN.test(amount) ? amount : parseFailure();
+};
+
 /**
  * Only these four fields of a listed symbol are read, so the rest of its large entry (filters,
  * order types, precisions) is never kept. The coins are upper-cased once here, the symbol is kept
@@ -1152,7 +1164,7 @@ export const fetchExchangeSymbols = async (
   );
 
 /** Binance's cap on `limit` for `myTrades` (the default is 500). */
-export const TRADE_PAGE_LIMIT = 1000;
+const TRADE_PAGE_LIMIT = 1000;
 
 const unchecked: Reader<unknown> = (value) => value;
 
@@ -1164,9 +1176,9 @@ const unchecked: Reader<unknown> = (value) => value;
 const MY_TRADE_FIELDS = {
   id: unchecked,
   orderId: integer,
-  qty: text,
-  quoteQty: text,
-  commission: text,
+  qty: decimalText,
+  quoteQty: decimalText,
+  commission: decimalText,
   commissionAsset: tickerText,
   isBuyer: flag,
   time: integer,
