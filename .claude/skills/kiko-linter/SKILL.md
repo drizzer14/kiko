@@ -528,8 +528,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`VARIABLE_VALUE_LIMIT`) is unknown, and one word never expands past 16 KiB
   (`EXPANDED_WORD_LIMIT`). Not tracked: `unset`, `cd $d`, `f+=x`, loop variables; an assignment
   in a branch that may not run counts as run for the expanded reading, which only adds, and the
-  raw reading still denies what the text denies. Scopes chain per segment (`SCOPE_DEPTH_LIMIT`
-  folds them). A variable the command does not assign stays unresolved because failing closed
+  raw reading still denies what the text denies. A command's variables live in a persistent
+  trie (`setVariable` copies one name's path, `lookupVariable` walks it), so a scope per segment
+  needs no fold and an assignment or lookup costs the name's length.
+  A variable the command does not assign stays unresolved because failing closed
   would deny `tmp=$(mktemp); cp x "$tmp"` and existing allow rows.
 
   Script-content kill scan. The guard reads a script file a command runs (`bash|sh|zsh|dash
