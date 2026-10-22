@@ -246,6 +246,113 @@ describe('scripts/checks/permission-doctor.sh: exception anchors', () => {
   });
 });
 
+// A `**` or `?` in a slot of the exception prefix makes the folders behind it unknown, so a rule
+// reaching a documented exception only partly is never a false remove.
+describe('scripts/checks/permission-doctor.sh: ** slots and ? segments', () => {
+  it.each([
+    ['Edit(~/.claude/jobs/**)'],
+    ['Edit(~/.claude/projects/**)'],
+    ['Edit(~/.claude/projects/**/*.md)'],
+    ['Edit(~/.claude/jobs/**/tmp/**)'],
+  ])('reports %s as partly protected, not remove or never', (rule) => {
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(blockOf(result)).toContain('partly protected');
+    expect(blockOf(result)).not.toContain('"remove"');
+    expect(blockOf(result)).not.toContain('never pre-approves');
+  });
+
+  it('still reports a fully protected rule with a ** as a protected path to remove', () => {
+    const rule = 'Edit(~/.claude/agents/**)';
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(blockOf(result)).toContain('protected path');
+    expect(blockOf(result)).toContain(`"remove":${JSON.stringify(rule)}`);
+    expect(blockOf(result)).not.toContain('partly protected');
+  });
+
+  it('suggests the Markdown form with a * project slot for the user rule', () => {
+    const rule = `Edit(//${layout.home}/.claude/projects/**/memory/**)`;
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).toContain(
+      `"with":${JSON.stringify(`Edit(//${layout.home}/.claude/projects/*/memory/**/*.md)`)}`,
+    );
+  });
+
+  it('removes a rule with a ? segment that can only name a protected file', () => {
+    const rule = 'Edit(~/.claude/?/x)';
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(blockOf(result)).toContain(`"remove":${JSON.stringify(rule)}`);
+  });
+
+  it('gives a ? memory file name no ?.md narrowing', () => {
+    const rule = `Edit(~/.claude/projects/p/memory/?)`;
+    writeSettings([rule]);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).not.toContain('?.md');
+  });
+});
+
+describe('scripts/checks/permission-doctor.sh: a symlinked .claude folder', () => {
+  it.each([['Edit(~/.claude/plans/**)'], ['Edit(~/.claude/projects/*/memory/*.md)']])(
+    'passes %s when <home>/.claude is a symlink',
+    (rule) => {
+      const target = join(layout.working, 'dot');
+      mkdirSync(join(target, '.claude/projects', PROJECT, 'memory'), { recursive: true });
+      mkdirSync(join(target, '.claude/plans'), { recursive: true });
+      const linkedHome = realpathSync(createTemporaryDirectory('permission-doctor-linked-'));
+      symlinkSync(join(target, '.claude'), join(linkedHome, '.claude'));
+      layout = { ...layout, home: linkedHome };
+      layout.homeSettings = join(linkedHome, '.claude/settings.json');
+      writeSettings([rule]);
+
+      const result = runDoctor();
+
+      expect(blockOf(result)).not.toContain('"remove"');
+      expect(blockOf(result)).toBe('');
+      expect(result.status).toBe(0);
+    },
+  );
+});
+
+describe('scripts/checks/permission-doctor.js: a crash', () => {
+  it('exits 3 from the checker and 2 from the wrapper for one rule of 30000 segments', () => {
+    const rule = `Edit(~/${Array.from({ length: 30000 }, () => 'a').join('/')})`;
+    writeSettings([rule]);
+    const env = {
+      PATH: process.env.PATH,
+      HOME: layout.home,
+      CLAUDE_CONFIG_DIR: layout.profile,
+    };
+
+    const checker = spawnSync('node', [CHECKER], { encoding: 'utf8', cwd: layout.working, env });
+    const wrapper = runDoctor();
+    const what = blockOf(wrapper)
+      .split('\n')
+      .find((line) => line.startsWith('WHAT FAILED:'));
+
+    expect(checker.status).toBe(3);
+    expect(wrapper.status).toBe(2);
+    expect(what).toContain('could not run');
+    expect(what).not.toContain('cannot work');
+  });
+});
+
 describe('scripts/checks/permission-doctor.sh: checker failure', () => {
   const whatOf = (result: SpawnSyncReturns<string>): string | undefined =>
     blockOf(result)

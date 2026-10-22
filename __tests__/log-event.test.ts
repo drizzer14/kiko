@@ -192,6 +192,18 @@ describe('scripts/log-event.sh', () => {
     expect(result.stderr).toContain(HANDLE_NAME);
   });
 
+  it('exits 1 with could not append and pushes nothing when memory/refs is missing', () => {
+    const fixture = createFixture();
+    execFileSync('rm', ['-r', join(fixture.main, 'memory/refs')]);
+
+    const result = runScript(fixture, ['text']);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('could not append');
+    expect(existsSync(join(fixture.main, 'memory/refs'))).toBe(false);
+    expect(orcaArguments(fixture)).toEqual([]);
+  });
+
   it('logs the line and exits 1 when the push fails', () => {
     const fixture = createFixture();
 
