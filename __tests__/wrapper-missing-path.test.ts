@@ -79,6 +79,10 @@ const NOT_PATH_WRAPPERS: [string, string][] = [
   ['medium.sh', 'runs the other wrappers, takes no path'],
   ['mutation.sh', 'takes options, the changed files come from git'],
   ['osv.sh', 'reads package-lock.json at the repository root'],
+  [
+    'permission-doctor.sh',
+    'reads the settings files of the cwd and the user; the missing-node case below pins it',
+  ],
   ['plist.sh', 'reads the one fixed Info.plist'],
   ['pre-write-guard.sh', 'reads a hook payload on stdin'],
   ['security.sh', 'hands its targets to Semgrep, which refuses a path it cannot read'],
@@ -120,6 +124,16 @@ describe('a deleted path in the file list', () => {
     const missingDirectory = join(createTemporaryDirectory('wrapper-missing-path-'), 'no-such-dir');
 
     expectRefusal(runWrapper('secrets.sh', [missingDirectory]), missingDirectory);
+  });
+});
+
+describe('a wrapper that runs node, with node missing from PATH', () => {
+  it('permission-doctor.sh fails closed with a standard block and exit 2', () => {
+    const run = runWrapper('permission-doctor.sh', [], { PATH: '/usr/bin:/bin' });
+
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain('CHECK FAILED');
+    expect(run.stderr).toContain('The permission doctor could not run');
   });
 });
 
