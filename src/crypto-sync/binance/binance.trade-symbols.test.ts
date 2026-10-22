@@ -2,6 +2,7 @@ import { IdCursorPageError } from '@kiko/crypto-sync/exchange/paging';
 import type { CoinLists, ExchangeTrades } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
+  bySymbol,
   planTradeSymbolReads,
   readSpotSymbols,
   runTradeSymbolReads,
@@ -296,6 +297,14 @@ describe('tradeCandidatesOf', () => {
         listing: [listed('ETHBTC', 'TRADING', 'ETH', 'BTC')],
       }),
     ).toEqual([{ symbol: 'ETHBTC', baseAsset: 'ETH', quoteAsset: 'BTC' }]);
+  });
+});
+
+describe('bySymbol', () => {
+  it('orders a lower name before a higher one, a higher after a lower, equal names as 0', () => {
+    expect(bySymbol({ symbol: 'AAAUSDT' }, { symbol: 'BNBBTC' })).toBeLessThan(0);
+    expect(bySymbol({ symbol: 'BNBBTC' }, { symbol: 'AAAUSDT' })).toBeGreaterThan(0);
+    expect(bySymbol({ symbol: 'BNBBTC' }, { symbol: 'BNBBTC' })).toBe(0);
   });
 });
 

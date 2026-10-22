@@ -79,7 +79,7 @@ export const touchedCoinsOf = (input: {
   );
 };
 
-const bySymbol = (left: { symbol: string }, right: { symbol: string }): number =>
+export const bySymbol = (left: { symbol: string }, right: { symbol: string }): number =>
   Number(left.symbol > right.symbol) - Number(left.symbol < right.symbol);
 
 /**
