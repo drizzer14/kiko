@@ -1880,17 +1880,51 @@ describe('scripts/job-queue.sh gate start load defer', () => {
     expect(startedWorktrees(sandbox)).toEqual([gate.worktree]);
   });
 
-  it('never defers a verify, however high the load', () => {
-    const sandbox = createSandbox();
-    const worktree = createWorktree(sandbox, 'one');
-    stubLoad(sandbox, HIGH_LOAD, 9999);
+  describe.each(['verify', 'check-all', 'security'] as const)('a queued %s job', (jobClass) => {
+    it('waits at the head while the load is high, then starts with the load on its START line', async () => {
+      const sandbox = createSandbox();
+      const worktree = createWorktree(sandbox, 'one');
+      stubLoad(sandbox, HIGH_LOAD, 3);
 
-    const result = runQueue(sandbox, 'verify', worktree, 'one');
+      const waiter = startQueue(sandbox, jobClass, worktree, 'one');
+      await waitFor(
+        () => waiter.stdout().includes('WAITING one: load') || waiter.child.exitCode !== null,
+      );
+      const result = await waiter.finished;
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).not.toMatch(/^WAITING /m);
-    expect(result.stdout).not.toContain('LOAD WAIT EXPIRED');
-    expect(startedWorktrees(sandbox)).toEqual([worktree]);
+      expect(result.stdout).toMatch(/^WAITING one: load at or above 10 \(waits at most 1200 s\)$/m);
+      expect(result.code).toBe(0);
+      expect(result.stdout).not.toContain('LOAD WAIT EXPIRED');
+      const [waiting, start] = orderOf(result.stdout, /^WAITING one: load/m, /^START one /m);
+      expect(waiting).toBeGreaterThanOrEqual(0);
+      expect(start).toBeGreaterThan(waiting);
+      expect(result.stdout).toMatch(
+        /^START one at \d\d:\d\d head (?:[0-9a-f]{12}|unknown) \(load: 1\.50 2\.50 3\.50\)$/m,
+      );
+      expect(startedWorktrees(sandbox)).toEqual([worktree]);
+    });
+
+    it('starts anyway after the wait limit, printing LOAD WAIT EXPIRED before START', () => {
+      const sandbox = createSandbox();
+      const worktree = createWorktree(sandbox, 'one');
+      stubLoad(sandbox, HIGH_LOAD, 9999);
+      sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+
+      const result = runQueue(sandbox, jobClass, worktree, 'one');
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED one: load 12\.25$/m);
+      const [waiting, expired, start] = orderOf(
+        result.stdout,
+        /^WAITING one: load/m,
+        /^LOAD WAIT EXPIRED one: /m,
+        /^START one /m,
+      );
+      expect(waiting).toBeGreaterThanOrEqual(0);
+      expect(expired).toBeGreaterThan(waiting);
+      expect(start).toBeGreaterThan(expired);
+      expect(startedWorktrees(sandbox)).toEqual([worktree]);
+    });
   });
 
   it('prints one "load unknown" line and does not defer when the load cannot be read', async () => {
