@@ -72,7 +72,7 @@ describe('the not-imported patch', () => {
     const rest = {
       futureKey: { keep: [1, 2] },
       balanceSyncedAt: 5_000,
-      trades: { symbols: {}, rotation: 3, balanceSnapshot: {} },
+      trades: { symbols: {}, rotation: 'BTCUSDT', balanceSnapshot: {} },
       untrackedCoins: { balance: ['PEPE'], history: ['XYZ'] },
     };
     const walks = { pay: { cursor: 123_456, pointCursor: 'junk' }, mystery: { cursor: 9 } };

@@ -9,8 +9,10 @@ import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   type FetchAccountOptions,
-  type SignedPage,
+  type RequestPage,
+  publicRequestPage,
   signedRequestPage,
+  usedApiWeightFromHeaders,
   usedWeightsFromHeaders,
 } from './binance.client';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
@@ -235,7 +237,7 @@ type TotalItem<Row> = { row: Row } | { untracked: UntrackedTotalRow };
  */
 const totalPage =
   <Row>(readRow: Reader<Row | undefined>, timeOf: TimeReader) =>
-  ({ body, headers }: SignedPage): TotalPage<Row> => {
+  ({ body, headers }: RequestPage): TotalPage<Row> => {
     if (!isRecord(body)) {
       return parseFailure();
     }
@@ -355,7 +357,7 @@ const capitalItemOf =
 
 const capitalPage =
   <Row>(readRow: Reader<Row>, field: CapitalField) =>
-  ({ body, headers }: SignedPage): CapitalPage<Row> => {
+  ({ body, headers }: RequestPage): CapitalPage<Row> => {
     const readings = readingsOf(
       body,
       capitalItemOf(readRow, field),
@@ -619,7 +621,7 @@ const readPayItem: Reader<PayItem> = (value) => {
       };
 };
 
-const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
+const payPage = ({ body, headers }: RequestPage): PayHistoryPage => {
   const readings = readingsOf(
     isRecord(body) && body.code === PAY_SUCCESS_CODE ? body.data : undefined,
     readPayItem,
@@ -955,7 +957,7 @@ const readConvertRecord: Reader<BinanceConvertRecord> = (item) => {
  */
 export type ConvertHistoryPage = HistoryPage<BinanceConvertRecord> & { moreData: boolean };
 
-const convertPage = ({ body, headers }: SignedPage): ConvertHistoryPage => {
+const convertPage = ({ body, headers }: RequestPage): ConvertHistoryPage => {
   if (!isRecord(body)) {
     return parseFailure();
   }
@@ -1054,7 +1056,7 @@ export type DustHistoryPage = HistoryPage<BinanceDustRecord>;
  * An empty log is an object with `userAssetDribblets` present as an empty array and no `total`
  * (measured live). `total` is never required or read; a body without the list array is malformed.
  */
-const dustPage = ({ body, headers }: SignedPage): DustHistoryPage => {
+const dustPage = ({ body, headers }: RequestPage): DustHistoryPage => {
   if (!isRecord(body)) {
     return parseFailure();
   }
@@ -1083,3 +1085,68 @@ export const fetchDustHistory = async (
   options: FetchAccountOptions = {},
 ): Promise<DustHistoryPage> =>
   dustPage(await signedRequestPage(apiKey, secret, 'GET', '/sapi/v1/asset/dribblet', {}, options));
+
+const tickerText: Reader<string> = (value) => binanceTickerOf(text(value));
+
+/**
+ * Only these four fields of a listed symbol are read, so the rest of its large entry (filters,
+ * order types, precisions) is never kept. The coins are upper-cased once here, the symbol is kept
+ * as Binance sent it, and a field that is not text makes the item unreadable.
+ */
+const EXCHANGE_SYMBOL_FIELDS = {
+  symbol: text,
+  status: text,
+  baseAsset: tickerText,
+  quoteAsset: tickerText,
+};
+
+/** One symbol of `/api/v3/exchangeInfo`: its name, status and its two coins as tickers. */
+export type BinanceExchangeSymbol = Parsed<typeof EXCHANGE_SYMBOL_FIELDS>;
+
+/**
+ * The listed Spot symbols as sent (a name sent twice is listed twice; `tradeCandidatesOf` keeps
+ * each once), with the number of items that did not read and the minute's spent `/api/*` weight
+ * when Binance reports it.
+ */
+export type ExchangeSymbolsPage = {
+  symbols: BinanceExchangeSymbol[];
+  unreadable: number;
+  usedApiWeight1m: number | undefined;
+};
+
+const readExchangeSymbol = recordReader(EXCHANGE_SYMBOL_FIELDS);
+
+const exchangeSymbolsPage = ({ body, headers }: RequestPage): ExchangeSymbolsPage => {
+  if (!isRecord(body)) {
+    return parseFailure();
+  }
+
+  const readings = readingsOf(body.symbols, readExchangeSymbol, () => undefined);
+  const readable = valuesOf(readings);
+  const unreadable = unreadableOf(readings).length;
+
+  if (readable.length === 0 && unreadable > 0) {
+    return parseFailure();
+  }
+
+  return {
+    symbols: readable,
+    unreadable,
+    usedApiWeight1m: usedApiWeightFromHeaders(headers),
+  };
+};
+
+/**
+ * `GET /api/v3/exchangeInfo?showPermissionSets=false`, public (no key, no signature), weight 20.
+ * No `permissions` filter is sent: `permissions=SPOT` leaves out the BREAK leveraged-token
+ * symbols (isSpotTradingAllowed false) a user can still hold old Spot fills on, and the body
+ * stays within 1% of the filtered one. A body that is no object, with no `symbols` array, or with
+ * items of which none reads, throws `BinanceHistoryParseError`; an empty `symbols` array is an
+ * empty list; a 429 or 418 throws `BinanceRateLimitError`.
+ */
+export const fetchExchangeSymbols = async (
+  options: Pick<FetchAccountOptions, 'fetchImpl'> = {},
+): Promise<ExchangeSymbolsPage> =>
+  exchangeSymbolsPage(
+    await publicRequestPage('/api/v3/exchangeInfo', { showPermissionSets: 'false' }, options),
+  );

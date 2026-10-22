@@ -1900,7 +1900,12 @@ fails the balance sync. The Binance arm runs its history reads in
 `runBinanceHistoryWalks` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`: read
 the order and the `logOnFailure` tags there). Each runs in its own `logOnFailure` and
 all share one `run`; a rate limit met by an earlier read puts the shared cooldown on the later ones.
-TRADES are out of scope. Convert reads `/sapi/v1/convert/tradeFlow`
+Trade READS are not yet run by `runBinanceHistoryWalks` (set 11). The trade-symbol
+discovery and rotation (candidate rule, status filter, the rotation cursor stored as text in
+`trades.rotation`, per-symbol vs run-stopping errors) live in
+`src/crypto-sync/binance/binance.trade-symbols.ts`; the id-cursor pager is
+`src/crypto-sync/exchange/paging/id-cursor-pager.ts`. Read `TRADE_MAIN_QUOTES` and
+`TRADING_SYMBOL_STATUSES` there, never a copied list. Convert reads `/sapi/v1/convert/tradeFlow`
 (`binance.history-client.ts`) and places each row by `walletType` FUNDING or SPOT
 (`binance.convert-history.ts`). `recordExchangeCounterpart` (Convert-mode) in `kiko-domain` is
 the app's manual Convert.

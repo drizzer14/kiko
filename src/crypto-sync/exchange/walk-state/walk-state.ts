@@ -82,7 +82,8 @@ export type TradeSymbol = { fromId: number | null; heldOrderId?: number };
 
 export type ExchangeTrades = {
   symbols: Record<string, TradeSymbol>;
-  rotation: number;
+  /** The last symbol whose round-robin read returned; empty starts at the first symbol. */
+  rotation: string;
   balanceSnapshot: Record<string, string>;
 };
 
@@ -211,7 +212,7 @@ const tradeSymbolOf = (stored: unknown): TradeSymbol | undefined => {
   return isNumber(heldOrderId) ? { fromId, heldOrderId } : undefined;
 };
 
-const zero = (): number => 0;
+const emptyText = (): string => '';
 
 const nothing = (): undefined => undefined;
 
@@ -271,7 +272,7 @@ const recordOf = <Value>(
 const tradesOf = (stored: unknown): ReadEntry<ExchangeTrades> => {
   const container = entryOf('trades', stored, recordOrUndefined, emptyRecord);
   const symbols = recordOf('trades.symbols', container.value.symbols, tradeSymbolOf);
-  const rotation = entryOf('trades.rotation', container.value.rotation, numberOrUndefined, zero);
+  const rotation = entryOf('trades.rotation', container.value.rotation, textOrUndefined, emptyText);
   const balanceSnapshot = recordOf(
     'trades.balanceSnapshot',
     container.value.balanceSnapshot,
