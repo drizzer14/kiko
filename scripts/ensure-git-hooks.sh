@@ -6,6 +6,12 @@
 # unset                  -> set it to githooks (a failed write: the standard block and exit 2)
 # already githooks       -> nothing
 # unreadable             -> the standard block and exit 2: only `git config --get` exit 1 is unset
+# same folder, other     -> rewritten to githooks with one NOTICE line on stderr, exit 0: the value
+# spelling                  resolves (realpath; a relative value against the repository root) to
+#                           the githooks folder of a worktree of THIS repository AND the last value
+#                           is set in this repository's common config file (an absolute path made
+#                           the H9 worktrees fail). A global, config.worktree or include value, or
+#                           another repository's folder, is a different case: the row below
 # any other value        -> the standard block and exit 2: two hook systems must be merged by hand
 # not a repository root  -> silent exit 0: no commit is possible from there, so there is nothing
 #                           to guard (a scratch copy without .git, a source tarball)
@@ -35,7 +41,7 @@ if [ "$read_status" -ne 0 ] && [ "$read_status" -ne 1 ]; then
     "Do not skip postinstall (npm ci --ignore-scripts) to get past it."
   exit 2
 fi
-if [ -z "$current" ]; then
+write_wanted() {
   if ! write_output="$(git -C "$ROOT" config core.hooksPath "$WANTED" 2>&1)"; then
     print_block \
       "core.hooksPath could not be set" \
@@ -46,15 +52,70 @@ if [ -z "$current" ]; then
       "Do not skip postinstall (npm ci --ignore-scripts) to get past it."
     exit 2
   fi
+}
+
+# Prints the physical path of an existing folder, or fails. `cd -P` resolves every symlink, a
+# trailing one included, and a path that is not a folder is not a hooks folder either.
+resolve_folder() {
+  (cd -P "$1" 2> /dev/null && pwd -P)
+}
+
+# Prints the physical path of a file's folder plus its name (the file itself may be a new path).
+resolve_file() {
+  local folder
+  folder="$(resolve_folder "$(dirname "$1")")" || return 1
+  printf '%s/%s\n' "$folder" "$(basename "$1")"
+}
+
+# Succeeds when the value of core.hooksPath is the githooks folder of a worktree of this
+# repository, and the last value read comes from this repository's own common config file. A value
+# from the global config, config.worktree, an include or the command line is not this repository's
+# to rewrite, and neither is another repository's folder or another folder (.husky) of this one.
+names_own_githooks_folder() {
+  local origin_line origin common_config value folder worktree_line worktree_path
+  origin_line="$(git -C "$ROOT" config --show-origin --get core.hooksPath 2> /dev/null)" || return 1
+  origin="${origin_line%%$'\t'*}"
+  case "$origin" in file:*) origin="${origin#file:}" ;; *) return 1 ;; esac
+  case "$origin" in /*) ;; *) origin="$ROOT/$origin" ;; esac
+  common_config="$(git -C "$ROOT" rev-parse --git-common-dir 2> /dev/null)" || return 1
+  case "$common_config" in /*) ;; *) common_config="$ROOT/$common_config" ;; esac
+  origin="$(resolve_file "$origin")" || return 1
+  common_config="$(resolve_file "$common_config/config")" || return 1
+  [ "$origin" = "$common_config" ] || return 1
+
+  value="${current%/}"
+  case "$value" in /*) ;; *) value="$ROOT/$value" ;; esac
+  value="$(resolve_folder "$value")" || return 1
+  while IFS= read -r worktree_line; do
+    case "$worktree_line" in
+      'worktree '*)
+        worktree_path="${worktree_line#worktree }"
+        folder="$(resolve_folder "$worktree_path/$WANTED")" || continue
+        [ "$folder" = "$value" ] && return 0
+        ;;
+    esac
+  done < <(git -C "$ROOT" worktree list --porcelain 2> /dev/null)
+  return 1
+}
+
+if [ -z "$current" ]; then
+  write_wanted
   exit 0
 fi
 [ "$current" = "$WANTED" ] && exit 0
+
+if names_own_githooks_folder; then
+  write_wanted
+  printf 'NOTICE: core.hooksPath was %s, the githooks folder of this repository; rewrote it to %s.\n' \
+    "$current" "$WANTED" >&2
+  exit 0
+fi
 
 print_block \
   "core.hooksPath is not githooks" \
   "git config core.hooksPath is set to something else, so the tracked githooks/ folder would not run." \
   "core.hooksPath is '$current'. Find where it is set: git config --show-origin --get-all core.hooksPath" \
   "The pre-commit typecheck is the tracked githooks/ folder. Another hooks path means another hook system, and the two would not both run." \
-  "Merge your hooks into githooks/ by hand, then unset yours (git config --unset core.hooksPath), and run: npm ci" \
+  "Merge your hooks into githooks/ by hand, then ask the user to run git config --unset core.hooksPath (add --global when the origin is the global config; agents are denied it), and run: npm ci" \
   "Do not overwrite the setting from this script, and do not skip postinstall (npm ci --ignore-scripts) to get past it."
 exit 2
