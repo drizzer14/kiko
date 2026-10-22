@@ -153,6 +153,7 @@ const playRun = async (input: {
       const failure = doomed.get(symbol);
 
       if (failure !== undefined) {
+        // `readIdCursor` records a rejected page as one call of the lane, so the fake charges it.
         spent += 1;
 
         throw failure();

@@ -1,3 +1,5 @@
+import { rethrow } from 'fnts';
+
 import type { ExchangeRun } from '../budget';
 
 type IdCursorPageErrorCode =
@@ -68,7 +70,9 @@ const checkedIdsOf = <Row>(
  * rows in ascending id order), from `fromId` until a page is short, the lane cannot afford the
  * next page (with `keep` calls left after it), or the caller stops. Every page is a call of the
  * lane, asked of the budget and then the shared gate, and recorded once it answers, even if its
- * rows are refused. The caller commits each page in `onPage` before the next is asked, so a
+ * rows are refused. A request that rejects is recorded with `failedCallWeights` (a reading it
+ * gave no weights for) before its own error is rethrown, so a lane's cap holds when each symbol
+ * fails its first page. The caller commits each page in `onPage` before the next is asked, so a
  * failure later loses no committed page; a page is never handed over unless all of its ids passed
  * `idOf` (read as `unknown`, so the wire type is checked here, not trusted): a bad page throws
  * `IdCursorPageError`. `nextFromId` is the id after the last row handed over, the `fromId` asked
@@ -84,11 +88,12 @@ export const readIdCursor = async <Row, Lane extends string, Cost, Weights>(inpu
   keep: number;
   fromId: number;
   limit: number;
+  failedCallWeights: Weights;
   fetchPage: (fromId: number) => Promise<{ rows: Row[] } & Weights>;
   idOf: (row: Row) => unknown;
   onPage: (page: { rows: Row[]; nextFromId: number }) => Promise<IdCursorDecision>;
 }): Promise<{ nextFromId: number; calls: number; end: IdCursorEnd }> => {
-  const { run, lane, cost, keep, limit, fetchPage, idOf, onPage } = input;
+  const { run, lane, cost, keep, limit, failedCallWeights, fetchPage, idOf, onPage } = input;
   let nextFromId = input.fromId;
   let calls = 0;
 
@@ -102,7 +107,9 @@ export const readIdCursor = async <Row, Lane extends string, Cost, Weights>(inpu
     }
 
     await run.gate.wait();
-    const page = await fetchPage(nextFromId);
+    const page = await fetchPage(nextFromId).catch(
+      rethrow(() => run.budget.record(lane, failedCallWeights)),
+    );
 
     calls += 1;
     run.budget.record(lane, page);

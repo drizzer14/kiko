@@ -184,7 +184,7 @@ Source of S9-Q1 ... S9-Q10: `rulings.md`, section "Set 9 plan questions".
 | Ruling | Answer | Sets |
 |---|---|---|
 | S10-Q1 B (COORDINATOR) | `trades.rotation` is text: the last round-robin symbol read; the next run reads the next symbol in sorted order and wraps; `''` = start. No stored value existed, so no migration; `ceil(S / L)` holds when a coin is added or removed | 10 |
-| S10-Q2 A (COORDINATOR) | A listed symbol with a stored `fromId` stays a candidate in any status (HALT, END_OF_DAY, BREAK, CANCEL_ONLY): a halted pair can hold trades from before the halt | 10 |
+| S10-Q2 A (COORDINATOR) | A listed symbol with a stored `fromId` stays a candidate in any status (HALT, END_OF_DAY, CANCEL_ONLY): a halted pair can hold trades from before the halt | 10 |
 | S10-Q3 A (COORDINATOR) | One `exchangeInfo` read per run, no cache; when it fails no symbol is read that run | 10 |
 | S10-Q4 A (USER, probe 8) | BTCUSDT `myTrades` gave 20 records; `id`, `orderId` and `orderListId` are JSON integers, all safe (20 of 20); ids ascending; weight 20. A trade keys on `id` as a safe integer; the unsafe-id refusal stays | 10, 11, 12 |
 | S10-Q5 A (COORDINATOR) | One public no-key `exchangeInfo` call measures the body before step 3. Measured: unfiltered 17.8 MB decoded (325 KB gzip), 3736 symbols, weight 20 | 10 |
@@ -330,7 +330,8 @@ type Pager<Series, Record> = {
   a safe integer (an id whose `id + 1` is not safe too), an id not ascending (one below the
   cursor included), more rows than `limit`, a `stopAt` outside `[page fromId, last id + 1]`, and
   an unsafe input `fromId` (refused before the lane is asked). A refused page never reaches
-  `onPage`; pages committed earlier stay.
+  `onPage`; pages committed earlier stay. A request that rejects is recorded against the lane
+  with the caller's `failedCallWeights`, then its own error is rethrown.
 
 ### Walk state in `sync_state` (set 4)
 
@@ -1230,7 +1231,8 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   symbols (S10-Q3). The request is `showPermissionSets=false` with no `permissions` filter: the
   unfiltered body is 17.8 MB decoded, a `symbols=[...]` list holding one unlisted name is refused
   whole (HTTP 400, -1121), and `permissions=SPOT` leaves out the BREAK leveraged tokens a user
-  can still hold old fills on (S10-Q5b, G1-A). The walk keeps only candidate rows.
+  can still hold old fills on (S10-Q5b, G1-A). Set 11's walk keeps only the rows of
+  `tradeCandidatesOf` (no walk exists yet).
   - Candidate rule (G2-B): a symbol that is readable, with at least one touched coin and the
     other coin touched or one of `TRADE_MAIN_QUOTES`. Readable = a status in
     `TRADING_SYMBOL_STATUSES`, or a stored numeric `fromId` in any listed status (S10-Q2). The
@@ -1726,7 +1728,7 @@ Trade symbols, rotation and the id-cursor pager (set 10; no trades code existed 
 | TR4 | the lane affords 5 calls; 9 changed symbols | 4 priority calls, then at least 1 round-robin read |
 | TR5 | a round-robin read returns; a later one throws a rate limit | `rotation` = the read that returned; the run stops and the error comes back as `failure` (G2-A) |
 | TR6 | coin USDT in 3 candidates, 2 ended at a short page | USDT snapshot entry keeps its stored text; a coin with all ended takes the new text |
-| TR7 | property: `S` 1..150, lane 1..100, every symbol changed every run, candidate churn between runs | each symbol starts a read within `ceil(S / L)` runs, `L >= 1` |
+| TR7 | property: `S` 1..150, lane 1..100, a random share of coins changed, held and never-read symbols drawn afresh each run, a few symbols that throw in a run, candidate churn between runs | each symbol that does not fail every run starts a read within `ceil(S / L)` runs, `L >= 1` |
 | TR8 | a held symbol whose order re-read would take the whole lane | its reads get `keep: 1`, so at most the lane cap - 1 calls |
 | TR9 | a read throws `IdCursorPageError`, `BinanceHistoryParseError` or `BinanceInvalidSymbolError` | that symbol ends `failed`, the run goes on, the cursor passes it, its coins stay unfinished |
 | TP1 | never read; 2500 ids over pages of 1000 | 3 calls; every row once, ascending; `nextFromId` = last id + 1 |
@@ -1735,8 +1737,8 @@ Trade symbols, rotation and the id-cursor pager (set 10; no trades code existed 
 | TP4 | the lane refuses page 2 | no request; end `budget`; `nextFromId` after page 1 |
 | TP5 | `onPage` answers a stop at id X | no further request; end `stopped`; `nextFromId` = X |
 | TP6 | an id not a safe integer (or whose `id + 1` is not), not ascending (repeated or below `fromId` included), more rows than the limit, a `stopAt` outside the page, an unsafe input `fromId` | `IdCursorPageError` (`not-ascending` for an id below `fromId`); that page never reaches `onPage`; earlier pages stay committed |
-| TP7 | the fetch rejects on page 2 | the error propagates; page 1 was committed through `onPage` |
-| TP8 | every page | `gate.wait()` before it; `canAfford(lane, cost, keep)` before it; `record(lane, page)` after it |
+| TP7 | the fetch rejects on page 2 | the error propagates; page 1 was committed through `onPage`; a rejected page counts against the lane |
+| TP8 | every page | `gate.wait()` before it; `canAfford(lane, cost, keep)` before it; `record(lane, page)` after it, or `record(lane, failedCallWeights)` when it rejects (a rejected page counts against the lane) |
 | TP9 | property: random ascending id sets cut into random pages | every row reaches `onPage` once, ascending; the last `nextFromId` = max id + 1 |
 
 Convert, dust, P2P, fiat (sets 8, 9, 12). "spec was:" is the approved text of 73336657 where this

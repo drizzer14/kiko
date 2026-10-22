@@ -66,9 +66,12 @@ const committingTo =
 
 const readFrom = (
   input: Pick<Input, 'fetchPage' | 'onPage'> &
-    Partial<Pick<Input, 'run' | 'lane' | 'cost' | 'keep' | 'fromId' | 'limit'>>,
+    Partial<
+      Pick<Input, 'run' | 'lane' | 'cost' | 'keep' | 'fromId' | 'limit' | 'failedCallWeights'>
+    >,
 ) =>
   readIdCursor<Row, BudgetLane, CallCost, BinancePageWeights>({
+    failedCallWeights: input.failedCallWeights ?? NO_WEIGHTS,
     run: input.run ?? freshRun(),
     lane: input.lane ?? 'transfer',
     cost: input.cost ?? COSTS.transfer,
@@ -435,6 +438,37 @@ describe('readIdCursor', () => {
 
     await expect(failure).rejects.toBe(failed);
     expect(committed).toEqual([ids]);
+  });
+
+  it('counts a failed request against the lane', async () => {
+    const run = freshRun();
+    const failed = new Error('network down');
+    const failedCallWeights: BinancePageWeights = { usedUidWeight1m: 7, usedIpWeight1m: 9 };
+    const recorded: BinancePageWeights[] = [];
+
+    const failure = readFrom({
+      run: {
+        gate: run.gate,
+        budget: {
+          canAfford: run.budget.canAfford,
+          record: (lane, weights, narrowing) => {
+            recorded.push(weights);
+            run.budget.record(lane, weights, narrowing);
+          },
+        },
+      },
+      lane: 'tradeSymbols',
+      cost: COSTS.exchangeInfo,
+      failedCallWeights,
+      fetchPage: async () => {
+        throw failed;
+      },
+      onPage: committingTo([]),
+    });
+
+    await expect(failure).rejects.toBe(failed);
+    expect(recorded).toEqual([failedCallWeights]);
+    expect(run.budget.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(false);
   });
 
   it('asks the lane, waits for the gate, requests, then records the page, for every page', async () => {

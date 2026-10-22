@@ -1104,8 +1104,9 @@ const EXCHANGE_SYMBOL_FIELDS = {
 export type BinanceExchangeSymbol = Parsed<typeof EXCHANGE_SYMBOL_FIELDS>;
 
 /**
- * The listed Spot symbols, each name once, with the number of items that did not read and the
- * minute's spent `/api/*` weight when Binance reports it.
+ * The listed Spot symbols as sent (a name sent twice is listed twice; `tradeCandidatesOf` keeps
+ * each once), with the number of items that did not read and the minute's spent `/api/*` weight
+ * when Binance reports it.
  */
 export type ExchangeSymbolsPage = {
   symbols: BinanceExchangeSymbol[];
@@ -1128,18 +1129,8 @@ const exchangeSymbolsPage = ({ body, headers }: RequestPage): ExchangeSymbolsPag
     return parseFailure();
   }
 
-  const seen = new Set<string>();
-
   return {
-    symbols: readable.filter(({ symbol }) => {
-      if (seen.has(symbol)) {
-        return false;
-      }
-
-      seen.add(symbol);
-
-      return true;
-    }),
+    symbols: readable,
     unreadable,
     usedApiWeight1m: usedApiWeightFromHeaders(headers),
   };

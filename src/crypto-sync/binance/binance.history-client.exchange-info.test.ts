@@ -157,12 +157,12 @@ describe('fetchExchangeSymbols', () => {
     expect(page.symbols).toEqual([symbolOf({ symbol: 'ethBTC' })]);
   });
 
-  it('lists a symbol once however often Binance sends it', async () => {
+  it('lists a symbol as often as Binance sends it, and leaves the repeats to the trade symbol list', async () => {
     const page = await readList({
       symbols: [wireSymbolOf(), wireSymbolOf({ status: 'BREAK' }), wireSymbolOf()],
     });
 
-    expect(page.symbols).toEqual([symbolOf()]);
+    expect(page.symbols).toEqual([symbolOf(), symbolOf({ status: 'BREAK' }), symbolOf()]);
     expect(page.unreadable).toBe(0);
   });
 
