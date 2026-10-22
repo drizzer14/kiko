@@ -1,3 +1,4 @@
+import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
 import { IdCursorPageError } from '@kiko/crypto-sync/exchange/paging';
 import type { CoinLists, ExchangeTrades } from '@kiko/crypto-sync/exchange/walk-state';
 
@@ -877,6 +878,7 @@ describe('runTradeSymbolReads', () => {
     ['an id cursor page the pager cannot trust', new IdCursorPageError('not-safe-integer')],
     ['a body that does not parse', new BinanceHistoryParseError()],
     ['a symbol Binance does not know (-1121)', new BinanceInvalidSymbolError('Invalid symbol.')],
+    ['a row the rules refuse', new BinanceWalkStop('amount-malformed')],
   ])('with %s', (_name, error) => {
     it('ends only that symbol as failed, and reads the next one', async () => {
       const reader = recordingReader();

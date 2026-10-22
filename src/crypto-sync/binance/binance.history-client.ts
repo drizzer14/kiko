@@ -1163,8 +1163,11 @@ export const fetchExchangeSymbols = async (
     await publicRequestPage('/api/v3/exchangeInfo', { showPermissionSets: 'false' }, options),
   );
 
-/** Binance's cap on `limit` for `myTrades` (the default is 500). */
-const TRADE_PAGE_LIMIT = 1000;
+/**
+ * Binance's cap on `limit` for `myTrades` (the default is 500). A page of fewer fills than this
+ * is the last, which is what the trade walk reads its end from.
+ */
+export const TRADE_PAGE_LIMIT = 1000;
 
 const unchecked: Reader<unknown> = (value) => value;
 

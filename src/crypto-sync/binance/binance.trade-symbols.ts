@@ -6,11 +6,13 @@ import type {
   ExchangeStatePatch,
   ExchangeTrades,
 } from '@kiko/crypto-sync/exchange/walk-state';
+import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
 import { IdCursorPageError } from '@kiko/crypto-sync/exchange/paging';
 
 import {
   type BinanceExchangeSymbol,
   BinanceHistoryParseError,
+  type BinancePageWeights,
   type ExchangeSymbolsPage,
 } from './binance.history-client';
 import { binanceTickerOf } from './binance.tracked-coin';
@@ -39,7 +41,8 @@ export const TRADE_MAIN_QUOTES = [
  */
 export const TRADING_SYMBOL_STATUSES = ['TRADING', 'BREAK'] as const;
 
-const NO_WEIGHTS = {
+/** The weights of a request that answered with none, or that was rejected. */
+export const NO_WEIGHTS: BinancePageWeights = {
   usedUidWeight1m: undefined,
   usedIpWeight1m: undefined,
   usedApiWeight1m: undefined,
@@ -168,17 +171,19 @@ const READ_CLASSES: Record<TradeReadClass, { keep: number; movesRotation: boolea
  * How a symbol read finished. `failed` is a read that threw an error of that one symbol (see
  * `isSymbolFailure`): its answer is unknown, so its coins stay unfinished.
  */
-type TradeReadEnd = 'short-page' | 'budget' | 'stopped' | 'failed';
+export type TradeReadEnd = 'short-page' | 'budget' | 'stopped' | 'failed';
 
 /**
  * The errors that name one symbol and no other: a page the id cursor cannot trust, a body that
- * does not parse, and a symbol Binance does not know. Every other error (a rate limit, a refused
- * key, a network failure) may hold for every symbol, so it stops the run and shows.
+ * does not parse, a symbol Binance does not know, and a row the rules refuse (an amount or a
+ * ticker the rows cannot be built from). Every other error (a rate limit, a refused key, a
+ * network failure) may hold for every symbol, so it stops the run and shows.
  */
 const isSymbolFailure = (error: unknown): boolean =>
   error instanceof IdCursorPageError ||
   error instanceof BinanceHistoryParseError ||
-  error instanceof BinanceInvalidSymbolError;
+  error instanceof BinanceInvalidSymbolError ||
+  error instanceof BinanceWalkStop;
 
 /** The order the priority reads run in: a held symbol first, a changed one last. */
 const PRIORITY_CLASSES = ['held', 'never-read', 'changed'] as const;
