@@ -1150,3 +1150,95 @@ export const fetchExchangeSymbols = async (
   exchangeSymbolsPage(
     await publicRequestPage('/api/v3/exchangeInfo', { showPermissionSets: 'false' }, options),
   );
+
+/** Binance's cap on `limit` for `myTrades` (the default is 500). */
+export const TRADE_PAGE_LIMIT = 1000;
+
+const unchecked: Reader<unknown> = (value) => value;
+
+/**
+ * Every field a trade's rows are built from is read strictly, so a field of another JSON type
+ * fails the page. `id` is left as sent: the id-cursor pager checks it, because it is the cursor.
+ * The price, the list id and the maker flags are never read.
+ */
+const MY_TRADE_FIELDS = {
+  id: unchecked,
+  orderId: integer,
+  qty: text,
+  quoteQty: text,
+  commission: text,
+  commissionAsset: tickerText,
+  isBuyer: flag,
+  time: integer,
+};
+
+/** One fill of `/api/v3/myTrades`: amounts as Binance's decimal text, `time` in epoch ms. */
+export type BinanceMyTrade = Parsed<typeof MY_TRADE_FIELDS>;
+
+/** One page of fills and the minute's spent weights when Binance reports them. */
+type MyTradesPage = { rows: BinanceMyTrade[] } & BinancePageWeights;
+
+const readMyTrades = listOf(recordReader(MY_TRADE_FIELDS));
+
+/**
+ * A page with any unreadable row fails whole: a fill skipped here would be lost behind the
+ * cursor that moves past it.
+ */
+const myTradesPage = ({ body, headers }: RequestPage): MyTradesPage => ({
+  rows: readMyTrades(body),
+  ...usedWeightsFromHeaders(headers),
+  usedApiWeight1m: usedApiWeightFromHeaders(headers),
+});
+
+/**
+ * `GET /api/v3/myTrades?symbol&fromId&limit=1000`, signed, ONE page of the symbol's fills from
+ * `fromId` on (inclusive, ascending by id). A symbol Binance does not know throws
+ * `BinanceInvalidSymbolError`, a 429 or 418 `BinanceRateLimitError`, and an unreadable page
+ * `BinanceHistoryParseError`.
+ */
+export const fetchMyTrades = async (
+  apiKey: string,
+  secret: string,
+  symbol: string,
+  fromId: number,
+  options: FetchAccountOptions = {},
+): Promise<MyTradesPage> =>
+  myTradesPage(
+    await signedRequestPage(
+      apiKey,
+      secret,
+      'GET',
+      '/api/v3/myTrades',
+      { symbol, fromId: String(fromId), limit: String(TRADE_PAGE_LIMIT) },
+      options,
+    ),
+  );
+
+/**
+ * `GET /api/v3/myTrades?symbol&orderId&limit=1000`, signed, ONE page of one order's fills. The
+ * first page (`fromId` 0) sends no `fromId`; a later page sends it, the supported combination
+ * `symbol` + `orderId` + `fromId`. Errors are those of `fetchMyTrades`.
+ */
+export const fetchOrderFills = async (
+  apiKey: string,
+  secret: string,
+  symbol: string,
+  orderId: number,
+  fromId: number,
+  options: FetchAccountOptions = {},
+): Promise<MyTradesPage> =>
+  myTradesPage(
+    await signedRequestPage(
+      apiKey,
+      secret,
+      'GET',
+      '/api/v3/myTrades',
+      {
+        symbol,
+        orderId: String(orderId),
+        ...(fromId > 0 ? { fromId: String(fromId) } : {}),
+        limit: String(TRADE_PAGE_LIMIT),
+      },
+      options,
+    ),
+  );
