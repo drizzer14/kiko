@@ -32,10 +32,9 @@
 // and help stay allowed. A fast-forward-only update (`merge --ff-only`, `pull --ff-only`) is its
 // own finding, `mainFastForward`: main moves only through `bash scripts/ff-main.sh <sha>`, which
 // runs after a queued verify of that commit. Any other git command that moves the branch `main`
-// (a `reset` to a commit in the main checkout; `update-ref`, `checkout -B`, `switch -C`,
-// `branch -m|-f|-d`, a fetch or push into it, `symbolic-ref`, `worktree add -B` naming it from any
-// worktree of this repository) is the finding `mainMove`; the rules live in
-// `kill-guard-main-moves.js`.
+// is the finding `mainMove`; the forms, and which of them count from any worktree of this
+// repository, are in the header of `kill-guard-main-moves.js`, which holds the rules. A place the
+// text cannot name (an unresolved `-C` or `cd`) fails closed.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
 // `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
@@ -168,8 +167,10 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
 
 const MAIN_MOVE_REASON_LINES = [
   'WHAT FAILED:    kill-guard denied a git command that moves the branch main (a reset to a ' +
-    'commit in the main checkout, or update-ref, checkout -B, switch -C, branch -m|-f|-d, a ' +
-    'fetch or push into main, symbolic-ref, worktree add -B naming it).',
+    'commit in the main checkout, or in a worktree whose HEAD names main; update-ref, checkout ' +
+    '-B, switch -C, branch -m|-f|-d, a fetch, pull or push into main, also through a -c, ' +
+    '--config-env or exported GIT_CONFIG_* fetch refspec; symbolic-ref onto main, checkout or ' +
+    'switch --ignore-other-worktrees main, worktree add -B or -f naming it).',
   `WHY IT MATTERS: main (${MAIN_CHECKOUT_PATH}) must move only to a commit a queued verify passed ` +
     'on, and its hooks run for every session; every worktree shares the ref, so a move from ' +
     'any of them reaches the main checkout.',
