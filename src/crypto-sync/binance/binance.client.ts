@@ -1,4 +1,5 @@
 import { guard } from 'fnts';
+import { match } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import { BINANCE_API_ENDPOINT } from '@env';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -78,6 +79,23 @@ export class BinanceHistoryTooOldError extends Error {
 const HISTORY_TOO_OLD_CODE = -5026;
 
 /**
+ * A read of a symbol Binance does not know (code -1121, HTTP 400). It names the one symbol and
+ * says nothing of the account, so a trade read of many symbols can end that symbol alone, where
+ * every other request failure is not known to be so narrow.
+ */
+export class BinanceInvalidSymbolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BinanceInvalidSymbolError';
+    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
+    // `instanceof` relies on unless it is restored explicitly.
+    Object.setPrototypeOf(this, BinanceInvalidSymbolError.prototype);
+  }
+}
+
+const INVALID_SYMBOL_CODE = -1121;
+
+/**
  * Binance error bodies are `{ code, msg }`. A non-JSON body (a gateway HTML page) is no body at
  * all.
  */
@@ -98,9 +116,10 @@ const requestFailedOf = async (response: Response): Promise<Error> => {
     detail: typeof msg === 'string' ? `: ${msg}` : '',
   });
 
-  return code === HISTORY_TOO_OLD_CODE
-    ? new BinanceHistoryTooOldError(message)
-    : new Error(message);
+  return match(code)
+    .with(HISTORY_TOO_OLD_CODE, () => new BinanceHistoryTooOldError(message))
+    .with(INVALID_SYMBOL_CODE, () => new BinanceInvalidSymbolError(message))
+    .otherwise(() => new Error(message));
 };
 
 /**

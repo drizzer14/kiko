@@ -6,11 +6,16 @@ import type {
   ExchangeStatePatch,
   ExchangeTrades,
 } from '@kiko/crypto-sync/exchange/walk-state';
-import either, { bifoldMap } from 'fnts/either';
+import { IdCursorPageError } from '@kiko/crypto-sync/exchange/paging';
 
+import {
+  type BinanceExchangeSymbol,
+  BinanceHistoryParseError,
+  type ExchangeSymbolsPage,
+} from './binance.history-client';
 import { binanceTickerOf } from './binance.tracked-coin';
+import { BinanceInvalidSymbolError } from './binance.client';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
-import type { BinanceExchangeSymbol, ExchangeSymbolsPage } from './binance.history-client';
 
 /**
  * The quote coins a symbol may use without either coin of the user being one of them, so a coin
@@ -80,7 +85,9 @@ const bySymbol = (left: { symbol: string }, right: { symbol: string }): number =
 /**
  * The symbols a trade read can walk, each once, ascending by name: a listed symbol that is
  * tradable, or has a cursor stored (so a symbol that ended after it was read keeps being read
- * while it is listed), and whose two coins are each touched or a main quote.
+ * while it is listed), and with at least one touched coin, the other touched or a main quote. A
+ * pair of two main quotes with neither touched is not one, so the many pairs of the main quotes
+ * with each other do not fill the lane for a user who holds none of them.
  */
 export const tradeCandidatesOf = (input: {
   listing: BinanceExchangeSymbol[];
@@ -96,7 +103,9 @@ export const tradeCandidatesOf = (input: {
   for (const { symbol, status, baseAsset, quoteAsset } of listing) {
     const readable = statuses.includes(status) || hasStoredCursor(trades, symbol);
 
-    if (readable && known(baseAsset) && known(quoteAsset)) {
+    const anyTouched = touched.has(baseAsset) || touched.has(quoteAsset);
+
+    if (readable && anyTouched && known(baseAsset) && known(quoteAsset)) {
       candidates.set(symbol, { symbol, baseAsset, quoteAsset });
     }
   }
@@ -141,11 +150,35 @@ const NO_BALANCE_TEXT = '0/0';
  */
 const RESERVED_CALLS = 1;
 
-const READ_CLASSES = ['priority', 'round-robin'] as const;
+type TradeReadClass = 'priority' | 'roundRobin';
 
-type TradeReadClass = (typeof READ_CLASSES)[number];
+/** The order the read classes run in. */
+const READ_ORDER: readonly TradeReadClass[] = ['priority', 'roundRobin'];
 
-type TradeReadEnd = 'short-page' | 'budget' | 'stopped';
+/**
+ * What a class of read leaves of the lane (`keep`), and whether a symbol it reads moves the
+ * rotation: a priority symbol is not read in rotation order, so only a round-robin one does.
+ */
+const READ_CLASSES: Record<TradeReadClass, { keep: number; movesRotation: boolean }> = {
+  priority: { keep: RESERVED_CALLS, movesRotation: false },
+  roundRobin: { keep: 0, movesRotation: true },
+};
+
+/**
+ * How a symbol read finished. `failed` is a read that threw an error of that one symbol (see
+ * `isSymbolFailure`): its answer is unknown, so its coins stay unfinished.
+ */
+type TradeReadEnd = 'short-page' | 'budget' | 'stopped' | 'failed';
+
+/**
+ * The errors that name one symbol and no other: a page the id cursor cannot trust, a body that
+ * does not parse, and a symbol Binance does not know. Every other error (a rate limit, a refused
+ * key, a network failure) may hold for every symbol, so it stops the run and shows.
+ */
+const isSymbolFailure = (error: unknown): boolean =>
+  error instanceof IdCursorPageError ||
+  error instanceof BinanceHistoryParseError ||
+  error instanceof BinanceInvalidSymbolError;
 
 /** The order the priority reads run in: a held symbol first, a changed one last. */
 const PRIORITY_CLASSES = ['held', 'never-read', 'changed'] as const;
@@ -177,15 +210,15 @@ const priorityClassOf = (
  * order to re-read, a symbol never read, one whose coin balance moved since its last complete
  * read, each class ascending. `roundRobin` holds every candidate, from the first symbol after
  * the stored rotation and wrapped, because a priority symbol the lane had no room for is still
- * reached by it; the run skips what it has already read.
+ * reached by it; the run skips what it has already read. The candidates come ascending by name, as
+ * `tradeCandidatesOf` lists them.
  */
 export const planTradeSymbolReads = (input: {
   candidates: TradeCandidate[];
   trades: ExchangeTrades;
   balanceTexts: BalanceTexts;
 }): { priority: string[]; roundRobin: string[] } => {
-  const { trades, balanceTexts } = input;
-  const candidates = [...input.candidates].sort(bySymbol);
+  const { candidates, trades, balanceTexts } = input;
   const classes = candidates.map((candidate) => ({
     symbol: candidate.symbol,
     priorityClass: priorityClassOf(candidate, trades, balanceTexts),
@@ -203,40 +236,18 @@ export const planTradeSymbolReads = (input: {
   };
 };
 
-const keepOf = (readClass: TradeReadClass): number =>
-  match(readClass)
-    .with('priority', () => RESERVED_CALLS)
-    .with('round-robin', () => 0)
-    .exhaustive();
-
-const symbolsOf = (
-  plan: { priority: string[]; roundRobin: string[] },
-  readClass: TradeReadClass,
-): string[] =>
-  match(readClass)
-    .with('priority', () => plan.priority)
-    .with('round-robin', () => plan.roundRobin)
-    .exhaustive();
-
-const rotationAfter = (
-  readClass: TradeReadClass,
-  symbol: string,
-  rotation: string | undefined,
-): string | undefined =>
-  match(readClass)
-    .with('priority', () => rotation)
-    .with('round-robin', () => symbol)
-    .exhaustive();
-
-type TradeReadOutcome = { failed: false; ended: TradeReadEnd } | { failed: true; error: unknown };
-
 /**
  * Read the planned symbols, the priority first (while the lane affords the read and one more
  * call) and then the round-robin (while it affords the read), each symbol at most once. `ended`
  * answers how each symbol that was read finished. `rotation` is the last round-robin symbol whose
- * read returned: a read that throws is not one, so the next run asks that symbol again before any
- * after it. A read that throws ends the run and comes back as `failure`, with the progress made
- * so far, so the caller can write it before it passes the error on.
+ * read returned an answer, a `failed` one included, so a symbol that fails every run cannot hold
+ * the rotation back; a read that stops the run is not one, so the next run asks that symbol again
+ * before any after it.
+ *
+ * A read that throws an error of its one symbol (`isSymbolFailure`) ends only that symbol as
+ * `failed` and the run goes on; the error is kept in `symbolFailures` for the caller to log. Any
+ * other error ends the run and comes back as `failure`, with the progress made so far, so the
+ * caller can write it before it passes the error on.
  */
 export const runTradeSymbolReads = async (input: {
   plan: { priority: string[]; roundRobin: string[] };
@@ -245,42 +256,43 @@ export const runTradeSymbolReads = async (input: {
 }): Promise<{
   rotation: string | undefined;
   ended: Record<string, TradeReadEnd>;
+  symbolFailures: { symbol: string; error: unknown }[];
   failure: { error: unknown } | undefined;
 }> => {
   const { plan, canAfford, readSymbol } = input;
   const ended: Record<string, TradeReadEnd> = {};
+  const symbolFailures: { symbol: string; error: unknown }[] = [];
   const started = new Set<string>();
   let rotation: string | undefined;
 
-  for (const readClass of READ_CLASSES) {
-    const keep = keepOf(readClass);
+  const reads = READ_ORDER.flatMap((readClass) =>
+    plan[readClass].map((symbol) => ({ symbol, ...READ_CLASSES[readClass] })),
+  );
 
-    for (const symbol of symbolsOf(plan, readClass)) {
-      if (started.has(symbol) || !canAfford(keep)) {
-        continue;
+  for (const { symbol, keep, movesRotation } of reads) {
+    if (started.has(symbol) || !canAfford(keep)) {
+      continue;
+    }
+
+    started.add(symbol);
+
+    try {
+      ended[symbol] = (await readSymbol(symbol, keep)).ended;
+    } catch (error) {
+      if (!isSymbolFailure(error)) {
+        return { rotation, ended, symbolFailures, failure: { error } };
       }
 
-      started.add(symbol);
+      ended[symbol] = 'failed';
+      symbolFailures.push({ symbol, error });
+    }
 
-      const attempt = await either<unknown, { ended: TradeReadEnd }>(async () =>
-        readSymbol(symbol, keep),
-      );
-      const outcome = bifoldMap(
-        attempt,
-        (error): TradeReadOutcome => ({ failed: true, error }),
-        (read): TradeReadOutcome => ({ failed: false, ended: read.ended }),
-      );
-
-      if (outcome.failed) {
-        return { rotation, ended, failure: { error: outcome.error } };
-      }
-
-      ended[symbol] = outcome.ended;
-      rotation = rotationAfter(readClass, symbol, rotation);
+    if (movesRotation) {
+      rotation = symbol;
     }
   }
 
-  return { rotation, ended, failure: undefined };
+  return { rotation, ended, symbolFailures, failure: undefined };
 };
 
 /**

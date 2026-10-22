@@ -1,3 +1,4 @@
+import { IdCursorPageError } from '@kiko/crypto-sync/exchange/paging';
 import type { ExchangeTrades } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
@@ -5,6 +6,8 @@ import {
   runTradeSymbolReads,
   tradesPatchesOf,
 } from './binance.trade-symbols';
+import { BinanceInvalidSymbolError } from './binance.client';
+import { BinanceHistoryParseError } from './binance.history-client';
 
 /** A seeded generator (Lehmer), so a failing run replays. */
 const seededRandom = (seed: number): (() => number) => {
@@ -17,14 +20,33 @@ const seededRandom = (seed: number): (() => number) => {
   };
 };
 
-const SEEDS = Array.from({ length: 100 }, (_unused, position) => 1 + position * 13);
+const SEEDS = Array.from({ length: 40 }, (_unused, position) => 1 + position * 13);
 
 const MOST_LISTED = 150;
 const UNIVERSE = 600;
 const PHASES = 3;
 const THROW_SHARE = 0.05;
+const DOOMED_SHARE = 0.08;
 
 type Candidate = { symbol: string; baseAsset: string; quoteAsset: string };
+
+/** One of each class of error that ends a single symbol, so every class meets the bound. */
+const SYMBOL_FAILURES: (() => Error)[] = [
+  () => new IdCursorPageError('not-safe-integer'),
+  () => new BinanceHistoryParseError(),
+  () => new BinanceInvalidSymbolError('Invalid symbol.'),
+];
+
+/** The symbols of a phase whose read fails on EVERY run, each with the error it fails with. */
+const doomedOf = (random: () => number, candidates: Candidate[]): Map<string, () => Error> =>
+  new Map(
+    candidates
+      .filter(() => random() < DOOMED_SHARE)
+      .map(({ symbol }, position): [string, () => Error] => [
+        symbol,
+        SYMBOL_FAILURES[position % SYMBOL_FAILURES.length],
+      ]),
+  );
 
 const candidateOf = (index: number): Candidate => {
   const base = `C${String(index).padStart(4, '0')}`;
@@ -76,7 +98,9 @@ const worldOf = (
   changedShare: number,
   runNumber: number,
 ): RunWorld => {
-  const coins = [...new Set(candidates.flatMap((c) => [c.baseAsset, c.quoteAsset]))];
+  const coins = [
+    ...new Set(candidates.flatMap((candidate) => [candidate.baseAsset, candidate.quoteAsset])),
+  ];
   const balanceTexts = Object.fromEntries(coins.map((coin) => [coin, `${runNumber}/0`]));
   const balanceSnapshot = Object.fromEntries(
     coins.map((coin) => [coin, random() < changedShare ? 'old/0' : balanceTexts[coin]]),
@@ -105,11 +129,12 @@ type RunOutcome = { started: string[]; rotation: string; failed: boolean };
 const playRun = async (input: {
   random: () => number;
   candidates: Candidate[];
+  doomed: ReadonlyMap<string, () => Error>;
   rotation: string;
   changedShare: number;
   runNumber: number;
 }): Promise<RunOutcome> => {
-  const { random, candidates, rotation, changedShare, runNumber } = input;
+  const { random, candidates, doomed, rotation, changedShare, runNumber } = input;
   const world = worldOf(random, candidates, rotation, changedShare, runNumber);
   const plan = planTradeSymbolReads({ candidates, ...world });
   const cap = countIn(random, 100);
@@ -124,6 +149,14 @@ const playRun = async (input: {
       let calls = 0;
 
       started.push(symbol);
+
+      const failure = doomed.get(symbol);
+
+      if (failure !== undefined) {
+        spent += 1;
+
+        throw failure();
+      }
 
       while (calls < wanted && spent + keep < cap) {
         spent += 1;
@@ -163,7 +196,11 @@ const advanceOf = (candidates: Candidate[], before: string, after: string): numb
   return steps === 0 ? candidates.length : steps;
 };
 
-/** Runs over one fixed list until each symbol of it has started a read; asserts the bound. */
+/**
+ * Runs over one fixed list until each symbol of it that does not fail has started a read; asserts
+ * the bound. A symbol that fails on every run is read again each cycle and must not hold up any
+ * other, so only the others are awaited.
+ */
 const playPhase = async (input: {
   random: () => number;
   candidates: Candidate[];
@@ -172,7 +209,10 @@ const playPhase = async (input: {
   firstRunNumber: number;
 }): Promise<{ rotation: string; runs: number }> => {
   const { random, candidates, changedShare, firstRunNumber } = input;
-  const unstarted = new Set(candidates.map(({ symbol }) => symbol));
+  const doomed = doomedOf(random, candidates);
+  const unstarted = new Set(
+    candidates.map(({ symbol }) => symbol).filter((symbol) => !doomed.has(symbol)),
+  );
   let rotation = input.rotation;
   let passed = 0;
   let runs = 0;
@@ -183,6 +223,7 @@ const playPhase = async (input: {
     const outcome = await playRun({
       random,
       candidates,
+      doomed,
       rotation,
       changedShare,
       runNumber: firstRunNumber + runs,

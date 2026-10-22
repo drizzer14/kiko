@@ -1,5 +1,6 @@
 import {
   BinanceHistoryTooOldError,
+  BinanceInvalidSymbolError,
   BinanceRateLimitError,
   DEFAULT_RETRY_AFTER_MS,
   fetchAccount,
@@ -209,6 +210,46 @@ describe('BinanceRateLimitError', () => {
         fetchImpl: makeFetch(invalidBody, false, 400),
       }),
     ).rejects.toThrow('Binance request failed: 400: Account has insufficient balance');
+  });
+});
+
+describe('BinanceInvalidSymbolError', () => {
+  const invalidSymbol = { code: -1121, msg: 'Invalid symbol.' };
+
+  it('carries its own name and the message it was given', () => {
+    const error = new BinanceInvalidSymbolError('Binance request failed: 400');
+
+    expect(error.name).toBe('BinanceInvalidSymbolError');
+    expect(error.message).toBe('Binance request failed: 400');
+  });
+
+  it('is what a read of a symbol Binance does not know rejects with (code -1121)', async () => {
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', {
+        fetchImpl: makeFetch(invalidSymbol, false, 400),
+      }),
+    ).rejects.toBeInstanceOf(BinanceInvalidSymbolError);
+  });
+
+  it('keeps the message of the generic request-failed error', async () => {
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', {
+        fetchImpl: makeFetch(invalidSymbol, false, 400),
+      }),
+    ).rejects.toThrow('Binance request failed: 400: Invalid symbol.');
+  });
+
+  it.each([
+    ['another code', { code: -1021, msg: 'Timestamp outside of the recvWindow' }],
+    ['a code that is text', { code: '-1121', msg: 'Invalid symbol.' }],
+    ['no code', { msg: 'Invalid symbol.' }],
+  ])('is not what a 400 with %s rejects with', async (_label, body) => {
+    const attempt = fetchAccount('api-key-fixture', 'secret-fixture', {
+      fetchImpl: makeFetch(body, false, 400),
+    });
+
+    await expect(attempt).rejects.toThrow('Binance request failed: 400');
+    await expect(attempt).rejects.not.toBeInstanceOf(BinanceInvalidSymbolError);
   });
 });
 

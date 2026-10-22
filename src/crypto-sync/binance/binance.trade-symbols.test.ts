@@ -1,3 +1,4 @@
+import { IdCursorPageError } from '@kiko/crypto-sync/exchange/paging';
 import type { CoinLists, ExchangeTrades } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
@@ -16,8 +17,8 @@ import {
   type ExchangeSymbolsPage,
   fetchExchangeSymbols,
 } from './binance.history-client';
-import { BinanceRateLimitError } from './binance.client';
 import { createBinanceHistoryRun } from './binance.history-budget';
+import { BinanceInvalidSymbolError, BinanceRateLimitError } from './binance.client';
 
 const NOW = 1_704_326_400_000;
 
@@ -233,6 +234,44 @@ describe('tradeCandidatesOf', () => {
     ).toEqual([]);
   });
 
+  it('leaves out a pair of two main quotes when neither coin is touched', () => {
+    expect(
+      candidatesFrom({
+        touched: new Set<string>(),
+        listing: [
+          listed('ETHBTC', 'TRADING', 'ETH', 'BTC'),
+          listed('USDCUSDT', 'TRADING', 'USDC', 'USDT'),
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['ETHBTC', 'BTC', 'ETH', 'BTC'],
+    ['USDCUSDT', 'USDC', 'USDC', 'USDT'],
+  ])('takes %s once %s is touched', (symbol, coin, base, quote) => {
+    expect(
+      candidatesFrom({
+        touched: new Set([coin]),
+        listing: [listed(symbol, 'TRADING', base, quote)],
+      }),
+    ).toEqual([symbol]);
+  });
+
+  it('keeps a pair of two main quotes a candidate once a stored fromId makes its coins touched', () => {
+    const listing = [listed('ETHBTC', 'TRADING', 'ETH', 'BTC')];
+    const trades = tradesOf({ ETHBTC: { fromId: 3 } });
+    const touched = touchedCoinsOf({
+      holdingAssets: [],
+      trades,
+      untrackedCoins: NO_COINS,
+      oversizedCoins: NO_COINS,
+      listing,
+    });
+
+    expect(candidatesFrom({ touched, trades, listing })).toEqual(['ETHBTC']);
+  });
+
   it('lists each candidate once, ascending, whatever the order or repeats of the listing', () => {
     const listing = [
       listed('ETHBTC', 'TRADING', 'ETH', 'BTC'),
@@ -391,7 +430,7 @@ describe('readSpotSymbols', () => {
   });
 });
 
-type ReadEnd = 'short-page' | 'budget' | 'stopped';
+type ReadEnd = 'short-page' | 'budget' | 'stopped' | 'failed';
 
 const candidateOf = (symbol: string) => ({
   symbol,
@@ -640,6 +679,7 @@ describe('runTradeSymbolReads', () => {
     expect(result).toEqual({
       rotation: undefined,
       ended: { CCC: 'short-page' },
+      symbolFailures: [],
       failure: undefined,
     });
   });
@@ -653,7 +693,12 @@ describe('runTradeSymbolReads', () => {
         readSymbol: recordingReader(end).readSymbol,
       });
 
-      expect(result).toEqual({ rotation: 'AAA', ended: { AAA: end }, failure: undefined });
+      expect(result).toEqual({
+        rotation: 'AAA',
+        ended: { AAA: end },
+        symbolFailures: [],
+        failure: undefined,
+      });
     },
   );
 
@@ -737,6 +782,7 @@ describe('runTradeSymbolReads', () => {
     expect(result).toEqual({
       rotation: 'AAA',
       ended: { AAA: 'short-page' },
+      symbolFailures: [],
       failure: { error: rateLimit },
     });
     expect(started).toEqual(['AAA', 'BBB']);
@@ -753,7 +799,168 @@ describe('runTradeSymbolReads', () => {
       },
     });
 
-    expect(result).toEqual({ rotation: undefined, ended: {}, failure: { error: failure } });
+    expect(result).toEqual({
+      rotation: undefined,
+      ended: {},
+      symbolFailures: [],
+      failure: { error: failure },
+    });
+  });
+
+  it('keeps the symbol failures and the progress made before a later read stops the run', async () => {
+    const parseFailure = new BinanceHistoryParseError();
+    const rateLimit = new BinanceRateLimitError(418, 5_000);
+
+    const result = await runTradeSymbolReads({
+      plan: { priority: [], roundRobin: ['AAA', 'BBB', 'CCC'] },
+      canAfford: () => true,
+      readSymbol: async (symbol) => {
+        if (symbol === 'AAA') {
+          throw parseFailure;
+        }
+
+        if (symbol === 'CCC') {
+          throw rateLimit;
+        }
+
+        return { ended: 'short-page' };
+      },
+    });
+
+    expect(result).toEqual({
+      rotation: 'BBB',
+      ended: { AAA: 'failed', BBB: 'short-page' },
+      symbolFailures: [{ symbol: 'AAA', error: parseFailure }],
+      failure: { error: rateLimit },
+    });
+  });
+
+  it.each([
+    ['a rate limit', new BinanceRateLimitError(429, 5_000)],
+    ['an IP ban', new BinanceRateLimitError(418, 5_000)],
+    ['a request failure of another code', new Error('Binance request failed: 400: Bad key')],
+    ['a network failure', new TypeError('Network request failed')],
+  ])('stops the run at %s, with the symbols after it unread', async (_name, error) => {
+    const reader = recordingReader();
+
+    const result = await runTradeSymbolReads({
+      plan: { priority: [], roundRobin: ['AAA', 'BBB', 'CCC'] },
+      canAfford: () => true,
+      readSymbol: async (symbol, keep) => {
+        if (symbol === 'BBB') {
+          throw error;
+        }
+
+        return reader.readSymbol(symbol, keep);
+      },
+    });
+
+    expect(result).toEqual({
+      rotation: 'AAA',
+      ended: { AAA: 'short-page' },
+      symbolFailures: [],
+      failure: { error },
+    });
+    expect(reader.reads).toEqual([['AAA', 0]]);
+  });
+
+  describe.each([
+    ['an id cursor page the pager cannot trust', new IdCursorPageError('not-safe-integer')],
+    ['a body that does not parse', new BinanceHistoryParseError()],
+    ['a symbol Binance does not know (-1121)', new BinanceInvalidSymbolError('Invalid symbol.')],
+  ])('with %s', (_name, error) => {
+    it('ends only that symbol as failed, and reads the next one', async () => {
+      const reader = recordingReader();
+
+      const result = await runTradeSymbolReads({
+        plan: { priority: [], roundRobin: ['AAA', 'BBB', 'CCC'] },
+        canAfford: () => true,
+        readSymbol: async (symbol, keep) => {
+          if (symbol === 'BBB') {
+            throw error;
+          }
+
+          return reader.readSymbol(symbol, keep);
+        },
+      });
+
+      expect(result).toEqual({
+        rotation: 'CCC',
+        ended: { AAA: 'short-page', BBB: 'failed', CCC: 'short-page' },
+        symbolFailures: [{ symbol: 'BBB', error }],
+        failure: undefined,
+      });
+      expect(reader.reads).toEqual([
+        ['AAA', 0],
+        ['CCC', 0],
+      ]);
+    });
+
+    it('lets the rotation pass a round-robin symbol that failed, and no priority one', async () => {
+      const failing = async (): Promise<{ ended: ReadEnd }> => {
+        throw error;
+      };
+
+      const roundRobin = await runTradeSymbolReads({
+        plan: { priority: [], roundRobin: ['AAA'] },
+        canAfford: () => true,
+        readSymbol: failing,
+      });
+      const priority = await runTradeSymbolReads({
+        plan: { priority: ['AAA'], roundRobin: [] },
+        canAfford: () => true,
+        readSymbol: failing,
+      });
+
+      expect(roundRobin.rotation).toBe('AAA');
+      expect(priority.rotation).toBeUndefined();
+    });
+
+    it('reads a priority symbol that failed once only, not again in the round-robin', async () => {
+      const reader = recordingReader();
+
+      const result = await runTradeSymbolReads({
+        plan: { priority: ['AAA'], roundRobin: ['AAA', 'BBB'] },
+        canAfford: () => true,
+        readSymbol: async (symbol, keep) => {
+          if (symbol === 'AAA') {
+            throw error;
+          }
+
+          return reader.readSymbol(symbol, keep);
+        },
+      });
+
+      expect(result.ended).toEqual({ AAA: 'failed', BBB: 'short-page' });
+      expect(reader.reads).toEqual([['BBB', 0]]);
+    });
+
+    it('leaves the coins of the failed symbol unfinished, so no snapshot takes their text', async () => {
+      const candidates = ['AAAUSDT', 'BBBUSDT'].map(candidateOf);
+      const result = await runTradeSymbolReads({
+        plan: { priority: [], roundRobin: ['AAAUSDT', 'BBBUSDT'] },
+        canAfford: () => true,
+        readSymbol: async (symbol) => {
+          if (symbol === 'AAAUSDT') {
+            throw error;
+          }
+
+          return { ended: 'short-page' };
+        },
+      });
+
+      expect(
+        tradesPatchesOf({
+          candidates,
+          trades: { symbols: {}, rotation: '', balanceSnapshot: { AAA: 'old/0', USDT: 'old/0' } },
+          balanceTexts: { AAA: '1/0', BBB: '2/0', USDT: '9/0' },
+          result,
+        }),
+      ).toEqual([
+        { kind: 'tradesRotation', value: 'BBBUSDT' },
+        { kind: 'tradesBalanceSnapshot', value: { AAA: 'old/0', USDT: 'old/0', BBB: '2/0' } },
+      ]);
+    });
   });
 });
 
@@ -828,7 +1035,7 @@ describe('tradesPatchesOf', () => {
     ]);
   });
 
-  it.each<ReadEnd>(['budget', 'stopped'])(
+  it.each<ReadEnd>(['budget', 'stopped', 'failed'])(
     'does not take the text of a coin whose symbol ended %s',
     (end) => {
       const patches = tradesPatchesOf({
