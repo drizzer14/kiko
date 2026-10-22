@@ -1,9 +1,12 @@
 import type { CoinLists, ExchangeTrades } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
+  planTradeSymbolReads,
   readSpotSymbols,
+  runTradeSymbolReads,
   TRADE_MAIN_QUOTES,
   tradeCandidatesOf,
+  tradesPatchesOf,
   touchedCoinsOf,
   TRADING_SYMBOL_STATUSES,
 } from './binance.trade-symbols';
@@ -385,5 +388,505 @@ describe('readSpotSymbols', () => {
       readSpotSymbols(run, () => fetchExchangeSymbols({ fetchImpl })),
     ).rejects.toBeInstanceOf(BinanceHistoryParseError);
     expect(run.budget.canAfford('tradeSymbols', { api: 20 })).toBe(false);
+  });
+});
+
+type ReadEnd = 'short-page' | 'budget' | 'stopped';
+
+const candidateOf = (symbol: string) => ({
+  symbol,
+  baseAsset: symbol.slice(0, 3),
+  quoteAsset: symbol.slice(3),
+});
+
+/** Every symbol read and every coin at the text it is read at now, so nothing is due a read. */
+const settledWorld = (symbols: string[]) => {
+  const candidates = symbols.map(candidateOf);
+  const coins = candidates.flatMap(({ baseAsset, quoteAsset }) => [baseAsset, quoteAsset]);
+  const texts = Object.fromEntries(coins.map((coin) => [coin, '1/0']));
+
+  return {
+    candidates,
+    trades: {
+      symbols: Object.fromEntries(symbols.map((symbol) => [symbol, { fromId: 1 }])),
+      rotation: '',
+      balanceSnapshot: texts,
+    } satisfies ExchangeTrades,
+    balanceTexts: texts,
+  };
+};
+
+const EIGHT_SYMBOLS = [
+  'AAAUSDT',
+  'BBBUSDT',
+  'CCCUSDT',
+  'DDDUSDT',
+  'EEEUSDT',
+  'FFFUSDT',
+  'GGGUSDT',
+  'HHHUSDT',
+];
+
+describe('planTradeSymbolReads', () => {
+  it('puts held first, then never read, then changed, each ascending, ahead of the rest', () => {
+    const world = settledWorld(EIGHT_SYMBOLS);
+    const { CCCUSDT: _noEntry, ...entries } = world.trades.symbols;
+
+    const plan = planTradeSymbolReads({
+      ...world,
+      trades: {
+        ...world.trades,
+        symbols: {
+          ...entries,
+          HHHUSDT: { fromId: 2, heldOrderId: 7 },
+          DDDUSDT: { fromId: 5, heldOrderId: 9 },
+          GGGUSDT: { fromId: null },
+        },
+        balanceSnapshot: { ...world.trades.balanceSnapshot, FFF: '0/0', BBB: '0/0' },
+      },
+    });
+
+    expect(plan.priority).toEqual([
+      'DDDUSDT',
+      'HHHUSDT',
+      'CCCUSDT',
+      'GGGUSDT',
+      'BBBUSDT',
+      'FFFUSDT',
+    ]);
+  });
+
+  it('lists a symbol once, in the first class it belongs to', () => {
+    const world = settledWorld(['AAAUSDT', 'BBBUSDT']);
+
+    const plan = planTradeSymbolReads({
+      ...world,
+      trades: {
+        ...world.trades,
+        symbols: { AAAUSDT: { fromId: null, heldOrderId: 3 }, BBBUSDT: { fromId: null } },
+        balanceSnapshot: {},
+      },
+    });
+
+    expect(plan.priority).toEqual(['AAAUSDT', 'BBBUSDT']);
+  });
+
+  it('leaves out of the priority a symbol read whose two coins read the same as stored', () => {
+    const world = settledWorld(['BTCETH', 'BTCUSDT']);
+
+    const plan = planTradeSymbolReads({
+      ...world,
+      trades: { ...world.trades, balanceSnapshot: { BTC: '1/0', ETH: '1/0' } },
+    });
+
+    expect(plan.priority).toEqual(['BTCUSDT']);
+  });
+
+  it('counts a coin with no stored text as changed', () => {
+    const world = settledWorld(['BTCUSDT', 'ETHUSDT']);
+
+    const plan = planTradeSymbolReads({
+      ...world,
+      trades: { ...world.trades, balanceSnapshot: { BTC: '1/0', USDT: '1/0' } },
+    });
+
+    expect(plan.priority).toEqual(['ETHUSDT']);
+  });
+
+  it.each([
+    ['free moves', '2/0'],
+    ['locked moves', '1/1'],
+  ])('counts a coin as changed when only its %s', (_name, text) => {
+    const world = settledWorld(['BTCUSDT']);
+
+    const plan = planTradeSymbolReads({
+      ...world,
+      balanceTexts: { ...world.balanceTexts, BTC: text },
+    });
+
+    expect(plan.priority).toEqual(['BTCUSDT']);
+  });
+
+  it('reads a coin the balance read did not list as 0/0', () => {
+    const world = settledWorld(['XYZUSDT']);
+    const { XYZ: _unlisted, ...balanceTexts } = world.balanceTexts;
+    const zeroStored = {
+      ...world.trades,
+      balanceSnapshot: { ...world.trades.balanceSnapshot, XYZ: '0/0' },
+    };
+
+    expect(planTradeSymbolReads({ ...world, trades: zeroStored, balanceTexts }).priority).toEqual(
+      [],
+    );
+    expect(planTradeSymbolReads({ ...world, balanceTexts }).priority).toEqual(['XYZUSDT']);
+  });
+
+  it('runs the round-robin from the first symbol after the stored one, then wraps', () => {
+    const world = settledWorld(['AAAUSDT', 'BTCUSDT', 'ETHBTC']);
+
+    const plan = planTradeSymbolReads({
+      ...world,
+      trades: { ...world.trades, rotation: 'BTCUSDT' },
+    });
+
+    expect(plan.roundRobin).toEqual(['ETHBTC', 'AAAUSDT', 'BTCUSDT']);
+  });
+
+  it('starts the round-robin at the first symbol when no rotation is stored', () => {
+    const world = settledWorld(['AAAUSDT', 'BTCUSDT', 'ETHBTC']);
+
+    expect(planTradeSymbolReads(world).roundRobin).toEqual(['AAAUSDT', 'BTCUSDT', 'ETHBTC']);
+  });
+
+  it.each([
+    ['a symbol that is not listed, between two', 'BBBUSDT', ['CCCUSDT', 'AAAUSDT']],
+    ['a symbol past the last one', 'ZZZUSDT', ['AAAUSDT', 'CCCUSDT']],
+    ['a symbol before the first one', '000USDT', ['AAAUSDT', 'CCCUSDT']],
+  ])('goes on from a stored rotation naming %s', (_name, rotation, expected) => {
+    const world = settledWorld(['AAAUSDT', 'CCCUSDT']);
+
+    const plan = planTradeSymbolReads({ ...world, trades: { ...world.trades, rotation } });
+
+    expect(plan.roundRobin).toEqual(expected);
+  });
+
+  it('offers the round-robin every symbol, so one the priority left unread is still reached', () => {
+    const world = settledWorld(['AAAUSDT', 'BBBUSDT']);
+
+    const plan = planTradeSymbolReads({
+      ...world,
+      trades: { ...world.trades, balanceSnapshot: {} },
+    });
+
+    expect(plan.priority).toEqual(['AAAUSDT', 'BBBUSDT']);
+    expect(plan.roundRobin).toEqual(['AAAUSDT', 'BBBUSDT']);
+  });
+
+  it('plans nothing for no candidates', () => {
+    expect(planTradeSymbolReads(settledWorld([]))).toEqual({ priority: [], roundRobin: [] });
+  });
+});
+
+/** A lane of `cap` calls: a read is afforded while `keep` calls would still be left after it. */
+const laneOf = (cap: number) => {
+  const state = { spent: 0 };
+
+  return { state, canAfford: (keep: number) => state.spent + keep < cap };
+};
+
+/** A reader that wants `wanted` calls of the lane and stops where it cannot afford another. */
+const pagingReader =
+  (lane: ReturnType<typeof laneOf>, wanted: (symbol: string) => number, spentBy: string[]) =>
+  async (symbol: string, keep: number): Promise<{ ended: ReadEnd }> => {
+    let calls = 0;
+
+    while (calls < wanted(symbol) && lane.canAfford(keep)) {
+      lane.state.spent += 1;
+      calls += 1;
+      spentBy.push(symbol);
+    }
+
+    return { ended: calls < wanted(symbol) ? 'budget' : 'short-page' };
+  };
+
+const recordingReader = (end: ReadEnd = 'short-page') => {
+  const reads: [string, number][] = [];
+
+  return {
+    reads,
+    readSymbol: async (symbol: string, keep: number): Promise<{ ended: ReadEnd }> => {
+      reads.push([symbol, keep]);
+
+      return { ended: end };
+    },
+  };
+};
+
+describe('runTradeSymbolReads', () => {
+  it('reads the priority first and the round-robin after it, each symbol once', async () => {
+    const reader = recordingReader();
+
+    await runTradeSymbolReads({
+      plan: { priority: ['CCC', 'AAA'], roundRobin: ['BBB', 'AAA', 'CCC', 'DDD'] },
+      canAfford: () => true,
+      readSymbol: reader.readSymbol,
+    });
+
+    expect(reader.reads).toEqual([
+      ['CCC', 1],
+      ['AAA', 1],
+      ['BBB', 0],
+      ['DDD', 0],
+    ]);
+  });
+
+  it('moves the rotation to the last round-robin symbol read, never to a priority one', async () => {
+    const result = await runTradeSymbolReads({
+      plan: { priority: ['CCC'], roundRobin: ['BBB', 'AAA', 'CCC'] },
+      canAfford: () => true,
+      readSymbol: recordingReader().readSymbol,
+    });
+
+    expect(result.rotation).toBe('AAA');
+  });
+
+  it('leaves the rotation unset when no round-robin symbol was read', async () => {
+    const result = await runTradeSymbolReads({
+      plan: { priority: ['CCC'], roundRobin: ['CCC'] },
+      canAfford: () => true,
+      readSymbol: recordingReader().readSymbol,
+    });
+
+    expect(result).toEqual({
+      rotation: undefined,
+      ended: { CCC: 'short-page' },
+      failure: undefined,
+    });
+  });
+
+  it.each<ReadEnd>(['short-page', 'budget', 'stopped'])(
+    'moves the rotation past a round-robin read that ended %s',
+    async (end) => {
+      const result = await runTradeSymbolReads({
+        plan: { priority: [], roundRobin: ['AAA'] },
+        canAfford: () => true,
+        readSymbol: recordingReader(end).readSymbol,
+      });
+
+      expect(result).toEqual({ rotation: 'AAA', ended: { AAA: end }, failure: undefined });
+    },
+  );
+
+  it('keeps one call for the round-robin: five calls and nine changed symbols give four priority reads', async () => {
+    const world = settledWorld([...EIGHT_SYMBOLS, 'IIIUSDT']);
+    const plan = planTradeSymbolReads({
+      ...world,
+      trades: { ...world.trades, balanceSnapshot: {} },
+    });
+    const lane = laneOf(5);
+    const reader = recordingReader();
+
+    const result = await runTradeSymbolReads({
+      plan,
+      canAfford: lane.canAfford,
+      readSymbol: async (symbol, keep) => {
+        lane.state.spent += 1;
+
+        return reader.readSymbol(symbol, keep);
+      },
+    });
+
+    expect(reader.reads).toEqual([
+      ['AAAUSDT', 1],
+      ['BBBUSDT', 1],
+      ['CCCUSDT', 1],
+      ['DDDUSDT', 1],
+      ['EEEUSDT', 0],
+    ]);
+    expect(result.rotation).toBe('EEEUSDT');
+  });
+
+  it('hands a held symbol the reserved call, so its re-read leaves one call of the lane', async () => {
+    const lane = laneOf(5);
+    const spentBy: string[] = [];
+
+    await runTradeSymbolReads({
+      plan: { priority: ['HELD'], roundRobin: ['HELD', 'NEXT'] },
+      canAfford: lane.canAfford,
+      readSymbol: pagingReader(lane, (symbol) => (symbol === 'HELD' ? 50 : 1), spentBy),
+    });
+
+    expect(spentBy).toEqual(['HELD', 'HELD', 'HELD', 'HELD', 'NEXT']);
+  });
+
+  it('starts no priority read when only the reserved call is left, and still reads the round-robin', async () => {
+    const lane = laneOf(1);
+    const reader = recordingReader();
+
+    await runTradeSymbolReads({
+      plan: { priority: ['BBB'], roundRobin: ['AAA', 'BBB'] },
+      canAfford: lane.canAfford,
+      readSymbol: async (symbol, keep) => {
+        lane.state.spent += 1;
+
+        return reader.readSymbol(symbol, keep);
+      },
+    });
+
+    expect(reader.reads).toEqual([['AAA', 0]]);
+  });
+
+  it('keeps the rotation the round-robin reached when a later read throws, and hands the error back', async () => {
+    const rateLimit = new BinanceRateLimitError(429, 5_000);
+    const started: string[] = [];
+
+    const result = await runTradeSymbolReads({
+      plan: { priority: [], roundRobin: ['AAA', 'BBB', 'CCC'] },
+      canAfford: () => true,
+      readSymbol: async (symbol) => {
+        started.push(symbol);
+
+        if (symbol === 'BBB') {
+          throw rateLimit;
+        }
+
+        return { ended: 'short-page' };
+      },
+    });
+
+    expect(result).toEqual({
+      rotation: 'AAA',
+      ended: { AAA: 'short-page' },
+      failure: { error: rateLimit },
+    });
+    expect(started).toEqual(['AAA', 'BBB']);
+  });
+
+  it('leaves the rotation where it was when a priority read throws', async () => {
+    const failure = new Error('request failed');
+
+    const result = await runTradeSymbolReads({
+      plan: { priority: ['AAA'], roundRobin: ['AAA', 'BBB'] },
+      canAfford: () => true,
+      readSymbol: async () => {
+        throw failure;
+      },
+    });
+
+    expect(result).toEqual({ rotation: undefined, ended: {}, failure: { error: failure } });
+  });
+});
+
+describe('tradesPatchesOf', () => {
+  const stored = (balanceSnapshot: Record<string, string>): ExchangeTrades => ({
+    symbols: {},
+    rotation: '',
+    balanceSnapshot,
+  });
+
+  const THREE = ['AAAUSDT', 'BBBUSDT', 'CCCUSDT'].map(candidateOf);
+
+  const TEXTS = { AAA: '1/0', BBB: '2/0', CCC: '3/0', USDT: '9/0' };
+
+  it('writes the rotation a round-robin read reached, and none when it reached none', () => {
+    const base = { candidates: THREE, trades: stored({}), balanceTexts: TEXTS };
+
+    expect(tradesPatchesOf({ ...base, result: { rotation: 'BBBUSDT', ended: {} } })).toEqual([
+      { kind: 'tradesRotation', value: 'BBBUSDT' },
+    ]);
+    expect(tradesPatchesOf({ ...base, result: { rotation: undefined, ended: {} } })).toEqual([]);
+  });
+
+  it('keeps the text of a coin while one of its symbols has not ended at a short page', () => {
+    const patches = tradesPatchesOf({
+      candidates: THREE,
+      trades: stored({ USDT: 'old/0', CCC: 'old/0' }),
+      balanceTexts: TEXTS,
+      result: {
+        rotation: undefined,
+        ended: { AAAUSDT: 'short-page', BBBUSDT: 'short-page', CCCUSDT: 'budget' },
+      },
+    });
+
+    expect(patches).toEqual([
+      {
+        kind: 'tradesBalanceSnapshot',
+        value: { USDT: 'old/0', CCC: 'old/0', AAA: '1/0', BBB: '2/0' },
+      },
+    ]);
+  });
+
+  it('takes the new text of a coin once every symbol of it ended at a short page', () => {
+    const patches = tradesPatchesOf({
+      candidates: THREE,
+      trades: stored({ USDT: 'old/0', CCC: 'old/0' }),
+      balanceTexts: TEXTS,
+      result: {
+        rotation: undefined,
+        ended: { AAAUSDT: 'short-page', BBBUSDT: 'short-page', CCCUSDT: 'short-page' },
+      },
+    });
+
+    expect(patches).toEqual([
+      {
+        kind: 'tradesBalanceSnapshot',
+        value: { USDT: '9/0', CCC: '3/0', AAA: '1/0', BBB: '2/0' },
+      },
+    ]);
+  });
+
+  it('keeps the stored text of a coin whose symbols were not read at all', () => {
+    const patches = tradesPatchesOf({
+      candidates: THREE,
+      trades: stored({ AAA: 'old/0', USDT: 'old/0' }),
+      balanceTexts: TEXTS,
+      result: { rotation: undefined, ended: { BBBUSDT: 'short-page' } },
+    });
+
+    expect(patches).toEqual([
+      { kind: 'tradesBalanceSnapshot', value: { AAA: 'old/0', USDT: 'old/0', BBB: '2/0' } },
+    ]);
+  });
+
+  it.each<ReadEnd>(['budget', 'stopped'])(
+    'does not take the text of a coin whose symbol ended %s',
+    (end) => {
+      const patches = tradesPatchesOf({
+        candidates: [candidateOf('AAAUSDT')],
+        trades: stored({}),
+        balanceTexts: TEXTS,
+        result: { rotation: undefined, ended: { AAAUSDT: end } },
+      });
+
+      expect(patches).toEqual([]);
+    },
+  );
+
+  it('keeps the entry of a coin that no candidate names', () => {
+    const patches = tradesPatchesOf({
+      candidates: [candidateOf('AAAUSDT')],
+      trades: stored({ OLD: '5/0' }),
+      balanceTexts: TEXTS,
+      result: { rotation: undefined, ended: { AAAUSDT: 'short-page' } },
+    });
+
+    expect(patches).toEqual([
+      { kind: 'tradesBalanceSnapshot', value: { OLD: '5/0', AAA: '1/0', USDT: '9/0' } },
+    ]);
+  });
+
+  it('writes a coin the balance read did not list as 0/0', () => {
+    const patches = tradesPatchesOf({
+      candidates: [candidateOf('AAAUSDT')],
+      trades: stored({}),
+      balanceTexts: {},
+      result: { rotation: undefined, ended: { AAAUSDT: 'short-page' } },
+    });
+
+    expect(patches).toEqual([
+      { kind: 'tradesBalanceSnapshot', value: { AAA: '0/0', USDT: '0/0' } },
+    ]);
+  });
+
+  it('writes no snapshot when every coin that qualifies already holds its text', () => {
+    const patches = tradesPatchesOf({
+      candidates: [candidateOf('AAAUSDT')],
+      trades: stored({ AAA: '1/0', USDT: '9/0' }),
+      balanceTexts: TEXTS,
+      result: { rotation: undefined, ended: { AAAUSDT: 'short-page' } },
+    });
+
+    expect(patches).toEqual([]);
+  });
+
+  it('writes the rotation before the snapshot', () => {
+    const patches = tradesPatchesOf({
+      candidates: [candidateOf('AAAUSDT')],
+      trades: stored({}),
+      balanceTexts: TEXTS,
+      result: { rotation: 'AAAUSDT', ended: { AAAUSDT: 'short-page' } },
+    });
+
+    expect(patches.map(({ kind }) => kind)).toEqual(['tradesRotation', 'tradesBalanceSnapshot']);
   });
 });
