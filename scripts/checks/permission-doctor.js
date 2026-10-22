@@ -49,10 +49,11 @@
 // protected folder ("~/repo/*/.git/**" is not). A glob in the project slot of
 // projects/<project>/memory is read as one folder. A project settings file's relative rule is read
 // against that project's root, which is the documented base only for "/x". Managed settings,
-// additionalDirectories and --plugin-dir are not read.
+// additionalDirectories, --plugin-dir and plansDirectory are not read.
 //
-// Exit 0: clean. Exit 1: findings or unreadable files, printed on stdout. The checker is
-// dependency-free (node:* only), like the other checkers.
+// Exit 0: clean. Exit 1: findings or unreadable files, printed on stdout. Exit 3: the checker
+// crashed, with the error on stderr. The checker is dependency-free (node:* only), like the other
+// checkers.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -91,6 +92,8 @@ const PROTECTED_FILES = [
 ];
 const RULE_PATTERN = /^([A-Za-z]+)\(([\s\S]*)\)$/;
 const GLOB_PATTERN = /[*?[]/;
+const VARIABLE_LENGTH_PATTERN = /[*[]/;
+const RECURSIVE_SEGMENT = '**';
 const MARKDOWN_PATTERN = /\.md$/i;
 const ANY_FOLDER = '*';
 // The documented exceptions under a .claude folder, as the folder names that lead to the excepted
@@ -284,16 +287,35 @@ function segmentCanBe(segment, name) {
     return segment === name;
   }
 
+  if (!VARIABLE_LENGTH_PATTERN.test(segment) && name.length !== segment.length) {
+    return false;
+  }
+
   const head = segment.slice(0, segment.search(GLOB_PATTERN));
   const tail = globTail(segment);
 
   return name.length >= head.length + tail.length && name.startsWith(head) && name.endsWith(tail);
 }
 
+// A "?" is exactly one character, so a segment without "*" or "[" can end in ".md" only when its
+// last three characters fit those.
+function fixedLengthCanBeMarkdown(segment) {
+  const ending = segment.slice(-3).toLowerCase();
+
+  return (
+    ending.length === 3 &&
+    [...ending].every((character, index) => character === '?' || character === '.md'[index])
+  );
+}
+
 function canBeMarkdown(segment) {
-  return GLOB_PATTERN.test(segment)
+  if (!GLOB_PATTERN.test(segment)) {
+    return MARKDOWN_PATTERN.test(segment);
+  }
+
+  return VARIABLE_LENGTH_PATTERN.test(segment)
     ? '.md'.endsWith(globTail(segment).toLowerCase()) || MARKDOWN_PATTERN.test(globTail(segment))
-    : MARKDOWN_PATTERN.test(segment);
+    : fixedLengthCanBeMarkdown(segment);
 }
 
 function prefixFits(after, prefix, strict) {
@@ -304,15 +326,17 @@ function prefixFits(after, prefix, strict) {
       return false;
     }
 
-    return name === ANY_FOLDER || (strict ? segment === name : segmentCanBe(segment, name));
+    if (name === ANY_FOLDER) {
+      return !strict || segment !== RECURSIVE_SEGMENT;
+    }
+
+    return strict ? segment === name : segmentCanBe(segment, name);
   });
 }
 
 function matchesExceptionFolder(after, folder, strict) {
-  // A "**" in a named slot can span the folders in between, so the slots behind it are unknown.
-  const hiddenAt = strict
-    ? -1
-    : folder.prefix.findIndex((name, index) => name !== ANY_FOLDER && after[index] === '**');
+  // A "**" in any slot can span the folders in between, so the slots behind it are unknown.
+  const hiddenAt = strict ? -1 : after.slice(0, folder.prefix.length).indexOf(RECURSIVE_SEGMENT);
 
   if (hiddenAt !== -1) {
     return prefixFits(after, folder.prefix.slice(0, hiddenAt), false);
@@ -434,8 +458,11 @@ function protectedPathReason(pattern, root, context) {
   return partial;
 }
 
+// The project slot of the memory exception is one folder, so a "**" there narrows to "*".
 function narrowToMarkdown(pattern) {
-  return pattern.endsWith('/**') ? `${pattern}/*.md` : `${pattern}.md`;
+  const oneProject = pattern.replace(/\/projects\/\*\*\/memory(?=\/|$)/, '/projects/*/memory');
+
+  return oneProject.endsWith('/**') ? `${oneProject}/*.md` : `${oneProject}.md`;
 }
 
 const EXCEPTION_LIST =
@@ -554,14 +581,15 @@ function main() {
   const configSegments = configDirectory
     ? splitSegments(resolveDeepest(path.resolve(configDirectory)))
     : [];
+  const linkedClaude = splitSegments(resolveDeepest(path.join(homeDirectory(), '.claude')));
   const context = {
     configSegments,
     anchors: [
       splitSegments(homeDirectory()),
       splitSegments(resolveDeepest(homeDirectory())),
-      ...(configSegments[configSegments.length - 1] === '.claude'
-        ? [configSegments.slice(0, -1)]
-        : []),
+      ...[configSegments, linkedClaude]
+        .filter((segments) => segments[segments.length - 1] === '.claude')
+        .map((segments) => segments.slice(0, -1)),
     ],
   };
   const loaded = settingsFiles().flatMap(({ file, source, root }) => {
@@ -597,4 +625,14 @@ function main() {
   return 1;
 }
 
-process.exitCode = main();
+function run() {
+  try {
+    return main();
+  } catch (error) {
+    process.stderr.write(`permission doctor could not run: ${error.message}\n`);
+
+    return 3;
+  }
+}
+
+process.exitCode = run();

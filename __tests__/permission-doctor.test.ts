@@ -161,7 +161,7 @@ describe('scripts/checks/permission-doctor.sh: protected paths', () => {
 // the finding suggests the Markdown form instead of removing the rule.
 describe('scripts/checks/permission-doctor.sh: glob rules', () => {
   it.each([
-    ['projects/**/memory/**', 'projects/**/memory/**/*.md'],
+    ['projects/**/memory/**', 'projects/*/memory/**/*.md'],
     ['agent-memory/**', 'agent-memory/**/*.md'],
   ])('reports %s as partly protected and suggests the Markdown form', (tail, narrowed) => {
     const rule = `Edit(//${layout.home}/.claude/${tail})`;
@@ -179,7 +179,7 @@ describe('scripts/checks/permission-doctor.sh: glob rules', () => {
   });
 
   it.each([
-    ['Edit(//HOME/.claude/projects/**/memory/**/*.md)'],
+    ['Edit(//HOME/.claude/projects/*/memory/**/*.md)'],
     ['Edit(//HOME/.claude/agent-memory/**/*.md)'],
   ])('passes the Markdown-narrowed rule %s', (template) => {
     writeSettings([template.replace('HOME', layout.home)]);
