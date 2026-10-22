@@ -106,8 +106,11 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     `harness/kiko` change whose `plugin.json` version is not above main's, and any commit that
     lowers, removes, or makes unreadable that version).
     - any other git command that moves the branch `main` ("The `mainMove` kind"): a `reset`
-      to a commit in main; `update-ref`, `branch -f`, `checkout -B`, a fetch or push into it
-      from any worktree; an unresolved `-C`/`cd` or a missing cwd fails closed.
+      to a commit in main (or in a worktree whose HEAD names main); `update-ref`,
+      `branch -f`, `checkout -B`, a fetch, pull or push into it from any worktree, also through
+      a `-c`/`--config-env` or exported `GIT_CONFIG_*` fetch refspec; `symbolic-ref HEAD`,
+      `--ignore-other-worktrees` or `worktree add -f` onto it; an unresolved `-C`/`cd` or a
+      missing cwd fails closed.
   - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
     `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
     `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
