@@ -218,27 +218,6 @@ function environmentFetchWritesMain(environment) {
 }
 
 const FETCH_VALUE_OPTIONS = new Set(['--refmap']);
-// `git pull` hands its fetch options on (`git pull --help`, git 2.38.1). Only an option whose
-// value is the NEXT word is listed, so the repository operand is not swallowed: an optional value
-// (`--rebase[=...]`, `--log[=<n>]`, `-S[<keyid>]`) is only ever glued to its option.
-const PULL_VALUE_OPTIONS = new Set([
-  ...FETCH_VALUE_OPTIONS,
-  '-s',
-  '--strategy',
-  '-X',
-  '--strategy-option',
-  '--cleanup',
-  '--depth',
-  '--deepen',
-  '--shallow-since',
-  '--shallow-exclude',
-  '--negotiation-tip',
-  '-j',
-  '--jobs',
-  '--upload-pack',
-  '-o',
-  '--server-option',
-]);
 const REFMAP_OPTION = { valueLetters: '', recordLetters: '', longNames: ['--refmap'] };
 
 // Measured on git 2.38.1: `git fetch -u --refmap=refs/heads/feat:refs/heads/main . feat` and the
@@ -248,10 +227,10 @@ const REFMAP_OPTION = { valueLetters: '', recordLetters: '', longNames: ['--refm
 // `refs/remotes/x/*` and an empty `--refmap=` (it only drops the configured refspecs) write nothing
 // in `refs/heads`; and a `--refmap` with no refspec is a fatal error. A destination that can be
 // `main` counts, whichever ref the refspec fetches.
-function fetchWritesMain(parameters, valueOptions = FETCH_VALUE_OPTIONS) {
+function fetchWritesMain(parameters) {
   const refmaps = optionValues(parameters, REFMAP_OPTION).filter((value) => value !== undefined);
 
-  return refspecWritesMain(parameters, valueOptions) || refmaps.some(destinationIsMain);
+  return refspecWritesMain(parameters, FETCH_VALUE_OPTIONS) || refmaps.some(destinationIsMain);
 }
 
 const UPDATE_REF_VALUE_OPTIONS = new Set(['-m']);
@@ -325,7 +304,7 @@ function moveScopes(git, pathExists) {
     fetch: () => fetchWritesMain(parameters) || configuredFetchWritesMain(git),
     // `pull` runs `fetch --update-head-ok`, so its refspecs write `refs/heads/main` from a linked
     // worktree too; the refspecs follow the repository operand as a fetch's do.
-    pull: () => fetchWritesMain(parameters, PULL_VALUE_OPTIONS) || configuredFetchWritesMain(git),
+    pull: () => fetchWritesMain(parameters) || configuredFetchWritesMain(git),
     push: () => refspecWritesMain(parameters, PUSH_VALUE_OPTIONS, true),
     worktree: () =>
       parameters[0] === 'add' &&
