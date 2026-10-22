@@ -122,13 +122,13 @@ const readBody = guard(
 export const BINANCE_ASSET = 'BTC';
 
 /** A request's parsed body alongside its response headers. */
-export type SignedPage = { body: unknown; headers: Headers };
+export type RequestPage = { body: unknown; headers: Headers };
 
 /**
  * A 429 (weight limit) or 418 (IP ban) is checked BEFORE the body is read, so both throw
  * `BinanceRateLimitError` for the caller's cooldown, in a signed and in a public read alike.
  */
-const pageOf = async (response: Response): Promise<SignedPage> => {
+const pageOf = async (response: Response): Promise<RequestPage> => {
   if (response.status === 429 || response.status === 418) {
     throw new BinanceRateLimitError(response.status, retryAfterMsFromHeaders(response.headers));
   }
@@ -158,7 +158,7 @@ export const signedRequestPage = async (
   path: string,
   params: Record<string, string>,
   { fetchImpl = fetch, now = Date.now }: FetchAccountOptions = {},
-): Promise<SignedPage> => {
+): Promise<RequestPage> => {
   const query = new URLSearchParams({
     ...params,
     timestamp: String(now()),
@@ -187,7 +187,7 @@ export const publicRequestPage = async (
   path: string,
   params: Record<string, string>,
   { fetchImpl = fetch }: Pick<FetchAccountOptions, 'fetchImpl'> = {},
-): Promise<SignedPage> => {
+): Promise<RequestPage> => {
   const response = await fetchImpl(
     `${BINANCE_API_ENDPOINT}${path}?${new URLSearchParams(params).toString()}`,
     { method: 'GET', headers: { 'Cache-Control': 'no-store' } },

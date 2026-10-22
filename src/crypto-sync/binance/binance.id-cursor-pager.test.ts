@@ -191,6 +191,81 @@ describe('readIdCursor', () => {
     expect(server.requested).toEqual([0]);
   });
 
+  it('reads the last safe id whose successor is safe, and leaves the cursor on that successor', async () => {
+    const lastId = 2 ** 53 - 2;
+    const committed: number[] = [];
+
+    const result = await readFrom({
+      fetchPage: pagesInOrder([pageOf([lastId])]),
+      fromId: lastId,
+      onPage: committingTo(committed),
+    });
+
+    expect(result).toEqual({ nextFromId: 2 ** 53 - 1, calls: 1, end: 'short-page' });
+    expect(committed).toEqual([lastId]);
+  });
+
+  describe('the id the caller stops at', () => {
+    const IDS = idsOf(30);
+    const FIRST_ID = IDS[0];
+    const AFTER_LAST = IDS[29] + 1;
+
+    it.each([
+      ['the id the page was asked from', FIRST_ID],
+      ['the id after its last row', AFTER_LAST],
+      ['an id between its rows', IDS[10] + 3],
+    ])('accepts %s', async (_title, stopAt) => {
+      const server = serverOf(IDS, LIMIT);
+
+      const result = await readFrom({ ...server, onPage: async () => ({ stopAt }) });
+
+      expect(result).toEqual({ nextFromId: stopAt, calls: 1, end: 'stopped' });
+    });
+
+    it.each([
+      ['one below the id the page was asked from', FIRST_ID - 1],
+      ['one above the id after its last row', AFTER_LAST + 1],
+      ['a fraction', IDS[10] + 0.5],
+      ['not a number', Number.NaN],
+      ['past the safe integers', 2 ** 53],
+    ])('refuses %s, with the cursor where it was', async (_title, stopAt) => {
+      const server = serverOf(IDS, LIMIT);
+      const committed: number[][] = [];
+
+      const failure = readFrom({
+        ...server,
+        onPage: async ({ rows }) => {
+          committed.push(rows.map((row) => row.id as number));
+
+          return { stopAt };
+        },
+      });
+
+      await expect(failure).rejects.toThrow(IdCursorPageError);
+      await expect(failure).rejects.toHaveProperty('code', 'stop-out-of-page');
+      expect(committed).toEqual([IDS]);
+      expect(server.requested).toEqual([0]);
+    });
+
+    it('is held to the id its own page was asked from, not the id the read began at', async () => {
+      const ids = idsOf(20);
+      const server = serverOf(ids, 10);
+      let page = 0;
+
+      const failure = readFrom({
+        ...server,
+        limit: 10,
+        onPage: async () => {
+          page += 1;
+
+          return page === 1 ? 'next' : { stopAt: ids[9] };
+        },
+      });
+
+      await expect(failure).rejects.toHaveProperty('code', 'stop-out-of-page');
+    });
+  });
+
   it('hands each page over with the id after its last row', async () => {
     const ids = idsOf(1_200);
     const server = serverOf(ids, LIMIT);
@@ -208,6 +283,39 @@ describe('readIdCursor', () => {
     expect(nextFromIds).toEqual([ids[999] + 1, ids[1_199] + 1]);
   });
 
+  it.each([1.5, 1e21, Number.NaN])(
+    'refuses the id %d to start from, before it asks the lane or the server for anything',
+    async (fromId) => {
+      const server = serverOf(idsOf(5), LIMIT);
+      const asked: string[] = [];
+      const run = freshRun();
+
+      const failure = readFrom({
+        ...server,
+        run: {
+          gate: run.gate,
+          budget: {
+            canAfford: (...input) => {
+              asked.push('afford');
+
+              return run.budget.canAfford(...input);
+            },
+            record: () => {
+              asked.push('record');
+            },
+          },
+        },
+        fromId,
+        onPage: committingTo([]),
+      });
+
+      await expect(failure).rejects.toThrow(IdCursorPageError);
+      await expect(failure).rejects.toHaveProperty('code', 'not-safe-integer');
+      expect(asked).toEqual([]);
+      expect(server.requested).toEqual([]);
+    },
+  );
+
   describe('a page it cannot trust', () => {
     const FIRST_PAGE = idsOf(LIMIT);
     const AFTER_FIRST = FIRST_PAGE[LIMIT - 1] + 1;
@@ -217,8 +325,9 @@ describe('readIdCursor', () => {
       ['an id with a fraction', [1.5], 'not-safe-integer'],
       ['an id past the safe integers', [2 ** 53], 'not-safe-integer'],
       ['an id that is not finite', [Number.NaN], 'not-safe-integer'],
+      ['a half id whose successor rounds to a safe integer', [2 ** 52 - 0.5], 'not-safe-integer'],
       ['no safe id after its last id', [Number.MAX_SAFE_INTEGER], 'not-safe-integer'],
-      ['an id below the id asked', [AFTER_FIRST - 1], 'below-from-id'],
+      ['an id below the id asked', [AFTER_FIRST - 1], 'not-ascending'],
       ['an id that is not ascending', [AFTER_FIRST + 5, AFTER_FIRST + 4], 'not-ascending'],
       ['an id that repeats', [AFTER_FIRST + 5, AFTER_FIRST + 5], 'not-ascending'],
     ])('refuses a second page with %s, and never hands it over', async (_title, ids, code) => {
@@ -243,7 +352,7 @@ describe('readIdCursor', () => {
       });
 
       await expect(failure).rejects.toThrow(IdCursorPageError);
-      await expect(failure).rejects.toHaveProperty('code', 'below-from-id');
+      await expect(failure).rejects.toHaveProperty('code', 'not-ascending');
       expect(committed).toEqual([FIRST_PAGE]);
     });
 
@@ -269,7 +378,7 @@ describe('readIdCursor', () => {
       });
 
       await expect(failure).rejects.toThrow(IdCursorPageError);
-      await expect(failure).rejects.toHaveProperty('code', 'below-from-id');
+      await expect(failure).rejects.toHaveProperty('code', 'not-ascending');
     });
 
     it('names the code and no id in its message', async () => {

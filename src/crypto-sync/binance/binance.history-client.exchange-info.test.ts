@@ -46,7 +46,7 @@ const readList = (body: unknown, headers?: Headers): Promise<ExchangeSymbolsPage
   fetchExchangeSymbols({ fetchImpl: answerFetch(body, { headers }) });
 
 describe('fetchExchangeSymbols', () => {
-  it('asks the public exchangeInfo for the Spot permission without the permission sets, unsigned', async () => {
+  it('asks the public exchangeInfo without the permission sets and with no permissions filter, unsigned', async () => {
     const sent: SentRequest[] = [];
     const spyFetch = (async (url: string, init: SentRequest['init']) => {
       sent.push({ url, init });
@@ -58,7 +58,7 @@ describe('fetchExchangeSymbols', () => {
 
     expect(sent).toEqual([
       {
-        url: 'https://api.binance.com/api/v3/exchangeInfo?permissions=SPOT&showPermissionSets=false',
+        url: 'https://api.binance.com/api/v3/exchangeInfo?showPermissionSets=false',
         init: { method: 'GET', headers: { 'Cache-Control': 'no-store' } },
       },
     ]);
@@ -89,17 +89,6 @@ describe('fetchExchangeSymbols', () => {
       unreadable: 0,
       usedApiWeight1m: 40,
     });
-  });
-
-  it('keeps no field of a symbol beyond the four it names', async () => {
-    const page = await readList({ symbols: [wireSymbolOf()] });
-
-    expect(Object.keys(page.symbols[0] ?? {}).sort()).toEqual([
-      'baseAsset',
-      'quoteAsset',
-      'status',
-      'symbol',
-    ]);
   });
 
   it('reads an empty list as no symbol, and no weight header as no weight', async () => {
@@ -150,6 +139,16 @@ describe('fetchExchangeSymbols', () => {
     expect(page.unreadable).toBe(3);
   });
 
+  it.each([
+    ['one item that is no symbol', [null]],
+    ['every item without a symbol name', [wireSymbolOf({ symbol: undefined }), 'ETHBTC', 3]],
+  ])(
+    'throws a parse error when nothing reads and something does not: %s',
+    async (_name, symbols) => {
+      await expect(readList({ symbols })).rejects.toBeInstanceOf(BinanceHistoryParseError);
+    },
+  );
+
   it('reads a coin trimmed and upper-cased, and keeps the symbol as sent', async () => {
     const page = await readList({
       symbols: [wireSymbolOf({ symbol: 'ethBTC', baseAsset: ' eth ', quoteAsset: ' btc ' })],
@@ -172,13 +171,13 @@ describe('fetchExchangeSymbols', () => {
     [418, '120', 120_000],
   ])(
     'throws the rate limit error for HTTP %s with its Retry-After',
-    async (status, seconds, ms) => {
+    async (status, seconds, milliseconds) => {
       const error = await fetchExchangeSymbols({
         fetchImpl: answerFetch({}, { status, headers: new Headers({ 'Retry-After': seconds }) }),
       }).catch((thrown: unknown) => thrown);
 
       expect(error).toBeInstanceOf(BinanceRateLimitError);
-      expect(error).toMatchObject({ status, retryAfterMs: ms });
+      expect(error).toMatchObject({ status, retryAfterMs: milliseconds });
     },
   );
 

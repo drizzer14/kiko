@@ -1,6 +1,10 @@
 import type { ExchangeRun } from '../budget';
 
-type IdCursorPageErrorCode = 'not-safe-integer' | 'below-from-id' | 'not-ascending' | 'over-limit';
+type IdCursorPageErrorCode =
+  | 'not-safe-integer'
+  | 'not-ascending'
+  | 'over-limit'
+  | 'stop-out-of-page';
 
 /**
  * A page the pager cannot trust. A class of its own, because a swallowed failure logs only the
@@ -26,8 +30,9 @@ type IdCursorEnd = 'short-page' | 'budget' | 'stopped';
 
 /**
  * The ids of a page, each checked: a safe integer whose successor is one too (the cursor is the
- * last id plus one, and an unsafe cursor would round), not below the cursor the page was asked
- * from, strictly ascending. A page with more rows than `limit` is off contract as well.
+ * last id plus one, and an unsafe cursor would round), strictly ascending from the cursor the
+ * page was asked from (so one id below it is out of order too). A page with more rows than
+ * `limit` is off contract as well.
  */
 const checkedIdsOf = <Row>(
   rows: Row[],
@@ -46,10 +51,6 @@ const checkedIdsOf = <Row>(
 
     if (typeof id !== 'number' || !Number.isSafeInteger(id) || !Number.isSafeInteger(id + 1)) {
       throw new IdCursorPageError('not-safe-integer');
-    }
-
-    if (id < fromId) {
-      throw new IdCursorPageError('below-from-id');
     }
 
     if (id < floor) {
@@ -71,7 +72,10 @@ const checkedIdsOf = <Row>(
  * failure later loses no committed page; a page is never handed over unless all of its ids passed
  * `idOf` (read as `unknown`, so the wire type is checked here, not trusted): a bad page throws
  * `IdCursorPageError`. `nextFromId` is the id after the last row handed over, the `fromId` asked
- * when none came, or the `stopAt` the caller answered with.
+ * when none came, or the `stopAt` the caller answered with. A `fromId` that is not a safe integer
+ * is refused before the lane is asked for anything, and so is a `stopAt` that is not a safe
+ * integer in `[the page's fromId, its last id + 1]` (code `stop-out-of-page`), because the cursor
+ * it leaves is the one the next read starts from.
  */
 export const readIdCursor = async <Row, Lane extends string, Cost, Weights>(input: {
   run: ExchangeRun<Lane, Cost, Weights>;
@@ -87,6 +91,10 @@ export const readIdCursor = async <Row, Lane extends string, Cost, Weights>(inpu
   const { run, lane, cost, keep, limit, fetchPage, idOf, onPage } = input;
   let nextFromId = input.fromId;
   let calls = 0;
+
+  if (!Number.isSafeInteger(nextFromId)) {
+    throw new IdCursorPageError('not-safe-integer');
+  }
 
   for (;;) {
     if (!run.budget.canAfford(lane, cost, keep)) {
@@ -109,7 +117,13 @@ export const readIdCursor = async <Row, Lane extends string, Cost, Weights>(inpu
     const decision = await onPage({ rows: page.rows, nextFromId: afterPage });
 
     if (decision !== 'next') {
-      return { nextFromId: decision.stopAt, calls, end: 'stopped' };
+      const { stopAt } = decision;
+
+      if (!Number.isSafeInteger(stopAt) || stopAt < nextFromId || stopAt > afterPage) {
+        throw new IdCursorPageError('stop-out-of-page');
+      }
+
+      return { nextFromId: stopAt, calls, end: 'stopped' };
     }
 
     nextFromId = afterPage;
