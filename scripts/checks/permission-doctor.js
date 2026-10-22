@@ -498,7 +498,7 @@ function withoutTrailingSlash(pattern) {
 // already ending in ".md" is a Markdown form, so only that slot changes.
 function narrowToMarkdown(pattern) {
   const folder = withoutTrailingSlash(pattern);
-  const named = folder === pattern ? pattern : `${folder}/**`;
+  const named = folder === pattern || folder.endsWith('/**') ? folder : `${folder}/**`;
   const oneProject = named.replace(/\/projects\/\*\*\/memory(?=\/|$)/, '/projects/*/memory');
 
   if (MARKDOWN_PATTERN.test(oneProject)) {
