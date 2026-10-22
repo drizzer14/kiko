@@ -389,6 +389,17 @@ describe('scripts/checks/permission-doctor.sh: a trailing-slash folder rule', ()
 
     expect(blockOf(result)).not.toContain('/.md"');
   });
+
+  it('suggests the Markdown form for a trailing **/ rule with no doubled **', () => {
+    writeSettings(['Edit(~/.claude/agent-memory/**/)']);
+
+    const result = runDoctor();
+
+    expect(blockOf(result)).toContain(
+      `"with":${JSON.stringify('Edit(~/.claude/agent-memory/**/*.md)')}`,
+    );
+    expect(blockOf(result)).not.toContain('/**/**/');
+  });
 });
 
 // A rule is read as a folder rule (gitignore reading): when its match can be an exception folder
