@@ -15,6 +15,7 @@ import {
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
 import { readTextFile } from './test-support/read-text-file';
+import { writeExecutable } from './test-support/mutation-repository';
 
 // scripts/checks/permission-doctor.sh reads the user's permission settings and reports an allow
 // rule that can never pre-approve a write, plus drift between the two user settings files. It
@@ -246,24 +247,44 @@ describe('scripts/checks/permission-doctor.sh: exception anchors', () => {
 });
 
 describe('scripts/checks/permission-doctor.sh: checker failure', () => {
-  it('exits 3 from the checker and says the checker failed when it throws', () => {
-    // An unterminated bracket class is a glob segment the checker cannot compile.
-    writeSettings([`Edit(//${layout.home}/shared/[abc/x.txt)`]);
-
-    const direct = spawnSync('node', [CHECKER], {
-      encoding: 'utf8',
-      cwd: layout.working,
-      env: { PATH: process.env.PATH, HOME: layout.home, CLAUDE_CONFIG_DIR: layout.profile },
-    });
-    const result = runDoctor();
-    const what = blockOf(result)
+  const whatOf = (result: SpawnSyncReturns<string>): string | undefined =>
+    blockOf(result)
       .split('\n')
       .find((line) => line.startsWith('WHAT FAILED:'));
 
-    expect(direct.status).toBe(3);
+  it('reports a checker that crashes as could not run, not as rules that cannot work', () => {
+    writeSettings(['Edit(~/shared/notes.txt)']);
+    const stubs = join(layout.working, 'stubs');
+    mkdirSync(stubs);
+    writeExecutable(
+      join(stubs, 'node'),
+      '#!/bin/sh\necho "TypeError: crashed at permission-doctor.js:1" >&2\nexit 3\n',
+    );
+
+    const result = spawnSync('bash', [SCRIPT], {
+      encoding: 'utf8',
+      cwd: layout.working,
+      env: {
+        PATH: `${stubs}:${process.env.PATH}`,
+        HOME: layout.home,
+        CLAUDE_CONFIG_DIR: layout.profile,
+      },
+    });
+
     expect(result.status).toBe(2);
-    expect(what).toContain('could not run');
-    expect(what).not.toContain('cannot work');
+    expect(whatOf(result)).toContain('could not run');
+    expect(whatOf(result)).not.toContain('cannot work');
+    expect(blockOf(result)).toContain('TypeError: crashed');
+  });
+
+  it('still says rules cannot work for a real findings run', () => {
+    writeSettings(['Edit(~/.claude/agents/helper.md)']);
+
+    const result = runDoctor();
+
+    expect(result.status).toBe(2);
+    expect(whatOf(result)).toContain('cannot work');
+    expect(whatOf(result)).not.toContain('could not run');
   });
 });
 
