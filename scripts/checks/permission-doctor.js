@@ -50,8 +50,9 @@
 // protected folder ("~/repo/*/.git/**" is not). A subfolder rule under a Markdown exception
 // ("projects/<p>/memory/sub", "memory/?") is reported remove, although it can cover .md files. A
 // project settings file's relative rule is read against that project's root, which is the
-// documented base only for "/x". Managed settings, additionalDirectories, --plugin-dir and
-// plansDirectory are not read.
+// documented base only for "/x". A ".." segment at the end of a rule ("memory/x/..") is not
+// resolved when the suggestion is built. Managed settings, additionalDirectories, --plugin-dir
+// and plansDirectory are not read.
 //
 // Exit 0: clean. Exit 1: findings or unreadable files, printed on stdout. Exit 3: the checker
 // crashed, with the error on stderr. The checker is dependency-free (node:* only), like the other
@@ -487,10 +488,18 @@ function protectedPathReason(pattern, root, context) {
   return partial;
 }
 
+// A trailing "/" or "/." makes the rule a folder rule, which covers the folder's files, so it
+// reads as "<folder>/**"; without this the Markdown form would end in "/.md".
+function withoutTrailingSlash(pattern) {
+  return pattern.replace(/(?:\/\.?)+$/, '');
+}
+
 // The project slot of the memory exception is one folder, so a "**" there narrows to "*". A rule
 // already ending in ".md" is a Markdown form, so only that slot changes.
 function narrowToMarkdown(pattern) {
-  const oneProject = pattern.replace(/\/projects\/\*\*\/memory(?=\/|$)/, '/projects/*/memory');
+  const folder = withoutTrailingSlash(pattern);
+  const named = folder === pattern ? pattern : `${folder}/**`;
+  const oneProject = named.replace(/\/projects\/\*\*\/memory(?=\/|$)/, '/projects/*/memory');
 
   if (MARKDOWN_PATTERN.test(oneProject)) {
     return oneProject;
@@ -514,7 +523,7 @@ function protectedPathFinding(settings, parsed, rule, reason, context) {
     };
   }
 
-  const segments = splitSegments(parsed.pattern);
+  const segments = splitSegments(withoutTrailingSlash(parsed.pattern));
   const narrowed = narrowToMarkdown(parsed.pattern);
   // A rule that ends at the .claude folder has no name to put ".md" on.
   const narrowsCleanly =

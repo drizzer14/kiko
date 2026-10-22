@@ -15,7 +15,7 @@ fail() {
     "$1" \
     "$2" \
     "A protected-path allow rule cannot pre-approve the write (a rule whose glob can also reach a documented exception, such as .claude/projects/**/memory/**, pre-approves only the excepted part), a single-slash absolute path names a location under the settings source, and a rule only one user settings file holds is lost when the other is read: the prompts keep appearing and nothing says why." \
-    "Edit the named settings file by hand and apply the suggested JSON of each finding: remove the rule, replace it with the Markdown or the double-slash form, or add it to the other user settings file. Re-run: npm run check:permissions" \
+    "Edit the named settings file by hand and apply the suggested JSON of each finding: remove the rule, replace it with the Markdown or the double-slash form, narrow it by hand where the suggestion says fix, or add it to the other user settings file. Re-run: npm run check:permissions" \
     "Do not let an agent edit a permission settings file, add more allow rules for a protected path (they cannot work), or weaken the check. The doctor never writes a settings file."
   exit 2
 }
