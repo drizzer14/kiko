@@ -31,6 +31,7 @@ describe('LANE_CALL_CAPS', () => {
       convert: 20,
       dust: 1,
       market: 150,
+      tradeSymbols: 1,
     });
   });
 });
@@ -147,6 +148,27 @@ describe('createBinanceRunBudget — calls kept for later', () => {
     expect(allowed.canAfford('dust', COSTS.dust)).toBe(true);
   });
 
+  it('allows one symbol-list call and refuses the second', () => {
+    const budget = createBinanceRunBudget();
+
+    expect(budget.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(true);
+
+    spendCalls(budget, 'tradeSymbols', 1);
+
+    expect(budget.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(false);
+    expect(budget.canAfford('tradeSymbols', COSTS.exchangeInfo, 0, true)).toBe(false);
+  });
+
+  it('judges a symbol-list call by the /api/* reading', () => {
+    const refused = createBinanceRunBudget();
+    const allowed = createBinanceRunBudget();
+    refused.record('market', { ...NO_READING, usedApiWeight1m: 2_981 });
+    allowed.record('market', { ...NO_READING, usedApiWeight1m: 2_980 });
+
+    expect(refused.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(false);
+    expect(allowed.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(true);
+  });
+
   it('counts the calls to keep in the weight of an IP call too', () => {
     const budget = createBinanceRunBudget();
     budget.record('earn', { ...NO_READING, usedIpWeight1m: 5_701 });
@@ -169,6 +191,7 @@ describe('createBinanceRunBudget — narrowing calls', () => {
       convert: 0,
       dust: 0,
       market: 0,
+      tradeSymbols: 0,
     });
   });
 
@@ -280,6 +303,7 @@ describe('createBinanceRunBudget — weight readings', () => {
       convert: { uid: 3_000 },
       dust: { ip: 1 },
       klines: { api: 2 },
+      exchangeInfo: { api: 20 },
     });
   });
 
