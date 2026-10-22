@@ -5,7 +5,8 @@
 #
 # The only inputs are the sha and KIKO_QUEUE_DIR (default $HOME/.claude/kiko-queue), the queue's
 # own state folder. Every refusal prints a failure block on stderr and exits 2; on success it runs
-# `git merge --ff-only` in the main checkout and prints `git log -1 --oneline` there. In order:
+# `git merge --ff-only` in the main checkout and prints `git log -1 --oneline` there. An exit 2
+# can also follow a completed move, when the patch step (step 8) fails. In order:
 #   1. The main checkout is the first `worktree` entry of `git worktree list --porcelain` of this
 #      script's own repository (git's main worktree), never a hardcoded path. It must be on the
 #      branch main.
