@@ -291,6 +291,16 @@ describe('binanceProvider — shared 429/418 cooldown', () => {
     expect(deps.fetchLockedPosition).not.toHaveBeenCalled();
   });
 
+  it('returns no texts when the account is cooling down', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-cooldown-provider-texts', holdings: [] };
+    setBinanceCooldownUntil(target.accountId, NOW + 60_000);
+
+    const read = await binanceRead.fetchBalances(deps, target);
+
+    expect(read.spotBalanceTexts).toBeUndefined();
+  });
+
   it('makes requests again once the cooldown instant has passed', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0' }]);
     const target: SyncTarget = { accountId: 'acc-cooldown-provider-2', holdings: [] };
@@ -1320,6 +1330,59 @@ describe('binanceProvider — a ticker that equals a fiat code', () => {
       currency: 'EUR',
       balanceMinorUnits: 500,
     });
+  });
+});
+
+describe('binanceProvider — the Spot balance texts', () => {
+  it('keeps free and locked as Binance sent them, under the trimmed upper-case ticker', async () => {
+    const deps = makeDeps([{ asset: ' usdt ', free: '1.0', locked: '0' }]);
+
+    const read = await binanceRead.fetchBalances(deps, emptyTarget);
+
+    expect(read.spotBalanceTexts?.USDT).toBe('1.0/0');
+  });
+
+  it('holds one text per asset of the Spot body, tracked or not, and nothing from another wallet', async () => {
+    const deps = makeDeps([
+      { asset: 'BTC', free: '0.50000000', locked: '0.25000000' },
+      { asset: 'PEPE', free: '12.5', locked: '0.0' },
+      { asset: 'ETH', free: '0.00000000', locked: '0.00000000' },
+    ]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'CGPT', free: '3', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+
+    const read = await binanceRead.fetchBalances(deps, emptyTarget);
+
+    expect(read.spotBalanceTexts).toEqual({
+      BTC: '0.50000000/0.25000000',
+      PEPE: '12.5/0.0',
+      ETH: '0.00000000/0.00000000',
+    });
+  });
+
+  it('leaves out an entry with a field that is no text, so its coin has no text', async () => {
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockResolvedValue({
+      balances: [
+        { asset: 'BTC', free: 0.5, locked: '0' },
+        { asset: 'ETH', free: '1', locked: null },
+        { asset: 'SOL', free: '2', locked: '0' },
+        { asset: 7, free: '1', locked: '0' },
+        'junk',
+      ],
+      uid: null,
+    });
+
+    const read = await binanceRead.fetchBalances(deps, emptyTarget);
+
+    expect(read.spotBalanceTexts).toEqual({ SOL: '2/0' });
+  });
+
+  it('returns an empty record for a Spot body with no balance', async () => {
+    const read = await binanceRead.fetchBalances(makeDeps([]), emptyTarget);
+
+    expect(read.spotBalanceTexts).toEqual({});
   });
 });
 

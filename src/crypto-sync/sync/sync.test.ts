@@ -45,6 +45,7 @@ const walletBalance = (balanceMinorUnits: number): ProviderBalance => ({
 type FakeDeps = {
   balances: ProviderBalance[] | Error;
   exchangeState?: ProviderRead['exchangeState'];
+  spotBalanceTexts?: ProviderRead['spotBalanceTexts'];
 };
 
 /**
@@ -64,7 +65,11 @@ const makeProvider = (id: BalanceProvider<FakeDeps>['id'] = 'btc_wallet') => {
         throw deps.balances;
       }
 
-      return { balances: deps.balances, exchangeState: deps.exchangeState };
+      return {
+        balances: deps.balances,
+        exchangeState: deps.exchangeState,
+        spotBalanceTexts: deps.spotBalanceTexts,
+      };
     },
   };
 
@@ -192,21 +197,22 @@ describe('runBalanceSync', () => {
     expect(calls[0]).toEqual({ accountId: 'acc-1', holdings: [] });
   });
 
-  it('returns the exchange state the read carried, with the account already marked', async () => {
+  it('returns the exchange state and the Spot balance texts the read carried, with the account already marked', async () => {
     const exchangeState: ProviderRead['exchangeState'] = [
       { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['PEPE'] },
     ];
+    const spotBalanceTexts = { BTC: '0.5/0', USDT: '1.0/0' };
     const { provider } = makeProvider('binance');
     const { deps, accountsStore } = makeInMemoryDeps([cryptoAccount()]);
     deps.targetAccountId = 'acc-1';
 
     const result = await runBalanceSync(
       provider,
-      { balances: [walletBalance(1)], exchangeState },
+      { balances: [walletBalance(1)], exchangeState, spotBalanceTexts },
       deps,
     );
 
-    expect(result).toEqual({ syncedHoldings: 1, exchangeState });
+    expect(result).toEqual({ syncedHoldings: 1, exchangeState, spotBalanceTexts });
     expect(accountsStore[0].institution).toBe('binance');
   });
 

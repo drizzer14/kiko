@@ -39,8 +39,13 @@ export interface BalanceSyncDeps {
   upsertHoldings: (holdings: ExchangeHolding[]) => Promise<unknown>;
 }
 
-/** `exchangeState` is the read's, for the caller to write now that the account is marked. */
-export type BalanceSyncResult = Pick<ProviderRead, 'exchangeState'> & { syncedHoldings: number };
+/**
+ * `exchangeState` is the read's, for the caller to write now that the account is marked;
+ * `spotBalanceTexts` is the read's too, for the trade read that follows.
+ */
+export type BalanceSyncResult = Pick<ProviderRead, 'exchangeState' | 'spotBalanceTexts'> & {
+  syncedHoldings: number;
+};
 
 const defaultDeps: BalanceSyncDeps = {
   now: () => Date.now(),
@@ -172,10 +177,13 @@ const runBalanceSyncInner = async <Deps>(
   try {
     const accountId = await resolveTargetAccount(deps, provider.id);
     const holdings = await deps.listHoldingsByAccount(accountId);
-    const { balances, exchangeState } = await provider.fetchBalances(providerDeps, {
-      accountId,
-      holdings,
-    });
+    const { balances, exchangeState, spotBalanceTexts } = await provider.fetchBalances(
+      providerDeps,
+      {
+        accountId,
+        holdings,
+      },
+    );
 
     await deps.updateAccount(accountId, { institution: provider.id });
     const syncedAt = deps.now();
@@ -218,7 +226,7 @@ const runBalanceSyncInner = async <Deps>(
       commitHolding();
     });
 
-    return { syncedHoldings: balances.length, exchangeState };
+    return { syncedHoldings: balances.length, exchangeState, spotBalanceTexts };
   } finally {
     endProgressSession();
   }
