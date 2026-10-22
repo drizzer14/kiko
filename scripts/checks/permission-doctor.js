@@ -35,7 +35,8 @@
 //                   that are never pre-approved (".claude/projects/**/memory/**"). It is not
 //                   removed: the suggestion replaces it with the Markdown form
 //                   (".../memory/**/*.md") when that form is fully excepted, and otherwise asks
-//                   for a hand narrowing.
+//                   for a hand narrowing. A rule that can name an exception folder or one of its
+//                   ancestors covers that folder's files, so it counts as the folder.
 //   path form       In a user settings file a Read, Edit, Write or NotebookEdit rule with one
 //                   leading slash whose literal folder exists at the filesystem root. "/path" is
 //                   relative to the settings source and "//path" is the absolute path, so the
@@ -46,10 +47,11 @@
 // Known limits: Bash rules are not judged. A relative rule ("/x", "./x", "x") in a user settings
 // file has no known base and is skipped for the protected-path finding. A rule with no literal
 // leading folder ("**/.claude/**") is skipped, and only the literal prefix is judged for a
-// protected folder ("~/repo/*/.git/**" is not). A glob in the project slot of
-// projects/<project>/memory is read as one folder. A project settings file's relative rule is read
-// against that project's root, which is the documented base only for "/x". Managed settings,
-// additionalDirectories, --plugin-dir and plansDirectory are not read.
+// protected folder ("~/repo/*/.git/**" is not). A glob that can name a whole excepted folder
+// (".claude/pla*") is judged by that folder alone, however many other names it can match. A
+// project settings file's relative rule is read against that project's root, which is the
+// documented base only for "/x". Managed settings, additionalDirectories, --plugin-dir and
+// plansDirectory are not read.
 //
 // Exit 0: clean. Exit 1: findings or unreadable files, printed on stdout. Exit 3: the checker
 // crashed, with the error on stderr. The checker is dependency-free (node:* only), like the other
@@ -334,6 +336,25 @@ function prefixFits(after, prefix, strict) {
   });
 }
 
+function hasLiteralCharacter(segment) {
+  return segment.replace(/[*?[\]]/g, '') !== '';
+}
+
+// A rule ending exactly at a folder that is excepted whole, with a literal character in every
+// segment but the any-folder slots, names that folder: a glob like "pla*" is judged by it alone.
+function namesExceptionFolder(after, folder) {
+  return (
+    !folder.markdown &&
+    after.length === folder.prefix.length &&
+    after.every(
+      (segment, index) =>
+        segment !== RECURSIVE_SEGMENT &&
+        (folder.prefix[index] === ANY_FOLDER || hasLiteralCharacter(segment)),
+    ) &&
+    matchesExceptionFolder(after, folder, false)
+  );
+}
+
 function matchesExceptionFolder(after, folder, strict) {
   // A "**" in any slot can span the folders in between, so the slots behind it are unknown.
   const hiddenAt = strict ? -1 : after.slice(0, folder.prefix.length).indexOf(RECURSIVE_SEGMENT);
@@ -342,7 +363,7 @@ function matchesExceptionFolder(after, folder, strict) {
     return prefixFits(after, folder.prefix.slice(0, hiddenAt), false);
   }
 
-  if (!prefixFits(after, folder.prefix, strict)) {
+  if (!prefixFits(after, strict ? folder.prefix : folder.prefix.slice(0, after.length), strict)) {
     return false;
   }
 
@@ -352,21 +373,30 @@ function matchesExceptionFolder(after, folder, strict) {
     return !folder.markdown || (after.length > folder.prefix.length && MARKDOWN_PATTERN.test(last));
   }
 
-  return after.length > folder.prefix.length && (!folder.markdown || canBeMarkdown(last));
+  return after.length <= folder.prefix.length || !folder.markdown || canBeMarkdown(last);
 }
 
-// 'exempt': every file the rule names is an exception. 'partial': the glob can reach an
-// exception and other files. 'none': no exception can match.
-function exceptionVerdict(after, anchored) {
-  const folders = EXCEPTION_FOLDERS.filter((folder) => anchored || !folder.anchored);
-
-  if (folders.some((folder) => matchesExceptionFolder(after, folder, true))) {
+function folderVerdict(after, folder) {
+  if (matchesExceptionFolder(after, folder, true) || namesExceptionFolder(after, folder)) {
     return 'exempt';
   }
 
-  return folders.some((folder) => matchesExceptionFolder(after, folder, false))
-    ? 'partial'
-    : 'none';
+  return matchesExceptionFolder(after, folder, false) ? 'partial' : 'none';
+}
+
+// 'exempt': every file the rule names is an exception. 'partial': the rule can reach an
+// exception and other files, as a folder rule that can be an exception folder or one of its
+// ancestors covers that folder's files. 'none': no exception can match.
+function exceptionVerdict(after, anchored) {
+  const verdicts = EXCEPTION_FOLDERS.filter((folder) => anchored || !folder.anchored).map(
+    (folder) => folderVerdict(after, folder),
+  );
+
+  if (verdicts.includes('partial')) {
+    return 'partial';
+  }
+
+  return verdicts.includes('exempt') ? 'exempt' : 'none';
 }
 
 function directoryVerdict(segments, index, context) {
@@ -458,9 +488,14 @@ function protectedPathReason(pattern, root, context) {
   return partial;
 }
 
-// The project slot of the memory exception is one folder, so a "**" there narrows to "*".
+// The project slot of the memory exception is one folder, so a "**" there narrows to "*". A rule
+// already ending in ".md" is a Markdown form, so only that slot changes.
 function narrowToMarkdown(pattern) {
   const oneProject = pattern.replace(/\/projects\/\*\*\/memory(?=\/|$)/, '/projects/*/memory');
+
+  if (MARKDOWN_PATTERN.test(oneProject)) {
+    return oneProject;
+  }
 
   return oneProject.endsWith('/**') ? `${oneProject}/*.md` : `${oneProject}.md`;
 }
