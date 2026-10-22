@@ -5,6 +5,8 @@ export {
   type WalkMarkPatch,
 } from './exchange-state-patch';
 export {
+  type CoinLists,
+  type ExchangeTrades,
   NOT_IMPORTED_KINDS,
   type NotImportedKind,
   notImportedEntry,

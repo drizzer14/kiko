@@ -424,16 +424,16 @@ describe('syncStateRepo.patchExchangeState', () => {
     expect(storedExchangeState(rawDatabase)).toBe(stored);
   });
 
-  it('writes a trade symbol, the rotation and the balance snapshot each alone', async () => {
+  it('writes a trade symbol, the rotation symbol text and the balance snapshot each alone', async () => {
     const rawDatabase = openExchangeDatabase(
       'binance',
-      JSON.stringify({ version: 1, walks: {}, trades: { symbols: 'junk', rotation: 2 } }),
+      JSON.stringify({ version: 1, walks: {}, trades: { symbols: 'junk', rotation: 'ETHUSDT' } }),
     );
 
     await patchInOrder(
       { kind: 'tradeSymbol', symbol: 'BTCUSDT', entry: { fromId: 5, heldOrderId: 7 } },
       { kind: 'tradeSymbol', symbol: 'ETHUSDT', entry: { fromId: null } },
-      { kind: 'tradesRotation', value: 3 },
+      { kind: 'tradesRotation', value: 'BTCUSDT' },
       { kind: 'tradesBalanceSnapshot', value: { BTC: '1.5' } },
     );
 
@@ -442,13 +442,13 @@ describe('syncStateRepo.patchExchangeState', () => {
       walks: {},
       trades: {
         symbols: { BTCUSDT: { fromId: 5, heldOrderId: 7 }, ETHUSDT: { fromId: null } },
-        rotation: 3,
+        rotation: 'BTCUSDT',
         balanceSnapshot: { BTC: '1.5' },
       },
     });
   });
 
-  it('starts the trades entry with an empty rotation and snapshot when none is stored', async () => {
+  it('starts the trades entry with the empty text rotation and an empty snapshot when none is stored', async () => {
     const rawDatabase = openExchangeDatabase('binance', walkStateText({}));
 
     await patchInOrder({ kind: 'tradeSymbol', symbol: 'BTCUSDT', entry: { fromId: 5 } });
@@ -456,7 +456,7 @@ describe('syncStateRepo.patchExchangeState', () => {
     expect(storedExchangeStateJson(rawDatabase)).toEqual({
       version: 1,
       walks: {},
-      trades: { symbols: { BTCUSDT: { fromId: 5 } }, rotation: 0, balanceSnapshot: {} },
+      trades: { symbols: { BTCUSDT: { fromId: 5 } }, rotation: '', balanceSnapshot: {} },
     });
   });
 
@@ -648,7 +648,7 @@ describe('syncStateRepo.resetExchangeStateDatabaseTransaction', () => {
         futureKey: true,
         balanceSyncedAt: 5_000,
         notImported: ['p2p-sale:1:2'],
-        trades: { symbols: { BTCUSDT: { fromId: 5 } }, rotation: 2, balanceSnapshot: {} },
+        trades: { symbols: { BTCUSDT: { fromId: 5 } }, rotation: 'BTCUSDT', balanceSnapshot: {} },
         untrackedCoins: { balance: ['AAA'], history: ['BBB'] },
         oversizedCoins: { balance: ['CCC'], history: ['DDD'] },
         walks: {

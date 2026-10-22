@@ -33,7 +33,7 @@ describe('the balance sync stamp patch', () => {
     const seed = {
       version: 1,
       walks: { pay: { cursor: 7 } },
-      trades: { symbols: {}, rotation: 3, balanceSnapshot: {} },
+      trades: { symbols: {}, rotation: 'BTCUSDT', balanceSnapshot: {} },
       untrackedCoins: { balance: ['PEPE'], history: ['XYZ'] },
       oversizedCoins: { balance: ['SHIB'], history: ['DOGE'], balanceByWallet: { spot: ['SHIB'] } },
       balanceSyncedAt: 1_000,
