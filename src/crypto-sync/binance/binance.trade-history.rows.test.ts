@@ -109,7 +109,21 @@ const feeRowOf = (
   ...over,
 });
 
+const ROUNDED_TAG = 'row-precision-rounded';
+
 describe('tradeOrderRowsOf', () => {
+  let warn: jest.SpyInstance;
+
+  const roundedLogs = () => warn.mock.calls.filter(([tag]) => tag === ROUNDED_TAG);
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
   describe('a buy', () => {
     it('writes the spent coin out and the received coin in net of a commission in it', async () => {
       const { rows, untracked } = ordersOf([fillOf()]);
@@ -378,6 +392,7 @@ describe('tradeOrderRowsOf', () => {
       ]);
 
       expect(rows).toStrictEqual([feeRowOf('BNB', -5_000, { counterpartWallet: 'XRP' }, XRP_PAIR)]);
+      expect(roundedLogs()).toHaveLength(1);
     });
 
     it('writes neither leg when the spent leg rounds to nothing', () => {
@@ -392,6 +407,7 @@ describe('tradeOrderRowsOf', () => {
       ]);
 
       expect(rows).toStrictEqual([]);
+      expect(roundedLogs()).toHaveLength(1);
     });
 
     it('converts a reduced scale coin once from the sum of the fills, not once per fill', () => {
@@ -399,9 +415,90 @@ describe('tradeOrderRowsOf', () => {
         fillOf({ id, qty: '0.00004', quoteQty: '1', commission: '0', commissionAsset: 'USDT' });
 
       expect(xrpOrderOf([fillAt(1)]).rows).toStrictEqual([]);
+      expect(roundedLogs()).toHaveLength(1);
+
+      warn.mockClear();
+
       expect(xrpOrderOf([fillAt(1), fillAt(2), fillAt(3)]).rows).toStrictEqual(
         pairLegsOf(['USDT', -300_000_000], ['XRP', 1], XRP_PAIR),
       );
+      expect(roundedLogs()).toHaveLength(1);
+    });
+  });
+
+  describe('a fiat leg past its scale', () => {
+    const EUR_PAIR = `${ACCOUNT}:trade:BTCEUR:42`;
+    const eurOrderOf = (fills: BinanceMyTrade[]) =>
+      ordersOf(fills, { symbol: 'BTCEUR', quoteAsset: 'EUR' });
+    const eurFillOf = (over: Partial<BinanceMyTrade>) =>
+      fillOf({ commission: '0', commissionAsset: 'BNB', ...over });
+
+    it.each([
+      ['3 decimals', '612.345', 61235],
+      ['4 decimals', '612.3449', 61234],
+      ['5 decimals', '612.34499', 61234],
+      ['6 decimals', '612.344999', 61234],
+      ['7 decimals', '612.3456789', 61235],
+      ['just under a half', '612.3449999', 61234],
+    ])('rounds the spent quote amount of a BTCEUR buy at %s once', (_label, quoteQty, units) => {
+      const { rows } = eurOrderOf([eurFillOf({ quoteQty })]);
+
+      expect(rows).toStrictEqual(pairLegsOf(['EUR', -units], ['BTC', 1_000_000], EUR_PAIR));
+      expect(roundedLogs()).toHaveLength(1);
+    });
+
+    it('rounds the received quote amount of a BTCEUR sell, net of a commission in EUR', () => {
+      const { rows } = eurOrderOf([
+        eurFillOf({
+          isBuyer: false,
+          quoteQty: '612.3456789',
+          commission: '0.00123',
+          commissionAsset: 'EUR',
+        }),
+      ]);
+
+      expect(rows).toStrictEqual(pairLegsOf(['BTC', -1_000_000], ['EUR', 61_234], EUR_PAIR));
+      expect(roundedLogs()).toHaveLength(1);
+    });
+
+    it('rounds an amount that crosses the boundary only in the sum, once, not once per fill', () => {
+      const fillAt = (id: number) => eurFillOf({ id, qty: '0.0000001', quoteQty: '0.004' });
+
+      expect(eurOrderOf([fillAt(1)]).rows).toStrictEqual([]);
+      expect(roundedLogs()).toHaveLength(1);
+
+      warn.mockClear();
+
+      expect(eurOrderOf([fillAt(1), fillAt(2), fillAt(3)]).rows).toStrictEqual(
+        pairLegsOf(['EUR', -1], ['BTC', 30], EUR_PAIR),
+      );
+      expect(roundedLogs()).toHaveLength(1);
+    });
+
+    it('rounds a fee in a third fiat coin half away from zero after the sum of the fills', () => {
+      const fillAt = (id: number) => fillOf({ id, commission: '0.004', commissionAsset: 'EUR' });
+
+      expect(ordersOf([fillAt(1)]).rows).toHaveLength(2);
+      expect(roundedLogs()).toHaveLength(1);
+
+      warn.mockClear();
+
+      const { rows } = ordersOf([fillAt(1), fillAt(2), fillAt(3)]);
+
+      expect(rows.map((row) => [row.wallet, row.amountMinorUnits, row.operation])).toStrictEqual([
+        ['USDT', -180_000_000_000, 'trade'],
+        ['BTC', 3_000_000, 'trade'],
+        ['EUR', -1, 'trade-fee'],
+      ]);
+      expect(roundedLogs()).toHaveLength(1);
+    });
+
+    it('keeps a crypto coin as it was: a full-scale coin past its scale still stops the order', () => {
+      expect(stopOf(() => ordersOf([fillOf({ qty: '0.123456789' })]))).toMatchObject({
+        name: 'BinanceWalkStop',
+        code: 'amount-precision',
+      });
+      expect(roundedLogs()).toHaveLength(0);
     });
   });
 

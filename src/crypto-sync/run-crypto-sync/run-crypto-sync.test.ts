@@ -70,7 +70,7 @@ describe('runCryptoSync', () => {
     mockSyncBinanceEarnHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBinanceConvertHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBinanceDustHistory.mockResolvedValue({ imported: 0 });
-    mockSyncBinanceTradeHistory.mockResolvedValue({ imported: 0, callsBySymbol: {} });
+    mockSyncBinanceTradeHistory.mockResolvedValue({ imported: 0 });
   });
 
   it('runs the wallet provider with the connect-time address on a wallet request', async () => {

@@ -91,7 +91,7 @@ const tradePairIdOf = (accountId: string, symbol: string, orderId: number): stri
   `${accountId}:trade:${symbol}:${orderId}`;
 
 const unitsOf = (coin: Currency, amountText: string): number => {
-  const units = rowMinorUnits(coin, amountText);
+  const units = rowMinorUnits(coin, amountText, 'trade-row');
 
   if (units < 0) {
     throw new BinanceWalkStop(TRADE_AMOUNT_INVALID);
@@ -230,8 +230,9 @@ const firstFillOf = (fills: BinanceMyTrade[]): BinanceMyTrade => {
 
 /**
  * The rows of one spot order, from every fill of it that was read. Each amount's text is summed
- * exactly over the fills and converted to minor units once, so a coin stored at a reduced scale
- * rounds once per order, never per fill. A fill's commission in the coin the order spent is added
+ * exactly over the fills and converted to minor units once, so a coin stored at a reduced scale,
+ * or a fiat coin (Binance quotes it at more decimals than it is stored at), rounds half away from
+ * zero once per order, never per fill. A fill's commission in the coin the order spent is added
  * to the spent leg, in the coin it received is taken off the received leg, and in a third coin
  * becomes one fee row per coin; a third coin that is not tracked is listed in `untracked`, as is
  * an untracked coin of the order. A leg that comes to 0 units is not written, nor is its pair
@@ -358,10 +359,17 @@ type TradeCandidate = ReturnType<typeof tradeCandidatesOf>[number];
 
 type TradeSymbolEntry = ExchangeTrades['symbols'][string];
 
+/**
+ * The order a committed page ended on that came to no row, with the fills of it seen so far, and
+ * the id of its first fill. It has no stored row to show it was seen, so a later fill would be
+ * written without these: the cursor stays at that first fill, and the next page starts from the
+ * fills.
+ */
+type TrailingOrder = { orderId: number; fills: BinanceMyTrade[]; fromId: number };
+
 /** What the read of one symbol shares between its pages, its re-reads and its writes. */
 type SymbolRead = {
   deps: BinanceTradeHistoryDeps;
-  /** The run, counting the calls of the trades lane that this symbol makes. */
   run: BinanceHistoryRun;
   accountId: string;
   credentials: BinanceCredentials;
@@ -373,12 +381,18 @@ type SymbolRead = {
   reReads: Map<number, number>;
   /** The `fromId` the symbol's entry holds now: `null` while it has never been read. */
   storedFromId: number | null;
+  /** The last committed page's trailing order that came to no row, if it had one. */
+  trailing: TrailingOrder | undefined;
   tally: { imported: number };
 };
 
-/** What a page comes to: the orders to write, and the fill the read stops at, if it stops. */
+/**
+ * What a page comes to: the orders to write, the order of the last fill it took in, and the fill
+ * the read stops at, if it stops.
+ */
 type PageScan = {
   orders: Map<number, BinanceMyTrade[]>;
+  lastOrderId?: number;
   stop?: { fillId: number; heldOrderId?: number };
 };
 
@@ -470,11 +484,18 @@ const importedOrdersOf = async (read: SymbolRead, rows: BinanceMyTrade[]): Promi
  * re-read the lane has no room for stops the read at that order's first fill here, holding the
  * order. A fill of an order already read whole is skipped when that read has it, and stops the
  * read at that fill when the order filled again since. Nothing at or after the stop fill is
- * written, and the cursor stays on it, so the next read finds it again.
+ * written, and the cursor stays on it, so the next read finds it again. The fills of the order the
+ * last page ended on without a row (`TrailingOrder`) start the orders, so a fill of it on this page
+ * is added to them.
  */
 const scanPage = async (read: SymbolRead, rows: BinanceMyTrade[]): Promise<PageScan> => {
   const imported = await importedOrdersOf(read, rows);
   const orders = new Map<number, BinanceMyTrade[]>();
+  let lastOrderId: number | undefined;
+
+  if (read.trailing !== undefined) {
+    orders.set(read.trailing.orderId, read.trailing.fills);
+  }
 
   for (const fill of rows) {
     const { orderId } = fill;
@@ -483,7 +504,11 @@ const scanPage = async (read: SymbolRead, rows: BinanceMyTrade[]): Promise<PageS
       const whole = await readOrderFills(read, orderId);
 
       if (whole === undefined) {
-        return { orders, stop: { fillId: Number(fill.id), heldOrderId: orderId } };
+        return {
+          orders,
+          lastOrderId,
+          stop: { fillId: Number(fill.id), heldOrderId: orderId },
+        };
       }
 
       read.reReads.set(orderId, whole.lastFillId);
@@ -495,26 +520,29 @@ const scanPage = async (read: SymbolRead, rows: BinanceMyTrade[]): Promise<PageS
     if (lastRead === undefined) {
       orders.set(orderId, [...(orders.get(orderId) ?? []), fill]);
     } else if (Number(fill.id) > lastRead) {
-      return { orders, stop: { fillId: Number(fill.id) } };
+      return { orders, lastOrderId, stop: { fillId: Number(fill.id) } };
     }
+
+    lastOrderId = orderId;
   }
 
-  return { orders };
+  return { orders, lastOrderId };
 };
 
 /**
  * Write the rows of orders: place them on the Spot holdings, import them, then list the coins of
  * the orders that Kiko does not track. A crash before the cursor moves reads the page again, and
- * the keys dedupe it.
+ * the keys dedupe it. Resolves with the ids of the orders that came to no row.
  */
 const writeOrders = async (
   read: SymbolRead,
   orders: ReadonlyMap<number, BinanceMyTrade[]>,
-): Promise<void> => {
+): Promise<ReadonlySet<number>> => {
   const { deps, accountId, candidate } = read;
-  const built = [...orders].map(([orderId, fills]) =>
-    tradeOrderRowsOf({ accountId, ...candidate, orderId, fills }),
-  );
+  const built = [...orders].map(([orderId, fills]) => ({
+    orderId,
+    ...tradeOrderRowsOf({ accountId, ...candidate, orderId, fills }),
+  }));
   const placed = await placeWalletRows({
     accountId,
     planned: built.flatMap(({ rows }) => rows),
@@ -533,6 +561,8 @@ const writeOrders = async (
   if (untracked.length > 0) {
     await historyListWriterOf(deps, accountId, 'untrackedCoins')(untracked);
   }
+
+  return new Set(built.filter(({ rows }) => rows.length === 0).map(({ orderId }) => orderId));
 };
 
 const writeCursor = async (read: SymbolRead, entry: TradeSymbolEntry): Promise<void> => {
@@ -542,20 +572,38 @@ const writeCursor = async (read: SymbolRead, entry: TradeSymbolEntry): Promise<v
   read.storedFromId = entry.fromId;
 };
 
+/** The order the page ended on, if it came to no row. */
+const trailingOf = (
+  { orders, lastOrderId }: PageScan,
+  rowless: ReadonlySet<number>,
+): TrailingOrder | undefined => {
+  if (lastOrderId === undefined || !rowless.has(lastOrderId)) {
+    return undefined;
+  }
+
+  return foldMap(maybe(orders.get(lastOrderId)), (fills) => ({
+    orderId: lastOrderId,
+    fills,
+    fromId: Number(firstFillOf(fills).id),
+  }));
+};
+
 /**
  * One page of fills, committed: its rows first, then the cursor, so a crash between the two reads
- * the page again. The cursor is the stop fill when the page stops the read (with the order it
- * holds, if one), else the id after the page.
+ * the page again. The cursor is the first fill of the order the page ended on without a row, else
+ * the stop fill when the page stops the read (with the order it holds, if one), else the id after
+ * the page.
  */
 const commitPage = async (
   read: SymbolRead,
   page: { rows: BinanceMyTrade[]; nextFromId: number },
 ): Promise<'next' | { stopAt: number }> => {
-  const { orders, stop } = await scanPage(read, page.rows);
+  const scan = await scanPage(read, page.rows);
+  const { stop } = scan;
 
-  await writeOrders(read, orders);
+  read.trailing = trailingOf(scan, await writeOrders(read, scan.orders));
   await writeCursor(read, {
-    fromId: stop?.fillId ?? page.nextFromId,
+    fromId: read.trailing?.fromId ?? stop?.fillId ?? page.nextFromId,
     ...foldMap(maybe(stop?.heldOrderId), (heldOrderId) => ({ heldOrderId })),
   });
 
@@ -613,9 +661,12 @@ const readSymbolFills = async (read: SymbolRead): Promise<{ ended: TradeReadEnd 
   });
 
   // A symbol with no fill stores 0, so it reads as read; a read that ended any other way has
-  // stored its cursor with the last page it committed, or must stay unread.
-  if (result.end === 'short-page' && read.storedFromId !== result.nextFromId) {
-    await writeCursor(read, { fromId: result.nextFromId });
+  // stored its cursor with the last page it committed, or must stay unread. A caught-up symbol
+  // whose last order came to no row keeps its cursor on that order, so the next run reads it again.
+  const settledFromId = read.trailing?.fromId ?? result.nextFromId;
+
+  if (result.end === 'short-page' && read.storedFromId !== settledFromId) {
+    await writeCursor(read, { fromId: settledFromId });
   }
 
   return { ended: result.end };
@@ -635,25 +686,6 @@ const readSymbol = (read: SymbolRead): Promise<{ ended: TradeReadEnd }> =>
 
     throw error;
   });
-
-/** The run, with every call of the trades lane counted against the symbol that makes it. */
-const countedRunOf = (
-  run: BinanceHistoryRun,
-  callsBySymbol: Record<string, number>,
-  symbol: string,
-): BinanceHistoryRun => ({
-  ...run,
-  budget: {
-    ...run.budget,
-    record: (...recorded) => {
-      if (recorded[0] === 'trades') {
-        callsBySymbol[symbol] = (callsBySymbol[symbol] ?? 0) + 1;
-      }
-
-      run.budget.record(...recorded);
-    },
-  },
-});
 
 /** Sets the account's cooldown when `error` is a rate limit, and says whether it was one. */
 const coolDownOnRateLimit = (
@@ -705,9 +737,9 @@ const holdingCodesOf = (holdings: HoldingRow[]): string[] =>
     return foldMap(maybe(parts), ({ code }) => [code]) ?? [];
   });
 
-type TradeHistoryResult = { imported: number; callsBySymbol: Record<string, number> };
+type TradeHistoryResult = { imported: number };
 
-const nothingRead = (): TradeHistoryResult => ({ imported: 0, callsBySymbol: {} });
+const nothingRead = (): TradeHistoryResult => ({ imported: 0 });
 
 const runSync = async (
   deps: BinanceTradeHistoryDeps,
@@ -748,7 +780,6 @@ const runSync = async (
   const candidateBySymbol = Object.fromEntries(
     candidates.map((candidate) => [candidate.symbol, candidate]),
   );
-  const callsBySymbol: Record<string, number> = {};
   const tally = { imported: 0 };
   const reads = await runTradeSymbolReads({
     plan: planTradeSymbolReads({ candidates, trades, balanceTexts: spotBalanceTexts }),
@@ -756,7 +787,7 @@ const runSync = async (
     readSymbol: (symbol, keep) =>
       readSymbol({
         deps,
-        run: countedRunOf(run, callsBySymbol, symbol),
+        run,
         accountId,
         credentials,
         candidate: candidateBySymbol[symbol],
@@ -764,6 +795,7 @@ const runSync = async (
         stored: trades.symbols[symbol],
         reReads: new Map(),
         storedFromId: trades.symbols[symbol]?.fromId ?? null,
+        trailing: undefined,
         tally,
       }),
   });
@@ -786,7 +818,7 @@ const runSync = async (
     throw reads.failure.error;
   }
 
-  return { imported: tally.imported, callsBySymbol };
+  return { imported: tally.imported };
 };
 
 /**
@@ -799,8 +831,8 @@ const runSync = async (
  * amounts cannot be trusted ends alone and is logged by a fixed tag; a rate limit writes what
  * was read, sets the account's cooldown and ends the read cleanly, and any other failure writes
  * the progress and rejects, so the caller can log it without failing the balance sync. It
- * resolves with the rows imported and the calls of the trades lane that each symbol made, and
- * reads nothing without the Spot balance texts of the run's balance read.
+ * resolves with the rows imported, and reads nothing without the Spot balance texts of the run's
+ * balance read.
  */
 export const syncBinanceTradeHistory = (
   request: {

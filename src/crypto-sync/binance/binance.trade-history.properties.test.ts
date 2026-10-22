@@ -38,20 +38,30 @@ const RETRY_AFTER_MS = 30_000;
 const MOST_ORDER_NUMBERS = 150;
 const FIRST_RUN_FILLS = 6;
 const LATER_RUN_FILLS = 3;
-const QUANTITY_DIGITS = 8;
+/** A fill never comes to less than this many sent units of its quote coin (0.01 USDT). */
+const LEAST_QUOTE_UNITS = 1_000_000;
 
 type Spec = { symbol: string; baseAsset: string; quoteAsset: string };
 
 const SPECS: Spec[] = [
+  { symbol: 'BTCEUR', baseAsset: 'BTC', quoteAsset: 'EUR' },
   { symbol: 'BTCUSDT', baseAsset: 'BTC', quoteAsset: 'USDT' },
   { symbol: 'ETHBTC', baseAsset: 'ETH', quoteAsset: 'BTC' },
   { symbol: 'ETHUSDT', baseAsset: 'ETH', quoteAsset: 'USDT' },
   { symbol: 'PEPEUSDT', baseAsset: 'PEPE', quoteAsset: 'USDT' },
 ];
-const TRACKED = ['BTC', 'ETH', 'USDT', 'BNB'];
+const TRACKED = ['BTC', 'ETH', 'USDT', 'BNB', 'EUR'];
 
-/** The decimals each coin's amounts are sent with; BNB is stored one digit short. */
-const DIGITS: Record<string, number> = { BTC: 8, ETH: 8, USDT: 8, PEPE: 8, BNB: 7 };
+/**
+ * The decimals each coin's amounts are sent with. BNB (stored with 7) and EUR (stored with 2) are
+ * sent with more than they are stored at, as Binance sends a commission and a BTCEUR quote amount.
+ */
+const DIGITS: Record<string, number> = { BTC: 8, ETH: 8, USDT: 8, PEPE: 8, BNB: 8, EUR: 7 };
+
+/** The decimals a tracked coin is stored with, where that is fewer than it is sent with. */
+const STORED_DIGITS: Record<string, number> = { BNB: 7, EUR: 2 };
+
+const digitsOf = (coin: string): number => DIGITS[coin] ?? 8;
 
 type MadeFill = {
   id: number;
@@ -106,7 +116,7 @@ const COMMISSION_KINDS = ['base', 'quote', 'BNB', 'BNB'] as const;
 
 const madeFillOf = (random: () => number, spec: Spec, id: number): MadeFill => {
   const qtyUnits = 1_000 + Math.floor(random() * 1_000_000);
-  const quoteUnits = 1_000 + Math.floor(random() * 1_000_000_000);
+  const quoteUnits = LEAST_QUOTE_UNITS + Math.floor(random() * 1_000_000_000);
   const kind = pick(random, COMMISSION_KINDS);
   const bound = { base: qtyUnits, quote: quoteUnits, BNB: 200_000 }[kind];
 
@@ -121,9 +131,9 @@ const madeFillOf = (random: () => number, spec: Spec, id: number): MadeFill => {
 
 const wireFillOf = (made: MadeFill, order: MadeOrder): BinanceMyTrade =>
   fillOf(made.id, order.orderId, {
-    qty: textOf(made.qtyUnits, QUANTITY_DIGITS),
-    quoteQty: textOf(made.quoteUnits, QUANTITY_DIGITS),
-    commission: textOf(made.commissionUnits, DIGITS[made.commissionCoin] ?? QUANTITY_DIGITS),
+    qty: textOf(made.qtyUnits, digitsOf(order.spec.baseAsset)),
+    quoteQty: textOf(made.quoteUnits, digitsOf(order.spec.quoteAsset)),
+    commission: textOf(made.commissionUnits, digitsOf(made.commissionCoin)),
     commissionAsset: made.commissionCoin,
     isBuyer: order.isBuyer,
   });
@@ -209,6 +219,16 @@ const holdingIdOf = (coin: string): string => `holding-${coin}`;
 
 type Side = { coin: string; units: number };
 
+/**
+ * The units a coin is stored in for an amount sent in its sent units: the sum of the order's
+ * fills, rounded half away from zero once. The amounts here are never negative.
+ */
+const storedUnitsOf = (coin: string, sentUnits: number): number => {
+  const factor = 10 ** (digitsOf(coin) - (STORED_DIGITS[coin] ?? digitsOf(coin)));
+
+  return Math.floor((sentUnits + factor / 2) / factor);
+};
+
 /** The rows an order comes to, worked out from the units of its fills. */
 const expectedRowsOf = (accountId: string, order: MadeOrder): Map<string, RowShape> => {
   const { spec, orderId, isBuyer, fills } = order;
@@ -219,10 +239,13 @@ const expectedRowsOf = (accountId: string, order: MadeOrder): Map<string, RowSha
   const [spentGross, receivedGross] = isBuyer
     ? [sumOf(fills, 'quoteUnits'), sumOf(fills, 'qtyUnits')]
     : [sumOf(fills, 'qtyUnits'), sumOf(fills, 'quoteUnits')];
-  const spent: Side = { coin: spentCoin, units: -(spentGross + commissionIn(order, spentCoin)) };
+  const spent: Side = {
+    coin: spentCoin,
+    units: -storedUnitsOf(spentCoin, spentGross + commissionIn(order, spentCoin)),
+  };
   const received: Side = {
     coin: receivedCoin,
-    units: receivedGross - commissionIn(order, receivedCoin),
+    units: storedUnitsOf(receivedCoin, receivedGross - commissionIn(order, receivedCoin)),
   };
   const time = FIRST_FILL_AT + (fills[0]?.id ?? 0);
   const rows = new Map<string, RowShape>();
@@ -258,7 +281,7 @@ const expectedRowsOf = (accountId: string, order: MadeOrder): Map<string, RowSha
     );
   }
 
-  const feeUnits = commissionIn(order, 'BNB');
+  const feeUnits = storedUnitsOf('BNB', commissionIn(order, 'BNB'));
 
   if (feeUnits > 0) {
     rows.set(

@@ -4,7 +4,7 @@ import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { bifoldMap, type Either, eitherSync } from 'fnts/either';
 
-import { type AmountError, exchangeMinorUnits } from '../amounts';
+import { type AmountError, type AmountUse, exchangeMinorUnits } from '../amounts';
 
 import {
   BinanceWalkStop,
@@ -53,11 +53,16 @@ export const AMOUNT_STOP_CODES: readonly AmountError[] = [
 /**
  * The exact minor units of a history row's amount text, in the coin's own scale. A text the
  * parser refuses stops the record with the parser's code, and an amount past the safe integer
- * names its coin, so the walk lists it as oversized.
+ * names its coin, so the walk lists it as oversized. Only the trade read passes `'trade-row'`,
+ * which also rounds a fiat amount past its scale.
  */
-export const rowMinorUnits = (currency: Currency, text: string): number =>
+export const rowMinorUnits = (
+  currency: Currency,
+  text: string,
+  use: Extract<AmountUse, 'row' | 'trade-row'> = 'row',
+): number =>
   bifoldMap(
-    exchangeMinorUnits(currency, text, 'row'),
+    exchangeMinorUnits(currency, text, use),
     (code): number => {
       throw new BinanceWalkStop(code, code === 'amount-too-large' ? currency : undefined);
     },

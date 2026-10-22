@@ -23,7 +23,7 @@ type StoredRow = Parameters<Deps['addTransactions']>[0][number];
 const NOW = 1_704_326_400_000;
 const PAGE_LIMIT = 3;
 const FAILURE_TAG = '[binance sync] trade symbol failed';
-const HELD_KEYS = ['BTC', 'ETH', 'BNB', 'USDT'];
+const HELD_KEYS = ['BTC', 'ETH', 'BNB', 'USDT', 'XRP'];
 const TEXTS = { BTC: '1/0', ETH: '2/0', BNB: '5/0', USDT: '1000/0' };
 
 // One fill is 0.01 BTC for 600 USDT, so an order of n fills is n times these.
@@ -253,7 +253,7 @@ const runAfterCalls = (world: World, calls: number) => {
 const orderFillRequestsOf = (world: World) =>
   world.mocks.fetchOrderFills.mock.calls.map(([, , , orderId, fromId]) => [orderId, fromId]);
 
-const NOTHING = { imported: 0, callsBySymbol: {} };
+const NOTHING = { imported: 0 };
 
 describe('syncBinanceTradeHistory', () => {
   let warn: jest.SpyInstance;
@@ -277,7 +277,8 @@ describe('syncBinanceTradeHistory', () => {
 
       const result = await world.sync();
 
-      expect(result).toEqual({ imported: 2, callsBySymbol: { BTCUSDT: 1 } });
+      expect(result).toEqual({ imported: 2 });
+      expect(world.mocks.fetchMyTrades).toHaveBeenCalledTimes(1);
       expect(world.amounts()).toEqual({
         [world.keyOf('BTCUSDT', ORDER_A, 'USDT')]: USDT_PER_FILL,
         [world.keyOf('BTCUSDT', ORDER_A, 'BTC')]: BTC_PER_FILL,
@@ -327,9 +328,9 @@ describe('syncBinanceTradeHistory', () => {
         },
       });
 
-      const result = await world.sync();
+      await world.sync();
 
-      expect(result.callsBySymbol).toEqual({ BTCUSDT: 3 });
+      expect(world.mocks.fetchMyTrades).toHaveBeenCalledTimes(3);
       expect(world.trades().symbols.BTCUSDT).toEqual({ fromId: 8 });
     });
 
@@ -447,12 +448,12 @@ describe('syncBinanceTradeHistory', () => {
       await world.sync();
       world.server.fills.BTCUSDT.push(fillOf(3, ORDER_A));
 
-      const held = await world.sync({}, runAfterCalls(world, 99));
+      await world.sync({}, runAfterCalls(world, 99));
 
       expect(world.mocks.fetchOrderFills).not.toHaveBeenCalled();
       expect(world.trades().symbols.BTCUSDT).toEqual({ fromId: 3, heldOrderId: ORDER_A });
       expect(world.amounts()[world.keyOf('BTCUSDT', ORDER_A, 'BTC')]).toBe(BTC_PER_FILL);
-      expect(held.callsBySymbol).toEqual({ BTCUSDT: 1 });
+      expect(world.mocks.fetchMyTrades).toHaveBeenCalledTimes(2);
 
       const eventsBefore = world.events.length;
 
@@ -599,6 +600,169 @@ describe('syncBinanceTradeHistory', () => {
     });
   });
 
+  describe('an order that comes to no row at the end of a page', () => {
+    // An XRP fill of 0.00004 is 0.4 of a stored unit (XRP keeps 4 decimals), so one fill alone
+    // rounds to nothing and four of them come to 2 units.
+    const FOUR_FILLS = { xrp: 2, usdt: -400_000_000 };
+    const dustFill = (id: number, orderId: number) =>
+      fillOf(id, orderId, { qty: '0.00004', quoteQty: '1' });
+    const wholeFill = (id: number, orderId: number) =>
+      fillOf(id, orderId, { qty: '1', quoteQty: '10' });
+    const xrpWorld = (fills: BinanceMyTrade[]) =>
+      worldOf({ listing: [listed('XRPUSDT', 'XRP', 'USDT')], fills: { XRPUSDT: fills } });
+    const totalsOf = (world: World, orderId: number) => ({
+      xrp: world.amounts()[world.keyOf('XRPUSDT', orderId, 'XRP')],
+      usdt: world.amounts()[world.keyOf('XRPUSDT', orderId, 'USDT')],
+    });
+
+    it('reads the order whole on the next page, so its total counts every fill', async () => {
+      const world = xrpWorld([
+        wholeFill(1, ORDER_B),
+        wholeFill(2, ORDER_B),
+        dustFill(3, ORDER_A),
+        dustFill(4, ORDER_A),
+        dustFill(5, ORDER_A),
+        dustFill(6, ORDER_A),
+      ]);
+
+      await world.sync();
+
+      expect(totalsOf(world, ORDER_A)).toEqual(FOUR_FILLS);
+      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 7 });
+      expect(world.mocks.fetchOrderFills).not.toHaveBeenCalled();
+    });
+
+    it('keeps the cursor at the first fill of the order until the next page settles it', async () => {
+      const world = xrpWorld([
+        wholeFill(1, ORDER_B),
+        wholeFill(2, ORDER_B),
+        dustFill(3, ORDER_A),
+        dustFill(4, ORDER_A),
+      ]);
+      const cursors: unknown[] = [];
+
+      world.mocks.patchExchangeState.mockImplementation(async (_accountId, patches) => {
+        cursors.push(...patches.filter(({ kind }) => kind === 'tradeSymbol'));
+      });
+
+      await world.sync();
+
+      expect(cursors).toEqual([
+        { kind: 'tradeSymbol', symbol: 'XRPUSDT', entry: { fromId: 3 } },
+        { kind: 'tradeSymbol', symbol: 'XRPUSDT', entry: { fromId: 5 } },
+      ]);
+    });
+
+    it('carries the fills over more than one page', async () => {
+      // 0.00001 XRP is a tenth of a stored unit: no single page of it comes to a unit, seven do.
+      const tenth = (id: number) => fillOf(id, ORDER_A, { qty: '0.00001', quoteQty: '1' });
+      const world = xrpWorld([1, 2, 3, 4, 5, 6, 7].map(tenth));
+
+      await world.sync();
+
+      expect(totalsOf(world, ORDER_A)).toEqual({ xrp: 1, usdt: -700_000_000 });
+      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 8 });
+    });
+
+    it('reads the order from its first fill in the next run, so nothing is lost', async () => {
+      const world = xrpWorld([wholeFill(1, ORDER_B), wholeFill(2, ORDER_B), dustFill(3, ORDER_A)]);
+
+      await world.sync();
+
+      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 3 });
+      expect(totalsOf(world, ORDER_A)).toEqual({ xrp: undefined, usdt: undefined });
+
+      world.server.fills.XRPUSDT.push(
+        dustFill(4, ORDER_A),
+        dustFill(5, ORDER_A),
+        dustFill(6, ORDER_A),
+      );
+      await world.sync();
+
+      expect(totalsOf(world, ORDER_A)).toEqual(FOUR_FILLS);
+      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 7 });
+      expect(world.amounts()[world.keyOf('XRPUSDT', ORDER_B, 'XRP')]).toBe(20_000);
+    });
+
+    it('makes the one caught-up call per run when the last order still comes to no row', async () => {
+      const world = xrpWorld([wholeFill(1, ORDER_B), dustFill(2, ORDER_A)]);
+
+      await world.sync();
+      await world.sync();
+      await world.sync();
+
+      expect(world.mocks.fetchMyTrades.mock.calls.map((call) => call[3])).toEqual([0, 2, 2]);
+      expect(world.mocks.fetchOrderFills).not.toHaveBeenCalled();
+      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 2 });
+      expect(Object.keys(world.trades().balanceSnapshot)).toContain('XRP');
+      expect(world.addTransactions).toHaveBeenCalledTimes(1);
+    });
+
+    it('settles the order when a later fill of it arrives', async () => {
+      const world = xrpWorld([wholeFill(1, ORDER_B), dustFill(2, ORDER_A)]);
+
+      await world.sync();
+      await world.sync();
+      world.server.fills.XRPUSDT.push(dustFill(3, ORDER_A));
+      await world.sync();
+
+      expect(totalsOf(world, ORDER_A)).toEqual({ xrp: 1, usdt: -200_000_000 });
+      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 4 });
+      expect(world.mocks.fetchMyTrades.mock.calls.map((call) => call[3])).toEqual([0, 2, 2]);
+    });
+
+    it('lets the cursor pass the order when a fill of another order follows it', async () => {
+      const world = xrpWorld([wholeFill(1, ORDER_B), dustFill(2, ORDER_A)]);
+
+      await world.sync();
+      world.server.fills.XRPUSDT.push(wholeFill(3, ORDER_X));
+      await world.sync();
+
+      expect(totalsOf(world, ORDER_A)).toEqual({ xrp: undefined, usdt: undefined });
+      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 4 });
+    });
+
+    it('also holds an order of two untracked coins whose BNB fee rounds to nothing', async () => {
+      const dustFee = (id: number, orderId: number) =>
+        fillOf(id, orderId, {
+          qty: '1000',
+          quoteQty: '10',
+          commission: '0.00000004',
+          commissionAsset: 'BNB',
+        });
+      const world = worldOf({
+        listing: [listed('PEPESHIB', 'PEPE', 'SHIB')],
+        state: { untrackedCoins: { balance: [], history: ['PEPE', 'SHIB'] } },
+        fills: {
+          PEPESHIB: [
+            fillOf(1, ORDER_B, {
+              qty: '1000',
+              quoteQty: '10',
+              commission: '0.0000005',
+              commissionAsset: 'BNB',
+            }),
+            fillOf(2, ORDER_B, {
+              qty: '1000',
+              quoteQty: '10',
+              commission: '0.0000005',
+              commissionAsset: 'BNB',
+            }),
+            dustFee(3, ORDER_A),
+            dustFee(4, ORDER_A),
+            dustFee(5, ORDER_A),
+            dustFee(6, ORDER_A),
+          ],
+        },
+      });
+
+      await world.sync();
+
+      expect(world.amounts()[world.feeKeyOf('PEPESHIB', ORDER_A, 'BNB')]).toBe(-2);
+      expect(world.amounts()[world.feeKeyOf('PEPESHIB', ORDER_B, 'BNB')]).toBe(-10);
+      expect(world.trades().symbols.PEPESHIB).toEqual({ fromId: 7 });
+    });
+  });
+
   describe('a re-read of an order', () => {
     it('takes one call per full page and one for the short page, each at the order weight', async () => {
       const world = worldOf({
@@ -613,14 +777,14 @@ describe('syncBinanceTradeHistory', () => {
 
       world.server.pageLimit = 1000;
 
-      const result = await world.sync({ pageLimit: 1000 }, run);
+      await world.sync({ pageLimit: 1000 }, run);
 
       expect(orderFillRequestsOf(world)).toEqual([
         [ORDER_A, 0],
         [ORDER_A, 1001],
         [ORDER_A, 2001],
       ]);
-      expect(result.callsBySymbol).toEqual({ BTCUSDT: 4 });
+      expect(world.mocks.fetchMyTrades).toHaveBeenCalledTimes(1);
       expect(canAfford.mock.calls.filter(([, cost]) => cost === COSTS.orderFills)).toHaveLength(3);
       expect(world.amounts()[world.keyOf('BTCUSDT', ORDER_A, 'BTC')]).toBe(2500 * BTC_PER_FILL);
     });
@@ -640,9 +804,10 @@ describe('syncBinanceTradeHistory', () => {
 
       world.server.pageLimit = 1;
 
-      const result = await world.sync({ pageLimit: 1 }, run);
+      await world.sync({ pageLimit: 1 }, run);
 
-      expect(result.callsBySymbol).toEqual({ BTCUSDT: 99 });
+      expect(world.mocks.fetchOrderFills).toHaveBeenCalledTimes(99);
+      expect(world.mocks.fetchMyTrades).not.toHaveBeenCalled();
       expect(run.budget.canAfford('trades', COSTS.myTrades)).toBe(true);
       expect(world.trades().symbols.BTCUSDT).toEqual({ fromId: 1, heldOrderId: ORDER_A });
       expect(world.addTransactions).not.toHaveBeenCalled();
@@ -830,9 +995,14 @@ describe('syncBinanceTradeHistory', () => {
         return symbol === 'BNBUSDT' ? new BinanceHistoryParseError() : undefined;
       };
 
-      const result = await world.sync();
+      await world.sync();
 
-      expect(result.callsBySymbol).toEqual({ BNBBTC: 1, BNBUSDT: 1, BTCUSDT: 1, ETHUSDT: 1 });
+      expect(world.mocks.fetchMyTrades.mock.calls.map((call) => call[2]).sort()).toEqual([
+        'BNBBTC',
+        'BNBUSDT',
+        'BTCUSDT',
+        'ETHUSDT',
+      ]);
       expect(failureLogs()).toEqual([
         ['BinanceInvalidSymbolError', undefined],
         ['BinanceHistoryParseError', undefined],
