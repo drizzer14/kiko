@@ -36,7 +36,7 @@ type WalkFieldPatch = WalkMarkPatch & { kind: 'walk'; walkId: WalkId };
 export type ExchangeStatePatch =
   | WalkFieldPatch
   | { kind: 'tradeSymbol'; symbol: string; entry: TradeSymbol }
-  | { kind: 'tradesRotation'; value: number }
+  | { kind: 'tradesRotation'; value: string }
   | { kind: 'tradesBalanceSnapshot'; value: ExchangeTrades['balanceSnapshot'] }
   | {
       kind: 'coinList';
@@ -66,7 +66,7 @@ const withWalkField = (
   },
 });
 
-const emptyTrades = (): ExchangeTrades => ({ symbols: {}, rotation: 0, balanceSnapshot: {} });
+const emptyTrades = (): ExchangeTrades => ({ symbols: {}, rotation: '', balanceSnapshot: {} });
 
 /** A part of the trades that is not stored starts empty; a stored one, malformed or not, stays. */
 const withTradesPart = (
