@@ -972,3 +972,34 @@ describe('scripts/ff-main.sh text', () => {
     expect(text).not.toMatch(/getopts|-\*\)/);
   });
 });
+
+// A queued verify waits (it cannot be stopped from a spawnSync) while the machine's load is high,
+// so a stopped run leaves its waiter at ppid 1: no case may depend on the load it runs under.
+const fixtureProcesses = (): string[] =>
+  spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
+    .stdout.split('\n')
+    .filter((line) => line.includes('kiko-ff-main-'));
+
+describe('children of the queued-verify cases', () => {
+  const PATH_BEFORE = process.env.PATH;
+
+  afterEach(() => {
+    process.env.PATH = PATH_BEFORE;
+  });
+
+  it('starts a queued verify at once although the machine reports a high load', () => {
+    const fixture = createFixture();
+    const stubs = createTemporaryDirectory('kiko-load-stub-');
+    writeExecutable(join(stubs, 'sysctl'), '#!/usr/bin/env bash\necho "{ 99.00 99.00 99.00 }"\n');
+    process.env.PATH = `${stubs}:${PATH_BEFORE}`;
+    fixture.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '2';
+
+    const queued = runQueuedVerify(fixture, '#!/usr/bin/env bash\nexit 0\n');
+
+    expect(queued.stdout).not.toContain('WAITING');
+  });
+
+  it('leaves no process of any fixture alive once the cases have run', () => {
+    expect(fixtureProcesses()).toEqual([]);
+  });
+});

@@ -123,6 +123,9 @@ const ALLOWED_AROUND_HEAVY_JOBS: string[] = [
   `bash scripts/job-queue.sh check-all ${WORKTREE} label`,
   `bash scripts/job-queue.sh security ${WORKTREE} label`,
   'bash scripts/job-queue.sh status',
+  'bash scripts/job-queue.sh hold label',
+  'bash scripts/job-queue.sh release',
+  'KIKO_MUTATION_BASE=abc1234 make mutable',
   // The deny judges the typed command, so a script that holds a heavy job runs as typed.
   `bash ${HOLDING_VERIFY}`,
   'npm run check:rules',
