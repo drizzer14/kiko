@@ -1105,7 +1105,16 @@ const abbreviatesLongOption = (option, optionsWithValue) =>
 // letter comes last (`sudo -iu me`, as getopt reads it; in `-uroot` the value
 // is glued on). A group holding a glued-only letter never takes the next word.
 function takesNextWord(option, optionsWithValue, gluedOnlyLetters = new Set()) {
-  if (optionsWithValue.has(option) || abbreviatesLongOption(option, optionsWithValue)) return true;
+  return (
+    abbreviatesLongOption(option, optionsWithValue) ||
+    takesNextWordExactly(option, optionsWithValue, gluedOnlyLetters)
+  );
+}
+
+// `takesNextWord` without the long-option abbreviation, for a command that reads none, where a
+// boolean flag that prefixes a value option's name (`--json` of `--json-output`) takes no word.
+function takesNextWordExactly(option, optionsWithValue, gluedOnlyLetters = new Set()) {
+  if (optionsWithValue.has(option)) return true;
   if (!/^-[A-Za-z0-9]{2,}$/.test(option)) return false;
   const letters = [...option.slice(1)];
   if (letters.some((letter) => gluedOnlyLetters.has(letter))) return false;
@@ -3164,7 +3173,7 @@ function expandedReading(tokens, redirects, variables) {
 // `scripts/job-queue.sh`, which runs `make verify` itself, is never denied.
 
 // The operands of `parameters`: its words that are no option and no option's value.
-function operandsOf(parameters, optionsWithValue) {
+function operandsOf(parameters, optionsWithValue, takesWord = takesNextWord) {
   const operands = [];
   for (let index = 0; index < parameters.length; index++) {
     const word = parameters[index];
@@ -3173,7 +3182,7 @@ function operandsOf(parameters, optionsWithValue) {
       break;
     }
     if (!isOptionWord(word)) operands.push(word);
-    else if (takesNextWord(word, optionsWithValue)) index++;
+    else if (takesWord(word, optionsWithValue)) index++;
   }
 
   return operands;
@@ -3182,10 +3191,13 @@ function operandsOf(parameters, optionsWithValue) {
 const MAKE_COMMANDS = new Set(['make', 'gmake']);
 const HEAVY_MAKE_TARGETS = new Set(['verify', 'gate', 'deep', 'security']);
 // A dry run prints the recipe and runs nothing. make also reads an abbreviated long option; one
-// of those is not recognized here, so it is denied (fail closed).
+// of those is not recognized here, so it is denied (fail closed). The rest of a short-flag group
+// after a letter that takes a value (`-C`, `-f`, `-I`, `-j`, `-l`, `-o`, `-O`, `-W`) is that
+// value, so its `n` is no flag (`-Cnested` is `-C nested`).
 const MAKE_DRY_RUN_OPTIONS = new Set(['--dry-run', '--just-print', '--recon']);
+const MAKE_DRY_RUN_FLAGS = /^-(?:(?![CfIjloOW])[A-Za-z])*n[A-Za-z]*$/;
 const isMakeDryRun = (parameters) =>
-  parameters.some((word) => MAKE_DRY_RUN_OPTIONS.has(word) || /^-[A-Za-z]*n[A-Za-z]*$/.test(word));
+  parameters.some((word) => MAKE_DRY_RUN_OPTIONS.has(word) || MAKE_DRY_RUN_FLAGS.test(word));
 
 function makeJob(parameters) {
   if (isMakeDryRun(parameters)) return null;
@@ -3219,7 +3231,7 @@ function npmTestJob(hasSeparator, passed) {
   return problem === null ? null : { kind: 'fullJest', what: `npm test ${problem}` };
 }
 
-function npmJob(parameters) {
+function npmJob(parameters, context) {
   const separator = parameters.indexOf('--');
   const before = separator === -1 ? parameters : parameters.slice(0, separator);
   const passed = separator === -1 ? [] : parameters.slice(separator + 1);
@@ -3231,9 +3243,9 @@ function npmJob(parameters) {
   if (!runs) return null;
   const heavy = (what) => ({ kind: 'heavyJob', what: `${what} is a whole-repository job` });
   if (HEAVY_NPM_SCRIPTS.has(script)) return heavy(`npm run ${script}`);
-  const namesFile = operands.length > 0 || passed.some((word) => !isOptionWord(word));
+  const paths = [...operands, ...passed].filter((word) => !isOptionWord(word));
 
-  return script === 'check:security' && !namesFile
+  return script === 'check:security' && !scansOnly(paths, context)
     ? heavy('npm run check:security, with no path')
     : null;
 }
@@ -3242,16 +3254,21 @@ function npmJob(parameters) {
 // `security.sh` with a path scans that path.
 const HEAVY_SCRIPT = /(?:^|\/)scripts\/checks\/(verify|mutation|security)\.sh$/i;
 
-function checkScriptJob(base, tokens) {
+function checkScriptJob(base, tokens, context) {
   const file = scriptFileOf(base, tokens);
   if (file === null || file.operand === undefined) return null;
   const name = HEAVY_SCRIPT.exec(file.operand)?.[1].toLowerCase();
   if (name === undefined) return null;
   const parameters = tokens.slice(tokens.indexOf(file.operand) + 1);
   const lists = name === 'mutation' && parameters.includes('--list');
-  const namesFile = name === 'security' && parameters.some((word) => !isOptionWord(word));
+  const scansPaths =
+    name === 'security' &&
+    scansOnly(
+      parameters.filter((word) => !isOptionWord(word)),
+      context,
+    );
 
-  return lists || namesFile
+  return lists || scansPaths
     ? null
     : { kind: 'heavyJob', what: `scripts/checks/${name}.sh is a whole-repository job` };
 }
@@ -3331,11 +3348,15 @@ function namesWholeRepository(target, { directories, rules }) {
   });
 }
 
+// Whether a scan names paths and none of them is the whole repository.
+const scansOnly = (paths, context) =>
+  paths.length > 0 && !paths.some((target) => namesWholeRepository(target, context));
+
 function semgrepJob(parameters, context) {
   if (SEMGREP_OTHER_COMMANDS.has(parameters[0])) return null;
   if (parameters.some((word) => SEMGREP_NO_SCAN_OPTIONS.has(word))) return null;
   const scanned = parameters[0] === 'scan' ? parameters.slice(1) : parameters;
-  const targets = operandsOf(scanned, SEMGREP_OPTIONS_WITH_VALUE);
+  const targets = operandsOf(scanned, SEMGREP_OPTIONS_WITH_VALUE, takesNextWordExactly);
   const wholeRepository =
     targets.length === 0 || targets.some((target) => namesWholeRepository(target, context));
 
@@ -3498,7 +3519,7 @@ const NPX_OPTIONS_WITH_VALUE = new Set([
 // The job a command (its words, the command word first) starts, as `{ kind, what }`, or null.
 function queuedJob(base, tokens, context) {
   if (MAKE_COMMANDS.has(base)) return makeJob(tokens.slice(1));
-  if (base === 'npm') return npmJob(tokens.slice(1));
+  if (base === 'npm') return npmJob(tokens.slice(1), context);
   if (base === 'semgrep') return semgrepJob(tokens.slice(1), context);
   if (base === 'jest') return jestJob('jest', tokens.slice(1));
   if (base === 'npx') {
@@ -3507,7 +3528,7 @@ function queuedJob(base, tokens, context) {
     return command === undefined ? null : queuedJob(basename(command), [command, ...rest], context);
   }
 
-  return checkScriptJob(base, tokens);
+  return checkScriptJob(base, tokens, context);
 }
 
 // Remembers the first queue-only job of a typed command in `rules.queued`, which `judge` reports
