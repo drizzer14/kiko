@@ -37,9 +37,10 @@
 // text cannot name (an unresolved `-C` or `cd`) fails closed.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
-// `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
-// scripts, hooks, the plugin manifest) at the root of any worktree of this repository, or into a
-// YAML file (a final segment ending in `.yml` or `.yaml`) at any depth of one, except under
+// `githooks/`, `.claude/skills/`, `.claude/agents/`, `docs/superpowers/` (plans, specs), or
+// `harness/kiko/` (all of it: skills, agents, scripts, hooks, the plugin manifest) at the root of
+// any worktree of this repository, or into a YAML file (a final segment ending in `.yml` or
+// `.yaml`) at any depth of one, except under
 // `node_modules/` (a YAML path the text cannot resolve is denied too; one resolved outside every
 // worktree of this repository stays allowed) — `sed -i`, `perl -i`, a `>`/`>>` (or `>|`, `&>`,
 // `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner (or one fed by a heredoc or
@@ -59,6 +60,19 @@
 // kill target or a command word is never expanded. A variable the command does not assign, or
 // assigns from an expansion (`f=$(mktemp)`), stays unresolved and is not denied (a documented
 // limit).
+//
+// And it denies a whole-repository heavy job run outside the queue, as the finding `heavyJob`:
+// `make verify|gate|deep|security` (not a dry run), `npm run check:all|check:deep|check:mutation`,
+// `scripts/checks/verify.sh`, `mutation.sh` (not `--list`), a `check:security` or `security.sh`
+// run with no path, and a Semgrep scan whose target is the whole repository or absent. Only the
+// typed command is judged (never a script file or a data body), and the way out is
+// `bash scripts/job-queue.sh verify|check-all|security|gate ...`.
+//
+// And it denies a jest run that would run every suite, as the finding `fullJest`: a runner (`jest`,
+// `npx jest`, `npm test`, `make jest`) with no test file left once option values are removed (a
+// `--testPathPattern` filter alone, and `--listTests|--help|--version|--showConfig`, stay
+// allowed), or with an array option of jest-cli directly before a bare word, in the space or the
+// `=` form, since the option takes the word as one more value. Same scope as `heavyJob`.
 //
 // And it denies a `while` or `until` loop that scans the process table (`ps`,
 // `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
@@ -186,8 +200,8 @@ const MAIN_MOVE_REASON_LINES = [
 const SHELL_WRITE_REASON_LINES = [
   'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, e2e/, drizzle/, ' +
     'scripts/, or githooks/ of a worktree of this repository, into .claude/skills/, ' +
-    '.claude/agents/, or any of harness/kiko/ of one, into a YAML file (.yml, .yaml) of ' +
-    'one, or into a git config file (.git/config, config.worktree).',
+    '.claude/agents/, any of harness/kiko/, or docs/superpowers/ (plans, specs) of one, into a ' +
+    'YAML file (.yml, .yaml) of one, or into a git config file (.git/config, config.worktree).',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
     'cp, mv, or a python or node one-liner lands unchecked; guard-replay only catches it at ' +
@@ -196,8 +210,8 @@ const SHELL_WRITE_REASON_LINES = [
     '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
     'cannot resolve (a variable, a glob) counts when a folder in it is named src, rules, e2e, ' +
     'drizzle, scripts, githooks, or __tests__, when its folders spell .claude/skills, ' +
-    '.claude/agents, or harness/kiko, or when it ends in .yml or .yaml, and so does a ' +
-    'cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
+    '.claude/agents, harness/kiko, or docs/superpowers, or when it ends in .yml or .yaml, and so ' +
+    'does a cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
     'write the literal path, or use Edit or Write. Reading it, a ' +
     'redirect to /dev/null or to a path outside those trees that is not a YAML file of a ' +
     'worktree (your scratchpad, /tmp, docs/notes.md), git itself ' +
@@ -270,6 +284,41 @@ const SCRIPT_KILL_REASON_LINES = [
     'time, or write the script in the same command that runs it to get past this guard.',
 ];
 
+const HEAVY_JOB_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a whole-repository job run outside the queue (make verify, ' +
+    'gate, deep or security; npm run check:all, check:deep, check:mutation, or check:security with ' +
+    'no path; scripts/checks/verify.sh, mutation.sh, or security.sh with no path; a Semgrep scan of ' +
+    'the whole repository, whether the target is ., ./, $PWD, the repository root, or none).',
+  'WHY IT MATTERS: each of these takes minutes of CPU on a machine every agent and session ' +
+    'shares, and two at once make Semgrep and jest time out; scripts/job-queue.sh runs them one at ' +
+    'a time, shortest class first, and not on battery.',
+  'HOW TO FIX:     queue it with `bash scripts/job-queue.sh verify|check-all|security <worktree> ' +
+    '<label>` (a mutation gate: `bash scripts/job-queue.sh gate <worktree> <label> <mutation-base> ' +
+    '<expected-head>`), run with run_in_background, and wait on its exit code; a role agent asks ' +
+    'the coordinator to queue it. A narrower check stays allowed: `bash scripts/checks/security.sh ' +
+    '<file>`, Semgrep on a subfolder or file, `make mutable`, `make -n verify` (a dry run), and ' +
+    '`bash scripts/job-queue.sh status`.',
+  'DO NOT:         run the job through a script file, an alias, a variable, or another spelling ' +
+    'of the same command to get past this guard.',
+];
+
+const FULL_JEST_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a jest run (jest, npx jest, npm test, make jest) that names no ' +
+    'test file, or whose array option reads the test file after it as one more value, so it runs ' +
+    'every suite of the repository.',
+  'WHY IT MATTERS: the full suite takes minutes of CPU on a machine every agent and session ' +
+    'shares, and several at once make suites time out; scripts/job-queue.sh runs the whole suite ' +
+    'as part of a verify, one heavy job at a time.',
+  'HOW TO FIX:     name the test files (`npx jest <files> --maxWorkers=2`), or queue `bash ' +
+    'scripts/job-queue.sh verify <worktree> <label>` for the whole suite. Put an array option ' +
+    '(--testPathIgnorePatterns, --testPathPattern, --roots, --testMatch, ...) after the paths or ' +
+    'use a dash option between it and the paths: it takes every bare word after it, in the space ' +
+    'form and the = form alike. `npm test` needs `-- <files>`. --listTests, --help, --version, ' +
+    '--showConfig, and a lone --testPathPattern filter stay allowed.',
+  'DO NOT:         run the suite through a script file, an alias, a variable, or another spelling ' +
+    'of the same command to get past this guard.',
+];
+
 const INTERNAL_ERROR_REASON_LINES = [
   'WHAT FAILED:    kill-guard hit an internal error while judging this command, so it could not ' +
     'clear it.',
@@ -294,6 +343,8 @@ const REASON_BY_KIND = {
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
   hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
+  heavyJob: (finding) => blockReason(HEAVY_JOB_REASON_LINES, finding.detail),
+  fullJest: (finding) => blockReason(FULL_JEST_REASON_LINES, finding.detail),
   internalError: (finding) => blockReason(INTERNAL_ERROR_REASON_LINES, finding.detail),
 };
 
@@ -1054,7 +1105,16 @@ const abbreviatesLongOption = (option, optionsWithValue) =>
 // letter comes last (`sudo -iu me`, as getopt reads it; in `-uroot` the value
 // is glued on). A group holding a glued-only letter never takes the next word.
 function takesNextWord(option, optionsWithValue, gluedOnlyLetters = new Set()) {
-  if (optionsWithValue.has(option) || abbreviatesLongOption(option, optionsWithValue)) return true;
+  return (
+    abbreviatesLongOption(option, optionsWithValue) ||
+    takesNextWordExactly(option, optionsWithValue, gluedOnlyLetters)
+  );
+}
+
+// `takesNextWord` without the long-option abbreviation, for a command that reads none, where a
+// boolean flag that prefixes a value option's name (`--json` of `--json-output`) takes no word.
+function takesNextWordExactly(option, optionsWithValue, gluedOnlyLetters = new Set()) {
+  if (optionsWithValue.has(option)) return true;
   if (!/^-[A-Za-z0-9]{2,}$/.test(option)) return false;
   const letters = [...option.slice(1)];
   if (letters.some((letter) => gluedOnlyLetters.has(letter))) return false;
@@ -1885,8 +1945,7 @@ function gitFinding(segment, invocations, rules) {
   };
 }
 
-// ---- shell writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, ----
-// ---- .claude/skills/, .claude/agents/, harness/kiko/, YAML ----
+// ---- shell writes into the folders of WRITE_GUARDED_TREES, and into YAML files ----
 
 // The folders, at the root of any worktree of this repository, that only
 // Edit/Write may change: the pre-write guard sees no other tool. An entry
@@ -1902,9 +1961,18 @@ const WRITE_GUARDED_TREES = new Set([
   '.claude/skills',
   '.claude/agents',
   'harness/kiko',
+  'docs/superpowers',
 ]);
 
+// A folder that may hold a tree (`.claude`, `harness`) is guarded against a whole-folder copy.
+// `docs` is not: the rest of it (`docs/harness/`) is written by shell as a matter of course, and
+// a copy of a folder onto `docs/` lands unchecked only when it carries a `superpowers` folder.
+const TREES_WITHOUT_PARENT_RULE = new Set(['docs/superpowers']);
+
 const GUARDED_TREE_SEGMENTS = [...WRITE_GUARDED_TREES].map((tree) => tree.split('/'));
+const TREE_PARENT_SEGMENTS = [...WRITE_GUARDED_TREES]
+  .filter((tree) => !TREES_WITHOUT_PARENT_RULE.has(tree))
+  .map((tree) => tree.split('/'));
 
 // Whether `segments` spell `tree` from `index` on, case-folded (APFS folds case).
 const spellsTreeAt = (segments, index, tree) =>
@@ -1919,7 +1987,7 @@ const namesTreeAt = (segments, index) =>
 // Whether `segments` end with the first folders of a tree that has more (`.claude`, `harness`)
 // from `index` on: a folder that may hold that tree.
 const namesTreeParentAt = (segments, index) =>
-  GUARDED_TREE_SEGMENTS.some((tree) => {
+  TREE_PARENT_SEGMENTS.some((tree) => {
     const depth = segments.length - index;
 
     return depth < tree.length && spellsTreeAt(segments, index, tree.slice(0, depth));
@@ -2999,6 +3067,8 @@ function commandFinding(command, context) {
   const base = basename(rest[0]);
   if (ASSIGNING_COMMANDS.has(base)) return assignmentFinding(command, context);
 
+  noteQueuedJob(base, rest, context);
+
   if (SHELLS.has(base)) return shellFinding(base, rest, context);
 
   // `eval "$(cat)" <<'EOF'` runs what its stdin holds, as `source /dev/stdin <<'EOF'` does.
@@ -3092,6 +3162,384 @@ function expandedReading(tokens, redirects, variables) {
     targets.every((redirect, index) => redirect.target === redirects[index].target);
 
   return unchanged ? null : { words, targets };
+}
+
+// ---- heavy jobs and full-suite jest runs outside the queue ----
+
+// A whole-repository job takes minutes of CPU on a machine every agent shares, and two of them at
+// once make Semgrep and jest time out, so `scripts/job-queue.sh` runs them one at a time. The deny
+// judges the typed command only: `SCRIPT_KINDS` and `DATA_KINDS` leave `heavyJob` and `fullJest`
+// out, so a script file or a heredoc body that holds `make verify` or `npx jest` is text, and
+// `scripts/job-queue.sh`, which runs `make verify` itself, is never denied.
+
+// The operands of `parameters`: its words that are no option and no option's value.
+function operandsOf(parameters, optionsWithValue, takesWord = takesNextWord) {
+  const operands = [];
+  for (let index = 0; index < parameters.length; index++) {
+    const word = parameters[index];
+    if (word === '--') {
+      operands.push(...parameters.slice(index + 1));
+      break;
+    }
+    if (!isOptionWord(word)) operands.push(word);
+    else if (takesWord(word, optionsWithValue)) index++;
+  }
+
+  return operands;
+}
+
+const MAKE_COMMANDS = new Set(['make', 'gmake']);
+const HEAVY_MAKE_TARGETS = new Set(['verify', 'gate', 'deep', 'security']);
+// A dry run prints the recipe and runs nothing. make also reads an abbreviated long option; one
+// of those is not recognized here, so it is denied (fail closed). The rest of a short-flag group
+// after a letter that takes a value (`-C`, `-f`, `-I`, `-j`, `-l`, `-o`, `-O`, `-W`) is that
+// value, so its `n` is no flag (`-Cnested` is `-C nested`).
+const MAKE_DRY_RUN_OPTIONS = new Set(['--dry-run', '--just-print', '--recon']);
+const MAKE_DRY_RUN_FLAGS = /^-(?:(?![CfIjloOW])[A-Za-z])*n[A-Za-z]*$/;
+const isMakeDryRun = (parameters) =>
+  parameters.some((word) => MAKE_DRY_RUN_OPTIONS.has(word) || MAKE_DRY_RUN_FLAGS.test(word));
+
+function makeJob(parameters) {
+  if (isMakeDryRun(parameters)) return null;
+  const target = parameters.find((word) => word === 'jest' || HEAVY_MAKE_TARGETS.has(word));
+  if (target === undefined) return null;
+
+  return target === 'jest'
+    ? { kind: 'fullJest', what: 'make jest runs every suite' }
+    : { kind: 'heavyJob', what: `make ${target} is a whole-repository job` };
+}
+
+const NPM_OPTIONS_WITH_VALUE = new Set([
+  '--prefix',
+  '-C',
+  '--workspace',
+  '-w',
+  '--loglevel',
+  '--cache',
+  '--registry',
+  '--userconfig',
+  '--globalconfig',
+]);
+const NPM_RUN_COMMANDS = new Set(['run', 'run-script', 'rum', 'urn']);
+const NPM_TEST_COMMANDS = new Set(['test', 't', 'tst']);
+const HEAVY_NPM_SCRIPTS = new Set(['check:all', 'check:deep', 'check:mutation']);
+
+// `npm test` hands jest the words after `--`; with no `--` it runs every suite.
+function npmTestJob(hasSeparator, passed) {
+  const problem = hasSeparator ? jestRunProblem(passed) : 'passes no test file after --';
+
+  return problem === null ? null : { kind: 'fullJest', what: `npm test ${problem}` };
+}
+
+function npmJob(parameters, context) {
+  const separator = parameters.indexOf('--');
+  const before = separator === -1 ? parameters : parameters.slice(0, separator);
+  const passed = separator === -1 ? [] : parameters.slice(separator + 1);
+  const [subcommand, script, ...operands] = operandsOf(before, NPM_OPTIONS_WITH_VALUE);
+  const runs = NPM_RUN_COMMANDS.has(subcommand);
+  if (NPM_TEST_COMMANDS.has(subcommand) || (runs && script === 'test')) {
+    return npmTestJob(separator !== -1, passed);
+  }
+  if (!runs) return null;
+  const heavy = (what) => ({ kind: 'heavyJob', what: `${what} is a whole-repository job` });
+  if (HEAVY_NPM_SCRIPTS.has(script)) return heavy(`npm run ${script}`);
+  const paths = [...operands, ...passed].filter((word) => !isOptionWord(word));
+
+  return script === 'check:security' && !scansOnly(paths, context)
+    ? heavy('npm run check:security, with no path')
+    : null;
+}
+
+// The check scripts that scan or test the whole repository: `mutation.sh --list` only lists, and
+// `security.sh` with a path scans that path.
+const HEAVY_SCRIPT = /(?:^|\/)scripts\/checks\/(verify|mutation|security)\.sh$/i;
+
+function checkScriptJob(base, tokens, context) {
+  const file = scriptFileOf(base, tokens);
+  if (file === null || file.operand === undefined) return null;
+  const name = HEAVY_SCRIPT.exec(file.operand)?.[1].toLowerCase();
+  if (name === undefined) return null;
+  const parameters = tokens.slice(tokens.indexOf(file.operand) + 1);
+  const lists = name === 'mutation' && parameters.includes('--list');
+  const scansPaths =
+    name === 'security' &&
+    scansOnly(
+      parameters.filter((word) => !isOptionWord(word)),
+      context,
+    );
+
+  return lists || scansPaths
+    ? null
+    : { kind: 'heavyJob', what: `scripts/checks/${name}.sh is a whole-repository job` };
+}
+
+// The options of `semgrep scan` that take a value, from `semgrep scan --help`: a value left in
+// the operands would read as a target.
+const SEMGREP_OPTIONS_WITH_VALUE = new Set([
+  '-c',
+  '-e',
+  '-f',
+  '-j',
+  '-l',
+  '-o',
+  '--baseline-commit',
+  '--config',
+  '--emacs-output',
+  '--exclude',
+  '--exclude-rule',
+  '--gitlab-sast-output',
+  '--gitlab-secrets-output',
+  '--include',
+  '--interfile-timeout',
+  '--jobs',
+  '--json-output',
+  '--junit-xml-output',
+  '--lang',
+  '--max-chars-per-line',
+  '--max-lines-per-finding',
+  '--max-log-list-entries',
+  '--max-match-context-size',
+  '--max-memory',
+  '--max-target-bytes',
+  '--metrics',
+  '--optimizations',
+  '--output',
+  '--pattern',
+  '--project-root',
+  '--remote',
+  '--replacement',
+  '--sarif-output',
+  '--secrets-timeout',
+  '--severity',
+  '--text-output',
+  '--timeout',
+  '--timeout-threshold',
+  '--vim-output',
+  '--x-mem-policy',
+  '--x-rule-validation',
+  '--x-semgrepignore-filename',
+]);
+// The subcommands that scan nothing, and the options that print or check without scanning. A
+// word after options is a target even when it spells a subcommand, so only the first word counts.
+const SEMGREP_OTHER_COMMANDS = new Set([
+  'ci',
+  'install-semgrep-pro',
+  'login',
+  'logout',
+  'lsp',
+  'mcp',
+  'publish',
+  'show',
+  'test',
+  'validate',
+]);
+const SEMGREP_NO_SCAN_OPTIONS = new Set(['--help', '-h', '--version', '--validate']);
+
+// Whether a scan target is the whole repository: the folder the command runs in (`.`, `./`,
+// `$PWD`, its absolute path) or the root of a worktree of this repository, however it is spelled.
+function namesWholeRepository(target, { directories, rules }) {
+  if (/^\$(?:PWD|\{PWD\})$/.test(target)) return true;
+  if (['.', './'].includes(path.posix.normalize(target))) return true;
+
+  return directories.some((directory) => {
+    const resolved = resolveDirectory(directory, target);
+
+    return resolved !== null && (resolved === directory || isProjectWorktree(resolved, rules));
+  });
+}
+
+// Whether a scan names paths and none of them is the whole repository.
+const scansOnly = (paths, context) =>
+  paths.length > 0 && !paths.some((target) => namesWholeRepository(target, context));
+
+function semgrepJob(parameters, context) {
+  if (SEMGREP_OTHER_COMMANDS.has(parameters[0])) return null;
+  if (parameters.some((word) => SEMGREP_NO_SCAN_OPTIONS.has(word))) return null;
+  const scanned = parameters[0] === 'scan' ? parameters.slice(1) : parameters;
+  const targets = operandsOf(scanned, SEMGREP_OPTIONS_WITH_VALUE, takesNextWordExactly);
+  const wholeRepository =
+    targets.length === 0 || targets.some((target) => namesWholeRepository(target, context));
+
+  return wholeRepository
+    ? { kind: 'heavyJob', what: 'a Semgrep scan of the whole repository' }
+    : null;
+}
+
+// jest-cli's option table (`node_modules/jest-cli/build/args.js`, 29.7.0), copied because a checker
+// requires no package: `__tests__/kill-guard-jest-runs.test.ts` and
+// `__tests__/kill-guard-jest-options.test.ts` compare both sets with that file. An array option
+// takes every bare word after it, in the space form and the `=` form alike (yargs reads an array
+// greedily), so a test path put after one is one more value and every suite runs.
+const JEST_ARRAY_OPTIONS = new Set([
+  'coveragePathIgnorePatterns',
+  'coverageReporters',
+  'ignoreProjects',
+  'moduleDirectories',
+  'moduleFileExtensions',
+  'modulePathIgnorePatterns',
+  'modulePaths',
+  'projects',
+  'reporters',
+  'roots',
+  'selectProjects',
+  'setupFiles',
+  'setupFilesAfterEnv',
+  'snapshotSerializers',
+  'testMatch',
+  'testPathIgnorePatterns',
+  'testPathPattern',
+  'testRegex',
+  'transformIgnorePatterns',
+  'unmockedModulePathPatterns',
+  'watchPathIgnorePatterns',
+]);
+// The other options that take a value, with the short forms of `config`, `maxWorkers`, and
+// `testNamePattern`: the word after one is its value, never a test path.
+const JEST_VALUE_OPTIONS = new Set([
+  'cacheDirectory',
+  'changedSince',
+  'collectCoverageFrom',
+  'config',
+  'coverageDirectory',
+  'coverageProvider',
+  'coverageThreshold',
+  'env',
+  'filter',
+  'globalSetup',
+  'globalTeardown',
+  'globals',
+  'haste',
+  'maxConcurrency',
+  'maxWorkers',
+  'moduleNameMapper',
+  'notifyMode',
+  'openHandlesTimeout',
+  'outputFile',
+  'preset',
+  'prettierPath',
+  'resolver',
+  'rootDir',
+  'runner',
+  'seed',
+  'shard',
+  'testEnvironment',
+  'testEnvironmentOptions',
+  'testFailureExitCode',
+  'testNamePattern',
+  'testResultsProcessor',
+  'testRunner',
+  'testSequencer',
+  'testTimeout',
+  'transform',
+  '-c',
+  '-t',
+  '-w',
+]);
+// These run no test, wherever they stand in the command.
+const JEST_NO_RUN_OPTIONS = new Set(['listTests', 'help', 'version', 'showConfig']);
+
+const camelCase = (name) => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+
+// yargs reads `--test-path-ignore-patterns` as `testPathIgnorePatterns`.
+function jestOptionName(word) {
+  const [flag] = word.split('=', 1);
+
+  return flag.startsWith('--') ? camelCase(flag.slice(2)) : flag;
+}
+
+// A word the shell leaves to a variable or a substitution may hold no test path at all.
+const isNamedTestFile = (word) => !/[$`]|__SUBSHELL__/.test(word);
+
+const isBareWord = (word) => word !== undefined && !isOptionWord(word);
+
+// What the option at `parameters[index]` does with the bare words after it: how many it takes,
+// whether it takes more than its own value (`swallows`), and whether it is a `--testPathPattern`
+// filter, which names the tests on its own.
+function jestOptionReading(parameters, index) {
+  const word = parameters[index];
+  const name = jestOptionName(word);
+  const glued = word.includes('=');
+  if (!JEST_ARRAY_OPTIONS.has(name)) {
+    const takesNext = !glued && JEST_VALUE_OPTIONS.has(name) && isBareWord(parameters[index + 1]);
+
+    return { name, taken: takesNext ? 1 : 0, swallows: false, filters: false };
+  }
+  let taken = 0;
+  while (isBareWord(parameters[index + 1 + taken])) taken++;
+
+  return {
+    name,
+    taken,
+    swallows: taken > (glued ? 0 : 1),
+    filters: name === 'testPathPattern' && (glued || taken > 0),
+  };
+}
+
+// Why a jest command (its words after the command word) runs every suite, or null when it names
+// the test files it runs: a literal path, or a `--testPathPattern` filter on its own.
+function jestRunProblem(parameters) {
+  const runsNothing = (word) => isOptionWord(word) && JEST_NO_RUN_OPTIONS.has(jestOptionName(word));
+  if (parameters.some(runsNothing)) return null;
+  const separator = parameters.indexOf('--');
+  const before = separator === -1 ? parameters : parameters.slice(0, separator);
+  let files = separator === -1 ? 0 : parameters.slice(separator + 1).filter(isNamedTestFile).length;
+  let filtered = false;
+  for (let index = 0; index < before.length; index++) {
+    if (isBareWord(before[index])) {
+      if (isNamedTestFile(before[index])) files++;
+      continue;
+    }
+    const reading = jestOptionReading(before, index);
+    if (reading.swallows) return `has --${reading.name} read the test file after it as a value`;
+    filtered ||= reading.filters;
+    index += reading.taken;
+  }
+
+  return files > 0 || filtered ? null : 'names no test file';
+}
+
+function jestJob(runner, parameters) {
+  const problem = jestRunProblem(parameters);
+
+  return problem === null ? null : { kind: 'fullJest', what: `${runner} ${problem}` };
+}
+
+// `npx` runs the command after its own options.
+const NPX_OPTIONS_WITH_VALUE = new Set([
+  '-p',
+  '--package',
+  '-c',
+  '--call',
+  '-w',
+  '--workspace',
+  '--prefix',
+  '--node-arg',
+]);
+
+// The job a command (its words, the command word first) starts, as `{ kind, what }`, or null.
+function queuedJob(base, tokens, context) {
+  if (MAKE_COMMANDS.has(base)) return makeJob(tokens.slice(1));
+  if (base === 'npm') return npmJob(tokens.slice(1), context);
+  if (base === 'semgrep') return semgrepJob(tokens.slice(1), context);
+  if (base === 'jest') return jestJob('jest', tokens.slice(1));
+  if (base === 'npx') {
+    const [command, ...rest] = skipOptions(tokens, NPX_OPTIONS_WITH_VALUE);
+
+    return command === undefined ? null : queuedJob(basename(command), [command, ...rest], context);
+  }
+
+  return checkScriptJob(base, tokens, context);
+}
+
+// Remembers the first queue-only job of a typed command in `rules.queued`, which `judge` reports
+// only when nothing else was found: a deny that already existed keeps its kind, and the new kinds
+// only add denies. A script scan and a data body (`rules.kinds` set) are never noted.
+function noteQueuedJob(base, tokens, context) {
+  const { rules, segment } = context;
+  if (rules.kinds !== null || rules.queued.finding !== null) return;
+  const job = queuedJob(base, tokens, context);
+  if (job !== null)
+    rules.queued.finding = { kind: job.kind, detail: `${segment.trim()} (${job.what})` };
 }
 
 // ---- wait loops that scan the process table ----
@@ -3276,7 +3724,8 @@ function observeWaitLoops(watch, segment, spans) {
 // a move of main only, a heredoc body that no shell is known to run is read for the kinds in
 // `DATA_KINDS` (a kill, a git stash, a hook skip by option or core.hooksPath, a main-checkout
 // change or fast-forward, a wait loop), and every other finding in either is not that pass's
-// business. `null` reports every kind.
+// business. `null` reports every kind. `heavyJob` and `fullJest` are in neither set: a job started
+// from a script or a data body is the queue's own work (`scripts/job-queue.sh` runs `make verify`).
 const SCRIPT_KINDS = new Set(['kill', 'mainFastForward', 'mainMove']);
 const DATA_KINDS = new Set([
   'kill',
@@ -3607,6 +4056,7 @@ function judge(command, options) {
     checkWrites: true,
     scanScripts: true,
     kinds: null,
+    queued: { finding: null },
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {
@@ -3615,7 +4065,7 @@ function judge(command, options) {
     if (finding !== null) return finding;
   }
 
-  return null;
+  return rules.queued.finding;
 }
 
 // ---- hook entry point ----

@@ -55,6 +55,17 @@ build-a-bundle CI gate:
   it does NOT catch a namespace import of `@env` (e.g.
   `import * as env from '@env'; ... env.SCREENSHOT_MODE`) — the flag regex
   only matches the named-import form.
+- A second rule, `kiko-no-test-fixture-import-in-app` (`rules/semgrep-prewrite.yml`, ERROR, denied
+  at write time), sits beside `kiko-no-hidden-feature-flag-or-demo-import` and closes the same
+  rule from the test side: app source never imports a `*-test-fixtures` or `*-test-helper` module
+  or a path with a `/test-support/` or `/__fixtures__/` segment (an `import`, an `import type`,
+  an `export ... from` or a `require`; a type-only import is flagged too, since app code would
+  still depend on test scaffolding). Tests, the scaffolding modules themselves (they import each
+  other), `__fixtures__/`, `test-support/` and `__mocks__/` folders, `e2e/`, `scripts/` and
+  `harness/` are excluded. KNOWN LIMITS: a dynamic `import(...)`, a path alias that hides the
+  ending, a barrel that re-exports a fixture, and a `require(` with a comment between the
+  parenthesis and the specifier are not matched; a block-comment or template line that itself
+  starts with `import ... from '...-test-helper'` is flagged wrongly.
 - A one-time archive-time grep of the built Release `main.jsbundle` for
   the capture/demo symbols and fake-data literals, run by ops against
   build 9's embedded bundle — required, not optional, precisely because

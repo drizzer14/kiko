@@ -3,6 +3,7 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
+harness_require_one_target "Feature import" "$@" || exit 2
 ROOT="$(cd "$DIR/../.." && pwd)"
 TARGET="${1:-}"
 

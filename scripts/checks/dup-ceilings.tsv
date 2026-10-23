@@ -1,0 +1,15 @@
+# check:dup ceilings, read up front by dup.sh. One row per tracked large file: <repo-relative path>, a TAB, the percent.
+# A file over jscpd's size limit (1000 lines or 100kb) is measured alone; above its row, or over 5% with no row, fails.
+# The *combined* row is the whole-repo combined baseline (the no-argument run only). A figure never rises: dedupe the test.
+src/data-transfer/snapshot/restore-snapshot.test.ts	7.21
+src/monobank/sync/sync.test.ts	7.67
+src/screens/accounts/accounts.screen.test.tsx	23.87
+src/screens/forms/account-form/account-form.screen.test.tsx	6.55
+src/screens/forms/holding-form/holding-form.screen.test.tsx	5.36
+src/screens/home/home.screen.test.tsx	38.24
+src/screens/statement-import/statement-import.screen.test.tsx	14.72
+src/screens/statistics/statistics.screen.test.tsx	7.77
+src/statistics/net-worth-series/net-worth-series.test.ts	7.25
+src/transactions/repo/transactions.repo.remove-cascade.test.ts	5.91
+src/transactions/repo/transactions.repo.test.ts	10.14
+*combined*	7.33

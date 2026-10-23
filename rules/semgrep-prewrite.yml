@@ -274,8 +274,8 @@ rules:
     languages: [typescript, javascript]
     severity: ERROR
     message: >
-      A comment cites a task id, review-round id, spec/decision id, a bug
-      number, or a plan (a plan doc, a numbered decision, a separate commit). kiko-code-style's "Comments: WHY only, never history": that
+      A comment cites a task id, review-round id, spec/decision id, a set,
+      track or run id, a bug number, or a plan (a plan doc, a numbered decision, a separate commit). kiko-code-style's "Comments: WHY only, never history": that
       belongs in the commit message that made the change, or the skill
       section that owns the rule — never left behind in a comment. Drop the
       id and keep the WHY; if nothing but history remains, delete the
@@ -292,8 +292,8 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:(?://|\*(?!/))\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for)\b)'
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:(?://|\*(?!/))\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for)\b)(?=(?:(?!\*/)[\s\S])*?\*/)'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|\bH\d{1,2}\s+(?i:task|set|step|fix\sround|backlog|track)\b|\bH\d{1,2}\s+t\d+\b|\b\d{8}T\d{4}-kiko-[\w-]+|[Ss]et\s\d+/\d+|[Tt]ask\s\d+/\d+|(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b|\bQ\d{1,2}\s*=\s*[A-Z]\b|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:(?://|\*(?!/))\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for)\b)'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|\bH\d{1,2}\s+(?i:task|set|step|fix\sround|backlog|track)\b|\bH\d{1,2}\s+t\d+\b|\b\d{8}T\d{4}-kiko-[\w-]+|[Ss]et\s\d+/\d+|[Tt]ask\s\d+/\d+|(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b|\bQ\d{1,2}\s*=\s*[A-Z]\b|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:(?://|\*(?!/))\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for)\b)(?=(?:(?!\*/)[\s\S])*?\*/)'
   # ERROR: the tree holds 0 findings for this id. See kiko-linter's
   # "kiko-no-history-word-comment" section.
   - id: kiko-no-history-word-comment
@@ -1314,7 +1314,8 @@ rules:
       A test or suite title opens with a task id ("A1 ", "A1:"), opens with a
       ruling id ("ruling A2"), opens with a numbered device check
       ("device check 3"), ends in a task id in parentheses ("(P2)",
-      "(task C2)", "(Task C2)"), or carries an old-value label in parentheses.
+      "(task C2)", "(Task C2)"), or carries an old-value label ("(was: 30)",
+      "(was 44)", "; was 62").
       kiko-code-style's "Comments: WHY only, never history": a title says what
       the test pins, and the id or the old value belongs in the commit
       message. Drop the id or the label and state the behavior.
@@ -1333,7 +1334,7 @@ rules:
           regex: "^(?:it|test|describe)\\b"
       - metavariable-regex:
           metavariable: $TITLE
-          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|[Dd]evice [Cc]heck \\d|.*\\(was: |.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),])"
+          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|[Dd]evice [Cc]heck \\d|.*\\(was: |.*\\(was \\d+\\)|.*; was \\d+\\b|.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),])"
   # A rejection asserted with no expected error passes on any failure, including a typo that
   # throws before the code under test runs. ERROR: the tree holds 0 findings for this id. See
   # kiko-linter's "kiko-rejects-to-throw-needs-error" section. The `src/test-support/**` include
@@ -2309,3 +2310,85 @@ rules:
       exclude:
         - "*.test.tsx"
     pattern-regex: '(?s)\bconst\s+\w+\s*:\s*(?:React\s*\.\s*)?FC(?:<[^=]*?(?:=>[^=]*?)*?>)?\s*=\s*(\((?:[^()]++|(?1))*\))\s*=>\s*[^{\s]'
+  # jest's two subset matchers never compare the members of an expected Set or Map, each in its own
+  # way (expect 29.7.0). `toMatchObject` reads it as an object with no keys, so at a PRESENT key
+  # `undefined`, `null`, `{}` and `[2]` all pass against `new Set([1])`; a missing key or a
+  # different Set fails. `expect.objectContaining` checks the kind only, so a DIFFERENT Set or
+  # Map passes; `undefined`, `null`, `{}`, `[2]` and a missing key fail. The pattern is a deep
+  # match of an object property whose value is `new Set|Map|WeakSet|WeakMap(...)` inside the
+  # matcher's argument; the finding sits on the matcher call's first line. A `[...new Set(x)]`
+  # spread and `new Set(x).size` are not a property value, so they stay silent. Known limit: a
+  # Set held in a variable (`{ a: seen }`) is not matched. See kiko-code-style's "A subset
+  # matcher never holds a Set or a Map" section.
+  - id: kiko-no-set-or-map-in-subset-match
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A Set or Map is an expected property value inside `toMatchObject` or
+      `expect.objectContaining`, and neither matcher compares its members. `toMatchObject` reads
+      it as an object with no keys, so any non-Set value at a present key passes (`undefined`,
+      `null`, `{}`, `[2]`); a missing key or a different Set fails. `expect.objectContaining`
+      checks the kind only, so a different Set or Map passes; `undefined`, `null`, `{}` and a
+      missing key fail. Take the field out and compare it with `toEqual` — see kiko-code-style's
+      "A subset matcher never holds a Set or a Map".
+    metadata:
+      fix: "Take the field out of the subset and `toEqual` it: `expect(actual.field).toEqual(new Set([...]))`."
+      skill: "kiko-code-style › A subset matcher never holds a Set or a Map"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $E.toMatchObject(<... {..., $K: new $C(...), ...} ...>)
+          - pattern: |
+              expect.objectContaining(<... {..., $K: new $C(...), ...} ...>)
+      - metavariable-regex:
+          metavariable: $C
+          regex: ^(Set|Map|WeakSet|WeakMap)$
+  # Guideline 2.5.19: nothing test-only ships in a release build, and an app file that imports a
+  # test fixture, helper or support module drags that module into the bundle. A specifier that
+  # ends in `-test-fixtures` or `-test-helper`, or holds a `/test-support/` or `/__fixtures__/`
+  # segment, is test scaffolding (the set `mutation.sh` filters out of the mutated files).
+  # Regexes, not AST patterns: Semgrep's `import "..."` pattern misses the `export * from` forms.
+  # The first regex reads an `import ... from` (also `import type`), an `export ... from` or a
+  # bare `import '...'` from the start of a line, so a comment that quotes an import stays
+  # silent; the second reads a `require(...)` on any line not starting a comment. Excludes
+  # (kiko-linter's "Adding a pre-write guard rule" allows a glob for a whole out-of-scope tree):
+  # tests and the scaffolding modules themselves, which import each other (`.ts` and `.tsx`),
+  # `e2e/`, `scripts/` and `harness/`. The globs match at any depth, so the nested excluded cases
+  # sit under `rules/fixtures/kiko-no-test-fixture-import-in-app/` and the positive cases stay
+  # flat. ERROR: the tree holds 0 findings for this id. Known limits, not matched: a dynamic
+  # `import('...')`, a path alias that hides the ending, a barrel that re-exports a fixture, and a
+  # `require(` with a comment between the parenthesis and the specifier; flagged wrongly: a
+  # block-comment or template line that itself starts with `import ... from '...-test-helper'`.
+  # See kiko-architecture's Guideline 2.5.19 section and `docs/harness/documented-exceptions.md`.
+  - id: kiko-no-test-fixture-import-in-app
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      App source imports test scaffolding: a module whose name ends in `-test-fixtures` or
+      `-test-helper`, or sits under `test-support/` or `__fixtures__/`. Nothing test-only ships in
+      a release build (Guideline 2.5.19), and the import pulls the module into the bundle. A
+      type-only `import type` is flagged too: it ships nothing, but app code still depends on
+      test scaffolding, so move the type into a production module. Move what the app needs out
+      of the fixture into a real module, or drop the import; only a test or another test
+      scaffolding module imports a fixture.
+    metadata:
+      fix: "Drop the import. If the app needs the value, move it into a production module that both the app and the fixture import."
+      skill: "kiko-architecture › Guideline 2.5.19 — no hidden features (formerly 2.3.1(a); Apple's rejection cited 5.6)"
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "*-test-fixtures.ts"
+        - "*-test-fixtures.tsx"
+        - "*-test-helper.ts"
+        - "*-test-helper.tsx"
+        - "**/test-support/**"
+        - "**/__fixtures__/**"
+        - "**/__mocks__/**"
+        - "__tests__/**"
+        - "e2e/**"
+        - "scripts/**"
+        - "harness/**"
+    pattern-either:
+      - pattern-regex: '(?m)^[ \t]*(?:import|export)\b(?:[^;''"]*?\bfrom)?\s*[''"](?:[^''"\n]*(?:-test-fixtures|-test-helper)|[^''"\n]*/(?:test-support|__fixtures__)/[^''"\n]*)[''"]'
+      - pattern-regex: '(?m)^(?![ \t]*(?://|/\*|\*))[^\n]*?\brequire\s*\(\s*[''"](?:[^''"\n]*(?:-test-fixtures|-test-helper)|[^''"\n]*/(?:test-support|__fixtures__)/[^''"\n]*)[''"]\s*\)'

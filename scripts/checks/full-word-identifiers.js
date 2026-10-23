@@ -26,6 +26,7 @@ const DENYLIST = new Set([
   'prev',
   'cfg',
   'e',
+  'l',
   'res',
   'msg',
   'cb',

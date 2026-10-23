@@ -1,17 +1,55 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐ COORDINATOR HANDOFF (2026-10-21 ~11:45) — READ THIS FIRST
+## ⭐ COORDINATOR HANDOFF (2026-10-23 ~13:40) — READ THIS FIRST
 
-Coordinator = SendMessage "pff-ios-8a" (Orca profile 915a0295), terminal term_a7c31323. Every track session now
-runs in Orca profile 8ce40d3d: SendMessage does NOT cross profiles. Tracks report by appending ONE line to
-memory/refs/coordinator-inbox.log; the coordinator answers with `orca terminal send --terminal <id> --enter`.
+Coordinator = SendMessage "pff-ios-8a". The coordinator and every track run in the SAME Orca profile (8ce40d3d):
+run `ListAgents` first; tracks report by SendMessage; no inbox watcher (the inbox file is a fallback only).
+Overnight mode ENDS when the user is back. The section dated 2026-10-21 below is HISTORY.
+
+**FIRST JOB: walk the user through `memory/refs/morning-walkthrough-2026-10-23.md`, item by item**, with one
+`AskUserQuestion` call per small group (few questions per call), and record each answer: rulings in
+`memory/refs/binance-multicoin-sdd-2026-10-21/rulings.md` (Binance) or to the H10 session (harness), then
+SendMessage the owning track. Order:
+1. Overnight defaults: S11-Q10 (fiat leg rounding, MERGED in set 11), S12-Q3, S12-Q10 (P2P cover rule -> set 13),
+   S12-Q11. A declined MERGED one (S11-Q10) needs a fix track.
+2. H10 task 4 (built, verified or verifying, NOT merged): P1 (heavy-job deny, with its cost: harness-sync route
+   A/B/C), P2 (A whole docs/ or B docs/superpowers/), P11 (dup ceilings file + D3 flips), P14 (path-less jest
+   deny). Then the CLAUDE.md drafts: harness-h10/.superpowers/sdd/h10/CLAUDE-DRAFT-T3.md and CLAUDE-DRAFT-T4.md;
+   the USER types "confirmed" in the H10 terminal per draft. Then merge (decline = H10 reverts that change set,
+   re-verify first).
+3. The HIGH guard gap 20261023T0023-kiko-harness-h10/1 (`caffeinate pkill node`, `caffeinate -i kill -9 -1`
+   pass): recommend fixing it FIRST in H11.
+4. Orphan processes (pids in the morning file): the user's choice to stop them (the tracks' kills were denied;
+   never run them for a track).
+5. Probe 10 (read-only, the user's key; command in the morning file) -> Binance set 12 P2P cap.
+6. The permission doctor's suggestion for the user's settings (`Edit(//Users/drizzer14/.claude/projects/*/memory/**/*.md)`);
+   nothing was changed.
+7. The iPad simulator slot: paused since 2026-10-22 on the user's word; ask whether it can resume.
+
+| Track | State |
+|---|---|
+| main | 79094ae8 (Binance sets 8-11, survivor tests, Home zero filter, H10 tasks 1-3; plugin 0.4.40). NOT pushed, NOT deployed (user: no deploy until all Binance sets are done). |
+| BINANCE set 12 | binance-s12-a2, SendMessage "binance-set7-dc", term_1945b9dd (worktree binance-set7, branch binance-set12, tip 887e554b+). Step 11 (run wiring) running; then spec, reviews, drift pass, main merge, READY FOR VERIFY. Rulings S12-Q1..Q26 in rulings.md. |
+| H10 task 4 | harness-h10-a6, SendMessage "harness-h10-95", term_7dfe80e6 (tip 98905eeb, plugin 0.4.41). Verify h10-task4 queued ~13:25 (check done.log). Merge HELD for the user's P1/P2/P11/P14. Gap 20261023T0023-kiko-harness-h10/2 closes at the CS6 merge. |
+| iPAD | ipad-a6, SendMessage "ipad-phase3-13", term_2a641ef6. Round 9 cleared (gate 98.46%, verify 115a726f); sims PAUSED; scratch ipad-r9-sim kept for the slot. Its run 20261018T2036-kiko-ipad-phase3 shows ABANDONED (no event 24 h): on resume, log an event. |
+
+Background in this session (re-arm after a /clear): gauge watchers (memory/refs/gaugewatch.sh) for the three
+terminals; `caffeinate -s` (stop it when overnight mode ends); a pmset battery watcher. Lessons: memory
+coordinator-lessons-2026-10-23.
+
+## COORDINATOR HANDOFF (2026-10-21 ~11:45) — HISTORY
+
+Coordinator = SendMessage "pff-ios-8a". UPDATE 2026-10-21 evening: the coordinator and every track now run in
+the SAME Orca profile (8ce40d3d); ListAgents lists the tracks and SendMessage works both ways. Tracks report by
+SendMessage to pff-ios-8a; the coordinator answers by SendMessage. The inbox file
+memory/refs/coordinator-inbox.log is a fallback only (no inbox watcher; user ruling). Run ListAgents first.
 Morning list (answered 2026-10-21): memory/refs/morning-walkthrough-2026-10-21.md. The 2026-10-19 section below is HISTORY.
 
 **FIRST ACTIONS:**
 1. `bash scripts/job-queue.sh status` (a HOLD may still be set for the user's iPad look: release it after the iPad
    session writes SIMS DONE); `pmset -g batt`; `orca terminal list`.
-2. Arm: an inbox watcher (new lines of memory/refs/coordinator-inbox.log), a pmset watcher (CHARGER BACK only after
-   3 min of stable AC), gauge watchers (memory/refs/gaugewatch.sh) for the three tracks below.
+2. Arm: a pmset watcher (CHARGER BACK only after 3 min of stable AC) and gauge watchers (memory/refs/gaugewatch.sh)
+   for the tracks below; read every track gauge at once and hand over any track at 40% or more. No inbox watcher.
 3. After every READY line, queue the ticket at once and confirm it in `job-queue.sh status` (two iPad gate READY lines
    were missed overnight).
 4. At every main merge: `npx patch-package` in main, `claude plugin update kiko@kiko-marketplace` + /reload-plugins in
@@ -22,7 +60,7 @@ Morning list (answered 2026-10-21): memory/refs/morning-walkthrough-2026-10-21.m
 | main = next | 172f35c2 (2026-10-20/21: integration 4577a619 = account currency + Binance set 6 + donut total + planner no-estimate rule + test-flake fixes; then Binance set 7 172f35c2). Plugin 0.4.36. origin/main NOT pushed. Phone: Kiko 1.2.0 (31) from 4577a619. USER: no deploy until ALL Binance sets are done. |
 | BINANCE 1.3-a | binance-set7-a1, term_c837e750 (worktree binance-set7). Set 7 MERGED. Now the follow-up branch binance-set7-followup from 172f35c2: uk «Купівля через P2P ({{currency}})» + demo dust from XRP (no DOGE holding), then review, then a queued verify (0 mutable files, no gate). Then set 8 needs a plan. Rulings: memory/refs/binance-multicoin-sdd-2026-10-21/rulings.md (incl. the user's P2P cover rule for the category chart: a P2P BUY and a later USDT send cancel out, both rows recorded; P2P stays in sets 8-12). |
 | iPAD | ipad-phase3-a5, term_c33a6be0 (worktree ipad-phase3, tip 7c3232ab; main 4577a619 merged in). Fix rounds 3-8 DONE; gates r3-r8 cleared (r3/r6 by Method A proof tables in memory/refs/); verify ipad-t10-followup 871/871 exit 0. OPEN: (a) user's look + Duo poses (the sim hung at load 200+ on 2026-10-21 11:3x; retry when the machine is quiet); (b) USER: fix the title margin in SMALL two-pane windows too while the Duo stays unchanged (session brings a design: a device/fold signal, not a size rule); (c) USER: fix the Home-tab left pane nav bar at y 96 (10 pt lower than Settings). New Semgrep WARNING (test-support mock) -> H10 task 4. ipad-family stays unmerged. |
-| H10 | harness-h10-a1, term_ed44a58c (worktree harness-h10 from 172f35c2). Brief memory/refs/brief-h10.md: 4 tasks in the user's order: guard gaps (incl. USER: deny reset/checkout -B/switch -C/update-ref moving main), flaky verifies (port the harness trie fold; Semgrep timeouts on kill-guard.js), ops safety, linter rules. Task 1 planning. |
+| H10 | harness-h10-a1, term_ed44a58c (worktree harness-h10 from 172f35c2). Brief memory/refs/brief-h10.md: 4 tasks in the user's order: guard gaps (incl. USER: deny reset/checkout -B/switch -C/update-ref moving main), flaky verifies (port the harness trie fold; Semgrep timeouts on kill-guard.js), ops safety, linter rules. UPDATE 2026-10-22: task 1 MERGED (main a1c0fdac); session harness-h10-a2 (SendMessage "harness-h10-64", term_7c5670d2) on task 2 step 16-17; the H9 backlog items "kill-guard quadratic scope fold" and "queue status race" (history rows below) are FIXED and MERGED (task 2 = main 60089144, plugin 0.4.39, 2026-10-22; both items CLOSED). U1 = (b) + verify load wait. Task 3/4 (ops safety) planning; open gaps 20261021T2101-kiko-harness-h10/1-4; task 4 candidates (d) docs/ SHELL-WRITE, (e) bare Error rule, (f) named-file mutation, gap set9/3 import-order multi-path. |
 | HARNESS REPO | drizzer14/harness main 18721cb PUSHED (sync 4 merged). NOT STARTED: set P (plugin/** texts, plugin version > 1.6.0, list in the sync-4 notes) + USER: add `plugin` to killGuard.writeGuardedTrees in the harness repo's harness.config.json. Start it in a fresh session (auto mode) when H10 load allows. |
 | DUO | duo-adaptive-g2 idle. |
 | Status | term_22e8974a (log-event.sh). |

@@ -15,7 +15,7 @@ Rules:
   `.claude/skills/` and `harness/kiko/skills/`, plus
   `harness/kiko/agents/`. Flag any drift found to the scribe as a
   distinct item from new lessons, including prose that only describes
-  current usage instead of prescribing a rule. `make verify` already
+  current usage instead of prescribing a rule. The queued verify (or `make doc-suites`) already
   fails a stale path in a skill, agent, doc code span, or a `src` comment
   (`__tests__/cited-paths.test.ts`) or a
   backticked identifier that left the code
