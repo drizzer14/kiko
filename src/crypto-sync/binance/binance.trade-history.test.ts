@@ -719,7 +719,7 @@ describe('syncBinanceTradeHistory', () => {
       await world.sync();
 
       expect(totalsOf(world, ORDER_A)).toEqual({ xrp: undefined, usdt: undefined });
-      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 4 });
+      expect(world.trades().symbols.XRPUSDT).toEqual({ fromId: 4, rowlessOrderIds: [ORDER_A] });
     });
 
     it('also holds an order of two untracked coins whose BNB fee rounds to nothing', async () => {

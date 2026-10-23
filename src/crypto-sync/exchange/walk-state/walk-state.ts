@@ -78,7 +78,15 @@ export type CoinLists = {
  */
 export type OversizedCoinLists = CoinLists & { balanceByWallet?: Record<string, string[]> };
 
-export type TradeSymbol = { fromId: number | null; heldOrderId?: number };
+/**
+ * `rowlessOrderIds` are the orders of the symbol that came to no row and that the cursor has
+ * passed: a later fill of one is written with the fills that came before it.
+ */
+export type TradeSymbol = {
+  fromId: number | null;
+  heldOrderId?: number;
+  rowlessOrderIds?: number[];
+};
 
 export type ExchangeTrades = {
   symbols: Record<string, TradeSymbol>;
@@ -194,22 +202,46 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
 const emptyMarks = (): ParsedWalkMarks => marksOf({});
 
 /** A `null` heldOrderId is a cleared one: the same symbol as one that never held an order. */
+const heldOrderFieldOf = (stored: unknown): Pick<TradeSymbol, 'heldOrderId'> | undefined => {
+  if (stored === undefined || stored === null) {
+    return {};
+  }
+
+  return isNumber(stored) ? { heldOrderId: stored } : undefined;
+};
+
+/**
+ * No ids, or a list of none, is a symbol without any (a state stored before the field existed
+ * reads so); an id stored twice reads once. A value that is no list of numbers is unreadable.
+ */
+const rowlessOrderIdsFieldOf = (
+  stored: unknown,
+): Pick<TradeSymbol, 'rowlessOrderIds'> | undefined => {
+  if (stored === undefined || stored === null) {
+    return {};
+  }
+
+  if (!Array.isArray(stored) || !stored.every(isNumber)) {
+    return undefined;
+  }
+
+  return stored.length === 0 ? {} : { rowlessOrderIds: [...new Set(stored)] };
+};
+
 const tradeSymbolOf = (stored: unknown): TradeSymbol | undefined => {
   if (!isRecord(stored)) {
     return undefined;
   }
 
-  const { fromId, heldOrderId } = stored;
+  const { fromId, heldOrderId, rowlessOrderIds } = stored;
+  const held = heldOrderFieldOf(heldOrderId);
+  const rowless = rowlessOrderIdsFieldOf(rowlessOrderIds);
 
-  if (fromId !== null && !isNumber(fromId)) {
+  if ((fromId !== null && !isNumber(fromId)) || held === undefined || rowless === undefined) {
     return undefined;
   }
 
-  if (heldOrderId === undefined || heldOrderId === null) {
-    return { fromId };
-  }
-
-  return isNumber(heldOrderId) ? { fromId, heldOrderId } : undefined;
+  return { fromId, ...held, ...rowless };
 };
 
 const emptyText = (): string => '';

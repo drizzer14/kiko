@@ -383,8 +383,17 @@ type SymbolRead = {
   storedFromId: number | null;
   /** The last committed page's trailing order that came to no row, if it had one. */
   trailing: TrailingOrder | undefined;
+  /**
+   * The orders that came to no row and that the cursor has passed, so they have no stored row to
+   * show them seen: a later fill of one is read like a fill of an order imported earlier. Stored
+   * with the cursor; an order leaves it when it writes a row.
+   */
+  rowlessBehind: Set<number>;
   tally: { imported: number };
 };
+
+/** What one write of orders came to: the ids that came to no row, and the ids that came to rows. */
+type WrittenOrders = { rowless: ReadonlySet<number>; withRows: ReadonlySet<number> };
 
 /**
  * What a page comes to: the orders to write, the order of the last fill it took in, and the fill
@@ -461,32 +470,40 @@ const readOrderFills = async (
 const orderPrefixOf = ({ accountId, candidate }: SymbolRead, orderId: number): string =>
   `${tradePairIdOf(accountId, candidate.symbol, orderId)}:`;
 
-/** The orders of a page, not yet re-read in this run, that have a stored row under their prefix. */
+/**
+ * The orders of a page, not yet re-read in this run, that were imported earlier: those with a
+ * stored row under their prefix, and those the cursor passed without a row.
+ */
 const importedOrdersOf = async (read: SymbolRead, rows: BinanceMyTrade[]): Promise<Set<number>> => {
   const orderIds = [...new Set(rows.map(({ orderId }) => orderId))].filter(
     (orderId) => !read.reReads.has(orderId),
   );
+  const behind = orderIds.filter((orderId) => read.rowlessBehind.has(orderId));
+  const others = orderIds.filter((orderId) => !read.rowlessBehind.has(orderId));
 
-  if (orderIds.length === 0) {
-    return new Set();
+  if (others.length === 0) {
+    return new Set(behind);
   }
 
   const found = await read.deps.importedOrderPrefixes(
-    orderIds.map((orderId) => orderPrefixOf(read, orderId)),
+    others.map((orderId) => orderPrefixOf(read, orderId)),
   );
 
-  return new Set(orderIds.filter((orderId) => found.has(orderPrefixOf(read, orderId))));
+  return new Set([
+    ...behind,
+    ...others.filter((orderId) => found.has(orderPrefixOf(read, orderId))),
+  ]);
 };
 
 /**
  * Sorts the fills of a page, in id order, into the orders to write. An order with rows from an
- * earlier run is read whole, once per run, because its new fill changes every amount of it; a
- * re-read the lane has no room for stops the read at that order's first fill here, holding the
- * order. A fill of an order already read whole is skipped when that read has it, and stops the
- * read at that fill when the order filled again since. Nothing at or after the stop fill is
- * written, and the cursor stays on it, so the next read finds it again. The fills of the order the
- * last page ended on without a row (`TrailingOrder`) start the orders, so a fill of it on this page
- * is added to them.
+ * earlier run, or one the cursor passed without a row (`rowlessBehind`), is read whole, once per
+ * run, because its new fill changes every amount of it; a re-read the lane has no room for stops
+ * the read at that order's first fill here, holding the order. A fill of an order already read
+ * whole is skipped when that read has it, and stops the read at that fill when the order filled
+ * again since. Nothing at or after the stop fill is written, and the cursor stays on it, so the
+ * next read finds it again. The fills of the order the last page ended on without a row
+ * (`TrailingOrder`) start the orders, so a fill of it on this page is added to them.
  */
 const scanPage = async (read: SymbolRead, rows: BinanceMyTrade[]): Promise<PageScan> => {
   const imported = await importedOrdersOf(read, rows);
@@ -532,12 +549,13 @@ const scanPage = async (read: SymbolRead, rows: BinanceMyTrade[]): Promise<PageS
 /**
  * Write the rows of orders: place them on the Spot holdings, import them, then list the coins of
  * the orders that Kiko does not track. A crash before the cursor moves reads the page again, and
- * the keys dedupe it. Resolves with the ids of the orders that came to no row.
+ * the keys dedupe it. Resolves with the ids of the orders that came to no row and of those that
+ * came to rows.
  */
 const writeOrders = async (
   read: SymbolRead,
   orders: ReadonlyMap<number, BinanceMyTrade[]>,
-): Promise<ReadonlySet<number>> => {
+): Promise<WrittenOrders> => {
   const { deps, accountId, candidate } = read;
   const built = [...orders].map(([orderId, fills]) => ({
     orderId,
@@ -562,22 +580,43 @@ const writeOrders = async (
     await historyListWriterOf(deps, accountId, 'untrackedCoins')(untracked);
   }
 
-  return new Set(built.filter(({ rows }) => rows.length === 0).map(({ orderId }) => orderId));
+  return {
+    rowless: new Set(built.filter(({ rows }) => rows.length === 0).map(({ orderId }) => orderId)),
+    withRows: new Set(built.filter(({ rows }) => rows.length > 0).map(({ orderId }) => orderId)),
+  };
 };
 
-const writeCursor = async (read: SymbolRead, entry: TradeSymbolEntry): Promise<void> => {
+/**
+ * Write the cursor of the symbol with the orders the cursor has passed without a row, in one
+ * patch, so the set is never behind the cursor that passed them.
+ */
+const writeCursor = async (
+  read: SymbolRead,
+  cursor: Pick<TradeSymbolEntry, 'fromId' | 'heldOrderId'>,
+): Promise<void> => {
+  const entry: TradeSymbolEntry = {
+    ...cursor,
+    ...(read.rowlessBehind.size === 0
+      ? {}
+      : { rowlessOrderIds: [...read.rowlessBehind].sort((left, right) => left - right) }),
+  };
+
   await read.deps.patchExchangeState(read.accountId, [
     { kind: 'tradeSymbol', symbol: read.candidate.symbol, entry },
   ]);
   read.storedFromId = entry.fromId;
 };
 
-/** The order the page ended on, if it came to no row. */
+/**
+ * The order the page ended on, if it came to no row. An order this run read whole is not held: its
+ * first fill can be behind the cursor, which must not move back.
+ */
 const trailingOf = (
+  read: SymbolRead,
   { orders, lastOrderId }: PageScan,
   rowless: ReadonlySet<number>,
 ): TrailingOrder | undefined => {
-  if (lastOrderId === undefined || !rowless.has(lastOrderId)) {
+  if (lastOrderId === undefined || !rowless.has(lastOrderId) || read.reReads.has(lastOrderId)) {
     return undefined;
   }
 
@@ -586,6 +625,22 @@ const trailingOf = (
     fills,
     fromId: Number(firstFillOf(fills).id),
   }));
+};
+
+/**
+ * Update the orders passed without a row after a write: an order that came to a row leaves, one
+ * that came to none joins unless the cursor holds it at its first fill (`read.trailing`).
+ */
+const passRowlessOrders = (read: SymbolRead, written: WrittenOrders): void => {
+  for (const orderId of written.withRows) {
+    read.rowlessBehind.delete(orderId);
+  }
+
+  for (const orderId of written.rowless) {
+    if (orderId !== read.trailing?.orderId) {
+      read.rowlessBehind.add(orderId);
+    }
+  }
 };
 
 /**
@@ -601,7 +656,10 @@ const commitPage = async (
   const scan = await scanPage(read, page.rows);
   const { stop } = scan;
 
-  read.trailing = trailingOf(scan, await writeOrders(read, scan.orders));
+  const written = await writeOrders(read, scan.orders);
+
+  read.trailing = trailingOf(read, scan, written.rowless);
+  passRowlessOrders(read, written);
   await writeCursor(read, {
     fromId: read.trailing?.fromId ?? stop?.fillId ?? page.nextFromId,
     ...foldMap(maybe(stop?.heldOrderId), (heldOrderId) => ({ heldOrderId })),
@@ -627,7 +685,7 @@ const releaseHeldOrder = async (
   }
 
   read.reReads.set(heldOrderId, whole.lastFillId);
-  await writeOrders(read, new Map([[heldOrderId, whole.fills]]));
+  passRowlessOrders(read, await writeOrders(read, new Map([[heldOrderId, whole.fills]])));
   await writeCursor(read, { fromId });
 
   return true;
@@ -796,6 +854,7 @@ const runSync = async (
         reReads: new Map(),
         storedFromId: trades.symbols[symbol]?.fromId ?? null,
         trailing: undefined,
+        rowlessBehind: new Set(trades.symbols[symbol]?.rowlessOrderIds ?? []),
         tally,
       }),
   });

@@ -112,6 +112,33 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(parseExchangeState(storedState())).toMatchObject({ kind: 'parsed', notImported: [] });
   });
 
+  it('for Binance, clears the trade cursors with the rowless order ids and the held order', async () => {
+    connectedBinanceAccount();
+    mockDatabase.prepare("UPDATE sync_state SET exchange_state = ? WHERE account_id = 'acc-1'").run(
+      JSON.stringify({
+        ...JSON.parse(storedState()),
+        trades: {
+          symbols: {
+            BTCEUR: { fromId: 9, rowlessOrderIds: [3, 5] },
+            ETHEUR: { fromId: 4, heldOrderId: 2, rowlessOrderIds: [1] },
+          },
+          rotation: 'BTCEUR',
+          balanceSnapshot: { BTC: '1/0' },
+        },
+      }),
+    );
+    expect(storedState()).toContain('rowlessOrderIds');
+
+    await disconnectCryptoAccount('acc-1', 'binance');
+
+    expect(storedState()).not.toContain('rowlessOrderIds');
+    expect(storedState()).not.toContain('trades');
+    expect(parseExchangeState(storedState())).toMatchObject({
+      kind: 'parsed',
+      trades: { symbols: {}, rotation: '', balanceSnapshot: {} },
+    });
+  });
+
   // The paused caption promises this fix: "Disconnect and reconnect to fix this. Your holdings
   // and transactions are kept."
   it.each([

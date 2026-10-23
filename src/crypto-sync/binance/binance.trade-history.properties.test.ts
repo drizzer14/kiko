@@ -40,6 +40,13 @@ const FIRST_RUN_FILLS = 6;
 const LATER_RUN_FILLS = 3;
 /** A fill never comes to less than this many sent units of its quote coin (0.01 USDT). */
 const LEAST_QUOTE_UNITS = 1_000_000;
+/**
+ * A BTCEUR fill can be a dust one: under 0.005 EUR in the 7 decimals it is sent with, so its EUR
+ * leg alone rounds to no cent and an order of such fills has no row until the sum reaches one.
+ */
+const MOST_DUST_QUOTE_UNITS = 49_999;
+const DUST_SHARE = 0.4;
+const LEAST_SHAPES = 10;
 
 type Spec = { symbol: string; baseAsset: string; quoteAsset: string };
 
@@ -65,6 +72,8 @@ const digitsOf = (coin: string): number => DIGITS[coin] ?? 8;
 
 type MadeFill = {
   id: number;
+  /** The run the fill arrived before, so a test can tell a fill of a later run. */
+  run: number;
   qtyUnits: number;
   quoteUnits: number;
   commissionUnits: number;
@@ -114,14 +123,23 @@ const textOf = (units: number, digits: number): string => (units / 10 ** digits)
 
 const COMMISSION_KINDS = ['base', 'quote', 'BNB', 'BNB'] as const;
 
-const madeFillOf = (random: () => number, spec: Spec, id: number): MadeFill => {
+type CommissionKind = (typeof COMMISSION_KINDS)[number];
+
+/** A dust fill pays no BNB fee, so the order stays without a row until its sum reaches a unit. */
+const DUST_COMMISSION_KINDS: readonly CommissionKind[] = ['base', 'quote'];
+
+const madeFillOf = (random: () => number, spec: Spec, id: number, run: number): MadeFill => {
+  const dust = spec.quoteAsset === 'EUR' && random() < DUST_SHARE;
   const qtyUnits = 1_000 + Math.floor(random() * 1_000_000);
-  const quoteUnits = LEAST_QUOTE_UNITS + Math.floor(random() * 1_000_000_000);
-  const kind = pick(random, COMMISSION_KINDS);
+  const quoteUnits = dust
+    ? 1 + Math.floor(random() * MOST_DUST_QUOTE_UNITS)
+    : LEAST_QUOTE_UNITS + Math.floor(random() * 1_000_000_000);
+  const kind = pick(random, dust ? DUST_COMMISSION_KINDS : COMMISSION_KINDS);
   const bound = { base: qtyUnits, quote: quoteUnits, BNB: 200_000 }[kind];
 
   return {
     id,
+    run,
     qtyUnits,
     quoteUnits,
     commissionUnits: Math.floor((random() * bound) / 10),
@@ -146,6 +164,7 @@ const exchangeOf = (random: () => number) => {
   };
   const orders: MadeOrder[] = [];
   const lastIds: Record<string, number> = {};
+  const clock = { run: 0 };
 
   const newOrderOf = (spec: Spec): MadeOrder => {
     const taken = new Set(
@@ -167,7 +186,7 @@ const exchangeOf = (random: () => number) => {
   const fillOrder = (order: MadeOrder): void => {
     const { symbol } = order.spec;
     const id = (lastIds[symbol] ?? 0) + 1 + Math.floor(random() * 3);
-    const made = madeFillOf(random, order.spec, id);
+    const made = madeFillOf(random, order.spec, id, clock.run);
 
     lastIds[symbol] = id;
     order.fills.push(made);
@@ -189,6 +208,9 @@ const exchangeOf = (random: () => number) => {
   return {
     server,
     orders,
+    startRun: (run: number): void => {
+      clock.run = run;
+    },
     arrive: (most: number): void => {
       for (const spec of SPECS) {
         arriveOn(spec, Math.floor(random() * (most + 1)));
@@ -257,7 +279,10 @@ const expectedRowsOf = (accountId: string, order: MadeOrder): Map<string, RowSha
     ...over,
   });
 
-  if (TRACKED.includes(spent.coin) && TRACKED.includes(received.coin)) {
+  const bothTracked = TRACKED.includes(spent.coin) && TRACKED.includes(received.coin);
+  const [tracked, other] = TRACKED.includes(spent.coin) ? [spent, received] : [received, spent];
+
+  if (bothTracked && spent.units !== 0 && received.units !== 0) {
     rows.set(
       `${pairId}:${spent.coin}`,
       rowOf(spent, {
@@ -272,9 +297,9 @@ const expectedRowsOf = (accountId: string, order: MadeOrder): Map<string, RowSha
         exchangeCounterpartHoldingId: holdingIdOf(spent.coin),
       }),
     );
-  } else {
-    const [tracked, other] = TRACKED.includes(spent.coin) ? [spent, received] : [received, spent];
+  }
 
+  if (!bothTracked && tracked.units !== 0) {
     rows.set(
       `${pairId}:${tracked.coin}`,
       rowOf(tracked, { untrackedCounterpart: `asset:${other.coin}` }),
@@ -552,6 +577,8 @@ const playAllRuns = async (world: World, gapMs: number): Promise<number> => {
   let limitedAt: number | undefined;
 
   for (const [index, plan] of plansOf(gapMs).entries()) {
+    world.exchange.startRun(index);
+
     if (plan.stress) {
       world.exchange.arrive(index === 0 ? FIRST_RUN_FILLS : LATER_RUN_FILLS);
     }
@@ -565,6 +592,63 @@ const playAllRuns = async (world: World, gapMs: number): Promise<number> => {
 
   return imported;
 };
+
+const isRowless = (accountId: string, order: MadeOrder): boolean =>
+  expectedRowsOf(accountId, order).size === 0;
+
+/**
+ * The orders whose first fill alone comes to no row, whose next fill came in a later run, with a
+ * fill of another order between the two: the shape the stored set of rowless orders is for.
+ */
+const rowlessFirstPartsOf = (accountId: string, orders: MadeOrder[]): MadeOrder[] =>
+  orders.filter((order) => {
+    const [first, second] = order.fills;
+
+    return (
+      first !== undefined &&
+      second !== undefined &&
+      second.run > first.run &&
+      isRowless(accountId, { ...order, fills: [first] }) &&
+      orders.some(
+        (other) =>
+          other.spec === order.spec &&
+          other !== order &&
+          other.fills.some((fill) => fill.id > first.id && fill.id < second.id),
+      )
+    );
+  });
+
+/**
+ * The cursor of each readable symbol is a number and holds no order. Its set of rowless orders
+ * names only orders that came to no row, and every rowless order but the one owning the symbol's
+ * last fill (which the cursor holds instead) is in it.
+ */
+const expectStoredSymbols = (world: World, parsed: ReturnType<typeof parseExchangeState>): void => {
+  const symbols = parsed.kind === 'parsed' ? parsed.trades.symbols : {};
+  const readable = SPECS.filter(({ symbol }) => symbol !== world.doomed);
+
+  expect(Object.keys(symbols).sort()).toEqual(readable.map(({ symbol }) => symbol).sort());
+
+  for (const spec of readable) {
+    const { rowlessOrderIds = [], ...cursor } = symbols[spec.symbol] ?? { fromId: 0 };
+    const orders = world.exchange.orders.filter((order) => order.spec === spec);
+    const rowless = orders.filter((order) => isRowless(world.accountId, order));
+    const lastOrder = orders.find((order) =>
+      order.fills.some((fill) => fill.id === world.exchange.server.fills[spec.symbol]?.at(-1)?.id),
+    );
+
+    expect(cursor).toEqual({ fromId: expect.any(Number) });
+    expect(rowless.map(({ orderId }) => orderId)).toEqual(expect.arrayContaining(rowlessOrderIds));
+    expect(rowlessOrderIds).toEqual(
+      expect.arrayContaining(
+        rowless.filter((order) => order !== lastOrder).map(({ orderId }) => orderId),
+      ),
+    );
+  }
+};
+
+/** What the seeds of one run of the suite generated, for the coverage check after them. */
+const shapes = { count: 0 };
 
 describe.each(RUN_GAPS)('the trade read over random exchanges, runs %i ms apart', (gapMs) => {
   let warn: jest.SpyInstance;
@@ -593,6 +677,9 @@ describe.each(RUN_GAPS)('the trade read over random exchanges, runs %i ms apart'
       const imported = await playAllRuns(world, gapMs);
 
       const readable = world.exchange.orders.filter(({ spec }) => spec.symbol !== world.doomed);
+
+      shapes.count += rowlessFirstPartsOf(world.accountId, readable).length;
+
       const expected = new Map(
         readable.flatMap((order) => [...expectedRowsOf(world.accountId, order)]),
       );
@@ -610,14 +697,7 @@ describe.each(RUN_GAPS)('the trade read over random exchanges, runs %i ms apart'
         expected,
       );
       expect(imported).toBe(world.store.stored.size);
-      expect(parsed.kind === 'parsed' ? parsed.trades.symbols : undefined).toEqual(
-        Object.fromEntries(
-          SPECS.filter(({ symbol }) => symbol !== world.doomed).map(({ symbol }) => [
-            symbol,
-            { fromId: expect.any(Number) },
-          ]),
-        ),
-      );
+      expectStoredSymbols(world, parsed);
 
       for (const [pairId, owners] of ownersByPairOf(world.store.stored, ownerOfKey)) {
         expect([pairId, [...owners]]).toEqual([
@@ -631,4 +711,10 @@ describe.each(RUN_GAPS)('the trade read over random exchanges, runs %i ms apart'
       }
     },
   );
+});
+
+describe('the orders the random exchanges generate', () => {
+  it('include a first part that rounds to no row, with another order between and its next fill in a later run', () => {
+    expect(shapes.count).toBeGreaterThanOrEqual(LEAST_SHAPES);
+  });
 });
