@@ -579,16 +579,15 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
 // being viewed), matching `transactionRowDescription`'s own blank-description
 // fallback convention.
 const LinkedPaymentsSection: FC<{
-  title: string;
   payments: readonly TransactionRow[];
   holdingNameById: ReadonlyMap<string, string>;
   context: LedgerRowContext;
-}> = ({ title, payments, holdingNameById, context }) => {
+}> = ({ payments, holdingNameById, context }) => {
   const { t } = useTranslation();
 
   return (
     <Box gap={2}>
-      <Text variant="heading">{title}</Text>
+      <Text variant="heading">{t('holdingDetail.linkedPayments')}</Text>
       {payments.length === 0 ? (
         <EmptyState
           icon="link"
@@ -627,7 +626,6 @@ const LedgerSectionHeading: FC<{
         <Divider spacing={2} testID="holding-detail-linked-payments-divider" />
 
         <LinkedPaymentsSection
-          title={t('holdingDetail.linkedPayments')}
           payments={linkedPayments}
           holdingNameById={holdingNameById}
           context={context}
@@ -766,8 +764,6 @@ const resolveLedgerReadyView = (
   };
 };
 
-const isLoanHolding = (holding: HoldingRow | undefined): boolean => holding?.type === 'loan';
-
 // A row of a type outside this build's list (an imported dev-build holding)
 // offers no Edit: the form dispatches on a descriptor that type does not have.
 const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
@@ -835,7 +831,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
-  const isLoan = isLoanHolding(holding);
+  const isLoan = holding?.type === 'loan';
   useCloseWhenGone({ routeKey: route.key, isFresh: holdingsFresh, holding });
   // The loan detail's own "Linked payments" section: the transactions the
   // matcher (or a manual pick) linked to THIS loan, newest first — a loan

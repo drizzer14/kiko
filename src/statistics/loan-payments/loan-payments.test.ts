@@ -145,7 +145,7 @@ describe('loanPaymentExcludedTransactionIds', () => {
     expect([...ids]).toEqual(['tx-linked']);
   });
 
-  it('excludes a payment of a loan whose metadata cannot be read, the way it always did', () => {
+  it('excludes a payment of a loan whose metadata cannot be read', () => {
     const unreadable: LoanHolding = { id: 'loan-scheduled', metadata: null, currency: 'UAH' };
 
     const ids = loanPaymentExcludedTransactionIds([linkedPayment], [unreadable]);

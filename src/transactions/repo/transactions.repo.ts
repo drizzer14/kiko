@@ -2154,8 +2154,8 @@ export const transactionsRepo = {
    * shares, so a plain, unbounded scan of every eligible debit ever
    * recorded would grow with the WHOLE ledger, not with what the matcher
    * could ever possibly use — bounded to `time >= minTime` (the caller
-   * passes each loan's own earliest `startDate` minus the match window's own
-   * before-margin, so no installment's candidate window is ever excluded)
+   * passes the start of the earliest loan start day: a payment ON that day
+   * counts at any time of day, one before it counts nowhere)
    * and to `currencies` (only a loan's own currency can ever match rule 1,
    * the matcher's own per-pair check makes no currency decision of its own
    * either way — this is a P-NOWORK narrowing, not a correctness change).

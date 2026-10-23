@@ -707,8 +707,9 @@ describe('useLoanFields — saveEdit out of a "none" schedule', () => {
   };
 
   // The informal loan's start-day point holds the OLD principal; left in
-  // place it anchors the schedule as a correction (58,321.12 instead of
-  // 78,321.12 on 27 Sep).
+  // place it anchors the schedule as a correction, which payment 1 (due on
+  // the start day) does not count down from: 100,000.00 less rows 2-9 reads
+  // 62,769.94 instead of 78,321.12 on 27 Sep.
   it('drops the start-day point, so the schedule counts down from the new principal', async () => {
     const [newMeta, op] = await editIntoAnnuity(informalStart);
 

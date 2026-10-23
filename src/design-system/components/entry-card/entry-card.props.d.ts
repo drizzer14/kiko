@@ -7,8 +7,9 @@ export type EntryCardProps = {
   // The trailing amount cell. The caller renders its own `MoneyText`, because the tone and
   // context differ per kind of entry.
   amount: ReactNode;
-  // An optional leading cluster (a category icon, a link marker). It shares one row with the
-  // label, so only that cluster, not the label alone, is split from the amount.
+  // An optional leading cluster (a category icon). It shares one row with the label, so only
+  // that cluster, not the label alone, is split from the amount. A link marker belongs in
+  // `amountCaptionIcon`.
   lead?: ReactNode;
   // A caption drawn directly under the amount in the amount column (a time, "Computed"), so a
   // title that wraps never separates the two.
