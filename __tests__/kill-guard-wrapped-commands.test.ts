@@ -156,6 +156,55 @@ describe('kill-guard wrapped commands (parser only, fake repository)', () => {
     expect(decideInEachFolder(repository, command)).toEqual(bare);
   });
 
+  // Review 1 (round 3). The tmux rows are unmeasured: tmux is not installed here, so its alias
+  // names (respawnw, sp) and the `\;` command separator are from memory of tmux(1).
+  it.each([
+    ['screen -S s -X screen make verify', 'make verify'],
+    ['screen -X exec make verify', 'make verify'],
+    [`screen -X eval 'stuff "make verify^M"'`, 'make verify'],
+    ["screen -r s -X stuff 'make verify\\n'", 'make verify'],
+    ["screen -x s -X stuff 'make verify\\n'", 'make verify'],
+    ["$'make' verify", 'make verify'],
+    ["npm run $'check:all'", 'npm run check:all'],
+    ["orca terminal send --text $'make verify\\n'", 'make verify'],
+    ["screen -X stuff $'make verify\\n'", 'make verify'],
+    ["tmux -c 'make verify'", 'make verify'],
+    ["tmux new -d \\; send-keys 'make verify' Enter", 'make verify'],
+    ["tmux respawnw -k 'make verify'", 'make verify'],
+    ["tmux popup -E 'make verify'", 'make verify'],
+    ["tmux pipe-pane 'make verify'", 'make verify'],
+    ["tmux sp 'make verify'", 'make verify'],
+    ["tmux new -d bash -c 'make verify'", 'make verify'],
+    ["tmux send-keys -t x 'make' ' verify' Enter", 'make verify'],
+  ])('judges %s like the bare command (review 1)', (command, bareCommand) => {
+    const bare = decideInEachFolder(repository, bareCommand);
+
+    expect(bare).toEqual(EVERY_FOLDER('heavyJob'));
+    expect(decideInEachFolder(repository, command)).toEqual(bare);
+  });
+
+  it('denies a Terminal doScript call in a JavaScript osascript text', () => {
+    expect(
+      decideInEachFolder(
+        repository,
+        `osascript -l JavaScript -e 'Application("Terminal").doScript("make verify")'`,
+      ),
+    ).toEqual(EVERY_FOLDER('osascriptShell'));
+  });
+
+  it.each([`osascript -e 'display dialog "Do scripts run?"'`, "echo $'a\\tb'"])(
+    'allows a harmless text that only looks close: %s',
+    (command) => {
+      expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('allow'));
+    },
+  );
+
+  it('denies (accepted false positive, R3) prose that quotes a heavy command in backticks', () => {
+    expect(
+      decideInEachFolder(repository, "orca terminal send --text 'Do not run `make verify`; wait.'"),
+    ).toEqual(EVERY_FOLDER('heavyJob'));
+  });
+
   it.each([
     `osascript -e 'tell application "Terminal" to do script "make verify"'`,
     `osascript -l JavaScript -e 'app.doShellScript("pkill node")'`,
