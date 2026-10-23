@@ -112,7 +112,9 @@ describe('scripts/checks/security.sh re-scan of timed-out pairs', () => {
       jobs: rescan?.args[jobsIndex + 1],
       sameTimer: timerFlags(rescan)?.join(' ') === timerFlags(first)?.join(' '),
       json: rescan?.args.includes('--json'),
-      targets: rescan?.args.filter((argument) => argument.startsWith('/')),
+      targets: rescan?.args.filter(
+        (argument, index) => argument.startsWith('/') && rescan.args[index - 1] !== '--config',
+      ),
       configs: configArguments(rescan),
     }).toEqual({
       status: 0,
