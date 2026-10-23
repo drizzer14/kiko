@@ -1279,9 +1279,13 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   end, which moves with the clock; one that reaches the end is read afresh (S12-Q30). The piece
   of a pass after a range it failed on runs to the window's end, not to the end of the doubled span
   it was read in, so the rest of the window is not read in pieces that double from the range on
-  (S12-Q32). A page that comes back full halves the read, which a world of full pages may meet
-  more than once; the bound above holds for pages that are not full, and the worlds with full
-  pages are held red (S12-Q33).
+  (S12-Q32). A page that comes back full halves the read: a world with more rows than a page
+  after a stuck day adds the reads of the halving to each pass, so a record is imported within
+  r x (F(z) + H) runs, F(z) = 2z + 1, H = 2 x (ceil(log2(3 days / 1 hour)) + 1) and r the runs
+  between two reads of the re-scan (S12-Q33). The first re-scan window of a run starts after a
+  known stuck range that holds its start or ends a millisecond short of it, and the stored
+  re-scan hint is kept on a run that does not read the re-scan, so the halving of a full page is
+  not started again on every pass (S12-Q33, S12-Q35).
 - Marker total (C-NR1): Binance's decimal string is normalized to exactly the fiat's scale by the
   exact decimal parser: trailing zeros past the scale drop, missing ones pad
   (`"4150"` -> `4150.00`); a non-zero digit past the scale is a per-record stop `amount-precision`
