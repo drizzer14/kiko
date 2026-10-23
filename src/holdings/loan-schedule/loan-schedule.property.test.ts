@@ -281,25 +281,62 @@ describe('loan schedule property: the ledger agrees with the schedule', () => {
 });
 
 describe('loan schedule property: index bounds', () => {
-  it('maps a payment one period before the first row to it and a day earlier to nothing', () => {
+  it('maps a payment on the start day to the first row and a day earlier to nothing', () => {
     const violations = mismatchesOf(CASES, (found, { meta }) => {
       const plan = loanPlanOf(meta);
-      const lowerBound = addMonths(meta.startDate, -1);
 
       CLOCK_TIMES.forEach(([hour, minute]) => {
         expectEqual(
           found,
-          `index on the lower bound at ${hour}:${minute}`,
-          installmentIndexOf(meta, plan, atTime(lowerBound, hour, minute)),
+          `index on the start day at ${hour}:${minute}`,
+          installmentIndexOf(meta, plan, atTime(meta.startDate, hour, minute)),
           0,
         );
         expectEqual(
           found,
-          `index a day before the lower bound at ${hour}:${minute}`,
-          installmentIndexOf(meta, plan, atTime(shiftDays(lowerBound, -1), hour, minute)),
+          `index a day before the start at ${hour}:${minute}`,
+          installmentIndexOf(meta, plan, atTime(shiftDays(meta.startDate, -1), hour, minute)),
+          undefined,
+        );
+        expectEqual(
+          found,
+          `index a month before the start at ${hour}:${minute}`,
+          installmentIndexOf(meta, plan, atTime(addMonths(meta.startDate, -1), hour, minute)),
           undefined,
         );
       });
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it('counts a payment before the start day nowhere: no interest, nothing subtracted', () => {
+    const violations = mismatchesOf(CASES, (found, { meta, rows }) => {
+      const beforeStart = atTime(shiftDays(meta.startDate, -1), PAYMENT_HOUR, 0);
+      const onStart = atTime(meta.startDate, PAYMENT_HOUR, 0);
+      const amount = rows[0].paymentMinorUnits;
+      const book = buildPriceBook(
+        [],
+        [beforeStart, onStart].map((time) => ({
+          loanHoldingId: LOAN.id,
+          time,
+          amountMinorUnits: -amount,
+          currency: 'UAH' as const,
+        })),
+      );
+
+      expectEqual(
+        found,
+        'interest of a payment before the start',
+        loanInterestPerPaymentMinor(meta, [{ time: beforeStart, amountMinorUnits: -amount }])[0],
+        0,
+      );
+      expectEqual(
+        found,
+        'ledger outstanding on the start day with a payment the day before',
+        loanLedgerOutstandingMinorAt(meta, LOAN, book, onStart),
+        loanOutstandingMinorAt(meta, LOAN.id, EMPTY_PRICE_BOOK, onStart),
+      );
     });
 
     expect(violations).toEqual([]);

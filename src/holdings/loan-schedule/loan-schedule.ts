@@ -248,8 +248,9 @@ type LinkedPayment = { time: number; amountMinorUnits: number };
 
 // The installment a payment pays: the one whose due date is NEAREST to the
 // payment's local day (an early or late payment still matches its intended
-// installment), or undefined when the loan has no schedule or the payment is
-// more than one period outside it (see `loanInterestPerPaymentMinor`). Also
+// installment), or undefined when the loan has no schedule, the payment is
+// before the start day, or it is more than one period after the last
+// installment (see `loanInterestPerPaymentMinor`). Also
 // read by `src/holdings/loan-ledger/`'s anchor so a late first link anchors
 // on the SAME installment its interest is attributed to.
 export const installmentIndexOf = (
@@ -264,7 +265,7 @@ export const installmentIndexOf = (
   }
 
   const paymentDayKey = dayKeyOf(paymentTime);
-  const lowerBoundDayKey = dayKeyOf(addMonths(meta.startDate, -1));
+  const lowerBoundDayKey = dayKeyOf(meta.startDate);
   const upperBoundDayKey = dayKeyOf(addMonths(meta.startDate, installments.length));
 
   if (paymentDayKey < lowerBoundDayKey || paymentDayKey > upperBoundDayKey) {
@@ -293,15 +294,15 @@ export const installmentIndexOf = (
  * first half (and on the second only what the first could not cover), and a
  * partial payment never counts more interest than it actually paid.
  *
- * A payment MORE THAN ONE PERIOD outside the schedule counts 0 interest,
- * rather than mapping to the nearest (first/last) installment regardless of
- * distance — a payment years before the loan even started, or years after it
- * was fully paid off, is not this loan's interest. "One period" is the same
- * monthly cadence every due date is built from (`addMonths(startDate, k - 1)`):
- * one period before the first installment is `addMonths(startDate, -1)`, one
- * period after the last is `addMonths(startDate, installments.length)`. Both
- * bounds are INCLUSIVE — a payment exactly on one still maps to its boundary
- * installment, only a payment strictly beyond it counts 0.
+ * A payment OUTSIDE the schedule counts 0 interest, rather than mapping to the
+ * nearest (first/last) installment regardless of distance — a payment before
+ * the loan even started, or more than one period after it was fully paid off,
+ * is not this loan's interest. The schedule begins on the start day itself
+ * (installment 1 is due then, `addMonths(startDate, k - 1)`), so nothing
+ * dated earlier counts, and one period after the last installment is
+ * `addMonths(startDate, installments.length)`. Both bounds are INCLUSIVE — a
+ * payment exactly on one still maps to its boundary installment, only a
+ * payment strictly beyond it counts 0.
  */
 export const loanInterestPerPaymentMinor = (
   meta: LoanMeta,

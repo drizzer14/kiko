@@ -448,16 +448,19 @@ describe('loanInterestPerPaymentMinor', () => {
     );
   });
 
-  // A payment more than ONE PERIOD outside the schedule counts 0 interest,
-  // rather than mapping to the nearest
-  // (first/last) installment regardless of distance. "One period" is the
-  // same monthly cadence `loanInstallments` builds each due date from
-  // (`addMonths(startDate, k - 1)` for the k-th): one period before the first
-  // installment is `addMonths(startDate, -1)`, one period after the last is
-  // `addMonths(startDate, termMonths)`.
-  it('a payment more than one period before the first installment counts 0 interest', () => {
-    const beforeLowerBound = addDays(addMonths(annuityMeta.startDate, -1), -1);
-    expect(interestOfOnePayment(annuityMeta, beforeLowerBound, 10_000_000)).toBe(0);
+  // A payment outside the schedule counts 0 interest, rather than mapping to
+  // the nearest (first/last) installment regardless of distance. The schedule
+  // begins on the start day itself (a payment before it counts nowhere) and
+  // reaches one period past the last installment, `addMonths(startDate,
+  // termMonths)`.
+  it('a payment the day before the start day counts 0 interest', () => {
+    const beforeStart = addDays(annuityMeta.startDate, -1);
+    expect(interestOfOnePayment(annuityMeta, beforeStart, 10_000_000)).toBe(0);
+  });
+
+  it('a payment one period before the start day counts 0 interest', () => {
+    const onePeriodBefore = addMonths(annuityMeta.startDate, -1);
+    expect(interestOfOnePayment(annuityMeta, onePeriodBefore, 10_000_000)).toBe(0);
   });
 
   it('a payment more than one period after the last installment counts 0 interest', () => {
@@ -465,14 +468,6 @@ describe('loanInterestPerPaymentMinor', () => {
     const upperBound = addMonths(annuityMeta.startDate, installments.length);
     const afterUpperBound = addDays(upperBound, 1);
     expect(interestOfOnePayment(annuityMeta, afterUpperBound, 10_000_000)).toBe(0);
-  });
-
-  it('a payment exactly one period before the first installment still maps to it (boundary is inclusive)', () => {
-    const installments = loanInstallments(annuityMeta);
-    const lowerBound = addMonths(annuityMeta.startDate, -1);
-    expect(interestOfOnePayment(annuityMeta, lowerBound, 10_000_000)).toBe(
-      installments[0].interestMinorUnits,
-    );
   });
 
   it('a payment on the start day maps to the first installment', () => {
@@ -494,29 +489,29 @@ describe('loanInterestPerPaymentMinor', () => {
   // the earlier half takes it, the later half is all principal.
   it('counts an installment paid in two halves as interest only once, earliest half first', () => {
     const twoYearMeta: LoanMeta = { ...annuityMeta, termMonths: 24 };
-    const first = loanInstallments(twoYearMeta)[0];
-    const half = Math.round(first.paymentMinorUnits / 2);
-    const earlier = { time: addDays(first.dueDate, -6), amountMinorUnits: -half };
-    const later = { time: addDays(first.dueDate, -5), amountMinorUnits: -half };
+    const installment = loanInstallments(twoYearMeta)[1];
+    const half = Math.round(installment.paymentMinorUnits / 2);
+    const earlier = { time: addDays(installment.dueDate, -6), amountMinorUnits: -half };
+    const later = { time: addDays(installment.dueDate, -5), amountMinorUnits: -half };
 
-    expect(half).toBeGreaterThan(first.interestMinorUnits);
+    expect(half).toBeGreaterThan(installment.interestMinorUnits);
     expect(loanInterestPerPaymentMinor(twoYearMeta, [later, earlier])).toEqual([
       0,
-      first.interestMinorUnits,
+      installment.interestMinorUnits,
     ]);
   });
 
   it('lets a later part take the interest an earlier, smaller part could not cover', () => {
-    const first = loanInstallments(annuityMeta)[0];
-    const small = Math.floor(first.interestMinorUnits / 3);
+    const installment = loanInstallments(annuityMeta)[1];
+    const small = Math.floor(installment.interestMinorUnits / 3);
     const payments = [
-      { time: addDays(first.dueDate, -1), amountMinorUnits: -small },
-      { time: first.dueDate, amountMinorUnits: -first.paymentMinorUnits },
+      { time: addDays(installment.dueDate, -1), amountMinorUnits: -small },
+      { time: installment.dueDate, amountMinorUnits: -installment.paymentMinorUnits },
     ];
 
     expect(loanInterestPerPaymentMinor(annuityMeta, payments)).toEqual([
       small,
-      first.interestMinorUnits - small,
+      installment.interestMinorUnits - small,
     ]);
   });
 
@@ -563,7 +558,7 @@ const splitsOf = (meta: LoanMeta, payments: Parameters<typeof loanPaymentSplitsM
 
 describe('loanPaymentSplitsMinor', () => {
   const installments = loanInstallments(annuityMeta);
-  const [first] = installments;
+  const [first, second] = installments;
 
   it('an exact match carries no excess', () => {
     expect(splitsOf(annuityMeta, [payAbove(first, 0)])).toEqual([
@@ -600,21 +595,21 @@ describe('loanPaymentSplitsMinor', () => {
   });
 
   it('a prepayment that took the interest leaves the regular payment its whole scheduled amount as principal', () => {
-    const prepayment = payAbove(first, 2_000_000, -2);
-    const regular = payAbove(first, 3_000);
+    const prepayment = payAbove(second, 2_000_000, -2);
+    const regular = payAbove(second, 3_000);
 
     expect(splitsOf(annuityMeta, [regular, prepayment])).toEqual([
       { interestMinorUnits: 0, excessMinorUnits: 3_000 },
-      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 0 },
+      { interestMinorUnits: second.interestMinorUnits, excessMinorUnits: 0 },
     ]);
   });
 
   it('gives every within-tolerance payment mapped to one installment its own excess', () => {
-    const earlier = payAbove(first, 3_000, -1);
-    const later = payAbove(first, 2_000, 1);
+    const earlier = payAbove(second, 3_000, -1);
+    const later = payAbove(second, 2_000, 1);
 
     expect(splitsOf(annuityMeta, [earlier, later])).toEqual([
-      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 3_000 },
+      { interestMinorUnits: second.interestMinorUnits, excessMinorUnits: 3_000 },
       { interestMinorUnits: 0, excessMinorUnits: 2_000 },
     ]);
   });
@@ -632,7 +627,7 @@ describe('loanPaymentSplitsMinor', () => {
 
   it('counts no excess for a payment outside the schedule', () => {
     const early = {
-      time: addDays(addMonths(annuityMeta.startDate, -1), -1),
+      time: addDays(annuityMeta.startDate, -1),
       amountMinorUnits: -1_323_303,
     };
 

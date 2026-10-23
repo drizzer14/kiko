@@ -110,11 +110,17 @@ const isEligibleTransaction = (transaction: MatchableTransaction): boolean =>
 
 // Rule 2: the transaction's own LOCAL day, 3 days before to 7 days after the
 // due date's local day — both bounds inclusive, the same "both bounds
-// inclusive" idiom `loanInterestPerPaymentMinor` already establishes.
-const withinDateWindow = (transactionTime: number, dueDate: number): boolean => {
+// inclusive" idiom `loanInterestPerPaymentMinor` already establishes. The
+// window never opens before the loan's start day: payment 1 is due ON it, and
+// a payment before the start day counts nowhere (`installmentIndexOf`).
+const withinDateWindow = (transactionTime: number, dueDate: number, startDate: number): boolean => {
   const dayDiff = (dayKeyOf(transactionTime) - dayKeyOf(dueDate)) / DAY_MS;
 
-  return dayDiff >= -WINDOW_BEFORE_DAYS && dayDiff <= WINDOW_AFTER_DAYS;
+  return (
+    dayKeyOf(transactionTime) >= dayKeyOf(startDate) &&
+    dayDiff >= -WINDOW_BEFORE_DAYS &&
+    dayDiff <= WINDOW_AFTER_DAYS
+  );
 };
 
 // One loan's own installment, carrying back the per-loan fields rule 3 needs
@@ -124,6 +130,7 @@ const withinDateWindow = (transactionTime: number, dueDate: number): boolean => 
 type CandidateInstallment = {
   loanHoldingId: string;
   currency: Currency;
+  startDate: number;
   dueDate: number;
   paymentMinorUnits: number;
   paymentHoldingId: string | undefined;
@@ -187,7 +194,7 @@ const installmentIsTaken = (
         Math.abs(payment.amountMinorUnits),
         installment.currency,
       ) &&
-      withinDateWindow(payment.time, installment.dueDate),
+      withinDateWindow(payment.time, installment.dueDate, installment.startDate),
   );
 
 // Every installment due on or before `now` (plus the window's own
@@ -211,6 +218,7 @@ const candidateInstallmentsFor = (
     .map((installment) => ({
       loanHoldingId: loan.id,
       currency: loan.currency,
+      startDate: meta.startDate,
       dueDate: installment.dueDate,
       paymentMinorUnits: installment.paymentMinorUnits,
       paymentHoldingId: meta.paymentHoldingId,
@@ -275,7 +283,7 @@ export const matchLoanPayments = (params: {
           Math.abs(transaction.amountMinorUnits),
           installment.currency,
         ) &&
-        withinDateWindow(transaction.time, installment.dueDate) &&
+        withinDateWindow(transaction.time, installment.dueDate, installment.startDate) &&
         hasThirdSignal(transaction, installment)
       ) {
         pairs.push({ transactionId: transaction.id, installment });
