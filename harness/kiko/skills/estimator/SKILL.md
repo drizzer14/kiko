@@ -84,7 +84,9 @@ Rules:
 - Measured 2026-10-19: a 436-mutant, 18-file gate took 2 h 11 min with the standing patch,
   3 h 48 min on the same change set without it.
 - A TIMEOUT-HEAVY rerun adds a Stryker dry run plus the rerun mutants and a load wait; a gate
-  can start late at high load (`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`).
+  can start late at high load (`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`). Any queued job
+  (verify, check-all, security, gate) can start late the same way, up to the cap (1200 s by
+  default); add that wait to a verify or check-all estimate.
 
 These are a snapshot of a small sample, not a formula — always re-check
 against the log's current rows, which may have more by the time you read

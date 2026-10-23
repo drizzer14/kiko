@@ -778,8 +778,191 @@ describe('scripts/ff-main.sh plugin version rule', () => {
   });
 });
 
+type PatchStub = { log: string };
+
+// The stub records argv, cwd and the HEAD it sees, one line per call, then exits as told. It
+// lives untracked in main, as the real node_modules does.
+const installPatchStub = (
+  fixture: Fixture,
+  { exitCode = 0, withBinary = true, withPatches = true } = {},
+): PatchStub => {
+  const log = join(fixture.home, 'patch-package.log');
+  writeFile(fixture.home, 'patch-package.log', '');
+
+  if (withPatches) {
+    writeFile(fixture.main, 'patches/x.patch', 'patch\n');
+  }
+
+  if (withBinary) {
+    const binaryDirectory = join(fixture.main, 'node_modules/.bin');
+    mkdirSync(binaryDirectory, { recursive: true });
+    writeExecutable(
+      join(binaryDirectory, 'patch-package'),
+      `#!/usr/bin/env bash\nprintf '%s|%s|%s\\n' "$*" "$(pwd -P)" "$(git rev-parse HEAD)" >> '${log}'\nexit ${exitCode}\n`,
+    );
+  }
+
+  return { log };
+};
+
+const stubCalls = ({ log }: PatchStub): string[] =>
+  readFileSync(log, 'utf8').split('\n').filter(Boolean);
+
+const withLockfileChange = (fixture: Fixture): string => {
+  const head = commitFile(fixture, fixture.work, 'package-lock.json', '{"lockfileVersion":3}\n');
+  record(fixture, doneLine(head));
+
+  return head;
+};
+
+describe('scripts/ff-main.sh runs main patch-package after the fast-forward', () => {
+  const warningsOf = (stderr: string) =>
+    stderr.split('\n').filter((line) => line.includes('WARNING'));
+
+  it('runs the stub once with --error-on-fail, in the main checkout, at the new tip', () => {
+    const fixture = createFixture();
+    const stub = installPatchStub(fixture);
+    const args = greenTip(fixture);
+
+    const result = runScript(fixture, args);
+
+    expect(result.status).toBe(0);
+    expect(stubCalls(stub)).toEqual([`--error-on-fail|${fixture.main}|${fixture.tipCommit}`]);
+  });
+
+  it('does not run the stub when main has no patches folder', () => {
+    const fixture = createFixture();
+    const stub = installPatchStub(fixture, { withPatches: false });
+    const args = greenTip(fixture);
+
+    const result = runScript(fixture, args);
+
+    expect(result.status).toBe(0);
+    expect(mainHead(fixture)).toBe(fixture.tipCommit);
+    expect(stubCalls(stub)).toEqual([]);
+  });
+
+  it.each<[string, { exitCode?: number; withBinary?: boolean }]>([
+    ['the stub exits 1', { exitCode: 1 }],
+    ['the stub is missing', { withBinary: false }],
+  ])('exits 2 saying main moved, with main at the tip, when %s', (_title, options) => {
+    const fixture = createFixture();
+    installPatchStub(fixture, options);
+    const args = greenTip(fixture);
+
+    const result = runScript(fixture, args);
+    const what = result.stderr.split('\n').find((line) => line.startsWith('WHAT FAILED:'));
+
+    expect(result.status).toBe(2);
+    expect(mainHead(fixture)).toBe(fixture.tipCommit);
+    expect(what).toContain(`main moved to ${fixture.tipCommit}`);
+  });
+
+  it('warns naming npm ci when package-lock.json changed, and still runs the stub', () => {
+    const fixture = createFixture();
+    const stub = installPatchStub(fixture);
+    const head = withLockfileChange(fixture);
+
+    const result = runScript(fixture, [head]);
+    const warnings = warningsOf(result.stderr);
+
+    expect(result.status).toBe(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('npm ci');
+    expect(stubCalls(stub)).toHaveLength(1);
+  });
+
+  it('warns naming npm ci when only a file under patches/ changed, and still runs the stub', () => {
+    const fixture = createFixture();
+    const stub = installPatchStub(fixture);
+    const head = commitFile(fixture, fixture.work, 'patches/added.patch', 'added patch\n');
+    record(fixture, doneLine(head));
+
+    const result = runScript(fixture, [head]);
+    const warnings = warningsOf(result.stderr);
+
+    expect(result.status).toBe(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('npm ci');
+    expect(stubCalls(stub)).toHaveLength(1);
+  });
+
+  it('prints no WARNING when package-lock.json is unchanged', () => {
+    const fixture = createFixture();
+    installPatchStub(fixture);
+    const args = greenTip(fixture);
+
+    const result = runScript(fixture, args);
+
+    expect(result.status).toBe(0);
+    expect(warningsOf(result.stderr)).toEqual([]);
+  });
+
+  it.each<[string, Arrange]>([
+    ['no done.log', ofTip],
+    ['a red verify', recordOnly((fixture) => doneLine(fixture.tipCommit, 'verify', '1'))],
+    ['a main that is not an ancestor of the commit', divergeMain],
+    ['a main checkout on another branch', mainOnBranch],
+    ['an unusable argument', () => ['--force']],
+    [
+      'a tracked change in main that the fast-forward would overwrite',
+      (fixture) => {
+        const head = commitFile(fixture, fixture.work, 'base.txt', 'changed in work\n');
+        writeFile(fixture.main, 'base.txt', 'edited in main\n');
+        record(fixture, doneLine(head));
+
+        return [head];
+      },
+    ],
+    [
+      'a plugin version below main',
+      (fixture) => {
+        withMainManifest(fixture, pluginManifest('0.4.22'));
+        const head = commitPluginChange(fixture, 'harness', pluginManifest('0.4.21'));
+        record(fixture, doneLine(head));
+
+        return [head];
+      },
+    ],
+  ])('runs no stub when the refusal is %s', (_title, arrange) => {
+    const fixture = createFixture();
+    const stub = installPatchStub(fixture);
+    const args = arrange(fixture);
+
+    const result = runScript(fixture, args);
+
+    expect(result.status).toBe(2);
+    expect(stubCalls(stub)).toEqual([]);
+  });
+});
+
+describe('package.json postinstall', () => {
+  it('is exactly the patch, environment and hooks steps joined by spaced &&', () => {
+    const manifest = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
+
+    expect(manifest.scripts.postinstall).toBe(
+      'patch-package --error-on-fail && node scripts/ensure-env.js && bash scripts/ensure-git-hooks.sh',
+    );
+  });
+
+  it('starts with patch-package --error-on-fail', () => {
+    const manifest = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
+
+    expect(manifest.scripts.postinstall.startsWith('patch-package --error-on-fail')).toBe(true);
+  });
+});
+
 describe('scripts/ff-main.sh text', () => {
   const text = readFileSync(SCRIPT, 'utf8');
+
+  it('names no npx and no npm install', () => {
+    expect(text).not.toMatch(/\bnpx\b/);
+    expect(text).not.toMatch(/\bnpm install\b/);
+  });
+
+  it('never runs npm ci (a WARNING may name it)', () => {
+    expect(text).not.toMatch(/(^|&&|\|\||;|\$\(|`)\s*npm ci\b/m);
+  });
 
   it('names no KIKO_ variable other than KIKO_QUEUE_DIR', () => {
     expect([...new Set(text.match(/KIKO_[A-Z_]+/g))]).toEqual(['KIKO_QUEUE_DIR']);

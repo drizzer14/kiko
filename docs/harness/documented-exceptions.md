@@ -324,6 +324,13 @@ verified usage, not dead weight:
   so Knip reports it as unused. Exercised by `__tests__/closure-table.test.ts`,
   which runs the script as a subprocess in a throwaway git repository, not an
   import.
+- **`knip.json` `ignore`**: `scripts/checks/permission-doctor.js` — the same
+  shape as `closure-table.js` above. `scripts/checks/permission-doctor.sh`
+  (`check:permissions`, run by hand against the user's permission settings, not
+  part of `check:all`) reaches it only via a `node` invocation, never a static
+  `import`/`require`, so Knip reports it as unused. Exercised by
+  `__tests__/permission-doctor.test.ts`, which runs the script as a subprocess
+  against a temporary HOME and `CLAUDE_CONFIG_DIR`, not an import.
 - **`knip.json` `ignore`**: `scripts/checks/comment-only-changes.js` — the
   same shape as `shipped-migrations.js` above. `scripts/checks/mutation.sh`
   reaches it only via a `node` invocation, never a static `import`/`require`,
@@ -1018,7 +1025,8 @@ verified usage, not dead weight:
   holds the script (a copy inside another repository, whose config it must not change). Reason:
   no commit is possible from there, so there is nothing to guard. A config it cannot read, a
   write that fails, or a core.hooksPath that already holds another value is not skipped: it
-  prints the standard block and exits 2.
+  prints the standard block and exits 2. A value that is a same-folder spelling of `githooks`
+  (see the script header) is rewritten to `githooks` with one NOTICE and exit 0.
 - **`__tests__/skill-identifiers.test.ts`'s two exemption lists (non-project
   names, and bad-name examples per skill file).** The test fails when an inline code span in a
   skill or agent file names an identifier that no word of the code corpus

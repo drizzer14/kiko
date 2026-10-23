@@ -260,8 +260,9 @@ the id Stryker uses, not `getTestID`. A static mutant (`testFilter` undefined), 
 is an exact match, so a test that only contained a covering id as a substring (any case) no longer
 runs as an extra.
 
-How it is pinned (three layers, because `patch-package` exits 0 on a failed apply when run
-locally, so a missing patch is silent):
+How it is pinned (three layers: `postinstall` runs `patch-package --error-on-fail`, so a failed
+apply fails `npm ci`, but a tree installed without install scripts holds no patch and says
+nothing):
 
 - `__tests__/stryker-jest-runner-patch.test.ts` fails unless three packages are pinned exactly:
   `@stryker-mutator/jest-runner` 8.7.1, `@stryker-mutator/core` 8.7.1 (it passes the dry run's
@@ -276,6 +277,8 @@ locally, so a missing patch is silent):
   file or a missing marker prints a failure block (naming the marker, `npm ci` and `patch-package`)
   and exits 2. `--list` (`make mutable`) skips it, because it never starts Stryker and counting
   must work on an unpatched tree.
+- A failed apply fails `npm ci`; a tree installed with `--ignore-scripts` holds no patch (the
+  `mutation.sh` preflight catches it).
 - `npm ci` re-applies the patch; read the `patch-package` output for the
   `@stryker-mutator/jest-runner@8.7.1` line with its check mark.
 

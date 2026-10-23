@@ -440,10 +440,12 @@ if [ "$file_count" -gt "$MUTATION_FILE_CAP" ]; then
 fi
 [ "$list" -eq 1 ] && exit 0
 
-# patch-package exits 0 on a failed apply when run locally, so an unpatched jest runner would turn
-# every heavy mutant back into a testNamePattern regex timeout without a word. This sits after
-# the --list exit on purpose: --list never starts Stryker, so `make mutable` must keep counting on
-# an unpatched tree. It sits before the dedup skip, so a recorded pass cannot hide a missing patch.
+# postinstall runs patch-package --error-on-fail, so a failed apply fails npm ci; a tree installed
+# with --ignore-scripts, or before the patch existed, still holds an unpatched jest runner, which
+# would turn every heavy mutant back into a testNamePattern regex timeout without a word. This sits
+# after the --list exit on purpose: --list never starts Stryker, so `make mutable` must keep
+# counting on an unpatched tree. It sits before the dedup skip, so a recorded pass cannot hide a
+# missing patch.
 RUNNER_DIR="$ROOT/node_modules/@stryker-mutator/jest-runner"
 PATCH_MARKER="kiko-patch: exact covering-test selection"
 for patched_file in dist/src/jest-test-runner.js dist/src/jest-plugins/mixin-jest-environment.cjs; do
@@ -453,7 +455,7 @@ for patched_file in dist/src/jest-test-runner.js dist/src/jest-plugins/mixin-jes
       "The installed @stryker-mutator/jest-runner is not patched." \
       "$RUNNER_DIR/$patched_file is missing or lacks the marker \"$PATCH_MARKER\"." \
       "The standing patch makes a mutant run select its covering tests exactly instead of through one regex per mutant. Without it a mutant with more than a few hundred covering tests times out on regex cost alone and the gate reports a false TIMEOUT-HEAVY failure." \
-      "Run: npm ci   (its postinstall runs patch-package, which applies patches/@stryker-mutator+jest-runner+8.7.1.patch; patch-package exits 0 on a failed apply locally, so read its output for the jest-runner line). After a jest-runner upgrade re-make the patch: see docs/harness/dependency-hygiene.md." \
+      "Run: npm ci   (its postinstall runs patch-package --error-on-fail, which applies patches/@stryker-mutator+jest-runner+8.7.1.patch; a failed apply fails npm ci, and a tree installed with --ignore-scripts never ran it). After a jest-runner upgrade re-make the patch: see docs/harness/dependency-hygiene.md." \
       "Do not run Stryker on an unpatched runner, do not raise timeoutMS, and do not add only the marker to the files: re-derive the patch per docs/harness/dependency-hygiene.md."
     exit 2
   fi

@@ -289,6 +289,22 @@ describe('dustRowsOf', () => {
 
     expect(outcomes.map((outcome) => outcome.kind)).toEqual(['stopped', 'rows']);
   });
+
+  it.each([
+    ['source', 'amount'],
+    ['received', 'transferedAmount'],
+  ])('lets a failure that is not a stop propagate when reading the %s amount', (_name, field) => {
+    const failing = dustEntryOf();
+    Object.defineProperty(failing, field, {
+      get: () => {
+        throw new TypeError('unreadable getter');
+      },
+    });
+
+    expect(() =>
+      dustRowsOf({ accountId: ACCOUNT, record: dustRecordOf({ entries: [failing] }) }),
+    ).toThrow(new TypeError('unreadable getter'));
+  });
 });
 
 const holdingWith = (id: string, key: string): HoldingRow =>
@@ -691,5 +707,94 @@ describe('syncBinanceDustHistory', () => {
     await sync(deps);
 
     expect(new Set(patchKinds(deps))).toEqual(new Set(['coinList']));
+  });
+
+  it('writes no coin list and no row for a page of stopped and zero-unit entries, logging each code once', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: serverOf(
+        dustRecordOf({
+          entries: [
+            dustEntryOf({ amount: '0' }),
+            dustEntryOf({ fromAsset: 'DOGE', amount: 'abc' }),
+            dustEntryOf({ fromAsset: 'PEPE', transferedAmount: '0' }),
+          ],
+        }),
+      ),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0 });
+    expect(stopCodes()).toEqual(['amount-malformed']);
+    expect(deps.patchExchangeState).not.toHaveBeenCalled();
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+  });
+
+  it('lists only the coins of the entries that name one, leaving a zero-unit entry out of both lists', async () => {
+    const { depsOf, sync } = worldOf();
+    const deps = depsOf({
+      fetchDustHistory: serverOf(
+        dustRecordOf({
+          entries: [
+            dustEntryOf({ amount: '0' }),
+            dustEntryOf({ fromAsset: 'PEPE' }),
+            dustEntryOf({ fromAsset: 'DOGE', amount: 'abc' }),
+            dustEntryOf({ fromAsset: 'BTC', amount: '9007199254741' }),
+          ],
+        }),
+      ),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 1 });
+    expect(coinListPatchesOf(deps)).toEqual([
+      { kind: 'coinList', coins: 'oversizedCoins', list: 'history', tickers: ['BTC'] },
+      { kind: 'coinList', coins: 'untrackedCoins', list: 'history', tickers: ['PEPE'] },
+    ]);
+    expect([...stopCodes()].sort()).toEqual(['amount-malformed', 'amount-too-large']);
+  });
+
+  it.each([
+    ['listing the holdings', 'listHoldings'],
+    ['creating a missing holding', 'ensureHoldings'],
+  ])(
+    'rejects with a failure that is not a stop when %s fails, writing no row',
+    async (_name, seam) => {
+      const { depsOf, sync } = worldOf([]);
+      const deps = depsOf({
+        fetchDustHistory: serverOf(dustRecordOf()),
+        [seam]: jest.fn(async () => {
+          throw new Error('database unavailable');
+        }),
+      });
+
+      await expect(sync(deps)).rejects.toThrow('database unavailable');
+
+      expect(deps.addTransactions).not.toHaveBeenCalled();
+      expect(stopCodes()).toEqual([]);
+    },
+  );
+
+  it('reads the clock of the process when the deps give none', async () => {
+    const { accountId, depsOf, sync } = worldOf();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    const deps = depsOf({
+      fetchDustHistory: jest.fn(async () => {
+        throw new BinanceRateLimitError(429, 30_000);
+      }),
+    });
+    const withoutClock = Object.fromEntries(
+      Object.entries(deps).filter(([key]) => key !== 'now'),
+    ) as Partial<BinanceDustHistoryDeps>;
+
+    await sync(withoutClock as BinanceDustHistoryDeps);
+
+    expect(isBinanceCoolingDown(accountId, NOW + 29_000)).toBe(true);
+    expect(isBinanceCoolingDown(accountId, NOW + 30_000)).toBe(false);
+    expect((deps.fetchDustHistory as jest.Mock).mock.calls[0]?.[2]?.now?.()).toBe(NOW);
+
+    nowSpy.mockRestore();
   });
 });

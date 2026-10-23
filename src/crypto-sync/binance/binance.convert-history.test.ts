@@ -1,6 +1,7 @@
 import {
   coinListPatchesOf,
   numberMarkWritesOfAnyWalk,
+  walkMarkWritesOf,
   walkStateFake,
 } from '@kiko/test-support/walk-marks';
 import {
@@ -28,8 +29,8 @@ import { NOW } from './binance.pay-test-fixtures';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
-import { type BinanceRunBudget, createBinanceHistoryRun } from './binance.history-budget';
 import { type BinanceConvertRecord, BinanceHistoryParseError } from './binance.history-client';
+import { type BinanceRunBudget, COSTS, createBinanceHistoryRun } from './binance.history-budget';
 
 const ACCOUNT = 'acc-1';
 const PAIR = `${ACCOUNT}:convert:quote-1`;
@@ -592,6 +593,7 @@ describe('what the Convert walk imports', () => {
     expect(world.fake.notImported()).toEqual([
       `convert-unrecognized:quote-1:${CONVERT_CREATED_AT}`,
     ]);
+    expect(coinListPatchesOf(deps)).toEqual([]);
     expect(CURSOR(world)).toBe(NOW);
   });
 
@@ -646,6 +648,7 @@ describe('what the Convert walk imports', () => {
 
       expect(deps.addTransactions).not.toHaveBeenCalled();
       expect(world.fake.notImported()).toEqual([]);
+      expect(coinListPatchesOf(deps)).toEqual([]);
       expect(CURSOR(world)).toBe(NOW);
     },
   );
@@ -758,7 +761,65 @@ describe('a Convert page with more data', () => {
       endTime: NOW - HOUR_MS + 1,
     });
     expect(CURSOR(world)).toBe(NOW - HOUR_MS);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
     expect(stopCodes()).toEqual(['convert-page-stuck']);
+  });
+
+  it('owes the span of the re-scan, with no row, when one millisecond of it still has more data', async () => {
+    const world = recentWorld();
+    const stuckAt = NOW - HOUR_MS - 5 * 60_000;
+    const deps = world.depsOf({
+      fetchConvertHistory: jest.fn(
+        async (_apiKey: string, _secret: string, query: { startTime: number; endTime: number }) =>
+          convertPageOf([], {
+            moreData: query.startTime <= stuckAt && stuckAt <= query.endTime,
+          }),
+      ),
+    });
+
+    const result = await world.walk(deps, wideRun());
+
+    expect(result.complete).toBe(false);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(world.fake.marksOf('convert').pending).toEqual([
+      { start: stuckAt - 1, end: stuckAt + 1 },
+    ]);
+    expect(CURSOR(world)).toBe(NOW);
+    expect(stopCodes()).toEqual(['convert-page-stuck', 'convert-page-stuck']);
+  });
+
+  it('leaves a point window that ran out of calls after a stuck millisecond a resume that owes it', async () => {
+    const world = recentWorld();
+    const stuckAt = NOW - 2 * CONVERT_WINDOW_MS;
+    world.fake.seed('convert', {
+      pending: [{ start: stuckAt - 1, end: stuckAt + 1, kind: 'point' }],
+    });
+    let exhausted = false;
+    const deps = world.depsOf({
+      fetchConvertHistory: jest.fn(
+        async (_apiKey: string, _secret: string, query: { startTime: number; endTime: number }) => {
+          const dense = query.startTime <= stuckAt && stuckAt <= query.endTime;
+
+          exhausted = exhausted || (dense && query.endTime - query.startTime === 1);
+
+          return convertPageOf([], { moreData: dense });
+        },
+      ),
+    });
+
+    const result = await world.walk(deps, spiedRun(() => !exhausted).run);
+
+    expect(result.complete).toBe(false);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(world.fake.marksOf('convert').spanHints).toMatchObject({
+      point: [
+        {
+          start: stuckAt - 1,
+          end: stuckAt + 1,
+          resume: { from: stuckAt, returned: [], stuck: [{ start: stuckAt - 1, end: stuckAt }] },
+        },
+      ],
+    });
   });
 });
 
@@ -868,5 +929,158 @@ describe('when the Convert walk reads nothing', () => {
     expect(CURSOR(world)).toBe(HISTORY_FLOOR_MS + 2 * CONVERT_WINDOW_MS);
     expect(isBinanceCoolingDown(world.accountId, NOW + 29_000)).toBe(true);
     expect(isBinanceCoolingDown(world.accountId, NOW + 30_000)).toBe(false);
+  });
+
+  it('reads nothing while the account is cooling down, not even its credentials or its marks', async () => {
+    const { accountId, depsOf, walk } = worldOf();
+    setBinanceCooldownUntil(accountId, NOW + 60_000);
+    const readCredentials = jest.fn(async () => ({ apiKey: 'api-key', secret: 'secret' }));
+    const deps = depsOf({ readCredentials });
+
+    await walk(deps);
+
+    expect(readCredentials).not.toHaveBeenCalled();
+    expect(deps.readExchangeState).not.toHaveBeenCalled();
+    expect(deps.patchExchangeState).not.toHaveBeenCalled();
+  });
+
+  it('reads nothing and reports unfinished when the clock stands at the history floor', async () => {
+    const { depsOf, walk } = worldOf();
+    const deps = depsOf({ now: () => HISTORY_FLOOR_MS });
+
+    const result = await walk(deps);
+
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(deps.fetchConvertHistory).not.toHaveBeenCalled();
+  });
+
+  it('takes the time from the wall clock when no clock is given', async () => {
+    const world = recentWorld();
+    const { now: _givenClock, ...deps } = world.depsOf();
+    const wallClock = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+
+    try {
+      await world.walk(deps as BinanceConvertHistoryDeps);
+    } finally {
+      wallClock.mockRestore();
+    }
+
+    expect(CURSOR(world)).toBe(NOW);
+    expect(queriesOf(deps as BinanceConvertHistoryDeps).map(({ endTime }) => endTime)).toContain(
+      NOW,
+    );
+  });
+});
+
+type BudgetSpy = {
+  canAfford: jest.Mock<boolean, Parameters<BinanceRunBudget['canAfford']>>;
+  record: jest.Mock<void, Parameters<BinanceRunBudget['record']>>;
+};
+
+/** A run whose budget affords a call while `affords` says so, and keeps every ask and record. */
+const spiedRun = (affords: (recorded: number) => boolean = () => true) => {
+  let recorded = 0;
+  const spy: BudgetSpy = {
+    canAfford: jest.fn<boolean, Parameters<BinanceRunBudget['canAfford']>>(() => affords(recorded)),
+    record: jest.fn<void, Parameters<BinanceRunBudget['record']>>(() => {
+      recorded += 1;
+    }),
+  };
+
+  return {
+    spy,
+    run: createExchangeRun({
+      intervalMs: 0,
+      clock: { now: () => NOW, sleep: async () => undefined },
+      budget: spy,
+    }),
+  };
+};
+
+describe('the Convert walk and its budget', () => {
+  it('asks for, and records, every call on the convert lane at the convert cost', async () => {
+    const world = recentWorld();
+    const page = convertPageOf([convertRecordOf()]);
+    const { spy, run } = spiedRun();
+
+    await world.walk(world.depsOf({ fetchConvertHistory: jest.fn(async () => page) }), run);
+
+    expect(spy.canAfford.mock.calls.length).toBeGreaterThan(0);
+    expect(spy.canAfford.mock.calls.map(([lane, cost]) => [lane, cost])).toEqual(
+      spy.canAfford.mock.calls.map(() => ['convert', COSTS.convert]),
+    );
+    expect(spy.record.mock.calls.length).toBeGreaterThan(0);
+    expect(spy.record.mock.calls).toEqual(spy.record.mock.calls.map(() => ['convert', page]));
+  });
+
+  it('reads no further span once the budget cannot afford one, and reports the walk unfinished', async () => {
+    const world = recentWorld();
+    const fetchConvertHistory = jest
+      .fn()
+      .mockResolvedValueOnce(convertPageOf([], { moreData: true }))
+      .mockResolvedValue(convertPageOf());
+    const deps = world.depsOf({ fetchConvertHistory });
+
+    const result = await world.walk(deps, spiedRun((recorded) => recorded < 1).run);
+
+    expect(queriesOf(deps)).toHaveLength(1);
+    expect(result.complete).toBe(false);
+  });
+
+  it('reads no other window once Binance has rate limited it, though the budget has calls left', async () => {
+    const world = recentWorld();
+    const deps = world.depsOf({
+      fetchConvertHistory: jest.fn(async () => {
+        throw new BinanceRateLimitError(429, 30_000);
+      }),
+    });
+
+    const result = await world.walk(deps, spiedRun().run);
+
+    expect(queriesOf(deps)).toHaveLength(1);
+    expect(result.complete).toBe(false);
+    expect(isBinanceCoolingDown(world.accountId, NOW + 1_000)).toBe(true);
+  });
+});
+
+describe('what the Convert walk writes to the lists and marks', () => {
+  it('lists the coin of an amount past the safe integer as oversized, and owes the point', async () => {
+    const world = recentWorld();
+    const deps = world.depsOf({
+      fetchConvertHistory: convertServerOf([convertRecordOf({ toAmount: '90071992.54740992' })]),
+    });
+
+    await world.walk(deps);
+
+    expect(coinListPatchesOf(deps)).toEqual([
+      { kind: 'coinList', coins: 'oversizedCoins', list: 'history', tickers: ['USDT'] },
+    ]);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+  });
+
+  it('owes the point of a conversion whose holding cannot be resolved, naming that stop', async () => {
+    const world = recentWorld();
+    const deps = world.depsOf({
+      listHoldings: async () => [],
+      fetchConvertHistory: convertServerOf([convertRecordOf()]),
+    });
+
+    await world.walk(deps);
+
+    expect(stopCodes()).toEqual(['convert-holding-missing']);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+  });
+
+  it('owes all the ground before the cursor when the stored pending list is unreadable', async () => {
+    const world = recentWorld();
+    world.fake.seed('convert', { pending: 'unreadable' });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(walkMarkWritesOf(deps, 'convert', 'pending')[0]).toEqual([
+      { start: HISTORY_FLOOR_MS, end: NOW - HOUR_MS },
+    ]);
+    expect(stopCodes()).toContain('pending-malformed');
   });
 });

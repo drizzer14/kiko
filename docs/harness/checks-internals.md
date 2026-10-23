@@ -50,6 +50,18 @@ it. Stryker's own `concurrency` is 2.
 
 `scripts/job-queue.sh` queues every heavy job (verify, check-all, security, the mutation gate) so one runs at a time across worktrees; read its header for the contract. State lives in `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. The lock is an atomic symlink whose target is the owner record `<waiter pid> <job group|-> <kind> <label> <worktree>`; a `claim` symlink (a pid) is held while a waiter checks, removes, and creates the lock. A lock is live while its waiter pid is alive OR its job group has a member. A gate holds this queue lock, then `mutation.sh` takes its own lock above.
 
+The load wait: a job of every class (verify, check-all, security, gate) at the head waits while
+the 5-minute load is at or above 10, at most `KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS` seconds
+(default 1200). That one name is the cap for every class, with no alias; a value that is not a
+whole number is refused for a job command (exit 2). The queue prints one
+`WAITING <label>: load ...` line, then `LOAD WAIT EXPIRED <label>: ...` and a `START` line when
+the cap passes; an unreadable load prints a `NOTE` and does not defer. A hold, a battery or an
+unknown power state keeps its own WAITING reason and reads no load.
+
+`hold <reason>` stops every start but no running job: it prints a `running:` line for a job that
+holds the lock, and a start racing the hold backs off, the one the line names included.
+`status` reads the tickets before the lock.
+
 ## Mutation file cap
 
 After the lock, `mutation.sh` refuses (exit 2, structured block) a

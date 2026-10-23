@@ -32,10 +32,9 @@
 // and help stay allowed. A fast-forward-only update (`merge --ff-only`, `pull --ff-only`) is its
 // own finding, `mainFastForward`: main moves only through `bash scripts/ff-main.sh <sha>`, which
 // runs after a queued verify of that commit. Any other git command that moves the branch `main`
-// (a `reset` to a commit in the main checkout; `update-ref`, `checkout -B`, `switch -C`,
-// `branch -m|-f|-d`, a fetch or push into it, `symbolic-ref`, `worktree add -B` naming it from any
-// worktree of this repository) is the finding `mainMove`; the rules live in
-// `kill-guard-main-moves.js`.
+// is the finding `mainMove`; the forms, and which of them count from any worktree of this
+// repository, are in the header of `kill-guard-main-moves.js`, which holds the rules. A place the
+// text cannot name (an unresolved `-C` or `cd`) fails closed.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
 // `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
@@ -113,7 +112,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { mainMoveTarget } = require('./kill-guard-main-moves');
+const { mainMoveTarget, environmentFetchWritesMain } = require('./kill-guard-main-moves');
 
 const MAIN_CHECKOUT_PATH = '/Users/drizzer14/Developer/Projects/pff-ios';
 
@@ -168,8 +167,10 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
 
 const MAIN_MOVE_REASON_LINES = [
   'WHAT FAILED:    kill-guard denied a git command that moves the branch main (a reset to a ' +
-    'commit in the main checkout, or update-ref, checkout -B, switch -C, branch -m|-f|-d, a ' +
-    'fetch or push into main, symbolic-ref, worktree add -B naming it).',
+    'commit in the main checkout, or in a worktree whose HEAD names main; update-ref, checkout ' +
+    '-B, switch -C, branch -m|-f|-d, a fetch, pull or push into main, also through a -c, ' +
+    '--config-env or exported GIT_CONFIG_* fetch refspec; symbolic-ref onto main, checkout or ' +
+    'switch --ignore-other-worktrees main, worktree add -B or -f naming it).',
   `WHY IT MATTERS: main (${MAIN_CHECKOUT_PATH}) must move only to a commit a queued verify passed ` +
     'on, and its hooks run for every session; every worktree shares the ref, so a move from ' +
     'any of them reaches the main checkout.',
@@ -309,6 +310,15 @@ const denyJson = (reason) =>
 
 // ---- pieces both scanners share ----
 
+// Test-only work counter. `decide` points it at `options.workCounter` (an in-process option; the
+// hook payload never reaches it) for the length of one call, and the hot loops call `tick()`, so a
+// test can count real work and prove the scan stays linear without reading a clock. Absent, `tick`
+// is one null check.
+let workCounter = null;
+function tick() {
+  if (workCounter !== null) workCounter.steps++;
+}
+
 // An unquoted `#` that starts a word comments out the rest of its line —
 // quotes in it included, so an apostrophe there must not open a string that
 // hides every later line. Skips to (not past) the newline, which still ends
@@ -404,6 +414,7 @@ function queueHeredoc(state, operator, segmentIndex) {
 function readHeredocBody(text, start, heredoc) {
   let lineStart = start;
   while (lineStart <= text.length) {
+    tick();
     const newline = text.indexOf('\n', lineStart);
     const lineEnd = newline === -1 ? text.length : newline;
     const line = text.slice(lineStart, lineEnd);
@@ -785,6 +796,7 @@ function scanLevel(text) {
     separators: [],
   };
   while (context.i < context.n) {
+    tick();
     if (context.quote === "'") {
       stepSingleQuote(context);
       continue;
@@ -932,6 +944,7 @@ function tokenize(segment) {
     redirects: [],
   };
   while (context.i < context.segment.length) {
+    tick();
     if (context.quote) {
       stepWordQuoted(context);
       continue;
@@ -1358,6 +1371,7 @@ function applyGitOption(invocation, option, next) {
   const value = equals === -1 ? next : option.slice(equals + 1);
   if (value === undefined) return;
   if (GIT_CONFIG_OPTIONS.has(name)) invocation.configs.push(value);
+  if (name === '--config-env') invocation.environmentConfigs.push(value);
   const field = GIT_PATH_OPTIONS.get(name);
   if (field === undefined) return;
   if (field === 'directory') invocation.directory = resolveDirectory(invocation.directory, value);
@@ -1373,6 +1387,7 @@ function gitInvocation(rest, directory, environment) {
     gitDirectory: environment.GIT_DIR,
     workTree: environment.GIT_WORK_TREE,
     configs: [],
+    environmentConfigs: [],
   };
   let i = 1;
   while (i < rest.length && rest[i].startsWith('-')) {
@@ -1388,6 +1403,7 @@ function gitInvocation(rest, directory, environment) {
     subcommand: rest[i],
     arguments: rest.slice(i + 1),
     configs: invocation.configs,
+    environmentConfigs: invocation.environmentConfigs,
     environment,
     hasGitDirectory: invocation.gitDirectory !== undefined,
     hasWorkTree: invocation.workTree !== undefined,
@@ -1801,12 +1817,39 @@ const pathExistsFrom = (directory, operand) => {
   return resolved !== null && fs.existsSync(resolved);
 };
 
+// Whether the work tree at or above `directory` is a worktree of this repository whose HEAD file
+// names `main`, which a `reset` there moves.
+function headNamesMain(directory, rules) {
+  const segments = directory.split('/');
+  for (let length = segments.length; length > 1; length -= 1) {
+    const root = segments.slice(0, length).join('/');
+    if (!fs.existsSync(path.join(root, '.git'))) continue;
+
+    return isProjectWorktree(root, rules) && headFileNamesMain(root);
+  }
+
+  return false;
+}
+
+// A linked worktree's `.git` file points at the git directory that holds its HEAD.
+function headFileNamesMain(root) {
+  try {
+    const pointer = fs.readFileSync(path.join(root, '.git'), 'utf8').match(/^gitdir:\s*(.+)$/m)[1];
+    const head = fs.readFileSync(path.join(path.resolve(root, pointer.trim()), 'HEAD'), 'utf8');
+
+    return /^ref:\s*refs\/heads\/main\s*$/i.test(head);
+  } catch {
+    return false;
+  }
+}
+
 // A command that moves the branch `main` (see kill-guard-main-moves.js).
 function mainMoveFinding(segment, invocations, rules) {
   if (invocations[0].arguments.some((parameter) => HELP_OPTIONS.has(parameter))) return null;
   const target = mainMoveTarget(invocations, {
     isMainCheckout: (directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath),
     isInRepository: (directory) => isInsideProjectWorktree(directory, rules),
+    headNamesMain: (directory) => headNamesMain(directory, rules),
     pathExists: pathExistsFrom,
   });
 
@@ -1831,7 +1874,10 @@ function gitFinding(segment, invocations, rules) {
   const target = invocations
     .flatMap((invocation) => invocation.targets)
     .find((directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath));
-  if (target === undefined) return null;
+  if (target === undefined) {
+    // A `pull` outside the main checkout still fetches, and its refspec can write the ref `main`.
+    return git.subcommand === 'pull' ? mainMoveFinding(segment, invocations, rules) : null;
+  }
 
   return {
     kind: isFastForwardOnly(git) ? 'mainFastForward' : 'mainCheckout',
@@ -2427,6 +2473,7 @@ function statementBefore(code, index) {
 function writeCallTargets(code) {
   const targets = [];
   for (const match of code.matchAll(WRITE_CALL)) {
+    tick();
     const { content } = matchDelimited(code, match.index + match[0].length, '(', ')');
     const [first, rest] = splitFirstArgument(content);
     if (!OPEN_CALL.test(match[1]) || WRITING_MODE.test(rest)) targets.push(first);
@@ -2442,7 +2489,12 @@ function writeCallTargets(code) {
   return targets;
 }
 
-const literalsOf = (text) => [...text.matchAll(STRING_LITERAL)].map((match) => match[2]);
+const literalsOf = (text) =>
+  [...text.matchAll(STRING_LITERAL)].map((match) => {
+    tick();
+
+    return match[2];
+  });
 
 const BARE_NAME = /^\s*[A-Za-z_$][\w$]*\s*$/;
 const ARGV_READ = /\b(?:sys|process)\.argv\b/;
@@ -2766,11 +2818,16 @@ function substitutedCommandFinding(command, context) {
 }
 
 // A statement that only sets variables (a bare `NAME=value`, or an `export`/`declare`) denies by
-// itself when they set core.hooksPath through GIT_CONFIG_*, whatever git command runs after it.
+// itself when they set core.hooksPath through GIT_CONFIG_*, whatever git command runs after it,
+// and, as a `mainMove`, when they set a `remote.<name>.fetch` refspec that can write `main` for
+// the fetch or pull after it (in whichever repository: the text cannot say where that runs).
 function environmentFinding(environment, context) {
-  if (context.rules.dataBody || !environmentSetsHooksPath(environment)) return null;
+  if (context.rules.dataBody) return null;
+  const detail = context.segment.trim();
+  if (environmentSetsHooksPath(environment)) return { kind: 'hooksConfig', detail };
+  if (!environmentFetchWritesMain(environment)) return null;
 
-  return { kind: 'hooksConfig', detail: context.segment.trim() };
+  return { kind: 'mainMove', detail: `${detail} (sets a fetch refspec that can write main)` };
 }
 
 // ---- a script file a shell runs ----
@@ -3291,44 +3348,57 @@ function assignedVariables(segment, variables, separator) {
 const isLiteralValue = (value) =>
   value.length <= VARIABLE_VALUE_LIMIT && !/[$`]|__SUBSHELL__/.test(value);
 
-// The variables at one point of a command: `own` entries over the `parent` scope. A segment's
-// scope must stay as it was, because the nested text of earlier segments still reads it, so a later
-// assignment adds a link instead of copying every earlier variable (thousands of assignments
-// copied quadratically, seconds of the hook's 10). Every SCOPE_DEPTH_LIMIT links the chain is
-// folded into one map, so a lookup walks a few links at most.
-const SCOPE_DEPTH_LIMIT = 32;
+// The variables at one point of a command: a persistent trie over the characters of each name, a
+// node per character holding the value of the name that ends there (`null`: assigned, value
+// unknown). A segment's scope must stay as it was, because the nested text of earlier segments
+// still reads it, so an assignment copies only the nodes on its name's path and shares every other
+// node. An assignment and a lookup each cost the name's length, however many variables came before
+// and however often a subshell goes back to an earlier scope; a copy of every earlier variable per
+// assignment (or a merge of them every few links) turns thousands of assignments into quadratic
+// work, past the hook's timeout. `null` is the scope with no variable.
+const noVariables = () => null;
 
-const noVariables = () => ({ own: new Map(), parent: null, depth: 0 });
-
-const hasVariables = (scope) => scope.parent !== null || scope.own.size > 0;
+const hasVariables = (scope) => scope !== null;
 
 function lookupVariable(scope, name) {
-  for (let link = scope; link !== null; link = link.parent) {
-    if (link.own.has(name)) return link.own.get(name);
+  let node = scope;
+  for (const character of name) {
+    tick();
+    node = node?.children.get(character);
+    if (node === undefined) return undefined;
   }
 
-  return undefined;
+  return node?.value;
 }
 
-function foldScope(scope) {
-  const links = [];
-  for (let link = scope; link !== null; link = link.parent) links.unshift(link);
-  const own = new Map();
-  for (const link of links) for (const [name, value] of link.own) own.set(name, value);
+const copyNode = (node) => {
+  tick();
 
-  return { own, parent: null, depth: 0 };
+  return { value: node?.value, children: new Map(node?.children) };
+};
+
+function setVariable(scope, name, value) {
+  const root = copyNode(scope);
+  let copy = root;
+  let original = scope;
+  for (const character of name) {
+    original = original?.children.get(character);
+    const child = copyNode(original);
+    copy.children.set(character, child);
+    copy = child;
+  }
+  copy.value = value;
+
+  return root;
 }
 
 // A later assignment of a name wins, in the order the command runs them. A segment that assigns
 // nothing shares its scope.
-function withVariables(scope, assigned) {
-  const entries = Object.entries(assigned);
-  if (entries.length === 0) return scope;
-  const own = new Map(entries.map(([name, value]) => [name, isLiteralValue(value) ? value : null]));
-  const next = { own, parent: scope, depth: scope.depth + 1 };
-
-  return next.depth >= SCOPE_DEPTH_LIMIT ? foldScope(next) : next;
-}
+const withVariables = (scope, assigned) =>
+  Object.entries(assigned).reduce(
+    (next, [name, value]) => setVariable(next, name, isLiteralValue(value) ? value : null),
+    scope,
+  );
 
 // The variables after one segment. Only a write or a directory is judged through a variable, and
 // a pass that reports kills and stashes alone judges neither, so it tracks none.
@@ -3420,6 +3490,7 @@ function findDanger(line, depth, checkHeredoc, place, rules) {
   let before = '';
 
   for (const [index, segment] of segments.entries()) {
+    tick();
     enterSubshells(location, opens[index]);
     const here = { directories: location.directories, variables: location.variables };
     placesAt.push(here);
@@ -3496,7 +3567,8 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // folder in place of the main checkout, and the guard judges it with those.
 // `options.projectRoot` is test-only too: a fake repository in a scratch
 // folder stands in for this one, so the shell-write tests never name a real
-// file. The hook entry point below never passes any of them.
+// file. `options.workCounter` (`{ steps }`) is test-only as well: the scan steps of that one call
+// are added to it. The hook entry point below never passes any of them.
 //
 // A `$"…"` heredoc delimiter ends at `EOF` in bash and at `$EOF` in zsh, so
 // every command is judged once per reading, and either finding counts. The
@@ -3507,13 +3579,23 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // not take) is an `internalError` finding that denies, never an allow, because the command that
 // crashed the guard may be the one it exists to stop.
 function decide(command, options = {}) {
+  const previousCounter = workCounter;
   try {
+    workCounter =
+      typeof options.workCounter === 'object' &&
+      options.workCounter !== null &&
+      !Array.isArray(options.workCounter)
+        ? options.workCounter
+        : null;
+
     return judge(command, options);
   } catch (error) {
     return {
       kind: 'internalError',
       detail: `${error?.name}: ${String(error?.message).slice(0, 200)}`,
     };
+  } finally {
+    workCounter = previousCounter;
   }
 }
 

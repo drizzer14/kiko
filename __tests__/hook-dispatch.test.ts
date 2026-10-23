@@ -357,6 +357,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     expect(stdout).not.toBe('');
     const parsed = JSON.parse(stdout);
     expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(parsed.hookSpecificOutput.permissionDecisionReason).not.toContain('could not load');
   });
 
   it('falls back to CLAUDE_PROJECT_DIR when cwd is outside any git repository', () => {

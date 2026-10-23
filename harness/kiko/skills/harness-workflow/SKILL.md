@@ -708,9 +708,12 @@ await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal std
 then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a
 `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold
 <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status`
-shows the hold, the power state, the running job, and the tickets. On battery NO job of any class
-starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
-too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
+shows the hold, the power state, the running job, and the tickets (it reads the tickets before
+the lock). `hold` stops no running job: for one that holds the lock it prints a `running:` line,
+and a start racing the hold backs off, the one that line names included. On battery NO job of any
+class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power
+state holds too. A load wait at the head of the queue is in the ops skill, "Load rule". A gate
+refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
 exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
 Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
 (an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
