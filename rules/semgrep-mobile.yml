@@ -404,6 +404,7 @@ rules:
         - "src/accounts/accounts.repo.ts"
         - "src/db/**"
         - "src/data-transfer/**"
+        - "src/test-support/**"
         - "*.test.ts"
         - "*.test.tsx"
     patterns:

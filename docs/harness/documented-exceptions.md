@@ -788,6 +788,17 @@ verified usage, not dead weight:
   there for it. Older rules may still have only the inline comment, and
   gain a bullet the next time their exclude changes.
 
+- **`kiko-balance-through-repo` (`rules/semgrep-mobile.yml`) excludes
+  `src/test-support/**`.** Shared test fixtures there build and read raw holding rows
+  (`delete-cascade-fixture.ts`, `implicit-total-parity.ts` read `balanceMinorUnits`), the same
+  reason the rule already excludes every `*.test.ts(x)`: a fixture stands in for the repository
+  boundary. The glob matches at any depth (Semgrep 1.175.0 does not anchor `paths.exclude`), so
+  it also skips a nested path such as `rules/fixtures/x/src/test-support/`. The proof is the
+  nested good fixture
+  `rules/fixtures/kiko-balance-through-repo/src/test-support/balance-read-example.good.ts`; the
+  positive case stays the flat `rules/fixtures/kiko-balance-through-repo.bad.ts`, since a
+  positive fixture under an excluded path would prove nothing.
+
 - **`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`)
   excludes every test file (`*.test.ts`, `*.test.tsx`, `__tests__/**`,
   `e2e/**`).** Jest mocks `react-native-reanimated`, so no worklet runtime
