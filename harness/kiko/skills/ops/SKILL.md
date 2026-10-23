@@ -98,7 +98,7 @@ Rules:
   "All files" line covers the whole incremental report and is only a
   whole-report sanity floor. A dry run can time out under load
   ("Initial test run timed out"): re-run. A window tip must be a commit
-  where the full jest suite passes.
+  where the full jest suite (two stages, 2a and 2b; see `scripts/checks/verify.sh`) passes.
 - **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
   dispatch.** The coordinator queues the long, no-incremental checks
   (Stryker mutation + osv) ITSELF as a background gate and launches
@@ -298,7 +298,8 @@ then starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery 
 load prints a NOTE and does not defer. A
 TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
 `docs/harness/checks.md`). Do not
-add your own limit. Never run a whole-repo semgrep, a full jest run, or stryker outside
+add your own limit. Never run a whole-repo semgrep, a full jest run
+(verify runs it as stages 2a and 2b), or stryker outside
 `scripts/job-queue.sh`: a brief that asks for one is refused and goes to the coordinator for a
 queued job (2026-10-18: two parallel whole-repo semgrep runs outside the queue overlapped a
 queued check-all and made it fail on registry timeouts at load 106; their counts had 45-68
