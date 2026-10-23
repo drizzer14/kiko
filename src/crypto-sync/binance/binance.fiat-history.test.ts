@@ -82,8 +82,8 @@ const ORDERS: FiatKind = {
   readKey: 'fetchFiatOrders',
   pageRows: 500,
   laneCalls: 3,
-  runsToNow: 8,
-  forwardRuns: [0, 1, 2, 3, 7],
+  runsToNow: 6,
+  forwardRuns: [0, 1, 2, 3, 5],
   cost: COSTS.fiatOrders,
   keyPart: 'fiat',
   coin: 'EUR',
@@ -332,35 +332,25 @@ describe('the first walk of an account that has never synced', () => {
     it('reads every two-year window from the floor, empty ones too', async () => {
       const runs = await firstWalk(ORDERS, ORDERS.runsToNow);
 
-      expect(runs.map(({ calls }) => calls)).toEqual([2, 2, 2, 2, 2, 2, 2, 2]);
+      expect(runs.map(({ calls }) => calls)).toEqual([2, 2, 2, 2, 2, 2]);
       expect(runs.map(({ cursor }) => cursor)).toEqual([
         HISTORY_FLOOR_MS + FIAT_WINDOW_MS,
         HISTORY_FLOOR_MS + 2 * FIAT_WINDOW_MS,
         HISTORY_FLOOR_MS + 3 * FIAT_WINDOW_MS,
         HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS,
         HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS,
-        HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS,
-        HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS,
         NOW,
       ]);
     });
 
-    it('reads the owed days before it reaches now, then re-scans the last two years and reads forward', async () => {
-      const runs = await firstWalk(ORDERS, 10);
+    it('reads forward after every behind run, until the owed days and the last two years are read', async () => {
+      const runs = await firstWalk(ORDERS, 12);
 
+      expect(runs.map(({ calls }) => calls)).toEqual([2, 2, 2, 2, 2, 2, 2, 0, 2, 0, 2, 0]);
       expect(runs.map(({ complete }) => complete)).toEqual([
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
+        ...Array.from({ length: 11 }, () => false),
         true,
       ]);
-      expect(runs.map(({ calls }) => calls).slice(8)).toEqual([2, 0]);
       expect(runs.at(-1)?.cursor).toBe(NOW);
     });
   });
@@ -511,28 +501,176 @@ describe('when the fiat order walk is current, at a lane of three calls', () => 
 });
 
 describe('when the stored list of owed fiat order ground cannot be read', () => {
-  it('reads the repaired range over five re-scan runs, then reads forward', async () => {
+  it('clears the repaired range in five behind runs, a forward run after each, then reports complete', async () => {
     const world = recentWorld(ORDERS);
     world.seed({ pending: 'unreadable' });
+    const pair = (start: number) => [start, start];
 
-    const runs = await walkRuns(world, 6);
+    const runs = await walkRuns(world, 10);
 
     expect(runs.map(({ deps }) => queriesOf(ORDERS, deps).map(({ start }) => start))).toEqual([
-      ...[0, 1, 2, 3].map((window) =>
-        Array.from({ length: 2 }, () => HISTORY_FLOOR_MS + window * FIAT_WINDOW_MS),
-      ),
-      [NOW - FIAT_WINDOW_MS, NOW - FIAT_WINDOW_MS],
-      [NOW - HOUR_MS, NOW - HOUR_MS],
+      pair(HISTORY_FLOOR_MS),
+      pair(NOW - HOUR_MS),
+      pair(HISTORY_FLOOR_MS + FIAT_WINDOW_MS),
+      [],
+      pair(HISTORY_FLOOR_MS + 2 * FIAT_WINDOW_MS),
+      [],
+      pair(HISTORY_FLOOR_MS + 3 * FIAT_WINDOW_MS),
+      [],
+      pair(NOW - FIAT_WINDOW_MS),
+      [],
     ]);
     expect(runs.map(({ result }) => result.complete)).toEqual([
-      false,
-      false,
-      false,
-      false,
-      false,
+      ...Array.from({ length: 9 }, () => false),
       true,
     ]);
+    expect(pendingOf(ORDERS, world)).toEqual([]);
     expect(cursorOf(ORDERS, world)).toBe(NOW);
+  });
+});
+
+describe('the turn of the fiat order walk across runs', () => {
+  const LATER_MS = 300_000;
+
+  it('stores that a behind run ran, and clears it on the forward run after', async () => {
+    const world = recentWorld(ORDERS);
+    const marks = () => world.fake.marksOf(ORDERS.walkId).behindRun;
+
+    await world.walk(world.depsOf());
+    expect(marks()).toBeUndefined();
+
+    await world.walk(world.depsOf({ now: () => NOW + LATER_MS }));
+    expect(marks()).toBe(true);
+
+    await world.walk(world.depsOf({ now: () => NOW + 2 * LATER_MS }));
+    expect(marks()).toBe(false);
+  });
+
+  it('reads forward when the last run read behind, though the list still holds a range', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({
+      pending: [{ start: NOW - 3 * HOUR_MS, end: NOW - 2 * HOUR_MS }],
+      behindRun: true,
+    });
+    const deps = world.depsOf();
+
+    const result = await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps)).toEqual(
+      ['0', '1'].map((type) => ({ type, start: NOW - HOUR_MS, end: NOW, page: 1 })),
+    );
+    expect(result.complete).toBe(false);
+    expect(world.fake.marksOf(ORDERS.walkId).behindRun).toBe(false);
+  });
+
+  describe('with an owed range that no read clears', () => {
+    const OLD_RANGE = { start: NOW - 1_500 * DAY_MS, end: NOW - 1_499 * DAY_MS };
+
+    const isOld = (span: Span) => span.start < NOW - FIAT_WINDOW_MS;
+
+    /** Four runs, five minutes apart, over a list that holds the old range from the start. */
+    const fourRuns = async (readOf: (server: jest.Mock) => jest.Mock) => {
+      const world = recentWorld(ORDERS);
+      world.seed({ pending: [OLD_RANGE] });
+      const fresh = ORDERS.recordOf({ orderNo: 'fresh', createTime: NOW - 30 * 60_000 });
+      const runs: { deps: AnyDeps; ended: WalkResult | unknown }[] = [];
+
+      for (const index of [0, 1, 2, 3]) {
+        const deps = world.depsOf({
+          now: () => NOW + index * LATER_MS,
+          [ORDERS.readKey]: readOf(world.serverOf({ '0': [fresh] })),
+        });
+
+        runs.push({ deps, ended: await world.walk(deps).catch((error: unknown) => error) });
+      }
+
+      return { world, runs };
+    };
+
+    const startsOf = (deps: AnyDeps) => [
+      ...new Set(queriesOf(ORDERS, deps).map(({ start }) => start)),
+    ];
+
+    it('reads forward on every second run, so a new order imports one run later', async () => {
+      const { world, runs } = await fourRuns((server) =>
+        jest.fn(async (apiKey, secret, type, span: Span, page) =>
+          isOld(span) ? fiatPageOf([], { total: 5 }) : server(apiKey, secret, type, span, page),
+        ),
+      );
+
+      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 0, 0]);
+      expect(runs.map(({ deps }) => startsOf(deps))).toEqual([
+        [OLD_RANGE.start],
+        [NOW - HOUR_MS],
+        [OLD_RANGE.start],
+        [NOW + LATER_MS],
+      ]);
+      expect(cursorOf(ORDERS, world)).toBe(NOW + 3 * LATER_MS);
+      expect(pendingOf(ORDERS, world)).toContainEqual(
+        expect.objectContaining({ start: OLD_RANGE.start }),
+      );
+      expect(stopCodes()).toContain('fiat-page-drift');
+    });
+
+    it('reads ground older than Binance serves as empty, one series on each behind run', async () => {
+      const { world, runs } = await fourRuns((server) =>
+        jest.fn(async (apiKey, secret, type, span: Span, page) => {
+          if (span.start < NOW - 100 * DAY_MS) {
+            throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
+          }
+
+          return server(apiKey, secret, type, span, page);
+        }),
+      );
+
+      expect(
+        runs.map(({ deps }) => queriesOf(ORDERS, deps).map(({ type, start }) => [type, start])),
+      ).toEqual([
+        [
+          ['0', OLD_RANGE.start],
+          ['0', OLD_RANGE.end],
+        ],
+        [
+          ['0', NOW - HOUR_MS],
+          ['1', NOW - HOUR_MS],
+        ],
+        [
+          ['1', OLD_RANGE.start],
+          ['1', OLD_RANGE.end],
+        ],
+        [
+          ['0', NOW + LATER_MS],
+          ['1', NOW + LATER_MS],
+        ],
+      ]);
+      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 0, 0]);
+      expect(pendingOf(ORDERS, world)).not.toContainEqual(
+        expect.objectContaining({ start: OLD_RANGE.start }),
+      );
+      expect(stopCodes()).toEqual([]);
+    });
+
+    it('fails the run on a window whose page cannot be read, and reads forward on the next', async () => {
+      const { world, runs } = await fourRuns((server) =>
+        jest.fn(async (apiKey, secret, type, span: Span, page) => {
+          if (isOld(span)) {
+            throw new BinanceHistoryParseError();
+          }
+
+          return server(apiKey, secret, type, span, page);
+        }),
+      );
+
+      expect(runs.map(({ ended }) => ended instanceof BinanceHistoryParseError)).toEqual([
+        true,
+        false,
+        true,
+        false,
+      ]);
+      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 0, 0]);
+      expect(cursorOf(ORDERS, world)).toBe(NOW + 3 * LATER_MS);
+      expect(pendingOf(ORDERS, world)).toContainEqual(OLD_RANGE);
+    });
   });
 });
 

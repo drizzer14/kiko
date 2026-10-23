@@ -27,6 +27,7 @@ export type WalkField =
   | 'pointCursor'
   | 'rangeCursor'
   | 'spanHints'
+  | 'behindRun'
   | 'multiCoinSince'
   | 'multiCoinSeen';
 
@@ -54,6 +55,7 @@ const FIELDS: readonly WalkField[] = [
   ...NUMBER_MARK_FIELDS,
   'pending',
   'spanHints',
+  'behindRun',
   'multiCoinSince',
   'multiCoinSeen',
 ];

@@ -55,6 +55,11 @@ export type WalkMarks = {
   pointCursor?: number;
   rangeCursor?: number;
   spanHints?: BinanceSpanHints;
+  /**
+   * The walk's last run read behind its cursor (the fiat orders walk alternates behind and
+   * forward runs), so its next run reads forward. A disconnect drops it with the other run marks.
+   */
+  behindRun?: boolean;
   /** The cursor the walk's first multi-coin run planned from: ground before it holds BTC only. */
   multiCoinSince?: number;
   /** The walk's first multi-coin run committed a window, so it never records a start again. */
@@ -124,6 +129,7 @@ export type ParsedWalkMarks = {
   pointCursor: number | null | undefined;
   rangeCursor: number | null | undefined;
   spanHints: BinanceSpanHints | undefined;
+  behindRun?: true;
   multiCoinSince?: number;
   multiCoinSeen?: true;
 };
@@ -194,6 +200,7 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     pointCursor: binanceWalkRoundRobinValueOf(entry.pointCursor),
     rangeCursor: binanceWalkRoundRobinValueOf(entry.rangeCursor),
     spanHints: binanceWalkSpanHintsValueOf(entry.spanHints),
+    ...(entry.behindRun === true ? { behindRun: true as const } : {}),
     ...foldMap(maybe(multiCoinSinceOf(entry, cursor)), (multiCoinSince) => ({ multiCoinSince })),
     ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
   };
