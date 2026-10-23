@@ -111,7 +111,13 @@ if [ "$all_files" -eq 1 ]; then
   fi
 fi
 
-out="$(semgrep --quiet --error --json \
+# Semgrep's default is 9 threads on this machine. Under load (300-500) with its 5 s per-rule
+# timer, jobs 6 drew 0-3 rule Timeouts per scan, jobs 10 drew 5-6 and the default 7-12, and the
+# scan took about half the wall time. A rule Timeout fails the scan below, so the cap is a floor
+# on reliability, not a speed knob.
+SEMGREP_JOBS=6
+
+out="$(semgrep --quiet --error --json --jobs "$SEMGREP_JOBS" \
   --config p/typescript --config p/react --config p/secrets \
   --config "$ROOT/rules/semgrep-mobile.yml" \
   --config "$ROOT/rules/semgrep-prewrite.yml" \

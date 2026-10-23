@@ -43,10 +43,40 @@ if [ "$code" -ne 0 ]; then
   exit "$code"
 fi
 
-run_stage 2 "jest (full suite)" npx jest
+# The suites that start the real semgrep run alone (2b), in band: beside the rest of the suite
+# (2a) on every core they starve semgrep of CPU and its 5 s per-rule timer fires. The list is
+# one file, shared with the pin in __tests__/semgrep-load-limits.test.ts. A --testPathIgnorePatterns
+# on the command line REPLACES the config's own list, so the config's patterns are read back and
+# passed again; each listed suite gets an anchored, dot-escaped pattern so it can swallow no
+# other path (a bare path would also match `x.test.tsx` beside `x.test.ts`).
+SEMGREP_SUITE_LIST="$DIR/semgrep-jest-suites.txt"
+SEMGREP_SUITES=()
+while IFS= read -r suite; do
+  case "$suite" in
+    '' | '#'*) ;;
+    *) SEMGREP_SUITES+=("$suite") ;;
+  esac
+done <"$SEMGREP_SUITE_LIST"
+
+PART_A_ARGUMENTS=()
+while IFS= read -r pattern; do
+  PART_A_ARGUMENTS+=("--testPathIgnorePatterns=$pattern")
+done < <(node -e 'for (const pattern of require("./jest.config.js").testPathIgnorePatterns) console.log(pattern)')
+for suite in "${SEMGREP_SUITES[@]}"; do
+  PART_A_ARGUMENTS+=("--testPathIgnorePatterns=<rootDir>/${suite//./\\.}\$")
+done
+
+run_stage 2a "jest (all but the real-semgrep suites)" npx jest "${PART_A_ARGUMENTS[@]}"
 code=$?
 if [ "$code" -ne 0 ]; then
-  echo "✖ make verify FAILED at stage 2 (jest) — exit code $code" >&2
+  echo "✖ make verify FAILED at stage 2a (jest) — exit code $code" >&2
+  exit "$code"
+fi
+
+run_stage 2b "jest (real-semgrep suites, in band)" npx jest "${SEMGREP_SUITES[@]}" --runInBand
+code=$?
+if [ "$code" -ne 0 ]; then
+  echo "✖ make verify FAILED at stage 2b (jest) — exit code $code" >&2
   exit "$code"
 fi
 
