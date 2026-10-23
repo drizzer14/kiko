@@ -30,7 +30,7 @@ payments (card buy, sell)"; section 6 "Not-imported line", "Mapping and statisti
 P1-P11, F1-F6, N5b; section 11 row 12/15; section 12 P5, P6. Rulings: `rulings.md` (main checkout,
 `memory/refs/binance-multicoin-sdd-2026-10-21/`), "Probe 4 rulings", "Spec draft sets 8-12 rulings", "P2P BUY vs
 LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q15, S12-Q18, S12-Q21, S12-Q22,
-S12-Q23, S12-Q24 and S12-Q27 ... S12-Q33 are at the end; the plan assumes each recommendation.
+S12-Q23, S12-Q24 and S12-Q27 ... S12-Q34 are at the end; the plan assumes each recommendation.
 
 **Base:** branch `binance-set12` at main `79094ae8` (sets 1-11 merged). Every code fact names a symbol or anchor
 text, never a line. **The developer re-greps every fact on the actual base before relying on it.**
@@ -111,8 +111,10 @@ text, never a line. **The developer re-greps every fact on the actual base befor
   (`COMPLETED` on; `CANCELLED`, `CANCELLED_BY_SYSTEM` none; `PENDING`, `TRADING`, `BUYER_PAYED`, `DISTRIBUTING`,
   `IN_APPEAL` owe the point, kept in `P2P_OPEN_STATUSES`; else `p2p-unrecognized`) -> `tradeType` (SELL ->
   `p2p-sale`; BUY on; else `p2p-unrecognized`) -> `advertisementRole` (MAKER -> `p2p-advertiser`; TAKER on; else
-  `p2p-unrecognized`) -> amount (C-P5, C-NR-B, P1-P1h) -> tracked rule on `asset` (`isTrackedBinanceAsset`;
-  untracked: counted, ticker to `untrackedCoins.history`, no row).
+  `p2p-unrecognized`) -> amount fields present (C-P5, C-NR-B, P1-P1h) -> tracked rule on `asset`
+  (`isTrackedBinanceAsset`; untracked: counted, ticker to `untrackedCoins.history`, no row) -> `fiat` and
+  `totalPrice` present, and the fiat a text a code can carry (`p2p-unrecognized` if not, S12-Q34, P12) -> amount
+  values (`p2p-amount`; a number text the parser refuses is a stop).
 - P2P row: Funding (`holdingKeyOf(asset, 'funding')`, created at zero by `placeWalletRows`, R-Q6), `+amount`,
   `untrackedCounterpart` from the G-8 builder `p2p:<fiat>:<totalPrice>`, `comment = '<totalPrice> <fiat>'` (the
   text as Binance sent it), `operation = 'p2p'`, key `${accountId}:p2p:${orderNumber}:<walletKey>`. Entry
@@ -132,7 +134,8 @@ text, never a line. **The developer re-greps every fact on the actual base befor
   `comment` the marker total and fiat as sent; `operation = 'card'`; Spot; key
   `${accountId}:fiatpay:${orderNo}:<walletKey>`.
 - Each allowlist is a named constant (`P2P_OPEN_STATUSES`, `FIAT_ORDER_STATUSES`, `FIAT_PAYMENT_STATUSES`) whose
-  doc comment points at `.superpowers/sdd/binance-set12/fiat-doc-quote.md` and the spec section.
+  doc comment states only why the words are not from Binance's docs, with no `.superpowers/` path and no step id
+  (that folder is not committed, and a step id is history).
 - Caption (S12-Q9 A): `p2p`, `fiatOrders`, `fiatPayments` join `CAPTION_WALKS`
   (`src/screens/account-detail/crypto-sync-section/binance-history-status.ts`).
 
@@ -173,6 +176,8 @@ decision `p2pOutcomeOf`), `walk` = `binance.p2p-history.test.ts`, `sqlite` = `bi
 | P9 | sqlite, "imports the 77 completed buys of the probe 3 orders and lists nothing" | 77 rows; `notImported` empty |
 | P10 | walk, "keeps one entry when the re-scan reads a listed sale again" | count stays 1 |
 | P11 | sqlite, "leaves the Funding UAH holding at zero after a P2P buy of UAH and its Convert" | UAH +x then -x = 0; USDT + |
+| P12 | outcome, "lists a buy with %s as not recognized, since no row or marker can be made" (a blank fiat, a fiat that holds the separator) | `p2p-unrecognized`, no row, no stop |
+| P12b | walk, "lists a buy with %s as not recognized and owes no point" | one `p2p-unrecognized` entry; cursor at now; no pending point |
 | F1 | fiat, "credits a successful deposit to the Spot fiat holding with the bank total" | EUR +10_000; `bank:EUR:100.00` |
 | F2 | fiat, "debits a successful withdrawal by its amount and its total fee" | EUR -(5_000 + fee); `bank:EUR:50.00` |
 | F3 | fiat, "imports a completed card buy on the Spot coin holding" | BTC +100_000; `card:UAH:2600.00` |
@@ -187,12 +192,12 @@ New rows (no P2P or fiat read ran before, so "was:" is "no read" unless a value 
 
 | # | Input | Result now | Test (file, title) | was: |
 |---|---|---|---|---|
-| PC1 | `fetchP2pOrders(BUY, span, page 1)` | signed GET, `tradeType`, `startTimestamp`, `endTimestamp`, `page`, `rows=100`; UID header read | `binance.history-client.p2p.test.ts`, "asks one page of one side and one window at 100 rows" | - |
+| PC1 | `fetchP2pOrders(BUY, span, page 1)` | signed GET, `tradeType`, `startTimestamp`, `endTimestamp`, `page`, `rows=100`; UID header read | `binance.history-client.p2p.test.ts`, "asks one page of one side and one window at 100 rows (%s, page %i)" | - |
 | PC2 | body not the documented envelope; a decision field other than `orderNumber` / `createTime` of the wrong type; `data` null or absent while `total` is not 0 | `BinanceHistoryParseError`, whole page | same, "fails the whole page for %s" | - |
-| PC2b | `data` null or absent with `total === 0` | an empty page (no row, no throw) | same, "reads a page with no data as empty only when its total is 0" | - |
-| PC5 | `orderNumber` empty, not text or absent; `createTime` not a safe integer | that record unreadable (owed), the other records of the page read | same, "reads an order with %s as unreadable and keeps the rest of the page" | - |
+| PC2b | `data` null or absent with `total === 0` | an empty page (no row, no throw) | same, "reads %s as a window with no order" (the shapes with a total of 0; one with a total above 0 is PC2's "fails the whole page for %s") | - |
+| PC5 | `orderNumber` empty, not text or absent; `createTime` not a safe integer | that record unreadable (owed), the other records of the page read | same, "reads an order with %s as unreadable, keeping its time and the rest of the page" (the `orderNumber` cases), "reads an order with %s as unreadable and keeps the rest of the page" (the `createTime` cases); each beside a readable order that reads | - |
 | PC3 | a record with every documented field | the record holds no counterparty field | same, "reads no counterparty field into the record" | - |
-| PC4 | HTTP 429 / 418; -5026; HTTP 500 | `BinanceRateLimitError`; `BinanceHistoryTooOldError`; request failure | same, "maps %s to %s" | - |
+| PC4 | HTTP 429 / 418; -5026; HTTP 500 | `BinanceRateLimitError`; `BinanceHistoryTooOldError`; request failure | same, "maps HTTP %i to BinanceRateLimitError with its retryAfterMs", "maps code -5026 on an HTTP 400 to BinanceHistoryTooOldError", "maps HTTP 500 to the request-failed error, not to a parse error or a refusal" | - |
 | FC1 | `fetchFiatOrders(0, span, page)`, `fetchFiatPayments(1, span, page)` | `transactionType`, `beginTime`, `endTime`, `page`, `rows` 500 / 100 | `binance.history-client.fiat.test.ts`, "asks one page of %s at %i rows" | - |
 | FC2 | as PC2 and PC2b for both bodies (the same `data` / `total` envelope) | `BinanceHistoryParseError` | same, "fails the whole page for %s" | - |
 | FC3 | as PC4 | as PC4 | same, "maps %s to %s" | - |
@@ -243,7 +248,7 @@ New rows (no P2P or fiat read ran before, so "was:" is "no read" unless a value 
 | RW5 | real SQLite, five runs through `runCryptoSync`: the fiat orders re-scan cannot read an owed day of the last two years (a page that drifts; a page that cannot be read), the fiat payments walk and the trade read after it | `fiat-rescan-stuck` logged once on each of the five runs, code only (no order number, no time), the day stays owed and marked, the records before and after it import; the run rejects only on the owed runs, and only for the page that cannot be read (runs 2 and 4); the fiat payments and the trade read run on every run | same file, "logs the day a re-scan cannot read on every run while it stays stuck when %s, and runs the fiat payments and the trade read after it" | the code logged it on the run that marked the day only: 1, 0, 0, 0, 0 (the re-scan runs 3 and 5 read around the day silently) |
 | FR1 | real SQLite, the fiat walks through the real repos | a deposit, a withdrawal with its fee, a card buy and a card sale land on Spot holdings with their markers and labels; later runs add nothing; a later read of a key refreshes the amount and keeps the marker and the note; a word the walk does not know is listed once | `binance.fiat-history.real-sqlite.test.ts`, "credits a successful deposit to the Spot fiat holding with the bank total", "debits a successful withdrawal by its amount and its total fee", "imports a completed card buy and sale on the Spot coin holding", "adds nothing when later runs read the same records again", "refreshes the amount of a stored record on its key and keeps its marker and note", "lists a deposit whose status Kiko does not know once, with no row, over three runs" | no real-SQLite fiat test |
 | K-P | a `p2p`, `fiatOrders` or `fiatPayments` cursor null or a day behind | caption shown | `src/screens/account-detail/crypto-sync-section/binance-history-status.test.ts`, "shows the caption while the %s walk is behind" | hidden (not in `CAPTION_WALKS`) |
-| MK1 | `p2pTotalCode`-style builder (G-8) on `4150`, `4145.85`, `4000.0`, `4150.001`, `abc` | `p2p:UAH:4150.00`, `...4145.85`, `...4000.00`, `amount-precision`, `amount-malformed`; each parses back | `src/transactions/untracked-counterpart/untracked-counterpart.test.ts`, "builds a %s code at the fiat scale from %s" | no builder |
+| MK1 | `p2pTotalCode`-style builder (G-8) on `4150`, `4145.85`, `4000.0`, `4150.001`, `abc` | `p2p:UAH:4150.00`, `...4145.85`, `...4000.00`, `amount-precision`, `amount-malformed`; each parses back | `src/transactions/untracked-counterpart/untracked-counterpart.test.ts`, "builds a %s code at the fiat scale from %s %s", "stops at the total %p of a tracked fiat with %s" | no builder |
 
 ## Pins this set changes ("was:" values)
 
@@ -555,12 +560,13 @@ Files: the spec.
 - G-1 every step; G-2 steps 1, 4, 11; G-3 steps 4-11; G-6 step 4; G-7 steps 7, 10; G-8 step 5; G-9 steps 6, 9;
   G-10 steps 6, 8, 9, 10, 11; G-11 steps 12, 13; G-12 and G-13 every commit; G-14 steps 1, 11.
 
-## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21 ... S12-Q24, S12-Q27 ... S12-Q33)
+## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21 ... S12-Q24, S12-Q27 ... S12-Q34)
 
 Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12-Q15 = A, FINAL coordinator rulings; Q3, Q10, Q11 = A,
 OVERNIGHT DEFAULT, pending user; Q18 = C, Q21 = A (N = 1), Q22 = B, Q23 = B, Q24 = B, Q27 = the fix, Q28 = the
 fix as the entry builds it, Q29 = A, Q30 = the fix and Q32 = the fix, FINAL coordinator rulings; Q33 = the fix,
-taken by a debugger (the dense full-page worlds of FW2 are held red for it).
+taken by a debugger (the dense full-page worlds of FW2 are held red for it); Q34 = refuse, OVERNIGHT DEFAULT,
+pending user.
 
 - S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
   one exact existing title to each. B: a file-only row passes when the file exists. Recommend A: a file alone ties a
@@ -760,3 +766,10 @@ taken by a debugger (the dense full-page worlds of FW2 are held red for it).
   read, and the bound with the halving reads counted, and the longer run the orders walk needs for it, are the
   debugger's. The two worlds are not in the committed test file: the code of S12-Q32 is committed with "the dense
   full-page worlds are held red for S12-Q33".
+- S12-Q34 (refuse, OVERNIGHT DEFAULT, pending user) a completed taker buy whose `fiat` text no code can carry (empty,
+  or holding `:`). A: refused as `p2p-unrecognized` (one visible entry, the cursor moves on), as an order with no
+  `fiat` field is (P12, P12b, and the `uncarriableFiat` category of the P2P properties). B: owe the point, as
+  before: the walk threw `amount-malformed` on every run, the point stayed owed with nothing shown, and each run
+  spent lane calls to read the window again. A is the default: the text is Binance's own and a re-read cannot
+  change it, so owing it only hides the order. Order of the decision: the fiat is read after the coin (an order of
+  a coin Kiko does not track reads no fiat), and before the amount values.

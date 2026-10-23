@@ -1169,6 +1169,12 @@ side and role checks, and each order gives at most one row or one entry.
      86 orders; the field `commission` was absent on all 86.
    - `unitPrice` and `takerCommissionRate` never decide the row or the marker. `amount x
      unitPrice` matched `totalPrice` in only 2 of 69 orders.
+   - The checks of a completed taker buy run in this order: the amount fields are present
+     (`p2p-amount` if neither pair is), the coin (an `asset` that is missing or blank is
+     `p2p-unrecognized`; one Kiko does not track is counted and goes no further), the `fiat` and
+     `totalPrice` (either missing, or a `fiat` that is empty or holds `:`, is `p2p-unrecognized`:
+     no marker code can carry it, and a re-read cannot change it; S12-Q34), and last the amount
+     values (`p2p-amount`, or the stops above).
 
 Row placement:
 - The row goes on the P2P wallet's holding (C-NR3: Funding; the rows name no wallet).
