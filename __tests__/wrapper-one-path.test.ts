@@ -103,19 +103,18 @@ const runWrapper = (wrapper: string, paths: string[]): Run => {
   return { status: result.status, stderr: result.stderr };
 };
 
-const fixturePair = (
+// Each writer creates its file when called, so a test writes only the files it passes.
+const fixtureWriters = (
   wrapperCase: WrapperCase,
-): { good: string; otherGood: string; bad: string } => {
+): { good: () => string; otherGood: () => string; bad: () => string } => {
   const directory = createTemporaryDirectory('wrapper-one-path-files-');
 
   return {
-    good: writeFixture(directory, `first/${wrapperCase.relativePath}`, wrapperCase.goodSource),
-    otherGood: writeFixture(
-      directory,
-      `second/${wrapperCase.relativePath}`,
-      wrapperCase.goodSource,
-    ),
-    bad: writeFixture(directory, `third/${wrapperCase.relativePath}`, wrapperCase.badSource),
+    good: () =>
+      writeFixture(directory, `first/${wrapperCase.relativePath}`, wrapperCase.goodSource),
+    otherGood: () =>
+      writeFixture(directory, `second/${wrapperCase.relativePath}`, wrapperCase.goodSource),
+    bad: () => writeFixture(directory, `third/${wrapperCase.relativePath}`, wrapperCase.badSource),
   };
 };
 
@@ -123,9 +122,9 @@ afterEach(removeTemporaryDirectories);
 
 describe.each(WRAPPER_CASES)('$wrapper', (wrapperCase) => {
   it('refuses a second path, even when the first is clean and only the second is bad', () => {
-    const { good, bad } = fixturePair(wrapperCase);
+    const { good, bad } = fixtureWriters(wrapperCase);
 
-    const run = runWrapper(wrapperCase.wrapper, [good, bad]);
+    const run = runWrapper(wrapperCase.wrapper, [good(), bad()]);
 
     expect(run.status).toBe(2);
     expect(run.stderr).toContain('CHECK FAILED');
@@ -134,24 +133,24 @@ describe.each(WRAPPER_CASES)('$wrapper', (wrapperCase) => {
   });
 
   it('refuses two clean paths as well, the count is the fault', () => {
-    const { good, otherGood } = fixturePair(wrapperCase);
+    const { good, otherGood } = fixtureWriters(wrapperCase);
 
-    const run = runWrapper(wrapperCase.wrapper, [good, otherGood]);
+    const run = runWrapper(wrapperCase.wrapper, [good(), otherGood()]);
 
     expect(run.status).toBe(2);
     expect(run.stderr).toMatch(/one path/i);
   });
 
   it('still passes one clean path', () => {
-    const { good } = fixturePair(wrapperCase);
+    const { good } = fixtureWriters(wrapperCase);
 
-    expect(runWrapper(wrapperCase.wrapper, [good]).status).toBe(0);
+    expect(runWrapper(wrapperCase.wrapper, [good()]).status).toBe(0);
   });
 
   it('still fails one bad path on its finding, not on the path count', () => {
-    const { bad } = fixturePair(wrapperCase);
+    const { bad } = fixtureWriters(wrapperCase);
 
-    const run = runWrapper(wrapperCase.wrapper, [bad]);
+    const run = runWrapper(wrapperCase.wrapper, [bad()]);
 
     expect(run.status).toBe(2);
     expect(run.stderr).toContain(wrapperCase.title);
