@@ -785,6 +785,10 @@ apply path reads it so: the insert (`withCategoryRules`, which evaluates legs by
 rewrite and its count (`rowIdsRewrittenBy`), `giveSourceRowCategory`, and the form's
 `resolveRuleDescription`. A named rule's rewrite pages the blank rows by id-keyset
 (`rewriteBlankPageQuery`); legs keep `REWRITE_GUARD_FIELDS` on a rewrite.
+A sync input that adopts its import twin is judged as the adopted row (`adoptedRowOf` in
+`src/transactions/repo/transactions.repo.ts`): with the twin's own exchange markers and operation
+when it keeps them (`keepsExchangeMarkers`), so a kept leg reads by its exchange label; the twin's
+own category still wins over the rule's.
 `saveRule`, `countRuleRewrite` and `applyNameRule` go through one
 `stageDraft` (the stored rule, the row it becomes, every rule prepared with
 that row in place), so the rules are read once per write; `storeRule` is the
