@@ -1311,15 +1311,18 @@ const readP2pIdentified: Reader<{ item: unknown; identity: Parsed<typeof P2P_IDE
  * order is read outside that guard, so a field of the wrong type fails the whole page and no order
  * is skipped. The orders of every asset are rows: the walk decides on the status, side and role
  * before it asks whether the asset is tracked, so `untracked` is always empty. The envelope is
- * an object with the success code, a `data` list (null or left out is empty) and a `total`.
+ * an object with the success code, a numeric `total` and a `data` list; a `data` that is null or
+ * left out is an empty window only when `total` is 0, because no measured answer shows that shape
+ * beside orders, and a window that has orders read as empty would lose them with no message.
  */
 const p2pPage = ({ body, headers }: RequestPage): TotalPage<BinanceP2pOrder> => {
   if (!isRecord(body) || body.code !== P2P_SUCCESS_CODE) {
     return parseFailure();
   }
 
+  const total = finiteNumber(body.total);
   const readings = readingsOf(
-    body.data ?? [],
+    body.data ?? (total === 0 ? [] : parseFailure()),
     readP2pIdentified,
     timeFieldOf('createTime', epochTime),
   );
@@ -1329,7 +1332,7 @@ const p2pPage = ({ body, headers }: RequestPage): TotalPage<BinanceP2pOrder> => 
     unreadable: unreadableOf(readings),
     untracked: [],
     gathered: readings.length,
-    total: finiteNumber(body.total),
+    total,
     ...usedWeightsFromHeaders(headers),
   };
 };
