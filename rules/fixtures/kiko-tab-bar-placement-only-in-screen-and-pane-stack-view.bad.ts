@@ -65,3 +65,23 @@ export const requiredAtTopProperty = require('@kiko/design-system/components/scr
 import * as atTopModule from '../../src/design-system/components/screen/use-is-tab-bar-at-top';
 
 export const atTopModuleBinding = atTopModule;
+
+// The not-at-the-bottom boolean hook, from the Screen barrel.
+// EXPECT-FINDING
+import { useIsTabBarNotAtBottom } from '@kiko/design-system/components/screen';
+
+export const barrelNotAtBottom = useIsTabBarNotAtBottom;
+
+// A CommonJS destructure of that hook from the barrel.
+// EXPECT-FINDING
+export const { useIsTabBarNotAtBottom: requiredNotAtBottom } = require('@kiko/design-system/components/screen');
+
+// A CommonJS property read of that hook from the barrel.
+// EXPECT-FINDING
+export const requiredNotAtBottomProperty = require('@kiko/design-system/components/screen').useIsTabBarNotAtBottom;
+
+// That hook's module file.
+// EXPECT-FINDING
+import * as notAtBottomModule from '../../src/design-system/components/screen/use-is-tab-bar-not-at-bottom';
+
+export const notAtBottomModuleBinding = notAtBottomModule;

@@ -296,23 +296,24 @@ Stryker's `fullName`, and the patch applies exactly to the pristine files of
 on every `npm ci`. Why, what, and the scope are in `docs/harness/documented-exceptions.md`
 ("patch-package patches"); in short: it makes a pane's native large title keep the content's side
 margin, and only for the stacks `PaneStackView` wraps in `FixedContentMarginContext`: the panes
-of a two-pane window whose tab bar is at the top (every regular iPad window, small Stage Manager
-splits included; user ruling 2026-10-21).
+of a two-pane window whose tab bar is not at the bottom, at the top (every regular iPad window,
+small Stage Manager splits included; user ruling 2026-10-21) or at a side (the Surface Duo's
+side-bar poses; user ruling 2026-10-23).
 
 The pane-only scope: the context default is 0, `ScreenStack` passes it as the `fixedContentMargin`
 prop (codegen default 0), and native does nothing for 0 (the setter returns on its first line
 for an equal value, no margin write, no change to `viewRespectsSystemMinimumLayoutMargins`), so
-an iPhone, single-pane or Surface Duo stack (the Duo's tab bar is at the bottom or a side, and the
-user ruled it keeps its look completely) runs the stock code path. The value follows the native
-tab bar placement (`useIsTabBarAtTop`, which the pane content cap uses too), not the window's
-size. The placement read is stale for about 0.1 s on a split change or a large-to-large
+an iPhone, single-pane or bottom-bar stack (the Duo's inner portrait pose) runs the stock code
+path. The value follows the native tab bar placement (`useIsTabBarNotAtBottom`), not the
+window's size; the pane content cap is a narrower test (`useIsTabBarAtTop`: only a top bar
+lifts the cap). The placement read is stale for about 0.1 s on a split change or a large-to-large
 rotation, and on cold start until the first read, so the margin and the cap can lag the layout
 briefly.
 
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is reached without a stack view being recycled only by the stale placement read above (about
-0.1 s, the mounted split briefly reads a bar that is not at the top) or by a Duo read of `top`;
-an iPad window keeps its tab bar at the top, so no resize reaches it.
+0.1 s, the mounted split briefly reads a bar at the bottom) or by a Duo read of `bottom`; an
+iPad window keeps its tab bar at the top, so no resize reaches it.
 
 How it is pinned: `__tests__/react-native-patch.test.ts` fails unless `react-native-screens` is
 exactly `4.27.0` in `package.json`, the patch touches only `node_modules/react-native-screens/`

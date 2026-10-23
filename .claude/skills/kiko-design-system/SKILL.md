@@ -124,8 +124,8 @@ The token categories, defined once in a single theme module (read
   `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
   checkmark beside caption text), never an inline literal like `18`.
 - **layout** — `paneMaxWidth` caps a pane's SCREEN CONTENT (lists,
-  forms) and never native bars (except in a pane under a top tab bar:
-  see the Screen entry under "Component set"); `hairline` is the flat two-pane divider
+  forms), except in a pane under a top tab bar (see the Screen entry
+  under "Component set"), and never native bars; `hairline` is the flat two-pane divider
   width. Read `theme.ts` for the values; never restate them. Pane code
   reads `theme.layout`, never an inline width literal or
   `StyleSheet.hairlineWidth`. The divider keeps the ordinary hairline
@@ -695,9 +695,10 @@ new component can land between reviews of this skill:
   The hook is pane-aware: a pane that is not at the window's bottom has
   no tab bar over it and gets 0. `resolveBottomClearance` is pane-blind,
   so nothing outside `src/design-system/components/screen/` may import
-  it (`kiko-no-pane-blind-bottom-clearance`). `useIsTabBarAtTop` (the Screen barrel) is a
-  pane-blind window read too: only `src/design-system/components/screen/` and
-  `src/navigation/pane-stack/pane-stack-view/` may import it, or `useTabBarPlacement`
+  it (`kiko-no-pane-blind-bottom-clearance`). `useIsTabBarAtTop` and `useIsTabBarNotAtBottom`
+  (the Screen barrel) are pane-blind window reads too: only
+  `src/design-system/components/screen/` and `src/navigation/pane-stack/pane-stack-view/` may
+  import them, or `useTabBarPlacement`
   (`kiko-tab-bar-placement-only-in-screen-and-pane-stack-view`). In a pane (a
   `PaneContext` from `TwoPaneLayout`), the `SafeAreaView` keeps only the
   window edges the pane touches (`use-pane-screen.ts`), a footer is
@@ -710,11 +711,15 @@ new component can land between reviews of this skill:
   (`useIsTabBarAtTop()`, every regular iPad window, small Stage Manager
   splits included; user ruling 2026-10-21): `useContentCap()` returns no
   cap there, so the content spans the pane from the 16 pt margin where
-  the native large title starts, because `PaneStackView` gives the stacks
-  that margin on the same `useIsTabBarAtTop()` value. A Duo pose (bar at
-  the bottom or a side) keeps the cap and UIKit's title margin, and so
-  does a large window with a SIDE tab bar: it stays capped at 600 pt,
-  with no large-window exception (user ruling 2026-10-21). A screen
+  the native large title starts. The title margin is a wider test:
+  `PaneStackView` gives the stacks the 16 pt margin on
+  `useIsTabBarNotAtBottom()` (the bar at the top OR a side; user ruling
+  D1 2026-10-23), so a pane under a side bar (every Duo pose with a side
+  bar) also starts its title at the content's margin. Only the top bar
+  lifts the cap: a pane with a SIDE tab bar (a Duo side-bar pose, or a
+  large window) stays capped at 600 pt, with no large-window exception
+  (user ruling 2026-10-21), and a pane whose bar is at the bottom keeps
+  the cap and UIKit's title margin. A screen
   that sizes itself by the room its content has (the Statistics shared
   chart row) reads `usePaneContentWidth()` (the Screen barrel: the pane
   width limited by that cap), never the pane or window width alone. The

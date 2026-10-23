@@ -272,7 +272,7 @@ describe('PaneStackView', () => {
 
   // A pane's native large title takes its leading inset from the pane's distance to the window's
   // edge, so each pane's stack asks the native side for the content's fixed margin instead,
-  // wherever the native tab bar is at the top. The Surface Duo's bottom bar keeps its look.
+  // unless the native tab bar is at the bottom, which keeps UIKit's margin.
   describe('the fixed content margin of a pane’s native stack', () => {
     const state = stackState([route('accounts'), route('account')], {
       accounts: 'companion',
@@ -322,14 +322,38 @@ describe('PaneStackView', () => {
       ['a leading side bar', 'leading', 'none'],
       ['a trailing side bar', 'trailing', 'none'],
       ['a vertical bar trait with no native bar found', 'none', 'leading'],
-    ] as const)('is 0 in both panes with %s', async (_name, tabBarEdge, verticalBarEdge) => {
-      mockUseTabBarEdge.mockReturnValue(tabBarEdge);
-      mockUseVerticalBarEdge.mockReturnValue(verticalBarEdge);
+    ] as const)(
+      'is the content’s side padding in both panes with %s',
+      async (_name, tabBarEdge, verticalBarEdge) => {
+        mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+        mockUseVerticalBarEdge.mockReturnValue(verticalBarEdge);
 
-      await renderInWindow(1376, 1032, 'columns');
+        await renderInWindow(1376, 1032, 'columns');
 
-      expect(mockFixedContentMargin.mock.calls).toEqual([[0], [0]]);
-    });
+        expect(mockFixedContentMargin.mock.calls).toEqual([
+          [darkTheme.spacing(4)],
+          [darkTheme.spacing(4)],
+        ]);
+      },
+    );
+
+    it.each([
+      ['the Duo outer window in landscape', 1350, 900, 'columns'],
+      ['the Duo inner window in landscape', 951, 669, 'columns'],
+    ] as const)(
+      'is the content’s side padding in both panes of %s, whose side bar is not at the bottom',
+      async (_name, width, height, mode) => {
+        mockUseTabBarEdge.mockReturnValue('bottom');
+        mockUseVerticalBarEdge.mockReturnValue('leading');
+
+        await renderInWindow(width, height, mode);
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([
+          [darkTheme.spacing(4)],
+          [darkTheme.spacing(4)],
+        ]);
+      },
+    );
 
     it('is 0, which leaves UIKit’s margins alone, for the single native stack even with a top bar', async () => {
       mockUseTabBarEdge.mockReturnValue('top');

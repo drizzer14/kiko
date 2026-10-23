@@ -1036,14 +1036,15 @@ verified usage, not dead weight:
 
 - **`src/design-system/components/screen/**` and `src/navigation/pane-stack/pane-stack-view/**`
   — the two folders `kiko-tab-bar-placement-only-in-screen-and-pane-stack-view`'s
-  `paths.exclude` lists.** The rule denies importing `useTabBarPlacement` or `useIsTabBarAtTop`
-  (or their `use-tab-bar-placement` and `use-is-tab-bar-at-top` modules): they are pane-blind
-  reads of the window's tab bar, so a screen that branches on either inside a pane reads another
-  pane's answer. The Screen folder owns the hooks and its siblings read them
-  (`use-top-clearance.ts`, `use-bottom-clearance.ts`, `use-top-bar-band.ts`, `use-pane-screen.ts`),
-  and `pane-stack-view.component.tsx` is the one consumer outside it: it reads
-  `useIsTabBarAtTop` once, above both panes, to give their native large titles the content's
-  margin, on the same value `useContentCap` uses for the pane's cap. A whole-folder exclude is
+  `paths.exclude` lists.** The rule denies importing `useTabBarPlacement`, `useIsTabBarAtTop` or
+  `useIsTabBarNotAtBottom` (or their `use-tab-bar-placement`, `use-is-tab-bar-at-top` and
+  `use-is-tab-bar-not-at-bottom` modules): they are pane-blind reads of the window's tab bar, so
+  a screen that branches on one inside a pane reads another pane's answer. The Screen folder
+  owns the hooks and its siblings read them (`use-top-clearance.ts`, `use-bottom-clearance.ts`,
+  `use-top-bar-band.ts`, `use-pane-screen.ts`), and `pane-stack-view.component.tsx` is the one
+  consumer outside it: it reads `useIsTabBarNotAtBottom` once, above both panes, to give their
+  native large titles the content's margin (a top or a side bar), while `useContentCap` keeps
+  the narrower `useIsTabBarAtTop` for the pane's cap. A whole-folder exclude is
   right for both because each holds only the hook's owner or sanctioned consumer and their
   tests; the rule still reaches every other importer.
 
@@ -1172,9 +1173,10 @@ verified usage, not dead weight:
     `RNSScreenStack` header and implementation, the codegen spec `ScreenStackNativeComponent.ts`,
     `contexts.tsx`, `ScreenStack.tsx` and `index.tsx` of the package's own `src`, and the
     `lib/commonjs` and `lib/typescript` copies of them, which Jest and `tsc` load): the native
-    large title of a pane under a top tab bar lines up with its content (that content is uncapped,
-    `useContentCap`, so it starts at the same margin; a pane under a bottom or side bar keeps
-    UIKit's margin and its capped content, which do not line up). UIKit insets the large title by
+    large title of a pane whose tab bar is not at the bottom (top or side) takes the content's
+    16 pt margin (under a top bar that content is uncapped, `useContentCap`, so it starts at the
+    same margin; under a side bar the content stays capped and centred, so the margins are the
+    pane's own; a pane under a bottom bar keeps UIKit's margin). UIKit insets the large title by
     the navigation bar's layout margin, which it derives from the stack's distance to the
     window's edge (20 pt for the pane at the window's leading edge, 0 for the other pane), while
     the content pads its sides by a fixed 16 pt. The patch adds a `fixedContentMargin` prop (a
@@ -1183,21 +1185,23 @@ verified usage, not dead weight:
     `RNSNavigationController`. While it is above 0 the controller stops respecting the system
     minimum layout margins and sets the leading and trailing margins of its view and of its
     navigation bar to that value, again after each `viewDidLayoutSubviews`.
-    Scope: only `PaneStackView` in a split (`columns`/`rows`) whose native tab bar is at the top
-    (`useIsTabBarAtTop()`, the one test that `useContentCap` shares) provides a value
-    (`theme.spacing(4)`, the content's side padding), around both panes' stacks. That is every
-    two-pane window of a regular iPad, small Stage Manager splits (for example 1032x683 columns
-    or 683x909 rows) included, whatever the window's size (user ruling 2026-10-21). The content
-    cap follows the same test: such a pane's content is uncapped and starts at the same margin as
-    its title (user ruling 2026-10-21, which replaces the large-window-only cap of 2026-10-20).
-    Every other stack (iPhone, single-pane, a stack outside
-    `PaneStackView`) and the panes of any window whose tab bar is at the bottom or a side (every
-    Surface Duo pose: inner 951x669 and 669x951), which keeps its look completely, read 0. The
-    placement is the one `Screen` clears, read from the bar's real frame, so the margin and the
-    content cap can both lag for about 0.1 s while the placement read is stale (on a split change
-    or a large-to-large rotation, and on cold start until the first read), then settle. A large
-    window with a SIDE tab bar stays capped at 600 pt and keeps UIKit's margin, with no
-    large-window exception (user ruling 2026-10-21).
+    Scope: only `PaneStackView` in a split (`columns`/`rows`) whose native tab bar is not at the
+    bottom (`useIsTabBarNotAtBottom()`: the bar at the top or at a side; user ruling 2026-10-23)
+    provides a value (`theme.spacing(4)`, the content's side padding), around both panes' stacks.
+    That is every two-pane window of a regular iPad, small Stage Manager splits (for example
+    1032x683 columns or 683x909 rows) included, whatever the window's size (user ruling
+    2026-10-21), and every Surface Duo pose with a side bar (the outer and the inner landscape
+    windows), so the title starts at the content's margin there too. The content cap is the
+    narrower test and does not follow it: only a bar at the TOP lifts the cap (`useContentCap`
+    on `useIsTabBarAtTop()`), so such a top-bar pane's content is uncapped and starts at the same
+    margin as its title (user ruling 2026-10-21, which replaces the large-window-only cap of
+    2026-10-20), while a pane with a SIDE tab bar stays capped at 600 pt, with no large-window
+    exception. Every other stack (iPhone, single-pane, a stack outside `PaneStackView`) and the
+    panes of any window whose tab bar is at the bottom (the Surface Duo inner portrait pose,
+    669x951), which keeps its look completely, read 0. The placement is the one `Screen` clears,
+    read from the bar's real frame, so the margin and the content cap can both lag for about
+    0.1 s while the placement read is stale (on a split change or a large-to-large rotation, and
+    on cold start until the first read), then settle.
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or
@@ -1205,7 +1209,7 @@ verified usage, not dead weight:
     default. Going back to 0 restores the view and bar margins captured when the value first went
     above 0, and `viewRespectsSystemMinimumLayoutMargins = YES`. Without a stack view being
     recycled, that restore path is reached only by the stale placement read above (about 0.1 s,
-    the mounted split briefly reads a bar that is not at the top) or by a Duo read of `top`; an
+    the mounted split briefly reads a bar at the bottom) or by a Duo read of `bottom`; an
     iPad window keeps its tab bar at the top, so no resize reaches it. Only the Fabric (new
     architecture) path is patched, as the stack takes its props in `updateProps`; `lib/module` is
     not patched (nothing here loads it). The patch was derived against the pristine tarball
