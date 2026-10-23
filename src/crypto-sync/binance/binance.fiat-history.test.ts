@@ -62,6 +62,9 @@ type FiatKind = {
   readKey: 'fetchFiatOrders' | 'fetchFiatPayments';
   pageRows: number;
   laneCalls: number;
+  /** The runs of a first walk up to its cursor at now, and which of them read forward. */
+  runsToNow: number;
+  forwardRuns: readonly number[];
   cost: (typeof COSTS)['fiatOrders' | 'fiatPayments'];
   keyPart: 'fiat' | 'fiatpay';
   coin: 'EUR' | 'BTC';
@@ -79,6 +82,8 @@ const ORDERS: FiatKind = {
   readKey: 'fetchFiatOrders',
   pageRows: 500,
   laneCalls: 3,
+  runsToNow: 8,
+  forwardRuns: [0, 1, 2, 3, 7],
   cost: COSTS.fiatOrders,
   keyPart: 'fiat',
   coin: 'EUR',
@@ -93,6 +98,8 @@ const PAYMENTS: FiatKind = {
   readKey: 'fetchFiatPayments',
   pageRows: 100,
   laneCalls: 10,
+  runsToNow: 1,
+  forwardRuns: [0],
   cost: COSTS.fiatPayments,
   keyPart: 'fiatpay',
   coin: 'BTC',
@@ -264,11 +271,15 @@ const walkRuns = async (
   return runs;
 };
 
+/** The queries of the runs of a first walk that read forward, in the order the runs ran. */
+const forwardQueriesOf = (kind: FiatKind, runs: { deps: AnyDeps }[]): Query[] =>
+  kind.forwardRuns.flatMap((index) => queriesOf(kind, runs[index].deps));
+
 describe.each([ORDERS, PAYMENTS])('the $name walk windows', (kind) => {
   it('reads two-year windows forward from the history floor, oldest first, both types of each', async () => {
-    const runs = await walkRuns(worldOf(kind), 5);
+    const runs = await walkRuns(worldOf(kind), kind.runsToNow);
 
-    const queries = runs.flatMap(({ deps }) => queriesOf(kind, deps)).slice(0, 10);
+    const queries = forwardQueriesOf(kind, runs);
     expect(queries.map(({ type }) => type)).toEqual(
       Array.from({ length: 5 }, () => ['0', '1']).flat(),
     );
@@ -284,11 +295,11 @@ describe.each([ORDERS, PAYMENTS])('the $name walk windows', (kind) => {
     const world = worldOf(kind);
     const fifth = kind.recordOf({ createTime: HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS + DAY_MS });
 
-    const runs = await walkRuns(world, 5, () => ({
+    const runs = await walkRuns(world, kind.runsToNow, () => ({
       [kind.readKey]: world.serverOf({ '0': [fifth] }),
     }));
 
-    const queries = runs.flatMap(({ deps }) => queriesOf(kind, deps)).slice(0, 10);
+    const queries = forwardQueriesOf(kind, runs);
     expect([...new Set(queries.map(({ start }) => start))]).toEqual(
       [0, 1, 2, 3, 4].map((window) => HISTORY_FLOOR_MS + window * FIAT_WINDOW_MS),
     );
@@ -300,19 +311,18 @@ describe.each([ORDERS, PAYMENTS])('the $name walk windows', (kind) => {
 });
 
 describe('the first walk of an account that has never synced', () => {
-  const firstWalk = async (kind: FiatKind) => {
+  const firstWalk = async (kind: FiatKind, count: number) => {
     const world = worldOf(kind);
     const runs: { calls: number; complete: boolean; cursor: unknown }[] = [];
 
-    for (let run = 0; run < 8; run += 1) {
+    for (let run = 0; run < count; run += 1) {
       const [{ deps, result }] = await walkRuns(world, 1);
-      const cursor = cursorOf(kind, world);
 
-      runs.push({ calls: queriesOf(kind, deps).length, complete: result.complete, cursor });
-
-      if (cursor === NOW) {
-        break;
-      }
+      runs.push({
+        calls: queriesOf(kind, deps).length,
+        complete: result.complete,
+        cursor: cursorOf(kind, world),
+      });
     }
 
     return runs;
@@ -320,22 +330,44 @@ describe('the first walk of an account that has never synced', () => {
 
   describe('of fiat orders, at a lane of three calls', () => {
     it('reads every two-year window from the floor, empty ones too', async () => {
-      const runs = await firstWalk(ORDERS);
+      const runs = await firstWalk(ORDERS, ORDERS.runsToNow);
 
-      expect(runs.map(({ calls }) => calls)).toEqual([2, 2, 2, 2, 2]);
+      expect(runs.map(({ calls }) => calls)).toEqual([2, 2, 2, 2, 2, 2, 2, 2]);
       expect(runs.map(({ cursor }) => cursor)).toEqual([
         HISTORY_FLOOR_MS + FIAT_WINDOW_MS,
         HISTORY_FLOOR_MS + 2 * FIAT_WINDOW_MS,
         HISTORY_FLOOR_MS + 3 * FIAT_WINDOW_MS,
         HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS,
+        HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS,
+        HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS,
+        HISTORY_FLOOR_MS + 4 * FIAT_WINDOW_MS,
         NOW,
       ]);
+    });
+
+    it('reads the owed days before it reaches now, then re-scans the last two years and reads forward', async () => {
+      const runs = await firstWalk(ORDERS, 10);
+
+      expect(runs.map(({ complete }) => complete)).toEqual([
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        true,
+      ]);
+      expect(runs.map(({ calls }) => calls).slice(8)).toEqual([2, 0]);
+      expect(runs.at(-1)?.cursor).toBe(NOW);
     });
   });
 
   describe('of fiat payments, at a lane of ten calls', () => {
     it('reads every two-year window from the floor, empty ones too', async () => {
-      const runs = await firstWalk(PAYMENTS);
+      const runs = await firstWalk(PAYMENTS, PAYMENTS.runsToNow);
 
       expect(runs).toEqual([{ calls: 10, complete: true, cursor: NOW }]);
     });
@@ -349,6 +381,253 @@ describe('when the fiat payment walk is current', () => {
     const result = await walk(depsOf());
 
     expect(result.complete).toBe(true);
+  });
+
+  it('reads forward and re-scans the last two years in the same run', async () => {
+    const world = recentWorld(PAYMENTS);
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(PAYMENTS, deps)).toEqual([
+      ...['0', '1'].map((type) => ({ type, start: NOW - HOUR_MS, end: NOW, page: 1 })),
+      ...['0', '1'].map((type) => ({
+        type,
+        start: NOW - FIAT_WINDOW_MS,
+        end: NOW - HOUR_MS,
+        page: 1,
+      })),
+    ]);
+    expect(cursorOf(PAYMENTS, world)).toBe(NOW);
+    expect(pendingOf(PAYMENTS, world)).toEqual([]);
+  });
+});
+
+describe('when the fiat order walk is current, at a lane of three calls', () => {
+  const LATER_MS = 300_000;
+
+  /** Orders the first run does not read: one from the last day and one from the last month. */
+  const lateOrders = () => [
+    ORDERS.recordOf({ orderNo: 'late-1', createTime: NOW - 2 * HOUR_MS }),
+    ORDERS.recordOf({ orderNo: 'late-2', createTime: NOW - 30 * DAY_MS }),
+  ];
+
+  /** A world whose forward read just ran, so the next run is the first to read behind. */
+  const afterForwardRun = async () => {
+    const world = recentWorld(ORDERS);
+
+    await world.walk(world.depsOf());
+
+    return world;
+  };
+
+  it('re-scans the last two years on the run after a forward read, so a late record is imported', async () => {
+    const world = await afterForwardRun();
+    const behind = world.depsOf({
+      now: () => NOW + LATER_MS,
+      [ORDERS.readKey]: world.serverOf({ '0': lateOrders() }),
+    });
+
+    const result = await world.walk(behind);
+
+    expect(queriesOf(ORDERS, behind)).toEqual(
+      ['0', '1'].map((type) => ({
+        type,
+        start: NOW + LATER_MS - FIAT_WINDOW_MS,
+        end: NOW,
+        page: 1,
+      })),
+    );
+    expect(
+      addedRows(behind)
+        .map(({ externalId }) => externalId)
+        .sort(),
+    ).toEqual([expect.stringContaining(':fiat:late-1:'), expect.stringContaining(':fiat:late-2:')]);
+    expect(cursorOf(ORDERS, world)).toBe(NOW);
+    expect(pendingOf(ORDERS, world)).toEqual([]);
+    expect(result.complete).toBe(false);
+  });
+
+  it('reads forward again on the run after the re-scan, and reports complete', async () => {
+    const world = await afterForwardRun();
+    await world.walk(world.depsOf({ now: () => NOW + LATER_MS }));
+    const forward = world.depsOf({ now: () => NOW + 2 * LATER_MS });
+
+    const result = await world.walk(forward);
+
+    expect(result).toEqual({ imported: 0, complete: true });
+    expect(queriesOf(ORDERS, forward).map(({ start }) => start)).toEqual([NOW, NOW]);
+    expect(cursorOf(ORDERS, world)).toBe(NOW + 2 * LATER_MS);
+  });
+
+  it('reads an owed point on the third call of a forward run and of a re-scan run', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({ pending: [pointOf(FIAT_CREATED_AT, '0')] });
+    const runs = await walkRuns(world, 2, () => ({ now: () => NOW }));
+
+    expect(runs.map(({ deps }) => queriesOf(ORDERS, deps).map(({ type }) => type))).toEqual([
+      ['0', '1', '0'],
+      ['0', '1', '0'],
+    ]);
+    expect(queriesOf(ORDERS, runs[0].deps).at(-1)).toEqual({
+      type: '0',
+      start: FIAT_CREATED_AT - 1,
+      end: FIAT_CREATED_AT + 1,
+      page: 1,
+    });
+    expect(queriesOf(ORDERS, runs[1].deps)[0].start).toBe(NOW - FIAT_WINDOW_MS);
+  });
+
+  it('reads forward when the list holds no range, though a point is owed', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({ pending: [pointOf(FIAT_CREATED_AT, '0')] });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps)[0]).toEqual({
+      type: '0',
+      start: NOW - HOUR_MS,
+      end: NOW,
+      page: 1,
+    });
+  });
+
+  it.each([
+    ['a finished pass', HISTORY_FLOOR_MS, true],
+    ['no pass yet', undefined, true],
+    ['a pass in the middle', NOW - 400 * DAY_MS, false],
+  ])(
+    'reports a forward read that starts with the re-scan at %s as complete: %s',
+    async (_name, rescan, expected) => {
+      const world = recentWorld(ORDERS);
+      world.seed({ rescan });
+
+      const result = await world.walk(world.depsOf());
+
+      expect(result.complete).toBe(expected);
+    },
+  );
+});
+
+describe('when the stored list of owed fiat order ground cannot be read', () => {
+  it('reads the repaired range over five re-scan runs, then reads forward', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({ pending: 'unreadable' });
+
+    const runs = await walkRuns(world, 6);
+
+    expect(runs.map(({ deps }) => queriesOf(ORDERS, deps).map(({ start }) => start))).toEqual([
+      ...[0, 1, 2, 3].map((window) =>
+        Array.from({ length: 2 }, () => HISTORY_FLOOR_MS + window * FIAT_WINDOW_MS),
+      ),
+      [NOW - FIAT_WINDOW_MS, NOW - FIAT_WINDOW_MS],
+      [NOW - HOUR_MS, NOW - HOUR_MS],
+    ]);
+    expect(runs.map(({ result }) => result.complete)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ]);
+    expect(cursorOf(ORDERS, world)).toBe(NOW);
+  });
+});
+
+describe('when the fiat order walk is a whole window or more behind', () => {
+  it('reads forward first and leaves the owed range for a later run', async () => {
+    const world = worldOf(ORDERS);
+    const cursor = NOW - 1_000 * DAY_MS;
+    const owed = { start: NOW - 1_500 * DAY_MS, end: NOW - 1_499 * DAY_MS };
+    world.seed({ cursor, pending: [owed] });
+    const deps = world.depsOf();
+
+    const result = await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps)).toEqual(
+      ['0', '1'].map((type) => ({ type, start: cursor, end: cursor + FIAT_WINDOW_MS, page: 1 })),
+    );
+    expect(cursorOf(ORDERS, world)).toBe(cursor + FIAT_WINDOW_MS);
+    expect(pendingOf(ORDERS, world)).toContainEqual(owed);
+    expect(result.complete).toBe(false);
+  });
+
+  it('reads forward at exactly one window behind, and is not complete while a range was owed', async () => {
+    const world = worldOf(ORDERS);
+    const cursor = NOW - FIAT_WINDOW_MS;
+    world.seed({ cursor, pending: [{ start: cursor - DAY_MS, end: cursor }] });
+    const deps = world.depsOf();
+
+    const result = await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps)).toEqual(
+      ['0', '1'].map((type) => ({ type, start: cursor, end: NOW, page: 1 })),
+    );
+    expect(result.complete).toBe(false);
+  });
+
+  it('re-scans at a millisecond under one window behind', async () => {
+    const world = worldOf(ORDERS);
+    const cursor = NOW - FIAT_WINDOW_MS + 1;
+    world.seed({ cursor, pending: [{ start: cursor - DAY_MS, end: cursor }] });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps)).toEqual(
+      ['0', '1'].map((type) => ({ type, start: cursor - DAY_MS, end: cursor, page: 1 })),
+    );
+    expect(cursorOf(ORDERS, world)).toBe(cursor);
+  });
+});
+
+describe('the span hints of the fiat order walk, which a run keeps for the passes it reads', () => {
+  const hintsOf = (world: ReturnType<typeof worldOf>) =>
+    world.fake.marksOf(ORDERS.walkId).spanHints;
+
+  const NO_HINTS = { forward: [], pending: [], rescan: [], point: [] };
+
+  const hintsWith = (pass: 'forward' | 'rescan', hint: Span) => ({ ...NO_HINTS, [pass]: [hint] });
+
+  it('drops the forward hint on a re-scan run, and the forward read after it still reaches now', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({
+      pending: [{ start: NOW - 3 * HOUR_MS, end: NOW - 2 * HOUR_MS }],
+      spanHints: hintsWith('forward', { start: NOW - HOUR_MS, end: NOW - HOUR_MS / 2 }),
+    });
+    const rescan = world.depsOf();
+
+    await world.walk(rescan);
+
+    expect(queriesOf(ORDERS, rescan).map(({ start }) => start)).toEqual([
+      NOW - FIAT_WINDOW_MS,
+      NOW - FIAT_WINDOW_MS,
+    ]);
+    expect(hintsOf(world)).toEqual(NO_HINTS);
+
+    const forward = world.depsOf({ now: () => NOW + 300_000 });
+    await world.walk(forward);
+
+    expect(queriesOf(ORDERS, forward)).toEqual(
+      ['0', '1'].map((type) => ({ type, start: NOW - HOUR_MS, end: NOW + 300_000, page: 1 })),
+    );
+    expect(cursorOf(ORDERS, world)).toBe(NOW + 300_000);
+  });
+
+  it('drops the re-scan hint on a forward run', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({
+      spanHints: hintsWith('rescan', {
+        start: NOW - FIAT_WINDOW_MS,
+        end: NOW - FIAT_WINDOW_MS + 30 * DAY_MS,
+      }),
+    });
+
+    await world.walk(world.depsOf());
+
+    expect(hintsOf(world)).toEqual(NO_HINTS);
   });
 });
 
@@ -1051,7 +1330,7 @@ describe.each([ORDERS, PAYMENTS])('a failure of the $name walk', (kind) => {
         span: Span,
         page: number,
       ) => {
-        if (type === '1' && span.start === cursorAt + FIAT_WINDOW_MS) {
+        if (type === '1' && span.start !== cursorAt) {
           throw new BinanceRateLimitError(429, 30_000);
         }
 

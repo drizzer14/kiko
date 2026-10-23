@@ -13,8 +13,10 @@ import {
   exchangeStateDepsOf,
   historyListWriterOf,
   instantAt,
+  isPoint,
   joinSettled,
   notImportedWriterOf,
+  type OwedGround,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
@@ -552,6 +554,48 @@ const commitSpan = <Item extends FiatRecord>(
   });
 };
 
+/**
+ * A lane that cannot afford a forward read and a re-scan read in one run (both series of a window
+ * each) alternates the two across runs: the re-scan is the walk's window re-scan, and a lane that
+ * never read it would lose every record Binance writes late (S12-Q18).
+ */
+const alternatesTurns = (walkId: FiatWalk<FiatRecord>['walkId']): boolean =>
+  LANE_CALL_CAPS[walkId] < 2 * FIAT_SERIES.length;
+
+const holdsRange = (pending: OwedGround[]): boolean => pending.some((ground) => !isPoint(ground));
+
+type FiatTurn = 'forward' | 'behind';
+
+/**
+ * A run reads behind (owed ranges first, the re-scan once none is left, which also takes the
+ * overlap day out of the list) when the list holds a range and the forward ground is under one
+ * window; every other run reads forward. A forward read that is a window or more behind goes first,
+ * so a catch-up reaches now before it looks back; the forward read that stores an overlap day makes
+ * the next run a behind one.
+ */
+const turnOf = (pending: OwedGround[], plan: WalkPlan, endTime: number): FiatTurn =>
+  holdsRange(pending) && endTime - (plan.forward.at(0)?.start ?? endTime) < FIAT_WINDOW_MS
+    ? 'behind'
+    : 'forward';
+
+/**
+ * The plan one turn runs. The commits keep the whole plan: the forward pass stores its
+ * `pendingRanges` and the re-scan ends at its `rescanEnd`.
+ */
+const planOfTurn = (plan: WalkPlan, turn: FiatTurn): WalkPlan =>
+  turn === 'behind'
+    ? { ...plan, forward: [], rescan: plan.pending.length > 0 ? [] : plan.rescan }
+    : { ...plan, pending: [], rescan: [] };
+
+/**
+ * Whether a run of an alternating lane started with no range owed and the re-scan not part way
+ * through a pass: a forward read leaves the ground behind unread, so only one that started with
+ * none owed is complete, and a behind run, which starts with a range, never is. The overlap day
+ * the forward read stores is the next behind run's.
+ */
+const startedWithNothingBehind = (pending: OwedGround[], rescanCursor: number | null): boolean =>
+  !holdsRange(pending) && (rescanCursor ?? HISTORY_FLOOR_MS) <= HISTORY_FLOOR_MS;
+
 const runSync = async <Item extends FiatRecord>(
   deps: FiatCommonDeps,
   walk: FiatWalk<Item>,
@@ -609,8 +653,9 @@ const runSync = async <Item extends FiatRecord>(
     depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
   };
 
+  const turn = alternatesTurns(walk.walkId) ? turnOf(pending, plan, endTime) : undefined;
   const result = await runWalkPlan({
-    plan,
+    plan: turn === undefined ? plan : planOfTurn(plan, turn),
     callsOf,
     canAfford: (keep) =>
       run.budget.canAfford(walk.walkId, walk.cost, keep) &&
@@ -632,7 +677,10 @@ const runSync = async <Item extends FiatRecord>(
   // behind it than the windows it read.
   return {
     ...result,
-    complete: result.complete && (lastWindowEnd === undefined || lastWindowEnd >= endTime),
+    complete:
+      result.complete &&
+      (lastWindowEnd === undefined || lastWindowEnd >= endTime) &&
+      (turn === undefined || startedWithNothingBehind(pending, rescanCursor)),
   };
 };
 
@@ -650,9 +698,10 @@ type FiatRequest = { targetAccountId: string; run: BinanceHistoryRun };
  * of their fiat, marked with the bank total (C-NR1), and list every record whose status is not
  * `Successful` or `Processing` as not recognized. The walk reads 2-year windows forward from the
  * history floor, a deposit and a withdraw series in each, empty ones too; the lane holds a window
- * a run, so the first walk takes several runs. `complete: false` means history, owed ground or the
- * re-scan remains and a later run resumes from the stored marks; a failure other than a rate limit
- * rejects, so the caller can log it without failing the balance sync.
+ * a run, so the first walk takes several runs, and a run reads forward or behind, not both
+ * (`turnOf`). `complete: false` means history, owed ground or the re-scan remains, and a run that
+ * read behind is never complete; a later run resumes from the stored marks. A failure other than a
+ * rate limit rejects, so the caller can log it without failing the balance sync.
  */
 export const syncBinanceFiatOrderHistory = (
   request: FiatRequest,
@@ -676,8 +725,8 @@ export const syncBinanceFiatOrderHistory = (
 /**
  * Import the user's completed card buys and sells as transactions on the Spot holding of their
  * coin, marked with the fiat total (C-NR1), and list every record whose status is not `Completed`
- * or `Processing` as not recognized. Windows, runs and failures are those of
- * `syncBinanceFiatOrderHistory`.
+ * or `Processing` as not recognized. Windows and failures are those of
+ * `syncBinanceFiatOrderHistory`; the lane is wide enough to read forward and re-scan in one run.
  */
 export const syncBinanceFiatPaymentHistory = (
   request: FiatRequest,
