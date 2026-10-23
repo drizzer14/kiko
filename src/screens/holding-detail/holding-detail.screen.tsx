@@ -463,7 +463,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                 tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
               />
             }
-            footerLines={[footerText].filter((line) => line !== '')}
+            amountCaption={footerText || undefined}
           />
         </LotRowMenu>
       );
@@ -532,30 +532,25 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
               testID="ledger-row"
               label={description}
               lead={
-                <>
-                  <SymbolIcon
-                    name={category.icon}
-                    size={theme.iconSizes.body}
-                    tone="textSecondary"
-                    color={resolveCategoryColor(category.color, categoryKey)}
-                    accessibilityLabel={category.title}
-                  />
-
-                  {/* A small "loan payment" marker, uniform with Home's
-                      list row — shown regardless of `loanLinkSource` ('auto'
-                      or 'manual' read the same marker). No accessibility
-                      label: decorative, mirroring `SelectableRow`'s own
-                      checkmark glyph — the row's own accessible content
-                      already fully describes the transaction. */}
-                  {transactionRow.transaction.loanHoldingId != null && (
-                    <SymbolIcon
-                      name="link"
-                      size={theme.iconSizes.caption}
-                      tone="textSecondary"
-                      testID="ledger-row-loan-link-marker"
-                    />
-                  )}
-                </>
+                <SymbolIcon
+                  name={category.icon}
+                  size={theme.iconSizes.body}
+                  tone="textSecondary"
+                  color={resolveCategoryColor(category.color, categoryKey)}
+                  accessibilityLabel={category.title}
+                />
+              }
+              // A small "loan payment" marker beside the time, under the value —
+              // shown regardless of `loanLinkSource` ('auto' or 'manual' read the
+              // same marker). Decorative, so no accessibility label: the row's
+              // own accessible content already fully describes the transaction.
+              amountCaptionIcon={
+                transactionRow.transaction.loanHoldingId != null
+                  ? { name: 'link', testID: 'ledger-row-loan-link-marker' }
+                  : undefined
+              }
+              amountCaption={
+                showTime ? formatTime(transactionRow.transaction.time, clock) : undefined
               }
               amount={
                 <MoneyText
@@ -563,7 +558,6 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                   context="transaction"
                 />
               }
-              footerLines={showTime ? [formatTime(transactionRow.transaction.time, clock)] : []}
             />
           </Pressable>
         </CardContextMenu>

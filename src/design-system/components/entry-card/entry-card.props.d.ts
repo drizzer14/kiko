@@ -10,8 +10,14 @@ export type EntryCardProps = {
   // An optional leading cluster (a category icon, a link marker). It shares one row with the
   // label, so only that cluster, not the label alone, is split from the amount.
   lead?: ReactNode;
-  // Caption lines under the main row, right-aligned in `textSecondary`. Absent or empty draws
-  // no footer.
+  // A caption drawn directly under the amount in the amount column (a time, "Computed"), so a
+  // title that wraps never separates the two.
+  amountCaption?: string;
+  // An SF Symbol drawn before `amountCaption` on the same line, centred on it (the loan-link
+  // marker). The caption line renders even without `amountCaption`.
+  amountCaptionIcon?: { name: string; testID?: string };
+  // Caption lines under the WHOLE row (multi-line extras such as the upcoming split),
+  // right-aligned in `textSecondary`. Absent or empty draws no footer.
   footerLines?: readonly string[];
   testID?: string;
   // Forwarded to the card, e.g. a projected entry's dimming.

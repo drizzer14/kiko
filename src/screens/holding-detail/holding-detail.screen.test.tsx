@@ -922,11 +922,11 @@ describe('HoldingDetailScreen', () => {
 
     const { getByText } = await renderScreen();
 
-    // The timestamp caption is wrapped in a right-aligned footer container
-    // (alignSelf 'flex-end') so it lands under the amount column rather than
-    // left-aligned under the description — mirroring the Home row layout.
-    const footer = ancestorWithStyle(getByText('09:05'), 'alignSelf');
-    expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
+    // The timestamp caption sits in the right-aligned amount column, directly
+    // under the value, rather than hanging below the whole row.
+    const column = ancestorWithStyle(getByText('09:05'), 'flexShrink');
+    expect(StyleSheet.flatten(column.props.style)).toMatchObject({ alignItems: 'flex-end' });
+    expect(within(column).getByTestId('money-tone-auto')).toBeTruthy();
   });
 
   it('right-aligns the derived lifecycle row caption so it sits below the value', async () => {
@@ -934,11 +934,29 @@ describe('HoldingDetailScreen', () => {
 
     const { getAllByText } = await renderScreen();
 
-    // The derived "Computed" caption uses the same right-aligned footer
-    // container, so it too sits under the amount column. depositHolding is a
-    // term_deposit (day-granular), so the caption carries no trailing time.
-    const footer = ancestorWithStyle(getAllByText('Computed')[0], 'alignSelf');
-    expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
+    // The derived "Computed" caption sits in the same amount column, so it too
+    // sits under the value. depositHolding is a term_deposit (day-granular), so
+    // the caption carries no trailing time.
+    const column = ancestorWithStyle(getAllByText('Computed')[0], 'flexShrink');
+    expect(StyleSheet.flatten(column.props.style)).toMatchObject({ alignItems: 'flex-end' });
+  });
+
+  it('draws the loan-link marker beside the time in the amount column, not in the lead', async () => {
+    seed(cardHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: -5000,
+        time: new Date(2024, 0, 15, 9, 5).getTime(),
+        description: 'Loan payment',
+        source: 'manual',
+        loanHoldingId: 'loan-1',
+      },
+    ]);
+
+    const { getByText } = await renderScreen();
+    const column = ancestorWithStyle(getByText('09:05'), 'flexShrink');
+
+    expect(within(column).getByTestId('ledger-row-loan-link-marker')).toBeTruthy();
   });
 
   it.each([
@@ -2943,13 +2961,13 @@ const descriptionLayout = (label: string): LayoutNode => ({
   children: [textLayout(label)],
 });
 
-const amountLayout = (testID: string): LayoutNode => ({
-  style: { flexShrink: 0 },
-  children: [{ testID, children: [expect.any(String)] }],
+const amountLayout = (testID: string, caption: LayoutNode[] = []): LayoutNode => ({
+  style: { flexShrink: 0, alignItems: 'flex-end', gap: darkTheme.spacing(1) },
+  children: [{ testID, children: [expect.any(String)] }, ...caption],
 });
 
 const mainRowLayout = (children: LayoutNode[]): LayoutNode => ({
-  style: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  style: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
   children,
 });
 
@@ -2965,11 +2983,10 @@ const categoryIconLayout: LayoutNode = {
   children: [],
 };
 
-// `objectContaining`: the footer may gain a cross-axis alignment without
-// losing the right-flush `alignSelf` the row look depends on.
-const footerLayout = (caption: string): LayoutNode => ({
-  style: expect.objectContaining({ alignSelf: 'flex-end' }),
-  children: [{ style: { textAlign: 'right' }, children: [caption] }],
+// The caption line under the amount: an optional leading icon, centred with the text.
+const captionLayout = (caption: string, icon: LayoutNode[] = []): LayoutNode => ({
+  style: { alignItems: 'center', flexDirection: 'row', gap: darkTheme.spacing(1) },
+  children: [...icon, { style: {}, children: [caption] }],
 });
 
 const cardLayout = (children: LayoutNode[]): LayoutNode => ({
@@ -3000,8 +3017,10 @@ describe('HoldingDetailScreen — ledger row look', () => {
 
     expect(layoutOf(row)).toEqual(
       cardLayout([
-        mainRowLayout([descriptionLayout('Interest accrual'), amountLayout('money-tone-positive')]),
-        footerLayout('Computed'),
+        mainRowLayout([
+          descriptionLayout('Interest accrual'),
+          amountLayout('money-tone-positive', [captionLayout('Computed')]),
+        ]),
       ]),
     );
     expect(StyleSheet.flatten(row.props.style)).not.toHaveProperty('opacity');
@@ -3021,8 +3040,10 @@ describe('HoldingDetailScreen — ledger row look', () => {
 
     expect(layoutOf(row)).toEqual(
       cardLayout([
-        mainRowLayout([descriptionLayout('Interest accrual'), amountLayout('money-tone-positive')]),
-        footerLayout('Projected'),
+        mainRowLayout([
+          descriptionLayout('Interest accrual'),
+          amountLayout('money-tone-positive', [captionLayout('Projected')]),
+        ]),
       ]),
     );
     expect(StyleSheet.flatten(row.props.style)).toMatchObject({ opacity: 0.5 });
@@ -3045,21 +3066,20 @@ describe('HoldingDetailScreen — ledger row look', () => {
     expect(layoutOf(getAllByTestId('ledger-row')[0])).toEqual(
       cardLayout([
         mainRowLayout([
-          leadLayout([
-            categoryIconLayout,
-            {
-              style: { height: darkTheme.iconSizes.caption, width: darkTheme.iconSizes.caption },
-              symbol: 'link',
-              // The native symbol takes the textSecondary token as 8-digit hex.
-              tint: '#ebebf599',
-              testID: 'ledger-row-loan-link-marker',
-              children: [],
-            },
-            descriptionLayout('Loan payment'),
+          leadLayout([categoryIconLayout, descriptionLayout('Loan payment')]),
+          amountLayout('money-tone-auto', [
+            captionLayout('09:05', [
+              {
+                style: { height: darkTheme.iconSizes.caption, width: darkTheme.iconSizes.caption },
+                symbol: 'link',
+                // The native symbol takes the textSecondary token as 8-digit hex.
+                tint: '#ebebf599',
+                testID: 'ledger-row-loan-link-marker',
+                children: [],
+              },
+            ]),
           ]),
-          amountLayout('money-tone-auto'),
         ]),
-        footerLayout('09:05'),
       ]),
     );
   });
