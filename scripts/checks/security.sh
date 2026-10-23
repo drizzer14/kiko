@@ -236,6 +236,9 @@ if [ -n "$scan_problems" ] && [ -n "$timeout_pairs" ]; then
     scan_problems="$scan_problems"$'\n'"$pair_count rule Timeouts is more than $MAXIMUM_RESCANNED_PAIRS: a broad stall, so nothing was re-scanned."
   else
     rescan_dir="$(mktemp -d "${TMPDIR:-/tmp}/kiko-security-rescan.XXXXXX")"
+    trap 'rm -rf "$rescan_dir"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     rescan_failed=""
     rescan_index=0
     while IFS= read -r rescan_file; do
@@ -258,10 +261,11 @@ let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
       out="$(semgrep_merged_report "$rescan_dir")"
       scan_problems="$(semgrep_error_text blocking)"
       while IFS=$'\t' read -r pair_file pair_rule; do
-        printf 'WARNING: security.sh: Semgrep rule %s timed out on %s; a single-threaded re-scan of that file passed (exit 0, not a clean first scan).\n' "$pair_rule" "$pair_file" >&2
+        printf 'WARNING: security.sh: Semgrep rule %s timed out on %s; a single-threaded re-scan of that file passed (not a clean first scan).\n' "$pair_rule" "$pair_file" >&2
       done <<<"$timeout_pairs"
     fi
     rm -rf "$rescan_dir"
+    trap - EXIT INT TERM
   fi
 fi
 
