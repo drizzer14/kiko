@@ -52,6 +52,11 @@ describe('the footer', () => {
   it.each([1, 2])('runs a table row for %s', () => {});
 
   it.only('runs a focused test', () => {});
+
+  // A `was` with a number that is not a trailing old-value label is prose.
+  it('it was 44 rows', () => {});
+
+  it('pins the rows (was 3 of them)', () => {});
 });
 
 describe.each([1, 2])('suite for %s', () => {});
