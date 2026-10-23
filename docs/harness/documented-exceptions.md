@@ -488,7 +488,9 @@ verified usage, not dead weight:
   and `typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method`
   (31 of the 33 ids start with `javascript.express.`).
   Cause: the registry web rules time out under load, and a timeout fails
-  `check:security` closed (binance debugger, 2026-10-18: single files take
+  `check:security` closed unless the one `--jobs 1` re-scan of that file clears it (a WARNING
+  per rule and file pair; more than 10 pairs fails; the re-scan is not an override)
+  (binance debugger, 2026-10-18: single files take
   0.6-2.4 s at load about 10 but 7-28 s at load 28-40; `express-ssrf` timed out on
   `src/screens/forms/holding-form/holding-form.screen.test.tsx`). Proof each
   cannot match: none of the rules checks for an `express` import. Their taint
