@@ -199,9 +199,9 @@ describe('the P2P walk windows', () => {
     await walk(deps);
 
     const queries = queriesOf(deps);
-    expect(queries).toHaveLength(10);
+    expect(queries).toHaveLength(20);
     expect(queries.map(({ side }) => side)).toEqual(
-      Array.from({ length: 5 }, () => ['BUY', 'SELL']).flat(),
+      Array.from({ length: 10 }, () => ['BUY', 'SELL']).flat(),
     );
 
     for (const [index, query] of queries.entries()) {
@@ -216,19 +216,13 @@ describe('the P2P walk windows', () => {
   it('reads every empty window and imports an order behind eight of them', async () => {
     const world = worldOf();
     const ninth = p2pOrderOf({ createTime: HISTORY_FLOOR_MS + 8 * P2P_WINDOW_MS + 5 * DAY_MS });
-    const runs: BinanceP2pHistoryDeps[] = [];
+    const deps = world.depsOf({ fetchP2pOrders: p2pServerOf([ninth]) });
 
-    for (let run = 0; run < 2; run += 1) {
-      const deps = world.depsOf({ fetchP2pOrders: p2pServerOf([ninth]) });
-
-      runs.push(deps);
-      await world.walk(deps);
-    }
+    await world.walk(deps);
 
     const windowsRead = (side: string) => [
       ...new Set(
-        runs
-          .flatMap(queriesOf)
+        queriesOf(deps)
           .filter((query) => query.side === side)
           .map(({ start }) => (start - HISTORY_FLOOR_MS) / P2P_WINDOW_MS),
       ),
@@ -236,7 +230,7 @@ describe('the P2P walk windows', () => {
 
     expect(windowsRead('BUY').slice(0, 9)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
     expect(windowsRead('SELL').slice(0, 9)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(runs.map((deps) => addedRows(deps).length)).toEqual([0, 1]);
+    expect(addedRows(deps)).toHaveLength(1);
     expect(world.fake.notImported()).toEqual([]);
   });
 });
@@ -270,25 +264,25 @@ describe('a first walk of the shape of an account with 113 windows', () => {
     expect(Math.ceil((NOW - HISTORY_FLOOR_MS) / P2P_WINDOW_MS)).toBe(113);
   });
 
-  it('reaches the first UA-1 order by run 15 and the newest by run 23 at the lane cap', async () => {
-    const runs = await walkRuns(24);
+  it('reaches the first UA-1 order by run 8 and the newest by run 12 at the lane cap', async () => {
+    const runs = await walkRuns(13);
     const importedAt = (orderNumber: string) =>
       runs.findIndex(({ ids }) => ids.some((id) => id.includes(`:p2p:${orderNumber}:`))) + 1;
 
-    expect(importedAt('first')).toBe(15);
-    expect(importedAt('newest')).toBe(23);
-    expect(runs.every(({ deps }) => queriesOf(deps).length <= 10)).toBe(true);
+    expect(importedAt('first')).toBe(8);
+    expect(importedAt('newest')).toBe(12);
+    expect(runs.every(({ deps }) => queriesOf(deps).length <= 20)).toBe(true);
   });
 
-  it('spends the whole lane on each of the first 22 runs and reports none of them finished', async () => {
-    const runs = (await walkRuns(23)).slice(0, 22);
+  it('spends the whole lane on each of the first 11 runs and reports none of them finished', async () => {
+    const runs = (await walkRuns(12)).slice(0, 11);
 
-    expect(runs.map(({ deps }) => queriesOf(deps).length)).toEqual(runs.map(() => 10));
+    expect(runs.map(({ deps }) => queriesOf(deps).length)).toEqual(runs.map(() => 20));
     expect(runs.map(({ complete }) => complete)).toEqual(runs.map(() => false));
   });
 
   it('reads each of the 113 windows on both sides, 226 calls, before it is current', async () => {
-    const runs = await walkRuns(23);
+    const runs = await walkRuns(12);
     const reads = new Set(
       runs.flatMap(({ deps }) =>
         queriesOf(deps)
@@ -809,7 +803,7 @@ describe('the P2P walk and its budget', () => {
   it('reads both sides of a window or neither', async () => {
     // [calls the lane has left, windows read with both sides]
     const rooms = [
-      [10, 5],
+      [20, 10],
       [4, 2],
       [3, 1],
       [2, 1],
@@ -821,7 +815,7 @@ describe('the P2P walk and its budget', () => {
       const { depsOf, walk } = worldOf();
       const deps = depsOf();
       const run = freshRun();
-      spend(run, 10 - room);
+      spend(run, 20 - room);
 
       await walk(deps, run);
 
@@ -840,7 +834,7 @@ describe('the P2P walk and its budget', () => {
     world.fake.seed('p2p', { pending: [{ start: NOW - 100 * DAY_MS, end: NOW - 99 * DAY_MS }] });
     const deps = world.depsOf();
     const run = freshRun();
-    spend(run, 5);
+    spend(run, 15);
 
     await world.walk(deps, run);
 

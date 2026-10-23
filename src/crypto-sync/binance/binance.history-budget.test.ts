@@ -30,7 +30,7 @@ describe('LANE_CALL_CAPS', () => {
       earn: 30,
       convert: 20,
       dust: 1,
-      p2p: 10,
+      p2p: 20,
       fiatOrders: 3,
       fiatPayments: 10,
       market: 150,
@@ -71,7 +71,7 @@ describe('createBinanceRunBudget — per-lane call caps', () => {
     ['transfer', COSTS.transfer, 80],
     ['earn', COSTS.earn, 30],
     ['convert', COSTS.convert, 20],
-    ['p2p', COSTS.p2p, 10],
+    ['p2p', COSTS.p2p, 20],
     ['fiatOrders', COSTS.fiatOrders, 3],
     ['fiatPayments', COSTS.fiatPayments, 10],
   ] as const)('caps the %s lane at %i calls', (lane, cost, cap) => {
@@ -219,6 +219,12 @@ describe('createBinanceRunBudget — P2P and fiat lanes', () => {
       UID_WEIGHT_BUDGET_1M,
     );
     expect(LANE_CALL_CAPS.fiatPayments * COSTS.fiatPayments.ip).toBeLessThanOrEqual(IP_BUDGET_1M);
+  });
+
+  it('keeps the P2P and fiat order lanes, which share one UID minute, within it when both spend their caps', () => {
+    expect(
+      LANE_CALL_CAPS.p2p * COSTS.p2p.uid + LANE_CALL_CAPS.fiatOrders * COSTS.fiatOrders.uid,
+    ).toBeLessThanOrEqual(UID_WEIGHT_BUDGET_1M);
   });
 
   it('refuses a fourth fiat order call in a run, though the weight alone would allow it', () => {

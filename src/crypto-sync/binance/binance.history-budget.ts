@@ -76,7 +76,7 @@ export const LANE_CALL_CAPS: Record<BudgetLane, number> = {
   earn: 30,
   convert: 20,
   dust: 1,
-  p2p: 10,
+  p2p: 20,
   fiatOrders: 3,
   fiatPayments: 10,
   market: 150,
