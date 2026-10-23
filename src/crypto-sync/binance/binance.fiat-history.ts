@@ -46,12 +46,16 @@ import {
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import {
+  type BinanceSpanHints,
+  notImportedEntry,
+  type WalkMarkPatch,
+} from '@kiko/crypto-sync/exchange/walk-state';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { fiatTotalCode } from '@kiko/transactions/untracked-counterpart';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
-import { notImportedEntry, type WalkMarkPatch } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
   type BinanceTransactionRow,
@@ -87,14 +91,15 @@ import { BinanceHistoryTooOldError, type FetchAccountOptions } from './binance.c
  * Credit Stopped`) and say nothing about what any of them did to the balance, so only `Successful`
  * makes a row and `Processing` owes its point; every other word, `Failed` and `Refunded` too, is
  * refused into `notImported` (spec "### Fiat orders ...", C-NR-E, S12-Q3, S12-Q13). The text is
- * matched exactly: no trim, no case fold. See `.superpowers/sdd/binance-set12/fiat-doc-quote.md`.
+ * matched exactly: no trim, no case fold. The status list is quoted from Binance's own fiat order
+ * documentation, which names the eight words and describes none of them.
  */
 const FIAT_ORDER_STATUSES = { settled: 'Successful', open: 'Processing' } as const;
 
 /**
  * The words of a fiat payment that settle or wait. The Binance docs list no payment status at all,
  * so these two are the spec's and every other word is refused (S12-Q4), matched exactly like the
- * order words. See `.superpowers/sdd/binance-set12/fiat-doc-quote.md`.
+ * order words: the payment documentation of Binance lists none, so no word of it is quoted.
  */
 const FIAT_PAYMENT_STATUSES = { settled: 'Completed', open: 'Processing' } as const;
 
@@ -905,6 +910,59 @@ const keepStuckMark = async (input: {
   }
 };
 
+/**
+ * The plan with its first re-scan window starting after the known stuck range that holds its start
+ * or ends 1 ms short of it, and after any range that holds the start that gives. A window that
+ * starts at a stuck range reads the day or the sliver on its own, which a read cannot clear; what
+ * `aroundStuck` splits off from it on a read is the piece after the range, and a piece that is a
+ * full page halves, which the stored hint (that starts past the window start) could not keep, so
+ * every run started the halving again and the pass never ended. A window that would start at or
+ * past its end is left as it is: it holds only owed ground, and its commit ends the pass.
+ */
+const startingAfterStuck = (plan: WalkPlan, stuck: WalkWindow[]): WalkPlan => {
+  const [first, ...rest] = plan.rescan;
+
+  if (first === undefined) {
+    return plan;
+  }
+
+  const start = [...stuck]
+    .sort(byStart)
+    .reduce(
+      (from, range) => (range.start - 1 <= from && from <= range.end ? range.end + 1 : from),
+      first.start,
+    );
+
+  return start === first.start || start >= first.end
+    ? plan
+    : { ...plan, rescan: [{ ...first, start }, ...rest] };
+};
+
+/**
+ * The hooks with the stored re-scan hint kept on a turn that is not the re-scan. The plan of such
+ * a turn holds no re-scan window, so the walk stores its hints without a re-scan one, which drops
+ * the hint the re-scan left part way through the halving of a full page, and the next re-scan
+ * would start that halving again.
+ */
+const keepRescanHint = <
+  Hooks extends {
+    hints: { stored: BinanceSpanHints; store: (hints: BinanceSpanHints) => Promise<void> };
+  },
+>(
+  hooks: Hooks,
+  turn: FiatTurn | undefined,
+): Hooks =>
+  turn === undefined || turn === 'rescan'
+    ? hooks
+    : {
+        ...hooks,
+        hints: {
+          ...hooks.hints,
+          store: (hints: BinanceSpanHints) =>
+            hooks.hints.store({ ...hints, rescan: hooks.hints.stored.rescan }),
+        },
+      };
+
 const runSync = async <Item extends FiatRecord>(
   deps: FiatCommonDeps,
   walk: FiatWalk<Item>,
@@ -934,23 +992,26 @@ const runSync = async <Item extends FiatRecord>(
   const endTime = deps.now();
   const maxWindows = Math.floor(LANE_CALL_CAPS[walk.walkId] / FIAT_SERIES.length);
   const stuck = heldStuck(stored.rescanStuck ?? [], pending);
-  const plan = withStuckWindows({
-    plan: planWalkPasses({
-      cursor,
-      rescanCursor,
-      pointCursor: roundRobins.pointCursor,
+  const plan = startingAfterStuck(
+    withStuckWindows({
+      plan: planWalkPasses({
+        cursor,
+        rescanCursor,
+        pointCursor: roundRobins.pointCursor,
+        rangeCursor: roundRobins.rangeCursor,
+        pending,
+        floorMs: HISTORY_FLOOR_MS,
+        endTime,
+        windowMs: FIAT_WINDOW_MS,
+        overlapMs: RESYNC_OVERLAP_MS,
+        maxWindows,
+      }),
+      stuck,
       rangeCursor: roundRobins.rangeCursor,
-      pending,
-      floorMs: HISTORY_FLOOR_MS,
-      endTime,
-      windowMs: FIAT_WINDOW_MS,
-      overlapMs: RESYNC_OVERLAP_MS,
       maxWindows,
     }),
     stuck,
-    rangeCursor: roundRobins.rangeCursor,
-    maxWindows,
-  });
+  );
 
   if (plan.forward.length === 0 && plan.rescan.length === 0) {
     return { imported: 0, complete: false };
@@ -1004,7 +1065,7 @@ const runSync = async <Item extends FiatRecord>(
         }),
       ),
     isUnreadableWindowError,
-    ...roundRobinHooksOf({ marks: context.marks, write }),
+    ...keepRescanHint(roundRobinHooksOf({ marks: context.marks, write }), turn),
   });
   const lastWindowEnd = plan.forward.at(-1)?.end;
 

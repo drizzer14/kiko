@@ -51,6 +51,16 @@ const HOUR_MS = 3_600_000;
 
 /** Runs enough for the longest bound (six failing days in the window, on orders: 52). */
 const RUNS = 60;
+
+/**
+ * The runs the records of a world are drawn for. A world driven for more runs than this draws the
+ * same numbers as one driven for `RUNS`, so no world or named seed that exists is changed by the
+ * runs a dense world needs.
+ */
+const GENERATED_RUNS = 60;
+
+/** The runs a dense world is driven for: its bound adds the reads of a halving to each pass. */
+const DENSE_RUNS = 120;
 const SEEDS = Array.from({ length: 30 }, (_unused, position) => 5 + position * 7);
 const ACCOUNT_ID = 'acc-fiat-orders-properties';
 const FIRST_RUN_AT = NOW;
@@ -115,19 +125,32 @@ const PAYMENTS_RESCAN_EVERY_RUNS = 1;
  */
 const firstPassReadsOf = (zonesInWindow: number): number => 2 * zonesInWindow + 1;
 
+/** The widest gap between two owed days of a cluster; the narrowest is an hour. */
+const CLUSTER_GAP_MS = 3 * DAY_MS;
+
+/**
+ * The reads a halving adds to a pass over a dense world: `H = 2 x (ceil(log2(CLUSTER_GAP_MS /
+ * HOUR_MS)) + 1)`. The span after a stuck day holds more rows than a page, so a read of it comes
+ * back full and halves until a piece fits a page, as many times as the span holds hours of the
+ * widest gap, and the pieces double back to the window end: the halving reads to fit a page and
+ * the doubling back, with slack.
+ */
+const HALVING_READS = 2 * (Math.ceil(Math.log2(CLUSTER_GAP_MS / HOUR_MS)) + 1);
+
 /**
  * The runs a record served is imported within: `importRuns(z) = r * F(z)`, `r` being the runs
  * between two reads of the re-scan (`runsPerRescanRead`) and `F(z)` the reads of the first pass
  * (`firstPassReadsOf`). A record waits at most for the rest of the pass it is served in and its
  * place in the next one, which together are no more than a first pass. With no failing day a pass
- * is one read, and a record served just after it waits for the next. A record served from run `v`
- * is imported by the `importRuns(z)`th run it is within the reach of the clock from `v` on (a run
- * whose clock is before the record cannot read it).
+ * is one read, and a record served just after it waits for the next. A world behind full pages
+ * adds the halving to each pass: `importRuns(z) = r * (F(z) + H)`, `H` being `HALVING_READS`. A
+ * record served from run `v` is imported by the `importRuns(z)`th run it is within the reach of
+ * the clock from `v` on (a run whose clock is before the record cannot read it).
  */
 const importRunsWithin =
   (runsPerRescanRead: number) =>
-  (zonesInWindow: number): number =>
-    runsPerRescanRead * firstPassReadsOf(zonesInWindow);
+  (zonesInWindow: number, dense: boolean): number =>
+    runsPerRescanRead * (firstPassReadsOf(zonesInWindow) + (dense ? HALVING_READS : 0));
 
 /** Late records are written between 2 days and this many days behind the run that serves them. */
 const LATE_BACK_DAYS = 600;
@@ -137,13 +160,16 @@ const SERVED_BACK_MS = 1_000 * DAY_MS;
 
 type Stuck = 'none' | 'drift' | 'throw' | 'tooOld';
 
-type Place = 'anywhere' | 'in the window' | 'in a cluster';
+type Place = 'anywhere' | 'in the window' | 'in a cluster' | 'in a cluster, behind full pages';
 
 type World = { stuck: Stuck; place: Place };
 
+const isDense = ({ place }: World): boolean => place === 'in a cluster, behind full pages';
+
 /**
  * Owed ground anywhere behind the cursor, and, for the two failing kinds, in the last 500 days or
- * four to six days in a row there.
+ * four to six days in a row there, the last with more rows of each type than a page holds in the
+ * hour after the first of them.
  */
 const WORLDS: World[] = [
   { stuck: 'none', place: 'anywhere' },
@@ -153,19 +179,60 @@ const WORLDS: World[] = [
   { stuck: 'throw', place: 'in the window' },
   { stuck: 'drift', place: 'in a cluster' },
   { stuck: 'throw', place: 'in a cluster' },
+  { stuck: 'drift', place: 'in a cluster, behind full pages' },
+  { stuck: 'throw', place: 'in a cluster, behind full pages' },
   { stuck: 'tooOld', place: 'anywhere' },
 ];
 
+type NamedSeed = {
+  kindName: 'fiat orders' | 'fiat payments';
+  ruling: string;
+  seed: number;
+  stuck: Stuck;
+  place: Place;
+};
+
+const denseSeedsOf = (
+  kindName: NamedSeed['kindName'],
+  stuck: Stuck,
+  seeds: number[],
+): NamedSeed[] =>
+  seeds.map((seed) => ({
+    kindName,
+    ruling: 'S12-Q33',
+    seed,
+    stuck,
+    place: 'in a cluster, behind full pages',
+  }));
+
 /**
- * Seeds whose worlds the payments walk read slowly while a read of the piece after a stuck day
- * ended where a doubled span did (S12-Q32): each one is run in the world it failed in.
+ * Seeds whose worlds a walk read slowly, each one run in the world it failed in. The payments
+ * seeds of S12-Q32 failed while a read of the piece after a stuck day ended where a doubled span
+ * did; the seeds of S12-Q33 failed behind full pages, where a re-scan that starts right after a
+ * stuck range halved a full page again in every run and the pass never ended.
  */
-const NAMED_PAYMENT_SEEDS: { seed: number; stuck: Stuck; place: Place }[] = [
-  { seed: 1027, stuck: 'drift', place: 'anywhere' },
-  { seed: 334, stuck: 'drift', place: 'anywhere' },
-  { seed: 306, stuck: 'drift', place: 'in a cluster' },
-  { seed: 558, stuck: 'drift', place: 'in a cluster' },
-  { seed: 642, stuck: 'drift', place: 'in a cluster' },
+const NAMED_SEEDS: NamedSeed[] = [
+  ...(
+    [
+      { seed: 1027, place: 'anywhere' },
+      { seed: 334, place: 'anywhere' },
+      { seed: 306, place: 'in a cluster' },
+      { seed: 558, place: 'in a cluster' },
+      { seed: 642, place: 'in a cluster' },
+    ] satisfies { seed: number; place: Place }[]
+  ).map(
+    ({ seed, place }): NamedSeed => ({
+      kindName: 'fiat payments',
+      ruling: 'S12-Q32',
+      seed,
+      stuck: 'drift',
+      place,
+    }),
+  ),
+  ...denseSeedsOf('fiat payments', 'drift', [5, 19, 26]),
+  ...denseSeedsOf('fiat payments', 'throw', [26, 89, 201]),
+  ...denseSeedsOf('fiat orders', 'drift', [5, 19, 26]),
+  ...denseSeedsOf('fiat orders', 'throw', [5, 19, 26]),
 ];
 
 /** The last owed days of the in-window worlds sit this far behind the walk's cursor, at most. */
@@ -228,7 +295,7 @@ type StatusRecordInput = {
 /** A kind with the bound its records are imported within in the generated worlds. */
 type BoundedKind = WorldKind & {
   /** The runs a record served is imported within, `zones` being the failing days in the window. */
-  importRunsOf: (zones: number) => number;
+  importRunsOf: (zones: number, dense: boolean) => number;
 };
 
 const ORDERS_KIND: BoundedKind = {
@@ -301,7 +368,7 @@ const servedWorldOf = (random: Random, clock: RunClock, kind: WorldKind): Served
     served.push({ servedFromRun, type, record: kind.recordOf({ orderNo, createTime, type }) });
   };
 
-  for (let run = 0; run < RUNS; run += 1) {
+  for (let run = 0; run < GENERATED_RUNS; run += 1) {
     const reachMs = run === 0 ? Math.min(clock.reachMs, HOUR_MS) : clock.reachMs;
 
     for (let count = Math.floor(random() * 3); count > 0; count -= 1) {
@@ -314,7 +381,7 @@ const servedWorldOf = (random: Random, clock: RunClock, kind: WorldKind): Served
   const lateCount = 2 + Math.floor(random() * 5);
 
   for (let index = 0; index < lateCount; index += 1) {
-    const servedFromRun = index === 0 ? 0 : Math.floor(random() * RUNS);
+    const servedFromRun = index === 0 ? 0 : Math.floor(random() * GENERATED_RUNS);
     const backDays = 2 + Math.floor(random() * LATE_BACK_DAYS);
 
     add(`late-${served.length}`, clock.at(servedFromRun) - backDays * DAY_MS, servedFromRun);
@@ -322,9 +389,6 @@ const servedWorldOf = (random: Random, clock: RunClock, kind: WorldKind): Served
 
   return served;
 };
-
-/** The widest gap between two owed days of a cluster; the narrowest is an hour. */
-const CLUSTER_GAP_MS = 3 * DAY_MS;
 
 /**
  * Four to six owed days one after another in the window, each an hour to 3 days after the one
@@ -346,7 +410,7 @@ const clusteredOwedRangesOf = (random: () => number): Span[] => {
 const owedRangesOf = (random: () => number, world: World): Span[] => {
   const earliest = world.place === 'in the window' ? START_CURSOR - IN_WINDOW_MS : HISTORY_FLOOR_MS;
 
-  if (world.place === 'in a cluster') {
+  if (world.place === 'in a cluster' || isDense(world)) {
     return clusteredOwedRangesOf(random);
   }
 
@@ -359,27 +423,51 @@ const owedRangesOf = (random: () => number, world: World): Span[] => {
       });
 };
 
+/** The runs a world is driven for. */
+const runsOf = (world: World): number => (isDense(world) ? DENSE_RUNS : RUNS);
+
 /** The owed days whose ground the re-scan reads, as far back as any run of the clock reads. */
-const zonesInWindowOf = (owed: Span[], clock: RunClock): number => {
+const zonesInWindowOf = (owed: Span[], clock: RunClock, runs: number): number => {
   const earliestRead =
-    Math.min(...Array.from({ length: RUNS }, (_unused, run) => clock.at(run))) - FIAT_WINDOW_MS;
+    Math.min(...Array.from({ length: runs }, (_unused, run) => clock.at(run))) - FIAT_WINDOW_MS;
 
   return owed.filter((range) => range.end >= earliestRead).length;
 };
 
-/** The seeds of a world with the title of the case: the named seeds are the payments walk's. */
+/** The seeds of a world with the title of the case, the named seeds of its kind after them. */
 const casesOf = (kind: BoundedKind, world: World): { seed: number; title: string }[] => [
   ...SEEDS.map((seed) => ({
     seed,
     title: `imports every record Binance serves within the bound, each once: seed ${seed}`,
   })),
-  ...(kind === PAYMENTS_KIND ? NAMED_PAYMENT_SEEDS : [])
-    .filter(({ stuck, place }) => stuck === world.stuck && place === world.place)
-    .map(({ seed }) => ({
-      seed,
-      title: `imports every record Binance serves within the bound, each once (S12-Q32): seed ${seed}`,
-    })),
+  ...NAMED_SEEDS.filter(
+    ({ kindName, stuck, place }) =>
+      kindName === kind.name && stuck === world.stuck && place === world.place,
+  ).map(({ seed, ruling }) => ({
+    seed,
+    title: `imports every record Binance serves within the bound, each once (${ruling}): seed ${seed}`,
+  })),
 ];
+
+/**
+ * In a world behind full pages, more rows of each type than a page holds, written in the hour
+ * after the first owed day of the cluster: a span past that day holds more than one page of each
+ * type, so a read of it (or of a piece of it) comes back full and halves.
+ */
+const fullPagesServedOf = (kind: WorldKind, world: World, owed: Span[]): Served[] =>
+  isDense(world)
+    ? Array.from({ length: 2 * (kind.pageRows + 1) }, (_unused, index) => {
+        const type: FiatTransactionType = index % 2 === 0 ? '0' : '1';
+        const createTime =
+          owed[0].end + 1 + Math.floor(((index + 1) * (HOUR_MS - 2)) / (2 * kind.pageRows + 3));
+
+        return {
+          servedFromRun: 0,
+          type,
+          record: kind.recordOf({ orderNo: `full-${index}`, createTime, type }),
+        };
+      })
+    : [];
 
 const KINDS: BoundedKind[] = [ORDERS_KIND, PAYMENTS_KIND];
 
@@ -431,9 +519,11 @@ describe.each(KIND_CLOCKS)(
 
       it.each(casesOf(kind, world))('$title', async ({ seed }) => {
         const random = seededRandom(seed);
-        const served = servedWorldOf(random, clock, kind);
+        const generated = servedWorldOf(random, clock, kind);
         const owed = owedRangesOf(random, world);
-        const importRuns = kind.importRunsOf(zonesInWindowOf(owed, clock));
+        const served = [...generated, ...fullPagesServedOf(kind, world, owed)];
+        const runs = runsOf(world);
+        const importRuns = kind.importRunsOf(zonesInWindowOf(owed, clock, runs), isDense(world));
         const fake = walkStateFake({ accountId: ACCOUNT_ID, alongside: kind.holdings });
         const offers: Offer[] = [];
         let run = 0;
@@ -479,7 +569,7 @@ describe.each(KIND_CLOCKS)(
           );
         };
 
-        for (run = 0; run < RUNS; run += 1) {
+        for (run = 0; run < runs; run += 1) {
           const runNow = clock.at(run);
 
           await kind
@@ -513,7 +603,7 @@ describe.each(KIND_CLOCKS)(
           stuck === 'tooOld' ||
           !owed.some((range) => record.createTime >= range.start && record.createTime <= range.end);
         const dueRunOf = ({ record, servedFromRun }: Served): number | undefined =>
-          Array.from({ length: RUNS - servedFromRun }, (_unused, offset) => servedFromRun + offset)
+          Array.from({ length: runs - servedFromRun }, (_unused, offset) => servedFromRun + offset)
             .filter((reachable) => record.createTime <= clock.at(reachable))
             .at(importRuns - 1);
         const missing = served

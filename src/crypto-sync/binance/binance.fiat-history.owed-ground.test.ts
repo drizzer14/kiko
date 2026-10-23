@@ -32,6 +32,8 @@ type FiatKind = {
   readKey: 'fetchFiatOrders' | 'fetchFiatPayments';
   pageRows: number;
   recordOf: (over: { orderNo: string; createTime: number }) => AnyRecord;
+  /** A withdrawal or a card sale, the record of the type `'1'` read. */
+  sellOf: (over: { orderNo: string; createTime: number }) => AnyRecord;
   sync: (
     request: Parameters<typeof syncBinanceFiatOrderHistory>[0],
     overrides: AnyDeps,
@@ -44,6 +46,7 @@ const ORDERS: FiatKind = {
   readKey: 'fetchFiatOrders',
   pageRows: 500,
   recordOf: fiatOrderOf,
+  sellOf: fiatOrderOf,
   sync: syncBinanceFiatOrderHistory,
 };
 
@@ -53,6 +56,7 @@ const PAYMENTS: FiatKind = {
   readKey: 'fetchFiatPayments',
   pageRows: 100,
   recordOf: fiatPaymentOf,
+  sellOf: (over) => fiatPaymentOf({ ...over, sourceAmount: '0.001', obtainAmount: '2600' }),
   sync: syncBinanceFiatPaymentHistory,
 };
 
@@ -68,13 +72,18 @@ let accountSequence = 0;
 type RunInput = {
   now: number;
   records: { orderNo: string; createTime: number }[];
+  /** The records of the type `'1'`, which the world reads beside `records`. */
+  sells?: { orderNo: string; createTime: number }[];
   unreadable: (span: Span) => boolean;
   /** Spans whose page comes back empty with a total of 5: a page that drifts. */
   drifting?: (span: Span) => boolean;
 };
 
-/** What one run did: what it rejected with, the spans it read and the times it committed. */
-type RunOutcome = { error: unknown; spans: Span[]; times: number[] };
+/**
+ * What one run did: what it rejected with, the spans it read, and the times and the order numbers
+ * of the rows it committed.
+ */
+type RunOutcome = { error: unknown; spans: Span[]; times: number[]; orderNos: string[] };
 
 const overlapping =
   (range: Span) =>
@@ -87,16 +96,21 @@ const worldOf = (kind: FiatKind) => {
   const fake = walkStateFake({ accountId, alongside: SPOT_HOLDINGS });
 
   const runOnce = async (input: RunInput): Promise<RunOutcome> => {
-    const server = fiatServerOf({ '0': input.records.map(kind.recordOf), '1': [] }, kind.pageRows);
+    const server = fiatServerOf(
+      { '0': input.records.map(kind.recordOf), '1': (input.sells ?? []).map(kind.sellOf) },
+      kind.pageRows,
+    );
     const spans: Span[] = [];
     const times: number[] = [];
+    const orderNos: string[] = [];
     const deps: AnyDeps = {
       now: () => input.now,
       fetchImpl: (async () => ({})) as unknown as typeof fetch,
       readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
       ensureHoldings: async () => undefined,
-      addTransactions: async (rows: { time: number }[]) => {
+      addTransactions: async (rows: { time: number; externalId: string }[]) => {
         times.push(...rows.map(({ time }) => time));
+        orderNos.push(...rows.map(({ externalId }) => externalId.split(':')[2]));
 
         return rows.length;
       },
@@ -128,7 +142,7 @@ const worldOf = (kind: FiatKind) => {
       (failure: unknown) => failure,
     );
 
-    return { error, spans, times };
+    return { error, spans, times, orderNos };
   };
 
   const marks = () => fake.marksOf(kind.walkId);
@@ -399,5 +413,73 @@ describe.each([ORDERS, PAYMENTS])('$name: a re-scan that goes on over several ru
     const { rescanAfterRun } = await runsAMillisecondApart();
 
     expect(rescanAfterRun.indexOf(HISTORY_FLOOR_MS)).toBe(PASS_ENDS_AT_RUN);
+  });
+});
+
+describe.each([ORDERS, PAYMENTS])('$name: a full page of rows right after a stuck day', (kind) => {
+  const WINDOW_START = NOW - FIAT_WINDOW_MS;
+  const FIRST_DAY = { start: WINDOW_START + 200 * DAY_MS, end: WINDOW_START + 201 * DAY_MS };
+  const SECOND_DAY = { start: FIRST_DAY.end + 3 * DAY_MS, end: FIRST_DAY.end + 4 * DAY_MS };
+  /** A read of the hour after the first day comes back full, whatever type it asks for. */
+  const FULL_PAGES = Array.from({ length: 2 * (kind.pageRows + 1) }, (_unused, index) => ({
+    orderNo: `full-${index}`,
+    createTime:
+      FIRST_DAY.end + 1 + Math.floor(((index + 1) * (HOUR_MS - 2)) / (2 * kind.pageRows + 3)),
+    type: index % 2 === 0 ? ('0' as const) : ('1' as const),
+  }));
+  const BETWEEN = { orderNo: 'between', createTime: FIRST_DAY.end + 2 * DAY_MS };
+  const AFTER = { orderNo: 'after', createTime: SECOND_DAY.end + 100 * DAY_MS };
+  const WANTED = [...FULL_PAGES.map(({ orderNo }) => orderNo), BETWEEN.orderNo, AFTER.orderNo];
+
+  /**
+   * The runs the pass over the window takes behind the full pages: the halving to a page that fits
+   * and the doubling back. The payments lane reads the re-scan in every run and the orders lane in
+   * one of four (measured: the last record is imported in the 7th run on the payments lane and the
+   * 30th on the orders lane; the runs below leave slack over them).
+   */
+  const RUNS = kind === PAYMENTS ? 30 : 100;
+
+  /** The records of the world the walk leaves in `RUNS` runs, from a re-scan mark or its start. */
+  const missingFrom = async (rescan: number | undefined): Promise<string[]> => {
+    const world = worldOf(kind);
+    const importedOrderNos = new Set<string>();
+    world.seed({ cursor: NOW - HOUR_MS, pending: [FIRST_DAY, SECOND_DAY], rescan });
+
+    for (let index = 0; index < RUNS; index += 1) {
+      const run = await world.runOnce({
+        now: NOW,
+        records: [...FULL_PAGES.filter(({ type }) => type === '0'), BETWEEN],
+        sells: [...FULL_PAGES.filter(({ type }) => type === '1'), AFTER],
+        unreadable: () => false,
+        drifting: (span) => overlapping(FIRST_DAY)(span) || overlapping(SECOND_DAY)(span),
+      });
+
+      for (const orderNo of run.orderNos) {
+        importedOrderNos.add(orderNo);
+      }
+    }
+
+    return WANTED.filter((orderNo) => !importedOrderNos.has(orderNo));
+  };
+
+  const noneMissing = { count: 0, first: [] };
+  const summaryOf = (missing: string[]) => ({ count: missing.length, first: missing.slice(0, 3) });
+
+  it('imports every record of the world', async () => {
+    expect(summaryOf(await missingFrom(undefined))).toEqual(noneMissing);
+  });
+
+  /**
+   * A pass that starts next to the first day (it ends a millisecond short of it, starts at it, or
+   * ends at it) reads the day on its own, so its window starts after the day, as one that comes
+   * to the day by its own reads does.
+   */
+  it.each([
+    { name: 'two milliseconds short of the first day', mark: FIRST_DAY.start - 2 },
+    { name: 'a millisecond short of the first day', mark: FIRST_DAY.start - 1 },
+    { name: 'at the start of the first day', mark: FIRST_DAY.start },
+    { name: 'at the end of the first day', mark: FIRST_DAY.end },
+  ])('imports every record of the world from a re-scan mark $name', async ({ mark }) => {
+    expect(summaryOf(await missingFrom(mark))).toEqual(noneMissing);
   });
 });

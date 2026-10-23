@@ -1127,18 +1127,27 @@ describe('the span hints of the fiat order walk, which a run keeps for the passe
     expect(cursorOf(ORDERS, world)).toBe(NOW + 300_000);
   });
 
-  it('drops the re-scan hint on a forward run', async () => {
+  it('keeps the re-scan hint on a forward run', async () => {
+    const hint = { start: NOW - FIAT_WINDOW_MS, end: NOW - FIAT_WINDOW_MS + 30 * DAY_MS };
     const world = recentWorld(ORDERS);
-    world.seed({
-      spanHints: hintsWith('rescan', {
-        start: NOW - FIAT_WINDOW_MS,
-        end: NOW - FIAT_WINDOW_MS + 30 * DAY_MS,
-      }),
-    });
+    world.seed({ spanHints: hintsWith('rescan', hint) });
 
     await world.walk(world.depsOf());
 
-    expect(hintsOf(world)).toEqual(NO_HINTS);
+    expect(hintsOf(world)).toEqual(hintsWith('rescan', hint));
+  });
+
+  it('keeps the re-scan hint on a run that reads the owed windows', async () => {
+    const hint = { start: NOW - FIAT_WINDOW_MS, end: NOW - FIAT_WINDOW_MS + 30 * DAY_MS };
+    const owed = { start: HISTORY_FLOOR_MS + 100 * DAY_MS, end: HISTORY_FLOOR_MS + 101 * DAY_MS };
+    const world = recentWorld(ORDERS);
+    world.seed({ pending: [owed], spanHints: hintsWith('rescan', hint) });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([owed.start, owed.start]);
+    expect(hintsOf(world)).toEqual(hintsWith('rescan', hint));
   });
 });
 
