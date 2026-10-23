@@ -24,7 +24,9 @@ not-ready feature out of the Release bundle. The rule going forward:
   flag-hidden.
 - No demo/seed/screenshot/fake-data module lives in or is imported
   from app `src/`. That dev/test machinery lives outside `src/` (see
-  `e2e/screenshot/`) and never ships.
+  `e2e/screenshot/`) and never ships. Allowance: a `*-test-fixtures.ts`
+  module may live in `src/` when ONLY `*.test.ts(x)` files import it
+  (Metro bundles only reachable modules); no app file may import it.
 
 Mechanized lightweight, on purpose — not a heavy always-on
 build-a-bundle CI gate:
@@ -1848,7 +1850,8 @@ restated here:
   refused'` with `{ wallet }` only. For the dust, stay and absent rules per
   coin read `appendWallet` in `binance.provider.ts`; do not restate them.
 - **Coin lists.** `fetchBalances` returns `ProviderRead`
-  (`{ balances, exchangeState? }`). `runBinanceSyncAndImport`
+  (`{ balances, exchangeState?, spotBalanceTexts? }`; the last feeds the trade
+  read, see `provider/provider.ts`). `runBinanceSyncAndImport`
   (`run-crypto-sync.ts`) writes the lists after the institution is set, under
   `logOnFailure('[binance sync] balance lists failed')`, before the walks. The
   not-tracked list is written only on a read where every wallet read. The
@@ -1900,7 +1903,17 @@ fails the balance sync. The Binance arm runs its history reads in
 `runBinanceHistoryWalks` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`: read
 the order and the `logOnFailure` tags there). Each runs in its own `logOnFailure` and
 all share one `run`; a rate limit met by an earlier read puts the shared cooldown on the later ones.
-Trade READS are not yet run by `runBinanceHistoryWalks` (set 11). The trade-symbol
+The trade read runs as the LAST walk of `runBinanceHistoryWalks`, so an earlier rate limit
+skips it. Read `binance.trade-history.ts` and `binance.history-client.ts` for its rules: one
+text sum per order and one conversion; the imported-order prefix lookup
+(`transactionsRepo.importedOrderPrefixesQuery`, chunked by `ORDER_PREFIX_CHUNK_SIZE` for
+SQLite's expression depth); one weight-5 `fetchOrderFills` re-read per known order per run;
+`heldOrderId`, set only when no other order's fill is inside the held order (S11-Q11, see
+`trailingOf`); the `rowlessOrderIds` set (S11-Q13; cleared on disconnect, an id leaves when its
+order writes a row); the strict `decimalText` reader; `fromId` is inclusive (the pager asks last
+id + 1). The pair id `${accountId}:trade:${symbol}:${orderId}` has no `:<COIN>` because
+(symbol, orderId) names one order, and every leg and fee key ends with the wallet key, which
+holds the coin. Design rule: a "seen" mark must not depend on a written row. The trade-symbol
 discovery and rotation (candidate rule, status filter, the rotation cursor stored as text in
 `trades.rotation`, per-symbol vs run-stopping errors) live in
 `src/crypto-sync/binance/binance.trade-symbols.ts`; the id-cursor pager is
@@ -1939,7 +1952,10 @@ than restated here:
   readers/writers, `BinanceWalkStop`); every history row amount goes through
   `rowMinorUnits(currency, text)` in `exchange/walk/records.ts`, which calls
   `exchangeMinorUnits(currency, text, 'row')` and throws `BinanceWalkStop` with
-  the parser's code (`AMOUNT_STOP_CODES`: `amount-malformed`, `amount-precision`,
+  the parser's code (exception: the trade read passes `'trade-row'`,
+  `exchange/amounts/amounts.ts`: a fiat leg or fee rounds half away from zero once per
+  order after the text sum, with the `row-precision-rounded` log; S11-Q10 is OVERNIGHT
+  DEFAULT, pending user) (`AMOUNT_STOP_CODES`: `amount-malformed`, `amount-precision`,
   `amount-too-large`); `amount-too-large` also names the coin, and
   `commitSettledSpan` writes it to `oversizedCoins.history`
   (`historyListWriterOf(deps, accountId, coins)`, one writer for `oversizedCoins`
