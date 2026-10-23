@@ -1,0 +1,190 @@
+import { join } from 'node:path';
+
+import {
+  createFakeRepository,
+  decideInEachFolder,
+} from './test-support/kill-guard-fake-repository';
+import { decideAll } from './test-support/kill-guard-decide';
+import { removeTemporaryDirectories } from './test-support/temporary-directory';
+
+// Commands the guard must judge behind a wrapper (caffeinate, arch, sandbox-exec, script, screen,
+// tmux, osascript) or inside the text an `orca` call types into a terminal. Every text is judged,
+// never run.
+const repository = createFakeRepository('guard-wrapped-commands-');
+const REPOSITORY_ROOT = join(__dirname, '..');
+afterAll(removeTemporaryDirectories);
+
+const EVERY_FOLDER = (kind: string): string[] => [kind, kind, kind];
+
+const CAFFEINATE_WRAPPERS = [
+  'caffeinate',
+  'caffeinate -i',
+  'caffeinate -t 5',
+  'caffeinate -t5',
+  'caffeinate -it 5',
+  'caffeinate -w 1',
+  'caffeinate -i --',
+  'caffeinate -dimsu',
+];
+
+const WRAPPED_KINDS: [command: string, kind: string][] = [
+  ['pkill node', 'kill'],
+  ['kill -9 -1', 'kill'],
+  ['make verify', 'heavyJob'],
+  ['npm run check:all', 'heavyJob'],
+  ['npx jest', 'fullJest'],
+  ['git stash', 'stash'],
+  ['sed -i s/a/b/ src/x.ts', 'shellWrite'],
+];
+
+const inFakeMain = (command: string): string =>
+  decideAll([[command, { cwd: repository.main, mainCheckoutPath: repository.main }]])[0];
+
+describe('kill-guard wrapped commands (parser only, fake repository)', () => {
+  const caffeinateRows = CAFFEINATE_WRAPPERS.flatMap((wrapper) =>
+    WRAPPED_KINDS.map(([command, kind]): [string, string, string] => [wrapper, command, kind]),
+  );
+
+  it.each(caffeinateRows)(
+    'denies a command behind caffeinate like the bare command: %s %s',
+    (wrapper, command, kind) => {
+      expect(decideInEachFolder(repository, `${wrapper} ${command}`)).toEqual(
+        decideInEachFolder(repository, command),
+      );
+      expect(decideInEachFolder(repository, `${wrapper} ${command}`)).toContain(kind);
+    },
+  );
+
+  it.each(CAFFEINATE_WRAPPERS)(
+    'denies a git merge in the main checkout behind caffeinate: %s',
+    (wrapper) => {
+      expect(inFakeMain('git merge x')).toBe('mainCheckout');
+      expect(inFakeMain(`${wrapper} git merge x`)).toBe('mainCheckout');
+    },
+  );
+
+  it.each([
+    ['orca terminal send --text "npm run check:all"', 'heavyJob'],
+    ['orca terminal send --text=npm\\ run\\ check:all', 'heavyJob'],
+    ["orca terminal send --terminal t1 --text 'make verify' --enter", 'heavyJob'],
+    ["orca terminal send --text 'pkill node' --enter", 'kill'],
+    ["orca terminal send --text 'kill -9 -1'", 'kill'],
+    ["orca terminal send --text 'git stash'", 'stash'],
+    ["orca terminal send --text 'cd /x && npx jest'", 'fullJest'],
+    ["orca terminal send --text 'sed -i s/a/b/ src/x.ts'", 'shellWrite'],
+    [
+      "/Applications/Orca.app/Contents/Resources/bin/orca terminal send --text 'make verify'",
+      'heavyJob',
+    ],
+    ["caffeinate -i orca terminal send --text 'make verify'", 'heavyJob'],
+    ["orca computer type-text --text 'make verify'", 'heavyJob'],
+  ])('judges the --text of an orca call as a typed command: %s', (command, kind) => {
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER(kind));
+  });
+
+  it('judges the --command of orca terminal create', () => {
+    expect(
+      decideInEachFolder(
+        repository,
+        "orca terminal create --worktree active --command 'make verify; echo __ORCA_DONE_$?__'",
+      ),
+    ).toEqual(EVERY_FOLDER('heavyJob'));
+  });
+
+  // The value options were read from `man arch` (-arch, -d and -e take a value), `man
+  // sandbox-exec` (-f, -n, -p and -D), `man script` (-t takes a value; the file operand comes
+  // before the command) and `man screen` (-S, -c, -e, -h, -p, -s, -t and -T take a value). tmux is
+  // not installed on this machine: its options (new-session -s -n -c -x -y -e -F -t, send-keys -t
+  // -N, split-window -t -c -e -l -F, respawn-pane -t -c -e) are from tmux(1) as known, not probed.
+  it.each([
+    ['arch -arm64 pkill node', 'kill'],
+    ['arch -arch arm64 pkill node', 'kill'],
+    ['arch -e NAME=value pkill node', 'kill'],
+    ['arch -d NAME pkill node', 'kill'],
+    ['sandbox-exec -n no-network make verify', 'heavyJob'],
+    ["sandbox-exec -p '(version 1)' make verify", 'heavyJob'],
+    ['sandbox-exec -D key=value -f profile.sb make verify', 'heavyJob'],
+    ['script -q /dev/null make verify', 'heavyJob'],
+    ['script -q /dev/null pkill node', 'kill'],
+    ['script -q -t 1 out.log make verify', 'heavyJob'],
+    ['screen -dm make verify', 'heavyJob'],
+    ['screen -S name -dm pkill node', 'kill'],
+    ['screen -d -m -S name make verify', 'heavyJob'],
+    ["tmux new-session -d 'make verify'", 'heavyJob'],
+    ["tmux new -d -s name 'pkill node'", 'kill'],
+    ["tmux split-window -h 'make verify'", 'heavyJob'],
+    ["tmux respawn-pane -k -t x 'make verify'", 'heavyJob'],
+    ["tmux send-keys -t x 'npm run check:all' Enter", 'heavyJob'],
+    ["tmux send-keys -t x 'pkill node' Enter", 'kill'],
+  ])('denies a command behind a wrapper like the bare one: %s', (command, kind) => {
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER(kind));
+  });
+
+  // osascript runs an arbitrary shell through `do shell script`; the finding kind is shellWrite
+  // (the guard's nearest kind for an opaque shell it cannot judge), whatever the shell text says.
+  it.each([
+    `osascript -e 'do shell script "echo hi"'`,
+    `osascript -e 'tell application "Finder"' -e 'do shell script "make verify"'`,
+    `osascript -e 'do shell script "pkill node"'`,
+  ])('denies an osascript script text with do shell script: %s', (command) => {
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('shellWrite'));
+  });
+
+  it.each([
+    'caffeinate -i npm run check:lint',
+    'arch -arm64 true',
+    'sandbox-exec -n no-network true',
+    'script -q /dev/null true',
+    'screen -ls',
+    'tmux ls',
+    "tmux send-keys -t x 'echo hi' Enter",
+    'osascript -e \'display notification "x"\'',
+  ])('allows a harmless command behind a wrapper: %s', (command) => {
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('allow'));
+  });
+
+  // Known limits: measured ALLOW today and expected to stay so, listed in kiko-linter.
+  it.each(['ssh host pkill node', "echo 'make verify' | at now"])(
+    'allows (known limit) a command the guard cannot reach: %s',
+    (command) => {
+      expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('allow'));
+    },
+  );
+
+  it.each([
+    "orca terminal send --text 'Status: verify green. Next: merge.' --enter",
+    "orca terminal send --text '/reload-plugins' --enter",
+    "orca terminal send --text 'Read memory/refs/brief-h11.md and start.' --enter",
+    "orca terminal send --text 'npm run deploy:device' --enter",
+    'orca terminal send --text --enter',
+    'orca terminal send --text "$X" --enter',
+  ])('allows prose and a non-heavy command sent to a terminal: %s', (command) => {
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('allow'));
+  });
+
+  it('allows the real log-event script, which sends a STATUS PUSH text', () => {
+    expect(decideAll([['bash scripts/log-event.sh x', { projectRoot: REPOSITORY_ROOT }]])).toEqual([
+      'allow',
+    ]);
+  });
+
+  it.each([
+    (worktree: string) => `caffeinate -i bash scripts/job-queue.sh verify ${worktree} label`,
+    () => 'caffeinate -i make mutable',
+    () => 'caffeinate -i make -n verify',
+  ])('still allows a queued job behind caffeinate: row %#', (build) => {
+    expect(decideInEachFolder(repository, () => build(repository.worktree))).toEqual(
+      EVERY_FOLDER('allow'),
+    );
+  });
+
+  it('reads the -t value of caffeinate as a value: the next word is no command', () => {
+    expect(decideInEachFolder(repository, 'caffeinate -t 5 true')).toEqual(EVERY_FOLDER('allow'));
+  });
+
+  it('reads the -w value of caffeinate as a value: the word after it is the command', () => {
+    expect(decideInEachFolder(repository, 'caffeinate -w 1 pkill node')).toEqual(
+      EVERY_FOLDER('kill'),
+    );
+  });
+});
