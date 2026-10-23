@@ -956,8 +956,59 @@ function stepWordQuoted(context) {
   context.i++;
 }
 
+// `\a`, `\b`, `\e`, `\E`, `\f`, `\n`, `\r`, `\t`, `\v` and the escaped quote and backslash of an
+// ANSI-C `$'...'` string, which bash and zsh both read.
+const ANSI_C_SIMPLE_ESCAPES = new Map([
+  ['a', '\x07'],
+  ['b', '\b'],
+  ['e', '\x1b'],
+  ['E', '\x1b'],
+  ['f', '\f'],
+  ['n', '\n'],
+  ['r', '\r'],
+  ['t', '\t'],
+  ['v', '\v'],
+  ['\\', '\\'],
+  ["'", "'"],
+  ['"', '"'],
+  ['?', '?'],
+]);
+const ANSI_C_ESCAPE =
+  /\\(?:([abeEfnrtv\\'"?])|([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|c([\s\S]))/g;
+
+// The character one escape of an ANSI-C string stands for; an unknown escape stays as written.
+function ansiCEscape(match, simple, octal, hexadecimal, unicode, control) {
+  if (simple !== undefined) return ANSI_C_SIMPLE_ESCAPES.get(simple);
+  if (octal !== undefined) return String.fromCharCode(Number.parseInt(octal, 8) % 256);
+  if (hexadecimal !== undefined) return String.fromCharCode(Number.parseInt(hexadecimal, 16));
+  if (control !== undefined) return String.fromCharCode(control.charCodeAt(0) % 32);
+  const codePoint = Number.parseInt(unicode ?? match.slice(2), 16);
+
+  return codePoint > 0x10ffff ? match : String.fromCodePoint(codePoint);
+}
+
+// A `$'...'` string: its text with the escapes decoded, so `$'make' verify` is `make verify` to
+// the shell. Ends at the first quote no backslash escapes; an unterminated one is not read (the
+// `$` stays a plain character).
+function tryAnsiCQuote(context) {
+  const { segment } = context;
+  let end = context.i + 2;
+  while (end < segment.length && segment[end] !== "'") {
+    tick();
+    end += segment[end] === '\\' ? 2 : 1;
+  }
+  if (end >= segment.length) return false;
+  context.cur += segment.slice(context.i + 2, end).replace(ANSI_C_ESCAPE, ansiCEscape);
+  context.i = end + 1;
+  context.started = true;
+  context.literal = true;
+
+  return true;
+}
+
 function stepWordUnquoted(context) {
   const c = context.segment[context.i];
+  if (c === '$' && context.segment[context.i + 1] === "'" && tryAnsiCQuote(context)) return;
   if (c === "'" || c === '"') {
     context.quote = c;
     context.started = true;
@@ -3124,26 +3175,171 @@ const TMUX_SEND_KEYS_OPTIONS = new Set(['-c', '-N', '-t']);
 const TMUX_NEW_WINDOW_OPTIONS = new Set(['-c', '-e', '-F', '-n', '-t']);
 const TMUX_RUN_SHELL_OPTIONS = new Set(['-d', '-t']);
 const TMUX_IF_SHELL_OPTIONS = new Set(['-t']);
+const TMUX_POPUP_OPTIONS = new Set([
+  '-b',
+  '-c',
+  '-d',
+  '-e',
+  '-h',
+  '-s',
+  '-S',
+  '-t',
+  '-T',
+  '-w',
+  '-x',
+  '-y',
+]);
+const TMUX_PIPE_PANE_OPTIONS = new Set(['-t']);
 
-// The commands that start a shell command or type keys, by name, manual alias, and (below) any
-// longer prefix of the name that tmux resolves. `each`: every word after the options is its own
-// text (the keys of `send-keys`, the shell command and the commands of `if-shell`); otherwise the
-// words are one shell command.
-const TMUX_COMMANDS = [
-  { name: 'new-session', alias: 'new', options: TMUX_NEW_SESSION_OPTIONS, each: false },
-  { name: 'new-window', alias: 'neww', options: TMUX_NEW_WINDOW_OPTIONS, each: false },
-  { name: 'split-window', alias: 'splitw', options: TMUX_SPLIT_WINDOW_OPTIONS, each: false },
-  { name: 'respawn-pane', alias: 'respawnp', options: TMUX_RESPAWN_PANE_OPTIONS, each: false },
-  { name: 'run-shell', alias: 'run', options: TMUX_RUN_SHELL_OPTIONS, each: false },
-  { name: 'if-shell', alias: 'if', options: TMUX_IF_SHELL_OPTIONS, each: true },
-  { name: 'send-keys', alias: 'send', options: TMUX_SEND_KEYS_OPTIONS, each: true },
+// The commands that start a shell command or type keys, by full name. `join`: the words after the
+// options are one shell command; `each`: every word is its own text (the shell command and the
+// commands of `if-shell`); `keys`: the words are the keys `send-keys` types, in order.
+const TMUX_JUDGED_COMMANDS = new Map([
+  ['new-session', { options: TMUX_NEW_SESSION_OPTIONS, mode: 'join' }],
+  ['new-window', { options: TMUX_NEW_WINDOW_OPTIONS, mode: 'join' }],
+  ['split-window', { options: TMUX_SPLIT_WINDOW_OPTIONS, mode: 'join' }],
+  ['respawn-pane', { options: TMUX_RESPAWN_PANE_OPTIONS, mode: 'join' }],
+  ['respawn-window', { options: TMUX_RESPAWN_PANE_OPTIONS, mode: 'join' }],
+  ['display-popup', { options: TMUX_POPUP_OPTIONS, mode: 'join' }],
+  ['pipe-pane', { options: TMUX_PIPE_PANE_OPTIONS, mode: 'join' }],
+  ['run-shell', { options: TMUX_RUN_SHELL_OPTIONS, mode: 'join' }],
+  ['if-shell', { options: TMUX_IF_SHELL_OPTIONS, mode: 'each' }],
+  ['send-keys', { options: TMUX_SEND_KEYS_OPTIONS, mode: 'keys' }],
+]);
+
+// Every tmux command and its manual alias, so a prefix resolves only when it is unique, as tmux
+// resolves it (an alias first, then the one command whose name starts with the word). From
+// tmux(1) as known: unverified.
+const TMUX_ALIASES = new Map([
+  // `prev` is the one alias the full-word check reads as an abbreviated key, so it is a pair.
+  ['prev', 'previous-window'],
+  ...Object.entries({
+    attach: 'attach-session',
+    bind: 'bind-key',
+    breakp: 'break-pane',
+    capturep: 'capture-pane',
+    clearhist: 'clear-history',
+    clearphist: 'clear-prompt-history',
+    confirm: 'confirm-before',
+    deleteb: 'delete-buffer',
+    detach: 'detach-client',
+    display: 'display-message',
+    menu: 'display-menu',
+    displayp: 'display-panes',
+    popup: 'display-popup',
+    findw: 'find-window',
+    has: 'has-session',
+    if: 'if-shell',
+    joinp: 'join-pane',
+    killp: 'kill-pane',
+    killw: 'kill-window',
+    lastp: 'last-pane',
+    last: 'last-window',
+    linkw: 'link-window',
+    lsb: 'list-buffers',
+    lsc: 'list-clients',
+    lscm: 'list-commands',
+    lsk: 'list-keys',
+    lsp: 'list-panes',
+    ls: 'list-sessions',
+    lsw: 'list-windows',
+    loadb: 'load-buffer',
+    lockc: 'lock-client',
+    lock: 'lock-server',
+    locks: 'lock-session',
+    movep: 'move-pane',
+    movew: 'move-window',
+    new: 'new-session',
+    neww: 'new-window',
+    nextl: 'next-layout',
+    next: 'next-window',
+    pasteb: 'paste-buffer',
+    pipep: 'pipe-pane',
+    prevl: 'previous-layout',
+    refresh: 'refresh-client',
+    rename: 'rename-session',
+    renamew: 'rename-window',
+    resizep: 'resize-pane',
+    resizew: 'resize-window',
+    respawnp: 'respawn-pane',
+    respawnw: 'respawn-window',
+    rotatew: 'rotate-window',
+    run: 'run-shell',
+    saveb: 'save-buffer',
+    selectl: 'select-layout',
+    selectp: 'select-pane',
+    selectw: 'select-window',
+    send: 'send-keys',
+    setb: 'set-buffer',
+    setenv: 'set-environment',
+    set: 'set-option',
+    setw: 'set-window-option',
+    showb: 'show-buffer',
+    showenv: 'show-environment',
+    showmsgs: 'show-messages',
+    show: 'show-options',
+    showphist: 'show-prompt-history',
+    showw: 'show-window-options',
+    source: 'source-file',
+    splitw: 'split-window',
+    start: 'start-server',
+    suspendc: 'suspend-client',
+    swapp: 'swap-pane',
+    swapw: 'swap-window',
+    switchc: 'switch-client',
+    unbind: 'unbind-key',
+    unlinkw: 'unlink-window',
+    wait: 'wait-for',
+  }),
+]);
+const TMUX_COMMAND_NAMES = [
+  ...new Set([
+    ...TMUX_ALIASES.values(),
+    ...TMUX_JUDGED_COMMANDS.keys(),
+    'choose-buffer',
+    'choose-client',
+    'choose-tree',
+    'clock-mode',
+    'command-prompt',
+    'copy-mode',
+    'customize-mode',
+    'kill-server',
+    'kill-session',
+    'send-prefix',
+    'server-access',
+    'set-hook',
+    'show-hooks',
+  ]),
 ];
 
-const tmuxCommandNamed = (word) =>
-  TMUX_COMMANDS.find(
-    ({ name, alias }) =>
-      word === alias || word === name || (word.length > alias.length && name.startsWith(word)),
-  );
+// The full name of the tmux command a word names, or undefined.
+function tmuxCommandName(word) {
+  const aliased = TMUX_ALIASES.get(word);
+  if (aliased !== undefined) return aliased;
+  if (TMUX_COMMAND_NAMES.includes(word)) return word;
+  const named = TMUX_COMMAND_NAMES.filter((name) => name.startsWith(word));
+
+  return named.length === 1 ? named[0] : undefined;
+}
+
+// A word as one shell word, so words joined into a command line keep their grouping
+// (`bash -c 'make verify'`).
+const SHELL_SAFE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/;
+const shellQuote = (word) =>
+  SHELL_SAFE_WORD.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`;
+// One word is already a command line (tmux and screen hand a lone argument to a shell as is).
+const shellJoin = (parts) => (parts.length === 1 ? parts[0] : parts.map(shellQuote).join(' '));
+
+// The keys `send-keys` types, in order, as the text they make: the names of Enter end a line.
+const TMUX_KEY_TEXT = new Map([
+  ['Enter', '\n'],
+  ['KPEnter', '\n'],
+  ['C-m', '\n'],
+  ['C-j', '\n'],
+  ['Space', ' '],
+  ['Tab', '\t'],
+]);
+const tmuxKeysText = (keys) => keys.map((key) => TMUX_KEY_TEXT.get(key) ?? key).join('');
 
 // The words after a tmux command's own options; `--` ends them.
 function tmuxOperands(parameters, optionsWithValue) {
@@ -3156,47 +3352,113 @@ function tmuxOperands(parameters, optionsWithValue) {
   return parameters.slice(index);
 }
 
-// The text a tmux call starts or types as a command line, per `TMUX_COMMANDS`. Nothing for any
-// other tmux command.
-function tmuxTypedTexts(tokens) {
-  const operands = tmuxOperands(tokens.slice(1), TMUX_GLOBAL_OPTIONS_WITH_VALUE);
-  const command = operands.length === 0 ? undefined : tmuxCommandNamed(operands[0]);
+// The text one tmux command (its words, the name first) starts or types as a command line, per
+// `TMUX_JUDGED_COMMANDS`. Nothing for any other command.
+function tmuxCommandTexts(words) {
+  const name = words.length === 0 ? undefined : tmuxCommandName(words[0]);
+  const command = TMUX_JUDGED_COMMANDS.get(name);
   if (command === undefined) return [];
-  const rest = tmuxOperands(operands.slice(1), command.options);
+  const rest = tmuxOperands(words.slice(1), command.options);
+  if (rest.length === 0) return [];
+  if (command.mode === 'keys') return [tmuxKeysText(rest)];
 
-  return command.each || rest.length === 0 ? rest : [rest.join(' ')];
+  return command.mode === 'each' ? rest : [shellJoin(rest)];
 }
 
-// The words after screen's options when one of them is `-X` (`screen -S name -X stuff text`: send a
-// screen command to a running session), else null. `unwrap` keeps such a `screen` as the command
-// word, so the text of its `stuff` reaches `screenTypedTexts`.
-function screenRemoteOperands(tokens) {
-  const optionsWithValue = OPTION_WRAPPERS.get('screen');
-  let remote = false;
-  let index = 1;
-  while (index < tokens.length && tokens[index].startsWith('-')) {
-    remote = remote || tokens[index] === '-X';
-    index += takesNextWord(tokens[index], optionsWithValue) ? 2 : 1;
+// A tmux command line split at its `;` words (`\;` once the shell has read it).
+function tmuxCommandsOf(words) {
+  const commands = [[]];
+  for (const word of words) {
+    if (word === ';') commands.push([]);
+    else commands.at(-1).push(word);
   }
 
-  return remote ? tokens.slice(index) : null;
+  return commands;
+}
+
+// The shell command of tmux's own `-c` option (`-c cmd` or `-ccmd`) and the words after the global
+// options.
+function tmuxGlobalOptions(words) {
+  const texts = [];
+  let index = 0;
+  while (index < words.length && /^-./.test(words[index])) {
+    const word = words[index];
+    if (word === '--') return { texts, rest: words.slice(index + 1) };
+    if (word === '-c' && index + 1 < words.length) texts.push(words[index + 1]);
+    else if (word.startsWith('-c') && word.length > 2) texts.push(word.slice(2));
+    index += takesNextWord(word, TMUX_GLOBAL_OPTIONS_WITH_VALUE) ? 2 : 1;
+  }
+
+  return { texts, rest: words.slice(index) };
+}
+
+// Every command line a tmux call starts or types: its `-c` text and the text of each command of
+// its `;` separated list.
+function tmuxTypedTexts(tokens) {
+  const [first, ...others] = tmuxCommandsOf(tokens.slice(1));
+  const { texts, rest } = tmuxGlobalOptions(first);
+
+  return [...texts, ...[rest, ...others].flatMap(tmuxCommandTexts)];
+}
+
+// A word that starts with `-X` or holds it as its last flag, with no value-taking flag before it
+// (`-S name` reads `X` of `-SX` as the name).
+const SCREEN_REMOTE_FLAG = /^-(?:(?![ScehpstT])[A-Za-z])*X$/;
+// The flags whose session word is optional (`-r name`, `-x`, `-d`, `-D`, `-R`, `-RR`).
+const SCREEN_SESSION_FLAG = /^-[A-Za-z]*[rRxdD]$/;
+
+// The words after screen's `-X` (`screen -S name -X stuff text`: send a screen command to a running
+// session), else null. `unwrap` keeps such a `screen` as the command word, so the text of the
+// command reaches `screenTypedTexts`. The options before it are read as screen reads them, the
+// session word of `-r`/`-x` included (`screen -r name -X stuff text`).
+function screenRemoteOperands(tokens) {
+  const optionsWithValue = OPTION_WRAPPERS.get('screen');
+  let index = 1;
+  while (index < tokens.length && tokens[index].startsWith('-')) {
+    const word = tokens[index];
+    if (SCREEN_REMOTE_FLAG.test(word)) return tokens.slice(index + 1);
+    index += takesNextWord(word, optionsWithValue) ? 2 : 1;
+    const session = tokens[index];
+    if (SCREEN_SESSION_FLAG.test(word) && session !== undefined && !session.startsWith('-')) {
+      index++;
+    }
+  }
+
+  return null;
 }
 
 // screen reads `^M` (caret notation) and `\015`, `\n`, `\r` in the text it stuffs as the keys of an
 // Enter, so each ends a command line.
 const SCREEN_KEY_ESCAPES = /\^[@-_?]|\\(?:[0-7]{1,3}|[nr])/g;
 
-// The text `screen -X stuff` types into a window, as a command line.
-function screenTypedTexts(tokens) {
-  const [name, ...text] = screenRemoteOperands(tokens) ?? [];
+// The command line the screen command `screen` (a new window; options and a window number first)
+// or `exec` (a leading `fdpat` of `.`, `!`, `|` first) starts.
+const SCREEN_LEADING_OPERAND = { screen: /^\d+$/, exec: /^[.!|]+$/ };
 
-  return name === 'stuff' ? text.map((word) => word.replace(SCREEN_KEY_ESCAPES, '\n')) : [];
+function screenStartedText(name, args) {
+  const operands = skipOptions(['screen', ...args], OPTION_WRAPPERS.get('screen'));
+  const [first, ...others] = operands;
+  const command = SCREEN_LEADING_OPERAND[name].test(first ?? '') ? others : operands;
+
+  return command.length === 0 ? [] : [shellJoin(command)];
 }
 
-// A script that runs a shell (`do shell script`), types a command into Terminal (`do script`), or
-// is JavaScript for Automation's `doShellScript`. AppleScript is case-insensitive and any
-// whitespace separates its words. The guard cannot read the command inside any of them.
-const OSASCRIPT_SHELL = /do\s+(?:shell\s+)?script|doShellScript/i;
+// The command lines one screen command (`-X` and its words) types or starts: `stuff` types its
+// text, `screen` and `exec` start a command, and `eval` holds screen commands of its own.
+function screenCommandTexts([name, ...args]) {
+  if (name === 'stuff') return args.map((word) => word.replace(SCREEN_KEY_ESCAPES, '\n'));
+  if (name === 'eval') return args.flatMap((arg) => screenCommandTexts(words(arg)));
+  if (name === 'screen' || name === 'exec') return screenStartedText(name, args);
+
+  return [];
+}
+
+const screenTypedTexts = (tokens) => screenCommandTexts(screenRemoteOperands(tokens) ?? []);
+
+// A script that runs a shell (`do shell script`, `doShellScript`), or types a command into Terminal
+// (`do script`, `doScript`). AppleScript is case-insensitive and any whitespace, or none in the
+// JavaScript spelling, separates its words. The guard cannot read the command inside any of them.
+const OSASCRIPT_SHELL = /\bdo\s*(?:shell\s*)?script\b/i;
 
 function osascriptFinding(tokens, context) {
   const texts = [...tokens.slice(1), ...context.stdinScripts];
