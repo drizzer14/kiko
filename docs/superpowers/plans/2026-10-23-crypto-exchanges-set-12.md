@@ -29,8 +29,8 @@ fiat-orders budget cases and the first-walk table), "### P2P", "### Fiat orders 
 payments (card buy, sell)"; section 6 "Not-imported line", "Mapping and statistics per operation"; section 7
 P1-P11, F1-F6, N5b; section 11 row 12/15; section 12 P5, P6. Rulings: `rulings.md` (main checkout,
 `memory/refs/binance-multicoin-sdd-2026-10-21/`), "Probe 4 rulings", "Spec draft sets 8-12 rulings", "P2P BUY vs
-LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q15 and S12-Q18 are at the
-end; the plan assumes each recommendation.
+LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q15, S12-Q18 and S12-Q21 are
+at the end; the plan assumes each recommendation.
 
 **Base:** branch `binance-set12` at main `79094ae8` (sets 1-11 merged). Every code fact names a symbol or anchor
 text, never a line. **The developer re-greps every fact on the actual base before relying on it.**
@@ -179,7 +179,7 @@ decision `p2pOutcomeOf`), `walk` = `binance.p2p-history.test.ts`, `sqlite` = `bi
 | F3b | fiat, "debits a completed card sale and marks the fiat it was sold for" | BTC -; `card:<fiat>:<obtainAmount>` |
 | F4 | fiat, "lists a fiat %s with status %s as not recognized" (orders: `Finished`, `Refunding`, `Refund Failed`, `Order Partial Credit Stopped`, an undocumented word; payments: an undocumented word) | one `fiat-unrecognized` each |
 | F4b | fiat, "settles only the exact allowlisted word, so %s is not recognized" (`successful`, ` Successful`, `Successful `, `Order Partial credit Stopped`, `Refund  Failed`; payments `completed`, `Completed `) | one `fiat-unrecognized` each, no row (S12-Q13) |
-| F5 | fiat, "reads every two-year window from the floor, empty ones too" | orders 16 calls / 8 runs to now (S12-Q6, S12-Q18), payments 10 / 1 |
+| F5 | fiat, "reads every two-year window from the floor, empty ones too" | orders 12 calls / 6 runs to now (S12-Q6, S12-Q18, S12-Q21), payments 10 / 1 |
 | F6 | fiat, "settles %s, owes %s and lists every word the doc does not show as moving no money" | per step 2/14 |
 | N5b | `src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.not-imported.test.tsx`, "counts two P2P sales beside one Convert order, in the order of the kind list" | exact N5b text |
 
@@ -212,8 +212,11 @@ New rows (no P2P or fiat read ran before, so "was:" is "no read" unless a value 
 | FW2 | property, gaps 0 / 1 h / 1 day | see step 11/14 | `binance.fiat-history.properties.test.ts` | - |
 | FQ1 | orders current, run 2 after a forward run, records 2 h and 30 d behind the cursor (S12-Q18) | a behind run re-scans `[t - 730 d, c]`, both imported, list empty, `complete` false | fiat, "re-scans the last two years on the run after a forward read, so a late record is imported" | forward `[c, t]`, neither read, the list grows |
 | FQ2 | the run after FQ1 | forward `[c, t]`, `complete` true | fiat, "reads forward again on the run after the re-scan, and reports complete" | `complete` false |
-| FQ3 | orders, first walk from the floor | cursor now at run 8 (calls `[2 x 8]`), run 8 complete, run 9 re-scan, run 10 forward and complete | fiat, "reads every two-year window from the floor, empty ones too" and "reads the owed days before it reaches now, then re-scans the last two years and reads forward" | now at run 5, never complete |
-| FQ4 | orders, stored list unreadable (repaired to `{floor, cursor}`) | 4 behind runs read the owed windows, a 5th the re-scan, the 6th reads forward | fiat, "reads the repaired range over five re-scan runs, then reads forward" | never read |
+| FQ3 | orders, first walk from the floor | cursor now at run 6 (calls `[2 x 6]`); calls `[2,2,2,2,2,2,2,0,2,0,2,0]` over 12 runs, complete only on run 12 (runs 8, 10, 12 are forward runs with an empty forward window: the test clock stands) | fiat, "reads every two-year window from the floor, empty ones too" and "reads forward after every behind run, until the owed days and the last two years are read" | now at run 5, never complete |
+| FQ4 | orders, stored list unreadable (repaired to `{floor, cursor}`) | 5 behind runs (4 owed windows, then the re-scan), a forward run after each, 10 runs in all; complete on the 10th | fiat, "clears the repaired range in five behind runs, a forward run after each, then reports complete" | never read |
+| FQ10 | orders, a range that no read clears (a page that drifts; a page that throws) | the run after a behind run reads forward: a new order imports on run 2, the cursor advances on every forward run; the drift is logged (`fiat-page-drift`), the throw rejects the run | fiat, "reads forward on every second run, so a new order imports one run later" and "fails the run on a window whose page cannot be read, and reads forward on the next" | every run a behind run, no new order |
+| FQ11 | orders, owed ground older than Binance serves (-5026) | read as empty by the `DepthGuard` narrowing, one series on each behind run; the range leaves the list; nothing logged | fiat, "reads ground older than Binance serves as empty, one series on each behind run" | (not measured) |
+| FQ12 | the `behindRun` mark | stored true after a behind run and false after the forward run; read as absent unless `true`; round-trips through a walk patch; a disconnect drops it | fiat, "stores that a behind run ran, and clears it on the forward run after", "reads forward when the last run read behind, though the list still holds a range"; `walk-state.behind-run.test.ts`, "the behind-run mark of a walk" | no mark |
 | FQ5 | orders, forward ground one window or more, a range owed | forward run first; at exactly one window, forward and not complete; a millisecond under, a re-scan | fiat, "reads forward first and leaves the owed range for a later run", "reads forward at exactly one window behind, and is not complete while a range was owed", "re-scans at a millisecond under one window behind" | (same for the first; no turn) |
 | FQ6 | fiat payments, current | forward and re-scan in one run, unchanged | fiat, "reads forward and re-scans the last two years in the same run" | (same) |
 | FQ7 | orders, an owed point and no range | forward run; the point on the 3rd call, in a forward and in a re-scan run | fiat, "reads forward when the list holds no range, though a point is owed", "reads an owed point on the third call of a forward run and of a re-scan run" | the 3rd call never spent by a re-scan |
@@ -240,8 +243,8 @@ Floor; the developer greps `LANE_CALL_CAPS`, `LANE_NARROWING_CALLS`, `COSTS`, `R
 | Q5 | `run-crypto-sync.test.ts` `walkRunCounts` ("a walk state this build cannot read") | the three new walks at 0 | seven reads |
 | Q6 | `binance-history-status.test.ts` `walkCursorsOf(...)` `toEqual([...])` | eight cursors | five |
 | Q7 | spec section 7 TC/TW cells (step 1/14) | full titles and full paths | file-only and partial paths |
-| Q8 | `binance.fiat-history.test.ts` "reads every two-year window from the floor, empty ones too" (orders) | 8 runs to now: calls `[2 x 8]`, cursors F+730, F+1460, F+2190, F+2920 (4 times), now (S12-Q18) | 5 runs: cursors F+730 ... now |
-| Q9 | same file, "reads two-year windows forward from the history floor, oldest first, both types of each" and "reads every empty window and imports a record behind four of them" | the orders branch reads the queries of its forward runs only (runs 1-4 and 8; `forwardRuns`) | the first 10 queries of 5 runs |
+| Q8 | `binance.fiat-history.test.ts` "reads every two-year window from the floor, empty ones too" (orders) | 6 runs to now: calls `[2 x 6]`, cursors F+730, F+1460, F+2190, F+2920 (twice), now (S12-Q18, S12-Q21) | 5 runs: cursors F+730 ... now |
+| Q9 | same file, "reads two-year windows forward from the history floor, oldest first, both types of each" and "reads every empty window and imports a record behind four of them" | the orders branch reads the queries of its forward runs only (runs 1-4 and 6; `forwardRuns`) | the first 10 queries of 5 runs |
 | Q10 | same file, "writes the windows read before the limit, sets the cooldown and resolves" | the limit hits any read that does not start at the cursor (the orders run 2 is a behind run) | the read of the second window |
 
 ## Files (measured floor; the developer measures the real list)
@@ -250,7 +253,8 @@ Mutable source files (`mutable_source_files` in `scripts/checks/mutation.sh`; `i
 `-test-fixtures.ts` excluded), at least 7, cap 30: `binance/binance.p2p-history.ts` (new),
 `binance/binance.fiat-history.ts` (new), `binance/binance.history-client.ts`, `binance/binance.history-budget.ts`,
 `run-crypto-sync/run-crypto-sync.ts`, `src/transactions/untracked-counterpart/untracked-counterpart.ts`,
-`src/screens/account-detail/crypto-sync-section/binance-history-status.ts`. Step 1/14 is test-only and adds no
+`src/screens/account-detail/crypto-sync-section/binance-history-status.ts`, and (S12-Q21) `exchange/walk-state/walk-state.ts`
+(the `behindRun` mark). Step 1/14 is test-only and adds no
 mutable file. Spec row 12/15 says about 7. The number that counts is `KIKO_MUTATION_BASE=79094ae8 make mutable`
 (step 14/14). Above 30: stop and split.
 
@@ -373,7 +377,7 @@ Files: `binance.history-budget.ts`, `binance.history-budget.test.ts`.
       `createBinanceRunBudget`; `COSTS.p2p`, `COSTS.fiatOrders`, `COSTS.fiatPayments` (G-6). Grep `Record<BudgetLane`.
 - [ ] Verify on the base and write in the commit body: `readSeriesSpan` asks `canAfford(lane, cost, keep +
       series.length - 1)` before a window, so a two-series window needs 2 calls and a lane of 3 reads one window a
-      run (S12-Q6); a fiat-orders run reads forward or behind, not both (S12-Q18).
+      run (S12-Q6); a fiat-orders run reads forward or behind, not both (S12-Q18), and a forward run follows a behind run (S12-Q21).
 - [ ] Check: suite green; `tsc` clean. Commit `feat(binance): P2P and fiat lanes`.
 
 ### step 5/14: the fiat marker builder
@@ -470,7 +474,7 @@ Files: `run-crypto-sync.ts`, `run-crypto-sync.test.ts`, `binance-history-status.
 Files: the spec.
 - [ ] Record S12-Q1 ... S12-Q15 in section 1 with their source (`rulings.md`, "Set 12 plan questions"). Align:
       section 5 fiat block (`totalFee`; "Order Partial Credit Stopped" as Binance writes it; the quoted words from
-      step 2/14 with URL and date), the fiat-orders runs (8 to reach now, S12-Q6 and S12-Q18) in "Measured weights" and F5, the P2P report
+      step 2/14 with URL and date), the fiat-orders runs (6 to reach now, S12-Q6, S12-Q18 and S12-Q21) in "Measured weights" and F5, the P2P report
       from probe 10 and the cap it supports (R-Walk A), the P2P cover-rule owner (S12-Q10), section 7 new rows
       PC/FC/BL/PW/FW/RW/K-P/MK1 with a `Test` column (the step 1/14 doc test then checks them), section 11 row
       12/15 the measured file count. Point at constants (G-11).
@@ -527,10 +531,10 @@ Files: the spec.
 - G-1 every step; G-2 steps 1, 4, 11; G-3 steps 4-11; G-6 step 4; G-7 steps 7, 10; G-8 step 5; G-9 steps 6, 9;
   G-10 steps 6, 8, 9, 10, 11; G-11 steps 12, 13; G-12 and G-13 every commit; G-14 steps 1, 11.
 
-## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18)
+## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21)
 
 Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12-Q15 = A, FINAL coordinator rulings; Q3, Q10, Q11 = A,
-OVERNIGHT DEFAULT, pending user; Q18 = C, FINAL coordinator ruling.
+OVERNIGHT DEFAULT, pending user; Q18 = C and Q21 = A (N = 1), FINAL coordinator rulings.
 
 - S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
   one exact existing title to each. B: a file-only row passes when the file exists. Recommend A: a file alone ties a
@@ -553,7 +557,7 @@ OVERNIGHT DEFAULT, pending user; Q18 = C, FINAL coordinator ruling.
   window (2 calls) a run: 5 runs for 10 calls, not the spec's 4, and the 3rd call is never spent. A: keep cap 3, the
   spec says 5 runs, F5 pins 5; BL2/BL3 pin the budget cases at `canAfford`. B: cap 4 (2 windows a run, 3 runs;
   4 x 45000 = 180000 only fits an empty minute). Recommend A: a cap changes only with a measured reason.
-  The cap stays 3; the run COUNT is reversed by S12-Q18 (8 runs to reach now, F5 pins 8; was: 5).
+  The cap stays 3; the run COUNT is reversed by S12-Q18 and S12-Q21 (6 runs to reach now, F5 pins 6; was: 5).
 - S12-Q7 (A, FINAL coordinator ruling) the P2P lane cap (R-Walk A). A: 10 until probe 10 reports; then the largest cap whose per-run UID peak and
   wall time the probe shows fit, recorded with the numbers. B: raise now from arithmetic (180000 / 900). Recommend
   A: "a cap changes only with a measured reason".
@@ -602,6 +606,14 @@ OVERNIGHT DEFAULT, pending user; Q18 = C, FINAL coordinator ruling.
   runs go on, and a read that commits nothing stores no overlap day). `complete` is true for a forward run that
   started with no range owed and the re-scan not part way through a pass. C is the ruling: it keeps the re-scan
   every walk runs, reads every owed range, changes no shared code, and costs latency only (the newest orders one
-  run later; the first walk reaches now on run 8, not 5: F5, Q8, FQ1-FQ9). Payments (a lane of 10) read both in
-  one run, unchanged. Edge case: a range that no read can clear (owed ground older than Binance serves) keeps
-  every run a behind run; probe 5 saw no such refusal, so none is expected.
+  run later; the first walk reaches now on run 6, not 5: F5, Q8, FQ1-FQ9). Payments (a lane of 10) read both in
+  one run, unchanged.
+- S12-Q21 (A with N = 1, FINAL coordinator ruling) a range that no read clears kept every fiat-orders run a behind
+  run, so the newest orders never imported. A: after a behind run the next run reads forward (the walk stores
+  `behindRun` in its `exchange_state` entry; no migration; a disconnect drops it with the other run marks). B:
+  accept it. C: a forward run after N behind runs. A with N = 1 is the ruling: it needs one boolean, and the
+  list still clears one window per behind run (FQ4: 5 behind runs, 10 runs). Measured (FQ10, FQ11): a page that
+  drifts (`fiat-page-drift` logged each run) and a page that throws (the run rejects) both leave the range in the
+  list and let the forward run import a new order on run 2; ground older than Binance serves is read as empty by
+  the `DepthGuard` narrowing (-5026, C-NR-D), one series on each behind run, and leaves the list with nothing
+  logged. The first walk reaches now on run 6 and reports complete on run 12 (F5, Q8, FQ3).
