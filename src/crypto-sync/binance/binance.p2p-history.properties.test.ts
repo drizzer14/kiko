@@ -43,6 +43,7 @@ type Category =
   | 'unknownRole'
   | 'unknownSide'
   | 'noAmount'
+  | 'uncarriableFiat'
   | 'cancelled'
   | 'unknownStatus'
   | 'untracked'
@@ -59,6 +60,7 @@ const CATEGORIES: Category[] = [
   'unknownRole',
   'unknownSide',
   'noAmount',
+  'uncarriableFiat',
   'cancelled',
   'unknownStatus',
   'untracked',
@@ -167,6 +169,10 @@ const VARIANTS: Record<Category, (input: CategoryInput) => Variant> = {
   noAmount: () => ({
     over: { takerAmount: undefined, amount: undefined },
     expected: refusal('p2p-amount'),
+  }),
+  uncarriableFiat: ({ random }) => ({
+    over: { fiat: pick(random, ['', 'U:AH']) },
+    expected: refusal('p2p-unrecognized'),
   }),
   cancelled: ({ random }) => ({
     over: { orderStatus: pick(random, ['CANCELLED', 'CANCELLED_BY_SYSTEM']) },

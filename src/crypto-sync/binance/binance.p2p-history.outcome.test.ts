@@ -252,6 +252,8 @@ describe('p2pOutcomeOf', () => {
     ['a blank asset', { asset: '' }],
     ['no fiat', { fiat: undefined }],
     ['no total', { totalPrice: undefined }],
+    ['a blank fiat', { fiat: '' }],
+    ['a fiat that holds the separator', { fiat: 'U:AH' }],
   ])('lists a buy with %s as not recognized, since no row or marker can be made', (_name, over) => {
     expect(outcomeOf(over)).toEqual(refusedAs('p2p-unrecognized'));
   });
@@ -269,7 +271,6 @@ describe('p2pOutcomeOf', () => {
     ['a total past the fiat scale', { totalPrice: '4150.001' }, 'amount-precision'],
     ['a malformed total', { totalPrice: 'abc' }, 'amount-malformed'],
     ['a total with a sign', { totalPrice: '-4150' }, 'amount-malformed'],
-    ['a fiat that is no code', { fiat: 'U:H' }, 'amount-malformed'],
   ])('owes the point of an order with %s', (_name, over, code) => {
     expect(stopOf(over)?.code).toBe(code);
   });

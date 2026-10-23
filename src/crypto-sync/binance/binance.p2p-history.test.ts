@@ -400,6 +400,23 @@ describe('what the P2P walk imports', () => {
     expect(pendingOf(world)).toEqual([]);
   });
 
+  it.each([
+    ['a blank fiat', ''],
+    ['a fiat that holds the separator', 'U:AH'],
+  ])('lists a buy with %s as not recognized and owes no point', async (_name, fiat) => {
+    const world = recentWorld();
+    const deps = world.depsOf({
+      fetchP2pOrders: p2pServerOf([p2pOrderOf({ orderNumber: 'odd-fiat', fiat })]),
+    });
+
+    await world.walk(deps);
+
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(world.fake.notImported()).toEqual([`p2p-unrecognized:odd-fiat:${P2P_CREATED_AT}`]);
+    expect(cursorOf(world)).toBe(NOW);
+    expect(pendingOf(world)).toEqual([]);
+  });
+
   it('writes nothing for a cancelled order', async () => {
     const world = recentWorld();
     const deps = world.depsOf({

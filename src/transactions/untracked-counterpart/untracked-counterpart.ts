@@ -34,8 +34,9 @@ export const untrackedWalletCode = (wallet: UntrackedWallet): `wallet:${Untracke
   `wallet:${wallet}`;
 
 // One rule for the code a ticker builds and the code a read accepts: no ticker is empty or holds
-// the separator, so no code reads as another kind or as a longer one.
-const isAssetTicker = (ticker: string): boolean => ticker !== '' && !ticker.includes(':');
+// the separator, so no code reads as another kind or as a longer one. A fiat in a marker is held to
+// the same rule, which is why a walk can ask it before it builds a code.
+export const isAssetTicker = (ticker: string): boolean => ticker !== '' && !ticker.includes(':');
 
 /** The `asset:<CODE>` of a coin the account does not track, or `undefined` for no usable ticker. */
 export const untrackedAssetCode = (ticker: string): `asset:${string}` | undefined =>

@@ -204,26 +204,32 @@ describe('fetchP2pOrders', () => {
     ['an empty orderNumber', { orderNumber: '' }],
     ['a missing orderNumber', { orderNumber: undefined }],
     ['an orderNumber that is a number', { orderNumber: 22_225_541_213_133 }],
-  ])('reads an order with %s as unreadable, keeping its time', async (_name, overrides) => {
-    const page = await readOrders(orderOf(overrides));
+  ])(
+    'reads an order with %s as unreadable, keeping its time and the rest of the page',
+    async (_name, overrides) => {
+      const page = await readOrders(orderOf(overrides), orderOf({ orderNumber: 'readable' }));
 
-    expect(page.rows).toEqual([]);
-    expect(page.unreadable).toEqual([{ time: CREATED_AT }]);
-    expect(page.gathered).toBe(1);
-  });
+      expect(page.rows.map((row) => row.orderNumber)).toEqual(['readable']);
+      expect(page.unreadable).toEqual([{ time: CREATED_AT }]);
+      expect(page.gathered).toBe(2);
+    },
+  );
 
   it.each([
     ['a missing createTime', { createTime: undefined }],
     ['a createTime of text', { createTime: '1704326399000' }],
     ['a fractional createTime', { createTime: 1.5 }],
     ['a createTime past 2^53', { createTime: 2 ** 53 }],
-  ])('reads an order with %s as unreadable', async (_name, overrides) => {
-    const page = await readOrders(orderOf(overrides));
+  ])(
+    'reads an order with %s as unreadable and keeps the rest of the page',
+    async (_name, overrides) => {
+      const page = await readOrders(orderOf(overrides), orderOf({ orderNumber: 'readable' }));
 
-    expect(page.rows).toEqual([]);
-    expect(page.unreadable).toHaveLength(1);
-    expect(page.gathered).toBe(1);
-  });
+      expect(page.rows.map((row) => row.orderNumber)).toEqual(['readable']);
+      expect(page.unreadable).toHaveLength(1);
+      expect(page.gathered).toBe(2);
+    },
+  );
 
   it('keeps the time of an unreadable order only when it is a usable number', async () => {
     const fractional = await readOrders(orderOf({ createTime: 1.5 }));

@@ -42,9 +42,9 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { fiatTotalCode } from '@kiko/transactions/untracked-counterpart';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
+import { fiatTotalCode, isAssetTicker } from '@kiko/transactions/untracked-counterpart';
 import { type NotImportedKind, notImportedEntry } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
@@ -64,9 +64,8 @@ import { type BinanceP2pOrder, fetchP2pOrders, type TotalPage } from './binance.
 
 /**
  * The statuses of an order that waits on Binance: its point is owed until it is final, whatever
- * its side or role. The raw Binance docs list no `orderStatus` value, so the five words are the
- * spec's ("### P2P", step 1); `.superpowers/sdd/binance-set12/fiat-doc-quote.md` records that
- * no doc text was found for them.
+ * its side or role. Binance documents no `orderStatus` values, so these five words come from the
+ * spec, not from its docs.
  */
 export const P2P_OPEN_STATUSES = [
   'PENDING',
@@ -195,8 +194,9 @@ const rowOutcomeOf = (input: {
   const { accountId, order, asset, fields } = input;
   const { fiat, totalPrice } = order;
 
-  // No row or marker can be made without the fiat and its total, and a re-read cannot change it.
-  if (fiat === undefined || totalPrice === undefined) {
+  // No row or marker can be made without the fiat and its total, or with a fiat no code can carry,
+  // and a re-read cannot change it.
+  if (fiat === undefined || totalPrice === undefined || !isAssetTicker(fiat)) {
     return refusedOutcomeOf('p2p-unrecognized', order);
   }
 
@@ -262,13 +262,14 @@ const completedOutcomeOf = (accountId: string, order: BinanceP2pOrder): P2pOutco
 
 /**
  * What one P2P order comes to, decided in the order the status, the side, the role, the amount
- * and the coin (spec "### P2P"). Only a `COMPLETED` order goes on; a cancelled one is nothing,
- * one that waits on Binance (`P2P_OPEN_STATUSES`) is owed whatever else it says, and any other
- * word is refused for good. A sale wins over every role. A buy as a taker gives the row
- * `takerAmount` (or the amount less the commission), on the Funding holding of its coin, marked
- * with the total Binance sent; an order whose amounts cannot be told is refused, and one whose
- * text the parser refuses throws a `BinanceWalkStop` and owes its point. An order of a coin Kiko
- * does not track is counted and gives no row.
+ * fields' presence, the coin, the fiat and total's presence and then the amount values (spec
+ * "### P2P"). Only a `COMPLETED` order goes on; a cancelled one is nothing, one that waits on
+ * Binance (`P2P_OPEN_STATUSES`) is owed whatever else it says, and any other word is refused for
+ * good. A sale wins over every role. A buy as a taker gives the row `takerAmount` (or the amount
+ * less the commission), on the Funding holding of its coin, marked with the total Binance sent;
+ * an order whose amounts cannot be told, or whose fiat is missing or is a text no code can carry,
+ * is refused, and one whose number text the parser refuses throws a `BinanceWalkStop` and owes its
+ * point. An order of a coin Kiko does not track is counted and gives no row.
  */
 export const p2pOutcomeOf = (input: { accountId: string; order: BinanceP2pOrder }): P2pOutcome => {
   const { accountId, order } = input;
