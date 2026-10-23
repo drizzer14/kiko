@@ -188,8 +188,10 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
 8. The orchestrator re-verifies every "green" claim itself (sync 2 caught a misreported test
    count).
 9. BATCH READY, then the coordinator re-runs `npm test` AND `npm run check:all` at the tip
-   before any push (pending the user's A/B/C, see the P1 CLAUDE.md draft: from a pff-ios
-   session both commands are denied), then the user's OK, then
+   before any push (from a pff-ios session both commands are denied: heavy-job and full-jest
+   deny; the user chose route A, a pff-ios queue class `harness-verify`, not built yet (H11,
+   run-log gap 20261023T0023-kiko-harness-h10/3); until it exists, the user runs the two
+   commands in a plain terminal without the Claude hooks), then the user's OK, then
    `git -C <harness main> merge --ff-only <tip>` (the raw form applies to a repo that has no
    `scripts/ff-main.sh`; where it exists, run `bash scripts/ff-main.sh <tip>` after a queued
    `verify` of the tip) and push. The
