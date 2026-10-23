@@ -96,6 +96,7 @@ import {
   holdingDetailSpecFor,
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
+import { useViewActions } from './use-view-actions';
 import { paymentSplitText } from './payment-split-text';
 import { useCloseWhenGone } from './use-close-when-gone';
 import OversizedSaleNotice from './oversized-sale-notice';
@@ -451,6 +452,8 @@ type LedgerRowContext = {
   // manual rows only (a synced row is not duplicable), stateless via the
   // `duplicateOfTransactionId` route param.
   onDuplicateTransaction: (transactionId: string) => void;
+  // The row's "open its account / its holding" actions, by the holding the row is stored on.
+  viewActionsFor: ReturnType<typeof useViewActions>;
   lotActions: LotActions | undefined;
 };
 
@@ -510,6 +513,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     linkedBreakdowns,
     onPressTransaction,
     onDuplicateTransaction,
+    viewActionsFor,
     lotActions,
   } = context;
 
@@ -582,12 +586,13 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       // read-only — the form resolves which from the transaction's own
       // `source`, so the row only needs to pass the id. Delete is a
       // touch-and-hold that opens the shared card context menu (see
-      // `CardContextMenu`) with a single destructive Delete action — the
-      // same long-press pattern the account/holding cards use. A synced
-      // (Monobank) row is not deletable (its state is owned by the sync),
-      // so `CardContextMenu` renders it with no gesture at all. An imported
-      // row is deletable but not duplicable, so its hold opens the delete
-      // confirm directly.
+      // `CardContextMenu`), the same long-press pattern the account/holding
+      // cards use. Every row lists View account (and View holding, unless the
+      // row is on this very holding); a manual row adds Duplicate and Delete,
+      // an imported row Delete. A synced (Monobank) row is not deletable (its
+      // state is owned by the sync), so its hold lists the View actions only.
+      const { onViewAccount, onViewHolding } = viewActionsFor(transactionRow.transaction.holdingId);
+
       return (
         <CardContextMenu
           name={description}
@@ -606,6 +611,8 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
               ? undefined
               : () => onDuplicateTransaction(transactionRow.transaction.id)
           }
+          onViewAccount={onViewAccount}
+          onViewHolding={onViewHolding}
           liftOnHold
         >
           <Pressable
@@ -863,6 +870,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const isLoan = holding?.type === 'loan';
+  // A loan's linked payments are stored on their payers, so their View account needs the payer's
+  // account too. Every other holding's rows sit on this holding, whose account is read below.
+  const { data: accountList, isLoading: accountListLoading } = useLiveQuery(
+    accountsRepo.listQuery(),
+    ['accounts'],
+    isLoan,
+    { cached: true },
+  );
   useCloseWhenGone({ routeKey: route.key, isFresh: holdingsFresh, holding });
   // The loan's linked payments, listed beside its scheduled ones.
   const { payments: linkedPayments, isLoading: linkedPaymentsLoading } = useLinkedLoanPayments(
@@ -886,6 +901,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     { cached: true },
   );
   const account = accounts.at(0);
+  const knownAccounts = useMemo(() => [...accounts, ...accountList], [accounts, accountList]);
+  const viewActionsFor = useViewActions({ holdingId, holdings, accounts: knownAccounts });
   // The empty-transactions text, the footer add action, and the Value header
   // must never render while any of this screen's own queries is still on its
   // first load (kiko-architecture's useLiveQuery consumer rule) — gated below,
@@ -898,6 +915,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     ratesLoading,
     priceBookLoading,
     accountsLoading,
+    accountListLoading,
     linkedPaymentsLoading,
     registerTermsLoading,
   );
@@ -1059,6 +1077,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
+    viewActionsFor,
     lotActions: buildLotActions(holding, navigation, t),
   };
 

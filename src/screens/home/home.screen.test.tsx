@@ -27,17 +27,23 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
+import {
+  DELETE_ACTION_TEST_ID,
+  DUPLICATE_ACTION_TEST_ID,
+  VIEW_ACCOUNT_ACTION_TEST_ID,
+  VIEW_HOLDING_ACTION_TEST_ID,
+} from '@kiko/design-system/components/card-context-menu';
 import { metalInstrument } from '@kiko/prices/instrument';
 import { formatDate, defaultDateRange } from '@kiko/dates';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '@kiko/test-support/mock-text-tone';
+import { navigationRef } from '@kiko/navigation/navigation-ref';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
-import { DUPLICATE_ACTION_TEST_ID } from '@kiko/design-system/components/card-context-menu';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HomeScreen from './home.screen';
@@ -135,6 +141,13 @@ jest.mock('@kiko/navigation/pane-stack', () => ({
   useDetailPaneRoute: () => mockUseDetailPaneRoute(),
   useIsScreenVisible: () => mockUseIsScreenVisible(),
   useOpenInPane: () => mockOpenInPane,
+}));
+
+// The Home and Statistics stacks have neither detail page, so a row's View actions open the
+// Accounts tab through this one helper; its own navigator test pins the stack it builds.
+const mockOpenAccountsPages = jest.fn();
+jest.mock('@kiko/navigation/open-accounts-pages', () => ({
+  openAccountsPages: (...args: unknown[]) => mockOpenAccountsPages(...args),
 }));
 
 // The real card behind a render counter, to read which rows a change of the detail route
@@ -439,12 +452,15 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
 const seed = (data: LiveData = {}): void =>
   setLiveData({ accounts: [MONOBANK], holdings: [UAH_HOLDING], ...data });
 
+// Every row holds a `GestureDetector` (a synced row's hold opens its View actions), which needs
+// the gesture root the app mounts above the navigator.
 const renderHome = (): ReturnType<typeof render> =>
   render(
     <HomeScreen
       navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
       route={asRouteProp<HomeProps['route']>('Home')}
     />,
+    { wrapper: GestureRootWrapper },
   );
 
 // The filter controls are two custom dropdown sheets, one per dimension. A
@@ -1825,6 +1841,113 @@ describe('HomeScreen', () => {
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
+  describe('a row’s View account and View holding actions', () => {
+    const holdRowOf = async (overrides: Partial<Transaction>) => {
+      seed({
+        transactions: [
+          transaction({
+            id: 't-42',
+            description: 'Coffee',
+            holdingId: 'h-uah',
+            holdingName: 'Чорна картка',
+            ...overrides,
+          }),
+        ],
+      });
+      const screen = await render(
+        <HomeScreen
+          navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+          route={asRouteProp<HomeProps['route']>('Home')}
+        />,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      return screen;
+    };
+
+    it('lists both, beside Duplicate and Delete, on a manual row', async () => {
+      const { getByTestId } = await holdRowOf({ source: 'manual' });
+
+      expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+      expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeTruthy();
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+      expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+    });
+
+    it('lists both, and no Duplicate or Delete, on a synced row', async () => {
+      const { getByTestId, queryByTestId } = await holdRowOf({ source: 'monobank' });
+
+      expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+      expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeTruthy();
+      expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+    });
+
+    it('opens the Accounts tab on the row’s account page from View account', async () => {
+      const { getByTestId } = await holdRowOf({ source: 'monobank' });
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+      });
+
+      expect(mockOpenAccountsPages).toHaveBeenCalledTimes(1);
+      expect(mockOpenAccountsPages).toHaveBeenCalledWith(navigationRef, {
+        accountId: 'a',
+        name: 'Monobank',
+        kind: 'bank',
+      });
+    });
+
+    it('opens the holding page above the row’s account page from View holding', async () => {
+      const { getByTestId } = await holdRowOf({ source: 'manual' });
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_HOLDING_ACTION_TEST_ID));
+      });
+
+      expect(mockOpenAccountsPages).toHaveBeenCalledTimes(1);
+      expect(mockOpenAccountsPages).toHaveBeenCalledWith(
+        navigationRef,
+        { accountId: 'a', name: 'Monobank', kind: 'bank' },
+        { screen: 'HoldingDetail', params: { holdingId: 'h-uah', name: 'Чорна картка' } },
+      );
+    });
+
+    it('titles an implicit account’s page by its localized name, not its stored one', async () => {
+      const { getByTestId } = await holdRowOf({
+        accountId: 'p',
+        accountName: 'Properties',
+        accountKind: 'property',
+        holdingId: 'h-flat',
+        holdingName: 'Flat',
+      });
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+      });
+
+      expect(mockOpenAccountsPages).toHaveBeenCalledWith(navigationRef, {
+        accountId: 'p',
+        name: i18n.t('accounts.implicitName.property'),
+        kind: 'property',
+      });
+    });
+
+    it('leaves a tap on the row to the form, unchanged', async () => {
+      seed({
+        transactions: [transaction({ id: 't-42', description: 'Coffee', source: 'monobank' })],
+      });
+      const { getByText } = await renderHome();
+
+      await fireEvent.press(getByText('Coffee'));
+
+      expect(mockOpenInPane).toHaveBeenCalledWith('TransactionForm', { transactionId: 't-42' });
+      expect(mockOpenAccountsPages).not.toHaveBeenCalled();
+    });
+  });
+
   it('opens the empty create form in a pane from the add button', async () => {
     seed({ transactions: [transaction({ id: 't-42', description: 'Coffee' })] });
     const { getByLabelText } = await renderHome();
@@ -1853,7 +1976,7 @@ describe('HomeScreen', () => {
       </PaneContext.Provider>
     );
 
-    const renderTwoPanes = () => render(inTwoPanes());
+    const renderTwoPanes = () => render(inTwoPanes(), { wrapper: GestureRootWrapper });
 
     const rerenderTwoPanes = (view: Awaited<ReturnType<typeof renderTwoPanes>>) =>
       act(async () => {
@@ -2175,6 +2298,7 @@ describe('HomeScreen', () => {
             route={asRouteProp<HomeProps['route']>('Home')}
           />
         </PaneContext.Provider>,
+        { wrapper: GestureRootWrapper },
       );
 
     const listContentOf = (view: Awaited<ReturnType<typeof render>>) =>
@@ -2975,7 +3099,9 @@ describe('HomeScreen — paused while hidden', () => {
       />
     );
 
-    const { getByText, queryByText, rerender } = await render(element());
+    const { getByText, queryByText, rerender } = await render(element(), {
+      wrapper: GestureRootWrapper,
+    });
     expect(getByText('Coffee')).toBeTruthy();
 
     mockUseIsScreenVisible.mockReturnValue(false);
@@ -3017,7 +3143,7 @@ describe('HomeScreen — paused while hidden', () => {
       />
     );
 
-    const { getByText, rerender } = await render(element());
+    const { getByText, rerender } = await render(element(), { wrapper: GestureRootWrapper });
 
     stub.write({
       ...base,

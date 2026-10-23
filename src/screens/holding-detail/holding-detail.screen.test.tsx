@@ -19,6 +19,8 @@ import {
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
+  VIEW_ACCOUNT_ACTION_TEST_ID,
+  VIEW_HOLDING_ACTION_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
@@ -195,8 +197,12 @@ const noneLoanHolding = {
 };
 
 const mockClosePaneRoute = jest.fn();
+// A ledger row's View actions open a page in the pane opposite this one (on one pane, a plain
+// navigate); its own test pins that fallback.
+const mockOpenInPane = jest.fn();
 jest.mock('@kiko/navigation/pane-stack', () => ({
   useClosePaneRoute: () => mockClosePaneRoute,
+  useOpenInPane: () => mockOpenInPane,
 }));
 
 const mockUseLiveQuery = jest.fn();
@@ -259,6 +265,9 @@ jest.mock('@kiko/categories/repo', () => ({
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: (accountId: string) => ({ toSQL: () => ({ sql: '', params: [accountId] }) }),
+    // A distinct `sql` marker, for the same reason as `listLinkedToLoanQuery` above: it shares
+    // the `['accounts']` reactive key with `byIdQuery`.
+    listQuery: () => ({ toSQL: () => ({ sql: 'accounts-list', params: [] }) }),
   },
 }));
 jest.mock('@kiko/rates/repo', () => ({
@@ -289,6 +298,12 @@ const cardHolding = {
   currency: 'UAH',
   balanceMinorUnits: 0,
 };
+
+// A holding on its bank account, for the tests of a ledger row's View account action, which needs
+// the account the holding sits in.
+const bankAccount = { id: 'bank', name: 'Mono', kind: 'bank', archivedAt: null };
+const debtsAccount = { id: 'debts', name: 'Loans', kind: 'debt', archivedAt: null };
+const bankCardHolding = { ...cardHolding, accountId: 'bank' };
 
 // A holding migration 0044 (or its restore mirror) moved a cash exchange
 // leg's counterpart onto — it keeps rendering its existing leg label even
@@ -368,6 +383,9 @@ const seed = (
   // detail lists beside its scheduled ones. Defaults to none, so every existing
   // call site above keeps rendering a loan with no linked payment, unaffected.
   linkedLoanPayments: unknown[] = [],
+  // Every account — what a loan's linked payments resolve their PAYER's account from. Read only
+  // for a loan.
+  accountList: unknown[] = [],
 ): void => {
   // A per-table result map, keyed the same way the old if-chain branched — a
   // lookup instead of a chain keeps this well under the cognitive-complexity
@@ -434,6 +452,10 @@ const seed = (
 
     if (sql === 'loan-ledger-payments') {
       return loanLedgerPaymentsResult;
+    }
+
+    if (sql === 'accounts-list') {
+      return { data: accountList, isLoading: isLoading.accountList ?? false };
     }
 
     return sql === 'linked-loan-payments'
@@ -1622,22 +1644,33 @@ describe('HoldingDetailScreen', () => {
     expect(transactionsRepo.remove).not.toHaveBeenCalled();
   });
 
-  it('does not offer delete on a synced transaction row', async () => {
-    seed(cardHolding, [
-      {
-        id: 'txn-mono',
-        amountMinorUnits: -5000,
-        time: 1,
-        description: 'Coffee',
-        source: 'monobank',
-      },
-    ]);
+  it('does not offer delete on a synced transaction row, only the View action', async () => {
+    seed(
+      bankCardHolding,
+      [
+        {
+          id: 'txn-mono',
+          amountMinorUnits: -5000,
+          time: 1,
+          description: 'Coffee',
+          source: 'monobank',
+        },
+      ],
+      [],
+      [],
+      [],
+      undefined,
+      bankAccount,
+    );
 
-    const { queryByTestId } = await renderScreen();
+    const { getByTestId, queryByTestId } = await renderScreen();
 
-    // A synced (Monobank) row is not deletable, so CardContextMenu renders it
-    // bare — no card-context-menu wrapper and no hold gesture to intercept it.
-    expect(queryByTestId('card-context-menu')).toBeNull();
+    // A synced (Monobank) row is not deletable, so its hold lists View account alone.
+    await holdCard();
+
+    expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+    expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+    expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
   });
 
   describe('an imported transaction row', () => {
@@ -1657,19 +1690,175 @@ describe('HoldingDetailScreen', () => {
       return screen;
     };
 
-    it('opens the delete confirm straight away on a hold, and deletes through transactionsRepo.remove', async () => {
-      seed(cardHolding, [importedRow]);
+    it('lists Delete with View account on a hold, and deletes through transactionsRepo.remove', async () => {
+      seed(bankCardHolding, [importedRow], [], [], [], undefined, bankAccount);
 
       const { getByTestId, getByText, queryByTestId } = await holdRow();
 
-      // An imported row is deletable but not duplicable, so there is no
-      // Duplicate/Delete choice: the hold raises the confirm itself.
-      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+      // An imported row is deletable but not duplicable: View account and Delete.
+      expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+      expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
       expect(getByText('Delete "Coffee"')).toBeTruthy();
 
       await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
       expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-import');
+    });
+  });
+
+  describe('the View account and View holding actions', () => {
+    const manualRow = {
+      id: 'txn-9',
+      amountMinorUnits: -5000,
+      time: 1,
+      description: 'Coffee',
+      source: 'manual',
+    };
+
+    it('offers View account only on a row of the page’s own holding, opening its account', async () => {
+      seed(bankCardHolding, [manualRow], [], [], [], undefined, bankAccount);
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(queryByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeNull();
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+      expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+      });
+
+      expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+      expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
+        accountId: 'bank',
+        name: 'Mono',
+        kind: 'bank',
+      });
+    });
+
+    it('offers no hold at all while the holding’s account has not loaded', async () => {
+      seed(bankCardHolding, [{ ...manualRow, source: 'monobank' }]);
+
+      const { queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('card-context-menu')).toBeNull();
+    });
+
+    describe('a loan’s linked payment', () => {
+      const [first] = loanInstallments(shortLoanMeta);
+      const loanOnDebts = { ...shortLoanHolding, accountId: 'debts' };
+      const payer = {
+        id: 'payer-1',
+        name: 'Everyday card',
+        type: 'card',
+        currency: 'UAH',
+        accountId: 'bank',
+      };
+      const linkedRow = {
+        id: 'txn-first',
+        holdingId: 'payer-1',
+        amountMinorUnits: -first.paymentMinorUnits,
+        currency: 'UAH',
+        time: first.dueDate,
+        description: 'First installment',
+        source: 'manual',
+        loanHoldingId: 'h-1',
+        loanLinkSource: 'manual',
+      };
+      const seedLoanWithLinkedPayment = () =>
+        seed(
+          loanOnDebts,
+          [],
+          [],
+          [payer],
+          [],
+          [{ baseCurrency: 'UAH' }],
+          debtsAccount,
+          [],
+          {},
+          [linkedRow],
+          [bankAccount, debtsAccount],
+        );
+
+      it('opens the PAYER holding from View holding', async () => {
+        seedLoanWithLinkedPayment();
+
+        const { getByTestId } = await renderScreen();
+
+        await holdCard();
+        await act(async () => {
+          await fireEvent.press(getByTestId(VIEW_HOLDING_ACTION_TEST_ID));
+        });
+
+        expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+        expect(mockOpenInPane).toHaveBeenCalledWith('HoldingDetail', {
+          holdingId: 'payer-1',
+          name: 'Everyday card',
+        });
+      });
+
+      it('opens the PAYER’s account, not the loan’s, from View account', async () => {
+        seedLoanWithLinkedPayment();
+
+        const { getByTestId } = await renderScreen();
+
+        await holdCard();
+        await act(async () => {
+          await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+        });
+
+        expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+        expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
+          accountId: 'bank',
+          name: 'Mono',
+          kind: 'bank',
+        });
+      });
+
+      it('reads the account list for a loan only', async () => {
+        const accountListEnabled = (): unknown =>
+          mockUseLiveQuery.mock.calls.find(
+            (call) => (call[0] as { toSQL: () => { sql: string } }).toSQL().sql === 'accounts-list',
+          )?.[2];
+
+        seedLoanWithLinkedPayment();
+        await renderScreen();
+
+        expect(accountListEnabled()).toBe(true);
+
+        mockUseLiveQuery.mockClear();
+        seed(bankCardHolding, [manualRow], [], [], [], undefined, bankAccount);
+        await renderScreen();
+
+        expect(accountListEnabled()).toBe(false);
+      });
+
+      it('gives a scheduled payment, which has not happened, no hold', async () => {
+        seed(
+          loanOnDebts,
+          [],
+          [],
+          [],
+          [],
+          [{ baseCurrency: 'UAH' }],
+          debtsAccount,
+          [],
+          {},
+          [],
+          [debtsAccount],
+        );
+
+        await renderScreen();
+
+        expect(() => getByGestureTestId(HOLD_GESTURE_TEST_ID)).toThrow();
+      });
     });
   });
 

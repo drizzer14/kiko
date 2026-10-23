@@ -28,6 +28,8 @@ export const DELETE_CONFIRM_TEST_ID = 'card-context-menu-delete-confirm';
 export const DUPLICATE_ACTION_TEST_ID = 'card-context-menu-duplicate';
 export const EDIT_ACTION_TEST_ID = 'card-context-menu-edit';
 export const CLOSE_ACTION_TEST_ID = 'card-context-menu-close';
+export const VIEW_ACCOUNT_ACTION_TEST_ID = 'card-context-menu-view-account';
+export const VIEW_HOLDING_ACTION_TEST_ID = 'card-context-menu-view-holding';
 export const DELETE_ACTION_TEST_ID = 'card-context-menu-delete-action';
 
 // A touch-and-hold must stay still for this long to open the delete confirm —
@@ -54,9 +56,9 @@ const HOLD_LIFT_DURATION_MS = 300;
 /**
  * Wraps a grid card in a self-contained "deep-press (haptic)" context menu.
  *
- * A card with any action (deletable, or given `onDuplicate`/`onEdit`/
- * `closeAction`) gets a `react-native-gesture-handler` `LongPress` composed
- * alongside — never over — the card:
+ * A card with any action (deletable, or given `onDuplicate`/`onEdit`/`onViewAccount`/
+ * `onViewHolding`/`closeAction`) gets a `react-native-gesture-handler` `LongPress`
+ * composed alongside — never over — the card:
  *
  * - a quick TAP never activates the long-press (its min duration is not met), so
  *   it falls straight through to the child card's own `onPress` (open detail).
@@ -108,6 +110,12 @@ const CardContextMenu: FC<{
   // its own to open an editor (the holding detail's share changes). Joins
   // the same action list as Duplicate.
   onEdit?: () => void;
+  // Optional "open the account / the holding this row belongs to" actions. They join the same
+  // action list, so a card that cannot be deleted (a synced transaction row) still gets a hold
+  // that opens it. Only the transaction rows pass them, and a row on its own holding's page
+  // passes no `onViewHolding`.
+  onViewAccount?: () => void;
+  onViewHolding?: () => void;
   // An optional "close this entity, keep its history" action (a manual
   // holding the user sold or gave away). Joins the same action list; the
   // consumer owns its label and its confirm, since what closing means, and
@@ -140,6 +148,8 @@ const CardContextMenu: FC<{
   onDelete,
   onDuplicate,
   onEdit,
+  onViewAccount,
+  onViewHolding,
   closeAction,
   deleteMessage,
   deleteTitle,
@@ -155,7 +165,7 @@ const CardContextMenu: FC<{
   // request is dropped.
   const latestRequest = useRef(0);
   // The action list's visibility, separate from the delete confirm's: a hold
-  // opens THIS when a duplicate, edit, or close action exists, and choosing
+  // opens THIS when a duplicate, edit, view, or close action exists, and choosing
   // Delete from it hands off to the confirm sheet below.
   const [actionsVisible, setActionsVisible] = useState(false);
   // The `liftOnHold` scale, driven straight from the JS thread (the whole
@@ -169,7 +179,9 @@ const CardContextMenu: FC<{
   const canDuplicate = onDuplicate !== undefined;
   const canEdit = onEdit !== undefined;
   const canClose = closeAction !== undefined;
-  const hasActionList = canDuplicate || canEdit || canClose;
+  const canViewAccount = onViewAccount !== undefined;
+  const canViewHolding = onViewHolding !== undefined;
+  const hasActionList = canDuplicate || canEdit || canClose || canViewAccount || canViewHolding;
 
   // A card with NO action renders bare — no gesture, no sheet — leaving the
   // touch-and-hold free for an enclosing sortables drag to claim (a synced
@@ -200,7 +212,7 @@ const CardContextMenu: FC<{
     setConfirmVisible(true);
   };
 
-  // A hold offers the action-list CHOICE only when a duplicate, edit, or close action exists;
+  // A hold offers the action-list CHOICE only when a duplicate, edit, view, or close action exists;
   // otherwise it keeps the original behavior and opens the delete confirm
   // straight away, so every delete-only consumer is unchanged. `liftOnHold`
   // additionally scales the card up on `onStart` and eases it back to 1 on
@@ -255,6 +267,16 @@ const CardContextMenu: FC<{
     onEdit?.();
   };
 
+  const runViewAccount = (): void => {
+    setActionsVisible(false);
+    onViewAccount?.();
+  };
+
+  const runViewHolding = (): void => {
+    setActionsVisible(false);
+    onViewHolding?.();
+  };
+
   const runClose = (): void => {
     setActionsVisible(false);
     closeAction?.onPress();
@@ -305,6 +327,18 @@ const CardContextMenu: FC<{
           {canDuplicate && (
             <Button onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
               {t('common.duplicate')}
+            </Button>
+          )}
+
+          {canViewAccount && (
+            <Button onPress={runViewAccount} testID={VIEW_ACCOUNT_ACTION_TEST_ID}>
+              {t('common.viewAccount')}
+            </Button>
+          )}
+
+          {canViewHolding && (
+            <Button onPress={runViewHolding} testID={VIEW_HOLDING_ACTION_TEST_ID}>
+              {t('common.viewHolding')}
             </Button>
           )}
 
