@@ -60,6 +60,13 @@
 // assigns from an expansion (`f=$(mktemp)`), stays unresolved and is not denied (a documented
 // limit).
 //
+// And it denies a whole-repository heavy job run outside the queue, as the finding `heavyJob`:
+// `make verify|gate|deep|security` (not a dry run), `npm run check:all|check:deep|check:mutation`,
+// `scripts/checks/verify.sh`, `mutation.sh` (not `--list`), a `check:security` or `security.sh`
+// run with no path, and a Semgrep scan whose target is the whole repository or absent. Only the
+// typed command is judged (never a script file or a data body), and the way out is
+// `bash scripts/job-queue.sh verify|check-all|security|gate ...`.
+//
 // And it denies a `while` or `until` loop that scans the process table (`ps`,
 // `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
 // semgrep, or xcodebuild: the loop's own command line holds the pattern, so
@@ -270,6 +277,24 @@ const SCRIPT_KILL_REASON_LINES = [
     'time, or write the script in the same command that runs it to get past this guard.',
 ];
 
+const HEAVY_JOB_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a whole-repository job run outside the queue (make verify, ' +
+    'gate, deep or security; npm run check:all, check:deep, check:mutation, or check:security with ' +
+    'no path; scripts/checks/verify.sh, mutation.sh, or security.sh with no path; a Semgrep scan of ' +
+    'the whole repository, whether the target is ., ./, $PWD, the repository root, or none).',
+  'WHY IT MATTERS: each of these takes minutes of CPU on a machine every agent and session ' +
+    'shares, and two at once make Semgrep and jest time out; scripts/job-queue.sh runs them one at ' +
+    'a time, shortest class first, and not on battery.',
+  'HOW TO FIX:     queue it with `bash scripts/job-queue.sh verify|check-all|security <worktree> ' +
+    '<label>` (a mutation gate: `bash scripts/job-queue.sh gate <worktree> <label> <mutation-base> ' +
+    '<expected-head>`), run with run_in_background, and wait on its exit code; a role agent asks ' +
+    'the coordinator to queue it. A narrower check stays allowed: `bash scripts/checks/security.sh ' +
+    '<file>`, Semgrep on a subfolder or file, `make mutable`, `make -n verify` (a dry run), and ' +
+    '`bash scripts/job-queue.sh status`.',
+  'DO NOT:         run the job through a script file, an alias, a variable, or another spelling ' +
+    'of the same command to get past this guard.',
+];
+
 const INTERNAL_ERROR_REASON_LINES = [
   'WHAT FAILED:    kill-guard hit an internal error while judging this command, so it could not ' +
     'clear it.',
@@ -294,6 +319,7 @@ const REASON_BY_KIND = {
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
   hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
+  heavyJob: (finding) => blockReason(HEAVY_JOB_REASON_LINES, finding.detail),
   internalError: (finding) => blockReason(INTERNAL_ERROR_REASON_LINES, finding.detail),
 };
 
@@ -2999,6 +3025,9 @@ function commandFinding(command, context) {
   const base = basename(rest[0]);
   if (ASSIGNING_COMMANDS.has(base)) return assignmentFinding(command, context);
 
+  const queued = queuedJobFinding(base, rest, context);
+  if (queued !== null) return queued;
+
   if (SHELLS.has(base)) return shellFinding(base, rest, context);
 
   // `eval "$(cat)" <<'EOF'` runs what its stdin holds, as `source /dev/stdin <<'EOF'` does.
@@ -3092,6 +3121,216 @@ function expandedReading(tokens, redirects, variables) {
     targets.every((redirect, index) => redirect.target === redirects[index].target);
 
   return unchanged ? null : { words, targets };
+}
+
+// ---- heavy jobs outside the queue ----
+
+// A whole-repository job takes minutes of CPU on a machine every agent shares, and two of them at
+// once make Semgrep and jest time out, so `scripts/job-queue.sh` runs them one at a time. The deny
+// judges the typed command only: `SCRIPT_KINDS` and `DATA_KINDS` leave `heavyJob` out, so a script
+// file or a heredoc body that holds `make verify` is text, and `scripts/job-queue.sh`, which runs
+// `make verify` itself, is never denied.
+
+// The operands of `parameters`: its words that are no option and no option's value.
+function operandsOf(parameters, optionsWithValue) {
+  const operands = [];
+  for (let index = 0; index < parameters.length; index++) {
+    const word = parameters[index];
+    if (word === '--') {
+      operands.push(...parameters.slice(index + 1));
+      break;
+    }
+    if (!isOptionWord(word)) operands.push(word);
+    else if (takesNextWord(word, optionsWithValue)) index++;
+  }
+
+  return operands;
+}
+
+const MAKE_COMMANDS = new Set(['make', 'gmake']);
+const HEAVY_MAKE_TARGETS = new Set(['verify', 'gate', 'deep', 'security']);
+// A dry run prints the recipe and runs nothing. make also reads an abbreviated long option; one
+// of those is not recognized here, so it is denied (fail closed).
+const MAKE_DRY_RUN_OPTIONS = new Set(['--dry-run', '--just-print', '--recon']);
+const isMakeDryRun = (parameters) =>
+  parameters.some((word) => MAKE_DRY_RUN_OPTIONS.has(word) || /^-[A-Za-z]*n[A-Za-z]*$/.test(word));
+
+function makeJob(parameters) {
+  if (isMakeDryRun(parameters)) return null;
+  const target = parameters.find((word) => HEAVY_MAKE_TARGETS.has(word));
+
+  return target === undefined
+    ? null
+    : { kind: 'heavyJob', what: `make ${target} is a whole-repository job` };
+}
+
+const NPM_OPTIONS_WITH_VALUE = new Set([
+  '--prefix',
+  '-C',
+  '--workspace',
+  '-w',
+  '--loglevel',
+  '--cache',
+  '--registry',
+  '--userconfig',
+  '--globalconfig',
+]);
+const NPM_RUN_COMMANDS = new Set(['run', 'run-script', 'rum', 'urn']);
+const HEAVY_NPM_SCRIPTS = new Set(['check:all', 'check:deep', 'check:mutation']);
+
+function npmJob(parameters) {
+  const separator = parameters.indexOf('--');
+  const before = separator === -1 ? parameters : parameters.slice(0, separator);
+  const passed = separator === -1 ? [] : parameters.slice(separator + 1);
+  const [subcommand, script, ...operands] = operandsOf(before, NPM_OPTIONS_WITH_VALUE);
+  if (!NPM_RUN_COMMANDS.has(subcommand)) return null;
+  const heavy = (what) => ({ kind: 'heavyJob', what: `${what} is a whole-repository job` });
+  if (HEAVY_NPM_SCRIPTS.has(script)) return heavy(`npm run ${script}`);
+  const namesFile = operands.length > 0 || passed.some((word) => !isOptionWord(word));
+
+  return script === 'check:security' && !namesFile
+    ? heavy('npm run check:security, with no path')
+    : null;
+}
+
+// The check scripts that scan or test the whole repository: `mutation.sh --list` only lists, and
+// `security.sh` with a path scans that path.
+const HEAVY_SCRIPT = /(?:^|\/)scripts\/checks\/(verify|mutation|security)\.sh$/i;
+
+function checkScriptJob(base, tokens) {
+  const file = scriptFileOf(base, tokens);
+  if (file === null || file.operand === undefined) return null;
+  const name = HEAVY_SCRIPT.exec(file.operand)?.[1].toLowerCase();
+  if (name === undefined) return null;
+  const parameters = tokens.slice(tokens.indexOf(file.operand) + 1);
+  const lists = name === 'mutation' && parameters.includes('--list');
+  const namesFile = name === 'security' && parameters.some((word) => !isOptionWord(word));
+
+  return lists || namesFile
+    ? null
+    : { kind: 'heavyJob', what: `scripts/checks/${name}.sh is a whole-repository job` };
+}
+
+// The options of `semgrep scan` that take a value, from `semgrep scan --help`: a value left in
+// the operands would read as a target.
+const SEMGREP_OPTIONS_WITH_VALUE = new Set([
+  '-c',
+  '-e',
+  '-f',
+  '-j',
+  '-l',
+  '-o',
+  '--baseline-commit',
+  '--config',
+  '--emacs-output',
+  '--exclude',
+  '--exclude-rule',
+  '--gitlab-sast-output',
+  '--gitlab-secrets-output',
+  '--include',
+  '--interfile-timeout',
+  '--jobs',
+  '--json-output',
+  '--junit-xml-output',
+  '--lang',
+  '--max-chars-per-line',
+  '--max-lines-per-finding',
+  '--max-log-list-entries',
+  '--max-match-context-size',
+  '--max-memory',
+  '--max-target-bytes',
+  '--metrics',
+  '--optimizations',
+  '--output',
+  '--pattern',
+  '--project-root',
+  '--remote',
+  '--replacement',
+  '--sarif-output',
+  '--secrets-timeout',
+  '--severity',
+  '--text-output',
+  '--timeout',
+  '--timeout-threshold',
+  '--vim-output',
+  '--x-mem-policy',
+  '--x-rule-validation',
+  '--x-semgrepignore-filename',
+]);
+// The subcommands that scan nothing, and the options that print or check without scanning. A
+// word after options is a target even when it spells a subcommand, so only the first word counts.
+const SEMGREP_OTHER_COMMANDS = new Set([
+  'ci',
+  'install-semgrep-pro',
+  'login',
+  'logout',
+  'lsp',
+  'mcp',
+  'publish',
+  'show',
+  'test',
+  'validate',
+]);
+const SEMGREP_NO_SCAN_OPTIONS = new Set(['--help', '-h', '--version', '--validate']);
+
+// Whether a scan target is the whole repository: the folder the command runs in (`.`, `./`,
+// `$PWD`, its absolute path) or the root of a worktree of this repository, however it is spelled.
+function namesWholeRepository(target, { directories, rules }) {
+  if (/^\$(?:PWD|\{PWD\})$/.test(target)) return true;
+  if (['.', './'].includes(path.posix.normalize(target))) return true;
+
+  return directories.some((directory) => {
+    const resolved = resolveDirectory(directory, target);
+
+    return resolved !== null && (resolved === directory || isProjectWorktree(resolved, rules));
+  });
+}
+
+function semgrepJob(parameters, context) {
+  if (SEMGREP_OTHER_COMMANDS.has(parameters[0])) return null;
+  if (parameters.some((word) => SEMGREP_NO_SCAN_OPTIONS.has(word))) return null;
+  const scanned = parameters[0] === 'scan' ? parameters.slice(1) : parameters;
+  const targets = operandsOf(scanned, SEMGREP_OPTIONS_WITH_VALUE);
+  const wholeRepository =
+    targets.length === 0 || targets.some((target) => namesWholeRepository(target, context));
+
+  return wholeRepository
+    ? { kind: 'heavyJob', what: 'a Semgrep scan of the whole repository' }
+    : null;
+}
+
+// `npx` runs the command after its own options.
+const NPX_OPTIONS_WITH_VALUE = new Set([
+  '-p',
+  '--package',
+  '-c',
+  '--call',
+  '-w',
+  '--workspace',
+  '--prefix',
+  '--node-arg',
+]);
+
+// The job a command (its words, the command word first) starts, as `{ kind, what }`, or null.
+function queuedJob(base, tokens, context) {
+  if (MAKE_COMMANDS.has(base)) return makeJob(tokens.slice(1));
+  if (base === 'npm') return npmJob(tokens.slice(1));
+  if (base === 'semgrep') return semgrepJob(tokens.slice(1), context);
+  if (base === 'npx') {
+    const [command, ...rest] = skipOptions(tokens, NPX_OPTIONS_WITH_VALUE);
+
+    return command === undefined ? null : queuedJob(basename(command), [command, ...rest], context);
+  }
+
+  return checkScriptJob(base, tokens);
+}
+
+function queuedJobFinding(base, tokens, context) {
+  const job = queuedJob(base, tokens, context);
+
+  return job === null
+    ? null
+    : { kind: job.kind, detail: `${context.segment.trim()} (${job.what})` };
 }
 
 // ---- wait loops that scan the process table ----
@@ -3276,7 +3515,8 @@ function observeWaitLoops(watch, segment, spans) {
 // a move of main only, a heredoc body that no shell is known to run is read for the kinds in
 // `DATA_KINDS` (a kill, a git stash, a hook skip by option or core.hooksPath, a main-checkout
 // change or fast-forward, a wait loop), and every other finding in either is not that pass's
-// business. `null` reports every kind.
+// business. `null` reports every kind. `heavyJob` is in neither set: a job started from a script
+// or a data body is the queue's own work (`scripts/job-queue.sh` runs `make verify`).
 const SCRIPT_KINDS = new Set(['kill', 'mainFastForward', 'mainMove']);
 const DATA_KINDS = new Set([
   'kill',
