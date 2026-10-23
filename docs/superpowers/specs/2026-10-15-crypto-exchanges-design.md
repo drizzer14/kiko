@@ -907,7 +907,7 @@ Each P2P and fiat window reads both series (`readSeriesSpan`), so it costs 2 cal
 |---|---|---|---|---|---|
 | P2P (30-day windows) | 113 x 2 | 226 (x UID 900 = 203400 UID) | 10 (5 windows a run) | 23 | first order (about 2023-09, window about 75): by run 15 at the latest (older orders may exist); newest (2026-10, window 113): run 23 |
 | Convert (30-day windows) | 113 x 1 | 113 (x UID 3000) | 20 | 6 | the 2026-01 conversion (window about 104): run 6 |
-| Fiat orders (2-year windows) | 5 x 2, then 3 owed days x 2 | 12 to reach now, 16 until complete (x UID 45000) | 3 | 6 to reach now, 12 until complete (S12-Q18, S12-Q21) | no fiat order on the account |
+| Fiat orders (2-year windows) | 5 x 2, then 3 owed days x 2 and 2 re-scans x 2 | 12 to reach now, 20 until complete (x UID 45000) | 3 | 6 to reach now, 14 until complete (S12-Q18, S12-Q21, S12-Q22) | no fiat order on the account |
 | Fiat payments (2-year windows) | 5 x 2 | 10 (IP 1 each) | 10 | 1 | no fiat payment on the account |
 
 The caption shows until each walk is current. The UID budget alone would allow about 200 P2P calls
@@ -1242,13 +1242,16 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   re-scan in one run, so the orders walk alternates (S12-Q18): a run reads behind (the owed days
   first, then the last two years, the window re-scan every walk runs) when the stored list holds a
   range and the forward ground is under one window, and forward otherwise. The run after a behind
-  run always reads forward (S12-Q21; the walk stores `behindRun` in its `exchange_state` entry, a
-  disconnect drops it), so a range that no read clears cannot keep the newest orders out. The
-  first walk reaches now on its 6th run (4 forward windows, 1 owed day, then the last window), and
-  reports complete on its 12th: the other two owed days, then the re-scan of the last two years,
-  each on a behind run with a forward run after it. A record Binance writes late is imported by
-  the next behind run that reads the re-scan, up to two years back. Fiat payments is 10 calls at
-  IP 1 each, so 1 run at a lane of 10, with the forward read and the re-scan in the same run.
+  run always reads forward (S12-Q21), so a range that no read clears cannot keep the newest orders
+  out, and the behind runs take turns on the owed days and the re-scan (S12-Q22), so such a range
+  cannot keep the re-scan out either; the walk stores `behindRun` and `rescanTurn` in its
+  `exchange_state` entry, and a disconnect drops them. The first walk reaches now on its 6th run
+  (4 forward windows, 1 owed day, then the last window), and reports complete on its 14th: the
+  other two owed days and two re-scans of the last two years, each on a behind run with a forward
+  run after it. A record Binance writes late is imported by the next behind run that reads the
+  re-scan, up to two years back, and every record Binance serves is imported within 4 runs of the
+  run that first serves it (`binance.fiat-history.properties.test.ts`). Fiat payments is 10 calls
+  at IP 1 each, so 1 run at a lane of 10, with the forward read and the re-scan in the same run.
 - Marker total (C-NR1): Binance's decimal string is normalized to exactly the fiat's scale by the
   exact decimal parser: trailing zeros past the scale drop, missing ones pad
   (`"4150"` -> `4150.00`); a non-zero digit past the scale is a per-record stop `amount-precision`

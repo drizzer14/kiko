@@ -29,8 +29,8 @@ fiat-orders budget cases and the first-walk table), "### P2P", "### Fiat orders 
 payments (card buy, sell)"; section 6 "Not-imported line", "Mapping and statistics per operation"; section 7
 P1-P11, F1-F6, N5b; section 11 row 12/15; section 12 P5, P6. Rulings: `rulings.md` (main checkout,
 `memory/refs/binance-multicoin-sdd-2026-10-21/`), "Probe 4 rulings", "Spec draft sets 8-12 rulings", "P2P BUY vs
-LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q15, S12-Q18 and S12-Q21 are
-at the end; the plan assumes each recommendation.
+LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q15, S12-Q18, S12-Q21 and S12-Q22
+are at the end; the plan assumes each recommendation.
 
 **Base:** branch `binance-set12` at main `79094ae8` (sets 1-11 merged). Every code fact names a symbol or anchor
 text, never a line. **The developer re-greps every fact on the actual base before relying on it.**
@@ -209,14 +209,15 @@ New rows (no P2P or fiat read ran before, so "was:" is "no read" unless a value 
 | PW8 | the `p2p` cursor of PW7 more than a day behind `latestSyncedAt` (modelled on `binance-history-status.test.ts` "is not behind at exactly a day, and is behind a millisecond past it") | the history caption shows | `src/screens/account-detail/crypto-sync-section/binance-history-status.test.ts`, "is behind while the P2P walk is held more than a day by a page it cannot read" | hidden (not in `CAPTION_WALKS`) |
 | PW5 | property, gaps 0 / 1 h / 1 day | see step 11/14 | `binance.p2p-history.properties.test.ts` | - |
 | FW1 | as PW1-PW3 for both fiat walks | as PW1-PW3 | fiat, describe "a fiat walk that stops" | - |
-| FW2 | property, gaps 0 / 1 h / 1 day | see step 11/14 | `binance.fiat-history.properties.test.ts` | - |
+| FW2 | property over the fiat orders walk (S12-Q22), clock gaps 1 ms / 1 h / 1 day, 12 seeds each, owed ground older than the re-scan: none, a drifting page, a throwing page, ground Binance refuses as older than it serves (-5026) | every record Binance serves (late ones written 2 to 601 days behind, a new one on some runs) is imported within 4 runs of the run that first serves it, each key once; a bound of 3 fails | `binance.fiat-history.properties.test.ts`, "the fiat orders walk over generated worlds, runs %i ms apart" > "with owed ground older than the re-scan: %s" > "imports every record Binance serves within the bound, each once: seed %i" | 84 of 144 worlds fail over the turn logic of S12-Q21 (the late record is never imported, or only after the owed windows clear) |
 | FQ1 | orders current, run 2 after a forward run, records 2 h and 30 d behind the cursor (S12-Q18) | a behind run re-scans `[t - 730 d, c]`, both imported, list empty, `complete` false | fiat, "re-scans the last two years on the run after a forward read, so a late record is imported" | forward `[c, t]`, neither read, the list grows |
 | FQ2 | the run after FQ1 | forward `[c, t]`, `complete` true | fiat, "reads forward again on the run after the re-scan, and reports complete" | `complete` false |
-| FQ3 | orders, first walk from the floor | cursor now at run 6 (calls `[2 x 6]`); calls `[2,2,2,2,2,2,2,0,2,0,2,0]` over 12 runs, complete only on run 12 (runs 8, 10, 12 are forward runs with an empty forward window: the test clock stands) | fiat, "reads every two-year window from the floor, empty ones too" and "reads forward after every behind run, until the owed days and the last two years are read" | now at run 5, never complete |
-| FQ4 | orders, stored list unreadable (repaired to `{floor, cursor}`) | 5 behind runs (4 owed windows, then the re-scan), a forward run after each, 10 runs in all; complete on the 10th | fiat, "clears the repaired range in five behind runs, a forward run after each, then reports complete" | never read |
-| FQ10 | orders, a range that no read clears (a page that drifts; a page that throws) | the run after a behind run reads forward: a new order imports on run 2, the cursor advances on every forward run; the drift is logged (`fiat-page-drift`), the throw rejects the run | fiat, "reads forward on every second run, so a new order imports one run later" and "fails the run on a window whose page cannot be read, and reads forward on the next" | every run a behind run, no new order |
-| FQ11 | orders, owed ground older than Binance serves (-5026) | read as empty by the `DepthGuard` narrowing, one series on each behind run; the range leaves the list; nothing logged | fiat, "reads ground older than Binance serves as empty, one series on each behind run" | (not measured) |
-| FQ12 | the `behindRun` mark | stored true after a behind run and false after the forward run; read as absent unless `true`; round-trips through a walk patch; a disconnect drops it | fiat, "stores that a behind run ran, and clears it on the forward run after", "reads forward when the last run read behind, though the list still holds a range"; `walk-state.behind-run.test.ts`, "the behind-run mark of a walk" | no mark |
+| FQ3 | orders, first walk from the floor | cursor now at run 6 (calls `[2 x 6]`); calls `[2,2,2,2,2,2,2,0,2,0,2,0,2,0]` over 14 runs, complete only on run 14: an owed day on runs 5, 9 and 13, the re-scan on runs 7 and 11 (runs 8, 10, 12 and 14 are forward runs with an empty forward window: the test clock stands) | fiat, "reads every two-year window from the floor, empty ones too" and "alternates the owed days and the last two years behind, a forward run between, until both are read" | complete on run 12 (the re-scan read last) |
+| FQ4 | orders, stored list unreadable (repaired to `{floor, cursor}`) | 7 behind runs (4 owed windows, 3 re-scans), a forward run after each, 14 runs in all; complete on the 14th | fiat, "clears the repaired range over alternating owed and re-scan runs, then reports complete" | complete on run 10 |
+| FQ10 | orders, a range that no read clears (a page that drifts; a page that throws) | the run after a behind run reads forward: a new order imports on run 2, the cursor advances on every forward run; the drift is logged (`fiat-page-drift`), the throw rejects the run (runs 1 and 5 of 6) | fiat, "reads forward after every behind run, so a new order imports on the second run" and "fails the run on a window whose page cannot be read, and reads forward on the next" | every run a behind run, no new order |
+| FQ11 | orders, owed ground older than Binance serves (-5026) | read as empty by the `DepthGuard` narrowing, one series on each owed run (runs 1 and 5 of 6, the re-scan on run 3); the range leaves the list; nothing logged | fiat, "reads ground older than Binance serves as empty, one series on each owed run" | (not measured) |
+| FQ12 | the `behindRun` and `rescanTurn` marks | `behindRun` true after a behind run and false after the forward run; `rescanTurn` true after an owed run, false after a re-scan run, kept by the forward run; each read as absent unless `true`; each round-trips through a walk patch; a disconnect drops both; a stored `behindRun` with no `rescanTurn` reads as a behind run whose next behind run reads the owed windows (the order of the build before it) | fiat, "stores that a behind run ran, and clears it on the forward run after", "reads forward when the last run read behind, though the list still holds a range", "alternates the owed range and the last two years on the behind runs, a forward run between", "reads a stored behind mark with no re-scan mark as a behind run, and reads the owed range after"; `walk-state.behind-run.test.ts`, "the %s mark of a walk" and "the turn marks of a walk" | no `rescanTurn` mark |
+| FQ13 | orders, a range that no read clears and a record Binance writes late (S12-Q22) | the record, 30 days behind the cursor and served from run 2, is imported on the re-scan run (run 3 of 4) | fiat, "imports a record written late on the re-scan run, though the owed range is never cleared" | never imported |
 | FQ5 | orders, forward ground one window or more, a range owed | forward run first; at exactly one window, forward and not complete; a millisecond under, a re-scan | fiat, "reads forward first and leaves the owed range for a later run", "reads forward at exactly one window behind, and is not complete while a range was owed", "re-scans at a millisecond under one window behind" | (same for the first; no turn) |
 | FQ6 | fiat payments, current | forward and re-scan in one run, unchanged | fiat, "reads forward and re-scans the last two years in the same run" | (same) |
 | FQ7 | orders, an owed point and no range | forward run; the point on the 3rd call, in a forward and in a re-scan run | fiat, "reads forward when the list holds no range, though a point is owed", "reads an owed point on the third call of a forward run and of a re-scan run" | the 3rd call never spent by a re-scan |
@@ -254,7 +255,7 @@ Mutable source files (`mutable_source_files` in `scripts/checks/mutation.sh`; `i
 `binance/binance.fiat-history.ts` (new), `binance/binance.history-client.ts`, `binance/binance.history-budget.ts`,
 `run-crypto-sync/run-crypto-sync.ts`, `src/transactions/untracked-counterpart/untracked-counterpart.ts`,
 `src/screens/account-detail/crypto-sync-section/binance-history-status.ts`, and (S12-Q21) `exchange/walk-state/walk-state.ts`
-(the `behindRun` mark). Step 1/14 is test-only and adds no
+(the `behindRun` mark, and the `rescanTurn` mark of S12-Q22). Step 1/14 is test-only and adds no
 mutable file. Spec row 12/15 says about 7. The number that counts is `KIKO_MUTATION_BASE=79094ae8 make mutable`
 (step 14/14). Above 30: stop and split.
 
@@ -449,7 +450,8 @@ Files: `binance.fiat-history.ts` (new), `binance.fiat-history.test.ts` (new), `b
 
 Files: `run-crypto-sync.ts`, `run-crypto-sync.test.ts`, `binance-history-status.ts`, `binance-history-status.test.ts`,
 `binance.p2p-history.real-sqlite.test.ts` (new), `binance.fiat-history.real-sqlite.test.ts` (new),
-`binance.p2p-history.properties.test.ts` (new), `binance.fiat-history.properties.test.ts` (new),
+`binance.p2p-history.properties.test.ts` (new), `binance.fiat-history.properties.test.ts` (it holds the fiat
+orders worlds of S12-Q22, FW2; this step adds the payments walk and the statuses to it),
 `crypto-sync-section.component.not-imported.test.tsx`.
 - [ ] Tests first: RW1, RW2, RW3, RW4, PW8, Q4, Q5, Q6, K-P; real SQLite P4, P9 (the probe 3 shape: 77 COMPLETED BUY TAKER, 2
       CANCELLED, 1 CANCELLED_BY_SYSTEM), P11 (through `syncBinanceP2pHistory` then `syncBinanceConvertHistory`),
@@ -531,10 +533,10 @@ Files: the spec.
 - G-1 every step; G-2 steps 1, 4, 11; G-3 steps 4-11; G-6 step 4; G-7 steps 7, 10; G-8 step 5; G-9 steps 6, 9;
   G-10 steps 6, 8, 9, 10, 11; G-11 steps 12, 13; G-12 and G-13 every commit; G-14 steps 1, 11.
 
-## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21)
+## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21, S12-Q22)
 
 Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12-Q15 = A, FINAL coordinator rulings; Q3, Q10, Q11 = A,
-OVERNIGHT DEFAULT, pending user; Q18 = C and Q21 = A (N = 1), FINAL coordinator rulings.
+OVERNIGHT DEFAULT, pending user; Q18 = C, Q21 = A (N = 1) and Q22 = B, FINAL coordinator rulings.
 
 - S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
   one exact existing title to each. B: a file-only row passes when the file exists. Recommend A: a file alone ties a
@@ -612,8 +614,27 @@ OVERNIGHT DEFAULT, pending user; Q18 = C and Q21 = A (N = 1), FINAL coordinator 
   run, so the newest orders never imported. A: after a behind run the next run reads forward (the walk stores
   `behindRun` in its `exchange_state` entry; no migration; a disconnect drops it with the other run marks). B:
   accept it. C: a forward run after N behind runs. A with N = 1 is the ruling: it needs one boolean, and the
-  list still clears one window per behind run (FQ4: 5 behind runs, 10 runs). Measured (FQ10, FQ11): a page that
+  list still clears one window per owed run (S12-Q22 puts the re-scan between them). Measured (FQ10, FQ11): a page that
   drifts (`fiat-page-drift` logged each run) and a page that throws (the run rejects) both leave the range in the
   list and let the forward run import a new order on run 2; ground older than Binance serves is read as empty by
-  the `DepthGuard` narrowing (-5026, C-NR-D), one series on each behind run, and leaves the list with nothing
-  logged. The first walk reaches now on run 6 and reports complete on run 12 (F5, Q8, FQ3).
+  the `DepthGuard` narrowing (-5026, C-NR-D), one series on each owed run, and leaves the list with nothing
+  logged. The first walk reaches now on run 6 (F5, Q8); S12-Q22 moves the run it reports complete on (FQ3).
+- S12-Q22 (B, FINAL coordinator ruling) a behind run read the owed windows first and the re-scan only when none
+  was left, so a range that no read clears (a page that drifts or throws on every run) kept the re-scan out and
+  a record Binance writes late (up to two years back) was never imported. B: the behind runs take turns on the
+  owed windows and the re-scan, a forward run still follows every behind run (S12-Q21), and the list still
+  clears one window per owed run. The turn is three states: forward, behind on the owed windows, behind on the
+  re-scan. A mark that holds one of three states cannot say which behind run follows a forward run, so the walk
+  stores two booleans in its `exchange_state` entry, `behindRun` (the last run read behind) and `rescanTurn` (the
+  next behind run reads the re-scan); the forward run keeps `rescanTurn`, an owed run sets it, a re-scan run
+  clears it, and a turn with nothing to read gives way to the other (FQ12). A `behindRun` stored by S12-Q21
+  with no `rescanTurn` reads as a behind run whose next behind run reads the owed windows, the order of the
+  build before, so no stored state changes meaning; no migration. Measured (FQ3, FQ4, FQ13, FW2): the first
+  walk still reaches now on run 6 and reports complete on run 14, 20 calls (was run 12, 18); a repaired list
+  clears in 7 behind runs, 14 runs (was 10). One property suite (FW2) drives the orders walk through
+  `syncBinanceFiatOrderHistory` over seeds, clock gaps (1 ms, 1 h, 1 day) and four kinds of owed ground older
+  than the re-scan, with late records and a new record on some runs, and asserts that every record Binance
+  serves is imported within 4 runs of the run that first serves it, each key once. The bound: the runs of a
+  world with owed ground left go forward, owed, forward, re-scan, so a record served just after a re-scan
+  waits for the next one, the fourth run counting its own; with the owed ground gone the re-scan comes every
+  second run. 3 fails (a drifting and a throwing page, a refused range). 150 seeds a world pass.
