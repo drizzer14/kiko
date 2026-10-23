@@ -225,15 +225,16 @@ const SHELL_WRITE_REASON_LINES = [
 ];
 
 const OSASCRIPT_SHELL_REASON_LINES = [
-  'WHAT FAILED:    kill-guard denied an osascript whose script text holds `do shell script`, which ' +
-    'runs an arbitrary shell command inside AppleScript.',
-  'WHY IT MATTERS: the guard cannot read a shell command held in AppleScript text, so a kill, a ' +
-    'git stash, a write into a guarded tree, a main-checkout change, or a whole-repository job ' +
-    'would run through it with none of those denies applied.',
+  'WHAT FAILED:    kill-guard denied an osascript whose script text holds `do shell script`, ' +
+    '`do script` (Terminal), or `doShellScript` (JavaScript), which run an arbitrary command ' +
+    'inside the script.',
+  'WHY IT MATTERS: the guard cannot read a command held in script text, so a kill, a git stash, ' +
+    'a write into a guarded tree, a main-checkout change, or a whole-repository job would run ' +
+    'through it with none of those denies applied.',
   'HOW TO FIX:     run the command in Bash itself, where the guard judges it. osascript stays ' +
-    'allowed for a script without `do shell script` (`display notification`, `tell application`).',
-  'DO NOT:         hide `do shell script` in a variable, a script file, or another spelling of ' +
-    'the same call to get past this guard.',
+    'allowed for a script without those words (`display notification`, `tell application`).',
+  'DO NOT:         hide the command in a variable, a script file, or another spelling of the ' +
+    'same call to get past this guard.',
 ];
 
 function blockReason(reasonLines, detail) {
@@ -1275,7 +1276,7 @@ function unwrap(tokens) {
       t = t.slice(1);
       continue;
     }
-    if (!OPTION_WRAPPERS.has(base)) {
+    if (!OPTION_WRAPPERS.has(base) || (base === 'screen' && screenRemoteOperands(t) !== null)) {
       return {
         tokens: [word, ...t.slice(1)],
         viaXargs,
@@ -3120,14 +3121,22 @@ const TMUX_NEW_SESSION_OPTIONS = new Set(['-c', '-e', '-f', '-F', '-n', '-s', '-
 const TMUX_SPLIT_WINDOW_OPTIONS = new Set(['-c', '-e', '-F', '-l', '-p', '-t']);
 const TMUX_RESPAWN_PANE_OPTIONS = new Set(['-c', '-e', '-t']);
 const TMUX_SEND_KEYS_OPTIONS = new Set(['-c', '-N', '-t']);
+const TMUX_NEW_WINDOW_OPTIONS = new Set(['-c', '-e', '-F', '-n', '-t']);
+const TMUX_RUN_SHELL_OPTIONS = new Set(['-d', '-t']);
+const TMUX_IF_SHELL_OPTIONS = new Set(['-t']);
 
-// The commands that start a shell command (their words after the options are it) or type keys, by
-// name, manual alias, and (below) any longer prefix of the name that tmux resolves.
+// The commands that start a shell command or type keys, by name, manual alias, and (below) any
+// longer prefix of the name that tmux resolves. `each`: every word after the options is its own
+// text (the keys of `send-keys`, the shell command and the commands of `if-shell`); otherwise the
+// words are one shell command.
 const TMUX_COMMANDS = [
-  { name: 'new-session', alias: 'new', options: TMUX_NEW_SESSION_OPTIONS, typesKeys: false },
-  { name: 'split-window', alias: 'splitw', options: TMUX_SPLIT_WINDOW_OPTIONS, typesKeys: false },
-  { name: 'respawn-pane', alias: 'respawnp', options: TMUX_RESPAWN_PANE_OPTIONS, typesKeys: false },
-  { name: 'send-keys', alias: 'send', options: TMUX_SEND_KEYS_OPTIONS, typesKeys: true },
+  { name: 'new-session', alias: 'new', options: TMUX_NEW_SESSION_OPTIONS, each: false },
+  { name: 'new-window', alias: 'neww', options: TMUX_NEW_WINDOW_OPTIONS, each: false },
+  { name: 'split-window', alias: 'splitw', options: TMUX_SPLIT_WINDOW_OPTIONS, each: false },
+  { name: 'respawn-pane', alias: 'respawnp', options: TMUX_RESPAWN_PANE_OPTIONS, each: false },
+  { name: 'run-shell', alias: 'run', options: TMUX_RUN_SHELL_OPTIONS, each: false },
+  { name: 'if-shell', alias: 'if', options: TMUX_IF_SHELL_OPTIONS, each: true },
+  { name: 'send-keys', alias: 'send', options: TMUX_SEND_KEYS_OPTIONS, each: true },
 ];
 
 const tmuxCommandNamed = (word) =>
@@ -3147,37 +3156,65 @@ function tmuxOperands(parameters, optionsWithValue) {
   return parameters.slice(index);
 }
 
-// The text a tmux call starts or types as a command line: the shell command of `new-session`,
-// `split-window` and `respawn-pane` (its words joined), or every key word `send-keys` types, each
-// judged on its own. Nothing for any other tmux command.
+// The text a tmux call starts or types as a command line, per `TMUX_COMMANDS`. Nothing for any
+// other tmux command.
 function tmuxTypedTexts(tokens) {
   const operands = tmuxOperands(tokens.slice(1), TMUX_GLOBAL_OPTIONS_WITH_VALUE);
   const command = operands.length === 0 ? undefined : tmuxCommandNamed(operands[0]);
   if (command === undefined) return [];
   const rest = tmuxOperands(operands.slice(1), command.options);
 
-  return command.typesKeys || rest.length === 0 ? rest : [rest.join(' ')];
+  return command.each || rest.length === 0 ? rest : [rest.join(' ')];
 }
 
-// `do shell script` (AppleScript is case-insensitive and any whitespace separates its words) runs
-// a shell the guard cannot read.
-const DO_SHELL_SCRIPT = /do\s+shell\s+script/i;
+// The words after screen's options when one of them is `-X` (`screen -S name -X stuff text`: send a
+// screen command to a running session), else null. `unwrap` keeps such a `screen` as the command
+// word, so the text of its `stuff` reaches `screenTypedTexts`.
+function screenRemoteOperands(tokens) {
+  const optionsWithValue = OPTION_WRAPPERS.get('screen');
+  let remote = false;
+  let index = 1;
+  while (index < tokens.length && tokens[index].startsWith('-')) {
+    remote = remote || tokens[index] === '-X';
+    index += takesNextWord(tokens[index], optionsWithValue) ? 2 : 1;
+  }
+
+  return remote ? tokens.slice(index) : null;
+}
+
+// screen reads `^M` (caret notation) and `\015`, `\n`, `\r` in the text it stuffs as the keys of an
+// Enter, so each ends a command line.
+const SCREEN_KEY_ESCAPES = /\^[@-_?]|\\(?:[0-7]{1,3}|[nr])/g;
+
+// The text `screen -X stuff` types into a window, as a command line.
+function screenTypedTexts(tokens) {
+  const [name, ...text] = screenRemoteOperands(tokens) ?? [];
+
+  return name === 'stuff' ? text.map((word) => word.replace(SCREEN_KEY_ESCAPES, '\n')) : [];
+}
+
+// A script that runs a shell (`do shell script`), types a command into Terminal (`do script`), or
+// is JavaScript for Automation's `doShellScript`. AppleScript is case-insensitive and any
+// whitespace separates its words. The guard cannot read the command inside any of them.
+const OSASCRIPT_SHELL = /do\s+(?:shell\s+)?script|doShellScript/i;
 
 function osascriptFinding(tokens, context) {
   const texts = [...tokens.slice(1), ...context.stdinScripts];
-  if (!DO_SHELL_SCRIPT.test(texts.join(' '))) return null;
+  if (!OSASCRIPT_SHELL.test(texts.join(' '))) return null;
 
   return {
     kind: 'osascriptShell',
-    detail: `${context.segment.trim()} (osascript runs a shell with do shell script)`,
+    detail: `${context.segment.trim()} (osascript runs a shell command or types one into Terminal)`,
   };
 }
 
-// The command lines an `orca` or `tmux` call types or starts go to `context.scripts`, judged like
-// an `eval` string; an `osascript` that holds `do shell script` is its own finding.
+// The command lines an `orca`, `tmux` or `screen -X stuff` call types or starts go to
+// `context.scripts`, judged like an `eval` string; an `osascript` that can run one is its own
+// finding.
 function typedTextFinding(base, tokens, context) {
   if (base === 'orca') context.scripts.push(...orcaTypedTexts(tokens));
   if (base === 'tmux') context.scripts.push(...tmuxTypedTexts(tokens));
+  if (base === 'screen') context.scripts.push(...screenTypedTexts(tokens));
   if (base === 'osascript') return osascriptFinding(tokens, context);
 
   return null;
