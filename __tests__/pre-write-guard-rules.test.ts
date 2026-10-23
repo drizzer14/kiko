@@ -95,6 +95,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-inline-text-variant-mock',
   'kiko-component-explicit-return',
   'kiko-no-set-or-map-in-subset-match',
+  'kiko-no-test-fixture-import-in-app',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
