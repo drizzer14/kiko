@@ -648,7 +648,7 @@ const expectStoredSymbols = (world: World, parsed: ReturnType<typeof parseExchan
 };
 
 /** What the seeds of one run of the suite generated, for the coverage check after them. */
-const shapes = { count: 0 };
+const shapes = { worlds: 0, count: 0 };
 
 describe.each(RUN_GAPS)('the trade read over random exchanges, runs %i ms apart', (gapMs) => {
   let warn: jest.SpyInstance;
@@ -678,6 +678,7 @@ describe.each(RUN_GAPS)('the trade read over random exchanges, runs %i ms apart'
 
       const readable = world.exchange.orders.filter(({ spec }) => spec.symbol !== world.doomed);
 
+      shapes.worlds += 1;
       shapes.count += rowlessFirstPartsOf(world.accountId, readable).length;
 
       const expected = new Map(
@@ -715,6 +716,10 @@ describe.each(RUN_GAPS)('the trade read over random exchanges, runs %i ms apart'
 
 describe('the orders the random exchanges generate', () => {
   it('include a first part that rounds to no row, with another order between and its next fill in a later run', () => {
+    expect({
+      note: 'the coverage check needs the whole file: a -t filter skips worlds',
+      worlds: shapes.worlds,
+    }).toEqual({ note: expect.any(String), worlds: SEEDS.length * RUN_GAPS.length });
     expect(shapes.count).toBeGreaterThanOrEqual(LEAST_SHAPES);
   });
 });

@@ -311,6 +311,47 @@ describe('the last order of a page that came to no row', () => {
     expect(world.entry()).toEqual({ fromId: 5 });
   });
 
+  it('is passed, not held, when a fill of another order sits between its first fill and the page end', async () => {
+    const world = worldOf([tenthFill(10, ORDER_A), wholeFill(11, ORDER_B), tenthFill(12, ORDER_A)]);
+
+    await world.sync();
+
+    expect(world.entry()).toEqual({ fromId: 13, rowlessOrderIds: [ORDER_A] });
+    expect(world.fetchOrderFills).not.toHaveBeenCalled();
+
+    await world.sync();
+    await world.sync();
+
+    expect(world.entry()).toEqual({ fromId: 13, rowlessOrderIds: [ORDER_A] });
+    expect(world.fetchOrderFills).not.toHaveBeenCalled();
+    expect(world.totalsOf(ORDER_B).xrp).toBe(XRP_PER_WHOLE_FILL);
+
+    world.add(tenthFill(13, ORDER_A), tenthFill(14, ORDER_A), tenthFill(15, ORDER_A));
+    await world.sync();
+
+    expect(world.orderFillStarts(ORDER_A)).toEqual([0, 14]);
+    expect(world.orderFillStarts(ORDER_B)).toEqual([]);
+    expect(world.totalsOf(ORDER_A)).toEqual({ xrp: 1, usdt: 5 * USDT_PER_FILL });
+    expect(world.totalsOf(ORDER_B).xrp).toBe(XRP_PER_WHOLE_FILL);
+    expect(world.entry()).toEqual({ fromId: 16 });
+  });
+
+  it('is passed, not held, when the other order comes on a later page than its first fill', async () => {
+    const world = worldOf([
+      tenthFill(10, ORDER_A),
+      tenthFill(11, ORDER_A),
+      tenthFill(12, ORDER_A),
+      wholeFill(13, ORDER_B),
+      tenthFill(14, ORDER_A),
+    ]);
+
+    await world.sync();
+    await world.sync();
+
+    expect(world.entry()).toEqual({ fromId: 15, rowlessOrderIds: [ORDER_A] });
+    expect(world.fetchOrderFills).not.toHaveBeenCalled();
+  });
+
   it('is not held at its first fill once a re-read gave it, which would move the cursor back', async () => {
     const world = worldOf([wholeFill(1, ORDER_B), tenthFill(2, ORDER_A), wholeFill(3, ORDER_X)]);
 
