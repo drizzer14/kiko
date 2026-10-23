@@ -684,6 +684,85 @@ describe('the medium tier', () => {
   });
 });
 
+describe('the src paths named in an unshipped migration header', () => {
+  const PRESENT_FILE = 'src/present/present.ts';
+  const PRESENT_FOLDER = 'src/present/';
+  const MISSING_FILE = 'src/missing/missing.ts';
+  const MISSING_FOLDER = 'src/gone/';
+
+  const DASH_COMMENT = (body: string): string =>
+    `-- Reads \`${body}\`.\nCREATE TABLE c (id integer);\n`;
+  const BLOCK_COMMENT = (body: string): string =>
+    `/*\n * Reads \`${body}\`.\n */\nCREATE TABLE c (id integer);\n`;
+  const COMMENT_FORMS: Array<[string, (body: string) => string]> = [
+    ['a -- comment', DASH_COMMENT],
+    ['a block comment', BLOCK_COMMENT],
+  ];
+
+  const repositoryWithSource = (): void => {
+    freshRepository();
+    writeFile(root, PRESENT_FILE, 'export {};\n');
+    commitAll(root, 'add the source the headers may name');
+  };
+
+  describe.each(COMMENT_FORMS)('in %s', (_form, commentOf) => {
+    it('fails when it names a missing file, naming the migration and the path', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(MISSING_FILE));
+
+      expectFailureNaming(check(), THIRD_SQL, MISSING_FILE);
+    });
+
+    it('fails when it names a missing folder, naming the migration and the path', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(MISSING_FOLDER));
+
+      expectFailureNaming(check(), THIRD_SQL, MISSING_FOLDER);
+    });
+
+    it('fails when a trailing-slash path names a file, not a folder', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(`${PRESENT_FILE}/`));
+
+      expectFailureNaming(check(), THIRD_SQL, `${PRESENT_FILE}/`);
+    });
+
+    it('passes when it names an existing file and an existing folder', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(`${PRESENT_FILE}\` and \`${PRESENT_FOLDER}`));
+
+      expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+    });
+
+    it('names only the missing path when it names two and one is missing', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(`${PRESENT_FILE}\` and \`${MISSING_FILE}`));
+      const run = check();
+
+      expectFailureNaming(run, THIRD_SQL, MISSING_FILE);
+      expect(run.stderr).not.toContain(PRESENT_FILE);
+    });
+  });
+
+  it('passes for a shipped migration that names a missing path', () => {
+    freshRepository();
+    git(root, 'switch', '-q', 'main');
+    writeFile(root, FIRST_SQL, DASH_COMMENT(MISSING_FILE));
+    commitAll(root, 'main ships a header naming a path since moved');
+    git(root, 'switch', '-q', 'feature');
+    git(root, 'merge', '-q', '--ff-only', 'main');
+
+    expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('passes when the missing path sits in an SQL string literal, not a comment', () => {
+    repositoryWithSource();
+    writeFile(root, THIRD_SQL, `INSERT INTO c (id) VALUES ('see \`${MISSING_FILE}\`');\n`);
+
+    expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+});
+
 describe('the dedup skip', () => {
   it('does not hide a later edit', () => {
     freshRepository();
