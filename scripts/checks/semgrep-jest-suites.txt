@@ -1,0 +1,9 @@
+# Jest suites that start the real semgrep binary, one exact path per line.
+# scripts/checks/verify.sh runs them alone and in band (stage 2b) and leaves them out of stage 2a,
+# because beside the rest of the suite they starve semgrep of CPU and its per-rule timer fires.
+# __tests__/semgrep-load-limits.test.ts pins this list to the suites that spawn semgrep.
+__tests__/history-comment-rules-scope.test.ts
+__tests__/pre-write-guard-conflict.test.ts
+__tests__/pre-write-guard-rules.test.ts
+__tests__/semgrep-mobile-textdecoder-scope.test.ts
+__tests__/semgrep-rules-nested-fixtures.test.ts

@@ -327,6 +327,11 @@ rules:
   # too (verified). That is intended, not a false positive — a value derived
   # from a secret can leak it — and it is why this is Class B / override-eligible
   # rather than a hard fail. Verified to report NOTHING on the real tree today.
+  # The sink is scoped to a file that can hold React state: one that binds `useState` (a named
+  # import from ANY module, so a re-export still counts) or imports react as a namespace or default
+  # (`React.useState`). A source with no such import is skipped before matching: the unscoped sink
+  # cost 0.09-0.1 s per large test file at --jobs 1, which under load counted toward the per-rule
+  # timeout (see scripts/checks/security.sh).
   - id: kiko-no-keychain-secret-into-usestate
     languages: [typescript]
     severity: WARNING
@@ -350,6 +355,19 @@ rules:
           - metavariable-regex:
               metavariable: $SET
               regex: ^set[A-Z]
+          - pattern-either:
+              - pattern-inside: |
+                  import { ..., useState, ... } from $MODULE
+                  ...
+              - pattern-inside: |
+                  import { ..., useState as $ALIAS, ... } from $MODULE
+                  ...
+              - pattern-inside: |
+                  import * as $REACT from "react"
+                  ...
+              - pattern-inside: |
+                  import $REACT from "react"
+                  ...
   # Companion to the taint rule above. Semgrep 1.175's taint engine does not
   # propagate through a `.then(callback)` parameter — `pattern-propagators`
   # (from: $P, to: $V) and a `focus-metavariable: $V` source were both tried and
