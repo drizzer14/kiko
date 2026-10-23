@@ -10,7 +10,7 @@ import {
 import type { DatabaseSync } from 'node:sqlite';
 import type { ExchangeStateDeps } from '@kiko/crypto-sync/exchange/walk';
 
-export type WalkName = 'capital' | 'pay' | 'transfer' | 'earn' | 'convert';
+export type WalkName = 'capital' | 'pay' | 'transfer' | 'earn' | 'convert' | 'p2p';
 
 export type WalkField =
   | 'cursor'
@@ -50,7 +50,14 @@ const FIELDS: readonly WalkField[] = [
   'multiCoinSeen',
 ];
 
-export const WALK_NAMES: readonly WalkName[] = ['capital', 'pay', 'transfer', 'earn', 'convert'];
+export const WALK_NAMES: readonly WalkName[] = [
+  'capital',
+  'pay',
+  'transfer',
+  'earn',
+  'convert',
+  'p2p',
+];
 
 const isNumberField = (field: WalkField): boolean =>
   NUMBER_MARK_FIELDS.some((numberField) => numberField === field);
