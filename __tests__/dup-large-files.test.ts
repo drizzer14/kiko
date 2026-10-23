@@ -635,6 +635,8 @@ describe('scripts/checks/dup.sh ceilings file', () => {
       ['a row with no tab', `${LISTED_PATH} 18.98\n${COMBINED_ROW}\t100\n`],
       ['an empty percentage', `${LISTED_PATH}\t\n${COMBINED_ROW}\t100\n`],
       ['a negative percentage', `${LISTED_PATH}\t-1\n${COMBINED_ROW}\t100\n`],
+      ['a repeated path', `${LISTED_PATH}\t10\n${LISTED_PATH}\t20\n${COMBINED_ROW}\t100\n`],
+      ['no combined row', `${LISTED_PATH}\t10\n`],
     ])('with exit 2 when the ceilings file holds %s', (_title, content) => {
       const project = createProject();
       project.file(LISTED_PATH, LISTED_CONTENT);

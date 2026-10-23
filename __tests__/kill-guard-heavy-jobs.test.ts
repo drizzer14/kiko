@@ -49,6 +49,10 @@ const DENIED_MAKE: string[] = [
   'true && make deep',
   'eval "make verify"',
   'echo $(make verify)',
+  // A glued value option holding the letter n is no dry run.
+  'make -Iinclude verify',
+  'make -Cnested verify',
+  'make -Oline verify',
 ];
 
 const DENIED_NPM_AND_SCRIPTS: string[] = [
@@ -70,6 +74,9 @@ const DENIED_NPM_AND_SCRIPTS: string[] = [
   'KIKO_MUTATION_BASE=abc bash scripts/checks/mutation.sh',
   `cd ${WORKTREE} && bash scripts/checks/verify.sh`,
   "bash -c 'bash scripts/checks/verify.sh'",
+  'source scripts/checks/verify.sh',
+  '. scripts/checks/security.sh',
+  'source scripts/checks/mutation.sh',
 ];
 
 // A security run with no path scans the whole repository, so it is a heavy job; a path after
@@ -84,6 +91,10 @@ const DENIED_SECURITY_WITHOUT_PATH: string[] = [
   `bash ${WORKTREE}/scripts/checks/security.sh`,
   `cd ${WORKTREE} && bash scripts/checks/security.sh`,
   'npm run check:security 2>&1 | tail -20',
+  'bash scripts/checks/security.sh .',
+  'bash scripts/checks/security.sh ./',
+  'bash scripts/checks/security.sh $PWD',
+  'npm run check:security -- .',
 ];
 
 // Every spelling of "the whole repository" as the target of a bare Semgrep scan, and no target
@@ -105,6 +116,7 @@ const DENIED_WHOLE_REPOSITORY_SEMGREP: string[] = [
   'semgrep --config rules/semgrep-mobile.yml --config rules/semgrep-prewrite.yml .',
   `cd ${WORKTREE} && semgrep scan --config rules/semgrep-mobile.yml .`,
   "bash -c 'semgrep scan --config auto .'",
+  'semgrep scan --config rules/semgrep-mobile.yml --json .',
 ];
 
 const ALLOWED_AROUND_HEAVY_JOBS: string[] = [
@@ -112,6 +124,7 @@ const ALLOWED_AROUND_HEAVY_JOBS: string[] = [
   'make doc-suites',
   // A dry run prints the recipe and runs nothing.
   'make -n verify',
+  'make -kn verify',
   'bash scripts/checks/mutation.sh --list',
   'echo make verify',
   'echo "npm run check:all"',
@@ -136,6 +149,10 @@ const ALLOWED_AROUND_HEAVY_JOBS: string[] = [
   'bash scripts/checks/security.sh src/a.ts',
   `bash scripts/checks/security.sh ${WORKTREE}/src/a.ts`,
   'semgrep scan --config rules/semgrep-mobile.yml src',
+  // A boolean flag that prefixes a value option's name takes no word.
+  'semgrep scan --config rules/semgrep-mobile.yml --json src/a.ts',
+  'semgrep scan --config rules/semgrep-mobile.yml --time src/a.ts',
+  'semgrep scan --config rules/semgrep-mobile.yml --sarif src',
   'semgrep scan --config rules/semgrep-mobile.yml ./src',
   'semgrep scan --config rules/semgrep-mobile.yml rules/fixtures',
   `semgrep scan --config rules/semgrep-mobile.yml ${WORKTREE}/src`,
