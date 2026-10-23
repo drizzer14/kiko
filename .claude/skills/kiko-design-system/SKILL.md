@@ -245,8 +245,12 @@ an entry (date + value) the moment the user approves a new visual.
   its full width.
   Short titles render exactly as before: each family keeps its own
   vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
-  body-size glyph), the holding-detail ledger rows stay `center`, and
-  the account card (`accounts.screen.tsx` `renderAccountCard`, the main
+  body-size glyph), and so does the shared `EntryCard` that the holding-detail
+  ledger rows use (`rowMain` is `flex-start`; a USER-APPROVED change of the
+  locked visual, 2026-10-23, Q4 = B: the amount sits at the top, its caption —
+  time plus link marker — sits directly under it in one right column, and the
+  upcoming split lines stay below the whole row). The
+  account card (`accounts.screen.tsx` `renderAccountCard`, the main
   grid only) and the shared `HoldingCard` (also the Property and Debts
   section cards) stay
   `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
@@ -1316,7 +1320,9 @@ new component can land between reviews of this skill:
   Transaction templates list (`transaction-templates-empty`, Settings stack,
   `src/screens/settings/transaction-templates/transaction-templates.screen.tsx`)
   shows it with Add template as its action, and its footer button hides
-  while it shows.
+  while it shows. The loan holding detail's Linked Payments section shows it
+  with no action and the `link` icon (`holding-detail-linked-payments-empty`).
+  The list above can drift: grep `<EmptyState` for the call sites.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
@@ -1614,8 +1620,13 @@ new component can land between reviews of this skill:
   default (unlike jest-dom's substring default on web), so a testID
   spanning both label and value would break every such assertion.
 - **EntryCard** (`src/design-system/components/entry-card/`) — the shared
-  ledger card: a label, an amount, and footer lines. Read
+  ledger card: a label, an amount, and footer lines. The `lead` holds only
+  the category icon; the link marker goes in `amountCaptionIcon` beside the
+  time (`amountCaption`); `footerLines` are lines under the WHOLE row. Read
   `entry-card.props.d.ts` for the props.
+  `TransactionCard`'s `rowFooterMeta` is `alignItems: 'center'`, so the link
+  icon shares the caption's centre line (Q5 = A, the Home footer;
+  `transaction-card.styles.ts`).
 - **EntryDateHeader** (`src/design-system/components/entry-date-header/`) —
   the date heading drawn above an `EntryCard`. Read
   `entry-date-header.props.d.ts` for the props.
