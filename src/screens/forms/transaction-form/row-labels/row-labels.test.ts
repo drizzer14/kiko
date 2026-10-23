@@ -1,6 +1,10 @@
 import { i18n } from '@kiko/i18n/init';
 
-import { resolveBlankLabel, resolveDescriptionPlaceholder } from './row-labels';
+import {
+  resolveBlankLabel,
+  resolveDescriptionPlaceholder,
+  resolveRuleDescription,
+} from './row-labels';
 
 const card = { id: 'h-card', name: 'Card', currency: 'UAH' } as const;
 const wallet = { id: 'h-uah', name: 'Wallet UAH', currency: 'UAH' } as const;
@@ -80,6 +84,54 @@ describe('resolveDescriptionPlaceholder', () => {
         t: i18n.t,
       }),
     ).toBe(i18n.t('forms.transaction.descriptionPlaceholder'));
+  });
+});
+
+describe('resolveRuleDescription', () => {
+  const ruleDescription = (
+    over: Partial<Parameters<typeof resolveRuleDescription>[0]> = {},
+  ): string =>
+    resolveRuleDescription({
+      description: '',
+      holding: card,
+      existing: undefined,
+      holdings,
+      mode: 'expense',
+      t: i18n.t,
+      ...over,
+    });
+
+  it('reads a blank field as the label the field previews, in English', () => {
+    expect(ruleDescription()).toBe('Card expense');
+    expect(ruleDescription({ mode: 'income' })).toBe('Card income');
+    expect(ruleDescription({ mode: 'split' })).toBe('Card expense');
+  });
+
+  it('reads a typed description as it is', () => {
+    expect(ruleDescription({ description: 'Silpo' })).toBe('Silpo');
+  });
+
+  it('reads a blank field of an edited exchange leg as its leg label', () => {
+    expect(ruleDescription({ existing: legTo(savings.id) })).toBe('Exchange to Savings');
+  });
+
+  it('leaves a blank field blank while no holding is picked, so a name matcher refuses it', () => {
+    expect(ruleDescription({ holding: undefined })).toBe('');
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it('reads a blank field as the Ukrainian label', () => {
+      expect(ruleDescription()).toBe('Витрата: Card');
+      expect(ruleDescription({ mode: 'income' })).toBe('Надходження: Card');
+    });
   });
 });
 

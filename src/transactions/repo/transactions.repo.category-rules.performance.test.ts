@@ -180,7 +180,7 @@ describe('inserting a batch of 10 000 rows against 200 rules', () => {
       expect(ruleWon.length).toBeGreaterThan(100);
       expect(ruleWon.length).toBeLessThan(INSERT_BATCH_SIZE);
       expect(countOf(statements, /^select .* from "category_rules"/i)).toBe(1);
-      expect(countOf(statements, /^select "id", "currency" from "holdings"/i)).toBe(1);
+      expect(countOf(statements, /^select "id", "name", "currency" from "holdings"/i)).toBe(1);
     },
     TEST_TIMEOUT,
   );
@@ -215,7 +215,7 @@ describe('rewriting 50 000 rows for a saved rule', () => {
       .map(([rowId]) => rowId);
 
   it(
-    'updates exactly the planned rows of a name rule in one statement, with no page read',
+    'updates exactly the planned rows of a name rule in one statement, and pages only the blank rows',
     async () => {
       seedLedger();
 
@@ -230,7 +230,9 @@ describe('rewriting 50 000 rows for a saved rule', () => {
       expect(countOf(statements, /^update "transactions"/i)).toBe(
         Math.ceil(planned.length / IN_CLAUSE_CHUNK_SIZE),
       );
-      expect(pageReadsOf(statements)).toBe(0);
+      // The ledger is not paged: the one page read is the blank rows' (a label is not stored, so
+      // they are always candidates), and this ledger has none.
+      expect(pageReadsOf(statements)).toBe(1);
     },
     TEST_TIMEOUT,
   );

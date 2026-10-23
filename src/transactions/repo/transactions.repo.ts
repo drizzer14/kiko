@@ -39,6 +39,7 @@ import {
   removeHoldingDatabaseTransaction,
 } from '@kiko/holdings/repo';
 import { match } from 'ts-pattern';
+import { i18n } from '@kiko/i18n/init';
 import {
   type RewriteGuardField,
   REWRITE_GUARD_FIELDS,
@@ -65,6 +66,7 @@ import type {
   RemoveHoldingsPlan,
   RemovePlan,
 } from '../remove-notice';
+import { ruleDescriptionOf } from '../row-description';
 import { balanceBoundaryOf, movesBalance } from '../balance-boundary';
 import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '../sync-adoption';
 
@@ -1468,10 +1470,11 @@ type RuledBatch = {
 
 // Apply the category rules at insert time: the winning rule of a row replaces its category, and a
 // row no rule wins keeps the bank's. The rules are read once per call and prepared once, and the
-// currencies of the batch's holdings are read only when some rule is readable (an amount matcher
-// compares the holding's currency). A row whose holding is not found has no currency, so only
-// the rules that need none can match it. Chunked over the holding ids (a large import can span
-// many holdings) — see `IN_CLAUSE_CHUNK_SIZE`.
+// names and currencies of the batch's holdings are read only when some rule is readable (an amount
+// matcher compares the holding's currency; a name matcher reads the label of a blank row, which
+// names its holding). A row whose holding is not found has no currency, so only the rules that
+// need none can match it. Chunked over the holding ids (a large import can span many holdings) —
+// see `IN_CLAUSE_CHUNK_SIZE`.
 const withCategoryRules = async (
   databaseTransaction: typeof database,
   batch: NewTransaction[],
@@ -1486,17 +1489,27 @@ const withCategoryRules = async (
     return { rows: batch, ruleWon: new Set() };
   }
 
-  const currencyByHoldingId = new Map<string, Currency>();
+  const holdingNameById = new Map<string, string>();
+  const holdingCurrencyById = new Map<string, Currency>();
 
+  // A leg's counterpart holding is read with the batch's own, because a blank leg's label names it.
   for (const holdingIdChunk of chunkRows(
-    Array.from(new Set(batch.map((input) => input.holdingId))),
+    Array.from(
+      new Set(
+        batch.flatMap((input) => [
+          input.holdingId,
+          input.exchangeCounterpartHoldingId ?? input.holdingId,
+        ]),
+      ),
+    ),
     IN_CLAUSE_CHUNK_SIZE,
   )) {
     for (const holding of await databaseTransaction
-      .select({ id: holdings.id, currency: holdings.currency })
+      .select({ id: holdings.id, name: holdings.name, currency: holdings.currency })
       .from(holdings)
       .where(inArray(holdings.id, holdingIdChunk))) {
-      currencyByHoldingId.set(holding.id, holding.currency);
+      holdingNameById.set(holding.id, holding.name);
+      holdingCurrencyById.set(holding.id, holding.currency);
     }
   }
 
@@ -1505,10 +1518,23 @@ const withCategoryRules = async (
     const winner = winningRule(
       prepared,
       subjectOfStoredRow({
-        description: input.description ?? '',
+        description: ruleDescriptionOf({
+          transaction: {
+            holdingId: input.holdingId,
+            description: input.description,
+            amountMinorUnits: input.amountMinorUnits,
+            exchangeCounterpartHoldingId: input.exchangeCounterpartHoldingId ?? null,
+            untrackedCounterpart: input.untrackedCounterpart ?? null,
+            operation: input.operation ?? null,
+          },
+          holdingName: holdingNameById.get(input.holdingId) ?? '',
+          holdingNameById,
+          holdingCurrencyById,
+          t: i18n.t,
+        }),
         amountMinorUnits: input.amountMinorUnits,
         time: input.time,
-        currency: currencyByHoldingId.get(input.holdingId) ?? null,
+        currency: holdingCurrencyById.get(input.holdingId) ?? null,
       }),
     );
 

@@ -13,6 +13,7 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { DAY_MS } from '@kiko/dates';
+import { i18n } from '@kiko/i18n/init';
 import {
   type CategoryRuleMatcher,
   type RewriteGuardField,
@@ -97,7 +98,7 @@ const rulesReadsOf = (statements: string[]): number =>
   statements.filter((sql) => /^select .* from "category_rules"/i.test(sql)).length;
 
 const currencyReadsOf = (statements: string[]): number =>
-  statements.filter((sql) => /^select "id", "currency" from "holdings"/i.test(sql)).length;
+  statements.filter((sql) => /^select "id", "name", "currency" from "holdings"/i.test(sql)).length;
 
 beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
@@ -237,6 +238,100 @@ describe('a rule at insert', () => {
     });
 
     expect(storedRows().map((row) => row.flag)).toEqual([0, 0]);
+  });
+});
+
+describe('a rule at insert on a row with no description', () => {
+  const startsWith = (text: string): CategoryRuleMatcher => ({ type: 'nameStartsWith', text });
+  const blankItem = (externalId: string, overrides: Partial<SyncItem> = {}): SyncItem =>
+    syncItem(externalId, { description: '', source: 'binance', category: undefined, ...overrides });
+
+  it('matches the label the lists show for a blank expense, not the stored empty text', async () => {
+    insertRule('card-expense', 'food', [startsWith('Card expense')]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('expense'),
+      blankItem('income', { amountMinorUnits: 5_000 }),
+    ]);
+
+    expect(categoryOf('expense')).toBe('food');
+    expect(categoryOf('income')).toBeNull();
+  });
+
+  it('names the label by the holding the row lands on', async () => {
+    insertRule('dollar-card', 'food', [startsWith('Dollar card expense')]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('own'),
+      blankItem('dollar', { holdingId: 'usd' }),
+    ]);
+
+    expect(categoryOf('own')).toBeNull();
+    expect(categoryOf('dollar')).toBe('food');
+  });
+
+  it('leaves a row with a real description to its description, whatever its label would read', async () => {
+    insertRule('card-expense', 'food', [startsWith('Card expense')]);
+
+    await transactionsRepo.addManyDedup([blankItem('named', { description: 'Silpo' })]);
+
+    expect(categoryOf('named')).toBeNull();
+  });
+
+  it('matches the label of a blank exchange leg, read from a counterpart outside the batch', async () => {
+    insertRule('exchange-to', 'food', [startsWith('Exchange to')]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('leg', { exchangeCounterpartHoldingId: 'usd', exchangePairId: 'pair' }),
+    ]);
+
+    expect(categoryOf('leg')).toBe('food');
+  });
+
+  it('matches a rule on an amount and the label together', async () => {
+    insertRule('big-card-expense', 'rent', [
+      startsWith('Card expense'),
+      { type: 'amount', operator: 'eq', minorUnits: 50_000, currency: 'UAH' },
+    ]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('big', { amountMinorUnits: -50_000 }),
+      blankItem('small', { amountMinorUnits: -5_000 }),
+    ]);
+
+    expect(categoryOf('big')).toBe('rent');
+    expect(categoryOf('small')).toBeNull();
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it('matches the Ukrainian label, and not the English one', async () => {
+      insertRule('ukrainian', 'food', [startsWith('Витрата')]);
+      insertRule('english', 'rent', [startsWith('Card expense')]);
+
+      await transactionsRepo.addManyDedup([
+        blankItem('expense'),
+        blankItem('income', { amountMinorUnits: 5_000 }),
+      ]);
+
+      expect(categoryOf('expense')).toBe('food');
+      expect(categoryOf('income')).toBeNull();
+    });
+
+    it('matches the Ukrainian label with the holding name in it', async () => {
+      insertRule('named', 'food', [{ type: 'nameIs', text: 'Витрата: Card' }]);
+
+      await transactionsRepo.addManyDedup([blankItem('expense')]);
+
+      expect(categoryOf('expense')).toBe('food');
+    });
   });
 });
 
