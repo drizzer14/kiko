@@ -752,6 +752,11 @@ harness_doc_fingerprint() {
   } | harness_hash
 }
 
+# The jest workers of a doc-suites run, by hand and in the Stop tier alike: the default count (one
+# per core) fed a memory-pressure spike, and a run that is as light by hand as in the hook leaves
+# cores to the other sessions.
+HARNESS_DOC_JEST_WORKERS=2
+
 # harness_doc_suites_by_hand <root> : `make doc-suites`. Runs the discovered suites with no
 # deadline and, on a pass, records the doc fingerprint under the key medium.sh reads, so the next
 # Stop skips the same docs: a deadline block there is cleared by this run. The key uses the
@@ -770,6 +775,6 @@ harness_doc_suites_by_hand() {
     return 1
   fi
   fingerprint="$(harness_doc_fingerprint "$root")"
-  (cd "$root" && node_modules/.bin/jest "${suites[@]}") || return $?
+  (cd "$root" && node_modules/.bin/jest --maxWorkers="$HARNESS_DOC_JEST_WORKERS" "${suites[@]}") || return $?
   harness_mark_pass "$root" "doc-suites" "$fingerprint"
 }

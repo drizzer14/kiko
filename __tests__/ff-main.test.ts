@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { readFileSync, appendFileSync, copyFileSync, mkdirSync, realpathSync } from 'node:fs';
 
@@ -44,8 +44,11 @@ const commitFile = (fixture: Fixture, directory: string, name: string, body = `$
 
 // The base commit tracks the script, so main and the linked worktree each hold a copy. `work` is a
 // detached linked worktree one commit ahead of main, so the tip commit is a fast-forward of main.
+const createdFixtureFolders: string[] = [];
+
 const createFixture = (): Fixture => {
   const root = realpathSync(createTemporaryDirectory('kiko-ff-main-'));
+  createdFixtureFolders.push(basename(root));
   const home = join(root, 'home');
   const queue = join(root, 'queue');
   const main = join(root, 'main');
@@ -124,6 +127,9 @@ const runQueuedVerify = (fixture: Fixture, makeBody: string) => {
   const bin = join(fixture.home, 'bin');
   mkdirSync(bin);
   writeExecutable(join(bin, 'make'), makeBody);
+  // The queue holds a job while the machine's load is high, and a held spawnSync cannot be
+  // stopped, so the case reads a low load whatever the machine is doing.
+  writeExecutable(join(bin, 'sysctl'), '#!/usr/bin/env bash\necho "{ 0.10 0.10 0.10 }"\n');
 
   return spawnSync('bash', [JOB_QUEUE, 'verify', fixture.work, 'end-to-end'], {
     env: {
@@ -978,7 +984,7 @@ describe('scripts/ff-main.sh text', () => {
 const fixtureProcesses = (): string[] =>
   spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
     .stdout.split('\n')
-    .filter((line) => line.includes('kiko-ff-main-'));
+    .filter((line) => createdFixtureFolders.some((folder) => line.includes(folder)));
 
 describe('children of the queued-verify cases', () => {
   const PATH_BEFORE = process.env.PATH;
