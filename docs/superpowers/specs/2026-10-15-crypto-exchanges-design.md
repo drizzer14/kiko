@@ -1266,7 +1266,10 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   two years back, and every record Binance serves is imported within 4 x (2z + 1) runs of the run
   that first serves it, z the days in the window that fail (4 runs with none, 12 with one;
   `binance.fiat-history.properties.test.ts`). Fiat payments is 10 calls at IP 1 each, so 1 run at a
-  lane of 10, with the forward read and the re-scan in the same run.
+  lane of 10, with the forward read and the re-scan in the same run, and the re-scan is read on
+  every run: a record is imported within 2 x (2z + 1) runs (S12-Q30). A re-scan window that stops
+  on the budget hands the next run the span it wanted to read next only when that span ends before
+  the window's end, which moves with the clock; one that reaches the end is read afresh.
 - Marker total (C-NR1): Binance's decimal string is normalized to exactly the fiat's scale by the
   exact decimal parser: trailing zeros past the scale drop, missing ones pad
   (`"4150"` -> `4150.00`); a non-zero digit past the scale is a per-record stop `amount-precision`
