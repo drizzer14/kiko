@@ -310,6 +310,13 @@ lifts the cap). The placement read is stale for about 0.1 s on a split change or
 rotation, and on cold start until the first read, so the margin and the cap can lag the layout
 briefly.
 
+Margins written back are the stored ones: a controller root view's `directionalLayoutMargins`
+getter adds the safe area inset to the stored margin (`insetsLayoutMarginsFromSafeArea`), so the
+patch reads through `RNSStoredDirectionalLayoutMargins` (subtracting `safeAreaInsets.top` and
+`.bottom`), writes only the leading and trailing margins, skips an equal write, and saves the
+stored margins for the restore path. Writing the getter's value back ratcheted top and bottom by
+the inset on every layout pass.
+
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is reached without a stack view being recycled only by the stale placement read above (about
 0.1 s, the mounted split briefly reads a bar at the bottom) or by a Duo read of `bottom`; an
@@ -332,12 +339,14 @@ patched one into `patches/react-native-screens+<version>.patch` (or `npx patch-p
 react-native-screens`, which needs the version to pass the `.npmrc` minimum age), delete the old
 patch file and update the version in the pin test. Re-prove it: applying the patch to the pristine
 tarball must reproduce the installed tree, and re-measure on a simulator or device: a pane's large
-title leading edge equals the content's leading edge in both panes of an iPad; an iPhone and a
-Duo are unchanged; the restore path (pane titles back to stock, then 16 pt) on a split change
-and on a large-to-large rotation, where the stale read can take it; idle CPU with a pane open (no
-continuous re-layout from the bar margin write in `viewDidLayoutSubviews`); and the bar items and
-the back button positions (UIKit places them by the bar's `directionalLayoutMargins` too, so they
-may move by up to 16 pt: measure it, do not claim it).
+title leading edge equals the content's leading edge in both panes of an iPad and in a Duo
+side-bar pose; an iPhone and a bottom-bar window are unchanged; the restore path (pane titles
+back to stock, then 16 pt) on a split change and on a large-to-large rotation, where the stale
+read can take it; idle CPU with a pane open (no continuous re-layout from the bar margin write
+in `viewDidLayoutSubviews`); the view's top and bottom `directionalLayoutMargins` staying
+constant across layout passes (log them over a few visits: no growth by the safe area inset);
+and the bar items and the back button positions (UIKit places them by the bar's
+`directionalLayoutMargins` too, so they may move by up to 16 pt: measure it, do not claim it).
 
 ## `.env` is public-only
 

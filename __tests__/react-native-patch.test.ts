@@ -68,14 +68,44 @@ describe('the react-native-screens fixed content margin patch', () => {
     const source = read('ios/RNSScreenStack.mm');
 
     expect(source).toContain('viewRespectsSystemMinimumLayoutMargins = NO');
-    expect(source).toContain('viewMargins.leading = _fixedContentMargin;');
-    expect(source).toContain('barMargins.trailing = _fixedContentMargin;');
+    expect(source).toContain('forced.leading = margin;');
+    expect(source).toContain('forced.trailing = margin;');
+    expect(source).toContain('RNSSetHorizontalLayoutMargins(self.view, _fixedContentMargin);');
+    expect(source).toContain(
+      'RNSSetHorizontalLayoutMargins(self.navigationBar, _fixedContentMargin);',
+    );
     expect(source).toContain('if (_fixedContentMargin <= 0) {');
     expect(source).toContain(
       'navigationController.fixedContentMargin = newScreenProps.fixedContentMargin;',
     );
     expect(read('ios/RNSScreenStack.h')).toContain(
       '@property (nonatomic) CGFloat fixedContentMargin;',
+    );
+  });
+
+  // The getter of a controller's root view returns the stored margin plus the safe area inset, so
+  // writing it back added the inset to the top and bottom margin at every layout pass.
+  it('writes back stored margins, not the getter’s margins plus the safe area inset', () => {
+    const source = read('ios/RNSScreenStack.mm');
+    const gettersRead = source.match(/=\s*[\w.]*\.directionalLayoutMargins;/g);
+
+    expect(source).toContain('if (view.insetsLayoutMarginsFromSafeArea) {');
+    expect(source).toContain('margins.top -= view.safeAreaInsets.top;');
+    expect(source).toContain('margins.bottom -= view.safeAreaInsets.bottom;');
+    expect(gettersRead).toEqual(['= view.directionalLayoutMargins;']);
+    expect(source).toContain(
+      '_viewMarginsBeforeFixedContentMargin = RNSStoredDirectionalLayoutMargins(self.view);',
+    );
+    expect(source).toContain(
+      '_barMarginsBeforeFixedContentMargin = RNSStoredDirectionalLayoutMargins(self.navigationBar);',
+    );
+  });
+
+  it('skips the write when the leading and trailing margins already hold', () => {
+    const source = read('ios/RNSScreenStack.mm');
+
+    expect(source).toContain(
+      'if (!NSDirectionalEdgeInsetsEqualToDirectionalEdgeInsets(stored, forced)) {',
     );
   });
 

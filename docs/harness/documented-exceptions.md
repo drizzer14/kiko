@@ -1202,6 +1202,15 @@ verified usage, not dead weight:
     read from the bar's real frame, so the margin and the content cap can both lag for about
     0.1 s while the placement read is stale (on a split change or a large-to-large rotation, and
     on cold start until the first read), then settle.
+    Stored margins, not getter margins: a controller root view's `directionalLayoutMargins`
+    getter returns the stored margin plus the safe area inset while
+    `insetsLayoutMarginsFromSafeArea` is YES, so writing the getter's value back added the inset
+    to the top and bottom margin at every layout pass (+20 per pass on a simulator). The patch
+    reads the margins through `RNSStoredDirectionalLayoutMargins`, which subtracts the view's
+    `safeAreaInsets.top` and `.bottom` in that case (the same helper serves the navigation bar),
+    writes only the leading and trailing margins through `RNSSetHorizontalLayoutMargins`, and
+    skips the write when the margins already hold. The margins saved for the restore path are
+    the stored ones too.
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or
@@ -1217,7 +1226,8 @@ verified usage, not dead weight:
     tree.
     Pinned by `__tests__/react-native-patch.test.ts` ("the react-native-screens fixed content
     margin patch": the patch touches only react-native-screens, the version is exactly `4.27.0`,
-    the installed files carry the patch, and the context reads 0 outside a provider) and by
+    the installed files carry the patch, the margins written back are the stored ones and are
+    skipped when equal, and the context reads 0 outside a provider) and by
     `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, the single stack 0).
     Re-check rule: `docs/harness/dependency-hygiene.md` ("Standing patch: react-native-screens").
     A device re-measurement is the real proof (Jest cannot see native margins), and it covers:

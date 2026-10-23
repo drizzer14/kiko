@@ -17,14 +17,43 @@ index 9ae11c3..f16c51b 100644
  
  @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-index c233036..66ae64f 100644
+index c233036..1f1118c 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-@@ -38,7 +38,58 @@ namespace react = facebook::react;
- 
+@@ -38,7 +38,81 @@ namespace react = facebook::react;
+
  @end
- 
+
 -@implementation RNSNavigationController
++// A view's `directionalLayoutMargins` getter adds the safe area inset to the stored margin while
++// `insetsLayoutMarginsFromSafeArea` is YES (a controller's root view does), so writing the
++// getter's value back would add the inset again on top and bottom at every layout pass. This is
++// the stored margin, which is what may be written back.
++static NSDirectionalEdgeInsets RNSStoredDirectionalLayoutMargins(UIView *view)
++{
++  NSDirectionalEdgeInsets margins = view.directionalLayoutMargins;
++
++  if (view.insetsLayoutMarginsFromSafeArea) {
++    margins.top -= view.safeAreaInsets.top;
++    margins.bottom -= view.safeAreaInsets.bottom;
++  }
++
++  return margins;
++}
++
++// Only the leading and trailing margins are forced; the write is skipped when they already hold.
++static void RNSSetHorizontalLayoutMargins(UIView *view, CGFloat margin)
++{
++  NSDirectionalEdgeInsets stored = RNSStoredDirectionalLayoutMargins(view);
++  NSDirectionalEdgeInsets forced = stored;
++  forced.leading = margin;
++  forced.trailing = margin;
++
++  if (!NSDirectionalEdgeInsetsEqualToDirectionalEdgeInsets(stored, forced)) {
++    view.directionalLayoutMargins = forced;
++  }
++}
++
 +@implementation RNSNavigationController {
 +  NSDirectionalEdgeInsets _viewMarginsBeforeFixedContentMargin;
 +  NSDirectionalEdgeInsets _barMarginsBeforeFixedContentMargin;
@@ -47,8 +76,8 @@ index c233036..66ae64f 100644
 +
 +  if (fixedContentMargin > 0) {
 +    if (!wasFixed) {
-+      _viewMarginsBeforeFixedContentMargin = self.view.directionalLayoutMargins;
-+      _barMarginsBeforeFixedContentMargin = self.navigationBar.directionalLayoutMargins;
++      _viewMarginsBeforeFixedContentMargin = RNSStoredDirectionalLayoutMargins(self.view);
++      _barMarginsBeforeFixedContentMargin = RNSStoredDirectionalLayoutMargins(self.navigationBar);
 +    }
 +    [self applyFixedContentMargin];
 +  } else if (wasFixed) {
@@ -66,21 +95,15 @@ index c233036..66ae64f 100644
 +
 +  self.viewRespectsSystemMinimumLayoutMargins = NO;
 +
-+  NSDirectionalEdgeInsets viewMargins = self.view.directionalLayoutMargins;
-+  viewMargins.leading = _fixedContentMargin;
-+  viewMargins.trailing = _fixedContentMargin;
-+  self.view.directionalLayoutMargins = viewMargins;
++  RNSSetHorizontalLayoutMargins(self.view, _fixedContentMargin);
 +
 +  // UIKit lays the bar out and sets its margins on its own, so they are set again after each layout.
-+  NSDirectionalEdgeInsets barMargins = self.navigationBar.directionalLayoutMargins;
-+  barMargins.leading = _fixedContentMargin;
-+  barMargins.trailing = _fixedContentMargin;
-+  self.navigationBar.directionalLayoutMargins = barMargins;
++  RNSSetHorizontalLayoutMargins(self.navigationBar, _fixedContentMargin);
 +}
  
  #if !TARGET_OS_TV
  - (UIViewController *)childViewControllerForStatusBarStyle
-@@ -59,6 +110,7 @@ namespace react = facebook::react;
+@@ -59,6 +133,7 @@ namespace react = facebook::react;
  - (void)viewDidLayoutSubviews
  {
    [super viewDidLayoutSubviews];
@@ -88,7 +111,7 @@ index c233036..66ae64f 100644
    if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
      RNSScreen *screenController = (RNSScreen *)self.topViewController;
      BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
-@@ -1279,6 +1331,9 @@ RNS_IGNORE_SUPER_CALL_END
+@@ -1279,6 +1354,9 @@ RNS_IGNORE_SUPER_CALL_END
      _controller.view.backgroundColor = _nativeContainerBackgroundColor;
    }
 
