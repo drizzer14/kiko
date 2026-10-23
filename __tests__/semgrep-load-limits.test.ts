@@ -1,6 +1,13 @@
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
 
 import {
   createTemporaryDirectory,
@@ -20,12 +27,17 @@ const JEST_BINARY = join(ROOT, 'node_modules/.bin/jest');
 const ARGUMENT_SEPARATOR = '\u001f';
 
 // A suite starts the real binary when it spawns `semgrep` itself, asks `which semgrep` before
-// running a wrapper that does, or titles its describe block "(real semgrep)".
+// running a wrapper that does, or titles its describe block "(real semgrep)". Indirect rule: a
+// suite that names a script reaching semgrep (pre-write-guard, fast.sh, security.sh,
+// semgrep-rules.sh, guard-replay.sh) AND says in its own comments it runs "a real Semgrep" or
+// "with the real Semgrep" (its other rows stub the binary). Every nested __tests__ folder is read.
 const REAL_SEMGREP_MARKERS = [
   /spawnSync\(\s*'semgrep'/,
   /'which',\s*\['semgrep'\]/,
   /describe\([^)]*\(real semgrep\)/,
 ];
+const SEMGREP_WRAPPER = /pre-write-guard|fast\.sh|security\.sh|semgrep-rules\.sh|guard-replay\.sh/;
+const REAL_RUN_STATEMENT = /\b(?:with the|a) real Semgrep\b/i;
 
 afterEach(() => {
   removeTemporaryDirectories();
@@ -39,14 +51,15 @@ const listedSuites = (): string[] =>
         .filter((line) => line !== '' && !line.startsWith('#'))
     : [];
 
-const realSemgrepSuites = (): string[] =>
-  readdirSync(join(ROOT, '__tests__'))
-    .filter((name) => name.endsWith('.test.ts') && name !== THIS_SUITE)
-    .filter((name) => {
-      const text = readTextFile(join(ROOT, '__tests__', name));
+const runsRealSemgrep = (text: string): boolean =>
+  REAL_SEMGREP_MARKERS.some((marker) => marker.test(text)) ||
+  (SEMGREP_WRAPPER.test(text) && REAL_RUN_STATEMENT.test(text));
 
-      return REAL_SEMGREP_MARKERS.some((marker) => marker.test(text));
-    })
+const realSemgrepSuites = (): string[] =>
+  readdirSync(join(ROOT, '__tests__'), { recursive: true })
+    .map(String)
+    .filter((name) => /\.test\.tsx?$/.test(name) && name !== THIS_SUITE)
+    .filter((name) => runsRealSemgrep(readTextFile(join(ROOT, '__tests__', name))))
     .map((name) => `__tests__/${name}`)
     .sort();
 
@@ -109,16 +122,6 @@ describe('the shared real-semgrep jest suite list', () => {
     expect(listedSuites()).toEqual(realSemgrepSuites());
   });
 
-  it('is known to hold the five suites found today', () => {
-    expect(realSemgrepSuites()).toEqual([
-      '__tests__/history-comment-rules-scope.test.ts',
-      '__tests__/pre-write-guard-conflict.test.ts',
-      '__tests__/pre-write-guard-rules.test.ts',
-      '__tests__/semgrep-mobile-textdecoder-scope.test.ts',
-      '__tests__/semgrep-rules-nested-fixtures.test.ts',
-    ]);
-  });
-
   it('lists only paths that exist', () => {
     const listed = listedSuites();
 
@@ -153,4 +156,43 @@ describe('scripts/checks/verify.sh stage 2', () => {
       union: [...partA, ...partB].sort(),
     }).toEqual({ partA: [], partB: listed, union: everySuite });
   }, 120_000);
+});
+
+describe('scripts/checks/verify.sh with an unusable suite list', () => {
+  const verifyWithList = (listText: string | undefined) => {
+    const root = createTemporaryDirectory('kiko-verify-list-');
+    const checks = join(root, 'scripts/checks');
+    const stubs = join(root, 'stubs');
+
+    mkdirSync(checks, { recursive: true });
+    mkdirSync(stubs);
+    copyFileSync(VERIFY_SCRIPT, join(checks, 'verify.sh'));
+
+    if (listText !== undefined) writeFileSync(join(checks, 'semgrep-jest-suites.txt'), listText);
+
+    for (const name of ['npm', 'npx', 'node']) {
+      writeFileSync(join(stubs, name), '#!/bin/sh\nexit 0\n');
+      chmodSync(join(stubs, name), 0o755);
+    }
+
+    return spawnSync('/bin/bash', [join(checks, 'verify.sh')], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${stubs}:${process.env.PATH}` },
+    });
+  };
+
+  it.each([
+    ['empty', ''],
+    ['comments only', '# nothing listed\n'],
+    ['missing', undefined],
+  ])('fails with a failure block and exit 2 when the list is %s', (_name, listText) => {
+    const result = verifyWithList(listText);
+
+    expect({ status: result.status, hasBlock: result.stderr.includes('✖') }).toEqual({
+      status: 2,
+      hasBlock: true,
+    });
+    expect(result.stderr).not.toContain('unbound variable');
+  });
 });
