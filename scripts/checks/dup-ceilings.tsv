@@ -9,7 +9,6 @@ src/screens/forms/holding-form/holding-form.screen.test.tsx	5.36
 src/screens/home/home.screen.test.tsx	38.24
 src/screens/statement-import/statement-import.screen.test.tsx	14.72
 src/screens/statistics/statistics.screen.test.tsx	7.77
-src/statement-import/import-statement/import-statement.test.ts	7.09
 src/statistics/net-worth-series/net-worth-series.test.ts	7.25
 src/transactions/repo/transactions.repo.remove-cascade.test.ts	5.91
 src/transactions/repo/transactions.repo.test.ts	10.14
