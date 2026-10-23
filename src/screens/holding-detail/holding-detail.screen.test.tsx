@@ -2377,12 +2377,72 @@ describe('HoldingDetailScreen', () => {
     expect(getAllByTestId('ledger-row-loan-link-marker').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('hides the Linked payments section entirely when there are none', async () => {
+  it('shows the Linked payments heading with an empty state for a loan with none', async () => {
     seed(annuityLoanHolding);
 
-    const { queryByText } = await renderScreen();
+    const { getByText, getByTestId, queryByText } = await renderScreen();
 
+    expect(getByText('Linked Payments')).toBeTruthy();
+    expect(getByTestId('holding-detail-linked-payments-empty')).toBeTruthy();
+    expect(getByText('No linked payments')).toBeTruthy();
+    expect(getByText('Payments linked to this loan appear here.')).toBeTruthy();
+    expect(queryByText('Transactions')).toBeNull();
+    expect(queryByText('No transactions')).toBeNull();
+  });
+
+  it('draws a Divider before the Linked payments heading for a loan, with no Transactions section', async () => {
+    seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, [
+      {
+        id: 'txn-1',
+        holdingId: 'payer-1',
+        amountMinorUnits: -100_000,
+        time: 1_000,
+        description: 'First installment',
+        source: 'manual',
+        loanHoldingId: 'h-1',
+        loanLinkSource: 'manual',
+      },
+    ]);
+
+    const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+    const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
+
+    expect(getByTestId('holding-detail-linked-payments-divider')).toBeTruthy();
+    expect(tree.indexOf('holding-detail-linked-payments-divider')).toBeLessThan(
+      tree.indexOf('Linked Payments'),
+    );
+    expect(queryByTestId('holding-detail-transactions-divider')).toBeNull();
+    expect(queryByTestId('holding-detail-linked-payments-empty')).toBeNull();
+    expect(queryByText('Transactions')).toBeNull();
+    expect(queryByText('No transactions')).toBeNull();
+  });
+
+  it('keeps the Transactions divider, heading and empty text for a non-loan holding', async () => {
+    seed(propertyHolding);
+
+    const { getByText, getByTestId, queryByTestId, queryByText } = await renderScreen();
+    const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
+
+    expect(getByTestId('holding-detail-transactions-divider')).toBeTruthy();
+    expect(tree.indexOf('holding-detail-transactions-divider')).toBeLessThan(
+      tree.indexOf('Transactions'),
+    );
+    expect(getByText('Transactions')).toBeTruthy();
+    expect(getByText('No transactions')).toBeTruthy();
+    expect(queryByTestId('holding-detail-linked-payments-divider')).toBeNull();
+    expect(queryByTestId('holding-detail-linked-payments-empty')).toBeNull();
     expect(queryByText('Linked Payments')).toBeNull();
+  });
+
+  it('shows no linked-payments empty state while the linked payments load', async () => {
+    seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {
+      linkedLoanPayments: true,
+    });
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('holding-detail-loading')).toBeTruthy();
+    expect(queryByTestId('holding-detail-linked-payments-empty')).toBeNull();
   });
 
   it('never shows a Linked payments section for a non-loan holding, even if seeded', async () => {
@@ -2619,6 +2679,23 @@ describe('HoldingDetailScreen — localization', () => {
     expect(getByText('Транзакції')).toBeTruthy();
     expect(queryByText('Value')).toBeNull();
     expect(queryByText('Transactions')).toBeNull();
+  });
+
+  describe('a loan with no linked payments', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    it('renders the Linked payments heading and its empty state from the Ukrainian catalog', async () => {
+      seed(annuityLoanHolding);
+      const { getByText } = await renderScreen();
+
+      expect(getByText('Повʼязані платежі')).toBeTruthy();
+      expect(getByText('Немає повʼязаних платежів')).toBeTruthy();
+      expect(getByText('Тут зʼявляться платежі, повʼязані з цим кредитом.')).toBeTruthy();
+    });
   });
 
   it('renders the priced breakdown labels from the Ukrainian catalog', async () => {

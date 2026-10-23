@@ -863,6 +863,12 @@ export const en = {
     computed: 'Computed',
     coupon: 'Coupon',
     cost: 'Cost',
+    // The loan detail's "Linked Payments" section while nothing is linked: the
+    // shared EmptyState, since a loan shows this section instead of Transactions.
+    emptyLinkedPayments: {
+      title: 'No linked payments',
+      message: 'Payments linked to this loan appear here.',
+    },
     // The ledger FlatList's own empty state — the SAME "no rows yet"
     // pattern `home.emptyTransactions` uses, replacing a bare
     // "Transactions" heading with nothing below it.

@@ -61,6 +61,7 @@ import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import EntryCard from '@kiko/design-system/components/entry-card';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
+import EmptyState from '@kiko/design-system/components/empty-state';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
@@ -573,8 +574,9 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
 
 // The loan detail's own "Linked payments" section — every transaction the
 // matcher (or a manual pick) linked to THIS loan, in the order the query
-// hands them (newest first). Hidden entirely (returns null) once there are
-// none, rather than an empty heading with nothing beneath it. Reuses the
+// hands them (newest first). A loan shows this section instead of
+// Transactions (its own ledger is always empty), so with none linked it keeps
+// its heading above the shared `EmptyState` rather than vanishing. Reuses the
 // shared `LedgerRowItem` (and its own loan-link marker) exactly as the
 // ledger FlatList does, but as a plain `.map` here rather than a second
 // FlatList — this list is always small (one loan's own payments), never a
@@ -588,21 +590,64 @@ const LinkedPaymentsSection: FC<{
   holdingNameById: ReadonlyMap<string, string>;
   context: LedgerRowContext;
 }> = ({ title, payments, holdingNameById, context }) => {
-  if (payments.length === 0) {
-    return null;
-  }
+  const { t } = useTranslation();
 
   return (
     <Box gap={2}>
       <Text variant="heading">{title}</Text>
-      {payments.map((transaction) => (
-        <LedgerRowItem
-          key={transaction.id}
-          row={{ kind: 'transaction', time: transaction.time, transaction }}
-          context={{ ...context, holdingName: holdingNameById.get(transaction.holdingId) ?? '' }}
+      {payments.length === 0 ? (
+        <EmptyState
+          icon="link"
+          title={t('holdingDetail.emptyLinkedPayments.title')}
+          message={t('holdingDetail.emptyLinkedPayments.message')}
+          testID="holding-detail-linked-payments-empty"
         />
-      ))}
+      ) : (
+        payments.map((transaction) => (
+          <LedgerRowItem
+            key={transaction.id}
+            row={{ kind: 'transaction', time: transaction.time, transaction }}
+            context={{ ...context, holdingName: holdingNameById.get(transaction.holdingId) ?? '' }}
+          />
+        ))
+      )}
     </Box>
+  );
+};
+
+// What follows the summary, opened by a hairline Divider either way: a loan has
+// no ledger of its own, so it shows its Linked payments section there, and
+// every other holding heads its Transactions ledger. Extracted so the screen's
+// own cognitive-complexity budget does not pay for the branch.
+const LedgerSectionHeading: FC<{
+  isLoan: boolean;
+  linkedPayments: readonly TransactionRow[];
+  holdingNameById: ReadonlyMap<string, string>;
+  context: LedgerRowContext;
+}> = ({ isLoan, linkedPayments, holdingNameById, context }) => {
+  const { t } = useTranslation();
+
+  if (isLoan) {
+    return (
+      <>
+        <Divider spacing={2} testID="holding-detail-linked-payments-divider" />
+
+        <LinkedPaymentsSection
+          title={t('holdingDetail.linkedPayments')}
+          payments={linkedPayments}
+          holdingNameById={holdingNameById}
+          context={context}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Divider spacing={2} testID="holding-detail-transactions-divider" />
+
+      <Text variant="heading">{t('holdingDetail.transactionsHeading')}</Text>
+    </>
   );
 };
 
@@ -706,6 +751,7 @@ const resolveLedgerReadyView = (
   listData: LedgerListItem[],
   listHeader: ReactElement,
   emptyText: string,
+  showsLedger: boolean,
 ): LedgerReadyView => {
   if (!isReady) {
     return {
@@ -718,13 +764,15 @@ const resolveLedgerReadyView = (
   return {
     data: listData,
     headerComponent: listHeader,
-    emptyComponent: (
+    emptyComponent: showsLedger ? (
       <Box style={styles.empty}>
         <Text tone="textSecondary">{emptyText}</Text>
       </Box>
-    ),
+    ) : undefined,
   };
 };
+
+const isLoanHolding = (holding: HoldingRow | undefined): boolean => holding?.type === 'loan';
 
 // A row of a type outside this build's list (an imported dev-build holding)
 // offers no Edit: the form dispatches on a descriptor that type does not have.
@@ -793,6 +841,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
+  const isLoan = isLoanHolding(holding);
   useCloseWhenGone({ routeKey: route.key, isFresh: holdingsFresh, holding });
   // The loan detail's own "Linked payments" section: the transactions the
   // matcher (or a manual pick) linked to THIS loan, newest first — a loan
@@ -803,7 +852,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const { data: linkedPayments, isLoading: linkedPaymentsLoading } = useLiveQuery(
     transactionsRepo.listLinkedToLoanQuery(holdingId),
     ['transactions'],
-    holding?.type === 'loan',
+    isLoan,
     { cached: true },
   );
   // The register terms a bond's coupons, expected profit and yield to
@@ -999,8 +1048,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
 
   // The header/summary block that scrolls above the ledger: the Value amount +
   // identity icon, the optional converted (main-currency) caption tucked
-  // directly under that amount, the optional breakdown lines, the hairline
-  // divider, and the Transactions heading. It sits in the FlatList's
+  // directly under that amount, the optional breakdown lines, and then the
+  // hairline divider with the Transactions heading. A loan has no ledger of its
+  // own, so it shows the divider and the Linked payments section there instead
+  // (an empty state when nothing is linked). It sits in the FlatList's
   // `ListHeaderComponent` so the list owns the scrolling (an eager list nested
   // in a ScrollView breaks virtualization).
   const listHeader = (
@@ -1056,22 +1107,18 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
 
       <OversizedSaleNotice holding={holding} />
 
-      <LinkedPaymentsSection
-        title={t('holdingDetail.linkedPayments')}
-        payments={linkedPayments}
-        holdingNameById={holdingNameById}
-        context={rowContext}
-      />
-
       <ShareChanges
         holding={holding}
         onEdit={(day) => navigation.navigate('OwnershipChangeForm', { holdingId, day })}
         onDelete={(day) => holdingsRepo.removeOwnershipChange(holdingId, day)}
       />
 
-      <Divider spacing={2} />
-
-      <Text variant="heading">{t('holdingDetail.transactionsHeading')}</Text>
+      <LedgerSectionHeading
+        isLoan={isLoan}
+        linkedPayments={linkedPayments}
+        holdingNameById={holdingNameById}
+        context={rowContext}
+      />
     </Box>
   );
 
@@ -1108,6 +1155,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     listData,
     listHeader,
     t('holdingDetail.emptyTransactions'),
+    !isLoan,
   );
 
   return (
