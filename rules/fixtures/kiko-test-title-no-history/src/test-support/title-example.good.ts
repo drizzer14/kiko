@@ -57,6 +57,8 @@ describe('the footer', () => {
   it('it was 44 rows', () => {});
 
   it('pins the rows (was 3 of them)', () => {});
+
+  it('renders the list; was 3x faster than the table', () => {});
 });
 
 describe.each([1, 2])('suite for %s', () => {});

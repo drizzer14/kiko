@@ -88,3 +88,7 @@ taskReview=1
 # EXPECT-FINDING
 # Q2 = A: the retry sits here.
 decisionAnswer=1
+
+# EXPECT-FINDING
+# Added in H10 Set 3: the retry sits here.
+trackCapitalSet=1

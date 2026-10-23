@@ -602,3 +602,13 @@ export const decisionAnswerLine = true;
 // EXPECT-FINDING
 /* Q2 = A: the chip row wraps. */
 export const decisionAnswerBlock = true;
+
+// A track id joined to a capitalized task word is history too.
+
+// EXPECT-FINDING
+// Added in H10 Set 3: the chip row wraps.
+export const trackCapitalSetLine = true;
+
+// EXPECT-FINDING
+/* Added in H10 Set 3: the chip row wraps. */
+export const trackCapitalSetBlock = true;
