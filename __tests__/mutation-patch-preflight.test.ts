@@ -14,8 +14,9 @@ import {
 } from './test-support/mutation-repository';
 
 // scripts/checks/mutation.sh refuses to start Stryker when the installed jest runner lacks the
-// exact-selection patch: patch-package exits 0 on a failed apply when run locally, so a missing
-// patch would otherwise turn every heavy mutant back into a regex timeout without a word.
+// exact-selection patch: postinstall runs patch-package --error-on-fail, so a failed apply fails
+// npm ci, but a tree installed with --ignore-scripts would otherwise turn every heavy mutant back
+// into a regex timeout without a word.
 const runnerFile = (root: string, file: string): string =>
   join(root, 'node_modules', RUNNER_PACKAGE, file);
 

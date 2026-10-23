@@ -717,6 +717,102 @@ describe('HomeScreen', () => {
     expect(queryByText('BTC')).toBeNull();
   });
 
+  // The breakdown hides a currency only when its total is exactly 0 minor units; any non-zero
+  // integer total keeps its row and shows its real digits.
+  it.each(['USD', 'USDT'] as const)(
+    'hides %s from the breakdown when its total is exactly zero, while non-zero rows render',
+    async (currency) => {
+      seed({
+        holdings: [UAH_HOLDING, { accountId: 'a', currency, balanceMinorUnits: 0 }],
+        rates: [{ base: currency, quote: 'UAH', rate: '40' }],
+        transactions: [],
+      });
+
+      const { getByText, queryByText } = await renderHome();
+
+      expect(getByText('UAH')).toBeTruthy();
+      expect(queryByText(currency)).toBeNull();
+    },
+  );
+
+  // Home values a holding from its stored balance, never from the ledger window, so the USDT
+  // transactions that net to zero sit beside a stored balance of exactly zero.
+  it('hides USDT when its transactions net to exactly zero', async () => {
+    seed({
+      holdings: [
+        UAH_HOLDING,
+        { id: 'h-usdt', accountId: 'a', currency: 'USDT', balanceMinorUnits: 0 },
+      ],
+      rates: [{ base: 'USDT', quote: 'UAH', rate: '40' }],
+      transactions: [
+        transaction({ id: 'usdt-in', currency: 'USDT', amountMinorUnits: 30, holdingId: 'h-usdt' }),
+        transaction({
+          id: 'usdt-out',
+          currency: 'USDT',
+          amountMinorUnits: -30,
+          holdingId: 'h-usdt',
+        }),
+      ],
+    });
+
+    const { getByText, queryByText } = await renderHome();
+
+    expect(getByText('UAH')).toBeTruthy();
+    expect(queryByText('USDT')).toBeNull();
+  });
+
+  it.each([
+    ['USD', 1, '$0.01'],
+    ['USD', -1, '-$0.01'],
+    ['USDT', 30, '₮0.0000003'],
+    ['USDT', -30, '-₮0.0000003'],
+    ['BTC', 1, '₿0.00000001'],
+  ] as const)(
+    'keeps %s in the breakdown, with its real digits, when its total is %i minor units',
+    async (currency, balanceMinorUnits, text) => {
+      seed({
+        holdings: [UAH_HOLDING, { accountId: 'a', currency, balanceMinorUnits }],
+        rates: [{ base: currency, quote: 'UAH', rate: '40' }],
+        transactions: [],
+      });
+
+      const { getByText } = await renderHome();
+
+      expect(getByText(currency)).toBeTruthy();
+      expect(getByText(text)).toBeTruthy();
+    },
+  );
+
+  it('keeps a currency with a negative total (debt) in the breakdown', async () => {
+    seed({
+      holdings: [UAH_HOLDING, { accountId: 'a', currency: 'USD', balanceMinorUnits: -5000 }],
+      rates: [{ base: 'USD', quote: 'UAH', rate: '40' }],
+      transactions: [],
+    });
+
+    const { getByText } = await renderHome();
+
+    expect(getByText('USD')).toBeTruthy();
+    expect(getByText(/\$50\.00/)).toBeTruthy();
+  });
+
+  it('renders no breakdown rows but keeps the headline when every currency totals zero', async () => {
+    seed({
+      holdings: [
+        { ...UAH_HOLDING, balanceMinorUnits: 0 },
+        { accountId: 'a', currency: 'USD', balanceMinorUnits: 0 },
+      ],
+      rates: [{ base: 'USD', quote: 'UAH', rate: '40' }],
+      transactions: [],
+    });
+
+    const { getAllByText, queryByText } = await renderHome();
+
+    expect(queryByText('UAH')).toBeNull();
+    expect(queryByText('USD')).toBeNull();
+    expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
+  });
+
   it('lists only the currencies the headline total includes', async () => {
     seed({
       holdings: [UAH_HOLDING, { accountId: 'a', currency: 'BTC', balanceMinorUnits: 50_000_000 }],

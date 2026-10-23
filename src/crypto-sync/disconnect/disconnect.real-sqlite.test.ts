@@ -16,10 +16,14 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
 }));
 
 import { DatabaseSync } from 'node:sqlite';
+import {
+  NOT_IMPORTED_KINDS,
+  notImportedEntry,
+  parseExchangeState,
+} from '@kiko/crypto-sync/exchange/walk-state';
 import { HISTORY_FLOOR_MS } from '@kiko/crypto-sync/binance';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { seedWalkMarks, walkMarksOf } from '@kiko/test-support/walk-marks';
-import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import { disconnectCryptoAccount } from './disconnect';
 
@@ -87,6 +91,52 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(rowCount('holdings')).toBe(1);
     expect(rowCount('transactions')).toBe(1);
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
+  });
+
+  it('for Binance, clears the not-imported list with the rest of the state but the walks', async () => {
+    connectedBinanceAccount();
+    mockDatabase.prepare("UPDATE sync_state SET exchange_state = ? WHERE account_id = 'acc-1'").run(
+      JSON.stringify({
+        ...JSON.parse(storedState()),
+        notImported: [
+          ...NOT_IMPORTED_KINDS.map((kind) => notImportedEntry(kind, '3', 4)),
+          'bybit-x:1:2',
+        ],
+      }),
+    );
+    expect(storedState()).toContain('notImported');
+
+    await disconnectCryptoAccount('acc-1', 'binance');
+
+    expect(storedState()).not.toContain('notImported');
+    expect(parseExchangeState(storedState())).toMatchObject({ kind: 'parsed', notImported: [] });
+  });
+
+  it('for Binance, clears the trade cursors with the rowless order ids and the held order', async () => {
+    connectedBinanceAccount();
+    mockDatabase.prepare("UPDATE sync_state SET exchange_state = ? WHERE account_id = 'acc-1'").run(
+      JSON.stringify({
+        ...JSON.parse(storedState()),
+        trades: {
+          symbols: {
+            BTCEUR: { fromId: 9, rowlessOrderIds: [3, 5] },
+            ETHEUR: { fromId: 4, heldOrderId: 2, rowlessOrderIds: [1] },
+          },
+          rotation: 'BTCEUR',
+          balanceSnapshot: { BTC: '1/0' },
+        },
+      }),
+    );
+    expect(storedState()).toContain('rowlessOrderIds');
+
+    await disconnectCryptoAccount('acc-1', 'binance');
+
+    expect(storedState()).not.toContain('rowlessOrderIds');
+    expect(storedState()).not.toContain('trades');
+    expect(parseExchangeState(storedState())).toMatchObject({
+      kind: 'parsed',
+      trades: { symbols: {}, rotation: '', balanceSnapshot: {} },
+    });
   });
 
   // The paused caption promises this fix: "Disconnect and reconnect to fix this. Your holdings

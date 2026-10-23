@@ -1,6 +1,5 @@
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -14,6 +13,7 @@ import {
   createTemporaryDirectory,
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
+import { copyKillGuard } from './test-support/copy-kill-guard';
 
 // harness/kiko/hooks/dispatch.sh is the plugin's own hook dispatcher: every
 // hooks.json entry now invokes `dispatch.sh <script-name>` instead of a
@@ -114,20 +114,6 @@ function writeFakeGitOtherFailure(directory: string, realGitPath: string): strin
   chmodSync(fakeGitPath, 0o755);
 
   return fakeGitPath;
-}
-
-// Proves the subdirectory-cwd case end to end, not just a stub — copies
-// the REAL kill-guard.sh/kill-guard.js pair (kill-guard.sh only ever
-// `require`s its own sibling kill-guard.js, so the pair is self-contained)
-// into a disposable repo, so the dispatcher's cwd resolution is exercised
-// against the exact script the hook wires today.
-function copyRealKillGuardScript(repositoryRoot: string): void {
-  const checksDirectory = join(repositoryRoot, 'scripts', 'checks');
-  mkdirSync(checksDirectory, { recursive: true });
-  const realChecksDirectory = join(__dirname, '../scripts/checks');
-  copyFileSync(join(realChecksDirectory, 'kill-guard.sh'), join(checksDirectory, 'kill-guard.sh'));
-  copyFileSync(join(realChecksDirectory, 'kill-guard.js'), join(checksDirectory, 'kill-guard.js'));
-  chmodSync(join(checksDirectory, 'kill-guard.sh'), 0o755);
 }
 
 function runDispatch(
@@ -351,12 +337,12 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
   // dispatcher would silently no-op (exit 0, empty stdout) instead of
   // finding the REAL script one level up at the repo root — the kill-guard
   // would fail OPEN on exactly the payload shape kill-guard.test.ts's own
-  // BLOCKED_COMMANDS prove it must deny. This copies the real kill-guard.sh/
-  // kill-guard.js pair so the behavior is proven end to end, not just
-  // against a stub.
+  // BLOCKED_COMMANDS prove it must deny. This copies the real kill-guard.sh,
+  // kill-guard.js and the modules it requires so the behavior is proven end
+  // to end, not just against a stub.
   it('resolves a subdirectory cwd up to its own git root, so a banned command still denies', () => {
     const repository = initGitRepository('kiko-dispatch-cwd-subdir-');
-    copyRealKillGuardScript(repository);
+    copyKillGuard(repository);
     const subdirectory = join(repository, 'ios');
     mkdirSync(subdirectory, { recursive: true });
 
@@ -371,6 +357,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     expect(stdout).not.toBe('');
     const parsed = JSON.parse(stdout);
     expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(parsed.hookSpecificOutput.permissionDecisionReason).not.toContain('could not load');
   });
 
   it('falls back to CLAUDE_PROJECT_DIR when cwd is outside any git repository', () => {

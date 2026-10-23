@@ -6,6 +6,7 @@
 #   job-queue.sh verify|check-all|security <worktree> <label>
 #   job-queue.sh gate <worktree> <label> <mutation-base> <expected-head> [--long]
 #   job-queue.sh hold <reason>    stop every start until `release`; running jobs are not stopped
+#                                 (one holding the lock when `hold` returns is named on stdout)
 #   job-queue.sh release
 #   job-queue.sh status           the hold, the power state, the running job, the queued tickets
 # A label holds only letters, digits, dot, underscore, and dash.
@@ -17,7 +18,10 @@
 #              without its owner
 #   claim      a symlink whose target text is a pid; held for the milliseconds that check, remove,
 #              and create the lock, so two waiters never remove each other's fresh lock
-#   hold       present while held; its text is the reason
+#   hold       present while held; its text is the reason. `hold` writes it, then reads the lock; a
+#              waiter takes the lock, then looks for the file and gives the lock back if it is
+#              there. So a start that began before the file existed either backs off or is the
+#              `running:` line `hold` prints; the start that line names may still back off.
 #   logs/      gate-<label>.log, the whole output of a gate (other jobs print to stdout)
 #   done.log   one line per finished job: kind label exit start end head. head is the full
 #              40-character HEAD of the worktree, read at START only when `git status --porcelain`
@@ -64,18 +68,18 @@
 # naming no live pid, or no pid at all, is not live). A job's own end waits the same way: the lock
 # is removed once the group is empty, and a DRAIN line says a process of the job still runs.
 #
-# Gate start defer: a gate at the head also waits while the 5-minute load is at or above 10. The
-# check runs once per poll, only while no hold or power reason stops the start and no live job
-# holds the lock, as one read of `wait-load.sh 10 0`. A high load prints one `WAITING <label>:
-# load ...` line and keeps the gate queued, at most 1200 seconds counted from the first such read;
-# the count starts over if the gate loses the head, a job takes the lock, or a hold or power
-# reason stops the start, so a gate released from a pause gets its full wait. Then
-# `LOAD WAIT EXPIRED <label>: load <x>` is printed once and the gate starts anyway. A gate's first
-# mutants time out on load drift between its dry run and its run, which a quiet start lowers. A
-# verify, check-all, or security job is never deferred. A hold or a battery or unknown power state
-# keeps its own WAITING reason and reads no load. A load that cannot be read prints one `NOTE
-# <label>: load unknown, ...` line and does not defer. The wait ends on SIGINT and SIGTERM like any
-# other wait, because it polls with pause.
+# Start load defer: a job of every class (verify, check-all, security, gate) at the head also waits
+# while the 5-minute load is at or above 10. The check runs once per poll, only while no hold or
+# power reason stops the start and no live job holds the lock, as one read of `wait-load.sh 10 0`.
+# A high load prints one `WAITING <label>: load ...` line and keeps the job queued, at most 1200
+# seconds counted from the first such read; the count starts over if the job loses the head, a job
+# takes the lock, or a hold or power reason stops the start, so a job released from a pause gets
+# its full wait. Then `LOAD WAIT EXPIRED <label>: load <x>` is printed once and the job starts
+# anyway. A gate's first mutants time out on load drift between its dry run and its run, and a
+# verify's tools time out under a loaded machine; a quiet start lowers both. A hold or a battery or
+# unknown power state keeps its own WAITING reason and reads no load. A load that cannot be read
+# prints one `NOTE <label>: load unknown, ...` line and does not defer. The wait ends on SIGINT and
+# SIGTERM like any other wait, because it polls with pause.
 #
 # Group signal: on SIGINT or SIGTERM the queue sends TERM to the process
 # group it created for its own job (`kill -s TERM -- -<group>`), and to no other group: the group
@@ -116,7 +120,8 @@
 # caffeinate; a missing pmset means AC power, a missing caffeinate means none), and
 # KIKO_QUEUE_FORK_HOOK (a test-only program, empty in production, run with the queue's pid between
 # the fork of a job and the read of its pid), and KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS (the longest a
-# gate waits for the load, default 1200; a value that is not a whole number is refused, exit 2).
+# job of any class waits for the load, default 1200; the name says gate and covers every class; a
+# value that is not a whole number is refused for a job command, exit 2).
 set -uo pipefail
 
 # Raise it when this script changes how it reads or writes the queue directory, so an older copy
@@ -129,7 +134,7 @@ CLAIM_PATH="$QUEUE_DIRECTORY/claim"
 POLL_SECONDS="${KIKO_QUEUE_POLL_SECONDS:-30}"
 STOP_POLLS="${KIKO_QUEUE_STOP_POLLS:-20}"
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# A gate at the head waits while the 5-minute load is at or above GATE_START_MAX_LOAD, at most
+# A job at the head waits while the 5-minute load is at or above GATE_START_MAX_LOAD, at most
 # GATE_START_MAX_WAIT seconds. The two values are a fixed policy, not a tuning knob.
 GATE_START_MAX_LOAD=10
 GATE_START_MAX_WAIT="${KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS:-1200}"
@@ -226,7 +231,7 @@ warn_short_done_lines() {
 }
 
 queue_status() {
-  local busy=0 ticket power
+  local busy=0 ticket power tickets
   if [ -f "$HOLD_FILE" ]; then
     printf 'hold: %s\n' "$(head -1 "$HOLD_FILE")"
   fi
@@ -234,11 +239,15 @@ queue_status() {
   if [ -n "$power" ]; then
     printf '%s: no job starts\n' "$power"
   fi
+  # The tickets are read before the lock: a waiter removes its ticket only after it holds the lock,
+  # so a job that moves from queued to running between the two reads shows as running, never as
+  # neither.
+  tickets="$(ticket_names)"
   if [ -L "$LOCK_PATH" ]; then
     busy=1
     printf 'running: %s\n' "$(readlink "$LOCK_PATH")"
   fi
-  for ticket in $(ticket_names); do
+  for ticket in $tickets; do
     busy=1
     printf 'queued: %s\n' "$ticket"
   done
@@ -277,6 +286,10 @@ case "$command_name" in
     shift
     mkdir -p "$QUEUE_DIRECTORY"
     printf '%s\n' "$*" > "$HOLD_FILE"
+    # Read after the write: a start that took the lock before the file existed is named here.
+    if [ -L "$LOCK_PATH" ]; then
+      printf 'running: %s (a hold does not stop a running job)\n' "$(readlink "$LOCK_PATH")"
+    fi
     exit 0
     ;;
   release)
@@ -295,13 +308,15 @@ case "$command_name" in
     valid_head "$expected_head" || usage "invalid expected head: $expected_head"
     job_class=2
     [ "$#" -eq 6 ] && job_class=3
-    case "$GATE_START_MAX_WAIT" in
-      '' | *[!0-9]*) refuse "KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS must be a whole number of seconds, got \"$GATE_START_MAX_WAIT\"" ;;
-    esac
     ;;
   *)
     usage "unknown command: $command_name"
     ;;
+esac
+
+# Every job class waits for the load, so the limit is checked for every job command.
+case "$GATE_START_MAX_WAIT" in
+  '' | *[!0-9]*) refuse "KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS must be a whole number of seconds, got \"$GATE_START_MAX_WAIT\"" ;;
 esac
 
 worktree="$2"
@@ -491,6 +506,14 @@ acquire_lock() {
   fi
   ln -s "$(lock_record -)" "$LOCK_PATH" 2> /dev/null
   lock_code=$?
+  # A hold written after this waiter's hold check and before its lock is seen here: the hold
+  # command writes the file and then reads the lock, so either this start backs off or the hold
+  # names its lock (and the start it names may still back off here).
+  if [ "$lock_code" -eq 0 ] && [ -f "$HOLD_FILE" ]; then
+    rm -f "$LOCK_PATH"
+    release_claim
+    return 1
+  fi
   release_claim
   [ "$lock_code" -eq 0 ]
 }
@@ -642,7 +665,7 @@ lock_is_held() {
   { [ -L "$LOCK_PATH" ] || [ -e "$LOCK_PATH" ]; } && lock_is_live
 }
 
-# The load wait starts over whenever the gate stops being the next to start: it lost the head, a
+# The load wait starts over whenever the job stops being the next to start: it lost the head, a
 # job holds the lock, or a hold or power reason stops the start.
 load_wait_started=''
 load_wait_expired=0
@@ -672,16 +695,17 @@ read_gate_load() {
   esac
 }
 
-# Whether the gate at the head must not start in this pass. It sets `reason` when the load is why.
-# A class-1 job never waits, an unreadable load never defers (one line says so), and the wait ends
-# after GATE_START_MAX_WAIT seconds with one LOAD WAIT EXPIRED line, the gate then starting at that
-# load. It reads the load only when no hold or power reason stops the start and the lock is free, so
-# the clock counts the gate's own wait for the machine, not a job that runs ahead of it. A pass that
-# finds the lock held does not try the lock either: a lock freed between the two steps would let the
-# gate start with no load read, so the next pass reads the load first.
+# Whether the job at the head must not start in this pass. It sets `reason` when the load is why.
+# An unreadable load never defers (one line says so), and the wait ends after GATE_START_MAX_WAIT
+# seconds with one LOAD WAIT EXPIRED line, the job then starting at that load. It reads the load
+# only when no hold or power reason stops the start and the lock is free, so the clock counts the
+# job's own wait for the machine, not a job that runs ahead of it. A pass that finds the lock held
+# does not try the lock either: a lock freed between the two steps would let the job start with no
+# load read, so the next pass reads the load first. The lock is taken after this check, so a hold
+# placed during the wait stops the start in acquire_lock's re-check, as for any start.
 defer_for_load() {
   local reading
-  [ "$job_class" -ge 2 ] && [ "$load_wait_expired" -eq 0 ] || return 1
+  [ "$load_wait_expired" -eq 0 ] || return 1
   if lock_is_held; then
     reset_load_wait
     return 0
@@ -690,7 +714,7 @@ defer_for_load() {
   reading=$?
   if [ "$reading" -eq 2 ]; then
     [ "$load_unknown_announced" -eq 1 ] \
-      || printf 'NOTE %s: load unknown, so the gate starts without a load wait\n' "$label"
+      || printf 'NOTE %s: load unknown, so the %s starts without a load wait\n' "$label" "$command_name"
     load_unknown_announced=1
     return 1
   fi
@@ -707,8 +731,8 @@ defer_for_load() {
   reason="load at or above $GATE_START_MAX_LOAD (waits at most $GATE_START_MAX_WAIT s)"
 }
 
-# A hold or an unfit power state stops every class, and a gate also waits on a high load: the line
-# prints when the reason changes, so a waiter's log shows why it waits without a line per poll.
+# A hold, an unfit power state, or a high load stops every class: the line prints when the reason
+# changes, so a waiter's log shows why it waits without a line per poll.
 # Only the head waiter takes the lock.
 waiting_reason=''
 while :; do

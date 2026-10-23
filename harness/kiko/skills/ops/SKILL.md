@@ -7,7 +7,10 @@ Run project commands and report results.
 
 Rules:
 - Report the exact command, its output, and the result.
-- Use the check scripts: check:lint, check:all, check:deep.
+- Use the check scripts: check:lint for a direct run. A whole-repo check:all, check:deep or
+  verify is a queued job (`scripts/job-queue.sh`); typed, kill-guard denies it (`heavyJob`).
+- `check:permissions` is manual (not in `check:all`, no hook). Run the wrapper and report its
+  block; the user edits permission settings by hand, and an agent never edits them.
 - Do not write app code. Hand code changes to the developer.
 - Run a long-running command ONCE and wait for its return. The EXIT CODE
   is the result: 0 = pass, non-zero = fail. Every check script and npm
@@ -34,7 +37,8 @@ Rules:
   On that failure, split the run into smaller change sets — never raise
   the cap.
   If `npm ci` in a gate scratch prints that install scripts were not run, the patch is NOT
-  applied (patch-package runs from `postinstall` and exits 0 on a failed apply): run
+  applied (patch-package runs from `postinstall` with `--error-on-fail`, so a failed apply fails
+  `npm ci`, but a skipped `postinstall` applies nothing): run
   `npx patch-package` and confirm the `@stryker-mutator/jest-runner@8.7.1` line, or let the
   mutation.sh preflight exit 2. Never start a gate without the marker.
 - A running gate can be paused with `kill -STOP` on its own pids (the
@@ -59,11 +63,11 @@ Rules:
   does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file"). A
   proof table is the fallback for a real timeout only, not for regex cost (the patch removed it).
   Ops reports the failure block as is, never starts its own rerun, and never raises the timeout.
-- The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
+- The coordinator who queues the gate logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
-- Run check:deep / check:mutation only through the wrapper
-  (`npm run check:deep` / `npm run check:mutation`, or `make deep`); it is
-  single-flighted and tears its own workers down. Never run
+- Run check:deep / check:mutation only through the queued gate
+  (`bash scripts/job-queue.sh gate <worktree> <label> <base> <head>`), which runs the wrapper;
+  it is single-flighted and tears its own workers down. Never run
   `npx stryker run` directly, and never put a run in a Monitor loop or a
   wait script — an orphaned Stryker spawns one worker per core and can
   overload the machine.
@@ -95,18 +99,20 @@ Rules:
   whole-report sanity floor. A dry run can time out under load
   ("Initial test run timed out"): re-run. A window tip must be a commit
   where the full jest suite passes.
-- **`make deep` / `check:deep` is the COORDINATOR's own job, not an ops
-  dispatch.** The coordinator runs the long, no-incremental checks
-  (Stryker mutation + osv) ITSELF as a background process and launches
+- **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
+  dispatch.** The coordinator queues the long, no-incremental checks
+  (Stryker mutation + osv) ITSELF as a background gate and launches
   the human `tail -F` of the progress log at the same time
   (`scripts/checks/mutation.sh` prints the exact tail command near the
-  start). NEVER dispatch a `kiko:ops` subagent to "run `make deep` and
+  start). NEVER dispatch a `kiko:ops` subagent to "run the gate and
   wait": a watching subagent only polls the run, burns tokens, and
   cannot be stopped mid-flight. WHEN it runs (per reviewed change set,
   before its merge into next) is in harness-workflow's "Mutation testing:
   small change sets only".
-- **Launch every `make deep` / gate under `caffeinate -i`.** Laptop sleep
-  voided two gates on 2026-10-09 (13 h, 78/151 timeouts).
+- **Keep the Mac awake for a gate.** Laptop sleep voided two gates on 2026-10-09 (13 h,
+  78/151 timeouts). Queue the gate (`bash scripts/job-queue.sh gate ...`); never type a
+  heavy command under `caffeinate -i`: kill-guard does not unwrap it, which is a known gap,
+  not a route.
 - **After a tests-only fix for module-scope (static) mutants, delete
   `reports/stryker-incremental.json` and `.stryker-tmp` in the gating
   checkout before the re-run.** Run 4 reused old Survived results (only
@@ -206,8 +212,11 @@ actually landed.
   (2026-10-16, sim A9850113; cause unproven, evidence deleted).
 - After the first launch, confirm the app's first screen (the user or an allowed check) before
   you report the sim as ready.
-- The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) has a BTC holding only, with no
-  USDT. Tell the user to add a USDT holding by hand when a check needs one.
+- The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) holds what
+  `e2e/screenshot/seed/screenshot-seed.ts` builds: read the seed for the holdings and coins it
+  has, and do not assume a single coin. `generate-demo-kiko.test.ts` decrypts the committed file
+  and compares it with the seed, so the two agree. Tell the user to add by hand any holding a
+  check needs that the seed lacks.
 
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
 after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes
@@ -273,17 +282,20 @@ about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass
 ## Load rule
 
 During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
-`check:all` or `make verify` outside the queue, and no other pass replaces a green queued
+`check:all` or `make verify` outside the queue (kill-guard `heavyJob` denies it), and no other
+pass replaces a green queued
 verify line (harness-workflow skill, "Load rule").
 
 Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queue.sh`, which
 serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
 load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
 agent until RESUME, and a RESUME names its limits (one agent, targeted jest with
-`--maxWorkers=2`). The one exception is built into the queue: a gate at the head waits while
-the 5-minute load is at the limit, for at most the maximum wait (`GATE_START_MAX_LOAD`,
-`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`), then
-starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. A
+`--maxWorkers=2`). The one exception is built into the queue: a job of every class (verify,
+check-all, security, gate) at the head waits while the 5-minute load is at the limit, for at most
+`KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS` (default 1200; the one cap for every class, no alias;
+`GATE_START_MAX_LOAD`, `GATE_START_MAX_WAIT` in `scripts/job-queue.sh`), with one WAITING line,
+then starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. An unknown
+load prints a NOTE and does not defer. A
 TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
 `docs/harness/checks.md`). Do not
 add your own limit. Never run a whole-repo semgrep, a full jest run, or stryker outside
@@ -317,16 +329,19 @@ the repo-relative finding sets; the first finding sits on the `DETAILS:` line. S
 then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a
 `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold
 <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status`
-shows the hold, the power state, the running job, and the tickets. On battery NO job of any class
-starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
-too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit
-2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Queue
-from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch: the queue
-directory's `format` stamp makes an older copy refuse with exit 2, and a copy that differs from the
-target worktree's own script prints a WARNING. Closing a session kills its queue waiters: the next
-waiter that prunes a dead waiter's ticket writes one `lost` done.log line, and a reclaimed dead
-lock writes a lock-form `lost` line (its job may have run fully). At handover or
-close run `scripts/job-queue.sh status`, re-queue or hand over your own tickets. Keep
+shows the hold, the power state, the running job, and the tickets (it reads the tickets before
+the lock). `hold` stops no running job: for one that holds the lock it prints a `running:` line,
+and a start racing the hold backs off, the one that line names included. On battery NO job of any
+class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power
+state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list`
+("merge main first", exit 2) and a moved HEAD (exit 3); the queue never checks out files (the
+old H6 overlay is gone). Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a
+copy from another branch: the queue directory's `format` stamp makes an older copy refuse with
+exit 2, and a copy that differs from the target worktree's own script prints a WARNING.
+Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's ticket
+writes one `lost` done.log line, and a reclaimed dead lock writes a lock-form `lost` line (its
+job may have run fully). At handover or close run `scripts/job-queue.sh status`, re-queue or
+hand over your own tickets. Keep
 `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm ->
 bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all
 or verify reads the worktree throughout the run; never queue one while a developer still edits that

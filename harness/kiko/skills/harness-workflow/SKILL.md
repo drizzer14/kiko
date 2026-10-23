@@ -68,11 +68,13 @@ Rules:
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
 - A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
 
-- Run the FULL jest (`make verify`) before every BATCH READY. `check:all`
+- Run the FULL jest through the queued verify (`bash scripts/job-queue.sh verify <worktree>
+  <label>`; a typed `make verify` is denied) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory
-  and guard-rule jest suites run only in `make verify`.
+  and guard-rule jest suites run only in the verify.
 - A change set that adds a repo-wide invariant or rule merges main first and re-runs
-  `check:all`: the new rule must hold on code main gained since the base. After that merge the
+  `check:all` (queued: `bash scripts/job-queue.sh check-all <worktree> <label>`): the new rule
+  must hold on code main gained since the base. After that merge the
   mutation gate uses the merged main tip as `KIKO_MUTATION_BASE` (see "Mutation base after a
   track merged next").
 - Per-task deep gates: a per-file floor miss is fixed with tests only,
@@ -110,8 +112,9 @@ call without knowing where the plugin lives.
   - the developer's report: `--gate commit --verdict pass --role developer` (a fix round's
     report too); put the dispatch time and the estimate in `--note` on the step's first event;
   - `check:all`: `--gate check --verdict pass` or `--gate check --verdict fail`;
-  - `make verify` or the full jest: `--gate test --verdict pass` or `--gate test --verdict fail`;
-  - `make deep` (the coordinator who runs it logs it): `--gate deep --verdict pass` or
+  - the queued verify or the full jest: `--gate test --verdict pass` or
+    `--gate test --verdict fail`;
+  - the queued gate (the coordinator who queues it logs it): `--gate deep --verdict pass` or
     `--gate deep --verdict fail`;
   - `kiko:reviewer` APPROVE: `--gate review --verdict approve`; FIX FIRST: `--gate review
     --verdict changes`; both with `--findings N` and `--mechanizable N` counted from the
@@ -215,8 +218,10 @@ only failure is osv with the tracked CVEs (`docs/harness/dependency-hygiene.md`)
 the mutation part; read the CHANGE SET TOTAL and per-file lines in its gate log.
 
 Who and when (coordinator ruling, 2026-09-27): the COORDINATOR runs
-`KIKO_MUTATION_BASE=<change set base sha> make deep` detached for each
-reviewed change set (<= 30 source files), before its merge into next.
+`bash scripts/job-queue.sh gate <worktree> <label> <base sha> <head sha>` (run_in_background)
+for each reviewed change set (<= 30 source files), before its merge into next. A typed
+`make deep` is denied; `KIKO_MUTATION_BASE=<base sha> make mutable` stays allowed for the file
+count.
 Orchestrators never run it. The orchestrator's batch-ready report (the
 message that tells the coordinator a change set is reviewed and ready
 to merge) names the change set's base sha and the run id (the coordinator works in the main
@@ -429,7 +434,7 @@ the track branch fast-forwarded.
 A fix round for an earlier change set never sits on top of a later one:
 fix it in its own worktree off that set's tip, then have ops run
 `git rebase --onto <fix tip> <old base> <branch>` for the later set, then
-run the full `make verify`.
+run the full verify, queued (`bash scripts/job-queue.sh verify <worktree> <label>`).
 
 ## Mutation base after a track merged next
 
@@ -462,9 +467,9 @@ merge-conflict files".
 
 ## The Stop tier replays the pre-write guard
 
-The kill-guard denies Bash writes into `src/`, `__tests__/`, `rules/`,
-`e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`, `.claude/agents/`, all of
-`harness/kiko/`, and YAML files; the denied forms and the known
+The kill-guard denies Bash writes into the folders of `WRITE_GUARDED_TREES` (read it in
+`scripts/checks/kill-guard.js`; all of `harness/kiko/` is included) and into YAML files; the
+denied forms and the known
 limits are listed in
 kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
@@ -497,9 +502,10 @@ SendMessage bullet above). Mechanism: `orca terminal send --text "<cmd>" --enter
 read just the tail with `orca terminal read`. Full CLI usage:
 `orca skills get orca-cli` (do not copy that guide's content here).
 
-Route commands this way, including: `npm run deploy:device`,
-`npm run check:all`, `npm run check:deep`, `npx jest`, `pod install`,
-`npm install`, and Metro (`npm start`).
+Route commands this way, including: `npm run deploy:device`, `pod install`,
+`npm install`, and Metro (`npm start`). Heavy jobs (`check:all`, `check:deep`, the full jest,
+verify, the mutation gate) go through `scripts/job-queue.sh`, never an Orca terminal: kill-guard
+denies them typed (`heavyJob`, `fullJest`), and a quoted `orca terminal send` text is not judged.
 
 Read the tail before you close the terminal — closing
 (`orca terminal close --terminal <handle>`) removes its buffer, so a
@@ -639,9 +645,10 @@ this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
 which accepts file args and falls back to the whole repo with none).
 Each touched test file must also pass the check alone, not only as
 part of the whole changed-file set. A `WARNING` on exit 0 means a large
-file (or the combined large-file run) is over 5%, or that the pass could not
-measure (a could-not-measure, could-not-list, or mktemp WARNING carries no
-figure): it does not block, but do not grow a figure. The non-blocking
+file (or a scoped combined large-file run) is over 5% but at or under its ceiling in
+`scripts/checks/dup-ceilings.tsv`: it does not block, but do not grow a figure. Every other
+large-file finding (above the ceiling, unlisted, could not measure or list, mktemp) exits 2
+and names the file and the ceilings file. The
 large-file pass runs on every call, a dedup skip included; see kiko-linter
 "`check:dup` measures the files jscpd skips for size".
 
@@ -708,9 +715,12 @@ await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal std
 then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a
 `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold
 <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status`
-shows the hold, the power state, the running job, and the tickets. On battery NO job of any class
-starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
-too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
+shows the hold, the power state, the running job, and the tickets (it reads the tickets before
+the lock). `hold` stops no running job: for one that holds the lock it prints a `running:` line,
+and a start racing the hold backs off, the one that line names included. On battery NO job of any
+class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power
+state holds too. A load wait at the head of the queue is in the ops skill, "Load rule". A gate
+refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
 exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
 Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
 (an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
@@ -727,7 +737,8 @@ a developer still edits that tree. done.log's head field is `unknown` if the tre
 START or at the end, or HEAD moved.
 
 During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
-`check:all` or `make verify` outside the queue; brief every subagent so. A green jest of a
+`check:all` or `make verify` outside the queue (kill-guard denies it: `heavyJob`, `fullJest`);
+brief every subagent so. A green jest of a
 verify plus a standalone queued `check:all` (ruling E), or a sim pass, never replaces a green
 queued verify line, which `scripts/ff-main.sh` requires for the sha. The same rule is in the
 ops skill's "Load rule" section.

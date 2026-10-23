@@ -60,7 +60,7 @@ Rules:
 - Orchestrator small change set (developer + review + fix round + gate):
   dispatch-to-BATCH-READY is around 40 minutes once sized from history;
   an agent's own stated estimate ("60-90 min") runs roughly 2x high.
-- Mutation (`make deep` / Stryker), whole-file history: these file counts
+- Mutation (the queued gate / Stryker), whole-file history: these file counts
   predate changed-line runs, which mutate only the changed lines. The
   driver is now `changed lines:` from `make mutable`, not the file count;
   quote a changed-line run from the log once it has rows. Measured
@@ -73,7 +73,7 @@ Rules:
     as much as file count)
 - Mutation 10-14 files: 58-119 min; 23-25 files: 206-224 min; a re-run after
   a tests-only floor fix: ~24 min (incremental).
-- Merge-result `make verify` on a quiet machine: 7-9 min.
+- Merge-result queued verify on a quiet machine: 7-9 min.
 - Rule reversal touching many tests: x1.5-2; hook-code task (kill-guard):
   x1.7-2.6 of the agent estimate.
 - Stryker's start-of-run ETA is unreliable (~7 h quoted for a 224 min run).
@@ -84,7 +84,9 @@ Rules:
 - Measured 2026-10-19: a 436-mutant, 18-file gate took 2 h 11 min with the standing patch,
   3 h 48 min on the same change set without it.
 - A TIMEOUT-HEAVY rerun adds a Stryker dry run plus the rerun mutants and a load wait; a gate
-  can start late at high load (`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`).
+  can start late at high load (`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`). Any queued job
+  (verify, check-all, security, gate) can start late the same way, up to the cap (1200 s by
+  default); add that wait to a verify or check-all estimate.
 
 These are a snapshot of a small sample, not a formula — always re-check
 against the log's current rows, which may have more by the time you read

@@ -35,9 +35,14 @@ in the harness repo):
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
 - H8 generic ports (pff-ios branch harness-h8): the TIMEOUT-HEAVY rerun inside the mutation gate
   (`mutation.sh`, `mutation-score.js --rerun-candidates`, `mutation-rerun.js`); the gate start
-  defer on load in `job-queue.sh`; the `ff-main.sh` rule refusing a plugin.json version
-  decrease, removal or unreadable version; the `knip-ignore-documented` pin suite
-  (`__tests__/knip-ignore-documented.test.ts`).
+  defer on load in `job-queue.sh` (every job class, one cap); the `ff-main.sh` rule refusing a
+  plugin.json version decrease, removal or unreadable version; the `knip-ignore-documented` pin
+  suite (`__tests__/knip-ignore-documented.test.ts`).
+- H10 task 2 generic ports (check against harness HEAD before porting; the trie and the step
+  counter are already in the harness): the main-move forms of `kill-guard-main-moves.js` (a pull
+  and an exported or `-c` fetch refspec into main, a linked worktree put onto main); the
+  `job-queue.sh` `hold` `running:` line, the `status` read order and the load-wait fix; the
+  `kill-guard.sh` EXIT trap on its stderr temp file; the harness `32913f8` status change.
 - H9 generic port: the Stryker jest-runner exact-Set patch (`patches/@stryker-mutator+jest-runner+
   8.7.1.patch`, `__tests__/stryker-jest-runner-patch.test.ts`, the `mutation.sh` patched-runner
   preflight, and the `docs/harness/dependency-hygiene.md` "Standing patch" section). The
@@ -183,7 +188,8 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
 8. The orchestrator re-verifies every "green" claim itself (sync 2 caught a misreported test
    count).
 9. BATCH READY, then the coordinator re-runs `npm test` AND `npm run check:all` at the tip
-   before any push, then the user's OK, then
+   before any push (pending the user's A/B/C, see the P1 CLAUDE.md draft: from a pff-ios
+   session both commands are denied), then the user's OK, then
    `git -C <harness main> merge --ff-only <tip>` (the raw form applies to a repo that has no
    `scripts/ff-main.sh`; where it exists, run `bash scripts/ff-main.sh <tip>` after a queued
    `verify` of the tip) and push. The
@@ -267,6 +273,39 @@ Every count and exit code is the orchestrator's own measured result.
   the `.claude/skills` and `.claude/agents` entries. The
   plugin-folder entry is repo-specific: in the harness repo it is that repo's plugin folder,
   not `harness/kiko`. Create `.claude/agents/.gitkeep` so the path resolves.
+- kill-guard H10 task 1 (guard gaps), port items:
+  - the `mainMove` module `scripts/checks/kill-guard-main-moves.js` (`mainMoveTarget`) and its
+    wiring in `kill-guard.js` (`mainMoveFinding`, the `mainMove` kind in `SCRIPT_KINDS`,
+    `SCRIPT_GIT_KINDS` and `EXPANDED_KINDS`, not in `DATA_KINDS`) with the fail-closed rule for
+    an unresolved `-C`/`cd` target or a missing cwd. `MAIN_CHECKOUT_PATH` and the folder list are
+    repo-specific: set them to the target repository's own.
+  - the missing-destination rule (a `cp -r`/`mv` of one folder onto a missing tree parent or
+    `.git` folder denies, `-T` included) and the `.git` contents/config copy rules
+    (`namesGitFolder`, `namesWorktreeGitFolder`, `gitConfigsIn`).
+  - the script-scan stdin forms (a shell or `source /dev/stdin` fed by a `< file` redirect).
+  - the `fast.sh` `.js` arm plus the per-file `.js` scope of `comment-line-width.sh` (the
+    per-file case pattern: `scripts/*.js`, `*/scripts/*.js`, `rules/fixtures/*.js`, `githooks/*`;
+    wider than the project-wide check; the list is repo-specific).
+  - the `kill-guard.sh` node-status deny (node runs but `kill-guard.js` cannot load: the
+    wrapper prints a deny, DETAILS names the status and first error line; node missing and a
+    malformed payload stay allows), the rows in `__tests__/kill-guard-hook-load.test.ts`, and
+    the `__tests__/test-support/copy-kill-guard.ts` helper (a fixture copies the guard plus
+    every required sibling, derived from the requires; `hook-dispatch.test.ts` uses it).
+- kill-guard and checks, H10 task 4, port items. Generic:
+  - the `heavyJob` and `fullJest` kinds with `rules.queued` and `noteQueuedJob` (the heavy
+    target and runner lists are per repository; they are in neither `SCRIPT_KINDS` nor
+    `DATA_KINDS`); `MAKE_DRY_RUN_FLAGS` and `JEST_ARRAY_OPTIONS` are generic, but check the
+    harness repository's own test runner first (`npm test` there is `node --test`, which the
+    deny reads as `fullJest`).
+  - `docs/superpowers` as a configurable guarded tree with the no-parent-rule flag
+    (`TREES_WITHOUT_PARENT_RULE`); exact Semgrep option matching; `harness_require_one_target`
+    in `_lib.sh`; `HARNESS_DOC_JEST_WORKERS`; the dup ceilings design (a ceilings file with a
+    `*combined*` row, checked up front for a malformed row).
+  - the history-id arms (set, task, track and run ids, case-insensitive),
+    `kiko-no-set-or-map-in-subset-match`, and the one-letter `l` in the full-word denylist.
+  Pff-only: the P15 file-name set and the `src/test-support` exclude (CS2); the CS4 `src/`
+  header paths and the `find src` fingerprint. `shipped-migrations` is not ported yet (see
+  "From sync 2 and earlier").
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

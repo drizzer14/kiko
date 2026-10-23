@@ -44,3 +44,51 @@ wordHyphenId=1
 # EXPECT-FINDING
 # Step-T12 set it.
 wordHyphenIdAtStart=1
+
+# EXPECT-FINDING
+# Fixed in set 3/5: the retry sits here.
+setFraction=1
+
+# EXPECT-FINDING
+# Added after the set 9 review: the retry sits here.
+setReview=1
+
+# EXPECT-FINDING
+# Added in the set 2 fix round: the retry sits here.
+setFixRound=1
+
+# EXPECT-FINDING
+# Added in H10 task 4/4: the retry sits here.
+trackTaskFraction=1
+
+# EXPECT-FINDING
+# Added in H9 t3: the retry sits here.
+trackShortTask=1
+
+# EXPECT-FINDING
+# Added in H10 set 3: the retry sits here.
+trackSet=1
+
+# EXPECT-FINDING
+# Added in the H7 backlog item: the retry sits here.
+trackBacklog=1
+
+# EXPECT-FINDING
+# Added by 20261023T0023-kiko-harness-h10/1: the retry sits here.
+runId=1
+
+# EXPECT-FINDING
+# Added in task 2/3: the retry sits here.
+taskFraction=1
+
+# EXPECT-FINDING
+# Added after the task 3 review: the retry sits here.
+taskReview=1
+
+# EXPECT-FINDING
+# Q2 = A: the retry sits here.
+decisionAnswer=1
+
+# EXPECT-FINDING
+# Added in H10 Set 3: the retry sits here.
+trackCapitalSet=1

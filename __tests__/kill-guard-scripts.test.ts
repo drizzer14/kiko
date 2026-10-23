@@ -136,6 +136,7 @@ scriptWith(
 scriptWith('sources.sh', `source ${KILLING}\nbash ${KILLING}\n`);
 scriptWith('huge.sh', `${'# padding\n'.repeat(30000)}pkill node\n`);
 scriptWith('empty.sh', '');
+scriptWith('other.sh', 'echo harmless\n');
 scriptWith('shebang-only.sh', '#!/bin/bash\n', 0o755);
 mkdirSync(join(SCRATCH, 'folder.sh'));
 symlinkSync(KILLING, join(SCRATCH, 'link-to-kills.sh'));
@@ -195,6 +196,33 @@ const DENIED: string[] = [
   `bash ${join(SCRATCH, 'kills-all.sh')}`,
   'bash kills-plain.sh',
   'source kills-plain.sh',
+  // A shell reads its script from stdin when a `<` redirect feeds it, with or without `-s`, `-`,
+  // or the stdin device as its operand.
+  'bash < kills.sh',
+  'bash <kills.sh',
+  'bash 0< kills.sh',
+  '< kills.sh bash',
+  'sh < kills.sh',
+  'zsh < kills.sh',
+  'dash < kills.sh',
+  'sh -s < kills.sh',
+  'bash -s -- a b < kills.sh',
+  'bash - < kills.sh',
+  'bash /dev/stdin < kills.sh',
+  'bash -x < kills.sh',
+  'bash < ./kills.sh',
+  `bash < ${KILLING}`,
+  'bash < kills-all.sh',
+  'bash < kills-group.sh',
+  'bash < kills-pattern.sh',
+  'source /dev/stdin < kills.sh',
+  '. /dev/stdin < kills.sh',
+  'source /dev/fd/0 < kills.sh',
+  'sh -c "bash < kills.sh"',
+  'true && bash < kills.sh',
+  'eval "bash < kills.sh"',
+  'echo $(bash < kills.sh)',
+  `cd ${SCRATCH} && bash < kills.sh`,
 ];
 
 const ALLOWED: string[] = [
@@ -237,7 +265,23 @@ const ALLOWED: string[] = [
   'grep pkill kills.sh',
   'ls kills.sh',
   'chmod +x kills.sh',
-  'make verify',
+  'make mutable',
+  // A redirect feeds stdin to a shell that reads a script elsewhere, or none: nothing reads it.
+  'bash -c true < kills.sh',
+  'sh -c "echo hi" < kills.sh',
+  'bash other.sh < kills.sh',
+  'bash ./other.sh < kills.sh',
+  'bash < missing.sh',
+  'bash < folder.sh',
+  'bash < huge.sh',
+  'bash < own-pid.sh',
+  'bash < comment.sh',
+  'bash < empty.sh',
+  'python3 < kills.sh',
+  'cat < kills.sh',
+  'source other.sh < kills.sh',
+  // Known limit: text piped into a shell is not read; it takes the context of the pipeline.
+  'cat kills.sh | bash',
 ];
 
 const inScratch: Options = { cwd: SCRATCH };
@@ -385,15 +429,25 @@ describe('kill-guard script scan: every tracked script and the routine commands'
     'bash scripts/job-queue.sh gate /tmp/some-worktree label base head',
     'bash scripts/job-queue.sh check-all /tmp/some-worktree label',
     './scripts/job-queue.sh verify /tmp/some-worktree label',
-    'make verify',
-    'make gate',
-    'make jest',
     'bash scripts/wait-load.sh 4 300',
     'bash scripts/checks/fast.sh',
-    'npm run check:all',
     'bash scripts/ff-main.sh abc1234',
     'git -C /Users/drizzer14/Developer/Projects/pff-ios log --oneline -3',
     'bash scripts/ensure-git-hooks.sh',
+  ];
+  // Routine commands the queue denies outside `scripts/job-queue.sh`; the typed deny rows are in
+  // kill-guard-heavy-jobs.test.ts and kill-guard-jest-runs.test.ts.
+  const heavyChecks = [
+    'scripts/checks/verify.sh',
+    'scripts/checks/mutation.sh',
+    'scripts/checks/security.sh',
+  ];
+  const typedScripts = scripts.filter((file) => !heavyChecks.includes(file));
+  const flippedRoutine: [string, string][] = [
+    ['make verify', 'heavyJob'],
+    ['make gate', 'heavyJob'],
+    ['npm run check:all', 'heavyJob'],
+    ['make jest', 'fullJest'],
   ];
 
   it('tracks shell scripts to cover, hooks without an extension included', () => {
@@ -404,14 +458,14 @@ describe('kill-guard script scan: every tracked script and the routine commands'
   });
 
   it('allows `bash <file>` for every tracked shell script of this repository', () => {
-    const kinds = decideAll(scripts.map((file) => [`bash ${file}`, real]));
+    const kinds = decideAll(typedScripts.map((file) => [`bash ${file}`, real]));
 
-    expect(scripts.filter((_file, index) => kinds[index] !== 'allow')).toEqual([]);
+    expect(typedScripts.filter((_file, index) => kinds[index] !== 'allow')).toEqual([]);
   });
 
   it('allows `source <file>` and the absolute path of every tracked shell script', () => {
     const kinds = decideAll(
-      scripts.flatMap((file) => [
+      typedScripts.flatMap((file) => [
         [`source ${file}`, real],
         [`bash ${join(REPOSITORY_ROOT, file)}`, inScratch],
       ]),
@@ -420,10 +474,39 @@ describe('kill-guard script scan: every tracked script and the routine commands'
     expect(kinds.filter((kind) => kind !== 'allow')).toEqual([]);
   });
 
+  it('allows `bash < <file>` and `source /dev/stdin < <file>` for every tracked shell script', () => {
+    const kinds = decideAll(
+      scripts.flatMap((file) => [
+        [`bash < ${file}`, real],
+        [`source /dev/stdin < ${file}`, real],
+        [`bash < ${join(REPOSITORY_ROOT, file)}`, inScratch],
+      ]),
+    );
+
+    expect(kinds.filter((kind) => kind !== 'allow')).toEqual([]);
+  });
+
+  it('allows every tracked shell script run from a main checkout', () => {
+    const inFakeMain: Options = { cwd: FAKE_MAIN, mainCheckoutPath: FAKE_MAIN };
+    const commands = scripts.flatMap((file) => {
+      const absolute = join(REPOSITORY_ROOT, file);
+      const typed = heavyChecks.includes(file) ? [] : [`bash ${absolute}`, `source ${absolute}`];
+
+      return [...typed, `bash < ${absolute}`];
+    });
+    const kinds = decideAll(commands.map((command) => [command, inFakeMain]));
+
+    expect(commands.filter((_command, index) => kinds[index] !== 'allow')).toEqual([]);
+  });
+
   it('allows the routine commands of the coordinator, from the repository root', () => {
     const kinds = decideAll(routine.map((command) => [command, real]));
 
     expect(routine.filter((_command, index) => kinds[index] !== 'allow')).toEqual([]);
+  });
+
+  it.each(flippedRoutine)('denies %s as %s, from the repository root', (command, kind) => {
+    expect(decide(command, real)).toBe(kind);
   });
 
   it('allows the queue script as a worktree of this repository, by relative and absolute path', () => {

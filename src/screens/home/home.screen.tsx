@@ -314,7 +314,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
   const active = activeHoldings(holdings, accounts);
   const total = guardedNetWorth(active, baseCurrency, rateTable, now, priceBook);
-  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now, priceBook);
+  // A currency whose total is exactly zero is noise in the breakdown; the headline still counts it.
+  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now, priceBook).filter(
+    (money) => !money.isZero(),
+  );
 
   // The full span of transaction dates, shown as the date-range field's default
   // display when no range is active. It never filters — it only tells the user

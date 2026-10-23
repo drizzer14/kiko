@@ -35,7 +35,7 @@ import {
   partsOfHoldingKey,
   PREVIOUS_BTC_HOLDING_NAMES,
 } from './binance.holding-keys';
-import { isTrackedBinanceAsset } from './binance.tracked-coin';
+import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
@@ -215,6 +215,21 @@ const spotRead = (account: BinanceAccount): WalletRead => {
 
   return readOf(entriesOf(account.balances, ['free', 'locked']));
 };
+
+/**
+ * `${free}/${locked}` as Binance sent it, per ticker of the Spot body. An entry with a field that
+ * is no text is left out, so the trade read sees its coin as `0/0` and counts it as changed.
+ */
+const spotBalanceTextsOf = (account: BinanceAccount): Record<string, string> =>
+  Object.fromEntries(
+    (account.balances as readonly unknown[])
+      .filter(isRecord)
+      .flatMap(({ asset, free, locked }) =>
+        typeof asset === 'string' && typeof free === 'string' && typeof locked === 'string'
+          ? [[binanceTickerOf(asset), `${free}/${locked}`]]
+          : [],
+      ),
+  );
 
 /** Funding balances: `free + locked + freeze + withdrawing` per tracked coin. */
 const fundingRead = (assets: BinanceFundingAsset[]): WalletRead => {
@@ -518,6 +533,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
         ...balanceListPatches({ spot, funding, earn }),
         { kind: 'balanceSyncedAt', value: deps.now() },
       ],
+      spotBalanceTexts: spotBalanceTextsOf(spotAccount),
     };
   },
 };

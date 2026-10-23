@@ -7,5 +7,8 @@ export * from './binance.transactions';
 export * from './binance.pay-history';
 export * from './binance.transfer-history';
 export * from './binance.earn-history';
+export { syncBinanceConvertHistory } from './binance.convert-history';
+export { syncBinanceDustHistory } from './binance.dust-history';
+export { syncBinanceTradeHistory } from './binance.trade-history';
 export * from './binance.history-budget';
 export * from './migrate-binance-credential';

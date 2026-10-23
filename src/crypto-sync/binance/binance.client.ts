@@ -1,4 +1,5 @@
 import { guard } from 'fnts';
+import { match } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import { BINANCE_API_ENDPOINT } from '@env';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -78,6 +79,23 @@ export class BinanceHistoryTooOldError extends Error {
 const HISTORY_TOO_OLD_CODE = -5026;
 
 /**
+ * A read of a symbol Binance does not know (code -1121, HTTP 400). It names the one symbol and
+ * says nothing of the account, so a trade read of many symbols can end that symbol alone, where
+ * every other request failure is not known to be so narrow.
+ */
+export class BinanceInvalidSymbolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BinanceInvalidSymbolError';
+    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
+    // `instanceof` relies on unless it is restored explicitly.
+    Object.setPrototypeOf(this, BinanceInvalidSymbolError.prototype);
+  }
+}
+
+const INVALID_SYMBOL_CODE = -1121;
+
+/**
  * Binance error bodies are `{ code, msg }`. A non-JSON body (a gateway HTML page) is no body at
  * all.
  */
@@ -98,9 +116,10 @@ const requestFailedOf = async (response: Response): Promise<Error> => {
     detail: typeof msg === 'string' ? `: ${msg}` : '',
   });
 
-  return code === HISTORY_TOO_OLD_CODE
-    ? new BinanceHistoryTooOldError(message)
-    : new Error(message);
+  return match(code)
+    .with(HISTORY_TOO_OLD_CODE, () => new BinanceHistoryTooOldError(message))
+    .with(INVALID_SYMBOL_CODE, () => new BinanceInvalidSymbolError(message))
+    .otherwise(() => new Error(message));
 };
 
 /**
@@ -121,8 +140,20 @@ const readBody = guard(
 /** The asset the history reads still filter to; the balance reads take every asset. */
 export const BINANCE_ASSET = 'BTC';
 
-/** A signed request's parsed body alongside its response headers. */
-export type SignedPage = { body: unknown; headers: Headers };
+/** A request's parsed body alongside its response headers. */
+export type RequestPage = { body: unknown; headers: Headers };
+
+/**
+ * A 429 (weight limit) or 418 (IP ban) is checked BEFORE the body is read, so both throw
+ * `BinanceRateLimitError` for the caller's cooldown, in a signed and in a public read alike.
+ */
+const pageOf = async (response: Response): Promise<RequestPage> => {
+  if (response.status === 429 || response.status === 418) {
+    throw new BinanceRateLimitError(response.status, retryAfterMsFromHeaders(response.headers));
+  }
+
+  return { body: await readBody(response), headers: response.headers };
+};
 
 /**
  * One signed Binance request. HMAC-SHA256 over the full query
@@ -146,7 +177,7 @@ export const signedRequestPage = async (
   path: string,
   params: Record<string, string>,
   { fetchImpl = fetch, now = Date.now }: FetchAccountOptions = {},
-): Promise<SignedPage> => {
+): Promise<RequestPage> => {
   const query = new URLSearchParams({
     ...params,
     timestamp: String(now()),
@@ -163,11 +194,25 @@ export const signedRequestPage = async (
     },
   );
 
-  if (response.status === 429 || response.status === 418) {
-    throw new BinanceRateLimitError(response.status, retryAfterMsFromHeaders(response.headers));
-  }
+  return pageOf(response);
+};
 
-  return { body: await readBody(response), headers: response.headers };
+/**
+ * One public (market data) Binance request: no key header and no signature, so nothing of the
+ * user reaches it. The 429 and 418 checks are those of `signedRequestPage`, the same typed error
+ * for the caller's cooldown; any other non-ok answer rejects like a signed read.
+ */
+export const publicRequestPage = async (
+  path: string,
+  params: Record<string, string>,
+  { fetchImpl = fetch }: Pick<FetchAccountOptions, 'fetchImpl'> = {},
+): Promise<RequestPage> => {
+  const response = await fetchImpl(
+    `${BINANCE_API_ENDPOINT}${path}?${new URLSearchParams(params).toString()}`,
+    { method: 'GET', headers: { 'Cache-Control': 'no-store' } },
+  );
+
+  return pageOf(response);
 };
 
 const signedRequest = async (

@@ -28,8 +28,19 @@ describe('LANE_CALL_CAPS', () => {
       pay: 20,
       transfer: 80,
       earn: 30,
+      convert: 20,
+      dust: 1,
       market: 150,
+      tradeSymbols: 1,
+      trades: 100,
     });
+  });
+
+  it('keeps the trade lane and the symbol list under the /api/* budget when both spend their caps', () => {
+    expect(
+      LANE_CALL_CAPS.trades * COSTS.myTrades.api +
+        LANE_CALL_CAPS.tradeSymbols * COSTS.exchangeInfo.api,
+    ).toBeLessThanOrEqual(API_IP_BUDGET_1M);
   });
 });
 
@@ -56,6 +67,7 @@ describe('createBinanceRunBudget — per-lane call caps', () => {
     ['pay', COSTS.pay, 20],
     ['transfer', COSTS.transfer, 80],
     ['earn', COSTS.earn, 30],
+    ['convert', COSTS.convert, 20],
   ] as const)('caps the %s lane at %i calls', (lane, cost, cap) => {
     const budget = createBinanceRunBudget();
 
@@ -114,6 +126,77 @@ describe('createBinanceRunBudget — calls kept for later', () => {
     expect(budget.canAfford('pay', COSTS.pay, 1)).toBe(true);
   });
 
+  it('gives the Convert lane no narrowing call past its cap, and 20 calls fit the UID ceiling', () => {
+    const budget = createBinanceRunBudget();
+
+    spendCalls(budget, 'convert', 20);
+
+    expect(budget.canAfford('convert', COSTS.convert, 0, true)).toBe(false);
+    expect(LANE_CALL_CAPS.convert * COSTS.convert.uid).toBeLessThanOrEqual(UID_WEIGHT_BUDGET_1M);
+  });
+
+  it('allows one dust call and refuses the second', () => {
+    const budget = createBinanceRunBudget();
+
+    expect(budget.canAfford('dust', COSTS.dust)).toBe(true);
+
+    spendCalls(budget, 'dust', 1);
+
+    expect(budget.canAfford('dust', COSTS.dust)).toBe(false);
+    expect(budget.canAfford('dust', COSTS.dust, 0, true)).toBe(false);
+  });
+
+  it('judges a dust call by the SAPI IP reading', () => {
+    const refused = createBinanceRunBudget();
+    const allowed = createBinanceRunBudget();
+    refused.record('pay', { ...NO_READING, usedIpWeight1m: 6_000 });
+    allowed.record('pay', { ...NO_READING, usedIpWeight1m: 5_999 });
+
+    expect(refused.canAfford('dust', COSTS.dust)).toBe(false);
+    expect(allowed.canAfford('dust', COSTS.dust)).toBe(true);
+  });
+
+  it('allows one symbol-list call and refuses the second', () => {
+    const budget = createBinanceRunBudget();
+
+    expect(budget.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(true);
+
+    spendCalls(budget, 'tradeSymbols', 1);
+
+    expect(budget.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(false);
+    expect(budget.canAfford('tradeSymbols', COSTS.exchangeInfo, 0, true)).toBe(false);
+  });
+
+  it('judges a symbol-list call by the /api/* reading', () => {
+    const refused = createBinanceRunBudget();
+    const allowed = createBinanceRunBudget();
+    refused.record('market', { ...NO_READING, usedApiWeight1m: 2_981 });
+    allowed.record('market', { ...NO_READING, usedApiWeight1m: 2_980 });
+
+    expect(refused.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(false);
+    expect(allowed.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(true);
+  });
+
+  it('allows 100 trade calls and refuses the 101st', () => {
+    const budget = createBinanceRunBudget();
+
+    spendCalls(budget, 'trades', 99);
+    expect(budget.canAfford('trades', COSTS.myTrades)).toBe(true);
+
+    spendCalls(budget, 'trades', 1);
+    expect(budget.canAfford('trades', COSTS.myTrades)).toBe(false);
+    expect(budget.canAfford('trades', COSTS.myTrades, 0, true)).toBe(false);
+  });
+
+  it('judges an order re-read by its own weight, with the calls to keep counted in it', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('market', { ...NO_READING, usedApiWeight1m: 2_970 });
+
+    expect(budget.canAfford('trades', COSTS.orderFills, 5)).toBe(true);
+    expect(budget.canAfford('trades', COSTS.orderFills, 6)).toBe(false);
+    expect(budget.canAfford('trades', COSTS.myTrades, 1)).toBe(false);
+  });
+
   it('counts the calls to keep in the weight of an IP call too', () => {
     const budget = createBinanceRunBudget();
     budget.record('earn', { ...NO_READING, usedIpWeight1m: 5_701 });
@@ -133,7 +216,11 @@ describe('createBinanceRunBudget — narrowing calls', () => {
       pay: 0,
       transfer: 397,
       earn: 0,
+      convert: 0,
+      dust: 0,
       market: 0,
+      tradeSymbols: 0,
+      trades: 0,
     });
   });
 
@@ -242,7 +329,12 @@ describe('createBinanceRunBudget — weight readings', () => {
       account: { ip: 20 },
       transfer: { ip: 1 },
       earn: { ip: 150 },
+      convert: { uid: 3_000 },
+      dust: { ip: 1 },
       klines: { api: 2 },
+      exchangeInfo: { api: 20 },
+      myTrades: { api: 20 },
+      orderFills: { api: 5 },
     });
   });
 

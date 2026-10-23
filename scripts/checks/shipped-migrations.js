@@ -7,7 +7,9 @@
 // that applied it. New behavior goes in a NEW migration, never in an old one,
 // not even as a comment.
 //
-// Usage: shipped-migrations.js <root> <base sha>...
+// Usage: shipped-migrations.js [--headers] <root> <base sha>...
+//
+// With --headers the script runs the second finding kind instead (see below).
 //
 // Each base sha is a commit that is already shipped (the wrapper passes the
 // merge-bases with main and next, main first). The protected set is the union
@@ -35,6 +37,17 @@
 // restore main's content and pass instead of failing one base or the other.
 //
 // A file that is absent at every base (the checked branch adds it) is free to change.
+//
+// Second finding kind (--headers): a migration NEW since the base (a .sql file
+// that no base has) must not name a `src/...` path in a SQL comment that is not
+// on disk. Only a backticked path inside a `--` line comment or a block comment
+// is read; a path in a string literal, a quoted identifier or SQL code is not.
+// A path ending in / must be a folder; any other path must be a file. Shipped
+// migrations are never read for this kind, and that is the point: a header
+// names the source as it was when the migration was written, a later src/ move
+// would fail a shipped header, and a shipped migration may not be edited to fix
+// it (2 stale paths already sit in shipped headers). An unshipped header is
+// still free to change, so a stale path there has a way out.
 //
 // Exit 0: clean. Exit 1: violations, one line each on stdout. Exit 2: the check
 // could not run (bad usage, a git or parse failure), so the wrapper fails
@@ -267,18 +280,137 @@ function findViolations(root, shas) {
   );
 }
 
+// Each opener maps to the character that closes it. A doubled closer inside a
+// ', " or ` literal is an escaped quote, not the end; ] has no escape.
+const QUOTE_CLOSERS = { "'": "'", '"': '"', '`': '`', '[': ']' };
+const SRC_PATH_IN_BACKTICKS = /`(src\/[^`\s]*)`/g;
+
+function skipQuoted(sql, openerPosition) {
+  const closer = QUOTE_CLOSERS[sql[openerPosition]];
+  let position = openerPosition + 1;
+
+  while (position < sql.length) {
+    if (sql[position] !== closer) {
+      position += 1;
+    } else if (closer !== ']' && sql[position + 1] === closer) {
+      position += 2;
+    } else {
+      return position + 1;
+    }
+  }
+
+  return sql.length;
+}
+
+// The comment that opens at `position`, as { text, end }, or undefined when none
+// does. An unterminated block comment runs to the end of the file, as in SQLite.
+function readCommentAt(sql, position) {
+  const opener = sql.slice(position, position + 2);
+
+  if (opener === '--') {
+    const lineEnd = sql.indexOf('\n', position);
+    const end = lineEnd === -1 ? sql.length : lineEnd;
+
+    return { text: sql.slice(position + 2, end), end };
+  }
+
+  if (opener === '/*') {
+    const close = sql.indexOf('*/', position + 2);
+
+    return close === -1
+      ? { text: sql.slice(position + 2), end: sql.length }
+      : { text: sql.slice(position + 2, close), end: close + 2 };
+  }
+
+  return undefined;
+}
+
+// The text of every SQL comment, found by one left-to-right scan: a quote opens
+// a literal or quoted identifier that is skipped whole (so a `--` or `/*` inside
+// it never starts a comment), and only a `--` or `/*` met in code opens one.
+function readSqlComments(sql) {
+  const comments = [];
+  let position = 0;
+
+  while (position < sql.length) {
+    const comment = readCommentAt(sql, position);
+
+    if (comment !== undefined) {
+      comments.push(comment.text);
+      position = comment.end;
+    } else if (QUOTE_CLOSERS[sql[position]] !== undefined) {
+      position = skipQuoted(sql, position);
+    } else {
+      position += 1;
+    }
+  }
+
+  return comments;
+}
+
+function readHeaderPaths(sql) {
+  return [
+    ...new Set(
+      readSqlComments(sql).flatMap((comment) =>
+        [...comment.matchAll(SRC_PATH_IN_BACKTICKS)].map((match) => match[1]),
+      ),
+    ),
+  ];
+}
+
+// Returns why the named path does not hold, or undefined when it does.
+function describeHeaderPathProblem(root, named) {
+  const namesFolder = named.endsWith('/');
+  let stats;
+
+  try {
+    stats = fs.statSync(path.join(root, named.replace(/\/+$/, '')));
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+      return 'does not exist';
+    }
+
+    throw error;
+  }
+
+  if (namesFolder) {
+    return stats.isDirectory() ? undefined : 'is a file, but the trailing / names a folder';
+  }
+
+  return stats.isFile() ? undefined : 'is a folder, but the path has no trailing /';
+}
+
+function findMissingHeaderPaths(root, shas) {
+  const shipped = new Set([...new Set(shas)].flatMap((sha) => listBaseFiles(root, sha)));
+
+  return listWorkingFiles(root)
+    .filter((file) => file.endsWith('.sql') && !shipped.has(file))
+    .sort()
+    .flatMap((file) =>
+      readHeaderPaths(fs.readFileSync(path.join(root, file), 'utf8')).flatMap((named) => {
+        const problem = describeHeaderPathProblem(root, named);
+
+        return problem === undefined
+          ? []
+          : [`${file}: its header names ${named}, which ${problem}`];
+      }),
+    );
+}
+
 function runCli() {
-  const [root, ...shas] = process.argv.slice(2);
+  const [first, ...rest] = process.argv.slice(2);
+  const headers = first === '--headers';
+  const [root, ...shas] = headers ? rest : [first, ...rest];
 
   if (!root || shas.length === 0) {
-    process.stderr.write('usage: shipped-migrations.js <root> <base sha>...\n');
+    process.stderr.write('usage: shipped-migrations.js [--headers] <root> <base sha>...\n');
     process.exit(2);
   }
 
   let violations;
 
   try {
-    violations = findViolations(root, shas);
+    violations = headers ? findMissingHeaderPaths(root, shas) : findViolations(root, shas);
   } catch (error) {
     process.stderr.write(`shipped-migrations: could not check: ${error.message}\n`);
     process.exit(2);

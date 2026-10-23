@@ -3,6 +3,7 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
+harness_require_one_target "Comment line width" "$@" || exit 2
 ROOT="$(cd "$DIR/../.." && pwd)"
 TARGET="${1:-}"
 
@@ -36,15 +37,21 @@ if [ -n "$pinned" ]; then
   pin_arguments=(--pinned "$pinned" --root "$pin_root")
 fi
 
-# Per-file mode (one file argument; fast.sh calls it for a shell, YAML or githooks write). A file
-# of a type the project-wide mode does not read is out of scope. A path that is not an existing
-# regular file (deleted, or a directory) exits 2 with a block. Content dedup is not used: one
-# file is cheaper to read than to fingerprint.
+# Per-file mode (one file argument; fast.sh calls it for a .js, shell, YAML or githooks write). A
+# file of a type or in a folder the project-wide mode does not read is out of scope. The case
+# below is the scope: a .js file counts only below any scripts/ path segment (at any depth),
+# rules/fixtures/ or githooks/ (a generated header such as the one in
+# drizzle/migrations/migrations.js would otherwise block every edit of it). A path that is not an
+# existing regular file (deleted, or a directory) exits 2 with a block. Content dedup is not used:
+# one file is cheaper to read than to fingerprint.
 if [ -n "$TARGET" ]; then
   harness_require_file "Comment line width" "$TARGET" || exit 2
 
   case "$TARGET" in
-    *.ts | *.tsx | *.js | *.sh | *.bash | *.yml | *.yaml | githooks/* | */githooks/*) : ;;
+    githooks/* | */githooks/* | scripts/*.js | */scripts/*.js | rules/fixtures/*.js \
+      | */rules/fixtures/*.js) : ;;
+    *.js) exit 0 ;;
+    *.ts | *.tsx | *.sh | *.bash | *.yml | *.yaml) : ;;
     *) exit 0 ;;
   esac
 

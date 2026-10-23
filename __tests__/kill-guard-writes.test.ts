@@ -3,12 +3,15 @@ import { tmpdir } from 'node:os';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
+import { stepsFor } from './test-support/kill-guard-decide';
+
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
 // writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, .claude/skills/,
-// .claude/agents/, or harness/kiko/ of any worktree of this repository, or into a YAML file
-// (final segment .yml/.yaml) anywhere in one except under node_modules/ (`sed -i`, `perl -i`, a
-// `>`/`>>` redirect, `tee`, a python or node one-liner) skips the pre-write guard, which sees
-// only Edit/Write/MultiEdit, so the hook denies it and points at Edit/Write.
+// .claude/agents/, docs/superpowers/, or harness/kiko/ of any worktree of this repository, or
+// into a YAML file (final segment .yml/.yaml) anywhere in one except under node_modules/
+// (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node one-liner) skips the
+// pre-write guard, which sees only Edit/Write/MultiEdit, so the hook denies it and points at
+// Edit/Write.
 //
 // Every text here is judged, never run: `decide` is called in node as a
 // parser only, and the hook rows only pipe JSON into kill-guard.sh. The
@@ -42,6 +45,8 @@ for (const folder of [
   'main/scripts/checks',
   'main/githooks',
   'main/.maestro',
+  'main/.claude',
+  'main/harness',
   'main/docs/src',
   'main/docs/x',
   'main/node_modules/package/src',
@@ -52,9 +57,12 @@ for (const folder of [
   'other/.git',
   'other/src',
   'plain/src',
+  'payload/skills',
+  'payload/kiko',
 ]) {
   mkdirSync(join(SCRATCH, folder), { recursive: true });
 }
+const PAYLOAD = join(SCRATCH, 'payload');
 writeFileSync(join(MAIN, '.git/worktrees/worktree/commondir'), '../..\n');
 writeFileSync(join(WORKTREE, '.git'), `gitdir: ${join(MAIN, '.git/worktrees/worktree')}\n`);
 
@@ -66,6 +74,12 @@ const decide = (command: string, options: Record<string, unknown> = {}): string 
   ).stdout;
 
 const decideInMain = (command: string): string => decide(command, { cwd: MAIN });
+
+// The guard's own scan steps for one command judged in main, instead of a clock reading.
+const judgedInMain = (command: string): { decision: string; steps: number; length: number } => ({
+  ...stepsFor(command, { projectRoot: MAIN, cwd: MAIN }),
+  length: command.length,
+});
 
 const DETAIL_SCRIPT = [
   'const { decide } = require(process.argv[1]);',
@@ -1148,7 +1162,271 @@ const ALLOWED_YAML: string[] = [
   'echo x > docs/x/config.yml/readme.md',
 ];
 
+// A recursive copy or a move onto a name that does not exist yet makes the SOURCE that folder, so a
+// missing `.claude` or `harness` in a worktree can be created from any folder, and its contents
+// are never named in the text. The fixture's `main` has both folders, a worktree has neither.
+const DENIED_MISSING_TREE_PARENT: string[] = [
+  `cp -r ${PAYLOAD} .claude`,
+  `cp -r ${PAYLOAD} .claude/`,
+  `cp -R ${PAYLOAD} .claude`,
+  `cp -a ${PAYLOAD} .claude`,
+  `cp -rp ${PAYLOAD} .claude`,
+  `cp --recursive ${PAYLOAD} .claude`,
+  `cp -r ${PAYLOAD} harness`,
+  `cp -r ${PAYLOAD} harness/`,
+  `cp -a ${PAYLOAD} harness/`,
+  `mv ${PAYLOAD} .claude`,
+  `mv ${PAYLOAD} .claude/`,
+  `mv ${PAYLOAD} harness`,
+  `mv ${PAYLOAD} harness/`,
+  `cp -r ${PAYLOAD} ./.claude`,
+  `cp -r ${PAYLOAD} ${WORKTREE}/.claude`,
+  `mv ${PAYLOAD} ${WORKTREE}/harness/`,
+  `cd src && cp -r ${PAYLOAD} ../.claude`,
+  `cp -r ${PAYLOAD} "$D"/.claude`,
+  `cp -r ${PAYLOAD} $D/harness/`,
+  `mv ${PAYLOAD} "$D"/.claude`,
+  `gmv -T ${PAYLOAD} .claude`,
+  `gmv -T ${PAYLOAD} harness`,
+  `gmv -T ${PAYLOAD} harness/`,
+  `gmv --no-target-directory ${PAYLOAD} .claude`,
+  `mv -T ${PAYLOAD} ${WORKTREE}/harness`,
+  `gmv -T ${PAYLOAD} "$D"/.claude`,
+  // The over-deny: a file moved to a name that is not yet a folder is told apart from a folder
+  // only once the source is read, so it is denied too (Write creates the file).
+  'mv a.md .claude',
+  'mv a.md harness',
+];
+
+const ALLOWED_MISSING_TREE_PARENT: string[] = [
+  `cp ${PAYLOAD}/a.json .claude`,
+  'cp a.json .claude/',
+  'cp a.json harness',
+  `cp -r ${PAYLOAD} docs`,
+  `cp -r ${PAYLOAD} .claudex`,
+  `cp -r ${PAYLOAD} .claude/commands`,
+  `mv ${PAYLOAD} harnessx`,
+  `mv ${PAYLOAD} harness/other`,
+  'mv a.md .claude/commands/',
+  `cp -r ${PAYLOAD} /tmp/y/.claude`,
+  `mv ${PAYLOAD} /tmp/y/harness`,
+  `gmv -T ${PAYLOAD} harnessx`,
+  `gmv -T ${PAYLOAD} .claude/commands`,
+  `gmv -T ${PAYLOAD} /tmp/y/harness`,
+  `cp -T ${PAYLOAD} .claude`,
+];
+
+// With the folder already there a plain copy or move lands inside it, under the source's own name.
+// A `-T` move never lands inside; its allow holds because the folder exists, is tracked and is
+// not empty, so the move cannot replace it.
+const ALLOWED_EXISTING_TREE_PARENT: string[] = [
+  `cp -r ${PAYLOAD} .claude`,
+  `cp -r ${PAYLOAD} .claude/`,
+  `cp -R ${PAYLOAD} harness`,
+  `mv ${PAYLOAD} harness/`,
+  `mv ${PAYLOAD} .claude`,
+  'mv a.md .claude',
+  'mv a.md harness',
+  `gmv -T ${PAYLOAD} .claude`,
+  `gmv --no-target-directory ${PAYLOAD} harness`,
+];
+
+// A folder that is no worktree of this repository has no tree parent to protect.
+const ALLOWED_OUTSIDE_PROJECT: string[] = [
+  `cp -r ${PAYLOAD} .claude`,
+  `cp -r ${PAYLOAD} harness/`,
+  `mv ${PAYLOAD} .claude`,
+  `mv ${PAYLOAD} harness`,
+  'mv a.md .claude',
+  `gmv -T ${PAYLOAD} .claude`,
+  `gmv -T ${PAYLOAD} harness`,
+];
+
+// A copy or move through xargs into a `.git` folder can write `.git/config` (core.hooksPath) under
+// a name the text does not show. The folder is judged with no project worktree around it and
+// through a destination the text cannot resolve.
+const DENIED_XARGS_INTO_GIT: string[] = [
+  'ls | xargs -I{} cp {} .git/',
+  'ls /tmp/cfg | xargs cp -t .git',
+  'ls | xargs -I{} mv {} .git/',
+  'ls | xargs cp -t "$D"/.git',
+  'find /tmp/c -type f | xargs -I{} cp {} /tmp/r/.git/',
+  'ls | xargs cp -t .git/worktrees/w',
+];
+
+const ALLOWED_XARGS_BESIDE_GIT: string[] = [
+  'ls | xargs -I{} cp {} /tmp/backup/',
+  'ls | xargs cp -t /tmp/r/.git/hooks',
+  'ls | xargs -I{} cp {} "$BK"/',
+  'ls | xargs -I{} cp {} .github/',
+  'ls | xargs -I{} cp {} /tmp/r/.gitx/',
+];
+
+// A glob or a folder's contents copied into `.git/`, and a folder that lands as a `.git` that does
+// not exist yet, write `.git/config` just as the xargs forms do.
+const DENIED_CONTENTS_INTO_GIT: string[] = [
+  'cp /tmp/cfg/* .git/',
+  'cp /tmp/cfg/* .git',
+  'cp -r /tmp/x/. .git/',
+  'cp -a /tmp/x/. .git',
+  'cp -r /tmp/x/* /tmp/r/.git/',
+  'cp -r "$SRC" .git/',
+  'cp -r /tmp/x/. "$D"/.git/',
+  'cp -rT /tmp/x .git',
+  'cp -rT /tmp/x .git/',
+  'gcp -rT /tmp/x .git',
+  'cp -aT /tmp/x /tmp/r/.git',
+  'cp -rT "$SRC" "$D"/.git',
+  'gmv -T /tmp/x /tmp/r/.git',
+  'cp --recursive --no-target-directory /tmp/x .git',
+  'cp -t .git /tmp/cfg/*',
+  'cp /tmp/cfg/* .git/worktrees/w/',
+  'cp /tmp/cfg/* .git/worktrees/w',
+  'cp -r /tmp/x/. /tmp/r/.git/worktrees/w/',
+  'cp -rT /tmp/x .git/worktrees/w',
+  'cp -t .git/worktrees/w /tmp/cfg/*',
+];
+
+const DENIED_MISSING_GIT_FOLDER: string[] = [
+  'cp -r /tmp/gitdir .git',
+  'cp -r /tmp/gitdir .git/',
+  'mv /tmp/gitdir .git',
+  'cp -R /tmp/gitdir ./.git',
+  'gmv -T /tmp/x .git',
+  'gmv --no-target-directory /tmp/x .git',
+  'mv -T /tmp/x .git/',
+];
+
+const ALLOWED_CONTENTS_BESIDE_GIT: string[] = [
+  'cp /tmp/cfg/* /tmp/r/.git/hooks',
+  'cp /tmp/cfg/* /tmp/backup/',
+  'cp -r /tmp/x/. /tmp/backup/',
+  'cp -r /tmp/x/. /tmp/r/.git/hooks/',
+  'cp /tmp/cfg/* .github/',
+  'cp /tmp/cfg/* .git/hooks',
+  'cp -r /tmp/x/. .git/hooks/',
+  'cp -r /tmp/gitdir /tmp/r/.gitx',
+  'cp -r /tmp/x/. /tmp/r/.gitignore.d/',
+  'cp -rT /tmp/x /tmp/backup',
+  'cp -rT /tmp/x /tmp/r/.git/hooks',
+  'cp -rT /tmp/x .git/hooks',
+  'cp -rT /tmp/x .github',
+  'cp -T /tmp/x /tmp/backup',
+  'gmv -T /tmp/x /tmp/y',
+  'gmv -T /tmp/x .git/hooks/old',
+  'gmv -T /tmp/x /tmp/r/.git/hooks',
+  'gmv -T /tmp/x .github',
+  'cp /tmp/cfg/* .git/worktrees/w/logs',
+  'cp /tmp/cfg/* .git/worktrees/',
+  'cp /tmp/cfg/* /tmp/r/.gitx/worktrees/w/',
+  'cp -t /tmp/backup /tmp/cfg/*',
+];
+
+const GIT_FOLDER_DIRECTORIES: [label: string, options: Record<string, unknown>][] = [
+  ['a folder with no repository', { cwd: PLAIN }],
+  ['an unrelated repository', { cwd: OTHER }],
+  ['no folder', {}],
+];
+
 describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each(DENIED_MISSING_TREE_PARENT)(
+    'denies a copy or move that may create .claude or harness in a worktree: %s',
+    (command) => {
+      expect(decide(command, { cwd: WORKTREE })).toBe('shellWrite');
+    },
+  );
+
+  it.each(ALLOWED_MISSING_TREE_PARENT)(
+    'allows a file copy, a name beside them, or a path outside the project: %s',
+    (command) => {
+      expect(decide(command, { cwd: WORKTREE })).toBe('allow');
+    },
+  );
+
+  it.each(ALLOWED_EXISTING_TREE_PARENT)(
+    'allows a copy or move into a .claude or harness that exists: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it.each(
+    [
+      ['an unrelated repository', OTHER],
+      ['a folder with no repository', PLAIN],
+    ].flatMap(([label, directory]) =>
+      ALLOWED_OUTSIDE_PROJECT.map((command) => [label, directory, command]),
+    ),
+  )('allows it in %s: %s', (_label, directory, command) => {
+    expect(decide(command, { cwd: directory })).toBe('allow');
+  });
+
+  it.each(
+    GIT_FOLDER_DIRECTORIES.flatMap(([label, options]) =>
+      DENIED_XARGS_INTO_GIT.map((command) => [label, options, command] as const),
+    ),
+  )('denies an xargs copy or move into a .git folder in %s: %s', (_label, options, command) => {
+    expect(decide(command, options)).toBe('shellWrite');
+  });
+
+  it.each(
+    GIT_FOLDER_DIRECTORIES.flatMap(([label, options]) =>
+      ALLOWED_XARGS_BESIDE_GIT.map((command) => [label, options, command] as const),
+    ),
+  )('allows an xargs copy or move beside a .git folder in %s: %s', (_label, options, command) => {
+    expect(decide(command, options)).toBe('allow');
+  });
+
+  it.each(
+    GIT_FOLDER_DIRECTORIES.flatMap(([label, options]) =>
+      DENIED_CONTENTS_INTO_GIT.map((command) => [label, options, command] as const),
+    ),
+  )('denies contents copied into a .git folder in %s: %s', (_label, options, command) => {
+    expect(decide(command, options)).toBe('shellWrite');
+  });
+
+  it.each(DENIED_CONTENTS_INTO_GIT.slice(0, 4))(
+    'denies contents copied into the .git folder of a project worktree: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('shellWrite');
+    },
+  );
+
+  it.each(['cp /tmp/cfg/* ../main/.git/', 'cp -r /tmp/x/. ../main/.git'])(
+    'denies contents copied into the .git folder of the main repository from a worktree: %s',
+    (command) => {
+      expect(decide(command, { cwd: WORKTREE })).toBe('shellWrite');
+    },
+  );
+
+  it.each(
+    [
+      ['a folder with no repository', { cwd: PLAIN }],
+      ['no folder', {}],
+    ].flatMap(([label, options]) =>
+      DENIED_MISSING_GIT_FOLDER.map((command) => [label, options, command] as const),
+    ),
+  )('denies a folder that may land as a missing .git in %s: %s', (_label, options, command) => {
+    expect(decide(command, options as Record<string, unknown>)).toBe('shellWrite');
+  });
+
+  it.each(DENIED_MISSING_GIT_FOLDER)(
+    'allows a folder copied into a .git that exists: %s',
+    (command) => {
+      expect(decide(command, { cwd: OTHER })).toBe('allow');
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it.each(
+    [...GIT_FOLDER_DIRECTORIES, ['a project worktree', { cwd: MAIN }] as const].flatMap(
+      ([label, options]) =>
+        ALLOWED_CONTENTS_BESIDE_GIT.map((command) => [label, options, command] as const),
+    ),
+  )('allows contents copied beside a .git folder in %s: %s', (_label, options, command) => {
+    expect(decide(command, options)).toBe('allow');
+  });
+
   it.each(DENIED_SCRIPTS_AND_GITHOOKS)(
     'denies a write into scripts/ or githooks/: %s',
     (command) => {
@@ -1332,23 +1610,44 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     expect(detailOf(command)).toContain(detail);
   });
 
-  it('judges 3000 write calls through a variable well inside the hook timeout', () => {
-    const command = `node -e "${"fs.writeFileSync(p, 'x');".repeat(3000)}"`;
-    const started = Date.now();
+  // Linear work is a small constant of steps per input character, and doubling the input roughly
+  // doubles the steps (quadratic work would quadruple them).
+  it('judges many write calls through a variable in linear work', () => {
+    const judge = (calls: number) =>
+      judgedInMain(`node -e "${"fs.writeFileSync(p, 'x');".repeat(calls)}"`);
+    const single = judge(1500);
+    const double = judge(3000);
 
-    expect(decideInMain(command)).toBe('allow');
-    expect(Date.now() - started).toBeLessThan(2000);
+    expect(double.decision).toBe('allow');
+    expect(double.steps).toBeGreaterThan(0);
+    expect(double.steps).toBeLessThanOrEqual(12 * double.length);
+    expect(double.steps / single.steps).toBeLessThan(2.5);
   });
 
-  // Copying every earlier assignment per assignment would take seconds of the hook's 10 for 10000.
-  it('judges thousands of assignments and plain commands well inside the hook timeout', () => {
-    const assignments = Array.from({ length: 10000 }, (_, index) => `v${index}=/tmp/x`).join('; ');
-    const plain = Array.from({ length: 6000 }, () => 'echo a').join('; ');
-    const command = `f=src/x.ts; ${assignments}; ${plain}; sed -i '' s/a/b/ $f`;
-    const started = Date.now();
+  // Each segment keeps the variables it saw, since the nested text of earlier segments still
+  // reads them; a scope that copied every earlier variable per assignment, or per subshell that
+  // assigns again, turns thousands of them into quadratic work. Each count leaves the chain of
+  // assignments one short of a multiple of 32, where a scope that merges its links at such a
+  // boundary would merge every earlier variable per subshell.
+  it('judges thousands of assignments, plain commands, and subshells in linear work', () => {
+    const judge = (count: number) => {
+      const repeat = (build: (_: unknown, index: number) => string): string =>
+        Array.from({ length: count }, build).join('; ');
+      const assignments = repeat((_, index) => `v${index}=/tmp/x`);
+      const plain = repeat(() => 'echo a');
+      const subshells = repeat(() => '(b=1)');
 
-    expect(decideInMain(command)).toBe('shellWrite');
-    expect(Date.now() - started).toBeLessThan(1500);
+      return judgedInMain(
+        `f=src/x.ts; ${assignments}; ${plain}; ${subshells}; sed -i '' s/a/b/ $f`,
+      );
+    };
+    const single = judge(2046);
+    const double = judge(4094);
+
+    expect(double.decision).toBe('shellWrite');
+    expect(double.steps).toBeGreaterThan(0);
+    expect(double.steps).toBeLessThanOrEqual(12 * double.length);
+    expect(double.steps / single.steps).toBeLessThan(2.5);
   });
 
   // A command that doubles a variable 31 times would build a string past the engine's limit, and

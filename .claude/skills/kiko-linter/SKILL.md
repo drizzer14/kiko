@@ -16,8 +16,9 @@ that check the app, not the app's own code style (see
 tree today.
 
 The root `Makefile`'s `verify` target (`make verify`, wrapping
-`scripts/checks/verify.sh`) is the single end-of-work command for the
-developer/qa agents: it runs lint, then the full Jest suite, then
+`scripts/checks/verify.sh`) is the end-of-work verify. The role agents ask the coordinator to
+queue it (`bash scripts/job-queue.sh verify <worktree> <label>`); a typed `make verify` is
+denied (see "Heavy-job and full-jest deny"). It runs lint, then the full Jest suite, then
 `check:all` (the fast+medium gate) as ORDERED, FAIL-FAST stages,
 stopping at the first failing stage rather than always running all
 three. Read `verify.sh` directly for the exact stage commands rather
@@ -49,6 +50,16 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `override-guard.sh`, so a deleted file on the medium tier is skipped silently, while a
   direct call with a deleted path exits 2. `component-i18n-namespace.sh` keeps its own `-d`
   block for its fixed root. `__tests__/wrapper-missing-path.test.ts` pins this.
+- A per-file wrapper takes one path or none, and refuses more than one. It reads only its
+  first argument, so a second path was skipped silently and its findings never reported.
+  `harness_require_one_target <check title> "$@"` in `_lib.sh` is the first call of
+  `import-order.sh`, `full-word-identifiers.sh`, `comment-line-width.sh`,
+  `blank-line-separation.sh`, `feature-imports.sh`, `screen-imports.sh`, `lint.sh` and
+  `secrets.sh`: two or more arguments exit 2 with the standard block, whose fix is one run per
+  path (or no path for the project-wide scan). The no-argument default is unchanged.
+  `dup.sh`, `override-guard.sh` and `security.sh` scan every path they get and stay open to
+  several; `dup.sh` also reads `scripts/checks/dup-ceilings.tsv` up front and exits 2 when it
+  is missing or malformed. `__tests__/wrapper-one-path.test.ts` pins this.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
   wrapper and every hook relies on. One exception is the deep,
@@ -68,9 +79,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   scan`), because a skip exits 0 without scanning and must never read as a
   fresh scan; and (b) the Class B WARNING block, because a non-blocking
   finding is override-eligible and still has to be seen. `dup.sh` states
-  its own exception: its large-file `WARNING` lines (see "`check:dup`
-  measures the files jscpd skips for size" below), because a non-blocking
-  measurement of tracked debt still has to be seen. `medium.sh` states a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0
+  its own exception: its large-file `WARNING` lines (a listed file at or under its ceiling; see
+  "`check:dup` measures the files jscpd skips for size" below), because a measurement of
+  tracked debt still has to be seen. Any other large-file finding exits 2. `medium.sh` states
+  a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line
+  `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0
   does not feed its stderr back to the agent, unless a later check in the
   same tier fails: the tier's whole stderr is then shown, so a `dup.sh`
   WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
@@ -98,7 +111,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   fail-loud/`exit 2` half of the contract either: it ALWAYS exits 0, prints
   nothing on allow, and prints the documented `permissionDecision: "deny"`
   JSON on stdout (never stderr) when the command is a pkill/killall or a
-  pattern/process-group kill. It has no `print_block`/`_lib.sh` dependency
+  pattern/process-group kill, and also when node runs but `kill-guard.js`
+  cannot load (a failed node run: any non-zero status or signal; fail-closed).
+  It has no `print_block`/`_lib.sh` dependency
   and no content-dedup fingerprint — a `PreToolUse` hook runs on every Bash
   call by design, and skipping one because "nothing changed" would mean
   skipping the one call the guard exists to catch. See `docs/harness/checks.md` "Automatic
@@ -264,7 +279,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
   sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
   version strictly above main's, and no commit may lower, remove, or make unreadable that
-  version while main has a readable one, user ruling 2026-10-18).
+  version while main has a readable one, user ruling 2026-10-18). After the move, when main
+  has a `patches/` folder, it runs main's own `node_modules/.bin/patch-package --error-on-fail`
+  (header step 8); a missing binary or a failed patch exits 2 AFTER main moved ("main DID
+  move"), and a re-run only retries the patch step. A `package-lock.json` or `patches/`
+  difference prints one WARNING naming `npm ci`, which the script never runs.
   `scripts/ff-main.sh` needs no exemption: its merge uses
   a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
@@ -272,15 +291,43 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   in the main checkout gets this deny only after the guard merges to
   main, because it runs main's own `kill-guard.js`.
 
+  The `mainMove` kind (user ruling: any command that moves the branch `main` goes through
+  `scripts/ff-main.sh`). Source: `scripts/checks/kill-guard-main-moves.js` (`mainMoveTarget`;
+  `mainMoveFinding` in `kill-guard.js` calls it), rows in `__tests__/kill-guard-main-moves.test.ts`.
+  Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
+  move the branch of the work tree they run in, so they count against the main checkout and
+  against a linked worktree whose HEAD names `main` (`headNamesMain`);
+  `git reset --soft HEAD~1` there is denied (user ruling: "any reset that moves HEAD of
+  main"), while `--hard` with no commit (or `HEAD`/`@`) and a `-- <path>` reset stay allowed.
+  A command that
+  writes the ref by name (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`,
+  `fetch`/`pull`/`push` into it, `symbolic-ref refs/heads/main`, `worktree add -B`) counts from
+  ANY worktree of this repository, since all worktrees share the refs; a `pull` runs
+  `fetch --update-head-ok`. A fetch or pull counts too when a `remote.<n>.fetch` refspec from
+  `-c`, `--config-env` (value unseen, so it counts) or `GIT_CONFIG_*` can write `main`; an
+  `export` or bare assignment of such a refspec is denied by itself
+  (`environmentFetchWritesMain`), as one for core.hooksPath is. A command that puts a linked
+  worktree onto `main` (`symbolic-ref HEAD <main ref>`, `checkout|switch
+  --ignore-other-worktrees main`, `worktree add -f` onto `main`) is a main move, since a reset
+  there then moves it. The header of `kill-guard-main-moves.js` is the full list.
+  In both scopes a place the text
+  cannot name (a `-C` or `cd` target held in a variable, a relative one with no payload `cwd`,
+  or a plain command with no `-C` and no `cwd`) fails closed, even when the command assigns the
+  variable (the "an assignment can only ADD a deny" invariant below). An unrelated repository
+  or a plain folder is no target, so a reset there is allowed; a no-cwd move with an absolute
+  `--git-dir` of an unrelated repository is allowed. With cwd in main and `--git-dir=<other>`, a
+  reset, `symbolic-ref HEAD` and `update-ref HEAD` stay denied, while a ref-name command is
+  judged on the named git directory only and is allowed. `mainMove` is in
+  `SCRIPT_KINDS` and `EXPANDED_KINDS` (read both in `kill-guard.js`) and is NOT in `DATA_KINDS`.
+  The way out is `bash scripts/ff-main.sh <sha>`. Known limits are in "Known limits" below.
+
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
-  guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
-  `.claude/agents/`, or any of `harness/kiko/` (its scripts, hooks, skills, agents and
-  `.claude-plugin/plugin.json`), or into any
-  `*.yml`/`*.yaml` file (user ruling 2, 2026-10-18)
-  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; read it there for the current list.
-  An entry may hold several segments (`.claude/skills`, `harness/kiko`): it matches a resolved
+  guard-replay at Stop). Rule: deny a Bash write into a guarded tree (read
+  `WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js` for the current list; `harness/kiko/`
+  is whole, its scripts, hooks, skills, agents and `.claude-plugin/plugin.json` included), or
+  into any `*.yml`/`*.yaml` file (user ruling 2, 2026-10-18).
+  (An entry may hold several segments (`.claude/skills`, `harness/kiko`): it matches a resolved
   path inside any worktree of this repository, and an unresolved path fails closed when its
   segments appear as consecutive non-final segments (as written, or with its `.` and `//`
   segments folded); matching is case-folded. A python/node join counts each literal path as a
@@ -292,11 +339,26 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   like): without `-T`, a source ending in `/` or `/.`, or with a glob or variable as its
   last segment (`cp -r /tmp/x/* .claude/`). A file copied into `.claude/` and a slash-less
   folder copied into `harness/` (`cp -r /tmp/kikox harness/`) stay allowed.
+  Missing-destination rule: a `cp -r` or `mv` of ONE folder onto a destination that does not
+  exist makes the destination a copy of that folder (measured on macOS; `-T` and
+  `--no-target-directory` included, so a `gmv -T` twin denies too), so the text cannot say what
+  lands there. It is denied when the destination is a missing `<worktree>/.claude`,
+  `<worktree>/harness`, or a `.git` folder (`createdFolders`, `guardedPlace` with `missing`);
+  it is allowed when the folder exists: without `-T` the copy lands inside it, and a `-T` move
+  never lands inside, but it cannot replace a tracked, non-empty `.claude` or `harness`.
+  The same `.git` rules: a copy of a folder's CONTENTS into a `.git` folder or a linked worktree's
+  `.git/worktrees/<n>/` (a glob, `src/.`, a variable, `cp -rT`, `cp -t .git <glob>`) is
+  denied, because it may write `config`, `config.worktree` or the hooks setting
+  (`namesGitFolder`, `namesWorktreeGitFolder`, `gitConfigsIn`); a write to a path that names a
+  git config file is judged by `namesGitConfig` (`GIT_CONFIG_PATH`: `.git/config`,
+  `.git/config.worktree`, `.git/worktrees/<n>/config.worktree`), also when unresolved.
   `scripts/` and `githooks/` match like `src/`: resolved inside any worktree of this repository, or
   unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
   `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
   worktree except under `node_modules/`, and counts when unresolved (fail closed). Resolved and
-  NOT covered: a scripts folder under `ios/` or `docs/`.
+  NOT covered: a scripts folder under `ios/` or `docs/`. `docs/superpowers` is a guarded tree
+  with no parent-folder rule (`TREES_WITHOUT_PARENT_RULE`), so the rest of `docs/` stays
+  shell-writable.
   Known limits: (a) an unquoted command-substitution prefix on a write target
   (`echo x > $(pwd)/src/a`) tokenizes as a standalone word, so the guarded path is never seen
   and the write is allowed, for every guarded tree; the quoted form is denied. (b) A `~/...`
@@ -306,10 +368,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   inside a worktree); the tree names fill only where the text resolves them. An unresolved
   destination such as `$X/harness/` is denied only for a recursive `cp` or a `mv`, through the
   `src` marker (`$X/harness/src/_`); a plain `cp` there stays allowed. The parent-folder rule
-  above is not applied behind `xargs`. (d) A copy of a folder's CONTENTS into a worktree root
+  above is not applied behind `xargs`. (d) A copy of a folder's CONTENTS into a worktree ROOT
   (`cp -r /tmp/x/ .`, `cp -r /tmp/x/. .`, `cp -r /tmp/x/* .`) is allowed for every tree (the
-  pinned allowed row is `cp -r /tmp/x/* .`). The parent-folder rule judges only
-  `<wt>/.claude` and `<wt>/harness` as the destination.
+  pinned allowed row is `cp -r /tmp/x/* .`); the contents rule above reaches only the
+  destinations it names (`<wt>/.claude`, `<wt>/harness`, a `.git` folder, a linked
+  worktree's `.git/worktrees/<n>/`).
   A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
   build the scratch from a git merge or commit, or use `git archive <sha> scripts |
   tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
@@ -407,7 +470,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   a folder in it is named like a tree. Allowed: reads, a redirect to
   `/dev/null` or outside the trees, git itself, a script file, and a
   formatter's or fixer's own `--write` (guard-replay re-checks what it
-  changes at Stop). Rows: `__tests__/kill-guard-writes.test.ts`
+  changes at Stop). After any `biome check --write`, run
+  `node scripts/checks/import-order.js <file>` on each touched file: biome can re-wrap an
+  import into a shape kiko-import-order rejects, and only guard-replay at Stop sees it.
+  Rows: `__tests__/kill-guard-writes.test.ts`
   (`projectRoot` is a test-only `decide` option). Where it is live:
   `dispatch.sh` runs `kill-guard.js` from the Bash call's own worktree,
   so `hooks.json` is unchanged and no plugin reinstall is needed; a
@@ -417,6 +483,43 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   path the guard cannot resolve; it is not denied inside an unrelated temporary repository, yet
   build its fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with
   Edit/Write.
+
+  Heavy-job and full-jest deny (the findings `heavyJob` and `fullJest`; why: a whole-repository
+  job takes minutes of CPU on a machine every agent and session shares, and two at once make
+  Semgrep and jest time out). Rule: deny a typed command that starts a whole-repository job
+  outside the queue (`heavyJob`: a heavy `make` target, a heavy `npm run` script, a heavy check
+  script, a Semgrep or `security.sh` run whose target is the whole repository or absent) or a
+  jest run that would run every suite (`fullJest`: a runner with no test file once option
+  values are removed, or an array option of jest-cli directly before a bare word, in the space
+  or `=` form, because the option takes the word as one more value; `npm test` needs
+  `-- <files>`). Read `HEAVY_MAKE_TARGETS`, `HEAVY_NPM_SCRIPTS`, `HEAVY_SCRIPT`,
+  `SEMGREP_OPTIONS_WITH_VALUE`, `MAKE_DRY_RUN_FLAGS` and `JEST_ARRAY_OPTIONS` in
+  `scripts/checks/kill-guard.js` for the closed sets, never a copy here; `JEST_ARRAY_OPTIONS`
+  is compared with jest-cli's own table by `__tests__/kill-guard-jest-options.test.ts`, and
+  Semgrep options match exactly (Semgrep abbreviates nothing). Only the typed command is judged:
+  `heavyJob` and `fullJest` are in neither `SCRIPT_KINDS` nor `DATA_KINDS`, so a script file or
+  a heredoc body that holds `make verify` is text (`scripts/job-queue.sh` runs `make verify`
+  itself). A dry run (`make -n verify`), `make mutable`, `mutation.sh --list`, `security.sh
+  <file>`, Semgrep on a subfolder or file, a jest run that names a test file or a lone
+  `--testPathPattern` filter, and `--listTests|--help|--version|--showConfig` stay allowed.
+  The way out is the queue: `bash scripts/job-queue.sh verify|check-all|security <worktree>
+  <label>` or `gate <worktree> <label> <base> <head>`, run in the background and awaited on its
+  exit code; a role agent asks the coordinator. A queued command is noted as `rules.queued`
+  (`noteQueuedJob`, `isQueueScript`). Rows: `__tests__/kill-guard-heavy-jobs.test.ts`,
+  `-jest-runs`, `-jest-options`, `-queue-edges`. Known limits (all allowed; the docs never
+  prescribe one of these routes, and (a) is a gap in the run log): (a) a command typed
+  inside another command is not unwrapped: `caffeinate -i make verify|make deep|bash
+  scripts/checks/verify.sh` is allowed (it also lets a kill through), and `orca terminal send
+  --text "npm run check:all"` or `"npx jest"` is allowed; (b) `make -Nn verify`, `make -I -n
+  verify`, `make -o -n verify` and `make -W -n verify` read as a dry run
+  (`MAKE_DRY_RUN_FLAGS` lacks `N`; the word test accepts any word); (c) `$PWD/`, `${PWD}/`,
+  `$(pwd)` and other `$X` targets for `security.sh` and Semgrep are allowed (only an exact
+  `$PWD` names the repository); (d) `cd scripts/checks && bash verify.sh` is allowed (the
+  script pattern matches the typed path); (e) runners it does not know are allowed: `node
+  node_modules/.bin/jest`, `pnpm jest`, `yarn jest`, `npm exec jest`, `bunx jest`, `semgrep
+  ci`; (f) in a repository whose `test` script is not jest (the harness repository runs `node
+  --test`), `npm test` is still `fullJest`, which fails closed. Tree segments compare
+  lower-cased.
 
   WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
   the job it waits for matches its OWN command line, so it never ends;
@@ -452,7 +555,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   or in another loop, never counts. The
   walk runs at every nesting level the other denies reach (a `-c`
   string, a span, a heredoc body, `eval`), once per segment (linear;
-  `__tests__/kill-guard-wait-loops.test.ts` has the timing rows). Reason:
+  `__tests__/kill-guard-wait-loops.test.ts` has the step-count rows, `stepsFor`). Reason:
   the standard WHAT/DETAILS/WHY/HOW/DO-NOT block; HOW points to
   `bash scripts/wait-load.sh <load> <timeout>` (chain it with `&&`) for
   a load wait, and to the tool's own `run_in_background` and its exit
@@ -483,27 +586,35 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `findDanger`'s place is `{ directories, variables }`). The expansion reaches only write
   targets (words and redirect targets) and git directories (`git -C $d`). `segmentFinding`
   judges a segment as written first, then, when the command assigned a variable the segment
-  reads, once more with the values filled in; the second reading reports only `shellWrite` and
-  `mainCheckout` (`EXPANDED_KINDS`), so an assignment can only ADD a deny, never remove one.
+  reads, once more with the values filled in (`expandedReading`); the second reading reports
+  only the kinds in `EXPANDED_KINDS` (read the set in `kill-guard.js`), so an assignment can
+  only ADD a deny, never remove one. A git folder the text cannot name (a `-C`/`cd` target in
+  a variable) fails closed for `mainMove` even when the command assigns the variable.
   A kill target and a command word are never expanded: `pid=-1; kill -9 $pid` is judged as
   written (an unknown `$pid` is the agent's own) and is not denied. A value that is itself an
   expansion (`$!`, `$(...)`, `$other`) stays unknown; a value over 4 KiB
   (`VARIABLE_VALUE_LIMIT`) is unknown, and one word never expands past 16 KiB
   (`EXPANDED_WORD_LIMIT`). Not tracked: `unset`, `cd $d`, `f+=x`, loop variables; an assignment
   in a branch that may not run counts as run for the expanded reading, which only adds, and the
-  raw reading still denies what the text denies. Scopes chain per segment (`SCOPE_DEPTH_LIMIT`
-  folds them). A variable the command does not assign stays unresolved because failing closed
+  raw reading still denies what the text denies. A command's variables live in a persistent
+  trie (`setVariable` copies one name's path, `lookupVariable` walks it), so a scope per segment
+  needs no fold and an assignment or lookup costs the name's length.
+  A variable the command does not assign stays unresolved because failing closed
   would deny `tmp=$(mktemp); cp x "$tmp"` and existing allow rows.
 
   Script-content kill scan. The guard reads a script file a command runs (`bash|sh|zsh|dash
-  <file>`, `source <file>` or `. <file>`, or a path run directly whose first line names a
-  shell) and denies a pkill, killall, or pattern or process-group kill in it (kind `scriptKill`;
-  `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`). One level only,
-  a regular file of at most 256 KiB, kills and a raw `mainFastForward` only (`rules.kinds` is
-  `SCRIPT_KINDS`, read it in `kill-guard.js`: a stash or write inside it is not judged). The
+  <file>`, `source <file>` or `. <file>`, a path run directly whose first line names a
+  shell, or a shell or `source /dev/stdin` that a `< file` redirect feeds, including
+  `bash < f`) and denies a pkill, killall, or pattern or process-group kill in it (kind
+  `scriptKill`; `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`).
+  One level only, a regular file of at most 256 KiB, and only the kinds in `SCRIPT_KINDS`
+  (read the set in `kill-guard.js`: kills, a raw `mainFastForward`, and a `mainMove`; a stash
+  or write inside it is not judged). A `mainFastForward` or `mainMove` found in a script keeps
+  its own kind (`SCRIPT_GIT_KINDS`); any other finding is reported as `scriptKill`. The
   script scan tracks no variables; a data heredoc in a script that prints a raw main
   fast-forward is denied; a non-ff main merge held in a script is not judged. A heredoc inside
   a scanned script is judged for those kinds too; `DATA_KINDS` applies to typed commands only.
+  Not read: `cat f | bash` (text piped into a shell) and a script path held in a variable.
   `kill -0`
   and `kill -s 0` send no signal and are harmless ONLY when no later word before the targets can be
   an option: a word matching `/^-[A-Za-z]/`, a word that may expand (a leading `~`, or `$`,
@@ -527,9 +638,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 
   Heredoc bodies and `rules.kinds` (null judges every kind; `SCRIPT_KINDS` and `DATA_KINDS` in
   `kill-guard.js` are the closed sets; read them there). A body no shell runs (`cat > f
-  <<'EOF'`, `ssh host <<'EOF'`) is data: `nestedFinding` judges it for `DATA_KINDS` (the kinds
-  the guard judged there before the newer denies: kill, stash, noVerify, hooksConfig,
-  mainCheckout, mainFastForward, waitLoop) by the base triggers only, with no variable
+  <<'EOF'`, `ssh host <<'EOF'`) is data: `nestedFinding` judges it for `DATA_KINDS` (read the
+  set in `kill-guard.js`: the kinds the guard judged there before the newer denies; `mainMove`
+  is deliberately not in it, so a note that documents a `git reset` is allowed) by the base
+  triggers only, with no variable
   tracking, no shell-write
   check, no script scan, and none of the newer triggers (`git commit-tree`, a `GIT_CONFIG_*`
   export, `include.path`, a prefix-resolved `git config` option). So a note or commit message
@@ -542,7 +654,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   The `internalError` kind: `decide` fails closed, so an error thrown while judging returns an
   `internalError` finding (`INTERNAL_ERROR_REASON_LINES`) and the command is denied. A
   malformed or unreadable payload, an empty command, and a missing node still allow.
-  `kill-guard.sh` exits 0 always and denies through its JSON, also when judging crashed.
+  `kill-guard.sh` exits 0 always and denies through its JSON, also when judging crashed. An EXIT
+  trap removes its stderr temp file, so a signalled run strands no file.
+  A load failure is not an `internalError` finding: when node runs but `kill-guard.js` cannot
+  load (missing sibling module, syntax error, any non-zero node exit, a signal), the wrapper
+  itself prints a deny ("kill-guard could not load ..."); its DETAILS line names node's status
+  and the first error line. Node missing and a malformed payload stay allows. Rows:
+  `__tests__/kill-guard-hook-load.test.ts`. A test fixture that copies the guard uses the
+  `__tests__/test-support/copy-kill-guard.ts` helper, which copies the guard plus every sibling
+  module it requires (derived from the `require('./x')` calls, transitively), never a hand list.
 
   NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
   `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
@@ -564,7 +684,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   option's value or after `--`, text in a commit message (within the data-body rule below), and
   `git log -n`. The repair route for an unset core.hooksPath
   is `bash scripts/ensure-git-hooks.sh` or `npm ci`; a direct `git config core.hooksPath githooks`
-  is denied too. The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
+  is denied too. That script also rewrites a same-folder spelling (`~`, an absolute path) to
+  `githooks` with one NOTICE and exit 0, only when the last value is in this repository's common
+  config and resolves to a githooks folder of a worktree of this repository; any other value
+  exits 2 (its header). The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
   staged index to a temporary folder and runs `tsc --noEmit` there; it fails closed and skips a
   commit whose staged diff touches no file tsc reads (see `docs/harness/checks-internals.md`).
   A person may bypass in their own shell; the deny binds agent Bash calls only. Rows:
@@ -572,7 +695,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `__tests__/ensure-git-hooks.test.ts`, `__tests__/kill-guard-hook-skips.test.ts`.
 
   The `noVerify` kind covers `--no-verify`, `-n`, and `git commit-tree` in every form (it
-  writes a commit no hook runs for; `git update-ref` stays allowed). The kind `hooksConfig`
+  writes a commit no hook runs for; `git update-ref` is no `noVerify`, and stays allowed unless
+  it moves `main`, which is `mainMove`). The kind `hooksConfig`
   (entry points `rewritesHooksPath`, `environmentSetsHooksPath`, `environmentFinding`) carries a
   reason naming
   `scripts/ensure-git-hooks.sh`. A `git config` long option resolves by git's unique-prefix rule
@@ -585,8 +709,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   key. An `export`, `declare -x`, `typeset`, `local`, `readonly`, or bare assignment of
   `GIT_CONFIG_KEY_<n>` to those keys, or of `GIT_CONFIG_PARAMETERS` holding them, denies by
   itself. A `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` file swap is not judged:
-  `scripts/ensure-git-hooks.sh` writes core.hooksPath in the local scope, which outranks the
-  global and system scopes and every file they include, so a swapped file switches nothing off.
+  `scripts/ensure-git-hooks.sh` writes core.hooksPath in the local scope (or rewrites a
+  same-folder spelling), which outranks the global
+  and system scopes and every file they include, so a swapped file switches nothing off.
   Known limits, NOT denied: a bypass built at run time.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
@@ -668,6 +793,21 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     used as another option's value (`git merge -m --abort x` really
     merges); `cd $VAR` (counts as not main); a span as the `cd` target
     (`cd "$(echo <main>)" && git merge x`).
+  - `mainMove` deny, NOT denied: a ref held in a variable, `update-ref --stdin`, an abbreviated
+    long option, a push to a remote, `push -d . main` (no colon, so `refspecWritesMain` misses
+    it; git itself refuses it while main is checked out, by its receive deny-current-branch
+    and deny-delete-current defaults, measured on git 2.38.1; `push . :main` is denied), a git
+    folder that aliases main's through a symlink, firmlink or `commondir` (compared as text;
+    gap 20261021T0832-kiko-harness-h10/1), `--git-dir=~/x` (the guard reads `~` as the home
+    folder, `HOME_PREFIX` in `resolveDirectory`; the shell leaves `~` as is after `--git-dir=`
+    and git reads `<cwd>/~/x`), `git config remote.<n>.fetch <refspec into main>` (not
+    judged), a key held in a variable (`GIT_CONFIG_KEY_0=$K`), `git -c "$X" fetch -u`, a value
+    option before `--ignore-other-worktrees`, and a linked worktree whose HEAD file cannot be
+    read (allowed). Script scan: `cat f | bash`, a script path in a
+    variable. Over-denied: `isInsideProjectWorktree` matches any prefix folder that is a
+    project worktree, so a reset in a repository nested in main's folder and a ref-name move of
+    main in a repository nested in ANY worktree are denied; and a `-C`/`cd` target held in a
+    variable (fails closed). Detail: "The `mainMove` kind" above.
   - Nested unquoted heredoc in `cat <<'EOF' | bash`,
     `eval "$(cat <<'EOF' …)"`, or `bash -c "$(cat <<'EOF' …)"`: not
     denied. Heredoc delimiter corner cases beyond those modeled above
@@ -771,7 +911,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `pre-write-guard.js` reports a NEW finding against the proposed post-edit
   content; a check that could not run at all (a Semgrep/Node crash,
   malformed stdin, a timeout) also denies — fail-closed, the opposite of
-  `kill-guard.sh`'s always-allow default. It has NO content-dedup
+  `kill-guard.sh`'s allows (a malformed payload, a missing node), though
+  kill-guard.sh now also fails closed on a load failure. It has NO content-dedup
   fingerprint, for the same reason `kill-guard.sh` has none: a pre-write
   check must run on every single write by design, not just when something
   changed since last time. Env seams override its defaults for testing
@@ -1352,8 +1493,8 @@ belongs in the SAME commit as the feature that triggered the check, so
 `git log` shows one coherent change rather than a drive-by refactor
 with no test-behavior delta.
 
-The non-blocking large-file pass runs on every call, a dedup skip included: see "`check:dup`
-measures the files jscpd skips for size" below.
+The large-file pass runs on every call, a dedup skip included: see "`check:dup` measures the
+files jscpd skips for size" below.
 
 ## `check:dup` measures the files jscpd skips for size
 
@@ -1361,7 +1502,7 @@ jscpd 4.3.0 skips a file over `maxLines` (1000, counted as `content.split('\n')`
 (100kb) without a word, so a blocking run alone passes a project whose largest files were never
 measured. `scripts/checks/dup.sh` keeps that blocking run exactly as it was (same config, same
 default limits, same 5% threshold, same exit code, a jscpd crash still fails closed) and adds a
-second, NON-blocking pass:
+second pass, the large-file pass (WARN at or under a file's ceiling, FAIL otherwise):
 
 - It asks jscpd itself which files are in scope: `--debug` lists the selected files and runs no
   detection. The files listed with the limits raised but not with the defaults are the ones the
@@ -1377,22 +1518,28 @@ second, NON-blocking pass:
   large file and another file is invisible to the alone runs (two 1100-line copies of one file
   show 0% alone and about 50% together). It runs only when the scope holds a size-skipped file and
   more than one file, so a scope with no large file runs no combined run and a one-file scope does
-  not repeat its alone figure. The pass itself still costs the two file listings (about 1 s). Its
-  total over the threshold prints one `WARNING` naming the figure.
-  Baseline on 2026-10-11: 7.33% of lines combined, against 3.24% for the blocking run.
-- A file over the threshold read from `.jscpd.json`, a file jscpd fails on, a file with no
-  figure, a combined total over the threshold, a failed file listing, and a failed `mktemp` each
-  print one `WARNING` line on stderr and the exit code stays 0. A number a tool printed is used only
-  after `is_number` accepts it. The Stop tier's scoped run therefore warns only about changed
-  large files (and the combined figure of the changed set); a whole-repo run warns about all of
-  them. An unchanged dedup fingerprint skips only the blocking run: the large-file pass runs every
-  time, so a repeated scoped run prints the same warning again.
-- The per-file warning says a file not on the tracked-debt list in
-  `docs/harness/documented-exceptions.md` is a new regression; a hook that exits 0 does not show
-  stderr to the agent, so a person or a manual `check:dup` run is the reader.
-- The warning is tracked debt, not an allowlist. The sweep track flips it to an `exit 2` failure
-  through `print_block` once every large file is 5% or less alone AND the combined raised total is
-  5% or less.
+  not repeat its alone figure. The pass itself still costs the two file listings (about 1 s).
+  The combined baseline is the `*combined*` row of `scripts/checks/dup-ceilings.tsv`, held by the
+  no-argument run only; read the row there, not a figure copied here.
+- The ceilings file `scripts/checks/dup-ceilings.tsv` is read up front on every run: a missing
+  or malformed file (a bad row, a repeated path, no `*combined*` row) exits 2 before any jscpd
+  run. Per class:
+  - WARN (stderr, exit 0): a listed file over the threshold but at or under its ceiling; a
+    scoped run's combined figure over the threshold; a row naming a file not on disk.
+  - FAIL (`print_block`, exit 2): a listed file above its ceiling; an unlisted file over the
+    threshold (a new regression); a file jscpd fails on or gives no figure for; a combined run
+    that fails or, in the no-argument run, exceeds the `*combined*` baseline; a failed file
+    listing; a failed `mktemp`.
+  A number a tool printed is used only after `is_number` accepts it. The Stop tier's scoped run
+  therefore measures only changed large files (and the combined figure of the changed set); a
+  whole-repo run measures all of them. An unchanged dedup fingerprint skips only the blocking
+  run: the large-file pass runs every time, so a repeated scoped run prints the same warning or
+  failure again.
+- A hook that exits 0 does not show the WARNING to the agent, so a person or a manual
+  `check:dup` run is the reader; a FAIL block reaches the agent.
+- The ceilings are tracked debt, not an allowlist. A figure never rises (dedupe the test), and a
+  row changes only with a reviewer finding. The rows go once every large file is 5% or less
+  alone AND the combined raised total is 5% or less (`docs/harness/documented-exceptions.md`).
 - `__tests__/dup-large-files.test.ts` runs a copy of `dup.sh` in a throwaway project against the
   real jscpd, under `FORCE_COLOR=3` too. A file over about two billion lines or 1gb is not listed
   under the raised limits, so it would still pass unseen; no file of that size exists in this repo.
@@ -1727,6 +1874,28 @@ index, `settle-limited.test.ts`), `Minor\s\d+` ("a minor 3% drift"), and
 found three real hits in `src`, each reworded in the same change. Fixture
 pair: the case pins at the end of `.bad.ts` and item 23 in `.good.ts`.
 
+**Set, task, track and run ids, and a decision answer (2026-10-23).** Seven members, in both
+arms and in `kiko-no-history-id-shell-comment`, each narrow enough that a bare "task 0" or "set 0"
+stays prose (`.good.ts` item 28):
+- `\bH\d{1,2}\s+(?i:task|set|step|fix\sround|backlog|track)\b` and `\bH\d{1,2}\s+t\d+\b`: a track
+  id joined to a task word in either case (`H10 task 4/4`, `H10 Set 3`, `H9 t3`). The word group
+  is case-insensitive and identical in all three copies (the two `semgrep-prewrite.yml` arms and
+  `kiko-no-history-id-shell-comment`). A bare `H\d+` is NOT a member: `(H1)`, `(H3)` (section ids
+  in `plist.sh`), `H264` and `H2 database` are ordinary tokens.
+- `\b\d{8}T\d{4}-kiko-[\w-]+`: a run id (`20261023T0023-kiko-harness-h10`).
+- `[Ss]et\s\d+/\d+` and `[Tt]ask\s\d+/\d+`: a set or task counter (`set 3/5`, `task 2/3`).
+- `(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b`: a set or
+  task id followed by a process word (`the set 9 review`). The word needs its own boundary, so
+  "set 3 steps" stays silent.
+- `\bQ\d{1,2}\s*=\s*[A-Z]\b`: a decision answer (`Q2 = A`). "The Q2 tabs-vs-chips rule" and
+  "Q2 2026" stay silent.
+
+Known limits (accepted false positives, 0 sites in the tree): a ratio such as "set 16/9 aspect
+ratio" reads as a set counter, "Mark the task 1 step done" reads as a task id followed by a
+process word, and "Q1 = P" reads as a decision answer. Reword the prose ("a 16:9 aspect ratio"),
+or use the override protocol for a real site. Fixture pair: the pins at the end of `.bad.ts` and
+`.bad.sh`, and item 28 in `.good.ts` with the matching lines at the end of `.good.sh`.
+
 **What a finding is (both history rules).** Each arm reports every
 watched id or word of a comment, one finding per member: a PCRE `\K` right
 before the member drops everything before it from the match, and the block
@@ -1961,8 +2130,9 @@ first, and a shape that hit prose was dropped or narrowed:
   "cell A1".
 - Left OUT, because the hits were domain words: `Step N` (an algorithm
   documented step by step), `Phase A/B` (the rezone phases), `Rule B`/`Rule N`
-  (the matcher's own rules), `task 0` (a test's own tasks), and a bare
-  letter and digit (`A1's`, `P1:`, which collide with cells, regex classes,
+  (the matcher's own rules), `task 0` (a test's own tasks; the set and task counters
+  `task 2/3` and `set 3/5` are members of `kiko-no-history-id-comment`, not of this rule), and a
+  bare letter and digit (`A1's`, `P1:`, which collide with cells, regex classes,
   and chip names).
 
 Any other good fixture that carries one of these shapes in a comment fails
@@ -2004,8 +2174,11 @@ and stays silent. A `try`/`finally` reset inside the body still matches: use a h
 Mechanizes kiko-code-style's "A test title carries no history": the title of an `it`,
 `test`, or `describe` call (also `.only`, `.skip`, `.todo`, `.each(table)(...)`, and a tagged
 `.each` table) that opens with a task id (`A1 `, `A1:`), opens with a ruling id (`ruling A2`),
-opens with a numbered device check (`device check 3`, either case), carries `(was: `, or ends in
-a task id in parentheses (`(P2)`, `(task C2)`, `(spec A3, B4)`).
+opens with a numbered device check (`device check 3`, either case), carries `(was: `, `(was 44)`
+or `; was 62` (an old-value label), or ends in a task id in parentheses (`(P2)`, `(task C2)`,
+`(spec A3, B4)`). `it was 44 rows`, `(was 3 of them)` and `; was 3x faster` stay silent: `(was N)`
+needs the digits to close the parenthesis, and `; was N` needs the semicolon and a word boundary
+after the digits.
 
 **Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
 --metrics off --quiet --config rules/semgrep-prewrite.yml src __tests__ --json` before quoting
@@ -2613,8 +2786,13 @@ a pre-existing finding points at. A Semgrep deny names
   stale) and a line that can wrap is wrapped, never pinned. `__tests__/pin-count-ceilings.test.ts`
   caps how many pins each pin file (this one and the markdown prose-width one) may hold; read
   the test for the ceilings. `fast.sh` runs the per-file mode on
-  a shell, YAML or githooks write; a `.js` write is not checked in the fast tier, so
-  `check:comment-line-width` catches it. A tool directive keeps its `OVERRIDE(...)` on ONE
+  a shell, YAML or githooks write, and on a `.js` write only for the per-file case pattern in
+  `comment-line-width.sh` (`scripts/*.js` or `*/scripts/*.js`, so a nested
+  `scripts/` folder counts;
+  `rules/fixtures/*.js`; `githooks/*`), wider than the project-wide check, which reads only root
+  `scripts/`, `rules/fixtures` and `githooks` (the
+  generated header of `drizzle/migrations/migrations.js` is 109 columns and must not block
+  an edit of it). A tool directive keeps its `OVERRIDE(...)` on ONE
   line directly above the statement: a continuation comment between a `biome-ignore lint/...`
   directive and its statement breaks the suppression, so put the explanation above the
   directive. A `biome-ignore format` directive may continue on a second comment line and
@@ -2887,11 +3065,11 @@ they land.
   while the tree holds the violation again. The mark stays on the fix,
   so a later revert of the fix fails; a new commit made on the older
   commit diverges from the mark and moves it there, and the violation
-  is then taken as checked. `make verify` (full Jest + `check:all`) is
+  is then taken as checked. The queued verify (full Jest + `check:all`) is
   the backstop: `check:security` scans `rules/semgrep-prewrite.yml`
   project-wide, and every Node rule has its own project-wide check —
   some in `check:all`, and `kiko-one-component-per-file`'s as a Jest
-  test, which runs only under `make verify`. A branch no replay
+  test, which runs only under the queued verify. A branch no replay
   ever passed costs replay time when merged (see "Floor and
   never-replayed branches").
 - **Tests.** `__tests__/guard-replay.test.ts`: a throwaway repository
@@ -3035,8 +3213,10 @@ mechanizable (see harness-workflow's "Classify every finding").
    - A guard test proves concurrency or speed by counting work or by a
      file rendezvous between stubs, never by a clock. The invariant
      `__tests__/guard-tests-no-wall-clock.test.ts` fails a clock reading
-     in a pre-write-guard test; read its `CLOCK_READINGS` for the banned
-     forms. It fails every `Date.now()` read in a guard test, a
+     in a pre-write-guard or kill-guard test; read its `CLOCK_READINGS` for the banned
+     forms. A kill-guard test counts work with `options.workCounter` (`{ steps }`, test-only,
+     `decide` only) through `stepsFor` in `__tests__/test-support/kill-guard-decide.ts`.
+     It fails every `Date.now()` read in a guard test, a
      `${Date.now() - start}` delta included, and also `Date.now` without a
      call, `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
      A unique temporary name comes from `createTemporaryDirectory(prefix)`,
@@ -3295,7 +3475,7 @@ dependency-free like every checker; knip-ignored) is
 no exemption list. A standalone `npm run check:guard-replay` also moves the
 mark ref to HEAD, and a clean tree at the mark makes the next Stop exit
 early, so after one a committed migration edit shows again only at
-`check:all` / `make verify` (the order above keeps it first there), not at
+`check:all` / the queued verify (the order above keeps it first there), not at
 a later Stop.
 
 - **Baseline ("shipped").** For each LOCAL branch of main and next that
@@ -3337,9 +3517,32 @@ a later Stop.
   appended entries and inserted lines): the line shows the base text of
   the named entry or line, to restore in place while keeping the rest.
   Never restore with checkout, restore, stash or clean.
+- **Second kind: a missing `src/` path in a NEW migration's header.** The
+  wrapper runs the checker a second time (`shipped-migrations.js --headers`)
+  after the shipped-file kind passes, so a shipped-file failure shows first.
+  It reads only a `.sql` that no resolved base has (new on this branch),
+  never a shipped one: a header names the source as it was when written, a
+  later `src/` move must not fail a shipped header that may not be edited
+  (2 stale shipped paths exist, both under the old monobank folder), and a
+  new header is still free to fix.
+  Only a backticked `src/...` path inside a SQL comment is read, both forms
+  (`-- ...` lines and `/* ... */` blocks, which open most real headers). One
+  left-to-right scan tells comment from code: a `'`, `"`, backtick or `[`
+  opens a literal or quoted identifier that is skipped whole (a doubled
+  closing quote is an escape), so a path in a string literal or SQL code is
+  never read, and a `--` or `/*` inside one never opens a comment; an
+  unterminated block comment runs to the end of the file. A path ending in `/`
+  must exist as a folder; any other path must exist as a file (a file with a
+  trailing `/`, or a folder without one, fails). Only the failing paths are
+  named, each with its migration file. Own block title "Migration header names
+  a missing src path", exit 2, no override. Known limits: a path in a
+  non-comment position is not checked; a glob or a path with a line suffix
+  is read as a literal path and fails.
 - **Dedup.** The fingerprint is the base shas, the name and blob hash of
-  every file under `drizzle/migrations/`, and the checker script. A hash
-  failure leaves the fingerprint empty, so the check runs.
+  every file under `drizzle/migrations/`, the name of every file and folder
+  under `src/` (a move there must re-run the header kind), and the checker
+  script. A hash failure, or a `find src` that fails (a missing `src/` is an empty list, not a
+  failure), leaves the fingerprint empty, so the check runs and a partial listing never skips.
 - **Wiring.** `scripts/checks/medium.sh` runs the wrapper BEFORE the guard
   replay and before its "only HEAD moved" early exit. Before the replay,
   because a passing replay moves the worktree's mark ref to HEAD: a
@@ -3424,8 +3627,18 @@ write time (it is the `projectCheck` of a `NODE_RULES` row in
 `pre-write-guard.js`). Every wrapper `fast.sh` or `medium.sh` runs must
 be a `check:all` entry. The expected mapping is read from those files,
 never hard-coded, so a new check added to one place and missed in
-another fails here. `check:closure`, `check:mutation`, and `check:deep`
+another fails here. `check:closure`, `check:permissions`, `check:mutation`, and `check:deep`
 are outside `check:all` by design.
+
+## Permission doctor — check:permissions
+
+`npm run check:permissions` (`scripts/checks/permission-doctor.sh`, which runs
+`permission-doctor.js`) is manual: no hook, not in `check:all`. It reads the permission path rules
+of the user and project settings files and fails on a rule that cannot work as written. The
+`.js` exits 0 (clean), 1 (findings) or 3 (crash); the wrapper maps 1 and 3 to exit 2, so run the
+wrapper. The finding kinds, suggestions and Known limits are in the `permission-doctor.js` header;
+the short form is the `check:permissions` row of `docs/harness/checks.md`. An agent never edits a
+permission settings file: the user applies the suggested JSON by hand.
 
 ## Harness-test fixtures never read as an import of src
 

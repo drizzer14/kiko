@@ -9,8 +9,10 @@ import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   type FetchAccountOptions,
-  type SignedPage,
+  type RequestPage,
+  publicRequestPage,
   signedRequestPage,
+  usedApiWeightFromHeaders,
   usedWeightsFromHeaders,
 } from './binance.client';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
@@ -235,7 +237,7 @@ type TotalItem<Row> = { row: Row } | { untracked: UntrackedTotalRow };
  */
 const totalPage =
   <Row>(readRow: Reader<Row | undefined>, timeOf: TimeReader) =>
-  ({ body, headers }: SignedPage): TotalPage<Row> => {
+  ({ body, headers }: RequestPage): TotalPage<Row> => {
     if (!isRecord(body)) {
       return parseFailure();
     }
@@ -355,7 +357,7 @@ const capitalItemOf =
 
 const capitalPage =
   <Row>(readRow: Reader<Row>, field: CapitalField) =>
-  ({ body, headers }: SignedPage): CapitalPage<Row> => {
+  ({ body, headers }: RequestPage): CapitalPage<Row> => {
     const readings = readingsOf(
       body,
       capitalItemOf(readRow, field),
@@ -619,7 +621,7 @@ const readPayItem: Reader<PayItem> = (value) => {
       };
 };
 
-const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
+const payPage = ({ body, headers }: RequestPage): PayHistoryPage => {
   const readings = readingsOf(
     isRecord(body) && body.code === PAY_SUCCESS_CODE ? body.data : undefined,
     readPayItem,
@@ -904,3 +906,354 @@ export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
  */
 export const isEarnRecordSettled = (kind: EarnRecordKind, status: string | undefined): boolean =>
   isSettledStatus(EARN_READS[kind].settledStatus, status);
+
+/** Binance's cap on `limit` for the Convert trade flow; a window with `moreData` holds more. */
+export const CONVERT_PAGE_LIMIT = 1000;
+
+const optionalTicker: Reader<string | undefined> = (value) =>
+  foldMap(maybe(optionalText(value)), binanceTickerOf);
+
+/**
+ * The key of a Convert record: its `quoteId` when that is a non-empty text, else none. A live read
+ * measured `orderId` as a JSON integer past 2^53, which `JSON.parse` has already rounded, so it
+ * cannot name a record, and `quoteId` as a non-empty text. The key must never change once shipped:
+ * the pair id and the external ids derive from it, so a different key makes a re-read insert a
+ * second pair of rows.
+ */
+const convertRecordIdOf = (item: Record<string, unknown>): string | undefined =>
+  typeof item.quoteId === 'string' && item.quoteId !== '' ? item.quoteId : undefined;
+
+/**
+ * The status and the wallet are optional text, and so are the assets and amounts: the walk decides
+ * on the status first, so a record that is not settled never fails on a field it does not use.
+ * `createTime` is required, because it says where the record sits in a window.
+ */
+const CONVERT_FIELDS = {
+  orderStatus: optionalText,
+  walletType: optionalText,
+  fromAsset: optionalTicker,
+  fromAmount: optionalText,
+  toAsset: optionalTicker,
+  toAmount: optionalText,
+  createTime: finiteNumber,
+};
+
+/** One conversion from `/sapi/v1/convert/tradeFlow`, keyed by `recordId` (`convertRecordIdOf`). */
+export type BinanceConvertRecord = Parsed<typeof CONVERT_FIELDS> & { recordId: string };
+
+const readConvertFields = recordReader(CONVERT_FIELDS);
+
+const readConvertRecord: Reader<BinanceConvertRecord> = (item) => {
+  const recordId = isRecord(item) ? convertRecordIdOf(item) : undefined;
+
+  return recordId === undefined ? parseFailure() : { recordId, ...readConvertFields(item) };
+};
+
+/**
+ * One Convert page. Every record of the window is read whatever its coins, because a record's
+ * coins are decided by the walk, so `rows` holds each record that parsed and `unreadable` each one
+ * that did not, with its `createTime` when that is usable. `moreData` says the window holds more
+ * records than `limit` returned.
+ */
+export type ConvertHistoryPage = HistoryPage<BinanceConvertRecord> & { moreData: boolean };
+
+const convertPage = ({ body, headers }: RequestPage): ConvertHistoryPage => {
+  if (!isRecord(body)) {
+    return parseFailure();
+  }
+
+  const readings = readingsOf(body.list, readConvertRecord, timeFieldOf('createTime', epochTime));
+
+  return {
+    rows: valuesOf(readings),
+    unreadable: unreadableOf(readings),
+    moreData: flag(body.moreData),
+    ...usedWeightsFromHeaders(headers),
+  };
+};
+
+/**
+ * `GET /sapi/v1/convert/tradeFlow` (Convert trade history) for ONE page of ONE window, at most 30
+ * days wide. Signed, read-only. The body must carry a `list` array and a `moreData` flag, or the
+ * read throws `BinanceHistoryParseError`.
+ */
+export const fetchConvertHistory = async (
+  apiKey: string,
+  secret: string,
+  query: { startTime: number; endTime: number },
+  options: FetchAccountOptions = {},
+): Promise<ConvertHistoryPage> =>
+  convertPage(
+    await signedRequestPage(
+      apiKey,
+      secret,
+      'GET',
+      '/sapi/v1/convert/tradeFlow',
+      {
+        startTime: String(query.startTime),
+        endTime: String(query.endTime),
+        limit: String(CONVERT_PAGE_LIMIT),
+      },
+      options,
+    ),
+  );
+
+/**
+ * Binance spells `transfered` with one `r` on both amount fields. The record totals and an
+ * entry's `serviceChargeAmount`, `transId` and `operateTime` are never read: the record's
+ * `transId` keys the pair, and `transferedAmount` is the net amount received in `targetAsset`.
+ * A coin or an amount that is absent is `undefined`, because the read of a record decides what to
+ * do with it, not the parser.
+ */
+const DUST_ENTRY_FIELDS = {
+  fromAsset: optionalTicker,
+  targetAsset: optionalTicker,
+  amount: optionalText,
+  transferedAmount: optionalText,
+};
+
+/** One coin of a dust conversion from `/sapi/v1/asset/dribblet`, converted into `targetAsset`. */
+export type BinanceDustEntry = Parsed<typeof DUST_ENTRY_FIELDS>;
+
+/** One dust conversion record, one `userAssetDribblets` item, read from its named fields only. */
+export type BinanceDustRecord = {
+  transId: string;
+  operateTime: number;
+  entries: BinanceDustEntry[];
+};
+
+const readDustEntryList = listOf(recordReader(DUST_ENTRY_FIELDS));
+
+const readDustEntries: Reader<BinanceDustEntry[]> = (value) => {
+  const entries = readDustEntryList(value);
+
+  return entries.length > 0 ? entries : parseFailure();
+};
+
+/**
+ * The record's own `transId` keys its pairs, so it must be a non-empty text or a safe integer
+ * (`identifier`): a record without one is unreadable, never keyed on a fallback. Its `operateTime`
+ * says where the record sits, so it is required too. An entry list that is absent, empty, or holds
+ * an item that is no object makes the record unreadable: a record's coins are never half-read, and
+ * a conversion of no coin is never skipped silently.
+ */
+const readDustRecord: Reader<BinanceDustRecord> = (item) =>
+  isRecord(item)
+    ? {
+        transId: identifier(item.transId),
+        operateTime: finiteNumber(item.operateTime),
+        entries: readDustEntries(item.userAssetDribbletDetails),
+      }
+    : parseFailure();
+
+/**
+ * One dust page: the newest records Binance keeps. `rows` holds each record that parsed and
+ * `unreadable` each one that did not, with its `operateTime` when that is usable.
+ */
+export type DustHistoryPage = HistoryPage<BinanceDustRecord>;
+
+/**
+ * An empty log is an object with `userAssetDribblets` present as an empty array and no `total`
+ * (measured live). `total` is never required or read; a body without the list array is malformed.
+ */
+const dustPage = ({ body, headers }: RequestPage): DustHistoryPage => {
+  if (!isRecord(body)) {
+    return parseFailure();
+  }
+
+  const readings = readingsOf(
+    body.userAssetDribblets,
+    readDustRecord,
+    timeFieldOf('operateTime', epochTime),
+  );
+
+  return {
+    rows: valuesOf(readings),
+    unreadable: unreadableOf(readings),
+    ...usedWeightsFromHeaders(headers),
+  };
+};
+
+/**
+ * `GET /sapi/v1/asset/dribblet` (dust log) with no parameter: Binance returns the last 100 records
+ * after 2020/12/01 of the Spot account. Signed, read-only. The body must be an object with a
+ * `userAssetDribblets` array, or the read throws `BinanceHistoryParseError`.
+ */
+export const fetchDustHistory = async (
+  apiKey: string,
+  secret: string,
+  options: FetchAccountOptions = {},
+): Promise<DustHistoryPage> =>
+  dustPage(await signedRequestPage(apiKey, secret, 'GET', '/sapi/v1/asset/dribblet', {}, options));
+
+const tickerText: Reader<string> = (value) => binanceTickerOf(text(value));
+
+const PLAIN_DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
+
+/**
+ * An amount is summed with `addDecimal`, which reads an empty, signed or exponent text as a
+ * number without failing, so only Binance's plain unsigned decimal text is let through, as sent.
+ */
+const decimalText: Reader<string> = (value) => {
+  const amount = text(value);
+
+  return PLAIN_DECIMAL_PATTERN.test(amount) ? amount : parseFailure();
+};
+
+/**
+ * Only these four fields of a listed symbol are read, so the rest of its large entry (filters,
+ * order types, precisions) is never kept. The coins are upper-cased once here, the symbol is kept
+ * as Binance sent it, and a field that is not text makes the item unreadable.
+ */
+const EXCHANGE_SYMBOL_FIELDS = {
+  symbol: text,
+  status: text,
+  baseAsset: tickerText,
+  quoteAsset: tickerText,
+};
+
+/** One symbol of `/api/v3/exchangeInfo`: its name, status and its two coins as tickers. */
+export type BinanceExchangeSymbol = Parsed<typeof EXCHANGE_SYMBOL_FIELDS>;
+
+/**
+ * The listed Spot symbols as sent (a name sent twice is listed twice; `tradeCandidatesOf` keeps
+ * each once), with the number of items that did not read and the minute's spent `/api/*` weight
+ * when Binance reports it.
+ */
+export type ExchangeSymbolsPage = {
+  symbols: BinanceExchangeSymbol[];
+  unreadable: number;
+  usedApiWeight1m: number | undefined;
+};
+
+const readExchangeSymbol = recordReader(EXCHANGE_SYMBOL_FIELDS);
+
+const exchangeSymbolsPage = ({ body, headers }: RequestPage): ExchangeSymbolsPage => {
+  if (!isRecord(body)) {
+    return parseFailure();
+  }
+
+  const readings = readingsOf(body.symbols, readExchangeSymbol, () => undefined);
+  const readable = valuesOf(readings);
+  const unreadable = unreadableOf(readings).length;
+
+  if (readable.length === 0 && unreadable > 0) {
+    return parseFailure();
+  }
+
+  return {
+    symbols: readable,
+    unreadable,
+    usedApiWeight1m: usedApiWeightFromHeaders(headers),
+  };
+};
+
+/**
+ * `GET /api/v3/exchangeInfo?showPermissionSets=false`, public (no key, no signature), weight 20.
+ * No `permissions` filter is sent: `permissions=SPOT` leaves out the BREAK leveraged-token
+ * symbols (isSpotTradingAllowed false) a user can still hold old Spot fills on, and the body
+ * stays within 1% of the filtered one. A body that is no object, with no `symbols` array, or with
+ * items of which none reads, throws `BinanceHistoryParseError`; an empty `symbols` array is an
+ * empty list; a 429 or 418 throws `BinanceRateLimitError`.
+ */
+export const fetchExchangeSymbols = async (
+  options: Pick<FetchAccountOptions, 'fetchImpl'> = {},
+): Promise<ExchangeSymbolsPage> =>
+  exchangeSymbolsPage(
+    await publicRequestPage('/api/v3/exchangeInfo', { showPermissionSets: 'false' }, options),
+  );
+
+/**
+ * Binance's cap on `limit` for `myTrades` (the default is 500). A page of fewer fills than this
+ * is the last, which is what the trade walk reads its end from.
+ */
+export const TRADE_PAGE_LIMIT = 1000;
+
+const unchecked: Reader<unknown> = (value) => value;
+
+/**
+ * Every field a trade's rows are built from is read strictly, so a field of another JSON type
+ * fails the page. `id` is left as sent: the id-cursor pager checks it, because it is the cursor.
+ * The price, the list id and the maker flags are never read.
+ */
+const MY_TRADE_FIELDS = {
+  id: unchecked,
+  orderId: integer,
+  qty: decimalText,
+  quoteQty: decimalText,
+  commission: decimalText,
+  commissionAsset: tickerText,
+  isBuyer: flag,
+  time: integer,
+};
+
+/** One fill of `/api/v3/myTrades`: amounts as Binance's decimal text, `time` in epoch ms. */
+export type BinanceMyTrade = Parsed<typeof MY_TRADE_FIELDS>;
+
+/** One page of fills and the minute's spent weights when Binance reports them. */
+type MyTradesPage = { rows: BinanceMyTrade[] } & BinancePageWeights;
+
+const readMyTrades = listOf(recordReader(MY_TRADE_FIELDS));
+
+/**
+ * A page with any unreadable row fails whole: a fill skipped here would be lost behind the
+ * cursor that moves past it.
+ */
+const myTradesPage = ({ body, headers }: RequestPage): MyTradesPage => ({
+  rows: readMyTrades(body),
+  ...usedWeightsFromHeaders(headers),
+  usedApiWeight1m: usedApiWeightFromHeaders(headers),
+});
+
+/**
+ * `GET /api/v3/myTrades?symbol&fromId&limit=1000`, signed, ONE page of the symbol's fills from
+ * `fromId` on (inclusive, ascending by id). A symbol Binance does not know throws
+ * `BinanceInvalidSymbolError`, a 429 or 418 `BinanceRateLimitError`, and an unreadable page
+ * `BinanceHistoryParseError`.
+ */
+export const fetchMyTrades = async (
+  apiKey: string,
+  secret: string,
+  symbol: string,
+  fromId: number,
+  options: FetchAccountOptions = {},
+): Promise<MyTradesPage> =>
+  myTradesPage(
+    await signedRequestPage(
+      apiKey,
+      secret,
+      'GET',
+      '/api/v3/myTrades',
+      { symbol, fromId: String(fromId), limit: String(TRADE_PAGE_LIMIT) },
+      options,
+    ),
+  );
+
+/**
+ * `GET /api/v3/myTrades?symbol&orderId&limit=1000`, signed, ONE page of one order's fills. The
+ * first page (`fromId` 0) sends no `fromId`; a later page sends it, the supported combination
+ * `symbol` + `orderId` + `fromId`. Errors are those of `fetchMyTrades`.
+ */
+export const fetchOrderFills = async (
+  apiKey: string,
+  secret: string,
+  symbol: string,
+  orderId: number,
+  fromId: number,
+  options: FetchAccountOptions = {},
+): Promise<MyTradesPage> =>
+  myTradesPage(
+    await signedRequestPage(
+      apiKey,
+      secret,
+      'GET',
+      '/api/v3/myTrades',
+      {
+        symbol,
+        orderId: String(orderId),
+        ...(fromId > 0 ? { fromId: String(fromId) } : {}),
+        limit: String(TRADE_PAGE_LIMIT),
+      },
+      options,
+    ),
+  );

@@ -29,11 +29,15 @@ const clockReadingsIn = (source: string): string[] => {
 };
 
 const guardTestFiles = (): string[] =>
-  readdirSync(TESTS_DIRECTORY).filter((file) => /^pre-write-guard.*\.test\.ts$/.test(file));
+  readdirSync(TESTS_DIRECTORY).filter((file) =>
+    /^(pre-write-guard|kill-guard).*\.test\.ts$/.test(file),
+  );
 
 describe('pre-write-guard tests assert on no clock delta', () => {
   it('scans the guard test files it is meant to', () => {
     expect(guardTestFiles()).toContain('pre-write-guard.test.ts');
+    expect(guardTestFiles()).toContain('kill-guard-writes.test.ts');
+    expect(guardTestFiles()).toContain('kill-guard-wait-loops.test.ts');
   });
 
   it.each([

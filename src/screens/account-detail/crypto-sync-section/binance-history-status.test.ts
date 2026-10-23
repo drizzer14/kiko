@@ -110,30 +110,50 @@ describe('transferOwesRange', () => {
 });
 
 describe('walkCursorsOf', () => {
-  it('reads the four forward cursors, capital, Pay, Transfer and Earn, off the state', () => {
+  it('reads the five forward cursors, capital, Pay, Transfer, Earn and Convert, off the state', () => {
     const state = stateOf({
       capital: { cursor: 1 },
       pay: { cursor: 2 },
       transfer: { cursor: 3 },
       earn: { cursor: 4, rescan: 99 },
+      convert: { cursor: 5 },
     });
 
-    expect(walkCursorsOf(state)).toEqual([1, 2, 3, 4]);
+    expect(walkCursorsOf(state)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it('reads a cursor a walk has not written yet as null', () => {
-    expect(walkCursorsOf(stateOf({ capital: { cursor: NOW } }))).toEqual([NOW, null, null, null]);
+    expect(walkCursorsOf(stateOf({ capital: { cursor: NOW } }))).toEqual([
+      NOW,
+      null,
+      null,
+      null,
+      null,
+    ]);
   });
 
   it('reads each walk by its own cursor, whichever other walks have one', () => {
-    expect(walkCursorsOf(stateOf({ earn: { cursor: NOW } }))).toEqual([null, null, null, NOW]);
+    expect(walkCursorsOf(stateOf({ earn: { cursor: NOW } }))).toEqual([
+      null,
+      null,
+      null,
+      NOW,
+      null,
+    ]);
+    expect(walkCursorsOf(stateOf({ convert: { cursor: NOW } }))).toEqual([
+      null,
+      null,
+      null,
+      null,
+      NOW,
+    ]);
   });
 
   it.each([
     ['no state row', null],
     ['a state that is not readable', '{not json'],
-  ])('is four nulls for %s', (_label, text) => {
-    expect(walkCursorsOf(parseExchangeState(text))).toEqual([null, null, null, null]);
+  ])('is five nulls for %s', (_label, text) => {
+    expect(walkCursorsOf(parseExchangeState(text))).toEqual([null, null, null, null, null]);
   });
 
   it('does not read an owed point as a cursor: a list of ground changes nothing', () => {
@@ -146,9 +166,10 @@ describe('walkCursorsOf', () => {
           pending: [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' }],
         },
         earn: { cursor: NOW },
+        convert: { cursor: NOW },
       }),
     );
 
-    expect(cursors).toEqual([NOW, NOW, NOW, NOW]);
+    expect(cursors).toEqual([NOW, NOW, NOW, NOW, NOW]);
   });
 });

@@ -8,7 +8,9 @@
 // hook does NOT follow: it must ALWAYS exit 0, even on a crash or malformed
 // payload, so a failure of the hook process never breaks the Bash tool. An error thrown while
 // judging a command is a deny (`internalError`), not an allow: the command that crashed the guard
-// may be the one it stops; an unreadable payload still allows. Wired from
+// may be the one it stops; an unreadable payload still allows. A failure while node LOADS this file
+// (a sibling module missing, a syntax error) cannot be caught here, so kill-guard.sh denies on any
+// node exit status other than 0 (every run below ends in exit 0). Wired from
 // harness/kiko/hooks/hooks.json via scripts/checks/kill-guard.sh.
 //
 // Incident this guards against: a reviewer subagent ran
@@ -29,12 +31,16 @@
 // there, so a conflict marker in it once broke every hook in every session. The recovery options
 // and help stay allowed. A fast-forward-only update (`merge --ff-only`, `pull --ff-only`) is its
 // own finding, `mainFastForward`: main moves only through `bash scripts/ff-main.sh <sha>`, which
-// runs after a queued verify of that commit.
+// runs after a queued verify of that commit. Any other git command that moves the branch `main`
+// is the finding `mainMove`; the forms, and which of them count from any worktree of this
+// repository, are in the header of `kill-guard-main-moves.js`, which holds the rules. A place the
+// text cannot name (an unresolved `-C` or `cd`) fails closed.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
-// `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
-// scripts, hooks, the plugin manifest) at the root of any worktree of this repository, or into a
-// YAML file (a final segment ending in `.yml` or `.yaml`) at any depth of one, except under
+// `githooks/`, `.claude/skills/`, `.claude/agents/`, `docs/superpowers/` (plans, specs), or
+// `harness/kiko/` (all of it: skills, agents, scripts, hooks, the plugin manifest) at the root of
+// any worktree of this repository, or into a YAML file (a final segment ending in `.yml` or
+// `.yaml`) at any depth of one, except under
 // `node_modules/` (a YAML path the text cannot resolve is denied too; one resolved outside every
 // worktree of this repository stays allowed) — `sed -i`, `perl -i`, a `>`/`>>` (or `>|`, `&>`,
 // `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner (or one fed by a heredoc or
@@ -54,6 +60,19 @@
 // kill target or a command word is never expanded. A variable the command does not assign, or
 // assigns from an expansion (`f=$(mktemp)`), stays unresolved and is not denied (a documented
 // limit).
+//
+// And it denies a whole-repository heavy job run outside the queue, as the finding `heavyJob`:
+// `make verify|gate|deep|security` (not a dry run), `npm run check:all|check:deep|check:mutation`,
+// `scripts/checks/verify.sh`, `mutation.sh` (not `--list`), a `check:security` or `security.sh`
+// run with no path, and a Semgrep scan whose target is the whole repository or absent. Only the
+// typed command is judged (never a script file or a data body), and the way out is
+// `bash scripts/job-queue.sh verify|check-all|security|gate ...`.
+//
+// And it denies a jest run that would run every suite, as the finding `fullJest`: a runner (`jest`,
+// `npx jest`, `npm test`, `make jest`) with no test file left once option values are removed (a
+// `--testPathPattern` filter alone, and `--listTests|--help|--version|--showConfig`, stay
+// allowed), or with an array option of jest-cli directly before a bare word, in the space or the
+// `=` form, since the option takes the word as one more value. Same scope as `heavyJob`.
 //
 // And it denies a `while` or `until` loop that scans the process table (`ps`,
 // `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
@@ -78,17 +97,20 @@
 // their own reason: leave core.hooksPath as scripts/ensure-git-hooks.sh sets it. A
 // GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file is not judged: the key sits in the local scope, which
 // outranks both and what they include. `git commit-tree` is denied in every form: it writes a
-// commit no hook runs for (`git update-ref` stays allowed).
+// commit no hook runs for (`git update-ref` is no hook skip; it is judged as `mainMove` when it
+// moves `main`).
 // A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
 //
 // And it reads a script file a command runs (`bash|sh|zsh|dash <file>`, `source <file>`,
-// `. <file>`, or a path run directly whose first line names a shell) and denies a pkill, killall,
-// or pattern or process-group kill in it: a script in a scratchpad outside the project is a place
+// `. <file>`, a path run directly whose first line names a shell, or a shell or `source
+// /dev/stdin` that a `< <file>` redirect feeds) and denies a pkill, killall, or pattern or
+// process-group kill in it: a script in a scratchpad outside the project is a place
 // the pre-write guard never looks. One level only (a script the script runs is not
-// read), a regular file of at most 256 KiB, and kills and a raw `mainFastForward` only (a
-// `git stash` or a write inside the file is not judged). `scripts/job-queue.sh` at the root of a
+// read), a regular file of at most 256 KiB, and kills, a move of `main`, and a raw
+// `mainFastForward` only (a `git stash` or a write inside the file is not judged).
+// `scripts/job-queue.sh` at the root of a
 // worktree of this repository is exempt: its own group TERM is the one allowed group kill.
 // `scripts/ff-main.sh` needs no exemption: its merge uses a variable target, which this scan does
 // not resolve. A script built in the same command, a missing file, and a path held in a variable
@@ -103,6 +125,8 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+
+const { mainMoveTarget, environmentFetchWritesMain } = require('./kill-guard-main-moves');
 
 const MAIN_CHECKOUT_PATH = '/Users/drizzer14/Developer/Projects/pff-ios';
 
@@ -155,11 +179,29 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
     "the queue's done.log, or look for a bypass flag to get past this guard.",
 ];
 
+const MAIN_MOVE_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a git command that moves the branch main (a reset to a ' +
+    'commit in the main checkout, or in a worktree whose HEAD names main; update-ref, checkout ' +
+    '-B, switch -C, branch -m|-f|-d, a fetch, pull or push into main, also through a -c, ' +
+    '--config-env or exported GIT_CONFIG_* fetch refspec; symbolic-ref onto main, checkout or ' +
+    'switch --ignore-other-worktrees main, worktree add -B or -f naming it).',
+  `WHY IT MATTERS: main (${MAIN_CHECKOUT_PATH}) must move only to a commit a queued verify passed ` +
+    'on, and its hooks run for every session; every worktree shares the ref, so a move from ' +
+    'any of them reaches the main checkout.',
+  'HOW TO FIX:     do the work in a separate detached worktree, queue `bash scripts/job-queue.sh ' +
+    'verify <worktree at the sha> <label>`, wait for exit 0, then run `bash scripts/ff-main.sh ' +
+    '<sha>`. Moving main back, or any other move of it, needs the user. A reset without a ' +
+    'commit (`git reset --hard`), `git reset -- <path>`, a branch other than main, and help ' +
+    'stay allowed.',
+  'DO NOT:         move main through a script file, an alias, or a variable, or look for another ' +
+    'spelling of the move, to get past this guard.',
+];
+
 const SHELL_WRITE_REASON_LINES = [
   'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, e2e/, drizzle/, ' +
     'scripts/, or githooks/ of a worktree of this repository, into .claude/skills/, ' +
-    '.claude/agents/, or any of harness/kiko/ of one, into a YAML file (.yml, .yaml) of ' +
-    'one, or into a git config file (.git/config, config.worktree).',
+    '.claude/agents/, any of harness/kiko/, or docs/superpowers/ (plans, specs) of one, into a ' +
+    'YAML file (.yml, .yaml) of one, or into a git config file (.git/config, config.worktree).',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
     'cp, mv, or a python or node one-liner lands unchecked; guard-replay only catches it at ' +
@@ -168,8 +210,8 @@ const SHELL_WRITE_REASON_LINES = [
     '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
     'cannot resolve (a variable, a glob) counts when a folder in it is named src, rules, e2e, ' +
     'drizzle, scripts, githooks, or __tests__, when its folders spell .claude/skills, ' +
-    '.claude/agents, or harness/kiko, or when it ends in .yml or .yaml, and so does a ' +
-    'cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
+    '.claude/agents, harness/kiko, or docs/superpowers, or when it ends in .yml or .yaml, and so ' +
+    'does a cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
     'write the literal path, or use Edit or Write. Reading it, a ' +
     'redirect to /dev/null or to a path outside those trees that is not a YAML file of a ' +
     'worktree (your scratchpad, /tmp, docs/notes.md), git itself ' +
@@ -242,6 +284,41 @@ const SCRIPT_KILL_REASON_LINES = [
     'time, or write the script in the same command that runs it to get past this guard.',
 ];
 
+const HEAVY_JOB_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a whole-repository job run outside the queue (make verify, ' +
+    'gate, deep or security; npm run check:all, check:deep, check:mutation, or check:security with ' +
+    'no path; scripts/checks/verify.sh, mutation.sh, or security.sh with no path; a Semgrep scan of ' +
+    'the whole repository, whether the target is ., ./, $PWD, the repository root, or none).',
+  'WHY IT MATTERS: each of these takes minutes of CPU on a machine every agent and session ' +
+    'shares, and two at once make Semgrep and jest time out; scripts/job-queue.sh runs them one at ' +
+    'a time, shortest class first, and not on battery.',
+  'HOW TO FIX:     queue it with `bash scripts/job-queue.sh verify|check-all|security <worktree> ' +
+    '<label>` (a mutation gate: `bash scripts/job-queue.sh gate <worktree> <label> <mutation-base> ' +
+    '<expected-head>`), run with run_in_background, and wait on its exit code; a role agent asks ' +
+    'the coordinator to queue it. A narrower check stays allowed: `bash scripts/checks/security.sh ' +
+    '<file>`, Semgrep on a subfolder or file, `make mutable`, `make -n verify` (a dry run), and ' +
+    '`bash scripts/job-queue.sh status`.',
+  'DO NOT:         run the job through a script file, an alias, a variable, or another spelling ' +
+    'of the same command to get past this guard.',
+];
+
+const FULL_JEST_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a jest run (jest, npx jest, npm test, make jest) that names no ' +
+    'test file, or whose array option reads the test file after it as one more value, so it runs ' +
+    'every suite of the repository.',
+  'WHY IT MATTERS: the full suite takes minutes of CPU on a machine every agent and session ' +
+    'shares, and several at once make suites time out; scripts/job-queue.sh runs the whole suite ' +
+    'as part of a verify, one heavy job at a time.',
+  'HOW TO FIX:     name the test files (`npx jest <files> --maxWorkers=2`), or queue `bash ' +
+    'scripts/job-queue.sh verify <worktree> <label>` for the whole suite. Put an array option ' +
+    '(--testPathIgnorePatterns, --testPathPattern, --roots, --testMatch, ...) after the paths or ' +
+    'use a dash option between it and the paths: it takes every bare word after it, in the space ' +
+    'form and the = form alike. `npm test` needs `-- <files>`. --listTests, --help, --version, ' +
+    '--showConfig, and a lone --testPathPattern filter stay allowed.',
+  'DO NOT:         run the suite through a script file, an alias, a variable, or another spelling ' +
+    'of the same command to get past this guard.',
+];
+
 const INTERNAL_ERROR_REASON_LINES = [
   'WHAT FAILED:    kill-guard hit an internal error while judging this command, so it could not ' +
     'clear it.',
@@ -261,10 +338,13 @@ const REASON_BY_KIND = {
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
   mainFastForward: (finding) => blockReason(MAIN_FAST_FORWARD_REASON_LINES, finding.detail),
+  mainMove: (finding) => blockReason(MAIN_MOVE_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
   hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
+  heavyJob: (finding) => blockReason(HEAVY_JOB_REASON_LINES, finding.detail),
+  fullJest: (finding) => blockReason(FULL_JEST_REASON_LINES, finding.detail),
   internalError: (finding) => blockReason(INTERNAL_ERROR_REASON_LINES, finding.detail),
 };
 
@@ -280,6 +360,15 @@ const denyJson = (reason) =>
   });
 
 // ---- pieces both scanners share ----
+
+// Test-only work counter. `decide` points it at `options.workCounter` (an in-process option; the
+// hook payload never reaches it) for the length of one call, and the hot loops call `tick()`, so a
+// test can count real work and prove the scan stays linear without reading a clock. Absent, `tick`
+// is one null check.
+let workCounter = null;
+function tick() {
+  if (workCounter !== null) workCounter.steps++;
+}
 
 // An unquoted `#` that starts a word comments out the rest of its line —
 // quotes in it included, so an apostrophe there must not open a string that
@@ -376,6 +465,7 @@ function queueHeredoc(state, operator, segmentIndex) {
 function readHeredocBody(text, start, heredoc) {
   let lineStart = start;
   while (lineStart <= text.length) {
+    tick();
     const newline = text.indexOf('\n', lineStart);
     const lineEnd = newline === -1 ? text.length : newline;
     const line = text.slice(lineStart, lineEnd);
@@ -757,6 +847,7 @@ function scanLevel(text) {
     separators: [],
   };
   while (context.i < context.n) {
+    tick();
     if (context.quote === "'") {
       stepSingleQuote(context);
       continue;
@@ -904,6 +995,7 @@ function tokenize(segment) {
     redirects: [],
   };
   while (context.i < context.segment.length) {
+    tick();
     if (context.quote) {
       stepWordQuoted(context);
       continue;
@@ -1013,7 +1105,16 @@ const abbreviatesLongOption = (option, optionsWithValue) =>
 // letter comes last (`sudo -iu me`, as getopt reads it; in `-uroot` the value
 // is glued on). A group holding a glued-only letter never takes the next word.
 function takesNextWord(option, optionsWithValue, gluedOnlyLetters = new Set()) {
-  if (optionsWithValue.has(option) || abbreviatesLongOption(option, optionsWithValue)) return true;
+  return (
+    abbreviatesLongOption(option, optionsWithValue) ||
+    takesNextWordExactly(option, optionsWithValue, gluedOnlyLetters)
+  );
+}
+
+// `takesNextWord` without the long-option abbreviation, for a command that reads none, where a
+// boolean flag that prefixes a value option's name (`--json` of `--json-output`) takes no word.
+function takesNextWordExactly(option, optionsWithValue, gluedOnlyLetters = new Set()) {
+  if (optionsWithValue.has(option)) return true;
   if (!/^-[A-Za-z0-9]{2,}$/.test(option)) return false;
   const letters = [...option.slice(1)];
   if (letters.some((letter) => gluedOnlyLetters.has(letter))) return false;
@@ -1330,6 +1431,7 @@ function applyGitOption(invocation, option, next) {
   const value = equals === -1 ? next : option.slice(equals + 1);
   if (value === undefined) return;
   if (GIT_CONFIG_OPTIONS.has(name)) invocation.configs.push(value);
+  if (name === '--config-env') invocation.environmentConfigs.push(value);
   const field = GIT_PATH_OPTIONS.get(name);
   if (field === undefined) return;
   if (field === 'directory') invocation.directory = resolveDirectory(invocation.directory, value);
@@ -1345,6 +1447,7 @@ function gitInvocation(rest, directory, environment) {
     gitDirectory: environment.GIT_DIR,
     workTree: environment.GIT_WORK_TREE,
     configs: [],
+    environmentConfigs: [],
   };
   let i = 1;
   while (i < rest.length && rest[i].startsWith('-')) {
@@ -1360,7 +1463,10 @@ function gitInvocation(rest, directory, environment) {
     subcommand: rest[i],
     arguments: rest.slice(i + 1),
     configs: invocation.configs,
+    environmentConfigs: invocation.environmentConfigs,
     environment,
+    hasGitDirectory: invocation.gitDirectory !== undefined,
+    hasWorkTree: invocation.workTree !== undefined,
     targets: [locate(invocation.workTree), locate(invocation.gitDirectory)],
   };
 }
@@ -1754,6 +1860,64 @@ function hookFinding(git, invocations, segment) {
   return null;
 }
 
+// Whether `directory` is a worktree of this repository or a folder inside one: a ref-name command
+// run there reaches the refs every worktree shares.
+function isInsideProjectWorktree(directory, rules) {
+  const segments = directory.split('/');
+
+  return segments.some(
+    (_segment, index) =>
+      index > 0 && isProjectWorktree(segments.slice(0, index + 1).join('/') || '/', rules),
+  );
+}
+
+const pathExistsFrom = (directory, operand) => {
+  const resolved = resolveDirectory(directory, operand);
+
+  return resolved !== null && fs.existsSync(resolved);
+};
+
+// Whether the work tree at or above `directory` is a worktree of this repository whose HEAD file
+// names `main`, which a `reset` there moves.
+function headNamesMain(directory, rules) {
+  const segments = directory.split('/');
+  for (let length = segments.length; length > 1; length -= 1) {
+    const root = segments.slice(0, length).join('/');
+    if (!fs.existsSync(path.join(root, '.git'))) continue;
+
+    return isProjectWorktree(root, rules) && headFileNamesMain(root);
+  }
+
+  return false;
+}
+
+// A linked worktree's `.git` file points at the git directory that holds its HEAD.
+function headFileNamesMain(root) {
+  try {
+    const pointer = fs.readFileSync(path.join(root, '.git'), 'utf8').match(/^gitdir:\s*(.+)$/m)[1];
+    const head = fs.readFileSync(path.join(path.resolve(root, pointer.trim()), 'HEAD'), 'utf8');
+
+    return /^ref:\s*refs\/heads\/main\s*$/i.test(head);
+  } catch {
+    return false;
+  }
+}
+
+// A command that moves the branch `main` (see kill-guard-main-moves.js).
+function mainMoveFinding(segment, invocations, rules) {
+  if (invocations[0].arguments.some((parameter) => HELP_OPTIONS.has(parameter))) return null;
+  const target = mainMoveTarget(invocations, {
+    isMainCheckout: (directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath),
+    isInRepository: (directory) => isInsideProjectWorktree(directory, rules),
+    headNamesMain: (directory) => headNamesMain(directory, rules),
+    pathExists: pathExistsFrom,
+  });
+
+  if (target === null) return null;
+
+  return { kind: 'mainMove', detail: `${segment.trim()} (runs in ${target})` };
+}
+
 // One invocation per directory the command may run in; the subcommand is
 // the same in each.
 function gitFinding(segment, invocations, rules) {
@@ -1763,11 +1927,17 @@ function gitFinding(segment, invocations, rules) {
     ? dataBodyHookFinding(git, segment)
     : hookFinding(git, invocations, segment);
   if (skipped !== null) return skipped;
-  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
+  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand)) {
+    return mainMoveFinding(segment, invocations, rules);
+  }
+  if (leavesMainCheckoutSafe(git)) return null;
   const target = invocations
     .flatMap((invocation) => invocation.targets)
     .find((directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath));
-  if (target === undefined) return null;
+  if (target === undefined) {
+    // A `pull` outside the main checkout still fetches, and its refspec can write the ref `main`.
+    return git.subcommand === 'pull' ? mainMoveFinding(segment, invocations, rules) : null;
+  }
 
   return {
     kind: isFastForwardOnly(git) ? 'mainFastForward' : 'mainCheckout',
@@ -1775,8 +1945,7 @@ function gitFinding(segment, invocations, rules) {
   };
 }
 
-// ---- shell writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, ----
-// ---- .claude/skills/, .claude/agents/, harness/kiko/, YAML ----
+// ---- shell writes into the folders of WRITE_GUARDED_TREES, and into YAML files ----
 
 // The folders, at the root of any worktree of this repository, that only
 // Edit/Write may change: the pre-write guard sees no other tool. An entry
@@ -1792,9 +1961,18 @@ const WRITE_GUARDED_TREES = new Set([
   '.claude/skills',
   '.claude/agents',
   'harness/kiko',
+  'docs/superpowers',
 ]);
 
+// A folder that may hold a tree (`.claude`, `harness`) is guarded against a whole-folder copy.
+// `docs` is not: the rest of it (`docs/harness/`) is written by shell as a matter of course, and
+// a copy of a folder onto `docs/` lands unchecked only when it carries a `superpowers` folder.
+const TREES_WITHOUT_PARENT_RULE = new Set(['docs/superpowers']);
+
 const GUARDED_TREE_SEGMENTS = [...WRITE_GUARDED_TREES].map((tree) => tree.split('/'));
+const TREE_PARENT_SEGMENTS = [...WRITE_GUARDED_TREES]
+  .filter((tree) => !TREES_WITHOUT_PARENT_RULE.has(tree))
+  .map((tree) => tree.split('/'));
 
 // Whether `segments` spell `tree` from `index` on, case-folded (APFS folds case).
 const spellsTreeAt = (segments, index, tree) =>
@@ -1809,7 +1987,7 @@ const namesTreeAt = (segments, index) =>
 // Whether `segments` end with the first folders of a tree that has more (`.claude`, `harness`)
 // from `index` on: a folder that may hold that tree.
 const namesTreeParentAt = (segments, index) =>
-  GUARDED_TREE_SEGMENTS.some((tree) => {
+  TREE_PARENT_SEGMENTS.some((tree) => {
     const depth = segments.length - index;
 
     return depth < tree.length && spellsTreeAt(segments, index, tree.slice(0, depth));
@@ -1921,8 +2099,27 @@ function isGitConfigFile(target) {
   );
 }
 
-// A path the text cannot pin down that still spells `.git/config` (`"$D/.git/config"`).
-const namesGitConfig = (target) => /(?:^|\/)\.git\/config(?:\.worktree)?$/i.test(target);
+// A path the text cannot pin down that still spells a git config file (`"$D/.git/config"`,
+// `.git/worktrees/w/config.worktree`).
+const GIT_CONFIG_PATH =
+  /(?:^|\/)\.git\/(?:config(?:\.worktree)?|worktrees\/[^/]+\/config\.worktree)$/i;
+const namesGitConfig = (target) => GIT_CONFIG_PATH.test(target);
+
+// A path whose last folder is `.git`: what is copied into it, or what becomes it, may be a config.
+const namesGitFolder = (target) => /(?:^|\/)\.git\/*$/i.test(target);
+
+// A linked worktree's folder in the repository config, `.git/worktrees/<name>`, which holds its
+// `config.worktree`.
+const namesWorktreeGitFolder = (target) => /(?:^|\/)\.git\/worktrees\/[^/]+\/*$/i.test(target);
+
+// The config files a copy of a folder's contents (a glob, `src/.`, a variable) into `folder` may
+// write when `folder` is a `.git` or a linked worktree's folder in it.
+function gitConfigsIn(folder) {
+  const base = folder.replace(/\/+$/, '');
+  if (namesGitFolder(folder)) return [...GIT_CONFIG_FILES].map((name) => `${base}/${name}`);
+
+  return namesWorktreeGitFolder(folder) ? [`${base}/config.worktree`] : [];
+}
 
 // A YAML file (the final segment ends in .yml or .yaml) anywhere in a worktree of this repository,
 // at any depth, is guarded by its extension: the Maestro flows, workflows, and rule files of the
@@ -1942,23 +2139,34 @@ function isYamlInsideWorktree(target, rules) {
   );
 }
 
+function isExistingDirectory(target) {
+  try {
+    return fs.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 // Where `target` lands from `directory` (resolved when the text allows) when
 // that is inside a tree, is a YAML file of a worktree, or is a git config file, or null. A cp/mv
 // `destination` may be a folder, and what it copies lands inside it, so one
 // that is a tree folder itself counts too. With `resolvedOnly`, a target the
 // text cannot resolve never counts. A `folder` target (a copied or moved folder, or the
 // destination of a copy of a folder's contents) counts too when it is a folder that may hold a
-// tree (`<worktree>/.claude`): what lands there whole may carry one.
-function guardedPlace(target, directory, rules, { destination, resolvedOnly, folder }) {
+// tree (`<worktree>/.claude`): what lands there whole may carry one. A `missing` target counts only
+// while it is no existing directory: a copy lands inside a directory that is there.
+function guardedPlace(target, directory, rules, { destination, resolvedOnly, folder, missing }) {
   const resolved = resolveDirectory(directory, target);
   const inside = (place) => (destination ? `${place.replace(/\/+$/, '')}/_` : place);
+  if (missing && resolved !== null && isExistingDirectory(resolved)) return null;
   if (resolved === null) {
     if (resolvedOnly) return null;
 
     return namesGuardedTree(inside(target)) ||
       namesGitConfig(target) ||
       YAML_FILE.test(target) ||
-      (folder && namesTreeParentFolder(target))
+      (folder && namesTreeParentFolder(target)) ||
+      (missing && namesGitFolder(target))
       ? target
       : null;
   }
@@ -1966,7 +2174,8 @@ function guardedPlace(target, directory, rules, { destination, resolvedOnly, fol
   return isInsideGuardedTree(inside(resolved), rules) ||
     isGitConfigFile(resolved) ||
     isYamlInsideWorktree(resolved, rules) ||
-    (folder && isTreeParentFolder(resolved, rules))
+    (folder && isTreeParentFolder(resolved, rules)) ||
+    (missing && namesGitFolder(resolved))
     ? resolved
     : null;
 }
@@ -1977,11 +2186,18 @@ function firstGuardedWrite(
   targets,
   directories,
   rules,
-  { verb = 'writes', destination = false, resolvedOnly = false, folder = false } = {},
+  {
+    verb = 'writes',
+    destination = false,
+    resolvedOnly = false,
+    folder = false,
+    missing = false,
+  } = {},
 ) {
   for (const target of targets) {
     for (const directory of directories) {
-      const where = guardedPlace(target, directory, rules, { destination, resolvedOnly, folder });
+      const mode = { destination, resolvedOnly, folder, missing };
+      const where = guardedPlace(target, directory, rules, mode);
       if (where !== null) return { verb, where };
     }
   }
@@ -2135,8 +2351,11 @@ const copiesContents = (source) =>
 function copyMovePlan(parameters) {
   const { options, operands } = splitOptions(parameters, readCopyMoveOption);
   const recursive = options.some((option) => option.recursive);
-  const contentsInto = (folder, sources) =>
-    recursive && sources.some(copiesContents) ? [folder] : [];
+  const contentsInto = (folder, sources) => {
+    if (!sources.some(copiesContents)) return [];
+
+    return [...(recursive ? [folder] : []), ...gitConfigsIn(folder)];
+  };
   const targetDirectory = options.findLast((option) => option.targetDirectory !== undefined);
   if (targetDirectory !== undefined) {
     const landed = intoFolder(targetDirectory.targetDirectory, operands);
@@ -2150,13 +2369,32 @@ function copyMovePlan(parameters) {
   const destination = operands.at(-1);
   const sources = operands.slice(0, -1);
   if (options.some((option) => option.noTargetDirectory)) {
-    return { targets: [destination], folders: recursive ? [destination] : [] };
+    // A recursive copy onto the destination itself merges the source's contents into it, as a glob
+    // does.
+    return {
+      targets: [destination],
+      folders: recursive ? [destination, ...gitConfigsIn(destination)] : [],
+    };
   }
   const landed = intoFolder(destination, sources);
   const folders = [...landed, ...contentsInto(destination, sources)];
   if (sources.length > 1 || destination.endsWith('/')) return { targets: landed, folders };
 
   return { targets: [destination, ...landed], folders };
+}
+
+// The destination of a copy of one folder or a move, which becomes that folder itself when it does
+// not exist (macOS `cp -R src dst/` and `mv src dst/`, with or without the slash, make `dst` a
+// copy of `src`, measured), so the text cannot tell what lands there. Plain `cp` copies no folder,
+// and `-t` names the destination as a folder. `-T` does not: `mv -T src dst` still makes `dst` a
+// copy of `src` when `dst` is missing.
+function createdFolders(base, parameters) {
+  if (!COPY_MOVE_COMMANDS.has(base)) return [];
+  const { options, operands } = splitOptions(parameters, readCopyMoveOption);
+  const namesFolder = options.some((option) => option.targetDirectory !== undefined);
+  const copiesFolder = MOVE_COMMANDS.has(base) || options.some((option) => option.recursive);
+
+  return operands.length === 2 && copiesFolder && !namesFolder ? [operands[1]] : [];
 }
 
 // The files a command writes (`sed -i`, `perl -i`, `tee`), or null when it is none of them or
@@ -2303,6 +2541,7 @@ function statementBefore(code, index) {
 function writeCallTargets(code) {
   const targets = [];
   for (const match of code.matchAll(WRITE_CALL)) {
+    tick();
     const { content } = matchDelimited(code, match.index + match[0].length, '(', ')');
     const [first, rest] = splitFirstArgument(content);
     if (!OPEN_CALL.test(match[1]) || WRITING_MODE.test(rest)) targets.push(first);
@@ -2318,7 +2557,12 @@ function writeCallTargets(code) {
   return targets;
 }
 
-const literalsOf = (text) => [...text.matchAll(STRING_LITERAL)].map((match) => match[2]);
+const literalsOf = (text) =>
+  [...text.matchAll(STRING_LITERAL)].map((match) => {
+    tick();
+
+    return match[2];
+  });
 
 const BARE_NAME = /^\s*[A-Za-z_$][\w$]*\s*$/;
 const ARGV_READ = /\b(?:sys|process)\.argv\b/;
@@ -2403,7 +2647,9 @@ const withXargsInput = (parameters, placeholder, input) =>
 // -r {} .` may write `./src`). Those folder names are `named`; a plain cp
 // cannot copy a folder, so `canCopyFolder` is false for it and its `named`
 // targets count only where the text resolves them. The input may also be a YAML file, so a
-// destination the text resolves into a worktree folder counts through a `.yml` marker (`yaml`).
+// destination the text resolves into a worktree folder counts through a `.yml` marker (`yaml`),
+// and the input may be a git config file, which counts wherever the destination is a `.git` folder
+// (`gitConfig`, resolved or not, in any repository).
 function xargsCopyMoveTargets(base, parameters, placeholder) {
   if (!COPY_MOVE_COMMANDS.has(base) || inputMayBeDestination(parameters, placeholder)) return null;
   const targetsFor = (inputs) =>
@@ -2413,6 +2659,7 @@ function xargsCopyMoveTargets(base, parameters, placeholder) {
   return {
     plain: targetsFor(['xargs-input']),
     yaml: targetsFor(['xargs-input.yml']),
+    gitConfig: targetsFor([...GIT_CONFIG_FILES]),
     named: targetsFor([...WRITE_GUARDED_TREES]),
     canCopyFolder: MOVE_COMMANDS.has(base) || options.some((option) => option.recursive),
   };
@@ -2436,6 +2683,7 @@ function commandWrite(
     return (
       firstGuardedWrite(targets.plain, directories, rules, { destination }) ??
       firstGuardedWrite(targets.yaml, directories, rules, { destination, resolvedOnly: true }) ??
+      firstGuardedWrite(targets.gitConfig, directories, rules, { destination }) ??
       firstGuardedWrite(targets.named, directories, rules, {
         destination,
         resolvedOnly: !targets.canCopyFolder,
@@ -2445,7 +2693,11 @@ function commandWrite(
   if (files !== null) {
     return (
       firstGuardedWrite(files, directories, rules, { destination }) ??
-      firstGuardedWrite(folders, directories, rules, { destination, folder: true })
+      firstGuardedWrite(folders, directories, rules, { destination, folder: true }) ??
+      firstGuardedWrite(createdFolders(base, parameters), directories, rules, {
+        folder: true,
+        missing: true,
+      })
     );
   }
   const program = interpreterProgramOf(base, parameters, stdinScripts);
@@ -2576,6 +2828,9 @@ function leaveSubshell(location) {
   Object.assign(location, location.saved.pop());
 }
 
+const runsCommandString = (rest) =>
+  rest.some((word, index) => index > 0 && SHELL_COMMAND_FLAG.test(word));
+
 // A shell runs its `-c` string or, without `-c`, the heredoc bodies and
 // here-strings it reads as its script.
 function queueShellScript(rest, nested, stdinScripts) {
@@ -2631,11 +2886,16 @@ function substitutedCommandFinding(command, context) {
 }
 
 // A statement that only sets variables (a bare `NAME=value`, or an `export`/`declare`) denies by
-// itself when they set core.hooksPath through GIT_CONFIG_*, whatever git command runs after it.
+// itself when they set core.hooksPath through GIT_CONFIG_*, whatever git command runs after it,
+// and, as a `mainMove`, when they set a `remote.<name>.fetch` refspec that can write `main` for
+// the fetch or pull after it (in whichever repository: the text cannot say where that runs).
 function environmentFinding(environment, context) {
-  if (context.rules.dataBody || !environmentSetsHooksPath(environment)) return null;
+  if (context.rules.dataBody) return null;
+  const detail = context.segment.trim();
+  if (environmentSetsHooksPath(environment)) return { kind: 'hooksConfig', detail };
+  if (!environmentFetchWritesMain(environment)) return null;
 
-  return { kind: 'hooksConfig', detail: context.segment.trim() };
+  return { kind: 'mainMove', detail: `${detail} (sets a fetch refspec that can write main)` };
 }
 
 // ---- a script file a shell runs ----
@@ -2652,7 +2912,7 @@ const SHELL_OPTION = /^[-+]./;
 // The script file `bash [options] <file>` runs: its first operand. A `-c` flag (anywhere, as
 // `queueShellScript` reads it) or `-s` means the script is text, not a file.
 function shellScriptOperand(rest) {
-  if (rest.some((word, index) => index > 0 && SHELL_COMMAND_FLAG.test(word))) return undefined;
+  if (runsCommandString(rest)) return undefined;
   let index = 1;
   while (index < rest.length) {
     const word = rest[index];
@@ -2708,9 +2968,12 @@ function readScriptFile(file, rules, requireShebang) {
   }
 }
 
-// A kill or a raw main fast-forward in the script file a command runs (one level: a script it runs
-// or sources in turn is not read). A file the text cannot name (a variable), a missing one, one
-// over the size limit, and one built in the same command are not read.
+// The git findings a scanned script keeps under their own kind; any other finding in one is a kill.
+const SCRIPT_GIT_KINDS = new Set(['mainFastForward', 'mainMove']);
+
+// A kill, a raw main fast-forward, or a move of main in the script file a command runs (one level:
+// a script it runs or sources in turn is not read). A file the text cannot name (a variable), a
+// missing one, one over the size limit, and one built in the same command are not read.
 function scriptKillFinding(scriptFile, context) {
   if (scriptFile === null || !context.rules.scanScripts) return null;
   const { operand, requireShebang } = scriptFile;
@@ -2729,10 +2992,31 @@ function scriptKillFinding(scriptFile, context) {
     );
     if (found !== null) {
       return {
-        kind: found.kind === 'mainFastForward' ? 'mainFastForward' : 'scriptKill',
+        kind: SCRIPT_GIT_KINDS.has(found.kind) ? found.kind : 'scriptKill',
         detail: `${file} holds \`${found.detail}\``,
       };
     }
+  }
+
+  return null;
+}
+
+// The files a `<` redirect feeds to a command's stdin (a here-document is not one). A shell with
+// no script of its own, or `source /dev/stdin`, runs what the file holds.
+const stdinFilesOf = (redirects) =>
+  redirects.filter(({ operator }) => /^<>?$/.test(operator)).map(({ target }) => target);
+
+function shellReadsStdin(rest) {
+  const operand = shellScriptOperand(rest);
+  const namesStdin = operand === undefined || operand === '-' || STDIN_FILES.has(operand);
+
+  return namesStdin && !runsCommandString(rest);
+}
+
+function stdinFileFinding(context) {
+  for (const target of context.stdinFiles) {
+    const found = scriptKillFinding({ operand: target, requireShebang: false }, context);
+    if (found !== null) return found;
   }
 
   return null;
@@ -2756,6 +3040,25 @@ function assignmentFinding({ tokens: rest, environment }, context) {
   return environmentFinding(assigned, context);
 }
 
+// A shell runs the script file it names, or, with none, the heredoc bodies, here-strings, and
+// `<` file on its stdin.
+function shellFinding(base, rest, context) {
+  queueShellScript(rest, context.scripts, context.stdinScripts);
+
+  return (
+    scriptKillFinding(scriptFileOf(base, rest), context) ??
+    (shellReadsStdin(rest) ? stdinFileFinding(context) : null)
+  );
+}
+
+function sourceFinding(base, rest, context) {
+  const scriptFile = scriptFileOf(base, rest);
+  if (!STDIN_FILES.has(scriptFile.operand)) return scriptKillFinding(scriptFile, context);
+  context.scripts.push(...context.stdinScripts);
+
+  return stdinFileFinding(context);
+}
+
 // The finding for one unwrapped command (see `segmentFinding`).
 function commandFinding(command, context) {
   const { tokens: rest, environment } = command;
@@ -2764,11 +3067,9 @@ function commandFinding(command, context) {
   const base = basename(rest[0]);
   if (ASSIGNING_COMMANDS.has(base)) return assignmentFinding(command, context);
 
-  if (SHELLS.has(base)) {
-    queueShellScript(rest, context.scripts, context.stdinScripts);
+  noteQueuedJob(base, rest, context);
 
-    return scriptKillFinding(scriptFileOf(base, rest), context);
-  }
+  if (SHELLS.has(base)) return shellFinding(base, rest, context);
 
   // `eval "$(cat)" <<'EOF'` runs what its stdin holds, as `source /dev/stdin <<'EOF'` does.
   if (base === 'eval') {
@@ -2779,12 +3080,7 @@ function commandFinding(command, context) {
   const kill = killFinding(base, command, context);
   if (kill !== null || base === 'kill') return kill;
 
-  if (base === 'source' || base === '.') {
-    const scriptFile = scriptFileOf(base, rest);
-    if (STDIN_FILES.has(scriptFile.operand)) context.scripts.push(...context.stdinScripts);
-
-    return scriptKillFinding(scriptFile, context);
-  }
+  if (base === 'source' || base === '.') return sourceFinding(base, rest, context);
 
   if (base === 'git') {
     const invocations = context.directories.map((directory) =>
@@ -2812,7 +3108,7 @@ function redirectWrite(redirects, directories, rules) {
 }
 
 // The kinds the second, variable-expanded reading of a segment reports (see `segmentFinding`).
-const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward']);
+const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward', 'mainMove']);
 
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
 // `{ kind: 'stash' | 'mainCheckout' | 'shellWrite', detail }` — or null
@@ -2825,7 +3121,8 @@ const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward']
 // guard cannot follow (a loop variable, `read`, `+=`) still denies what its raw text denied. The
 // second reading reports only a write or a main-checkout finding: a variable's value says where a
 // write lands or a git command runs, but never which command runs or what a kill aims at (an
-// unknown `$pid` is the agent's own).
+// unknown `$pid` is the agent's own). A git folder the first reading cannot name fails closed
+// there, whatever the command assigned to the variable.
 function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) {
   const { directories, variables } = place;
   const { words: tokens, hereStrings, redirects } = tokenize(segment);
@@ -2835,6 +3132,7 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) 
       segment,
       scripts: queue,
       stdinScripts,
+      stdinFiles: stdinFilesOf(targets),
       spans,
       directories,
       rules,
@@ -2844,22 +3142,404 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) 
 
     return write === null ? null : shellWriteFinding(segment, write);
   };
+  const expanded = expandedReading(tokens, redirects, variables);
   const finding = judge(tokens, redirects, scripts);
-  if (finding !== null || !hasVariables(variables)) return finding;
-  const expand = (word) => expandVariables(word, variables);
-  const expandedWords = tokens.map(expand);
-  const expandedTargets = redirects.map((redirect) => ({
-    ...redirect,
-    target: expand(redirect.target),
-  }));
-  const unchanged =
-    expandedWords.every((word, index) => word === tokens[index]) &&
-    expandedTargets.every((redirect, index) => redirect.target === redirects[index].target);
-
-  if (unchanged) return null;
-  const added = judge(expandedWords, expandedTargets, []);
+  if (finding !== null || expanded === null) return finding;
+  const added = judge(expanded.words, expanded.targets, []);
 
   return EXPANDED_KINDS.has(added?.kind) ? added : null;
+}
+
+// The words and redirect targets of a segment with the variables the command assigned filled in,
+// or null when none of them reads one.
+function expandedReading(tokens, redirects, variables) {
+  if (!hasVariables(variables)) return null;
+  const expand = (word) => expandVariables(word, variables);
+  const words = tokens.map(expand);
+  const targets = redirects.map((redirect) => ({ ...redirect, target: expand(redirect.target) }));
+  const unchanged =
+    words.every((word, index) => word === tokens[index]) &&
+    targets.every((redirect, index) => redirect.target === redirects[index].target);
+
+  return unchanged ? null : { words, targets };
+}
+
+// ---- heavy jobs and full-suite jest runs outside the queue ----
+
+// A whole-repository job takes minutes of CPU on a machine every agent shares, and two of them at
+// once make Semgrep and jest time out, so `scripts/job-queue.sh` runs them one at a time. The deny
+// judges the typed command only: `SCRIPT_KINDS` and `DATA_KINDS` leave `heavyJob` and `fullJest`
+// out, so a script file or a heredoc body that holds `make verify` or `npx jest` is text, and
+// `scripts/job-queue.sh`, which runs `make verify` itself, is never denied.
+
+// The operands of `parameters`: its words that are no option and no option's value.
+function operandsOf(parameters, optionsWithValue, takesWord = takesNextWord) {
+  const operands = [];
+  for (let index = 0; index < parameters.length; index++) {
+    const word = parameters[index];
+    if (word === '--') {
+      operands.push(...parameters.slice(index + 1));
+      break;
+    }
+    if (!isOptionWord(word)) operands.push(word);
+    else if (takesWord(word, optionsWithValue)) index++;
+  }
+
+  return operands;
+}
+
+const MAKE_COMMANDS = new Set(['make', 'gmake']);
+const HEAVY_MAKE_TARGETS = new Set(['verify', 'gate', 'deep', 'security']);
+// A dry run prints the recipe and runs nothing. make also reads an abbreviated long option; one
+// of those is not recognized here, so it is denied (fail closed). The rest of a short-flag group
+// after a letter that takes a value (`-C`, `-f`, `-I`, `-j`, `-l`, `-o`, `-O`, `-W`) is that
+// value, so its `n` is no flag (`-Cnested` is `-C nested`).
+const MAKE_DRY_RUN_OPTIONS = new Set(['--dry-run', '--just-print', '--recon']);
+const MAKE_DRY_RUN_FLAGS = /^-(?:(?![CfIjloOW])[A-Za-z])*n[A-Za-z]*$/;
+const isMakeDryRun = (parameters) =>
+  parameters.some((word) => MAKE_DRY_RUN_OPTIONS.has(word) || MAKE_DRY_RUN_FLAGS.test(word));
+
+function makeJob(parameters) {
+  if (isMakeDryRun(parameters)) return null;
+  const target = parameters.find((word) => word === 'jest' || HEAVY_MAKE_TARGETS.has(word));
+  if (target === undefined) return null;
+
+  return target === 'jest'
+    ? { kind: 'fullJest', what: 'make jest runs every suite' }
+    : { kind: 'heavyJob', what: `make ${target} is a whole-repository job` };
+}
+
+const NPM_OPTIONS_WITH_VALUE = new Set([
+  '--prefix',
+  '-C',
+  '--workspace',
+  '-w',
+  '--loglevel',
+  '--cache',
+  '--registry',
+  '--userconfig',
+  '--globalconfig',
+]);
+const NPM_RUN_COMMANDS = new Set(['run', 'run-script', 'rum', 'urn']);
+const NPM_TEST_COMMANDS = new Set(['test', 't', 'tst']);
+const HEAVY_NPM_SCRIPTS = new Set(['check:all', 'check:deep', 'check:mutation']);
+
+// `npm test` hands jest the words after `--`; with no `--` it runs every suite.
+function npmTestJob(hasSeparator, passed) {
+  const problem = hasSeparator ? jestRunProblem(passed) : 'passes no test file after --';
+
+  return problem === null ? null : { kind: 'fullJest', what: `npm test ${problem}` };
+}
+
+function npmJob(parameters, context) {
+  const separator = parameters.indexOf('--');
+  const before = separator === -1 ? parameters : parameters.slice(0, separator);
+  const passed = separator === -1 ? [] : parameters.slice(separator + 1);
+  const [subcommand, script, ...operands] = operandsOf(before, NPM_OPTIONS_WITH_VALUE);
+  const runs = NPM_RUN_COMMANDS.has(subcommand);
+  if (NPM_TEST_COMMANDS.has(subcommand) || (runs && script === 'test')) {
+    return npmTestJob(separator !== -1, passed);
+  }
+  if (!runs) return null;
+  const heavy = (what) => ({ kind: 'heavyJob', what: `${what} is a whole-repository job` });
+  if (HEAVY_NPM_SCRIPTS.has(script)) return heavy(`npm run ${script}`);
+  const paths = [...operands, ...passed].filter((word) => !isOptionWord(word));
+
+  return script === 'check:security' && !scansOnly(paths, context)
+    ? heavy('npm run check:security, with no path')
+    : null;
+}
+
+// The check scripts that scan or test the whole repository: `mutation.sh --list` only lists, and
+// `security.sh` with a path scans that path.
+const HEAVY_SCRIPT = /(?:^|\/)scripts\/checks\/(verify|mutation|security)\.sh$/i;
+
+function checkScriptJob(base, tokens, context) {
+  const file = scriptFileOf(base, tokens);
+  if (file === null || file.operand === undefined) return null;
+  const name = HEAVY_SCRIPT.exec(file.operand)?.[1].toLowerCase();
+  if (name === undefined) return null;
+  const parameters = tokens.slice(tokens.indexOf(file.operand) + 1);
+  const lists = name === 'mutation' && parameters.includes('--list');
+  const scansPaths =
+    name === 'security' &&
+    scansOnly(
+      parameters.filter((word) => !isOptionWord(word)),
+      context,
+    );
+
+  return lists || scansPaths
+    ? null
+    : { kind: 'heavyJob', what: `scripts/checks/${name}.sh is a whole-repository job` };
+}
+
+// The options of `semgrep scan` that take a value, from `semgrep scan --help`: a value left in
+// the operands would read as a target.
+const SEMGREP_OPTIONS_WITH_VALUE = new Set([
+  '-c',
+  '-e',
+  '-f',
+  '-j',
+  '-l',
+  '-o',
+  '--baseline-commit',
+  '--config',
+  '--emacs-output',
+  '--exclude',
+  '--exclude-rule',
+  '--gitlab-sast-output',
+  '--gitlab-secrets-output',
+  '--include',
+  '--interfile-timeout',
+  '--jobs',
+  '--json-output',
+  '--junit-xml-output',
+  '--lang',
+  '--max-chars-per-line',
+  '--max-lines-per-finding',
+  '--max-log-list-entries',
+  '--max-match-context-size',
+  '--max-memory',
+  '--max-target-bytes',
+  '--metrics',
+  '--optimizations',
+  '--output',
+  '--pattern',
+  '--project-root',
+  '--remote',
+  '--replacement',
+  '--sarif-output',
+  '--secrets-timeout',
+  '--severity',
+  '--text-output',
+  '--timeout',
+  '--timeout-threshold',
+  '--vim-output',
+  '--x-mem-policy',
+  '--x-rule-validation',
+  '--x-semgrepignore-filename',
+]);
+// The subcommands that scan nothing, and the options that print or check without scanning. A
+// word after options is a target even when it spells a subcommand, so only the first word counts.
+const SEMGREP_OTHER_COMMANDS = new Set([
+  'ci',
+  'install-semgrep-pro',
+  'login',
+  'logout',
+  'lsp',
+  'mcp',
+  'publish',
+  'show',
+  'test',
+  'validate',
+]);
+const SEMGREP_NO_SCAN_OPTIONS = new Set(['--help', '-h', '--version', '--validate']);
+
+// Whether a scan target is the whole repository: the folder the command runs in (`.`, `./`,
+// `$PWD`, its absolute path) or the root of a worktree of this repository, however it is spelled.
+function namesWholeRepository(target, { directories, rules }) {
+  if (/^\$(?:PWD|\{PWD\})$/.test(target)) return true;
+  if (['.', './'].includes(path.posix.normalize(target))) return true;
+
+  return directories.some((directory) => {
+    const resolved = resolveDirectory(directory, target);
+
+    return resolved !== null && (resolved === directory || isProjectWorktree(resolved, rules));
+  });
+}
+
+// Whether a scan names paths and none of them is the whole repository.
+const scansOnly = (paths, context) =>
+  paths.length > 0 && !paths.some((target) => namesWholeRepository(target, context));
+
+function semgrepJob(parameters, context) {
+  if (SEMGREP_OTHER_COMMANDS.has(parameters[0])) return null;
+  if (parameters.some((word) => SEMGREP_NO_SCAN_OPTIONS.has(word))) return null;
+  const scanned = parameters[0] === 'scan' ? parameters.slice(1) : parameters;
+  const targets = operandsOf(scanned, SEMGREP_OPTIONS_WITH_VALUE, takesNextWordExactly);
+  const wholeRepository =
+    targets.length === 0 || targets.some((target) => namesWholeRepository(target, context));
+
+  return wholeRepository
+    ? { kind: 'heavyJob', what: 'a Semgrep scan of the whole repository' }
+    : null;
+}
+
+// jest-cli's option table (`node_modules/jest-cli/build/args.js`, 29.7.0), copied because a checker
+// requires no package: `__tests__/kill-guard-jest-runs.test.ts` and
+// `__tests__/kill-guard-jest-options.test.ts` compare both sets with that file. An array option
+// takes every bare word after it, in the space form and the `=` form alike (yargs reads an array
+// greedily), so a test path put after one is one more value and every suite runs.
+const JEST_ARRAY_OPTIONS = new Set([
+  'coveragePathIgnorePatterns',
+  'coverageReporters',
+  'ignoreProjects',
+  'moduleDirectories',
+  'moduleFileExtensions',
+  'modulePathIgnorePatterns',
+  'modulePaths',
+  'projects',
+  'reporters',
+  'roots',
+  'selectProjects',
+  'setupFiles',
+  'setupFilesAfterEnv',
+  'snapshotSerializers',
+  'testMatch',
+  'testPathIgnorePatterns',
+  'testPathPattern',
+  'testRegex',
+  'transformIgnorePatterns',
+  'unmockedModulePathPatterns',
+  'watchPathIgnorePatterns',
+]);
+// The other options that take a value, with the short forms of `config`, `maxWorkers`, and
+// `testNamePattern`: the word after one is its value, never a test path.
+const JEST_VALUE_OPTIONS = new Set([
+  'cacheDirectory',
+  'changedSince',
+  'collectCoverageFrom',
+  'config',
+  'coverageDirectory',
+  'coverageProvider',
+  'coverageThreshold',
+  'env',
+  'filter',
+  'globalSetup',
+  'globalTeardown',
+  'globals',
+  'haste',
+  'maxConcurrency',
+  'maxWorkers',
+  'moduleNameMapper',
+  'notifyMode',
+  'openHandlesTimeout',
+  'outputFile',
+  'preset',
+  'prettierPath',
+  'resolver',
+  'rootDir',
+  'runner',
+  'seed',
+  'shard',
+  'testEnvironment',
+  'testEnvironmentOptions',
+  'testFailureExitCode',
+  'testNamePattern',
+  'testResultsProcessor',
+  'testRunner',
+  'testSequencer',
+  'testTimeout',
+  'transform',
+  '-c',
+  '-t',
+  '-w',
+]);
+// These run no test, wherever they stand in the command.
+const JEST_NO_RUN_OPTIONS = new Set(['listTests', 'help', 'version', 'showConfig']);
+
+const camelCase = (name) => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+
+// yargs reads `--test-path-ignore-patterns` as `testPathIgnorePatterns`.
+function jestOptionName(word) {
+  const [flag] = word.split('=', 1);
+
+  return flag.startsWith('--') ? camelCase(flag.slice(2)) : flag;
+}
+
+// A word the shell leaves to a variable or a substitution may hold no test path at all.
+const isNamedTestFile = (word) => !/[$`]|__SUBSHELL__/.test(word);
+
+const isBareWord = (word) => word !== undefined && !isOptionWord(word);
+
+// What the option at `parameters[index]` does with the bare words after it: how many it takes,
+// whether it takes more than its own value (`swallows`), and whether it is a `--testPathPattern`
+// filter, which names the tests on its own.
+function jestOptionReading(parameters, index) {
+  const word = parameters[index];
+  const name = jestOptionName(word);
+  const glued = word.includes('=');
+  if (!JEST_ARRAY_OPTIONS.has(name)) {
+    const takesNext = !glued && JEST_VALUE_OPTIONS.has(name) && isBareWord(parameters[index + 1]);
+
+    return { name, taken: takesNext ? 1 : 0, swallows: false, filters: false };
+  }
+  let taken = 0;
+  while (isBareWord(parameters[index + 1 + taken])) taken++;
+
+  return {
+    name,
+    taken,
+    swallows: taken > (glued ? 0 : 1),
+    filters: name === 'testPathPattern' && (glued || taken > 0),
+  };
+}
+
+// Why a jest command (its words after the command word) runs every suite, or null when it names
+// the test files it runs: a literal path, or a `--testPathPattern` filter on its own.
+function jestRunProblem(parameters) {
+  const runsNothing = (word) => isOptionWord(word) && JEST_NO_RUN_OPTIONS.has(jestOptionName(word));
+  if (parameters.some(runsNothing)) return null;
+  const separator = parameters.indexOf('--');
+  const before = separator === -1 ? parameters : parameters.slice(0, separator);
+  let files = separator === -1 ? 0 : parameters.slice(separator + 1).filter(isNamedTestFile).length;
+  let filtered = false;
+  for (let index = 0; index < before.length; index++) {
+    if (isBareWord(before[index])) {
+      if (isNamedTestFile(before[index])) files++;
+      continue;
+    }
+    const reading = jestOptionReading(before, index);
+    if (reading.swallows) return `has --${reading.name} read the test file after it as a value`;
+    filtered ||= reading.filters;
+    index += reading.taken;
+  }
+
+  return files > 0 || filtered ? null : 'names no test file';
+}
+
+function jestJob(runner, parameters) {
+  const problem = jestRunProblem(parameters);
+
+  return problem === null ? null : { kind: 'fullJest', what: `${runner} ${problem}` };
+}
+
+// `npx` runs the command after its own options.
+const NPX_OPTIONS_WITH_VALUE = new Set([
+  '-p',
+  '--package',
+  '-c',
+  '--call',
+  '-w',
+  '--workspace',
+  '--prefix',
+  '--node-arg',
+]);
+
+// The job a command (its words, the command word first) starts, as `{ kind, what }`, or null.
+function queuedJob(base, tokens, context) {
+  if (MAKE_COMMANDS.has(base)) return makeJob(tokens.slice(1));
+  if (base === 'npm') return npmJob(tokens.slice(1), context);
+  if (base === 'semgrep') return semgrepJob(tokens.slice(1), context);
+  if (base === 'jest') return jestJob('jest', tokens.slice(1));
+  if (base === 'npx') {
+    const [command, ...rest] = skipOptions(tokens, NPX_OPTIONS_WITH_VALUE);
+
+    return command === undefined ? null : queuedJob(basename(command), [command, ...rest], context);
+  }
+
+  return checkScriptJob(base, tokens, context);
+}
+
+// Remembers the first queue-only job of a typed command in `rules.queued`, which `judge` reports
+// only when nothing else was found: a deny that already existed keeps its kind, and the new kinds
+// only add denies. A script scan and a data body (`rules.kinds` set) are never noted.
+function noteQueuedJob(base, tokens, context) {
+  const { rules, segment } = context;
+  if (rules.kinds !== null || rules.queued.finding !== null) return;
+  const job = queuedJob(base, tokens, context);
+  if (job !== null)
+    rules.queued.finding = { kind: job.kind, detail: `${segment.trim()} (${job.what})` };
 }
 
 // ---- wait loops that scan the process table ----
@@ -3040,12 +3720,13 @@ function observeWaitLoops(watch, segment, spans) {
   return closed.find((finding) => finding !== null) ?? null;
 }
 
-// The finding kinds a pass reports: a script file is read for kills and a raw main fast-forward
-// only, a heredoc body that no shell is known to run is read for the kinds in `DATA_KINDS` (a kill,
-// a git stash, a hook skip by option or core.hooksPath, a main-checkout change or fast-forward, a
-// wait loop), and every other finding in either is not that pass's business. `null` reports every
-// kind.
-const SCRIPT_KINDS = new Set(['kill', 'mainFastForward']);
+// The finding kinds a pass reports: a script file is read for kills, a raw main fast-forward, and
+// a move of main only, a heredoc body that no shell is known to run is read for the kinds in
+// `DATA_KINDS` (a kill, a git stash, a hook skip by option or core.hooksPath, a main-checkout
+// change or fast-forward, a wait loop), and every other finding in either is not that pass's
+// business. `null` reports every kind. `heavyJob` and `fullJest` are in neither set: a job started
+// from a script or a data body is the queue's own work (`scripts/job-queue.sh` runs `make verify`).
+const SCRIPT_KINDS = new Set(['kill', 'mainFastForward', 'mainMove']);
 const DATA_KINDS = new Set([
   'kill',
   'stash',
@@ -3116,44 +3797,57 @@ function assignedVariables(segment, variables, separator) {
 const isLiteralValue = (value) =>
   value.length <= VARIABLE_VALUE_LIMIT && !/[$`]|__SUBSHELL__/.test(value);
 
-// The variables at one point of a command: `own` entries over the `parent` scope. A segment's
-// scope must stay as it was, because the nested text of earlier segments still reads it, so a later
-// assignment adds a link instead of copying every earlier variable (thousands of assignments
-// copied quadratically, seconds of the hook's 10). Every SCOPE_DEPTH_LIMIT links the chain is
-// folded into one map, so a lookup walks a few links at most.
-const SCOPE_DEPTH_LIMIT = 32;
+// The variables at one point of a command: a persistent trie over the characters of each name, a
+// node per character holding the value of the name that ends there (`null`: assigned, value
+// unknown). A segment's scope must stay as it was, because the nested text of earlier segments
+// still reads it, so an assignment copies only the nodes on its name's path and shares every other
+// node. An assignment and a lookup each cost the name's length, however many variables came before
+// and however often a subshell goes back to an earlier scope; a copy of every earlier variable per
+// assignment (or a merge of them every few links) turns thousands of assignments into quadratic
+// work, past the hook's timeout. `null` is the scope with no variable.
+const noVariables = () => null;
 
-const noVariables = () => ({ own: new Map(), parent: null, depth: 0 });
-
-const hasVariables = (scope) => scope.parent !== null || scope.own.size > 0;
+const hasVariables = (scope) => scope !== null;
 
 function lookupVariable(scope, name) {
-  for (let link = scope; link !== null; link = link.parent) {
-    if (link.own.has(name)) return link.own.get(name);
+  let node = scope;
+  for (const character of name) {
+    tick();
+    node = node?.children.get(character);
+    if (node === undefined) return undefined;
   }
 
-  return undefined;
+  return node?.value;
 }
 
-function foldScope(scope) {
-  const links = [];
-  for (let link = scope; link !== null; link = link.parent) links.unshift(link);
-  const own = new Map();
-  for (const link of links) for (const [name, value] of link.own) own.set(name, value);
+const copyNode = (node) => {
+  tick();
 
-  return { own, parent: null, depth: 0 };
+  return { value: node?.value, children: new Map(node?.children) };
+};
+
+function setVariable(scope, name, value) {
+  const root = copyNode(scope);
+  let copy = root;
+  let original = scope;
+  for (const character of name) {
+    original = original?.children.get(character);
+    const child = copyNode(original);
+    copy.children.set(character, child);
+    copy = child;
+  }
+  copy.value = value;
+
+  return root;
 }
 
 // A later assignment of a name wins, in the order the command runs them. A segment that assigns
 // nothing shares its scope.
-function withVariables(scope, assigned) {
-  const entries = Object.entries(assigned);
-  if (entries.length === 0) return scope;
-  const own = new Map(entries.map(([name, value]) => [name, isLiteralValue(value) ? value : null]));
-  const next = { own, parent: scope, depth: scope.depth + 1 };
-
-  return next.depth >= SCOPE_DEPTH_LIMIT ? foldScope(next) : next;
-}
+const withVariables = (scope, assigned) =>
+  Object.entries(assigned).reduce(
+    (next, [name, value]) => setVariable(next, name, isLiteralValue(value) ? value : null),
+    scope,
+  );
 
 // The variables after one segment. Only a write or a directory is judged through a variable, and
 // a pass that reports kills and stashes alone judges neither, so it tracks none.
@@ -3245,6 +3939,7 @@ function findDanger(line, depth, checkHeredoc, place, rules) {
   let before = '';
 
   for (const [index, segment] of segments.entries()) {
+    tick();
     enterSubshells(location, opens[index]);
     const here = { directories: location.directories, variables: location.variables };
     placesAt.push(here);
@@ -3321,7 +4016,8 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // folder in place of the main checkout, and the guard judges it with those.
 // `options.projectRoot` is test-only too: a fake repository in a scratch
 // folder stands in for this one, so the shell-write tests never name a real
-// file. The hook entry point below never passes any of them.
+// file. `options.workCounter` (`{ steps }`) is test-only as well: the scan steps of that one call
+// are added to it. The hook entry point below never passes any of them.
 //
 // A `$"…"` heredoc delimiter ends at `EOF` in bash and at `$EOF` in zsh, so
 // every command is judged once per reading, and either finding counts. The
@@ -3332,13 +4028,23 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // not take) is an `internalError` finding that denies, never an allow, because the command that
 // crashed the guard may be the one it exists to stop.
 function decide(command, options = {}) {
+  const previousCounter = workCounter;
   try {
+    workCounter =
+      typeof options.workCounter === 'object' &&
+      options.workCounter !== null &&
+      !Array.isArray(options.workCounter)
+        ? options.workCounter
+        : null;
+
     return judge(command, options);
   } catch (error) {
     return {
       kind: 'internalError',
       detail: `${error?.name}: ${String(error?.message).slice(0, 200)}`,
     };
+  } finally {
+    workCounter = previousCounter;
   }
 }
 
@@ -3350,6 +4056,7 @@ function judge(command, options) {
     checkWrites: true,
     scanScripts: true,
     kinds: null,
+    queued: { finding: null },
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {
@@ -3358,7 +4065,7 @@ function judge(command, options) {
     if (finding !== null) return finding;
   }
 
-  return null;
+  return rules.queued.finding;
 }
 
 // ---- hook entry point ----

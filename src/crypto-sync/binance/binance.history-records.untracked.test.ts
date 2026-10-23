@@ -138,6 +138,7 @@ describe('commitSettledSpan with untracked tickers', () => {
       },
       writeOversized: async () => undefined,
       writeUntracked,
+      writeNotImported: async () => undefined,
     });
 
   it.each(['forward', 'pending', 'rescan'] as const)(

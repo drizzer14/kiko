@@ -40,7 +40,7 @@ describe('exchangeStateDepsOf', () => {
   });
 
   it('writes the patches through the repo, gated on the exchange it was made for', async () => {
-    const patches = [{ kind: 'tradesRotation', value: 3 }] as const;
+    const patches = [{ kind: 'tradesRotation', value: 'BTCUSDT' }] as const;
 
     await exchangeStateDepsOf('binance').patchExchangeState('acc-1', patches);
 

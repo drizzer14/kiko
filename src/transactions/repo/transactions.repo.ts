@@ -1529,8 +1529,24 @@ const withCategoryRules = async (
 /** A stored statement-import row a sync input can adopt. */
 type ImportTwin = Pick<
   TransactionRow,
-  'id' | 'holdingId' | 'amountMinorUnits' | 'time' | 'externalId' | 'category' | 'comment'
+  | 'id'
+  | 'holdingId'
+  | 'amountMinorUnits'
+  | 'time'
+  | 'externalId'
+  | 'category'
+  | 'comment'
+  | 'exchangePairId'
+  | 'exchangeCounterpartHoldingId'
+  | 'untrackedCounterpart'
 >;
+
+// The three columns that mark a row as a leg of an exchange movement.
+const EXCHANGE_MARKER_KEYS = [
+  'exchangePairId',
+  'exchangeCounterpartHoldingId',
+  'untrackedCounterpart',
+] as const satisfies ReadonlyArray<keyof ImportTwin>;
 
 /** Every `import` row on the inputs' holdings dated within the match window of the span of
  * their times, read inside the caller's own transaction. */
@@ -1549,6 +1565,9 @@ const readImportTwinsDatabaseTransaction = async (
       externalId: transactions.externalId,
       category: transactions.category,
       comment: transactions.comment,
+      exchangePairId: transactions.exchangePairId,
+      exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+      untrackedCounterpart: transactions.untrackedCounterpart,
     })
     .from(transactions)
     .where(
@@ -1564,11 +1583,25 @@ const readImportTwinsDatabaseTransaction = async (
     );
 };
 
+// The markers and the operation of an exchange leg move as one unit: onto a plain import row from
+// the sync input, or not at all when the row already carries a marker of the user's own, so a
+// half-marked row is never made.
+const adoptedExchangeValuesOf = (twin: ImportTwin, input: NewTransaction) =>
+  EXCHANGE_MARKER_KEYS.every((key) => twin[key] === null)
+    ? {
+        exchangePairId: input.exchangePairId ?? null,
+        exchangeCounterpartHoldingId: input.exchangeCounterpartHoldingId ?? null,
+        untrackedCounterpart: input.untrackedCounterpart ?? null,
+        operation: input.operation ?? null,
+      }
+    : {};
+
 // The bank's values go onto the import row through the same column list the
 // upsert refreshes, so a bank-owned column added there is adopted here too.
 // `category` and `comment` are user and file state: the import row's own value
 // stays, and only a column it never had is filled from the sync.
 const adoptedValuesOf = (twin: ImportTwin, input: NewTransaction) => ({
+  ...adoptedExchangeValuesOf(twin, input),
   ...Object.fromEntries(
     BANK_OWNED_TRANSACTION_COLUMNS.map(({ key }) => [
       key,
@@ -1584,15 +1617,16 @@ const adoptedValuesOf = (twin: ImportTwin, input: NewTransaction) => ({
 /**
  * Turn the statement-import twin of each of these NEW sync inputs into the
  * sync's own row, in place, and return the inputs it adopted so the insert skips
- * them. The rule
- * (which import row a sync input adopts, the residual it leaves) is
- * `pairSyncInputsWithImportRows`'s. One UPDATE by the import row's id: every
- * structural column (`id`, `holding_id`, the loan link, the exchange pair and
- * its marker, `change_group_id`, `sets_balance`, `created_at`) stays, and no
- * `holdings` row is written. The sync overwrites the stored balance from the
- * bank's own figure, and an adoption adds no amount anywhere, so the ledger keeps
- * one row per purchase without moving any balance. Runs only on the sync insert
- * path: a statement import never adopts.
+ * them. The rule (which import row a sync input adopts, the residual it leaves)
+ * is `pairSyncInputsWithImportRows`'s. One UPDATE by the import row's id: every
+ * structural column (`id`, `holding_id`, the loan link, `change_group_id`,
+ * `sets_balance`, `created_at`) stays, and so do the exchange pair and its
+ * markers when the import row carries one; a plain import row takes the sync
+ * input's own (`adoptedExchangeValuesOf`). No `holdings` row is written. The
+ * sync overwrites the stored balance from the bank's own figure, and an
+ * adoption adds no amount anywhere, so the ledger keeps one row per purchase
+ * without moving any balance. Runs only on the sync insert path: a statement
+ * import never adopts.
  */
 const adoptImportTwinsDatabaseTransaction = async (
   databaseTransaction: typeof database,
@@ -1987,6 +2021,18 @@ const contextRowsQuery = () =>
     .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
     .innerJoin(accounts, eq(holdings.accountId, accounts.id));
 
+// The first string past every string that starts with `prefix`: its last character, one step
+// on. For an order key prefix that ends in `:` the bound is `;`. A range on the unique index
+// reads the same rows `LIKE 'prefix%'` would, but SQLite cannot search that index with a
+// `LIKE` (case-insensitive by default, and a `%` or `_` in a prefix would be a wildcard).
+const afterPrefixOf = (prefix: string): string =>
+  `${prefix.slice(0, -1)}${String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1)}`;
+
+// SQLite refuses an expression tree deeper than 1000 ("Expression tree is too large"), and an
+// `or` chain is one level per term. A page of up to 1000 fills can name 1000 orders, so the
+// terms go out in chunks well under that.
+const ORDER_PREFIX_CHUNK_SIZE = 250;
+
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
@@ -2045,6 +2091,38 @@ export const transactionsRepo = {
     );
 
     return new Set(stored.flatMap((row) => row.externalId ?? []));
+  },
+  /**
+   * Which of the key `prefixes` (each ending in `:`) a stored row of `source` starts with, on
+   * any holding. A range read on the `(source, external_id)` unique index per chunk of
+   * prefixes (one for a normal page); an empty list sends no query.
+   */
+  importedOrderPrefixesQuery: async (
+    source: TransactionRow['source'],
+    prefixes: string[],
+  ): Promise<Set<string>> => {
+    const stored: string[] = [];
+
+    for (const prefixChunk of chunkRows(prefixes, ORDER_PREFIX_CHUNK_SIZE)) {
+      const rows = await database
+        .select({ externalId: transactions.externalId })
+        .from(transactions)
+        .where(
+          or(
+            ...prefixChunk.map((prefix) =>
+              and(
+                eq(transactions.source, source),
+                gte(transactions.externalId, prefix),
+                lt(transactions.externalId, afterPrefixOf(prefix)),
+              ),
+            ),
+          ),
+        );
+
+      stored.push(...rows.flatMap((row) => row.externalId ?? []));
+    }
+
+    return new Set(prefixes.filter((prefix) => stored.some((key) => key.startsWith(prefix))));
   },
   /**
    * The DISTINCT holding ids that still carry an outstanding Monobank hold (a

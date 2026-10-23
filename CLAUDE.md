@@ -22,7 +22,7 @@ row is the short form; read the full row there before relying on edge cases.
 | Command | Tool | Threshold (short) | Tier |
 |---|---|---|---|
 | `npm run check:lint` | Biome | any lint/format violation fails | fast (PostToolUse) |
-| `npm run check:dup` | jscpd (`scripts/checks/dup.sh`) | >5% duplicated lines/tokens fails; over-limit large files only WARN (tracked debt) | medium (Stop/SubagentStop) |
+| `npm run check:dup` | jscpd (`scripts/checks/dup.sh`) | >5% duplicated lines/tokens fails; a large file over jscpd's size limit is measured alone against `scripts/checks/dup-ceilings.tsv`: above its ceiling, or over 5% and unlisted, fails; at or under the ceiling it WARNs (tracked debt) | medium (Stop/SubagentStop) |
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
 | `npm run check:deps` | depcheck, `npm ci --dry-run`, `deps-ranges.js`, `npm ls --all` | unused/missing dep, broken lockfile, non-exact spec, ELSPROBLEMS, or a `node_modules/node_modules` link/folder fails (fix: `rm node_modules/node_modules` for a link, `npm ci` for a folder, never `rm -r node_modules`) | medium |
 | `npm run check:security` | Semgrep | any Class A (ERROR) finding or Semgrep failure fails; Class B (WARNING) is surfaced, non-blocking | fast |
@@ -35,11 +35,12 @@ row is the short form; read the full row there before relying on edge cases.
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import fails | project-wide + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` | an import crossing a feature without its barrel, or a `--tree` layout finding, fails | project-wide + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation fails | project-wide + pre-write guard |
-| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` | a comment line over 100 columns (`//`, `/* */`, and `#` in shell/YAML/githooks files) fails; no override, only exact-line pins in `comment-line-width.pinned` (shrink-only) | project-wide + pre-write guard (TypeScript) + fast (shell, YAML, githooks) |
+| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` | a comment line over 100 columns (`//`, `/* */`, and `#` in shell/YAML/githooks files) fails; no override, only exact-line pins in `comment-line-width.pinned` (shrink-only) | project-wide + pre-write guard (TypeScript) + fast (shell, YAML, githooks; `.js` under `scripts/`, `rules/fixtures/`, `githooks/`) |
 | `npm run check:component-i18n-namespace` | `scripts/checks/component-i18n-namespace.sh` | a component reading another component's i18n namespace fails | project-wide + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` | any finding a change ADDED (a write that bypassed the pre-write guard) fails; fail-closed (on the Stop deadline failure, run `npm run check:guard-replay` by hand) | medium + project-wide |
-| `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` | a shipped migration modified, deleted, or renamed fails; no override | medium + project-wide |
+| `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` | a shipped migration modified, deleted, or renamed fails; a new migration whose header names a missing backticked `src/` path fails; no override | medium + project-wide |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
+| `npm run check:permissions` | `scripts/checks/permission-doctor.sh` (+ `.js`) | a permission path rule that cannot work as written (protected path, partly protected path, path form) or drift between the two user settings files fails; reads only | manual |
 
 Composite scripts:
 
@@ -61,14 +62,14 @@ Composite scripts:
   own base commit; more than 30 files to mutate (`MUTATION_FILE_CAP` in
   `scripts/checks/mutation.sh`) exits 2; `KIKO_MUTATION_FULL=1` and an
   unresolved base are refused; no env var bypasses the cap. The coordinator
-  runs `KIKO_MUTATION_BASE=<change set base sha> make deep`, detached, per
-  reviewed change set before its merge into next, and logs the result per
+  queues the gate (`bash scripts/job-queue.sh gate <worktree> <label> <base> <head>`,
+  run_in_background) per reviewed change set before its merge into next, and logs the result per
   harness-workflow's "Run log"; orchestrators never run it. A BATCH READY
   names the base sha, the run id and the file count from
   `KIKO_MUTATION_BASE=<base sha> make mutable`, never counted by hand; there
   is no release-scope deep gate. Agents await only the exit code (see the
-  `ops` and `kiko-linter` skills). `check:closure` is manual, not in
-  `check:all`. Full rules: `docs/harness/checks.md`.
+  `ops` and `kiko-linter` skills). `check:closure` and `check:permissions` are
+  manual, not in `check:all`. Full rules: `docs/harness/checks.md`.
 
 ## Automatic wiring
 
@@ -82,7 +83,8 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
 
 - `PostToolUse` (`Edit|Write|MultiEdit`): `scripts/checks/fast.sh` (lint,
   security, secrets, import-order, full-word-identifiers on the touched file; a shell, YAML or
-  githooks write runs `comment-line-width.sh` and `security.sh` on that file instead).
+  githooks write runs `comment-line-width.sh` and `security.sh` on that file instead; a `.js`
+  write under `scripts/`, `rules/fixtures/` or `githooks/` also runs `comment-line-width.sh`).
 - `Stop`/`SubagentStop`: `scripts/checks/medium.sh` (dup, overrides, knip,
   deps, rules, plist, typecheck, shipped-migrations, guard replay; and, when the skill, agent,
   docs or CLAUDE.md text changed since the last recorded pass, the doc-reading jest suites: on a
@@ -104,21 +106,45 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     (a raw `merge --ff-only`/`pull --ff-only` on main is denied; the script refuses a
     `harness/kiko` change whose `plugin.json` version is not above main's, and any commit that
     lowers, removes, or makes unreadable that version).
+    `scripts/ff-main.sh` can exit 2 AFTER main moved (the post-move patch-package step
+    failed); a re-run only retries that step.
+    - any other git command that moves the branch `main` ("The `mainMove` kind"): a `reset`
+      to a commit in main (or in a worktree whose HEAD names main); `update-ref`,
+      `branch -f`, `checkout -B`, a fetch, pull or push into it from any worktree, also through
+      a `-c`/`--config-env` or exported `GIT_CONFIG_*` fetch refspec; `symbolic-ref HEAD`,
+      `--ignore-other-worktrees` or `worktree add -f` onto it; an unresolved `-C`/`cd` or a
+      missing cwd fails closed.
   - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
     `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
     `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
-    `.claude/agents/`, all of `harness/kiko/` (its scripts and hooks too), or any
-    `*.yml`/`*.yaml` file of any worktree (not under `node_modules/`) ("SHELL-WRITE deny"); use
+    `.claude/agents/`, `docs/superpowers/` (the rest of `docs/` stays writable), all of
+    `harness/kiko/` (its scripts and hooks too), or any
+    `*.yml`/`*.yaml` file of any worktree (not under `node_modules/`), or a `cp -r`/`mv` of a
+    folder onto a missing `.claude`, `harness` or `.git` ("SHELL-WRITE deny"); use
     Edit/Write, and `git add` + `git mv` to rename; a formatter's own
     `--write` stays allowed.
+  - a whole-repository job typed outside the queue (`make verify|gate|deep|security`,
+    `npm run check:all|check:deep|check:mutation`, `scripts/checks/verify.sh`, `mutation.sh`,
+    `security.sh` or `check:security` with no path, a Semgrep scan of the whole repository;
+    "Heavy-job and full-jest deny"); queue it with
+    `bash scripts/job-queue.sh verify|check-all|security|gate ...`; a dry run (`make -n`),
+    `make mutable` and a scan of a file or subfolder stay allowed.
+  - a jest run that would run every suite ("Heavy-job and full-jest deny"): a runner (`jest`,
+    `npx jest`, `npm test`, `make jest`) with no test file, or an array option of jest-cli
+    (`JEST_ARRAY_OPTIONS` in `scripts/checks/kill-guard.js`) before a bare word, in the space
+    or `=` form; name the files (`npx jest <files> --maxWorkers=2`), put the option after the
+    paths, `npm test` needs `-- <files>`, and the whole suite runs only in the queued verify.
   - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, or a `-c` /
     `GIT_CONFIG_*` entry for `core.hooksPath` or `include.path`), `git commit-tree`, or a
     `git config` that writes or unsets core.hooksPath (any scope) ("NO-VERIFY deny"); repair
     with `bash scripts/ensure-git-hooks.sh` or `npm ci`.
-  - a shell write to a git config file (`.git/config`; it holds core.hooksPath).
-  - a pkill/killall/pattern kill, or a raw main `--ff-only`, inside a script file a command
-    runs (one level; "Script-content kill scan").
-  - a command the guard cannot judge (an internal error): denied, never allowed.
+  - a shell write to a git config file (`.git/config`; it holds core.hooksPath), or a copy of
+    a folder's contents into a `.git` folder.
+  - a pkill/killall/pattern kill, a raw main `--ff-only`, or a move of main, inside a script
+    file a command runs, including a script a shell reads from a `< file` redirect (one
+    level; "Script-content kill scan").
+  - a command the guard cannot judge (an internal error), or the guard cannot load:
+    denied, never allowed.
   - a `while`/`until` loop that scans the process table for make verify,
     check:all, jest, stryker, semgrep, or xcodebuild ("WAIT-LOOP deny"); wait
     with `bash scripts/wait-load.sh <load> <timeout>` or a background job.
@@ -150,7 +176,8 @@ and UPDATE it when you add, change, or rely on an exception.
 Standing architecture rule, not a one-off cleanup: every feature ships VISIBLE to an App Store
 reviewer in a release build — no flag-gated or conditional-visibility feature, and no
 demo/seed/screenshot module in or imported from app `src/`. The full rule, the mechanized Semgrep
-check (`kiko-no-hidden-feature-flag-or-demo-import`), and its known limits live in
+checks (`kiko-no-hidden-feature-flag-or-demo-import`, and `kiko-no-test-fixture-import-in-app` for
+test scaffolding imported into app source), and their known limits live in
 **`.claude/skills/kiko-architecture/SKILL.md`** ("Guideline 2.5.19 — no hidden features"). Read that
 section before adding any build/env flag that controls what a user sees, or any dev-only demo/seed
 module.

@@ -3,6 +3,7 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
+harness_require_one_target "Biome (lint + format)" "$@" || exit 2
 ROOT="$(cd "$DIR/../.." && pwd)"
 BIN="$ROOT/node_modules/.bin/biome"
 TARGET="${1:-.}"

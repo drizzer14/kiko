@@ -511,3 +511,104 @@ export const wordHyphenIdAtLineStart = true;
 // EXPECT-FINDING
 /* The cap was fixed in review-M3. */
 export const wordHyphenIdInBlock = true;
+
+// A set, task, track or run id, or a decision-letter answer, is history in a comment on either
+// comment form.
+
+// EXPECT-FINDING
+// Fixed in set 3/5: the chip row wraps.
+export const setFractionLine = true;
+
+// EXPECT-FINDING
+/* Fixed in set 3/5: the chip row wraps. */
+export const setFractionBlock = true;
+
+// EXPECT-FINDING
+// Added after the set 9 review: the chip row wraps.
+export const setReviewLine = true;
+
+// EXPECT-FINDING
+/* Added after the set 9 review: the chip row wraps. */
+export const setReviewBlock = true;
+
+// EXPECT-FINDING
+// Added in the set 2 fix round: the chip row wraps.
+export const setFixRoundLine = true;
+
+// EXPECT-FINDING
+/* Added in the set 2 fix round: the chip row wraps. */
+export const setFixRoundBlock = true;
+
+// EXPECT-FINDING
+// Added in H10 task 4/4: the chip row wraps.
+export const trackTaskFractionLine = true;
+
+// EXPECT-FINDING
+/* Added in H10 task 4/4: the chip row wraps. */
+export const trackTaskFractionBlock = true;
+
+// EXPECT-FINDING
+// Added in H9 t3: the chip row wraps.
+export const trackShortTaskLine = true;
+
+// EXPECT-FINDING
+/* Added in H9 t3: the chip row wraps. */
+export const trackShortTaskBlock = true;
+
+// EXPECT-FINDING
+// Added in H10 set 3: the chip row wraps.
+export const trackSetLine = true;
+
+// EXPECT-FINDING
+/* Added in H10 set 3: the chip row wraps. */
+export const trackSetBlock = true;
+
+// EXPECT-FINDING
+// Added in the H7 backlog item: the chip row wraps.
+export const trackBacklogLine = true;
+
+// EXPECT-FINDING
+/* Added in the H7 backlog item: the chip row wraps. */
+export const trackBacklogBlock = true;
+
+// EXPECT-FINDING
+// Added by 20261023T0023-kiko-harness-h10/1: the chip row wraps.
+export const runIdLine = true;
+
+// EXPECT-FINDING
+/* Added by 20261023T0023-kiko-harness-h10/1: the chip row wraps. */
+export const runIdBlock = true;
+
+// EXPECT-FINDING
+// Added in task 2/3: the chip row wraps.
+export const taskFractionLine = true;
+
+// EXPECT-FINDING
+/* Added in task 2/3: the chip row wraps. */
+export const taskFractionBlock = true;
+
+// EXPECT-FINDING
+// Added after the task 3 review: the chip row wraps.
+export const taskReviewLine = true;
+
+// EXPECT-FINDING
+/* Added after the task 3 review: the chip row wraps. */
+export const taskReviewBlock = true;
+
+// EXPECT-FINDING
+// Q2 = A: the chip row wraps.
+export const decisionAnswerLine = true;
+
+// EXPECT-FINDING
+/* Q2 = A: the chip row wraps. */
+export const decisionAnswerBlock = true;
+
+// A track id joined to a capitalized task word is history too.
+
+// EXPECT-FINDING
+// Added in H10 Set 3: the chip row wraps.
+export const trackCapitalSetLine = true;
+
+// EXPECT-FINDING
+/* Added in H10 Set 3: the chip row wraps. */
+export const trackCapitalSetBlock = true;

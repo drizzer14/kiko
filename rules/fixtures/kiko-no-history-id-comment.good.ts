@@ -180,3 +180,42 @@ export const standardNameNearMiss = true;
 // A git diff -U0 keeps the hunks tight, -U12 widens them, and git log -M3 follows renames.
 /* A git diff -U0 keeps the hunks tight, and -U12 widens them. */
 export const gitFlagNearMiss = true;
+
+// 28. A set, task, heading, or question word beside a number that is ordinary prose is not a
+// history id, on a line comment and on a block comment.
+// The Q2 tabs-vs-chips rule decides the layout.
+/* The Q2 tabs-vs-chips rule decides the layout. */
+export const questionRuleNearMiss = true;
+// Q2 2026 is the quarter the data covers.
+/* Q2 2026 is the quarter the data covers. */
+export const quarterYearNearMiss = true;
+// In a pool, task 0 settles before the rest.
+/* In a pool, task 0 settles before the rest. */
+export const taskZeroNearMiss = true;
+// Pass set 0 to disable the limit.
+/* Pass set 0 to disable the limit. */
+export const setZeroNearMiss = true;
+// In a pool, task 0 settles before set 0 does.
+/* In a pool, task 0 settles before set 0 does. */
+export const taskZeroBeforeSetZeroNearMiss = true;
+// The page opens on the (H1) heading.
+/* The page opens on the (H1) heading. */
+export const headingOneNearMiss = true;
+// The page opens on the (H3) section.
+/* The page opens on the (H3) section. */
+export const headingThreeNearMiss = true;
+// H264 is the video codec.
+/* H264 is the video codec. */
+export const codecNearMiss = true;
+// H2 database engines are listed.
+/* H2 database engines are listed. */
+export const databaseEngineNearMiss = true;
+// Pick a set of 3 colors.
+/* Pick a set of 3 colors. */
+export const setOfThreeNearMiss = true;
+// Show set 3 steps at a time.
+/* Show set 3 steps at a time. */
+export const setStepsNearMiss = true;
+// Retry up to the task 3 of 3 retries.
+/* Retry up to the task 3 of 3 retries. */
+export const taskOfThreeNearMiss = true;

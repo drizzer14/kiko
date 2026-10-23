@@ -1,6 +1,11 @@
 import { match } from 'ts-pattern';
 
-import type { ParsedExchangeState } from '../walk-state';
+import {
+  NOT_IMPORTED_KINDS,
+  type NotImportedKind,
+  notImportedKindOf,
+  type ParsedExchangeState,
+} from '../walk-state';
 
 type CoinKind = 'untrackedCoins' | 'oversizedCoins';
 
@@ -31,6 +36,25 @@ export const untrackedCoinsOf = (
 /** The tickers the account detail lists as too large to store: the sorted union of both lists. */
 export const oversizedCoinsOf = (state: ParsedExchangeState): string[] =>
   unionOfKind(state, 'oversizedCoins');
+
+export type NotImportedCount = { kind: NotImportedKind; count: number };
+
+/**
+ * How many refused records the account detail lists per kind, in the order of
+ * `NOT_IMPORTED_KINDS`; a kind with none is left out. The parse keeps each entry once, so a
+ * count never doubles a record.
+ */
+export const notImportedCountsOf = (state: ParsedExchangeState): NotImportedCount[] =>
+  match(state)
+    .returnType<NotImportedCount[]>()
+    .with({ kind: 'parsed' }, ({ notImported }) =>
+      NOT_IMPORTED_KINDS.map((kind) => ({
+        kind,
+        count: notImported.filter((entry) => notImportedKindOf(entry) === kind).length,
+      })).filter(({ count }) => count > 0),
+    )
+    .with({ kind: 'malformed' }, () => [])
+    .exhaustive();
 
 /** When the last good balance read ran, or `undefined`: none stamped, or the state is lost. */
 export const balanceSyncedAtOf = (state: ParsedExchangeState): number | undefined =>

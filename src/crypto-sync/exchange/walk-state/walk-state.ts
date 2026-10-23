@@ -24,6 +24,29 @@ export const WALK_IDS = [
 
 export type WalkId = (typeof WALK_IDS)[number];
 
+/** Why a record was refused for good, as the first part of a `notImported` entry. */
+export const NOT_IMPORTED_KINDS = [
+  'p2p-sale',
+  'p2p-advertiser',
+  'p2p-amount',
+  'p2p-unrecognized',
+  'convert-unrecognized',
+  'fiat-unrecognized',
+] as const;
+
+export type NotImportedKind = (typeof NOT_IMPORTED_KINDS)[number];
+
+/** The entry that names one refused record: its kind, its id and its time, joined by colons. */
+export const notImportedEntry = (kind: NotImportedKind, recordId: string, timeMs: number): string =>
+  `${kind}:${recordId}:${timeMs}`;
+
+/** The kind an entry starts with, or `undefined` for text no build of this kind reads. */
+export const notImportedKindOf = (entry: string): NotImportedKind | undefined =>
+  NOT_IMPORTED_KINDS.find((kind) => entry.startsWith(`${kind}:`));
+
+const isKnownNotImportedEntry = (entry: unknown): entry is string =>
+  typeof entry === 'string' && notImportedKindOf(entry) !== undefined;
+
 /** Every field is optional: a walk entry holds only the fields its walk has written. */
 export type WalkMarks = {
   cursor?: number | null;
@@ -55,11 +78,20 @@ export type CoinLists = {
  */
 export type OversizedCoinLists = CoinLists & { balanceByWallet?: Record<string, string[]> };
 
-export type TradeSymbol = { fromId: number | null; heldOrderId?: number };
+/**
+ * `rowlessOrderIds` are the orders of the symbol that came to no row and that the cursor has
+ * passed: a later fill of one is written with the fills that came before it.
+ */
+export type TradeSymbol = {
+  fromId: number | null;
+  heldOrderId?: number;
+  rowlessOrderIds?: number[];
+};
 
 export type ExchangeTrades = {
   symbols: Record<string, TradeSymbol>;
-  rotation: number;
+  /** The last symbol whose round-robin read returned; empty starts at the first symbol. */
+  rotation: string;
   balanceSnapshot: Record<string, string>;
 };
 
@@ -72,6 +104,8 @@ export type ExchangeState = {
   oversizedCoins?: OversizedCoinLists;
   /** When the last good balance read ran (epoch ms), for an account with no holding to stamp. */
   balanceSyncedAt?: number;
+  /** Each record a rule refused for good, once; only a disconnect clears it. */
+  notImported?: string[];
 };
 
 /**
@@ -98,6 +132,7 @@ export type ParsedWalkMarks = {
  * `malformed`: the top level is no state this build reads, so no history walk runs and nothing
  * writes the column. `parsed`: every entry read on its own; `unreadable` names each entry that
  * was stored but read as its empty value (`walks.<id>`, `trades`, `<kind>.balance`, ...).
+ * `notImported` holds the entries of a kind this build reads, once each, in the stored order.
  */
 export type ParsedExchangeState =
   | { kind: 'malformed' }
@@ -108,6 +143,7 @@ export type ParsedExchangeState =
       untrackedCoins: Required<CoinLists>;
       oversizedCoins: Required<CoinLists>;
       balanceSyncedAt: number | undefined;
+      notImported: string[];
       unreadable: string[];
     };
 
@@ -131,6 +167,9 @@ const recordOrUndefined = (value: unknown): Metadata | undefined =>
 
 const stringListOrUndefined = (value: unknown): string[] | undefined =>
   isStringList(value) ? value : undefined;
+
+const listOrUndefined = (value: unknown): unknown[] | undefined =>
+  Array.isArray(value) ? value : undefined;
 
 /**
  * A stored range start that is no finite number reads as the entry's cursor, and as none when that
@@ -163,25 +202,49 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
 const emptyMarks = (): ParsedWalkMarks => marksOf({});
 
 /** A `null` heldOrderId is a cleared one: the same symbol as one that never held an order. */
+const heldOrderFieldOf = (stored: unknown): Pick<TradeSymbol, 'heldOrderId'> | undefined => {
+  if (stored === undefined || stored === null) {
+    return {};
+  }
+
+  return isNumber(stored) ? { heldOrderId: stored } : undefined;
+};
+
+/**
+ * No ids, or a list of none, is a symbol without any (a state stored before the field existed
+ * reads so); an id stored twice reads once. A value that is no list of numbers is unreadable.
+ */
+const rowlessOrderIdsFieldOf = (
+  stored: unknown,
+): Pick<TradeSymbol, 'rowlessOrderIds'> | undefined => {
+  if (stored === undefined || stored === null) {
+    return {};
+  }
+
+  if (!Array.isArray(stored) || !stored.every(isNumber)) {
+    return undefined;
+  }
+
+  return stored.length === 0 ? {} : { rowlessOrderIds: [...new Set(stored)] };
+};
+
 const tradeSymbolOf = (stored: unknown): TradeSymbol | undefined => {
   if (!isRecord(stored)) {
     return undefined;
   }
 
-  const { fromId, heldOrderId } = stored;
+  const { fromId, heldOrderId, rowlessOrderIds } = stored;
+  const held = heldOrderFieldOf(heldOrderId);
+  const rowless = rowlessOrderIdsFieldOf(rowlessOrderIds);
 
-  if (fromId !== null && !isNumber(fromId)) {
+  if ((fromId !== null && !isNumber(fromId)) || held === undefined || rowless === undefined) {
     return undefined;
   }
 
-  if (heldOrderId === undefined || heldOrderId === null) {
-    return { fromId };
-  }
-
-  return isNumber(heldOrderId) ? { fromId, heldOrderId } : undefined;
+  return { fromId, ...held, ...rowless };
 };
 
-const zero = (): number => 0;
+const emptyText = (): string => '';
 
 const nothing = (): undefined => undefined;
 
@@ -241,7 +304,7 @@ const recordOf = <Value>(
 const tradesOf = (stored: unknown): ReadEntry<ExchangeTrades> => {
   const container = entryOf('trades', stored, recordOrUndefined, emptyRecord);
   const symbols = recordOf('trades.symbols', container.value.symbols, tradeSymbolOf);
-  const rotation = entryOf('trades.rotation', container.value.rotation, numberOrUndefined, zero);
+  const rotation = entryOf('trades.rotation', container.value.rotation, textOrUndefined, emptyText);
   const balanceSnapshot = recordOf(
     'trades.balanceSnapshot',
     container.value.balanceSnapshot,
@@ -284,6 +347,24 @@ export const coinListsOf = (kind: string, stored: unknown): ReadEntry<Required<C
 export const oversizedByWalletOf = (stored: unknown): ReadEntry<Record<string, string[]>> =>
   recordOf('oversizedCoins.balanceByWallet', stored, stringListOrUndefined);
 
+/**
+ * Every entry parses alone: one that is no text of a known kind is dropped and named
+ * `notImported.<index>`, and an entry stored twice reads once, so a read never double-counts.
+ */
+const notImportedOf = (stored: unknown): ReadEntry<string[]> => {
+  const container = entryOf('notImported', stored, listOrUndefined, emptyList);
+
+  return {
+    value: [...new Set(container.value.filter(isKnownNotImportedEntry))],
+    unreadable: [
+      ...container.unreadable,
+      ...container.value.flatMap((entry, index) =>
+        isKnownNotImportedEntry(entry) ? [] : [`notImported.${index}`],
+      ),
+    ],
+  };
+};
+
 /** The stored JSON as a writer sees it: raw values, so a field no build reads stays as stored. */
 export type StoredExchangeState = Metadata & { walks: Metadata };
 
@@ -312,6 +393,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     numberOrUndefined,
     nothing,
   );
+  const notImported = notImportedOf(stored.notImported);
 
   return {
     kind: 'parsed',
@@ -323,6 +405,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     untrackedCoins: untrackedCoins.value,
     oversizedCoins: oversizedCoins.value,
     balanceSyncedAt: balanceSyncedAt.value,
+    notImported: notImported.value,
     unreadable: [
       ...walks.flatMap(({ unreadable }) => unreadable),
       ...trades.unreadable,
@@ -330,6 +413,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
       ...oversizedCoins.unreadable,
       ...oversizedByWallet.unreadable,
       ...balanceSyncedAt.unreadable,
+      ...notImported.unreadable,
     ],
   };
 };
