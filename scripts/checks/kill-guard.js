@@ -68,6 +68,12 @@
 // typed command is judged (never a script file or a data body), and the way out is
 // `bash scripts/job-queue.sh verify|check-all|security|gate ...`.
 //
+// And it denies a jest run that would run every suite, as the finding `fullJest`: a runner (`jest`,
+// `npx jest`, `npm test`, `make jest`) with no test file left once option values are removed (a
+// `--testPathPattern` filter alone, and `--listTests|--help|--version|--showConfig`, stay
+// allowed), or with an array option of jest-cli directly before a bare word, in the space or the
+// `=` form, since the option takes the word as one more value. Same scope as `heavyJob`.
+//
 // And it denies a `while` or `until` loop that scans the process table (`ps`,
 // `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
 // semgrep, or xcodebuild: the loop's own command line holds the pattern, so
@@ -296,6 +302,23 @@ const HEAVY_JOB_REASON_LINES = [
     'of the same command to get past this guard.',
 ];
 
+const FULL_JEST_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a jest run (jest, npx jest, npm test, make jest) that names no ' +
+    'test file, or whose array option reads the test file after it as one more value, so it runs ' +
+    'every suite of the repository.',
+  'WHY IT MATTERS: the full suite takes minutes of CPU on a machine every agent and session ' +
+    'shares, and several at once make suites time out; scripts/job-queue.sh runs the whole suite ' +
+    'as part of a verify, one heavy job at a time.',
+  'HOW TO FIX:     name the test files (`npx jest <files> --maxWorkers=2`), or queue `bash ' +
+    'scripts/job-queue.sh verify <worktree> <label>` for the whole suite. Put an array option ' +
+    '(--testPathIgnorePatterns, --testPathPattern, --roots, --testMatch, ...) after the paths or ' +
+    'use a dash option between it and the paths: it takes every bare word after it, in the space ' +
+    'form and the = form alike. `npm test` needs `-- <files>`. --listTests, --help, --version, ' +
+    '--showConfig, and a lone --testPathPattern filter stay allowed.',
+  'DO NOT:         run the suite through a script file, an alias, a variable, or another spelling ' +
+    'of the same command to get past this guard.',
+];
+
 const INTERNAL_ERROR_REASON_LINES = [
   'WHAT FAILED:    kill-guard hit an internal error while judging this command, so it could not ' +
     'clear it.',
@@ -321,6 +344,7 @@ const REASON_BY_KIND = {
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
   hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
   heavyJob: (finding) => blockReason(HEAVY_JOB_REASON_LINES, finding.detail),
+  fullJest: (finding) => blockReason(FULL_JEST_REASON_LINES, finding.detail),
   internalError: (finding) => blockReason(INTERNAL_ERROR_REASON_LINES, finding.detail),
 };
 
@@ -3034,8 +3058,7 @@ function commandFinding(command, context) {
   const base = basename(rest[0]);
   if (ASSIGNING_COMMANDS.has(base)) return assignmentFinding(command, context);
 
-  const queued = queuedJobFinding(base, rest, context);
-  if (queued !== null) return queued;
+  noteQueuedJob(base, rest, context);
 
   if (SHELLS.has(base)) return shellFinding(base, rest, context);
 
@@ -3132,13 +3155,13 @@ function expandedReading(tokens, redirects, variables) {
   return unchanged ? null : { words, targets };
 }
 
-// ---- heavy jobs outside the queue ----
+// ---- heavy jobs and full-suite jest runs outside the queue ----
 
 // A whole-repository job takes minutes of CPU on a machine every agent shares, and two of them at
 // once make Semgrep and jest time out, so `scripts/job-queue.sh` runs them one at a time. The deny
-// judges the typed command only: `SCRIPT_KINDS` and `DATA_KINDS` leave `heavyJob` out, so a script
-// file or a heredoc body that holds `make verify` is text, and `scripts/job-queue.sh`, which runs
-// `make verify` itself, is never denied.
+// judges the typed command only: `SCRIPT_KINDS` and `DATA_KINDS` leave `heavyJob` and `fullJest`
+// out, so a script file or a heredoc body that holds `make verify` or `npx jest` is text, and
+// `scripts/job-queue.sh`, which runs `make verify` itself, is never denied.
 
 // The operands of `parameters`: its words that are no option and no option's value.
 function operandsOf(parameters, optionsWithValue) {
@@ -3166,10 +3189,11 @@ const isMakeDryRun = (parameters) =>
 
 function makeJob(parameters) {
   if (isMakeDryRun(parameters)) return null;
-  const target = parameters.find((word) => HEAVY_MAKE_TARGETS.has(word));
+  const target = parameters.find((word) => word === 'jest' || HEAVY_MAKE_TARGETS.has(word));
+  if (target === undefined) return null;
 
-  return target === undefined
-    ? null
+  return target === 'jest'
+    ? { kind: 'fullJest', what: 'make jest runs every suite' }
     : { kind: 'heavyJob', what: `make ${target} is a whole-repository job` };
 }
 
@@ -3185,14 +3209,26 @@ const NPM_OPTIONS_WITH_VALUE = new Set([
   '--globalconfig',
 ]);
 const NPM_RUN_COMMANDS = new Set(['run', 'run-script', 'rum', 'urn']);
+const NPM_TEST_COMMANDS = new Set(['test', 't', 'tst']);
 const HEAVY_NPM_SCRIPTS = new Set(['check:all', 'check:deep', 'check:mutation']);
+
+// `npm test` hands jest the words after `--`; with no `--` it runs every suite.
+function npmTestJob(hasSeparator, passed) {
+  const problem = hasSeparator ? jestRunProblem(passed) : 'passes no test file after --';
+
+  return problem === null ? null : { kind: 'fullJest', what: `npm test ${problem}` };
+}
 
 function npmJob(parameters) {
   const separator = parameters.indexOf('--');
   const before = separator === -1 ? parameters : parameters.slice(0, separator);
   const passed = separator === -1 ? [] : parameters.slice(separator + 1);
   const [subcommand, script, ...operands] = operandsOf(before, NPM_OPTIONS_WITH_VALUE);
-  if (!NPM_RUN_COMMANDS.has(subcommand)) return null;
+  const runs = NPM_RUN_COMMANDS.has(subcommand);
+  if (NPM_TEST_COMMANDS.has(subcommand) || (runs && script === 'test')) {
+    return npmTestJob(separator !== -1, passed);
+  }
+  if (!runs) return null;
   const heavy = (what) => ({ kind: 'heavyJob', what: `${what} is a whole-repository job` });
   if (HEAVY_NPM_SCRIPTS.has(script)) return heavy(`npm run ${script}`);
   const namesFile = operands.length > 0 || passed.some((word) => !isOptionWord(word));
@@ -3308,6 +3344,145 @@ function semgrepJob(parameters, context) {
     : null;
 }
 
+// jest-cli's option table (`node_modules/jest-cli/build/args.js`, 29.7.0), copied because a checker
+// requires no package: `__tests__/kill-guard-jest-runs.test.ts` and
+// `__tests__/kill-guard-jest-options.test.ts` compare both sets with that file. An array option
+// takes every bare word after it, in the space form and the `=` form alike (yargs reads an array
+// greedily), so a test path put after one is one more value and every suite runs.
+const JEST_ARRAY_OPTIONS = new Set([
+  'coveragePathIgnorePatterns',
+  'coverageReporters',
+  'ignoreProjects',
+  'moduleDirectories',
+  'moduleFileExtensions',
+  'modulePathIgnorePatterns',
+  'modulePaths',
+  'projects',
+  'reporters',
+  'roots',
+  'selectProjects',
+  'setupFiles',
+  'setupFilesAfterEnv',
+  'snapshotSerializers',
+  'testMatch',
+  'testPathIgnorePatterns',
+  'testPathPattern',
+  'testRegex',
+  'transformIgnorePatterns',
+  'unmockedModulePathPatterns',
+  'watchPathIgnorePatterns',
+]);
+// The other options that take a value, with the short forms of `config`, `maxWorkers`, and
+// `testNamePattern`: the word after one is its value, never a test path.
+const JEST_VALUE_OPTIONS = new Set([
+  'cacheDirectory',
+  'changedSince',
+  'collectCoverageFrom',
+  'config',
+  'coverageDirectory',
+  'coverageProvider',
+  'coverageThreshold',
+  'env',
+  'filter',
+  'globalSetup',
+  'globalTeardown',
+  'globals',
+  'haste',
+  'maxConcurrency',
+  'maxWorkers',
+  'moduleNameMapper',
+  'notifyMode',
+  'openHandlesTimeout',
+  'outputFile',
+  'preset',
+  'prettierPath',
+  'resolver',
+  'rootDir',
+  'runner',
+  'seed',
+  'shard',
+  'testEnvironment',
+  'testEnvironmentOptions',
+  'testFailureExitCode',
+  'testNamePattern',
+  'testResultsProcessor',
+  'testRunner',
+  'testSequencer',
+  'testTimeout',
+  'transform',
+  '-c',
+  '-t',
+  '-w',
+]);
+// These run no test, wherever they stand in the command.
+const JEST_NO_RUN_OPTIONS = new Set(['listTests', 'help', 'version', 'showConfig']);
+
+const camelCase = (name) => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+
+// yargs reads `--test-path-ignore-patterns` as `testPathIgnorePatterns`.
+function jestOptionName(word) {
+  const [flag] = word.split('=', 1);
+
+  return flag.startsWith('--') ? camelCase(flag.slice(2)) : flag;
+}
+
+// A word the shell leaves to a variable or a substitution may hold no test path at all.
+const isNamedTestFile = (word) => !/[$`]|__SUBSHELL__/.test(word);
+
+const isBareWord = (word) => word !== undefined && !isOptionWord(word);
+
+// What the option at `parameters[index]` does with the bare words after it: how many it takes,
+// whether it takes more than its own value (`swallows`), and whether it is a `--testPathPattern`
+// filter, which names the tests on its own.
+function jestOptionReading(parameters, index) {
+  const word = parameters[index];
+  const name = jestOptionName(word);
+  const glued = word.includes('=');
+  if (!JEST_ARRAY_OPTIONS.has(name)) {
+    const takesNext = !glued && JEST_VALUE_OPTIONS.has(name) && isBareWord(parameters[index + 1]);
+
+    return { name, taken: takesNext ? 1 : 0, swallows: false, filters: false };
+  }
+  let taken = 0;
+  while (isBareWord(parameters[index + 1 + taken])) taken++;
+
+  return {
+    name,
+    taken,
+    swallows: taken > (glued ? 0 : 1),
+    filters: name === 'testPathPattern' && (glued || taken > 0),
+  };
+}
+
+// Why a jest command (its words after the command word) runs every suite, or null when it names
+// the test files it runs: a literal path, or a `--testPathPattern` filter on its own.
+function jestRunProblem(parameters) {
+  const runsNothing = (word) => isOptionWord(word) && JEST_NO_RUN_OPTIONS.has(jestOptionName(word));
+  if (parameters.some(runsNothing)) return null;
+  const separator = parameters.indexOf('--');
+  const before = separator === -1 ? parameters : parameters.slice(0, separator);
+  let files = separator === -1 ? 0 : parameters.slice(separator + 1).filter(isNamedTestFile).length;
+  let filtered = false;
+  for (let index = 0; index < before.length; index++) {
+    if (isBareWord(before[index])) {
+      if (isNamedTestFile(before[index])) files++;
+      continue;
+    }
+    const reading = jestOptionReading(before, index);
+    if (reading.swallows) return `has --${reading.name} read the test file after it as a value`;
+    filtered ||= reading.filters;
+    index += reading.taken;
+  }
+
+  return files > 0 || filtered ? null : 'names no test file';
+}
+
+function jestJob(runner, parameters) {
+  const problem = jestRunProblem(parameters);
+
+  return problem === null ? null : { kind: 'fullJest', what: `${runner} ${problem}` };
+}
+
 // `npx` runs the command after its own options.
 const NPX_OPTIONS_WITH_VALUE = new Set([
   '-p',
@@ -3325,6 +3500,7 @@ function queuedJob(base, tokens, context) {
   if (MAKE_COMMANDS.has(base)) return makeJob(tokens.slice(1));
   if (base === 'npm') return npmJob(tokens.slice(1));
   if (base === 'semgrep') return semgrepJob(tokens.slice(1), context);
+  if (base === 'jest') return jestJob('jest', tokens.slice(1));
   if (base === 'npx') {
     const [command, ...rest] = skipOptions(tokens, NPX_OPTIONS_WITH_VALUE);
 
@@ -3334,12 +3510,15 @@ function queuedJob(base, tokens, context) {
   return checkScriptJob(base, tokens);
 }
 
-function queuedJobFinding(base, tokens, context) {
+// Remembers the first queue-only job of a typed command in `rules.queued`, which `judge` reports
+// only when nothing else was found: a deny that already existed keeps its kind, and the new kinds
+// only add denies. A script scan and a data body (`rules.kinds` set) are never noted.
+function noteQueuedJob(base, tokens, context) {
+  const { rules, segment } = context;
+  if (rules.kinds !== null || rules.queued.finding !== null) return;
   const job = queuedJob(base, tokens, context);
-
-  return job === null
-    ? null
-    : { kind: job.kind, detail: `${context.segment.trim()} (${job.what})` };
+  if (job !== null)
+    rules.queued.finding = { kind: job.kind, detail: `${segment.trim()} (${job.what})` };
 }
 
 // ---- wait loops that scan the process table ----
@@ -3524,8 +3703,8 @@ function observeWaitLoops(watch, segment, spans) {
 // a move of main only, a heredoc body that no shell is known to run is read for the kinds in
 // `DATA_KINDS` (a kill, a git stash, a hook skip by option or core.hooksPath, a main-checkout
 // change or fast-forward, a wait loop), and every other finding in either is not that pass's
-// business. `null` reports every kind. `heavyJob` is in neither set: a job started from a script
-// or a data body is the queue's own work (`scripts/job-queue.sh` runs `make verify`).
+// business. `null` reports every kind. `heavyJob` and `fullJest` are in neither set: a job started
+// from a script or a data body is the queue's own work (`scripts/job-queue.sh` runs `make verify`).
 const SCRIPT_KINDS = new Set(['kill', 'mainFastForward', 'mainMove']);
 const DATA_KINDS = new Set([
   'kill',
@@ -3856,6 +4035,7 @@ function judge(command, options) {
     checkWrites: true,
     scanScripts: true,
     kinds: null,
+    queued: { finding: null },
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {
@@ -3864,7 +4044,7 @@ function judge(command, options) {
     if (finding !== null) return finding;
   }
 
-  return null;
+  return rules.queued.finding;
 }
 
 // ---- hook entry point ----
