@@ -140,6 +140,52 @@ describe('kill-guard wrapped commands (parser only, fake repository)', () => {
     expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('osascriptShell'));
   });
 
+  // The tmux alias names (neww, run) are from memory of tmux(1): tmux is not installed here.
+  it.each([
+    ["tmux new-window 'make verify'", 'make verify'],
+    ["tmux neww 'pkill node'", 'pkill node'],
+    ["tmux run-shell 'make verify'", 'make verify'],
+    ["tmux run 'npm run check:all'", 'npm run check:all'],
+    ["tmux if-shell true 'make verify'", 'make verify'],
+    ["tmux if-shell 'make verify' 'true'", 'make verify'],
+    ["screen -S s -X stuff 'make verify^M'", 'make verify'],
+  ])('judges the command text of %s like the bare command', (command, bareCommand) => {
+    const bare = decideInEachFolder(repository, bareCommand);
+
+    expect(bare).not.toEqual(EVERY_FOLDER('allow'));
+    expect(decideInEachFolder(repository, command)).toEqual(bare);
+  });
+
+  it.each([
+    `osascript -e 'tell application "Terminal" to do script "make verify"'`,
+    `osascript -l JavaScript -e 'app.doShellScript("pkill node")'`,
+  ])('denies an osascript script text with do script or doShellScript: %s', (command) => {
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('osascriptShell'));
+  });
+
+  it('allows caffeinate -ti: caffeinate refuses -ti, so the command never runs', () => {
+    expect(decideInEachFolder(repository, 'caffeinate -ti 5 make verify')).toEqual(
+      EVERY_FOLDER('allow'),
+    );
+  });
+
+  it.each([
+    'tmux new-window',
+    "tmux run-shell 'echo hi'",
+    'screen -S s -X quit',
+    `osascript -e 'tell application "Terminal" to activate'`,
+  ])('allows a harmless tmux, screen or osascript command: %s', (command) => {
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('allow'));
+  });
+
+  it.each([
+    'osascript script.scpt',
+    'osascript < script.scpt',
+    'orca terminal send --text "$X" --enter',
+  ])('allows (known limit) a script text the guard cannot read: %s', (command) => {
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('allow'));
+  });
+
   it.each([
     'caffeinate -i npm run check:lint',
     'arch -arm64 true',
