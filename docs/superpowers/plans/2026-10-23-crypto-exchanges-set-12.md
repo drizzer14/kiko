@@ -30,7 +30,7 @@ payments (card buy, sell)"; section 6 "Not-imported line", "Mapping and statisti
 P1-P11, F1-F6, N5b; section 11 row 12/15; section 12 P5, P6. Rulings: `rulings.md` (main checkout,
 `memory/refs/binance-multicoin-sdd-2026-10-21/`), "Probe 4 rulings", "Spec draft sets 8-12 rulings", "P2P BUY vs
 LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q15, S12-Q18, S12-Q21, S12-Q22,
-S12-Q23 and S12-Q24 are at the end; the plan assumes each recommendation.
+S12-Q23, S12-Q24, S12-Q27, S12-Q28 and S12-Q29 are at the end; the plan assumes each recommendation.
 
 **Base:** branch `binance-set12` at main `79094ae8` (sets 1-11 merged). Every code fact names a symbol or anchor
 text, never a line. **The developer re-greps every fact on the actual base before relying on it.**
@@ -223,6 +223,12 @@ New rows (no P2P or fiat read ran before, so "was:" is "no read" unless a value 
 | FQ15 | orders, a re-scan read that fails: one owed day in the last two years, a page that drifts; a page that cannot be parsed (S12-Q24) | the day is marked stuck (`rescanStuck`, `fiat-rescan-stuck` logged); the re-scan reads before it and after it (runs 3 and 5), the owed run reads it on its own (runs 2 and 4); the records on both sides import and the day stays owed; the unreadable page does not fail the re-scan run (its owed run rejects as before) | fiat, "marks the owed range stuck on a page that drifts, and reads the ground around it", "marks the owed range stuck on a page that cannot be read, without failing the re-scan run" | the drift owes the whole window and the unreadable page fails the re-scan run on every pass: nothing past the day is re-scanned |
 | FQ16 | orders, a stuck day that reads again; a failing span that holds no owed range; a failure that is no unreadable page; fiat payments | the owed run reads the stuck day on its own, the list loses it, the mark clears on the next run and the re-scan reads the whole window again; a point that fails halves the window down to a span of one millisecond, kept across runs by the span hint, marked stuck and owed on the 73rd run at a standing clock, the record before it imported on run 2 and the one after it on run 75; a network failure fails the run; the payment walk (a lane of 10) reads before, after and around the day in one run | fiat, "reads the stuck range on its own in the owed runs, and reads over it once it is clear", "halves a span that fails and holds no owed range, down to the millisecond that fails", "keeps a failure that is not an unreadable page, and fails the run on it", "reads around the owed range in the one run of the payment walk, which has the calls for it" | (not measured) |
 | FQ17 | the `rescanStuck` mark | read as a list of ranges, absent when empty or unreadable; round-trips through a walk patch and an empty list clears it; a disconnect drops it | `src/crypto-sync/exchange/walk-state/walk-state.rescan-stuck.test.ts`, "the rescanStuck mark of a walk" | no mark |
+| FQ18 | the engine, an owed range or point whose window throws the unreadable-page error (S12-Q27, S12-Q29): a plan of a forward window, three owed ranges, a re-scan window and two points | the run reads every other window (the owed ranges after it, the re-scan, the points), moves the round-robins past the unreadable window (`markRangeRead`, `markPointRead`) and rejects with the first such error; an unreadable window of the forward pass or the re-scan ends the run as before | `src/crypto-sync/exchange/walk/walk.unreadable-window.test.ts`: "goes on to the next owed window, the re-scan and the points past an unreadable owed range", "%s", "stops the run at an unreadable window of the %s pass, as before", "still lets the budget end the owed windows past an unreadable one" | the first unreadable owed window rejects the run: the owed ranges after it, the re-scan and the points are never read |
+| FQ19 | the engine, any other failure in an owed window (a 429, a 418, an auth failure, a clock skew -1021, a network failure), and no test given | the run stops at once with no further call (more calls extend a ban) and rejects with it; with no `isUnreadableWindowError` given, an unreadable owed window stops the run too | same, "stops the run at once with no further call: %s", "stops the run at an unreadable window as well when no test is given" | (same: no window past the failure is read) |
+| FQ20 | `isUnreadableWindowError` of Binance (S12-Q29), and every Binance walk | true for `BinanceHistoryParseError`, false for a 429, a 418, a rejected key, a clock skew, a network failure and a value that is no error; all eight walk entries (convert, transactions, P2P, transfer, pay, earn, fiat orders, fiat payments) run their plan with that one function | `binance.walk-config.test.ts`: "is true for the unreadable page of a window", "is false for %s", "is false for the non-error %p"; `binance.walks.unreadable-window.test.ts`: "runs its plan with the Binance test of an unreadable window" | (no test) |
+| FQ21 | fiat orders and fiat payments, an owed day inside the 2-year window whose page always throws (S12-Q27) | payments imports a record 45 days behind on its first run, orders on its third (the re-scan turn); every run that reads the day rejects with the unreadable-page error, and the runs that do not read it resolve; a second owed range behind the unreadable one is read in the same run and its record imported, the unreadable one stays owed | `binance.fiat-history.owed-ground.test.ts`: "does not keep a late record of the 2-year window from being imported", "rejects with the unreadable-page error in every run that reads the owed day", "reads the owed range behind it and imports its record" | payments never imports the record and neither walk reads the range behind the unreadable one |
+| FQ22 | fiat orders and fiat payments, a stuck range that reads again, owed ground that shares only its boundary millisecond with the range (S12-Q28) | the sliver the re-scan leaves between a read around the range and the range does not hold the range: the payments walk clears the owed range and the `rescanStuck` mark in 3 runs, the orders walk in 32 (measured: the lane reads one span a run and the re-scan reaches the range once in a few runs) | same, "clears the pending range and the stuck mark of fiat payments in 3 runs", "clears the pending range and the stuck mark of fiat orders" | the mark stays for ever and `fiat-rescan-stuck` is logged on every run |
+| FQ23 | fiat payments over generated statuses, the three clocks of the suite (S12-Q28) | each settled record imported once at its exact amount, each refusal listed once, the walk ends current | `binance.fiat-history.properties.test.ts`: "the fiat payments walk over generated statuses, runs $gapMs ms apart" > "imports each settled record once at its exact amount, lists each refusal once, and ends current: seed %i" | seeds 55 and 121 (1 h apart) and 55, 110, 121, 231, 253, 275 (1 day apart) fail |
 | FQ5 | orders, forward ground one window or more, a range owed | forward run first; at exactly one window, forward and not complete; a millisecond under, a re-scan | fiat, "reads forward first and leaves the owed range for a later run", "reads forward at exactly one window behind, and is not complete while a range was owed", "re-scans at a millisecond under one window behind" | (same for the first; no turn) |
 | FQ6 | fiat payments, current | forward and re-scan in one run, unchanged | fiat, "reads forward and re-scans the last two years in the same run" | (same) |
 | FQ7 | orders, an owed point and no range | forward run; the point on the 3rd call, in a forward and in a re-scan run | fiat, "reads forward when the list holds no range, though a point is owed", "reads an owed point on the third call of a forward run and of a re-scan run" | the 3rd call never spent by a re-scan |
@@ -547,10 +553,11 @@ Files: the spec.
 - G-1 every step; G-2 steps 1, 4, 11; G-3 steps 4-11; G-6 step 4; G-7 steps 7, 10; G-8 step 5; G-9 steps 6, 9;
   G-10 steps 6, 8, 9, 10, 11; G-11 steps 12, 13; G-12 and G-13 every commit; G-14 steps 1, 11.
 
-## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21, S12-Q22, S12-Q23, S12-Q24)
+## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21 ... S12-Q24, S12-Q27 ... S12-Q29)
 
 Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12-Q15 = A, FINAL coordinator rulings; Q3, Q10, Q11 = A,
-OVERNIGHT DEFAULT, pending user; Q18 = C, Q21 = A (N = 1), Q22 = B, Q23 = B and Q24 = B, FINAL coordinator rulings.
+OVERNIGHT DEFAULT, pending user; Q18 = C, Q21 = A (N = 1), Q22 = B, Q23 = B, Q24 = B, Q27 = the fix, Q28 = the
+fix as the entry builds it and Q29 = A, FINAL coordinator rulings.
 
 - S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
   one exact existing title to each. B: a file-only row passes when the file exists. Recommend A: a file alone ties a
@@ -680,3 +687,28 @@ OVERNIGHT DEFAULT, pending user; Q18 = C, Q21 = A (N = 1), Q22 = B, Q23 = B and 
   window alone; the bound of FW2 is 4 x (2z + 1) runs, z the failing days in the window, because the re-scan is
   read on every fourth run while owed ground is left and the first pass takes 2z + 1 reads, the longest wait seen
   is 11 runs with one day and 19 with two; 5400 worlds (150 seeds a world) pass.
+- S12-Q27 (the fix, FINAL coordinator ruling) an owed window whose page cannot be read. `readPass` awaited the
+  window with no catch and the fiat `readSpan` catches `BinanceHistoryParseError` in the re-scan alone, so an
+  owed range or point that throws it left `runWalkPlan`: the re-scan and the points never ran and the round-robin
+  never moved on, a late record of the 2-year window of the payment walk was never imported, and a readable owed
+  range behind an unreadable one starved on both fiat walks (FQ18, FQ21; FW2: 60 payment worlds with a throwing
+  day anywhere failed). The pass reads on: the window is owed and started, the round-robin moves past it, the
+  re-scan and the points are read, and the run rejects with the first such error after the points.
+- S12-Q28 (the fix, FINAL coordinator ruling: a strict overlap in `heldStuck`, the halves stay a millisecond short
+  of the range, because a half that shares the boundary millisecond re-reads the failing one) a stuck range that never clears. The re-scan reads
+  up to a millisecond short of a stuck range and from the millisecond after it, so owed ground that reaches past
+  the range leaves a sliver that shares only the boundary millisecond with it (`{t, t + 1}`); the sliver touched
+  the range, so the range stayed held in `rescanStuck` for ever (`heldStuck`) and `fiat-rescan-stuck` was logged
+  on every run (FQ22; FW2: 8 payment status worlds failed, seeds 55 and 121 at 1 h, 55, 110, 121, 231, 253 and
+  275 at 1 day). Built: `heldStuck` holds a range only for owed ground that overlaps it by more than the boundary
+  millisecond, so the sliver is an owed range of its own that the owed runs read. The ruling named another means,
+  halves that share the boundary millisecond with the range and a strict overlap for the stuck lookup; measured
+  on this base it fails the pins of the halving (FQ15, FQ16, the point that fails at the end of its stuck range:
+  the half after it holds the failing millisecond, is marked again and again, and the stuck range is never read
+  around) and 461 of 1200 cases of the fiat suites, and is not built.
+- S12-Q29 (A, FINAL coordinator ruling) the engine fix for every walk. `runWalkPlan` takes the test of the
+  failure (`isUnreadableWindowError`, none by default, so every failure stops the run as before); only an owed
+  range or point whose window throws a failure it names is read past, a 429, a 418, an auth failure, a clock skew
+  or a network failure stops the run at once with no further call (FQ19). The engine imports no exchange class:
+  Binance passes `isUnreadableWindowError` of `binance.walk-config.ts` (true for `BinanceHistoryParseError`)
+  from all eight walk entries (FQ20).

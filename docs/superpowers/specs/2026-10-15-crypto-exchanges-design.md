@@ -1258,7 +1258,11 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   `exchange_state` entry; a disconnect drops it) and the re-scan reads before it and after it, a
   span that holds no owed range is halved, and a span of one millisecond that fails is owed and
   marked itself; the owed runs read each stuck range on its own, and a range the list no longer
-  holds leaves the mark. A record Binance writes late is imported by the next re-scan pass, up to
+  holds, or holds only as a sliver that shares a boundary millisecond with it, leaves the mark. An
+  owed range or point whose page cannot be read does not end the run in any Binance walk (S12-Q27,
+  S12-Q29): the run reads the owed ground behind it, the re-scan and the points, then rejects with
+  that error; a rate limit, an auth failure, a clock skew or a network failure still ends the run
+  at once. A record Binance writes late is imported by the next re-scan pass, up to
   two years back, and every record Binance serves is imported within 4 x (2z + 1) runs of the run
   that first serves it, z the days in the window that fail (4 runs with none, 12 with one;
   `binance.fiat-history.properties.test.ts`). Fiat payments is 10 calls at IP 1 each, so 1 run at a
