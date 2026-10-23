@@ -241,6 +241,10 @@ New rows (no P2P or fiat read ran before, so "was:" is "no read" unless a value 
 | FQ27 | fiat orders, a dense hour (2 x (page rows + 1) rows) in the forward ground with an owed day that no read clears, 60 runs an hour apart; and in an owed range older than 730 days, 120 runs (S12-Q36) | every row of the hour and the orders after it are imported, within 2 x 24 and 4 x 21 runs (3 reads a level, 8 and 7 levels, a forward turn every 2 runs and an owed turn every 4) | `binance.fiat-history.owed-ground.test.ts`: "fiat orders: a dense hour that a pass halves over several runs" > "imports a dense forward hour and the orders after it while an owed day stays unreadable", "imports a dense hour inside an owed range older than the re-scan window" | none of the 1004 records imported in 60 runs and in 120 runs (the hints of the other passes dropped on every turn) |
 | FQ28 | fiat payments, a completed buy and a completed sale with a blank `fiatCurrency` and with one that holds `:` (S12-Q39) | two `fiat-unrecognized` entries, no row, no owed point, the cursor at now | `binance.fiat-history.test.ts`: "lists a buy and a sale with %s as not recognized and owes no point" | no entry listed, the point owed on every run (`amount-malformed`) |
 | FQ29 | a fiat order and a fiat payment whose `createTime` holds a fraction of a millisecond, through the real request builder, 6 runs; the shared record settling with a fractional time, a fractional extent and a time past 2^53 (S12-Q40) | no request with a decimal `beginTime` or `endTime`, no run rejected, the one good record imported (offered again on each run, one key), the point `{ floor - 1, ceil + 1 }` owed; the points are whole milliseconds; a time past 2^53 owes a point and does not throw | `binance.fiat-history.test.ts`: "a $name record whose time holds a fraction of a millisecond" > "reads its point in whole milliseconds, and no run is rejected for it"; `binance.history-records.test.ts`: "owes a point of whole milliseconds for a record at a fraction of one, and gives the same", "owes a point of whole milliseconds for an extent with a fraction at each end", "owes a point, and never throws, for a time past the safe integer" | requests with a decimal time (1791589799999.5 ... 1791589800001.5), which the test's server answers with a 400 |
+| FQ30 | every Binance walk (capital, convert, Pay, dust, Transfer, Earn, P2P, fiat orders, fiat payments) over a request that rejects with an error that is no refusal (S12-Q38) | the request is one recorded call of its lane (the calls recorded equal the requests made; the Pay uid read counts on its own) and its error is rethrown | `binance.walks.failed-calls.test.ts`: "counts every request that rejects as a call of its lane, and rethrows its error" | 0 calls recorded of 1 request in each walk (Pay 1 of 2) |
+| FQ31 | `readSeriesSpan` over a rejecting request: a page of a lane with no depth, the second page of a series, a rate-limited request, a series read, a probe of the narrowing and a band read; and a band that is refused (S12-Q38) | each rejected request is one recorded call (a rate limit too), the error is rethrown or handed to the caller; the refusal of a band is recorded once and the band is owed | `binance.history-paging.failed-calls.test.ts`: "counts the first page of a series as a call, and rethrows its error", "counts the page that rejects after a page that was served, each once", "counts the request of a rate limit, and hands the limit to the caller", "counts a read of a series on a lane with a depth, and rethrows its error", "counts a probe of the narrowing, and the refused read before it, each once", "counts the read of the band a series began above, and the series read before it, each once", "counts the refusal of a band once, and owes the band" | the first six: one call fewer than the requests made (0 of 1, 1 of 2); the last passes before and after (it pins that a refusal is not recorded twice) |
+| FQ32 | the public price client over 160 symbols that fail on the network (S12-Q38) | the lane cap ends the reads: `LANE_CALL_CAPS.market` (150) requests | `src/rates/binance-market/binance-market.client.test.ts`: "counts a request that failed on the network, so the lane cap ends the reads of a run" | 160 requests |
+| FQ33 | fiat orders and fiat payments, 30 owed points that all reject, 3 runs (S12-Q38) | the requests of a run equal its recorded calls, stay within `LANE_CALL_CAPS` (3, 10) and the orders within `UID_WEIGHT_BUDGET_1M` | `binance.fiat-history.owed-ground.test.ts`: "$name: 30 owed points that cannot be read" > "counts every request of a run as a call of its lane, so the cap and the weight of the minute hold" | orders 32 requests, 2 recorded (about 1.44M UID weight against 180000); payments 38 requests, 8 recorded |
 | FQ5 | orders, forward ground one window or more, a range owed | forward run first; at exactly one window, forward and not complete; a millisecond under, a re-scan | fiat, "reads forward first and leaves the owed range for a later run", "reads forward at exactly one window behind, and is not complete while a range was owed", "re-scans at a millisecond under one window behind" | (same for the first; no turn) |
 | FQ6 | fiat payments, current | forward and re-scan in one run, unchanged | fiat, "reads forward and re-scans the last two years in the same run" | (same) |
 | FQ7 | orders, an owed point and no range | forward run; the point on the 3rd call, in a forward and in a re-scan run | fiat, "reads forward when the list holds no range, though a point is owed", "reads an owed point on the third call of a forward run and of a re-scan run" | the 3rd call never spent by a re-scan |
@@ -572,13 +576,13 @@ Files: the spec.
 - G-1 every step; G-2 steps 1, 4, 11; G-3 steps 4-11; G-6 step 4; G-7 steps 7, 10; G-8 step 5; G-9 steps 6, 9;
   G-10 steps 6, 8, 9, 10, 11; G-11 steps 12, 13; G-12 and G-13 every commit; G-14 steps 1, 11.
 
-## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21 ... S12-Q24, S12-Q27 ... S12-Q36, S12-Q39, S12-Q40)
+## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21 ... S12-Q24, S12-Q27 ... S12-Q36, S12-Q38 ... S12-Q40)
 
 Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12-Q15 = A, FINAL coordinator rulings (Q7 = cap 20 after probe
 10); Q3, Q10, Q11 = A, USER CONFIRMED 2026-10-23; Q18 = C, Q21 = A (N = 1), Q22 = B, Q23 = B, Q24 = B, Q27 = the fix, Q28 = the
 fix as the entry builds it, Q29 = A, Q30 = the fix, Q32 = the fix and Q33 = the fix, FINAL coordinator rulings;
-Q34 = refuse, Q35 = A + B fiat-only, Q36 = the fix, Q39 = refuse and Q40 = whole milliseconds, OVERNIGHT DEFAULT,
-pending user.
+Q34 = refuse, Q35 = A + B fiat-only, Q36 = the fix, Q38 = the fix, Q39 = refuse and Q40 = whole milliseconds,
+OVERNIGHT DEFAULT, pending user.
 
 - S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
   one exact existing title to each. B: a file-only row passes when the file exists. Recommend A: a file alone ties a
@@ -840,6 +844,20 @@ pending user.
   H = 16, failed the forward world on late records at 5 to 20 of 30 seeds on the moving clocks: slow, no stall.
   Red on the old hooks: 341 of 720 cases of the two worlds (all orders: 179 forward, 162 old owed; payments have
   no turns); green on the fix: 720 of 720; the whole file 4614 cases, about 360 s (it was about 260 s).
+- S12-Q38 (the fix, OVERNIGHT DEFAULT, pending user) an unreadable owed window or point is never recorded in the
+  lane budget (kiko:debugger proof, red by run). `budget.record` ran only after a page came back, so a request that
+  threw was a made call the lane never counted; since S12-Q29 the pending and point passes go on after it, so 30
+  owed points that all reject were 32 requests in one orders run with 2 recorded (cap 3; about 1.44M UID weight
+  against `UID_WEIGHT_BUDGET_1M` 180000) and 38 requests with 8 recorded for payments (cap 10): the 429 and 418 ban
+  risk. The set 10 ruling that the id-cursor pager records a rejecting request (`failedCallWeights`) already held
+  for it alone. Built: `readSeriesSpan` records `refusedCallWeights` for a non-refusal error of a series read
+  (`attemptSeries`), of a probe (`probeOf`) and of a band read (`readBand`), so the refusals that record where
+  their narrowing starts are not recorded twice; capital (`fetchAllInWindow`), convert, Pay and dust record a
+  rejecting request with `recordFailedCall` (`binance.history-budget.ts`) and rethrow; the public price client
+  records a request that failed on the network; the fiat `attemptSpan` record is deleted (the paging reader counts
+  it now). A rate limit is a made call too, so it is recorded before the cooldown is set. The engine test stub of
+  `walk.unreadable-window.test.ts` counts the calls the windows record, not the asks of `canAfford`. Pins moved:
+  none.
 - S12-Q39 (refuse, OVERNIGHT DEFAULT, pending user) a fiat payment whose `fiatCurrency` is blank or holds `:`.
   A: refused as `fiat-unrecognized` (one visible entry, the cursor moves on), the rule S12-Q34 gave the P2P orders,
   with `isAssetTicker` of `untracked-counterpart.ts` as the one test of a ticker a code can carry. B: owe the
