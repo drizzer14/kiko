@@ -95,6 +95,38 @@ describe('UpcomingPaymentRow', () => {
     ).toBe(true);
   });
 
+  describe('an installment with no interest', () => {
+    const interestFree = { ...installment, interestMinorUnits: 0 };
+
+    it('shows only the principal in the footer', async () => {
+      const { getByText, queryByText } = await render(
+        <UpcomingPaymentRow installment={interestFree} currency="UAH" />,
+      );
+
+      expect(getByText(`Principal ${money(interestFree.principalMinorUnits)}`)).toBeTruthy();
+      expect(queryByText(/interest/)).toBeNull();
+    });
+
+    it('leaves the interest out of the accessibility label', async () => {
+      const { getByLabelText } = await render(
+        <UpcomingPaymentRow installment={interestFree} currency="UAH" />,
+      );
+
+      expect(
+        getByLabelText(
+          [
+            formatDate(interestFree.dueDate),
+            'Loan payment',
+            money(-interestFree.paymentMinorUnits),
+            'Scheduled',
+            `Principal ${money(interestFree.principalMinorUnits)}`,
+            remaining,
+          ].join(', '),
+        ).props.accessible,
+      ).toBe(true);
+    });
+  });
+
   it('does not re-render when its parent re-renders with the same installment and currency', async () => {
     const { rerender } = await render(
       <UpcomingPaymentRow installment={installment} currency="UAH" />,

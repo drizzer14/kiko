@@ -2112,6 +2112,116 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
+  describe('the loan breakdown rows around zero interest', () => {
+    const zeroRateMeta: LoanMeta = {
+      kind: 'car_loan',
+      principalMinorUnits: 12_000_00,
+      startDate: startMonthsAgo(12),
+      schedule: 'annuity',
+      annualRatePct: 0,
+      termMonths: 12,
+    };
+
+    const money = (minorUnits: number): string => formatMoney(Money.of('UAH', minorUnits));
+
+    const seedLoanWithPayments = (meta: LoanMeta, paidMinorUnits: number[]): void => {
+      const [first] = loanInstallments(meta);
+
+      seed(
+        { ...annuityLoanHolding, metadata: meta },
+        [],
+        [],
+        [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        [],
+        {},
+        paidMinorUnits.map((paid) => ({
+          id: 'txn-first',
+          holdingId: 'payer-1',
+          amountMinorUnits: -paid,
+          currency: 'UAH',
+          time: first.dueDate,
+          description: 'First installment',
+          source: 'manual',
+          loanHoldingId: 'h-1',
+          loanLinkSource: 'auto',
+        })),
+      );
+    };
+
+    it('hides Principal repaid and keeps Interest paid at 0.00 for a 0% loan with no fee', async () => {
+      seedLoanWithPayments(zeroRateMeta, [1_000_00]);
+
+      const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-paid-so-far')).toHaveTextContent(money(1_000_00));
+      expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(money(0));
+      expect(queryByTestId('loan-ledger-principal-repaid')).toBeNull();
+      expect(queryByText('Principal repaid')).toBeNull();
+    });
+
+    it('hides Principal repaid for a loan with no payments, where it equals Paid so far at 0', async () => {
+      seedLoanWithPayments(zeroRateMeta, []);
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-paid-so-far')).toHaveTextContent(money(0));
+      expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(money(0));
+      expect(queryByTestId('loan-ledger-principal-repaid')).toBeNull();
+    });
+
+    it('keeps Principal repaid next to Paid so far for a 0% loan with a fee', async () => {
+      seedLoanWithPayments(zeroRateMeta, [1_005_00]);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-paid-so-far')).toHaveTextContent(money(1_005_00));
+      expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(money(0));
+      expect(getByTestId('loan-ledger-principal-repaid')).toHaveTextContent(money(1_000_00));
+    });
+
+    it('shows both rows when the loan carries interest', async () => {
+      const [first] = loanInstallments(annuityLoanMeta);
+
+      seedLoanWithPayments(annuityLoanMeta, [first.paymentMinorUnits]);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(
+        formatMoney(Money.of('UAH', first.interestMinorUnits)),
+      );
+      expect(getByTestId('loan-ledger-principal-repaid')).toHaveTextContent(
+        formatMoney(Money.of('UAH', first.principalMinorUnits)),
+      );
+    });
+  });
+
+  it('shows Interest earned at 0 for a deposit that has accrued nothing', async () => {
+    seed({
+      ...depositHolding,
+      metadata: { ...depositHolding.metadata, annualRatePct: 0 },
+    });
+
+    const { getByText } = await renderScreen();
+
+    expect(amountForLabel(getByText('Interest earned'))).toHaveTextContent(
+      formatMoney(Money.of('UAH', 0)),
+    );
+  });
+
+  it('shows Interest earned for a bond whose coupon is 0%', async () => {
+    seed({
+      ...bondHolding,
+      metadata: { ...bondHolding.metadata, couponPct: 0 },
+    });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Interest earned')).toBeTruthy();
+  });
+
   it('lists the next payments of an annuity loan as cards, starting at the next installment', async () => {
     seed(annuityLoanHolding);
 

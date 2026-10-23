@@ -908,6 +908,8 @@ export const en = {
     // The caption under each upcoming loan payment: how much of it repays
     // the principal and how much is interest.
     paymentSplit: 'Principal {{principal}} · interest {{interest}}',
+    // The same caption for a payment that carries no interest (a 0% loan).
+    paymentSplitPrincipalOnly: 'Principal {{principal}}',
     principal: 'Principal',
     principalRepaid: 'Principal repaid',
     projected: 'Projected',

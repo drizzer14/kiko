@@ -9,6 +9,8 @@ import EntryCard from '@kiko/design-system/components/entry-card';
 import MoneyText from '@kiko/design-system/components/money-text';
 import EntryDateHeader from '@kiko/design-system/components/entry-date-header';
 
+import { paymentSplitText } from '../../payment-split-text';
+
 import type { UpcomingPaymentRowProps } from './upcoming-payment-row.props';
 
 // One scheduled loan payment as a ledger entry: its due date above a card of the payment, a
@@ -23,10 +25,12 @@ const UpcomingPaymentRow: FC<UpcomingPaymentRowProps> = ({ installment, currency
   // it red with the minus and the label below reads it the same way.
   const payment = Money.of(currency, installment.paymentMinorUnits).negate();
   const marker = t('holdingDetail.scheduled');
-  const split = t('holdingDetail.paymentSplit', {
-    principal: formatMoney(Money.of(currency, installment.principalMinorUnits), activeLocale()),
-    interest: formatMoney(Money.of(currency, installment.interestMinorUnits), activeLocale()),
-  });
+  const split = paymentSplitText(
+    t,
+    currency,
+    installment.principalMinorUnits,
+    installment.interestMinorUnits,
+  );
   const remaining = t('holdingDetail.remainingBalance', {
     amount: formatMoney(Money.of(currency, installment.remainderMinorUnits), activeLocale()),
   });

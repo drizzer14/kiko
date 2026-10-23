@@ -235,6 +235,11 @@ const sharedPropertyBreakdownRows = (
   ];
 };
 
+// Principal repaid equals Paid so far when no payment carried interest or a fee (a 0% loan, or
+// a loan with no payments yet); repeating the same amount adds nothing.
+const showsPrincipalRepaid = (summary: ReturnType<typeof loanLedgerSummary>): boolean =>
+  summary.principalRepaidMinorUnits !== summary.paidSoFarMinorUnits;
+
 // A loan's breakdown: its principal and what its linked payments paid, split
 // into interest and principal (`loanLedgerSummary`; a within-tolerance fee is
 // in neither), ending on the SAME outstanding the Value header shows. Every
@@ -266,11 +271,15 @@ const loanBreakdownRows = (
         money: money(summary.interestPaidMinorUnits),
         testID: 'loan-ledger-interest-paid',
       },
-      {
-        label: t('holdingDetail.principalRepaid'),
-        money: money(summary.principalRepaidMinorUnits),
-        testID: 'loan-ledger-principal-repaid',
-      },
+      ...(showsPrincipalRepaid(summary)
+        ? [
+            {
+              label: t('holdingDetail.principalRepaid'),
+              money: money(summary.principalRepaidMinorUnits),
+              testID: 'loan-ledger-principal-repaid',
+            },
+          ]
+        : []),
       {
         label: t('holdingDetail.outstanding'),
         money: money(summary.outstandingMinorUnits),

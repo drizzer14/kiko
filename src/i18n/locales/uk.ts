@@ -790,6 +790,7 @@ export const uk: typeof en = {
     ownedValue: 'Вартість вашої частки',
     paidSoFar: 'Сплачено',
     paymentSplit: 'Основна сума {{principal}} · відсотки {{interest}}',
+    paymentSplitPrincipalOnly: 'Основна сума {{principal}}',
     principal: 'Основна сума',
     principalRepaid: 'Погашено основної суми',
     projected: 'Прогноз',
