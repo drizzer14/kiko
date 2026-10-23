@@ -1816,6 +1816,25 @@ index, `settle-limited.test.ts`), `Minor\s\d+` ("a minor 3% drift"), and
 found three real hits in `src`, each reworded in the same change. Fixture
 pair: the case pins at the end of `.bad.ts` and item 23 in `.good.ts`.
 
+**Set, task, track and run ids, and a decision answer (2026-10-23).** Seven members, in both
+arms and in `kiko-no-history-id-shell-comment`, each narrow enough that a bare "task 0" or "set 0"
+stays prose (`.good.ts` item 28):
+- `\bH\d{1,2}\s+(?:task|set|step|fix\sround|backlog|track)\b` and `\bH\d{1,2}\s+t\d+\b`: a track
+  id joined to a task word (`H10 task 4/4`, `H9 t3`, `H10 set 3`). A bare `H\d+` is NOT a member:
+  `(H1)`, `(H3)` (section ids in `plist.sh`), `H264` and `H2 database` are ordinary tokens.
+- `\b\d{8}T\d{4}-kiko-[\w-]+`: a run id (`20261023T0023-kiko-harness-h10`).
+- `[Ss]et\s\d+/\d+` and `[Tt]ask\s\d+/\d+`: a set or task counter (`set 3/5`, `task 2/3`).
+- `(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b`: a set or
+  task id followed by a process word (`the set 9 review`). The word needs its own boundary, so
+  "set 3 steps" stays silent.
+- `\bQ\d{1,2}\s*=\s*[A-Z]\b`: a decision answer (`Q2 = A`). "The Q2 tabs-vs-chips rule" and
+  "Q2 2026" stay silent.
+
+Known limit (accepted false positive, 0 sites in the tree): a ratio such as "set 16/9 aspect
+ratio" reads as a set counter. Reword it ("a 16:9 aspect ratio"), or use the override protocol
+for a real site. Fixture pair: the pins at the end of `.bad.ts` and `.bad.sh`, and item 28 in
+`.good.ts` with the matching lines at the end of `.good.sh`.
+
 **What a finding is (both history rules).** Each arm reports every
 watched id or word of a comment, one finding per member: a PCRE `\K` right
 before the member drops everything before it from the match, and the block
@@ -2050,8 +2069,9 @@ first, and a shape that hit prose was dropped or narrowed:
   "cell A1".
 - Left OUT, because the hits were domain words: `Step N` (an algorithm
   documented step by step), `Phase A/B` (the rezone phases), `Rule B`/`Rule N`
-  (the matcher's own rules), `task 0` (a test's own tasks), and a bare
-  letter and digit (`A1's`, `P1:`, which collide with cells, regex classes,
+  (the matcher's own rules), `task 0` (a test's own tasks; the set and task counters
+  `task 2/3` and `set 3/5` are members of `kiko-no-history-id-comment`, not of this rule), and a
+  bare letter and digit (`A1's`, `P1:`, which collide with cells, regex classes,
   and chip names).
 
 Any other good fixture that carries one of these shapes in a comment fails
@@ -2093,8 +2113,10 @@ and stays silent. A `try`/`finally` reset inside the body still matches: use a h
 Mechanizes kiko-code-style's "A test title carries no history": the title of an `it`,
 `test`, or `describe` call (also `.only`, `.skip`, `.todo`, `.each(table)(...)`, and a tagged
 `.each` table) that opens with a task id (`A1 `, `A1:`), opens with a ruling id (`ruling A2`),
-opens with a numbered device check (`device check 3`, either case), carries `(was: `, or ends in
-a task id in parentheses (`(P2)`, `(task C2)`, `(spec A3, B4)`).
+opens with a numbered device check (`device check 3`, either case), carries `(was: `, `(was 44)`
+or `; was 62` (an old-value label), or ends in a task id in parentheses (`(P2)`, `(task C2)`,
+`(spec A3, B4)`). `it was 44 rows` and `(was 3 of them)` stay silent: `(was N)` needs the digits to
+close the parenthesis, and `; was N` needs the semicolon.
 
 **Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
 --metrics off --quiet --config rules/semgrep-prewrite.yml src __tests__ --json` before quoting

@@ -459,8 +459,8 @@ rules:
         - "harness/**"
     severity: ERROR
     message: >
-      A shell comment cites a task id, review-round id, spec/decision id, a bug number, or a plan
-      (a plan doc, a numbered decision, a separate commit). kiko-code-style's "Comments: WHY only,
+      A shell comment cites a task id, review-round id, spec/decision id, a set, track or run id,
+      a bug number, or a plan (a plan doc, a numbered decision, a separate commit). kiko-code-style's "Comments: WHY only,
       never history": that belongs in the commit message that made the change, or the skill
       section that owns the rule, never left behind in a comment. Drop the id and keep the WHY; if
       nothing but history remains, delete the comment. If this is a real domain word that only
@@ -468,7 +468,7 @@ rules:
     metadata:
       fix: "Drop the id and keep the WHY; if nothing but history remains, delete the comment."
       skill: "kiko-code-style › Comments: WHY only, never history"
-    pattern-regex: '(?:^[ \t]*#|(?!\A)\G)[^\n]*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:#\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:#\s*)?\d{4}-\d{2}-\d{2}|(?<=#\s|[.;:]\s)[Tt]he\s+user\s+asked\s+for)\b)'
+    pattern-regex: '(?:^[ \t]*#|(?!\A)\G)[^\n]*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|\bH\d{1,2}\s+(?:task|set|step|fix\sround|backlog|track)\b|\bH\d{1,2}\s+t\d+\b|\b\d{8}T\d{4}-kiko-[\w-]+|[Ss]et\s\d+/\d+|[Tt]ask\s\d+/\d+|(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b|\bQ\d{1,2}\s*=\s*[A-Z]\b|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:#\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:#\s*)?\d{4}-\d{2}-\d{2}|(?<=#\s|[.;:]\s)[Tt]he\s+user\s+asked\s+for)\b)'
   - id: kiko-no-history-word-shell-comment
     languages: [generic]
     paths:
