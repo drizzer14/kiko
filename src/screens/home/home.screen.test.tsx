@@ -85,7 +85,6 @@ jest.mock('@kiko/display-regions', () => ({
   useFoldRegion: () => null,
   // The Screen's content cap reads the size class: compact, as on an iPhone.
   useDisplayRegions: () => ({ horizontalSizeClass: 'compact' }),
-  useIsLargeWindow: () => false,
 }));
 
 const MOCK_BOTTOM_INSET = 34;

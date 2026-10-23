@@ -16,7 +16,6 @@ import AddTransactionFab from './add-transaction-fab.component';
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
-  useIsLargeWindow: () => false,
 }));
 
 describe('AddTransactionFab', () => {

@@ -9,7 +9,7 @@ import '@kiko/design-system/unistyles';
 import PieChart from '../pie-chart';
 
 import StatisticsGrid from '.';
-import { isChartRowShared, SHARED_ROW_MIN_PANE_WIDTH } from './chart-rows';
+import { isChartRowShared, SHARED_ROW_MIN_CONTENT_WIDTH } from './chart-rows';
 
 // The name label's room is a design budget, not a style: about two words of the body text.
 const NAME_LABEL_WIDTH = 80;
@@ -67,12 +67,12 @@ describe('isChartRowShared', () => {
     const cardPadding = 2 * darkTheme.spacing(PADDING_UNITS);
     const screenPadding = 2 * darkTheme.spacing(PADDING_UNITS);
     const cardWidth = fixedWidth + NAME_LABEL_WIDTH + cardPadding;
-    const derivedMinPaneWidth = 2 * cardWidth + screenPadding + (await renderedRowGap());
+    const derivedMinContentWidth = 2 * cardWidth + screenPadding + (await renderedRowGap());
 
     expect(donutWidth).toBeLessThan(fixedWidth + NAME_LABEL_WIDTH);
     expect(fixedWidth).toBe(192);
-    expect(derivedMinPaneWidth).toBe(656);
-    expect(SHARED_ROW_MIN_PANE_WIDTH).toBe(derivedMinPaneWidth);
+    expect(derivedMinContentWidth).toBe(656);
+    expect(SHARED_ROW_MIN_CONTENT_WIDTH).toBe(derivedMinContentWidth);
   });
 
   it.each([
