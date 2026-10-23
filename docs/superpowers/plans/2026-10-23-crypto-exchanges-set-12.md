@@ -29,7 +29,7 @@ fiat-orders budget cases and the first-walk table), "### P2P", "### Fiat orders 
 payments (card buy, sell)"; section 6 "Not-imported line", "Mapping and statistics per operation"; section 7
 P1-P11, F1-F6, N5b; section 11 row 12/15; section 12 P5, P6. Rulings: `rulings.md` (main checkout,
 `memory/refs/binance-multicoin-sdd-2026-10-21/`), "Probe 4 rulings", "Spec draft sets 8-12 rulings", "P2P BUY vs
-LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q14 are at the end; the plan
+LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q15 are at the end; the plan
 assumes each recommendation.
 
 **Base:** branch `binance-set12` at main `79094ae8` (sets 1-11 merged). Every code fact names a symbol or anchor
@@ -117,7 +117,11 @@ text, never a line. **The developer re-greps every fact on the actual base befor
   `untrackedCounterpart` from the G-8 builder `p2p:<fiat>:<totalPrice>`, `comment = '<totalPrice> <fiat>'` (the
   text as Binance sent it), `operation = 'p2p'`, key `${accountId}:p2p:${orderNumber}:<walletKey>`. Entry
   `notImportedEntry(kind, orderNumber, createTime)`. An `orderNumber` that is not non-empty text, or a
-  `createTime` that is not a safe integer: unreadable, owed (the convert reader's rule, `readConvertRecord`).
+  `createTime` that is not a safe integer: unreadable, owed and visible (the convert reader's rule,
+  `readConvertRecord`). Any other decision field of the wrong type: `BinanceHistoryParseError` for the page, so
+  the run fails the P2P walk, it is logged, and the next run reads the window again (S12-Q15). A page that throws
+  on every run stays visible: the log line each run, the history caption once the `p2p` cursor lags more than a
+  day (as S8-C1 for Convert), and the other walks of the run still run (PW6-PW8, RW2, RW3).
 - Fiat orders: `Successful` row; `Processing` owes the point; `Failed` / `Refunded` none only if step 2/14 finds
   doc text that no money moved (S12-Q3: expected not found, so `fiat-unrecognized`); every other word
   `fiat-unrecognized`. Deposit `+amount`, withdraw `-(amount + totalFee)` (S12-Q11), on Spot (C-NR3), marker
@@ -184,11 +188,13 @@ New rows (no P2P or fiat read ran before, so "was:" is "no read" unless a value 
 | # | Input | Result now | Test (file, title) | was: |
 |---|---|---|---|---|
 | PC1 | `fetchP2pOrders(BUY, span, page 1)` | signed GET, `tradeType`, `startTimestamp`, `endTimestamp`, `page`, `rows=100`; UID header read | `binance.history-client.p2p.test.ts`, "asks one page of one side and one window at 100 rows" | - |
-| PC2 | body not the documented envelope; a field the walk uses of the wrong type | `BinanceHistoryParseError`, whole page | same, "fails the whole page for %s" | - |
+| PC2 | body not the documented envelope; a decision field other than `orderNumber` / `createTime` of the wrong type; `data` null or absent while `total` is not 0 | `BinanceHistoryParseError`, whole page | same, "fails the whole page for %s" | - |
+| PC2b | `data` null or absent with `total === 0` | an empty page (no row, no throw) | same, "reads a page with no data as empty only when its total is 0" | - |
+| PC5 | `orderNumber` empty, not text or absent; `createTime` not a safe integer | that record unreadable (owed), the other records of the page read | same, "reads an order with %s as unreadable and keeps the rest of the page" | - |
 | PC3 | a record with every documented field | the record holds no counterparty field | same, "reads no counterparty field into the record" | - |
 | PC4 | HTTP 429 / 418; -5026; HTTP 500 | `BinanceRateLimitError`; `BinanceHistoryTooOldError`; request failure | same, "maps %s to %s" | - |
 | FC1 | `fetchFiatOrders(0, span, page)`, `fetchFiatPayments(1, span, page)` | `transactionType`, `beginTime`, `endTime`, `page`, `rows` 500 / 100 | `binance.history-client.fiat.test.ts`, "asks one page of %s at %i rows" | - |
-| FC2 | as PC2 for both bodies | `BinanceHistoryParseError` | same, "fails the whole page for %s" | - |
+| FC2 | as PC2 and PC2b for both bodies (the same `data` / `total` envelope) | `BinanceHistoryParseError` | same, "fails the whole page for %s" | - |
 | FC3 | as PC4 | as PC4 | same, "maps %s to %s" | - |
 | BL1 | lanes at their caps | `p2p` 10, `fiatOrders` 3, `fiatPayments` 10; each UID lane at its cap within `UID_WEIGHT_BUDGET_1M` | `binance.history-budget.test.ts`, "keeps each new UID lane at its cap within the minute budget" | no lane |
 | BL2 | 3 fiat-order calls recorded | a 4th refused | same, "refuses a fourth fiat order call in a run, though the weight alone would allow it" | - |
@@ -197,10 +203,17 @@ New rows (no P2P or fiat read ran before, so "was:" is "no read" unless a value 
 | PW2 | 429 on a window's SELL series | earlier windows committed; cooldown set; resolves | walk, "writes the windows read before the limit, sets the cooldown and resolves" | - |
 | PW3 | `addTransactions` rejects | no mark for that window; rethrown | walk, "moves no mark past a window whose rows fail to write and rethrows" | - |
 | PW4 | the lane room for 4 calls | 2 windows (both series each), no half window | walk, "reads both sides of a window or neither" | - |
+| PW5b | an unreadable order (PC5) in a window | its point owed; the other orders of the window import; the cursor passes the window | walk, "owes the point of an order it cannot read and imports the rest of its window" | - |
+| PW6 | a window whose page throws `BinanceHistoryParseError` on every run (modelled on `binance.convert-history.test.ts` "rejects the walk, moves no mark and writes no row when a window is answered -5026") | the walk rejects; no mark moves past the window, no row of it; the earlier windows stay committed | walk, "rejects the walk, moves no mark past the window and writes none of its rows when its page cannot be read" | - |
+| PW7 | PW6 over three runs | each run rejects the same way and reads the window again; the `p2p` cursor stays before it | walk, "reads a window whose page cannot be read again on every run, never passing it" | - |
+| PW8 | the `p2p` cursor of PW7 more than a day behind `latestSyncedAt` (modelled on `binance-history-status.test.ts` "is not behind at exactly a day, and is behind a millisecond past it") | the history caption shows | `src/screens/account-detail/crypto-sync-section/binance-history-status.test.ts`, "is behind while the P2P walk is held more than a day by a page it cannot read" | hidden (not in `CAPTION_WALKS`) |
 | PW5 | property, gaps 0 / 1 h / 1 day | see step 11/14 | `binance.p2p-history.properties.test.ts` | - |
 | FW1 | as PW1-PW3 for both fiat walks | as PW1-PW3 | fiat, describe "a fiat walk that stops" | - |
 | FW2 | property, gaps 0 / 1 h / 1 day | see step 11/14 | `binance.fiat-history.properties.test.ts` | - |
 | RW1 | the arm run | the walks in spec order, the P2P and fiat walks after dust and before trades; each failure logged by its own tag | `src/crypto-sync/run-crypto-sync/run-crypto-sync.test.ts`, "runs the walks in order, capital, Pay, Transfer, Earn, Convert, the dust read, P2P, fiat orders, fiat payments, then the trade read, all on one run object" | dust then trades |
+| RW2 | the P2P walk rejects with `BinanceHistoryParseError` (modelled on "still resolves with the balance result when the Convert walk fails, logging only its name") | logged under `[binance sync] p2p history failed` with name and code only; the balance result resolves | same file, "still resolves with the balance result when the P2P walk fails, logging only its name" | - |
+| RW3 | RW2 (modelled on "runs the dust read even when the Convert walk failed: each logs its own failure") | the fiat order, fiat payment and trade reads still run; each logs its own failure | same file, "runs the fiat walks and the trade read even when the P2P walk failed: each logs its own failure" | - |
+| RW4 | real SQLite: an account with a P2P page that cannot be read and a readable Convert record, two runs | both runs: the Convert row imports once, the P2P cursor stays, the failure logged each run | `binance.p2p-history.real-sqlite.test.ts`, "keeps importing the other walks while a P2P page cannot be read, and logs it on every run" | - |
 | K-P | a `p2p`, `fiatOrders` or `fiatPayments` cursor null or a day behind | caption shown | `src/screens/account-detail/crypto-sync-section/binance-history-status.test.ts`, "shows the caption while the %s walk is behind" | hidden (not in `CAPTION_WALKS`) |
 | MK1 | `p2pTotalCode`-style builder (G-8) on `4150`, `4145.85`, `4000.0`, `4150.001`, `abc` | `p2p:UAH:4150.00`, `...4145.85`, `...4000.00`, `amount-precision`, `amount-malformed`; each parses back | `src/transactions/untracked-counterpart/untracked-counterpart.test.ts`, "builds a %s code at the fiat scale from %s" | no builder |
 
@@ -364,7 +377,9 @@ Files: `untracked-counterpart.ts`, `untracked-counterpart.test.ts`, its barrel.
 ### step 6/14: the P2P read
 
 Files: `binance.history-client.ts`, `binance.history-client.p2p.test.ts` (new).
-- [ ] Tests first: PC1-PC4. Red count quoted.
+- [ ] Tests first: PC1-PC4, PC2b, PC5. Red count quoted. Empty shape: a null or absent `data` reads as an empty
+      page only when `total === 0`; any other `total` throws `BinanceHistoryParseError` (approved fix, its own
+      commit; S12-Q15).
 - [ ] Code: `BinanceP2pOrder` (`orderNumber`, `tradeType`, `asset`, `fiat`, `amount`, `totalPrice`, `orderStatus`,
       `createTime`, `takerCommission`, `takerAmount`, `advertisementRole`; optional texts stay `undefined` when
       absent, so C-P5 can tell absent from present), `fetchP2pOrders(apiKey, secret, side, span, page, options)`
@@ -385,7 +400,7 @@ Files: `binance.p2p-history.ts` (new), `binance.p2p-history.outcome.test.ts` (ne
 
 Files: `binance.p2p-history.ts`, `binance.p2p-history.test.ts` (new), `binance/index.ts`.
 - [ ] Tests first: P3b, P3d, P4b, P5, P6, P7, P7b (fake walk over the UA-1 shape: 113 windows x 2 series, first
-      order at window 75, newest at 113; count calls in the fake), P8, P8b, P10, PW1-PW4. Red count quoted.
+      order at window 75, newest at 113; count calls in the fake), P8, P8b, P10, PW1-PW4, PW5b, PW6, PW7. Red count quoted.
 - [ ] Code: `syncBinanceP2pHistory({ targetAccountId, run }, overrides)` with `BinanceP2pHistoryDeps`; cooldown ->
       credentials -> `readWalkMarks(deps, accountId, 'p2p')` -> `planWalkPasses` (`P2P_WINDOW_MS`, `maxWindows` =
       the lane's windows a run) -> `runWalkPlan` with `canAfford: keep => run.budget.canAfford('p2p', COSTS.p2p,
@@ -420,7 +435,7 @@ Files: `run-crypto-sync.ts`, `run-crypto-sync.test.ts`, `binance-history-status.
 `binance.p2p-history.real-sqlite.test.ts` (new), `binance.fiat-history.real-sqlite.test.ts` (new),
 `binance.p2p-history.properties.test.ts` (new), `binance.fiat-history.properties.test.ts` (new),
 `crypto-sync-section.component.not-imported.test.tsx`.
-- [ ] Tests first: RW1, Q4, Q5, Q6, K-P; real SQLite P4, P9 (the probe 3 shape: 77 COMPLETED BUY TAKER, 2
+- [ ] Tests first: RW1, RW2, RW3, RW4, PW8, Q4, Q5, Q6, K-P; real SQLite P4, P9 (the probe 3 shape: 77 COMPLETED BUY TAKER, 2
       CANCELLED, 1 CANCELLED_BY_SYSTEM), P11 (through `syncBinanceP2pHistory` then `syncBinanceConvertHistory`),
       F1-F3 through the real `transactionsRepo` (key upsert, markers insert-only, the run twice adds nothing); N5b.
 - [ ] Properties through the production callers (memory "property suite must call production caller"), seeds
@@ -441,7 +456,7 @@ Files: `run-crypto-sync.ts`, `run-crypto-sync.test.ts`, `binance-history-status.
 ### step 12/14: spec alignment and the set 12 rulings
 
 Files: the spec.
-- [ ] Record S12-Q1 ... S12-Q14 in section 1 with their source (`rulings.md`, "Set 12 plan questions"). Align:
+- [ ] Record S12-Q1 ... S12-Q15 in section 1 with their source (`rulings.md`, "Set 12 plan questions"). Align:
       section 5 fiat block (`totalFee`; "Order Partial Credit Stopped" as Binance writes it; the quoted words from
       step 2/14 with URL and date), the fiat-orders runs (5, S12-Q6) in "Measured weights" and F5, the P2P report
       from probe 10 and the cap it supports (R-Walk A), the P2P cover-rule owner (S12-Q10), section 7 new rows
@@ -500,9 +515,9 @@ Files: the spec.
 - G-1 every step; G-2 steps 1, 4, 11; G-3 steps 4-11; G-6 step 4; G-7 steps 7, 10; G-8 step 5; G-9 steps 6, 9;
   G-10 steps 6, 8, 9, 10, 11; G-11 steps 12, 13; G-12 and G-13 every commit; G-14 steps 1, 11.
 
-## Questions for the coordinator (S12-Q1 ... S12-Q14)
+## Questions for the coordinator (S12-Q1 ... S12-Q15)
 
-Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12, Q13, Q14 = A, FINAL coordinator rulings; Q3, Q10, Q11 = A,
+Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12-Q15 = A, FINAL coordinator rulings; Q3, Q10, Q11 = A,
 OVERNIGHT DEFAULT, pending user.
 
 - S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
@@ -555,3 +570,11 @@ OVERNIGHT DEFAULT, pending user.
   with a real row or doc text. B: map `Finished` to settled. A is the ruling: no source says what `Finished` moved.
 - S12-Q14 (A, FINAL coordinator ruling) `.superpowers/` files. A: they are never committed (gitignored; main tracks
   none; bb4207f2 untracked the two set 12 files); steps 2/14 and 3/14 write their files and do not commit them.
+- S12-Q15 (A, FINAL coordinator ruling) a P2P record or page the reader cannot read. A: an order with no non-empty
+  text `orderNumber`, or no safe-integer `createTime`, is unreadable (owed, visible; PC5, PW5b); any other decision
+  field of the wrong type throws `BinanceHistoryParseError` for the page, so the run fails the P2P walk and the next
+  run retries it (PC2, PW6, PW7). Condition: a page that throws on every run stays visible, never silent: logged
+  each run (RW2, RW4), the history caption once the `p2p` cursor lags more than a day, as S8-C1 does for Convert
+  (PW8), and the other walks of the run still run (RW3, RW4). A null or absent `data` is an empty page only when
+  `total === 0`, else the page throws (PC2, PC2b; the developer's approved fix, its own commit). B: skip the
+  record. A is the ruling: a skipped record behind a moving cursor is a silent loss.
