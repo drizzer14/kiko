@@ -3492,7 +3492,8 @@ a later Stop.
 - **Dedup.** The fingerprint is the base shas, the name and blob hash of
   every file under `drizzle/migrations/`, the name of every file and folder
   under `src/` (a move there must re-run the header kind), and the checker
-  script. A hash failure leaves the fingerprint empty, so the check runs.
+  script. A hash failure, or a `find src` that fails (a missing `src/` is an empty list, not a
+  failure), leaves the fingerprint empty, so the check runs and a partial listing never skips.
 - **Wiring.** `scripts/checks/medium.sh` runs the wrapper BEFORE the guard
   replay and before its "only HEAD moved" early exit. Before the replay,
   because a passing replay moves the worktree's mark ref to HEAD: a

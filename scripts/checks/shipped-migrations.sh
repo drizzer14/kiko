@@ -72,12 +72,13 @@ esac
 # Inputs: the base shas, the name and git blob hash of every file under
 # drizzle/migrations/ (one git process hashes the tree), the name of every file and
 # folder under src/ (a new migration's header names those, so a move or delete there
-# must re-run the check), and the checker. A failure to hash leaves the fingerprint
-# empty, which never matches, so the check runs.
+# must re-run the check), and the checker. A failure to hash or to list src/ leaves the
+# fingerprint empty, which never matches, so the check runs; a missing src/ is an empty list.
 fp=""
+sourceNames=""
 if files="$(find drizzle/migrations -type f 2>/dev/null | LC_ALL=C sort)" \
   && hashes="$(printf '%s\n' "$files" | git hash-object --no-filters --stdin-paths 2>/dev/null)" \
-  && sourceNames="$( { find src 2>/dev/null || true; } | LC_ALL=C sort)"; then
+  && { [ ! -d src ] || sourceNames="$(find src 2>/dev/null | LC_ALL=C sort)"; }; then
   fp="$( {
     printf '%s\n' "${bases[@]}"
     printf '%s\n' "$files"
