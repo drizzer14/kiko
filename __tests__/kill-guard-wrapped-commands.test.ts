@@ -183,6 +183,25 @@ describe('kill-guard wrapped commands (parser only, fake repository)', () => {
     expect(decideInEachFolder(repository, command)).toEqual(bare);
   });
 
+  // An escaped quote inside an ANSI-C string must not close it early and hide the rest of the line.
+  it.each([
+    ["git commit -m $'Fix: don\\'t\\nbody' && make verify", 'make verify'],
+    ["echo $'it\\'s' ; pkill node", 'pkill node'],
+    ["echo $'it\\'s' && git stash", 'git stash'],
+  ])('judges the command after an escaped quote in an ANSI-C string: %s', (command, second) => {
+    const bare = decideInEachFolder(repository, second);
+
+    expect(bare).not.toEqual(EVERY_FOLDER('allow'));
+    expect(decideInEachFolder(repository, command)).toEqual(bare);
+  });
+
+  it.each(["git commit -m $'Fix: don\\'t\\nbody'", "echo $'a\\'b' 'c'"])(
+    'allows an ANSI-C string with an escaped quote: %s',
+    (command) => {
+      expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('allow'));
+    },
+  );
+
   it('denies a Terminal doScript call in a JavaScript osascript text', () => {
     expect(
       decideInEachFolder(
