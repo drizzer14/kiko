@@ -2225,8 +2225,8 @@ export const transactionsRepo = {
       .where(isNotNull(transactions.loanHoldingId)),
   /**
    * Every transaction linked (manual or auto) to one loan holding, newest
-   * first — the loan holding-detail screen's own "Linked payments" section:
-   * the loan itself is ledgerless (`isLedgerlessHoldingType`), so
+   * first — the linked payments the loan holding-detail screen lists beside
+   * its scheduled ones: the loan itself is ledgerless (`isLedgerlessHoldingType`), so
    * its own `listByHoldingQuery` would read nothing; a payment always lives
    * on the PAYER holding instead, found only by this marker.
    */

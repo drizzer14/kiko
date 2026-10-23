@@ -173,6 +173,11 @@ const annuityLoanHolding = {
   metadata: annuityLoanMeta,
 };
 
+// The same loan with so few installments left that its whole list mounts inside the FlatList's
+// first render window.
+const shortLoanMeta: LoanMeta = { ...annuityLoanMeta, termMonths: 15 };
+const shortLoanHolding = { ...annuityLoanHolding, metadata: shortLoanMeta };
+
 // An informal debt — its own outstanding is a manual price-point
 // series, never a computed schedule (loanInstallments returns [] for it).
 const noneLoanHolding = {
@@ -359,17 +364,18 @@ const seed = (
   // key defaults to `false` (an already-resolved query), so a call site that
   // omits it sees resolved queries.
   isLoading: Partial<Record<string, boolean>> = {},
-  // The rows `listLinkedToLoanQuery` resolves to — the loan detail's own
-  // "Linked payments" section. Defaults to none, so every existing
-  // call site above keeps rendering no such section, unaffected.
+  // The rows `listLinkedToLoanQuery` resolves to — the payments the loan
+  // detail lists beside its scheduled ones. Defaults to none, so every existing
+  // call site above keeps rendering a loan with no linked payment, unaffected.
   linkedLoanPayments: unknown[] = [],
 ): void => {
   // A per-table result map, keyed the same way the old if-chain branched — a
   // lookup instead of a chain keeps this well under the cognitive-complexity
   // budget (kiko-code-style). SQLite returns NULL, never undefined, for a
   // column a row does not set, so the transactions default normalizes every
-  // nullable marker the screen reads the same way — an `undefined` here
-  // would be a fixture artefact the device never produces.
+  // nullable marker the screen reads the same way, and gives a row the holding
+  // it belongs to — an `undefined` here would be a fixture artefact the device
+  // never produces.
   const resultByTable: Record<string, { data: unknown[]; isLoading: boolean; isFresh?: boolean }> =
     {
       holdings: {
@@ -389,6 +395,7 @@ const seed = (
       transactions: {
         data: transactions.map((row) => ({
           exchangeCounterpartHoldingId: null,
+          holdingId: 'h-1',
           ...(row as Record<string, unknown>),
         })),
         isLoading: isLoading.transactions ?? false,
@@ -2280,40 +2287,169 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Interest earned')).toBeTruthy();
   });
 
-  it('lists the next payments of an annuity loan as cards, starting at the next installment', async () => {
-    seed(annuityLoanHolding);
+  describe('the loan payments list', () => {
+    const payer = { id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' };
 
-    const { getByText, getByTestId, getAllByTestId } = await renderScreen();
+    const upcomingOf = (meta: LoanMeta) =>
+      loanInstallments(meta).filter((row) => row.dueDate >= startOfLocalDay(Date.now()));
 
-    const upcoming = loanInstallments(annuityLoanMeta).filter(
-      (row) => row.dueDate >= startOfLocalDay(Date.now()),
-    );
-    const [next] = upcoming;
+    const linkedPayment = (id: string, time: number, description: string) => ({
+      id,
+      holdingId: 'payer-1',
+      amountMinorUnits: -100_000,
+      time,
+      description,
+      source: 'manual',
+      loanHoldingId: 'h-1',
+      loanLinkSource: 'manual',
+    });
 
-    if (next === undefined) {
-      throw new Error('fixture must have an upcoming installment for this test to mean anything');
-    }
+    const seedLoan = (holding: unknown, linked: unknown[] = [], pricePoints: unknown[] = []) =>
+      seed(
+        holding,
+        [],
+        [],
+        [payer],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        pricePoints,
+        {},
+        linked,
+      );
 
-    expect(getByText('Upcoming Payments')).toBeTruthy();
-    // Bounded to the next year: the rest sits behind "Show all".
-    expect(upcoming.length).toBeGreaterThan(12);
-    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(12);
-    // Scoped per card: a swapped principal/interest would fail here, unlike a
-    // bare `getByText` search over the whole screen.
-    expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
-      formatMoney(Money.of('UAH', -next.paymentMinorUnits)),
-      { exact: false },
-    );
-    expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
-      `Principal ${formatMoney(Money.of('UAH', next.principalMinorUnits))}`.concat(
-        ` · interest ${formatMoney(Money.of('UAH', next.interestMinorUnits))}`,
-      ),
-      { exact: false },
-    );
+    it('lists the scheduled and the linked payments in one list, newest first', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+      const upcoming = upcomingOf(shortLoanMeta);
+
+      seedLoan(shortLoanHolding, [
+        linkedPayment('txn-older', one.dueDate, 'First installment'),
+        linkedPayment('txn-newer', two.dueDate, 'Second installment'),
+      ]);
+
+      const { getAllByText, getAllByTestId } = await renderScreen();
+
+      expect(upcoming.length).toBeGreaterThan(0);
+      // The farthest scheduled payment is on top, the oldest linked one at the bottom.
+      expect(
+        getAllByText(/^(Loan payment · Scheduled|First installment|Second installment)$/).map(
+          (node) => node.props.children,
+        ),
+      ).toEqual([
+        ...upcoming.map(() => 'Loan payment · Scheduled'),
+        'Second installment',
+        'First installment',
+      ]);
+      expect(getAllByTestId(/^scheduled-payment-/).map((node) => node.props.testID)).toEqual(
+        upcoming.map((row) => `scheduled-payment-${row.index}`).reverse(),
+      );
+      expect(getAllByTestId('ledger-row-loan-link-marker')).toHaveLength(2);
+    });
+
+    it('heads every day of the one list with a day header, scheduled days included', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+      const upcoming = upcomingOf(shortLoanMeta);
+
+      seedLoan(shortLoanHolding, [
+        linkedPayment('txn-older', one.dueDate, 'First installment'),
+        linkedPayment('txn-newer', two.dueDate, 'Second installment'),
+      ]);
+
+      const { getAllByTestId, getByText } = await renderScreen();
+
+      expect(getAllByTestId('ledger-day-header')).toHaveLength(upcoming.length + 2);
+      expect(getByText(formatDate(two.dueDate))).toBeTruthy();
+      // The farthest one: the nearest may fall on today, whose header reads "Today".
+      expect(getByText(formatDate(upcoming[upcoming.length - 1].dueDate))).toBeTruthy();
+    });
+
+    it('shows the next 12 scheduled payments behind a Show all toggle, and all of them on Show all', async () => {
+      const upcoming = upcomingOf(annuityLoanMeta);
+
+      seedLoan(annuityLoanHolding, [
+        linkedPayment('txn-older', 1_000, 'First installment'),
+        linkedPayment('txn-newer', 2_000, 'Second installment'),
+      ]);
+
+      const { getByTestId, getAllByTestId } = await renderScreen();
+      // Newest first: the list opens on its farthest scheduled payment, and the FlatList mounts
+      // only its first rows, so the top row names where the shown payments end.
+      const topScheduled = () => getAllByTestId(/^scheduled-payment-/)[0].props.testID;
+
+      expect(upcoming.length).toBeGreaterThan(12);
+      expect(topScheduled()).toBe(`scheduled-payment-${upcoming[11].index}`);
+      expect(within(getByTestId('scheduled-payments-toggle')).getByText('Show all')).toBeTruthy();
+
+      await fireEvent.press(getByTestId('scheduled-payments-toggle'));
+
+      expect(topScheduled()).toBe(`scheduled-payment-${upcoming[upcoming.length - 1].index}`);
+      expect(within(getByTestId('scheduled-payments-toggle')).getByText('Show less')).toBeTruthy();
+
+      await fireEvent.press(getByTestId('scheduled-payments-toggle'));
+
+      expect(topScheduled()).toBe(`scheduled-payment-${upcoming[11].index}`);
+    });
+
+    it('draws the Show all toggle at the top of the scheduled payments, under the heading', async () => {
+      seedLoan(annuityLoanHolding, [linkedPayment('txn-older', 1_000, 'First installment')]);
+
+      const { getByTestId } = await renderScreen();
+      const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
+      const positionOf = (text: string): number => tree.indexOf(text);
+
+      expect(positionOf('holding-detail-transactions-divider')).toBeLessThan(
+        positionOf('"Transactions"'),
+      );
+      expect(positionOf('"Transactions"')).toBeLessThan(positionOf('scheduled-payments-toggle'));
+      expect(positionOf('scheduled-payments-toggle')).toBeLessThan(
+        positionOf('Loan payment · Scheduled'),
+      );
+    });
+
+    it('offers no toggle when the scheduled payments already fit', async () => {
+      seedLoan(shortLoanHolding);
+
+      const { getAllByTestId, queryByTestId } = await renderScreen();
+
+      expect(getAllByTestId(/^scheduled-payment-/).length).toBeGreaterThan(0);
+      expect(queryByTestId('scheduled-payments-toggle')).toBeNull();
+    });
+
+    it('draws a scheduled payment as a dimmed card titled with its marker, with its split and what remains', async () => {
+      seedLoan(shortLoanHolding, [linkedPayment('txn-older', 1_000, 'First installment')]);
+
+      const { getAllByTestId, getByTestId, queryByText } = await renderScreen();
+      const [next] = upcomingOf(shortLoanMeta);
+      const card = getByTestId(`scheduled-payment-${next.index}`);
+
+      expect(within(card).getByText('Loan payment · Scheduled')).toBeTruthy();
+      expect(within(card).getByText(/^Principal .* · interest /)).toBeTruthy();
+      expect(within(card).getByText(/^Remaining /)).toBeTruthy();
+      expect(within(card).queryByText(/^\d{2}:\d{2}$/)).toBeNull();
+      expect(queryByText('Scheduled')).toBeNull();
+
+      for (const scheduled of getAllByTestId(/^scheduled-payment-/)) {
+        expect(StyleSheet.flatten(scheduled.props.style)).toMatchObject({ opacity: 0.5 });
+      }
+      expect(StyleSheet.flatten(getAllByTestId('ledger-row')[0].props.style)).not.toHaveProperty(
+        'opacity',
+      );
+    });
+
+    it('names the payer holding on a linked payment that has no description', async () => {
+      seedLoan(shortLoanHolding, [linkedPayment('txn-older', 1_000, '')]);
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Everyday card expense')).toBeTruthy();
+      expect(queryByText('Car loan expense')).toBeNull();
+    });
   });
 
   describe('the balance left after the next payment', () => {
     // A due day that is never today, so the first listed row is not the one the header counted.
+    // The term leaves only a few installments, so the whole list mounts in the FlatList's first
+    // render window.
     const awayFromToday = (): LoanMeta => {
       const now = new Date();
       const dueDay = ((now.getDate() + 14) % 28) + 1;
@@ -2321,6 +2457,7 @@ describe('HoldingDetailScreen', () => {
       return {
         ...annuityLoanMeta,
         startDate: new Date(now.getFullYear(), now.getMonth() - 12, dueDay).getTime(),
+        termMonths: 15,
       };
     };
 
@@ -2359,7 +2496,7 @@ describe('HoldingDetailScreen', () => {
       const { getByTestId } = await renderScreen();
 
       expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
-      expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+      expect(getByTestId(`scheduled-payment-${next.index}`)).toHaveTextContent(
         `Remaining ${money(outstanding - next.principalMinorUnits)}`,
         { exact: false },
       );
@@ -2411,7 +2548,7 @@ describe('HoldingDetailScreen', () => {
       const { getByTestId } = await renderScreen();
 
       expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
-      expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+      expect(getByTestId(`scheduled-payment-${next.index}`)).toHaveTextContent(
         `Remaining ${money(outstanding - next.principalMinorUnits)}`,
         { exact: false },
       );
@@ -2428,231 +2565,210 @@ describe('HoldingDetailScreen', () => {
       const { getByTestId } = await renderScreen();
 
       expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
-      expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+      expect(getByTestId(`scheduled-payment-${next.index}`)).toHaveTextContent(
         `Remaining ${money(outstanding - next.principalMinorUnits)}`,
         { exact: false },
       );
     });
   });
 
-  it('draws the upcoming payments between the breakdown and the linked payments', async () => {
-    seed(
-      annuityLoanHolding,
-      [],
-      [],
-      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
-      [],
-      [{ baseCurrency: 'UAH' }],
-      undefined,
-      [],
-      {},
-      [
-        {
-          id: 'txn-linked',
-          holdingId: 'payer-1',
-          amountMinorUnits: -100_000,
-          time: 1_000,
-          description: 'First installment',
-          source: 'manual',
-          loanHoldingId: 'h-1',
-          loanLinkSource: 'manual',
-        },
-      ],
+  it('bounds a 30-year mortgage to its next 12 scheduled payments, and Show all reveals all 360', async () => {
+    const thirtyYearMeta: LoanMeta = { ...annuityLoanMeta, startDate: Date.now(), termMonths: 360 };
+
+    seed({ ...annuityLoanHolding, metadata: thirtyYearMeta });
+
+    const { getByTestId, getAllByTestId } = await renderScreen();
+    const upcoming = loanInstallments(thirtyYearMeta).filter(
+      (row) => row.dueDate >= startOfLocalDay(Date.now()),
     );
+    const topScheduled = () => getAllByTestId(/^scheduled-payment-/)[0].props.testID;
 
-    const { getAllByText } = await renderScreen();
+    expect(upcoming).toHaveLength(360);
+    expect(topScheduled()).toBe(`scheduled-payment-${upcoming[11].index}`);
 
-    expect(
-      getAllByText(/^(Interest paid|Upcoming Payments|Linked Payments)$/).map((node) =>
-        String(node.children),
-      ),
-    ).toEqual(['Interest paid', 'Upcoming Payments', 'Linked Payments']);
+    await fireEvent.press(getByTestId('scheduled-payments-toggle'));
+
+    expect(topScheduled()).toBe(`scheduled-payment-${upcoming[359].index}`);
   });
 
-  it('bounds a 30-year mortgage to its next 12 cards, and Show all reveals all 360', async () => {
-    seed({
-      ...annuityLoanHolding,
-      metadata: { ...annuityLoanMeta, startDate: Date.now(), termMonths: 360 },
-    });
-
-    const { getAllByTestId, getByTestId } = await renderScreen();
-
-    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(12);
-
-    await fireEvent.press(getByTestId('upcoming-payments-toggle'));
-
-    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(360);
-  });
-
-  it('shows no upcoming payments for a "none" schedule loan', async () => {
+  it('shows no scheduled payments for a "none" schedule loan', async () => {
     seed(noneLoanHolding);
 
-    const { queryByText } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
-    expect(queryByText('Upcoming Payments')).toBeNull();
+    expect(queryByTestId(/^scheduled-payment/)).toBeNull();
   });
 
-  it('shows no upcoming payments for a non-loan holding', async () => {
+  it('shows no scheduled payments for a non-loan holding', async () => {
     seed(propertyHolding);
 
-    const { queryByText } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
-    expect(queryByText('Upcoming Payments')).toBeNull();
+    expect(queryByTestId(/^scheduled-payment/)).toBeNull();
   });
 
   // An overpaid correction clamps the outstanding to 0 even though
   // `loanInstallments` still has future rows on the schedule — the list must
   // not keep showing payments once the debt is actually paid off.
-  it('shows no upcoming payments once a correction clamps the outstanding to 0', async () => {
+  it('shows no scheduled payments once a correction clamps the outstanding to 0', async () => {
     seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
       { instrument: 'holding:h-1', day: dayKeyOf(Date.now()), price: '0.00', currency: 'UAH' },
     ]);
 
-    const { queryByText } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
-    expect(queryByText('Upcoming Payments')).toBeNull();
+    expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+    expect(queryByTestId('scheduled-payments-toggle')).toBeNull();
   });
 
-  // The loan detail lists linked payments — the ONLY way to review an auto
-  // link, since a loan itself carries no ledger of its own
-  // (isLedgerlessHoldingType). Reuses the shared ledger row component and
-  // its own "linked automatically" marker.
-  it('lists linked payments newest first, with the loan-link marker', async () => {
-    seed(
-      annuityLoanHolding,
-      [],
-      [],
-      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
-      [],
-      [{ baseCurrency: 'UAH' }],
-      undefined,
-      [],
-      {},
-      [
-        {
-          id: 'txn-older',
-          holdingId: 'payer-1',
-          amountMinorUnits: -100_000,
-          time: 1_000,
-          description: 'First installment',
-          source: 'manual',
-          loanHoldingId: 'h-1',
-          loanLinkSource: 'manual',
-        },
-        {
-          id: 'txn-newer',
-          holdingId: 'payer-1',
-          amountMinorUnits: -100_000,
-          time: 2_000,
-          description: 'Second installment',
-          source: 'manual',
-          loanHoldingId: 'h-1',
-          loanLinkSource: 'auto',
-        },
-      ],
-    );
+  describe('the loan list around its heading and its empty state', () => {
+    const payer = { id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' };
 
-    const { getByText, getAllByTestId } = await renderScreen();
+    const linkedPayment = {
+      id: 'txn-1',
+      holdingId: 'payer-1',
+      amountMinorUnits: -100_000,
+      time: 1_000,
+      description: 'First installment',
+      source: 'manual',
+      loanHoldingId: 'h-1',
+      loanLinkSource: 'manual',
+    };
 
-    expect(getByText('Linked Payments')).toBeTruthy();
-    expect(getByText('First installment')).toBeTruthy();
-    expect(getByText('Second installment')).toBeTruthy();
-    // The query already orders newest-first — the screen renders the rows
-    // in the order it receives them, so the newer row's own cell comes
-    // first among the linked-payment markers.
-    expect(getAllByTestId('ledger-row-loan-link-marker').length).toBeGreaterThanOrEqual(2);
-  });
+    const seedLoan = (holding: unknown, linked: unknown[] = []) =>
+      seed(holding, [], [], [payer], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, linked);
 
-  it('shows the Linked payments heading with an empty state for a loan with none', async () => {
-    seed(annuityLoanHolding);
+    it('draws the breakdown, then the Transactions heading, then the payments', async () => {
+      seedLoan(shortLoanHolding, [linkedPayment]);
 
-    const { getByText, getByTestId, queryByText } = await renderScreen();
+      const { getAllByText } = await renderScreen();
 
-    expect(getByText('Linked Payments')).toBeTruthy();
-    expect(getByTestId('holding-detail-linked-payments-empty')).toBeTruthy();
-    expect(getByText('No linked payments')).toBeTruthy();
-    expect(getByText('Payments linked to this loan appear here.')).toBeTruthy();
-    expect(queryByText('Transactions')).toBeNull();
-    expect(queryByText('No transactions')).toBeNull();
-  });
-
-  it('draws a Divider before the Linked payments heading for a loan, with no Transactions section', async () => {
-    seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, [
-      {
-        id: 'txn-1',
-        holdingId: 'payer-1',
-        amountMinorUnits: -100_000,
-        time: 1_000,
-        description: 'First installment',
-        source: 'manual',
-        loanHoldingId: 'h-1',
-        loanLinkSource: 'manual',
-      },
-    ]);
-
-    const { getByTestId, queryByTestId, queryByText } = await renderScreen();
-    const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
-
-    expect(getByTestId('holding-detail-linked-payments-divider')).toBeTruthy();
-    expect(tree.indexOf('holding-detail-linked-payments-divider')).toBeLessThan(
-      tree.indexOf('Linked Payments'),
-    );
-    expect(queryByTestId('holding-detail-transactions-divider')).toBeNull();
-    expect(queryByTestId('holding-detail-linked-payments-empty')).toBeNull();
-    expect(queryByText('Transactions')).toBeNull();
-    expect(queryByText('No transactions')).toBeNull();
-  });
-
-  it('keeps the Transactions divider, heading and empty text for a non-loan holding', async () => {
-    seed(propertyHolding);
-
-    const { getByText, getByTestId, queryByTestId, queryByText } = await renderScreen();
-    const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
-
-    expect(getByTestId('holding-detail-transactions-divider')).toBeTruthy();
-    expect(tree.indexOf('holding-detail-transactions-divider')).toBeLessThan(
-      tree.indexOf('Transactions'),
-    );
-    expect(getByText('Transactions')).toBeTruthy();
-    expect(getByText('No transactions')).toBeTruthy();
-    expect(queryByTestId('holding-detail-linked-payments-divider')).toBeNull();
-    expect(queryByTestId('holding-detail-linked-payments-empty')).toBeNull();
-    expect(queryByText('Linked Payments')).toBeNull();
-  });
-
-  it('shows no linked-payments empty state while the linked payments load', async () => {
-    seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {
-      linkedLoanPayments: true,
+      expect(
+        getAllByText(/^(Interest paid|Transactions|Loan payment · Scheduled|First installment)$/)
+          .map((node) => String(node.children))
+          .filter((text, position, texts) => texts.indexOf(text) === position),
+      ).toEqual(['Interest paid', 'Transactions', 'Loan payment · Scheduled', 'First installment']);
     });
 
-    const { getByTestId, queryByTestId } = await renderScreen();
+    it('opens the list with the Transactions Divider and heading, and no section of its own', async () => {
+      seedLoan(annuityLoanHolding, [linkedPayment]);
 
-    expect(getByTestId('holding-detail-loading')).toBeTruthy();
-    expect(queryByTestId('holding-detail-linked-payments-empty')).toBeNull();
-  });
+      const { getByTestId, getByText, queryByTestId, queryByText } = await renderScreen();
+      const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
 
-  it('never shows a Linked payments section for a non-loan holding, even if seeded', async () => {
-    seed(propertyHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, [
-      {
-        id: 'txn-1',
-        holdingId: 'payer-1',
-        amountMinorUnits: -100_000,
-        time: 1_000,
-        description: 'Unrelated',
-        source: 'manual',
-        loanHoldingId: 'h-1',
-        loanLinkSource: 'manual',
-      },
-    ]);
+      expect(getByTestId('holding-detail-transactions-divider')).toBeTruthy();
+      expect(tree.indexOf('holding-detail-transactions-divider')).toBeLessThan(
+        tree.indexOf('"Transactions"'),
+      );
+      expect(getByText('Transactions')).toBeTruthy();
+      expect(queryByText('Linked Payments')).toBeNull();
+      expect(queryByText('Upcoming Payments')).toBeNull();
+      expect(queryByTestId('holding-detail-linked-payments-divider')).toBeNull();
+      expect(queryByTestId('upcoming-payments')).toBeNull();
+    });
 
-    const { queryByText } = await renderScreen();
+    it('shows the empty state under the heading for a loan with no rows at all', async () => {
+      seedLoan(noneLoanHolding);
 
-    expect(queryByText('Linked Payments')).toBeNull();
+      const { getByText, getByTestId, queryByText } = await renderScreen();
+
+      expect(getByText('Transactions')).toBeTruthy();
+      expect(getByTestId('holding-detail-transactions-divider')).toBeTruthy();
+      expect(getByTestId('holding-detail-loan-payments-empty')).toBeTruthy();
+      expect(getByText('No payments yet')).toBeTruthy();
+      expect(getByText('Linked and scheduled payments appear here.')).toBeTruthy();
+      expect(queryByText('No transactions')).toBeNull();
+      expect(queryByText('No linked payments')).toBeNull();
+    });
+
+    it('shows no empty state for a loan with linked payments and no schedule', async () => {
+      seedLoan(noneLoanHolding, [linkedPayment]);
+
+      const { getByText, queryByTestId, queryByText } = await renderScreen();
+
+      expect(getByText('First installment')).toBeTruthy();
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+      expect(queryByText('No payments yet')).toBeNull();
+      expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+    });
+
+    it('shows no empty state for a loan with a schedule and no linked payments', async () => {
+      seedLoan(annuityLoanHolding);
+
+      const { getAllByTestId, queryByTestId, queryByText } = await renderScreen();
+
+      expect(getAllByTestId(/^scheduled-payment-/).length).toBeGreaterThan(0);
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+      expect(queryByText('No payments yet')).toBeNull();
+    });
+
+    it('shows the empty state for a repaid loan that has no linked payments', async () => {
+      seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+        { instrument: 'holding:h-1', day: dayKeyOf(Date.now()), price: '0.00', currency: 'UAH' },
+      ]);
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('holding-detail-loan-payments-empty')).toBeTruthy();
+      expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+    });
+
+    it('shows no empty state while the linked payments load', async () => {
+      seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {
+        linkedLoanPayments: true,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('holding-detail-loading')).toBeTruthy();
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+    });
+
+    it('keeps the Transactions divider, heading and empty text for a non-loan holding', async () => {
+      seed(propertyHolding);
+
+      const { getByText, getByTestId, queryByTestId, queryByText } = await renderScreen();
+      const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
+
+      expect(getByTestId('holding-detail-transactions-divider')).toBeTruthy();
+      expect(tree.indexOf('holding-detail-transactions-divider')).toBeLessThan(
+        tree.indexOf('"Transactions"'),
+      );
+      expect(getByText('Transactions')).toBeTruthy();
+      expect(getByText('No transactions')).toBeTruthy();
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+      expect(queryByText('No payments yet')).toBeNull();
+    });
+
+    it('lists no linked payment and no scheduled payment for a non-loan holding, even if seeded', async () => {
+      seed(propertyHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, [
+        { ...linkedPayment, description: 'Unrelated' },
+      ]);
+
+      const { queryByText, queryByTestId } = await renderScreen();
+
+      expect(queryByText('Unrelated')).toBeNull();
+      expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+    });
+
+    it.each([
+      ['deposit', futureDepositHolding],
+      ['bond', bondHolding],
+    ])('leaves a %s ledger without any scheduled payment or toggle', async (_name, holding) => {
+      seed(holding);
+
+      const { getAllByTestId, queryByTestId, getByText } = await renderScreen();
+
+      expect(getByText('Transactions')).toBeTruthy();
+      expect(getAllByTestId('ledger-row').length).toBeGreaterThan(0);
+      expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+    });
   });
 
   it('tapping a linked-payment row opens the transaction form for that row', async () => {
     seed(
-      annuityLoanHolding,
+      shortLoanHolding,
       [],
       [],
       [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
@@ -2867,20 +2983,40 @@ describe('HoldingDetailScreen — localization', () => {
     expect(queryByText('Transactions')).toBeNull();
   });
 
-  describe('a loan with no linked payments', () => {
+  describe('a loan with no payments', () => {
     beforeEach(async () => {
       await act(async () => {
         await i18n.changeLanguage('uk');
       });
     });
 
-    it('renders the Linked payments heading and its empty state from the Ukrainian catalog', async () => {
-      seed(annuityLoanHolding);
-      const { getByText } = await renderScreen();
+    it('renders the Transactions heading and its empty state from the Ukrainian catalog', async () => {
+      seed(noneLoanHolding);
+      const { getByText, queryByText } = await renderScreen();
 
-      expect(getByText('Повʼязані платежі')).toBeTruthy();
-      expect(getByText('Немає повʼязаних платежів')).toBeTruthy();
-      expect(getByText('Тут зʼявляться платежі, повʼязані з цим кредитом.')).toBeTruthy();
+      expect(getByText('Транзакції')).toBeTruthy();
+      expect(getByText('Платежів ще немає')).toBeTruthy();
+      expect(getByText('Тут зʼявляться повʼязані та заплановані платежі.')).toBeTruthy();
+      expect(queryByText('No payments yet')).toBeNull();
+    });
+  });
+
+  describe('a loan with a long schedule', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    it('titles a scheduled payment and labels the toggle from the Ukrainian catalog', async () => {
+      seed(annuityLoanHolding);
+      const { getAllByText, getByTestId, queryByText } = await renderScreen();
+
+      expect(getAllByText('Платіж за кредитом · Заплановано').length).toBeGreaterThan(0);
+      expect(
+        within(getByTestId('scheduled-payments-toggle')).getByText('Показати всі'),
+      ).toBeTruthy();
+      expect(queryByText('Loan payment · Scheduled')).toBeNull();
     });
   });
 

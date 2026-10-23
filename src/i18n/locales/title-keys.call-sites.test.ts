@@ -351,7 +351,7 @@ describe('TITLE_KEYS covers every heading, sheet-title, and nav-title call site'
 
     expect(headingSites.length).toBeGreaterThan(40);
     expect(keys).toContain('holdingDetail.shareChanges');
-    expect(keys).toContain('holdingDetail.linkedPayments');
+    expect(keys).toContain('holdingDetail.transactionsHeading');
     expect(keys).toContain('settings.dataImport.confirmTitle');
     expect(keys).toContain('accountDetail.balanceLabel');
     expect(keys).toContain('holdingDetail.valueLabel');

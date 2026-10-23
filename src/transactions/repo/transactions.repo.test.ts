@@ -199,7 +199,7 @@ describe('transactionsRepo', () => {
     expect(params).toEqual([]);
   });
 
-  // The loan holding-detail screen's own "Linked payments" section.
+  // The linked payments the loan holding-detail screen lists beside its scheduled ones.
   it('builds a newest-first query of every transaction linked to one loan holding', () => {
     const { sql, params } = transactionsRepo.listLinkedToLoanQuery('loan-1').toSQL();
     const lower = sql.toLowerCase();

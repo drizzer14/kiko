@@ -863,11 +863,11 @@ export const en = {
     computed: 'Computed',
     coupon: 'Coupon',
     cost: 'Cost',
-    // The loan detail's "Linked Payments" section while nothing is linked: the
-    // shared EmptyState, since a loan shows this section instead of Transactions.
-    emptyLinkedPayments: {
-      title: 'No linked payments',
-      message: 'Payments linked to this loan appear here.',
+    // The loan detail's list while it holds no row at all, neither a linked payment nor a
+    // scheduled one: the shared EmptyState under the Transactions heading.
+    emptyLoanPayments: {
+      title: 'No payments yet',
+      message: 'Linked and scheduled payments appear here.',
     },
     // The ledger FlatList's own empty state — the SAME "no rows yet"
     // pattern `home.emptyTransactions` uses, replacing a bare
@@ -888,11 +888,7 @@ export const en = {
     // part (fees left out), and the outstanding every other screen shows for
     // the loan.
     interestPaid: 'Interest paid',
-    // The loan detail screen's own "Linked payments" section heading: the
-    // transactions the auto-link matcher (or a manual pick) linked to this
-    // loan, newest first.
-    linkedPayments: 'Linked Payments',
-    // The title of each upcoming loan payment's card: the schedule lists only
+    // The title of each scheduled loan payment's card: the schedule lists only
     // loan payments, so one fixed label names them all.
     loanPayment: 'Loan payment',
     militaryLevy: 'Military levy {{pct}}%',
@@ -905,7 +901,7 @@ export const en = {
     ownedCost: 'Cost (your share)',
     ownedValue: 'Your value',
     paidSoFar: 'Paid so far',
-    // The caption under each upcoming loan payment: how much of it repays
+    // The caption under each scheduled loan payment: how much of it repays
     // the principal and how much is interest.
     paymentSplit: 'Principal {{principal}} · interest {{interest}}',
     // The same caption for a payment that carries no interest (a 0% loan).
@@ -915,11 +911,11 @@ export const en = {
     projected: 'Projected',
     purchase: 'Purchase',
     redemption: 'Redemption',
-    // The caption under each upcoming loan payment: the loan balance left once it is paid.
+    // The caption under each scheduled loan payment: the loan balance left once it is paid.
     remainingBalance: 'Remaining {{amount}}',
     sale: 'Sale',
-    // The marker under each upcoming loan payment: the payment is on the loan's
-    // contractual schedule, so it is not an estimate and not "Projected".
+    // The marker in each scheduled loan payment's title ("Loan payment · Scheduled"): the
+    // payment is on the loan's contractual schedule, so it reads "Scheduled", not "Projected".
     scheduled: 'Scheduled',
     shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
@@ -928,9 +924,6 @@ export const en = {
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',
     transactionsHeading: 'Transactions',
-    // The loan detail's list of every remaining scheduled payment
-    // (annuity/differentiated only).
-    upcomingPayments: 'Upcoming Payments',
     // The loan footer action's label — writes a correction to the loan's
     // manual outstanding series via `PricePointForm` (same mechanism as
     // `updateValue` below, for a priced holding).

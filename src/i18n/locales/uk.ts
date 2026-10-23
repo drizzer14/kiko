@@ -766,9 +766,9 @@ export const uk: typeof en = {
     computed: 'Обчислено',
     coupon: 'Купон',
     cost: 'Вартість',
-    emptyLinkedPayments: {
-      title: 'Немає повʼязаних платежів',
-      message: 'Тут зʼявляться платежі, повʼязані з цим кредитом.',
+    emptyLoanPayments: {
+      title: 'Платежів ще немає',
+      message: 'Тут зʼявляться повʼязані та заплановані платежі.',
     },
     emptyTransactions: 'Немає транзакцій',
     expectedProfit: 'Очікуваний прибуток',
@@ -779,7 +779,6 @@ export const uk: typeof en = {
     interestAccrual: 'Нарахування відсотків',
     interestEarned: 'Отримані відсотки',
     interestPaid: 'Сплачено відсотків',
-    linkedPayments: 'Повʼязані платежі',
     loanPayment: 'Платіж за кредитом',
     militaryLevy: 'Військовий збір {{pct}}%',
     openingDeposit: 'Відкриття депозиту',
@@ -805,7 +804,6 @@ export const uk: typeof en = {
     taxWithheld: 'Утримано податку',
     topUp: 'Поповнення',
     transactionsHeading: 'Транзакції',
-    upcomingPayments: 'Майбутні платежі',
     updateOutstanding: 'Оновити залишок',
     updateValue: 'Оновити вартість',
     value: 'Поточна вартість',
