@@ -785,6 +785,7 @@ describe('holdingValueBreakdown — loan', () => {
       [],
       [
         {
+          transactionId: 'payment-1',
           loanHoldingId: 'loan-1',
           time: paymentDay,
           amountMinorUnits: -3_000_000,

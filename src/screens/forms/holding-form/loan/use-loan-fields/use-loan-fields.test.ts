@@ -613,6 +613,7 @@ describe('useLoanFields — saveEdit into a "none" schedule', () => {
       [],
       [
         {
+          transactionId: 'payment-1',
           loanHoldingId: 'h-1',
           time: baseMeta().startDate + 10 * DAY_MS,
           amountMinorUnits: -500_000,

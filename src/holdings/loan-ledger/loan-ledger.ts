@@ -166,6 +166,21 @@ const ledgerAnchorAt = (
   };
 };
 
+// The anchor's value less the principal of each of `paid` the anchor does not already cover: a
+// correction covers its own day (it was recorded with that day's payments in mind), the
+// start-day anchor does not (payment 1 is due on the start day). Never below 0. The header and
+// every linked payment's remainder read this one rule, so they cannot disagree.
+const balanceAfterPaymentsMinor = (anchor: LoanAnchor, paid: readonly LedgerEntry[]): number =>
+  Math.max(
+    0,
+    anchor.valueMinorUnits -
+      paid
+        .filter((entry) =>
+          anchor.fromCorrection ? entry.dayKey > anchor.dayKey : entry.dayKey >= anchor.dayKey,
+        )
+        .reduce((sum, entry) => sum + principalOf(entry), 0),
+  );
+
 /**
  * A loan's outstanding at `instant`, the ONE number every valuation site
  * reads (card, detail, totals, statistics, net-worth history). With no
@@ -197,14 +212,10 @@ export const loanLedgerOutstandingMinorAt = (
     return 0;
   }
 
-  const anchor = ledgerAnchorAt(meta, loan, book, instant, ledger, counted);
-  const principalRepaidAfterAnchor = counted
-    .filter((entry) =>
-      anchor.fromCorrection ? entry.dayKey > anchor.dayKey : entry.dayKey >= anchor.dayKey,
-    )
-    .reduce((sum, entry) => sum + principalOf(entry), 0);
-
-  return Math.max(0, anchor.valueMinorUnits - principalRepaidAfterAnchor);
+  return balanceAfterPaymentsMinor(
+    ledgerAnchorAt(meta, loan, book, instant, ledger, counted),
+    counted,
+  );
 };
 
 /** An upcoming installment with the loan balance left once it is paid. */
@@ -254,6 +265,48 @@ export const loanRemaindersAfterMinor = (
 
     return Math.max(0, header - uncountedThroughRow);
   });
+};
+
+/** One linked payment's own split and the loan balance left right after it. */
+export type LinkedPaymentBreakdown = {
+  principalMinorUnits: number;
+  interestMinorUnits: number;
+  remainderMinorUnits: number;
+};
+
+/**
+ * Each counted linked payment's principal and interest part and the loan balance right after it,
+ * keyed by transaction id; a payment the ledger does not count (another currency, a credit,
+ * before the start day, after `now`) has no entry. The balance reads the header's own rule
+ * (`loanLedgerOutstandingMinorAt`): the anchor at the payment's time, less the principal of
+ * every payment up to and including it that the anchor does not already cover, never below 0,
+ * so the last payment's balance is the header when no correction follows it. The split is
+ * order-dependent (`loanPaymentSplitsMinor`), so the whole payment list is read, never one row.
+ */
+export const loanLinkedPaymentBreakdownsMinor = (
+  meta: LoanMeta,
+  loan: LedgerLoan,
+  book: PriceBook,
+  now: number,
+): ReadonlyMap<string, LinkedPaymentBreakdown> => {
+  const ledger = ledgerOf(meta, loan, book);
+  const counted = countedEntries(ledger, now);
+
+  return new Map(
+    counted.map((entry, index) => {
+      const paidThroughHere = counted.slice(0, index + 1);
+      const anchor = ledgerAnchorAt(meta, loan, book, entry.payment.time, ledger, paidThroughHere);
+
+      return [
+        entry.payment.transactionId,
+        {
+          principalMinorUnits: principalOf(entry),
+          interestMinorUnits: entry.interestMinorUnits,
+          remainderMinorUnits: balanceAfterPaymentsMinor(anchor, paidThroughHere),
+        },
+      ];
+    }),
+  );
 };
 
 /**

@@ -1,9 +1,19 @@
-import { buildPriceBook, dayKeyOf, type PriceBook } from '@kiko/prices/price-book';
+import {
+  dayKeyOf,
+  buildPriceBook,
+  type PriceBook,
+  type LoanLedgerPayment,
+} from '@kiko/prices/price-book';
+import { DAY_MS } from '@kiko/dates';
 
 import type { LoanMeta } from '../holding-metadata';
 import { isScheduledPayment, loanInstallments, type LoanInstallment } from '../loan-schedule';
 
-import { loanLedgerOutstandingMinorAt, loanRemaindersAfterMinor } from './loan-ledger';
+import {
+  loanRemaindersAfterMinor,
+  loanLedgerOutstandingMinorAt,
+  loanLinkedPaymentBreakdownsMinor,
+} from './loan-ledger';
 
 const LOAN = { id: 'loan-ledger-property', currency: 'UAH' as const };
 
@@ -54,7 +64,15 @@ const bookPaying = (time: number, amountMinorUnits: number): PriceBook =>
     [],
     amountMinorUnits === 0
       ? []
-      : [{ loanHoldingId: LOAN.id, time, amountMinorUnits: -amountMinorUnits, currency: 'UAH' }],
+      : [
+          {
+            transactionId: 'payment-1',
+            loanHoldingId: LOAN.id,
+            time,
+            amountMinorUnits: -amountMinorUnits,
+            currency: 'UAH',
+          },
+        ],
   );
 
 // The first listed row is the paid one. Its unpaid principal is what the header did not take off
@@ -117,6 +135,81 @@ describe('loan ledger property: remainders after each upcoming installment', () 
             ),
           ),
         ),
+    );
+
+    expect(violations).toEqual([]);
+  });
+});
+
+// Which rows a linked payment pays, and how: a payment of a row's own amount at its due date,
+// of part of it, a few days late, or only some rows, so the loan's earlier rows are never linked.
+const PAYMENT_PLANS = [
+  { label: 'every row in full', rowOffsets: [0, 1, 2, 3], fraction: 1, daysLate: 0 },
+  { label: 'every other row', rowOffsets: [0, 2], fraction: 1, daysLate: 0 },
+  { label: 'later rows only', rowOffsets: [1, 2, 3], fraction: 1, daysLate: 0 },
+  { label: 'half of each row', rowOffsets: [0, 1, 2], fraction: 0.5, daysLate: 0 },
+  { label: 'one and a half of each row', rowOffsets: [0, 1], fraction: 1.5, daysLate: 0 },
+  { label: 'three days late', rowOffsets: [0, 1, 2], fraction: 1, daysLate: 3 },
+] as const;
+
+const paymentsOf = (
+  rows: readonly LoanInstallment[],
+  plan: (typeof PAYMENT_PLANS)[number],
+): LoanLedgerPayment[] =>
+  plan.rowOffsets
+    .filter((offset) => offset < rows.length)
+    .map((offset) => {
+      const due = new Date(rows[offset].dueDate);
+
+      return {
+        transactionId: `payment-${offset}`,
+        loanHoldingId: LOAN.id,
+        time: local(due.getFullYear(), due.getMonth(), due.getDate() + plan.daysLate, 12),
+        amountMinorUnits: -Math.round(rows[offset].paymentMinorUnits * plan.fraction),
+        currency: 'UAH' as const,
+      };
+    });
+
+const breakdownMismatchesOf = (
+  meta: LoanMeta,
+  payments: readonly LoanLedgerPayment[],
+): string[] => {
+  const book = buildPriceBook([], payments);
+  const last = payments[payments.length - 1];
+  const now = last.time + 40 * DAY_MS;
+  const breakdowns = loanLinkedPaymentBreakdownsMinor(meta, LOAN, book, now);
+  const remainderAfter = (payment: LoanLedgerPayment): number | undefined =>
+    breakdowns.get(payment.transactionId)?.remainderMinorUnits;
+  const header = loanLedgerOutstandingMinorAt(meta, LOAN, book, now);
+
+  return [
+    ...(remainderAfter(last) === header
+      ? []
+      : [`last remainder ${remainderAfter(last)}, header ${header}`]),
+    ...payments.flatMap((payment) => {
+      const headerThen = loanLedgerOutstandingMinorAt(meta, LOAN, book, payment.time);
+
+      return remainderAfter(payment) === headerThen
+        ? []
+        : [
+            `${payment.transactionId} remainder ${remainderAfter(payment)}, header then ${headerThen}`,
+          ];
+    }),
+  ];
+};
+
+describe('loan ledger property: the balance after each linked payment', () => {
+  it('ends on the header outstanding and matches the header on every payment day', () => {
+    const violations = CASES.flatMap(({ label, meta, rows }) =>
+      PAYMENT_PLANS.flatMap((plan) => {
+        const payments = paymentsOf(rows, plan);
+
+        return payments.length === 0
+          ? []
+          : breakdownMismatchesOf(meta, payments).map(
+              (message) => `${label} ${plan.label}: ${message}`,
+            );
+      }),
     );
 
     expect(violations).toEqual([]);

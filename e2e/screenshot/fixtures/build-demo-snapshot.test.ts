@@ -247,6 +247,7 @@ describe('buildDemoSnapshot', () => {
     const book = buildPriceBook(
       snapshot.pricePoints,
       snapshot.transactions.map((transaction) => ({
+        transactionId: transaction.id,
         loanHoldingId: transaction.loanHoldingId,
         time: transaction.time,
         amountMinorUnits: transaction.amountMinorUnits,

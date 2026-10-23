@@ -13,7 +13,6 @@ import { addMonths } from '@kiko/holdings/interest';
 import { formatMoney } from '@kiko/currency/format';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
-import { formatDate, startOfLocalDay } from '@kiko/dates';
 import {
   EDIT_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
@@ -24,6 +23,7 @@ import {
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { DAY_MS, formatDate, startOfLocalDay } from '@kiko/dates';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
@@ -408,6 +408,14 @@ const seed = (
     })),
     isLoading: isLoading.linkedLoanPayments ?? false,
   };
+  // The price book's read names each payment by its transaction id, as the real query selects it.
+  const loanLedgerPaymentsResult = {
+    ...linkedLoanPaymentsResult,
+    data: linkedLoanPaymentsResult.data.map((row) => ({
+      ...row,
+      transactionId: (row as { id?: string }).id,
+    })),
+  };
 
   // `listLinkedToLoanQuery` shares the `['transactions']` reactive key with
   // `listByHoldingQuery` (both really do listen on the same table), so a
@@ -424,7 +432,11 @@ const seed = (
 
     const sql = (query as { toSQL: () => { sql: string } }).toSQL().sql;
 
-    return sql === 'linked-loan-payments' || sql === 'loan-ledger-payments'
+    if (sql === 'loan-ledger-payments') {
+      return loanLedgerPaymentsResult;
+    }
+
+    return sql === 'linked-loan-payments'
       ? linkedLoanPaymentsResult
       : (resultByTable[keys[0]] ?? resultByTable.transactions);
   });
@@ -2446,6 +2458,148 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
+  describe("a linked payment's split and the balance left after it", () => {
+    const payer = { id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' };
+    const money = (minorUnits: number): string => formatMoney(Money.of('UAH', minorUnits));
+    const zeroRateMeta: LoanMeta = { ...annuityLoanMeta, annualRatePct: 0, termMonths: 12 };
+
+    const paymentOf = (
+      id: string,
+      time: number,
+      amountMinorUnits: number,
+      description: string,
+    ) => ({
+      id,
+      holdingId: 'payer-1',
+      amountMinorUnits,
+      currency: 'UAH',
+      time,
+      description,
+      source: 'manual',
+      loanHoldingId: 'h-1',
+      loanLinkSource: 'manual',
+    });
+
+    const seedLoan = (meta: LoanMeta, linked: unknown[], pricePoints: unknown[] = []): void =>
+      seed(
+        { ...annuityLoanHolding, metadata: meta },
+        [],
+        [],
+        [payer],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        pricePoints,
+        {},
+        linked,
+      );
+
+    it('shows the payment own principal and interest and the balance left right after it', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+
+      seedLoan(shortLoanMeta, [
+        paymentOf('txn-older', one.dueDate, -one.paymentMinorUnits, 'First installment'),
+        paymentOf('txn-newer', two.dueDate, -two.paymentMinorUnits, 'Second installment'),
+      ]);
+
+      const { getAllByTestId } = await renderScreen();
+      const [newer, older] = getAllByTestId('ledger-row');
+
+      expect(
+        within(newer).getByText(
+          `Principal ${money(two.principalMinorUnits)} · interest ${money(two.interestMinorUnits)}`,
+        ),
+      ).toBeTruthy();
+      expect(within(newer).getByText(`Remaining ${money(two.balanceMinorUnits)}`)).toBeTruthy();
+      expect(
+        within(older).getByText(
+          `Principal ${money(one.principalMinorUnits)} · interest ${money(one.interestMinorUnits)}`,
+        ),
+      ).toBeTruthy();
+      expect(within(older).getByText(`Remaining ${money(one.balanceMinorUnits)}`)).toBeTruthy();
+    });
+
+    it('ends on the loan outstanding the Value header shows', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+
+      seedLoan(shortLoanMeta, [
+        paymentOf('txn-older', one.dueDate, -one.paymentMinorUnits, 'First installment'),
+        paymentOf('txn-newer', two.dueDate, -two.paymentMinorUnits, 'Second installment'),
+      ]);
+
+      const { getAllByTestId, getByTestId } = await renderScreen();
+      const [newer] = getAllByTestId('ledger-row');
+
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(
+        money(two.balanceMinorUnits),
+      );
+      expect(within(newer).getByText(`Remaining ${money(two.balanceMinorUnits)}`)).toBeTruthy();
+    });
+
+    it('names only the principal when the payment carries no interest', async () => {
+      const [first] = loanInstallments(zeroRateMeta);
+
+      seedLoan(zeroRateMeta, [
+        paymentOf('txn-first', first.dueDate, -first.paymentMinorUnits, 'First installment'),
+      ]);
+
+      const { getAllByTestId, queryByText } = await renderScreen();
+      const [card] = getAllByTestId('ledger-row');
+
+      expect(within(card).getByText(`Principal ${money(first.principalMinorUnits)}`)).toBeTruthy();
+      expect(within(card).getByText(`Remaining ${money(first.balanceMinorUnits)}`)).toBeTruthy();
+      expect(queryByText(/interest/)).toBeNull();
+    });
+
+    // A 12-month loan that started 12 months ago has no scheduled row left, so every split and
+    // balance line on the screen belongs to a linked card.
+    it('shows no split and no balance on a payment dated before the loan start', async () => {
+      const [first] = loanInstallments(zeroRateMeta);
+
+      seedLoan(zeroRateMeta, [
+        paymentOf('txn-early', first.dueDate - 2 * DAY_MS, -50_000, 'Early installment'),
+        paymentOf('txn-first', first.dueDate, -first.paymentMinorUnits, 'First installment'),
+      ]);
+
+      const { getAllByTestId, getAllByText } = await renderScreen();
+
+      expect(getAllByTestId('ledger-row')).toHaveLength(2);
+      expect(getAllByText(/^Principal /)).toHaveLength(1);
+      expect(getAllByText(/^Remaining /)).toHaveLength(1);
+    });
+
+    it('counts the balance of the payment after a correction from that correction', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+      const correction = {
+        instrument: 'holding:h-1',
+        day: dayKeyOf(one.dueDate + 5 * DAY_MS),
+        price: '80000.00',
+        currency: 'UAH' as const,
+        source: 'manual' as const,
+      };
+
+      seedLoan(
+        shortLoanMeta,
+        [
+          paymentOf('txn-older', one.dueDate, -one.paymentMinorUnits, 'First installment'),
+          paymentOf('txn-newer', two.dueDate, -two.paymentMinorUnits, 'Second installment'),
+        ],
+        [correction],
+      );
+
+      const { getAllByTestId, getByTestId } = await renderScreen();
+      const [newer, older] = getAllByTestId('ledger-row');
+
+      expect(within(older).getByText(`Remaining ${money(one.balanceMinorUnits)}`)).toBeTruthy();
+      expect(
+        within(newer).getByText(`Remaining ${money(8_000_000 - two.principalMinorUnits)}`),
+      ).toBeTruthy();
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(
+        money(8_000_000 - two.principalMinorUnits),
+      );
+    });
+  });
+
   describe('the balance left after the next payment', () => {
     // A due day that is never today, so the first listed row is not the one the header counted.
     // The term leaves only a few installments, so the whole list mounts in the FlatList's first
@@ -2507,6 +2661,7 @@ describe('HoldingDetailScreen', () => {
       const holding = { ...annuityLoanHolding, metadata: meta };
       const paid = loanInstallments(meta)[6];
       const payment = {
+        transactionId: 'payment-1',
         loanHoldingId: 'h-1',
         time: paid.dueDate,
         amountMinorUnits: -paid.paymentMinorUnits,
@@ -2998,6 +3153,51 @@ describe('HoldingDetailScreen — localization', () => {
       expect(getByText('Платежів ще немає')).toBeTruthy();
       expect(getByText('Тут зʼявляться повʼязані та заплановані платежі.')).toBeTruthy();
       expect(queryByText('No payments yet')).toBeNull();
+    });
+  });
+
+  describe('a loan with a linked payment', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    it('reads the payment split and the balance left from the Ukrainian catalog', async () => {
+      const [first] = loanInstallments(shortLoanMeta);
+
+      seed(
+        shortLoanHolding,
+        [],
+        [],
+        [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        [],
+        {},
+        [
+          {
+            id: 'txn-first',
+            holdingId: 'payer-1',
+            amountMinorUnits: -first.paymentMinorUnits,
+            currency: 'UAH',
+            time: first.dueDate,
+            description: 'First installment',
+            source: 'manual',
+            loanHoldingId: 'h-1',
+            loanLinkSource: 'manual',
+          },
+        ],
+      );
+
+      const { getAllByTestId } = await renderScreen();
+      const [card] = getAllByTestId('ledger-row');
+
+      expect(within(card).getByText(/^Основна сума .* · відсотки /)).toBeTruthy();
+      expect(within(card).getByText(/^Залишок /)).toBeTruthy();
+      expect(within(card).queryByText(/^Principal /)).toBeNull();
+      expect(within(card).queryByText(/^Remaining /)).toBeNull();
     });
   });
 

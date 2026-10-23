@@ -394,6 +394,7 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
       [],
       [
         {
+          transactionId: 'payment-1',
           loanHoldingId: 'h1',
           time: Date.UTC(2025, 5, 1),
           amountMinorUnits: -200_000_00,

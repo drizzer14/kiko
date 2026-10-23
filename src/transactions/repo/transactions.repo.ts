@@ -2215,6 +2215,7 @@ export const transactionsRepo = {
   loanLedgerPaymentsQuery: () =>
     database
       .select({
+        transactionId: transactions.id,
         loanHoldingId: transactions.loanHoldingId,
         time: transactions.time,
         amountMinorUnits: transactions.amountMinorUnits,

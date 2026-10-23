@@ -196,6 +196,7 @@ describe('transactionsRepo', () => {
     expect(lower).toContain('"transactions"."loan_holding_id" is not null');
     expect(lower).toContain('inner join "holdings"');
     expect(lower).toContain('"holdings"."currency"');
+    expect(lower).toContain('"transactions"."id"');
     expect(params).toEqual([]);
   });
 

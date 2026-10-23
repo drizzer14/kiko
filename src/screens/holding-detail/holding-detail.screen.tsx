@@ -4,6 +4,12 @@ import {
   isDeletableTransaction,
 } from '@kiko/holdings/deletable';
 import { match } from 'ts-pattern';
+import {
+  loanLedgerSummary,
+  type LinkedPaymentBreakdown,
+  type UpcomingLoanInstallment,
+  loanLinkedPaymentBreakdownsMinor,
+} from '@kiko/holdings/loan-ledger';
 import type { TFunction } from 'i18next';
 import {
   holdsOnlyDebts,
@@ -81,7 +87,6 @@ import { genericEntitySymbol, holdingTypeSymbol } from '@kiko/holdings/entity-sy
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
 import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
-import { loanLedgerSummary, type UpcomingLoanInstallment } from '@kiko/holdings/loan-ledger';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '@kiko/holdings/derived-entries';
 
@@ -91,6 +96,7 @@ import {
   holdingDetailSpecFor,
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
+import { paymentSplitText } from './payment-split-text';
 import { useCloseWhenGone } from './use-close-when-gone';
 import OversizedSaleNotice from './oversized-sale-notice';
 import ScheduledPaymentRow from './scheduled-payment-row';
@@ -242,6 +248,21 @@ const sharedPropertyBreakdownRows = (
 // a loan with no payments yet); repeating the same amount adds nothing.
 const showsPrincipalRepaid = (summary: ReturnType<typeof loanLedgerSummary>): boolean =>
   summary.principalRepaidMinorUnits !== summary.paidSoFarMinorUnits;
+
+const NO_LINKED_BREAKDOWNS: ReadonlyMap<string, LinkedPaymentBreakdown> = new Map();
+
+// A loan's counted linked payments with their own split and the balance each left; nothing for
+// a holding that is not a loan with parsable metadata.
+const linkedBreakdownsOf = (
+  holding: HoldingRow | undefined,
+  book: PriceBook,
+  now: number,
+): ReadonlyMap<string, LinkedPaymentBreakdown> =>
+  foldMap(maybe(holding), (found) =>
+    foldMap(maybe(asLoanMeta(found.metadata)), (meta) =>
+      loanLinkedPaymentBreakdownsMinor(meta, found, book, now),
+    ),
+  ) ?? NO_LINKED_BREAKDOWNS;
 
 // A loan's breakdown: its principal and what its linked payments paid, split
 // into interest and principal (`loanLedgerSummary`; a within-tolerance fee is
@@ -423,6 +444,8 @@ type LedgerRowContext = {
   holdingName: string;
   holdingNameById: Map<string, string>;
   holdingCurrencyById: Map<string, string>;
+  // A loan's counted linked payments, by transaction id; empty for every other holding.
+  linkedBreakdowns: ReadonlyMap<string, LinkedPaymentBreakdown>;
   onPressTransaction: (transactionId: string) => void;
   // Duplicate this ledger row into a pre-filled create form. Passed for
   // manual rows only (a synced row is not duplicable), stateless via the
@@ -437,6 +460,19 @@ const ledgerHoldingName = (rowHoldingId: string, context: LedgerRowContext): str
   rowHoldingId === context.holdingId
     ? context.holdingName
     : (context.holdingNameById.get(rowHoldingId) ?? '');
+
+// A linked payment's own split and the loan balance right after it, the two lines a scheduled
+// payment's card carries; no fee part, since the fee is not the loan's principal or interest.
+const linkedPaymentFooterLines = (
+  breakdown: LinkedPaymentBreakdown,
+  currency: Currency,
+  t: TFunction,
+): string[] => [
+  paymentSplitText(t, currency, breakdown.principalMinorUnits, breakdown.interestMinorUnits),
+  t('holdingDetail.remainingBalance', {
+    amount: formatMoney(Money.of(currency, breakdown.remainderMinorUnits), activeLocale()),
+  }),
+];
 
 // A lot row is the user's own entry, so it is never marked "Computed"; a
 // future-dated one still reads "Projected".
@@ -471,6 +507,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     defaultCategoryKey,
     holdingNameById,
     holdingCurrencyById,
+    linkedBreakdowns,
     onPressTransaction,
     onDuplicateTransaction,
     lotActions,
@@ -605,6 +642,12 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                   context="transaction"
                 />
               }
+              // A loan's linked payment the ledger counts also reads its split and the balance it
+              // left; one the ledger ignores (before the start day) reads neither.
+              footerLines={foldMap(
+                maybe(linkedBreakdowns.get(transactionRow.transaction.id)),
+                (breakdown) => linkedPaymentFooterLines(breakdown, currency, t),
+              )}
             />
           </Pressable>
         </CardContextMenu>
@@ -875,6 +918,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     [holding, spec, priceBook, todayStart],
   );
   const scheduled = useScheduledPreview(upcomingInstallments);
+  // Each counted linked payment's own split and the balance it left, read from the same ledger the
+  // header's outstanding comes from, so the last card's balance is that outstanding. Keyed on the
+  // local day for the same reason as the installments above.
+  const linkedBreakdowns = useMemo(
+    () => linkedBreakdownsOf(holding, priceBook, todayStart),
+    [holding, priceBook, todayStart],
+  );
 
   // The user's main currency, and the rate table that converts into it. A
   // holding in a different currency shows a smaller converted base-currency
@@ -1004,6 +1054,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     holdingName,
     holdingNameById,
     holdingCurrencyById,
+    linkedBreakdowns,
     onPressTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>

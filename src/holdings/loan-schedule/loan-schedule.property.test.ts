@@ -101,7 +101,15 @@ const principalThrough = (rows: readonly LoanInstallment[], count: number): numb
 const bookWithPayment = (time: number, amountMinorUnits: number): PriceBook =>
   buildPriceBook(
     [],
-    [{ loanHoldingId: LOAN.id, time, amountMinorUnits: -amountMinorUnits, currency: 'UAH' }],
+    [
+      {
+        transactionId: 'payment-1',
+        loanHoldingId: LOAN.id,
+        time,
+        amountMinorUnits: -amountMinorUnits,
+        currency: 'UAH',
+      },
+    ],
   );
 
 // A failed property names its case and probe instead of a bare mismatch.
@@ -317,7 +325,8 @@ describe('loan schedule property: index bounds', () => {
       const amount = rows[0].paymentMinorUnits;
       const book = buildPriceBook(
         [],
-        [beforeStart, onStart].map((time) => ({
+        [beforeStart, onStart].map((time, index) => ({
+          transactionId: `payment-${index}`,
           loanHoldingId: LOAN.id,
           time,
           amountMinorUnits: -amount,
