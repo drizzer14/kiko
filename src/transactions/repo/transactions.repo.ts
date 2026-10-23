@@ -2021,6 +2021,18 @@ const contextRowsQuery = () =>
     .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
     .innerJoin(accounts, eq(holdings.accountId, accounts.id));
 
+// The first string past every string that starts with `prefix`: its last character, one step
+// on. For an order key prefix that ends in `:` the bound is `;`. A range on the unique index
+// reads the same rows `LIKE 'prefix%'` would, but SQLite cannot search that index with a
+// `LIKE` (case-insensitive by default, and a `%` or `_` in a prefix would be a wildcard).
+const afterPrefixOf = (prefix: string): string =>
+  `${prefix.slice(0, -1)}${String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1)}`;
+
+// SQLite refuses an expression tree deeper than 1000 ("Expression tree is too large"), and an
+// `or` chain is one level per term. A page of up to 1000 fills can name 1000 orders, so the
+// terms go out in chunks well under that.
+const ORDER_PREFIX_CHUNK_SIZE = 250;
+
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
@@ -2079,6 +2091,38 @@ export const transactionsRepo = {
     );
 
     return new Set(stored.flatMap((row) => row.externalId ?? []));
+  },
+  /**
+   * Which of the key `prefixes` (each ending in `:`) a stored row of `source` starts with, on
+   * any holding. A range read on the `(source, external_id)` unique index per chunk of
+   * prefixes (one for a normal page); an empty list sends no query.
+   */
+  importedOrderPrefixesQuery: async (
+    source: TransactionRow['source'],
+    prefixes: string[],
+  ): Promise<Set<string>> => {
+    const stored: string[] = [];
+
+    for (const prefixChunk of chunkRows(prefixes, ORDER_PREFIX_CHUNK_SIZE)) {
+      const rows = await database
+        .select({ externalId: transactions.externalId })
+        .from(transactions)
+        .where(
+          or(
+            ...prefixChunk.map((prefix) =>
+              and(
+                eq(transactions.source, source),
+                gte(transactions.externalId, prefix),
+                lt(transactions.externalId, afterPrefixOf(prefix)),
+              ),
+            ),
+          ),
+        );
+
+      stored.push(...rows.flatMap((row) => row.externalId ?? []));
+    }
+
+    return new Set(prefixes.filter((prefix) => stored.some((key) => key.startsWith(prefix))));
   },
   /**
    * The DISTINCT holding ids that still carry an outstanding Monobank hold (a

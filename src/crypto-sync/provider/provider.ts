@@ -73,6 +73,11 @@ export type ProviderRead = {
    * Absent when the read has nothing to write.
    */
   exchangeState?: readonly ExchangeStatePatch[];
+  /**
+   * Binance's Spot balance texts, `${free}/${locked}` as sent, by upper-case ticker. Absent when
+   * the read made no Spot request (a cooling-down account).
+   */
+  spotBalanceTexts?: Readonly<Record<string, string>>;
 };
 
 export interface BalanceProvider<Deps> {

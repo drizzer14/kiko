@@ -6,20 +6,26 @@ import { type DecimalAmountError, decimalToMinorUnits } from '@kiko/currency/dec
 
 export type AmountError = DecimalAmountError;
 
-/** A balance rounds past the scale; a row is refused there, unless its coin is stored reduced. */
-type AmountUse = 'balance' | 'row';
+/**
+ * A balance rounds past the scale; a row is refused there, unless its coin is stored reduced. A
+ * trade row is a row that also rounds a fiat coin: Binance quotes a fiat pair at more decimals
+ * than the fiat is stored at (a BTCEUR quote amount runs to 7), so the order's one summed amount
+ * is rounded, never refused.
+ */
+export type AmountUse = 'balance' | 'row' | 'trade-row';
 
 // Fixed text, never the amount: a log line stays on the device and a balance is the user's data.
 const ROUNDED_TAG: Record<AmountUse, string> = {
   balance: 'balance-precision-rounded',
   row: 'row-precision-rounded',
+  'trade-row': 'row-precision-rounded',
 };
 
 const isReducedScale = (currency: Currency): boolean =>
   isCrypto(currency) && curatedCoins[currency].reducedScale;
 
 const mayRound = (currency: Currency, use: AmountUse): boolean =>
-  use === 'balance' || isReducedScale(currency);
+  use === 'balance' || isReducedScale(currency) || (use === 'trade-row' && !isCrypto(currency));
 
 /**
  * An exchange's decimal text as integer minor units of `currency`, exact. Digits past the scale

@@ -32,7 +32,15 @@ describe('LANE_CALL_CAPS', () => {
       dust: 1,
       market: 150,
       tradeSymbols: 1,
+      trades: 100,
     });
+  });
+
+  it('keeps the trade lane and the symbol list under the /api/* budget when both spend their caps', () => {
+    expect(
+      LANE_CALL_CAPS.trades * COSTS.myTrades.api +
+        LANE_CALL_CAPS.tradeSymbols * COSTS.exchangeInfo.api,
+    ).toBeLessThanOrEqual(API_IP_BUDGET_1M);
   });
 });
 
@@ -169,6 +177,26 @@ describe('createBinanceRunBudget — calls kept for later', () => {
     expect(allowed.canAfford('tradeSymbols', COSTS.exchangeInfo)).toBe(true);
   });
 
+  it('allows 100 trade calls and refuses the 101st', () => {
+    const budget = createBinanceRunBudget();
+
+    spendCalls(budget, 'trades', 99);
+    expect(budget.canAfford('trades', COSTS.myTrades)).toBe(true);
+
+    spendCalls(budget, 'trades', 1);
+    expect(budget.canAfford('trades', COSTS.myTrades)).toBe(false);
+    expect(budget.canAfford('trades', COSTS.myTrades, 0, true)).toBe(false);
+  });
+
+  it('judges an order re-read by its own weight, with the calls to keep counted in it', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('market', { ...NO_READING, usedApiWeight1m: 2_970 });
+
+    expect(budget.canAfford('trades', COSTS.orderFills, 5)).toBe(true);
+    expect(budget.canAfford('trades', COSTS.orderFills, 6)).toBe(false);
+    expect(budget.canAfford('trades', COSTS.myTrades, 1)).toBe(false);
+  });
+
   it('counts the calls to keep in the weight of an IP call too', () => {
     const budget = createBinanceRunBudget();
     budget.record('earn', { ...NO_READING, usedIpWeight1m: 5_701 });
@@ -192,6 +220,7 @@ describe('createBinanceRunBudget — narrowing calls', () => {
       dust: 0,
       market: 0,
       tradeSymbols: 0,
+      trades: 0,
     });
   });
 
@@ -304,6 +333,8 @@ describe('createBinanceRunBudget — weight readings', () => {
       dust: { ip: 1 },
       klines: { api: 2 },
       exchangeInfo: { api: 20 },
+      myTrades: { api: 20 },
+      orderFills: { api: 5 },
     });
   });
 

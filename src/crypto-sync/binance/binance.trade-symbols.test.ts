@@ -1,7 +1,9 @@
+import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
 import { IdCursorPageError } from '@kiko/crypto-sync/exchange/paging';
 import type { CoinLists, ExchangeTrades } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
+  bySymbol,
   planTradeSymbolReads,
   readSpotSymbols,
   runTradeSymbolReads,
@@ -296,6 +298,14 @@ describe('tradeCandidatesOf', () => {
         listing: [listed('ETHBTC', 'TRADING', 'ETH', 'BTC')],
       }),
     ).toEqual([{ symbol: 'ETHBTC', baseAsset: 'ETH', quoteAsset: 'BTC' }]);
+  });
+});
+
+describe('bySymbol', () => {
+  it('orders a lower name before a higher one, a higher after a lower, equal names as 0', () => {
+    expect(bySymbol({ symbol: 'AAAUSDT' }, { symbol: 'BNBBTC' })).toBeLessThan(0);
+    expect(bySymbol({ symbol: 'BNBBTC' }, { symbol: 'AAAUSDT' })).toBeGreaterThan(0);
+    expect(bySymbol({ symbol: 'BNBBTC' }, { symbol: 'BNBBTC' })).toBe(0);
   });
 });
 
@@ -868,6 +878,7 @@ describe('runTradeSymbolReads', () => {
     ['an id cursor page the pager cannot trust', new IdCursorPageError('not-safe-integer')],
     ['a body that does not parse', new BinanceHistoryParseError()],
     ['a symbol Binance does not know (-1121)', new BinanceInvalidSymbolError('Invalid symbol.')],
+    ['a row the rules refuse', new BinanceWalkStop('amount-malformed')],
   ])('with %s', (_name, error) => {
     it('ends only that symbol as failed, and reads the next one', async () => {
       const reader = recordingReader();

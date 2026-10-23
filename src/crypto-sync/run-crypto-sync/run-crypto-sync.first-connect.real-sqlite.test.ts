@@ -35,6 +35,9 @@ jest.mock('@kiko/crypto-sync/binance/binance.transfer-history', () => ({
 jest.mock('@kiko/crypto-sync/binance/binance.earn-history', () => ({
   syncBinanceEarnHistory: async () => ({ imported: 0, complete: true }),
 }));
+jest.mock('@kiko/crypto-sync/binance/binance.trade-history', () => ({
+  syncBinanceTradeHistory: async () => ({ imported: 0 }),
+}));
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));

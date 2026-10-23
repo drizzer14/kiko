@@ -10,7 +10,7 @@ const REDUCED_SCALE: Currency = 'XRP';
 const outcomeOf = (
   currency: Currency,
   text: string,
-  use: 'balance' | 'row',
+  use: 'balance' | 'row' | 'trade-row',
 ): { error: AmountError } | { units: number } => {
   const result = exchangeMinorUnits(currency, text, use);
 
@@ -82,6 +82,40 @@ describe('exchangeMinorUnits', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith('row-precision-rounded', { name: 'Error', code: undefined });
     expect(JSON.stringify(warn.mock.calls)).not.toContain('23455');
+  });
+
+  describe('a trade row', () => {
+    it('rounds a fiat amount past its scale half away from zero and logs the row tag once', () => {
+      expect(outcomeOf('EUR', '612.3456789', 'trade-row')).toEqual({ units: 61235 });
+      expect(outcomeOf('EUR', '0.004', 'trade-row')).toEqual({ units: 0 });
+      expect(outcomeOf('EUR', '1.005', 'trade-row')).toEqual({ units: 101 });
+      expect(outcomeOf('EUR', '-1.005', 'trade-row')).toEqual({ units: -101 });
+      expect(warn).toHaveBeenCalledTimes(4);
+      expect(warn).toHaveBeenCalledWith('row-precision-rounded', {
+        name: 'Error',
+        code: undefined,
+      });
+    });
+
+    it('logs nothing for a fiat amount that fits its scale', () => {
+      expect(outcomeOf('EUR', '612.30', 'trade-row')).toEqual({ units: 61230 });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('rounds a reduced-scale coin as a row does, and still refuses a full-scale coin', () => {
+      expect(outcomeOf(REDUCED_SCALE, '1.23455', 'trade-row')).toEqual({ units: 12346 });
+      expect(outcomeOf(FULL_SCALE, '0.123456789', 'trade-row')).toEqual({
+        error: 'amount-precision',
+      });
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a fiat amount that rounds past the safe integer, with no rounding logged', () => {
+      expect(outcomeOf('EUR', '90071992547409.925', 'trade-row')).toEqual({
+        error: 'amount-too-large',
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 
   it.each(['balance', 'row'] as const)('refuses above the safe integer for a %s', (use) => {
