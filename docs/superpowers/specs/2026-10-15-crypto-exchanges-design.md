@@ -907,7 +907,7 @@ Each P2P and fiat window reads both series (`readSeriesSpan`), so it costs 2 cal
 |---|---|---|---|---|---|
 | P2P (30-day windows) | 113 x 2 | 226 (x UID 900 = 203400 UID) | 10 (5 windows a run) | 23 | first order (about 2023-09, window about 75): by run 15 at the latest (older orders may exist); newest (2026-10, window 113): run 23 |
 | Convert (30-day windows) | 113 x 1 | 113 (x UID 3000) | 20 | 6 | the 2026-01 conversion (window about 104): run 6 |
-| Fiat orders (2-year windows) | 5 x 2 | 10 (x UID 45000) | 3 | 4 | no fiat order on the account |
+| Fiat orders (2-year windows) | 5 x 2, then 3 owed days x 2 | 16 to reach now (x UID 45000) | 3 | 8 (S12-Q18) | no fiat order on the account |
 | Fiat payments (2-year windows) | 5 x 2 | 10 (IP 1 each) | 10 | 1 | no fiat payment on the account |
 
 The caption shows until each walk is current. The UID budget alone would allow about 200 P2P calls
@@ -1238,7 +1238,15 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   `transactionType` 0, with one 30-day floor window, not the walk's 2-year window). R-Walk A: the
   walks read forward from the floor, and recent records arrive last ("Refused window and walk
   direction" above). The first fiat-orders walk is 5 windows x 2 types = 10 calls at UID 45000
-  each, so 4 runs at a lane of 3. Fiat payments is 10 calls at IP 1 each, so 1 run at a lane of 10.
+  each. A lane of 3 reads one window (2 calls) a run and cannot read a forward window and the
+  re-scan in one run, so the orders walk alternates (S12-Q18): a run reads behind (the owed days
+  first, then the last two years, the window re-scan every walk runs) when the stored list holds a
+  range and the forward ground is under one window, and forward otherwise. The first walk reaches
+  now on its 8th run (4 forward windows, 3 runs for the owed days, then the last window) and
+  reports complete there; run 9 re-scans the last two years and run 10 reads forward again. A
+  record Binance writes late is imported by the next behind run, up to two years back. Fiat
+  payments is 10 calls at IP 1 each, so 1 run at a lane of 10, with the forward read and the
+  re-scan in the same run.
 - Marker total (C-NR1): Binance's decimal string is normalized to exactly the fiat's scale by the
   exact decimal parser: trailing zeros past the scale drop, missing ones pad
   (`"4150"` -> `4150.00`); a non-zero digit past the scale is a per-record stop `amount-precision`
@@ -1908,7 +1916,7 @@ round changes it.
 | F2 | fiat withdraw EUR 50, Successful | EUR -, `bank:EUR:50.00` | excluded | not imported |
 | F3 | card buy 0.001 BTC for 2600 UAH, Completed | Spot BTC +0.001, `card:UAH:2600.00` | none | not imported |
 | F4 | fiat order with `Finished`, `Refunding`, `Refund Failed`, `Order Partial credit Stopped` or an undocumented word; fiat payment with an undocumented word | no row; one `fiat-unrecognized` entry each | none | not imported |
-| F5 | fiat walk: 2-year windows with no row from the floor (probe 5: the floor window is served empty) | every window is read, and empty windows never end the walk; orders take 4 runs (10 calls, lane 3), payments 1 run (10 calls, lane 10) (C-NR-D; R-Walk A) | - | not imported |
+| F5 | fiat walk: 2-year windows with no row from the floor (probe 5: the floor window is served empty) | every window is read, and empty windows never end the walk; orders take 8 runs to reach now (16 calls, lane 3; a run reads forward or behind, S12-Q18), payments 1 run (10 calls, lane 10) (C-NR-D; R-Walk A) | - | not imported |
 | F6 | each allowlisted fiat word, from a fixture on the documented shape (C-NR-E: no real row observed): `Successful` / `Completed` -> row; `Processing` -> owed point; `Failed` and `Refunded` -> no row, no entry once their doc text is quoted (`fiat-unrecognized` before that) | as stated | - | not imported |
 
 V1 and V2 are gone with the dividend walk (C-Div). The old P4 row ("P2P with commission, before P5
