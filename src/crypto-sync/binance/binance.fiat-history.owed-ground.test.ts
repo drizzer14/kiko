@@ -15,9 +15,14 @@ import {
   BinanceHistoryParseError,
   type FiatTransactionType,
 } from './binance.history-client';
+import {
+  COSTS,
+  createBinanceHistoryRun,
+  LANE_CALL_CAPS,
+  UID_WEIGHT_BUDGET_1M,
+} from './binance.history-budget';
 import { NOW } from './binance.pay-test-fixtures';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
-import { createBinanceHistoryRun } from './binance.history-budget';
 import { fiatOrderOf, fiatPageOf, fiatPaymentOf, fiatServerOf } from './binance.fiat-test-fixtures';
 
 type AnyDeps = Partial<BinanceFiatOrderHistoryDeps & BinanceFiatPaymentHistoryDeps>;
@@ -80,10 +85,16 @@ type RunInput = {
 };
 
 /**
- * What one run did: what it rejected with, the spans it read, and the times and the order numbers
- * of the rows it committed.
+ * What one run did: what it rejected with, the spans it read, the calls its budget recorded, and
+ * the times and the order numbers of the rows it committed.
  */
-type RunOutcome = { error: unknown; spans: Span[]; times: number[]; orderNos: string[] };
+type RunOutcome = {
+  error: unknown;
+  spans: Span[];
+  recorded: number;
+  times: number[];
+  orderNos: string[];
+};
 
 const overlapping =
   (range: Span) =>
@@ -137,12 +148,13 @@ const worldOf = (kind: FiatKind) => {
       listHoldings: fake.listHoldings,
     };
     const run = createBinanceHistoryRun({ now: () => input.now, sleep: async () => undefined });
+    const record = jest.spyOn(run.budget, 'record');
     const error = await kind.sync({ targetAccountId: accountId, run }, deps).then(
       () => undefined,
       (failure: unknown) => failure,
     );
 
-    return { error, spans, times, orderNos };
+    return { error, spans, recorded: record.mock.calls.length, times, orderNos };
   };
 
   const marks = () => fake.marksOf(kind.walkId);
@@ -594,5 +606,34 @@ describe('fiat orders: a dense hour that a pass halves over several runs', () =>
 
     expect(outcome.missing).toEqual({ count: 0, first: [] });
     expect(outcome.lastRun).toBeLessThan(bound);
+  });
+});
+
+describe.each([ORDERS, PAYMENTS])('$name: 30 owed points that cannot be read', (kind) => {
+  const CURSOR = NOW - HOUR_MS;
+  const POINTS = Array.from({ length: 30 }, (_unused, index) => {
+    const at = CURSOR - (20 + 30 * index) * DAY_MS;
+
+    return { start: at - 1, end: at + 1, kind: 'point', series: '0' };
+  });
+
+  it('counts every request of a run as a call of its lane, so the cap and the weight of the minute hold', async () => {
+    const world = worldOf(kind);
+    world.seed({ cursor: CURSOR, pending: POINTS });
+
+    for (let index = 0; index < 3; index += 1) {
+      const run = await world.runOnce({
+        now: NOW,
+        records: [],
+        unreadable: (span) => POINTS.some((point) => overlapping(point)(span)),
+      });
+
+      expect(run.spans.length).toBeGreaterThan(0);
+      expect(run.recorded).toBe(run.spans.length);
+      expect(run.spans.length).toBeLessThanOrEqual(LANE_CALL_CAPS[kind.walkId]);
+      expect(kind === ORDERS ? run.spans.length * COSTS.fiatOrders.uid : 0).toBeLessThanOrEqual(
+        UID_WEIGHT_BUDGET_1M,
+      );
+    }
   });
 });

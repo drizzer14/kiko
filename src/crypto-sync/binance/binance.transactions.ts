@@ -1,3 +1,4 @@
+import { rethrow } from 'fnts';
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
@@ -39,6 +40,7 @@ import {
   type BudgetLane,
   type CallCost,
   COSTS,
+  recordFailedCall,
 } from './binance.history-budget';
 import {
   type BinanceDeposit,
@@ -348,7 +350,9 @@ const fetchAllInWindow = async <Row>(
     }
 
     await run.gate.wait();
-    const page = await fetchPage(pageIndex * HISTORY_PAGE_LIMIT);
+    const page = await fetchPage(pageIndex * HISTORY_PAGE_LIMIT).catch(
+      rethrow(() => recordFailedCall(run, budgeted.lane)),
+    );
     run.budget.record(budgeted.lane, page);
     rows.push(...page.rows);
     unreadable.push(...page.unreadable);

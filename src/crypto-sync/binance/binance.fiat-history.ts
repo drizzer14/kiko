@@ -460,12 +460,6 @@ const attemptSpan = async <Item extends FiatRecord>(
       throw error;
     }
 
-    // The call that came back unreadable was made, so the lane counts it.
-    context.run.budget.record(context.walk.walkId, {
-      usedUidWeight1m: undefined,
-      usedIpWeight1m: undefined,
-    });
-
     return { kind: 'failed' };
   }
 };

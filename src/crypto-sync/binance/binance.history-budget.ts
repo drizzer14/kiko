@@ -201,6 +201,13 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
 /** The pacing gate and the weight budget every walk of one Binance arm run shares. */
 export type BinanceHistoryRun = ExchangeRun<BudgetLane, CallCost, BinancePageWeights>;
 
+/**
+ * A request that rejected was made all the same, and Binance counted its weight: it is a call of
+ * the lane that gave no weights to read, so a lane's cap holds when its requests fail.
+ */
+export const recordFailedCall = (run: BinanceHistoryRun, lane: BudgetLane): void =>
+  run.budget.record(lane, { usedUidWeight1m: undefined, usedIpWeight1m: undefined });
+
 export const createBinanceHistoryRun = (clock: {
   now: () => number;
   sleep: (milliseconds: number) => Promise<void>;

@@ -166,15 +166,14 @@ describe('runWalkPlan, with a window that cannot be read', () => {
   );
 
   it('still lets the budget end the owed windows past an unreadable one', async () => {
-    let calls = 2;
+    const recorded = { calls: 0 };
     const { result, calls: asked } = runPlanOver({
       plan: { ...plan, forward: [] },
-      canAfford: () => {
-        calls -= 1;
-
-        return calls >= 0;
-      },
+      canAfford: () => recorded.calls < 2,
       runWindow: async () => {
+        // A window that cannot be read was a request all the same, so it is a call of the budget.
+        recorded.calls += 1;
+
         throw new UnreadableWindowError('pending');
       },
       predicate: isUnreadableWindowError,

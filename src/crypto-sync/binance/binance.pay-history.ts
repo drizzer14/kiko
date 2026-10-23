@@ -1,3 +1,4 @@
+import { rethrow } from 'fnts';
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
@@ -56,10 +57,10 @@ import {
   type PayHistoryPage,
 } from './binance.history-client';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
-import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceHistoryRun, COSTS, recordFailedCall } from './binance.history-budget';
 
 /** Binance rejects a Pay `startTime`/`endTime` gap of 90 days or more. */
 export const PAY_WINDOW_MS = 89 * DAY_MS;
@@ -586,12 +587,9 @@ const fetchSpan = async (
 
   try {
     await run.gate.wait();
-    const page = await deps.fetchPayHistory(
-      apiKey,
-      secret,
-      { startTime: span.start, endTime: span.end },
-      options,
-    );
+    const page = await deps
+      .fetchPayHistory(apiKey, secret, { startTime: span.start, endTime: span.end }, options)
+      .catch(rethrow(() => recordFailedCall(run, 'pay')));
     run.budget.record('pay', page);
 
     return page;
