@@ -5,6 +5,7 @@ import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
 
 import {
+  isOnOrAfterLoanStartDay,
   isScheduledPayment,
   loanInstallments,
   loanOutstandingMinorAt,
@@ -526,6 +527,21 @@ describe('loanInterestPerPaymentMinor', () => {
       first.interestMinorUnits,
       second.interestMinorUnits,
     ]);
+  });
+});
+
+describe('isOnOrAfterLoanStartDay', () => {
+  it('counts the whole start day, at any time of day, and nothing before it', () => {
+    const startDate = new Date(2020, 0, 15, 14, 30).getTime();
+
+    expect(isOnOrAfterLoanStartDay({ startDate }, local(2020, 0, 15))).toBe(true);
+    expect(isOnOrAfterLoanStartDay({ startDate }, new Date(2020, 0, 15, 23, 59).getTime())).toBe(
+      true,
+    );
+    expect(isOnOrAfterLoanStartDay({ startDate }, local(2020, 0, 16))).toBe(true);
+    expect(isOnOrAfterLoanStartDay({ startDate }, new Date(2020, 0, 14, 23, 59).getTime())).toBe(
+      false,
+    );
   });
 });
 

@@ -120,6 +120,16 @@ export const isScheduledPayment = (
 ): boolean => installment.paymentMinorUnits > 0;
 
 /**
+ * Whether `time` falls on or after the loan's start day: payment 1 is due ON the start day, so
+ * an earlier payment counts nowhere — not in the ledger's branch choice, paid total or
+ * outstanding, not in the installment a payment maps to, not in the matcher's date window, and
+ * not in the spending pie's loan-payment exclusion. The ONE start-day comparison every one of
+ * those reads.
+ */
+export const isOnOrAfterLoanStartDay = (meta: Pick<LoanMeta, 'startDate'>, time: number): boolean =>
+  dayKeyOf(time) >= dayKeyOf(meta.startDate);
+
+/**
  * A loan's installment table with each row's due-date day key alongside it.
  * Build it once per loan and pass it to every read below that repeats for
  * the same loan (each net-worth bucket, each linked payment): building the
@@ -174,7 +184,7 @@ export const loanOutstandingMinorAt = (
   instant: number,
   plan: LoanPlan = loanPlanOf(meta),
 ): number => {
-  if (dayKeyOf(instant) < dayKeyOf(meta.startDate)) {
+  if (!isOnOrAfterLoanStartDay(meta, instant)) {
     return 0;
   }
 
@@ -265,10 +275,9 @@ export const installmentIndexOf = (
   }
 
   const paymentDayKey = dayKeyOf(paymentTime);
-  const lowerBoundDayKey = dayKeyOf(meta.startDate);
   const upperBoundDayKey = dayKeyOf(addMonths(meta.startDate, installments.length));
 
-  if (paymentDayKey < lowerBoundDayKey || paymentDayKey > upperBoundDayKey) {
+  if (!isOnOrAfterLoanStartDay(meta, paymentTime) || paymentDayKey > upperBoundDayKey) {
     return undefined;
   }
 

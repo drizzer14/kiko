@@ -1,4 +1,4 @@
-import { DAY_MS } from '@kiko/dates';
+import { startOfLocalDay } from '@kiko/dates';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
@@ -118,34 +118,24 @@ describe('runLoanAutoLink', () => {
   });
 
   // Bound the candidate read (op-sqlite queue) to the earliest loan's own
-  // start date and to the open loans' own currencies — never a whole-table
+  // start DAY and to the open loans' own currencies — never a whole-table
   // scan. A payment before the start day counts nowhere, so none of the
-  // days before it are fetched.
-  it('bounds loanMatchCandidatesQuery to the earliest loan start and to the loan currencies', async () => {
+  // days before it are fetched; a payment ON the start day counts whatever
+  // its time of day, so the bound is the day's start, not the stored instant.
+  // `jest.config.js` pins the zone, so the test cannot switch it: the stored
+  // start has a time of day after local midnight instead.
+  it('bounds loanMatchCandidatesQuery to the start of the earliest loan start day and to the loan currencies', async () => {
     mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
     mockLoanMatchCandidatesQuery.mockResolvedValue([]);
 
     await runLoanAutoLink(NOW);
 
+    expect(startOfLocalDay(loanMeta.startDate)).toBeLessThan(loanMeta.startDate);
     expect(mockLoanMatchCandidatesQuery).toHaveBeenCalledWith({
-      minTime: loanMeta.startDate,
+      minTime: startOfLocalDay(loanMeta.startDate),
       currencies: ['UAH'],
     });
   });
-
-  it.each([1, 2, 3])(
-    'does not fetch a transaction %i days before the start',
-    async (daysBefore) => {
-      mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
-      mockLoanMatchCandidatesQuery.mockResolvedValue([]);
-
-      await runLoanAutoLink(NOW);
-
-      const { minTime } = mockLoanMatchCandidatesQuery.mock.calls[0][0] as { minTime: number };
-
-      expect(loanMeta.startDate - daysBefore * DAY_MS).toBeLessThan(minTime);
-    },
-  );
 
   it('returns without reading transactions when every loan holding carries unparseable metadata', async () => {
     mockLoanHoldingsQuery.mockResolvedValue([{ id: 'loan-1', currency: 'UAH', metadata: null }]);

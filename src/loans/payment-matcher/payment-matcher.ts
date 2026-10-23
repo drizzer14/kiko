@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import {
+  isOnOrAfterLoanStartDay,
   isScheduledPayment,
   loanInstallments,
   withinInstallmentTolerance,
@@ -113,7 +114,7 @@ const withinDateWindow = (transactionTime: number, dueDate: number, startDate: n
   const dayDiff = (dayKeyOf(transactionTime) - dayKeyOf(dueDate)) / DAY_MS;
 
   return (
-    dayKeyOf(transactionTime) >= dayKeyOf(startDate) &&
+    isOnOrAfterLoanStartDay({ startDate }, transactionTime) &&
     dayDiff >= -WINDOW_BEFORE_DAYS &&
     dayDiff <= WINDOW_AFTER_DAYS
   );

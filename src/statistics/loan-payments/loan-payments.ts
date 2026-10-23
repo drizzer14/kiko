@@ -1,9 +1,12 @@
+import {
+  isOnOrAfterLoanStartDay,
+  loanPaymentSplitsMinor,
+  type LoanPaymentSplit,
+} from '@kiko/holdings/loan-schedule';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
-import { isOnOrAfterLoanStartDay } from '@kiko/holdings/loan-ledger';
-import { loanPaymentSplitsMinor, type LoanPaymentSplit } from '@kiko/holdings/loan-schedule';
 
 import type { TrendTransaction } from '../category-trend';
 
@@ -49,7 +52,7 @@ export type LoanHolding = Pick<HoldingRow, 'id' | 'metadata' | 'currency'>;
  * interest amount would otherwise be silently wrong.
  *
  * A payment dated before its loan's start day is not a loan payment either
- * (`isOnOrAfterLoanStartDay`, the rule the loan ledger reads): it counts as
+ * (`isOnOrAfterLoanStartDay`, the rule the loan schedule and ledger read): it counts as
  * ordinary spending in full, even when the user linked it by hand. A loan
  * whose metadata cannot be read has no start day to compare, so its payments
  * stay excluded.

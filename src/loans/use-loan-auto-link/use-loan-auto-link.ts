@@ -1,4 +1,5 @@
 import { minOf } from '@kiko/numbers';
+import { startOfLocalDay } from '@kiko/dates';
 import { logFailure } from '@kiko/diagnostics';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -40,7 +41,8 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
 
     // Bound the candidate read (op-sqlite's single-worker queue makes a
     // whole-table scan costly) to every loan's own currency and no earlier
-    // than the earliest start day — a payment before it counts nowhere
+    // than the start of the earliest start day (a payment ON that day counts
+    // at any time of day) — a payment before it counts nowhere
     // (`withinDateWindow`, `buildLedger`), so this can never exclude an
     // installment the matcher would otherwise consider. Unparseable metadata
     // contributes no bound here, matching `matchLoanPayments`'s own treatment
@@ -58,7 +60,7 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
 
     const [candidateRows, linkedPaymentRows] = await Promise.all([
       transactionsRepo.loanMatchCandidatesQuery({
-        minTime: earliestStartDate,
+        minTime: startOfLocalDay(earliestStartDate),
         currencies,
       }),
       // An already-linked row is excluded from `candidateRows` above, so the
