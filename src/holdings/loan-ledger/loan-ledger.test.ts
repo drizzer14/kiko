@@ -651,6 +651,41 @@ describe('loanRemaindersAfterMinor', () => {
     expect(remaindersAt(book, today)[0]).toBe(header);
   });
 
+  it('keeps the unpaid principal of a partly paid row in the remainder', () => {
+    const today = installments[3].dueDate;
+    const book = bookWith([
+      {
+        time: local(2024, 3, 15, 12),
+        amountMinorUnits: -Math.round(installments[3].paymentMinorUnits / 2),
+      },
+    ]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, today);
+    const remainders = remaindersAt(book, today);
+
+    expect(header).toBe(8_691_202);
+    expect(remainders[0]).toBe(8_158_110);
+    expect(remainders[0]).toBe(installments[3].balanceMinorUnits);
+    expect(remainders[remainders.length - 1]).toBe(0);
+  });
+
+  it('shows the unpaid half of a row that two payments pay, after the first half', () => {
+    const today = installments[3].dueDate;
+    const half = Math.floor(installments[3].paymentMinorUnits / 2);
+    const firstHalf = { time: local(2024, 3, 15, 12), amountMinorUnits: -half };
+    const secondHalf = {
+      time: local(2024, 3, 15, 18),
+      amountMinorUnits: -(installments[3].paymentMinorUnits - half),
+    };
+    const afterFirstHalf = remaindersAt(bookWith([firstHalf]), today);
+    const bothHalvesBook = bookWith([firstHalf, secondHalf]);
+
+    expect(afterFirstHalf[0]).toBe(installments[3].balanceMinorUnits);
+    expect(remaindersAt(bothHalvesBook, today)[0]).toBe(
+      loanLedgerOutstandingMinorAt(annuityMeta, LOAN, bothHalvesBook, today),
+    );
+    expect(remaindersAt(bothHalvesBook, today)[0]).toBe(installments[3].balanceMinorUnits);
+  });
+
   it('takes a row due today off the header when the linked payments are for other rows', () => {
     const today = installments[3].dueDate;
     const book = bookWith([onSchedule(1)]);
