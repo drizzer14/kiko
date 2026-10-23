@@ -9,7 +9,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { dayKeyOf } from '@kiko/prices/price-book';
+import { addMonths } from '@kiko/holdings/interest';
 import { formatMoney } from '@kiko/currency/format';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
@@ -28,8 +28,10 @@ import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { type LayoutNode, layoutOf } from '@kiko/test-support/layout-of';
+import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -2122,6 +2124,129 @@ describe('HoldingDetailScreen', () => {
       ),
       { exact: false },
     );
+  });
+
+  describe('the balance left after the next payment', () => {
+    // A due day that is never today, so the first listed row is not the one the header counted.
+    const awayFromToday = (): LoanMeta => {
+      const now = new Date();
+      const dueDay = ((now.getDate() + 14) % 28) + 1;
+
+      return {
+        ...annuityLoanMeta,
+        startDate: new Date(now.getFullYear(), now.getMonth() - 12, dueDay).getTime(),
+      };
+    };
+
+    const LOAN = { id: 'h-1', currency: 'UAH' as const };
+    const money = (minorUnits: number) => formatMoney(Money.of('UAH', minorUnits));
+    const nextRowOf = (meta: LoanMeta) => {
+      const next = loanInstallments(meta).find((row) => row.dueDate >= startOfLocalDay(Date.now()));
+
+      if (next === undefined) {
+        throw new Error('fixture must have an upcoming installment');
+      }
+
+      return next;
+    };
+
+    it('equals the header outstanding less the next payment principal after a correction', async () => {
+      const meta = awayFromToday();
+      const holding = { ...annuityLoanHolding, metadata: meta };
+      const correction = {
+        instrument: 'holding:h-1',
+        day: dayKeyOf(addMonths(meta.startDate, 6)),
+        price: '80000.00',
+        currency: 'UAH' as const,
+        source: 'manual' as const,
+      };
+      const outstanding = loanLedgerOutstandingMinorAt(
+        meta,
+        LOAN,
+        buildPriceBook([correction]),
+        Date.now(),
+      );
+      const next = nextRowOf(meta);
+
+      seed(holding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [correction]);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
+      expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+        `Remaining ${money(outstanding - next.principalMinorUnits)}`,
+        { exact: false },
+      );
+    });
+
+    it('equals the header outstanding less the next payment principal after a linked payment', async () => {
+      const meta = awayFromToday();
+      const holding = { ...annuityLoanHolding, metadata: meta };
+      const paid = loanInstallments(meta)[6];
+      const payment = {
+        loanHoldingId: 'h-1',
+        time: paid.dueDate,
+        amountMinorUnits: -paid.paymentMinorUnits,
+        currency: 'UAH' as const,
+      };
+      const outstanding = loanLedgerOutstandingMinorAt(
+        meta,
+        LOAN,
+        buildPriceBook([], [payment]),
+        Date.now(),
+      );
+      const next = nextRowOf(meta);
+
+      seed(
+        holding,
+        [],
+        [],
+        [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        [],
+        {},
+        [
+          {
+            id: 'txn-paid',
+            holdingId: 'payer-1',
+            amountMinorUnits: payment.amountMinorUnits,
+            currency: 'UAH',
+            time: payment.time,
+            description: 'Installment',
+            source: 'manual',
+            loanHoldingId: 'h-1',
+            loanLinkSource: 'manual',
+          },
+        ],
+      );
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
+      expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+        `Remaining ${money(outstanding - next.principalMinorUnits)}`,
+        { exact: false },
+      );
+    });
+
+    it('equals the header outstanding less the next payment principal for the schedule alone', async () => {
+      const meta = awayFromToday();
+      const holding = { ...annuityLoanHolding, metadata: meta };
+      const outstanding = loanLedgerOutstandingMinorAt(meta, LOAN, EMPTY_PRICE_BOOK, Date.now());
+      const next = nextRowOf(meta);
+
+      seed(holding);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
+      expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+        `Remaining ${money(outstanding - next.principalMinorUnits)}`,
+        { exact: false },
+      );
+    });
   });
 
   it('draws the upcoming payments between the breakdown and the linked payments', async () => {

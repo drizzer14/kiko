@@ -23,6 +23,7 @@ jest.mock('@kiko/design-system/components/text', () => ({
   },
 }));
 
+// The balance left after a row is what the rows below it still owe.
 const installments = loanInstallments({
   kind: 'mortgage',
   principalMinorUnits: 1_200_000_00,
@@ -30,7 +31,12 @@ const installments = loanInstallments({
   schedule: 'annuity',
   annualRatePct: 12,
   termMonths: 360,
-});
+}).map((row, position, rows) => ({
+  ...row,
+  remainderMinorUnits: rows
+    .slice(position + 1)
+    .reduce((sum, later) => sum + later.principalMinorUnits, 0),
+}));
 
 const money = (minorUnits: number): string => formatMoney(Money.of('UAH', minorUnits));
 
@@ -62,6 +68,7 @@ describe('UpcomingPayments', () => {
         `Principal ${money(first.principalMinorUnits)} · interest ${money(first.interestMinorUnits)}`,
       ),
     ).toBeTruthy();
+    expect(card.getByText(`Remaining ${money(first.remainderMinorUnits)}`)).toBeTruthy();
   });
 
   it('stacks its heading, cards, and toggle with the ledger spacing(2) rhythm', async () => {

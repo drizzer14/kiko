@@ -907,6 +907,8 @@ export const en = {
     projected: 'Projected',
     purchase: 'Purchase',
     redemption: 'Redemption',
+    // The caption under each upcoming loan payment: the loan balance left once it is paid.
+    remainingBalance: 'Remaining {{amount}}',
     sale: 'Sale',
     // The marker under each upcoming loan payment: the payment is on the loan's
     // contractual schedule, so it is not an estimate and not "Projected".

@@ -12,8 +12,9 @@ import EntryDateHeader from '@kiko/design-system/components/entry-date-header';
 import type { UpcomingPaymentRowProps } from './upcoming-payment-row.props';
 
 // One scheduled loan payment as a ledger entry: its due date above a card of the payment, a
-// "Scheduled" marker, and the principal / interest split. Memoized, since a 30-year mortgage
-// can show 360 of them and an unrelated screen render must not re-draw each one.
+// "Scheduled" marker, the principal / interest split, and the balance left once it is paid.
+// Memoized, since a 30-year mortgage can show 360 of them and an unrelated screen render must
+// not re-draw each one.
 const UpcomingPaymentRow: FC<UpcomingPaymentRowProps> = ({ installment, currency }) => {
   const { t } = useTranslation();
   const dueDate = formatDate(installment.dueDate);
@@ -26,6 +27,9 @@ const UpcomingPaymentRow: FC<UpcomingPaymentRowProps> = ({ installment, currency
     principal: formatMoney(Money.of(currency, installment.principalMinorUnits), activeLocale()),
     interest: formatMoney(Money.of(currency, installment.interestMinorUnits), activeLocale()),
   });
+  const remaining = t('holdingDetail.remainingBalance', {
+    amount: formatMoney(Money.of(currency, installment.remainderMinorUnits), activeLocale()),
+  });
 
   // One VoiceOver stop per installment, read in the order the row is drawn, built from the
   // already translated parts.
@@ -35,6 +39,7 @@ const UpcomingPaymentRow: FC<UpcomingPaymentRowProps> = ({ installment, currency
     formatMoney(payment, activeLocale()),
     marker,
     split,
+    remaining,
   ].join(', ');
 
   return (
@@ -45,7 +50,7 @@ const UpcomingPaymentRow: FC<UpcomingPaymentRowProps> = ({ installment, currency
         testID={`upcoming-payment-${installment.index}`}
         label={title}
         amount={<MoneyText money={payment} context="transaction" />}
-        footerLines={[marker, split]}
+        footerLines={[marker, split, remaining]}
       />
     </Box>
   );

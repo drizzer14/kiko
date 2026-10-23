@@ -1,7 +1,7 @@
 import type { Currency } from '@kiko/currency/currency';
-import type { LoanInstallment } from '@kiko/holdings/loan-schedule';
+import type { UpcomingLoanInstallment } from '@kiko/holdings/loan-ledger';
 
 export type UpcomingPaymentRowProps = {
-  installment: LoanInstallment;
+  installment: UpcomingLoanInstallment;
   currency: Currency;
 };

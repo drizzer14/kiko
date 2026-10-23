@@ -791,6 +791,7 @@ export const uk: typeof en = {
     projected: 'Прогноз',
     purchase: 'Купівля',
     redemption: 'Погашення',
+    remainingBalance: 'Залишок {{amount}}',
     sale: 'Продаж',
     scheduled: 'Заплановано',
     shareChanges: 'Зміни частки',

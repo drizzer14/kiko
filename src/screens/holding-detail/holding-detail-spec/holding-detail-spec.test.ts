@@ -5,6 +5,7 @@ import {
 import type { HoldingRow } from '@kiko/db';
 import { addMonths } from '@kiko/holdings/interest';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
+import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import type { BondMeta, LoanMeta } from '@kiko/holdings/holding-metadata';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { holdingTypes, type HoldingType } from '@kiko/holdings/holding-type';
@@ -298,6 +299,48 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
     expect(upcoming).toHaveLength(360);
     expect(upcoming[0].index).toBe(1);
     expect(upcoming[0].dueDate).toBe(now);
+  });
+
+  it('gives each installment the balance left once it is paid, ending an untouched schedule on 0', () => {
+    const now = Date.UTC(2025, 6, 15);
+    const loanHolding = holding({ type: 'loan', metadata: structuredMeta() });
+    const header = loanLedgerOutstandingMinorAt(
+      structuredMeta(),
+      loanHolding,
+      EMPTY_PRICE_BOOK,
+      now,
+    );
+
+    const upcoming = holdingDetailSpecs.loan.upcomingInstallments(
+      loanHolding,
+      EMPTY_PRICE_BOOK,
+      now,
+    );
+
+    expect(upcoming[0].remainderMinorUnits).toBe(header - upcoming[0].principalMinorUnits);
+    expect(upcoming[1].remainderMinorUnits).toBe(
+      upcoming[0].remainderMinorUnits - upcoming[1].principalMinorUnits,
+    );
+    expect(upcoming.at(-1)?.remainderMinorUnits).toBe(0);
+  });
+
+  it('reads the header as the first remainder when row 1 is due today', () => {
+    const now = Date.UTC(2025, 6, 15);
+    const meta = structuredMeta({ startDate: now });
+    const loanHolding = holding({ type: 'loan', metadata: meta });
+    const upcoming = holdingDetailSpecs.loan.upcomingInstallments(
+      loanHolding,
+      EMPTY_PRICE_BOOK,
+      now,
+    );
+
+    expect(upcoming[0].index).toBe(1);
+    expect(upcoming[0].remainderMinorUnits).toBe(
+      loanLedgerOutstandingMinorAt(meta, loanHolding, EMPTY_PRICE_BOOK, now),
+    );
+    expect(upcoming[0].remainderMinorUnits).toBe(
+      meta.principalMinorUnits - upcoming[0].principalMinorUnits,
+    );
   });
 
   // 5 minor units over 8 months at 0% is repaid by row 5; rows 6-8 stay on the

@@ -1,12 +1,22 @@
+import { startOfLocalDay } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { buildPriceBook, dayKeyOf, type PriceBook } from '@kiko/prices/price-book';
 
+import {
+  loanInstallments,
+  isScheduledPayment,
+  loanOutstandingMinorAt,
+  type LoanInstallment,
+} from '../loan-schedule';
 import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
-import { loanInstallments, loanOutstandingMinorAt, type LoanInstallment } from '../loan-schedule';
 
-import { loanLedgerOutstandingMinorAt, loanLedgerSummary } from './loan-ledger';
+import {
+  loanLedgerSummary,
+  loanRemaindersAfterMinor,
+  loanLedgerOutstandingMinorAt,
+} from './loan-ledger';
 
 const LOAN = { id: 'loan-1', currency: 'UAH' as const };
 
@@ -496,5 +506,114 @@ describe('a within-tolerance over-payment', () => {
     expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, schedule[1].dueDate)).toBe(
       loanOutstandingMinorAt(mortgageMeta, LOAN.id, book, schedule[1].dueDate),
     );
+  });
+});
+
+// The rows the detail screen lists: due today or later, never a zero payment.
+const upcomingAt = (now: number): readonly LoanInstallment[] =>
+  installments.filter((row) => isScheduledPayment(row) && row.dueDate >= startOfLocalDay(now));
+
+const remaindersAt = (book: PriceBook, now: number): readonly number[] =>
+  loanRemaindersAfterMinor(annuityMeta, LOAN, book, now, upcomingAt(now));
+
+// The remainder after a row is the header outstanding less the principal of every listed row up
+// to it that the header does not already count: a chain that ends on the header minus row 1.
+const expectChainFrom = (
+  remainders: readonly number[],
+  rows: readonly LoanInstallment[],
+  header: number,
+): void => {
+  expect(remainders[0]).toBe(header - rows[0].principalMinorUnits);
+
+  rows.slice(1).forEach((row, offset) => {
+    expect(remainders[offset + 1]).toBe(remainders[offset] - row.principalMinorUnits);
+  });
+};
+
+describe('loanRemaindersAfterMinor', () => {
+  const between = local(2024, 3, 20, 12);
+
+  it('reads the header outstanding less each row principal for the schedule alone', () => {
+    const book = bookWith([]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, between);
+
+    expect(upcomingAt(between)[0].index).toBe(5);
+    expectChainFrom(remaindersAt(book, between), upcomingAt(between), header);
+  });
+
+  it('ends an untouched schedule on 0', () => {
+    const remainders = remaindersAt(bookWith([]), between);
+
+    expect(remainders[remainders.length - 1]).toBe(0);
+  });
+
+  it('reads the same chain after a mid-term correction', () => {
+    const book = bookWith([], [{ day: local(2024, 3, 16), price: '90000.00' }]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, between);
+
+    expect(header).toBe(9_000_000);
+    expectChainFrom(remaindersAt(book, between), upcomingAt(between), header);
+  });
+
+  it('reads the same chain after a mid-term linked payment', () => {
+    const book = bookWith([onSchedule(2)]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, between);
+
+    expect(header).not.toBe(loanOutstandingMinorAt(annuityMeta, LOAN.id, book, between));
+    expectChainFrom(remaindersAt(book, between), upcomingAt(between), header);
+  });
+
+  // The header already took the row due today, so its remainder IS the header.
+  it('does not take a row due today off the header a second time', () => {
+    const today = installments[3].dueDate;
+    const rows = upcomingAt(today);
+    const remainders = remaindersAt(bookWith([]), today);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, bookWith([]), today);
+
+    expect(rows[0].index).toBe(4);
+    expect(remainders[0]).toBe(header);
+    expect(remainders[1]).toBe(header - rows[1].principalMinorUnits);
+  });
+
+  it('reads the header on the start day, which lists row 1 as due today', () => {
+    const now = annuityMeta.startDate;
+    const rows = upcomingAt(now);
+    const remainders = remaindersAt(bookWith([]), now);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, bookWith([]), now);
+
+    expect(rows[0].index).toBe(1);
+    expect(header).toBe(annuityMeta.principalMinorUnits - rows[0].principalMinorUnits);
+    expect(remainders[0]).toBe(header);
+    expect(remainders[remainders.length - 1]).toBe(0);
+  });
+
+  it('reads the header for a row due today that a linked payment today already paid', () => {
+    const today = installments[3].dueDate;
+    const book = bookWith([onSchedule(3)]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, today);
+
+    expect(upcomingAt(today)[0].index).toBe(4);
+    expect(remaindersAt(book, today)[0]).toBe(header);
+  });
+
+  it('takes a row due today off the header when the linked payments are for other rows', () => {
+    const today = installments[3].dueDate;
+    const book = bookWith([onSchedule(1)]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, today);
+
+    expect(remaindersAt(book, today)[0]).toBe(header - upcomingAt(today)[0].principalMinorUnits);
+  });
+
+  it('never reads below 0 once the balance is smaller than the rows left', () => {
+    const now = local(2024, 2, 1);
+    const book = bookWith([], [{ day: now, price: '25000.00' }]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, now);
+    const remainders = remaindersAt(book, now);
+
+    expect(header).toBe(2_500_000);
+    expect(remainders[0]).toBe(header - upcomingAt(now)[0].principalMinorUnits);
+    expect(remainders[0]).toBeGreaterThan(0);
+    expect(remainders.every((remainder) => remainder >= 0)).toBe(true);
+    expect(remainders[remainders.length - 1]).toBe(0);
   });
 });

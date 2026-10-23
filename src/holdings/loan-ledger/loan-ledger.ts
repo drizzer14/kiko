@@ -12,6 +12,7 @@ import {
   loanPaymentSplitsMinor,
   type LoanPlan,
   type LoanAnchor,
+  type LoanInstallment,
 } from '../loan-schedule';
 import type { LoanMeta } from '../holding-metadata';
 
@@ -199,6 +200,50 @@ export const loanLedgerOutstandingMinorAt = (
     .reduce((sum, entry) => sum + principalOf(entry), 0);
 
   return Math.max(0, anchor.valueMinorUnits - principalRepaidAfterAnchor);
+};
+
+/** An upcoming installment with the loan balance left once it is paid. */
+export type UpcomingLoanInstallment = LoanInstallment & { remainderMinorUnits: number };
+
+/**
+ * The balance left after each of `rows` (the loan detail's upcoming installments, in schedule
+ * order) is paid, one value per row: the header outstanding (`loanLedgerOutstandingMinorAt`)
+ * less the scheduled principal of every row up to it that the header does not already count,
+ * never below 0. The header counts a row already when it is a schedule row due on or before
+ * `now` (the schedule branch, so the row due today), or when a counted linked payment maps to
+ * it (the ledger branch). Reading the header keeps the first remainder equal to the header less
+ * row 1 after a correction or a linked payment, not only for the untouched schedule.
+ */
+export const loanRemaindersAfterMinor = (
+  meta: LoanMeta,
+  loan: LedgerLoan,
+  book: PriceBook,
+  now: number,
+  rows: readonly LoanInstallment[],
+): readonly number[] => {
+  const ledger = ledgerOf(meta, loan, book);
+  const counted = countedEntries(ledger, now);
+  const header = loanLedgerOutstandingMinorAt(meta, loan, book, now);
+  const paidRowIndexes = new Set(
+    counted.flatMap(
+      (entry) =>
+        foldMap(maybe(installmentIndexOf(meta, ledger.plan, entry.payment.time)), (index) => [
+          index + 1,
+        ]) ?? [],
+    ),
+  );
+  const isAlreadyCounted = (row: LoanInstallment): boolean =>
+    counted.length === 0 ? dayKeyOf(row.dueDate) <= dayKeyOf(now) : paidRowIndexes.has(row.index);
+  const uncountedPrincipals = rows.map((row) =>
+    isAlreadyCounted(row) ? 0 : row.principalMinorUnits,
+  );
+
+  return uncountedPrincipals.map((_, position) =>
+    Math.max(
+      0,
+      header - uncountedPrincipals.slice(0, position + 1).reduce((sum, value) => sum + value, 0),
+    ),
+  );
 };
 
 /**
