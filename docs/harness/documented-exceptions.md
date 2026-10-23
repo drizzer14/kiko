@@ -151,36 +151,26 @@ verified usage, not dead weight:
 - **Tracked debt, not an ignore: `check:dup` size-limit warning**
   (`scripts/checks/dup.sh`, dated 2026-10-11). jscpd 4.3.0 skips a file over
   1000 lines or 100kb without a word, so the blocking run never measured the
-  large files. `dup.sh` now runs a second, NON-blocking pass: it measures each
-  skipped file ALONE with the limits raised and prints a `WARNING` on stderr
-  (exit code unchanged) for every file over the 5% threshold. No file is
-  allowlisted and the threshold is not raised: the files listed below are measured
-  debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:
-  `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
-  `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
-  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.77%
-  (this one figure re-measured 2026-10-19 at `d78cfccd`; the rise from 7.38% is
-  not a regression of the Binance branch: it came mostly from `62f248ed`,
-  `e7cc80f5` and main merges, so the entry moved, not the test),
-  `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
-  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.55%,
-  `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
-  5.75%, `holding-form.screen.test.tsx` 5.36% (every non-test source file over
-  the limit is under 2%). A second figure is tracked beside the per-file ones:
-  one more run measures the whole scope TOGETHER with the limits raised,
-  because a clone between a large file and another file is invisible to the
-  alone runs. Its baseline on 2026-10-11 is 7.33% of lines, against 3.24% for
-  the blocking run with the default limits, and it applies to the no-argument
-  (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total
-  above the threshold is expected until the sweep lands, and a figure above
-  7.33% is a new regression. A listed file's figure is a ceiling: a later rise
-  above it is a new regression; fix the test, or re-record the figure only with
-  a reviewer finding that names the cause. **Flip condition:** a separate sweep track makes
-  every large file 5% or less alone AND the combined raised total 5% or less;
-  then this warning becomes a failure (`exit 2` through `print_block`) and
-  this entry is deleted. The
-  warning is a stated exception to the "silent on success" wrapper contract
-  (kiko-linter's "The wrapper contract").
+  large files. `dup.sh` runs a second pass: it measures each skipped file
+  ALONE with the limits raised, and one more run measures the whole scope
+  TOGETHER (a clone between a large file and another file is invisible to the
+  alone runs). The tracked figures live in `scripts/checks/dup-ceilings.tsv`,
+  one `<path><TAB><percent>` row per large test file plus one `*combined*`
+  row, the whole-repo combined baseline. No file is allowlisted and the
+  threshold is not raised. A listed file over the 5% threshold but at or under
+  its ceiling prints a `WARNING` on stderr and the exit code stays 0; this
+  is the tracked debt, and the `dup.sh` warning output is the live list. A
+  listed file above its ceiling, an unlisted file over the threshold, a
+  no-argument combined figure above its baseline (a scoped run's combined
+  figure is not comparable, so it only warns), a jscpd failure to list or
+  measure, and a missing or malformed ceilings file all fail (`exit 2`
+  through `print_block`). A row naming a file that is not on disk warns.
+  A ceiling never rises: fix the test, or change a row only with a reviewer
+  finding that names the cause. **Flip condition:** a separate sweep track
+  makes every large file 5% or less alone AND the combined raised total 5%
+  or less; then the rows and this entry are deleted. The warning is a stated
+  exception to the "silent on success" wrapper contract (kiko-linter's "The
+  wrapper contract").
 - **`knip.json` `entry`** (an entry point, not an ignore):
   `scripts/bundle-contains.js` — the bundle freshness checker that only
   `scripts/deploy-device.sh` runs (`node scripts/bundle-contains.js`), so

@@ -18,13 +18,64 @@ if [ ! -x "$BIN" ]; then
 fi
 
 # Scope: paths passed as args (changed-files scope), else the whole repo.
-paths=("$@"); [ ${#paths[@]} -eq 0 ] && paths=(".")
+paths=("$@"); whole_repo=0
+[ ${#paths[@]} -eq 0 ] && { paths=("."); whole_repo=1; }
 
 # A path that is not on disk (a deleted file) makes jscpd exit non-zero with ENOENT, which
 # the blocking run below would report as duplication. Say what is wrong instead.
 for p in "$@"; do
   harness_require_path "jscpd (copy/paste detection)" "$p" || exit 2
 done
+
+# The ceilings file holds one `<repo-relative path><TAB><percent>` row per tracked large file and
+# one row under COMBINED_KEY for the whole-repo combined baseline. It is read before any jscpd
+# run, on every run, so a file that is missing or malformed cannot silently turn the large-file
+# pass into a pass that checks nothing.
+CEILINGS="$DIR/dup-ceilings.tsv"
+COMBINED_KEY='*combined*'
+
+# ceilings_problem : prints why the ceilings file cannot be used, and nothing when it can be.
+ceilings_problem() {
+  [ -f "$CEILINGS" ] || { printf 'the file does not exist.'; return; }
+  awk -v combined="$COMBINED_KEY" '
+    BEGIN { FS = "\t" }
+    /^[[:space:]]*$/ || /^#/ { next }
+    problem != "" { next }
+    NF != 2 || $1 == "" || $2 !~ /^[0-9]+(\.[0-9]+)?$/ {
+      problem = sprintf("line %d is not <path><TAB><percent>: %s", NR, $0)
+      next
+    }
+    ($1 in seen) { problem = sprintf("line %d repeats the path %s", NR, $1); next }
+    { seen[$1] = 1 }
+    END {
+      if (problem == "" && !(combined in seen)) { problem = "it has no " combined " row." }
+      printf "%s", problem
+    }
+  ' "$CEILINGS"
+}
+
+problem="$(ceilings_problem)"
+if [ -n "$problem" ]; then
+  print_block \
+    "jscpd (copy/paste detection)" \
+    "check:dup cannot read its ceilings file, scripts/checks/dup-ceilings.tsv." \
+    "dup-ceilings.tsv: $problem" \
+    "The ceilings file decides which large test files may stay duplicated and by how much. Without it every large file would pass unmeasured, and a broken file must not look like a clean tree." \
+    "Restore scripts/checks/dup-ceilings.tsv: one <repo-relative path><TAB><percent> row per tracked file and one *combined* row. Re-run: npm run check:dup" \
+    "Do not create an empty ceilings file, and do not raise a figure, to get past this."
+  exit 2
+fi
+
+# ceiling_of <path> : the recorded ceiling text of a listed path, nothing for an unlisted one.
+ceiling_of() {
+  KEY="$1" awk 'BEGIN { FS = "\t" } !/^#/ && $1 == ENVIRON["KEY"] { print $2; exit }' "$CEILINGS"
+}
+
+# A row naming a file that is not on disk is a WARNING: a delete or a rename must not block.
+while IFS= read -r listed_path; do
+  [ -e "$ROOT/$listed_path" ] ||
+    printf 'WARNING: check:dup scripts/checks/dup-ceilings.tsv names %s, which is not on disk; delete or re-point the row.\n' "$listed_path" >&2
+done < <(awk -v combined="$COMBINED_KEY" 'BEGIN { FS = "\t" } !/^#/ && NF == 2 && $1 != combined { print $1 }' "$CEILINGS")
 
 # Dedup only an explicit set of files (the changed-files scope), keyed on
 # the set identity. jscpd detects duplication within the given set, so its
@@ -65,7 +116,7 @@ if [ "$blocking_unchanged" -eq 0 ]; then
   [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
 fi
 
-# Second, NON-blocking pass. jscpd skips a file over maxLines (1000) or maxSize (100kb) without a
+# Second pass. jscpd skips a file over maxLines (1000) or maxSize (100kb) without a
 # word, so the blocking run above never measured those files. Its file selection (the config's
 # ignore list, .gitignore, the format filter) is the only thing that knows which files are in
 # scope, so ask it: `--debug` lists the selected files and runs no detection. The files in the
@@ -74,9 +125,13 @@ fi
 # set attributes a clone to whichever file jscpd stores first, which makes a file's percentage
 # depend on its neighbours. A clone between a large file and ANOTHER file is invisible alone, so
 # one more run measures the whole scope together with the limits raised; it needs two files to
-# find such a clone, so a scope with one file skips it (it would repeat the alone figure). Over the
-# threshold is a WARNING on stderr and the exit code stays 0: the sweep of those files is tracked
-# debt (docs/harness/documented-exceptions.md), and it flips this pass to a failure.
+# find such a clone, so a scope with one file skips it (it would repeat the alone figure).
+# The verdicts come from the ceilings file (dup-ceilings.tsv). A listed file over the threshold
+# but at or under its ceiling is a WARNING on stderr (tracked debt, see
+# docs/harness/documented-exceptions.md); a listed file above its ceiling, an unlisted file over
+# the threshold, a no-argument combined figure above its baseline, and a jscpd failure to list or
+# measure all FAIL through print_block with exit 2, because a large file that went unmeasured
+# must not read as a clean one.
 RAISED_LIMITS=(--max-lines 2147483647 --max-size 1gb)
 
 # is_number <text> : succeeds for a plain non-negative decimal number. Never trust a figure that
@@ -97,11 +152,25 @@ listed_files() {
   done | LC_ALL=C sort -u
 }
 
-# A failure to LIST warns and never silences: the blocking pass already failed closed on a real
-# jscpd crash, but the large files must not go unmeasured without a trace.
+# large_file_block <what failed> <details> : the failure block of this pass, shared by every FAIL
+# path. The caller exits 2.
+large_file_block() {
+  print_block \
+    "jscpd (copy/paste detection)" \
+    "$1" \
+    "$2" \
+    "jscpd skips a file over 1000 lines or 100kb in its blocking run, so this pass is the only measurement of the largest test files. A file it could not measure, or that is above its recorded ceiling, must not read as a clean one." \
+    "Dedupe the file named above with shared helpers or it.each until bash scripts/checks/dup.sh <file> alone reports a figure at or under its ceiling in scripts/checks/dup-ceilings.tsv (5% for a file that is not listed), then re-run: npm run check:dup. For a jscpd failure, fix the file or the tool it names." \
+    "Do not raise a ceiling, add a row to dup-ceilings.tsv, or rename variables to get past this. A row changes only with a reviewer finding that names the cause."
+}
+
+# A failure to LIST fails closed: the blocking pass already failed closed on a real jscpd crash,
+# and the large files must not go unmeasured without a trace.
 if ! default_list="$(listed_files)" || ! raised_list="$(listed_files "${RAISED_LIMITS[@]}")"; then
-  printf 'WARNING: check:dup could not list the files it skipped for size: jscpd --debug failed.\n' >&2
-  exit 0
+  large_file_block \
+    "check:dup could not list the files it skipped for size: jscpd --debug failed." \
+    "jscpd --debug exited non-zero while listing the files in scope, so the large files were not measured."
+  exit 2
 fi
 skipped="$(LC_ALL=C comm -13 <(printf '%s\n' "$default_list") <(printf '%s\n' "$raised_list"))"
 [ -z "$skipped" ] && exit 0
@@ -111,8 +180,10 @@ skipped="$(LC_ALL=C comm -13 <(printf '%s\n' "$default_list") <(printf '%s\n' "$
 threshold="$(node -e 'process.stdout.write(String(require(process.argv[1]).threshold))' "$ROOT/.jscpd.json" 2>/dev/null)"
 is_number "$threshold" || threshold=5
 report_dir="$(mktemp -d "${TMPDIR:-/tmp}/kiko-dup-large.XXXXXX")" || {
-  printf 'WARNING: check:dup could not measure the files it skipped for size: mktemp failed.\n' >&2
-  exit 0
+  large_file_block \
+    "check:dup could not measure the files it skipped for size: mktemp failed." \
+    "mktemp could not create a report directory under ${TMPDIR:-/tmp}, so the large files were not measured."
+  exit 2
 }
 trap 'rm -rf "$report_dir"' EXIT
 root_real="$(cd "$ROOT" && pwd -P)"
@@ -131,37 +202,57 @@ measure() {
   printf '%s' "$value"
 }
 
+# above <percentage> <limit> : succeeds when the figure is over the limit.
+above() {
+  awk -v p="$1" -v t="$2" 'BEGIN { exit !(p > t) }'
+}
+
 # over_threshold <percentage> : succeeds when the figure is over the threshold.
 over_threshold() {
-  awk -v p="$1" -v t="$threshold" 'BEGIN { exit !(p > t) }'
+  above "$1" "$threshold"
 }
 
 # measure_one <number> <file> : writes the file's WARNING line, if any, to
-# "$report_dir/<number>.warning".
+# "$report_dir/<number>.warning" and its FAIL line, if any, to "$report_dir/<number>.failure".
 measure_one() {
-  local number="$1" file="$2" shown measured status
+  local number="$1" file="$2" shown measured status ceiling
   shown="${file#"$ROOT"/}"
   shown="${shown#"$root_real"/}"
   measured="$(measure "$number" "$file")"
   status=$?
+  ceiling="$(ceiling_of "$shown")"
   if [ "$status" -eq 1 ]; then
-    printf 'WARNING: check:dup could not measure %s: jscpd failed on it.\n' "$shown" > "$report_dir/$number.warning"
+    printf 'check:dup could not measure %s: jscpd failed on it.\n' "$shown" > "$report_dir/$number.failure"
   elif [ "$status" -ne 0 ]; then
-    printf 'WARNING: check:dup could not measure %s: jscpd produced no figure for it.\n' "$shown" > "$report_dir/$number.warning"
-  elif over_threshold "$measured"; then
+    printf 'check:dup could not measure %s: jscpd produced no figure for it.\n' "$shown" > "$report_dir/$number.failure"
+  elif [ -n "$ceiling" ] && above "$measured" "$ceiling"; then
+    printf 'check:dup %s measured alone is %s%% duplicated, above its %s%% ceiling in scripts/checks/dup-ceilings.tsv.\n' \
+      "$shown" "$measured" "$ceiling" > "$report_dir/$number.failure"
+  elif ! over_threshold "$measured"; then
+    return
+  elif [ -n "$ceiling" ]; then
     printf 'WARNING: check:dup %s is over jscpd'\''s size limit (1000 lines or 100kb), so the blocking run skipped it; measured alone it is %s%% duplicated (threshold %s%%). See the tracked-debt list in docs/harness/documented-exceptions.md; a file not on it is a new regression.\n' \
       "$shown" "$measured" "$threshold" > "$report_dir/$number.warning"
+  else
+    printf 'check:dup %s is over jscpd'\''s size limit (1000 lines or 100kb) and measured alone is %s%% duplicated (threshold %s%%); it is not in scripts/checks/dup-ceilings.tsv, so it is a new regression.\n' \
+      "$shown" "$measured" "$threshold" > "$report_dir/$number.failure"
   fi
 }
 
 # measure_combined : the whole scope together, writing its WARNING line, if any, to
-# "$report_dir/combined.warning".
+# "$report_dir/combined.warning" and its FAIL line, if any, to "$report_dir/combined.failure".
+# Only the no-argument run is held to the baseline: a scoped run's combined figure is not
+# comparable with it.
 measure_combined() {
-  local measured status
+  local measured status baseline
   measured="$(measure combined "${paths[@]}")"
   status=$?
+  baseline="$(ceiling_of "$COMBINED_KEY")"
   if [ "$status" -ne 0 ]; then
-    printf 'WARNING: check:dup could not measure the combined run (every file in scope, size limits raised).\n' > "$report_dir/combined.warning"
+    printf 'check:dup could not measure the combined run (every file in scope, size limits raised).\n' > "$report_dir/combined.failure"
+  elif [ "$whole_repo" -eq 1 ] && above "$measured" "$baseline"; then
+    printf 'check:dup combined run (every file in scope, size limits raised) is %s%% duplicated, above its %s%% baseline in scripts/checks/dup-ceilings.tsv.\n' \
+      "$measured" "$baseline" > "$report_dir/combined.failure"
   elif over_threshold "$measured"; then
     printf 'WARNING: check:dup combined run (every file in scope, size limits raised) is %s%% duplicated (threshold %s%%); a clone between a large file and another file counts only here. See the tracked-debt list in docs/harness/documented-exceptions.md; the recorded baseline there applies to the no-argument (whole-repo) run only, and a whole-repo figure above it is a new regression.\n' \
       "$measured" "$threshold" > "$report_dir/combined.warning"
@@ -190,8 +281,16 @@ while IFS= read -r file; do
 done <<< "$skipped"
 [ "${#batch_pids[@]}" -gt 0 ] && wait "${batch_pids[@]}"
 [ -n "$combined_pid" ] && wait "$combined_pid"
+failures=''
+for name in $(seq 1 "$n") combined; do
+  [ -f "$report_dir/$name.failure" ] && failures="$failures$(cat "$report_dir/$name.failure")"$'\n'
+done
 for ((i = 1; i <= n; i++)); do
   [ -f "$report_dir/$i.warning" ] && cat "$report_dir/$i.warning" >&2
 done
 [ -f "$report_dir/combined.warning" ] && cat "$report_dir/combined.warning" >&2
-exit 0
+[ -z "$failures" ] && exit 0
+large_file_block \
+  "check:dup found a large file above its recorded ceiling, a large file that is not recorded, or one it could not measure." \
+  "${failures%$'\n'}"
+exit 2
