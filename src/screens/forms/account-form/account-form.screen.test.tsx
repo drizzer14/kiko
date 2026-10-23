@@ -456,6 +456,27 @@ const renderCashForm = async () => {
   return view;
 };
 
+type FormScreenView = Awaited<ReturnType<typeof render>>;
+
+// The bank form with Monobank picked and its field's Connect pressed, the name typed first when
+// one is given.
+const connectMonobankAs = async (view: FormScreenView, name?: string): Promise<void> => {
+  if (name !== undefined) {
+    await fireEvent.changeText(view.getByLabelText('Name'), name);
+  }
+
+  await fireEvent.press(view.getByLabelText('Bank type'));
+  await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+  await fireEvent.press(view.getByLabelText('monobank-field'));
+};
+
+// What the mocked Monobank field rendered as the outcome connectMonobank resolved to.
+const expectConnectResult = async (view: FormScreenView, outcome: string): Promise<void> => {
+  await waitFor(() =>
+    expect(view.getByTestId('monobank-connect-result')).toHaveTextContent(outcome),
+  );
+};
+
 describe('AccountFormScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -2028,10 +2049,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
 
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalled());
     expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -2044,9 +2062,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockSaveCredentials).not.toHaveBeenCalled();
     // connectMonobank must resolve to the sync's own outcome, not a hard-coded
     // `true` — proves `return syncMonobank(...)` actually propagates.
-    await waitFor(() =>
-      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('true'),
-    );
+    await expectConnectResult(view, 'true');
   });
 
   it('resolves connectMonobank to false when the sync itself fails (no thrown error)', async () => {
@@ -2056,16 +2072,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockMonobankSync.mockResolvedValue(false);
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
 
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalled());
     expect(mockSaveToken).toHaveBeenCalled();
-    await waitFor(() =>
-      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
-    );
+    await expectConnectResult(view, 'false');
   });
 
   it('does not save a token or sync when the bank row create rejects', async () => {
@@ -2076,17 +2087,12 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockCreate.mockRejectedValueOnce(new Error('db locked'));
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockMonobankSync).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
-    );
+    await expectConnectResult(view, 'false');
     // No row was actually inserted (the started mark was reset), so the kind
     // switch must not lock.
     expect(isKindFieldDisabled(view.getByTestId)).toBe(false);
@@ -2099,16 +2105,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockSaveToken.mockRejectedValueOnce(new Error('keychain write failed'));
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
 
     await waitFor(() => expect(mockSaveToken).toHaveBeenCalledTimes(1));
     expect(mockMonobankSync).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
-    );
+    await expectConnectResult(view, 'false');
     // Unlike a create failure, the row itself was created before saveToken
     // threw, so the kind switch stays locked — the started mark was never reset.
     expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -2125,13 +2126,9 @@ describe('AccountFormScreen — sync credentials on create', () => {
     });
     const view = await renderForm();
 
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view);
 
-    await waitFor(() =>
-      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
-    );
+    await expectConnectResult(view, 'false');
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
@@ -2142,10 +2139,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
 
     await pressSave(view.navigation.setOptions);
@@ -2167,10 +2161,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     storeCreatedRows();
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledTimes(1));
     const pendingId = (mockCreate.mock.calls[0][0] as { id: string }).id;
     mockAccounts = [];
@@ -2245,10 +2236,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   it('creates the bank row tagged with the selected bank id when connecting Monobank', async () => {
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     expect(mockCreate).toHaveBeenCalledWith(
@@ -2288,10 +2276,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
 
     await waitFor(() => expect(isKindFieldDisabled(view.getByTestId)).toBe(true));
   });
@@ -2303,10 +2288,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
 
-    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(view.getByLabelText('Bank type'));
-    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await connectMonobankAs(view, 'My Bank');
 
     await waitFor(() => expect(isKindFieldDisabled(view.getByTestId)).toBe(true));
     const bankField = view.getByTestId('account-bank-type-field');
@@ -3741,10 +3723,7 @@ describe('AccountFormScreen — draft', () => {
     storeCreatedRows();
     mockMonobankSync.mockResolvedValue(true);
     const first = await renderForm();
-    await fireEvent.changeText(first.getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(first.getByLabelText('Bank type'));
-    await fireEvent.press(first.getByTestId('bank-type-option-monobank'));
-    await fireEvent.press(first.getByLabelText('monobank-field'));
+    await connectMonobankAs(first, 'My Bank');
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalled());
     const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
     await emitLayoutMode('columns');

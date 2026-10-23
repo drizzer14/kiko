@@ -7,10 +7,11 @@ import { stepsFor } from './test-support/kill-guard-decide';
 
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
 // writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, .claude/skills/,
-// .claude/agents/, or harness/kiko/ of any worktree of this repository, or into a YAML file
-// (final segment .yml/.yaml) anywhere in one except under node_modules/ (`sed -i`, `perl -i`, a
-// `>`/`>>` redirect, `tee`, a python or node one-liner) skips the pre-write guard, which sees
-// only Edit/Write/MultiEdit, so the hook denies it and points at Edit/Write.
+// .claude/agents/, docs/superpowers/, or harness/kiko/ of any worktree of this repository, or
+// into a YAML file (final segment .yml/.yaml) anywhere in one except under node_modules/
+// (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node one-liner) skips the
+// pre-write guard, which sees only Edit/Write/MultiEdit, so the hook denies it and points at
+// Edit/Write.
 //
 // Every text here is judged, never run: `decide` is called in node as a
 // parser only, and the hook rows only pipe JSON into kill-guard.sh. The

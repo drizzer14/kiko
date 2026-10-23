@@ -16,8 +16,9 @@ that check the app, not the app's own code style (see
 tree today.
 
 The root `Makefile`'s `verify` target (`make verify`, wrapping
-`scripts/checks/verify.sh`) is the single end-of-work command for the
-developer/qa agents: it runs lint, then the full Jest suite, then
+`scripts/checks/verify.sh`) is the end-of-work verify. The role agents ask the coordinator to
+queue it (`bash scripts/job-queue.sh verify <worktree> <label>`); a typed `make verify` is
+denied (see "Heavy-job and full-jest deny"). It runs lint, then the full Jest suite, then
 `check:all` (the fast+medium gate) as ORDERED, FAIL-FAST stages,
 stopping at the first failing stage rather than always running all
 three. Read `verify.sh` directly for the exact stage commands rather
@@ -49,6 +50,16 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `override-guard.sh`, so a deleted file on the medium tier is skipped silently, while a
   direct call with a deleted path exits 2. `component-i18n-namespace.sh` keeps its own `-d`
   block for its fixed root. `__tests__/wrapper-missing-path.test.ts` pins this.
+- A per-file wrapper takes one path or none, and refuses more than one. It reads only its
+  first argument, so a second path was skipped silently and its findings never reported.
+  `harness_require_one_target <check title> "$@"` in `_lib.sh` is the first call of
+  `import-order.sh`, `full-word-identifiers.sh`, `comment-line-width.sh`,
+  `blank-line-separation.sh`, `feature-imports.sh`, `screen-imports.sh`, `lint.sh` and
+  `secrets.sh`: two or more arguments exit 2 with the standard block, whose fix is one run per
+  path (or no path for the project-wide scan). The no-argument default is unchanged.
+  `dup.sh`, `override-guard.sh` and `security.sh` scan every path they get and stay open to
+  several; `dup.sh` also reads `scripts/checks/dup-ceilings.tsv` up front and exits 2 when it
+  is missing or malformed. `__tests__/wrapper-one-path.test.ts` pins this.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
   wrapper and every hook relies on. One exception is the deep,
@@ -68,9 +79,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   scan`), because a skip exits 0 without scanning and must never read as a
   fresh scan; and (b) the Class B WARNING block, because a non-blocking
   finding is override-eligible and still has to be seen. `dup.sh` states
-  its own exception: its large-file `WARNING` lines (see "`check:dup`
-  measures the files jscpd skips for size" below), because a non-blocking
-  measurement of tracked debt still has to be seen. `medium.sh` states a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0
+  its own exception: its large-file `WARNING` lines (a listed file at or under its ceiling; see
+  "`check:dup` measures the files jscpd skips for size" below), because a measurement of
+  tracked debt still has to be seen. Any other large-file finding exits 2. `medium.sh` states
+  a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line
+  `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0
   does not feed its stderr back to the agent, unless a later check in the
   same tier fails: the tier's whole stderr is then shown, so a `dup.sh`
   WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
@@ -343,7 +356,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
   `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
   worktree except under `node_modules/`, and counts when unresolved (fail closed). Resolved and
-  NOT covered: a scripts folder under `ios/` or `docs/`.
+  NOT covered: a scripts folder under `ios/` or `docs/`. `docs/superpowers` is a guarded tree
+  with no parent-folder rule (`TREES_WITHOUT_PARENT_RULE`), so the rest of `docs/` stays
+  shell-writable.
   Known limits: (a) an unquoted command-substitution prefix on a write target
   (`echo x > $(pwd)/src/a`) tokenizes as a standalone word, so the guarded path is never seen
   and the write is allowed, for every guarded tree; the quoted form is denied. (b) A `~/...`
@@ -468,6 +483,43 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   path the guard cannot resolve; it is not denied inside an unrelated temporary repository, yet
   build its fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with
   Edit/Write.
+
+  Heavy-job and full-jest deny (the findings `heavyJob` and `fullJest`; why: a whole-repository
+  job takes minutes of CPU on a machine every agent and session shares, and two at once make
+  Semgrep and jest time out). Rule: deny a typed command that starts a whole-repository job
+  outside the queue (`heavyJob`: a heavy `make` target, a heavy `npm run` script, a heavy check
+  script, a Semgrep or `security.sh` run whose target is the whole repository or absent) or a
+  jest run that would run every suite (`fullJest`: a runner with no test file once option
+  values are removed, or an array option of jest-cli directly before a bare word, in the space
+  or `=` form, because the option takes the word as one more value; `npm test` needs
+  `-- <files>`). Read `HEAVY_MAKE_TARGETS`, `HEAVY_NPM_SCRIPTS`, `HEAVY_SCRIPT`,
+  `SEMGREP_OPTIONS_WITH_VALUE`, `MAKE_DRY_RUN_FLAGS` and `JEST_ARRAY_OPTIONS` in
+  `scripts/checks/kill-guard.js` for the closed sets, never a copy here; `JEST_ARRAY_OPTIONS`
+  is compared with jest-cli's own table by `__tests__/kill-guard-jest-options.test.ts`, and
+  Semgrep options match exactly (Semgrep abbreviates nothing). Only the typed command is judged:
+  `heavyJob` and `fullJest` are in neither `SCRIPT_KINDS` nor `DATA_KINDS`, so a script file or
+  a heredoc body that holds `make verify` is text (`scripts/job-queue.sh` runs `make verify`
+  itself). A dry run (`make -n verify`), `make mutable`, `mutation.sh --list`, `security.sh
+  <file>`, Semgrep on a subfolder or file, a jest run that names a test file or a lone
+  `--testPathPattern` filter, and `--listTests|--help|--version|--showConfig` stay allowed.
+  The way out is the queue: `bash scripts/job-queue.sh verify|check-all|security <worktree>
+  <label>` or `gate <worktree> <label> <base> <head>`, run in the background and awaited on its
+  exit code; a role agent asks the coordinator. A queued command is noted as `rules.queued`
+  (`noteQueuedJob`, `isQueueScript`). Rows: `__tests__/kill-guard-heavy-jobs.test.ts`,
+  `-jest-runs`, `-jest-options`, `-queue-edges`. Known limits (all allowed; the docs never
+  prescribe one of these routes, and (a) is a gap in the run log): (a) a command typed
+  inside another command is not unwrapped: `caffeinate -i make verify|make deep|bash
+  scripts/checks/verify.sh` is allowed (it also lets a kill through), and `orca terminal send
+  --text "npm run check:all"` or `"npx jest"` is allowed; (b) `make -Nn verify`, `make -I -n
+  verify`, `make -o -n verify` and `make -W -n verify` read as a dry run
+  (`MAKE_DRY_RUN_FLAGS` lacks `N`; the word test accepts any word); (c) `$PWD/`, `${PWD}/`,
+  `$(pwd)` and other `$X` targets for `security.sh` and Semgrep are allowed (only an exact
+  `$PWD` names the repository); (d) `cd scripts/checks && bash verify.sh` is allowed (the
+  script pattern matches the typed path); (e) runners it does not know are allowed: `node
+  node_modules/.bin/jest`, `pnpm jest`, `yarn jest`, `npm exec jest`, `bunx jest`, `semgrep
+  ci`; (f) in a repository whose `test` script is not jest (the harness repository runs `node
+  --test`), `npm test` is still `fullJest`, which fails closed. Tree segments compare
+  lower-cased.
 
   WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
   the job it waits for matches its OWN command line, so it never ends;
@@ -1441,8 +1493,8 @@ belongs in the SAME commit as the feature that triggered the check, so
 `git log` shows one coherent change rather than a drive-by refactor
 with no test-behavior delta.
 
-The non-blocking large-file pass runs on every call, a dedup skip included: see "`check:dup`
-measures the files jscpd skips for size" below.
+The large-file pass runs on every call, a dedup skip included: see "`check:dup` measures the
+files jscpd skips for size" below.
 
 ## `check:dup` measures the files jscpd skips for size
 
@@ -1450,7 +1502,7 @@ jscpd 4.3.0 skips a file over `maxLines` (1000, counted as `content.split('\n')`
 (100kb) without a word, so a blocking run alone passes a project whose largest files were never
 measured. `scripts/checks/dup.sh` keeps that blocking run exactly as it was (same config, same
 default limits, same 5% threshold, same exit code, a jscpd crash still fails closed) and adds a
-second, NON-blocking pass:
+second pass, the large-file pass (WARN at or under a file's ceiling, FAIL otherwise):
 
 - It asks jscpd itself which files are in scope: `--debug` lists the selected files and runs no
   detection. The files listed with the limits raised but not with the defaults are the ones the
@@ -1466,22 +1518,28 @@ second, NON-blocking pass:
   large file and another file is invisible to the alone runs (two 1100-line copies of one file
   show 0% alone and about 50% together). It runs only when the scope holds a size-skipped file and
   more than one file, so a scope with no large file runs no combined run and a one-file scope does
-  not repeat its alone figure. The pass itself still costs the two file listings (about 1 s). Its
-  total over the threshold prints one `WARNING` naming the figure.
-  Baseline on 2026-10-11: 7.33% of lines combined, against 3.24% for the blocking run.
-- A file over the threshold read from `.jscpd.json`, a file jscpd fails on, a file with no
-  figure, a combined total over the threshold, a failed file listing, and a failed `mktemp` each
-  print one `WARNING` line on stderr and the exit code stays 0. A number a tool printed is used only
-  after `is_number` accepts it. The Stop tier's scoped run therefore warns only about changed
-  large files (and the combined figure of the changed set); a whole-repo run warns about all of
-  them. An unchanged dedup fingerprint skips only the blocking run: the large-file pass runs every
-  time, so a repeated scoped run prints the same warning again.
-- The per-file warning says a file not on the tracked-debt list in
-  `docs/harness/documented-exceptions.md` is a new regression; a hook that exits 0 does not show
-  stderr to the agent, so a person or a manual `check:dup` run is the reader.
-- The warning is tracked debt, not an allowlist. The sweep track flips it to an `exit 2` failure
-  through `print_block` once every large file is 5% or less alone AND the combined raised total is
-  5% or less.
+  not repeat its alone figure. The pass itself still costs the two file listings (about 1 s).
+  The combined baseline is the `*combined*` row of `scripts/checks/dup-ceilings.tsv`, held by the
+  no-argument run only; read the row there, not a figure copied here.
+- The ceilings file `scripts/checks/dup-ceilings.tsv` is read up front on every run: a missing
+  or malformed file (a bad row, a repeated path, no `*combined*` row) exits 2 before any jscpd
+  run. Per class:
+  - WARN (stderr, exit 0): a listed file over the threshold but at or under its ceiling; a
+    scoped run's combined figure over the threshold; a row naming a file not on disk.
+  - FAIL (`print_block`, exit 2): a listed file above its ceiling; an unlisted file over the
+    threshold (a new regression); a file jscpd fails on or gives no figure for; a combined run
+    that fails or, in the no-argument run, exceeds the `*combined*` baseline; a failed file
+    listing; a failed `mktemp`.
+  A number a tool printed is used only after `is_number` accepts it. The Stop tier's scoped run
+  therefore measures only changed large files (and the combined figure of the changed set); a
+  whole-repo run measures all of them. An unchanged dedup fingerprint skips only the blocking
+  run: the large-file pass runs every time, so a repeated scoped run prints the same warning or
+  failure again.
+- A hook that exits 0 does not show the WARNING to the agent, so a person or a manual
+  `check:dup` run is the reader; a FAIL block reaches the agent.
+- The ceilings are tracked debt, not an allowlist. A figure never rises (dedupe the test), and a
+  row changes only with a reviewer finding. The rows go once every large file is 5% or less
+  alone AND the combined raised total is 5% or less (`docs/harness/documented-exceptions.md`).
 - `__tests__/dup-large-files.test.ts` runs a copy of `dup.sh` in a throwaway project against the
   real jscpd, under `FORCE_COLOR=3` too. A file over about two billion lines or 1gb is not listed
   under the raised limits, so it would still pass unseen; no file of that size exists in this repo.
@@ -1816,6 +1874,28 @@ index, `settle-limited.test.ts`), `Minor\s\d+` ("a minor 3% drift"), and
 found three real hits in `src`, each reworded in the same change. Fixture
 pair: the case pins at the end of `.bad.ts` and item 23 in `.good.ts`.
 
+**Set, task, track and run ids, and a decision answer (2026-10-23).** Seven members, in both
+arms and in `kiko-no-history-id-shell-comment`, each narrow enough that a bare "task 0" or "set 0"
+stays prose (`.good.ts` item 28):
+- `\bH\d{1,2}\s+(?i:task|set|step|fix\sround|backlog|track)\b` and `\bH\d{1,2}\s+t\d+\b`: a track
+  id joined to a task word in either case (`H10 task 4/4`, `H10 Set 3`, `H9 t3`). The word group
+  is case-insensitive and identical in all three copies (the two `semgrep-prewrite.yml` arms and
+  `kiko-no-history-id-shell-comment`). A bare `H\d+` is NOT a member: `(H1)`, `(H3)` (section ids
+  in `plist.sh`), `H264` and `H2 database` are ordinary tokens.
+- `\b\d{8}T\d{4}-kiko-[\w-]+`: a run id (`20261023T0023-kiko-harness-h10`).
+- `[Ss]et\s\d+/\d+` and `[Tt]ask\s\d+/\d+`: a set or task counter (`set 3/5`, `task 2/3`).
+- `(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b`: a set or
+  task id followed by a process word (`the set 9 review`). The word needs its own boundary, so
+  "set 3 steps" stays silent.
+- `\bQ\d{1,2}\s*=\s*[A-Z]\b`: a decision answer (`Q2 = A`). "The Q2 tabs-vs-chips rule" and
+  "Q2 2026" stay silent.
+
+Known limits (accepted false positives, 0 sites in the tree): a ratio such as "set 16/9 aspect
+ratio" reads as a set counter, "Mark the task 1 step done" reads as a task id followed by a
+process word, and "Q1 = P" reads as a decision answer. Reword the prose ("a 16:9 aspect ratio"),
+or use the override protocol for a real site. Fixture pair: the pins at the end of `.bad.ts` and
+`.bad.sh`, and item 28 in `.good.ts` with the matching lines at the end of `.good.sh`.
+
 **What a finding is (both history rules).** Each arm reports every
 watched id or word of a comment, one finding per member: a PCRE `\K` right
 before the member drops everything before it from the match, and the block
@@ -2050,8 +2130,9 @@ first, and a shape that hit prose was dropped or narrowed:
   "cell A1".
 - Left OUT, because the hits were domain words: `Step N` (an algorithm
   documented step by step), `Phase A/B` (the rezone phases), `Rule B`/`Rule N`
-  (the matcher's own rules), `task 0` (a test's own tasks), and a bare
-  letter and digit (`A1's`, `P1:`, which collide with cells, regex classes,
+  (the matcher's own rules), `task 0` (a test's own tasks; the set and task counters
+  `task 2/3` and `set 3/5` are members of `kiko-no-history-id-comment`, not of this rule), and a
+  bare letter and digit (`A1's`, `P1:`, which collide with cells, regex classes,
   and chip names).
 
 Any other good fixture that carries one of these shapes in a comment fails
@@ -2093,8 +2174,11 @@ and stays silent. A `try`/`finally` reset inside the body still matches: use a h
 Mechanizes kiko-code-style's "A test title carries no history": the title of an `it`,
 `test`, or `describe` call (also `.only`, `.skip`, `.todo`, `.each(table)(...)`, and a tagged
 `.each` table) that opens with a task id (`A1 `, `A1:`), opens with a ruling id (`ruling A2`),
-opens with a numbered device check (`device check 3`, either case), carries `(was: `, or ends in
-a task id in parentheses (`(P2)`, `(task C2)`, `(spec A3, B4)`).
+opens with a numbered device check (`device check 3`, either case), carries `(was: `, `(was 44)`
+or `; was 62` (an old-value label), or ends in a task id in parentheses (`(P2)`, `(task C2)`,
+`(spec A3, B4)`). `it was 44 rows`, `(was 3 of them)` and `; was 3x faster` stay silent: `(was N)`
+needs the digits to close the parenthesis, and `; was N` needs the semicolon and a word boundary
+after the digits.
 
 **Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
 --metrics off --quiet --config rules/semgrep-prewrite.yml src __tests__ --json` before quoting
@@ -2981,11 +3065,11 @@ they land.
   while the tree holds the violation again. The mark stays on the fix,
   so a later revert of the fix fails; a new commit made on the older
   commit diverges from the mark and moves it there, and the violation
-  is then taken as checked. `make verify` (full Jest + `check:all`) is
+  is then taken as checked. The queued verify (full Jest + `check:all`) is
   the backstop: `check:security` scans `rules/semgrep-prewrite.yml`
   project-wide, and every Node rule has its own project-wide check —
   some in `check:all`, and `kiko-one-component-per-file`'s as a Jest
-  test, which runs only under `make verify`. A branch no replay
+  test, which runs only under the queued verify. A branch no replay
   ever passed costs replay time when merged (see "Floor and
   never-replayed branches").
 - **Tests.** `__tests__/guard-replay.test.ts`: a throwaway repository
@@ -3391,7 +3475,7 @@ dependency-free like every checker; knip-ignored) is
 no exemption list. A standalone `npm run check:guard-replay` also moves the
 mark ref to HEAD, and a clean tree at the mark makes the next Stop exit
 early, so after one a committed migration edit shows again only at
-`check:all` / `make verify` (the order above keeps it first there), not at
+`check:all` / the queued verify (the order above keeps it first there), not at
 a later Stop.
 
 - **Baseline ("shipped").** For each LOCAL branch of main and next that
@@ -3433,9 +3517,32 @@ a later Stop.
   appended entries and inserted lines): the line shows the base text of
   the named entry or line, to restore in place while keeping the rest.
   Never restore with checkout, restore, stash or clean.
+- **Second kind: a missing `src/` path in a NEW migration's header.** The
+  wrapper runs the checker a second time (`shipped-migrations.js --headers`)
+  after the shipped-file kind passes, so a shipped-file failure shows first.
+  It reads only a `.sql` that no resolved base has (new on this branch),
+  never a shipped one: a header names the source as it was when written, a
+  later `src/` move must not fail a shipped header that may not be edited
+  (2 stale shipped paths exist, both under the old monobank folder), and a
+  new header is still free to fix.
+  Only a backticked `src/...` path inside a SQL comment is read, both forms
+  (`-- ...` lines and `/* ... */` blocks, which open most real headers). One
+  left-to-right scan tells comment from code: a `'`, `"`, backtick or `[`
+  opens a literal or quoted identifier that is skipped whole (a doubled
+  closing quote is an escape), so a path in a string literal or SQL code is
+  never read, and a `--` or `/*` inside one never opens a comment; an
+  unterminated block comment runs to the end of the file. A path ending in `/`
+  must exist as a folder; any other path must exist as a file (a file with a
+  trailing `/`, or a folder without one, fails). Only the failing paths are
+  named, each with its migration file. Own block title "Migration header names
+  a missing src path", exit 2, no override. Known limits: a path in a
+  non-comment position is not checked; a glob or a path with a line suffix
+  is read as a literal path and fails.
 - **Dedup.** The fingerprint is the base shas, the name and blob hash of
-  every file under `drizzle/migrations/`, and the checker script. A hash
-  failure leaves the fingerprint empty, so the check runs.
+  every file under `drizzle/migrations/`, the name of every file and folder
+  under `src/` (a move there must re-run the header kind), and the checker
+  script. A hash failure, or a `find src` that fails (a missing `src/` is an empty list, not a
+  failure), leaves the fingerprint empty, so the check runs and a partial listing never skips.
 - **Wiring.** `scripts/checks/medium.sh` runs the wrapper BEFORE the guard
   replay and before its "only HEAD moved" early exit. Before the replay,
   because a passing replay moves the worktree's mark ref to HEAD: a

@@ -265,7 +265,7 @@ const ALLOWED: string[] = [
   'grep pkill kills.sh',
   'ls kills.sh',
   'chmod +x kills.sh',
-  'make verify',
+  'make mutable',
   // A redirect feeds stdin to a shell that reads a script elsewhere, or none: nothing reads it.
   'bash -c true < kills.sh',
   'sh -c "echo hi" < kills.sh',
@@ -429,15 +429,25 @@ describe('kill-guard script scan: every tracked script and the routine commands'
     'bash scripts/job-queue.sh gate /tmp/some-worktree label base head',
     'bash scripts/job-queue.sh check-all /tmp/some-worktree label',
     './scripts/job-queue.sh verify /tmp/some-worktree label',
-    'make verify',
-    'make gate',
-    'make jest',
     'bash scripts/wait-load.sh 4 300',
     'bash scripts/checks/fast.sh',
-    'npm run check:all',
     'bash scripts/ff-main.sh abc1234',
     'git -C /Users/drizzer14/Developer/Projects/pff-ios log --oneline -3',
     'bash scripts/ensure-git-hooks.sh',
+  ];
+  // Routine commands the queue denies outside `scripts/job-queue.sh`; the typed deny rows are in
+  // kill-guard-heavy-jobs.test.ts and kill-guard-jest-runs.test.ts.
+  const heavyChecks = [
+    'scripts/checks/verify.sh',
+    'scripts/checks/mutation.sh',
+    'scripts/checks/security.sh',
+  ];
+  const typedScripts = scripts.filter((file) => !heavyChecks.includes(file));
+  const flippedRoutine: [string, string][] = [
+    ['make verify', 'heavyJob'],
+    ['make gate', 'heavyJob'],
+    ['npm run check:all', 'heavyJob'],
+    ['make jest', 'fullJest'],
   ];
 
   it('tracks shell scripts to cover, hooks without an extension included', () => {
@@ -448,14 +458,14 @@ describe('kill-guard script scan: every tracked script and the routine commands'
   });
 
   it('allows `bash <file>` for every tracked shell script of this repository', () => {
-    const kinds = decideAll(scripts.map((file) => [`bash ${file}`, real]));
+    const kinds = decideAll(typedScripts.map((file) => [`bash ${file}`, real]));
 
-    expect(scripts.filter((_file, index) => kinds[index] !== 'allow')).toEqual([]);
+    expect(typedScripts.filter((_file, index) => kinds[index] !== 'allow')).toEqual([]);
   });
 
   it('allows `source <file>` and the absolute path of every tracked shell script', () => {
     const kinds = decideAll(
-      scripts.flatMap((file) => [
+      typedScripts.flatMap((file) => [
         [`source ${file}`, real],
         [`bash ${join(REPOSITORY_ROOT, file)}`, inScratch],
       ]),
@@ -480,8 +490,9 @@ describe('kill-guard script scan: every tracked script and the routine commands'
     const inFakeMain: Options = { cwd: FAKE_MAIN, mainCheckoutPath: FAKE_MAIN };
     const commands = scripts.flatMap((file) => {
       const absolute = join(REPOSITORY_ROOT, file);
+      const typed = heavyChecks.includes(file) ? [] : [`bash ${absolute}`, `source ${absolute}`];
 
-      return [`bash ${absolute}`, `source ${absolute}`, `bash < ${absolute}`];
+      return [...typed, `bash < ${absolute}`];
     });
     const kinds = decideAll(commands.map((command) => [command, inFakeMain]));
 
@@ -492,6 +503,10 @@ describe('kill-guard script scan: every tracked script and the routine commands'
     const kinds = decideAll(routine.map((command) => [command, real]));
 
     expect(routine.filter((_command, index) => kinds[index] !== 'allow')).toEqual([]);
+  });
+
+  it.each(flippedRoutine)('denies %s as %s, from the repository root', (command, kind) => {
+    expect(decide(command, real)).toBe(kind);
   });
 
   it('allows the queue script as a worktree of this repository, by relative and absolute path', () => {

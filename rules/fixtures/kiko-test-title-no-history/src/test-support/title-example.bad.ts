@@ -99,3 +99,9 @@ describe.each`
   first | second
   ${1}  | ${2}
 `('Z9 runs a tagged table', () => {});
+
+// EXPECT-FINDING
+describe('pins the total (was 44)', () => {});
+
+// EXPECT-FINDING
+describe('pins the total; was 62', () => {});

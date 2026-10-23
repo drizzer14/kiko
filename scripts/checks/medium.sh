@@ -204,9 +204,9 @@ if [ "$doc_pending" -eq 1 ] && ! harness_unchanged "$doc_root" "doc-suites" "$do
     exit 2
   fi
   doc_output="$state/doc-suites.out"
-  # Two workers, so a Stop-tier run leaves cores to the other sessions and to the checks that
-  # run after it.
-  "$doc_jest" --maxWorkers=2 "${doc_suites[@]}" > "$doc_output" 2>&1 &
+  # A capped worker count (HARNESS_DOC_JEST_WORKERS), so a Stop-tier run leaves cores to the other
+  # sessions and to the checks that run after it.
+  "$doc_jest" --maxWorkers="$HARNESS_DOC_JEST_WORKERS" "${doc_suites[@]}" > "$doc_output" 2>&1 &
   doc_pid=$!
   doc_timed_out=0
   while kill -0 "$doc_pid" 2>/dev/null; do

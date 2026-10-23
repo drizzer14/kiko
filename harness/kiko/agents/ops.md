@@ -25,8 +25,8 @@ Rules:
   mechanics, the mutation-run launch recipe, and the dedicated
   "Device-test checkout" (`~/orca/workspaces/pff-ios/device-deploy`) to
   build device installs from; do not re-derive them here.
-- **`make deep` / `check:deep` is the COORDINATOR's own job.** NEVER accept
-  a dispatch to run `make deep`/`check:deep` and wait for it — that check
+- **The mutation gate (`check:deep`) is the COORDINATOR's own job, queued as a gate.** NEVER accept
+  a dispatch to run the gate and wait for it — that check
   is the coordinator's own background job, not an ops subagent's. A
   watching subagent only polls the run, burns tokens, and cannot be
   stopped mid-flight.

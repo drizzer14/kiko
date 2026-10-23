@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -56,6 +57,19 @@ interface Project {
   run: (targets?: string[], options?: RunOptions) => SpawnSyncReturns<string>;
   file: (name: string, content: string) => string;
   invocations: () => string[];
+  // Replaces the ceilings file's text; null removes the file.
+  ceilings: (content: string | null) => void;
+}
+
+// The file the dup.sh large-file pass reads, beside dup.sh: one `<path>\t<percent>` row per
+// listed file and one row under COMBINED_ROW for the no-argument combined baseline.
+const CEILINGS_PATH = 'scripts/checks/dup-ceilings.tsv';
+const COMBINED_ROW = '*combined*';
+
+function ceilingsText(rows: Record<string, number>): string {
+  return Object.entries(rows)
+    .map(([name, percent]) => `${name}\t${percent}\n`)
+    .join('');
 }
 
 function createProject(libraryPaddingLines = 0): Project {
@@ -68,6 +82,8 @@ function createProject(libraryPaddingLines = 0): Project {
     join(REPOSITORY_ROOT, 'scripts/checks/_lib.sh'),
     join(root, 'scripts/checks/_lib.sh'),
   );
+  const ceilingsFile = join(root, CEILINGS_PATH);
+  writeFileSync(ceilingsFile, ceilingsText({ [COMBINED_ROW]: 100 }));
   appendFileSync(
     join(root, 'scripts/checks/_lib.sh'),
     Array.from({ length: libraryPaddingLines }, (_unused, index) => `# padding ${index}\n`).join(
@@ -129,6 +145,13 @@ function createProject(libraryPaddingLines = 0): Project {
 
       return path;
     },
+    ceilings: (content) => {
+      if (content === null) {
+        rmSync(ceilingsFile, { force: true });
+      } else {
+        writeFileSync(ceilingsFile, content);
+      }
+    },
     invocations: () =>
       existsSync(logPath)
         ? readFileSync(logPath, 'utf8')
@@ -148,10 +171,24 @@ afterEach(() => {
   removeTemporaryDirectories();
 });
 
+const NEVER_FAILS = 100;
+
+// The rows that test the warning's format, order and batching list their fixtures in the
+// ceilings file, so the WARNING path runs; the unlisted-file verdict has its own row below.
+function listAtNeverFailingCeiling(project: Project, names: string[]): void {
+  project.ceilings(
+    ceilingsText({
+      ...Object.fromEntries(names.map((name) => [name, NEVER_FAILS])),
+      [COMBINED_ROW]: NEVER_FAILS,
+    }),
+  );
+}
+
 describe('scripts/checks/dup.sh large files', () => {
   it('warns about a file over 1000 lines that is over the threshold, naming its percentage', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
+    listAtNeverFailingCeiling(project, ['src/big.ts']);
 
     const result = project.run();
 
@@ -163,6 +200,7 @@ describe('scripts/checks/dup.sh large files', () => {
   it('warns about a file between 10% and 50% when FORCE_COLOR colors every node number', () => {
     const project = createProject();
     project.file('src/middling.ts', `${unique(1100)}\n${duplicated(30)}`);
+    listAtNeverFailingCeiling(project, ['src/middling.ts']);
 
     const result = project.run([], { environment: { FORCE_COLOR: '3' } });
 
@@ -196,6 +234,7 @@ describe('scripts/checks/dup.sh large files', () => {
     const project = createProject();
     const longLine = `export const padding = '${'x'.repeat(2000)}';\n`;
     project.file('src/wide.ts', `${duplicated(3)}${longLine.repeat(60)}`);
+    listAtNeverFailingCeiling(project, ['src/wide.ts']);
 
     const result = project.run();
 
@@ -254,6 +293,7 @@ describe('scripts/checks/dup.sh large files', () => {
     const project = createProject();
     const changed = project.file('src/changed.ts', duplicated(120));
     project.file('src/untouched.ts', duplicated(130));
+    listAtNeverFailingCeiling(project, ['src/changed.ts', 'src/untouched.ts']);
 
     const result = project.run([changed]);
 
@@ -265,6 +305,7 @@ describe('scripts/checks/dup.sh large files', () => {
   it('prints the warning again on a repeated scoped run whose blocking pass dedup skips', () => {
     const project = createProject();
     const changed = project.file('src/changed.ts', duplicated(120));
+    listAtNeverFailingCeiling(project, ['src/changed.ts']);
     const blockingCalls = () => project.invocations().filter((call) => !call.includes(' --'));
 
     const first = project.run([changed]);
@@ -283,6 +324,11 @@ describe('scripts/checks/dup.sh large files', () => {
     for (const name of ['f', 'e', 'd', 'c', 'b', 'a']) {
       project.file(`src/${name}.ts`, duplicated(120));
     }
+
+    listAtNeverFailingCeiling(
+      project,
+      ['a', 'b', 'c', 'd', 'e', 'f'].map((name) => `src/${name}.ts`),
+    );
 
     const result = project.run();
 
@@ -311,6 +357,11 @@ describe('scripts/checks/dup.sh large files', () => {
       project.file(`src/${name}.ts`, duplicated(120));
     }
 
+    listAtNeverFailingCeiling(
+      project,
+      ['a', 'b', 'c', 'd', 'e', 'f'].map((name) => `src/${name}.ts`),
+    );
+
     const result = project.run([], { stub: 'slow-combined' });
 
     const calls = project.invocations();
@@ -334,34 +385,40 @@ describe('scripts/checks/dup.sh large files', () => {
     expect(project.invocations().filter((call) => call.includes('--silent'))).toHaveLength(0);
   });
 
-  it('warns, never stays silent, when jscpd fails on a large file', () => {
+  it('fails, never stays silent, when jscpd fails on a large file', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
+    listAtNeverFailingCeiling(project, ['src/big.ts']);
 
     const result = project.run([], { stub: 'measure-fail' });
 
-    expect(result.status).toBe(0);
-    expect(result.stderr).toMatch(/WARNING[^\n]*could not measure[^\n]*src\/big\.ts/);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED');
+    expect(result.stderr).toMatch(/could not measure[^\n]*src\/big\.ts[^\n]*jscpd failed/);
   });
 
-  it('warns when jscpd writes no figure for a large file', () => {
+  it('fails when jscpd writes no figure for a large file', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
+    listAtNeverFailingCeiling(project, ['src/big.ts']);
 
     const result = project.run([], { stub: 'measure-empty' });
 
-    expect(result.status).toBe(0);
-    expect(result.stderr).toMatch(/WARNING[^\n]*could not measure[^\n]*src\/big\.ts/);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED');
+    expect(result.stderr).toMatch(/could not measure[^\n]*src\/big\.ts[^\n]*no figure/);
   });
 
-  it('warns, never stays silent, when jscpd cannot list the files it skipped', () => {
+  it('fails, never stays silent, when jscpd cannot list the files it skipped', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
+    listAtNeverFailingCeiling(project, ['src/big.ts']);
 
     const result = project.run([], { stub: 'list-fail' });
 
-    expect(result.status).toBe(0);
-    expect(result.stderr).toMatch(/WARNING[^\n]*could not list/);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED');
+    expect(result.stderr).toMatch(/could not list/);
   });
 
   it('stays silent when no file is over the size limits', () => {
@@ -372,5 +429,233 @@ describe('scripts/checks/dup.sh large files', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
+  });
+});
+
+// The figure jscpd measures, alone with the limits raised, for LISTED_CONTENT; jscpd is
+// deterministic, so the ceiling rows below can sit exactly at it and 0.01 under it.
+const LISTED_CONTENT = `${unique(1100)}\n${duplicated(30)}`;
+const LISTED_FIGURE = 18.98;
+const LISTED_PATH = 'src/listed.ts';
+
+function listedRow(ceiling: number): string {
+  return ceilingsText({ [LISTED_PATH]: ceiling, [COMBINED_ROW]: NEVER_FAILS });
+}
+
+describe('scripts/checks/dup.sh ceilings file', () => {
+  it('measures the listed fixture at the figure the rows assume', () => {
+    const project = createProject();
+    project.file(LISTED_PATH, LISTED_CONTENT);
+    project.ceilings(listedRow(NEVER_FAILS));
+
+    const result = project.run();
+
+    expect(measuredPercentage(result.stderr, 'listed\\.ts')).toBe(LISTED_FIGURE);
+  });
+
+  describe('a listed file', () => {
+    it.each([
+      ['well under its ceiling', LISTED_FIGURE + 10],
+      ['exactly at its ceiling', LISTED_FIGURE],
+    ])('stays a WARNING, exit 0, when %s', (_title, ceiling) => {
+      const project = createProject();
+      project.file(LISTED_PATH, LISTED_CONTENT);
+      project.ceilings(listedRow(ceiling));
+
+      const result = project.run();
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toMatch(
+        /WARNING: check:dup src\/listed\.ts is over jscpd's size limit/,
+      );
+      expect(result.stderr).not.toContain('CHECK FAILED');
+    });
+
+    it.each([
+      ['0.01 above its ceiling', LISTED_FIGURE - 0.01],
+      ['far above its ceiling', 5],
+    ])('FAILS, exit 2, naming the file, its figure and its ceiling, when %s', (_title, ceiling) => {
+      const project = createProject();
+      project.file(LISTED_PATH, LISTED_CONTENT);
+      project.ceilings(listedRow(ceiling));
+
+      const result = project.run();
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('CHECK FAILED');
+      expect(result.stderr).toContain(LISTED_PATH);
+      expect(result.stderr).toContain(String(LISTED_FIGURE));
+      expect(result.stderr).toContain(String(ceiling));
+    });
+
+    it('FAILS on every repeated scoped run, because the dedup skips only the blocking pass', () => {
+      const project = createProject();
+      const listed = project.file(LISTED_PATH, LISTED_CONTENT);
+      project.ceilings(listedRow(LISTED_FIGURE - 0.01));
+
+      const first = project.run([listed]);
+      const second = project.run([listed]);
+
+      expect([first.status, second.status]).toEqual([2, 2]);
+      expect(second.stderr).toContain(LISTED_PATH);
+    });
+
+    it('is a WARNING that names the file when its row points at a deleted file', () => {
+      const project = createProject();
+      project.file('src/small.ts', unique(40));
+      project.ceilings(ceilingsText({ 'src/gone.ts': 9, [COMBINED_ROW]: NEVER_FAILS }));
+
+      const result = project.run();
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toMatch(/WARNING[^\n]*src\/gone\.ts/);
+    });
+  });
+
+  describe('a file that is not listed', () => {
+    it('FAILS, exit 2, naming the file, when it is over the size limit and over the threshold', () => {
+      const project = createProject();
+      project.file('src/unlisted.ts', duplicated(120));
+
+      const result = project.run();
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('CHECK FAILED');
+      expect(result.stderr).toContain('src/unlisted.ts');
+    });
+
+    it('stays silent, exit 0, over 1000 lines and under the threshold', () => {
+      const project = createProject();
+      project.file('src/unlisted.ts', unique(1101));
+
+      const result = project.run();
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+    });
+
+    it('stays silent, exit 0, when a large file measures under the threshold', () => {
+      const project = createProject();
+      project.file('src/mostly-clean.ts', `${unique(1100)}\n${duplicated(2)}`);
+
+      const result = project.run();
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+    });
+  });
+
+  describe('the combined figure', () => {
+    const copyingFiles = (project: Project) => [
+      project.file('src/first.ts', unique(1100)),
+      project.file('src/second.ts', unique(1100)),
+    ];
+
+    it('FAILS, exit 2, on a no-argument run above its baseline', () => {
+      const project = createProject();
+      copyingFiles(project);
+      project.ceilings(ceilingsText({ [COMBINED_ROW]: 7.33 }));
+
+      const result = project.run();
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('CHECK FAILED');
+      expect(result.stderr).toContain('combined');
+      expect(result.stderr).toContain('7.33');
+    });
+
+    it('stays a WARNING, exit 0, on a no-argument run at or under its baseline', () => {
+      const project = createProject();
+      copyingFiles(project);
+      project.ceilings(ceilingsText({ [COMBINED_ROW]: NEVER_FAILS }));
+
+      const result = project.run();
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toMatch(/WARNING: check:dup combined run/);
+    });
+
+    it('stays a WARNING, exit 0, on a scoped run above the baseline', () => {
+      const project = createProject();
+      const scope = copyingFiles(project);
+      project.ceilings(ceilingsText({ [COMBINED_ROW]: 7.33 }));
+
+      const result = project.run(scope);
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toMatch(/WARNING: check:dup combined run/);
+      expect(result.stderr).not.toContain('CHECK FAILED');
+    });
+  });
+
+  describe('fails closed', () => {
+    // A file over 100kb is skipped by size, from its stat, before jscpd reads it; only the
+    // raised-limit listing reads it, so an unreadable one is a real jscpd failure of that pass.
+    it('with exit 2 when jscpd fails to list a large file it cannot read', () => {
+      const project = createProject();
+      const unreadable = project.file(
+        LISTED_PATH,
+        `${duplicated(3)}${`export const padding = '${'x'.repeat(2000)}';\n`.repeat(60)}`,
+      );
+      project.ceilings(listedRow(NEVER_FAILS));
+      chmodSync(unreadable, 0o000);
+
+      const result = project.run();
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('CHECK FAILED');
+    });
+
+    it('with exit 2 when the ceilings file is missing and only small files are in scope', () => {
+      const project = createProject();
+      const small = project.file('src/small.ts', unique(40));
+      project.ceilings(null);
+
+      const result = project.run([small]);
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('CHECK FAILED');
+      expect(result.stderr).toContain('dup-ceilings.tsv');
+    });
+
+    it('with exit 2 when the ceilings file is missing', () => {
+      const project = createProject();
+      project.file(LISTED_PATH, LISTED_CONTENT);
+      project.ceilings(null);
+
+      const result = project.run();
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('CHECK FAILED');
+      expect(result.stderr).toContain('dup-ceilings.tsv');
+    });
+
+    it.each([
+      ['a percentage that is not a number', `${LISTED_PATH}\tabc\n${COMBINED_ROW}\t100\n`],
+      ['a row with no tab', `${LISTED_PATH} 18.98\n${COMBINED_ROW}\t100\n`],
+      ['an empty percentage', `${LISTED_PATH}\t\n${COMBINED_ROW}\t100\n`],
+      ['a negative percentage', `${LISTED_PATH}\t-1\n${COMBINED_ROW}\t100\n`],
+      ['a repeated path', `${LISTED_PATH}\t10\n${LISTED_PATH}\t20\n${COMBINED_ROW}\t100\n`],
+      ['no combined row', `${LISTED_PATH}\t10\n`],
+    ])('with exit 2 when the ceilings file holds %s', (_title, content) => {
+      const project = createProject();
+      project.file(LISTED_PATH, LISTED_CONTENT);
+      project.ceilings(content);
+
+      const result = project.run();
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('CHECK FAILED');
+      expect(result.stderr).toContain('dup-ceilings.tsv');
+    });
+  });
+
+  it('still exits 2 and names the path when a path argument was deleted', () => {
+    const project = createProject();
+
+    const result = project.run(['src/gone/does-not-exist.test.ts']);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('does not exist');
   });
 });

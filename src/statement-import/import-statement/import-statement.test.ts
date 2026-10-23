@@ -308,6 +308,20 @@ const makeImportDatabaseTransaction = (
   return { databaseTransaction, captured };
 };
 
+// The mocked database handing out a fresh fake write transaction over an empty store, for the
+// default holding on an unsynced account: the setup most import tests start from.
+const installEmptyStore = (): { transactions: StoredRow[] } => {
+  const store: { transactions: StoredRow[] } = { transactions: [] };
+
+  mockDatabaseTransaction = makeImportDatabaseTransaction({
+    store,
+    holding: defaultHolding(),
+    account: unsyncedAccount,
+  }).databaseTransaction;
+
+  return store;
+};
+
 describe('importStatement', () => {
   it('detects the format, maps every row, and imports all of them on a first pass', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
@@ -929,13 +943,7 @@ describe('a real 00:00:00 row the ledger already holds at noon', () => {
 // wiring the matcher inside it alone covers both.
 describe('importParsedStatement runs the loan auto-link matcher', () => {
   it('runs it once after a dedicated (importStatement) import commits', async () => {
-    const store: { transactions: StoredRow[] } = { transactions: [] };
-    const { databaseTransaction } = makeImportDatabaseTransaction({
-      store,
-      holding: defaultHolding(),
-      account: unsyncedAccount,
-    });
-    mockDatabaseTransaction = databaseTransaction;
+    installEmptyStore();
 
     await importStatement(monobankInput, 'holding-1');
 
@@ -943,13 +951,7 @@ describe('importParsedStatement runs the loan auto-link matcher', () => {
   });
 
   it('runs it once after a column-mapping (direct importParsedStatement) import commits', async () => {
-    const store: { transactions: StoredRow[] } = { transactions: [] };
-    const { databaseTransaction } = makeImportDatabaseTransaction({
-      store,
-      holding: defaultHolding(),
-      account: unsyncedAccount,
-    });
-    mockDatabaseTransaction = databaseTransaction;
+    installEmptyStore();
     const parsed = {
       formatId: 'column-mapping' as const,
       account: { currency: 'UAH' as const },
@@ -971,13 +973,7 @@ describe('importParsedStatement runs the loan auto-link matcher', () => {
 
 describe('importParsedStatement hands each row its time reading', () => {
   it("passes each row's own reading and stores no reading column", async () => {
-    const store: { transactions: StoredRow[] } = { transactions: [] };
-    const { databaseTransaction } = makeImportDatabaseTransaction({
-      store,
-      holding: defaultHolding(),
-      account: unsyncedAccount,
-    });
-    mockDatabaseTransaction = databaseTransaction;
+    const store = installEmptyStore();
     const importRows = jest.spyOn(transactionsRepo, 'importRows');
     const parsed = {
       formatId: 'sensebank-csv' as const,
@@ -1038,13 +1034,7 @@ describe('importParsedStatement runs the one-shot statement-import rewrites firs
   };
 
   it('runs the dedup-key upgrade, then the import-time rezone, before writing any row', async () => {
-    const store: { transactions: StoredRow[] } = { transactions: [] };
-    const { databaseTransaction } = makeImportDatabaseTransaction({
-      store,
-      holding: defaultHolding(),
-      account: unsyncedAccount,
-    });
-    mockDatabaseTransaction = databaseTransaction;
+    installEmptyStore();
     const order: string[] = [];
     mockUpgradeStoredDedupKeys.mockImplementation(async () => {
       order.push('dedup-key-upgrade');
@@ -1060,13 +1050,7 @@ describe('importParsedStatement runs the one-shot statement-import rewrites firs
   });
 
   it('refuses the import, writing no row, when the rezone flag is still false afterward', async () => {
-    const store: { transactions: StoredRow[] } = { transactions: [] };
-    const { databaseTransaction } = makeImportDatabaseTransaction({
-      store,
-      holding: defaultHolding(),
-      account: unsyncedAccount,
-    });
-    mockDatabaseTransaction = databaseTransaction;
+    const store = installEmptyStore();
     mockImportTimesRezoned = false;
 
     await expect(importParsedStatement(parsed, 'holding-1')).rejects.toThrow(
@@ -1135,12 +1119,7 @@ describe('previewParsedStatementBalance', () => {
   });
 
   it('hands the repository the same rows and closing balance the import writes', async () => {
-    const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockDatabaseTransaction = makeImportDatabaseTransaction({
-      store,
-      holding: defaultHolding(),
-      account: unsyncedAccount,
-    }).databaseTransaction;
+    installEmptyStore();
 
     await importParsedStatement(parsed, 'holding-1');
     await previewParsedStatementBalance(parsed, 'holding-1');

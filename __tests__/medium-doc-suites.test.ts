@@ -459,6 +459,19 @@ describe('make doc-suites, run by hand', () => {
     expect(jestRuns(project)).toEqual([DISCOVERED]);
   });
 
+  it('hands jest the same two workers as the Stop tier, so a by-hand run is as light', () => {
+    const byHand = projectWithPass();
+    writeFile(byHand, 'docs/harness/new.md', 'changed\n');
+    const stop = projectWithPass();
+    writeFile(stop, 'docs/harness/new.md', 'changed\n');
+
+    runByHand(byHand);
+    runMedium(stop);
+
+    expect(jestCalls(byHand)).toEqual([['--maxWorkers=2', ...DISCOVERED]]);
+    expect(jestCalls(byHand)).toEqual(jestCalls(stop));
+  });
+
   it('records nothing when a suite fails, so the next Stop runs and blocks', () => {
     const project = projectWithPass();
     writeFile(project, 'docs/harness/new.md', 'changed\n');

@@ -151,36 +151,26 @@ verified usage, not dead weight:
 - **Tracked debt, not an ignore: `check:dup` size-limit warning**
   (`scripts/checks/dup.sh`, dated 2026-10-11). jscpd 4.3.0 skips a file over
   1000 lines or 100kb without a word, so the blocking run never measured the
-  large files. `dup.sh` now runs a second, NON-blocking pass: it measures each
-  skipped file ALONE with the limits raised and prints a `WARNING` on stderr
-  (exit code unchanged) for every file over the 5% threshold. No file is
-  allowlisted and the threshold is not raised: the files listed below are measured
-  debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:
-  `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
-  `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
-  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.77%
-  (this one figure re-measured 2026-10-19 at `d78cfccd`; the rise from 7.38% is
-  not a regression of the Binance branch: it came mostly from `62f248ed`,
-  `e7cc80f5` and main merges, so the entry moved, not the test),
-  `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
-  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.55%,
-  `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
-  5.75%, `holding-form.screen.test.tsx` 5.36% (every non-test source file over
-  the limit is under 2%). A second figure is tracked beside the per-file ones:
-  one more run measures the whole scope TOGETHER with the limits raised,
-  because a clone between a large file and another file is invisible to the
-  alone runs. Its baseline on 2026-10-11 is 7.33% of lines, against 3.24% for
-  the blocking run with the default limits, and it applies to the no-argument
-  (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total
-  above the threshold is expected until the sweep lands, and a figure above
-  7.33% is a new regression. A listed file's figure is a ceiling: a later rise
-  above it is a new regression; fix the test, or re-record the figure only with
-  a reviewer finding that names the cause. **Flip condition:** a separate sweep track makes
-  every large file 5% or less alone AND the combined raised total 5% or less;
-  then this warning becomes a failure (`exit 2` through `print_block`) and
-  this entry is deleted. The
-  warning is a stated exception to the "silent on success" wrapper contract
-  (kiko-linter's "The wrapper contract").
+  large files. `dup.sh` runs a second pass: it measures each skipped file
+  ALONE with the limits raised, and one more run measures the whole scope
+  TOGETHER (a clone between a large file and another file is invisible to the
+  alone runs). The tracked figures live in `scripts/checks/dup-ceilings.tsv`,
+  one `<path><TAB><percent>` row per large test file plus one `*combined*`
+  row, the whole-repo combined baseline. No file is allowlisted and the
+  threshold is not raised. A listed file over the 5% threshold but at or under
+  its ceiling prints a `WARNING` on stderr and the exit code stays 0; this
+  is the tracked debt, and the `dup.sh` warning output is the live list. A
+  listed file above its ceiling, an unlisted file over the threshold, a
+  no-argument combined figure above its baseline (a scoped run's combined
+  figure is not comparable, so it only warns), a jscpd failure to list or
+  measure, and a missing or malformed ceilings file all fail (`exit 2`
+  through `print_block`). A row naming a file that is not on disk warns.
+  A ceiling never rises: fix the test, or change a row only with a reviewer
+  finding that names the cause. **Flip condition:** a separate sweep track
+  makes every large file 5% or less alone AND the combined raised total 5%
+  or less; then the rows and this entry are deleted. The warning is a stated
+  exception to the "silent on success" wrapper contract (kiko-linter's "The
+  wrapper contract").
 - **`knip.json` `entry`** (an entry point, not an ignore):
   `scripts/bundle-contains.js` — the bundle freshness checker that only
   `scripts/deploy-device.sh` runs (`node scripts/bundle-contains.js`), so
@@ -787,6 +777,41 @@ verified usage, not dead weight:
   lives in the comments next to the rule in that file, so read the rule
   there for it. Older rules may still have only the inline comment, and
   gain a bullet the next time their exclude changes.
+
+- **`kiko-balance-through-repo` (`rules/semgrep-mobile.yml`) excludes
+  `src/test-support/**`.** Shared test fixtures there build and read raw holding rows
+  (`delete-cascade-fixture.ts`, `implicit-total-parity.ts` read `balanceMinorUnits`), the same
+  reason the rule already excludes every `*.test.ts(x)`: a fixture stands in for the repository
+  boundary. The glob matches at any depth (Semgrep 1.175.0 does not anchor `paths.exclude`), so
+  it also skips a `src/test-support` folder nested inside `rules/fixtures/`. The proof is the
+  nested good fixture
+  `rules/fixtures/kiko-balance-through-repo/src/test-support/balance-read-example.good.ts`; the
+  positive case stays the flat `rules/fixtures/kiko-balance-through-repo.bad.ts`, since a
+  positive fixture under an excluded path would prove nothing.
+
+- **`kiko-no-test-fixture-import-in-app` (`rules/semgrep-prewrite.yml`) excludes `*.test.ts`,
+  `*.test.tsx`, `*-test-fixtures.ts`, `*-test-fixtures.tsx`, `*-test-helper.ts`,
+  `*-test-helper.tsx`, `**/test-support/**`, `**/__fixtures__/**`, `**/__mocks__/**`,
+  `__tests__/**`, `e2e/**`, `scripts/**` and `harness/**`.** The rule bans app source importing
+  test scaffolding (Guideline 2.5.19), so every excluded path is itself test scaffolding or
+  tooling that never ships: tests, the fixture and helper modules (`.ts` and `.tsx`, which import
+  each other, such as `binance.earn-test-fixtures.ts` from another fixture), the shared
+  `src/test-support/` modules, `__fixtures__/` folders, manual mocks, the harness tests, `e2e/`,
+  and the `scripts/` and `harness/` trees; `mutation.sh` filters the same scaffolding set out of
+  the mutated files. The globs match at any depth (Semgrep 1.175.0 does not anchor
+  `paths.exclude`), so the excluded cases sit in nested fixtures
+  (`rules/fixtures/kiko-no-test-fixture-import-in-app/src/test-support/`, `.../src/a/__mocks__/`
+  and `.../src/a/__fixtures__/`) and the positive cases stay in the flat
+  `rules/fixtures/kiko-no-test-fixture-import-in-app.bad.ts`.
+  The four name excludes (`*-test-fixtures.ts`/`.tsx`, `*-test-helper.ts`/`.tsx`) have no fixture
+  pin: a runner fixture name `<id>.good.ts` can never match them. A control run of the rule
+  WITHOUT its `paths.exclude` over every `git ls-files 'src/*.ts' 'src/*.tsx'` file finds, outside
+  `*.test.ts` and `*.test.tsx`, only `*-test-fixtures.ts` (4 findings in 3 files) and
+  `*-test-helper.ts` (1 finding), so those two `.ts` name excludes are measured load-bearing. The
+  `.tsx` twins, `test-support/`, `__fixtures__/` and `__mocks__/` have no finding in `src/` today
+  and are guarded by the nested fixtures (folders) or by this entry alone (the `.tsx` twins).
+  Re-measure with one Semgrep run holding only this rule, over named files in batches (never a
+  whole-repo scan): the rule block in a scratch config, with and without `paths`.
 
 - **`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`)
   excludes every test file (`*.test.ts`, `*.test.tsx`, `__tests__/**`,

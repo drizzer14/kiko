@@ -214,6 +214,26 @@ const breakMergeBaseWith = (tip: string): void => {
   );
 };
 
+// Puts a `find` ahead of the real one that lists a fixed src tree and then exits 1 (what a find
+// that hit an unreadable folder does) for `find src`, and runs the real find for every other call.
+const failSourceListing = (): void => {
+  const realFind = execFileSync('which', ['find'], { encoding: 'utf8' }).trim();
+  shimDirectory = join(temporaryDirectory, 'shims');
+  mkdirSync(shimDirectory);
+  writeExecutable(
+    join(shimDirectory, 'find'),
+    [
+      '#!/usr/bin/env bash',
+      'if [ "$#" -eq 1 ] && [ "$1" = src ]; then',
+      "  printf 'src\\nsrc/present\\nsrc/present/present.ts\\n'",
+      '  exit 1',
+      'fi',
+      `exec "${realFind}" "$@"`,
+      '',
+    ].join('\n'),
+  );
+};
+
 const check = (script = 'shipped-migrations.sh'): Run => {
   const shimmedPath =
     shimDirectory === undefined ? process.env.PATH : `${shimDirectory}:${process.env.PATH}`;
@@ -681,6 +701,146 @@ describe('the medium tier', () => {
     commitAll(root, 'add a migration');
 
     expect(check('medium.sh')).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+});
+
+describe('the src paths named in an unshipped migration header', () => {
+  const PRESENT_FILE = 'src/present/present.ts';
+  const PRESENT_FOLDER = 'src/present/';
+  const MISSING_FILE = 'src/missing/missing.ts';
+  const MISSING_FOLDER = 'src/gone/';
+
+  const DASH_COMMENT = (body: string): string =>
+    `-- Reads \`${body}\`.\nCREATE TABLE c (id integer);\n`;
+  const BLOCK_COMMENT = (body: string): string =>
+    `/*\n * Reads \`${body}\`.\n */\nCREATE TABLE c (id integer);\n`;
+  const COMMENT_FORMS: Array<[string, (body: string) => string]> = [
+    ['a -- comment', DASH_COMMENT],
+    ['a block comment', BLOCK_COMMENT],
+  ];
+
+  const repositoryWithSource = (): void => {
+    freshRepository();
+    writeFile(root, PRESENT_FILE, 'export {};\n');
+    commitAll(root, 'add the source the headers may name');
+  };
+
+  describe.each(COMMENT_FORMS)('in %s', (_form, commentOf) => {
+    it('fails when it names a missing file, naming the migration and the path', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(MISSING_FILE));
+
+      expectFailureNaming(check(), THIRD_SQL, MISSING_FILE);
+    });
+
+    it('fails when it names a missing folder, naming the migration and the path', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(MISSING_FOLDER));
+
+      expectFailureNaming(check(), THIRD_SQL, MISSING_FOLDER);
+    });
+
+    it('fails when a trailing-slash path names a file, not a folder', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(`${PRESENT_FILE}/`));
+
+      expectFailureNaming(check(), THIRD_SQL, `${PRESENT_FILE}/`);
+    });
+
+    it('passes when it names an existing file and an existing folder', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(`${PRESENT_FILE}\` and \`${PRESENT_FOLDER}`));
+
+      expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+    });
+
+    it('names only the missing path when it names two and one is missing', () => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, commentOf(`${PRESENT_FILE}\` and \`${MISSING_FILE}`));
+      const run = check();
+
+      expectFailureNaming(run, THIRD_SQL, MISSING_FILE);
+      expect(run.stderr).not.toContain(PRESENT_FILE);
+    });
+  });
+
+  it('passes for a shipped migration that names a missing path', () => {
+    freshRepository();
+    git(root, 'switch', '-q', 'main');
+    writeFile(root, FIRST_SQL, DASH_COMMENT(MISSING_FILE));
+    commitAll(root, 'main ships a header naming a path since moved');
+    git(root, 'switch', '-q', 'feature');
+    git(root, 'merge', '-q', '--ff-only', 'main');
+
+    expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('passes when the missing path sits in an SQL string literal, not a comment', () => {
+    repositoryWithSource();
+    writeFile(root, THIRD_SQL, `INSERT INTO c (id) VALUES ('see \`${MISSING_FILE}\`');\n`);
+
+    expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('fails after a passed run when a src rename leaves the header stale', () => {
+    repositoryWithSource();
+    writeFile(root, THIRD_SQL, DASH_COMMENT(PRESENT_FILE));
+
+    expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+
+    renameSync(join(root, PRESENT_FILE), join(root, 'src/present/moved.ts'));
+
+    expectFailureNaming(check(), THIRD_SQL, PRESENT_FILE);
+  });
+
+  it('runs again after a passed run when the src listing fails, so a partial listing never skips', () => {
+    repositoryWithSource();
+    failSourceListing();
+    writeFile(root, THIRD_SQL, DASH_COMMENT(PRESENT_FILE));
+
+    expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+
+    rmSync(join(root, PRESENT_FILE));
+
+    expectFailureNaming(check(), THIRD_SQL, PRESENT_FILE);
+  });
+
+  describe('which text is a comment', () => {
+    const MISSING = `\`${MISSING_FILE}\``;
+
+    it.each([
+      ['-- inside a string', `INSERT INTO c (note) VALUES ('a -- see ${MISSING}');\n`],
+      [
+        '/* inside a string, the path in a later string',
+        `INSERT INTO c (note) VALUES ('a /* b');\nINSERT INTO d (note) VALUES ('${MISSING}');\n`,
+      ],
+      [
+        '-- inside a doubled-quote string',
+        `INSERT INTO c (note) VALUES ('it''s -- ${MISSING}');\n`,
+      ],
+      ['-- inside a "quoted" identifier', `CREATE TABLE "x -- ${MISSING}" (id integer);\n`],
+      ['-- inside a [bracket] identifier', `CREATE TABLE [x -- ${MISSING}] (id integer);\n`],
+      [
+        '-- inside a backtick identifier with doubled backticks',
+        'CREATE TABLE `x -- ``src/missing/missing.ts`` y` (id integer);\n',
+      ],
+    ])('passes when the path sits behind a %s', (_form, sql) => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, sql);
+
+      expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+    });
+
+    it.each([
+      ['a string holding --', `INSERT INTO c (note) VALUES ('a -- b');\n-- Reads ${MISSING}\n`],
+      ["a [bracket] identifier with a '", `CREATE TABLE [a'b] (id integer); -- Reads ${MISSING}\n`],
+      ['an unterminated block comment', `/* Reads ${MISSING}\nCREATE TABLE c (id integer);\n`],
+    ])('fails for a comment after %s', (_form, sql) => {
+      repositoryWithSource();
+      writeFile(root, THIRD_SQL, sql);
+
+      expectFailureNaming(check(), THIRD_SQL, MISSING_FILE);
+    });
   });
 });
 

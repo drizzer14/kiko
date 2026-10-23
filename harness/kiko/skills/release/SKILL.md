@@ -13,7 +13,8 @@ Preconditions:
 - On `main`, or on a `release-X.Y` branch (see "Release branch cut from an older main").
 - Clean tree (the harmless Xcode `TARGETED_DEVICE_FAMILY`/pbxproj
   normalization is allowed).
-- `npm run check:all` is green.
+- A queued check-all or verify line for the release sha is green (typed `npm run check:all`
+  is denied).
 
 Merging into `main` (coordinator ruling): never apply, merge, rebase,
 pull, cherry-pick, revert, or am in the main checkout (what passes:
