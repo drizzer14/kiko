@@ -58,10 +58,10 @@ import {
   type HistoryWindow,
   isCapitalSettled,
 } from './binance.history-client';
-import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWallet, binanceKeyOf, holdingKeyOf, SPOT_KEY } from './binance.holding-keys';
 
@@ -726,6 +726,7 @@ const runSync = async (
             write,
           }),
       }),
+    isUnreadableWindowError,
     ...roundRobinHooksOf({ marks: context.marks, write }),
   });
 };

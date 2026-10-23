@@ -53,11 +53,11 @@ import {
   RESYNC_OVERLAP_MS,
 } from './binance.transactions';
 import { holdingKeyOf } from './binance.holding-keys';
-import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import { BinanceHistoryTooOldError, type FetchAccountOptions } from './binance.client';
 import { type BinanceHistoryRun, COSTS, LANE_CALL_CAPS } from './binance.history-budget';
 import { type BinanceP2pOrder, fetchP2pOrders, type TotalPage } from './binance.history-client';
@@ -605,6 +605,7 @@ const runSync = async (
         hint,
         onComplete: (read) => dropReadPoints({ pass, window, read, marks: context.marks, write }),
       }),
+    isUnreadableWindowError,
     ...roundRobinHooksOf({ marks: context.marks, write }),
   });
   const lastWindowEnd = plan.forward.at(-1)?.end;

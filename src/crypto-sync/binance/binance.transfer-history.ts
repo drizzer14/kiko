@@ -62,12 +62,12 @@ import {
   UNIVERSAL_TRANSFER_TYPES,
   type UniversalTransferType,
 } from './binance.history-client';
-import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import { BinanceHistoryTooOldError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWallet, exchangePairIdOf, holdingKeyOf } from './binance.holding-keys';
 
@@ -588,6 +588,7 @@ const runSync = async (
             write,
           }),
       }),
+    isUnreadableWindowError,
     ...roundRobinHooksOf({ marks: context.marks, write }),
   });
 };

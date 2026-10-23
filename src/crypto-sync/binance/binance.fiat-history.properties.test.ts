@@ -14,11 +14,14 @@ import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
 import {
   type BinanceFiatOrderHistoryDeps,
+  type BinanceFiatPaymentHistoryDeps,
   FIAT_WINDOW_MS,
   syncBinanceFiatOrderHistory,
+  syncBinanceFiatPaymentHistory,
 } from './binance.fiat-history';
 import {
   type BinanceFiatOrder,
+  type BinanceFiatPayment,
   BinanceHistoryParseError,
   type FiatTransactionType,
 } from './binance.history-client';
@@ -26,19 +29,20 @@ import { NOW } from './binance.pay-test-fixtures';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { BinanceHistoryTooOldError } from './binance.client';
 import { createBinanceHistoryRun } from './binance.history-budget';
-import { fiatOrderOf, fiatPageOf, fiatServerOf } from './binance.fiat-test-fixtures';
+import { fiatOrderOf, fiatPageOf, fiatPaymentOf, fiatServerOf } from './binance.fiat-test-fixtures';
 
 /**
- * The fiat orders walk (a lane of three calls, so a run reads forward or behind) driven over
- * generated worlds through `syncBinanceFiatOrderHistory` itself, in several runs. The clock of the
- * runs stands still, moves on by a millisecond, an hour or a day a run, or is set back to before
- * the walk's cursor. A world holds records Binance writes late (older than the walk's cursor and
- * the overlap day), a new record on some runs, and, in some worlds, owed ground anywhere between
- * the history floor and the cursor, inside the 2-year re-scan window too, that no read clears (a
- * page that drifts, a page that throws) or that Binance refuses as older than it serves. What must
- * be imported is decided by the records the generator made, never read back from the walk.
+ * The fiat walks driven over generated worlds through `syncBinanceFiatOrderHistory` (a lane of
+ * three calls, so a run reads forward or behind) and `syncBinanceFiatPaymentHistory` (a lane that
+ * reads forward and behind in one run) themselves, in several runs. The clock of the runs stands
+ * still, moves on by a millisecond, an hour or a day a run, or is set back to before the walk's
+ * cursor. A world holds records Binance writes late (older than the walk's cursor and the overlap
+ * day), a new record on some runs, and, in some worlds, owed ground anywhere between the history
+ * floor and the cursor, inside the 2-year re-scan window too, that no read clears (a page that
+ * drifts, a page that throws) or that Binance refuses as older than it serves. What must be
+ * imported is decided by the records the generator made, never read back from the walk.
  *
- * The second suite drives the same walk over every kind of status (a settled record, a word the
+ * The second suite drives the same walks over every kind of status (a settled record, a word the
  * walk does not know, a record that waits on Binance and settles or is refused later, a coin Kiko
  * does not track), with disturbed first runs: part of the lane spent, a window that throws, a 429.
  */
@@ -141,9 +145,9 @@ type Offer = { run: number; externalId: string };
 const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow =>
   ({ id, metadata }) as unknown as HoldingRow;
 
-type AnyRecord = BinanceFiatOrder;
+type AnyRecord = BinanceFiatOrder | BinanceFiatPayment;
 
-type WalkDeps = Partial<BinanceFiatOrderHistoryDeps>;
+type WalkDeps = Partial<BinanceFiatOrderHistoryDeps & BinanceFiatPaymentHistoryDeps>;
 
 type RecordParts = {
   orderNo: string;
@@ -165,8 +169,6 @@ type WorldKind = {
     deps: WalkDeps,
   ) => Promise<WalkResult>;
   recordOf: (parts: RecordParts) => AnyRecord;
-  /** The runs a record served is imported within, `zones` being the failing days in the window. */
-  importRunsOf: (zones: number) => number;
   /** The one status word that makes a row. */
   settledWord: string;
   /** A record of a status, for a whole amount `n`, on a coin Kiko tracks or not. */
@@ -188,7 +190,13 @@ type StatusRecordInput = {
   untracked: boolean;
 };
 
-const ORDERS_KIND: WorldKind = {
+/** A kind with the bound its records are imported within in the generated worlds. */
+type BoundedKind = WorldKind & {
+  /** The runs a record served is imported within, `zones` being the failing days in the window. */
+  importRunsOf: (zones: number) => number;
+};
+
+const ORDERS_KIND: BoundedKind = {
   name: 'fiat orders',
   walkId: 'fiatOrders',
   readKey: 'fetchFiatOrders',
@@ -212,6 +220,38 @@ const ORDERS_KIND: WorldKind = {
     key: `${accountId}:fiat:${orderNo}:EUR`,
     units: type === '1' ? -(n * 100 + 125) : n * 100,
     marker: `bank:EUR:${n}.00`,
+  }),
+};
+
+/** A card sale pays 0.001 BTC for 2600 UAH; the fixture is the card buy of that much. */
+const paymentOf = ({ type, ...parts }: RecordParts): BinanceFiatPayment =>
+  fiatPaymentOf(type === '0' ? parts : { ...parts, sourceAmount: '0.001', obtainAmount: '2600' });
+
+/** A whole number of coin units as the text of a coin amount at the scale of eight. */
+const coinTextOf = (units: number): string => `0.${String(units).padStart(8, '0')}`;
+
+const PAYMENTS_KIND: WorldKind = {
+  name: 'fiat payments',
+  walkId: 'fiatPayments',
+  readKey: 'fetchFiatPayments',
+  pageRows: 100,
+  holdings: [],
+  sync: syncBinanceFiatPaymentHistory,
+  recordOf: paymentOf,
+  settledWord: 'Completed',
+  statusRecordOf: ({ orderNo, createTime, type, n, status, untracked }) =>
+    fiatPaymentOf({
+      orderNo,
+      createTime,
+      status,
+      cryptoCurrency: untracked ? 'XYZ' : 'BTC',
+      sourceAmount: type === '0' ? `${n}.00` : coinTextOf(n),
+      obtainAmount: type === '0' ? coinTextOf(n) : `${n}.00`,
+    }),
+  rowOf: ({ accountId, orderNo, n, type }) => ({
+    key: `${accountId}:fiatpay:${orderNo}:BTC`,
+    units: type === '0' ? n : -n,
+    marker: `card:UAH:${n}.00`,
   }),
 };
 
@@ -268,24 +308,50 @@ const zonesInWindowOf = (owed: Span[], clock: RunClock): number => {
   return owed.filter((range) => range.end >= earliestRead).length;
 };
 
-const KINDS = [ORDERS_KIND];
+const KINDS: BoundedKind[] = [ORDERS_KIND];
+
+const STATUS_KINDS: WorldKind[] = [ORDERS_KIND, PAYMENTS_KIND];
 
 const KIND_CLOCKS = KINDS.flatMap((kind) =>
   CLOCKS.map((clock) => ({ kind, clock, kindName: kind.name, label: clock.label })),
 );
 
+/** The deps of a walk over a connected account whose reads are `fetchRecords`, at `runNow`. */
+const connectedDepsOf = (
+  kind: WorldKind,
+  runNow: number,
+  fetchRecords: (
+    apiKey: string,
+    secret: string,
+    type: FiatTransactionType,
+    span: Span,
+    page: number,
+  ) => Promise<unknown>,
+): WalkDeps => ({
+  now: () => runNow,
+  fetchImpl: (async () => ({})) as unknown as typeof fetch,
+  readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+  [kind.readKey]: fetchRecords,
+  ensureHoldings: async () => undefined,
+});
+
+/** Keeps the logged stops of the walks out of the output of the cases of the suite it is in. */
+const quietWarnings = (): void => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+};
+
 describe.each(KIND_CLOCKS)(
   'the $kindName walk over generated worlds, runs $label',
   ({ kind, clock }) => {
-    let warn: jest.SpyInstance;
-
-    beforeEach(() => {
-      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    });
-
-    afterEach(() => {
-      warn.mockRestore();
-    });
+    quietWarnings();
 
     describe.each(WORLDS)('with $stuck owed ground placed $place', (world) => {
       const { stuck } = world;
@@ -352,11 +418,7 @@ describe.each(KIND_CLOCKS)(
                   run: createBinanceHistoryRun({ now: () => runNow, sleep: async () => undefined }),
                 },
                 {
-                  now: () => runNow,
-                  fetchImpl: (async () => ({})) as unknown as typeof fetch,
-                  readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-                  [kind.readKey]: fetchRecords,
-                  ensureHoldings: async () => undefined,
+                  ...connectedDepsOf(kind, runNow, fetchRecords),
                   addTransactions: async (rows) => {
                     offers.push(...rows.map(({ externalId }) => ({ run, externalId })));
 
@@ -638,11 +700,7 @@ const runStatusWorld = async (kind: WorldKind, world: StatusWorld): Promise<Stat
       kind.sync(
         { targetAccountId: accountId, run: walkRun },
         {
-          now: () => runNow,
-          fetchImpl: (async () => ({})) as unknown as typeof fetch,
-          readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-          [kind.readKey]: fetchRecords,
-          ensureHoldings: async () => undefined,
+          ...connectedDepsOf(kind, runNow, fetchRecords),
           addTransactions: async (rows) => {
             for (const { externalId, amountMinorUnits, untrackedCounterpart } of rows) {
               stored.set(externalId, { amountMinorUnits, untrackedCounterpart });
@@ -663,22 +721,14 @@ const runStatusWorld = async (kind: WorldKind, world: StatusWorld): Promise<Stat
   return { stored, fake, last, finalClock };
 };
 
-const STATUS_KIND_GAPS = KINDS.flatMap((kind) =>
+const STATUS_KIND_GAPS = STATUS_KINDS.flatMap((kind) =>
   STATUS_RUN_GAPS.map((gapMs) => ({ kind, gapMs, kindName: kind.name })),
 );
 
 describe.each(STATUS_KIND_GAPS)(
   'the $kindName walk over generated statuses, runs $gapMs ms apart',
   ({ kind, gapMs }) => {
-    let warn: jest.SpyInstance;
-
-    beforeEach(() => {
-      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    });
-
-    afterEach(() => {
-      warn.mockRestore();
-    });
+    quietWarnings();
 
     it.each(STATUS_SEEDS)(
       'imports each settled record once at its exact amount, lists each refusal once, and ends current: seed %i',

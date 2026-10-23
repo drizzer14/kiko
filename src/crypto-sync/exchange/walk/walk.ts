@@ -1099,10 +1099,19 @@ const sameHints = (left: BinanceSpanHints, right: BinanceSpanHints): boolean =>
  * round-robin from the range cursor, see `windowsFrom`), then the re-scan, then the owed points,
  * each on what budget is left. A window that does not finish ends the pass it is in where
  * `STOP_ENDS_PASS` says so, and a window the budget cannot afford ends the pass; no pass ends the
- * run, so a stop in the forward pass (whose cursor never passes the stuck record) still leaves the
- * owed ground, the re-scan and the points their reads. A later run resumes from the stored marks.
+ * run by that alone (a failure a window throws does, below), so a stop in the forward pass (whose
+ * cursor never passes the stuck record) still leaves the owed ground, the re-scan and the points
+ * their reads. A later run resumes from the stored marks.
  * An owed window that does not finish stays owed and the run goes on to the next one and to the
  * re-scan.
+ *
+ * An owed window (a range or a point) whose page cannot be read, which `isUnreadableWindowError`
+ * says of the error it throws (the walk's own test; none by default), is the one failure that
+ * does not end the run: it stays owed, counts as started so the round-robin moves past it, and
+ * the owed ground behind it, the re-scan and the points are read, then the run rejects with the
+ * first such error. A window of the forward pass or the re-scan that cannot be read, and every
+ * other failure in any pass (a rate limit, an auth failure, a clock skew, the network), ends the
+ * run at once with no further call: more calls after a refusal would extend a ban.
  *
  * A read commits every record it can trust and leaves the ground of the others owed (see
  * `settleRecords`), so a stuck record never holds back the rest of a span, a range or the
@@ -1139,14 +1148,24 @@ export const runWalkPlan = async (input: {
   hints?: { stored: BinanceSpanHints; store: (next: BinanceSpanHints) => Promise<void> };
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
+  isUnreadableWindowError?: (error: unknown) => boolean;
 }): Promise<WalkResult> => {
-  const { plan, canAfford, runWindow, markPointRead, markRangeRead, callsOf = () => 1 } = input;
+  const {
+    plan,
+    canAfford,
+    runWindow,
+    markPointRead,
+    markRangeRead,
+    callsOf = () => 1,
+    isUnreadableWindowError = () => false,
+  } = input;
   const pointKeep = plan.points.length > 0 ? POINT_KEEP * callsOf(plan.points[0]) : 0;
   const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP * callsOf(plan.rescan[0]) : 0;
   const forwardKeep = plan.forward.length > 0 ? FORWARD_KEEP * callsOf(plan.forward[0]) : 0;
   let imported = 0;
   let complete = true;
   let hints = input.hints?.stored ?? NO_HINTS;
+  let firstUnreadable: { error: unknown } | undefined;
 
   const saveHints = async (next: BinanceSpanHints): Promise<void> => {
     if (!sameHints(next, hints)) {
@@ -1197,7 +1216,19 @@ export const runWalkPlan = async (input: {
         return;
       }
 
-      const outcome = await runWithHint(window, pass, keep, hintPass);
+      const outcome = await runWithHint(window, pass, keep, hintPass).catch(
+        (error: unknown): WindowOutcome => {
+          if (pass !== 'pending' || !isUnreadableWindowError(error)) {
+            throw error;
+          }
+
+          firstUnreadable ??= { error };
+
+          // Owed and started, so the round-robin moves on past a window that cannot be read and
+          // the ground behind it, the re-scan and the points get their reads.
+          return { imported: 0, complete: false, owed: true, started: true, hint: null };
+        },
+      );
       imported += outcome.imported;
       complete = complete && outcome.complete && !outcome.owed;
 
@@ -1229,6 +1260,10 @@ export const runWalkPlan = async (input: {
 
   await readPass(plan.rescan, 'rescan', pointKeep, 'rescan');
   await readPass(plan.points, 'pending', 0, 'point', markPointRead);
+
+  if (firstUnreadable !== undefined) {
+    throw firstUnreadable.error;
+  }
 
   return { imported, complete };
 };

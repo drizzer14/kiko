@@ -53,7 +53,6 @@ import {
   type TotalPage,
   type TotalQuery,
 } from './binance.history-client';
-import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import type { BinanceHistoryRow } from './binance.transfer-history';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
@@ -61,6 +60,7 @@ import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
 import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import { type BinanceWallet, exchangePairIdOf, holdingKeyOf } from './binance.holding-keys';
 
 /** The widest range an Earn history read takes is 30 days. */
@@ -923,6 +923,7 @@ const runSync = async (
             write,
           }),
       }),
+    isUnreadableWindowError,
     ...roundRobinHooksOf({ marks: context.marks, write }),
   });
 };

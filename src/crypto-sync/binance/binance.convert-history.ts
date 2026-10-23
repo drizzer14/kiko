@@ -53,13 +53,13 @@ import {
   type ConvertHistoryPage,
   fetchConvertHistory,
 } from './binance.history-client';
-import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
+import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 
 /** The stop of a conversion that waits on Binance: its point is owed until it settles. */
 const CONVERT_NOT_SETTLED = 'convert-not-settled';
@@ -523,6 +523,7 @@ const runSync = async (
         hint,
         onComplete: (read) => dropReadPoints({ pass, window, read, marks: context.marks, write }),
       }),
+    isUnreadableWindowError,
     ...roundRobinHooksOf({ marks: context.marks, write }),
   });
   const lastWindowEnd = plan.forward.at(-1)?.end;

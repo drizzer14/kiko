@@ -74,11 +74,11 @@ import {
   type TotalPage,
 } from './binance.history-client';
 import { holdingKeyOf } from './binance.holding-keys';
-import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import { BinanceHistoryTooOldError, type FetchAccountOptions } from './binance.client';
 
 /**
@@ -462,6 +462,10 @@ const attemptSpan = async <Item extends FiatRecord>(
 const touches = (left: WalkWindow, right: WalkWindow): boolean =>
   left.start <= right.end && left.end >= right.start;
 
+/** Whether two ranges share more than their boundary millisecond. */
+const overlaps = (left: WalkWindow, right: WalkWindow): boolean =>
+  left.start < right.end && left.end > right.start;
+
 const byStart = (left: WalkWindow, right: WalkWindow): number => left.start - right.start;
 
 /** The span read as owed, nothing of it read: the ground a stuck range holds in `ground`. */
@@ -820,10 +824,15 @@ const keepsWidth = (pass: WalkPass, outcome: WindowOutcome): WindowOutcome =>
     ? { ...outcome, hint: { start: outcome.hint.start, end: outcome.hint.end } }
     : outcome;
 
-/** The stuck ranges the list of owed ground still holds: a range the list lost has been read. */
+/**
+ * The stuck ranges the list of owed ground still holds: a range the list lost has been read. A
+ * sliver of owed ground that shares only its boundary millisecond with the range is not the range:
+ * the re-scan reads up to a millisecond short of the range and after the millisecond that ends it,
+ * and the sliver left between a read and the range would hold the range for ever.
+ */
 const heldStuck = (stuck: WalkWindow[], pending: OwedGround[]): WalkWindow[] =>
   stuck
-    .filter((range) => pending.some((ground) => !isPoint(ground) && touches(ground, range)))
+    .filter((range) => pending.some((ground) => !isPoint(ground) && overlaps(ground, range)))
     .map(({ start, end }) => ({ start, end }));
 
 /**
@@ -982,6 +991,7 @@ const runSync = async <Item extends FiatRecord>(
           onComplete: (read) => dropReadPoints({ pass, window, read, marks: context.marks, write }),
         }),
       ),
+    isUnreadableWindowError,
     ...roundRobinHooksOf({ marks: context.marks, write }),
   });
   const lastWindowEnd = plan.forward.at(-1)?.end;
