@@ -13,6 +13,16 @@ import { NOW } from '../../src/crypto-sync/binance/binance.pay-test-fixtures';
 // EXPECT-FINDING
 export { composeRateTable } from '../../src/rates/monobank-feed-test-helper';
 
+// EXPECT-FINDING
+import { SEEDED_CATEGORIES } from '../../src/db/__fixtures__/seeded-categories';
+
+// EXPECT-FINDING
+import type { DepthRead } from '../../src/crypto-sync/binance/binance.depth-test-fixtures';
+
+export const seededCount = (): number => SEEDED_CATEGORIES.length;
+
+export type CurrentRead = DepthRead;
+
 export const currentTime = (): number => NOW;
 
 export const lazyHold = (): unknown =>
