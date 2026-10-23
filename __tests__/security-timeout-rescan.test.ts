@@ -35,6 +35,23 @@ const timeoutEntry = (file: string, rule = TIMED_OUT_RULE) => ({
 const reportOf = (errors: Record<string, unknown>[]): string =>
   JSON.stringify({ results: [], errors, paths: { scanned: [] } });
 
+const FINDING_RULE = 'rules.kiko-test-finding';
+
+const reportWithFinding = (file: string, severity: 'ERROR' | 'WARNING'): string =>
+  JSON.stringify({
+    results: [
+      {
+        check_id: FINDING_RULE,
+        path: file,
+        start: { line: 3, col: 1 },
+        end: { line: 3, col: 9 },
+        extra: { severity, message: 'found only on the re-scan' },
+      },
+    ],
+    errors: [],
+    paths: { scanned: [] },
+  });
+
 type Call = { args: string[] };
 
 const configArguments = (call?: Call): string[] =>
@@ -167,7 +184,41 @@ describe('scripts/checks/security.sh re-scan of timed-out pairs', () => {
     expect(stderr).toContain(`Timeout when running rules.${TIMED_OUT_RULE} on ${files[0]}`);
   });
 
-  it('fails on a non-Timeout error and makes no second call (green at once: today too)', () => {
+  it('fails with the Class A block when only the re-scan of the timed-out file finds an ERROR', () => {
+    const { status, stderr, calls, files } = runWithFakeSemgrep(
+      (paths) => [
+        reportOf([timeoutEntry(paths[0] ?? '')]),
+        reportWithFinding(paths[0] ?? '', 'ERROR'),
+      ],
+      1,
+    );
+
+    expect({
+      status,
+      callCount: calls.length,
+      classA: stderr.includes('Class A hard-fail'),
+    }).toEqual({ status: 2, callCount: 2, classA: true });
+    expect(stderr).toContain(`${files[0]}:3  ${FINDING_RULE}`);
+  });
+
+  it('surfaces a WARNING found only by the re-scan, still passing with the re-scan warning', () => {
+    const { status, stderr, files } = runWithFakeSemgrep(
+      (paths) => [
+        reportOf([timeoutEntry(paths[0] ?? '')]),
+        reportWithFinding(paths[0] ?? '', 'WARNING'),
+      ],
+      1,
+    );
+
+    expect({
+      status,
+      classB: stderr.includes('CLASS B FINDING'),
+      finding: stderr.includes(`${files[0]}:3  ${FINDING_RULE}`),
+      rescanWarning: stderr.includes(`WARNING: security.sh: Semgrep rule rules.${TIMED_OUT_RULE}`),
+    }).toEqual({ status: 0, classB: true, finding: true, rescanWarning: true });
+  });
+
+  it('fails on a non-Timeout error and makes no second call', () => {
     const { status, calls } = runWithFakeSemgrep(
       () => [
         reportOf([
@@ -180,7 +231,7 @@ describe('scripts/checks/security.sh re-scan of timed-out pairs', () => {
     expect({ status, callCount: calls.length }).toEqual({ status: 2, callCount: 1 });
   });
 
-  it('fails with no re-scan when 11 pairs timed out (green at once: today too)', () => {
+  it('fails with no re-scan when 11 pairs timed out', () => {
     const { status, calls } = runWithFakeSemgrep(
       (paths) => [reportOf(paths.map((file) => timeoutEntry(file)))],
       MAXIMUM_RESCANNED_PAIRS + 1,
