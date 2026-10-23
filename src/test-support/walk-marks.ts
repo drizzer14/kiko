@@ -10,7 +10,15 @@ import {
 import type { DatabaseSync } from 'node:sqlite';
 import type { ExchangeStateDeps } from '@kiko/crypto-sync/exchange/walk';
 
-export type WalkName = 'capital' | 'pay' | 'transfer' | 'earn' | 'convert' | 'p2p';
+export type WalkName =
+  | 'capital'
+  | 'pay'
+  | 'transfer'
+  | 'earn'
+  | 'convert'
+  | 'p2p'
+  | 'fiatOrders'
+  | 'fiatPayments';
 
 export type WalkField =
   | 'cursor'
