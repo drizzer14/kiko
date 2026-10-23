@@ -17,25 +17,31 @@ index 9ae11c3..f16c51b 100644
  
  @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-index c233036..1f1118c 100644
+index c233036..1882b38 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-@@ -38,7 +38,81 @@ namespace react = facebook::react;
+@@ -38,7 +38,87 @@ namespace react = facebook::react;
 
  @end
 
 -@implementation RNSNavigationController
-+// A view's `directionalLayoutMargins` getter adds the safe area inset to the stored margin while
++// A view's `directionalLayoutMargins` getter adds the safe area insets to the stored margins while
 +// `insetsLayoutMarginsFromSafeArea` is YES (a controller's root view does), so writing the
-+// getter's value back would add the inset again on top and bottom at every layout pass. This is
-+// the stored margin, which is what may be written back.
++// getter's value back would add the insets again at every layout pass. This is the stored
++// margins, which is what may be written back. The left and right insets are the leading and
++// trailing ones, swapped in a right-to-left layout.
 +static NSDirectionalEdgeInsets RNSStoredDirectionalLayoutMargins(UIView *view)
 +{
 +  NSDirectionalEdgeInsets margins = view.directionalLayoutMargins;
 +
 +  if (view.insetsLayoutMarginsFromSafeArea) {
-+    margins.top -= view.safeAreaInsets.top;
-+    margins.bottom -= view.safeAreaInsets.bottom;
++    UIEdgeInsets safeArea = view.safeAreaInsets;
++    BOOL isRightToLeft =
++        view.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
++    margins.top -= safeArea.top;
++    margins.bottom -= safeArea.bottom;
++    margins.leading -= isRightToLeft ? safeArea.right : safeArea.left;
++    margins.trailing -= isRightToLeft ? safeArea.left : safeArea.right;
 +  }
 +
 +  return margins;
@@ -103,7 +109,7 @@ index c233036..1f1118c 100644
  
  #if !TARGET_OS_TV
  - (UIViewController *)childViewControllerForStatusBarStyle
-@@ -59,6 +133,7 @@ namespace react = facebook::react;
+@@ -59,6 +139,7 @@ namespace react = facebook::react;
  - (void)viewDidLayoutSubviews
  {
    [super viewDidLayoutSubviews];
@@ -111,7 +117,7 @@ index c233036..1f1118c 100644
    if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
      RNSScreen *screenController = (RNSScreen *)self.topViewController;
      BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
-@@ -1279,6 +1354,9 @@ RNS_IGNORE_SUPER_CALL_END
+@@ -1279,6 +1360,9 @@ RNS_IGNORE_SUPER_CALL_END
      _controller.view.backgroundColor = _nativeContainerBackgroundColor;
    }
 

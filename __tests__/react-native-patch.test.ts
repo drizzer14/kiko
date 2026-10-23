@@ -94,7 +94,7 @@ describe('the react-native-screens fixed content margin patch', () => {
     expect(source).toContain('margins.bottom -= safeArea.bottom;');
     expect(source).toContain('UIEdgeInsets safeArea = view.safeAreaInsets;');
     expect(source).toContain(
-      'view.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft',
+      'view.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;',
     );
     expect(source).toContain('margins.leading -= isRightToLeft ? safeArea.right : safeArea.left;');
     expect(source).toContain('margins.trailing -= isRightToLeft ? safeArea.left : safeArea.right;');
