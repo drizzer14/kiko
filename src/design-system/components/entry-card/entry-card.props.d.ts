@@ -11,7 +11,7 @@ export type EntryCardProps = {
   // that cluster, not the label alone, is split from the amount. A link marker belongs in
   // `amountCaptionIcon`.
   lead?: ReactNode;
-  // A caption drawn directly under the amount in the amount column (a time, "Computed"), so a
+  // A caption drawn directly under the amount in the amount column (a time), so a
   // title that wraps never separates the two.
   amountCaption?: string;
   // An SF Symbol drawn before `amountCaption` on the same line, centred on it (the loan-link

@@ -824,16 +824,17 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Tax withheld')).toBeTruthy();
   });
 
-  it('marks future lifecycle entries as Projected', async () => {
+  it('marks future lifecycle entries as Projected in their title', async () => {
     seed(futureDepositHolding);
 
-    const { getAllByText } = await renderScreen();
+    const { getAllByText, queryByText } = await renderScreen();
 
     // The separate schedule card is gone; the lifecycle renders inline. A brand-
-    // new deposit's future accruals render dimmed with a "Projected" marker.
-    // futureDepositHolding is a term_deposit (day-granular), so the marker
-    // carries no trailing time separator.
-    expect(getAllByText('Projected').length).toBeGreaterThan(0);
+    // new deposit's future accruals render dimmed with "Projected" in the title.
+    // futureDepositHolding is a term_deposit (day-granular), so no caption
+    // sits under the amount.
+    expect(getAllByText('Interest accrual · Projected').length).toBeGreaterThan(0);
+    expect(queryByText('Projected')).toBeNull();
   });
 
   it('renders the deposit lifecycle inline in the transactions list', async () => {
@@ -843,9 +844,9 @@ describe('HoldingDetailScreen', () => {
 
     // The lifecycle is inline ledger entries (no separate schedule card): the
     // opening deposit, per-period interest accruals, and capitalizations.
-    expect(getByText('Opening deposit')).toBeTruthy();
-    expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
-    expect(getAllByText('Capitalization').length).toBeGreaterThan(0);
+    expect(getByText('Opening deposit · Computed')).toBeTruthy();
+    expect(getAllByText('Interest accrual · Computed').length).toBeGreaterThan(0);
+    expect(getAllByText('Capitalization · Computed').length).toBeGreaterThan(0);
   });
 
   it('shows the shared default description for a transaction with an empty description', async () => {
@@ -929,16 +930,27 @@ describe('HoldingDetailScreen', () => {
     expect(within(column).getByTestId('money-tone-auto')).toBeTruthy();
   });
 
-  it('right-aligns the derived lifecycle row caption so it sits below the value', async () => {
+  it('right-aligns the derived lot row time caption so it sits below the value', async () => {
+    seed(metalHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    // A lot row on a timed type keeps only its time as the caption, in the same
+    // amount column as the value.
+    const row = getByTestId('ledger-row');
+    const column = ancestorWithStyle(within(row).getByText(/^\d{2}:\d{2}$/), 'flexShrink');
+    expect(StyleSheet.flatten(column.props.style)).toMatchObject({ alignItems: 'flex-end' });
+    expect(within(row).queryByText(/Computed|Projected/)).toBeNull();
+  });
+
+  it('gives a derived row of a day-granular type no amount caption', async () => {
     seed(depositHolding);
 
-    const { getAllByText } = await renderScreen();
+    const { getAllByTestId } = await renderScreen();
 
-    // The derived "Computed" caption sits in the same amount column, so it too
-    // sits under the value. depositHolding is a term_deposit (day-granular), so
-    // the caption carries no trailing time.
-    const column = ancestorWithStyle(getAllByText('Computed')[0], 'flexShrink');
-    expect(StyleSheet.flatten(column.props.style)).toMatchObject({ alignItems: 'flex-end' });
+    for (const row of getAllByTestId('ledger-row')) {
+      expect(within(row).queryByText(/^\d{2}:\d{2}$/)).toBeNull();
+    }
   });
 
   it('draws the loan-link marker beside the time in the amount column, not in the lead', async () => {
@@ -1642,22 +1654,47 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
-  it('renders the derived lifecycle rows (opening, accrual, taxes) marked Computed', async () => {
+  it('renders the derived lifecycle rows (opening, accrual, taxes) titled with Computed', async () => {
     seed(depositHolding);
 
-    const { getByText, getAllByText } = await renderScreen();
+    const { getByText, getAllByText, queryByText } = await renderScreen();
 
     // derivedEntries yields the opening deposit plus per-period interest and its
     // two withholding lines. These read distinctly from the value-breakdown
-    // labels ("Interest earned"/"Tax withheld").
-    expect(getByText('Opening deposit')).toBeTruthy();
-    expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
-    expect(getAllByText('Income tax 18%').length).toBeGreaterThan(0);
-    expect(getAllByText('Military levy 5%').length).toBeGreaterThan(0);
-    // Every settled derived row carries a "Computed" marker so it reads as
-    // derived. depositHolding is a term_deposit (day-granular), so the marker
-    // carries no trailing time separator.
-    expect(getAllByText('Computed').length).toBeGreaterThanOrEqual(3);
+    // labels ("Interest earned"/"Tax withheld"). Every settled derived row
+    // carries "Computed" in its title so it reads as derived.
+    expect(getByText('Opening deposit · Computed')).toBeTruthy();
+    expect(getAllByText('Interest accrual · Computed').length).toBeGreaterThan(0);
+    expect(getAllByText('Income tax 18% · Computed').length).toBeGreaterThan(0);
+    expect(getAllByText('Military levy 5% · Computed').length).toBeGreaterThan(0);
+    expect(queryByText('Computed')).toBeNull();
+  });
+
+  it('titles a paid bond coupon with Computed', async () => {
+    seed(bondHolding);
+
+    const { getAllByText, queryByText } = await renderScreen();
+
+    expect(getAllByText('Coupon · Computed').length).toBeGreaterThan(0);
+    expect(queryByText('Coupon')).toBeNull();
+  });
+
+  it('titles a bond coupon still ahead with Projected', async () => {
+    const now = new Date();
+
+    seed({
+      ...bondHolding,
+      metadata: {
+        ...bondHolding.metadata,
+        purchaseDate: now.getTime(),
+        maturityDate: new Date(now.getFullYear() + 2, now.getMonth(), now.getDate()).getTime(),
+      },
+    });
+
+    const { getAllByText, queryByText } = await renderScreen();
+
+    expect(getAllByText('Coupon · Projected').length).toBeGreaterThan(0);
+    expect(queryByText('Coupon')).toBeNull();
   });
 
   // A lot is the user's own entry, unlike a computed one, so its row edits and
@@ -1726,13 +1763,34 @@ describe('HoldingDetailScreen', () => {
       alertSpy.mockRestore();
     });
 
-    it('is not captioned Computed, since the user entered it', async () => {
+    it('is not titled Computed, since the user entered it', async () => {
       seed(metalHolding);
 
       const { getByText, queryByText } = await renderScreen();
 
       expect(getByText('Purchase')).toBeTruthy();
       expect(queryByText(/Computed/)).toBeNull();
+    });
+
+    it('reads Projected in its title when dated ahead', async () => {
+      seed({
+        ...metalHolding,
+        metadata: {
+          ...metalHolding.metadata,
+          lots: [
+            {
+              day: Date.UTC(new Date().getUTCFullYear() + 1, 0, 1),
+              quantityDelta: '10',
+              costMinorUnits: 5_000_000,
+            },
+          ],
+        },
+      });
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Purchase · Projected')).toBeTruthy();
+      expect(queryByText('Purchase')).toBeNull();
     });
 
     // The ledger lists newest first, so the January buy is the last row held.
@@ -1791,7 +1849,7 @@ describe('HoldingDetailScreen', () => {
     // all — no row is wrapped in the shared CardContextMenu.
     expect(queryByTestId('card-context-menu')).toBeNull();
     // Pressing a derived row's label opens no transaction form.
-    await fireEvent.press(getByText('Opening deposit'));
+    await fireEvent.press(getByText('Opening deposit · Computed'));
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
@@ -1810,7 +1868,7 @@ describe('HoldingDetailScreen', () => {
 
     // Both the real transaction and the derived opening deposit render together.
     expect(getByText('Fee')).toBeTruthy();
-    expect(getByText('Opening deposit')).toBeTruthy();
+    expect(getByText('Opening deposit · Computed')).toBeTruthy();
     // Only the real row is deletable; the derived rows expose no delete
     // action, so exactly one card-context-menu wrapper renders for the whole
     // ledger.
@@ -1826,10 +1884,10 @@ describe('HoldingDetailScreen', () => {
     // interest accrual reads in the positive (green) tone — by KIND, via the
     // derived entry's tone passed through MoneyText, not merely by the amount's
     // sign.
-    const taxAmount = amountForLabel(getAllByText('Income tax 18%')[0]);
+    const taxAmount = amountForLabel(getAllByText('Income tax 18% · Computed')[0]);
     expect(taxAmount.props.testID).toBe('money-tone-negative');
 
-    const interestAmount = amountForLabel(getAllByText('Interest accrual')[0]);
+    const interestAmount = amountForLabel(getAllByText('Interest accrual · Computed')[0]);
     expect(interestAmount.props.testID).toBe('money-tone-positive');
   });
 
@@ -1851,7 +1909,7 @@ describe('HoldingDetailScreen', () => {
     const { getAllByText, getByText } = await renderScreen();
 
     // A net coupon (money in) reads green as an interest payment.
-    const couponAmount = amountForLabel(getAllByText('Coupon')[0]);
+    const couponAmount = amountForLabel(getAllByText('Coupon · Computed')[0]);
     expect(couponAmount.props.testID).toBe('money-tone-positive');
 
     // The whole-life expected-profit breakdown line reads green as the expected gain.
@@ -3016,7 +3074,7 @@ describe('HoldingDetailScreen — bond yield to maturity', () => {
 
     const expectStepUpCoupons = async () => {
       const { getAllByText, getByText } = await renderScreen();
-      const couponAmounts = getAllByText('Coupon').map(
+      const couponAmounts = getAllByText(/^Coupon · /).map(
         (label) => amountForLabel(label, /\$/).props.children,
       );
 
@@ -3111,14 +3169,12 @@ const cardLayout = (children: LayoutNode[]): LayoutNode => ({
 // Pins the approved look of the ledger rows and their day header, which the shared
 // EntryCard / EntryDateHeader draw.
 describe('HoldingDetailScreen — ledger row look', () => {
-  it('draws a settled derived row as a card: label left, amount right, a right-aligned caption', async () => {
+  it('draws a settled derived row as a card: marker in the label, amount right, no caption', async () => {
     seed(depositHolding);
 
     const { getAllByTestId } = await renderScreen();
     const row = getAllByTestId('ledger-row').find(
-      (candidate) =>
-        within(candidate).queryByText('Interest accrual') !== null &&
-        within(candidate).queryByText('Computed') !== null,
+      (candidate) => within(candidate).queryByText('Interest accrual · Computed') !== null,
     );
 
     if (row === undefined) {
@@ -3128,20 +3184,20 @@ describe('HoldingDetailScreen — ledger row look', () => {
     expect(layoutOf(row)).toEqual(
       cardLayout([
         mainRowLayout([
-          descriptionLayout('Interest accrual'),
-          amountLayout('money-tone-positive', [captionLayout('Computed')]),
+          descriptionLayout('Interest accrual · Computed'),
+          amountLayout('money-tone-positive'),
         ]),
       ]),
     );
     expect(StyleSheet.flatten(row.props.style)).not.toHaveProperty('opacity');
   });
 
-  it('dims a projected derived row to half opacity and captions it Projected', async () => {
+  it('dims a projected derived row to half opacity and titles it Projected', async () => {
     seed(futureDepositHolding);
 
     const { getAllByTestId } = await renderScreen();
     const row = getAllByTestId('ledger-row').find(
-      (candidate) => within(candidate).queryByText('Projected') !== null,
+      (candidate) => within(candidate).queryByText('Interest accrual · Projected') !== null,
     );
 
     if (row === undefined) {
@@ -3151,8 +3207,8 @@ describe('HoldingDetailScreen — ledger row look', () => {
     expect(layoutOf(row)).toEqual(
       cardLayout([
         mainRowLayout([
-          descriptionLayout('Interest accrual'),
-          amountLayout('money-tone-positive', [captionLayout('Projected')]),
+          descriptionLayout('Interest accrual · Projected'),
+          amountLayout('money-tone-positive'),
         ]),
       ]),
     );

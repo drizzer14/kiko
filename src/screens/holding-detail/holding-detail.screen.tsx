@@ -419,8 +419,8 @@ const derivedMarker = (entry: DerivedEntry, t: TFunction): string | undefined =>
   return t('holdingDetail.computed');
 };
 
-const derivedFooterText = (entry: DerivedEntry, t: TFunction, timeText?: string): string =>
-  [derivedMarker(entry, t), timeText].filter((part) => part !== undefined).join(' · ');
+const derivedTitle = (entry: DerivedEntry, t: TFunction): string =>
+  [entry.label, derivedMarker(entry, t)].filter((part) => part !== undefined).join(' · ');
 
 // A single ledger row, lifted verbatim out of the old eager `.map` so the
 // FlatList mounts only the visible rows — a synced card can carry thousands.
@@ -446,25 +446,20 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
 
   return match(row)
     .with({ kind: 'derived' }, (derivedRow) => {
-      const footerText = derivedFooterText(
-        derivedRow.entry,
-        t,
-        showTime ? formatTime(derivedRow.entry.time, clock) : undefined,
-      );
-
       // A computed lifecycle entry (opening/top-up, interest accrual, the
       // 18%/5% withholding lines, capitalization, or a bond
-      // purchase/coupon/redemption): not tappable, and marked "Computed" so
-      // it reads as derived, not a stored transaction; only a lot row takes
-      // a long-press menu (`LotRowMenu`). A projected (future-dated) entry —
-      // an upcoming accrual, coupon, or redemption — is dimmed and marked
-      // "Projected". The amount reads in its kind-derived tone (tax red,
-      // interest/coupon green, principal movements neutral/by-sign).
+      // purchase/coupon/redemption): not tappable, and titled "<label> ·
+      // Computed" so it reads as derived, not a stored transaction; only a
+      // lot row takes a long-press menu (`LotRowMenu`). A projected
+      // (future-dated) entry — an upcoming accrual, coupon, or redemption —
+      // is dimmed and titled "<label> · Projected". The amount reads in its
+      // kind-derived tone (tax red, interest/coupon green, principal
+      // movements neutral/by-sign), with the time under it on a timed type.
       return (
         <LotRowMenu entry={derivedRow.entry} actions={lotActions}>
           <EntryCard
             testID="ledger-row"
-            label={derivedRow.entry.label}
+            label={derivedTitle(derivedRow.entry, t)}
             style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
             amount={
               <MoneyText
@@ -472,7 +467,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                 tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
               />
             }
-            amountCaption={footerText || undefined}
+            amountCaption={showTime ? formatTime(derivedRow.entry.time, clock) : undefined}
           />
         </LotRowMenu>
       );
@@ -917,7 +912,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // purchase, coupon — whatever `derivedEntries` yields for the type). Both
   // carry a `time`; the merged list is sorted newest-first to match the repo's
   // `desc(time)` ordering. Real rows stay interactive (swipe-to-delete, tap to
-  // edit); derived rows are read-only and marked "Computed". A bond's coupons
+  // edit); derived rows are read-only and titled "Computed". A bond's coupons
   // each take their own register rate (a step-up bond's rate changes).
   const derived: DerivedEntry[] = useMemo(
     () =>
