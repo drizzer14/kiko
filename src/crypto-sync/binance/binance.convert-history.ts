@@ -1,39 +1,27 @@
 import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
 import {
-  advanceWalkMarks,
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
-  commitSettledSpan,
-  dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
-  historyListWriterOf,
   instantAt,
   joinSettled,
-  notImportedWriterOf,
-  placeWalletRows,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
-  roundRobinHooksOf,
   rowMinorUnits,
-  runWalkPlan,
   type SettledSpan,
   type SpanCommit,
   type SpanRead,
   settleRecords,
   settleUnreadable,
-  type WalkMarkWriter,
-  type WalkMarks,
   type WalkPass,
-  type WalkPlan,
   type WalkResult,
   type WalkWindow,
   walkMarkWriterOf,
-  walkSpans,
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -43,6 +31,13 @@ import { notImportedEntry } from '@kiko/crypto-sync/exchange/walk-state';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { untrackedAssetCode } from '@kiko/transactions/untracked-counterpart';
 
+import {
+  type BinanceWalkContext,
+  commitBinanceSpan,
+  completeIfPlanReached,
+  runBinanceWalkPlan,
+  walletPlacerOf,
+} from './binance.walk-wiring';
 import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
@@ -59,7 +54,6 @@ import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
-import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 
 /** The stop of a conversion that waits on Binance: its point is owed until it settles. */
 const CONVERT_NOT_SETTLED = 'convert-not-settled';
@@ -280,17 +274,7 @@ const defaultConvertHistoryDeps: BinanceConvertHistoryDeps = {
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
 };
 
-type ConvertContext = {
-  deps: BinanceConvertHistoryDeps;
-  run: BinanceHistoryRun;
-  accountId: string;
-  apiKey: string;
-  secret: string;
-  options: FetchAccountOptions;
-  marks: WalkMarks;
-  plan: WalkPlan;
-  write: WalkMarkWriter;
-};
+type ConvertContext = BinanceWalkContext<BinanceConvertHistoryDeps>;
 
 /** Whether `error` is Binance's rate limit, which also puts the account on its shared cooldown. */
 const stopOnRateLimit = (
@@ -420,41 +404,16 @@ const commitSpan = (
   span: WalkWindow,
   page: ConvertHistoryPage,
   pass: WalkPass,
-): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, plan, marks, write } = context;
-
-  return commitSettledSpan({
+): Promise<SpanCommit | undefined> =>
+  commitBinanceSpan({
+    context,
     pass,
     span,
     settled: settledConversionsOf(context, span, page),
-    place: (planned) =>
-      placeWalletRows({
-        accountId,
-        planned,
-        config: BINANCE_WALK_CONFIG,
-        listHoldings: deps.listHoldings,
-        ensureHoldings: deps.ensureHoldings,
-        missingCode: CONVERT_HOLDING_MISSING,
-      }),
-    add: deps.addTransactions,
-    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
-    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
-    writeNotImported: notImportedWriterOf(deps, accountId),
     forwardOwes: CONVERT_FORWARD_OWES,
-    advance: ({ owed }) =>
-      advanceWalkMarks({
-        pass,
-        span,
-        // No `series`: a window is never narrowed to some series, so a span reads all of it.
-        series: undefined,
-        owed,
-        plan,
-        marks,
-        restartMs: HISTORY_FLOOR_MS,
-        write,
-      }),
+    place: walletPlacerOf(context, CONVERT_HOLDING_MISSING),
+    restartMs: HISTORY_FLOOR_MS,
   });
-};
 
 const runSync = async (
   deps: BinanceConvertHistoryDeps,
@@ -509,31 +468,15 @@ const runSync = async (
     write,
   };
 
-  const result = await runWalkPlan({
-    plan,
-    canAfford: (keep) =>
-      run.budget.canAfford('convert', COSTS.convert, keep) &&
-      !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
-        window,
-        read: (span, keepCalls) => readSpan(context, span, keepCalls),
-        commit: (span, page) => commitSpan(context, span, page, pass),
-        keep,
-        hint,
-        onComplete: (read) => dropReadPoints({ pass, window, read, marks: context.marks, write }),
-      }),
-    isUnreadableWindowError,
-    ...roundRobinHooksOf({ marks: context.marks, write }),
+  const result = await runBinanceWalkPlan({
+    context,
+    lane: 'convert',
+    cost: COSTS.convert,
+    read: (_window, span, keepCalls) => readSpan(context, span, keepCalls),
+    commit: (_window, span, page, pass) => commitSpan(context, span, page, pass),
   });
-  const lastWindowEnd = plan.forward.at(-1)?.end;
 
-  // A plan holds `CONVERT_MAX_WINDOWS` windows at most, so one that ends before now has more
-  // history behind it than the windows it read.
-  return {
-    ...result,
-    complete: result.complete && (lastWindowEnd === undefined || lastWindowEnd >= endTime),
-  };
+  return completeIfPlanReached(result, plan, endTime);
 };
 
 /**

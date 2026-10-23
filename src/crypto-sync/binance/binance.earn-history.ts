@@ -1,38 +1,26 @@
 import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
 import {
-  advanceWalkMarks,
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
-  commitSettledSpan,
-  dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
-  historyListWriterOf,
   instantAt,
   joinSettled,
   multiCoinPatchesOf,
-  notImportedWriterOf,
   type OwedWindow,
-  placeWalletRows,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
-  roundRobinHooksOf,
   rowMinorUnits,
-  runWalkPlan,
   type SettledSpan,
   settleRecords,
   settleUnreadable,
   type SpanCommit,
   type SpanRead,
-  type WalkMarkWriter,
-  type WalkMarks,
   walkMarkWriterOf,
-  walkSpans,
   type WalkPass,
-  type WalkPlan,
   type WalkResult,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
@@ -44,6 +32,12 @@ import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 
 import {
+  type BinanceWalkContext,
+  commitBinanceSpan,
+  runBinanceWalkPlan,
+  walletPlacerOf,
+} from './binance.walk-wiring';
+import {
   EARN_REDEMPTION_SETTLED_STATUS,
   EARN_SUBSCRIPTION_SETTLED_STATUS,
   type EarnRecordByKind,
@@ -53,14 +47,14 @@ import {
   type TotalPage,
   type TotalQuery,
 } from './binance.history-client';
+import { BINANCE_ASSET } from './binance.client';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import type { BinanceHistoryRow } from './binance.transfer-history';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
-import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
 import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import { type BinanceWallet, exchangePairIdOf, holdingKeyOf } from './binance.holding-keys';
 
 /** The widest range an Earn history read takes is 30 days. */
@@ -731,17 +725,7 @@ const defaultEarnHistoryDeps: BinanceEarnHistoryDeps = {
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
 };
 
-type EarnContext = {
-  deps: BinanceEarnHistoryDeps;
-  run: BinanceHistoryRun;
-  accountId: string;
-  apiKey: string;
-  secret: string;
-  options: FetchAccountOptions;
-  marks: WalkMarks;
-  plan: WalkPlan;
-  write: WalkMarkWriter;
-};
+type EarnContext = BinanceWalkContext<BinanceEarnHistoryDeps>;
 
 /** The kinds a window is read in: every one, or the ones its owed points name. */
 const kindsOf = (window: OwedWindow): readonly EarnRecordKind[] =>
@@ -803,40 +787,17 @@ const commitSpan = (
   span: WalkWindow,
   read: SeriesSpan<EarnRecordKind, EarnRecord>,
   pass: WalkPass,
-): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, plan, marks, write } = context;
-
-  return commitSettledSpan({
+): Promise<SpanCommit | undefined> =>
+  commitBinanceSpan({
+    context,
     pass,
     span,
-    settled: settledEarnOf({ accountId, span, read }),
+    settled: settledEarnOf({ accountId: context.accountId, span, read }),
     forwardOwes: EARN_FORWARD_OWES,
-    place: (planned) =>
-      placeWalletRows({
-        accountId,
-        planned,
-        config: BINANCE_WALK_CONFIG,
-        listHoldings: deps.listHoldings,
-        ensureHoldings: deps.ensureHoldings,
-        missingCode: 'earn-holding-missing',
-      }),
-    add: deps.addTransactions,
-    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
-    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
-    writeNotImported: notImportedWriterOf(deps, accountId),
-    advance: ({ owed }) =>
-      advanceWalkMarks({
-        pass,
-        span,
-        series: window.series,
-        owed,
-        plan,
-        marks,
-        restartMs: HISTORY_FLOOR_MS,
-        write,
-      }),
+    place: walletPlacerOf(context, 'earn-holding-missing'),
+    restartMs: HISTORY_FLOOR_MS,
+    series: window.series,
   });
-};
 
 const runSync = async (
   deps: BinanceEarnHistoryDeps,
@@ -901,30 +862,13 @@ const runSync = async (
     write,
   };
 
-  return runWalkPlan({
-    plan,
+  return runBinanceWalkPlan({
+    context,
+    lane: 'earn',
+    cost: COSTS.earn,
     callsOf,
-    canAfford: (keep) =>
-      run.budget.canAfford('earn', COSTS.earn, keep) &&
-      !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
-        window,
-        read: (span, keepCalls) => readSpan(context, window, span, keepCalls),
-        commit: (span, read) => commitSpan(context, window, span, read, pass),
-        keep,
-        hint,
-        onComplete: (read) =>
-          dropReadPoints({
-            pass,
-            window,
-            read,
-            marks: context.marks,
-            write,
-          }),
-      }),
-    isUnreadableWindowError,
-    ...roundRobinHooksOf({ marks: context.marks, write }),
+    read: (window, span, keepCalls) => readSpan(context, window, span, keepCalls),
+    commit: (window, span, read, pass) => commitSpan(context, window, span, read, pass),
   });
 };
 

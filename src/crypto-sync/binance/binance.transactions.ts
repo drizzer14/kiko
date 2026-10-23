@@ -1,37 +1,26 @@
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  advanceWalkMarks,
   BinanceWalkStop,
-  commitSettledSpan,
-  dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
-  historyListWriterOf,
   instantAt,
   joinSettled,
   multiCoinPatchesOf,
-  notImportedWriterOf,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
   resolveWalletHoldings,
-  roundRobinHooksOf,
   rowMinorUnits,
-  runWalkPlan,
   settleRecords,
   settleUnreadable,
   type SpanCommit,
   type SpanRead,
   type UnreadableRow,
-  type WalkMarkWriter,
-  type WalkMarks,
   walkMarkWriterOf,
-  walkSpans,
   type WalkPass,
-  type WalkPlan,
   type WalkResult,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
@@ -40,6 +29,11 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
+import {
+  type BinanceWalkContext,
+  commitBinanceSpan,
+  runBinanceWalkPlan,
+} from './binance.walk-wiring';
 import {
   type BinanceHistoryRun,
   type BudgetLane,
@@ -58,10 +52,10 @@ import {
   type HistoryWindow,
   isCapitalSettled,
 } from './binance.history-client';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWallet, binanceKeyOf, holdingKeyOf, SPOT_KEY } from './binance.holding-keys';
 
@@ -310,17 +304,7 @@ const plannedWithdrawalOf = (accountId: string, record: BinanceWithdrawal): Plan
   });
 };
 
-type WindowContext = {
-  deps: BinanceTransactionSyncDeps;
-  run: BinanceHistoryRun;
-  accountId: string;
-  apiKey: string;
-  secret: string;
-  options: FetchAccountOptions;
-  marks: WalkMarks;
-  plan: WalkPlan;
-  write: WalkMarkWriter;
-};
+type WindowContext = BinanceWalkContext<BinanceTransactionSyncDeps>;
 
 /**
  * One endpoint's records for a span (`rows` that parsed, `unreadable` that did not, `untracked`
@@ -574,9 +558,10 @@ const commitSpan = (
   records: SpanRecords,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, plan, marks, write } = context;
+  const { accountId } = context;
 
-  return commitSettledSpan({
+  return commitBinanceSpan({
+    context,
     pass,
     span,
     settled: joinSettled<PlannedRow>([
@@ -617,22 +602,7 @@ const commitSpan = (
       }),
     ]),
     place: (planned) => placeRows(context, planned),
-    add: deps.addTransactions,
-    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
-    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
-    writeNotImported: notImportedWriterOf(deps, accountId),
-    advance: ({ owed }) =>
-      advanceWalkMarks({
-        pass,
-        span,
-        // No `seriesOf`: a window is never narrowed to some series, so a span reads all of it.
-        series: undefined,
-        owed,
-        plan,
-        marks,
-        restartMs: HISTORY_FLOOR_MS,
-        write,
-      }),
+    restartMs: HISTORY_FLOOR_MS,
   });
 };
 
@@ -705,29 +675,12 @@ const runSync = async (
     write,
   };
 
-  return runWalkPlan({
-    plan,
-    canAfford: (keep) =>
-      run.budget.canAfford('capitalWithdraw', COSTS.withdraw, keep) &&
-      !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
-        window,
-        read: (span, keepCalls) => readSpan(context, span, keepCalls),
-        commit: (span, records) => commitSpan(context, span, records, pass),
-        keep,
-        hint,
-        onComplete: (read) =>
-          dropReadPoints({
-            pass,
-            window,
-            read,
-            marks: context.marks,
-            write,
-          }),
-      }),
-    isUnreadableWindowError,
-    ...roundRobinHooksOf({ marks: context.marks, write }),
+  return runBinanceWalkPlan({
+    context,
+    lane: 'capitalWithdraw',
+    cost: COSTS.withdraw,
+    read: (_window, span, keepCalls) => readSpan(context, span, keepCalls),
+    commit: (_window, span, records, pass) => commitSpan(context, span, records, pass),
   });
 };
 

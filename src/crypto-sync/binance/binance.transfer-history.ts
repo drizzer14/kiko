@@ -1,41 +1,29 @@
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  advanceWalkMarks,
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
-  commitSettledSpan,
   createDepthMemories,
   type DepthGuard,
-  dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
-  historyListWriterOf,
   instantAt,
   joinSettled,
   multiCoinPatchesOf,
-  notImportedWriterOf,
   type OwedWindow,
-  placeWalletRows,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
-  roundRobinHooksOf,
   rowMinorUnits,
-  runWalkPlan,
   type SettledSpan,
   settleRecords,
   settleUnreadable,
   type SpanCommit,
   type SpanRead,
   storePlannedList,
-  type WalkMarkWriter,
-  type WalkMarks,
   walkMarkWriterOf,
-  walkSpans,
   type WalkPass,
-  type WalkPlan,
   type WalkResult,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
@@ -50,6 +38,12 @@ import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 
 import {
+  type BinanceWalkContext,
+  commitBinanceSpan,
+  runBinanceWalkPlan,
+  walletPlacerOf,
+} from './binance.walk-wiring';
+import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
   RESYNC_OVERLAP_MS,
@@ -62,12 +56,12 @@ import {
   UNIVERSAL_TRANSFER_TYPES,
   type UniversalTransferType,
 } from './binance.history-client';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import { BinanceHistoryTooOldError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWallet, exchangePairIdOf, holdingKeyOf } from './binance.holding-keys';
 
@@ -320,16 +314,7 @@ const defaultTransferHistoryDeps: BinanceTransferHistoryDeps = {
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
 };
 
-type TransferContext = {
-  deps: BinanceTransferHistoryDeps;
-  run: BinanceHistoryRun;
-  accountId: string;
-  apiKey: string;
-  secret: string;
-  options: FetchAccountOptions;
-  marks: WalkMarks;
-  plan: WalkPlan;
-  write: WalkMarkWriter;
+type TransferContext = BinanceWalkContext<BinanceTransferHistoryDeps> & {
   depthMemories: Pick<DepthGuard, 'config' | 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
 };
 
@@ -463,40 +448,17 @@ const commitSpan = (
   span: WalkWindow,
   read: SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>,
   pass: WalkPass,
-): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, plan, marks, write } = context;
-
-  return commitSettledSpan({
+): Promise<SpanCommit | undefined> =>
+  commitBinanceSpan({
+    context,
     pass,
     span,
-    settled: settledTransfersOf({ accountId, span, read }),
+    settled: settledTransfersOf({ accountId: context.accountId, span, read }),
     forwardOwes: TRANSFER_FORWARD_OWES,
-    place: (planned) =>
-      placeWalletRows({
-        accountId,
-        planned,
-        config: BINANCE_WALK_CONFIG,
-        listHoldings: deps.listHoldings,
-        ensureHoldings: deps.ensureHoldings,
-        missingCode: 'transfer-holding-missing',
-      }),
-    add: deps.addTransactions,
-    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
-    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
-    writeNotImported: notImportedWriterOf(deps, accountId),
-    advance: ({ owed }) =>
-      advanceWalkMarks({
-        pass,
-        span,
-        series: window.series,
-        owed,
-        plan,
-        marks,
-        restartMs: HISTORY_FLOOR_MS,
-        write,
-      }),
+    place: walletPlacerOf(context, 'transfer-holding-missing'),
+    restartMs: HISTORY_FLOOR_MS,
+    series: window.series,
   });
-};
 
 const runSync = async (
   deps: BinanceTransferHistoryDeps,
@@ -565,31 +527,14 @@ const runSync = async (
 
   await storePlannedList({ plan, marks: context.marks, write });
 
-  return runWalkPlan({
-    plan,
+  return runBinanceWalkPlan({
+    context,
+    lane: 'transfer',
+    cost: COSTS.transfer,
     callsOf,
     owedFirst: true,
-    canAfford: (keep) =>
-      run.budget.canAfford('transfer', COSTS.transfer, keep) &&
-      !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
-        window,
-        read: (span, keepCalls) => readSpan(context, window, span, keepCalls),
-        commit: (span, read) => commitSpan(context, window, span, read, pass),
-        keep,
-        hint,
-        onComplete: (read) =>
-          dropReadPoints({
-            pass,
-            window,
-            read,
-            marks: context.marks,
-            write,
-          }),
-      }),
-    isUnreadableWindowError,
-    ...roundRobinHooksOf({ marks: context.marks, write }),
+    read: (window, span, keepCalls) => readSpan(context, window, span, keepCalls),
+    commit: (window, span, read, pass) => commitSpan(context, window, span, read, pass),
   });
 };
 
