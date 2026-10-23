@@ -2340,3 +2340,44 @@ rules:
       - metavariable-regex:
           metavariable: $C
           regex: ^(Set|Map|WeakSet|WeakMap)$
+  # Guideline 2.5.19: nothing test-only ships in a release build, and an app file that imports a
+  # test fixture, helper or support module drags that module into the bundle. A specifier that
+  # ends in `-test-fixtures` or `-test-helper`, or holds a `/test-support/` segment, is test
+  # scaffolding. Regexes, not AST patterns: Semgrep's `import "..."` pattern misses the
+  # `export * from` forms. The first regex reads an `import ... from`, an `export ... from` or a
+  # bare `import '...'` from the start of a line, so a comment that quotes an import stays
+  # silent; the second reads a `require(...)` on any line not starting a comment. Excludes
+  # (kiko-linter's "Adding a pre-write guard rule" allows a glob for a whole out-of-scope tree):
+  # tests and the scaffolding modules themselves, which import each other, `e2e/`, `scripts/` and
+  # `harness/`. The globs match at any depth, so the nested excluded cases sit under
+  # `rules/fixtures/kiko-no-test-fixture-import-in-app/` and the positive cases stay flat. ERROR:
+  # the tree holds 0 findings for this id. Known limits: a dynamic `import('...')`, a path alias
+  # that hides the ending, and a barrel that re-exports a fixture are not matched. See
+  # kiko-architecture's Guideline 2.5.19 section and `docs/harness/documented-exceptions.md`.
+  - id: kiko-no-test-fixture-import-in-app
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      App source imports test scaffolding: a module whose name ends in `-test-fixtures` or
+      `-test-helper`, or sits under `test-support/`. Nothing test-only ships in a release build
+      (Guideline 2.5.19), and the import pulls the module into the bundle. Move what the app needs
+      out of the fixture into a real module, or drop the import; only a test or another test
+      scaffolding module imports a fixture.
+    metadata:
+      fix: "Drop the import. If the app needs the value, move it into a production module that both the app and the fixture import."
+      skill: "kiko-architecture › Guideline 2.5.19 — no hidden features (formerly 2.3.1(a); Apple's rejection cited 5.6)"
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "*-test-fixtures.ts"
+        - "*-test-helper.ts"
+        - "**/test-support/**"
+        - "**/__mocks__/**"
+        - "__tests__/**"
+        - "e2e/**"
+        - "scripts/**"
+        - "harness/**"
+    pattern-either:
+      - pattern-regex: '(?m)^[ \t]*(?:import|export)\b(?:[^;''"]*?\bfrom)?\s*[''"](?:[^''"\n]*(?:-test-fixtures|-test-helper)|[^''"\n]*/test-support/[^''"\n]*)[''"]'
+      - pattern-regex: '(?m)^(?![ \t]*(?://|/\*|\*))[^\n]*?\brequire\s*\(\s*[''"](?:[^''"\n]*(?:-test-fixtures|-test-helper)|[^''"\n]*/test-support/[^''"\n]*)[''"]\s*\)'
