@@ -158,6 +158,60 @@ describe('scripts/checks/verify.sh stage 2', () => {
   }, 120_000);
 });
 
+describe('scripts/checks/verify.sh stage 2a semgrep tripwire', () => {
+  const jestPathsOfVerify = (): { paths: string[]; startPath: string } => {
+    const stubs = createTemporaryDirectory('kiko-verify-paths-');
+    const log = join(stubs, 'jest-paths.log');
+    const record = [
+      '#!/usr/bin/env bash',
+      `if [ "$1" = jest ]; then printf '%s\\n' "$PATH" >> "${log}"; fi`,
+      'exit 0',
+      '',
+    ].join('\n');
+
+    for (const name of ['npm', 'npx']) {
+      writeFileSync(join(stubs, name), record);
+      chmodSync(join(stubs, name), 0o755);
+    }
+
+    writeFileSync(log, '');
+
+    const startPath = `${stubs}:${process.env.PATH}`;
+
+    spawnSync('bash', [VERIFY_SCRIPT], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: startPath },
+    });
+
+    return {
+      paths: readTextFile(log)
+        .split('\n')
+        .filter((line) => line !== ''),
+      startPath,
+    };
+  };
+
+  it('puts a semgrep shim first on 2a PATH that names the list and exits 2', () => {
+    const [partAPath = ''] = jestPathsOfVerify().paths;
+    const shim = join(partAPath.split(':')[0] ?? '', 'semgrep');
+    const result = spawnSync(shim, [], { encoding: 'utf8' });
+
+    expect({ status: result.status, output: result.stdout + result.stderr }).toEqual({
+      status: 2,
+      output: expect.stringContaining(
+        `a stage 2a suite ran the real semgrep: add it to ${SUITE_LIST}`,
+      ),
+    });
+  });
+
+  it('leaves the PATH of 2b untouched', () => {
+    const { paths, startPath } = jestPathsOfVerify();
+
+    expect(paths[1]).toBe(startPath);
+  });
+});
+
 describe('scripts/checks/verify.sh with an unusable suite list', () => {
   const verifyWithList = (listText: string | undefined) => {
     const root = createTemporaryDirectory('kiko-verify-list-');
