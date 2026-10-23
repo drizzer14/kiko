@@ -3464,9 +3464,31 @@ a later Stop.
   appended entries and inserted lines): the line shows the base text of
   the named entry or line, to restore in place while keeping the rest.
   Never restore with checkout, restore, stash or clean.
+- **Second kind: a missing `src/` path in a NEW migration's header.** The
+  wrapper runs the checker a second time (`shipped-migrations.js --headers`)
+  after the shipped-file kind passes, so a shipped-file failure shows first.
+  It reads only a `.sql` that no resolved base has (new on this branch),
+  never a shipped one: a header names the source as it was when written, a
+  later `src/` move must not fail a shipped header that may not be edited
+  (2 stale shipped paths exist, both under the old monobank folder), and a
+  new header is still free to fix.
+  Only a backticked `src/...` path inside a SQL comment is read, both forms
+  (`-- ...` lines and `/* ... */` blocks, which open most real headers). One
+  left-to-right scan tells comment from code: a `'`, `"`, backtick or `[`
+  opens a literal or quoted identifier that is skipped whole (a doubled
+  closing quote is an escape), so a path in a string literal or SQL code is
+  never read, and a `--` or `/*` inside one never opens a comment; an
+  unterminated block comment runs to the end of the file. A path ending in `/`
+  must exist as a folder; any other path must exist as a file (a file with a
+  trailing `/`, or a folder without one, fails). Only the failing paths are
+  named, each with its migration file. Own block title "Migration header names
+  a missing src path", exit 2, no override. Known limits: a path in a
+  non-comment position is not checked; a glob or a path with a line suffix
+  is read as a literal path and fails.
 - **Dedup.** The fingerprint is the base shas, the name and blob hash of
-  every file under `drizzle/migrations/`, and the checker script. A hash
-  failure leaves the fingerprint empty, so the check runs.
+  every file under `drizzle/migrations/`, the name of every file and folder
+  under `src/` (a move there must re-run the header kind), and the checker
+  script. A hash failure leaves the fingerprint empty, so the check runs.
 - **Wiring.** `scripts/checks/medium.sh` runs the wrapper BEFORE the guard
   replay and before its "only HEAD moved" early exit. Before the replay,
   because a passing replay moves the worktree's mark ref to HEAD: a

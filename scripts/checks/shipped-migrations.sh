@@ -18,6 +18,18 @@ fail() {
   exit 2
 }
 
+fail_header_paths() {
+  # $1 details
+  print_block \
+    "Migration header names a missing src path" \
+    "A new migration under drizzle/migrations/ names a backticked src/ path in a SQL comment that is not on disk." \
+    "$1" \
+    "A header comment points a reader at the code the migration mirrors. A path that no longer exists sends the reader to nothing, and a migration that ships cannot be edited to repair it afterwards." \
+    "In the named NEW migration, correct each named path to the file or folder as it is now (a folder ends in /, a file does not), or drop the backticks around a name that is not a src/ path. The migration has not shipped, so editing it is allowed." \
+    "Do not create an empty file or folder at the path, and do not edit a migration that already shipped."
+  exit 2
+}
+
 # The baseline is what already shipped: the merge-base of HEAD with each local
 # branch of main and next. next is optional, main is not. Prints the base sha;
 # returns 1 when the branch is missing or shares no history with HEAD (merge-base
@@ -58,16 +70,19 @@ case "$nextCode" in
 esac
 
 # Inputs: the base shas, the name and git blob hash of every file under
-# drizzle/migrations/ (one git process hashes the tree), and the checker. A
-# failure to hash leaves the fingerprint empty, which never matches, so the
-# check runs.
+# drizzle/migrations/ (one git process hashes the tree), the name of every file and
+# folder under src/ (a new migration's header names those, so a move or delete there
+# must re-run the check), and the checker. A failure to hash leaves the fingerprint
+# empty, which never matches, so the check runs.
 fp=""
 if files="$(find drizzle/migrations -type f 2>/dev/null | LC_ALL=C sort)" \
-  && hashes="$(printf '%s\n' "$files" | git hash-object --no-filters --stdin-paths 2>/dev/null)"; then
+  && hashes="$(printf '%s\n' "$files" | git hash-object --no-filters --stdin-paths 2>/dev/null)" \
+  && sourceNames="$( { find src 2>/dev/null || true; } | LC_ALL=C sort)"; then
   fp="$( {
     printf '%s\n' "${bases[@]}"
     printf '%s\n' "$files"
     printf '%s\n' "$hashes"
+    printf '%s\n' "$sourceNames"
     shasum "$DIR/shipped-migrations.js" 2>/dev/null
   } | harness_hash )"
 fi
@@ -82,6 +97,16 @@ case "$code" in
   1) fail \
        "A file under drizzle/migrations/ that already shipped was modified, deleted or renamed." \
        "$out" ;;
+  *) fail \
+       "The shipped-migrations checker could not run, so the check fails closed." \
+       "$out" ;;
+esac
+
+out="$(node "$DIR/shipped-migrations.js" --headers "$ROOT" "${bases[@]}" 2>&1)"
+code=$?
+case "$code" in
+  0) : ;;
+  1) fail_header_paths "$out" ;;
   *) fail \
        "The shipped-migrations checker could not run, so the check fails closed." \
        "$out" ;;
