@@ -393,6 +393,20 @@ function skipComment(state) {
   state.i = newline === -1 ? state.text.length : newline;
 }
 
+// The index of the quote that closes the ANSI-C string `$'...'` whose `$` stands at `dollar`, or -1
+// when none does there. A backslash escapes the next character, so `\'` does not close it: the
+// splitters and the tokenizer all end the string here.
+function ansiCQuoteEnd(text, dollar) {
+  if (text[dollar] !== '$' || text[dollar + 1] !== "'") return -1;
+  let end = dollar + 2;
+  while (end < text.length && text[end] !== "'") {
+    tick();
+    end += text[end] === '\\' ? 2 : 1;
+  }
+
+  return end >= text.length ? -1 : end;
+}
+
 // A `#` after one of these starts a word (`a#b`, `${#x}`, and `$#` are not
 // comments).
 const WORD_BOUNDARY = /[\s;&|()]/;
@@ -549,6 +563,11 @@ function stepUnquotedInDelimited(state) {
   }
   trackParameterBraces(state, c);
   state.wordStart = state.braceDepth === 0 && WORD_BOUNDARY.test(c);
+  const ansiCEnd = ansiCQuoteEnd(state.text, state.i);
+  if (ansiCEnd !== -1) {
+    state.i = ansiCEnd + 1;
+    return;
+  }
   state.i++;
   if (c === "'" || c === '"') state.quote = c;
   else if (c === state.open) state.depth++;
@@ -797,6 +816,24 @@ function consumeAtWordStart(context) {
   return consumeArithmeticCommand(context);
 }
 
+// A quote that opens at the cursor: an ANSI-C `$'...'` string is taken whole (its `\'` is no
+// close), a plain `'` or `"` starts the quoted state.
+function consumeQuoteOpen(context) {
+  const { text, i } = context;
+  const ansiCEnd = ansiCQuoteEnd(text, i);
+  if (ansiCEnd !== -1) {
+    context.buf += text.slice(i, ansiCEnd + 1);
+    context.i = ansiCEnd + 1;
+    return true;
+  }
+  if (text[i] !== "'" && text[i] !== '"') return false;
+  context.quote = text[i];
+  context.buf += text[i];
+  context.i++;
+
+  return true;
+}
+
 function stepTopLevel(context) {
   const { text, i, n } = context;
   const c = text[i];
@@ -812,12 +849,7 @@ function stepTopLevel(context) {
     context.i += 2;
     return;
   }
-  if (c === "'" || c === '"') {
-    context.quote = c;
-    context.buf += c;
-    context.i++;
-    return;
-  }
+  if (consumeQuoteOpen(context)) return;
   if (tryConsumeSubshell(context) || tryConsumeProcessSubstitution(context)) return;
   if (consumeHeredocOperator(context)) return;
   if (c === '(' && context.braceDepth === 0) openParen(context, atWordStart);
@@ -992,12 +1024,8 @@ function ansiCEscape(match, simple, octal, hexadecimal, unicode, control) {
 // `$` stays a plain character).
 function tryAnsiCQuote(context) {
   const { segment } = context;
-  let end = context.i + 2;
-  while (end < segment.length && segment[end] !== "'") {
-    tick();
-    end += segment[end] === '\\' ? 2 : 1;
-  }
-  if (end >= segment.length) return false;
+  const end = ansiCQuoteEnd(segment, context.i);
+  if (end === -1) return false;
   context.cur += segment.slice(context.i + 2, end).replace(ANSI_C_ESCAPE, ansiCEscape);
   context.i = end + 1;
   context.started = true;
