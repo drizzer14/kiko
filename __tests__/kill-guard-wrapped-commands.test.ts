@@ -71,7 +71,6 @@ describe('kill-guard wrapped commands (parser only, fake repository)', () => {
     ["orca terminal send --text 'kill -9 -1'", 'kill'],
     ["orca terminal send --text 'git stash'", 'stash'],
     ["orca terminal send --text 'cd /x && npx jest'", 'fullJest'],
-    ["orca terminal send --text 'sed -i s/a/b/ src/x.ts'", 'shellWrite'],
     [
       "/Applications/Orca.app/Contents/Resources/bin/orca terminal send --text 'make verify'",
       'heavyJob',
@@ -80,6 +79,17 @@ describe('kill-guard wrapped commands (parser only, fake repository)', () => {
     ["orca computer type-text --text 'make verify'", 'heavyJob'],
   ])('judges the --text of an orca call as a typed command: %s', (command, kind) => {
     expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER(kind));
+  });
+
+  // A relative path outside the project is no guarded tree, so the bare command is allowed there:
+  // the sent text gets the bare command's verdict in each folder, not shellWrite in all three.
+  it('judges the --text of an orca call that writes into a tree like the bare command', () => {
+    const bare = decideInEachFolder(repository, 'sed -i s/a/b/ src/x.ts');
+
+    expect(bare).toEqual(['shellWrite', 'shellWrite', 'allow']);
+    expect(
+      decideInEachFolder(repository, "orca terminal send --text 'sed -i s/a/b/ src/x.ts'"),
+    ).toEqual(bare);
   });
 
   it('judges the --command of orca terminal create', () => {
@@ -120,14 +130,14 @@ describe('kill-guard wrapped commands (parser only, fake repository)', () => {
     expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER(kind));
   });
 
-  // osascript runs an arbitrary shell through `do shell script`; the finding kind is shellWrite
-  // (the guard's nearest kind for an opaque shell it cannot judge), whatever the shell text says.
+  // osascript runs an arbitrary shell through `do shell script`; the finding kind is its own,
+  // osascriptShell, whatever the shell text says.
   it.each([
     `osascript -e 'do shell script "echo hi"'`,
     `osascript -e 'tell application "Finder"' -e 'do shell script "make verify"'`,
     `osascript -e 'do shell script "pkill node"'`,
   ])('denies an osascript script text with do shell script: %s', (command) => {
-    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('shellWrite'));
+    expect(decideInEachFolder(repository, command)).toEqual(EVERY_FOLDER('osascriptShell'));
   });
 
   it.each([

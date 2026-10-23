@@ -224,6 +224,18 @@ const SHELL_WRITE_REASON_LINES = [
     'another tool (cp, mv, dd) to get past this guard.',
 ];
 
+const OSASCRIPT_SHELL_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied an osascript whose script text holds `do shell script`, which ' +
+    'runs an arbitrary shell command inside AppleScript.',
+  'WHY IT MATTERS: the guard cannot read a shell command held in AppleScript text, so a kill, a ' +
+    'git stash, a write into a guarded tree, a main-checkout change, or a whole-repository job ' +
+    'would run through it with none of those denies applied.',
+  'HOW TO FIX:     run the command in Bash itself, where the guard judges it. osascript stays ' +
+    'allowed for a script without `do shell script` (`display notification`, `tell application`).',
+  'DO NOT:         hide `do shell script` in a variable, a script file, or another spelling of ' +
+    'the same call to get past this guard.',
+];
+
 function blockReason(reasonLines, detail) {
   const [what, ...rest] = reasonLines;
 
@@ -340,6 +352,7 @@ const REASON_BY_KIND = {
   mainFastForward: (finding) => blockReason(MAIN_FAST_FORWARD_REASON_LINES, finding.detail),
   mainMove: (finding) => blockReason(MAIN_MOVE_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
+  osascriptShell: (finding) => blockReason(OSASCRIPT_SHELL_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
   hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
@@ -1053,6 +1066,20 @@ const OPTION_WRAPPERS = new Map([
   ['stdbuf', new Set(['-i', '-o', '-e', '--input', '--output', '--error'])],
   ['env', new Set(['-C', '-P', '-a', '-u', '--chdir', '--unset', '--argv0'])],
   ['timeout', new Set(['-k', '-s', '--kill-after', '--signal'])],
+  // `man caffeinate`: `[-disu] [-t timeout] [-w pid]`, no long options. `-ti 5` is a usage error
+  // that never runs the utility, so reading `5` as its command only misjudges a command that
+  // does not run.
+  ['caffeinate', new Set(['-t', '-w'])],
+  // `man arch`: `-arch name`, `-d envname`, `-e envname=value`; `-arm64`, `-x86_64` and the like
+  // are one architecture word each (`ARCH_NAME_GROUPS`).
+  ['arch', new Set(['-arch', '-d', '-e'])],
+  // `man sandbox-exec`: `-f profile-file`, `-n profile-name`, `-p profile-string`, `-D key=value`.
+  ['sandbox-exec', new Set(['-f', '-n', '-p', '-D'])],
+  // `man script` (BSD): `-t time` and `-T fmt`; the output file comes before the command.
+  ['script', new Set(['-t', '-T'])],
+  // `man screen`: `-c file`, `-e xy`, `-h num`, `-p page`, `-s shell`, `-S name`, `-t title`,
+  // `-T term`; `-dmS name cmd` is a flag group whose last letter takes the value.
+  ['screen', new Set(['-S', '-c', '-e', '-h', '-p', '-s', '-t', '-T'])],
   [
     'xargs',
     new Set([
@@ -1089,6 +1116,18 @@ const SHELL_COMMAND_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
 // GNU `xargs -i[R]`, `-e[EOF]`, and `-l[N]` take only a value glued on (`-iR`),
 // never the next word, so a letter after one of them is part of that value.
 const XARGS_GLUED_ONLY_OPTIONS = new Set(['i', 'e', 'l']);
+
+// `arch` reads no flag group: `-arm64e` names an architecture, it is not `-e` after `-arm64`.
+const ARCH_NAME_GROUPS = new Set(['d', 'e']);
+
+const GLUED_ONLY_LETTERS = new Map([
+  ['xargs', XARGS_GLUED_ONLY_OPTIONS],
+  ['arch', ARCH_NAME_GROUPS],
+]);
+
+// Wrappers whose first word after the options is an operand of their own, not the command: the
+// duration of `timeout` and the output file of `script`.
+const WRAPPERS_WITH_OPERAND = new Set(['timeout', 'script']);
 
 // A `--long` option written without `=` that is a prefix of a listed
 // value-taking one (`--max-p` for `--max-procs`), as getopt_long accepts it.
@@ -1248,12 +1287,8 @@ function unwrap(tokens) {
       viaXargs = true;
       placeholder = xargsPlaceholder(t);
     }
-    t = skipOptions(
-      t,
-      OPTION_WRAPPERS.get(base),
-      base === 'xargs' ? XARGS_GLUED_ONLY_OPTIONS : undefined,
-    );
-    if (base === 'timeout') t = t.slice(1);
+    t = skipOptions(t, OPTION_WRAPPERS.get(base), GLUED_ONLY_LETTERS.get(base));
+    if (WRAPPERS_WITH_OPERAND.has(base)) t = t.slice(1);
   }
 
   return { tokens: t, viaXargs, xargsPlaceholder: placeholder, environment };
@@ -3059,6 +3094,95 @@ function sourceFinding(base, rest, context) {
   return stdinFileFinding(context);
 }
 
+// ---- commands that type or hand on a command line ----
+
+// The values of orca's `--text` and `--command` (`terminal send`, `terminal create`, `computer
+// type-text`), as its `parseArgs` reads them: `--flag=value` glued, or the next word, which is no
+// value when it starts with `--` (the flag is then a boolean with no text). Every occurrence
+// counts, although orca keeps only the last.
+const ORCA_TEXT_FLAG = /^--(?:text|command)(?:=(.*))?$/s;
+
+function orcaTypedTexts(tokens) {
+  return tokens.flatMap((word, index) => {
+    const match = ORCA_TEXT_FLAG.exec(word);
+    if (match === null) return [];
+    if (match[1] !== undefined) return [match[1]];
+    const next = tokens[index + 1];
+
+    return next === undefined || next.startsWith('--') ? [] : [next];
+  });
+}
+
+// tmux, from tmux(1) as known: NOT probed (tmux is not installed on this machine), so every list
+// below is unverified. Global options that take a value, and per command the options that do.
+const TMUX_GLOBAL_OPTIONS_WITH_VALUE = new Set(['-c', '-f', '-L', '-S', '-T']);
+const TMUX_NEW_SESSION_OPTIONS = new Set(['-c', '-e', '-f', '-F', '-n', '-s', '-t', '-x', '-y']);
+const TMUX_SPLIT_WINDOW_OPTIONS = new Set(['-c', '-e', '-F', '-l', '-p', '-t']);
+const TMUX_RESPAWN_PANE_OPTIONS = new Set(['-c', '-e', '-t']);
+const TMUX_SEND_KEYS_OPTIONS = new Set(['-c', '-N', '-t']);
+
+// The commands that start a shell command (their words after the options are it) or type keys, by
+// name, manual alias, and (below) any longer prefix of the name that tmux resolves.
+const TMUX_COMMANDS = [
+  { name: 'new-session', alias: 'new', options: TMUX_NEW_SESSION_OPTIONS, typesKeys: false },
+  { name: 'split-window', alias: 'splitw', options: TMUX_SPLIT_WINDOW_OPTIONS, typesKeys: false },
+  { name: 'respawn-pane', alias: 'respawnp', options: TMUX_RESPAWN_PANE_OPTIONS, typesKeys: false },
+  { name: 'send-keys', alias: 'send', options: TMUX_SEND_KEYS_OPTIONS, typesKeys: true },
+];
+
+const tmuxCommandNamed = (word) =>
+  TMUX_COMMANDS.find(
+    ({ name, alias }) =>
+      word === alias || word === name || (word.length > alias.length && name.startsWith(word)),
+  );
+
+// The words after a tmux command's own options; `--` ends them.
+function tmuxOperands(parameters, optionsWithValue) {
+  let index = 0;
+  while (index < parameters.length && /^-./.test(parameters[index])) {
+    if (parameters[index] === '--') return parameters.slice(index + 1);
+    index += takesNextWord(parameters[index], optionsWithValue) ? 2 : 1;
+  }
+
+  return parameters.slice(index);
+}
+
+// The text a tmux call starts or types as a command line: the shell command of `new-session`,
+// `split-window` and `respawn-pane` (its words joined), or every key word `send-keys` types, each
+// judged on its own. Nothing for any other tmux command.
+function tmuxTypedTexts(tokens) {
+  const operands = tmuxOperands(tokens.slice(1), TMUX_GLOBAL_OPTIONS_WITH_VALUE);
+  const command = operands.length === 0 ? undefined : tmuxCommandNamed(operands[0]);
+  if (command === undefined) return [];
+  const rest = tmuxOperands(operands.slice(1), command.options);
+
+  return command.typesKeys || rest.length === 0 ? rest : [rest.join(' ')];
+}
+
+// `do shell script` (AppleScript is case-insensitive and any whitespace separates its words) runs
+// a shell the guard cannot read.
+const DO_SHELL_SCRIPT = /do\s+shell\s+script/i;
+
+function osascriptFinding(tokens, context) {
+  const texts = [...tokens.slice(1), ...context.stdinScripts];
+  if (!DO_SHELL_SCRIPT.test(texts.join(' '))) return null;
+
+  return {
+    kind: 'osascriptShell',
+    detail: `${context.segment.trim()} (osascript runs a shell with do shell script)`,
+  };
+}
+
+// The command lines an `orca` or `tmux` call types or starts go to `context.scripts`, judged like
+// an `eval` string; an `osascript` that holds `do shell script` is its own finding.
+function typedTextFinding(base, tokens, context) {
+  if (base === 'orca') context.scripts.push(...orcaTypedTexts(tokens));
+  if (base === 'tmux') context.scripts.push(...tmuxTypedTexts(tokens));
+  if (base === 'osascript') return osascriptFinding(tokens, context);
+
+  return null;
+}
+
 // The finding for one unwrapped command (see `segmentFinding`).
 function commandFinding(command, context) {
   const { tokens: rest, environment } = command;
@@ -3076,6 +3200,9 @@ function commandFinding(command, context) {
     context.scripts.push(rest.slice(1).join(' '), ...context.stdinScripts);
     return null;
   }
+
+  const typed = typedTextFinding(base, rest, context);
+  if (typed !== null) return typed;
 
   const kill = killFinding(base, command, context);
   if (kill !== null || base === 'kill') return kill;
