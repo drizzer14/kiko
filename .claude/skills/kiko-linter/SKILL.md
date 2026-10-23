@@ -49,6 +49,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `override-guard.sh`, so a deleted file on the medium tier is skipped silently, while a
   direct call with a deleted path exits 2. `component-i18n-namespace.sh` keeps its own `-d`
   block for its fixed root. `__tests__/wrapper-missing-path.test.ts` pins this.
+- A per-file wrapper takes one path or none, and refuses more than one. It reads only its
+  first argument, so a second path was skipped silently and its findings never reported.
+  `harness_require_one_target <check title> "$@"` in `_lib.sh` is the first call of
+  `import-order.sh`, `full-word-identifiers.sh`, `comment-line-width.sh`,
+  `blank-line-separation.sh`, `feature-imports.sh`, `screen-imports.sh`, `lint.sh` and
+  `secrets.sh`: two or more arguments exit 2 with the standard block, whose fix is one run per
+  path (or no path for the project-wide scan). The no-argument default is unchanged.
+  `dup.sh`, `override-guard.sh` and `security.sh` scan every path they get and stay open to
+  several. `__tests__/wrapper-one-path.test.ts` pins this.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
   wrapper and every hook relies on. One exception is the deep,

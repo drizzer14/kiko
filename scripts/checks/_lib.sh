@@ -33,6 +33,24 @@ harness_require_path() {
   return 1
 }
 
+# harness_require_one_target <check> "$@" : succeed for no argument or one. Otherwise print the
+# failure block for <check> and return 1; the caller exits 2. A per-file wrapper reads only its
+# first argument, so a second path was skipped silently and its findings were never reported, which
+# read as a clean run.
+harness_require_one_target() {
+  local check="$1"
+  shift
+  [ "$#" -le 1 ] && return 0
+  print_block \
+    "$check" \
+    "This check takes one path or none, and was given $# paths." \
+    "Paths given: $*" \
+    "A per-file check reads only its first path. A later path would be skipped and its findings never reported, so a clean run would hide them." \
+    "Run the check once per path, or with no path for the project-wide scan." \
+    "Do not read the first path's result as the result for the others."
+  return 1
+}
+
 # harness_require_file <check> <path> : like harness_require_path, and <path> must also be a
 # regular file. A per-file wrapper handed a directory would otherwise scan nothing and pass.
 harness_require_file() {
