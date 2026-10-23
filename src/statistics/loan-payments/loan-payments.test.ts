@@ -100,6 +100,58 @@ describe('loanPaymentExcludedTransactionIds', () => {
 
     expect(ids.has('tx-cross-currency')).toBe(false);
   });
+
+  // Payment 1 is due ON the start day, so the loan's ledger counts a linked
+  // payment from that day on and nothing before it; the pie follows the same
+  // rule, so an earlier manual link is ordinary spending.
+  it('does not exclude a linked payment dated the day before the loan start', () => {
+    const preStart: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-pre-start',
+      time: new Date(2023, 11, 31, 23, 59).getTime(),
+    };
+
+    const ids = loanPaymentExcludedTransactionIds([preStart], [scheduledLoan]);
+
+    expect(ids.has('tx-pre-start')).toBe(false);
+  });
+
+  it('excludes a linked payment dated on the start day, at midnight and late in the day', () => {
+    const atMidnight: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-midnight',
+      time: new Date(2024, 0, 1, 0, 0).getTime(),
+    };
+    const lateInDay: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-late',
+      time: new Date(2024, 0, 1, 23, 59).getTime(),
+    };
+
+    const ids = loanPaymentExcludedTransactionIds([atMidnight, lateInDay], [scheduledLoan]);
+
+    expect([...ids].sort()).toEqual(['tx-late', 'tx-midnight']);
+  });
+
+  it('keeps a pre-start payment out of the exclusion while the same loan excludes its later payment', () => {
+    const preStart: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-pre-start',
+      time: new Date(2023, 11, 20).getTime(),
+    };
+
+    const ids = loanPaymentExcludedTransactionIds([preStart, linkedPayment], [scheduledLoan]);
+
+    expect([...ids]).toEqual(['tx-linked']);
+  });
+
+  it('excludes a payment of a loan whose metadata cannot be read, the way it always did', () => {
+    const unreadable: LoanHolding = { id: 'loan-scheduled', metadata: null, currency: 'UAH' };
+
+    const ids = loanPaymentExcludedTransactionIds([linkedPayment], [unreadable]);
+
+    expect(ids.has('tx-linked')).toBe(true);
+  });
 });
 
 describe('loanInterestEntries', () => {
