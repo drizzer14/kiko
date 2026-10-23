@@ -108,6 +108,31 @@ describe('scripts/checks/full-word-identifiers.sh', () => {
     expect(result.status).toBe(0);
   });
 
+  it.each([
+    ['a bare l', 'const l = 1;\nexport { l };\n', 'l'],
+    ['a leading-underscore _l', 'const _l = 1;\nexport { _l };\n', '_l'],
+    ['l as the first part of lValue', 'const lValue = 1;\nexport { lValue };\n', 'lValue'],
+  ])('fails %s as a one-letter abbreviation', (_description, source, name) => {
+    const result = runCheck(source);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(name);
+  });
+
+  it('does not flag l10n, label, or isLabel, which only contain the letter l', () => {
+    const result = runCheck(
+      'const l10n = 1;\nconst label = 2;\nconst isLabel = 3;\nexport { l10n, label, isLabel };\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('keeps _x allowed, x being a coordinate word', () => {
+    const result = runCheck('const _x = 1;\nexport { _x };\n');
+
+    expect(result.status).toBe(0);
+  });
+
   it('does not flag content inside a string literal or a comment', () => {
     const result = runCheck(
       "// tx idx opts err\nconst message = 'tx idx opts err';\nexport { message };\n",
