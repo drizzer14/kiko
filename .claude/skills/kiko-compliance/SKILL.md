@@ -61,7 +61,11 @@ Mechanized: the Semgrep rule `kiko-no-hidden-feature-flag-or-demo-import`
 dynamic `require(...)` whose specifier contains `e2e/`. It does NOT
 catch a differently-named visibility flag (e.g. `ENABLE_*`) or a demo
 import reached through a path alias that omits `e2e/` — that gap is
-why this is still a reviewer question, not only a CI gate.
+why this is still a reviewer question, not only a CI gate. A second rule,
+`kiko-no-test-fixture-import-in-app` (`rules/semgrep-prewrite.yml`, ERROR), closes the same
+rule from the test side: app source never imports test scaffolding. Its known limits (a dynamic
+`import()`, a path alias, a barrel re-export, a `require(` with a comment) and its scope are in
+kiko-architecture's "Guideline 2.5.19 — no hidden features".
 
 **Reviewability — the demo dataset must reach every feature.** The
 reviewer's `.kiko` must be readable by the submitted build
@@ -352,7 +356,9 @@ Already auto-enforced, so do not re-litigate these by hand — just
 confirm the relevant check ran and stayed green:
 
 - `kiko-no-hidden-feature-flag-or-demo-import` (Semgrep, `check:security`) —
-  the `SHOW_*`/`HIDE_*` flag and `e2e/` import pattern only.
+  the `SHOW_*`/`HIDE_*` flag and `e2e/` import pattern only. Its sibling
+  `kiko-no-test-fixture-import-in-app` (pre-write, ERROR) covers test scaffolding imported
+  into app source; see kiko-architecture "Guideline 2.5.19 — no hidden features".
 - `scripts/checks/plist.sh` (`check:plist`) — ATS pinning, arbitrary
   loads, empty usage-description strings, (section 1b) a credential
   client (a credential header or the `api_token` parameter) without a

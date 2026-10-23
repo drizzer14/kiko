@@ -7,7 +7,8 @@ Run project commands and report results.
 
 Rules:
 - Report the exact command, its output, and the result.
-- Use the check scripts: check:lint, check:all, check:deep.
+- Use the check scripts: check:lint for a direct run. A whole-repo check:all, check:deep or
+  verify is a queued job (`scripts/job-queue.sh`); typed, kill-guard denies it (`heavyJob`).
 - `check:permissions` is manual (not in `check:all`, no hook). Run the wrapper and report its
   block; the user edits permission settings by hand, and an agent never edits them.
 - Do not write app code. Hand code changes to the developer.
@@ -62,11 +63,11 @@ Rules:
   does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file"). A
   proof table is the fallback for a real timeout only, not for regex cost (the patch removed it).
   Ops reports the failure block as is, never starts its own rerun, and never raises the timeout.
-- The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
+- The coordinator who queues the gate logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
-- Run check:deep / check:mutation only through the wrapper
-  (`npm run check:deep` / `npm run check:mutation`, or `make deep`); it is
-  single-flighted and tears its own workers down. Never run
+- Run check:deep / check:mutation only through the queued gate
+  (`bash scripts/job-queue.sh gate <worktree> <label> <base> <head>`), which runs the wrapper;
+  it is single-flighted and tears its own workers down. Never run
   `npx stryker run` directly, and never put a run in a Monitor loop or a
   wait script — an orphaned Stryker spawns one worker per core and can
   overload the machine.
@@ -98,18 +99,20 @@ Rules:
   whole-report sanity floor. A dry run can time out under load
   ("Initial test run timed out"): re-run. A window tip must be a commit
   where the full jest suite passes.
-- **`make deep` / `check:deep` is the COORDINATOR's own job, not an ops
-  dispatch.** The coordinator runs the long, no-incremental checks
-  (Stryker mutation + osv) ITSELF as a background process and launches
+- **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
+  dispatch.** The coordinator queues the long, no-incremental checks
+  (Stryker mutation + osv) ITSELF as a background gate and launches
   the human `tail -F` of the progress log at the same time
   (`scripts/checks/mutation.sh` prints the exact tail command near the
-  start). NEVER dispatch a `kiko:ops` subagent to "run `make deep` and
+  start). NEVER dispatch a `kiko:ops` subagent to "run the gate and
   wait": a watching subagent only polls the run, burns tokens, and
   cannot be stopped mid-flight. WHEN it runs (per reviewed change set,
   before its merge into next) is in harness-workflow's "Mutation testing:
   small change sets only".
-- **Launch every `make deep` / gate under `caffeinate -i`.** Laptop sleep
-  voided two gates on 2026-10-09 (13 h, 78/151 timeouts).
+- **Keep the Mac awake for a gate.** Laptop sleep voided two gates on 2026-10-09 (13 h,
+  78/151 timeouts). Queue the gate (`bash scripts/job-queue.sh gate ...`); never type a
+  heavy command under `caffeinate -i`: kill-guard does not unwrap it, which is a known gap,
+  not a route.
 - **After a tests-only fix for module-scope (static) mutants, delete
   `reports/stryker-incremental.json` and `.stryker-tmp` in the gating
   checkout before the re-run.** Run 4 reused old Survived results (only
@@ -279,7 +282,8 @@ about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass
 ## Load rule
 
 During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
-`check:all` or `make verify` outside the queue, and no other pass replaces a green queued
+`check:all` or `make verify` outside the queue (kill-guard `heavyJob` denies it), and no other
+pass replaces a green queued
 verify line (harness-workflow skill, "Load rule").
 
 Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queue.sh`, which

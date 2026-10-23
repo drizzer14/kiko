@@ -41,8 +41,8 @@ Rules:
   runs lint, the full jest suite, and the gate in one fail-fast pass), and fix what it reports
   until it is green, before you report done. `make verify`, `make gate`, `make deep`, and a full
   jest run are denied outside the queue.
-- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
-  `githooks/`, `.claude/skills/`, `.claude/agents/`, `harness/kiko/` by name,
+- The SHELL-WRITE deny matches the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`)
+  by name,
   and any `*.yml`/`*.yaml` file by extension, so a shell redirect or `cp`
   into a file under such a folder is denied inside a `git worktree add` of this
   repository, or for a path the guard cannot resolve. Build a fixture repository's tree with the

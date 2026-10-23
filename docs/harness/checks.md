@@ -7,7 +7,7 @@
 | Command | Tool | Threshold | Tier |
 |---|---|---|---|
 | `npm run check:lint` | Biome | any lint/format violation fails (Biome skips only the bad fixtures `rules/fixtures/**/*.bad.*`; a good fixture is format-checked, never linted — see `docs/harness/documented-exceptions.md`) | fast (PostToolUse) |
-| `npm run check:dup` | jscpd (`scripts/checks/dup.sh`) | >5% duplicated lines/tokens fails. jscpd skips a file over 1000 lines or 100kb without a word, so a second NON-blocking pass (it runs on every call, a dedup skip included) measures each such file alone with the limits raised, plus one combined run of the whole scope, and prints a `WARNING` on stderr (file and percentage; exit code unchanged) for every figure over 5% or one it cannot measure. A scoped run covers only the files it was given. A warning on exit 0 is shown by a hook only when the tier fails for another reason (the tier's whole stderr is shown then); it is tracked debt, not that failure. A person or a manual `check:dup` run is its usual reader. Tracked debt, not an allowlist: it becomes a failure once the sweep track brings every large file, and the combined total, to 5% or less (see `docs/harness/documented-exceptions.md`) | medium (Stop/SubagentStop) |
+| `npm run check:dup` | jscpd (`scripts/checks/dup.sh`) | >5% duplicated lines/tokens fails. jscpd skips a file over 1000 lines or 100kb without a word, so a second pass (the large-file pass; it runs on every call, a dedup skip included) measures each such file alone with the limits raised, plus one combined run of the whole scope, against `scripts/checks/dup-ceilings.tsv` (read up front; a missing or malformed file exits 2). A listed file at or under its ceiling prints a `WARNING` on stderr (file and percentage; exit 0); a listed file above its ceiling, an unlisted file over 5%, a figure it cannot measure, and a no-argument combined figure above the `*combined*` row fail (exit 2). A scoped run covers only the files it was given. A warning on exit 0 is shown by a hook only when the tier fails for another reason (the tier's whole stderr is shown then); it is tracked debt, not that failure. Tracked debt, not an allowlist: a figure never rises, and the rows go once every large file, and the combined total, are 5% or less (see `docs/harness/documented-exceptions.md`) | medium (Stop/SubagentStop) |
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
 | `npm run check:deps` | depcheck + `npm ci --dry-run` + `deps-ranges.js` (exact-pin allowlist) + `npm ls --all` | any unused/missing dep, or broken lockfile, fails; any non-exact-semver spec in dependencies/devDependencies/optionalDependencies/peerDependencies/overrides fails; any `npm ls --all` ELSPROBLEMS (an unsatisfied resolved-tree requirement) fails; a changed dependency block is surfaced for confirmation; a `node_modules/node_modules` link or folder fails before npm ls runs; the fix is `rm node_modules/node_modules` for a link and `npm ci` for a folder, never `rm -r node_modules` | medium |
 | `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`, `rules/semgrep-prewrite.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking; a Semgrep error, timeout, bad exit code, or invalid JSON output also fails (see `security.sh`); every argument is scanned in one call, and a dedup skip says so on stderr; 33 registry rule ids that cannot match this repo (express, cors, a DOM-only sink) are excluded (see `documented-exceptions.md`) | fast |
@@ -171,7 +171,9 @@ that discovery accepts for `scripts/checks` (`.pinned` or `.pinned.json`, with o
 suites at run time; there is no list to maintain. It finds a suite only when the file holds
 `readFileSync` and a quoted doc-root literal, so path-segment joins and template paths are not
 discovered (a documented limit). The step runs before `guard-replay.sh` by choice; the order no
-longer matters. Jest runs with `--maxWorkers=2`. The deadline is hookStarted + the budget that
+longer matters. Jest runs with `--maxWorkers=$HARNESS_DOC_JEST_WORKERS` (2; one constant in
+`_lib.sh`, read by this step and by `make doc-suites`, so a by-hand run is capped
+too). The deadline is hookStarted + the budget that
 `node scripts/checks/guard-replay.js step-budget` prints (hook budget minus the call tail minus
 the later-checks reserve; read the formula there), so the checks after the replay keep their
 reserve. At the deadline it stops its own
@@ -297,6 +299,15 @@ runs, `kill-guard.js` fails) denies. `git rebase`, `cherry-pick`,
 and `am` replay commits without
 pre-commit (a known limit).
 See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill scan".
+
+The same hook also denies a whole-repository job typed outside the queue (`heavyJob`: a heavy
+`make` target, `npm run` script or check script, a Semgrep or `security.sh` run of the whole
+repository; the sets are `HEAVY_MAKE_TARGETS`, `HEAVY_NPM_SCRIPTS` and `HEAVY_SCRIPT` in
+kill-guard.js, read them there) and a jest run that would run every suite (`fullJest`: a runner
+with no test file, or an array option of jest-cli before a bare word; `npm test` needs
+`-- <files>`). The way out is `bash scripts/job-queue.sh verify|check-all|security|gate ...`.
+Only the typed command is judged. See kiko-linter's "Heavy-job and full-jest deny" for the
+rule, the dry-run and narrower forms that stay allowed, and the known limits.
 
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
