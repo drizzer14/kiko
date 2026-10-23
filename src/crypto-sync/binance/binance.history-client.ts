@@ -5,7 +5,7 @@ import type {
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
-import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
+import type { UnreadableRow, WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   type FetchAccountOptions,
@@ -1253,6 +1253,113 @@ export const fetchOrderFills = async (
         orderId: String(orderId),
         ...(fromId > 0 ? { fromId: String(fromId) } : {}),
         limit: String(TRADE_PAGE_LIMIT),
+      },
+      options,
+    ),
+  );
+
+/** Binance's cap on `rows` for the P2P order history; `page` starts at 1. */
+export const P2P_PAGE_ROWS = 100;
+
+const P2P_SUCCESS_CODE = '000000';
+
+const nonEmptyText: Reader<string> = (value) =>
+  typeof value === 'string' && value !== '' ? value : parseFailure();
+
+/**
+ * What places an order in a window and names its row: a missing or empty `orderNumber` or a
+ * `createTime` that is no safe integer makes the order unreadable and owed (the Convert rule), with
+ * its `createTime` as the time when that is usable.
+ */
+const P2P_IDENTITY_FIELDS = {
+  orderNumber: nonEmptyText,
+  createTime: integer,
+};
+
+/**
+ * Every field the walk decides on is read with its documented type, and left `undefined` when
+ * Binance sends none (null or left out), so an absent amount differs from an empty one. A field of
+ * another JSON type fails the page. The counterparty (`counterPartNickName`, `payMethodName`,
+ * `additionalKycVerify`, `advNo`) is never read, nor are the unit price, the rate, the fiat symbol
+ * and the `commission` the doc lists: none decides the row or its marker.
+ */
+const P2P_FIELDS = {
+  orderStatus: strictOptionalText,
+  tradeType: strictOptionalText,
+  advertisementRole: strictOptionalText,
+  asset: optional(tickerText),
+  fiat: strictOptionalText,
+  amount: strictOptionalText,
+  totalPrice: strictOptionalText,
+  takerCommission: strictOptionalText,
+  takerAmount: strictOptionalText,
+};
+
+/** One order from `/sapi/v1/c2c/orderMatch/listUserOrderHistory`, amounts as Binance's text. */
+export type BinanceP2pOrder = Parsed<typeof P2P_IDENTITY_FIELDS> & Parsed<typeof P2P_FIELDS>;
+
+const readP2pIdentity = recordReader(P2P_IDENTITY_FIELDS);
+
+const readP2pFields = recordReader(P2P_FIELDS);
+
+const readP2pIdentified: Reader<{ item: unknown; identity: Parsed<typeof P2P_IDENTITY_FIELDS> }> = (
+  item,
+) => ({ item, identity: readP2pIdentity(item) });
+
+/**
+ * One P2P page. An order that cannot be placed (`P2P_IDENTITY_FIELDS`) is `unreadable`; any other
+ * order is read outside that guard, so a field of the wrong type fails the whole page and no order
+ * is skipped. The orders of every asset are rows: the walk decides on the status, side and role
+ * before it asks whether the asset is tracked, so `untracked` is always empty. The envelope is
+ * an object with the success code, a `data` list (null or left out is empty) and a `total`.
+ */
+const p2pPage = ({ body, headers }: RequestPage): TotalPage<BinanceP2pOrder> => {
+  if (!isRecord(body) || body.code !== P2P_SUCCESS_CODE) {
+    return parseFailure();
+  }
+
+  const readings = readingsOf(
+    body.data ?? [],
+    readP2pIdentified,
+    timeFieldOf('createTime', epochTime),
+  );
+
+  return {
+    rows: valuesOf(readings).map(({ item, identity }) => ({ ...identity, ...readP2pFields(item) })),
+    unreadable: unreadableOf(readings),
+    untracked: [],
+    gathered: readings.length,
+    total: finiteNumber(body.total),
+    ...usedWeightsFromHeaders(headers),
+  };
+};
+
+/**
+ * `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory` for ONE page of ONE side in ONE window, at
+ * most 30 days wide. Signed, read-only. A body that is not the documented envelope, or an order
+ * with a field of the wrong type, throws `BinanceHistoryParseError`; a start Binance keeps no
+ * history for throws `BinanceHistoryTooOldError`, a 429 or 418 `BinanceRateLimitError`.
+ */
+export const fetchP2pOrders = async (
+  apiKey: string,
+  secret: string,
+  side: 'BUY' | 'SELL',
+  span: WalkWindow,
+  page: number,
+  options: FetchAccountOptions = {},
+): Promise<TotalPage<BinanceP2pOrder>> =>
+  p2pPage(
+    await signedRequestPage(
+      apiKey,
+      secret,
+      'GET',
+      '/sapi/v1/c2c/orderMatch/listUserOrderHistory',
+      {
+        tradeType: side,
+        startTimestamp: String(span.start),
+        endTimestamp: String(span.end),
+        page: String(page),
+        rows: String(P2P_PAGE_ROWS),
       },
       options,
     ),
