@@ -940,6 +940,7 @@ shortened word):
 | `prev` | `previous` |
 | `cfg` | `config` |
 | `e` | `event` or `error` |
+| `l` | `line`, `length`, `list`, or `label` (whichever it holds; `l10n` stays one word) |
 | `res` | `result` or `response` |
 | `msg` | `message` |
 | `cb` | `callback` |

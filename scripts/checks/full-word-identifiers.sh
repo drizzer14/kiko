@@ -12,7 +12,7 @@ fail() {
     "Full words in identifiers" \
     "One or more identifiers shorten a word kiko-code-style requires in full." \
     "$1" \
-    "kiko-code-style's 'Full words in identifiers' rule: no abbreviated word (cond/btn/idx/acc/tx/err/val/prev/cfg/e/res/msg/cb/ctx/el/opts/tmp/num/arr/obj/str) as a whole camelCase/PascalCase/snake_case part of a variable, parameter, function, type, or prop name. An abbreviation saves a few keystrokes and costs the reader a lookup." \
+    "kiko-code-style's 'Full words in identifiers' rule: no abbreviated word (cond/btn/idx/acc/tx/err/val/prev/cfg/e/l/res/msg/cb/ctx/el/opts/tmp/num/arr/obj/str) as a whole camelCase/PascalCase/snake_case part of a variable, parameter, function, type, or prop name. An abbreviation saves a few keystrokes and costs the reader a lookup." \
     "Spell the word out in full (e.g. tx -> transaction, idx -> index, opts -> options). Re-run: npm run check:full-word-identifiers" \
     "Do not rename a testID, an i18n key, a DB column, a persisted JSON key, or a name forced by a third-party API/library prop — those stay as-is even if they match the denylist. Add a new exact-path exemption in scripts/checks/full-word-identifiers.js only for a verified external-name case, documented in docs/harness/documented-exceptions.md."
   exit 2
