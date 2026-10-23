@@ -46,17 +46,17 @@ export const requiredPlacement = require('../../src/design-system/components/scr
 // EXPECT-FINDING
 export const loadPlacementLater = () => import('../../src/design-system/components/screen/use-tab-bar-placement');
 
-// The boolean hook built on it, from the Screen barrel.
+// The top-bar boolean hook, named in an import clause of its module file.
 // EXPECT-FINDING
-import { useIsTabBarAtTop } from '@kiko/design-system/components/screen';
+import { useIsTabBarAtTop } from '@kiko/design-system/components/screen/use-is-tab-bar-at-top';
 
 export const barrelAtTop = useIsTabBarAtTop;
 
-// A CommonJS destructure of the hook from the barrel.
+// A CommonJS destructure of the hook.
 // EXPECT-FINDING
 export const { useIsTabBarAtTop: requiredAtTop } = require('@kiko/design-system/components/screen');
 
-// A CommonJS property read of the hook from the barrel.
+// A CommonJS property read of the hook.
 // EXPECT-FINDING
 export const requiredAtTopProperty = require('@kiko/design-system/components/screen').useIsTabBarAtTop;
 

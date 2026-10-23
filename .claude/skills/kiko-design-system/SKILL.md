@@ -695,10 +695,10 @@ new component can land between reviews of this skill:
   The hook is pane-aware: a pane that is not at the window's bottom has
   no tab bar over it and gets 0. `resolveBottomClearance` is pane-blind,
   so nothing outside `src/design-system/components/screen/` may import
-  it (`kiko-no-pane-blind-bottom-clearance`). `useIsTabBarAtTop` and `useIsTabBarNotAtBottom`
-  (the Screen barrel) are pane-blind window reads too: only
-  `src/design-system/components/screen/` and `src/navigation/pane-stack/pane-stack-view/` may
-  import them, or `useTabBarPlacement`
+  it (`kiko-no-pane-blind-bottom-clearance`). `useIsTabBarNotAtBottom` (the Screen
+  barrel) and `useIsTabBarAtTop` (a Screen-folder module, read by `useContentCap`) are
+  pane-blind window reads too: only `src/design-system/components/screen/` and
+  `src/navigation/pane-stack/pane-stack-view/` may import them, or `useTabBarPlacement`
   (`kiko-tab-bar-placement-only-in-screen-and-pane-stack-view`). In a pane (a
   `PaneContext` from `TwoPaneLayout`), the `SafeAreaView` keeps only the
   window edges the pane touches (`use-pane-screen.ts`), a footer is

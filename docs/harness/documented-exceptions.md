@@ -1204,10 +1204,12 @@ verified usage, not dead weight:
     on cold start until the first read), then settle.
     Stored margins, not getter margins: a controller root view's `directionalLayoutMargins`
     getter returns the stored margin plus the safe area inset while
-    `insetsLayoutMarginsFromSafeArea` is YES, so writing the getter's value back added the inset
-    to the top and bottom margin at every layout pass (+20 per pass on a simulator). The patch
-    reads the margins through `RNSStoredDirectionalLayoutMargins`, which subtracts the view's
-    `safeAreaInsets.top` and `.bottom` in that case (the same helper serves the navigation bar),
+    `insetsLayoutMarginsFromSafeArea` is YES, so writing the getter's value back would add the
+    inset to the margin at every layout pass. The patch reads the margins through
+    `RNSStoredDirectionalLayoutMargins`, which subtracts the view's whole `safeAreaInsets` in
+    that case (top and bottom, and left and right mapped to leading and trailing by the view's
+    `effectiveUserInterfaceLayoutDirection`, so a right-to-left layout swaps them; the same
+    helper serves the navigation bar), so it returns the true stored margins. It
     writes only the leading and trailing margins through `RNSSetHorizontalLayoutMargins`, and
     skips the write when the margins already hold. The margins saved for the restore path are
     the stored ones too.
@@ -1217,9 +1219,11 @@ verified usage, not dead weight:
     `viewRespectsSystemMinimumLayoutMargins` is touched; the native stack gets the prop's codegen
     default. Going back to 0 restores the view and bar margins captured when the value first went
     above 0, and `viewRespectsSystemMinimumLayoutMargins = YES`. Without a stack view being
-    recycled, that restore path is reached only by the stale placement read above (about 0.1 s,
-    the mounted split briefly reads a bar at the bottom) or by a Duo read of `bottom`; an
-    iPad window keeps its tab bar at the top, so no resize reaches it. Only the Fabric (new
+    recycled, that restore path is an ordinary event on a Surface Duo: rotating from a side-bar
+    pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 16 to
+    0, and the saved stored margins are put back. The stale placement read above (about 0.1 s,
+    the mounted split briefly reads a bar at the bottom) reaches it too; an iPad window keeps
+    its tab bar at the top, so no resize reaches it there. Only the Fabric (new
     architecture) path is patched, as the stack takes its props in `updateProps`; `lib/module` is
     not patched (nothing here loads it). The patch was derived against the pristine tarball
     (`npm pack react-native-screens@4.27.0`): applying it to that tarball gives the installed

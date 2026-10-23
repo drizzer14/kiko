@@ -312,15 +312,17 @@ briefly.
 
 Margins written back are the stored ones: a controller root view's `directionalLayoutMargins`
 getter adds the safe area inset to the stored margin (`insetsLayoutMarginsFromSafeArea`), so the
-patch reads through `RNSStoredDirectionalLayoutMargins` (subtracting `safeAreaInsets.top` and
-`.bottom`), writes only the leading and trailing margins, skips an equal write, and saves the
-stored margins for the restore path. Writing the getter's value back ratcheted top and bottom by
-the inset on every layout pass.
+patch reads through `RNSStoredDirectionalLayoutMargins` (subtracting the whole `safeAreaInsets`,
+left and right mapped to leading and trailing by the view's layout direction), writes only the
+leading and trailing margins, skips an equal write, and saves the stored margins for the restore
+path. Writing the getter's value back would add the inset at every layout pass.
 
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
-is reached without a stack view being recycled only by the stale placement read above (about
-0.1 s, the mounted split briefly reads a bar at the bottom) or by a Duo read of `bottom`; an
-iPad window keeps its tab bar at the top, so no resize reaches it.
+is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
+side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 16
+to 0. The stale placement read above (about 0.1 s, the mounted split briefly reads a bar at the
+bottom) reaches it too; an iPad window keeps its tab bar at the top, so no resize reaches it
+there.
 
 How it is pinned: `__tests__/react-native-patch.test.ts` fails unless `react-native-screens` is
 exactly `4.27.0` in `package.json`, the patch touches only `node_modules/react-native-screens/`

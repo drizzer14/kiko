@@ -1212,10 +1212,12 @@ rules:
   # the pane's, so a screen that branches on any of them inside a pane reads another pane's
   # answer. `Screen` and its siblings (the Screen folder) read them, and `PaneStackView` reads
   # `useIsTabBarNotAtBottom` once, above both panes, to give the native large title the
-  # content's margin. Same two arms as the band rule, for the three hook names and for the
-  # `use-tab-bar-placement`, `use-is-tab-bar-at-top` and `use-is-tab-bar-not-at-bottom` module
-  # files, and a third arm for a CommonJS load of the barrel that names a hook (a `require(…)`
-  # destructure or property read). `import type` and prose never match.
+  # content's margin. The Screen barrel exports only `useIsTabBarNotAtBottom`; the other two
+  # hooks are read by file, so the module-path arm still matters. Same two arms as the band
+  # rule, for the three hook names and for the `use-tab-bar-placement`, `use-is-tab-bar-at-top`
+  # and `use-is-tab-bar-not-at-bottom` module files, and a third arm for a CommonJS load that
+  # names a hook (a `require(…)` destructure or property read). `import type` and prose never
+  # match.
   - id: kiko-tab-bar-placement-only-in-screen-and-pane-stack-view
     languages: [typescript]
     severity: ERROR

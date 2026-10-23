@@ -84,14 +84,20 @@ describe('the react-native-screens fixed content margin patch', () => {
   });
 
   // The getter of a controller's root view returns the stored margin plus the safe area inset, so
-  // writing it back added the inset to the top and bottom margin at every layout pass.
+  // writing it back would add the inset to the top and bottom margin at every layout pass.
   it('writes back stored margins, not the getter’s margins plus the safe area inset', () => {
     const source = read('ios/RNSScreenStack.mm');
     const gettersRead = source.match(/=\s*[\w.]*\.directionalLayoutMargins;/g);
 
     expect(source).toContain('if (view.insetsLayoutMarginsFromSafeArea) {');
-    expect(source).toContain('margins.top -= view.safeAreaInsets.top;');
-    expect(source).toContain('margins.bottom -= view.safeAreaInsets.bottom;');
+    expect(source).toContain('margins.top -= safeArea.top;');
+    expect(source).toContain('margins.bottom -= safeArea.bottom;');
+    expect(source).toContain('UIEdgeInsets safeArea = view.safeAreaInsets;');
+    expect(source).toContain(
+      'view.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft',
+    );
+    expect(source).toContain('margins.leading -= isRightToLeft ? safeArea.right : safeArea.left;');
+    expect(source).toContain('margins.trailing -= isRightToLeft ? safeArea.left : safeArea.right;');
     expect(gettersRead).toEqual(['= view.directionalLayoutMargins;']);
     expect(source).toContain(
       '_viewMarginsBeforeFixedContentMargin = RNSStoredDirectionalLayoutMargins(self.view);',
