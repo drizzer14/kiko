@@ -207,11 +207,6 @@ above() {
   awk -v p="$1" -v t="$2" 'BEGIN { exit !(p > t) }'
 }
 
-# over_threshold <percentage> : succeeds when the figure is over the threshold.
-over_threshold() {
-  above "$1" "$threshold"
-}
-
 # measure_one <number> <file> : writes the file's WARNING line, if any, to
 # "$report_dir/<number>.warning" and its FAIL line, if any, to "$report_dir/<number>.failure".
 measure_one() {
@@ -228,7 +223,7 @@ measure_one() {
   elif [ -n "$ceiling" ] && above "$measured" "$ceiling"; then
     printf 'check:dup %s measured alone is %s%% duplicated, above its %s%% ceiling in scripts/checks/dup-ceilings.tsv.\n' \
       "$shown" "$measured" "$ceiling" > "$report_dir/$number.failure"
-  elif ! over_threshold "$measured"; then
+  elif ! above "$measured" "$threshold"; then
     return
   elif [ -n "$ceiling" ]; then
     printf 'WARNING: check:dup %s is over jscpd'\''s size limit (1000 lines or 100kb), so the blocking run skipped it; measured alone it is %s%% duplicated (threshold %s%%). It is listed in scripts/checks/dup-ceilings.tsv and is at or under its ceiling there.\n' \
@@ -253,7 +248,7 @@ measure_combined() {
   elif [ "$whole_repo" -eq 1 ] && above "$measured" "$baseline"; then
     printf 'check:dup combined run (every file in scope, size limits raised) is %s%% duplicated, above its %s%% baseline in scripts/checks/dup-ceilings.tsv.\n' \
       "$measured" "$baseline" > "$report_dir/combined.failure"
-  elif over_threshold "$measured"; then
+  elif above "$measured" "$threshold"; then
     printf 'WARNING: check:dup combined run (every file in scope, size limits raised) is %s%% duplicated (threshold %s%%); a clone between a large file and another file counts only here. The baseline in scripts/checks/dup-ceilings.tsv applies to the no-argument (whole-repo) run only, and a whole-repo figure above it fails.\n' \
       "$measured" "$threshold" > "$report_dir/combined.warning"
   fi

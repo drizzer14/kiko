@@ -310,7 +310,7 @@ const makeImportDatabaseTransaction = (
 
 // The mocked database handing out a fresh fake write transaction over an empty store, for the
 // default holding on an unsynced account: the setup most import tests start from.
-const installEmptyStore = (): { store: { transactions: StoredRow[] } } => {
+const installEmptyStore = (): { transactions: StoredRow[] } => {
   const store: { transactions: StoredRow[] } = { transactions: [] };
 
   mockDatabaseTransaction = makeImportDatabaseTransaction({
@@ -319,7 +319,7 @@ const installEmptyStore = (): { store: { transactions: StoredRow[] } } => {
     account: unsyncedAccount,
   }).databaseTransaction;
 
-  return { store };
+  return store;
 };
 
 describe('importStatement', () => {
@@ -973,7 +973,7 @@ describe('importParsedStatement runs the loan auto-link matcher', () => {
 
 describe('importParsedStatement hands each row its time reading', () => {
   it("passes each row's own reading and stores no reading column", async () => {
-    const { store } = installEmptyStore();
+    const store = installEmptyStore();
     const importRows = jest.spyOn(transactionsRepo, 'importRows');
     const parsed = {
       formatId: 'sensebank-csv' as const,
@@ -1050,7 +1050,7 @@ describe('importParsedStatement runs the one-shot statement-import rewrites firs
   });
 
   it('refuses the import, writing no row, when the rezone flag is still false afterward', async () => {
-    const { store } = installEmptyStore();
+    const store = installEmptyStore();
     mockImportTimesRezoned = false;
 
     await expect(importParsedStatement(parsed, 'holding-1')).rejects.toThrow(
