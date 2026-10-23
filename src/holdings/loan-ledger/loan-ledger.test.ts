@@ -316,6 +316,32 @@ describe('loanLedgerOutstandingMinorAt', () => {
     ).toBe(0);
   });
 
+  it('reads the schedule when the only linked payment is the day before the start', () => {
+    const book = bookWith([
+      {
+        time: addDays(annuityMeta.startDate, -1),
+        amountMinorUnits: -installments[0].paymentMinorUnits,
+      },
+    ]);
+
+    for (const instant of [annuityMeta.startDate, installments[3].dueDate]) {
+      expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, instant)).toBe(
+        loanOutstandingMinorAt(annuityMeta, LOAN.id, book, instant),
+      );
+    }
+  });
+
+  it('counts only the payment on or after the start when another is before it', () => {
+    const book = bookWith([
+      { time: addDays(annuityMeta.startDate, -1), amountMinorUnits: -400_000 },
+      onSchedule(0),
+    ]);
+
+    expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, installments[3].dueDate)).toBe(
+      annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
+    );
+  });
+
   // The same rule the spending pie's loan-payment exclusion applies: only a
   // debit in the loan's own currency pays it down.
   it('ignores a payment in another currency and a credit', () => {
@@ -390,6 +416,35 @@ describe('loanLedgerSummary', () => {
 
     expect(summary.interestPaidMinorUnits).toBe(0);
     expect(summary.principalRepaidMinorUnits).toBe(100_000);
+  });
+
+  it('reads zero paid and the schedule outstanding when the only payment is before the start', () => {
+    const book = bookWith([
+      { time: addDays(annuityMeta.startDate, -1), amountMinorUnits: -400_000 },
+    ]);
+    const now = installments[3].dueDate;
+
+    expect(loanLedgerSummary(annuityMeta, LOAN, book, now)).toEqual({
+      principalMinorUnits: 12_000_000,
+      paidSoFarMinorUnits: 0,
+      interestPaidMinorUnits: 0,
+      principalRepaidMinorUnits: 0,
+      outstandingMinorUnits: loanOutstandingMinorAt(annuityMeta, LOAN.id, book, now),
+    });
+  });
+
+  it('counts only the payment on or after the start when another is before it', () => {
+    const book = bookWith([
+      { time: addDays(annuityMeta.startDate, -1), amountMinorUnits: -400_000 },
+      onSchedule(0),
+    ]);
+    const summary = loanLedgerSummary(annuityMeta, LOAN, book, installments[3].dueDate);
+
+    expect(summary.paidSoFarMinorUnits).toBe(installments[0].paymentMinorUnits);
+    expect(summary.interestPaidMinorUnits).toBe(installments[0].interestMinorUnits);
+    expect(summary.outstandingMinorUnits).toBe(
+      annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
+    );
   });
 
   it('ignores a payment dated after now', () => {

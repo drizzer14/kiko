@@ -1,7 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
-import { WINDOW_BEFORE_DAYS } from '@kiko/loans/payment-matcher';
 
 const mockLoanHoldingsQuery = jest.fn();
 const mockLoanMatchCandidatesQuery = jest.fn();
@@ -119,19 +118,34 @@ describe('runLoanAutoLink', () => {
   });
 
   // Bound the candidate read (op-sqlite queue) to the earliest loan's own
-  // start date minus the match window's before-margin, and to the open
-  // loans' own currencies — never a whole-table scan.
-  it('bounds loanMatchCandidatesQuery to the earliest loan start minus the window margin, and to the loan currencies', async () => {
+  // start date and to the open loans' own currencies — never a whole-table
+  // scan. A payment before the start day counts nowhere, so none of the
+  // days before it are fetched.
+  it('bounds loanMatchCandidatesQuery to the earliest loan start and to the loan currencies', async () => {
     mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
     mockLoanMatchCandidatesQuery.mockResolvedValue([]);
 
     await runLoanAutoLink(NOW);
 
     expect(mockLoanMatchCandidatesQuery).toHaveBeenCalledWith({
-      minTime: loanMeta.startDate - WINDOW_BEFORE_DAYS * DAY_MS,
+      minTime: loanMeta.startDate,
       currencies: ['UAH'],
     });
   });
+
+  it.each([1, 2, 3])(
+    'does not fetch a transaction %i days before the start',
+    async (daysBefore) => {
+      mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
+      mockLoanMatchCandidatesQuery.mockResolvedValue([]);
+
+      await runLoanAutoLink(NOW);
+
+      const { minTime } = mockLoanMatchCandidatesQuery.mock.calls[0][0] as { minTime: number };
+
+      expect(loanMeta.startDate - daysBefore * DAY_MS).toBeLessThan(minTime);
+    },
+  );
 
   it('returns without reading transactions when every loan holding carries unparseable metadata', async () => {
     mockLoanHoldingsQuery.mockResolvedValue([{ id: 'loan-1', currency: 'UAH', metadata: null }]);

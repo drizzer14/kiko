@@ -10,12 +10,8 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import type { Currency } from '@kiko/currency/currency';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
-// Exported so `use-loan-auto-link.ts` can derive its own SQL-level lower
-// bound ("earliest loan start minus the window's own before-margin") from
-// the SAME constant this module's own date-window check uses, rather than
-// a second, driftable literal.
 // A payment matches from 3 days before to 7 days after the due date.
-export const WINDOW_BEFORE_DAYS = 3;
+const WINDOW_BEFORE_DAYS = 3;
 const WINDOW_AFTER_DAYS = 7;
 
 // A fixed keyword list (Ukrainian + English), checked

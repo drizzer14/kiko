@@ -51,11 +51,17 @@ const ledgerKeyOf = (meta: LoanMeta, loan: LedgerLoan): string =>
   ]);
 
 // A linked payment pays this loan down only as a debit in the loan's own
-// currency (the rule the spending pie's loan-payment exclusion applies).
+// currency (the rule the spending pie's loan-payment exclusion applies), dated
+// on or after the start day: payment 1 is due ON it, so an earlier payment
+// counts nowhere — not in the branch choice, the paid total or the outstanding.
 const buildLedger = (meta: LoanMeta, loan: LedgerLoan, book: PriceBook): Ledger => {
   const plan = loanPlanOf(meta);
+  const startDayKey = dayKeyOf(meta.startDate);
   const payments = (book.loanPayments.get(loan.id) ?? []).filter(
-    (payment) => payment.currency === loan.currency && payment.amountMinorUnits < 0,
+    (payment) =>
+      payment.currency === loan.currency &&
+      payment.amountMinorUnits < 0 &&
+      dayKeyOf(payment.time) >= startDayKey,
   );
   const splits = loanPaymentSplitsMinor(meta, payments, loan.currency, plan);
   const entries = payments.map((payment, index) => ({
