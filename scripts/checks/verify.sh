@@ -56,7 +56,18 @@ while IFS= read -r suite; do
     '' | '#'*) ;;
     *) SEMGREP_SUITES+=("$suite") ;;
   esac
-done <"$SEMGREP_SUITE_LIST"
+done < <(cat "$SEMGREP_SUITE_LIST" 2>/dev/null)
+
+# A missing, empty or comments-only list would run no suite in 2b and leave the real-semgrep suites
+# unproven, so it fails here with a block instead of an "unbound variable" abort under bash 3.2.
+if [ "${#SEMGREP_SUITES[@]}" -eq 0 ]; then
+  {
+    echo "✖ make verify FAILED before stage 2: no suite is listed in scripts/checks/semgrep-jest-suites.txt"
+    echo "  The list is missing, empty or holds only comments, so stage 2b would run nothing."
+    echo "  Restore the list: one exact __tests__ path per line for every suite that runs the real semgrep."
+  } >&2
+  exit 2
+fi
 
 PART_A_ARGUMENTS=()
 while IFS= read -r pattern; do
@@ -66,7 +77,11 @@ for suite in "${SEMGREP_SUITES[@]}"; do
   PART_A_ARGUMENTS+=("--testPathIgnorePatterns=<rootDir>/${suite//./\\.}\$")
 done
 
-run_stage 2a "jest (all but the real-semgrep suites)" npx jest "${PART_A_ARGUMENTS[@]}"
+# Stage 2a also puts a `semgrep` that fails with a message first on PATH (a tracked script, so
+# the dir outlives this run): a suite that starts the real binary and is missing from the list
+# fails in 2a instead of timing out under load. 2b keeps the real PATH.
+PATH="$DIR/semgrep-tripwire:$PATH" run_stage 2a "jest (all but the real-semgrep suites)" \
+  npx jest "${PART_A_ARGUMENTS[@]}"
 code=$?
 if [ "$code" -ne 0 ]; then
   echo "✖ make verify FAILED at stage 2a (jest) — exit code $code" >&2
