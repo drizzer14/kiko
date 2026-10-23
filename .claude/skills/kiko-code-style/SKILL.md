@@ -1335,6 +1335,28 @@ fragment. Add a positive twin that finds the same text in the case where
 it must be there, so the matcher is proven to match. After any reword,
 grep the old fragment across `src/` and the tests.
 
+## A subset matcher never holds a Set or a Map
+
+`toMatchObject` and `expect.objectContaining` compare an expected Set or Map as an object with no
+own keys, so the check is vacuous at a PRESENT key: `undefined`, `null`, `{}` and `[2]` all pass
+against `new Set([1])`. A missing key still fails, and so does a different Set, so the match is
+not vacuous everywhere (probed on expect 29.7.0). Take the field out of the subset and compare it
+with `toEqual`, which checks the members:
+
+```ts
+expect(result).toMatchObject({ id: 'a' });
+expect(result.tags).toEqual(new Set(['x']));
+```
+
+A `[...new Set(values)]` spread and `new Set(values).size` hand the matcher an array or a number,
+so they stay allowed.
+
+Semgrep `kiko-no-set-or-map-in-subset-match` (`rules/semgrep-prewrite.yml`, ERROR) denies an
+object property whose value is `new Set|Map|WeakSet|WeakMap(...)`, at any depth inside either
+matcher's argument. Known limits: a Set held in a variable (`{ tags: seen }`), a Set as an array
+element or inside a call (`[new Set()]`, `wrap(new Set())`), and a Set reached through another
+matcher such as `expect.arrayContaining` are not matched.
+
 ## A rejection names its error
 
 A `.rejects` assertion names what the call rejects with: the error class, a message, or

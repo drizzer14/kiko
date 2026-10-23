@@ -2310,3 +2310,33 @@ rules:
       exclude:
         - "*.test.tsx"
     pattern-regex: '(?s)\bconst\s+\w+\s*:\s*(?:React\s*\.\s*)?FC(?:<[^=]*?(?:=>[^=]*?)*?>)?\s*=\s*(\((?:[^()]++|(?1))*\))\s*=>\s*[^{\s]'
+  # jest's subset check (`toMatchObject`, `expect.objectContaining`) reads an expected Set or Map
+  # as an object with no keys, so the comparison is vacuous at a PRESENT key: `undefined`, `null`,
+  # `{}` and `[2]` all pass against `new Set([1])`. A MISSING key, or a different Set, still fails
+  # (expect 29.7.0, probed 2026-10-23). The pattern is a deep match of an object property whose
+  # value is `new Set|Map|WeakSet|WeakMap(...)` inside the matcher's argument; the finding sits on
+  # the matcher call's first line. A `[...new Set(x)]` spread and `new Set(x).size` are not a
+  # property value, so they stay silent. Known limit: a Set held in a variable
+  # (`{ a: seen }`) is not matched. See kiko-code-style's "A subset matcher never holds a Set or
+  # a Map" section.
+  - id: kiko-no-set-or-map-in-subset-match
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A Set or Map is an expected property value inside `toMatchObject` or
+      `expect.objectContaining`. The subset check reads it as an object with no keys, so any
+      non-Set value at a present key passes (`undefined`, `null`, `{}`, `[2]`); only a missing
+      key fails. Take the field out and compare it with `toEqual` — see kiko-code-style's "A
+      subset matcher never holds a Set or a Map".
+    metadata:
+      fix: "Take the field out of the subset and `toEqual` it: `expect(actual.field).toEqual(new Set([...]))`."
+      skill: "kiko-code-style › A subset matcher never holds a Set or a Map"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $E.toMatchObject(<... {..., $K: new $C(...), ...} ...>)
+          - pattern: |
+              expect.objectContaining(<... {..., $K: new $C(...), ...} ...>)
+      - metavariable-regex:
+          metavariable: $C
+          regex: ^(Set|Map|WeakSet|WeakMap)$
