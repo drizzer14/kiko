@@ -30,6 +30,9 @@ describe('LANE_CALL_CAPS', () => {
       earn: 30,
       convert: 20,
       dust: 1,
+      p2p: 10,
+      fiatOrders: 3,
+      fiatPayments: 10,
       market: 150,
       tradeSymbols: 1,
       trades: 100,
@@ -68,6 +71,9 @@ describe('createBinanceRunBudget — per-lane call caps', () => {
     ['transfer', COSTS.transfer, 80],
     ['earn', COSTS.earn, 30],
     ['convert', COSTS.convert, 20],
+    ['p2p', COSTS.p2p, 10],
+    ['fiatOrders', COSTS.fiatOrders, 3],
+    ['fiatPayments', COSTS.fiatPayments, 10],
   ] as const)('caps the %s lane at %i calls', (lane, cost, cap) => {
     const budget = createBinanceRunBudget();
 
@@ -206,6 +212,35 @@ describe('createBinanceRunBudget — calls kept for later', () => {
   });
 });
 
+describe('createBinanceRunBudget — P2P and fiat lanes', () => {
+  it('keeps each new UID lane at its cap within the minute budget', () => {
+    expect(LANE_CALL_CAPS.p2p * COSTS.p2p.uid).toBeLessThanOrEqual(UID_WEIGHT_BUDGET_1M);
+    expect(LANE_CALL_CAPS.fiatOrders * COSTS.fiatOrders.uid).toBeLessThanOrEqual(
+      UID_WEIGHT_BUDGET_1M,
+    );
+    expect(LANE_CALL_CAPS.fiatPayments * COSTS.fiatPayments.ip).toBeLessThanOrEqual(IP_BUDGET_1M);
+  });
+
+  it('refuses a fourth fiat order call in a run, though the weight alone would allow it', () => {
+    const budget = createBinanceRunBudget();
+
+    spendCalls(budget, 'fiatOrders', 3);
+
+    expect(budget.canAfford('fiatOrders', COSTS.fiatOrders)).toBe(false);
+    expect(budget.canAfford('convert', COSTS.fiatOrders)).toBe(true);
+  });
+
+  it('refuses the first fiat order call above a reading of 135000 and allows it at 135000', () => {
+    const allowed = createBinanceRunBudget();
+    const refused = createBinanceRunBudget();
+    allowed.record('pay', { ...NO_READING, usedUidWeight1m: 135_000 });
+    refused.record('pay', { ...NO_READING, usedUidWeight1m: 135_001 });
+
+    expect(allowed.canAfford('fiatOrders', COSTS.fiatOrders)).toBe(true);
+    expect(refused.canAfford('fiatOrders', COSTS.fiatOrders)).toBe(false);
+  });
+});
+
 describe('createBinanceRunBudget — narrowing calls', () => {
   const NARROWING_CALLS = LANE_NARROWING_CALLS.transfer;
 
@@ -218,6 +253,9 @@ describe('createBinanceRunBudget — narrowing calls', () => {
       earn: 0,
       convert: 0,
       dust: 0,
+      p2p: 0,
+      fiatOrders: 0,
+      fiatPayments: 0,
       market: 0,
       tradeSymbols: 0,
       trades: 0,
@@ -331,6 +369,9 @@ describe('createBinanceRunBudget — weight readings', () => {
       earn: { ip: 150 },
       convert: { uid: 3_000 },
       dust: { ip: 1 },
+      p2p: { uid: 900 },
+      fiatOrders: { uid: 45_000 },
+      fiatPayments: { ip: 1 },
       klines: { api: 2 },
       exchangeInfo: { api: 20 },
       myTrades: { api: 20 },
