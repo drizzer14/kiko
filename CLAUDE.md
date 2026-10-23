@@ -40,6 +40,7 @@ row is the short form; read the full row there before relying on edge cases.
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` | any finding a change ADDED (a write that bypassed the pre-write guard) fails; fail-closed (on the Stop deadline failure, run `npm run check:guard-replay` by hand) | medium + project-wide |
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` | a shipped migration modified, deleted, or renamed fails; no override | medium + project-wide |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
+| `npm run check:permissions` | `scripts/checks/permission-doctor.sh` (+ `.js`) | a permission path rule that cannot work as written (protected path, partly protected path, path form) or drift between the two user settings files fails; reads only | manual |
 
 Composite scripts:
 
@@ -67,8 +68,8 @@ Composite scripts:
   names the base sha, the run id and the file count from
   `KIKO_MUTATION_BASE=<base sha> make mutable`, never counted by hand; there
   is no release-scope deep gate. Agents await only the exit code (see the
-  `ops` and `kiko-linter` skills). `check:closure` is manual, not in
-  `check:all`. Full rules: `docs/harness/checks.md`.
+  `ops` and `kiko-linter` skills). `check:closure` and `check:permissions` are
+  manual, not in `check:all`. Full rules: `docs/harness/checks.md`.
 
 ## Automatic wiring
 
@@ -105,6 +106,8 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     (a raw `merge --ff-only`/`pull --ff-only` on main is denied; the script refuses a
     `harness/kiko` change whose `plugin.json` version is not above main's, and any commit that
     lowers, removes, or makes unreadable that version).
+    `scripts/ff-main.sh` can exit 2 AFTER main moved (the post-move patch-package step
+    failed); a re-run only retries that step.
     - any other git command that moves the branch `main` ("The `mainMove` kind"): a `reset`
       to a commit in main (or in a worktree whose HEAD names main); `update-ref`,
       `branch -f`, `checkout -B`, a fetch, pull or push into it from any worktree, also through
