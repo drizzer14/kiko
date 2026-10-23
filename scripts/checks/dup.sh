@@ -231,7 +231,7 @@ measure_one() {
   elif ! over_threshold "$measured"; then
     return
   elif [ -n "$ceiling" ]; then
-    printf 'WARNING: check:dup %s is over jscpd'\''s size limit (1000 lines or 100kb), so the blocking run skipped it; measured alone it is %s%% duplicated (threshold %s%%). See the tracked-debt list in docs/harness/documented-exceptions.md; a file not on it is a new regression.\n' \
+    printf 'WARNING: check:dup %s is over jscpd'\''s size limit (1000 lines or 100kb), so the blocking run skipped it; measured alone it is %s%% duplicated (threshold %s%%). It is listed in scripts/checks/dup-ceilings.tsv and is at or under its ceiling there.\n' \
       "$shown" "$measured" "$threshold" > "$report_dir/$number.warning"
   else
     printf 'check:dup %s is over jscpd'\''s size limit (1000 lines or 100kb) and measured alone is %s%% duplicated (threshold %s%%); it is not in scripts/checks/dup-ceilings.tsv, so it is a new regression.\n' \
@@ -254,7 +254,7 @@ measure_combined() {
     printf 'check:dup combined run (every file in scope, size limits raised) is %s%% duplicated, above its %s%% baseline in scripts/checks/dup-ceilings.tsv.\n' \
       "$measured" "$baseline" > "$report_dir/combined.failure"
   elif over_threshold "$measured"; then
-    printf 'WARNING: check:dup combined run (every file in scope, size limits raised) is %s%% duplicated (threshold %s%%); a clone between a large file and another file counts only here. See the tracked-debt list in docs/harness/documented-exceptions.md; the recorded baseline there applies to the no-argument (whole-repo) run only, and a whole-repo figure above it is a new regression.\n' \
+    printf 'WARNING: check:dup combined run (every file in scope, size limits raised) is %s%% duplicated (threshold %s%%); a clone between a large file and another file counts only here. The baseline in scripts/checks/dup-ceilings.tsv applies to the no-argument (whole-repo) run only, and a whole-repo figure above it fails.\n' \
       "$measured" "$threshold" > "$report_dir/combined.warning"
   fi
 }

@@ -138,8 +138,6 @@
   ],
   "docs/harness/documented-exceptions.md": [
     "> Reference detail moved out of CLAUDE.md (2026-09-15) to keep the root harness doc lean. CLAUDE.md points here. This is the authoritative content; edit it here.",
-    "  debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:",
-    "  (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total",
     "  Ukraine securities register's own external JSON fields; `src/crypto-sync/binance/binance.client.ts` +",
     "  `binance.history-client.ts`/`.test.ts` plus `binance.transactions.ts`/`.test.ts`/`.placement.test.ts`",
     "  and `binance.pay-history.real-sqlite.test.ts` (`tx`, from `txId`) mirror the literal field name on Binance's deposit/withdraw",
