@@ -1,7 +1,8 @@
 // Semgrep fixture (POSITIVE): app source reaches into test scaffolding (Guideline 2.5.19: nothing
 // test-only ships in a release build). `kiko-no-test-fixture-import-in-app` MUST report a finding
 // on each pinned line below: an `import ... from` a `-test-fixtures` module, an `export ... from`
-// a `-test-helper` module, and a `require(...)` of a `/test-support/` module. This file's own name
+// a `-test-helper` module, an `import ... from` a `/__fixtures__/` module, an `import type` from a
+// `-test-fixtures` module, and a `require(...)` of a `/test-support/` module. This file's own name
 // matches none of the rule's excluded paths, so the rule scans it. Never "fix" this file.
 //
 // The specifiers are real relative paths so `check:typecheck`, which scans `rules/fixtures/**`,

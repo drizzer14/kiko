@@ -800,22 +800,28 @@ verified usage, not dead weight:
   positive fixture under an excluded path would prove nothing.
 
 - **`kiko-no-test-fixture-import-in-app` (`rules/semgrep-prewrite.yml`) excludes `*.test.ts`,
-  `*.test.tsx`, `*-test-fixtures.ts`, `*-test-helper.ts`, `**/test-support/**`,
-  `**/__mocks__/**`, `__tests__/**`, `e2e/**`, `scripts/**` and `harness/**`.** The rule bans
-  app source importing test scaffolding (Guideline 2.5.19), so every excluded path is itself test
-  scaffolding or tooling that never ships: tests, the fixture and helper modules (which import
-  each other, such as `format-test-fixtures.ts` from another fixture), the shared
-  `src/test-support/` modules, manual mocks, the harness tests, `e2e/`, and the `scripts/` and
-  `harness/` trees. The globs match at any depth (Semgrep 1.175.0 does not anchor
+  `*.test.tsx`, `*-test-fixtures.ts`, `*-test-fixtures.tsx`, `*-test-helper.ts`,
+  `*-test-helper.tsx`, `**/test-support/**`, `**/__fixtures__/**`, `**/__mocks__/**`,
+  `__tests__/**`, `e2e/**`, `scripts/**` and `harness/**`.** The rule bans app source importing
+  test scaffolding (Guideline 2.5.19), so every excluded path is itself test scaffolding or
+  tooling that never ships: tests, the fixture and helper modules (`.ts` and `.tsx`, which import
+  each other, such as `binance.earn-test-fixtures.ts` from another fixture), the shared
+  `src/test-support/` modules, `__fixtures__/` folders, manual mocks, the harness tests, `e2e/`,
+  and the `scripts/` and `harness/` trees; `mutation.sh` filters the same scaffolding set out of
+  the mutated files. The globs match at any depth (Semgrep 1.175.0 does not anchor
   `paths.exclude`), so the excluded cases sit in nested fixtures
-  (`rules/fixtures/kiko-no-test-fixture-import-in-app/src/test-support/` and `.../src/a/__mocks__/`)
-  and the positive cases stay in the flat
+  (`rules/fixtures/kiko-no-test-fixture-import-in-app/src/test-support/`, `.../src/a/__mocks__/`
+  and `.../src/a/__fixtures__/`) and the positive cases stay in the flat
   `rules/fixtures/kiko-no-test-fixture-import-in-app.bad.ts`.
-  The two name excludes (`*-test-fixtures.ts`, `*-test-helper.ts`) have no fixture pin: a runner
-  fixture name `<id>.good.ts` can never match them. They are proven by a run over the real
-  `src/**/*-test-fixtures.ts` and `*-test-helper.ts` files: with the excludes removed, a scan of
-  those files finds fixtures importing another fixture, so the excludes are load-bearing.
-  Re-measure with `bash scripts/checks/security.sh <named files>` (never a whole-repo scan).
+  The four name excludes (`*-test-fixtures.ts`/`.tsx`, `*-test-helper.ts`/`.tsx`) have no fixture
+  pin: a runner fixture name `<id>.good.ts` can never match them. A control run of the rule
+  WITHOUT its `paths.exclude` over every `git ls-files 'src/*.ts' 'src/*.tsx'` file finds, outside
+  `*.test.ts` and `*.test.tsx`, only `*-test-fixtures.ts` (4 findings in 3 files) and
+  `*-test-helper.ts` (1 finding), so those two `.ts` name excludes are measured load-bearing. The
+  `.tsx` twins, `test-support/`, `__fixtures__/` and `__mocks__/` have no finding in `src/` today
+  and are guarded by the nested fixtures (folders) or by this entry alone (the `.tsx` twins).
+  Re-measure with one Semgrep run holding only this rule, over named files in batches (never a
+  whole-repo scan): the rule block in a scratch config, with and without `paths`.
 
 - **`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`)
   excludes every test file (`*.test.ts`, `*.test.tsx`, `__tests__/**`,
