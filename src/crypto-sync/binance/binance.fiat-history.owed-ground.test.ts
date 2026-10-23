@@ -5,6 +5,7 @@ import { walkStateFake } from '@kiko/test-support/walk-marks';
 import {
   type BinanceFiatOrderHistoryDeps,
   type BinanceFiatPaymentHistoryDeps,
+  FIAT_WINDOW_MS,
   syncBinanceFiatOrderHistory,
   syncBinanceFiatPaymentHistory,
 } from './binance.fiat-history';
@@ -267,6 +268,68 @@ describe('a fiat walk that read around a stuck range', () => {
   });
 });
 
+describe.each([0, 1, HOUR_MS])(
+  'fiat payments: a re-scan window with one failing day, runs %i ms apart',
+  (gapMs) => {
+    const WINDOW_START = NOW - FIAT_WINDOW_MS;
+    /** Half a day and a bit after the window start, so a piece lies before it and one after it. */
+    const FAILING_DAY = {
+      start: WINDOW_START + Math.round(0.505 * DAY_MS),
+      end: WINDOW_START + Math.round(1.505 * DAY_MS),
+    };
+    const RUNS = 8;
+    /** Reads of the forward ground start this far behind the cursor at most. */
+    const FORWARD_FROM = NOW - 10 * DAY_MS;
+
+    const runsOfWindow = async () => {
+      const world = worldOf(PAYMENTS);
+      const rescanReadsOfRun: number[] = [];
+      const passEndsAtRuns: number[] = [];
+      world.seed({ cursor: NOW - HOUR_MS, pending: [FAILING_DAY] });
+
+      for (let index = 0; index < RUNS; index += 1) {
+        const run = await world.runOnce({
+          now: NOW + index * gapMs,
+          records: [],
+          unreadable: () => false,
+          drifting: overlapping(FAILING_DAY),
+        });
+        const rescanReads = new Set(
+          run.spans
+            .filter(({ start }) => start < FORWARD_FROM)
+            .filter(({ start, end }) => start !== FAILING_DAY.start || end !== FAILING_DAY.end)
+            .map(({ start, end }) => `${start}-${end}`),
+        );
+
+        rescanReadsOfRun.push(rescanReads.size);
+
+        if ((world.marks().rescan as number | undefined) === HISTORY_FLOOR_MS) {
+          passEndsAtRuns.push(index);
+        }
+      }
+
+      return { rescanReadsOfRun, passEndsAtRuns };
+    };
+
+    const sumOf = (counts: number[]): number => counts.reduce((sum, count) => sum + count, 0);
+
+    /**
+     * A first pass takes `2z + 1 = 3` reads for the one failing day (`z = 1`): the read that fails
+     * and marks it, the piece before it and the piece after it, which runs to the window end. A
+     * pass after it takes the `z + 1 = 2` pieces. The piece after the day is one read, not a run
+     * of reads that double from the day on.
+     */
+    it('reads the first pass in 3 reads and the next one in 2', async () => {
+      const { rescanReadsOfRun, passEndsAtRuns } = await runsOfWindow();
+      const [firstEnd, secondEnd] = passEndsAtRuns;
+
+      expect(firstEnd).toBeLessThan(3);
+      expect(sumOf(rescanReadsOfRun.slice(0, firstEnd + 1))).toBe(3);
+      expect(sumOf(rescanReadsOfRun.slice(firstEnd + 1, secondEnd + 1))).toBe(2);
+    });
+  },
+);
+
 describe.each([ORDERS, PAYMENTS])('$name: a re-scan that goes on over several runs', (kind) => {
   const OWED_DAYS_FROM_NOW = [-663.9, -582.1, -2975.3];
   const OWED = OWED_DAYS_FROM_NOW.map((days) => {
@@ -302,13 +365,18 @@ describe.each([ORDERS, PAYMENTS])('$name: a re-scan that goes on over several ru
     return { rescanAfterRun, importedAtRuns };
   };
 
+  /** The 2 owed days the re-scan window holds (`z = 2`) and the reads of a first pass over it. */
+  const FAILING_DAYS_IN_WINDOW = 2;
+  const FIRST_PASS_READS = 2 * FAILING_DAYS_IN_WINDOW + 1;
+
   /**
-   * Runs the record may take from the run that first serves it, for the 2 owed days the re-scan
-   * window holds (`z = 2`): a pass over the window is `2z + 1 = 5` reads, a read a run for the
-   * payments lane and a read in four runs for the orders lane, and the pass that reads the record
-   * may be the one the record is served in or the one after it.
+   * Runs the record may take from the run that first serves it: `importRuns(z) = r * F(z)`, `F(z) =
+   * 2z + 1 = 5` the reads of a first pass over the window and `r` the runs between two reads of
+   * the re-scan (one for the payments lane, which keeps a read of every run, and four for the
+   * orders lane, which alternates the owed windows and the re-scan between its forward runs). The
+   * rest of the pass the record is served in and its place in the next one are no more than F(z).
    */
-  const IMPORT_WITHIN_RUNS = kind === PAYMENTS ? 2 * 5 : 4 * 5;
+  const IMPORT_WITHIN_RUNS = (kind === PAYMENTS ? 1 : 4) * FIRST_PASS_READS;
 
   it('imports a record served part way through it within the bound', async () => {
     const { importedAtRuns } = await runsAMillisecondApart();
@@ -317,8 +385,15 @@ describe.each([ORDERS, PAYMENTS])('$name: a re-scan that goes on over several ru
     expect(importedAtRuns[0] - SERVED_FROM_RUN + 1).toBeLessThanOrEqual(IMPORT_WITHIN_RUNS);
   });
 
-  /** The run that reads the pass's 5th read (measured), after which the mark is the floor again. */
-  const PASS_ENDS_AT_RUN = kind === PAYMENTS ? 4 : 18;
+  /**
+   * The run that reads the pass's last read (the 5th), after which the mark is the floor again. The
+   * payments lane spends 2 of the reads of a run on the re-scan (measured: the rest go to the
+   * forward ground and the 2 owed days), so the 5 reads of the pass take 3 runs, the last of them
+   * the run of index 2; the orders lane reads one in four runs (measured: 18).
+   */
+  const PAYMENTS_RESCAN_READS_PER_RUN = 2;
+  const PASS_ENDS_AT_RUN =
+    kind === PAYMENTS ? Math.ceil(FIRST_PASS_READS / PAYMENTS_RESCAN_READS_PER_RUN) - 1 : 18;
 
   it('starts the pass again at the history floor once it has read to its end', async () => {
     const { rescanAfterRun } = await runsAMillisecondApart();

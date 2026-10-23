@@ -497,7 +497,9 @@ const markStuck = async <Item extends FiatRecord>(
 /**
  * A span that holds a range the re-scan failed on: read what is before it, then what is after it,
  * and owe what is in it. The range stays in the list of owed ground, and its own windows are read
- * by the owed runs (`withStuckWindows`).
+ * by the owed runs (`withStuckWindows`). The piece after it runs to the window end, not to the end
+ * of the span: the span is a doubled hint, and ending the piece there would read the rest of the
+ * window in pieces that double from the range on.
  */
 const aroundStuck = <Item extends FiatRecord>(
   window: OwedWindow,
@@ -509,7 +511,7 @@ const aroundStuck = <Item extends FiatRecord>(
   }
 
   if (span.end > stuck.end + 1) {
-    return { kind: 'split', half: { start: stuck.end + 1, end: span.end } };
+    return { kind: 'split', half: { start: stuck.end + 1, end: window.end } };
   }
 
   return owedSpan(window, {

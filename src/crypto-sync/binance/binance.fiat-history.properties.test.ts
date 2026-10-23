@@ -51,7 +51,7 @@ const HOUR_MS = 3_600_000;
 
 /** Runs enough for the longest bound (six failing days in the window, on orders: 52). */
 const RUNS = 60;
-const SEEDS = Array.from({ length: 12 }, (_unused, position) => 5 + position * 7);
+const SEEDS = Array.from({ length: 30 }, (_unused, position) => 5 + position * 7);
 const ACCOUNT_ID = 'acc-fiat-orders-properties';
 const FIRST_RUN_AT = NOW;
 
@@ -92,39 +92,42 @@ const CLOCKS: RunClock[] = [
   setBackClock(DAY_MS, 5 * DAY_MS),
 ];
 
-/** The runs between two reads of the re-scan: forward, owed, forward, re-scan. */
+/**
+ * The runs between two reads of the re-scan on the orders lane. A run reads forward or behind, and
+ * the run after a behind run reads forward; while owed ground is left the behind runs alternate
+ * the owed windows and the re-scan, so the runs go forward, owed, forward, re-scan: one read (two
+ * of the lane's three calls) on every fourth run.
+ */
 const RESCAN_EVERY_RUNS = 4;
 
 /**
- * A run reads forward or behind, and the run after a behind run reads forward. While owed ground is
- * left the behind runs alternate the owed windows and the re-scan, so the runs go forward, owed,
- * forward, re-scan: the re-scan, which one record is waiting for, is read on every fourth run, one
- * read (two of the lane's three calls) a turn.
- *
- * With no owed day in the 2-year window a pass is one read, and a record served just after it waits
- * for the next pass: the fourth run counting the one it is served in. Each owed day in the window
- * that fails is found by a failing read, which marks it, and the pass then reads around it, in
- * a piece before it and a piece after it: the first pass of a window with `z` such days takes
- * `2z + 1` reads (a record in its last piece waits for all of them), and a pass after it `z + 1`.
- * So a record served from run `v` is imported by the `4 * (2z + 1)`th run it is within the reach of
- * the clock from `v` on (a run whose clock is before the record cannot read it).
+ * The runs between two reads of the re-scan on the payments lane: it reads forward and behind in
+ * one run, so the re-scan keeps one read (`RESCAN_KEEP`) of every run and no turn of the owed
+ * windows takes a run from it.
  */
-const importRunsOf = (zonesInWindow: number): number => RESCAN_EVERY_RUNS * (2 * zonesInWindow + 1);
+const PAYMENTS_RESCAN_EVERY_RUNS = 1;
 
 /**
- * The payments lane reads forward and behind in one run, so the re-scan is read on every run, one
- * read a run, and no turn of the owed windows takes a run from it. A pass over the window takes
- * `2z + 1` reads as above (a first pass; a pass after it `z + 1`). A record served part way
- * through a pass is read by the next pass at the latest, so it is imported by the `2 * (2z + 1)`th
- * run it is within the reach of the clock from `v` on: two passes of the longest kind.
- *
- * Measured worst case over these worlds, with the owed days in the window one to three (anywhere,
- * in the window) and four to six an hour to 3 days apart (in a cluster, short pieces between
- * them): the run a record was imported at, counted from the first it could be read at, was 1, 4,
- * 8 for `z` = 0, 1, 2 and 10 for 3 against the bound's 2, 6, 10, 14; 18, 18 and 25 for 4, 5 and 6
- * (drift) against 18, 22 and 26. A clustered 4 reaches the bound exactly.
+ * The reads of a first pass over a re-scan window with `z` failing days: each failing day is found
+ * by a failing read, which marks it, and the pass reads around it, in a piece before it and a
+ * piece after it that runs to the window end. That is `z` failing reads and `z + 1` reads of the
+ * pieces between them. A pass after it skips the marked days and takes the `z + 1` reads.
  */
-const paymentImportRunsOf = (zonesInWindow: number): number => 2 * (2 * zonesInWindow + 1);
+const firstPassReadsOf = (zonesInWindow: number): number => 2 * zonesInWindow + 1;
+
+/**
+ * The runs a record served is imported within: `importRuns(z) = r * F(z)`, `r` being the runs
+ * between two reads of the re-scan (`runsPerRescanRead`) and `F(z)` the reads of the first pass
+ * (`firstPassReadsOf`). A record waits at most for the rest of the pass it is served in and its
+ * place in the next one, which together are no more than a first pass. With no failing day a pass
+ * is one read, and a record served just after it waits for the next. A record served from run `v`
+ * is imported by the `importRuns(z)`th run it is within the reach of the clock from `v` on (a run
+ * whose clock is before the record cannot read it).
+ */
+const importRunsWithin =
+  (runsPerRescanRead: number) =>
+  (zonesInWindow: number): number =>
+    runsPerRescanRead * firstPassReadsOf(zonesInWindow);
 
 /** Late records are written between 2 days and this many days behind the run that serves them. */
 const LATE_BACK_DAYS = 600;
@@ -151,6 +154,18 @@ const WORLDS: World[] = [
   { stuck: 'drift', place: 'in a cluster' },
   { stuck: 'throw', place: 'in a cluster' },
   { stuck: 'tooOld', place: 'anywhere' },
+];
+
+/**
+ * Seeds whose worlds the payments walk read slowly while a read of the piece after a stuck day
+ * ended where a doubled span did (S12-Q32): each one is run in the world it failed in.
+ */
+const NAMED_PAYMENT_SEEDS: { seed: number; stuck: Stuck; place: Place }[] = [
+  { seed: 1027, stuck: 'drift', place: 'anywhere' },
+  { seed: 334, stuck: 'drift', place: 'anywhere' },
+  { seed: 306, stuck: 'drift', place: 'in a cluster' },
+  { seed: 558, stuck: 'drift', place: 'in a cluster' },
+  { seed: 642, stuck: 'drift', place: 'in a cluster' },
 ];
 
 /** The last owed days of the in-window worlds sit this far behind the walk's cursor, at most. */
@@ -224,7 +239,7 @@ const ORDERS_KIND: BoundedKind = {
   holdings: [holdingWith('h-eur-spot', { binanceAsset: 'EUR' })],
   sync: syncBinanceFiatOrderHistory,
   recordOf: ({ type: _type, ...parts }) => fiatOrderOf(parts),
-  importRunsOf,
+  importRunsOf: importRunsWithin(RESCAN_EVERY_RUNS),
   settledWord: 'Successful',
   statusRecordOf: ({ orderNo, createTime, type, n, status, untracked }) =>
     fiatOrderOf({
@@ -258,7 +273,7 @@ const PAYMENTS_KIND: BoundedKind = {
   holdings: [],
   sync: syncBinanceFiatPaymentHistory,
   recordOf: paymentOf,
-  importRunsOf: paymentImportRunsOf,
+  importRunsOf: importRunsWithin(PAYMENTS_RESCAN_EVERY_RUNS),
   settledWord: 'Completed',
   statusRecordOf: ({ orderNo, createTime, type, n, status, untracked }) =>
     fiatPaymentOf({
@@ -352,6 +367,20 @@ const zonesInWindowOf = (owed: Span[], clock: RunClock): number => {
   return owed.filter((range) => range.end >= earliestRead).length;
 };
 
+/** The seeds of a world with the title of the case: the named seeds are the payments walk's. */
+const casesOf = (kind: BoundedKind, world: World): { seed: number; title: string }[] => [
+  ...SEEDS.map((seed) => ({
+    seed,
+    title: `imports every record Binance serves within the bound, each once: seed ${seed}`,
+  })),
+  ...(kind === PAYMENTS_KIND ? NAMED_PAYMENT_SEEDS : [])
+    .filter(({ stuck, place }) => stuck === world.stuck && place === world.place)
+    .map(({ seed }) => ({
+      seed,
+      title: `imports every record Binance serves within the bound, each once (S12-Q32): seed ${seed}`,
+    })),
+];
+
 const KINDS: BoundedKind[] = [ORDERS_KIND, PAYMENTS_KIND];
 
 const STATUS_KINDS: WorldKind[] = [ORDERS_KIND, PAYMENTS_KIND];
@@ -400,132 +429,124 @@ describe.each(KIND_CLOCKS)(
     describe.each(WORLDS)('with $stuck owed ground placed $place', (world) => {
       const { stuck } = world;
 
-      it.each(SEEDS)(
-        'imports every record Binance serves within the bound, each once: seed %i',
-        async (seed) => {
-          const random = seededRandom(seed);
-          const served = servedWorldOf(random, clock, kind);
-          const owed = owedRangesOf(random, world);
-          const importRuns = kind.importRunsOf(zonesInWindowOf(owed, clock));
-          const fake = walkStateFake({ accountId: ACCOUNT_ID, alongside: kind.holdings });
-          const offers: Offer[] = [];
-          let run = 0;
+      it.each(casesOf(kind, world))('$title', async ({ seed }) => {
+        const random = seededRandom(seed);
+        const served = servedWorldOf(random, clock, kind);
+        const owed = owedRangesOf(random, world);
+        const importRuns = kind.importRunsOf(zonesInWindowOf(owed, clock));
+        const fake = walkStateFake({ accountId: ACCOUNT_ID, alongside: kind.holdings });
+        const offers: Offer[] = [];
+        let run = 0;
 
-          fake.seed(kind.walkId, { cursor: START_CURSOR, pending: owed });
+        fake.seed(kind.walkId, { cursor: START_CURSOR, pending: owed });
 
-          const fetchRecords = async (
-            apiKey: string,
-            secret: string,
-            type: FiatTransactionType,
-            span: Span,
-            page: number,
-          ) => {
-            const runNow = clock.at(run);
-            const servedNow = served.filter(
-              (item) => item.servedFromRun <= run && item.record.createTime <= runNow,
-            );
-            const touchesOwed = owed.some(
-              (range) => span.start <= range.end && span.end >= range.start,
-            );
+        const fetchRecords = async (
+          apiKey: string,
+          secret: string,
+          type: FiatTransactionType,
+          span: Span,
+          page: number,
+        ) => {
+          const runNow = clock.at(run);
+          const servedNow = served.filter(
+            (item) => item.servedFromRun <= run && item.record.createTime <= runNow,
+          );
+          const touchesOwed = owed.some(
+            (range) => span.start <= range.end && span.end >= range.start,
+          );
 
-            if (stuck === 'drift' && touchesOwed) {
-              return fiatPageOf<AnyRecord>([], { total: 5 });
-            }
-
-            if (stuck === 'throw' && touchesOwed) {
-              throw new BinanceHistoryParseError();
-            }
-
-            if (stuck === 'tooOld' && span.start < runNow - SERVED_BACK_MS) {
-              throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
-            }
-
-            const recordsOf = (wanted: FiatTransactionType): AnyRecord[] =>
-              servedNow.filter((item) => item.type === wanted).map(({ record }) => record);
-
-            return fiatServerOf({ '0': recordsOf('0'), '1': recordsOf('1') }, kind.pageRows)(
-              apiKey,
-              secret,
-              type,
-              span,
-              page,
-            );
-          };
-
-          for (run = 0; run < RUNS; run += 1) {
-            const runNow = clock.at(run);
-
-            await kind
-              .sync(
-                {
-                  targetAccountId: ACCOUNT_ID,
-                  run: createBinanceHistoryRun({ now: () => runNow, sleep: async () => undefined }),
-                },
-                {
-                  ...connectedDepsOf(kind, runNow, fetchRecords),
-                  addTransactions: async (rows) => {
-                    offers.push(...rows.map(({ externalId }) => ({ run, externalId })));
-
-                    return rows.length;
-                  },
-                  ...fake.freshDeps(),
-                  listHoldings: fake.listHoldings,
-                },
-              )
-              .catch((error: unknown) => {
-                if (!(error instanceof BinanceHistoryParseError)) {
-                  throw error;
-                }
-              });
+          if (stuck === 'drift' && touchesOwed) {
+            return fiatPageOf<AnyRecord>([], { total: 5 });
           }
 
-          const importedAtRun = (orderNo: string): number | undefined =>
-            offers.find(({ externalId }) => orderNoOf(externalId) === orderNo)?.run;
-          // A server that fails every read touching an owed day serves no record inside it.
-          const isReadable = ({ record }: Served): boolean =>
-            stuck === 'tooOld' ||
-            !owed.some(
-              (range) => record.createTime >= range.start && record.createTime <= range.end,
-            );
-          const dueRunOf = ({ record, servedFromRun }: Served): number | undefined =>
-            Array.from(
-              { length: RUNS - servedFromRun },
-              (_unused, offset) => servedFromRun + offset,
-            )
-              .filter((reachable) => record.createTime <= clock.at(reachable))
-              .at(importRuns - 1);
-          const missing = served
-            .filter(isReadable)
-            .flatMap(
-              (item) =>
-                foldMap(maybe(dueRunOf(item)), (dueRun) => [
-                  {
-                    orderNo: item.record.orderNo,
-                    servedFromRun: item.servedFromRun,
-                    dueRun,
-                    importedAtRun: importedAtRun(item.record.orderNo),
-                  },
-                ]) ?? [],
-            )
-            .filter(({ dueRun, importedAtRun: at }) => at === undefined || at > dueRun);
-
-          const keysOfOrder = new Map<string, Set<string>>();
-
-          for (const { externalId } of offers) {
-            const orderNo = orderNoOf(externalId) ?? '';
-
-            keysOfOrder.set(orderNo, new Set([...(keysOfOrder.get(orderNo) ?? []), externalId]));
+          if (stuck === 'throw' && touchesOwed) {
+            throw new BinanceHistoryParseError();
           }
 
-          expect(missing).toEqual([]);
-          expect(
-            [...keysOfOrder].filter(
-              ([orderNo, keys]) =>
-                keys.size !== 1 || !served.some(({ record }) => record.orderNo === orderNo),
-            ),
-          ).toEqual([]);
-        },
-      );
+          if (stuck === 'tooOld' && span.start < runNow - SERVED_BACK_MS) {
+            throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
+          }
+
+          const recordsOf = (wanted: FiatTransactionType): AnyRecord[] =>
+            servedNow.filter((item) => item.type === wanted).map(({ record }) => record);
+
+          return fiatServerOf({ '0': recordsOf('0'), '1': recordsOf('1') }, kind.pageRows)(
+            apiKey,
+            secret,
+            type,
+            span,
+            page,
+          );
+        };
+
+        for (run = 0; run < RUNS; run += 1) {
+          const runNow = clock.at(run);
+
+          await kind
+            .sync(
+              {
+                targetAccountId: ACCOUNT_ID,
+                run: createBinanceHistoryRun({ now: () => runNow, sleep: async () => undefined }),
+              },
+              {
+                ...connectedDepsOf(kind, runNow, fetchRecords),
+                addTransactions: async (rows) => {
+                  offers.push(...rows.map(({ externalId }) => ({ run, externalId })));
+
+                  return rows.length;
+                },
+                ...fake.freshDeps(),
+                listHoldings: fake.listHoldings,
+              },
+            )
+            .catch((error: unknown) => {
+              if (!(error instanceof BinanceHistoryParseError)) {
+                throw error;
+              }
+            });
+        }
+
+        const importedAtRun = (orderNo: string): number | undefined =>
+          offers.find(({ externalId }) => orderNoOf(externalId) === orderNo)?.run;
+        // A server that fails every read touching an owed day serves no record inside it.
+        const isReadable = ({ record }: Served): boolean =>
+          stuck === 'tooOld' ||
+          !owed.some((range) => record.createTime >= range.start && record.createTime <= range.end);
+        const dueRunOf = ({ record, servedFromRun }: Served): number | undefined =>
+          Array.from({ length: RUNS - servedFromRun }, (_unused, offset) => servedFromRun + offset)
+            .filter((reachable) => record.createTime <= clock.at(reachable))
+            .at(importRuns - 1);
+        const missing = served
+          .filter(isReadable)
+          .flatMap(
+            (item) =>
+              foldMap(maybe(dueRunOf(item)), (dueRun) => [
+                {
+                  orderNo: item.record.orderNo,
+                  servedFromRun: item.servedFromRun,
+                  dueRun,
+                  importedAtRun: importedAtRun(item.record.orderNo),
+                },
+              ]) ?? [],
+          )
+          .filter(({ dueRun, importedAtRun: at }) => at === undefined || at > dueRun);
+
+        const keysOfOrder = new Map<string, Set<string>>();
+
+        for (const { externalId } of offers) {
+          const orderNo = orderNoOf(externalId) ?? '';
+
+          keysOfOrder.set(orderNo, new Set([...(keysOfOrder.get(orderNo) ?? []), externalId]));
+        }
+
+        expect(missing).toEqual([]);
+        expect(
+          [...keysOfOrder].filter(
+            ([orderNo, keys]) =>
+              keys.size !== 1 || !served.some(({ record }) => record.orderNo === orderNo),
+          ),
+        ).toEqual([]);
+      });
     });
   },
 );
