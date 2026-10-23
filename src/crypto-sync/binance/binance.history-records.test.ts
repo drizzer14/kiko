@@ -253,6 +253,35 @@ describe('settleRecords', () => {
     expect(settle([entry('s', 3_000, true)], wide).owed).toEqual([pointOf(499, 9_001)]);
   });
 
+  it('owes a point of whole milliseconds for a record at a fraction of one, and gives the same', () => {
+    expect(settle([entry('s', 3_000.5, true)], atTime)).toMatchObject({
+      owed: [pointOf(2_999, 3_002)],
+      returned: [{ start: 2_999, end: 3_002 }],
+    });
+  });
+
+  it('owes a point of whole milliseconds for an extent with a fraction at each end', () => {
+    const fractional = () => ({ start: 3_000.25, end: 3_999.75 });
+
+    expect(settle([entry('s', 3_000, true)], fractional).owed).toEqual([pointOf(2_999, 4_001)]);
+  });
+
+  it('owes a point, and never throws, for a time past the safe integer', () => {
+    const huge = 2 ** 53 + 2;
+    const settleHuge = () =>
+      settleRecords({
+        span: { start: 2 ** 53 - 100, end: 2 ** 53 + 100 },
+        records: [entry('s', huge, true)],
+        rowsOf: () => {
+          throw new BinanceWalkStop('stuck-s');
+        },
+        extentOf: atTime,
+      });
+
+    expect(settleHuge).not.toThrow();
+    expect(settleHuge().owed).toEqual([expect.objectContaining({ kind: 'point' })]);
+  });
+
   it.each([
     ['no time', undefined],
     ['a time before the span', 10],

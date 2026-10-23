@@ -19,6 +19,8 @@ import {
   type BinanceFiatOrder,
   type BinanceFiatPayment,
   BinanceHistoryParseError,
+  fetchFiatOrders,
+  fetchFiatPayments,
   type FiatTransactionType,
 } from './binance.history-client';
 import {
@@ -1100,13 +1102,28 @@ describe('the span hints of the fiat order walk, which a run keeps for the passe
 
   const NO_HINTS = { forward: [], pending: [], rescan: [], point: [] };
 
-  const hintsWith = (pass: 'forward' | 'rescan', hint: Span) => ({ ...NO_HINTS, [pass]: [hint] });
+  const hintsWith = (pass: 'forward' | 'pending' | 'rescan', hint: Span) => ({
+    ...NO_HINTS,
+    [pass]: [hint],
+  });
 
-  it('drops the forward hint on a re-scan run, and the forward read after it still reaches now', async () => {
+  const FORWARD_HINT = { start: NOW - HOUR_MS, end: NOW - HOUR_MS / 2 };
+
+  const RESCAN_HINT = {
+    start: NOW - FIAT_WINDOW_MS,
+    end: NOW - FIAT_WINDOW_MS + 30 * DAY_MS,
+  };
+
+  const OWED = { start: HISTORY_FLOOR_MS + 100 * DAY_MS, end: HISTORY_FLOOR_MS + 101 * DAY_MS };
+
+  /** The window of the owed range is read from its start, a hint of it begins right there. */
+  const OWED_HINT = { start: OWED.start, end: OWED.start + HOUR_MS };
+
+  it('keeps the forward hint on a re-scan run, and the forward read after it begins with it', async () => {
     const world = recentWorld(ORDERS);
     world.seed({
       pending: [{ start: NOW - 3 * HOUR_MS, end: NOW - 2 * HOUR_MS }],
-      spanHints: hintsWith('forward', { start: NOW - HOUR_MS, end: NOW - HOUR_MS / 2 }),
+      spanHints: hintsWith('forward', FORWARD_HINT),
     });
     const rescan = world.depsOf();
 
@@ -1116,38 +1133,84 @@ describe('the span hints of the fiat order walk, which a run keeps for the passe
       NOW - FIAT_WINDOW_MS,
       NOW - FIAT_WINDOW_MS,
     ]);
-    expect(hintsOf(world)).toEqual(NO_HINTS);
+    expect(hintsOf(world)).toEqual(hintsWith('forward', FORWARD_HINT));
 
     const forward = world.depsOf({ now: () => NOW + 300_000 });
     await world.walk(forward);
 
     expect(queriesOf(ORDERS, forward)).toEqual(
-      ['0', '1'].map((type) => ({ type, start: NOW - HOUR_MS, end: NOW + 300_000, page: 1 })),
+      ['0', '1'].map((type) => ({
+        type,
+        start: FORWARD_HINT.start,
+        end: FORWARD_HINT.end,
+        page: 1,
+      })),
     );
-    expect(cursorOf(ORDERS, world)).toBe(NOW + 300_000);
+    expect(cursorOf(ORDERS, world)).toBe(FORWARD_HINT.end);
+    expect(hintsOf(world)).toEqual(NO_HINTS);
   });
 
-  it('keeps the re-scan hint on a forward run', async () => {
-    const hint = { start: NOW - FIAT_WINDOW_MS, end: NOW - FIAT_WINDOW_MS + 30 * DAY_MS };
+  it('keeps the forward hint on a run that reads the owed windows', async () => {
     const world = recentWorld(ORDERS);
-    world.seed({ spanHints: hintsWith('rescan', hint) });
-
-    await world.walk(world.depsOf());
-
-    expect(hintsOf(world)).toEqual(hintsWith('rescan', hint));
-  });
-
-  it('keeps the re-scan hint on a run that reads the owed windows', async () => {
-    const hint = { start: NOW - FIAT_WINDOW_MS, end: NOW - FIAT_WINDOW_MS + 30 * DAY_MS };
-    const owed = { start: HISTORY_FLOOR_MS + 100 * DAY_MS, end: HISTORY_FLOOR_MS + 101 * DAY_MS };
-    const world = recentWorld(ORDERS);
-    world.seed({ pending: [owed], spanHints: hintsWith('rescan', hint) });
+    world.seed({ pending: [OWED], spanHints: hintsWith('forward', FORWARD_HINT) });
     const deps = world.depsOf();
 
     await world.walk(deps);
 
-    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([owed.start, owed.start]);
-    expect(hintsOf(world)).toEqual(hintsWith('rescan', hint));
+    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([OWED.start, OWED.start]);
+    expect(hintsOf(world)).toEqual(hintsWith('forward', FORWARD_HINT));
+  });
+
+  it('keeps the owed hint on a forward run', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({ pending: [OWED], behindRun: true, spanHints: hintsWith('pending', OWED_HINT) });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([
+      NOW - HOUR_MS,
+      NOW - HOUR_MS,
+    ]);
+    expect(hintsOf(world)).toEqual(hintsWith('pending', OWED_HINT));
+  });
+
+  it('keeps the owed hint on a re-scan run', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({
+      pending: [OWED],
+      rescanTurn: true,
+      spanHints: hintsWith('pending', OWED_HINT),
+    });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([
+      NOW - FIAT_WINDOW_MS,
+      NOW - FIAT_WINDOW_MS,
+    ]);
+    expect(hintsOf(world)).toEqual(hintsWith('pending', OWED_HINT));
+  });
+
+  it('keeps the re-scan hint on a forward run', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({ spanHints: hintsWith('rescan', RESCAN_HINT) });
+
+    await world.walk(world.depsOf());
+
+    expect(hintsOf(world)).toEqual(hintsWith('rescan', RESCAN_HINT));
+  });
+
+  it('keeps the re-scan hint on a run that reads the owed windows', async () => {
+    const world = recentWorld(ORDERS);
+    world.seed({ pending: [OWED], spanHints: hintsWith('rescan', RESCAN_HINT) });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([OWED.start, OWED.start]);
+    expect(hintsOf(world)).toEqual(hintsWith('rescan', RESCAN_HINT));
   });
 });
 
@@ -1415,6 +1478,34 @@ describe('what the fiat payment walk imports', () => {
     expect(world.fake.notImported()).toEqual([entryOf(FIAT_PAYMENT_NO)]);
   });
 
+  it.each([
+    ['a blank fiat currency', ''],
+    ['a fiat currency that holds the separator', 'U:AH'],
+  ])('lists a buy and a sale with %s as not recognized and owes no point', async (_name, fiat) => {
+    const world = recentWorld(PAYMENTS);
+    const deps = world.depsOf({
+      fetchFiatPayments: world.serverOf({
+        '0': [fiatPaymentOf({ orderNo: 'buy', fiatCurrency: fiat })],
+        '1': [
+          fiatPaymentOf({
+            orderNo: 'sale',
+            fiatCurrency: fiat,
+            sourceAmount: '0.001',
+            obtainAmount: '2600',
+          }),
+        ],
+      }),
+    });
+
+    await world.walk(deps);
+
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect([...world.fake.notImported()].sort()).toEqual([entryOf('buy'), entryOf('sale')].sort());
+    expect(pendingOf(PAYMENTS, world)).toEqual([]);
+    expect(cursorOf(PAYMENTS, world)).toBe(NOW);
+    expect(stopCodes()).not.toContain('amount-malformed');
+  });
+
   it('stops at a coin amount with a digit past the coin scale and owes its point', async () => {
     const world = recentWorld(PAYMENTS);
     const deps = world.depsOf({
@@ -1673,6 +1764,78 @@ describe.each([ORDERS, PAYMENTS])('a $name record the client cannot read', (kind
     expect(stopCodes()).toContain('fiat-record-unreadable');
   });
 });
+
+describe.each([ORDERS, PAYMENTS])(
+  'a $name record whose time holds a fraction of a millisecond',
+  (kind) => {
+    const FRACTIONAL_AT = FIAT_CREATED_AT + 0.5;
+    const realRead = kind === ORDERS ? fetchFiatOrders : fetchFiatPayments;
+
+    /**
+     * Binance serves the one record with the fractional time, and answers a request whose time
+     * is not a whole number with a 400, as it does for a time it cannot parse.
+     */
+    const serverOfFraction = () => {
+      const requested: { beginTime: number; endTime: number }[] = [];
+      const fetchImpl = (async (url: string) => {
+        const query = new URL(url).searchParams;
+        const beginTime = Number(query.get('beginTime'));
+        const endTime = Number(query.get('endTime'));
+        const reads = (time: number) => beginTime <= time && time <= endTime;
+        const rows =
+          query.get('transactionType') === '0'
+            ? [
+                kind.recordOf({ orderNo: 'fraction', createTime: FRACTIONAL_AT }),
+                kind.recordOf({ orderNo: 'good', createTime: FIAT_CREATED_AT + 1_000 }),
+              ].filter(({ createTime }) => reads(createTime))
+            : [];
+
+        requested.push({ beginTime, endTime });
+
+        return Number.isInteger(beginTime) && Number.isInteger(endTime)
+          ? {
+              ok: true,
+              status: 200,
+              headers: new Headers(),
+              json: async () => ({ code: '000000', total: rows.length, data: rows }),
+            }
+          : { ok: false, status: 400, headers: new Headers(), json: async () => ({ code: -1100 }) };
+      }) as unknown as typeof fetch;
+
+      return { fetchImpl, requested };
+    };
+
+    const RUNS = 6;
+
+    it('reads its point in whole milliseconds, and no run is rejected for it', async () => {
+      const world = recentWorld(kind);
+      const { fetchImpl, requested } = serverOfFraction();
+      const rejections: unknown[] = [];
+      const imported: string[] = [];
+
+      for (let index = 0; index < RUNS; index += 1) {
+        const deps = world.depsOf({ fetchImpl, [kind.readKey]: realRead });
+
+        await world.walk(deps).catch((error: unknown) => rejections.push(error));
+        imported.push(...addedRows(deps).map(({ externalId }) => externalId));
+      }
+
+      expect(
+        requested.filter(
+          ({ beginTime, endTime }) => !Number.isInteger(beginTime) || !Number.isInteger(endTime),
+        ),
+      ).toEqual([]);
+      expect(rejections).toEqual([]);
+      expect(new Set(imported).size).toBe(1);
+      expect(pendingOf(kind, world)).toContainEqual({
+        start: Math.floor(FRACTIONAL_AT) - 1,
+        end: Math.ceil(FRACTIONAL_AT) + 1,
+        kind: 'point',
+        series: '0',
+      });
+    });
+  },
+);
 
 describe.each([ORDERS, PAYMENTS])('a $name type with more records than a page shows', (kind) => {
   it('reads the first half of the span instead', async () => {

@@ -39,7 +39,9 @@ import { fiatOrderOf, fiatPageOf, fiatPaymentOf, fiatServerOf } from './binance.
  * cursor. A world holds records Binance writes late (older than the walk's cursor and the overlap
  * day), a new record on some runs, and, in some worlds, owed ground anywhere between the history
  * floor and the cursor, inside the 2-year re-scan window too, that no read clears (a page that
- * drifts, a page that throws) or that Binance refuses as older than it serves. What must be
+ * drifts, a page that throws) or that Binance refuses as older than it serves, and, in some
+ * worlds, an hour with more rows of each type than a page holds (behind a failing day, in the
+ * forward ground or inside an old owed range that reads fine). What must be
  * imported is decided by the records the generator made, never read back from the walk.
  *
  * The second suite drives the same walks over every kind of status (a settled record, a word the
@@ -128,14 +130,39 @@ const firstPassReadsOf = (zonesInWindow: number): number => 2 * zonesInWindow + 
 /** The widest gap between two owed days of a cluster; the narrowest is an hour. */
 const CLUSTER_GAP_MS = 3 * DAY_MS;
 
+/** The ground the forward pass reads behind the cursor in the world with a dense forward hour. */
+const FORWARD_GROUND_MS = CLUSTER_GAP_MS;
+
 /**
- * The reads a halving adds to a pass over a dense world: `H = 2 x (ceil(log2(CLUSTER_GAP_MS /
- * HOUR_MS)) + 1)`. The span after a stuck day holds more rows than a page, so a read of it comes
- * back full and halves until a piece fits a page, as many times as the span holds hours of the
- * widest gap, and the pieces double back to the window end: the halving reads to fit a page and
- * the doubling back, with slack.
+ * The reads a halving adds to a pass over a cluster world: `H = 2 x (ceil(log2(CLUSTER_GAP_MS /
+ * HOUR_MS)) + 1)`. The span after a stuck day holds more rows than a page in the hour after the
+ * day, so a read of it comes back full and halves until a piece fits a page, as many times as the
+ * span holds hours of the widest gap, and the pieces double back to the span end: the halving
+ * reads to fit a page and the doubling back, with slack. The hour starts the span, so each level of
+ * the halving is one read.
  */
 const HALVING_READS = 2 * (Math.ceil(Math.log2(CLUSTER_GAP_MS / HOUR_MS)) + 1);
+
+/**
+ * The reads of a halving out of a span that holds the dense hour anywhere in it, when the hour is
+ * in the second half of the span at every level: the read of the span comes back full, the read of
+ * its first half fits and is committed, and the read of the span after it, as wide as the span was
+ * (a commit doubles the width), comes back full again and halves to the second half, one level
+ * deeper. That is 3 reads a level, `ceil(log2(span / hour))` levels and one level for the last
+ * piece.
+ */
+const halvingReadsOutOf = (spanMs: number): number =>
+  3 * (Math.ceil(Math.log2(spanMs / HOUR_MS)) + 1);
+
+/**
+ * The re-scan reads over the dense hour of the forward world once the forward pass is past it, and
+ * its spans start at the window start and double, so the span that first holds the hour is up to a
+ * whole window wide.
+ */
+const FORWARD_HOUR_HALVING_READS = halvingReadsOutOf(FIAT_WINDOW_MS);
+
+/** Only the owed pass reads the dense hour of the old owed range, which is at most a gap wide. */
+const OLD_OWED_HOUR_HALVING_READS = halvingReadsOutOf(CLUSTER_GAP_MS);
 
 /**
  * The runs a record served is imported within: `importRuns(z) = r * F(z)`, `r` being the runs
@@ -143,14 +170,22 @@ const HALVING_READS = 2 * (Math.ceil(Math.log2(CLUSTER_GAP_MS / HOUR_MS)) + 1);
  * (`firstPassReadsOf`). A record waits at most for the rest of the pass it is served in and its
  * place in the next one, which together are no more than a first pass. With no failing day a pass
  * is one read, and a record served just after it waits for the next. A world behind full pages
- * adds the halving to each pass: `importRuns(z) = r * (F(z) + H)`, `H` being `HALVING_READS`. A
- * record served from run `v` is imported by the `importRuns(z)`th run it is within the reach of
- * the clock from `v` on (a run whose clock is before the record cannot read it).
+ * adds the halving to each pass: `importRuns(z) = r * (F(z) + H)`, `H` being the reads of the
+ * halving of the world (`halvingReads`). A record served from run `v` is imported by the
+ * `importRuns(z)`th run it is within the reach of the clock from `v` on (a run whose clock is
+ * before the record cannot read it).
  */
 const importRunsWithin =
   (runsPerRescanRead: number) =>
-  (zonesInWindow: number, dense: boolean): number =>
-    runsPerRescanRead * (firstPassReadsOf(zonesInWindow) + (dense ? HALVING_READS : 0));
+  (zonesInWindow: number, halvingReads: number): number =>
+    runsPerRescanRead * (firstPassReadsOf(zonesInWindow) + halvingReads);
+
+/**
+ * The runs the world with a dense forward hour is driven for: the bound of the orders lane with
+ * its one owed day in the window and the halving of the re-scan, and 20 runs more, so a record
+ * served from the first run is checked against the whole bound.
+ */
+const FORWARD_HOUR_RUNS = importRunsWithin(RESCAN_EVERY_RUNS)(1, FORWARD_HOUR_HALVING_READS) + 20;
 
 /** Late records are written between 2 days and this many days behind the run that serves them. */
 const LATE_BACK_DAYS = 600;
@@ -160,16 +195,36 @@ const SERVED_BACK_MS = 1_000 * DAY_MS;
 
 type Stuck = 'none' | 'drift' | 'throw' | 'tooOld';
 
-type Place = 'anywhere' | 'in the window' | 'in a cluster' | 'in a cluster, behind full pages';
+type Place =
+  | 'anywhere'
+  | 'in the window'
+  | 'in a cluster'
+  | 'in a cluster, behind full pages'
+  | 'in a forward hour, behind full pages'
+  | 'in an old owed range, behind full pages';
 
 type World = { stuck: Stuck; place: Place };
 
-const isDense = ({ place }: World): boolean => place === 'in a cluster, behind full pages';
+const isDense = ({ place }: World): boolean =>
+  place === 'in a cluster, behind full pages' ||
+  place === 'in a forward hour, behind full pages' ||
+  place === 'in an old owed range, behind full pages';
+
+const isClustered = ({ place }: World): boolean =>
+  place === 'in a cluster' || place === 'in a cluster, behind full pages';
+
+const hasDenseForwardHour = ({ place }: World): boolean =>
+  place === 'in a forward hour, behind full pages';
+
+const hasDenseOldOwedHour = ({ place }: World): boolean =>
+  place === 'in an old owed range, behind full pages';
 
 /**
  * Owed ground anywhere behind the cursor, and, for the two failing kinds, in the last 500 days or
  * four to six days in a row there, the last with more rows of each type than a page holds in the
- * hour after the first of them.
+ * hour after the first of them. Two more worlds put that many rows in one hour of the ground a pass
+ * reads over several runs: the forward ground, with a failing owed day behind the cursor, and an
+ * owed range older than the re-scan window that reads fine, so only the owed pass reads the hour.
  */
 const WORLDS: World[] = [
   { stuck: 'none', place: 'anywhere' },
@@ -181,6 +236,8 @@ const WORLDS: World[] = [
   { stuck: 'throw', place: 'in a cluster' },
   { stuck: 'drift', place: 'in a cluster, behind full pages' },
   { stuck: 'throw', place: 'in a cluster, behind full pages' },
+  { stuck: 'throw', place: 'in a forward hour, behind full pages' },
+  { stuck: 'none', place: 'in an old owed range, behind full pages' },
   { stuck: 'tooOld', place: 'anywhere' },
 ];
 
@@ -295,7 +352,7 @@ type StatusRecordInput = {
 /** A kind with the bound its records are imported within in the generated worlds. */
 type BoundedKind = WorldKind & {
   /** The runs a record served is imported within, `zones` being the failing days in the window. */
-  importRunsOf: (zones: number, dense: boolean) => number;
+  importRunsOf: (zones: number, halvingReads: number) => number;
 };
 
 const ORDERS_KIND: BoundedKind = {
@@ -406,25 +463,74 @@ const clusteredOwedRangesOf = (random: () => number): Span[] => {
   });
 };
 
+/**
+ * The cursor the walk starts with: an hour behind the first run, or, in the world with a dense
+ * forward hour, the forward ground behind that.
+ */
+const cursorOf = (world: World): number =>
+  hasDenseForwardHour(world) ? START_CURSOR - FORWARD_GROUND_MS : START_CURSOR;
+
+/**
+ * One owed range, a day to the widest gap of a cluster wide, that ends before the re-scan window
+ * of any run starts (the earliest clock of a run is 5 days before the first one's, so the range
+ * ends 10 days before the window), so only the owed pass reads it.
+ */
+const oldOwedRangeOf = (random: () => number): Span => {
+  const latestStart = START_CURSOR - FIAT_WINDOW_MS - 10 * DAY_MS - CLUSTER_GAP_MS;
+  const start = HISTORY_FLOOR_MS + Math.floor(random() * (latestStart - HISTORY_FLOOR_MS));
+
+  return { start, end: start + DAY_MS + Math.floor(random() * (CLUSTER_GAP_MS - DAY_MS)) };
+};
+
 /** One to three owed days, each placed by the world: anywhere from the floor to the cursor. */
 const owedRangesOf = (random: () => number, world: World): Span[] => {
-  const earliest = world.place === 'in the window' ? START_CURSOR - IN_WINDOW_MS : HISTORY_FLOOR_MS;
+  const cursor = cursorOf(world);
+  const earliest = world.place === 'in the window' ? cursor - IN_WINDOW_MS : HISTORY_FLOOR_MS;
 
-  if (world.place === 'in a cluster' || isDense(world)) {
+  if (isClustered(world)) {
     return clusteredOwedRangesOf(random);
+  }
+
+  if (hasDenseOldOwedHour(world)) {
+    return [oldOwedRangeOf(random)];
+  }
+
+  if (hasDenseForwardHour(world)) {
+    const start = cursor - IN_WINDOW_MS + Math.floor(random() * (IN_WINDOW_MS - DAY_MS));
+
+    return [{ start, end: start + DAY_MS }];
   }
 
   return world.stuck === 'none'
     ? []
     : Array.from({ length: 1 + Math.floor(random() * 3) }, () => {
-        const start = earliest + Math.floor(random() * (START_CURSOR - DAY_MS - earliest));
+        const start = earliest + Math.floor(random() * (cursor - DAY_MS - earliest));
 
         return { start, end: start + DAY_MS };
       });
 };
 
 /** The runs a world is driven for. */
-const runsOf = (world: World): number => (isDense(world) ? DENSE_RUNS : RUNS);
+const runsOf = (world: World): number => {
+  if (hasDenseForwardHour(world)) {
+    return FORWARD_HOUR_RUNS;
+  }
+
+  return isDense(world) ? DENSE_RUNS : RUNS;
+};
+
+/** The reads a halving adds to each pass of a world: none unless it holds a dense hour. */
+const halvingReadsOf = (world: World): number => {
+  if (hasDenseForwardHour(world)) {
+    return FORWARD_HOUR_HALVING_READS;
+  }
+
+  if (hasDenseOldOwedHour(world)) {
+    return OLD_OWED_HOUR_HALVING_READS;
+  }
+
+  return isDense(world) ? HALVING_READS : 0;
+};
 
 /** The owed days whose ground the re-scan reads, as far back as any run of the clock reads. */
 const zonesInWindowOf = (owed: Span[], clock: RunClock, runs: number): number => {
@@ -450,24 +556,53 @@ const casesOf = (kind: BoundedKind, world: World): { seed: number; title: string
 ];
 
 /**
- * In a world behind full pages, more rows of each type than a page holds, written in the hour
- * after the first owed day of the cluster: a span past that day holds more than one page of each
- * type, so a read of it (or of a piece of it) comes back full and halves.
+ * Where the hour of full pages of a dense world starts: right after the first owed day of a
+ * cluster, anywhere in the forward ground, or anywhere inside the old owed range, an hour away from
+ * its ends.
  */
-const fullPagesServedOf = (kind: WorldKind, world: World, owed: Span[]): Served[] =>
-  isDense(world)
-    ? Array.from({ length: 2 * (kind.pageRows + 1) }, (_unused, index) => {
-        const type: FiatTransactionType = index % 2 === 0 ? '0' : '1';
-        const createTime =
-          owed[0].end + 1 + Math.floor(((index + 1) * (HOUR_MS - 2)) / (2 * kind.pageRows + 3));
+const denseHourStartOf = (random: () => number, world: World, owed: Span[]): number => {
+  if (hasDenseForwardHour(world)) {
+    return cursorOf(world) + HOUR_MS + Math.floor(random() * (FORWARD_GROUND_MS - 2 * HOUR_MS));
+  }
 
-        return {
-          servedFromRun: 0,
-          type,
-          record: kind.recordOf({ orderNo: `full-${index}`, createTime, type }),
-        };
-      })
-    : [];
+  if (hasDenseOldOwedHour(world)) {
+    const width = owed[0].end - owed[0].start;
+
+    return owed[0].start + HOUR_MS + Math.floor(random() * (width - 2 * HOUR_MS));
+  }
+
+  return owed[0].end;
+};
+
+/**
+ * In a world behind full pages, more rows of each type than a page holds, written in one hour: a
+ * span that holds the hour holds more than one page of each type, so a read of it (or of a piece
+ * of it) comes back full and halves.
+ */
+const fullPagesServedOf = (
+  kind: WorldKind,
+  world: World,
+  owed: Span[],
+  random: () => number,
+): Served[] => {
+  if (!isDense(world)) {
+    return [];
+  }
+
+  const hourStart = denseHourStartOf(random, world, owed);
+
+  return Array.from({ length: 2 * (kind.pageRows + 1) }, (_unused, index) => {
+    const type: FiatTransactionType = index % 2 === 0 ? '0' : '1';
+    const createTime =
+      hourStart + 1 + Math.floor(((index + 1) * (HOUR_MS - 2)) / (2 * kind.pageRows + 3));
+
+    return {
+      servedFromRun: 0,
+      type,
+      record: kind.recordOf({ orderNo: `full-${index}`, createTime, type }),
+    };
+  });
+};
 
 const KINDS: BoundedKind[] = [ORDERS_KIND, PAYMENTS_KIND];
 
@@ -521,14 +656,17 @@ describe.each(KIND_CLOCKS)(
         const random = seededRandom(seed);
         const generated = servedWorldOf(random, clock, kind);
         const owed = owedRangesOf(random, world);
-        const served = [...generated, ...fullPagesServedOf(kind, world, owed)];
+        const served = [...generated, ...fullPagesServedOf(kind, world, owed, random)];
         const runs = runsOf(world);
-        const importRuns = kind.importRunsOf(zonesInWindowOf(owed, clock, runs), isDense(world));
+        const importRuns = kind.importRunsOf(
+          zonesInWindowOf(owed, clock, runs),
+          halvingReadsOf(world),
+        );
         const fake = walkStateFake({ accountId: ACCOUNT_ID, alongside: kind.holdings });
         const offers: Offer[] = [];
         let run = 0;
 
-        fake.seed(kind.walkId, { cursor: START_CURSOR, pending: owed });
+        fake.seed(kind.walkId, { cursor: cursorOf(world), pending: owed });
 
         const fetchRecords = async (
           apiKey: string,
@@ -600,6 +738,7 @@ describe.each(KIND_CLOCKS)(
           offers.find(({ externalId }) => orderNoOf(externalId) === orderNo)?.run;
         // A server that fails every read touching an owed day serves no record inside it.
         const isReadable = ({ record }: Served): boolean =>
+          stuck === 'none' ||
           stuck === 'tooOld' ||
           !owed.some((range) => record.createTime >= range.start && record.createTime <= range.end);
         const dueRunOf = ({ record, servedFromRun }: Served): number | undefined =>

@@ -483,3 +483,116 @@ describe.each([ORDERS, PAYMENTS])('$name: a full page of rows right after a stuc
     expect(summaryOf(await missingFrom(mark))).toEqual(noneMissing);
   });
 });
+
+describe('fiat orders: a dense hour that a pass halves over several runs', () => {
+  /**
+   * More rows of each type than a page holds, in the hour after `from`: a read that holds the whole
+   * hour comes back full, and a narrower one fits.
+   */
+  const denseHourOf = (from: number, prefix: string) =>
+    Array.from({ length: 2 * (ORDERS.pageRows + 1) }, (_unused, index) => ({
+      orderNo: `${prefix}-${index}`,
+      createTime: from + 1 + Math.floor(((index + 1) * (HOUR_MS - 2)) / (2 * ORDERS.pageRows + 3)),
+      type: index % 2 === 0 ? ('0' as const) : ('1' as const),
+    }));
+
+  /**
+   * The reads that halve a span down to a dense hour, wherever it sits in the span: a level costs
+   * the span read full, its first half read and committed when the hour is in the second half, and
+   * the doubled span after it read full again, 3 reads a level, `ceil(log2(span / hour))` levels
+   * and one for the last piece.
+   */
+  const readsOverDenseHourIn = (widthMs: number): number =>
+    3 * (Math.ceil(Math.log2(widthMs / HOUR_MS)) + 1);
+
+  /**
+   * The runs of the orders lane (a read is two of its three calls, so a run reads one span) between
+   * two reads of one pass: the runs go forward, owed, forward, re-scan while owed ground is left
+   * and the clock moves, so the forward pass and the owed windows read every second run and four.
+   */
+  const FORWARD_EVERY_RUNS = 2;
+  const OWED_EVERY_RUNS = 4;
+
+  /** Runs the world an hour apart and says in which run each record was first imported. */
+  const importedAtRunsOf = async (input: {
+    marks: Parameters<ReturnType<typeof worldOf>['seed']>[0];
+    rows: { orderNo: string; createTime: number; type: '0' | '1' }[];
+    unreadable?: (span: Span) => boolean;
+    runs: number;
+  }): Promise<Map<string, number>> => {
+    const world = worldOf(ORDERS);
+    const importedAt = new Map<string, number>();
+    const rowsOf = (type: '0' | '1') => input.rows.filter((row) => row.type === type);
+
+    world.seed(input.marks);
+
+    for (let index = 0; index < input.runs; index += 1) {
+      const run = await world.runOnce({
+        now: NOW + index * HOUR_MS,
+        records: rowsOf('0'),
+        sells: rowsOf('1'),
+        unreadable: input.unreadable ?? (() => false),
+      });
+
+      for (const orderNo of run.orderNos) {
+        importedAt.set(orderNo, importedAt.get(orderNo) ?? index);
+      }
+    }
+
+    return importedAt;
+  };
+
+  /** What was not imported, as a count and its first few, and the run the last record came in. */
+  const outcomeOf = (importedAt: Map<string, number>, orderNos: string[]) => {
+    const missing = orderNos.filter((orderNo) => !importedAt.has(orderNo));
+
+    return {
+      missing: { count: missing.length, first: missing.slice(0, 3) },
+      lastRun: Math.max(-1, ...orderNos.map((orderNo) => importedAt.get(orderNo) ?? -1)),
+    };
+  };
+
+  it('imports a dense forward hour and the orders after it while an owed day stays unreadable', async () => {
+    const cursor = NOW - 3 * DAY_MS;
+    const stuckDay = { start: cursor - 100 * DAY_MS, end: cursor - 99 * DAY_MS };
+    const dense = denseHourOf(cursor + 10 * HOUR_MS, 'dense');
+    const after = [
+      { orderNo: 'after-a', createTime: cursor + 30 * HOUR_MS, type: '0' as const },
+      { orderNo: 'after-b', createTime: cursor + 60 * HOUR_MS, type: '1' as const },
+    ];
+    const wanted = [...dense, ...after].map(({ orderNo }) => orderNo);
+    const bound = FORWARD_EVERY_RUNS * readsOverDenseHourIn(3 * DAY_MS);
+
+    const importedAt = await importedAtRunsOf({
+      marks: { cursor, pending: [stuckDay] },
+      rows: [...dense, ...after],
+      unreadable: overlapping(stuckDay),
+      runs: 60,
+    });
+    const outcome = outcomeOf(importedAt, wanted);
+
+    expect(outcome.missing).toEqual({ count: 0, first: [] });
+    expect(outcome.lastRun).toBeLessThan(bound);
+  });
+
+  it('imports a dense hour inside an owed range older than the re-scan window', async () => {
+    const owed = { start: NOW - 1500 * DAY_MS, end: NOW - 1498 * DAY_MS };
+    const dense = denseHourOf(owed.start + 20 * HOUR_MS, 'owed-dense');
+    const edges = [
+      { orderNo: 'owed-first', createTime: owed.start + 5 * HOUR_MS, type: '0' as const },
+      { orderNo: 'owed-last', createTime: owed.start + 40 * HOUR_MS, type: '1' as const },
+    ];
+    const wanted = [...dense, ...edges].map(({ orderNo }) => orderNo);
+    const bound = OWED_EVERY_RUNS * readsOverDenseHourIn(owed.end - owed.start);
+
+    const importedAt = await importedAtRunsOf({
+      marks: { cursor: NOW - HOUR_MS, pending: [owed] },
+      rows: [...dense, ...edges],
+      runs: 120,
+    });
+    const outcome = outcomeOf(importedAt, wanted);
+
+    expect(outcome.missing).toEqual({ count: 0, first: [] });
+    expect(outcome.lastRun).toBeLessThan(bound);
+  });
+});

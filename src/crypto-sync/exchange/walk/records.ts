@@ -100,7 +100,9 @@ export const instantAt = (time: number | undefined): WalkWindow | undefined =>
  * `start <= end`) and one more on each side, whatever the span it was read in. A request needs
  * `start < end`, and Binance may leave either end of a range out; with the extra millisecond on
  * both sides a request for the point returns the record under any of them, and a record on the
- * boundary of two spans owes one point. A record with no time, one whose extent is not finite,
+ * boundary of two spans owes one point. The ends are whole milliseconds, rounded outward: a
+ * request sends them as text, and a fraction would go out as a time the API does not define. A
+ * record with no time, one whose extent is not finite,
  * or one outside `reach` (the span, unless the read returns records beyond it) says nothing of
  * where in the span it is: it has no point.
  */
@@ -115,7 +117,7 @@ const pointOf = (reach: WalkWindow, extent: WalkWindow | undefined): WalkWindow 
     return undefined;
   }
 
-  return { start: extent.start - 1, end: extent.end + 1 };
+  return { start: Math.floor(extent.start) - 1, end: Math.ceil(extent.end) + 1 };
 };
 
 /** The point of a record with `series` (none, for a walk that reads one series). */

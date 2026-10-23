@@ -53,9 +53,9 @@ import {
 } from '@kiko/crypto-sync/exchange/walk-state';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { fiatTotalCode } from '@kiko/transactions/untracked-counterpart';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
+import { fiatTotalCode, isAssetTicker } from '@kiko/transactions/untracked-counterpart';
 
 import {
   type BinanceTransactionRow,
@@ -261,7 +261,13 @@ const settledPaymentOutcomeOf = ({
     const [coinAmount, fiatAmount] =
       type === '0' ? [obtainAmount, sourceAmount] : [sourceAmount, obtainAmount];
 
-    if (fiatCurrency === undefined || coinAmount === undefined || fiatAmount === undefined) {
+    // A fiat no marker can carry would owe the point for good, and a re-read cannot change it.
+    if (
+      fiatCurrency === undefined ||
+      !isAssetTicker(fiatCurrency) ||
+      coinAmount === undefined ||
+      fiatAmount === undefined
+    ) {
       return refusedOutcomeOf(record);
     }
 
@@ -939,29 +945,39 @@ const startingAfterStuck = (plan: WalkPlan, stuck: WalkWindow[]): WalkPlan => {
 };
 
 /**
- * The hooks with the stored re-scan hint kept on a turn that is not the re-scan. The plan of such
- * a turn holds no re-scan window, so the walk stores its hints without a re-scan one, which drops
- * the hint the re-scan left part way through the halving of a full page, and the next re-scan
- * would start that halving again.
+ * The hooks with the hints of the passes a turn does not read kept as they were stored. The plan
+ * of a turn holds the windows of the one pass it reads, so the walk stores its hints without the
+ * other passes' ones, which drops the hint a pass left part way through the halving of a full page,
+ * and its next turn would start that halving again, every time, never getting past it. Only the
+ * points pass runs on every turn, so its hints are the walk's own.
  */
-const keepRescanHint = <
+const keepHintsOfOtherPasses = <
   Hooks extends {
     hints: { stored: BinanceSpanHints; store: (hints: BinanceSpanHints) => Promise<void> };
   },
 >(
   hooks: Hooks,
   turn: FiatTurn | undefined,
-): Hooks =>
-  turn === undefined || turn === 'rescan'
-    ? hooks
-    : {
-        ...hooks,
-        hints: {
-          ...hooks.hints,
-          store: (hints: BinanceSpanHints) =>
-            hooks.hints.store({ ...hints, rescan: hooks.hints.stored.rescan }),
-        },
-      };
+): Hooks => {
+  if (turn === undefined) {
+    return hooks;
+  }
+
+  const pass = turn === 'owed' ? 'pending' : turn;
+
+  return {
+    ...hooks,
+    hints: {
+      ...hooks.hints,
+      store: (hints: BinanceSpanHints) =>
+        hooks.hints.store({
+          ...hooks.hints.stored,
+          [pass]: hints[pass],
+          point: hints.point,
+        }),
+    },
+  };
+};
 
 const runSync = async <Item extends FiatRecord>(
   deps: FiatCommonDeps,
@@ -1065,7 +1081,7 @@ const runSync = async <Item extends FiatRecord>(
         }),
       ),
     isUnreadableWindowError,
-    ...keepRescanHint(roundRobinHooksOf({ marks: context.marks, write }), turn),
+    ...keepHintsOfOtherPasses(roundRobinHooksOf({ marks: context.marks, write }), turn),
   });
   const lastWindowEnd = plan.forward.at(-1)?.end;
 
