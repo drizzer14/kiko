@@ -1079,6 +1079,8 @@ always, and the marker only when it is manual or imported and carries none; see
   `holdingNameById` and `holdingCurrencyById`, both built from the holdings live
   query. A persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
+  `ruleDescriptionOf` (`src/transactions/row-description/rule-description.ts`) is
+  the second reader of a blank row's label, for category-rule matching.
 - `transactions.untrackedCounterpart` (0058, nullable) holds a stored counterpart code for
   a leg whose other side the app does not track: a wallet, an asset, or a P2P, card or bank
   fiat. The forms and parse rules are `parseUntrackedCounterpart`
@@ -2514,7 +2516,7 @@ difference until the user records a correction ("Update
 outstanding").
 
 Known limit: a manual link before the start day is ignored by money but
-still LISTED in Linked Payments (a display-only gap).
+still listed in the loan's list (a display-only gap).
 
 Known limit: a MANUAL loan link (not the automatic ±7-day matcher) more
 than half an installment period late still maps to its nearest
@@ -2590,32 +2592,27 @@ the shared `SummaryTable`: Principal / Paid so far / Interest paid /
 Principal repaid / Outstanding (`loanLedgerSummary`, above; testIDs
 `loan-ledger-principal`, `-paid-so-far`, `-interest-paid`,
 `-principal-repaid`, `-outstanding`). Its Outstanding row is the same
-number as the Value header, the card, and net worth.
-An `'annuity'`/`'differentiated'` loan additionally lists EVERY remaining
-scheduled payment under an "Upcoming Payments" heading (the loan entry's
-own `upcomingInstallments` — every `loanInstallments` row that
+number as the Value header, the card, and net worth. Principal repaid is
+hidden when it equals Paid so far (`showsPrincipalRepaid` in the screen). An
+interest-0 split reads `holdingDetail.paymentSplitPrincipalOnly`
+(`paymentSplitText`, `src/screens/holding-detail/payment-split-text/`).
+An `'annuity'`/`'differentiated'` loan additionally lists the next scheduled
+installments in the loan's ONE day-grouped ledger, beside its linked payments
+(the loan entry's own `upcomingInstallments` — every `loanInstallments` row that
 `isScheduledPayment` accepts and that is due on or after today's local day
-(zero-payment rows after an early payoff are skipped), in schedule order; its first row is the next
-installment). `UpcomingPayments`
-(`src/screens/holding-detail/upcoming-payments/`, memoized) draws them as
-ledger cards: one `UpcomingPaymentRow` (`upcoming-payment-row/`) per
-installment, built on the shared `EntryCard` under an `EntryDateHeader`. The
-title is `holdingDetail.loanPayment`, the amount is the payment read signed
-and red like a Linked Payments row (display-only negation through
-`MoneyText` with `context="transaction"`, the same call; the accessibility
-label reads the signed amount; the principal / interest split stays
-unsigned), and the footer lines (under the whole row) are the
-`holdingDetail.scheduled` caption, the `holdingDetail.paymentSplit` caption,
-then the `holdingDetail.remainingBalance` line from the row's
-`remainderMinorUnits` (`loanRemaindersAfterMinor`, above). Read `upcoming-payment-row.component.tsx`
-for the exact row testIDs. Only the first `UPCOMING_PAYMENT_PREVIEW_COUNT`
-installments render (see `upcoming-payments.component.tsx`). A shared
-`ExpandToggle` (testID `upcoming-payments-toggle`) shows only when more
-exist, and reveals or re-hides the rest. A 30-year mortgage still has 360
-installments in the list, but only the preview count mounts until expanded.
-The screen memoizes the list on the local day, so it is not rebuilt on every
-render. A `'none'` schedule and every other holding type render nothing
-there. The list is also empty once `loanLedgerOutstandingMinorAt` reads 0
+(zero-payment rows after an early payoff are skipped), in schedule order; its
+first row is the next installment). Read the screen's `LedgerRow` (a
+`kind: 'scheduled'` row), `scheduled-payment-row/`, `use-scheduled-preview/`
+(the preview count and the expand toggle) and `use-linked-loan-payments/`
+under `src/screens/holding-detail/`. A scheduled row is built on the shared
+`EntryCard`, signed and red like a linked row; read
+`scheduled-payment-row.component.tsx` for its lines. A linked payment card
+shows `paymentSplitText` plus `holdingDetail.remainingBalance`
+(`loanLinkedPaymentBreakdownsMinor` in `loan-ledger.ts`, which shares
+`balanceAfterPaymentsMinor` with the outstanding read). An ignored payment
+(before the start, another currency, a credit, a future one) shows neither.
+A `'none'` schedule and every other holding type list no scheduled rows.
+The scheduled list is also empty once `loanLedgerOutstandingMinorAt` reads 0
 (`upcomingInstallments`' own `<= 0` guard) — a loan fully repaid by its
 linked payments, or overpaid/over-corrected, lists nothing even while
 `loanInstallments` still has future rows on the loan's ORIGINAL schedule.
@@ -2937,22 +2934,18 @@ carries `selectedLoanHoldingId`, regardless of the row's own amount
 sign — a linked row later edited from debit to credit must still reach the
 field where None/Undo live.
 
-**The loan holding-detail screen's own "Linked Payments" section is the
-only way to review an auto link** (a loan is ledgerless, so it carries no
-ledger of its own transactions to review): every
-transaction linked (manual or auto) to that loan, newest first, via
-`transactionsRepo.listLinkedToLoanQuery(loanHoldingId)` — one live query,
-disabled outright for a non-loan holding. It reuses the same
-`LedgerRowItem` (and its own loan-link marker) the main ledger FlatList
-renders, as a plain `.map` rather than a second virtualized list (one
-loan's own linked payments is always small); tapping a row opens the
-transaction form, where None/Undo live. A loan shows the Divider
-(`holding-detail-linked-payments-divider`) and then Linked Payments INSTEAD
-of the Transactions divider, heading and empty text; other holdings keep
-`holding-detail-transactions-divider` and Transactions. With none, the
-heading stays above an `EmptyState` (`holding-detail-linked-payments-empty`,
-`holdingDetail.emptyLinkedPayments.title`/`.message`). Code:
-`LedgerSectionHeading` and `LinkedPaymentsSection` in
+**The loan holding-detail screen's own list is the only way to review an
+auto link** (a loan is ledgerless, so it carries no ledger of its own
+transactions to review). There is no separate Linked Payments section, divider
+or heading: a loan shows the same Transactions divider and heading as any
+holding, and every transaction linked (manual or auto) to that loan is a list
+row, via `useLinkedLoanPayments` (`transactionsRepo.listLinkedToLoanQuery`,
+one live query, disabled outright for a non-loan holding). A row with a blank
+label shows the payer holding's name. Tapping a row opens the transaction
+form, where None/Undo live. With no row at all the list shows an `EmptyState`
+(`holding-detail-loan-payments-empty`,
+`holdingDetail.emptyLoanPayments.title`/`.message`). A loan also reads
+`accountsRepo.listQuery()` for the View actions. Code: the list in
 `src/screens/holding-detail/holding-detail.screen.tsx`.
 
 ## A holding is deleted only after its cascade
