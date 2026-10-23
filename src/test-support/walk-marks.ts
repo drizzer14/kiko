@@ -71,6 +71,8 @@ export const WALK_NAMES: readonly WalkName[] = [
   'earn',
   'convert',
   'p2p',
+  'fiatOrders',
+  'fiatPayments',
 ];
 
 const isNumberField = (field: WalkField): boolean =>

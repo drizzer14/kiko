@@ -1,8 +1,22 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import {
+  type CurrentRun,
+  type Disturbances,
+  disturbancesOf,
+  readFailureOf,
+  walkRuns,
+} from '@kiko/test-support/walk-disturbances';
 import { walkStateFake } from '@kiko/test-support/walk-marks';
+import type { WalkResult } from '@kiko/crypto-sync/exchange/walk';
+import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
+import {
+  type BinanceFiatOrderHistoryDeps,
+  FIAT_WINDOW_MS,
+  syncBinanceFiatOrderHistory,
+} from './binance.fiat-history';
 import {
   type BinanceFiatOrder,
   BinanceHistoryParseError,
@@ -12,7 +26,6 @@ import { NOW } from './binance.pay-test-fixtures';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { BinanceHistoryTooOldError } from './binance.client';
 import { createBinanceHistoryRun } from './binance.history-budget';
-import { FIAT_WINDOW_MS, syncBinanceFiatOrderHistory } from './binance.fiat-history';
 import { fiatOrderOf, fiatPageOf, fiatServerOf } from './binance.fiat-test-fixtures';
 
 /**
@@ -24,6 +37,10 @@ import { fiatOrderOf, fiatPageOf, fiatServerOf } from './binance.fiat-test-fixtu
  * the history floor and the cursor, inside the 2-year re-scan window too, that no read clears (a
  * page that drifts, a page that throws) or that Binance refuses as older than it serves. What must
  * be imported is decided by the records the generator made, never read back from the walk.
+ *
+ * The second suite drives the same walk over every kind of status (a settled record, a word the
+ * walk does not know, a record that waits on Binance and settles or is refused later, a coin Kiko
+ * does not track), with disturbed first runs: part of the lane spent, a window that throws, a 429.
  */
 
 const HOUR_MS = 3_600_000;
@@ -115,38 +132,97 @@ const WORLDS: World[] = [
 /** The last owed days of the in-window worlds sit this far behind the walk's cursor, at most. */
 const IN_WINDOW_MS = 500 * DAY_MS;
 
-type Served = { record: BinanceFiatOrder; type: FiatTransactionType; servedFromRun: number };
+type Served = { record: AnyRecord; type: FiatTransactionType; servedFromRun: number };
 
 type Span = { start: number; end: number };
 
 type Offer = { run: number; externalId: string };
 
-/** A seeded generator (Lehmer), so a failing run replays. */
-const seededRandom = (seed: number): (() => number) => {
-  let state = seed;
-
-  return () => {
-    state = (state * 48_271) % 2_147_483_647;
-
-    return state / 2_147_483_647;
-  };
-};
-
 const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow =>
   ({ id, metadata }) as unknown as HoldingRow;
 
-const HOLDINGS = [holdingWith('h-eur-spot', { binanceAsset: 'EUR' })];
+type AnyRecord = BinanceFiatOrder;
+
+type WalkDeps = Partial<BinanceFiatOrderHistoryDeps>;
+
+type RecordParts = {
+  orderNo: string;
+  createTime: number;
+  /** A deposit or a card buy is `'0'`, a withdrawal or a card sale `'1'`. */
+  type: FiatTransactionType;
+  status?: string;
+};
+
+/** What the walk of one kind reads, and how a record of it is made. */
+type WorldKind = {
+  name: string;
+  walkId: 'fiatOrders' | 'fiatPayments';
+  readKey: 'fetchFiatOrders' | 'fetchFiatPayments';
+  pageRows: number;
+  holdings: HoldingRow[];
+  sync: (
+    request: Parameters<typeof syncBinanceFiatOrderHistory>[0],
+    deps: WalkDeps,
+  ) => Promise<WalkResult>;
+  recordOf: (parts: RecordParts) => AnyRecord;
+  /** The runs a record served is imported within, `zones` being the failing days in the window. */
+  importRunsOf: (zones: number) => number;
+  /** The one status word that makes a row. */
+  settledWord: string;
+  /** A record of a status, for a whole amount `n`, on a coin Kiko tracks or not. */
+  statusRecordOf: (input: StatusRecordInput) => AnyRecord;
+  /** The row a settled record of `n` makes, decided here and not read back from the walk. */
+  rowOf: (input: { accountId: string; orderNo: string; n: number; type: FiatTransactionType }) => {
+    key: string;
+    units: number;
+    marker: string;
+  };
+};
+
+type StatusRecordInput = {
+  orderNo: string;
+  createTime: number;
+  type: FiatTransactionType;
+  n: number;
+  status: string;
+  untracked: boolean;
+};
+
+const ORDERS_KIND: WorldKind = {
+  name: 'fiat orders',
+  walkId: 'fiatOrders',
+  readKey: 'fetchFiatOrders',
+  pageRows: 500,
+  holdings: [holdingWith('h-eur-spot', { binanceAsset: 'EUR' })],
+  sync: syncBinanceFiatOrderHistory,
+  recordOf: ({ type: _type, ...parts }) => fiatOrderOf(parts),
+  importRunsOf,
+  settledWord: 'Successful',
+  statusRecordOf: ({ orderNo, createTime, type, n, status, untracked }) =>
+    fiatOrderOf({
+      orderNo,
+      createTime,
+      status,
+      fiatCurrency: untracked ? 'XYZ' : 'EUR',
+      indicatedAmount: `${n}.00`,
+      amount: `${n}.00`,
+      totalFee: type === '1' ? '1.25' : '0.00',
+    }),
+  rowOf: ({ accountId, orderNo, n, type }) => ({
+    key: `${accountId}:fiat:${orderNo}:EUR`,
+    units: type === '1' ? -(n * 100 + 125) : n * 100,
+    marker: `bank:EUR:${n}.00`,
+  }),
+};
 
 const orderNoOf = (externalId: string): string | undefined => externalId.split(':')[2];
 
-const servedWorldOf = (random: () => number, clock: RunClock): Served[] => {
+const servedWorldOf = (random: Random, clock: RunClock, kind: WorldKind): Served[] => {
   const served: Served[] = [];
   const add = (orderNo: string, createTime: number, servedFromRun: number): void => {
-    served.push({
-      servedFromRun,
-      type: served.length % 2 === 0 ? '0' : '1',
-      record: fiatOrderOf({ orderNo, createTime }),
-    });
+    const type = served.length % 2 === 0 ? '0' : '1';
+
+    served.push({ servedFromRun, type, record: kind.recordOf({ orderNo, createTime, type }) });
   };
 
   for (let run = 0; run < RUNS; run += 1) {
@@ -192,141 +268,450 @@ const zonesInWindowOf = (owed: Span[], clock: RunClock): number => {
   return owed.filter((range) => range.end >= earliestRead).length;
 };
 
-describe.each(CLOCKS)('the fiat orders walk over generated worlds, runs $label', (clock) => {
-  let warn: jest.SpyInstance;
+const KINDS = [ORDERS_KIND];
 
-  beforeEach(() => {
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+const KIND_CLOCKS = KINDS.flatMap((kind) =>
+  CLOCKS.map((clock) => ({ kind, clock, kindName: kind.name, label: clock.label })),
+);
+
+describe.each(KIND_CLOCKS)(
+  'the $kindName walk over generated worlds, runs $label',
+  ({ kind, clock }) => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    describe.each(WORLDS)('with $stuck owed ground placed $place', (world) => {
+      const { stuck } = world;
+
+      it.each(SEEDS)(
+        'imports every record Binance serves within the bound, each once: seed %i',
+        async (seed) => {
+          const random = seededRandom(seed);
+          const served = servedWorldOf(random, clock, kind);
+          const owed = owedRangesOf(random, world);
+          const importRuns = kind.importRunsOf(zonesInWindowOf(owed, clock));
+          const fake = walkStateFake({ accountId: ACCOUNT_ID, alongside: kind.holdings });
+          const offers: Offer[] = [];
+          let run = 0;
+
+          fake.seed(kind.walkId, { cursor: START_CURSOR, pending: owed });
+
+          const fetchRecords = async (
+            apiKey: string,
+            secret: string,
+            type: FiatTransactionType,
+            span: Span,
+            page: number,
+          ) => {
+            const runNow = clock.at(run);
+            const servedNow = served.filter(
+              (item) => item.servedFromRun <= run && item.record.createTime <= runNow,
+            );
+            const touchesOwed = owed.some(
+              (range) => span.start <= range.end && span.end >= range.start,
+            );
+
+            if (stuck === 'drift' && touchesOwed) {
+              return fiatPageOf<AnyRecord>([], { total: 5 });
+            }
+
+            if (stuck === 'throw' && touchesOwed) {
+              throw new BinanceHistoryParseError();
+            }
+
+            if (stuck === 'tooOld' && span.start < runNow - SERVED_BACK_MS) {
+              throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
+            }
+
+            const recordsOf = (wanted: FiatTransactionType): AnyRecord[] =>
+              servedNow.filter((item) => item.type === wanted).map(({ record }) => record);
+
+            return fiatServerOf({ '0': recordsOf('0'), '1': recordsOf('1') }, kind.pageRows)(
+              apiKey,
+              secret,
+              type,
+              span,
+              page,
+            );
+          };
+
+          for (run = 0; run < RUNS; run += 1) {
+            const runNow = clock.at(run);
+
+            await kind
+              .sync(
+                {
+                  targetAccountId: ACCOUNT_ID,
+                  run: createBinanceHistoryRun({ now: () => runNow, sleep: async () => undefined }),
+                },
+                {
+                  now: () => runNow,
+                  fetchImpl: (async () => ({})) as unknown as typeof fetch,
+                  readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+                  [kind.readKey]: fetchRecords,
+                  ensureHoldings: async () => undefined,
+                  addTransactions: async (rows) => {
+                    offers.push(...rows.map(({ externalId }) => ({ run, externalId })));
+
+                    return rows.length;
+                  },
+                  ...fake.freshDeps(),
+                  listHoldings: fake.listHoldings,
+                },
+              )
+              .catch((error: unknown) => {
+                if (!(error instanceof BinanceHistoryParseError)) {
+                  throw error;
+                }
+              });
+          }
+
+          const importedAtRun = (orderNo: string): number | undefined =>
+            offers.find(({ externalId }) => orderNoOf(externalId) === orderNo)?.run;
+          // A server that fails every read touching an owed day serves no record inside it.
+          const isReadable = ({ record }: Served): boolean =>
+            stuck === 'tooOld' ||
+            !owed.some(
+              (range) => record.createTime >= range.start && record.createTime <= range.end,
+            );
+          const dueRunOf = ({ record, servedFromRun }: Served): number | undefined =>
+            Array.from(
+              { length: RUNS - servedFromRun },
+              (_unused, offset) => servedFromRun + offset,
+            )
+              .filter((reachable) => record.createTime <= clock.at(reachable))
+              .at(importRuns - 1);
+          const missing = served
+            .filter(isReadable)
+            .flatMap(
+              (item) =>
+                foldMap(maybe(dueRunOf(item)), (dueRun) => [
+                  {
+                    orderNo: item.record.orderNo,
+                    servedFromRun: item.servedFromRun,
+                    dueRun,
+                    importedAtRun: importedAtRun(item.record.orderNo),
+                  },
+                ]) ?? [],
+            )
+            .filter(({ dueRun, importedAtRun: at }) => at === undefined || at > dueRun);
+          const keysOfOrder = new Map<string, Set<string>>();
+
+          for (const { externalId } of offers) {
+            const orderNo = orderNoOf(externalId) ?? '';
+
+            keysOfOrder.set(orderNo, new Set([...(keysOfOrder.get(orderNo) ?? []), externalId]));
+          }
+
+          expect(missing).toEqual([]);
+          expect(
+            [...keysOfOrder].filter(
+              ([orderNo, keys]) =>
+                keys.size !== 1 || !served.some(({ record }) => record.orderNo === orderNo),
+            ),
+          ).toEqual([]);
+        },
+      );
+    });
+  },
+);
+
+const STATUS_RUN_GAPS = [0, HOUR_MS, DAY_MS];
+const STATUS_RUNS = 60;
+const STATUS_NOISY_RUNS = 14;
+const STATUS_SEEDS = Array.from({ length: 32 }, (_unused, position) => 33 + position * 11);
+const STATUS_ACCOUNT_ID = 'acc-fiat-statuses-properties';
+
+type StatusCategory = 'settled' | 'refused' | 'untracked' | 'openThenSettled' | 'openThenRefused';
+
+/** A category twice in the list is drawn twice as often. */
+const STATUS_CATEGORIES: StatusCategory[] = [
+  'settled',
+  'settled',
+  'refused',
+  'untracked',
+  'openThenSettled',
+  'openThenRefused',
+];
+
+/**
+ * The words the walk lists as not recognized, besides the spellings of the settled word that are
+ * not exactly it (added per kind).
+ */
+const REFUSED_WORDS = [
+  'Failed',
+  'Refunded',
+  'Finished',
+  'Refunding',
+  'Refund Failed',
+  'Order Partial Credit Stopped',
+  'Unheard Of',
+];
+
+type OwedGround = { start: number; end: number; kind?: 'point' };
+
+type StatusExpected = {
+  key?: string;
+  units?: number;
+  marker?: string;
+  entry?: string;
+  untracked?: string;
+};
+
+type StatusMade = {
+  record: AnyRecord;
+  type: FiatTransactionType;
+  expected: StatusExpected;
+  /** The run from which the record has its final status; before it Binance shows `Processing`. */
+  settlesAtRun: number | undefined;
+};
+
+const pick = <Item>(random: Random, items: readonly Item[]): Item =>
+  items[Math.floor(random() * items.length)];
+
+const entryOfRecord = ({ orderNo, createTime }: AnyRecord): string =>
+  `fiat-unrecognized:${orderNo}:${createTime}`;
+
+type Final = { record: AnyRecord; expected: StatusExpected };
+
+/** The final status and what it comes to, for a category. */
+const finalOf = (input: {
+  kind: WorldKind;
+  category: StatusCategory;
+  random: Random;
+  made: Omit<StatusRecordInput, 'status' | 'untracked'>;
+  accountId: string;
+}): Final => {
+  const { kind, category, random, made, accountId } = input;
+  const build = (status: string, untracked = false): AnyRecord =>
+    kind.statusRecordOf({ ...made, status, untracked });
+
+  if (category === 'settled' || category === 'openThenSettled') {
+    return {
+      record: build(kind.settledWord),
+      expected: kind.rowOf({ accountId, orderNo: made.orderNo, n: made.n, type: made.type }),
+    };
+  }
+
+  if (category === 'untracked') {
+    return { record: build(kind.settledWord, true), expected: { untracked: 'XYZ' } };
+  }
+
+  const record = build(
+    pick(random, [
+      ...REFUSED_WORDS,
+      kind.settledWord.toLowerCase(),
+      ` ${kind.settledWord}`,
+      `${kind.settledWord} `,
+    ]),
+  );
+
+  return { record, expected: { entry: entryOfRecord(record) } };
+};
+
+const statusMadeOf = (input: {
+  kind: WorldKind;
+  random: Random;
+  index: number;
+  accountId: string;
+  gapMs: number;
+}): StatusMade => {
+  const { kind, random, index, accountId, gapMs } = input;
+  const category = pick(random, STATUS_CATEGORIES);
+  const type = pick<FiatTransactionType>(random, ['0', '1']);
+  const lastClock = FIRST_RUN_AT + (STATUS_RUNS - 1) * gapMs;
+  const made = {
+    orderNo: `record-${index}`,
+    createTime: HISTORY_FLOOR_MS + Math.floor(random() * (lastClock - HISTORY_FLOOR_MS)),
+    type,
+    n: 1 + Math.floor(random() * 4_000),
+  };
+  const waits = category === 'openThenSettled' || category === 'openThenRefused';
+
+  return {
+    ...finalOf({ kind, category, random, made, accountId }),
+    type,
+    settlesAtRun: waits ? 1 + Math.floor(random() * (STATUS_NOISY_RUNS - 2)) : undefined,
+  };
+};
+
+/** The record as Binance shows it at run `run`: `Processing` before the run that settles it. */
+const shownAtRun = ({ record, settlesAtRun }: StatusMade, run: number): AnyRecord =>
+  settlesAtRun !== undefined && run < settlesAtRun ? { ...record, status: 'Processing' } : record;
+
+type StatusWorld = {
+  accountId: string;
+  gapMs: number;
+  made: StatusMade[];
+  disturbances: Disturbances;
+};
+
+const statusWorldOf = (kind: WorldKind, seed: number, gapMs: number): StatusWorld => {
+  const random = seededRandom(seed);
+  const accountId = `${STATUS_ACCOUNT_ID}-${kind.walkId}-${gapMs}-${seed}`;
+  const made = Array.from({ length: 12 + Math.floor(random() * 24) }, (_unused, index) =>
+    statusMadeOf({ kind, random, index, accountId, gapMs }),
+  );
+  const disturbances = disturbancesOf({
+    random,
+    runs: STATUS_RUNS,
+    noisyRuns: STATUS_NOISY_RUNS,
+    lane: kind.walkId,
+    from: HISTORY_FLOOR_MS,
+    days: Math.floor((FIRST_RUN_AT - HISTORY_FLOOR_MS) / DAY_MS),
+    errorOf: () => new BinanceHistoryParseError(),
   });
 
-  afterEach(() => {
-    warn.mockRestore();
+  return { accountId, gapMs, made, disturbances };
+};
+
+/** The records that wait on Binance at `run` and have left a row or an entry. */
+const waitingWithTraces = (world: StatusWorld, run: number, runNow: number, traces: string[]) =>
+  world.made
+    .filter(
+      ({ record, settlesAtRun }) =>
+        settlesAtRun !== undefined && run < settlesAtRun && record.createTime <= runNow,
+    )
+    .filter(({ expected }) =>
+      traces.some((trace) => trace === expected.key || trace === expected.entry),
+    )
+    .map(({ record }) => record.orderNo);
+
+type StatusOutcome = {
+  stored: Map<string, { amountMinorUnits: number; untrackedCounterpart: string }>;
+  fake: ReturnType<typeof walkStateFake>;
+  last: WalkResult | undefined;
+  finalClock: number;
+};
+
+const runStatusWorld = async (kind: WorldKind, world: StatusWorld): Promise<StatusOutcome> => {
+  const { accountId, gapMs, made, disturbances } = world;
+  const fake = walkStateFake({ accountId, alongside: kind.holdings });
+  const stored: StatusOutcome['stored'] = new Map();
+  const current: CurrentRun = { run: 0, now: FIRST_RUN_AT };
+  let reads = 0;
+
+  const fetchRecords = async (
+    apiKey: string,
+    secret: string,
+    type: FiatTransactionType,
+    span: Span,
+    page: number,
+  ) => {
+    reads += 1;
+    const failure = readFailureOf(disturbances, current, span);
+
+    if (failure !== undefined) {
+      throw failure;
+    }
+
+    const shown = made.filter(({ record }) => record.createTime <= current.now);
+    const recordsOf = (wanted: FiatTransactionType): AnyRecord[] =>
+      shown.filter((item) => item.type === wanted).map((item) => shownAtRun(item, current.run));
+
+    return fiatServerOf({ '0': recordsOf('0'), '1': recordsOf('1') }, kind.pageRows)(
+      apiKey,
+      secret,
+      type,
+      span,
+      page,
+    );
+  };
+
+  const { last, finalClock } = await walkRuns({
+    runs: STATUS_RUNS,
+    gapMs,
+    firstRunAt: FIRST_RUN_AT,
+    accountId,
+    lane: kind.walkId,
+    disturbances,
+    current,
+    reads: () => reads,
+    walk: ({ runNow, walkRun }) =>
+      kind.sync(
+        { targetAccountId: accountId, run: walkRun },
+        {
+          now: () => runNow,
+          fetchImpl: (async () => ({})) as unknown as typeof fetch,
+          readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+          [kind.readKey]: fetchRecords,
+          ensureHoldings: async () => undefined,
+          addTransactions: async (rows) => {
+            for (const { externalId, amountMinorUnits, untrackedCounterpart } of rows) {
+              stored.set(externalId, { amountMinorUnits, untrackedCounterpart });
+            }
+
+            return rows.length;
+          },
+          ...fake.freshDeps(),
+          listHoldings: fake.listHoldings,
+        },
+      ),
+    afterRun: (run, runNow) =>
+      expect(
+        waitingWithTraces(world, run, runNow, [...stored.keys(), ...fake.notImported()]),
+      ).toEqual([]),
   });
 
-  describe.each(WORLDS)('with $stuck owed ground placed $place', (world) => {
-    const { stuck } = world;
+  return { stored, fake, last, finalClock };
+};
 
-    it.each(SEEDS)(
-      'imports every record Binance serves within the bound, each once: seed %i',
+const STATUS_KIND_GAPS = KINDS.flatMap((kind) =>
+  STATUS_RUN_GAPS.map((gapMs) => ({ kind, gapMs, kindName: kind.name })),
+);
+
+describe.each(STATUS_KIND_GAPS)(
+  'the $kindName walk over generated statuses, runs $gapMs ms apart',
+  ({ kind, gapMs }) => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it.each(STATUS_SEEDS)(
+      'imports each settled record once at its exact amount, lists each refusal once, and ends current: seed %i',
       async (seed) => {
-        const random = seededRandom(seed);
-        const served = servedWorldOf(random, clock);
-        const owed = owedRangesOf(random, world);
-        const importRuns = importRunsOf(zonesInWindowOf(owed, clock));
-        const fake = walkStateFake({ accountId: ACCOUNT_ID, alongside: HOLDINGS });
-        const offers: Offer[] = [];
-        let run = 0;
-
-        fake.seed('fiatOrders', { cursor: START_CURSOR, pending: owed });
-
-        const fetchFiatOrders = async (
-          apiKey: string,
-          secret: string,
-          type: FiatTransactionType,
-          span: Span,
-          page: number,
-        ) => {
-          const runNow = clock.at(run);
-          const servedNow = served.filter(
-            (item) => item.servedFromRun <= run && item.record.createTime <= runNow,
-          );
-          const touchesOwed = owed.some(
-            (range) => span.start <= range.end && span.end >= range.start,
-          );
-
-          if (stuck === 'drift' && touchesOwed) {
-            return fiatPageOf<BinanceFiatOrder>([], { total: 5 });
-          }
-
-          if (stuck === 'throw' && touchesOwed) {
-            throw new BinanceHistoryParseError();
-          }
-
-          if (stuck === 'tooOld' && span.start < runNow - SERVED_BACK_MS) {
-            throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
-          }
-
-          const recordsOf = (wanted: FiatTransactionType): BinanceFiatOrder[] =>
-            servedNow.filter((item) => item.type === wanted).map(({ record }) => record);
-
-          return fiatServerOf({ '0': recordsOf('0'), '1': recordsOf('1') }, 500)(
-            apiKey,
-            secret,
-            type,
-            span,
-            page,
-          );
+        const world = statusWorldOf(kind, seed, gapMs);
+        const { stored, fake, last, finalClock } = await runStatusWorld(kind, world);
+        const rowed = world.made.filter(({ expected }) => expected.key !== undefined);
+        const listed = JSON.parse((await fake.deps.readExchangeState(world.accountId)) ?? '{}') as {
+          untrackedCoins?: { history?: string[] };
         };
 
-        for (run = 0; run < RUNS; run += 1) {
-          const runNow = clock.at(run);
+        expect([...stored.keys()].sort()).toEqual(rowed.map(({ expected }) => expected.key).sort());
+        expect(rowed.map(({ expected }) => stored.get(expected.key ?? ''))).toEqual(
+          rowed.map(({ expected }) => ({
+            amountMinorUnits: expected.units,
+            untrackedCounterpart: expected.marker,
+          })),
+        );
+        expect([...fake.notImported()].sort()).toEqual(
+          world.made.flatMap(({ expected }) => expected.entry ?? []).sort(),
+        );
+        expect(listed.untrackedCoins?.history ?? []).toEqual([
+          ...new Set(world.made.flatMap(({ expected }) => expected.untracked ?? [])),
+        ]);
+        const owed = (fake.marksOf(kind.walkId).pending ?? []) as OwedGround[];
 
-          await syncBinanceFiatOrderHistory(
-            {
-              targetAccountId: ACCOUNT_ID,
-              run: createBinanceHistoryRun({ now: () => runNow, sleep: async () => undefined }),
-            },
-            {
-              now: () => runNow,
-              fetchImpl: (async () => ({})) as unknown as typeof fetch,
-              readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-              fetchFiatOrders,
-              ensureHoldings: async () => undefined,
-              addTransactions: async (rows) => {
-                offers.push(...rows.map(({ externalId }) => ({ run, externalId })));
-
-                return rows.length;
-              },
-              ...fake.freshDeps(),
-              listHoldings: fake.listHoldings,
-            },
-          ).catch((error: unknown) => {
-            if (!(error instanceof BinanceHistoryParseError)) {
-              throw error;
-            }
-          });
-        }
-
-        const importedAtRun = (orderNo: string): number | undefined =>
-          offers.find(({ externalId }) => orderNoOf(externalId) === orderNo)?.run;
-        // A server that fails every read touching an owed day serves no record inside it.
-        const isReadable = ({ record }: Served): boolean =>
-          stuck === 'tooOld' ||
-          !owed.some((range) => record.createTime >= range.start && record.createTime <= range.end);
-        const dueRunOf = ({ record, servedFromRun }: Served): number | undefined =>
-          Array.from({ length: RUNS - servedFromRun }, (_unused, offset) => servedFromRun + offset)
-            .filter((reachable) => record.createTime <= clock.at(reachable))
-            .at(importRuns - 1);
-        const missing = served
-          .filter(isReadable)
-          .flatMap(
-            (item) =>
-              foldMap(maybe(dueRunOf(item)), (dueRun) => [
-                {
-                  orderNo: item.record.orderNo,
-                  servedFromRun: item.servedFromRun,
-                  dueRun,
-                  importedAtRun: importedAtRun(item.record.orderNo),
-                },
-              ]) ?? [],
-          )
-          .filter(({ dueRun, importedAtRun: at }) => at === undefined || at > dueRun);
-        const keysOfOrder = new Map<string, Set<string>>();
-
-        for (const { externalId } of offers) {
-          const orderNo = orderNoOf(externalId) ?? '';
-
-          keysOfOrder.set(orderNo, new Set([...(keysOfOrder.get(orderNo) ?? []), externalId]));
-        }
-
-        expect(missing).toEqual([]);
-        expect(
-          [...keysOfOrder].filter(
-            ([orderNo, keys]) =>
-              keys.size !== 1 || !served.some(({ record }) => record.orderNo === orderNo),
-          ),
-        ).toEqual([]);
+        expect(last).toBeDefined();
+        // A run after a forward run reads behind, so the cursor is at most one run old.
+        expect(fake.marksOf(kind.walkId).cursor).toBeGreaterThanOrEqual(finalClock - gapMs);
+        expect(owed.filter(({ kind: groundKind }) => groundKind === 'point')).toEqual([]);
+        // The ground left owed is the overlap day of the last forward read, at most.
+        expect(owed.filter(({ end }) => end < finalClock - 3 * gapMs)).toEqual([]);
       },
     );
-  });
-});
+  },
+);

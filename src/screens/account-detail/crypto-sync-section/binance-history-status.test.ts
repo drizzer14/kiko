@@ -10,6 +10,25 @@ const HOUR_MS = 60 * 60 * 1000;
 const stateOf = (seeds: Partial<Record<WalkName, WalkMarkSeed>>) =>
   parseExchangeState(JSON.stringify(withWalkMarkSeeds({}, 'acc-1', seeds)));
 
+// The walks the caption compares, in the order `walkCursorsOf` lists them.
+const CAPTION_WALK_NAMES: readonly WalkName[] = [
+  'capital',
+  'pay',
+  'transfer',
+  'earn',
+  'convert',
+  'p2p',
+  'fiatOrders',
+  'fiatPayments',
+];
+
+// Every caption walk at `cursor`, except where `over` seeds a walk's marks itself.
+const withEveryCursor = (cursor: number, over: Partial<Record<WalkName, WalkMarkSeed>>) =>
+  stateOf({
+    ...Object.fromEntries(CAPTION_WALK_NAMES.map((walkName) => [walkName, { cursor }])),
+    ...over,
+  });
+
 describe('isBinanceHistoryBehind', () => {
   const caughtUp = [NOW - HOUR_MS, NOW - 2 * HOUR_MS, NOW - HOUR_MS, NOW - 3 * HOUR_MS];
 
@@ -110,66 +129,87 @@ describe('transferOwesRange', () => {
 });
 
 describe('walkCursorsOf', () => {
-  it('reads the five forward cursors, capital, Pay, Transfer, Earn and Convert, off the state', () => {
+  it('reads the eight forward cursors, capital, Pay, Transfer, Earn, Convert, P2P, fiat orders and fiat payments, off the state', () => {
     const state = stateOf({
       capital: { cursor: 1 },
       pay: { cursor: 2 },
       transfer: { cursor: 3 },
       earn: { cursor: 4, rescan: 99 },
       convert: { cursor: 5 },
+      p2p: { cursor: 6 },
+      fiatOrders: { cursor: 7 },
+      fiatPayments: { cursor: 8 },
     });
 
-    expect(walkCursorsOf(state)).toEqual([1, 2, 3, 4, 5]);
+    expect(walkCursorsOf(state)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it('reads a cursor a walk has not written yet as null', () => {
     expect(walkCursorsOf(stateOf({ capital: { cursor: NOW } }))).toEqual([
       NOW,
-      null,
-      null,
-      null,
-      null,
+      ...Array.from({ length: 7 }, () => null),
     ]);
   });
 
-  it('reads each walk by its own cursor, whichever other walks have one', () => {
-    expect(walkCursorsOf(stateOf({ earn: { cursor: NOW } }))).toEqual([
-      null,
-      null,
-      null,
-      NOW,
-      null,
-    ]);
-    expect(walkCursorsOf(stateOf({ convert: { cursor: NOW } }))).toEqual([
-      null,
-      null,
-      null,
-      null,
-      NOW,
-    ]);
-  });
+  it.each(CAPTION_WALK_NAMES.map((walkName, position) => [walkName, position] as const))(
+    'reads the %s walk by its own cursor, whichever other walks have one',
+    (walkName, position) => {
+      expect(walkCursorsOf(stateOf({ [walkName]: { cursor: NOW } }))).toEqual(
+        CAPTION_WALK_NAMES.map((_unused, index) => (index === position ? NOW : null)),
+      );
+    },
+  );
 
   it.each([
     ['no state row', null],
     ['a state that is not readable', '{not json'],
-  ])('is five nulls for %s', (_label, text) => {
-    expect(walkCursorsOf(parseExchangeState(text))).toEqual([null, null, null, null, null]);
+  ])('is eight nulls for %s', (_label, text) => {
+    expect(walkCursorsOf(parseExchangeState(text))).toEqual(Array.from({ length: 8 }, () => null));
   });
 
   it('does not read an owed point as a cursor: a list of ground changes nothing', () => {
     const cursors = walkCursorsOf(
-      stateOf({
-        capital: { cursor: NOW },
-        pay: { cursor: NOW },
+      withEveryCursor(NOW, {
         transfer: {
           cursor: NOW,
           pending: [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' }],
         },
-        earn: { cursor: NOW },
-        convert: { cursor: NOW },
       }),
     );
 
-    expect(cursors).toEqual([NOW, NOW, NOW, NOW, NOW]);
+    expect(cursors).toEqual(Array.from({ length: 8 }, () => NOW));
+  });
+});
+
+describe('the history caption over the P2P and fiat walks', () => {
+  const caughtUp = NOW - HOUR_MS;
+
+  const behindWith = (walkName: WalkName, cursor: number | undefined): boolean =>
+    isBinanceHistoryBehind({
+      cursors: walkCursorsOf(withEveryCursor(caughtUp, { [walkName]: { cursor } })),
+      lastBalanceSyncAt: NOW,
+    });
+
+  it('is not behind while all eight walks are within a day of the balance sync', () => {
+    expect(
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(withEveryCursor(caughtUp, {})),
+        lastBalanceSyncAt: NOW,
+      }),
+    ).toBe(false);
+  });
+
+  it.each(['p2p', 'fiatOrders', 'fiatPayments'] as const)(
+    'shows the caption while the %s walk is behind',
+    (walkName) => {
+      expect(behindWith(walkName, undefined)).toBe(true);
+      expect(behindWith(walkName, NOW - 2 * DAY_MS)).toBe(true);
+      expect(behindWith(walkName, NOW - HOUR_MS)).toBe(false);
+    },
+  );
+
+  it('is behind while the P2P walk is held more than a day by a page it cannot read', () => {
+    expect(behindWith('p2p', NOW - DAY_MS)).toBe(false);
+    expect(behindWith('p2p', NOW - DAY_MS - 1)).toBe(true);
   });
 });

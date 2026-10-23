@@ -864,6 +864,27 @@ const withStuckWindows = (input: {
   };
 };
 
+/**
+ * Store the stuck ranges the run still holds (a range the list lost has been read), and log that
+ * it holds any, once. The re-scan runs that read around a stuck range have no failed read to log,
+ * so a day that nothing reads would be silent on them.
+ */
+const keepStuckMark = async (input: {
+  write: WalkMarkWriter;
+  stored: WalkWindow[] | undefined;
+  stuck: WalkWindow[];
+}): Promise<void> => {
+  const { write, stored = [], stuck } = input;
+
+  if (stuck.length !== stored.length) {
+    await write([{ field: 'rescanStuck', value: stuck }]);
+  }
+
+  if (stuck.length > 0) {
+    logWalkStop(FIAT_RESCAN_STUCK);
+  }
+};
+
 const runSync = async <Item extends FiatRecord>(
   deps: FiatCommonDeps,
   walk: FiatWalk<Item>,
@@ -915,9 +936,7 @@ const runSync = async <Item extends FiatRecord>(
     return { imported: 0, complete: false };
   }
 
-  if (stuck.length !== (stored.rescanStuck ?? []).length) {
-    await write([{ field: 'rescanStuck', value: stuck }]);
-  }
+  await keepStuckMark({ write, stored: stored.rescanStuck, stuck });
 
   const context: FiatContext<Item> = {
     deps,

@@ -2,12 +2,25 @@ import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import type { ParsedExchangeState, WalkId } from '@kiko/crypto-sync/exchange/walk-state';
 
-/** The walks whose forward cursor the caption compares: capital, Pay, Transfer, Earn, Convert. */
-const CAPTION_WALKS: readonly WalkId[] = ['capital', 'pay', 'transfer', 'earn', 'convert'];
+/**
+ * The walks whose forward cursor the caption compares: capital, Pay, Transfer, Earn, Convert,
+ * P2P, fiat orders, fiat payments. A P2P page that cannot be read holds its cursor on every run,
+ * so the caption is how that stays visible.
+ */
+const CAPTION_WALKS: readonly WalkId[] = [
+  'capital',
+  'pay',
+  'transfer',
+  'earn',
+  'convert',
+  'p2p',
+  'fiatOrders',
+  'fiatPayments',
+];
 
 /**
- * The five walks' forward watermarks in the account's walk state. A walk that has not written its
- * cursor yet reads as null, and so does every walk of a state that is not readable.
+ * The caption walks' forward watermarks in the account's walk state. A walk that has not written
+ * its cursor yet reads as null, and so does every walk of a state that is not readable.
  */
 export const walkCursorsOf = (state: ParsedExchangeState): (number | null)[] =>
   match(state)
