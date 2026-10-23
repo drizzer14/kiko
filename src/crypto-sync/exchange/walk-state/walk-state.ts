@@ -60,6 +60,11 @@ export type WalkMarks = {
    * forward runs), so its next run reads forward. A disconnect drops it with the other run marks.
    */
   behindRun?: boolean;
+  /**
+   * The walk's next behind run reads the window re-scan rather than the owed windows (it alternates
+   * them, and the forward run between two behind runs keeps this). A disconnect drops it too.
+   */
+  rescanTurn?: boolean;
   /** The cursor the walk's first multi-coin run planned from: ground before it holds BTC only. */
   multiCoinSince?: number;
   /** The walk's first multi-coin run committed a window, so it never records a start again. */
@@ -130,6 +135,7 @@ export type ParsedWalkMarks = {
   rangeCursor: number | null | undefined;
   spanHints: BinanceSpanHints | undefined;
   behindRun?: true;
+  rescanTurn?: true;
   multiCoinSince?: number;
   multiCoinSeen?: true;
 };
@@ -201,6 +207,7 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     rangeCursor: binanceWalkRoundRobinValueOf(entry.rangeCursor),
     spanHints: binanceWalkSpanHintsValueOf(entry.spanHints),
     ...(entry.behindRun === true ? { behindRun: true as const } : {}),
+    ...(entry.rescanTurn === true ? { rescanTurn: true as const } : {}),
     ...foldMap(maybe(multiCoinSinceOf(entry, cursor)), (multiCoinSince) => ({ multiCoinSince })),
     ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
   };

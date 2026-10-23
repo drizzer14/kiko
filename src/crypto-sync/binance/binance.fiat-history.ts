@@ -46,8 +46,8 @@ import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { fiatTotalCode } from '@kiko/transactions/untracked-counterpart';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
-import { notImportedEntry } from '@kiko/crypto-sync/exchange/walk-state';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
+import { notImportedEntry, type WalkMarkPatch } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
   type BinanceTransactionRow,
@@ -564,27 +564,37 @@ const alternatesTurns = (walkId: FiatWalk<FiatRecord>['walkId']): boolean =>
 
 const holdsRange = (pending: OwedGround[]): boolean => pending.some((ground) => !isPoint(ground));
 
-type FiatTurn = 'forward' | 'behind';
+/** Forward, or behind on the owed windows, or behind on the window re-scan. */
+type FiatTurn = 'forward' | 'owed' | 'rescan';
+
+/** The two marks of the turns: the last run read behind, and the next behind run is the re-scan. */
+type StoredTurn = { behindRun: boolean; rescanTurn: boolean };
 
 /**
- * A run reads behind (owed ranges first, the re-scan once none is left, which also takes the
- * overlap day out of the list) when the list holds a range, the forward ground is under one
- * window and the last run did not read behind; every other run reads forward. A forward read that
- * is a window or more behind goes first, so a catch-up reaches now before it looks back; the
- * forward read that stores an overlap day makes the next run a behind one. The run after a behind
- * run always reads forward, so a range that no read clears cannot keep the newest orders out
- * (S12-Q21).
+ * The behind run that follows a forward run: the owed windows and the re-scan take turns, so a
+ * range that no read clears cannot keep the re-scan out, and a re-scan that never ends cannot
+ * keep the owed windows out. A turn with nothing to read gives way to the other one.
+ */
+const behindTurnOf = (plan: WalkPlan, rescanTurn: boolean): FiatTurn =>
+  plan.pending.length > 0 && !(rescanTurn && plan.rescan.length > 0) ? 'owed' : 'rescan';
+
+/**
+ * A run reads behind when the list holds a range, the forward ground is under one window and the
+ * last run did not read behind; every other run reads forward. A forward read that is a window or
+ * more behind goes first, so a catch-up reaches now before it looks back; the forward read that
+ * stores an overlap day makes the next run a behind one. The run after a behind run always reads
+ * forward, so a range that no read clears cannot keep the newest orders out.
  */
 const turnOf = (input: {
   pending: OwedGround[];
   plan: WalkPlan;
   endTime: number;
-  behindLast: boolean;
+  stored: StoredTurn;
 }): FiatTurn =>
   holdsRange(input.pending) &&
-  !input.behindLast &&
+  !input.stored.behindRun &&
   input.endTime - (input.plan.forward.at(0)?.start ?? input.endTime) < FIAT_WINDOW_MS
-    ? 'behind'
+    ? behindTurnOf(input.plan, input.stored.rescanTurn)
     : 'forward';
 
 /**
@@ -592,23 +602,34 @@ const turnOf = (input: {
  * `pendingRanges` and the re-scan ends at its `rescanEnd`.
  */
 const planOfTurn = (plan: WalkPlan, turn: FiatTurn): WalkPlan =>
-  turn === 'behind'
-    ? { ...plan, forward: [], rescan: plan.pending.length > 0 ? [] : plan.rescan }
-    : { ...plan, pending: [], rescan: [] };
+  match(turn)
+    .returnType<WalkPlan>()
+    .with('forward', () => ({ ...plan, pending: [], rescan: [] }))
+    .with('owed', () => ({ ...plan, forward: [], rescan: [] }))
+    .with('rescan', () => ({ ...plan, forward: [], pending: [] }))
+    .exhaustive();
 
 /**
- * Store whether this run reads behind, before it reads, so the run after it reads forward even
- * when this one fails. A value that is already stored is not written again.
+ * Store the marks of this run's turn before it reads, so the run after it reads forward even when
+ * this one fails, and the behind runs take turns even when one of them fails. The forward run
+ * keeps the turn of the next behind run. A value that is already stored is not written again.
  */
 const storeTurn = async (input: {
   write: WalkMarkWriter;
   turn: FiatTurn;
-  behindLast: boolean;
+  stored: StoredTurn;
 }): Promise<void> => {
-  const behind = input.turn === 'behind';
+  const { write, turn, stored } = input;
+  const next: StoredTurn = {
+    behindRun: turn !== 'forward',
+    rescanTurn: turn === 'forward' ? stored.rescanTurn : turn === 'owed',
+  };
+  const patches: WalkMarkPatch[] = (['behindRun', 'rescanTurn'] as const)
+    .filter((field) => next[field] !== stored[field])
+    .map((field) => ({ field, value: next[field] }));
 
-  if (behind !== input.behindLast) {
-    await input.write([{ field: 'behindRun', value: behind }]);
+  if (patches.length > 0) {
+    await write(patches);
   }
 };
 
@@ -678,13 +699,16 @@ const runSync = async <Item extends FiatRecord>(
     depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
   };
 
-  const behindLast = stored.behindRun === true;
+  const storedTurn: StoredTurn = {
+    behindRun: stored.behindRun === true,
+    rescanTurn: stored.rescanTurn === true,
+  };
   const turn = alternatesTurns(walk.walkId)
-    ? turnOf({ pending, plan, endTime, behindLast })
+    ? turnOf({ pending, plan, endTime, stored: storedTurn })
     : undefined;
 
   if (turn !== undefined) {
-    await storeTurn({ write, turn, behindLast });
+    await storeTurn({ write, turn, stored: storedTurn });
   }
 
   const result = await runWalkPlan({
@@ -732,10 +756,10 @@ type FiatRequest = { targetAccountId: string; run: BinanceHistoryRun };
  * `Successful` or `Processing` as not recognized. The walk reads 2-year windows forward from the
  * history floor, a deposit and a withdraw series in each, empty ones too; the lane holds a window
  * a run, so the first walk takes several runs, and a run reads forward or behind, not both
- * (`turnOf`); the run after a behind run reads forward. `complete: false` means history, owed
- * ground or the re-scan remains, and a run that read behind is never complete; a later run resumes
- * from the stored marks. A failure other than a rate limit rejects, so the caller can log it
- * without failing the balance sync.
+ * (`turnOf`); the run after a behind run reads forward, and the behind runs take turns on the owed
+ * windows and the re-scan. `complete: false` means history, owed ground or the re-scan remains, and
+ * a run that read behind is never complete; a later run resumes from the stored marks. A failure
+ * other than a rate limit rejects, so the caller can log it without failing the balance sync.
  */
 export const syncBinanceFiatOrderHistory = (
   request: FiatRequest,

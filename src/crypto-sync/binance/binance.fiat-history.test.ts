@@ -343,12 +343,12 @@ describe('the first walk of an account that has never synced', () => {
       ]);
     });
 
-    it('reads forward after every behind run, until the owed days and the last two years are read', async () => {
-      const runs = await firstWalk(ORDERS, 12);
+    it('alternates the owed days and the last two years behind, a forward run between, until both are read', async () => {
+      const runs = await firstWalk(ORDERS, 14);
 
-      expect(runs.map(({ calls }) => calls)).toEqual([2, 2, 2, 2, 2, 2, 2, 0, 2, 0, 2, 0]);
+      expect(runs.map(({ calls }) => calls)).toEqual([2, 2, 2, 2, 2, 2, 2, 0, 2, 0, 2, 0, 2, 0]);
       expect(runs.map(({ complete }) => complete)).toEqual([
-        ...Array.from({ length: 11 }, () => false),
+        ...Array.from({ length: 13 }, () => false),
         true,
       ]);
       expect(runs.at(-1)?.cursor).toBe(NOW);
@@ -501,27 +501,32 @@ describe('when the fiat order walk is current, at a lane of three calls', () => 
 });
 
 describe('when the stored list of owed fiat order ground cannot be read', () => {
-  it('clears the repaired range in five behind runs, a forward run after each, then reports complete', async () => {
+  it('clears the repaired range over alternating owed and re-scan runs, then reports complete', async () => {
     const world = recentWorld(ORDERS);
     world.seed({ pending: 'unreadable' });
     const pair = (start: number) => [start, start];
+    const rescan = pair(NOW - FIAT_WINDOW_MS);
 
-    const runs = await walkRuns(world, 10);
+    const runs = await walkRuns(world, 14);
 
     expect(runs.map(({ deps }) => queriesOf(ORDERS, deps).map(({ start }) => start))).toEqual([
       pair(HISTORY_FLOOR_MS),
       pair(NOW - HOUR_MS),
+      rescan,
+      [],
       pair(HISTORY_FLOOR_MS + FIAT_WINDOW_MS),
+      [],
+      rescan,
       [],
       pair(HISTORY_FLOOR_MS + 2 * FIAT_WINDOW_MS),
       [],
-      pair(HISTORY_FLOOR_MS + 3 * FIAT_WINDOW_MS),
+      rescan,
       [],
-      pair(NOW - FIAT_WINDOW_MS),
+      pair(HISTORY_FLOOR_MS + 3 * FIAT_WINDOW_MS),
       [],
     ]);
     expect(runs.map(({ result }) => result.complete)).toEqual([
-      ...Array.from({ length: 9 }, () => false),
+      ...Array.from({ length: 13 }, () => false),
       true,
     ]);
     expect(pendingOf(ORDERS, world)).toEqual([]);
@@ -568,41 +573,53 @@ describe('the turn of the fiat order walk across runs', () => {
 
     const isOld = (span: Span) => span.start < NOW - FIAT_WINDOW_MS;
 
-    /** Four runs, five minutes apart, over a list that holds the old range from the start. */
-    const fourRuns = async (readOf: (server: jest.Mock) => jest.Mock) => {
-      const world = recentWorld(ORDERS);
-      world.seed({ pending: [OLD_RANGE] });
-      const fresh = ORDERS.recordOf({ orderNo: 'fresh', createTime: NOW - 30 * 60_000 });
-      const runs: { deps: AnyDeps; ended: WalkResult | unknown }[] = [];
+    const FRESH = ORDERS.recordOf({ orderNo: 'fresh', createTime: NOW - 30 * 60_000 });
 
-      for (const index of [0, 1, 2, 3]) {
+    /**
+     * `count` runs, five minutes apart, over a list that holds the old range from the start;
+     * `recordsAt` is what Binance serves on the run of that index.
+     */
+    const runsOf = async (
+      count: number,
+      readOf: (server: jest.Mock) => jest.Mock,
+      recordsAt: (index: number) => AnyRecord[] = () => [FRESH],
+      seeded: Parameters<ReturnType<typeof worldOf>['seed']>[0] = {},
+    ) => {
+      const world = recentWorld(ORDERS);
+      world.seed({ pending: [OLD_RANGE], ...seeded });
+      const runs: { deps: AnyDeps; ended: WalkResult | unknown; marks: unknown }[] = [];
+
+      for (let index = 0; index < count; index += 1) {
         const deps = world.depsOf({
           now: () => NOW + index * LATER_MS,
-          [ORDERS.readKey]: readOf(world.serverOf({ '0': [fresh] })),
+          [ORDERS.readKey]: readOf(world.serverOf({ '0': recordsAt(index) })),
         });
+        const ended = await world.walk(deps).catch((error: unknown) => error);
+        const { behindRun, rescanTurn } = world.fake.marksOf(ORDERS.walkId);
 
-        runs.push({ deps, ended: await world.walk(deps).catch((error: unknown) => error) });
+        runs.push({ deps, ended, marks: { behindRun, rescanTurn } });
       }
 
       return { world, runs };
     };
 
+    const drifting = (server: jest.Mock) =>
+      jest.fn(async (apiKey, secret, type, span: Span, page) =>
+        isOld(span) ? fiatPageOf([], { total: 5 }) : server(apiKey, secret, type, span, page),
+      );
+
     const startsOf = (deps: AnyDeps) => [
       ...new Set(queriesOf(ORDERS, deps).map(({ start }) => start)),
     ];
 
-    it('reads forward on every second run, so a new order imports one run later', async () => {
-      const { world, runs } = await fourRuns((server) =>
-        jest.fn(async (apiKey, secret, type, span: Span, page) =>
-          isOld(span) ? fiatPageOf([], { total: 5 }) : server(apiKey, secret, type, span, page),
-        ),
-      );
+    it('reads forward after every behind run, so a new order imports on the second run', async () => {
+      const { world, runs } = await runsOf(4, drifting);
 
-      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 0, 0]);
+      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 1, 0]);
       expect(runs.map(({ deps }) => startsOf(deps))).toEqual([
         [OLD_RANGE.start],
         [NOW - HOUR_MS],
-        [OLD_RANGE.start],
+        [NOW + 2 * LATER_MS - FIAT_WINDOW_MS],
         [NOW + LATER_MS],
       ]);
       expect(cursorOf(ORDERS, world)).toBe(NOW + 3 * LATER_MS);
@@ -612,10 +629,52 @@ describe('the turn of the fiat order walk across runs', () => {
       expect(stopCodes()).toContain('fiat-page-drift');
     });
 
-    it('reads ground older than Binance serves as empty, one series on each behind run', async () => {
-      const { world, runs } = await fourRuns((server) =>
+    it('alternates the owed range and the last two years on the behind runs, a forward run between', async () => {
+      const { runs } = await runsOf(6, drifting);
+
+      expect(runs.map(({ deps }) => startsOf(deps))).toEqual([
+        [OLD_RANGE.start],
+        [NOW - HOUR_MS],
+        [NOW + 2 * LATER_MS - FIAT_WINDOW_MS],
+        [NOW + LATER_MS],
+        [OLD_RANGE.start],
+        [NOW + 3 * LATER_MS],
+      ]);
+      expect(runs.map(({ marks }) => marks)).toEqual([
+        { behindRun: true, rescanTurn: true },
+        { behindRun: false, rescanTurn: true },
+        { behindRun: true, rescanTurn: false },
+        { behindRun: false, rescanTurn: false },
+        { behindRun: true, rescanTurn: true },
+        { behindRun: false, rescanTurn: true },
+      ]);
+    });
+
+    it('imports a record written late on the re-scan run, though the owed range is never cleared', async () => {
+      const late = ORDERS.recordOf({ orderNo: 'late-1', createTime: NOW - 30 * DAY_MS });
+
+      const { runs } = await runsOf(4, drifting, (index) => (index === 0 ? [] : [late]));
+
+      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 0, 1, 0]);
+      expect(addedRows(runs[2].deps).map(({ externalId }) => externalId)).toEqual([
+        expect.stringContaining(':fiat:late-1:'),
+      ]);
+    });
+
+    it('reads a stored behind mark with no re-scan mark as a behind run, and reads the owed range after', async () => {
+      const { runs } = await runsOf(3, drifting, undefined, { behindRun: true });
+
+      expect(runs.map(({ deps }) => startsOf(deps))).toEqual([
+        [NOW - HOUR_MS],
+        [OLD_RANGE.start],
+        [NOW],
+      ]);
+    });
+
+    it('reads ground older than Binance serves as empty, one series on each owed run', async () => {
+      const { world, runs } = await runsOf(6, (server) =>
         jest.fn(async (apiKey, secret, type, span: Span, page) => {
-          if (span.start < NOW - 100 * DAY_MS) {
+          if (span.start < NOW - 1_000 * DAY_MS) {
             throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
           }
 
@@ -635,15 +694,23 @@ describe('the turn of the fiat order walk across runs', () => {
           ['1', NOW - HOUR_MS],
         ],
         [
-          ['1', OLD_RANGE.start],
-          ['1', OLD_RANGE.end],
+          ['0', NOW + 2 * LATER_MS - FIAT_WINDOW_MS],
+          ['1', NOW + 2 * LATER_MS - FIAT_WINDOW_MS],
         ],
         [
           ['0', NOW + LATER_MS],
           ['1', NOW + LATER_MS],
         ],
+        [
+          ['1', OLD_RANGE.start],
+          ['1', OLD_RANGE.end],
+        ],
+        [
+          ['0', NOW + 3 * LATER_MS],
+          ['1', NOW + 3 * LATER_MS],
+        ],
       ]);
-      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 0, 0]);
+      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 1, 0, 0, 0]);
       expect(pendingOf(ORDERS, world)).not.toContainEqual(
         expect.objectContaining({ start: OLD_RANGE.start }),
       );
@@ -651,7 +718,7 @@ describe('the turn of the fiat order walk across runs', () => {
     });
 
     it('fails the run on a window whose page cannot be read, and reads forward on the next', async () => {
-      const { world, runs } = await fourRuns((server) =>
+      const { world, runs } = await runsOf(6, (server) =>
         jest.fn(async (apiKey, secret, type, span: Span, page) => {
           if (isOld(span)) {
             throw new BinanceHistoryParseError();
@@ -664,11 +731,13 @@ describe('the turn of the fiat order walk across runs', () => {
       expect(runs.map(({ ended }) => ended instanceof BinanceHistoryParseError)).toEqual([
         true,
         false,
+        false,
+        false,
         true,
         false,
       ]);
-      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 0, 0]);
-      expect(cursorOf(ORDERS, world)).toBe(NOW + 3 * LATER_MS);
+      expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 1, 0, 0, 0]);
+      expect(cursorOf(ORDERS, world)).toBe(NOW + 5 * LATER_MS);
       expect(pendingOf(ORDERS, world)).toContainEqual(OLD_RANGE);
     });
   });
