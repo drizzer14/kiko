@@ -5,16 +5,19 @@ import {
   advanceWalkMarks,
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
+  buildWalkWindows,
   commitSettledSpan,
   createDepthMemories,
   type DepthGuard,
   dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
+  halfOf,
   historyListWriterOf,
   instantAt,
   isPoint,
   joinSettled,
+  logWalkStop,
   notImportedWriterOf,
   type OwedGround,
   type OwedWindow,
@@ -37,6 +40,7 @@ import {
   type WalkPlan,
   type WalkResult,
   type WalkWindow,
+  type WindowOutcome,
   walkMarkWriterOf,
   walkSpans,
 } from '@kiko/crypto-sync/exchange/walk';
@@ -63,6 +67,7 @@ import {
 import {
   type BinanceFiatOrder,
   type BinanceFiatPayment,
+  BinanceHistoryParseError,
   fetchFiatOrders,
   fetchFiatPayments,
   type FiatTransactionType,
@@ -100,6 +105,9 @@ const FIAT_NOT_SETTLED = 'fiat-not-settled';
 const FIAT_RECORD_UNREADABLE = 'fiat-record-unreadable';
 
 const FIAT_PAGE_DRIFT = 'fiat-page-drift';
+
+/** The stop of a range the window re-scan failed to read: the re-scan reads around it. */
+const FIAT_RESCAN_STUCK = 'fiat-rescan-stuck';
 
 const FIAT_HOLDING_MISSING = 'fiat-holding-missing';
 
@@ -363,6 +371,8 @@ type FiatContext<Item extends FiatRecord> = {
   marks: WalkMarks;
   plan: WalkPlan;
   write: WalkMarkWriter;
+  /** The ranges the re-scan reads around, as the run last wrote the walk's `rescanStuck` mark. */
+  rescanStuck: WalkWindow[];
   depthMemories: Pick<DepthGuard, 'config' | 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
 };
 
@@ -385,7 +395,7 @@ const callsOf = (window: OwedWindow): number => typesOf(window).length;
  * from the oldest start Binance serves it (see `readSeriesSpan`). Probe 5 saw no such refusal, so
  * this is a safety net.
  */
-const readSpan = <Item extends FiatRecord>(
+const readSpanOnce = <Item extends FiatRecord>(
   context: FiatContext<Item>,
   window: OwedWindow,
   span: WalkWindow,
@@ -412,6 +422,158 @@ const readSpan = <Item extends FiatRecord>(
     },
   });
 };
+
+type SpanReading<Item extends FiatRecord> =
+  | SpanRead<SeriesSpan<FiatTransactionType, Item>>
+  | undefined;
+
+/** The read of a span, or `failed`: a type's pages drifted, or a page could not be parsed. */
+type Attempt<Item extends FiatRecord> =
+  | { kind: 'read'; reading: SpanReading<Item> }
+  | { kind: 'failed' };
+
+const attemptSpan = async <Item extends FiatRecord>(
+  context: FiatContext<Item>,
+  window: OwedWindow,
+  span: WalkWindow,
+  keep: number,
+): Promise<Attempt<Item>> => {
+  try {
+    const reading = await readSpanOnce(context, window, span, keep);
+
+    return reading?.kind === 'page' && reading.page.drifted.length > 0
+      ? { kind: 'failed' }
+      : { kind: 'read', reading };
+  } catch (error) {
+    if (!(error instanceof BinanceHistoryParseError)) {
+      throw error;
+    }
+
+    // The call that came back unreadable was made, so the lane counts it.
+    context.run.budget.record(context.walk.walkId, {
+      usedUidWeight1m: undefined,
+      usedIpWeight1m: undefined,
+    });
+
+    return { kind: 'failed' };
+  }
+};
+
+const touches = (left: WalkWindow, right: WalkWindow): boolean =>
+  left.start <= right.end && left.end >= right.start;
+
+const byStart = (left: WalkWindow, right: WalkWindow): number => left.start - right.start;
+
+/** The span read as owed, nothing of it read: the ground a stuck range holds in `ground`. */
+const owedSpan = <Item extends FiatRecord>(
+  window: OwedWindow,
+  ground: WalkWindow,
+): SpanReading<Item> => ({
+  kind: 'page',
+  page: {
+    read: [],
+    drifted: [],
+    owed:
+      ground.start < ground.end
+        ? typesOf(window).map((series) => ({ series, window: ground }))
+        : [],
+  },
+});
+
+/** Mark `range` as one the re-scan reads around, and log it: the read of it failed. */
+const markStuck = async <Item extends FiatRecord>(
+  context: FiatContext<Item>,
+  range: WalkWindow,
+): Promise<void> => {
+  context.rescanStuck = [...context.rescanStuck, { start: range.start, end: range.end }];
+  logWalkStop(FIAT_RESCAN_STUCK);
+  await context.write([{ field: 'rescanStuck', value: context.rescanStuck }]);
+};
+
+/**
+ * A span that holds a range the re-scan failed on: read what is before it, then what is after it,
+ * and owe what is in it. The range stays in the list of owed ground, and its own windows are read
+ * by the owed runs (`withStuckWindows`).
+ */
+const aroundStuck = <Item extends FiatRecord>(
+  window: OwedWindow,
+  span: WalkWindow,
+  stuck: WalkWindow,
+): SpanReading<Item> => {
+  if (span.start < stuck.start - 1) {
+    return { kind: 'split', half: { start: span.start, end: stuck.start - 1 } };
+  }
+
+  if (span.end > stuck.end + 1) {
+    return { kind: 'split', half: { start: stuck.end + 1, end: span.end } };
+  }
+
+  return owedSpan(window, {
+    start: Math.max(span.start, stuck.start),
+    end: Math.min(span.end, stuck.end),
+  });
+};
+
+/**
+ * One span of the re-scan. A span that holds a range the re-scan failed on is read around it
+ * (`aroundStuck`). A read that fails (a type's pages drift, or a page cannot be parsed) isolates
+ * the stuck part and reads the rest of the window: it marks the first range of the owed list the
+ * span holds as stuck, or halves the span when it holds none, and a span of one millisecond that
+ * fails is owed and marked stuck itself.
+ */
+const readRescanSpan = async <Item extends FiatRecord>(
+  context: FiatContext<Item>,
+  window: OwedWindow,
+  span: WalkWindow,
+  keep: number,
+): Promise<SpanReading<Item>> => {
+  const stuck = context.rescanStuck
+    .filter((range) => touches(range, span))
+    .sort(byStart)
+    .at(0);
+
+  if (stuck !== undefined) {
+    return aroundStuck(window, span, stuck);
+  }
+
+  const attempt = await attemptSpan(context, window, span, keep);
+
+  if (attempt.kind === 'read') {
+    return attempt.reading;
+  }
+
+  const owed = context.marks.pending
+    .filter((ground) => !isPoint(ground) && touches(ground, span))
+    .sort(byStart)
+    .at(0);
+
+  if (owed !== undefined) {
+    await markStuck(context, owed);
+
+    return readRescanSpan(context, window, span, keep);
+  }
+
+  const half = halfOf(span);
+
+  if (half !== undefined) {
+    return { kind: 'split', half };
+  }
+
+  await markStuck(context, span);
+
+  return owedSpan(window, span);
+};
+
+const readSpan = <Item extends FiatRecord>(
+  context: FiatContext<Item>,
+  window: OwedWindow,
+  span: WalkWindow,
+  keep: number,
+  pass: WalkPass,
+): Promise<SpanReading<Item>> =>
+  pass === 'rescan'
+    ? readRescanSpan(context, window, span, keep)
+    : readSpanOnce(context, window, span, keep);
 
 type SettledOutcome = Exclude<FiatOutcome, { kind: 'owed' }>;
 
@@ -580,10 +742,13 @@ const behindTurnOf = (plan: WalkPlan, rescanTurn: boolean): FiatTurn =>
 
 /**
  * A run reads behind when the list holds a range, the forward ground is under one window and the
- * last run did not read behind; every other run reads forward. A forward read that is a window or
- * more behind goes first, so a catch-up reaches now before it looks back; the forward read that
- * stores an overlap day makes the next run a behind one. The run after a behind run always reads
- * forward, so a range that no read clears cannot keep the newest orders out.
+ * last run did not read behind, or when there is no forward ground to read (the clock stands at
+ * the cursor or was set back to before it); every other run reads forward. A forward read that is
+ * a window or more behind goes first, so a catch-up reaches now before it looks back; the forward
+ * read that stores an overlap day makes the next run a behind one, but a forward read of no ground
+ * stores none, so a run with nothing to read forward would read nothing and the walk would never
+ * re-scan. The run after a behind run reads forward, so a range that no read clears cannot keep
+ * the newest orders out; with no forward ground there are none to keep out.
  */
 const turnOf = (input: {
   pending: OwedGround[];
@@ -591,9 +756,10 @@ const turnOf = (input: {
   endTime: number;
   stored: StoredTurn;
 }): FiatTurn =>
-  holdsRange(input.pending) &&
-  !input.stored.behindRun &&
-  input.endTime - (input.plan.forward.at(0)?.start ?? input.endTime) < FIAT_WINDOW_MS
+  input.plan.forward.length === 0 ||
+  (holdsRange(input.pending) &&
+    !input.stored.behindRun &&
+    input.endTime - (input.plan.forward.at(0)?.start ?? input.endTime) < FIAT_WINDOW_MS)
     ? behindTurnOf(input.plan, input.stored.rescanTurn)
     : 'forward';
 
@@ -634,13 +800,69 @@ const storeTurn = async (input: {
 };
 
 /**
- * Whether a run of an alternating lane started with no range owed and the re-scan not part way
- * through a pass: a forward read leaves the ground behind unread, so only one that started with
- * none owed is complete, and a behind run, which starts with a range, never is. The overlap day
- * the forward read stores is the next behind run's.
+ * Whether no range is owed and the re-scan is not part way through a pass. A forward read leaves
+ * the ground behind unread, so a forward run is complete only when it started with nothing behind;
+ * the overlap day it stores is the next behind run's. A behind run that starts with a range is
+ * never complete, but a run with no forward ground to read (`turnOf`) has read the ground behind
+ * and is complete when it ended with nothing behind.
  */
-const startedWithNothingBehind = (pending: OwedGround[], rescanCursor: number | null): boolean =>
-  !holdsRange(pending) && (rescanCursor ?? HISTORY_FLOOR_MS) <= HISTORY_FLOOR_MS;
+const nothingBehind = (marks: Pick<WalkMarks, 'pending' | 'rescanCursor'>): boolean =>
+  !holdsRange(marks.pending) && (marks.rescanCursor ?? HISTORY_FLOOR_MS) <= HISTORY_FLOOR_MS;
+
+/**
+ * What a re-scan window that stopped after some of its spans committed hands the next run: the
+ * span it wanted to read next, without the resume. The window start only moves forward with the
+ * re-scan mark, which holds what was read, so the hint is found again, and the run after a failed
+ * read goes on with the width the halvings reached instead of the whole rest of the window.
+ */
+const keepsWidth = (pass: WalkPass, outcome: WindowOutcome): WindowOutcome =>
+  pass === 'rescan' && outcome.hint?.resume !== undefined
+    ? { ...outcome, hint: { start: outcome.hint.start, end: outcome.hint.end } }
+    : outcome;
+
+/** The stuck ranges the list of owed ground still holds: a range the list lost has been read. */
+const heldStuck = (stuck: WalkWindow[], pending: OwedGround[]): WalkWindow[] =>
+  stuck
+    .filter((range) => pending.some((ground) => !isPoint(ground) && touches(ground, range)))
+    .map(({ start, end }) => ({ start, end }));
+
+/**
+ * The plan with the windows of the stuck ranges among the owed windows, in the round-robin order
+ * of the walk's range cursor: the planner leaves out the owed ranges the re-scan covers, and the
+ * re-scan reads around the stuck ones, so these are read by the owed runs alone.
+ */
+const withStuckWindows = (input: {
+  plan: WalkPlan;
+  stuck: WalkWindow[];
+  rangeCursor: number | null;
+  maxWindows: number;
+}): WalkPlan => {
+  const { plan, stuck, rangeCursor, maxWindows } = input;
+  const isPlanned = (window: WalkWindow): boolean =>
+    plan.pending.some(
+      (planned) =>
+        planned.series === undefined &&
+        planned.start === window.start &&
+        planned.end === window.end,
+    );
+  const windows = [
+    ...plan.pending,
+    ...stuck
+      .flatMap((range) => buildWalkWindows(range.start, range.end, FIAT_WINDOW_MS, maxWindows))
+      .filter((window) => !isPlanned(window)),
+  ].sort(byStart);
+
+  return {
+    ...plan,
+    pending:
+      rangeCursor === null
+        ? windows
+        : [
+            ...windows.filter((window) => window.start >= rangeCursor),
+            ...windows.filter((window) => window.start < rangeCursor),
+          ],
+  };
+};
 
 const runSync = async <Item extends FiatRecord>(
   deps: FiatCommonDeps,
@@ -669,21 +891,32 @@ const runSync = async <Item extends FiatRecord>(
     write,
   });
   const endTime = deps.now();
-  const plan = planWalkPasses({
-    cursor,
-    rescanCursor,
-    pointCursor: roundRobins.pointCursor,
+  const maxWindows = Math.floor(LANE_CALL_CAPS[walk.walkId] / FIAT_SERIES.length);
+  const stuck = heldStuck(stored.rescanStuck ?? [], pending);
+  const plan = withStuckWindows({
+    plan: planWalkPasses({
+      cursor,
+      rescanCursor,
+      pointCursor: roundRobins.pointCursor,
+      rangeCursor: roundRobins.rangeCursor,
+      pending,
+      floorMs: HISTORY_FLOOR_MS,
+      endTime,
+      windowMs: FIAT_WINDOW_MS,
+      overlapMs: RESYNC_OVERLAP_MS,
+      maxWindows,
+    }),
+    stuck,
     rangeCursor: roundRobins.rangeCursor,
-    pending,
-    floorMs: HISTORY_FLOOR_MS,
-    endTime,
-    windowMs: FIAT_WINDOW_MS,
-    overlapMs: RESYNC_OVERLAP_MS,
-    maxWindows: Math.floor(LANE_CALL_CAPS[walk.walkId] / FIAT_SERIES.length),
+    maxWindows,
   });
 
   if (plan.forward.length === 0 && plan.rescan.length === 0) {
     return { imported: 0, complete: false };
+  }
+
+  if (stuck.length !== (stored.rescanStuck ?? []).length) {
+    await write([{ field: 'rescanStuck', value: stuck }]);
   }
 
   const context: FiatContext<Item> = {
@@ -696,6 +929,7 @@ const runSync = async <Item extends FiatRecord>(
     marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
     write,
+    rescanStuck: stuck,
     depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
   };
 
@@ -717,15 +951,18 @@ const runSync = async <Item extends FiatRecord>(
     canAfford: (keep) =>
       run.budget.canAfford(walk.walkId, walk.cost, keep) &&
       !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
-        window,
-        read: (span, keepCalls) => readSpan(context, window, span, keepCalls),
-        commit: (span, read) => commitSpan(context, window, span, read, pass),
-        keep,
-        hint,
-        onComplete: (read) => dropReadPoints({ pass, window, read, marks: context.marks, write }),
-      }),
+    runWindow: async (window, pass, keep, hint) =>
+      keepsWidth(
+        pass,
+        await walkSpans({
+          window,
+          read: (span, keepCalls) => readSpan(context, window, span, keepCalls, pass),
+          commit: (span, read) => commitSpan(context, window, span, read, pass),
+          keep,
+          hint,
+          onComplete: (read) => dropReadPoints({ pass, window, read, marks: context.marks, write }),
+        }),
+      ),
     ...roundRobinHooksOf({ marks: context.marks, write }),
   });
   const lastWindowEnd = plan.forward.at(-1)?.end;
@@ -737,7 +974,8 @@ const runSync = async <Item extends FiatRecord>(
     complete:
       result.complete &&
       (lastWindowEnd === undefined || lastWindowEnd >= endTime) &&
-      (turn === undefined || startedWithNothingBehind(pending, rescanCursor)),
+      (turn === undefined ||
+        nothingBehind(plan.forward.length === 0 ? context.marks : { pending, rescanCursor })),
   };
 };
 
@@ -756,10 +994,13 @@ type FiatRequest = { targetAccountId: string; run: BinanceHistoryRun };
  * `Successful` or `Processing` as not recognized. The walk reads 2-year windows forward from the
  * history floor, a deposit and a withdraw series in each, empty ones too; the lane holds a window
  * a run, so the first walk takes several runs, and a run reads forward or behind, not both
- * (`turnOf`); the run after a behind run reads forward, and the behind runs take turns on the owed
- * windows and the re-scan. `complete: false` means history, owed ground or the re-scan remains, and
- * a run that read behind is never complete; a later run resumes from the stored marks. A failure
- * other than a rate limit rejects, so the caller can log it without failing the balance sync.
+ * (`turnOf`); the run after a behind run reads forward, a run with no forward ground reads behind,
+ * and the behind runs take turns on the owed windows and the re-scan. A re-scan read that fails
+ * does not stop the walk: the stretch it failed on is read around (`readRescanSpan`).
+ * `complete: false` means history, owed ground or the re-scan remains, and a run that read behind
+ * is complete only when it had no forward ground and left nothing behind; a later run resumes from
+ * the stored marks. A failure other than a rate limit or an unreadable re-scan page rejects, so the
+ * caller can log it without failing the balance sync.
  */
 export const syncBinanceFiatOrderHistory = (
   request: FiatRequest,

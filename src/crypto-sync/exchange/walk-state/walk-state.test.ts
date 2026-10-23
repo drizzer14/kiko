@@ -101,7 +101,7 @@ type StoredReads = [label: string, stored: unknown, reads: unknown];
  */
 type TableField = Exclude<
   WalkField,
-  'multiCoinSince' | 'multiCoinSeen' | 'behindRun' | 'rescanTurn'
+  'multiCoinSince' | 'multiCoinSeen' | 'behindRun' | 'rescanTurn' | 'rescanStuck'
 >;
 
 /** What a field reads for a stored value: `undefined` is a value that is stored but unreadable. */

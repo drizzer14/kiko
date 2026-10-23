@@ -343,13 +343,13 @@ describe('the first walk of an account that has never synced', () => {
       ]);
     });
 
-    it('alternates the owed days and the last two years behind, a forward run between, until both are read', async () => {
-      const runs = await firstWalk(ORDERS, 14);
+    it('alternates the owed days and the last two years behind once it reaches now, until both are read', async () => {
+      const runs = await firstWalk(ORDERS, 12);
 
-      expect(runs.map(({ calls }) => calls)).toEqual([2, 2, 2, 2, 2, 2, 2, 0, 2, 0, 2, 0, 2, 0]);
+      expect(runs.map(({ calls }) => calls)).toEqual(Array.from({ length: 12 }, () => 2));
       expect(runs.map(({ complete }) => complete)).toEqual([
-        ...Array.from({ length: 13 }, () => false),
-        true,
+        ...Array.from({ length: 9 }, () => false),
+        ...Array.from({ length: 3 }, () => true),
       ]);
       expect(runs.at(-1)?.cursor).toBe(NOW);
     });
@@ -507,27 +507,23 @@ describe('when the stored list of owed fiat order ground cannot be read', () => 
     const pair = (start: number) => [start, start];
     const rescan = pair(NOW - FIAT_WINDOW_MS);
 
-    const runs = await walkRuns(world, 14);
+    const runs = await walkRuns(world, 10);
 
     expect(runs.map(({ deps }) => queriesOf(ORDERS, deps).map(({ start }) => start))).toEqual([
       pair(HISTORY_FLOOR_MS),
       pair(NOW - HOUR_MS),
       rescan,
-      [],
       pair(HISTORY_FLOOR_MS + FIAT_WINDOW_MS),
-      [],
       rescan,
-      [],
       pair(HISTORY_FLOOR_MS + 2 * FIAT_WINDOW_MS),
-      [],
       rescan,
-      [],
       pair(HISTORY_FLOOR_MS + 3 * FIAT_WINDOW_MS),
-      [],
+      rescan,
+      rescan,
     ]);
     expect(runs.map(({ result }) => result.complete)).toEqual([
-      ...Array.from({ length: 13 }, () => false),
-      true,
+      ...Array.from({ length: 7 }, () => false),
+      ...Array.from({ length: 3 }, () => true),
     ]);
     expect(pendingOf(ORDERS, world)).toEqual([]);
     expect(cursorOf(ORDERS, world)).toBe(NOW);
@@ -740,6 +736,314 @@ describe('the turn of the fiat order walk across runs', () => {
       expect(cursorOf(ORDERS, world)).toBe(NOW + 5 * LATER_MS);
       expect(pendingOf(ORDERS, world)).toContainEqual(OLD_RANGE);
     });
+  });
+});
+
+describe('the fiat order walk on a run with no forward ground to read', () => {
+  const LATE = ORDERS.recordOf({ orderNo: 'late-1', createTime: NOW - 30 * DAY_MS });
+
+  const lateIds = (deps: AnyDeps) => addedRows(deps).map(({ externalId }) => externalId);
+
+  it('re-scans the last two years on every run while the clock stands, so a late record is imported', async () => {
+    const world = recentWorld(ORDERS);
+    await world.walk(world.depsOf());
+
+    const runs: { deps: AnyDeps }[] = [];
+
+    for (let index = 0; index < 4; index += 1) {
+      const deps = world.depsOf({
+        [ORDERS.readKey]: world.serverOf({ '0': index < 2 ? [] : [LATE] }),
+      });
+
+      await world.walk(deps);
+      runs.push({ deps });
+    }
+
+    expect(runs.map(({ deps }) => queriesOf(ORDERS, deps).length)).toEqual([2, 2, 2, 2]);
+    expect(runs.map(({ deps }) => lateIds(deps).length)).toEqual([0, 0, 1, 1]);
+    expect(queriesOf(ORDERS, runs[3].deps).map(({ start }) => start)).toEqual([
+      NOW - FIAT_WINDOW_MS,
+      NOW - FIAT_WINDOW_MS,
+    ]);
+    expect(cursorOf(ORDERS, world)).toBe(NOW);
+  });
+
+  it('re-scans when the clock is set back to before the cursor, and leaves the cursor where it is', async () => {
+    const world = worldOf(ORDERS);
+    world.seed({ cursor: NOW + 2 * HOUR_MS });
+    const deps = world.depsOf({ [ORDERS.readKey]: world.serverOf({ '0': [LATE] }) });
+
+    await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps)).toEqual(
+      ['0', '1'].map((type) => ({ type, start: NOW - FIAT_WINDOW_MS, end: NOW, page: 1 })),
+    );
+    expect(lateIds(deps)).toEqual([expect.stringContaining(':fiat:late-1:')]);
+    expect(cursorOf(ORDERS, world)).toBe(NOW + 2 * HOUR_MS);
+  });
+
+  it('reads behind after a behind run too, as a forward turn with nothing to read gives way', async () => {
+    const world = worldOf(ORDERS);
+    world.seed({ cursor: NOW + HOUR_MS, behindRun: true });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([
+      NOW - FIAT_WINDOW_MS,
+      NOW - FIAT_WINDOW_MS,
+    ]);
+    expect(world.fake.marksOf(ORDERS.walkId).behindRun).toBe(true);
+  });
+
+  it('reports complete when the read leaves no range owed and the re-scan finished', async () => {
+    const world = worldOf(ORDERS);
+    world.seed({ cursor: NOW + HOUR_MS });
+
+    const result = await world.walk(world.depsOf());
+
+    expect(result).toEqual({ imported: 0, complete: true });
+  });
+
+  it('reports unfinished when a range is still owed after the read', async () => {
+    const owed = { start: NOW - 1_500 * DAY_MS, end: NOW - 1_499 * DAY_MS };
+    const world = worldOf(ORDERS);
+    world.seed({ cursor: NOW + HOUR_MS, pending: [owed], rescanTurn: true });
+    const deps = world.depsOf();
+
+    const result = await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([
+      NOW - FIAT_WINDOW_MS,
+      NOW - FIAT_WINDOW_MS,
+    ]);
+    expect(result.complete).toBe(false);
+    expect(pendingOf(ORDERS, world)).toContainEqual(owed);
+  });
+
+  it('resumes the re-scan at its stored mark, and reports complete once the pass is finished', async () => {
+    const world = worldOf(ORDERS);
+    world.seed({ cursor: NOW + HOUR_MS, rescan: NOW - 400 * DAY_MS });
+    const deps = world.depsOf();
+
+    const result = await world.walk(deps);
+
+    expect(queriesOf(ORDERS, deps).map(({ start }) => start)).toEqual([
+      NOW - 400 * DAY_MS,
+      NOW - 400 * DAY_MS,
+    ]);
+    expect(result.complete).toBe(true);
+  });
+});
+
+describe('when a read of the last two years of fiat orders fails', () => {
+  const OWED = { start: NOW - 200 * DAY_MS, end: NOW - 199 * DAY_MS };
+
+  const BEFORE = ORDERS.recordOf({ orderNo: 'before', createTime: NOW - 400 * DAY_MS });
+
+  const AFTER = ORDERS.recordOf({ orderNo: 'after', createTime: NOW - 100 * DAY_MS });
+
+  const holdsOwed = (span: Span) => span.start <= OWED.end && span.end >= OWED.start;
+
+  /** A server whose page drifts, or cannot be parsed, on any span that touches the owed range. */
+  const failingOn = (how: 'drift' | 'unreadable', server: jest.Mock) =>
+    jest.fn(async (apiKey, secret, type, span: Span, page) => {
+      if (holdsOwed(span) && how === 'drift') {
+        return fiatPageOf([], { total: 5 });
+      }
+
+      if (holdsOwed(span)) {
+        throw new BinanceHistoryParseError();
+      }
+
+      return server(apiKey, secret, type, span, page);
+    });
+
+  /** A world whose forward ground is empty, with the owed range inside the last two years. */
+  const currentWorld = () => {
+    const world = worldOf(ORDERS);
+
+    world.seed({ cursor: NOW, pending: [OWED] });
+
+    return world;
+  };
+
+  const rowsOf = (deps: AnyDeps) =>
+    addedRows(deps).map(({ externalId }) => externalId.split(':')[2]);
+
+  const spansOf = (deps: AnyDeps) =>
+    queriesOf(ORDERS, deps).map(({ type, start, end }) => [type, start, end]);
+
+  const stuckOf = (world: ReturnType<typeof worldOf>) =>
+    world.fake.marksOf(ORDERS.walkId).rescanStuck;
+
+  /** `count` runs over the one stored state, each on its own server and run object. */
+  const failingRuns = async (
+    world: ReturnType<typeof worldOf>,
+    count: number,
+    how: 'drift' | 'unreadable',
+  ) => {
+    const runs: { deps: AnyDeps; failed: boolean }[] = [];
+
+    for (let index = 0; index < count; index += 1) {
+      const deps = world.depsOf({
+        [ORDERS.readKey]: failingOn(how, world.serverOf({ '0': [BEFORE, AFTER] })),
+      });
+      const failed = await world.walk(deps).then(
+        () => false,
+        () => true,
+      );
+
+      runs.push({ deps, failed });
+    }
+
+    return runs;
+  };
+
+  const WINDOW_START = NOW - FIAT_WINDOW_MS;
+
+  const both = (start: number, end: number) => [
+    ['0', start, end],
+    ['1', start, end],
+  ];
+
+  it('marks the owed range stuck on a page that drifts, and reads the ground around it', async () => {
+    const world = currentWorld();
+
+    const runs = await failingRuns(world, 5, 'drift');
+
+    expect(runs.map(({ deps }) => spansOf(deps))).toEqual([
+      both(WINDOW_START, NOW),
+      both(OWED.start, OWED.end),
+      both(WINDOW_START, OWED.start - 1),
+      both(OWED.start, OWED.end),
+      both(OWED.end + 1, NOW),
+    ]);
+    expect(runs.map(({ deps }) => rowsOf(deps))).toEqual([[], [], ['before'], [], ['after']]);
+    expect(runs.map(({ failed }) => failed)).toEqual([false, false, false, false, false]);
+    expect(stuckOf(world)).toEqual([OWED]);
+    expect(pendingOf(ORDERS, world)).toContainEqual(expect.objectContaining({ start: OWED.start }));
+    expect(world.fake.marksOf(ORDERS.walkId).rescan).toBe(HISTORY_FLOOR_MS);
+    expect(stopCodes()).toContain('fiat-rescan-stuck');
+  });
+
+  it('marks the owed range stuck on a page that cannot be read, without failing the re-scan run', async () => {
+    const world = currentWorld();
+
+    const runs = await failingRuns(world, 5, 'unreadable');
+
+    expect(runs.map(({ deps }) => spansOf(deps))).toEqual([
+      [['0', WINDOW_START, NOW], ...both(WINDOW_START, OWED.start - 1)],
+      [['0', OWED.start, OWED.end]],
+      both(OWED.end + 1, NOW),
+      [['0', OWED.start, OWED.end]],
+      both(WINDOW_START, OWED.start - 1),
+    ]);
+    expect(runs.map(({ failed }) => failed)).toEqual([false, true, false, true, false]);
+    expect(runs.map(({ deps }) => rowsOf(deps))).toEqual([
+      ['before'],
+      [],
+      ['after'],
+      [],
+      ['before'],
+    ]);
+    expect(stuckOf(world)).toEqual([OWED]);
+  });
+
+  it('reads the stuck range on its own in the owed runs, and reads over it once it is clear', async () => {
+    const world = currentWorld();
+
+    await failingRuns(world, 5, 'drift');
+
+    const healed = world.depsOf({ [ORDERS.readKey]: world.serverOf({ '0': [BEFORE, AFTER] }) });
+    await world.walk(healed);
+
+    expect(spansOf(healed)).toEqual(both(OWED.start, OWED.end));
+    expect(pendingOf(ORDERS, world)).not.toContainEqual(
+      expect.objectContaining({ start: OWED.start }),
+    );
+    expect(stuckOf(world)).toEqual([OWED]);
+
+    const reread = world.depsOf({ [ORDERS.readKey]: world.serverOf({ '0': [BEFORE, AFTER] }) });
+    await world.walk(reread);
+
+    expect(spansOf(reread)).toEqual(both(WINDOW_START, NOW));
+    expect(stuckOf(world)).toEqual([]);
+  });
+
+  it('halves a span that fails and holds no owed range, down to the millisecond that fails', async () => {
+    const world = worldOf(ORDERS);
+    const point = NOW - 200 * DAY_MS + 12_345;
+    const server = world.serverOf({ '0': [BEFORE, AFTER] });
+    const holdsPoint = (span: Span) => span.start <= point && point <= span.end;
+    const failingAtPoint = () =>
+      jest.fn(async (apiKey, secret, type, span: Span, page) =>
+        holdsPoint(span) ? fiatPageOf([], { total: 5 }) : server(apiKey, secret, type, span, page),
+      );
+    const imported: string[] = [];
+    const firstSpans: number[][] = [];
+    let isolatedAt = -1;
+
+    world.seed({ cursor: NOW });
+
+    for (let index = 0; index < 90; index += 1) {
+      const deps = world.depsOf({ [ORDERS.readKey]: failingAtPoint() });
+
+      await world.walk(deps);
+      firstSpans.push(spansOf(deps).at(0)?.slice(1) as number[]);
+      isolatedAt = isolatedAt < 0 && stuckOf(world) !== undefined ? index : isolatedAt;
+      imported.push(...rowsOf(deps).map((orderNo) => `${orderNo}@${index}`));
+    }
+
+    expect(firstSpans.slice(0, 3)).toEqual([
+      [WINDOW_START, NOW],
+      [WINDOW_START, WINDOW_START + Math.floor(FIAT_WINDOW_MS / 2)],
+      [WINDOW_START + Math.floor(FIAT_WINDOW_MS / 2), NOW],
+    ]);
+    expect(isolatedAt).toBe(72);
+    expect(stuckOf(world)).toEqual([{ start: point - 1, end: point }]);
+    expect(pendingOf(ORDERS, world)).toContainEqual(
+      expect.objectContaining({ start: point - 1, end: point }),
+    );
+    expect(imported.slice(0, 2)).toEqual(['before@1', 'after@74']);
+  });
+
+  it('keeps a failure that is not an unreadable page, and fails the run on it', async () => {
+    const world = currentWorld();
+    const deps = world.depsOf({
+      [ORDERS.readKey]: jest.fn(async () => {
+        throw new Error('network down');
+      }),
+    });
+
+    await expect(world.walk(deps)).rejects.toThrow('network down');
+    expect(stuckOf(world)).toBeUndefined();
+  });
+
+  it('reads around the owed range in the one run of the payment walk, which has the calls for it', async () => {
+    const world = worldOf(PAYMENTS);
+    const server = world.serverOf({
+      '0': [
+        PAYMENTS.recordOf({ orderNo: 'before', createTime: BEFORE.createTime }),
+        PAYMENTS.recordOf({ orderNo: 'after', createTime: AFTER.createTime }),
+      ],
+    });
+    const deps = world.depsOf({
+      [PAYMENTS.readKey]: jest.fn(async (apiKey, secret, type, span: Span, page) =>
+        holdsOwed(span) ? fiatPageOf([], { total: 5 }) : server(apiKey, secret, type, span, page),
+      ),
+    });
+
+    world.seed({ cursor: NOW, pending: [OWED] });
+    await world.walk(deps);
+
+    expect(queriesOf(PAYMENTS, deps).map(({ type, start, end }) => [type, start, end])).toEqual([
+      ...both(WINDOW_START, NOW),
+      ...both(WINDOW_START, OWED.start - 1),
+      ...both(OWED.end + 1, NOW),
+    ]);
+    expect(rowsOf(deps)).toEqual(['before', 'after']);
+    expect(world.fake.marksOf(PAYMENTS.walkId).rescanStuck).toEqual([OWED]);
   });
 });
 

@@ -29,6 +29,7 @@ export type WalkField =
   | 'spanHints'
   | 'behindRun'
   | 'rescanTurn'
+  | 'rescanStuck'
   | 'multiCoinSince'
   | 'multiCoinSeen';
 
@@ -58,6 +59,7 @@ const FIELDS: readonly WalkField[] = [
   'spanHints',
   'behindRun',
   'rescanTurn',
+  'rescanStuck',
   'multiCoinSince',
   'multiCoinSeen',
 ];
