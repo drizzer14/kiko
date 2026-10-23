@@ -29,7 +29,7 @@ fiat-orders budget cases and the first-walk table), "### P2P", "### Fiat orders 
 payments (card buy, sell)"; section 6 "Not-imported line", "Mapping and statistics per operation"; section 7
 P1-P11, F1-F6, N5b; section 11 row 12/15; section 12 P5, P6. Rulings: `rulings.md` (main checkout,
 `memory/refs/binance-multicoin-sdd-2026-10-21/`), "Probe 4 rulings", "Spec draft sets 8-12 rulings", "P2P BUY vs
-LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q12 are at the end; the plan
+LATER SEND IN THE CATEGORY CHART", "Set 11 plan questions". Questions S12-Q1 ... S12-Q14 are at the end; the plan
 assumes each recommendation.
 
 **Base:** branch `binance-set12` at main `79094ae8` (sets 1-11 merged). Every code fact names a symbol or anchor
@@ -173,7 +173,8 @@ decision `p2pOutcomeOf`), `walk` = `binance.p2p-history.test.ts`, `sqlite` = `bi
 | F2 | fiat, "debits a successful withdrawal by its amount and its total fee" | EUR -(5_000 + fee); `bank:EUR:50.00` |
 | F3 | fiat, "imports a completed card buy on the Spot coin holding" | BTC +100_000; `card:UAH:2600.00` |
 | F3b | fiat, "debits a completed card sale and marks the fiat it was sold for" | BTC -; `card:<fiat>:<obtainAmount>` |
-| F4 | fiat, "lists a fiat %s with status %s as not recognized" | one `fiat-unrecognized` each |
+| F4 | fiat, "lists a fiat %s with status %s as not recognized" (orders: `Finished`, `Refunding`, `Refund Failed`, `Order Partial Credit Stopped`, an undocumented word; payments: an undocumented word) | one `fiat-unrecognized` each |
+| F4b | fiat, "settles only the exact allowlisted word, so %s is not recognized" (`successful`, ` Successful`, `Successful `, `Order Partial credit Stopped`, `Refund  Failed`; payments `completed`, `Completed `) | one `fiat-unrecognized` each, no row (S12-Q13) |
 | F5 | fiat, "reads every two-year window from the floor, empty ones too" | orders 10 calls / 5 runs (S12-Q6), payments 10 / 1 |
 | F6 | fiat, "settles %s, owes %s and lists every word the doc does not show as moving no money" | per step 2/14 |
 | N5b | `src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.not-imported.test.tsx`, "counts two P2P sales beside one Convert order, in the order of the kind list" | exact N5b text |
@@ -326,7 +327,7 @@ Output `.superpowers/sdd/binance-set12/fiat-doc-quote.md`: for each source, the 
 - [ ] Record, per word: `Failed` and `Refunded` (orders and payments), `Successful`, `Completed`, `Processing`, the
       P2P five open words: the quoted text, or "no doc text found". A word is ignored only with text showing no
       money moved (C-NR-E); a bare list entry is not that (S12-Q3).
-- [ ] Commit `docs(binance): quote the fiat and P2P status docs` (set folder file only).
+- [ ] Write the quote file; do not commit it (S12-Q14: `.superpowers/` is gitignored and main tracks none).
 
 ### step 3/14: probe 10 (user; read-only; gates only steps 12/14 and the P2P cap)
 
@@ -335,7 +336,8 @@ Output `.superpowers/sdd/binance-set12/fiat-doc-quote.md`: for each source, the 
       the P2P first walk forward from `HISTORY_FLOOR_MS` in 30-day windows x 2 series at the 350 ms gate, with no
       lane cap: calls, wall time, `X-SAPI-USED-UID-WEIGHT-1M` peaks, throttle waits, the window index of the oldest
       and newest order, and the runs at caps 10, 20, 40 (S12-Q8). Also one page each of fiat orders and payments
-      (counts and status words only). The user runs it; the output goes to `memory/refs/` (main checkout).
+      (counts and status words only). Write the script in `.superpowers/sdd/binance-set12/`; do not commit it
+      (S12-Q14). The user runs it; the output goes to `memory/refs/` (main checkout).
 - [ ] Steps 4/14-11/14 do not wait for it (cap 10 stands until it reports).
 
 ### step 4/14: the P2P and fiat lanes
@@ -394,7 +396,8 @@ Files: `binance.p2p-history.ts`, `binance.p2p-history.test.ts` (new), `binance/i
 ### step 9/14: the fiat reads
 
 Files: `binance.history-client.ts`, `binance.history-client.fiat.test.ts` (new).
-- [ ] Tests first: FC1-FC3. Red count quoted.
+- [ ] Tests first: FC1-FC3; "keeps the status text as Binance sent it, spaces and case included" (`Refund Failed`,
+      `Order Partial Credit Stopped`, ` Successful`: the read never trims or folds case, S12-Q13). Red count quoted.
 - [ ] Code: `BinanceFiatOrder` (`orderNo`, `fiatCurrency`, `indicatedAmount`, `amount`, `totalFee`, `status`,
       `createTime`), `BinanceFiatPayment` (`orderNo`, `sourceAmount`, `fiatCurrency`, `obtainAmount`,
       `cryptoCurrency`, `status`, `createTime`); `fetchFiatOrders`, `fetchFiatPayments`; rows 500 / 100.
@@ -403,7 +406,7 @@ Files: `binance.history-client.ts`, `binance.history-client.fiat.test.ts` (new).
 ### step 10/14: the fiat walks
 
 Files: `binance.fiat-history.ts` (new), `binance.fiat-history.test.ts` (new), `binance/index.ts`.
-- [ ] Tests first: F1, F2, F3, F3b, F4, F5, F6, FW1; per-record owed point for `Processing`; a `fiatCurrency` or
+- [ ] Tests first: F1, F2, F3, F3b, F4, F4b (exact match, S12-Q13), F5, F6, FW1; per-record owed point for `Processing`; a `fiatCurrency` or
       `cryptoCurrency` the tracked rule refuses (listed, no row); an amount past the scale (`amount-precision`).
       Exact minor units. Red count quoted.
 - [ ] Code: one walk body taking the walk id, lane, cost, window, series (`'0'`, `'1'`), the read and the outcome;
@@ -438,7 +441,7 @@ Files: `run-crypto-sync.ts`, `run-crypto-sync.test.ts`, `binance-history-status.
 ### step 12/14: spec alignment and the set 12 rulings
 
 Files: the spec.
-- [ ] Record S12-Q1 ... S12-Q12 in section 1 with their source (`rulings.md`, "Set 12 plan questions"). Align:
+- [ ] Record S12-Q1 ... S12-Q14 in section 1 with their source (`rulings.md`, "Set 12 plan questions"). Align:
       section 5 fiat block (`totalFee`; "Order Partial Credit Stopped" as Binance writes it; the quoted words from
       step 2/14 with URL and date), the fiat-orders runs (5, S12-Q6) in "Measured weights" and F5, the P2P report
       from probe 10 and the cap it supports (R-Walk A), the P2P cover-rule owner (S12-Q10), section 7 new rows
@@ -497,48 +500,58 @@ Files: the spec.
 - G-1 every step; G-2 steps 1, 4, 11; G-3 steps 4-11; G-6 step 4; G-7 steps 7, 10; G-8 step 5; G-9 steps 6, 9;
   G-10 steps 6, 8, 9, 10, 11; G-11 steps 12, 13; G-12 and G-13 every commit; G-14 steps 1, 11.
 
-## Questions for the coordinator (S12-Q1 ... S12-Q12)
+## Questions for the coordinator (S12-Q1 ... S12-Q14)
 
-- S12-Q1 a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
+Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12, Q13, Q14 = A, FINAL coordinator rulings; Q3, Q10, Q11 = A,
+OVERNIGHT DEFAULT, pending user.
+
+- S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
   one exact existing title to each. B: a file-only row passes when the file exists. Recommend A: a file alone ties a
   row to nothing (set 11 lesson 7), and four cells are cheap to fix.
-- S12-Q2 file resolution in the doc test. A: strict (bare name = `src/crypto-sync/binance/`, else a full `src/`
+- S12-Q2 (A, FINAL coordinator ruling) file resolution in the doc test. A: strict (bare name = `src/crypto-sync/binance/`, else a full `src/`
   path), and step 1/14 fixes the three cells that break it. B: find a bare name anywhere under `src/` (unique match).
   Recommend A: the table states the `binance/` default, and a search can match the wrong twin file.
-- S12-Q3 `Failed` and `Refunded` (orders and payments). The planner found no Binance text that says no money moved;
+- S12-Q3 (A, OVERNIGHT DEFAULT, pending user) `Failed` and `Refunded` (orders and payments). The planner found no Binance text that says no money moved;
   the orders doc only lists the words, the payments doc lists none. A: both stay `fiat-unrecognized` (owed and
   visible) unless step 2/14 finds such text. B: take the bare list as enough and ignore them. Recommend A: C-NR-E's
   rule as written; a refunded deposit may have moved money twice, and a wrong ignore is a silent loss.
-- S12-Q4 fiat payment statuses: no raw source lists them. A: keep the spec allowlist (`Completed` row, `Processing`
+- S12-Q4 (A, FINAL coordinator ruling) fiat payment statuses: no raw source lists them. A: keep the spec allowlist (`Completed` row, `Processing`
   owed, every other word `fiat-unrecognized`); the user pastes the developers.binance.com text into the quote file
   when convenient. B: refuse every payment until a quote exists. Recommend A: a wrong word only shows as a visible
   entry, never as a wrong row, and probe 3 saw no payment on the account.
-- S12-Q5 P2P `orderStatus` has no documented values in the raw docs. A: keep the spec's five open words; any other
+- S12-Q5 (A, FINAL coordinator ruling) P2P `orderStatus` has no documented values in the raw docs. A: keep the spec's five open words; any other
   word is `p2p-unrecognized` (C-NR-A, binding). B: an unknown word owes its point every run (never final, invisible:
   owed points show no caption, K5). Recommend A: binding, visible; probe 10 lists the words the account really has.
-- S12-Q6 fiat-orders runs. `readSeriesSpan` needs room for both series before a window, so a lane of 3 reads one
+- S12-Q6 (A, FINAL coordinator ruling) fiat-orders runs. `readSeriesSpan` needs room for both series before a window, so a lane of 3 reads one
   window (2 calls) a run: 5 runs for 10 calls, not the spec's 4, and the 3rd call is never spent. A: keep cap 3, the
   spec says 5 runs, F5 pins 5; BL2/BL3 pin the budget cases at `canAfford`. B: cap 4 (2 windows a run, 3 runs;
   4 x 45000 = 180000 only fits an empty minute). Recommend A: a cap changes only with a measured reason.
-- S12-Q7 the P2P lane cap (R-Walk A). A: 10 until probe 10 reports; then the largest cap whose per-run UID peak and
+- S12-Q7 (A, FINAL coordinator ruling) the P2P lane cap (R-Walk A). A: 10 until probe 10 reports; then the largest cap whose per-run UID peak and
   wall time the probe shows fit, recorded with the numbers. B: raise now from arithmetic (180000 / 900). Recommend
   A: "a cap changes only with a measured reason".
-- S12-Q8 the measured P2P first-walk report. A: probe 10 (step 3/14, user, read-only) plus P7b computing calls and
+- S12-Q8 (A, FINAL coordinator ruling) the measured P2P first-walk report. A: probe 10 (step 3/14, user, read-only) plus P7b computing calls and
   runs from the walk itself. B: P7b only. Recommend A: the spec asks for a measured report, and P7b uses probe 4's
   window index, not a fresh count.
-- S12-Q9 `CAPTION_WALKS`. A: `p2p`, `fiatOrders`, `fiatPayments` join it in set 12 (spec section 5: "The caption
+- S12-Q9 (A, FINAL coordinator ruling) `CAPTION_WALKS`. A: `p2p`, `fiatOrders`, `fiatPayments` join it in set 12 (spec section 5: "The caption
   shows until each walk is current"; S8-Q5 did the same for Convert); a user sees the caption for about 23 syncs.
   B: set 15. Recommend A: the caption is the honest state while P2P history is still arriving.
-- S12-Q10 the P2P cover rule (user, 2026-10-21: an outgoing USDT row covered by an earlier P2P BUY of that coin is
+- S12-Q10 (A, OVERNIGHT DEFAULT, pending user) the P2P cover rule (user, 2026-10-21: an outgoing USDT row covered by an earlier P2P BUY of that coin is
   not counted in Expenses by category). No set owns it in the spec. A: set 13, which adds the read-time statistics
   rules for P2P rows (`src/statistics/exchange-funding-match/`, the same `parseUntrackedCounterpart` input, M1-M14);
   its plan brings the user questions (partial cover, order, a send larger than the cover, Pay vs withdrawal). B:
   set 12. C: a follow-up after set 15. Recommend A: set 12 writes the rows the rule reads, set 13 owns statistics
   over them, and no build ships before set 15 (U1), so nothing reaches the user without it.
-- S12-Q11 fiat withdraw debit. The documented fee field is `totalFee` (the spec says `fee`). A: `-(amount +
+- S12-Q11 (A, OVERNIGHT DEFAULT, pending user) fiat withdraw debit. The documented fee field is `totalFee` (the spec says `fee`). A: `-(amount +
   totalFee)`, the spec text aligned; P6 stays open for a real row at device verification. B: `-indicatedAmount`.
   Recommend A: the spec's rule with the documented field; B has no source.
-- S12-Q12 a P2P `fiat` or fiat-payment `fiatCurrency` that is not a Kiko currency. A: the crypto row imports; the
+- S12-Q12 (A, FINAL coordinator ruling) a P2P `fiat` or fiat-payment `fiatCurrency` that is not a Kiko currency. A: the crypto row imports; the
   marker keeps the total as sent after a plain-decimal check (no scale to normalize to); the label renders and set
   13's matcher skips it (S7-Q3). B: refuse it into `p2p-unrecognized` / `fiat-unrecognized`. Recommend A: the
   crypto amount is exact and the fiat only feeds a label and a matcher that already skips it.
+- S12-Q13 (A, FINAL coordinator ruling) the other documented fiat order words. A: `Finished`, `Refunding`, `Refund
+  Failed` and `Order Partial Credit Stopped` stay `fiat-unrecognized` (owed and visible). The allowlist matches the
+  status text exactly, spaces and case included (no trim, no case fold), pinned by FC "keeps the status text as
+  Binance sent it, spaces and case included" (step 9/14) and F4 / F4b (step 10/14). A later set imports a word only
+  with a real row or doc text. B: map `Finished` to settled. A is the ruling: no source says what `Finished` moved.
+- S12-Q14 (A, FINAL coordinator ruling) `.superpowers/` files. A: they are never committed (gitignored; main tracks
+  none; bb4207f2 untracked the two set 12 files); steps 2/14 and 3/14 write their files and do not commit them.
