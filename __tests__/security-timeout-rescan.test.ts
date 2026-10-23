@@ -17,6 +17,7 @@ const US = '\u001f';
 const MAXIMUM_RESCANNED_PAIRS = 10;
 const TIMED_OUT_RULE = 'kiko-worklet-directive-required';
 const OTHER_RULE = 'kiko-no-keychain-secret-into-usestate';
+const CONFIG_COUNT_OF_FIRST_SCAN = 5;
 
 afterEach(() => {
   removeTemporaryDirectories();
@@ -34,7 +35,10 @@ const timeoutEntry = (file: string, rule = TIMED_OUT_RULE) => ({
 const reportOf = (errors: Record<string, unknown>[]): string =>
   JSON.stringify({ results: [], errors, paths: { scanned: [] } });
 
-type Call = { args: string[]; configTexts: string[] };
+type Call = { args: string[] };
+
+const configArguments = (call?: Call): string[] =>
+  (call?.args ?? []).filter((_argument, index) => call?.args[index - 1] === '--config');
 
 // `answers[n]` is the JSON the fake prints on call n+1 (the last answer repeats).
 const runWithFakeSemgrep = (
@@ -60,14 +64,6 @@ const runWithFakeSemgrep = (
     `dir="${stubs}"`,
     'n=$(ls "$dir/calls" | grep -c "^args-")',
     `printf '%s${US}' "$@" > "$dir/calls/args-$n"`,
-    'previous=""',
-    'for argument in "$@"; do',
-    '  if [ "$previous" = "--config" ] && [ -f "$argument" ]; then',
-    '    cat "$argument" >> "$dir/calls/config-$n"',
-    '  fi',
-    '  previous="$argument"',
-    'done',
-    'touch "$dir/calls/config-$n"',
     `last=${answers.length - 1}`,
     'index=$n; [ "$index" -gt "$last" ] && index=$last',
     'cat "$dir/answer-$index.json"',
@@ -89,7 +85,6 @@ const runWithFakeSemgrep = (
       args: readFileSync(join(calls, `args-${index}`), 'utf8')
         .split(US)
         .filter((argument) => argument !== ''),
-      configTexts: [readFileSync(join(calls, `config-${index}`), 'utf8')],
     });
   }
 
@@ -99,7 +94,7 @@ const runWithFakeSemgrep = (
 const CLEAN = reportOf([]);
 
 describe('scripts/checks/security.sh re-scan of timed-out pairs', () => {
-  it('re-scans one timed-out pair once with --jobs 1, the same timer, only that file and rule', () => {
+  it('re-scans the timed-out file once with --jobs 1, the same timer and the same --config arguments', () => {
     const { status, stderr, calls, files } = runWithFakeSemgrep(
       (paths) => [reportOf([timeoutEntry(paths[0] ?? '')]), CLEAN],
       1,
@@ -108,7 +103,6 @@ describe('scripts/checks/security.sh re-scan of timed-out pairs', () => {
     const file = files[0] ?? '';
     const jobsIndex = rescan?.args.indexOf('--jobs') ?? -1;
     const timerFlags = (call?: Call) => call?.args.filter((argument) => /timeout/.test(argument));
-    const configText = rescan?.configTexts.join('\n') ?? '';
 
     expect({
       status,
@@ -119,8 +113,7 @@ describe('scripts/checks/security.sh re-scan of timed-out pairs', () => {
       sameTimer: timerFlags(rescan)?.join(' ') === timerFlags(first)?.join(' '),
       json: rescan?.args.includes('--json'),
       targets: rescan?.args.filter((argument) => argument.startsWith('/')),
-      namesRule: configText.includes(TIMED_OUT_RULE),
-      namesOtherRule: configText.includes(OTHER_RULE),
+      configs: configArguments(rescan),
     }).toEqual({
       status: 0,
       callCount: 2,
@@ -129,9 +122,33 @@ describe('scripts/checks/security.sh re-scan of timed-out pairs', () => {
       sameTimer: true,
       json: true,
       targets: [file],
-      namesRule: true,
-      namesOtherRule: false,
+      configs: configArguments(first),
     });
+    expect(configArguments(first)).toHaveLength(CONFIG_COUNT_OF_FIRST_SCAN);
+  });
+
+  it('fails when the re-scan of the file reports a Timeout on a different rule', () => {
+    const { status, calls } = runWithFakeSemgrep(
+      (paths) => [
+        reportOf([timeoutEntry(paths[0] ?? '')]),
+        reportOf([timeoutEntry(paths[0] ?? '', OTHER_RULE)]),
+      ],
+      1,
+    );
+
+    expect({ status, callCount: calls.length }).toEqual({ status: 2, callCount: 2 });
+  });
+
+  it('re-scans a file once when two of its rules timed out', () => {
+    const { status, calls } = runWithFakeSemgrep(
+      (paths) => [
+        reportOf([timeoutEntry(paths[0] ?? ''), timeoutEntry(paths[0] ?? '', OTHER_RULE)]),
+        CLEAN,
+      ],
+      1,
+    );
+
+    expect({ status, callCount: calls.length }).toEqual({ status: 0, callCount: 2 });
   });
 
   it('fails with the current block when the pair times out again', () => {
@@ -170,7 +187,7 @@ describe('scripts/checks/security.sh re-scan of timed-out pairs', () => {
     expect({ status, callCount: calls.length }).toEqual({ status: 2, callCount: 1 });
   });
 
-  it('re-scans 10 pairs, each alone, and warns for each when all pass', () => {
+  it('re-scans 10 pairs in 10 distinct files, one call per file, and warns for each when all pass', () => {
     const { status, stderr, calls, files } = runWithFakeSemgrep(
       (paths) => [reportOf(paths.map((file) => timeoutEntry(file))), CLEAN],
       MAXIMUM_RESCANNED_PAIRS,
