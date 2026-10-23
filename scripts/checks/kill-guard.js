@@ -37,9 +37,10 @@
 // text cannot name (an unresolved `-C` or `cd`) fails closed.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
-// `githooks/`, `.claude/skills/`, `.claude/agents/`, or `harness/kiko/` (all of it: skills, agents,
-// scripts, hooks, the plugin manifest) at the root of any worktree of this repository, or into a
-// YAML file (a final segment ending in `.yml` or `.yaml`) at any depth of one, except under
+// `githooks/`, `.claude/skills/`, `.claude/agents/`, `docs/superpowers/` (plans, specs), or
+// `harness/kiko/` (all of it: skills, agents, scripts, hooks, the plugin manifest) at the root of
+// any worktree of this repository, or into a YAML file (a final segment ending in `.yml` or
+// `.yaml`) at any depth of one, except under
 // `node_modules/` (a YAML path the text cannot resolve is denied too; one resolved outside every
 // worktree of this repository stays allowed) — `sed -i`, `perl -i`, a `>`/`>>` (or `>|`, `&>`,
 // `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner (or one fed by a heredoc or
@@ -193,8 +194,8 @@ const MAIN_MOVE_REASON_LINES = [
 const SHELL_WRITE_REASON_LINES = [
   'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, e2e/, drizzle/, ' +
     'scripts/, or githooks/ of a worktree of this repository, into .claude/skills/, ' +
-    '.claude/agents/, or any of harness/kiko/ of one, into a YAML file (.yml, .yaml) of ' +
-    'one, or into a git config file (.git/config, config.worktree).',
+    '.claude/agents/, any of harness/kiko/, or docs/superpowers/ (plans, specs) of one, into a ' +
+    'YAML file (.yml, .yaml) of one, or into a git config file (.git/config, config.worktree).',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
     'cp, mv, or a python or node one-liner lands unchecked; guard-replay only catches it at ' +
@@ -203,8 +204,8 @@ const SHELL_WRITE_REASON_LINES = [
     '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
     'cannot resolve (a variable, a glob) counts when a folder in it is named src, rules, e2e, ' +
     'drizzle, scripts, githooks, or __tests__, when its folders spell .claude/skills, ' +
-    '.claude/agents, or harness/kiko, or when it ends in .yml or .yaml, and so does a ' +
-    'cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
+    '.claude/agents, harness/kiko, or docs/superpowers, or when it ends in .yml or .yaml, and so ' +
+    'does a cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
     'write the literal path, or use Edit or Write. Reading it, a ' +
     'redirect to /dev/null or to a path outside those trees that is not a YAML file of a ' +
     'worktree (your scratchpad, /tmp, docs/notes.md), git itself ' +
@@ -1911,8 +1912,7 @@ function gitFinding(segment, invocations, rules) {
   };
 }
 
-// ---- shell writes into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, githooks/, ----
-// ---- .claude/skills/, .claude/agents/, harness/kiko/, YAML ----
+// ---- shell writes into the folders of WRITE_GUARDED_TREES, and into YAML files ----
 
 // The folders, at the root of any worktree of this repository, that only
 // Edit/Write may change: the pre-write guard sees no other tool. An entry
@@ -1928,9 +1928,18 @@ const WRITE_GUARDED_TREES = new Set([
   '.claude/skills',
   '.claude/agents',
   'harness/kiko',
+  'docs/superpowers',
 ]);
 
+// A folder that may hold a tree (`.claude`, `harness`) is guarded against a whole-folder copy.
+// `docs` is not: the rest of it (`docs/harness/`) is written by shell as a matter of course, and
+// a copy of a folder onto `docs/` lands unchecked only when it carries a `superpowers` folder.
+const TREES_WITHOUT_PARENT_RULE = new Set(['docs/superpowers']);
+
 const GUARDED_TREE_SEGMENTS = [...WRITE_GUARDED_TREES].map((tree) => tree.split('/'));
+const TREE_PARENT_SEGMENTS = [...WRITE_GUARDED_TREES]
+  .filter((tree) => !TREES_WITHOUT_PARENT_RULE.has(tree))
+  .map((tree) => tree.split('/'));
 
 // Whether `segments` spell `tree` from `index` on, case-folded (APFS folds case).
 const spellsTreeAt = (segments, index, tree) =>
@@ -1945,7 +1954,7 @@ const namesTreeAt = (segments, index) =>
 // Whether `segments` end with the first folders of a tree that has more (`.claude`, `harness`)
 // from `index` on: a folder that may hold that tree.
 const namesTreeParentAt = (segments, index) =>
-  GUARDED_TREE_SEGMENTS.some((tree) => {
+  TREE_PARENT_SEGMENTS.some((tree) => {
     const depth = segments.length - index;
 
     return depth < tree.length && spellsTreeAt(segments, index, tree.slice(0, depth));
