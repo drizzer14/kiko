@@ -853,7 +853,7 @@ describe('HomeScreen', () => {
           type: 'loan',
           metadata: {
             kind: 'mortgage',
-            principalMinorUnits: 500_000, // 5,000.00 UAH — no installment due yet
+            principalMinorUnits: 500_000, // 5,000.00 UAH — payment 1 due on the start day
             startDate: Date.now(),
             annualRatePct: 10,
             termMonths: 120,
@@ -865,8 +865,8 @@ describe('HomeScreen', () => {
 
     const { getAllByText } = await renderHome();
 
-    // 1,000.00 asset − 5,000.00 debt = −4,000.00.
-    const [netWorth] = getAllByText(/-4,000\.00 ₴/);
+    // 1,000.00 asset − (5,000.00 − 24.41 repaid by payment 1) debt = −3,975.59.
+    const [netWorth] = getAllByText(/-3,975\.59 ₴/);
     expect(netWorth.props.testID).toBe('text-tone-negative');
   });
 

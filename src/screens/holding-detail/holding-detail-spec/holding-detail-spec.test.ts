@@ -268,8 +268,8 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
       // Deriving the due dates straight from `addMonths` — not from
       // `loanInstallments(meta).filter(...)`, the SUT's own search — means a
       // bug in that search's predicate would still be caught here.
-      // Installment 12 falls due 2025-07-01, before `now` (2025-07-15);
-      // installment 13 falls due 2025-08-01, the first still on/after `now`.
+      // Installment 13 falls due 2025-07-01, before `now` (2025-07-15);
+      // installment 14 falls due 2025-08-01, the first still on/after `now`.
       const now = Date.UTC(2025, 6, 15);
       const meta = structuredMeta({ schedule });
 
@@ -279,8 +279,8 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
         now,
       );
 
-      expect(upcoming).toHaveLength(120 - 12);
-      expect(upcoming[0].index).toBe(13);
+      expect(upcoming).toHaveLength(120 - 13);
+      expect(upcoming[0].index).toBe(14);
       expect(upcoming[0].dueDate).toBe(addMonths(meta.startDate, 13));
       expect(upcoming.at(-1)?.index).toBe(120);
     },
@@ -289,14 +289,15 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
   it('lists all 360 installments of a 30-year mortgage that starts today', () => {
     const now = Date.UTC(2025, 6, 15);
     const meta = structuredMeta({ startDate: now, termMonths: 360 });
+    const upcoming = holdingDetailSpecs.loan.upcomingInstallments(
+      holding({ type: 'loan', metadata: meta }),
+      EMPTY_PRICE_BOOK,
+      now,
+    );
 
-    expect(
-      holdingDetailSpecs.loan.upcomingInstallments(
-        holding({ type: 'loan', metadata: meta }),
-        EMPTY_PRICE_BOOK,
-        now,
-      ),
-    ).toHaveLength(360);
+    expect(upcoming).toHaveLength(360);
+    expect(upcoming[0].index).toBe(1);
+    expect(upcoming[0].dueDate).toBe(now);
   });
 
   // 5 minor units over 8 months at 0% is repaid by row 5; rows 6-8 stay on the

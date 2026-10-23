@@ -2161,7 +2161,7 @@ describe('HoldingDetailScreen', () => {
   it('bounds a 30-year mortgage to its next 12 cards, and Show all reveals all 360', async () => {
     seed({
       ...annuityLoanHolding,
-      metadata: { ...annuityLoanMeta, startDate: startMonthsAgo(0), termMonths: 360 },
+      metadata: { ...annuityLoanMeta, startDate: Date.now(), termMonths: 360 },
     });
 
     const { getAllByTestId, getByTestId } = await renderScreen();

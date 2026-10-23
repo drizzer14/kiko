@@ -169,7 +169,8 @@ const ledgerAnchorAt = (
  * EARLIER of the day before the first linked payment and the day before that
  * payment's own mapped installment's due date, else the principal at the
  * start day) minus the principal part of each counted payment dated strictly
- * after the anchor's day — what was actually repaid, not what the schedule
+ * after the anchor's day (ON it too for the start-day anchor, since payment 1
+ * is due on the start day) — what was actually repaid, not what the schedule
  * says was due — clamped to never go below 0. 0 before the loan's start day,
  * the same as the schedule.
  */
@@ -192,7 +193,9 @@ export const loanLedgerOutstandingMinorAt = (
 
   const anchor = ledgerAnchorAt(meta, loan, book, instant, ledger, counted);
   const principalRepaidAfterAnchor = counted
-    .filter((entry) => entry.dayKey > anchor.dayKey)
+    .filter((entry) =>
+      anchor.fromCorrection ? entry.dayKey > anchor.dayKey : entry.dayKey >= anchor.dayKey,
+    )
     .reduce((sum, entry) => sum + principalOf(entry), 0);
 
   return Math.max(0, anchor.valueMinorUnits - principalRepaidAfterAnchor);

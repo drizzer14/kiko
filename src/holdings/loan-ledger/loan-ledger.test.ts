@@ -109,10 +109,20 @@ describe('loanLedgerOutstandingMinorAt', () => {
   it('counts a payment made later on the same local day as the instant', () => {
     const afternoon = local(2024, 1, 15, 14);
     const book = bookWith([
-      { time: afternoon, amountMinorUnits: -installments[0].paymentMinorUnits },
+      { time: afternoon, amountMinorUnits: -installments[1].paymentMinorUnits },
     ]);
 
     expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, local(2024, 1, 15))).toBe(
+      annuityMeta.principalMinorUnits -
+        installments[0].principalMinorUnits -
+        installments[1].principalMinorUnits,
+    );
+  });
+
+  it('lowers the outstanding by a linked payment made on the start day', () => {
+    const book = bookWith([onSchedule(0)]);
+
+    expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, annuityMeta.startDate)).toBe(
       annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
     );
   });
@@ -140,10 +150,10 @@ describe('loanLedgerOutstandingMinorAt', () => {
     const first = loanInstallments(twoYearMeta)[0];
     const half = first.paymentMinorUnits / 2;
     const book = bookWith([
-      { time: local(2024, 1, 9, 10), amountMinorUnits: -half },
-      { time: local(2024, 1, 10, 10), amountMinorUnits: -half },
+      { time: local(2024, 0, 15, 10), amountMinorUnits: -half },
+      { time: local(2024, 0, 16, 10), amountMinorUnits: -half },
     ]);
-    const summary = loanLedgerSummary(twoYearMeta, LOAN, book, local(2024, 1, 20));
+    const summary = loanLedgerSummary(twoYearMeta, LOAN, book, local(2024, 0, 20));
 
     expect(first.paymentMinorUnits).toBe(564_882);
     expect(summary.interestPaidMinorUnits).toBe(120_000);
