@@ -252,10 +252,13 @@ set 10 whole-branch items there (FR-Q1, FR-Q2) belong to set 10.
 | S12-Q33 the fix (COORDINATOR) | A dense full-page world no longer stalls either fiat walk; the bound adds the halving reads, `r x (F(z) + H)` | 12 |
 | S12-Q34 refuse (OVERNIGHT DEFAULT, pending user) | A completed taker buy whose `fiat` text no code can carry (empty, or holding `:`) is refused as `p2p-unrecognized`: one visible entry, the cursor moves on (before: owed for ever, invisible) | 12 |
 | S12-Q35 A + B, fiat only (OVERNIGHT DEFAULT, pending user) | The two fixes of S12-Q33 live in `binance.fiat-history.ts`, around the engine's plan and hooks; the engine the other walks share is unchanged | 12 |
+| S12-Q36 the fix (OVERNIGHT DEFAULT, pending user) | A fiat orders turn keeps the stored forward, owed and re-scan hints of the passes it does not read (before: only the re-scan one), so a dense forward hour or a dense old owed hour no longer halves from scratch every turn | 12 |
+| S12-Q39 refuse (OVERNIGHT DEFAULT, pending user) | A fiat payment whose `fiatCurrency` is blank or holds `:` is refused as `fiat-unrecognized`, like the P2P orders of S12-Q34: one visible entry, the cursor moves on (before: `amount-malformed`, owed for good) | 12 |
+| S12-Q40 whole milliseconds (OVERNIGHT DEFAULT, pending user) | The shared `pointOf` rounds a record's extent outward to whole milliseconds, so a fractional `createTime` no longer sends a decimal `beginTime`; a time past 2^53 stays owed and throws nothing | 12 |
 
-Source of S12-Q1 ... S12-Q35: `rulings.md`, section "Set 12 plan questions" (S12-Q7 and S12-Q8 from
-probe 10; S12-Q3, S12-Q10 and S12-Q11 confirmed by the user 2026-10-23, S12-Q34 and S12-Q35 still
-overnight defaults); the plan `docs/superpowers/plans/2026-10-23-crypto-exchanges-set-12.md`
+Source of S12-Q1 ... S12-Q36, S12-Q39 and S12-Q40: `rulings.md`, section "Set 12 plan questions" and
+its "G2 review" items (S12-Q7 and S12-Q8 from probe 10; S12-Q3, S12-Q10 and S12-Q11 confirmed by the
+user 2026-10-23, S12-Q34, S12-Q35, S12-Q36, S12-Q39 and S12-Q40 still overnight defaults); the plan `docs/superpowers/plans/2026-10-23-crypto-exchanges-set-12.md`
 holds each question with its options and its measurements.
 
 ### Rulings this spec reverses
@@ -1321,6 +1324,8 @@ the constants `FIAT_ORDER_STATUSES` and `FIAT_PAYMENT_STATUSES` in `binance.fiat
     card:<fiatCurrency>:<sourceAmount>` (C-NR1), `comment` = `<sourceAmount> <fiatCurrency>`.
   - Sell: `-sourceAmount cryptoCurrency` with `untrackedCounterpart =
     card:<fiatCurrency>:<obtainAmount>`, `comment` = `<obtainAmount> <fiatCurrency>`.
+  - A `fiatCurrency` that is blank or holds `:` carries no marker code, so the record is one
+    `fiat-unrecognized` entry and the cursor moves on, as a P2P `fiat` of that shape is (S12-Q39).
   - `operation = 'card'`. Wallet per C-NR3 (Spot).
   - Key `${accountId}:fiatpay:${orderNo}:<walletKey>`.
 - Windows (C-NR-D): both fiat walks read 2-year windows. Probe 3: one 2-year span returned HTTP 200
@@ -1369,8 +1374,14 @@ the constants `FIAT_ORDER_STATUSES` and `FIAT_PAYMENT_STATUSES` in `binance.fiat
   r x (F(z) + H) runs, F(z) = 2z + 1, H = 2 x (ceil(log2(3 days / 1 hour)) + 1) and r the runs
   between two reads of the re-scan (S12-Q33). The first re-scan window of a run starts after a
   known stuck range that holds its start or ends a millisecond short of it, and the stored
-  re-scan hint is kept on a run that does not read the re-scan, so the halving of a full page is
-  not started again on every pass (S12-Q33, S12-Q35). Every run that holds a stuck range logs
+  forward, owed and re-scan hints are kept on a run that does not read their pass, so the halving
+  of a full page is not started again on every turn (S12-Q33, S12-Q35, S12-Q36). A dense hour in
+  the forward ground, or inside an owed range older than the re-scan window, is halved over the
+  turns of its own pass; the re-scan reads over a forward hour once the cursor is past it, in
+  spans up to a whole window wide, so the reads of its halving are `H = 3 x (ceil(log2(window /
+  1 hour)) + 1)` = 48 (a level costs the span read full, the half before the hour read and
+  committed, and the doubled span read full again), and 24 for an owed range 3 days wide
+  (S12-Q36). Every run that holds a stuck range logs
   `fiat-rescan-stuck` once, with the code only (no order number, no time), so a stretch the
   re-scan cannot read stays visible while it lasts (S12-Q24; RW5).
 - Marker total (C-NR1): Binance's decimal string is normalized to exactly the fiat's scale by the
@@ -2122,7 +2133,7 @@ rules are in section 5, "Fiat orders ...", and the rulings S12-Q18 ... S12-Q35 i
 | PW7 | PW6 over three runs | each run rejects the same way and reads the window again; the `p2p` cursor stays before it | same, "reads a window whose page cannot be read again on every run, never passing it" |
 | PW8 | the `p2p` cursor of PW7 more than a day behind `latestSyncedAt` | the history caption shows | `src/screens/account-detail/crypto-sync-section/binance-history-status.test.ts`: "is behind while the P2P walk is held more than a day by a page it cannot read" |
 | FW1 | the fiat walks: cooling down, no credentials, unreadable state; a failure while they run | as PW1 to PW3, for both walks | `binance.fiat-history.test.ts`: "a fiat walk that stops", "a failure of the $name walk" |
-| FW2 | the fiat orders and payments walks over generated worlds: six clocks, 30 seeds and the named seeds, ten kinds of owed ground (S12-Q22, S12-Q23, S12-Q24, S12-Q30, S12-Q32, S12-Q33) | every record Binance serves is imported within the bound `r x F(z)`, and `r x (F(z) + H)` in a dense world (section 1, S12-Q32 and S12-Q33), each key once | `binance.fiat-history.properties.test.ts`: "the $kindName walk over generated worlds, runs $label", "with $stuck owed ground placed $place" (the case titles of a seed are built by `casesOf`) |
+| FW2 | the fiat orders and payments walks over generated worlds: six clocks, 30 seeds and the named seeds, twelve kinds of owed ground (S12-Q22, S12-Q23, S12-Q24, S12-Q30, S12-Q32, S12-Q33, S12-Q36) | every record Binance serves is imported within the bound `r x F(z)`, and `r x (F(z) + H)` in a dense world (section 1, S12-Q32, S12-Q33 and S12-Q36), each key once | `binance.fiat-history.properties.test.ts`: "the $kindName walk over generated worlds, runs $label", "with $stuck owed ground placed $place" (the case titles of a seed are built by `casesOf`) |
 | FW3 | the fiat walks over generated statuses (32 seeds, clock gaps 0, 1 h and 1 day) | each settled record once at its exact amount and marker; each refusal exactly one `fiat-unrecognized` entry; the untracked ticker once; no row for a record that is `Processing`; no owed point | same, "the $kindName walk over generated statuses, runs $gapMs ms apart", "imports each settled record once at its exact amount, lists each refusal once, and ends current: seed %i" |
 | FQ1 | orders, current, the run after a forward read, records 2 h and 30 d behind the cursor (S12-Q18) | a behind run re-scans the last two years and imports both; `complete` is false | `binance.fiat-history.test.ts`: "re-scans the last two years on the run after a forward read, so a late record is imported" |
 | FQ2 | the run after FQ1 | a forward read; `complete` is true | same, "reads forward again on the run after the re-scan, and reports complete" |
@@ -2132,7 +2143,7 @@ rules are in section 5, "Fiat orders ...", and the rulings S12-Q18 ... S12-Q35 i
 | FQ6 | fiat payments, current | forward and re-scan in one run | same, "reads forward and re-scans the last two years in the same run" |
 | FQ7 | orders, an owed point and no range | a forward run; the point on the 3rd call of a forward and of a re-scan run | same, "reads forward when the list holds no range, though a point is owed", "reads an owed point on the third call of a forward run and of a re-scan run" |
 | FQ8 | orders, a forward run that starts with the re-scan mark at the floor, absent or part way | complete, complete, not complete | same, "reports a forward read that starts with the re-scan at %s as complete: %s" |
-| FQ9 | a re-scan run; a forward run and an owed run | the re-scan run drops the forward hint and the forward read after it still reaches now; the other two keep the re-scan hint (S12-Q35) | same, "drops the forward hint on a re-scan run, and the forward read after it still reaches now", "keeps the re-scan hint on a forward run", "keeps the re-scan hint on a run that reads the owed windows" |
+| FQ9 | a re-scan run and an owed run with a forward hint stored; a forward run and a re-scan run with an owed hint stored; a forward run and an owed run with a re-scan hint stored | a run keeps the stored hints of the passes it does not read (S12-Q35, S12-Q36); the forward read after a re-scan run begins with the kept forward hint | same, "keeps the forward hint on a re-scan run, and the forward read after it begins with it", "keeps the forward hint on a run that reads the owed windows", "keeps the owed hint on a forward run", "keeps the owed hint on a re-scan run", "keeps the re-scan hint on a forward run", "keeps the re-scan hint on a run that reads the owed windows" |
 | FQ10 | orders, a range that no read clears (a page that drifts; a page that throws) | the run after a behind run reads forward and imports a new order on run 2; the drift is logged, the throw rejects the run (S12-Q21) | same, "reads forward after every behind run, so a new order imports on the second run", "fails the run on a window whose page cannot be read, and reads forward on the next" |
 | FQ11 | orders, owed ground older than Binance serves (-5026) | read as empty by the `DepthGuard` narrowing, one series on each owed run; the range leaves the list | same, "reads ground older than Binance serves as empty, one series on each owed run" |
 | FQ12 | the `behindRun` and `rescanTurn` marks | each is read as absent unless `true`, round-trips through a walk patch, and a disconnect drops both | same, "stores that a behind run ran, and clears it on the forward run after", "reads forward when the last run read behind, though the list still holds a range", "alternates the owed range and the last two years on the behind runs, a forward run between", "reads a stored behind mark with no re-scan mark as a behind run, and reads the owed range after"; `src/crypto-sync/exchange/walk-state/walk-state.behind-run.test.ts`: "the %s mark of a walk", "the turn marks of a walk" |
@@ -2150,6 +2161,9 @@ rules are in section 5, "Fiat orders ...", and the rulings S12-Q18 ... S12-Q35 i
 | FQ24 | fiat payments and orders, a re-scan over several runs with drifting owed days (S12-Q30, S12-Q32) | the pass ends within its bound and starts again at the floor; a hint that ends at or past the window end is dropped | `binance.fiat-history.owed-ground.test.ts`: "$name: a re-scan that goes on over several runs", "imports a record served part way through it within the bound", "starts the pass again at the history floor once it has read to its end" |
 | FQ25 | fiat payments, a re-scan window with one failing day (S12-Q32) | the first pass is 3 reads and the next 2 | same, "fiat payments: a re-scan window with one failing day, runs %i ms apart", "reads the first pass in 3 reads and the next one in 2" |
 | FQ26 | fiat payments and orders, a full page of rows right after a stuck day (S12-Q33) | every record is imported; a window that starts at a stuck day or a millisecond short of it starts after the day | same, "$name: a full page of rows right after a stuck day", "imports every record of the world", "imports every record of the world from a re-scan mark $name" |
+| FQ27 | fiat orders, a dense hour (more rows of each type than a page) in the forward ground with an owed day that no read clears; and in an owed range older than the re-scan window (S12-Q36) | every row of the hour and the orders after it are imported within the bound (the pass keeps its halving across the turns of the other passes) | `binance.fiat-history.owed-ground.test.ts`: "fiat orders: a dense hour that a pass halves over several runs", "imports a dense forward hour and the orders after it while an owed day stays unreadable", "imports a dense hour inside an owed range older than the re-scan window" |
+| FQ28 | fiat payments, a completed buy and a completed sale whose `fiatCurrency` is blank or holds `:` (S12-Q39) | two `fiat-unrecognized` entries, no row, no owed point, the cursor moves on | `binance.fiat-history.test.ts`: "lists a buy and a sale with %s as not recognized and owes no point" |
+| FQ29 | a fiat record whose `createTime` holds a fraction of a millisecond, read through the real request builder; a record time past 2^53 (S12-Q40) | its point is read in whole milliseconds (no request with a decimal `beginTime`), no run is rejected for it, the record stays owed and visible; a time past 2^53 owes a point and throws nothing | `binance.fiat-history.test.ts`: "a $name record whose time holds a fraction of a millisecond", "reads its point in whole milliseconds, and no run is rejected for it"; `binance.history-records.test.ts`: "owes a point of whole milliseconds for a record at a fraction of one, and gives the same", "owes a point of whole milliseconds for an extent with a fraction at each end", "owes a point, and never throws, for a time past the safe integer" |
 | RW1 | the arm run | the walks in spec order, P2P and fiat after dust and before trades | `src/crypto-sync/run-crypto-sync/run-crypto-sync.test.ts`: "runs the walks in order, capital, Pay, Transfer, Earn, Convert, the dust read, P2P, fiat orders, fiat payments, then the trade read, all on one run object" |
 | RW2 | the P2P walk rejects with `BinanceHistoryParseError` | logged under its own tag with name and code only; the balance result resolves | same, "still resolves with the balance result when the P2P walk fails, logging only its name" |
 | RW3 | RW2 | the fiat and trade reads still run; each logs its own failure | same, "runs the fiat walks and the trade read even when the P2P walk failed: each logs its own failure" |
