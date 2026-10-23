@@ -505,12 +505,9 @@ describe('kill-guard script scan: every tracked script and the routine commands'
     expect(routine.filter((_command, index) => kinds[index] !== 'allow')).toEqual([]);
   });
 
-  it.each(flippedRoutine)(
-    'denies %s as %s (flipped by P1 B / P14 A, pending user), from the repository root',
-    (command, kind) => {
-      expect(decide(command, real)).toBe(kind);
-    },
-  );
+  it.each(flippedRoutine)('denies %s as %s, from the repository root', (command, kind) => {
+    expect(decide(command, real)).toBe(kind);
+  });
 
   it('allows the queue script as a worktree of this repository, by relative and absolute path', () => {
     expect(decide('bash scripts/job-queue.sh verify /tmp/wt x', real)).toBe('allow');

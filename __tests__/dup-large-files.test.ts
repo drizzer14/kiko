@@ -385,7 +385,7 @@ describe('scripts/checks/dup.sh large files', () => {
     expect(project.invocations().filter((call) => call.includes('--silent'))).toHaveLength(0);
   });
 
-  it('fails, never stays silent, when jscpd fails on a large file (flipped by P11 A row 6, pending user)', () => {
+  it('fails, never stays silent, when jscpd fails on a large file', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
     listAtNeverFailingCeiling(project, ['src/big.ts']);
@@ -397,7 +397,7 @@ describe('scripts/checks/dup.sh large files', () => {
     expect(result.stderr).toMatch(/could not measure[^\n]*src\/big\.ts[^\n]*jscpd failed/);
   });
 
-  it('fails when jscpd writes no figure for a large file (flipped by P11 A row 6, pending user)', () => {
+  it('fails when jscpd writes no figure for a large file', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
     listAtNeverFailingCeiling(project, ['src/big.ts']);
@@ -409,7 +409,7 @@ describe('scripts/checks/dup.sh large files', () => {
     expect(result.stderr).toMatch(/could not measure[^\n]*src\/big\.ts[^\n]*no figure/);
   });
 
-  it('fails, never stays silent, when jscpd cannot list the files it skipped (flipped by P11 A row 6, pending user)', () => {
+  it('fails, never stays silent, when jscpd cannot list the files it skipped', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
     listAtNeverFailingCeiling(project, ['src/big.ts']);
