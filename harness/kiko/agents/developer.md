@@ -40,7 +40,13 @@ Rules:
   do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a
   new file first), then edit it with Edit/Write.
 - Keep the diff small and scoped to the task. Do not refactor unrelated code.
-- Iterate with SCOPED tests (only the touched files) to save tokens. Do not run a manual `make lint` after each change — the PostToolUse hook (`scripts/checks/fast.sh`) already lints every file you edit automatically, so a per-edit lint is redundant. Ask the coordinator to queue the verify ONCE, at the end (`bash scripts/job-queue.sh verify <worktree> <label>`; it runs lint, the full jest suite, and the gate in one fail-fast pass), and fix what it reports until it is green, before you report done. `make verify`, `make gate`, `make deep`, a full jest run, and a whole-repository Semgrep scan are denied outside the queue.
+- Iterate with SCOPED tests (only the touched files) to save tokens. Do not run a manual
+  `make lint` after each change — the PostToolUse hook (`scripts/checks/fast.sh`) already lints
+  every file you edit automatically, so a per-edit lint is redundant. Ask the coordinator to queue
+  the verify ONCE, at the end (`bash scripts/job-queue.sh verify <worktree> <label>`; it runs
+  lint, the full jest suite, and the gate in one fail-fast pass), and fix what it reports until it
+  is green, before you report done. `make verify`, `make gate`, `make deep`, a full jest run, and
+  a whole-repository Semgrep scan are denied outside the queue.
 - A new rule or exemption covers every call-site class, with one red row per class (for a version
   or router rule, memory "Pin router matrix at first ruling"). Scope a scan or exemption by
   structure and state the scope. Run new diagnostic output against the real data (for example

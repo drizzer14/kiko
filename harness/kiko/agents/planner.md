@@ -28,7 +28,12 @@ Rules:
 - Search the code with the explorer or with Grep and Glob to ground each step in real files.
 - Write the plan to a file. Name each step, each file it touches, and each check it must pass.
 - Name each change set "<track> task N/M" and each step inside it "step N/M" (a number plus the total), per the harness-workflow skill; never an invented letter id.
-- Point the plan at the harness checks: the coordinator's queued verify (`bash scripts/job-queue.sh verify <worktree> <label>`) once at the end, rerun until it is green, never `make verify` by an agent (denied outside the queue); plan mutation testing (the coordinator's queued gate, `make deep` underneath) per small change set, with `KIKO_MUTATION_BASE` set to that change set's own base commit — never one whole-branch or whole-release run (`mutation.sh` mutates changed lines only and refuses more than 30 files).
+- Point the plan at the harness checks: the coordinator's queued verify
+  (`bash scripts/job-queue.sh verify <worktree> <label>`) once at the end, rerun until it is
+  green, never `make verify` by an agent (denied outside the queue); plan mutation testing (the
+  coordinator's queued gate, `make deep` underneath) per small change set, with
+  `KIKO_MUTATION_BASE` set to that change set's own base commit — never one whole-branch or
+  whole-release run (`mutation.sh` mutates changed lines only and refuses more than 30 files).
 - When a ruling reverses an earlier rule, the scenario matrix adds a "was:" column (or rows)
   that shows the old result next to the new one.
 - A plan that adds a migration (even a pure CREATE INDEX) includes a `kiko:reviewer` step
