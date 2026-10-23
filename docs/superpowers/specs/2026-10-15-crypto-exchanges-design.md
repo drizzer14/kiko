@@ -106,7 +106,7 @@ gap `binance-backfill-fix/2`.
 | R-Q10 | "How banks are connected today": an "Exchange or wallet" picker field in the account form (catalog bottom sheet + not-affiliated caption), the exchange's key form inline below; the same sheet from the account detail; an exchange catalog stored in `bankId` (no migration); an exchange provider registry replaces the closed lists; one Keychain entry per exchange per account | 8 |
 | R-Tech | Shared layer now with Binance first; history read account-wide; today's BTC keys byte-identical; new coins' Pay keys add the currency; migration 0044 frozen, `.kiko` restore keeps the frozen 1.0 list; LD* skipped in Spot; 2 SPKI pins per new host; walk state in a `sync_state` JSON column; one budget lane and cursor per new history read; every history read after the balance read, never failing it; exclusion only by stored markers; en + uk with translator review; privacy policy and App Privacy label per exchange. "14 change sets; sets 7-11 wait for probe 2": the coordinator split set 1 into two, so 1.3-a has 15 sets and probe 2 gates sets 8-12 | all |
 | R-Display (Q1 A) | A crypto amount displays its exact value with trailing zeros trimmed, never fewer than 2 decimals (BTC too); stored amounts stay exact; fiat display unchanged | 3, 11 (set 1) |
-| R-Walk A (user, 2026-10-16) | The Convert, P2P and fiat walks read forward from `HISTORY_FLOOR_MS` with the existing walk engine (`buildWalkWindows`); recent records arrive last, and the history caption shows meanwhile. Set 11 measures the lane caps and may raise the P2P lane cap only with a measured reason | 5, 11 |
+| R-Walk A (user, 2026-10-16) | The Convert, P2P and fiat walks read forward from `HISTORY_FLOOR_MS` with the existing walk engine (`buildWalkWindows`); recent records arrive last, and the history caption shows meanwhile. Set 11 measured the trades lane (section 5 "Spot trades") and left the P2P lane cap alone; the P2P cap moves to set 12, which may raise it only with a measured reason | 5, 12 |
 | C-P2P-SELL-MAKER B (FINAL, user, 2026-10-16) | SELL and MAKER P2P orders are listed on the not-imported line, not imported (the coordinator ruling of the same id below, confirmed by the user) | 5, 6, 7, 10 |
 
 ### Coordinator rulings (binding; `rulings.md`, "Spec NEEDS RULING")
@@ -198,6 +198,24 @@ Source of S9-Q1 ... S9-Q10: `rulings.md`, section "Set 9 plan questions".
 | G2-C A (COORDINATOR) | The round-robin spends the calls left each run; revisit only on a measured run cost (set 11) | 10, 11 |
 
 Source of S10-Q1 ... G2-C: `rulings.md`, section "Set 10 plan questions" (S10-Q4 from probe 8).
+
+| Ruling | Answer | Sets |
+|---|---|---|
+| S11-Q1 A (COORDINATOR) | The balance sync's Spot read returns the balance texts for the rotation (`spotBalanceTexts` through `ProviderRead` and `BalanceSyncResult`); no extra `/api/v3/account` call | 11 |
+| S11-Q2 A (USER, probe 9) | `myTrades` on BTCUSDT: 40 trades; `id` and `orderId` safe integers, ascending; `time` an integer; `isBuyer`, `isMaker`, `isBestMatch` booleans; `price`, `qty`, `quoteQty`, `commission` plain decimal text with at most 8 decimals; `orderId` and `orderId` + `fromId` pages answered 200. Candidates 7; the report is in section 5 "Spot trades". The trades lane cap stays 100. A FLOOR: only the coins held now were walked | 11 |
+| S11-Q3 A (COORDINATOR) | An order cut by a page boundary is written from the fills seen; its next fill finds it by key prefix and triggers one weight-5 re-read; no fill sits unwritten behind a stored cursor | 11 |
+| S11-Q4 A (COORDINATOR) | Both legs untracked and the fee in a tracked third coin: a fee row in the C-NR5 form, both tickers listed | 11 |
+| S11-Q5 A (COORDINATOR) | A leg that rounds to 0 units writes neither leg; a non-zero fee row still imports; the symbol continues (as S9-Q2) | 11 |
+| S11-Q6 A (COORDINATOR) | A row the rules refuse is a per-symbol failure (`BinanceWalkStop` joins `isSymbolFailure`): the symbol ends `failed`, is logged, and a too-large coin is listed (G2-A) | 11 |
+| S11-Q7 A, S11-Q8 A (COORDINATOR) | The set 10 survivors are the first step of set 11; `.otherwise(() => 'rest')` -> `undefined` is equivalent | 11 |
+| S11-Q9 B (COORDINATOR) | The two `bySymbol` comparator survivors are not equivalent (a comparator that never returns a positive value works only because V8's sort ignores that sign; the app runs Hermes): `bySymbol` is exported and a direct test pins all three signs | 11 |
+| S11-Q10 A (OVERNIGHT DEFAULT, pending user) | The user rules in the morning. A tracked fiat trade leg or fiat fee with digits past the fiat scale is rounded half away from zero once per order, after the text sum, with the `row-precision-rounded` log, not a symbol stop (measured on public trades: BTCEUR 498 of 500 had 3-7 decimals in `quoteQty`) | 11 |
+| S11-Q11 A (COORDINATOR) | A zero-row order that is the last order of a page holds the cursor at its first fill | 11 |
+| S11-Q12 A (COORDINATOR) | `callsBySymbol` and `countedRunOf` are deleted (no production reader); the trade walk returns `{ imported }` and tests count calls in their fakes | 11 |
+| S11-Q13 A (COORDINATOR; data correctness, so the fix, not a cap) | The exchange state keeps a per-symbol set of rowless order ids (`rowlessOrderIds`); a later fill of such an order counts as imported earlier and triggers the weight-5 re-read; the id leaves when its order writes a row; a disconnect clears it | 11 |
+
+Source of S11-Q1 ... S11-Q13: `rulings.md`, section "Set 11 plan questions" (S11-Q2 from probe 9). The
+set 10 whole-branch items there (FR-Q1, FR-Q2) belong to set 10.
 
 ### Rulings this spec reverses
 
@@ -873,8 +891,11 @@ Each is at or under `UID_WEIGHT_BUDGET_1M = 180_000`. The budget check is `canAf
 - At the first fiat-orders call, a last header reading 135001 or more (another reader's weight in
   the same minute) refuses the call. A last header reading 135000 allows the call.
 
-The lane caps are starting values. Set 11 measures a caught-up run and a backfill run on the user's
-account (calls, wall time at the 350 ms gate, weight peaks) and records them. Set 12 does the same
+The lane caps are starting values. Set 11 measured the trades lane (probe 9, S11-Q2, on the user's
+account, at the 350 ms gate): a backfill run took 7 calls, 40 records, 6.9 s and a `/api/*` weight
+peak of 151; a caught-up run took 7 calls, 0 records, 7.9 s and a peak of 200; there were 0
+throttle waits. One run at the cap of `LANE_CALL_CAPS.trades` (100) covers it, so the cap stays.
+The limit: only the coins held now were walked, so the numbers are a floor. Set 12 does the same
 for P2P, Convert and fiat.
 
 First walks at the starting caps, over the span from `HISTORY_FLOOR_MS` (2017-07-14) to 2026-10:
@@ -908,8 +929,8 @@ launches or pulls. Balances are right from the first run, because the balance re
 history walk and never waits on one (R-Tech).
 
 A cap changes only with a measured reason (memory "bounds are measured"). The P2P lane is the first
-candidate, because its runs count is set by the cap; set 11 may raise it only with a measured
-reason (R-Walk A).
+candidate, because its runs count is set by the cap; the P2P cap moves to set 12, which may raise
+it only with a measured reason (R-Walk A). Set 11 left it alone.
 
 ### Capital (deposits, withdrawals)
 
@@ -1231,8 +1252,8 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   symbols (S10-Q3). The request is `showPermissionSets=false` with no `permissions` filter: the
   unfiltered body is 17.8 MB decoded, a `symbols=[...]` list holding one unlisted name is refused
   whole (HTTP 400, -1121), and `permissions=SPOT` leaves out the BREAK leveraged tokens a user
-  can still hold old fills on (S10-Q5b, G1-A). Set 11's walk keeps only the rows of
-  `tradeCandidatesOf` (no walk exists yet).
+  can still hold old fills on (S10-Q5b, G1-A). The set 11 walk (`binance.trade-history.ts`) keeps
+  only the rows of `tradeCandidatesOf`.
   - Candidate rule (G2-B): a symbol that is readable, with at least one touched coin and the
     other coin touched or one of `TRADE_MAIN_QUOTES`. Readable = a status in
     `TRADING_SYMBOL_STATUSES`, or a stored numeric `fromId` in any listed status (S10-Q2). The
@@ -1269,12 +1290,28 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   did not list reads as `0/0`. No snapshot patch is written when no entry would differ.
 - Error policy (G2-A): an error of one symbol (`IdCursorPageError`, `BinanceHistoryParseError`,
   `BinanceInvalidSymbolError` for -1121) ends only that symbol with end `failed`; its coins stay
-  unfinished, it is retried next cycle, and the error is kept for set 11 to log. Every other
+  unfinished, it is retried next cycle, and the trade walk logs it (fixed tag). Every other
   error (a rate limit, a refused key, an account-wide request or network failure) stops the run
   and comes back with the progress made so far, so the caller writes it first.
-- F2 (set 11): the balance texts handed to the rotation must come from a balance read taken
-  BEFORE the trade reads, so a balance that moves during the reads is seen as changed next run.
+- Symbol failures (set 11, S11-Q6): a row the rules refuse (`BinanceWalkStop`, for example an
+  amount past the safe-integer bound) joins `isSymbolFailure`: that symbol ends `failed` and is
+  logged, a too-large coin is listed as oversized before any row, and the other symbols are read.
+- F2 (set 11, S11-Q1): the balance texts handed to the rotation (`spotBalanceTexts`) come from
+  the balance sync's own Spot read, taken BEFORE the trade reads and passed through `ProviderRead`
+  and `BalanceSyncResult` (no extra `/api/v3/account` call), so a balance that moves during the
+  reads is seen as changed next run. Without the texts the trade read does not run.
+- Rate limit (set 11): the trade read runs last, after the other walks, in the `trades` lane
+  (`LANE_CALL_CAPS.trades`; narrowing calls `LANE_NARROWING_CALLS.trades` is 0). A `myTrades` call
+  costs `COSTS.myTrades` (20), a whole-order read `COSTS.orderFills` (5), both on the `/api/*`
+  reading judged against `API_IP_BUDGET_1M`; `COSTS.exchangeInfo` (20) is the discovery call.
+  Read the constants in `binance.history-budget.ts` for the values.
+- Amount texts (set 11 G1 fix): `qty`, `quoteQty` and `commission` are read as exact unsigned
+  plain decimal text (`decimalText` in `binance.history-client.ts`); any other text, such as an
+  empty string, `1.2.3` or `1e-8`, fails the whole page (`BinanceHistoryParseError`), never a
+  skipped fill.
 - Paging (the id-cursor pager): `fromId` = the stored cursor, else 0; no time parameters (probe P1).
+  Binance's `fromId` is INCLUSIVE (doc: "TradeId to fetch from", the rows are those with id >=
+  `fromId`), so the pager asks last id + 1.
   After a completed read the symbol stores `fromId` = last trade id read + 1, or 0 when the read
   returned no trade, so a read symbol never stores null: null (or no entry) means only "never read",
   and the caption rule (section 2) follows from that.
@@ -1288,8 +1325,10 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   batch holds a fill of such an order, the walk reads that order's fills whole with
   `myTrades?symbol=&orderId=&fromId=`, paging by `fromId` (last id + 1) until a short page, before
   it writes the order, and writes every row of the order from the whole set (`addManyDedup` updates
-  the leg and fee amounts, a bank-owned column, under the same keys). An order whose fills span a
-  page boundary inside one run pages on before it is written. P15b passed in probe 3: `orderId` +
+  the leg and fee amounts, a bank-owned column, under the same keys). An order cut by a page
+  boundary (S11-Q3) is NOT paged on: it is written from the fills seen, and its next fill (the
+  next page of the same run or a later run) finds it by the key prefix and triggers one weight-5
+  re-read, so no fill sits unwritten behind a stored cursor. P15b passed in probe 3: `orderId` +
   `fromId` was accepted and returned the order's fills in ascending id order, and `fromId` one past
   the last fill returned 0 rows. So the re-read pages by `fromId` (C-NR7), and C-NR4 and C-NR6 stay
   unused.
@@ -1333,9 +1372,30 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
   `src/holdings/deletable/deletable.ts` allows `manual` and `import` only; `transactionsRepo.remove`
   refuses a synced row, and a cascade keeps every bank-owned row), so a pair id on the leg would
   remove nothing more.
+- Both legs untracked (S11-Q4): no leg row; both tickers join the not-tracked line; a fee in a
+  tracked third coin still gives its row in the C-NR5 form. A leg that rounds to 0 units (S11-Q5):
+  neither leg is written (no half pair); a non-zero fee row still imports; the symbol goes on, no
+  stop.
+- Fiat trade legs (S11-Q10, OVERNIGHT DEFAULT, pending user): a tracked fiat leg or fiat fee with
+  digits past the fiat scale is rounded half away from zero ONCE per order, after the text sum
+  of its fills, never per fill (`AmountUse` `'trade-row'` in `exchange/amounts/amounts.ts`), with
+  the `row-precision-rounded` log; it is not a symbol stop. Which currencies may round is
+  `mayRound` in the same file; an amount it refuses fails as `amount-precision` (S11-Q6).
+- Rowless orders (S11-Q11, S11-Q13): an order whose seen fills round to no row writes nothing.
+  An order of that kind that is the last order of a page holds the cursor at its first fill, so
+  its next fill arrives as a fresh read of it (S11-Q11). An order of that kind that the cursor
+  has passed is kept in the symbol's `rowlessOrderIds` (`walk-state.ts`, `trades.symbols[symbol]`,
+  ascending, written with the cursor, absent when empty, cleared on disconnect): a later fill of
+  it counts as "imported earlier" and triggers the weight-5 re-read, so its earlier fills are not
+  lost. The set holds only the ids of orders that came to no row and that the cursor has passed,
+  each leaving when its order writes a row (or on disconnect), so it grows only with orders that
+  never reach one unit, one number per order per symbol.
 - Pair id `${accountId}:trade:${symbol}:${orderId}`; legs `${pairId}:<walletKey>`; fee
   `${pairId}:fee:<walletKey>`. Time = the order's first fill time. `operation = 'trade'` on every
-  leg.
+  leg. The pair id is unique because Binance names one order by (`symbol`, `orderId`): its Query
+  order endpoint needs `symbol` with `orderId`, and the id holds the account, the symbol and the
+  order. It carries no `:<COIN>` suffix (the symbol names both coins); each row key ends with the
+  wallet key, which holds the coin, so every row key is per coin.
 
 ## 6. Row mapping and statistics
 
@@ -1704,6 +1764,37 @@ Trades (set 11; property tests at clock gaps 0, 1 h, 1 day):
 | T12b | T12 with a BNB commission on each fill | BNB | as T12, plus one BNB fee row `${pairId}:fee:<walletKey>` refreshed to the summed commission of A1 + A2, `exchangePairId = pairId` (the USDT leg keeps none); no second fee row; the fee row stays on any leg or holding delete (a synced row is never deleted) | excluded | not imported |
 | T14 | buy PEPE (untracked) with USDT (C-NR5) | BNB | USDT Spot -x, `asset:PEPE`; BNB Spot fee row `${pairId}:fee:<walletKey>`, `untrackedCounterpart = asset:PEPE`, no `exchangeCounterpartHoldingId`, `operation = 'trade-fee'`, `exchangePairId = pairId` (the USDT leg keeps none); the fee row stays on any leg or holding delete (a synced row is never deleted) | both excluded | not imported |
 
+Trade requests and the walk as built (set 11; no trade read ran before, so "was:" is "no trade
+read"). Each row names the test file that holds it, in `src/crypto-sync/binance/` unless a path is
+given; weights and caps are the constants `COSTS`, `LANE_CALL_CAPS` and `API_IP_BUDGET_1M`.
+
+| # | Input | Result now | Test |
+|---|---|---|---|
+| TC1 | `fetchMyTrades('BTCUSDT', 0)` | signed `myTrades` with `symbol`, `fromId` and the page limit; the `/api/*` weight header read | `binance.history-client.my-trades.test.ts` |
+| TC2 | `fetchOrderFills` page 1, then page 2 | page 1 has `orderId` and no `fromId`; from page 2 `fromId` is added | same, `fetchOrderFills` |
+| TC3 | body not an array; a row with a field of the wrong type, or `qty`, `quoteQty`, `commission` not exact plain decimal text (`decimalText`) | `BinanceHistoryParseError` for the whole page, never a skipped fill | same |
+| TC4 | HTTP 429 / 418; code -1121; HTTP 500 | `BinanceRateLimitError`; `BinanceInvalidSymbolError`; a request failure | same |
+| TW1 | the arm run | the trade read runs last, after the dust read, in the same `run`, with the Spot texts | `run-crypto-sync/run-crypto-sync.test.ts` |
+| TW2 | cooling down; no credentials; no Spot texts; the lane refuses the symbol list; unreadable stored state | no request (the state error rejects); `{ imported: 0 }` otherwise | `binance.trade-history.test.ts`, "a run that does not start" |
+| TW3 | 429 on a page, on a re-read, on the symbol list | what was read before is written, the cooldown is set, the run resolves; a limited symbol list sends no trade request | same, "a rate limit" |
+| TW5 | one symbol throws -1121, one a parse error, one an amount past the safe integer | each ends `failed`, one log line, the too-large coin listed before any row, the others read; an order the rules refuse writes nothing of its page | same, "a symbol that fails" |
+| TW6 | `addTransactions` rejects on a page | no cursor for that page, earlier progress kept, the error rethrown | same, "a write that fails" |
+| TW7 | an order cut by a page boundary | written from the fills seen, then re-read once and rewritten from all | same, "an order cut by a page boundary"; `binance.trade-history.real-sqlite.test.ts` |
+| TW8 | commission in a third coin, in the received coin, in the spent coin | rows per "Rows per order" | `binance.trade-history.rows.test.ts` |
+| TW9 | both legs untracked, a tracked third-coin fee | no leg, both tickers listed, the fee row | same, "a coin Kiko does not track" |
+| TW10 | a leg that rounds to 0 units; with a fee | neither leg; the fee row imports; no stop | same, "a leg that comes to no units at its coin scale" |
+| TW11 | an order re-read of more than one full page | one `orderFills` call per full page plus one for the short page | `binance.trade-history.test.ts`, "a re-read of an order" |
+| TW12 | a held symbol | its order is re-read first and the lane keeps one call for the rotation | same |
+| TW13 | a symbol with no trade | entry `{ fromId: 0 }` | same, "importing the fills of a symbol" |
+| TW14 | Spot body `{asset:' usdt ', free:'1.0', locked:'0'}` | `spotBalanceTexts.USDT = '1.0/0'` | `binance.provider.test.ts` |
+| TW15 | the prefix lookup | `EXPLAIN QUERY PLAN` uses `transactions_source_external`; `...:12:` does not match `...:123:` | `src/transactions/repo/transactions.repo.order-prefixes.real-sqlite.test.ts` |
+| TW16 | property at clock gaps 0 / 1 h / 1 day: random symbols, orders, fills added between runs, random lane cap and page limit, a thrower symbol, random 429s, fiat and BNB amounts, a rowless first part with another order between | every order of every non-failing symbol stored once per key with the exact aggregate; no fill lost or counted twice; no `heldOrderId` left; one currency per row key; one order per pair id | `binance.trade-history.properties.test.ts` |
+| TW17 | the caps | `LANE_CALL_CAPS.trades` x `COSTS.myTrades.api` + `COSTS.exchangeInfo.api` fits `API_IP_BUDGET_1M` | `binance.history-budget.test.ts` |
+| TW18 | a BTCEUR-shaped fill set (3-7 decimals), a sum that crosses a rounding boundary only after the sum, a fiat fee (S11-Q10) | rounded half away from zero once per order, `row-precision-rounded`, no stop | `binance.trade-history.rows.test.ts`, "a fiat leg past its scale" |
+| TW19 | a rowless order last on a page (S11-Q11) | the cursor holds at its first fill; next page, next run and a caught-up call each pinned | `binance.trade-history.test.ts`, "an order that comes to no row at the end of a page" |
+| TW20 | a rowless order the cursor passed, with its later fill on a later page or run (S11-Q13) | in `rowlessOrderIds`, stored with the cursor; the later fill re-reads and writes every fill; dropped when it writes a row; a held re-read keeps it | `binance.trade-history.rowless.test.ts` |
+| TW21 | a delete of a trade row (T12b) | a synced row is refused; a pair-reach delete removes that order's legs and fee row only | `binance.trade-history.real-sqlite.test.ts`, "deleting a trade" |
+
 Trade symbols, rotation and the id-cursor pager (set 10; no trades code existed before, so no
 "was:"). Statuses are Binance's words; read the constants `TRADE_MAIN_QUOTES`,
 `TRADING_SYMBOL_STATUSES` and `LANE_CALL_CAPS` for their members.
@@ -2058,8 +2149,8 @@ sets 1 and 4 also change `envelope.test.ts`'s `VERSION_DECISIONS`).
 | 7/15 | `operation` column (codes without `reward`, C-Div), C-NR1 code forms and parsers, render labels (no "Reward" step; `p2p:` renders "P2P purchase" only; `transactions.p2pSale` dropped, C-NR-F), copy, demo rows (no reward row) | `src/db/schema.ts`, `untracked-counterpart.ts`, `row-description.ts`, `exchange-description.ts`, `transactions.repo.ts`, `src/i18n/locales/{en,uk}.ts` (no `transactions.reward`), migration files, demo seed + regen (47 changed files; 7 mutable source files, `make mutable`) | 0063 ADD COLUMN; `kiko:reviewer` before BATCH READY | label order cases; code parse cases incl. N3; back-compat import of an export without the column; exclusion unchanged | no |
 | 8/15 | Convert walk: status first, then `walletType` placement (C-Convert-wallet), floor `HISTORY_FLOOR_MS` read forward with every window read (probe 5: no refusal to the floor; C-NR-C; R-Walk A); no new refusal code in `requestFailedOf` (probe 5); the `notImported` list (`NOT_IMPORTED_KINDS` tuple, type, parse, union patch, disconnect removal), `notImportedCountsOf`, the not-imported line and the `accountDetail.notImported*` copy (en + uk, translator review) | `binance.convert-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts`, `exchange/walk-state/`, `exchange/history-status/`, `disconnect.ts`, `crypto-sync-section.component.tsx`, `src/i18n/locales/{en,uk}.ts` (measured: 45 files changed under `src`, `git diff --stat df5475f6..HEAD -- src`; Convert -5026 fails the run, S8-C1) | none | C1-C6, C8-C10 (C8: the 2026-01 conversion behind 6+ empty windows); N4, N5, N6, N7 (`convert-unrecognized` only); K8; window halving on `moreData`; walk properties at 0 / 1 h / 1 day | settled (P4) |
 | 9/15 | dust read (no dividend walk, C-Div) | `binance.dust-history.ts` (new), client, budget, run wiring (4 mutable files, measured: `KIKO_MUTATION_BASE=a730a322 make mutable`) | none | D1-D12 (D1b, D5b, D9b included) | P7 partly settled (empty shape); record shape, `transId` type and non-BNB targets open |
-| 10/15 | trades 1/2: symbol discovery, rotation with the reserved call, `idCursorPager` | `exchange/paging/id-cursor-pager.ts`, `binance.trade-symbols.ts` (new), public `exchangeInfo` read, `walk-state` trades part (~7; measured at step 10) | none | rotation bound `ceil(S / L)` property with `L >= 1` when changed symbols fill the lane; discovery cases; pager pages | settled (P1, P2) |
-| 11/15 | trades 2/2: order aggregation, `orderId` + `fromId` re-read (P15b PASS), rows, fee rules (C-NR2, C-NR5), `/api/*` IP budget at the measured weights (20 / 5 / 5), lane caps measured; may raise the P2P lane cap only with a measured reason (R-Walk A) | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | T1-T12b and T14 exact parity; properties at 0 / 1 h / 1 day; measured run report | settled (P1, P3, P15, P15b) |
+| 10/15 | trades 1/2: symbol discovery, rotation with the reserved call, `idCursorPager` | `exchange/paging/id-cursor-pager.ts`, `binance.trade-symbols.ts` (new), public `exchangeInfo` read, `walk-state` trades part (7, measured; probe 9 found 7 candidates) | none | rotation bound `ceil(S / L)` property with `L >= 1` when changed symbols fill the lane; discovery cases; pager pages | settled (P1, P2) |
+| 11/15 | trades 2/2: order aggregation, `orderId` + `fromId` re-read (P15b PASS), rows, fee rules (C-NR2, C-NR5), `/api/*` IP budget at the measured weights (20 / 5 / 5), trades lane cap measured by probe 9 (S11-Q2; the P2P lane cap moves to set 12, R-Walk A); the rulings S11-Q1 ... S11-Q13 (rowless-order set, fiat rounding) | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts`, `exchange/amounts/amounts.ts`, `exchange/walk-state/walk-state.ts` (mutable files: 12 (cap 30), 1179 changed lines, timeout share 0.7%, measured: `KIKO_MUTATION_BASE=3d0df6d4 make mutable` at a2147c92) | none | T1-T12b and T14 exact parity; TC1-TC4 and TW1-TW21 (section 7); properties at 0 / 1 h / 1 day; measured run report (section 5) | settled (P1, P3, P15, P15b) |
 | 12/15 | P2P walk: status first, then side, role and amount (C-P5, C-NR-B), BUY TAKER only, SELL and MAKER into `notImported`, fiat-asset rows on the fiat holding, floor `HISTORY_FLOOR_MS` read forward with every window read (probe 5: no refusal to the floor; C-P2P-stop; R-Walk A), UID 900. Fiat orders and payments walks (no real row observed): 2-year windows from `HISTORY_FLOOR_MS` read forward with every window read (probe 5; C-NR-D; R-Walk A), the strict status allowlist with the doc-quote rule (C-NR-E), UID 45000 lane. First step: quote Binance's doc text for the ignored fiat words | `binance.p2p-history.ts`, `binance.fiat-history.ts` (new), client, budget, run wiring (~7) | none | P1-P11 (P1b-P1h, P2b-P2d, P3b-P3d, P7b, P8b included), F1-F6; N5b; the fiat-orders budget cases (section 5); properties at 0 / 1 h / 1 day; measured P2P first-walk report (calls, runs) | P5 settled; P6 open (no real row observed), allowlist defaults |
 | 13/15 | read-time bank-debit matcher and its caption | `src/statistics/exchange-funding-match/` (new), `statistics.screen.tsx`, the transaction form caption slot, i18n, demo bank debit (~6) | none | M1-M14 (M14: fiat-asset P2P); one-to-one tie-breaks with a distinct value per sort key | no |
 | 14/15 | exchange catalog, picker field, registry wiring, shared provider sheet, `syncJobsFor` | `exchange-catalog/`, `exchange/registry/`, `exchange-type-field/` (new), `crypto-sync-form`, `account-form.screen.tsx`, `crypto-sync-section`, `add-bank-sheet` -> `provider-sheet`, `bank-sync-section`, `sync-jobs.ts`, `provider.ts`, `deletable.ts`, i18n, `build-demo-snapshot.ts` (crypto `bankId` kept) + `binance` and `btc_wallet` demo accounts (`institution` null) + demo regen (~16) | none | picker and caption render; registry skip of an unwired id; connect-first rollback; demo invariant per connectable catalog entry | no |

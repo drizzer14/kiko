@@ -144,8 +144,8 @@ text. **The developer re-greps every fact on the actual base before relying on i
   `orderId` is unique per symbol and the symbol names both coins, so the pair id is already per order and per coin
   pair; no `:<COIN>` suffix. Legs `${pairId}:${walletKey}`, fee `${pairId}:fee:${walletKey}`; the wallet key holds
   the coin, so each row key is per coin. The property asserts each key once and one currency per row key.
-- Per-symbol calls come from the budget, not `readIdCursor`'s `calls`: the walk wraps `run.budget.record` to count
-  `trades` calls per symbol and returns `{ imported, callsBySymbol }`.
+- Per-symbol calls (S11-Q12 A, 2026-10-23): the walk result is `{ imported }`. `callsBySymbol` and `countedRunOf`
+  were deleted (no production reader); the tests count `trades` calls in their fakes.
 
 ## Scenario matrix (each row is a Jest case)
 
@@ -170,7 +170,7 @@ code ran before, so "was:" is "no trade read" unless a value is given):
 | TW9 | both legs untracked, BNB fee | no leg; both tickers listed; BNB fee row `asset:<received>`, `exchangePairId`, `trade-fee` | - |
 | TW10 | a leg that rounds to 0 units; with a BNB fee | neither leg; BNB fee row imports; no stop | - |
 | TW11 | an order re-read of 2500 fills | 3 `orderFills` calls (`floor(f / 1000) + 1`), 15 weight | - |
-| TW12 | a held symbol on a lane of 100 | at most 99 `trades` calls for it (`callsBySymbol`) | - |
+| TW12 | a held symbol on a lane of 100 | at most 99 `trades` calls for it (counted in the test's fake, S11-Q12) | - |
 | TW13 | a never-read symbol with no trade | entry `{ fromId: 0 }` | - |
 | TW14 | Spot body `{asset:' usdt ', free:'1.0', locked:'0'}` | `spotBalanceTexts.USDT = '1.0/0'` | no texts |
 | TW15 | the prefix query | EXPLAIN QUERY PLAN uses `transactions_source_external` with a range on `external_id`; `...:12:` does not match `...:123:` | - |
