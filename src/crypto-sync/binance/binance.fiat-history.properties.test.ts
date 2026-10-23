@@ -49,7 +49,7 @@ import { fiatOrderOf, fiatPageOf, fiatPaymentOf, fiatServerOf } from './binance.
 
 const HOUR_MS = 3_600_000;
 
-/** Runs enough for the longest bound (three failing days in the window: 28) and a record after. */
+/** Runs enough for the longest bound (six failing days in the window, on orders: 52). */
 const RUNS = 60;
 const SEEDS = Array.from({ length: 12 }, (_unused, position) => 5 + position * 7);
 const ACCOUNT_ID = 'acc-fiat-orders-properties';
@@ -111,6 +111,21 @@ const RESCAN_EVERY_RUNS = 4;
  */
 const importRunsOf = (zonesInWindow: number): number => RESCAN_EVERY_RUNS * (2 * zonesInWindow + 1);
 
+/**
+ * The payments lane reads forward and behind in one run, so the re-scan is read on every run, one
+ * read a run, and no turn of the owed windows takes a run from it. A pass over the window takes
+ * `2z + 1` reads as above (a first pass; a pass after it `z + 1`). A record served part way
+ * through a pass is read by the next pass at the latest, so it is imported by the `2 * (2z + 1)`th
+ * run it is within the reach of the clock from `v` on: two passes of the longest kind.
+ *
+ * Measured worst case over these worlds, with the owed days in the window one to three (anywhere,
+ * in the window) and four to six an hour to 3 days apart (in a cluster, short pieces between
+ * them): the run a record was imported at, counted from the first it could be read at, was 1, 4,
+ * 8 for `z` = 0, 1, 2 and 10 for 3 against the bound's 2, 6, 10, 14; 18, 18 and 25 for 4, 5 and 6
+ * (drift) against 18, 22 and 26. A clustered 4 reaches the bound exactly.
+ */
+const paymentImportRunsOf = (zonesInWindow: number): number => 2 * (2 * zonesInWindow + 1);
+
 /** Late records are written between 2 days and this many days behind the run that serves them. */
 const LATE_BACK_DAYS = 600;
 
@@ -119,17 +134,22 @@ const SERVED_BACK_MS = 1_000 * DAY_MS;
 
 type Stuck = 'none' | 'drift' | 'throw' | 'tooOld';
 
-type Place = 'anywhere' | 'in the window';
+type Place = 'anywhere' | 'in the window' | 'in a cluster';
 
 type World = { stuck: Stuck; place: Place };
 
-/** Owed ground anywhere behind the cursor, and, for the two failing kinds, in the last 500 days. */
+/**
+ * Owed ground anywhere behind the cursor, and, for the two failing kinds, in the last 500 days or
+ * four to six days in a row there.
+ */
 const WORLDS: World[] = [
   { stuck: 'none', place: 'anywhere' },
   { stuck: 'drift', place: 'anywhere' },
   { stuck: 'drift', place: 'in the window' },
   { stuck: 'throw', place: 'anywhere' },
   { stuck: 'throw', place: 'in the window' },
+  { stuck: 'drift', place: 'in a cluster' },
+  { stuck: 'throw', place: 'in a cluster' },
   { stuck: 'tooOld', place: 'anywhere' },
 ];
 
@@ -230,7 +250,7 @@ const paymentOf = ({ type, ...parts }: RecordParts): BinanceFiatPayment =>
 /** A whole number of coin units as the text of a coin amount at the scale of eight. */
 const coinTextOf = (units: number): string => `0.${String(units).padStart(8, '0')}`;
 
-const PAYMENTS_KIND: WorldKind = {
+const PAYMENTS_KIND: BoundedKind = {
   name: 'fiat payments',
   walkId: 'fiatPayments',
   readKey: 'fetchFiatPayments',
@@ -238,6 +258,7 @@ const PAYMENTS_KIND: WorldKind = {
   holdings: [],
   sync: syncBinanceFiatPaymentHistory,
   recordOf: paymentOf,
+  importRunsOf: paymentImportRunsOf,
   settledWord: 'Completed',
   statusRecordOf: ({ orderNo, createTime, type, n, status, untracked }) =>
     fiatPaymentOf({
@@ -287,9 +308,32 @@ const servedWorldOf = (random: Random, clock: RunClock, kind: WorldKind): Served
   return served;
 };
 
+/** The widest gap between two owed days of a cluster; the narrowest is an hour. */
+const CLUSTER_GAP_MS = 3 * DAY_MS;
+
+/**
+ * Four to six owed days one after another in the window, each an hour to 3 days after the one
+ * before: the ground between them is a short piece of the pass.
+ */
+const clusteredOwedRangesOf = (random: () => number): Span[] => {
+  let cursor = START_CURSOR - IN_WINDOW_MS + Math.floor(random() * (IN_WINDOW_MS - 60 * DAY_MS));
+
+  return Array.from({ length: 4 + Math.floor(random() * 3) }, () => {
+    const start = cursor + HOUR_MS + Math.floor(random() * (CLUSTER_GAP_MS - HOUR_MS));
+
+    cursor = start + DAY_MS;
+
+    return { start, end: cursor };
+  });
+};
+
 /** One to three owed days, each placed by the world: anywhere from the floor to the cursor. */
 const owedRangesOf = (random: () => number, world: World): Span[] => {
   const earliest = world.place === 'in the window' ? START_CURSOR - IN_WINDOW_MS : HISTORY_FLOOR_MS;
+
+  if (world.place === 'in a cluster') {
+    return clusteredOwedRangesOf(random);
+  }
 
   return world.stuck === 'none'
     ? []
@@ -308,7 +352,7 @@ const zonesInWindowOf = (owed: Span[], clock: RunClock): number => {
   return owed.filter((range) => range.end >= earliestRead).length;
 };
 
-const KINDS: BoundedKind[] = [ORDERS_KIND];
+const KINDS: BoundedKind[] = [ORDERS_KIND, PAYMENTS_KIND];
 
 const STATUS_KINDS: WorldKind[] = [ORDERS_KIND, PAYMENTS_KIND];
 
@@ -464,6 +508,7 @@ describe.each(KIND_CLOCKS)(
                 ]) ?? [],
             )
             .filter(({ dueRun, importedAtRun: at }) => at === undefined || at > dueRun);
+
           const keysOfOrder = new Map<string, Set<string>>();
 
           for (const { externalId } of offers) {

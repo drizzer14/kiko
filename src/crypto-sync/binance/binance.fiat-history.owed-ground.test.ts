@@ -17,7 +17,7 @@ import {
 import { NOW } from './binance.pay-test-fixtures';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { createBinanceHistoryRun } from './binance.history-budget';
-import { fiatOrderOf, fiatPaymentOf, fiatServerOf } from './binance.fiat-test-fixtures';
+import { fiatOrderOf, fiatPageOf, fiatPaymentOf, fiatServerOf } from './binance.fiat-test-fixtures';
 
 type AnyDeps = Partial<BinanceFiatOrderHistoryDeps & BinanceFiatPaymentHistoryDeps>;
 
@@ -68,6 +68,8 @@ type RunInput = {
   now: number;
   records: { orderNo: string; createTime: number }[];
   unreadable: (span: Span) => boolean;
+  /** Spans whose page comes back empty with a total of 5: a page that drifts. */
+  drifting?: (span: Span) => boolean;
 };
 
 /** What one run did: what it rejected with, the spans it read and the times it committed. */
@@ -108,6 +110,10 @@ const worldOf = (kind: FiatKind) => {
 
         if (input.unreadable(span)) {
           throw new BinanceHistoryParseError();
+        }
+
+        if (input.drifting?.(span) === true) {
+          return fiatPageOf([], { total: 5 });
         }
 
         return server(apiKey, secret, type, span, page);
@@ -258,5 +264,65 @@ describe('a fiat walk that read around a stuck range', () => {
       ((world.marks().pending ?? []) as Span[]).filter(({ start }) => start < STUCK.end),
     ).toEqual([]);
     expect(imported).toContain(AT_END.createTime);
+  });
+});
+
+describe.each([ORDERS, PAYMENTS])('$name: a re-scan that goes on over several runs', (kind) => {
+  const OWED_DAYS_FROM_NOW = [-663.9, -582.1, -2975.3];
+  const OWED = OWED_DAYS_FROM_NOW.map((days) => {
+    const start = Math.round(NOW + days * DAY_MS);
+
+    return { start, end: start + DAY_MS };
+  });
+  const LATE = { orderNo: 'late-39', createTime: NOW - 39 * DAY_MS };
+  const SERVED_FROM_RUN = 9;
+  const RUNS = 60;
+
+  const runsAMillisecondApart = async () => {
+    const world = worldOf(kind);
+    const rescanAfterRun: (number | undefined)[] = [];
+    const importedAtRuns: number[] = [];
+    world.seed({ cursor: NOW - HOUR_MS, pending: OWED });
+
+    for (let index = 0; index < RUNS; index += 1) {
+      const run = await world.runOnce({
+        now: NOW + index,
+        records: index < SERVED_FROM_RUN ? [] : [LATE],
+        unreadable: () => false,
+        drifting: (span) => OWED.some(overlapping(span)),
+      });
+
+      rescanAfterRun.push(world.marks().rescan as number | undefined);
+
+      if (run.times.includes(LATE.createTime)) {
+        importedAtRuns.push(index);
+      }
+    }
+
+    return { rescanAfterRun, importedAtRuns };
+  };
+
+  /**
+   * Runs the record may take from the run that first serves it, for the 2 owed days the re-scan
+   * window holds (`z = 2`): a pass over the window is `2z + 1 = 5` reads, a read a run for the
+   * payments lane and a read in four runs for the orders lane, and the pass that reads the record
+   * may be the one the record is served in or the one after it.
+   */
+  const IMPORT_WITHIN_RUNS = kind === PAYMENTS ? 2 * 5 : 4 * 5;
+
+  it('imports a record served part way through it within the bound', async () => {
+    const { importedAtRuns } = await runsAMillisecondApart();
+
+    expect(importedAtRuns.length).toBeGreaterThan(0);
+    expect(importedAtRuns[0] - SERVED_FROM_RUN + 1).toBeLessThanOrEqual(IMPORT_WITHIN_RUNS);
+  });
+
+  /** The run that reads the pass's 5th read (measured), after which the mark is the floor again. */
+  const PASS_ENDS_AT_RUN = kind === PAYMENTS ? 4 : 18;
+
+  it('starts the pass again at the history floor once it has read to its end', async () => {
+    const { rescanAfterRun } = await runsAMillisecondApart();
+
+    expect(rescanAfterRun.indexOf(HISTORY_FLOOR_MS)).toBe(PASS_ENDS_AT_RUN);
   });
 });

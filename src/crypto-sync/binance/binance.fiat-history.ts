@@ -817,11 +817,20 @@ const nothingBehind = (marks: Pick<WalkMarks, 'pending' | 'rescanCursor'>): bool
  * What a re-scan window that stopped after some of its spans committed hands the next run: the
  * span it wanted to read next, without the resume. The window start only moves forward with the
  * re-scan mark, which holds what was read, so the hint is found again, and the run after a failed
- * read goes on with the width the halvings reached instead of the whole rest of the window.
+ * read goes on with the width the halvings reached instead of the whole rest of the window. A hint
+ * that ends at or past the window's end is not a narrowing: the window end is the cursor, which
+ * moves with the clock, so the next run would clip its first span to a window end that is already
+ * behind it and stop one clock gap short of the pass's end for ever.
  */
-const keepsWidth = (pass: WalkPass, outcome: WindowOutcome): WindowOutcome =>
+const keepsWidth = (pass: WalkPass, window: WalkWindow, outcome: WindowOutcome): WindowOutcome =>
   pass === 'rescan' && outcome.hint?.resume !== undefined
-    ? { ...outcome, hint: { start: outcome.hint.start, end: outcome.hint.end } }
+    ? {
+        ...outcome,
+        hint:
+          outcome.hint.end >= window.end
+            ? null
+            : { start: outcome.hint.start, end: outcome.hint.end },
+      }
     : outcome;
 
 /**
@@ -982,6 +991,7 @@ const runSync = async <Item extends FiatRecord>(
     runWindow: async (window, pass, keep, hint) =>
       keepsWidth(
         pass,
+        window,
         await walkSpans({
           window,
           read: (span, keepCalls) => readSpan(context, window, span, keepCalls, pass),
