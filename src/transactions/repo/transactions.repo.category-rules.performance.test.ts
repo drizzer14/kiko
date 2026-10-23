@@ -133,6 +133,10 @@ const countOf = (statements: string[], pattern: RegExp): number =>
 const pageReadsOf = (statements: string[]): number =>
   countOf(statements, /order by "transactions"\."id" asc limit/i);
 
+// A count of page reads alone cannot tell the blank-row page from the keyset page of every row.
+const blankPageReadsOf = (statements: string[]): string[] =>
+  statements.filter((sql) => /"description" = \? and "transactions"\."id" > \?/i.test(sql));
+
 beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
@@ -233,6 +237,11 @@ describe('rewriting 50 000 rows for a saved rule', () => {
       // The ledger is not paged: the one page read is the blank rows' (a label is not stored, so
       // they are always candidates), and this ledger has none.
       expect(pageReadsOf(statements)).toBe(1);
+
+      const [blankPageRead] = blankPageReadsOf(statements);
+
+      expect(blankPageReadsOf(statements)).toHaveLength(1);
+      expect(mockDatabase.prepare(blankPageRead).all('', '', REWRITE_PAGE_SIZE)).toEqual([]);
     },
     TEST_TIMEOUT,
   );

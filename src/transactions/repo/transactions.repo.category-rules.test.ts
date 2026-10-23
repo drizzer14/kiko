@@ -363,6 +363,87 @@ describe('a sync row that adopts its import twin', () => {
 
     expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'food', flag: 0 }]);
   });
+
+  describe('with no description', () => {
+    const startsWith = (text: string): CategoryRuleMatcher => ({ type: 'nameStartsWith', text });
+    const blankSyncItem = (externalId: string): SyncItem =>
+      syncItem(externalId, { description: '', category: undefined, time: T + SECOND });
+
+    const insertTwin = (markers: { pairId: string | null; counterpart: string | null }): void => {
+      run(
+        `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id,
+           description, category, exchange_pair_id, exchange_counterpart_holding_id)
+         VALUES ('twin', 'card', -5000, ?, 'import', 'twin', 'Silpo', NULL, ?, ?)`,
+        T,
+        markers.pairId,
+        markers.counterpart,
+      );
+    };
+
+    it('gives a plain twin the rule that matches the label the lists show', async () => {
+      insertRule('card-expense', 'food', [startsWith('Card expense')]);
+      insertTwin({ pairId: null, counterpart: null });
+
+      await transactionsRepo.addManyDedup([blankSyncItem('k1')]);
+
+      expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'food', flag: 0 }]);
+    });
+
+    it('judges a twin that keeps its exchange markers by the exchange label it shows', async () => {
+      insertRule('card-expense', 'food', [startsWith('Card expense')]);
+      insertTwin({ pairId: 'pair', counterpart: 'usd' });
+
+      await transactionsRepo.addManyDedup([blankSyncItem('k1')]);
+
+      expect(storedRows()).toMatchObject([{ externalId: 'k1', category: null, flag: 0 }]);
+    });
+
+    it('gives a twin that keeps its exchange markers the rule of its exchange label, as an insert does', async () => {
+      insertRule('exchange-to', 'food', [startsWith('Exchange to Dollar card')]);
+      insertTwin({ pairId: 'pair', counterpart: 'usd' });
+
+      await transactionsRepo.addManyDedup([blankSyncItem('k1')]);
+
+      expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'food', flag: 0 }]);
+    });
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      afterEach(async () => {
+        await i18n.changeLanguage('en');
+      });
+
+      it('judges a twin that keeps its exchange markers by the Ukrainian exchange label', async () => {
+        insertRule('expense', 'food', [startsWith('Витрата')]);
+        insertTwin({ pairId: 'pair', counterpart: 'usd' });
+
+        await transactionsRepo.addManyDedup([blankSyncItem('k1')]);
+
+        expect(storedRows()).toMatchObject([{ externalId: 'k1', category: null, flag: 0 }]);
+      });
+
+      it('gives a plain twin the rule that matches the Ukrainian label', async () => {
+        insertRule('expense', 'food', [startsWith('Витрата')]);
+        insertTwin({ pairId: null, counterpart: null });
+
+        await transactionsRepo.addManyDedup([blankSyncItem('k1')]);
+
+        expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'food', flag: 0 }]);
+      });
+
+      it('gives a twin that keeps its exchange markers the rule of its Ukrainian exchange label', async () => {
+        insertRule('exchange-to', 'food', [startsWith('Обмін на Dollar card')]);
+        insertTwin({ pairId: 'pair', counterpart: 'usd' });
+
+        await transactionsRepo.addManyDedup([blankSyncItem('k1')]);
+
+        expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'food', flag: 0 }]);
+      });
+    });
+  });
 });
 
 describe('reading the rules at insert', () => {

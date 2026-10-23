@@ -1565,6 +1565,7 @@ type ImportTwin = Pick<
   | 'exchangePairId'
   | 'exchangeCounterpartHoldingId'
   | 'untrackedCounterpart'
+  | 'operation'
 >;
 
 // The three columns that mark a row as a leg of an exchange movement.
@@ -1594,6 +1595,7 @@ const readImportTwinsDatabaseTransaction = async (
       exchangePairId: transactions.exchangePairId,
       exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
       untrackedCounterpart: transactions.untrackedCounterpart,
+      operation: transactions.operation,
     })
     .from(transactions)
     .where(
@@ -1612,15 +1614,32 @@ const readImportTwinsDatabaseTransaction = async (
 // The markers and the operation of an exchange leg move as one unit: onto a plain import row from
 // the sync input, or not at all when the row already carries a marker of the user's own, so a
 // half-marked row is never made.
+const keepsExchangeMarkers = (twin: ImportTwin): boolean =>
+  EXCHANGE_MARKER_KEYS.some((key) => twin[key] !== null);
+
 const adoptedExchangeValuesOf = (twin: ImportTwin, input: NewTransaction) =>
-  EXCHANGE_MARKER_KEYS.every((key) => twin[key] === null)
-    ? {
+  keepsExchangeMarkers(twin)
+    ? {}
+    : {
         exchangePairId: input.exchangePairId ?? null,
         exchangeCounterpartHoldingId: input.exchangeCounterpartHoldingId ?? null,
         untrackedCounterpart: input.untrackedCounterpart ?? null,
         operation: input.operation ?? null,
+      };
+
+// The sync input as the adopted row will read: the twin's own markers and operation when it keeps
+// them, the input's otherwise (`adoptedExchangeValuesOf`). A category rule judges this row, so it
+// reads the label the lists will show for it, not the label the bare input would.
+const adoptedRowOf = (twin: ImportTwin, input: NewTransaction): NewTransaction =>
+  keepsExchangeMarkers(twin)
+    ? {
+        ...input,
+        exchangePairId: twin.exchangePairId,
+        exchangeCounterpartHoldingId: twin.exchangeCounterpartHoldingId,
+        untrackedCounterpart: twin.untrackedCounterpart,
+        operation: twin.operation,
       }
-    : {};
+    : input;
 
 // The bank's values go onto the import row through the same column list the
 // upsert refreshes, so a bank-owned column added there is adopted here too.
@@ -1648,7 +1667,8 @@ const adoptedValuesOf = (twin: ImportTwin, input: NewTransaction) => ({
  * structural column (`id`, `holding_id`, the loan link, `change_group_id`,
  * `sets_balance`, `created_at`) stays, and so do the exchange pair and its
  * markers when the import row carries one; a plain import row takes the sync
- * input's own (`adoptedExchangeValuesOf`). No `holdings` row is written. The
+ * input's own (`adoptedExchangeValuesOf`). The category rules judge the row as adopted
+ * (`adoptedRowOf`), so a kept leg reads by its exchange label. No `holdings` row is written. The
  * sync overwrites the stored balance from the bank's own figure, and an
  * adoption adds no amount anywhere, so the ledger keeps one row per purchase
  * without moving any balance. Runs only on the sync insert path: a statement
@@ -1668,7 +1688,7 @@ const adoptImportTwinsDatabaseTransaction = async (
   );
   const { rows: withRules } = await withCategoryRules(
     databaseTransaction,
-    adoptions.map(({ input }) => input),
+    adoptions.map(({ candidate, input }) => adoptedRowOf(candidate, input)),
   );
 
   for (const [index, { candidate }] of adoptions.entries()) {
