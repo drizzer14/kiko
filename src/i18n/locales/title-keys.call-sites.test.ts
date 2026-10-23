@@ -19,7 +19,6 @@ const HEADING_PROPS: Record<string, readonly string[]> = {
   CardContextMenu: ['deleteTitle'],
   ConfirmSheet: ['title'],
   EntityAmountHeader: ['label'],
-  LinkedPaymentsSection: ['title'],
   SummaryTable: ['title'],
 };
 
@@ -86,7 +85,6 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
   'screens/forms/payment-holding-field/payment-holding-field.component.tsx#sheetTitle':
     'PaymentHoldingField.sheetTitle',
   'screens/forms/time-field/time-field.component.tsx#sheetTitle': 'TimeField.sheetTitle',
-  'screens/holding-detail/holding-detail.screen.tsx#title': 'LinkedPaymentsSection.title',
 };
 
 // A heading slot that renders no Title-role key (user text, a date, a brand name), or that renders
