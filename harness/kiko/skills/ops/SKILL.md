@@ -111,8 +111,8 @@ Rules:
   small change sets only".
 - **Keep the Mac awake for a gate.** Laptop sleep voided two gates on 2026-10-09 (13 h,
   78/151 timeouts). Queue the gate (`bash scripts/job-queue.sh gate ...`); never type a
-  heavy command under `caffeinate -i`: kill-guard does not unwrap it, which is a known gap,
-  not a route.
+  heavy command under `caffeinate -i`: kill-guard unwraps it and denies it like the bare
+  command (the queued form stays allowed).
 - **After a tests-only fix for module-scope (static) mutants, delete
   `reports/stryker-incremental.json` and `.stryker-tmp` in the gating
   checkout before the re-run.** Run 4 reused old Survived results (only

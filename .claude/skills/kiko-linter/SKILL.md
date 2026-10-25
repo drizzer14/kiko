@@ -162,6 +162,26 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   as a value: its string is split into words and re-parsed as the
   command line (`envSplitCommand`). `xargs --rep=R` sets the
   placeholder like `--replace=R`.
+  The unwrap also reads a command typed inside a wrapper (read `kill-guard.js`; rows in
+  `__tests__/kill-guard-wrapped-commands.test.ts`): `caffeinate` (`-t`/`-w` take a value),
+  `arch`, `sandbox-exec`, `script` (BSD `script [-q] [file] cmd`), `screen` (a command
+  argument, and `-X stuff|screen|exec|eval`, also with `-r`/`-x`), and `tmux`
+  (`new-session`, `new-window`, `split-window`, `respawn-pane`, `run-shell`, `if-shell`,
+  `popup`, `pipe-pane`; `send-keys` words joined in order and shell-quoted; a `;` splits
+  tmux commands; a global `-c` text; unique command prefixes). The tmux tables are
+  UNVERIFIED (tmux is not installed here; deny-leaning). Every `--text`/`--command` value of
+  any `orca` call is judged as a typed line (ruling R2). `osascript` text containing
+  "do shell script", "do script" or `doShellScript` is denied as kind `osascriptShell`
+  (R3: prose false positives are accepted; the sender rewords). A `$'...'` ANSI-C string is
+  decoded in the shared quote removal; `$'` opens one only after an odd run of unescaped `$`
+  (`opensAnsiCQuote`: `$$'` is a pid then a quote).
+  Known limits, NOT denied (each blind spot sits beside the deny): `ssh`; `at` (gap
+  `20261023T1404-kiko-harness-h11/1`); an osascript script file or stdin; an orca text in a
+  variable, split across sends, or judged by the target terminal's cwd; util-linux
+  `script -c`; other `screen -X` commands; the tmux commands inside an `if-shell` argument;
+  `caffeinate -ti` (the tool refuses it); a backslash-newline inside a `$` run
+  (`$\<newline>$'...'` reads as the opposite quote kind); R3 prose false positives, incl. a
+  backticked command and `set doscript to 1`.
   There is no closer stripping: an unquoted `)` ends the segment, like
   `;`. Any shell flag group holding `c` (`-lc`, `-xc`) counts as `-c`,
   and `eval`'s arguments are scanned as a command string. `$(...)`,
@@ -513,9 +533,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`noteQueuedJob`, `isQueueScript`). Rows: `__tests__/kill-guard-heavy-jobs.test.ts`,
   `-jest-runs`, `-jest-options`, `-queue-edges`. Known limits (all allowed; the docs never
   prescribe one of these routes, and (a) is a gap in the run log): (a) a command typed
-  inside another command is not unwrapped: `caffeinate -i make verify|make deep|bash
-  scripts/checks/verify.sh` is allowed (it also lets a kill through), and `orca terminal send
-  --text "npm run check:all"` or `"npx jest"` is allowed; (b) `make -Nn verify`, `make -I -n
+  inside ssh, at, an osascript script file or stdin, or an orca text held in a variable, split
+  across sends, or judged against the target terminal's cwd, is not judged (the unwrap and
+  the wrapper blind spots are listed after "The unwrap" paragraph); (b) `make -Nn verify`, `make -I -n
   verify`, `make -o -n verify` and `make -W -n verify` read as a dry run
   (`MAKE_DRY_RUN_FLAGS` lacks `N`; the word test accepts any word); (c) `$PWD/`, `${PWD}/`,
   `$(pwd)` and other `$X` targets for `security.sh` and Semgrep are allowed (only an exact

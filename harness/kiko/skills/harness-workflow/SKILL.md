@@ -510,7 +510,7 @@ read just the tail with `orca terminal read`. Full CLI usage:
 Route commands this way, including: `npm run deploy:device`, `pod install`,
 `npm install`, and Metro (`npm start`). Heavy jobs (`check:all`, `check:deep`, the full jest,
 verify, the mutation gate) go through `scripts/job-queue.sh`, never an Orca terminal: kill-guard
-denies them typed (`heavyJob`, `fullJest`), and a quoted `orca terminal send` text is not judged.
+denies them typed (`heavyJob`, `fullJest`), and the guard judges a sent `orca` `--text`/`--command` value like a typed line.
 
 Read the tail before you close the terminal — closing
 (`orca terminal close --terminal <handle>`) removes its buffer, so a

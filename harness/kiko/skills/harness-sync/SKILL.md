@@ -249,6 +249,10 @@ Every count and exit code is the orchestrator's own measured result.
 - Carried Minors: the doc fingerprint misses a `../fixtures/...pinned` literal
   (`harness_doc_suite_fixtures` needs a quote right before `fixtures/`; `harness_doc_suites`
   accepts `../`); `medium.sh` computes the doc lists twice per Stop.
+- H11 kill-guard port: `scripts/checks/kill-guard.js` now unwraps `caffeinate`, `arch`,
+  `sandbox-exec`, `script`, `screen` and `tmux`, judges every orca `--text`/`--command`, and
+  denies osascript shell scripts; port it with its tests
+  (`__tests__/kill-guard-wrapped-commands.test.ts`) to the harness repo.
 - G1 port: in the harness repo, a comment-only source mutates nothing whatever its colocated
   tests did (pff-ios `scripts/checks/mutation.sh` has no whole-file keep).
 - kill-guard: port to drizzer14/harness the config long-option prefix fix, the new denies
