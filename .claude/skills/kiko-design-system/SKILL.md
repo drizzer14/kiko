@@ -254,7 +254,9 @@ an entry (date + value) the moment the user approves a new visual.
   under the label, from `derivedMarker` in `holding-detail.screen.tsx`; a past lot has none, and
   the scheduled loan row passes "Loan payment" + "Scheduled"; a USER-APPROVED round 3 change,
   2026-10-25, of the earlier title form). The subtitle sits under the wrapped title in the same
-  `rowDescription` box. The
+  `rowDescription` box, `spacing(2)` under the label: the same step as `TransactionCard`'s gap
+  between its title row and its meta row (a user request, 2026-10-25; see
+  `entry-card.styles.ts` `rowDescriptionWithSubtitle` and `transaction-card.component.tsx`). The
   account card (`accounts.screen.tsx` `renderAccountCard`, the main
   grid only) and the shared `HoldingCard` (also the Property and Debts
   section cards) stay
@@ -1637,8 +1639,10 @@ new component can land between reviews of this skill:
   time (`amountCaption`); `footerLines` are lines under the WHOLE row (the
   scheduled split lines, and the linked loan-payment transaction card's
   split and balance-left lines). An optional `subtitle` (caption, `textSecondary`, no new
-  token) sits directly under the label in the `rowDescription` column, wrapping with the
-  title and never beside the amount. Read `entry-card.props.d.ts` for the props.
+  token) sits `spacing(2)` under the label in the `rowDescription` column, wrapping with the
+  title and never beside the amount; that is `TransactionCard`'s title-to-meta step
+  (`rowDescriptionWithSubtitle` in `entry-card.styles.ts`). Read `entry-card.props.d.ts` for
+  the props.
   `TransactionCard`'s `rowFooterMeta` is `alignItems: 'center'`, so the link
   icon shares the caption's centre line (Q5 = A, the Home footer;
   `transaction-card.styles.ts`).
