@@ -228,6 +228,123 @@ describe('SelectField', () => {
     });
   });
 
+  describe('emptyAction', () => {
+    const ACTION_LABEL = 'Add kind';
+
+    const openEmptySheet = async (overrides: Partial<SelectFieldProps<Kind>> = {}) => {
+      const onPress = jest.fn();
+      const onSelectClosed = jest.fn();
+      const utils = await setup({
+        options: [],
+        selected: null,
+        emptyAction: { label: ACTION_LABEL, onPress },
+        onSelectClosed,
+        ...overrides,
+      });
+
+      await fireEvent.press(utils.getByTestId('kind-field'));
+
+      return { onPress, onSelectClosed, ...utils };
+    };
+
+    it('shows the action row with a plus glyph when there are no options', async () => {
+      const { getByTestId } = await openEmptySheet();
+
+      const row = getByTestId('kind-field-empty-action');
+      const glyphs = row.queryAll((node) => node.props.name === 'plus');
+
+      expect(row).toHaveTextContent(ACTION_LABEL);
+      expect(glyphs.length).toBeGreaterThan(0);
+    });
+
+    it('shows no action row when there are options', async () => {
+      const { getByTestId, queryByTestId, queryByText } = await openEmptySheet({
+        options,
+        selected: 'a',
+      });
+
+      expect(getByTestId('kind-field-option-a')).toBeTruthy();
+      expect(queryByTestId('kind-field-empty-action')).toBeNull();
+      expect(queryByText(ACTION_LABEL)).toBeNull();
+    });
+
+    it('shows no action row when emptyAction is omitted', async () => {
+      const { queryByTestId, queryByText } = await openEmptySheet({ emptyAction: undefined });
+
+      expect(queryByTestId('kind-field-empty-action')).toBeNull();
+      expect(queryByText(ACTION_LABEL)).toBeNull();
+    });
+
+    it('does not run the action on the press itself, while the sheet is still closing', async () => {
+      const { onPress, getByTestId } = await openEmptySheet();
+
+      await fireEvent.press(getByTestId('kind-field-empty-action'));
+
+      expect(onPress).not.toHaveBeenCalled();
+    });
+
+    it('runs the action once the sheet reports it has finished closing', async () => {
+      const { onPress, getByTestId } = await openEmptySheet();
+      const sheet = getByTestId('kind-field-sheet-modal');
+
+      await fireEvent.press(getByTestId('kind-field-empty-action'));
+      await finishClosing(sheet);
+
+      expect(onPress).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs the action once per press, however often the sheet reports closed', async () => {
+      const { onPress, getByTestId } = await openEmptySheet();
+      const sheet = getByTestId('kind-field-sheet-modal');
+
+      await fireEvent.press(getByTestId('kind-field-empty-action'));
+      await finishClosing(sheet);
+      await finishClosing(sheet);
+
+      expect(onPress).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes the sheet with no animation for the action', async () => {
+      const { getByTestId } = await openEmptySheet();
+
+      await fireEvent.press(getByTestId('kind-field-empty-action'));
+
+      expect(modal.lastHiddenAnimation()).toBe('none');
+    });
+
+    it('never reports the action as a pick to onSelect or onSelectClosed', async () => {
+      const { onSelect, onSelectClosed, onPress, getByTestId } = await openEmptySheet();
+      const sheet = getByTestId('kind-field-sheet-modal');
+
+      await fireEvent.press(getByTestId('kind-field-empty-action'));
+      await finishClosing(sheet);
+
+      expect(onPress).toHaveBeenCalledTimes(1);
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onSelectClosed).not.toHaveBeenCalled();
+    });
+
+    it('never writes an "undefined-empty-action" testID when testID is omitted', async () => {
+      const { getByText, queryByTestId } = await render(
+        <SelectField<Kind>
+          label="Kind"
+          sheetTitle="Select a Kind"
+          options={[]}
+          selected={null}
+          onSelect={jest.fn()}
+          labels={labels}
+          placeholder="Select a kind"
+          emptyAction={{ label: ACTION_LABEL, onPress: jest.fn() }}
+        />,
+      );
+
+      await fireEvent.press(getByText('Select a kind'));
+
+      expect(getByText(ACTION_LABEL)).toBeTruthy();
+      expect(queryByTestId('undefined-empty-action')).toBeNull();
+    });
+  });
+
   it('renders the field error under the trigger, matching FieldTrigger', async () => {
     const { getByTestId } = await setup({ selected: null, error: 'Pick a kind.' });
 
