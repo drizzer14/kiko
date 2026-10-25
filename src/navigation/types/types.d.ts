@@ -216,6 +216,10 @@ export type AccountsStackParamList = {
     accountId?: string;
     initialKind?: Exclude<AccountRow['kind'], ImplicitAccountKind>;
     draft?: FormDraft | AccountFormDraft;
+    // Set when an empty picker's "Add holding" row opened the form with no account to add to: a
+    // new Cash account hands its cash holding's id back to this id, and the Property/Loan swap
+    // to the holding form carries it on.
+    handbackId?: string;
   };
   // `returnTo` is the CREATE-only return channel for a "Create new holding"
   // launched from the statement-import preview or Map Columns: the caller's

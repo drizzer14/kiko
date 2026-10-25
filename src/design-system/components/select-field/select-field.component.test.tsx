@@ -99,6 +99,37 @@ describe('SelectField', () => {
       expect(onSelectClosed).toHaveBeenCalledWith('b');
     });
 
+    it("runs the latest render's callback, not the one from the pick", async () => {
+      const staleOnSelectClosed = jest.fn();
+      const latestOnSelectClosed = jest.fn();
+      const { getByTestId, onSelect, rerender } = await setup({
+        onSelectClosed: staleOnSelectClosed,
+      });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      const sheet = getByTestId('kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+      // The pick re-renders its host with a callback that closes over the picked state.
+      await rerender(
+        <SelectField<Kind>
+          label="Kind"
+          sheetTitle="Select a Kind"
+          options={options}
+          selected="b"
+          onSelect={onSelect}
+          onSelectClosed={latestOnSelectClosed}
+          labels={labels}
+          subtitles={subtitles}
+          placeholder="Select a kind"
+          testID="kind-field"
+        />,
+      );
+      await finishClosing(sheet);
+
+      expect(latestOnSelectClosed).toHaveBeenCalledWith('b');
+      expect(staleOnSelectClosed).not.toHaveBeenCalled();
+    });
+
     it('runs once per pick, however often the sheet reports closed', async () => {
       const onSelectClosed = jest.fn();
       const { getByTestId } = await setup({ onSelectClosed });

@@ -3221,7 +3221,9 @@ describe('HoldingFormScreen loan', () => {
       await openPaidFromSheet(screen);
       await fireEvent.press(screen.getByText('Add holding'));
 
-      expect(navigation.push).toHaveBeenCalledWith('AccountForm', {});
+      expect(navigation.push).toHaveBeenCalledWith('AccountForm', {
+        handbackId: expect.any(String),
+      });
     });
 
     it('shows no row while a payer holding in the loan currency exists', async () => {
@@ -5390,6 +5392,22 @@ describe('HoldingFormScreen implicit create', () => {
         draft: { name: 'Flat', icon: null, color: null },
       });
       expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('carries its handback id back to the account form it replaces itself with', async () => {
+      const screen = await renderImplicit({
+        implicitKind: 'property',
+        handbackId: 'created-option-9',
+      });
+
+      await fill(screen, 'Name', 'Flat');
+      await pickKind(screen, 'cash');
+
+      expect(navigation.replace).toHaveBeenCalledWith('AccountForm', {
+        initialKind: 'cash',
+        draft: { name: 'Flat', icon: null, color: null },
+        handbackId: 'created-option-9',
+      });
     });
 
     it('waits for the kind sheet to finish closing before replacing the screen', async () => {

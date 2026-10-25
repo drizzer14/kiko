@@ -40,9 +40,9 @@ type TargetAccount = Pick<AccountRow, 'id' | 'kind' | 'archivedAt' | 'institutio
 // picker lists. An account that cannot create one would leave the new holding out
 // of the picker, so it is skipped: for a picker that lists only holdings with a
 // manual ledger, that is a synced bank (its sync owns its card and jar) and a
-// metals, property or debt account. With no account left the user creates one first, and that
-// account form gets no `handbackId`: it creates no holding the picker could select. A given
-// `handbackId` rides only in the holding form's params.
+// metals, property or debt account. With no account left the user creates one first, and a given
+// `handbackId` rides in that account form's params too: a Cash account creates the cash holding
+// the picker then selects.
 export const resolveCreateHoldingTarget = (
   picker: CreateHoldingPicker,
   accounts: readonly TargetAccount[],
@@ -77,6 +77,6 @@ export const resolveCreateHoldingTarget = (
           ...foldMap(maybe(handbackId), (id) => ({ handbackId: id })),
         },
       ],
-    ) ?? ['AccountForm', {}]
+    ) ?? ['AccountForm', foldMap(maybe(handbackId), (id) => ({ handbackId: id })) ?? {}]
   );
 };

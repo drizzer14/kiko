@@ -279,9 +279,14 @@ const leaveForAccountForm = (
   navigation: HoldingFormNavigation,
   kind: AccountRow['kind'],
   draft: FormDraft,
+  handbackId: HandbackId | undefined,
 ): void => {
   if (!isImplicitAccountKind(kind)) {
-    navigation.replace('AccountForm', { initialKind: kind, draft });
+    navigation.replace('AccountForm', {
+      initialKind: kind,
+      draft,
+      ...foldMap(maybe(handbackId), (carriedId) => ({ handbackId: carriedId })),
+    });
   }
 };
 
@@ -875,7 +880,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               selected={shownKind(implicitKind, leavingKind)}
               onSelect={(kind) => retargetImplicitKind(navigation, kind, setLeavingKind)}
               onSelectClosed={(kind) =>
-                leaveForAccountForm(navigation, kind, { name, icon, color })
+                leaveForAccountForm(navigation, kind, { name, icon, color }, handbackId)
               }
               closesWithoutAnimation={isLeavingKind}
               disabled={false}

@@ -654,9 +654,25 @@ describe('TransactionFormScreen — Add template', () => {
     expect(mockRecordManual).not.toHaveBeenCalled();
   });
 
-  it('saves a new template and hands its id back to the handback id in its route params', async () => {
+  it.each([
+    {
+      title: 'saves a new template and hands its id back to the handback id in its route params',
+      settle: () => mockCreateTemplate.mockResolvedValue('new'),
+      handedBack: 'new',
+      goBackCalls: 1,
+      alertCalls: 0,
+    },
+    {
+      title: 'hands nothing back when the template create write fails',
+      settle: () => mockCreateTemplate.mockRejectedValue(new Error('disk full')),
+      handedBack: undefined,
+      goBackCalls: 0,
+      alertCalls: 1,
+    },
+  ])('$title', async ({ settle, handedBack, goBackCalls, alertCalls }) => {
     setLiveData({ draft: EXPENSE, latestManualHoldingId: 'h1' });
-    mockCreateTemplate.mockResolvedValue('new');
+    settle();
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
     const handbackId = openHandback();
     const { getByLabelText } = await render(templateScreen({ newTemplate: true, handbackId }));
@@ -664,7 +680,9 @@ describe('TransactionFormScreen — Add template', () => {
     await fireEvent.changeText(getByLabelText('Template name'), 'Rent');
     await pressSave(navigation.setOptions);
 
-    expect(closeHandback(handbackId)).toBe('new');
+    expect(alertSpy).toHaveBeenCalledTimes(alertCalls);
+    expect(navigation.goBack).toHaveBeenCalledTimes(goBackCalls);
+    expect(closeHandback(handbackId)).toBe(handedBack);
   });
 
   it('stores what was entered, with the category lowercased and no date', async () => {
@@ -1829,6 +1847,22 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Manual'));
 
       expect(utils.getByLabelText('Amount').props.value).toBe('42');
+    });
+
+    it('selects nothing on return when the new-template form could not save', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({}));
+      await openTemplateTab(utils);
+      await pressAddTemplate(utils);
+
+      // The pushed form's create write rejected, so it handed nothing back to its id; a template
+      // still appears in the list, as a sync or another device could add one.
+      setLiveData({ draft: EXPENSE, templateList: [CREATED] });
+      await utils.rerender(templateScreen({}));
+      await regainFocus();
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Select a template');
     });
 
     it('shows no entry tabs on the pushed new-template form, so it offers no Add template row', async () => {

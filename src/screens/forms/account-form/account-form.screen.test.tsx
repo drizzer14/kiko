@@ -19,6 +19,7 @@ import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-fie
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { closeHandback, openHandback } from '@kiko/screens/forms/use-select-created-option';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 
 import AccountFormScreen from './account-form.screen';
@@ -68,6 +69,8 @@ const isKindFieldDisabled = (
 const mockCreate = jest.fn();
 const mockSaveFormAccount = jest.fn();
 const mockCreateCashAccount = jest.fn();
+// What `accountsRepo.createCashAccount` resolves to once its write has committed.
+const createdCashAccount = { accountId: 'new-cash-account-id', holdingId: 'new-cash-holding-id' };
 const mockCreateImplicitHolding = jest.fn();
 const mockSetIcon = jest.fn();
 const mockUpdate = jest.fn();
@@ -447,8 +450,8 @@ const renderForm = async (
 };
 
 // The create form already on a named cash account, where every cash-save test starts.
-const renderCashForm = async () => {
-  const view = await renderForm();
+const renderCashForm = async (params: RouteParams = {}) => {
+  const view = await renderForm(params);
 
   await fireEvent.changeText(view.getByLabelText('Name'), 'Wallet');
   await selectKind(view.getByTestId, 'cash');
@@ -485,6 +488,7 @@ describe('AccountFormScreen', () => {
     // create resolves to the new row's id so the form can set its icon on it.
     mockCreate.mockResolvedValue('new-account-id');
     mockSaveFormAccount.mockResolvedValue('new-account-id');
+    mockCreateCashAccount.mockResolvedValue(createdCashAccount);
     mockCreateImplicitHolding.mockResolvedValue({
       accountId: 'implicit-account-id',
       holdingId: 'new-holding-id',
@@ -633,6 +637,76 @@ describe('AccountFormScreen', () => {
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  describe('the handback id', () => {
+    // Saves a cash account on a form opened with these route params.
+    const saveCashAccount = async (params: RouteParams = {}) => {
+      const view = await renderCashForm(params);
+
+      await fireEvent.changeText(view.getByLabelText('Initial value'), '100');
+      await pressSave(view.navigation.setOptions);
+
+      return view;
+    };
+
+    it('hands the created cash holding id back to the handback id in its route params', async () => {
+      mockCreateCashAccount.mockResolvedValue({
+        accountId: 'new-cash-account-id',
+        holdingId: 'new-cash-holding-id',
+      });
+      const handbackId = openHandback();
+      const { navigation } = await saveCashAccount({ handbackId });
+
+      await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+
+      expect(closeHandback(handbackId)).toBe('new-cash-holding-id');
+    });
+
+    it('hands nothing back when the cash create write fails', async () => {
+      mockCreateCashAccount.mockRejectedValue(new Error('boom'));
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      const handbackId = openHandback();
+      const { navigation } = await saveCashAccount({ handbackId });
+
+      await waitFor(() =>
+        expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+      );
+
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      expect(closeHandback(handbackId)).toBeUndefined();
+      alertSpy.mockRestore();
+    });
+
+    it('hands nothing back to an id its own route params do not carry', async () => {
+      mockCreateCashAccount.mockResolvedValue({
+        accountId: 'new-cash-account-id',
+        holdingId: 'new-cash-holding-id',
+      });
+      const unrelatedId = openHandback();
+      const { navigation } = await saveCashAccount();
+
+      await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+
+      expect(closeHandback(unrelatedId)).toBeUndefined();
+    });
+
+    it.each(['property', 'debt'] as const)(
+      'carries the handback id into the %s holding form it swaps to',
+      async (kind) => {
+        const handbackId = openHandback();
+        const { getByLabelText, getByTestId, navigation } = await renderForm({ handbackId });
+
+        await fireEvent.changeText(getByLabelText('Name'), 'My House');
+        await selectKind(getByTestId, kind);
+
+        expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+          implicitKind: kind,
+          draft: { name: 'My House', icon: null, color: null },
+          handbackId,
+        });
+      },
+    );
   });
 
   describe('picking an implicit kind swaps in the holding form', () => {
@@ -1073,8 +1147,8 @@ describe('AccountFormScreen', () => {
     let resolveWrite: () => void = () => {};
     mockCreateCashAccount.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          resolveWrite = resolve;
+        new Promise<typeof createdCashAccount>((resolve) => {
+          resolveWrite = () => resolve(createdCashAccount);
         }),
     );
 
@@ -3324,7 +3398,7 @@ describe('AccountFormScreen — draft', () => {
     mockAccounts = [];
     mockCreate.mockResolvedValue('new-account-id');
     mockSaveFormAccount.mockResolvedValue('new-account-id');
-    mockCreateCashAccount.mockResolvedValue(undefined);
+    mockCreateCashAccount.mockResolvedValue(createdCashAccount);
     mockSetIcon.mockResolvedValue(undefined);
     mockUpdate.mockResolvedValue(undefined);
     mockSaveToken.mockResolvedValue(undefined);

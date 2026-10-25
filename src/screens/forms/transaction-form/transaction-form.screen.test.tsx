@@ -5028,7 +5028,9 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       await fireEvent.press(utils.getByLabelText('Holding'));
       await fireEvent.press(utils.getByText('Add holding'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {
+        handbackId: expect.any(String),
+      });
     });
 
     it.each([
@@ -5041,7 +5043,35 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       await fireEvent.press(utils.getByLabelText('Holding'));
       await fireEvent.press(utils.getByText('Add holding'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {
+        handbackId: expect.any(String),
+      });
+    });
+
+    it('selects the cash holding the account form hands back when the user returns', async () => {
+      const { provide, fireFocus } = makeFocusNavigation();
+      const route = transactionFormRoute({});
+      const screenElement = () =>
+        provide(<TransactionFormScreen route={route} navigation={navigationProp} />);
+
+      setLiveData([], undefined, CATEGORIES, []);
+      const utils = await render(screenElement());
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      // The account form created a Cash account with its cash holding and handed that holding's
+      // id back to the id it was opened with, and the user came back.
+      handBackCreatedOption(navigation.navigate.mock.calls[0][1].handbackId, DOLLARS.id);
+      // A second holding appears too (a sync landing meanwhile), so a lone new holding is not
+      // seated by default and only the handed-back id can select one.
+      setLiveData([SOURCE, DOLLARS], undefined, CATEGORIES, [WALLET]);
+      await utils.rerender(screenElement());
+      await act(async () => {
+        fireFocus();
+      });
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent(/Cash USD/);
     });
   });
 

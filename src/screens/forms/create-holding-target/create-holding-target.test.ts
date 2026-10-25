@@ -170,10 +170,12 @@ describe('resolveCreateHoldingTarget', () => {
       ]);
     });
 
-    it('carries no handback id to the account form', () => {
+    // Replaces the pin "carries no handback id to the account form": with no account the picker's
+    // option is the cash holding the account form creates, so the id must reach that form.
+    it('carries the handback id to the account form', () => {
       expect(
         resolveCreateHoldingTarget(withoutAnchor(takesLedger), [], 'created-option-3'),
-      ).toEqual(['AccountForm', {}]);
+      ).toEqual(['AccountForm', { handbackId: 'created-option-3' }]);
     });
 
     it('leaves the key out of the holding form params when there is no handback id', () => {
