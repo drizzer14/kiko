@@ -464,14 +464,14 @@ const seed = (
   });
 };
 
-const renderScreen = () =>
-  render(
-    <HoldingDetailScreen
-      navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
-      route={route}
-    />,
-    { wrapper: GestureRootWrapper },
-  );
+const screenElement = () => (
+  <HoldingDetailScreen
+    navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+    route={route}
+  />
+);
+
+const renderScreen = () => render(screenElement(), { wrapper: GestureRootWrapper });
 
 describe('HoldingDetailScreen', () => {
   beforeEach(() => {
@@ -1840,6 +1840,49 @@ describe('HoldingDetailScreen', () => {
         expect(accountListEnabled()).toBe(false);
       });
 
+      it('re-reads the account list when the accounts table changes', async () => {
+        seedLoanWithLinkedPayment();
+        await renderScreen();
+
+        const accountListCall = mockUseLiveQuery.mock.calls.find(
+          (call) => (call[0] as { toSQL: () => { sql: string } }).toSQL().sql === 'accounts-list',
+        );
+
+        expect(accountListCall?.[1]).toEqual(['accounts']);
+      });
+
+      it('offers the payer’s account once the account list loads after the first render', async () => {
+        seed(
+          loanOnDebts,
+          [],
+          [],
+          [payer],
+          [],
+          [{ baseCurrency: 'UAH' }],
+          debtsAccount,
+          [],
+          {},
+          [linkedRow],
+          [],
+        );
+
+        const { getByTestId, rerender } = await renderScreen();
+
+        seedLoanWithLinkedPayment();
+        await rerender(screenElement());
+
+        await holdCard();
+        await act(async () => {
+          await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+        });
+
+        expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
+          accountId: 'bank',
+          name: 'Mono',
+          kind: 'bank',
+        });
+      });
+
       it('gives a scheduled payment, which has not happened, no hold', async () => {
         seed(
           loanOnDebts,
@@ -2453,7 +2496,7 @@ describe('HoldingDetailScreen', () => {
 
       seedLoanWithPayments(annuityLoanMeta, [first.paymentMinorUnits]);
 
-      const { getByTestId } = await renderScreen();
+      const { getByTestId, getByText } = await renderScreen();
 
       expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(
         formatMoney(Money.of('UAH', first.interestMinorUnits)),
@@ -2461,6 +2504,7 @@ describe('HoldingDetailScreen', () => {
       expect(getByTestId('loan-ledger-principal-repaid')).toHaveTextContent(
         formatMoney(Money.of('UAH', first.principalMinorUnits)),
       );
+      expect(getByText('Principal repaid')).toBeTruthy();
     });
   });
 
@@ -2545,6 +2589,25 @@ describe('HoldingDetailScreen', () => {
         upcoming.map((row) => `scheduled-payment-${row.index}`).reverse(),
       );
       expect(getAllByTestId('ledger-row-loan-link-marker')).toHaveLength(2);
+    });
+
+    it('keys every scheduled payment of the list on its own', async () => {
+      seedLoan(shortLoanHolding);
+
+      const { getAllByTestId, root } = await renderScreen();
+      const list = root?.queryAll(
+        (node) =>
+          node.props.testID === 'ledger-list' && typeof node.props.keyExtractor === 'function',
+      )[0];
+      const items: { row: { kind: string } }[] = list?.props.data ?? [];
+      const scheduledKeys = items
+        .filter((item) => item.row.kind === 'scheduled')
+        .map((item) => list?.props.keyExtractor(item, 0));
+
+      expect(getAllByTestId(/^scheduled-payment-/).length).toBeGreaterThan(1);
+      expect(scheduledKeys).toHaveLength(getAllByTestId(/^scheduled-payment-/).length);
+      expect(new Set(scheduledKeys).size).toBe(scheduledKeys.length);
+      expect(scheduledKeys.every((key) => typeof key === 'string' && key !== '')).toBe(true);
     });
 
     it('heads every day of the one list with a day header, scheduled days included', async () => {
@@ -2682,6 +2745,23 @@ describe('HoldingDetailScreen', () => {
         {},
         linked,
       );
+
+    it('shows the split and the balance of a payment linked after the first render', async () => {
+      const [one] = loanInstallments(shortLoanMeta);
+
+      seedLoan(shortLoanMeta, []);
+
+      const { getAllByTestId, rerender } = await renderScreen();
+
+      seedLoan(shortLoanMeta, [
+        paymentOf('txn-first', one.dueDate, -one.paymentMinorUnits, 'First installment'),
+      ]);
+      await rerender(screenElement());
+
+      const [linked] = getAllByTestId('ledger-row');
+
+      expect(within(linked).getByText(`Remaining ${money(one.balanceMinorUnits)}`)).toBeTruthy();
+    });
 
     it('shows the payment own principal and interest and the balance left right after it', async () => {
       const [one, two] = loanInstallments(shortLoanMeta);

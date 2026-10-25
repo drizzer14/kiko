@@ -987,6 +987,18 @@ describe('categoryRulesRepo.saveRule over a large ledger', () => {
       statements.filter((sql) => /^select/i.test(sql) && /from "transactions"/i.test(sql)),
     ).toHaveLength(3);
   });
+
+  it('reads the first page from the lowest id, including an id that starts with a digit', async () => {
+    insertTransaction({ id: '0-first', description: 'a', amountMinorUnits: -300 });
+    insertTransaction({ id: 'second', description: 'b', amountMinorUnits: -300 });
+
+    const draft = { id: null, category: 'coffee', matchers: SMALL_EXPENSE };
+    const counted = await categoryRulesRepo.countRuleRewrite(draft);
+    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+
+    expect([counted, changed]).toEqual([2, 2]);
+    expect(categoriesOf()).toEqual({ '0-first': 'coffee', second: 'coffee' });
+  });
 });
 
 // A default-description row stores '' and shows its label ("UAH card expense") only at render
@@ -1172,6 +1184,39 @@ describe('a row with no description', () => {
       await applySilpoRule('source');
 
       expect(categoriesOf().source).toBe('food');
+      expect(flagOf('source')).toBe(1);
+    });
+
+    it('sees the counterpart holding named in the label of an exchange leg', async () => {
+      insertRule({
+        id: 'stronger',
+        category: 'bills',
+        matchers: [startsWith('Exchange to USD card'), { type: 'direction', direction: 'expense' }],
+      });
+      insertBlank('source', { exchangePairId: 'pair', exchangeCounterpartHoldingId: 'usd-card' });
+
+      await applySilpoRule('source');
+
+      expect(flagOf('source')).toBe(1);
+    });
+
+    it('reads a leg between two holdings of one currency as a transfer', async () => {
+      mockDatabase.exec(`
+        INSERT INTO holdings (id, account_id, name, type, currency)
+          VALUES ('uah-savings', 'account', 'UAH savings', 'card', 'UAH');
+      `);
+      insertRule({
+        id: 'stronger',
+        category: 'bills',
+        matchers: [startsWith('Transfer to'), { type: 'direction', direction: 'expense' }],
+      });
+      insertBlank('source', {
+        exchangePairId: 'pair',
+        exchangeCounterpartHoldingId: 'uah-savings',
+      });
+
+      await applySilpoRule('source');
+
       expect(flagOf('source')).toBe(1);
     });
 

@@ -120,6 +120,28 @@ describe('openAccountsPages (real router)', () => {
     expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
   });
 
+  it('mounts a new page for another account instead of reusing the page of the open one', async () => {
+    await renderApp();
+    await openOnAccountsTab('AccountDetail', MONO);
+    const [, monoPageBefore] = accountsStack();
+
+    await open(CASH);
+
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE]);
+    expect(accountsStack()[1]?.key).not.toBe(monoPageBefore?.key);
+  });
+
+  it('mounts an account page of its own above a holding page that sat right above the list', async () => {
+    await renderApp();
+    await openOnAccountsTab('HoldingDetail', { holdingId: 'card', name: 'Card' });
+    const [, holdingPageBefore] = accountsStack();
+
+    await open(CASH);
+
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE]);
+    expect(accountsStack()[1]?.key).not.toBe(holdingPageBefore?.key);
+  });
+
   it('opens from another tab after the Accounts tab was left on a page', async () => {
     await renderApp();
     await openOnAccountsTab('AccountDetail', MONO);
