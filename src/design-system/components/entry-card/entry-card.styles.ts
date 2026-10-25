@@ -22,6 +22,11 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
     marginRight: theme.spacing(3),
   },
+  // The subtitle's distance under the label: the step TransactionCard puts between its title row
+  // and its meta row (`<Box gap={2}>`), so a planned row reads like a regular one.
+  rowDescriptionWithSubtitle: {
+    gap: theme.spacing(2),
+  },
   // The trailing amount cell: never shrinks, so the amount stays fully visible no matter how
   // long the description grows.
   // `alignItems` right-flushes the amount and its caption in one column.

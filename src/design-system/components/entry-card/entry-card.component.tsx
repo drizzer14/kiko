@@ -30,7 +30,9 @@ const EntryCard: FC<EntryCardProps> = ({
   const { theme } = useUnistyles();
   const hasAmountCaption = amountCaption !== undefined || amountCaptionIcon !== undefined;
   const description = (
-    <Box style={styles.rowDescription}>
+    <Box
+      style={[styles.rowDescription, subtitle !== undefined && styles.rowDescriptionWithSubtitle]}
+    >
       <Text variant="body">{label}</Text>
 
       {subtitle !== undefined && (

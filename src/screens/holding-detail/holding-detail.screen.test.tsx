@@ -3862,7 +3862,12 @@ describe('HoldingDetailScreen — bond yield to maturity', () => {
 const textLayout = (content: string): LayoutNode => ({ style: {}, children: [content] });
 
 const descriptionLayout = (label: string, ...subtitles: string[]): LayoutNode => ({
-  style: { flex: 1, marginRight: darkTheme.spacing(3) },
+  style: {
+    flex: 1,
+    marginRight: darkTheme.spacing(3),
+    // A subtitle sits as far under the label as TransactionCard's meta row is under its title.
+    ...(subtitles.length > 0 && { gap: darkTheme.spacing(2) }),
+  },
   children: [label, ...subtitles].map(textLayout),
 });
 

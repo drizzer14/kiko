@@ -38,6 +38,18 @@ const captionTextLayout = (caption: string): LayoutNode => ({
   children: [caption],
 });
 
+// TransactionCard separates its title row from its meta row with `<Box gap={2}>`; the subtitle sits
+// that same step under the label.
+const transactionCardTitleToMetaGap = darkTheme.spacing(2);
+
+const subtitleLayout = captionTextLayout;
+
+const subtitledLabelStyle = {
+  flex: 1,
+  marginRight: darkTheme.spacing(3),
+  gap: transactionCardTitleToMetaGap,
+};
+
 const captionIconLayout: LayoutNode = {
   style: { height: darkTheme.iconSizes.caption, width: darkTheme.iconSizes.caption },
   symbol: 'link',
@@ -235,9 +247,10 @@ describe('EntryCard', () => {
         mainRowLayout([
           {
             ...labelLayout('Interest'),
+            style: subtitledLabelStyle,
             children: [
               { variant: 'body', tone: 'textPrimary', children: ['Interest'] },
-              captionTextLayout('Computed'),
+              subtitleLayout('Computed'),
             ],
           },
           amountLayout(),
@@ -264,9 +277,10 @@ describe('EntryCard', () => {
         mainRowLayout([
           {
             ...labelLayout(longLabel),
+            style: subtitledLabelStyle,
             children: [
               { variant: 'body', tone: 'textPrimary', children: [longLabel] },
-              captionTextLayout('Planned'),
+              subtitleLayout('Planned'),
             ],
           },
           amountLayout([captionLayout([captionTextLayout('09:05')])]),
@@ -301,9 +315,10 @@ describe('EntryCard', () => {
               { testID: 'lead', children: ['icon'] },
               {
                 ...labelLayout('Coffee'),
+                style: subtitledLabelStyle,
                 children: [
                   { variant: 'body', tone: 'textPrimary', children: ['Coffee'] },
-                  captionTextLayout('Planned'),
+                  subtitleLayout('Planned'),
                 ],
               },
             ],
