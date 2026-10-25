@@ -18,10 +18,13 @@ tree today.
 The root `Makefile`'s `verify` target (`make verify`, wrapping
 `scripts/checks/verify.sh`) is the end-of-work verify. The role agents ask the coordinator to
 queue it (`bash scripts/job-queue.sh verify <worktree> <label>`); a typed `make verify` is
-denied (see "Heavy-job and full-jest deny"). It runs lint, then the full Jest suite, then
+denied (see "Heavy-job and full-jest deny"). It runs lint, then the full Jest suite in two
+stages (2a: every suite but the real-semgrep ones, with the tripwire shim
+`scripts/checks/semgrep-tripwire/semgrep` first on PATH; 2b: the suites listed in
+`scripts/checks/semgrep-jest-suites.txt`, in band; a missing or empty list fails closed), then
 `check:all` (the fast+medium gate) as ORDERED, FAIL-FAST stages,
 stopping at the first failing stage rather than always running all
-three. Read `verify.sh` directly for the exact stage commands rather
+of them. Read `verify.sh` directly for the exact stage commands rather
 than restating them here; a new harness check that belongs in the
 fast+medium gate is picked up by `make verify` automatically through
 `check:all`, with no `Makefile` change needed.
@@ -78,7 +81,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   stderr and exit 0, namely (a) the dedup-skip notice (`SKIPPED, not a fresh
   scan`), because a skip exits 0 without scanning and must never read as a
   fresh scan; and (b) the Class B WARNING block, because a non-blocking
-  finding is override-eligible and still has to be seen. `dup.sh` states
+  finding is override-eligible and still has to be seen; and (c) the re-scan WARNING, one per
+  timed-out rule and file pair that passed its single re-scan (exit 0; see "Semgrep errors fail
+  the check too" below). `dup.sh` states
   its own exception: its large-file `WARNING` lines (a listed file at or under its ceiling; see
   "`check:dup` measures the files jscpd skips for size" below), because a measurement of
   tracked debt still has to be seen. Any other large-file finding exits 2. `medium.sh` states
@@ -1421,8 +1426,15 @@ findings-handling for the exact mechanism, not restated here):
 - **Semgrep errors fail the check too.** A Semgrep exit code other than
   0/1, output that is not valid JSON, or an `errors[]` entry at level
   `error` or of type `Timeout` (Semgrep reports a timeout at warn level
-  with exit 0) fails `check:security`. Other warn-level errors stay
-  non-blocking. Read `scripts/checks/security.sh` for the exact test.
+  with exit 0) fails `check:security`, except a Timeout the single re-scan clears (next bullet).
+  Other warn-level errors stay non-blocking. Read `scripts/checks/security.sh` for the exact
+  test.
+- **One re-scan for timed-out files.** The main scan runs with `--jobs 6`. Each file that timed
+  out is re-scanned once alone with `--jobs 1`, with the same configs and the same 5 s
+  timer. A pass prints one WARNING per rule and file pair (exit 0). More than 10 pairs, or any
+  re-scan problem, fails. A warn-level `PartialParsing` entry in a re-scan also fails it
+  (accepted ruling, I0-5 review F3). The re-scan is not an override. Read
+  `scripts/checks/security.sh` for the limits.
 - **Only registry rules that cannot match this repo are excluded.**
   `security.sh` passes `--exclude-rule <full check_id>`; the full id is
   the registry rule file's dotted path plus the rule's own id; copy it from
@@ -1435,7 +1447,7 @@ findings-handling for the exact mechanism, not restated here):
   `kiko-*` rule, a file, or an id that can match here; the proof is
   handler-shaped (any `(request, response)` HTTP handler, a sink package, or
   a DOM target means the matching ids come back). A Semgrep Timeout on a
-  rule that still runs keeps failing `check:security`.
+  rule that still runs fails `check:security` unless the single re-scan clears it.
 - **Every argument is scanned.** `security.sh` takes any number of targets
   (none means the whole repo), drops a `rules/fixtures/` file among them,
   and hands the rest to ONE Semgrep call. A call whose targets are all
