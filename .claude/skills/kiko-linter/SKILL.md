@@ -166,12 +166,14 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `__tests__/kill-guard-wrapped-commands.test.ts`): `caffeinate` (`-t`/`-w` take a value),
   `arch`, `sandbox-exec`, `script` (BSD `script [-q] [file] cmd`), `screen` (a command
   argument, and `-X stuff|screen|exec|eval`, also with `-r`/`-x`), and `tmux`
-  (`new-session`, `new-window`, `split-window`, `respawn-pane`, `run-shell`, `if-shell`,
-  `popup`, `pipe-pane`; `send-keys` words joined in order and shell-quoted; a `;` splits
-  tmux commands; a global `-c` text; unique command prefixes). The tmux tables are
-  UNVERIFIED (tmux is not installed here; deny-leaning). Every `--text`/`--command` value of
-  any `orca` call is judged as a typed line (ruling R2). `osascript` text containing
-  "do shell script", "do script" or `doShellScript` is denied as kind `osascriptShell`
+  (`new-session`, `new-window`, `split-window`, `respawn-pane`, `respawn-window`, `run-shell`,
+  `if-shell`, `display-popup` (`popup` is its alias), `pipe-pane`; `send-keys` words joined in
+  order and shell-quoted; a `;` splits tmux commands; a global `-c` text; unique command
+  prefixes). The tmux tables are UNVERIFIED (tmux is not installed here; deny-leaning). Every
+  `--text`/`--command` value of any `orca` call is judged as a typed line (ruling R2); a next
+  word that starts with `--` is not a value. `osascript` text matching the case-insensitive
+  regex `/\bdo\s*(?:shell\s*)?script\b/i` (any whitespace; covers "do shell script",
+  "do script", `doShellScript`, `doScript`) is denied as kind `osascriptShell`
   (R3: prose false positives are accepted; the sender rewords). A `$'...'` ANSI-C string is
   decoded in the shared quote removal; `$'` opens one only after an odd run of unescaped `$`
   (`opensAnsiCQuote`: `$$'` is a pid then a quote).
@@ -535,8 +537,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   prescribe one of these routes, and (a) is a gap in the run log): (a) a command typed
   inside ssh, at, an osascript script file or stdin, or an orca text held in a variable, split
   across sends, or judged against the target terminal's cwd, is not judged (the unwrap and
-  the wrapper blind spots are listed after "The unwrap" paragraph); (b) `make -Nn verify`, `make -I -n
-  verify`, `make -o -n verify` and `make -W -n verify` read as a dry run
+  the wrapper blind spots are listed after "The unwrap" paragraph); (b) `make -Nn verify`,
+  `make -I -n verify`, `make -o -n verify` and `make -W -n verify` read as a dry run
   (`MAKE_DRY_RUN_FLAGS` lacks `N`; the word test accepts any word); (c) `$PWD/`, `${PWD}/`,
   `$(pwd)` and other `$X` targets for `security.sh` and Semgrep are allowed (only an exact
   `$PWD` names the repository); (d) `cd scripts/checks && bash verify.sh` is allowed (the
