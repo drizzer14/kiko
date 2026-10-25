@@ -10,6 +10,7 @@ import {
   chunkRows,
   IN_CLAUSE_CHUNK_SIZE,
 } from '@kiko/db';
+import { i18n } from '@kiko/i18n/init';
 import {
   type CategoryRuleMatcher,
   type PreparedRule,
@@ -24,6 +25,7 @@ import {
   winningRule,
 } from '@kiko/categories/category-rules';
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { ruleDescriptionOf } from '@kiko/transactions/row-description';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 const REWRITE_PAGE_SIZE = 2000;
@@ -40,7 +42,10 @@ export const readAllRulesDatabaseTransaction = (
 
 const candidateColumns = {
   id: transactions.id,
+  holdingId: transactions.holdingId,
+  holdingName: holdings.name,
   description: transactions.description,
+  operation: transactions.operation,
   amountMinorUnits: transactions.amountMinorUnits,
   time: transactions.time,
   currency: holdings.currency,
@@ -76,6 +81,37 @@ export const rewritePageQuery = (databaseTransaction: typeof database, afterId: 
     .where(gt(transactions.id, afterId))
     .orderBy(asc(transactions.id))
     .limit(REWRITE_PAGE_SIZE);
+
+// The rows that store no description, a page of ids at a time: their names are the labels the
+// lists show, which only the pure module can judge, so no SQL narrows them further.
+export const rewriteBlankPageQuery = (databaseTransaction: typeof database, afterId: string) =>
+  databaseTransaction
+    .select(candidateColumns)
+    .from(transactions)
+    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+    .where(and(eq(transactions.description, ''), gt(transactions.id, afterId)))
+    .orderBy(asc(transactions.id))
+    .limit(REWRITE_PAGE_SIZE);
+
+type CandidateRow = Awaited<ReturnType<typeof rewritePageQuery>>[number];
+
+// No other holding's name is read here: a row that names a counterpart holding is a leg, which
+// `planRuleRewrite` leaves out before it judges the name.
+const NO_OTHER_HOLDINGS: ReadonlyMap<string, string> = new Map();
+
+// A candidate as the user sees it: a blank description reads as its label, so a name matcher
+// judges what the lists show (the same name every other apply path reads).
+const withVisibleDescription = (rows: readonly CandidateRow[]): CandidateRow[] =>
+  rows.map((row) => ({
+    ...row,
+    description: ruleDescriptionOf({
+      transaction: row,
+      holdingName: row.holdingName,
+      holdingNameById: NO_OTHER_HOLDINGS,
+      holdingCurrencyById: NO_OTHER_HOLDINGS,
+      t: i18n.t,
+    }),
+  }));
 
 // A rule as the editor holds it: no id yet for a new rule.
 type RuleDraft = {
@@ -156,6 +192,32 @@ const assertSavable = (refusal: string | undefined): void => {
 
 type PreparedRules = ReturnType<typeof prepareRules>;
 
+// Every row the query pages through, a page of ids at a time (an id-keyset page, so a page never
+// re-reads or skips a row); planRuleRewrite picks the rewritable ones the saved rule wins.
+const rowIdsByPages = async (
+  databaseTransaction: typeof database,
+  prepared: PreparedRules,
+  savedRuleId: string,
+  pageQuery: typeof rewritePageQuery,
+): Promise<string[]> => {
+  const rowIds: string[] = [];
+  let lastId = '';
+  let pageLength = REWRITE_PAGE_SIZE;
+
+  while (pageLength === REWRITE_PAGE_SIZE) {
+    const page = await pageQuery(databaseTransaction, lastId);
+
+    for (const rowId of planRuleRewrite(prepared, savedRuleId, withVisibleDescription(page))) {
+      rowIds.push(rowId);
+    }
+
+    pageLength = page.length;
+    lastId = page.at(-1)?.id ?? lastId;
+  }
+
+  return rowIds;
+};
+
 // A saved rule with a name matcher can only win rows whose description normalizes to what that
 // matcher accepts, so only those descriptions are read as rows. The pure module judges the name,
 // on a subject that knows nothing else, so this narrowing never differs from the rule itself.
@@ -183,35 +245,19 @@ const rowIdsForNamedRule = async (
   for (const descriptionChunk of chunkRows(descriptions, IN_CLAUSE_CHUNK_SIZE)) {
     const rows = await rewriteDescriptionRowsQuery(databaseTransaction, descriptionChunk);
 
-    for (const rowId of planRuleRewrite(prepared, nameOnlyRule.id, rows)) {
+    for (const rowId of planRuleRewrite(prepared, nameOnlyRule.id, withVisibleDescription(rows))) {
       rowIds.push(rowId);
     }
   }
 
-  return rowIds;
-};
-
-// A rule with no name matcher can win any row, so every row is read; planRuleRewrite picks the
-// rewritable ones. A page of ids at a time (an id-keyset page, so a page never re-reads or skips a
-// row).
-const rowIdsForUnnamedRule = async (
-  databaseTransaction: typeof database,
-  prepared: PreparedRules,
-  savedRuleId: string,
-): Promise<string[]> => {
-  const rowIds: string[] = [];
-  let lastId = '';
-  let pageLength = REWRITE_PAGE_SIZE;
-
-  while (pageLength === REWRITE_PAGE_SIZE) {
-    const page = await rewritePageQuery(databaseTransaction, lastId);
-
-    for (const rowId of planRuleRewrite(prepared, savedRuleId, page)) {
-      rowIds.push(rowId);
-    }
-
-    pageLength = page.length;
-    lastId = page.at(-1)?.id ?? lastId;
+  // The blank rows are always candidates: the label a name matcher may accept is not stored.
+  for (const rowId of await rowIdsByPages(
+    databaseTransaction,
+    prepared,
+    nameOnlyRule.id,
+    rewriteBlankPageQuery,
+  )) {
+    rowIds.push(rowId);
   }
 
   return rowIds;
@@ -227,9 +273,10 @@ const rowIdsRewrittenBy = async (
 ): Promise<string[]> => {
   const nameMatchers = savedRule.matchers.filter(isNameMatcher);
 
+  // A rule with no name matcher can win any row, so every row is read.
   return nameMatchers.length > 0
     ? rowIdsForNamedRule(databaseTransaction, prepared, { ...savedRule, matchers: nameMatchers })
-    : rowIdsForUnnamedRule(databaseTransaction, prepared, savedRule.id);
+    : rowIdsByPages(databaseTransaction, prepared, savedRule.id, rewritePageQuery);
 };
 
 const preparedRuleOf = (prepared: PreparedRules, ruleId: string): PreparedRule | undefined =>
@@ -276,9 +323,13 @@ const giveSourceRowCategory = async (
   const [source] = await databaseTransaction
     .select({
       category: transactions.category,
+      holdingId: transactions.holdingId,
       description: transactions.description,
       amountMinorUnits: transactions.amountMinorUnits,
       time: transactions.time,
+      exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+      untrackedCounterpart: transactions.untrackedCounterpart,
+      operation: transactions.operation,
       currency: holdings.currency,
     })
     .from(transactions)
@@ -289,7 +340,33 @@ const giveSourceRowCategory = async (
     return 0;
   }
 
-  const winner = winningRule(prepared, subjectOfStoredRow(source));
+  // The row may be an exchange leg, whose label names its counterpart holding.
+  const labelHoldings = await databaseTransaction
+    .select({ id: holdings.id, name: holdings.name, currency: holdings.currency })
+    .from(holdings)
+    .where(
+      inArray(holdings.id, [
+        source.holdingId,
+        source.exchangeCounterpartHoldingId ?? source.holdingId,
+      ]),
+    );
+  const holdingNameById = new Map(labelHoldings.map((holding) => [holding.id, holding.name]));
+  const holdingCurrencyById = new Map(
+    labelHoldings.map((holding) => [holding.id, holding.currency]),
+  );
+  const winner = winningRule(
+    prepared,
+    subjectOfStoredRow({
+      ...source,
+      description: ruleDescriptionOf({
+        transaction: source,
+        holdingName: holdingNameById.get(source.holdingId) ?? '',
+        holdingNameById,
+        holdingCurrencyById,
+        t: i18n.t,
+      }),
+    }),
+  );
   const isOutRanked =
     winner !== undefined &&
     winner.id !== savedRule.id &&

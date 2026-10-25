@@ -9,27 +9,31 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { dayKeyOf } from '@kiko/prices/price-book';
+import { addMonths } from '@kiko/holdings/interest';
 import { formatMoney } from '@kiko/currency/format';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
-import { formatDate, startOfLocalDay } from '@kiko/dates';
 import {
   EDIT_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
+  VIEW_ACCOUNT_ACTION_TEST_ID,
+  VIEW_HOLDING_ACTION_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { DAY_MS, formatDate, startOfLocalDay } from '@kiko/dates';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { type LayoutNode, layoutOf } from '@kiko/test-support/layout-of';
+import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -171,6 +175,11 @@ const annuityLoanHolding = {
   metadata: annuityLoanMeta,
 };
 
+// The same loan with so few installments left that its whole list mounts inside the FlatList's
+// first render window.
+const shortLoanMeta: LoanMeta = { ...annuityLoanMeta, termMonths: 15 };
+const shortLoanHolding = { ...annuityLoanHolding, metadata: shortLoanMeta };
+
 // An informal debt — its own outstanding is a manual price-point
 // series, never a computed schedule (loanInstallments returns [] for it).
 const noneLoanHolding = {
@@ -188,8 +197,12 @@ const noneLoanHolding = {
 };
 
 const mockClosePaneRoute = jest.fn();
+// A ledger row's View actions open a page in the pane opposite this one (on one pane, a plain
+// navigate); its own test pins that fallback.
+const mockOpenInPane = jest.fn();
 jest.mock('@kiko/navigation/pane-stack', () => ({
   useClosePaneRoute: () => mockClosePaneRoute,
+  useOpenInPane: () => mockOpenInPane,
 }));
 
 const mockUseLiveQuery = jest.fn();
@@ -252,6 +265,9 @@ jest.mock('@kiko/categories/repo', () => ({
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: (accountId: string) => ({ toSQL: () => ({ sql: '', params: [accountId] }) }),
+    // A distinct `sql` marker, for the same reason as `listLinkedToLoanQuery` above: it shares
+    // the `['accounts']` reactive key with `byIdQuery`.
+    listQuery: () => ({ toSQL: () => ({ sql: 'accounts-list', params: [] }) }),
   },
 }));
 jest.mock('@kiko/rates/repo', () => ({
@@ -282,6 +298,12 @@ const cardHolding = {
   currency: 'UAH',
   balanceMinorUnits: 0,
 };
+
+// A holding on its bank account, for the tests of a ledger row's View account action, which needs
+// the account the holding sits in.
+const bankAccount = { id: 'bank', name: 'Mono', kind: 'bank', archivedAt: null };
+const debtsAccount = { id: 'debts', name: 'Loans', kind: 'debt', archivedAt: null };
+const bankCardHolding = { ...cardHolding, accountId: 'bank' };
 
 // A holding migration 0044 (or its restore mirror) moved a cash exchange
 // leg's counterpart onto — it keeps rendering its existing leg label even
@@ -357,17 +379,21 @@ const seed = (
   // key defaults to `false` (an already-resolved query), so a call site that
   // omits it sees resolved queries.
   isLoading: Partial<Record<string, boolean>> = {},
-  // The rows `listLinkedToLoanQuery` resolves to — the loan detail's own
-  // "Linked payments" section. Defaults to none, so every existing
-  // call site above keeps rendering no such section, unaffected.
+  // The rows `listLinkedToLoanQuery` resolves to — the payments the loan
+  // detail lists beside its scheduled ones. Defaults to none, so every existing
+  // call site above keeps rendering a loan with no linked payment, unaffected.
   linkedLoanPayments: unknown[] = [],
+  // Every account — what a loan's linked payments resolve their PAYER's account from. Read only
+  // for a loan.
+  accountList: unknown[] = [],
 ): void => {
   // A per-table result map, keyed the same way the old if-chain branched — a
   // lookup instead of a chain keeps this well under the cognitive-complexity
   // budget (kiko-code-style). SQLite returns NULL, never undefined, for a
   // column a row does not set, so the transactions default normalizes every
-  // nullable marker the screen reads the same way — an `undefined` here
-  // would be a fixture artefact the device never produces.
+  // nullable marker the screen reads the same way, and gives a row the holding
+  // it belongs to — an `undefined` here would be a fixture artefact the device
+  // never produces.
   const resultByTable: Record<string, { data: unknown[]; isLoading: boolean; isFresh?: boolean }> =
     {
       holdings: {
@@ -387,6 +413,7 @@ const seed = (
       transactions: {
         data: transactions.map((row) => ({
           exchangeCounterpartHoldingId: null,
+          holdingId: 'h-1',
           ...(row as Record<string, unknown>),
         })),
         isLoading: isLoading.transactions ?? false,
@@ -398,6 +425,14 @@ const seed = (
       ...(row as Record<string, unknown>),
     })),
     isLoading: isLoading.linkedLoanPayments ?? false,
+  };
+  // The price book's read names each payment by its transaction id, as the real query selects it.
+  const loanLedgerPaymentsResult = {
+    ...linkedLoanPaymentsResult,
+    data: linkedLoanPaymentsResult.data.map((row) => ({
+      ...row,
+      transactionId: (row as { id?: string }).id,
+    })),
   };
 
   // `listLinkedToLoanQuery` shares the `['transactions']` reactive key with
@@ -415,7 +450,15 @@ const seed = (
 
     const sql = (query as { toSQL: () => { sql: string } }).toSQL().sql;
 
-    return sql === 'linked-loan-payments' || sql === 'loan-ledger-payments'
+    if (sql === 'loan-ledger-payments') {
+      return loanLedgerPaymentsResult;
+    }
+
+    if (sql === 'accounts-list') {
+      return { data: accountList, isLoading: isLoading.accountList ?? false };
+    }
+
+    return sql === 'linked-loan-payments'
       ? linkedLoanPaymentsResult
       : (resultByTable[keys[0]] ?? resultByTable.transactions);
   });
@@ -822,16 +865,17 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Tax withheld')).toBeTruthy();
   });
 
-  it('marks future lifecycle entries as Projected', async () => {
+  it('marks future lifecycle entries as Projected in their title', async () => {
     seed(futureDepositHolding);
 
-    const { getAllByText } = await renderScreen();
+    const { getAllByText, queryByText } = await renderScreen();
 
     // The separate schedule card is gone; the lifecycle renders inline. A brand-
-    // new deposit's future accruals render dimmed with a "Projected" marker.
-    // futureDepositHolding is a term_deposit (day-granular), so the marker
-    // carries no trailing time separator.
-    expect(getAllByText('Projected').length).toBeGreaterThan(0);
+    // new deposit's future accruals render dimmed with "Projected" in the title.
+    // futureDepositHolding is a term_deposit (day-granular), so no caption
+    // sits under the amount.
+    expect(getAllByText('Interest accrual · Projected').length).toBeGreaterThan(0);
+    expect(queryByText('Projected')).toBeNull();
   });
 
   it('renders the deposit lifecycle inline in the transactions list', async () => {
@@ -841,9 +885,9 @@ describe('HoldingDetailScreen', () => {
 
     // The lifecycle is inline ledger entries (no separate schedule card): the
     // opening deposit, per-period interest accruals, and capitalizations.
-    expect(getByText('Opening deposit')).toBeTruthy();
-    expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
-    expect(getAllByText('Capitalization').length).toBeGreaterThan(0);
+    expect(getByText('Opening deposit · Computed')).toBeTruthy();
+    expect(getAllByText('Interest accrual · Computed').length).toBeGreaterThan(0);
+    expect(getAllByText('Capitalization · Computed').length).toBeGreaterThan(0);
   });
 
   it('shows the shared default description for a transaction with an empty description', async () => {
@@ -920,23 +964,52 @@ describe('HoldingDetailScreen', () => {
 
     const { getByText } = await renderScreen();
 
-    // The timestamp caption is wrapped in a right-aligned footer container
-    // (alignSelf 'flex-end') so it lands under the amount column rather than
-    // left-aligned under the description — mirroring the Home row layout.
-    const footer = ancestorWithStyle(getByText('09:05'), 'alignSelf');
-    expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
+    // The timestamp caption sits in the right-aligned amount column, directly
+    // under the value, rather than hanging below the whole row.
+    const column = ancestorWithStyle(getByText('09:05'), 'flexShrink');
+    expect(StyleSheet.flatten(column.props.style)).toMatchObject({ alignItems: 'flex-end' });
+    expect(within(column).getByTestId('money-tone-auto')).toBeTruthy();
   });
 
-  it('right-aligns the derived lifecycle row caption so it sits below the value', async () => {
+  it('right-aligns the derived lot row time caption so it sits below the value', async () => {
+    seed(metalHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    // A lot row on a timed type keeps only its time as the caption, in the same
+    // amount column as the value.
+    const row = getByTestId('ledger-row');
+    const column = ancestorWithStyle(within(row).getByText(/^\d{2}:\d{2}$/), 'flexShrink');
+    expect(StyleSheet.flatten(column.props.style)).toMatchObject({ alignItems: 'flex-end' });
+    expect(within(row).queryByText(/Computed|Projected/)).toBeNull();
+  });
+
+  it('gives a derived row of a day-granular type no amount caption', async () => {
     seed(depositHolding);
 
-    const { getAllByText } = await renderScreen();
+    const { getAllByTestId } = await renderScreen();
 
-    // The derived "Computed" caption uses the same right-aligned footer
-    // container, so it too sits under the amount column. depositHolding is a
-    // term_deposit (day-granular), so the caption carries no trailing time.
-    const footer = ancestorWithStyle(getAllByText('Computed')[0], 'alignSelf');
-    expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
+    for (const row of getAllByTestId('ledger-row')) {
+      expect(within(row).queryByText(/^\d{2}:\d{2}$/)).toBeNull();
+    }
+  });
+
+  it('draws the loan-link marker beside the time in the amount column, not in the lead', async () => {
+    seed(cardHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: -5000,
+        time: new Date(2024, 0, 15, 9, 5).getTime(),
+        description: 'Loan payment',
+        source: 'manual',
+        loanHoldingId: 'loan-1',
+      },
+    ]);
+
+    const { getByText } = await renderScreen();
+    const column = ancestorWithStyle(getByText('09:05'), 'flexShrink');
+
+    expect(within(column).getByTestId('ledger-row-loan-link-marker')).toBeTruthy();
   });
 
   it.each([
@@ -1571,22 +1644,33 @@ describe('HoldingDetailScreen', () => {
     expect(transactionsRepo.remove).not.toHaveBeenCalled();
   });
 
-  it('does not offer delete on a synced transaction row', async () => {
-    seed(cardHolding, [
-      {
-        id: 'txn-mono',
-        amountMinorUnits: -5000,
-        time: 1,
-        description: 'Coffee',
-        source: 'monobank',
-      },
-    ]);
+  it('does not offer delete on a synced transaction row, only the View action', async () => {
+    seed(
+      bankCardHolding,
+      [
+        {
+          id: 'txn-mono',
+          amountMinorUnits: -5000,
+          time: 1,
+          description: 'Coffee',
+          source: 'monobank',
+        },
+      ],
+      [],
+      [],
+      [],
+      undefined,
+      bankAccount,
+    );
 
-    const { queryByTestId } = await renderScreen();
+    const { getByTestId, queryByTestId } = await renderScreen();
 
-    // A synced (Monobank) row is not deletable, so CardContextMenu renders it
-    // bare — no card-context-menu wrapper and no hold gesture to intercept it.
-    expect(queryByTestId('card-context-menu')).toBeNull();
+    // A synced (Monobank) row is not deletable, so its hold lists View account alone.
+    await holdCard();
+
+    expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+    expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+    expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
   });
 
   describe('an imported transaction row', () => {
@@ -1606,14 +1690,19 @@ describe('HoldingDetailScreen', () => {
       return screen;
     };
 
-    it('opens the delete confirm straight away on a hold, and deletes through transactionsRepo.remove', async () => {
-      seed(cardHolding, [importedRow]);
+    it('lists Delete with View account on a hold, and deletes through transactionsRepo.remove', async () => {
+      seed(bankCardHolding, [importedRow], [], [], [], undefined, bankAccount);
 
       const { getByTestId, getByText, queryByTestId } = await holdRow();
 
-      // An imported row is deletable but not duplicable, so there is no
-      // Duplicate/Delete choice: the hold raises the confirm itself.
-      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+      // An imported row is deletable but not duplicable: View account and Delete.
+      expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+      expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
       expect(getByText('Delete "Coffee"')).toBeTruthy();
 
       await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
@@ -1622,22 +1711,198 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
-  it('renders the derived lifecycle rows (opening, accrual, taxes) marked Computed', async () => {
+  describe('the View account and View holding actions', () => {
+    const manualRow = {
+      id: 'txn-9',
+      amountMinorUnits: -5000,
+      time: 1,
+      description: 'Coffee',
+      source: 'manual',
+    };
+
+    it('offers View account only on a row of the page’s own holding, opening its account', async () => {
+      seed(bankCardHolding, [manualRow], [], [], [], undefined, bankAccount);
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(queryByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeNull();
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+      expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+      });
+
+      expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+      expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
+        accountId: 'bank',
+        name: 'Mono',
+        kind: 'bank',
+      });
+    });
+
+    it('offers no hold at all while the holding’s account has not loaded', async () => {
+      seed(bankCardHolding, [{ ...manualRow, source: 'monobank' }]);
+
+      const { queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('card-context-menu')).toBeNull();
+    });
+
+    describe('a loan’s linked payment', () => {
+      const [first] = loanInstallments(shortLoanMeta);
+      const loanOnDebts = { ...shortLoanHolding, accountId: 'debts' };
+      const payer = {
+        id: 'payer-1',
+        name: 'Everyday card',
+        type: 'card',
+        currency: 'UAH',
+        accountId: 'bank',
+      };
+      const linkedRow = {
+        id: 'txn-first',
+        holdingId: 'payer-1',
+        amountMinorUnits: -first.paymentMinorUnits,
+        currency: 'UAH',
+        time: first.dueDate,
+        description: 'First installment',
+        source: 'manual',
+        loanHoldingId: 'h-1',
+        loanLinkSource: 'manual',
+      };
+      const seedLoanWithLinkedPayment = () =>
+        seed(
+          loanOnDebts,
+          [],
+          [],
+          [payer],
+          [],
+          [{ baseCurrency: 'UAH' }],
+          debtsAccount,
+          [],
+          {},
+          [linkedRow],
+          [bankAccount, debtsAccount],
+        );
+
+      it('opens the PAYER holding from View holding', async () => {
+        seedLoanWithLinkedPayment();
+
+        const { getByTestId } = await renderScreen();
+
+        await holdCard();
+        await act(async () => {
+          await fireEvent.press(getByTestId(VIEW_HOLDING_ACTION_TEST_ID));
+        });
+
+        expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+        expect(mockOpenInPane).toHaveBeenCalledWith('HoldingDetail', {
+          holdingId: 'payer-1',
+          name: 'Everyday card',
+        });
+      });
+
+      it('opens the PAYER’s account, not the loan’s, from View account', async () => {
+        seedLoanWithLinkedPayment();
+
+        const { getByTestId } = await renderScreen();
+
+        await holdCard();
+        await act(async () => {
+          await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+        });
+
+        expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+        expect(mockOpenInPane).toHaveBeenCalledWith('AccountDetail', {
+          accountId: 'bank',
+          name: 'Mono',
+          kind: 'bank',
+        });
+      });
+
+      it('reads the account list for a loan only', async () => {
+        const accountListEnabled = (): unknown =>
+          mockUseLiveQuery.mock.calls.find(
+            (call) => (call[0] as { toSQL: () => { sql: string } }).toSQL().sql === 'accounts-list',
+          )?.[2];
+
+        seedLoanWithLinkedPayment();
+        await renderScreen();
+
+        expect(accountListEnabled()).toBe(true);
+
+        mockUseLiveQuery.mockClear();
+        seed(bankCardHolding, [manualRow], [], [], [], undefined, bankAccount);
+        await renderScreen();
+
+        expect(accountListEnabled()).toBe(false);
+      });
+
+      it('gives a scheduled payment, which has not happened, no hold', async () => {
+        seed(
+          loanOnDebts,
+          [],
+          [],
+          [],
+          [],
+          [{ baseCurrency: 'UAH' }],
+          debtsAccount,
+          [],
+          {},
+          [],
+          [debtsAccount],
+        );
+
+        await renderScreen();
+
+        expect(() => getByGestureTestId(HOLD_GESTURE_TEST_ID)).toThrow();
+      });
+    });
+  });
+
+  it('renders the derived lifecycle rows (opening, accrual, taxes) titled with Computed', async () => {
     seed(depositHolding);
 
-    const { getByText, getAllByText } = await renderScreen();
+    const { getByText, getAllByText, queryByText } = await renderScreen();
 
     // derivedEntries yields the opening deposit plus per-period interest and its
     // two withholding lines. These read distinctly from the value-breakdown
-    // labels ("Interest earned"/"Tax withheld").
-    expect(getByText('Opening deposit')).toBeTruthy();
-    expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
-    expect(getAllByText('Income tax 18%').length).toBeGreaterThan(0);
-    expect(getAllByText('Military levy 5%').length).toBeGreaterThan(0);
-    // Every settled derived row carries a "Computed" marker so it reads as
-    // derived. depositHolding is a term_deposit (day-granular), so the marker
-    // carries no trailing time separator.
-    expect(getAllByText('Computed').length).toBeGreaterThanOrEqual(3);
+    // labels ("Interest earned"/"Tax withheld"). Every settled derived row
+    // carries "Computed" in its title so it reads as derived.
+    expect(getByText('Opening deposit · Computed')).toBeTruthy();
+    expect(getAllByText('Interest accrual · Computed').length).toBeGreaterThan(0);
+    expect(getAllByText('Income tax 18% · Computed').length).toBeGreaterThan(0);
+    expect(getAllByText('Military levy 5% · Computed').length).toBeGreaterThan(0);
+    expect(queryByText('Computed')).toBeNull();
+  });
+
+  it('titles a paid bond coupon with Computed', async () => {
+    seed(bondHolding);
+
+    const { getAllByText, queryByText } = await renderScreen();
+
+    expect(getAllByText('Coupon · Computed').length).toBeGreaterThan(0);
+    expect(queryByText('Coupon')).toBeNull();
+  });
+
+  it('titles a bond coupon still ahead with Projected', async () => {
+    const now = new Date();
+
+    seed({
+      ...bondHolding,
+      metadata: {
+        ...bondHolding.metadata,
+        purchaseDate: now.getTime(),
+        maturityDate: new Date(now.getFullYear() + 2, now.getMonth(), now.getDate()).getTime(),
+      },
+    });
+
+    const { getAllByText, queryByText } = await renderScreen();
+
+    expect(getAllByText('Coupon · Projected').length).toBeGreaterThan(0);
+    expect(queryByText('Coupon')).toBeNull();
   });
 
   // A lot is the user's own entry, unlike a computed one, so its row edits and
@@ -1706,13 +1971,34 @@ describe('HoldingDetailScreen', () => {
       alertSpy.mockRestore();
     });
 
-    it('is not captioned Computed, since the user entered it', async () => {
+    it('is not titled Computed, since the user entered it', async () => {
       seed(metalHolding);
 
       const { getByText, queryByText } = await renderScreen();
 
       expect(getByText('Purchase')).toBeTruthy();
       expect(queryByText(/Computed/)).toBeNull();
+    });
+
+    it('reads Projected in its title when dated ahead', async () => {
+      seed({
+        ...metalHolding,
+        metadata: {
+          ...metalHolding.metadata,
+          lots: [
+            {
+              day: Date.UTC(new Date().getUTCFullYear() + 1, 0, 1),
+              quantityDelta: '10',
+              costMinorUnits: 5_000_000,
+            },
+          ],
+        },
+      });
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Purchase · Projected')).toBeTruthy();
+      expect(queryByText('Purchase')).toBeNull();
     });
 
     // The ledger lists newest first, so the January buy is the last row held.
@@ -1771,7 +2057,7 @@ describe('HoldingDetailScreen', () => {
     // all — no row is wrapped in the shared CardContextMenu.
     expect(queryByTestId('card-context-menu')).toBeNull();
     // Pressing a derived row's label opens no transaction form.
-    await fireEvent.press(getByText('Opening deposit'));
+    await fireEvent.press(getByText('Opening deposit · Computed'));
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
@@ -1790,7 +2076,7 @@ describe('HoldingDetailScreen', () => {
 
     // Both the real transaction and the derived opening deposit render together.
     expect(getByText('Fee')).toBeTruthy();
-    expect(getByText('Opening deposit')).toBeTruthy();
+    expect(getByText('Opening deposit · Computed')).toBeTruthy();
     // Only the real row is deletable; the derived rows expose no delete
     // action, so exactly one card-context-menu wrapper renders for the whole
     // ledger.
@@ -1806,10 +2092,10 @@ describe('HoldingDetailScreen', () => {
     // interest accrual reads in the positive (green) tone — by KIND, via the
     // derived entry's tone passed through MoneyText, not merely by the amount's
     // sign.
-    const taxAmount = amountForLabel(getAllByText('Income tax 18%')[0]);
+    const taxAmount = amountForLabel(getAllByText('Income tax 18% · Computed')[0]);
     expect(taxAmount.props.testID).toBe('money-tone-negative');
 
-    const interestAmount = amountForLabel(getAllByText('Interest accrual')[0]);
+    const interestAmount = amountForLabel(getAllByText('Interest accrual · Computed')[0]);
     expect(interestAmount.props.testID).toBe('money-tone-positive');
   });
 
@@ -1831,7 +2117,7 @@ describe('HoldingDetailScreen', () => {
     const { getAllByText, getByText } = await renderScreen();
 
     // A net coupon (money in) reads green as an interest payment.
-    const couponAmount = amountForLabel(getAllByText('Coupon')[0]);
+    const couponAmount = amountForLabel(getAllByText('Coupon · Computed')[0]);
     expect(couponAmount.props.testID).toBe('money-tone-positive');
 
     // The whole-life expected-profit breakdown line reads green as the expected gain.
@@ -2092,196 +2378,741 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
-  it('lists the next payments of an annuity loan as cards, starting at the next installment', async () => {
-    seed(annuityLoanHolding);
+  describe('the loan breakdown rows around zero interest', () => {
+    const zeroRateMeta: LoanMeta = {
+      kind: 'car_loan',
+      principalMinorUnits: 12_000_00,
+      startDate: startMonthsAgo(12),
+      schedule: 'annuity',
+      annualRatePct: 0,
+      termMonths: 12,
+    };
 
-    const { getByText, getByTestId, getAllByTestId } = await renderScreen();
+    const money = (minorUnits: number): string => formatMoney(Money.of('UAH', minorUnits));
 
-    const upcoming = loanInstallments(annuityLoanMeta).filter(
-      (row) => row.dueDate >= startOfLocalDay(Date.now()),
-    );
-    const [next] = upcoming;
+    const seedLoanWithPayments = (meta: LoanMeta, paidMinorUnits: number[]): void => {
+      const [first] = loanInstallments(meta);
 
-    if (next === undefined) {
-      throw new Error('fixture must have an upcoming installment for this test to mean anything');
-    }
-
-    expect(getByText('Upcoming Payments')).toBeTruthy();
-    // Bounded to the next year: the rest sits behind "Show all".
-    expect(upcoming.length).toBeGreaterThan(12);
-    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(12);
-    // Scoped per card: a swapped principal/interest would fail here, unlike a
-    // bare `getByText` search over the whole screen.
-    expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
-      formatMoney(Money.of('UAH', -next.paymentMinorUnits)),
-      { exact: false },
-    );
-    expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
-      `Principal ${formatMoney(Money.of('UAH', next.principalMinorUnits))}`.concat(
-        ` · interest ${formatMoney(Money.of('UAH', next.interestMinorUnits))}`,
-      ),
-      { exact: false },
-    );
-  });
-
-  it('draws the upcoming payments between the breakdown and the linked payments', async () => {
-    seed(
-      annuityLoanHolding,
-      [],
-      [],
-      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
-      [],
-      [{ baseCurrency: 'UAH' }],
-      undefined,
-      [],
-      {},
-      [
-        {
-          id: 'txn-linked',
+      seed(
+        { ...annuityLoanHolding, metadata: meta },
+        [],
+        [],
+        [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        [],
+        {},
+        paidMinorUnits.map((paid) => ({
+          id: 'txn-first',
           holdingId: 'payer-1',
-          amountMinorUnits: -100_000,
-          time: 1_000,
+          amountMinorUnits: -paid,
+          currency: 'UAH',
+          time: first.dueDate,
           description: 'First installment',
           source: 'manual',
           loanHoldingId: 'h-1',
-          loanLinkSource: 'manual',
-        },
-      ],
-    );
+          loanLinkSource: 'auto',
+        })),
+      );
+    };
 
-    const { getAllByText } = await renderScreen();
+    it('hides Principal repaid and keeps Interest paid at 0.00 for a 0% loan with no fee', async () => {
+      seedLoanWithPayments(zeroRateMeta, [1_000_00]);
 
-    expect(
-      getAllByText(/^(Interest paid|Upcoming Payments|Linked Payments)$/).map((node) =>
-        String(node.children),
-      ),
-    ).toEqual(['Interest paid', 'Upcoming Payments', 'Linked Payments']);
-  });
+      const { getByTestId, queryByTestId, queryByText } = await renderScreen();
 
-  it('bounds a 30-year mortgage to its next 12 cards, and Show all reveals all 360', async () => {
-    seed({
-      ...annuityLoanHolding,
-      metadata: { ...annuityLoanMeta, startDate: startMonthsAgo(0), termMonths: 360 },
+      expect(getByTestId('loan-ledger-paid-so-far')).toHaveTextContent(money(1_000_00));
+      expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(money(0));
+      expect(queryByTestId('loan-ledger-principal-repaid')).toBeNull();
+      expect(queryByText('Principal repaid')).toBeNull();
     });
 
-    const { getAllByTestId, getByTestId } = await renderScreen();
+    it('hides Principal repaid for a loan with no payments, where it equals Paid so far at 0', async () => {
+      seedLoanWithPayments(zeroRateMeta, []);
 
-    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(12);
+      const { getByTestId, queryByTestId } = await renderScreen();
 
-    await fireEvent.press(getByTestId('upcoming-payments-toggle'));
+      expect(getByTestId('loan-ledger-paid-so-far')).toHaveTextContent(money(0));
+      expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(money(0));
+      expect(queryByTestId('loan-ledger-principal-repaid')).toBeNull();
+    });
 
-    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(360);
+    it('keeps Principal repaid next to Paid so far for a 0% loan with a fee', async () => {
+      seedLoanWithPayments(zeroRateMeta, [1_005_00]);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-paid-so-far')).toHaveTextContent(money(1_005_00));
+      expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(money(0));
+      expect(getByTestId('loan-ledger-principal-repaid')).toHaveTextContent(money(1_000_00));
+    });
+
+    it('shows both rows when the loan carries interest', async () => {
+      const [first] = loanInstallments(annuityLoanMeta);
+
+      seedLoanWithPayments(annuityLoanMeta, [first.paymentMinorUnits]);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(
+        formatMoney(Money.of('UAH', first.interestMinorUnits)),
+      );
+      expect(getByTestId('loan-ledger-principal-repaid')).toHaveTextContent(
+        formatMoney(Money.of('UAH', first.principalMinorUnits)),
+      );
+    });
   });
 
-  it('shows no upcoming payments for a "none" schedule loan', async () => {
+  it('shows Interest earned at 0 for a deposit that has accrued nothing', async () => {
+    seed({
+      ...depositHolding,
+      metadata: { ...depositHolding.metadata, annualRatePct: 0 },
+    });
+
+    const { getByText } = await renderScreen();
+
+    expect(amountForLabel(getByText('Interest earned'))).toHaveTextContent(
+      formatMoney(Money.of('UAH', 0)),
+    );
+  });
+
+  it('shows Interest earned for a bond whose coupon is 0%', async () => {
+    seed({
+      ...bondHolding,
+      metadata: { ...bondHolding.metadata, couponPct: 0 },
+    });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Interest earned')).toBeTruthy();
+  });
+
+  describe('the loan payments list', () => {
+    const payer = { id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' };
+
+    const upcomingOf = (meta: LoanMeta) =>
+      loanInstallments(meta).filter((row) => row.dueDate >= startOfLocalDay(Date.now()));
+
+    const linkedPayment = (id: string, time: number, description: string) => ({
+      id,
+      holdingId: 'payer-1',
+      amountMinorUnits: -100_000,
+      time,
+      description,
+      source: 'manual',
+      loanHoldingId: 'h-1',
+      loanLinkSource: 'manual',
+    });
+
+    const seedLoan = (holding: unknown, linked: unknown[] = [], pricePoints: unknown[] = []) =>
+      seed(
+        holding,
+        [],
+        [],
+        [payer],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        pricePoints,
+        {},
+        linked,
+      );
+
+    it('lists the scheduled and the linked payments in one list, newest first', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+      const upcoming = upcomingOf(shortLoanMeta);
+
+      seedLoan(shortLoanHolding, [
+        linkedPayment('txn-older', one.dueDate, 'First installment'),
+        linkedPayment('txn-newer', two.dueDate, 'Second installment'),
+      ]);
+
+      const { getAllByText, getAllByTestId } = await renderScreen();
+
+      expect(upcoming.length).toBeGreaterThan(0);
+      // The farthest scheduled payment is on top, the oldest linked one at the bottom.
+      expect(
+        getAllByText(/^(Loan payment · Scheduled|First installment|Second installment)$/).map(
+          (node) => node.props.children,
+        ),
+      ).toEqual([
+        ...upcoming.map(() => 'Loan payment · Scheduled'),
+        'Second installment',
+        'First installment',
+      ]);
+      expect(getAllByTestId(/^scheduled-payment-/).map((node) => node.props.testID)).toEqual(
+        upcoming.map((row) => `scheduled-payment-${row.index}`).reverse(),
+      );
+      expect(getAllByTestId('ledger-row-loan-link-marker')).toHaveLength(2);
+    });
+
+    it('heads every day of the one list with a day header, scheduled days included', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+      const upcoming = upcomingOf(shortLoanMeta);
+
+      seedLoan(shortLoanHolding, [
+        linkedPayment('txn-older', one.dueDate, 'First installment'),
+        linkedPayment('txn-newer', two.dueDate, 'Second installment'),
+      ]);
+
+      const { getAllByTestId, getByText } = await renderScreen();
+
+      expect(getAllByTestId('ledger-day-header')).toHaveLength(upcoming.length + 2);
+      expect(getByText(formatDate(two.dueDate))).toBeTruthy();
+      // The farthest one: the nearest may fall on today, whose header reads "Today".
+      expect(getByText(formatDate(upcoming[upcoming.length - 1].dueDate))).toBeTruthy();
+    });
+
+    it('shows the next 12 scheduled payments behind a Show all toggle, and all of them on Show all', async () => {
+      const upcoming = upcomingOf(annuityLoanMeta);
+
+      seedLoan(annuityLoanHolding, [
+        linkedPayment('txn-older', 1_000, 'First installment'),
+        linkedPayment('txn-newer', 2_000, 'Second installment'),
+      ]);
+
+      const { getByTestId, getAllByTestId } = await renderScreen();
+      // Newest first: the list opens on its farthest scheduled payment, and the FlatList mounts
+      // only its first rows, so the top row names where the shown payments end.
+      const topScheduled = () => getAllByTestId(/^scheduled-payment-/)[0].props.testID;
+
+      expect(upcoming.length).toBeGreaterThan(12);
+      expect(topScheduled()).toBe(`scheduled-payment-${upcoming[11].index}`);
+      expect(within(getByTestId('scheduled-payments-toggle')).getByText('Show all')).toBeTruthy();
+
+      await fireEvent.press(getByTestId('scheduled-payments-toggle'));
+
+      expect(topScheduled()).toBe(`scheduled-payment-${upcoming[upcoming.length - 1].index}`);
+      expect(within(getByTestId('scheduled-payments-toggle')).getByText('Show less')).toBeTruthy();
+
+      await fireEvent.press(getByTestId('scheduled-payments-toggle'));
+
+      expect(topScheduled()).toBe(`scheduled-payment-${upcoming[11].index}`);
+    });
+
+    it('draws the Show all toggle at the top of the scheduled payments, under the heading', async () => {
+      seedLoan(annuityLoanHolding, [linkedPayment('txn-older', 1_000, 'First installment')]);
+
+      const { getByTestId } = await renderScreen();
+      const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
+      const positionOf = (text: string): number => tree.indexOf(text);
+
+      expect(positionOf('holding-detail-transactions-divider')).toBeLessThan(
+        positionOf('"Transactions"'),
+      );
+      expect(positionOf('"Transactions"')).toBeLessThan(positionOf('scheduled-payments-toggle'));
+      expect(positionOf('scheduled-payments-toggle')).toBeLessThan(
+        positionOf('Loan payment · Scheduled'),
+      );
+    });
+
+    it('offers no toggle when the scheduled payments already fit', async () => {
+      seedLoan(shortLoanHolding);
+
+      const { getAllByTestId, queryByTestId } = await renderScreen();
+
+      expect(getAllByTestId(/^scheduled-payment-/).length).toBeGreaterThan(0);
+      expect(queryByTestId('scheduled-payments-toggle')).toBeNull();
+    });
+
+    it('draws a scheduled payment as a dimmed card titled with its marker, with its split and what remains', async () => {
+      seedLoan(shortLoanHolding, [linkedPayment('txn-older', 1_000, 'First installment')]);
+
+      const { getAllByTestId, getByTestId, queryByText } = await renderScreen();
+      const [next] = upcomingOf(shortLoanMeta);
+      const card = getByTestId(`scheduled-payment-${next.index}`);
+
+      expect(within(card).getByText('Loan payment · Scheduled')).toBeTruthy();
+      expect(within(card).getByText(/^Principal .* · interest /)).toBeTruthy();
+      expect(within(card).getByText(/^Remaining /)).toBeTruthy();
+      expect(within(card).queryByText(/^\d{2}:\d{2}$/)).toBeNull();
+      expect(queryByText('Scheduled')).toBeNull();
+
+      for (const scheduled of getAllByTestId(/^scheduled-payment-/)) {
+        expect(StyleSheet.flatten(scheduled.props.style)).toMatchObject({ opacity: 0.5 });
+      }
+      expect(StyleSheet.flatten(getAllByTestId('ledger-row')[0].props.style)).not.toHaveProperty(
+        'opacity',
+      );
+    });
+
+    it('names the payer holding on a linked payment that has no description', async () => {
+      seedLoan(shortLoanHolding, [linkedPayment('txn-older', 1_000, '')]);
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Everyday card expense')).toBeTruthy();
+      expect(queryByText('Car loan expense')).toBeNull();
+    });
+  });
+
+  describe("a linked payment's split and the balance left after it", () => {
+    const payer = { id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' };
+    const money = (minorUnits: number): string => formatMoney(Money.of('UAH', minorUnits));
+    const zeroRateMeta: LoanMeta = { ...annuityLoanMeta, annualRatePct: 0, termMonths: 12 };
+
+    const paymentOf = (
+      id: string,
+      time: number,
+      amountMinorUnits: number,
+      description: string,
+    ) => ({
+      id,
+      holdingId: 'payer-1',
+      amountMinorUnits,
+      currency: 'UAH',
+      time,
+      description,
+      source: 'manual',
+      loanHoldingId: 'h-1',
+      loanLinkSource: 'manual',
+    });
+
+    const seedLoan = (meta: LoanMeta, linked: unknown[], pricePoints: unknown[] = []): void =>
+      seed(
+        { ...annuityLoanHolding, metadata: meta },
+        [],
+        [],
+        [payer],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        pricePoints,
+        {},
+        linked,
+      );
+
+    it('shows the payment own principal and interest and the balance left right after it', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+
+      seedLoan(shortLoanMeta, [
+        paymentOf('txn-older', one.dueDate, -one.paymentMinorUnits, 'First installment'),
+        paymentOf('txn-newer', two.dueDate, -two.paymentMinorUnits, 'Second installment'),
+      ]);
+
+      const { getAllByTestId } = await renderScreen();
+      const [newer, older] = getAllByTestId('ledger-row');
+
+      expect(
+        within(newer).getByText(
+          `Principal ${money(two.principalMinorUnits)} · interest ${money(two.interestMinorUnits)}`,
+        ),
+      ).toBeTruthy();
+      expect(within(newer).getByText(`Remaining ${money(two.balanceMinorUnits)}`)).toBeTruthy();
+      expect(
+        within(older).getByText(
+          `Principal ${money(one.principalMinorUnits)} · interest ${money(one.interestMinorUnits)}`,
+        ),
+      ).toBeTruthy();
+      expect(within(older).getByText(`Remaining ${money(one.balanceMinorUnits)}`)).toBeTruthy();
+    });
+
+    it('ends on the loan outstanding the Value header shows', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+
+      seedLoan(shortLoanMeta, [
+        paymentOf('txn-older', one.dueDate, -one.paymentMinorUnits, 'First installment'),
+        paymentOf('txn-newer', two.dueDate, -two.paymentMinorUnits, 'Second installment'),
+      ]);
+
+      const { getAllByTestId, getByTestId } = await renderScreen();
+      const [newer] = getAllByTestId('ledger-row');
+
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(
+        money(two.balanceMinorUnits),
+      );
+      expect(within(newer).getByText(`Remaining ${money(two.balanceMinorUnits)}`)).toBeTruthy();
+    });
+
+    it('names only the principal when the payment carries no interest', async () => {
+      const [first] = loanInstallments(zeroRateMeta);
+
+      seedLoan(zeroRateMeta, [
+        paymentOf('txn-first', first.dueDate, -first.paymentMinorUnits, 'First installment'),
+      ]);
+
+      const { getAllByTestId, queryByText } = await renderScreen();
+      const [card] = getAllByTestId('ledger-row');
+
+      expect(within(card).getByText(`Principal ${money(first.principalMinorUnits)}`)).toBeTruthy();
+      expect(within(card).getByText(`Remaining ${money(first.balanceMinorUnits)}`)).toBeTruthy();
+      expect(queryByText(/interest/)).toBeNull();
+    });
+
+    // A 12-month loan that started 12 months ago has no scheduled row left, so every split and
+    // balance line on the screen belongs to a linked card.
+    it('shows no split and no balance on a payment dated before the loan start', async () => {
+      const [first] = loanInstallments(zeroRateMeta);
+
+      seedLoan(zeroRateMeta, [
+        paymentOf('txn-early', first.dueDate - 2 * DAY_MS, -50_000, 'Early installment'),
+        paymentOf('txn-first', first.dueDate, -first.paymentMinorUnits, 'First installment'),
+      ]);
+
+      const { getAllByTestId, getAllByText } = await renderScreen();
+
+      expect(getAllByTestId('ledger-row')).toHaveLength(2);
+      expect(getAllByText(/^Principal /)).toHaveLength(1);
+      expect(getAllByText(/^Remaining /)).toHaveLength(1);
+    });
+
+    it('counts the balance of the payment after a correction from that correction', async () => {
+      const [one, two] = loanInstallments(shortLoanMeta);
+      const correction = {
+        instrument: 'holding:h-1',
+        day: dayKeyOf(one.dueDate + 5 * DAY_MS),
+        price: '80000.00',
+        currency: 'UAH' as const,
+        source: 'manual' as const,
+      };
+
+      seedLoan(
+        shortLoanMeta,
+        [
+          paymentOf('txn-older', one.dueDate, -one.paymentMinorUnits, 'First installment'),
+          paymentOf('txn-newer', two.dueDate, -two.paymentMinorUnits, 'Second installment'),
+        ],
+        [correction],
+      );
+
+      const { getAllByTestId, getByTestId } = await renderScreen();
+      const [newer, older] = getAllByTestId('ledger-row');
+
+      expect(within(older).getByText(`Remaining ${money(one.balanceMinorUnits)}`)).toBeTruthy();
+      expect(
+        within(newer).getByText(`Remaining ${money(8_000_000 - two.principalMinorUnits)}`),
+      ).toBeTruthy();
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(
+        money(8_000_000 - two.principalMinorUnits),
+      );
+    });
+  });
+
+  describe('the balance left after the next payment', () => {
+    // A due day that is never today, so the first listed row is not the one the header counted.
+    // The term leaves only a few installments, so the whole list mounts in the FlatList's first
+    // render window.
+    const awayFromToday = (): LoanMeta => {
+      const now = new Date();
+      const dueDay = ((now.getDate() + 14) % 28) + 1;
+
+      return {
+        ...annuityLoanMeta,
+        startDate: new Date(now.getFullYear(), now.getMonth() - 12, dueDay).getTime(),
+        termMonths: 15,
+      };
+    };
+
+    const LOAN = { id: 'h-1', currency: 'UAH' as const };
+    const money = (minorUnits: number) => formatMoney(Money.of('UAH', minorUnits));
+    const nextRowOf = (meta: LoanMeta) => {
+      const next = loanInstallments(meta).find((row) => row.dueDate >= startOfLocalDay(Date.now()));
+
+      if (next === undefined) {
+        throw new Error('fixture must have an upcoming installment');
+      }
+
+      return next;
+    };
+
+    it('equals the header outstanding less the next payment principal after a correction', async () => {
+      const meta = awayFromToday();
+      const holding = { ...annuityLoanHolding, metadata: meta };
+      const correction = {
+        instrument: 'holding:h-1',
+        day: dayKeyOf(addMonths(meta.startDate, 6)),
+        price: '80000.00',
+        currency: 'UAH' as const,
+        source: 'manual' as const,
+      };
+      const outstanding = loanLedgerOutstandingMinorAt(
+        meta,
+        LOAN,
+        buildPriceBook([correction]),
+        Date.now(),
+      );
+      const next = nextRowOf(meta);
+
+      seed(holding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [correction]);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
+      expect(getByTestId(`scheduled-payment-${next.index}`)).toHaveTextContent(
+        `Remaining ${money(outstanding - next.principalMinorUnits)}`,
+        { exact: false },
+      );
+    });
+
+    it('equals the header outstanding less the next payment principal after a linked payment', async () => {
+      const meta = awayFromToday();
+      const holding = { ...annuityLoanHolding, metadata: meta };
+      const paid = loanInstallments(meta)[6];
+      const payment = {
+        transactionId: 'payment-1',
+        loanHoldingId: 'h-1',
+        time: paid.dueDate,
+        amountMinorUnits: -paid.paymentMinorUnits,
+        currency: 'UAH' as const,
+      };
+      const outstanding = loanLedgerOutstandingMinorAt(
+        meta,
+        LOAN,
+        buildPriceBook([], [payment]),
+        Date.now(),
+      );
+      const next = nextRowOf(meta);
+
+      seed(
+        holding,
+        [],
+        [],
+        [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        [],
+        {},
+        [
+          {
+            id: 'txn-paid',
+            holdingId: 'payer-1',
+            amountMinorUnits: payment.amountMinorUnits,
+            currency: 'UAH',
+            time: payment.time,
+            description: 'Installment',
+            source: 'manual',
+            loanHoldingId: 'h-1',
+            loanLinkSource: 'manual',
+          },
+        ],
+      );
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
+      expect(getByTestId(`scheduled-payment-${next.index}`)).toHaveTextContent(
+        `Remaining ${money(outstanding - next.principalMinorUnits)}`,
+        { exact: false },
+      );
+    });
+
+    it('equals the header outstanding less the next payment principal for the schedule alone', async () => {
+      const meta = awayFromToday();
+      const holding = { ...annuityLoanHolding, metadata: meta };
+      const outstanding = loanLedgerOutstandingMinorAt(meta, LOAN, EMPTY_PRICE_BOOK, Date.now());
+      const next = nextRowOf(meta);
+
+      seed(holding);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
+      expect(getByTestId(`scheduled-payment-${next.index}`)).toHaveTextContent(
+        `Remaining ${money(outstanding - next.principalMinorUnits)}`,
+        { exact: false },
+      );
+    });
+  });
+
+  it('bounds a 30-year mortgage to its next 12 scheduled payments, and Show all reveals all 360', async () => {
+    const thirtyYearMeta: LoanMeta = { ...annuityLoanMeta, startDate: Date.now(), termMonths: 360 };
+
+    seed({ ...annuityLoanHolding, metadata: thirtyYearMeta });
+
+    const { getByTestId, getAllByTestId } = await renderScreen();
+    const upcoming = loanInstallments(thirtyYearMeta).filter(
+      (row) => row.dueDate >= startOfLocalDay(Date.now()),
+    );
+    const topScheduled = () => getAllByTestId(/^scheduled-payment-/)[0].props.testID;
+
+    expect(upcoming).toHaveLength(360);
+    expect(topScheduled()).toBe(`scheduled-payment-${upcoming[11].index}`);
+
+    await fireEvent.press(getByTestId('scheduled-payments-toggle'));
+
+    expect(topScheduled()).toBe(`scheduled-payment-${upcoming[359].index}`);
+  });
+
+  it('shows no scheduled payments for a "none" schedule loan', async () => {
     seed(noneLoanHolding);
 
-    const { queryByText } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
-    expect(queryByText('Upcoming Payments')).toBeNull();
+    expect(queryByTestId(/^scheduled-payment/)).toBeNull();
   });
 
-  it('shows no upcoming payments for a non-loan holding', async () => {
+  it('shows no scheduled payments for a non-loan holding', async () => {
     seed(propertyHolding);
 
-    const { queryByText } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
-    expect(queryByText('Upcoming Payments')).toBeNull();
+    expect(queryByTestId(/^scheduled-payment/)).toBeNull();
   });
 
   // An overpaid correction clamps the outstanding to 0 even though
   // `loanInstallments` still has future rows on the schedule — the list must
   // not keep showing payments once the debt is actually paid off.
-  it('shows no upcoming payments once a correction clamps the outstanding to 0', async () => {
+  it('shows no scheduled payments once a correction clamps the outstanding to 0', async () => {
     seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
       { instrument: 'holding:h-1', day: dayKeyOf(Date.now()), price: '0.00', currency: 'UAH' },
     ]);
 
-    const { queryByText } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
-    expect(queryByText('Upcoming Payments')).toBeNull();
+    expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+    expect(queryByTestId('scheduled-payments-toggle')).toBeNull();
   });
 
-  // The loan detail lists linked payments — the ONLY way to review an auto
-  // link, since a loan itself carries no ledger of its own
-  // (isLedgerlessHoldingType). Reuses the shared ledger row component and
-  // its own "linked automatically" marker.
-  it('lists linked payments newest first, with the loan-link marker', async () => {
-    seed(
-      annuityLoanHolding,
-      [],
-      [],
-      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
-      [],
-      [{ baseCurrency: 'UAH' }],
-      undefined,
-      [],
-      {},
-      [
-        {
-          id: 'txn-older',
-          holdingId: 'payer-1',
-          amountMinorUnits: -100_000,
-          time: 1_000,
-          description: 'First installment',
-          source: 'manual',
-          loanHoldingId: 'h-1',
-          loanLinkSource: 'manual',
-        },
-        {
-          id: 'txn-newer',
-          holdingId: 'payer-1',
-          amountMinorUnits: -100_000,
-          time: 2_000,
-          description: 'Second installment',
-          source: 'manual',
-          loanHoldingId: 'h-1',
-          loanLinkSource: 'auto',
-        },
-      ],
-    );
+  describe('the loan list around its heading and its empty state', () => {
+    const payer = { id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' };
 
-    const { getByText, getAllByTestId } = await renderScreen();
+    const linkedPayment = {
+      id: 'txn-1',
+      holdingId: 'payer-1',
+      amountMinorUnits: -100_000,
+      time: 1_000,
+      description: 'First installment',
+      source: 'manual',
+      loanHoldingId: 'h-1',
+      loanLinkSource: 'manual',
+    };
 
-    expect(getByText('Linked Payments')).toBeTruthy();
-    expect(getByText('First installment')).toBeTruthy();
-    expect(getByText('Second installment')).toBeTruthy();
-    // The query already orders newest-first — the screen renders the rows
-    // in the order it receives them, so the newer row's own cell comes
-    // first among the linked-payment markers.
-    expect(getAllByTestId('ledger-row-loan-link-marker').length).toBeGreaterThanOrEqual(2);
-  });
+    const seedLoan = (holding: unknown, linked: unknown[] = []) =>
+      seed(holding, [], [], [payer], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, linked);
 
-  it('hides the Linked payments section entirely when there are none', async () => {
-    seed(annuityLoanHolding);
+    it('draws the breakdown, then the Transactions heading, then the payments', async () => {
+      seedLoan(shortLoanHolding, [linkedPayment]);
 
-    const { queryByText } = await renderScreen();
+      const { getAllByText } = await renderScreen();
 
-    expect(queryByText('Linked Payments')).toBeNull();
-  });
+      expect(
+        getAllByText(/^(Interest paid|Transactions|Loan payment · Scheduled|First installment)$/)
+          .map((node) => String(node.children))
+          .filter((text, position, texts) => texts.indexOf(text) === position),
+      ).toEqual(['Interest paid', 'Transactions', 'Loan payment · Scheduled', 'First installment']);
+    });
 
-  it('never shows a Linked payments section for a non-loan holding, even if seeded', async () => {
-    seed(propertyHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, [
-      {
-        id: 'txn-1',
-        holdingId: 'payer-1',
-        amountMinorUnits: -100_000,
-        time: 1_000,
-        description: 'Unrelated',
-        source: 'manual',
-        loanHoldingId: 'h-1',
-        loanLinkSource: 'manual',
-      },
-    ]);
+    it('opens the list with the Transactions Divider and heading, and no section of its own', async () => {
+      seedLoan(annuityLoanHolding, [linkedPayment]);
 
-    const { queryByText } = await renderScreen();
+      const { getByTestId, getByText, queryByTestId, queryByText } = await renderScreen();
+      const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
 
-    expect(queryByText('Linked Payments')).toBeNull();
+      expect(getByTestId('holding-detail-transactions-divider')).toBeTruthy();
+      expect(tree.indexOf('holding-detail-transactions-divider')).toBeLessThan(
+        tree.indexOf('"Transactions"'),
+      );
+      expect(getByText('Transactions')).toBeTruthy();
+      expect(queryByText('Linked Payments')).toBeNull();
+      expect(queryByText('Upcoming Payments')).toBeNull();
+      expect(queryByTestId('holding-detail-linked-payments-divider')).toBeNull();
+      expect(queryByTestId('upcoming-payments')).toBeNull();
+    });
+
+    it('shows the empty state under the heading for a loan with no rows at all', async () => {
+      seedLoan(noneLoanHolding);
+
+      const { getByText, getByTestId, queryByText } = await renderScreen();
+
+      expect(getByText('Transactions')).toBeTruthy();
+      expect(getByTestId('holding-detail-transactions-divider')).toBeTruthy();
+      expect(getByTestId('holding-detail-loan-payments-empty')).toBeTruthy();
+      expect(getByText('No payments yet')).toBeTruthy();
+      expect(getByText('Linked and scheduled payments appear here.')).toBeTruthy();
+      expect(queryByText('No transactions')).toBeNull();
+      expect(queryByText('No linked payments')).toBeNull();
+    });
+
+    it('shows no empty state for a loan with linked payments and no schedule', async () => {
+      seedLoan(noneLoanHolding, [linkedPayment]);
+
+      const { getByText, queryByTestId, queryByText } = await renderScreen();
+
+      expect(getByText('First installment')).toBeTruthy();
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+      expect(queryByText('No payments yet')).toBeNull();
+      expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+    });
+
+    it('shows no empty state for a loan with a schedule and no linked payments', async () => {
+      seedLoan(annuityLoanHolding);
+
+      const { getAllByTestId, queryByTestId, queryByText } = await renderScreen();
+
+      expect(getAllByTestId(/^scheduled-payment-/).length).toBeGreaterThan(0);
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+      expect(queryByText('No payments yet')).toBeNull();
+    });
+
+    it('shows the empty state for a repaid loan that has no linked payments', async () => {
+      seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+        { instrument: 'holding:h-1', day: dayKeyOf(Date.now()), price: '0.00', currency: 'UAH' },
+      ]);
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('holding-detail-loan-payments-empty')).toBeTruthy();
+      expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+    });
+
+    it('shows no empty state while the linked payments load', async () => {
+      seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {
+        linkedLoanPayments: true,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('holding-detail-loading')).toBeTruthy();
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+    });
+
+    it('keeps the Transactions divider, heading and empty text for a non-loan holding', async () => {
+      seed(propertyHolding);
+
+      const { getByText, getByTestId, queryByTestId, queryByText } = await renderScreen();
+      const tree = JSON.stringify(layoutOf(getByTestId('ledger-list')));
+
+      expect(getByTestId('holding-detail-transactions-divider')).toBeTruthy();
+      expect(tree.indexOf('holding-detail-transactions-divider')).toBeLessThan(
+        tree.indexOf('"Transactions"'),
+      );
+      expect(getByText('Transactions')).toBeTruthy();
+      expect(getByText('No transactions')).toBeTruthy();
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+      expect(queryByText('No payments yet')).toBeNull();
+    });
+
+    it('lists no linked payment and no scheduled payment for a non-loan holding, even if seeded', async () => {
+      seed(propertyHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, [
+        { ...linkedPayment, description: 'Unrelated' },
+      ]);
+
+      const { queryByText, queryByTestId } = await renderScreen();
+
+      expect(queryByText('Unrelated')).toBeNull();
+      expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+    });
+
+    it.each([
+      ['deposit', futureDepositHolding],
+      ['bond', bondHolding],
+    ])('leaves a %s ledger without any scheduled payment or toggle', async (_name, holding) => {
+      seed(holding);
+
+      const { getAllByTestId, queryByTestId, getByText } = await renderScreen();
+
+      expect(getByText('Transactions')).toBeTruthy();
+      expect(getAllByTestId('ledger-row').length).toBeGreaterThan(0);
+      expect(queryByTestId(/^scheduled-payment/)).toBeNull();
+      expect(queryByTestId('holding-detail-loan-payments-empty')).toBeNull();
+    });
   });
 
   it('tapping a linked-payment row opens the transaction form for that row', async () => {
     seed(
-      annuityLoanHolding,
+      shortLoanHolding,
       [],
       [],
       [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
@@ -2496,6 +3327,88 @@ describe('HoldingDetailScreen — localization', () => {
     expect(queryByText('Transactions')).toBeNull();
   });
 
+  describe('a loan with no payments', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    it('renders the Transactions heading and its empty state from the Ukrainian catalog', async () => {
+      seed(noneLoanHolding);
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Транзакції')).toBeTruthy();
+      expect(getByText('Платежів ще немає')).toBeTruthy();
+      expect(getByText('Тут зʼявляться повʼязані та заплановані платежі.')).toBeTruthy();
+      expect(queryByText('No payments yet')).toBeNull();
+    });
+  });
+
+  describe('a loan with a linked payment', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    it('reads the payment split and the balance left from the Ukrainian catalog', async () => {
+      const [first] = loanInstallments(shortLoanMeta);
+
+      seed(
+        shortLoanHolding,
+        [],
+        [],
+        [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        [],
+        {},
+        [
+          {
+            id: 'txn-first',
+            holdingId: 'payer-1',
+            amountMinorUnits: -first.paymentMinorUnits,
+            currency: 'UAH',
+            time: first.dueDate,
+            description: 'First installment',
+            source: 'manual',
+            loanHoldingId: 'h-1',
+            loanLinkSource: 'manual',
+          },
+        ],
+      );
+
+      const { getAllByTestId } = await renderScreen();
+      const [card] = getAllByTestId('ledger-row');
+
+      expect(within(card).getByText(/^Основна сума .* · відсотки /)).toBeTruthy();
+      expect(within(card).getByText(/^Залишок /)).toBeTruthy();
+      expect(within(card).queryByText(/^Principal /)).toBeNull();
+      expect(within(card).queryByText(/^Remaining /)).toBeNull();
+    });
+  });
+
+  describe('a loan with a long schedule', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    it('titles a scheduled payment and labels the toggle from the Ukrainian catalog', async () => {
+      seed(annuityLoanHolding);
+      const { getAllByText, getByTestId, queryByText } = await renderScreen();
+
+      expect(getAllByText('Платіж за кредитом · Заплановано').length).toBeGreaterThan(0);
+      expect(
+        within(getByTestId('scheduled-payments-toggle')).getByText('Показати всі'),
+      ).toBeTruthy();
+      expect(queryByText('Loan payment · Scheduled')).toBeNull();
+    });
+  });
+
   it('renders the priced breakdown labels from the Ukrainian catalog', async () => {
     await act(async () => {
       await i18n.changeLanguage('uk');
@@ -2686,7 +3599,7 @@ describe('HoldingDetailScreen — bond yield to maturity', () => {
 
     const expectStepUpCoupons = async () => {
       const { getAllByText, getByText } = await renderScreen();
-      const couponAmounts = getAllByText('Coupon').map(
+      const couponAmounts = getAllByText(/^Coupon · /).map(
         (label) => amountForLabel(label, /\$/).props.children,
       );
 
@@ -2741,13 +3654,13 @@ const descriptionLayout = (label: string): LayoutNode => ({
   children: [textLayout(label)],
 });
 
-const amountLayout = (testID: string): LayoutNode => ({
-  style: { flexShrink: 0 },
-  children: [{ testID, children: [expect.any(String)] }],
+const amountLayout = (testID: string, caption: LayoutNode[] = []): LayoutNode => ({
+  style: { flexShrink: 0, alignItems: 'flex-end', gap: darkTheme.spacing(1) },
+  children: [{ testID, children: [expect.any(String)] }, ...caption],
 });
 
 const mainRowLayout = (children: LayoutNode[]): LayoutNode => ({
-  style: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  style: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
   children,
 });
 
@@ -2763,11 +3676,10 @@ const categoryIconLayout: LayoutNode = {
   children: [],
 };
 
-// `objectContaining`: the footer may gain a cross-axis alignment without
-// losing the right-flush `alignSelf` the row look depends on.
-const footerLayout = (caption: string): LayoutNode => ({
-  style: expect.objectContaining({ alignSelf: 'flex-end' }),
-  children: [{ style: { textAlign: 'right' }, children: [caption] }],
+// The caption line under the amount: an optional leading icon, centred with the text.
+const captionLayout = (caption: string, icon: LayoutNode[] = []): LayoutNode => ({
+  style: { alignItems: 'center', flexDirection: 'row', gap: darkTheme.spacing(1) },
+  children: [...icon, { style: {}, children: [caption] }],
 });
 
 const cardLayout = (children: LayoutNode[]): LayoutNode => ({
@@ -2782,14 +3694,12 @@ const cardLayout = (children: LayoutNode[]): LayoutNode => ({
 // Pins the approved look of the ledger rows and their day header, which the shared
 // EntryCard / EntryDateHeader draw.
 describe('HoldingDetailScreen — ledger row look', () => {
-  it('draws a settled derived row as a card: label left, amount right, a right-aligned caption', async () => {
+  it('draws a settled derived row as a card: marker in the label, amount right, no caption', async () => {
     seed(depositHolding);
 
     const { getAllByTestId } = await renderScreen();
     const row = getAllByTestId('ledger-row').find(
-      (candidate) =>
-        within(candidate).queryByText('Interest accrual') !== null &&
-        within(candidate).queryByText('Computed') !== null,
+      (candidate) => within(candidate).queryByText('Interest accrual · Computed') !== null,
     );
 
     if (row === undefined) {
@@ -2798,19 +3708,21 @@ describe('HoldingDetailScreen — ledger row look', () => {
 
     expect(layoutOf(row)).toEqual(
       cardLayout([
-        mainRowLayout([descriptionLayout('Interest accrual'), amountLayout('money-tone-positive')]),
-        footerLayout('Computed'),
+        mainRowLayout([
+          descriptionLayout('Interest accrual · Computed'),
+          amountLayout('money-tone-positive'),
+        ]),
       ]),
     );
     expect(StyleSheet.flatten(row.props.style)).not.toHaveProperty('opacity');
   });
 
-  it('dims a projected derived row to half opacity and captions it Projected', async () => {
+  it('dims a projected derived row to half opacity and titles it Projected', async () => {
     seed(futureDepositHolding);
 
     const { getAllByTestId } = await renderScreen();
     const row = getAllByTestId('ledger-row').find(
-      (candidate) => within(candidate).queryByText('Projected') !== null,
+      (candidate) => within(candidate).queryByText('Interest accrual · Projected') !== null,
     );
 
     if (row === undefined) {
@@ -2819,8 +3731,10 @@ describe('HoldingDetailScreen — ledger row look', () => {
 
     expect(layoutOf(row)).toEqual(
       cardLayout([
-        mainRowLayout([descriptionLayout('Interest accrual'), amountLayout('money-tone-positive')]),
-        footerLayout('Projected'),
+        mainRowLayout([
+          descriptionLayout('Interest accrual · Projected'),
+          amountLayout('money-tone-positive'),
+        ]),
       ]),
     );
     expect(StyleSheet.flatten(row.props.style)).toMatchObject({ opacity: 0.5 });
@@ -2843,21 +3757,20 @@ describe('HoldingDetailScreen — ledger row look', () => {
     expect(layoutOf(getAllByTestId('ledger-row')[0])).toEqual(
       cardLayout([
         mainRowLayout([
-          leadLayout([
-            categoryIconLayout,
-            {
-              style: { height: darkTheme.iconSizes.caption, width: darkTheme.iconSizes.caption },
-              symbol: 'link',
-              // The native symbol takes the textSecondary token as 8-digit hex.
-              tint: '#ebebf599',
-              testID: 'ledger-row-loan-link-marker',
-              children: [],
-            },
-            descriptionLayout('Loan payment'),
+          leadLayout([categoryIconLayout, descriptionLayout('Loan payment')]),
+          amountLayout('money-tone-auto', [
+            captionLayout('09:05', [
+              {
+                style: { height: darkTheme.iconSizes.caption, width: darkTheme.iconSizes.caption },
+                symbol: 'link',
+                // The native symbol takes the textSecondary token as 8-digit hex.
+                tint: '#ebebf599',
+                testID: 'ledger-row-loan-link-marker',
+                children: [],
+              },
+            ]),
           ]),
-          amountLayout('money-tone-auto'),
         ]),
-        footerLayout('09:05'),
       ]),
     );
   });

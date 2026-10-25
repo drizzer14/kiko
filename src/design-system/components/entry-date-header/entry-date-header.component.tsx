@@ -7,8 +7,8 @@ import { styles } from './entry-date-header.styles';
 import type { EntryDateHeaderProps } from './entry-date-header.props';
 
 /**
- * The date label above an entry card: HoldingDetail's ledger day headers and its upcoming loan
- * payments' due dates render through it, so both read as one pattern.
+ * The date label above an entry card: HoldingDetail's ledger day headers, which head the
+ * scheduled loan payments too, render through it.
  */
 const EntryDateHeader: FC<EntryDateHeaderProps> = ({ title, testID }) => {
   return (

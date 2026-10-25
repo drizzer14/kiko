@@ -24,4 +24,8 @@ export type TransactionRowProps = {
   // only; a synced row is not duplicable and never receives it, so its
   // long-press keeps offering nothing.
   onDuplicate: (transactionId: string) => void;
+  // Open the account / the holding the row belongs to. Passed for EVERY row, synced or not: a
+  // synced row has nothing else to offer, so these two are what its hold opens.
+  onViewAccount: (item: HomeTransactionRow) => void;
+  onViewHolding: (item: HomeTransactionRow) => void;
 };

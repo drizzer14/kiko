@@ -38,6 +38,7 @@ import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import { navigationRef } from '@kiko/navigation/navigation-ref';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -46,6 +47,7 @@ import { openAccountForm } from '@kiko/navigation/open-account-form';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { openAccountsPages } from '@kiko/navigation/open-accounts-pages';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -81,6 +83,14 @@ type HomeScreenProps = CompositeScreenProps<
 type DateRangeBounds = { from: number | undefined; to: number | undefined };
 
 const NO_SECTIONS: DaySection<HomeTransactionRow>[] = [];
+
+// The account page a row opens. `accountName` is already the display name here (the sections map
+// it through `accountDisplayName`), which the page shows as its title before its own read lands.
+const accountDetailOf = (item: HomeTransactionRow) => ({
+  accountId: item.accountId,
+  name: item.accountName,
+  kind: item.accountKind,
+});
 
 /**
  * The (inclusive) date-range bounds as raw instants, resolved ONCE per range
@@ -511,6 +521,18 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [openInPane],
   );
 
+  // The Home stack has no account or holding page, so a row's View actions open the Accounts tab
+  // with the page stack built in one navigate. Stable across renders, like `handleRowPress`.
+  const handleViewAccount = useCallback((item: HomeTransactionRow): void => {
+    openAccountsPages(navigationRef, accountDetailOf(item));
+  }, []);
+  const handleViewHolding = useCallback((item: HomeTransactionRow): void => {
+    openAccountsPages(navigationRef, accountDetailOf(item), {
+      screen: 'HoldingDetail',
+      params: { holdingId: item.holdingId, name: item.holdingName },
+    });
+  }, []);
+
   // The global-add FAB (B) opens the create form with EMPTY params — no holding
   // fixed by navigation — so the form renders its own primary-leg holding
   // picker. Stable across renders, like `handleRowPress`.
@@ -534,6 +556,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
           onDuplicate={handleRowDuplicate}
+          onViewAccount={handleViewAccount}
+          onViewHolding={handleViewHolding}
           selected={item.id === editedTransactionId}
         />
       );
@@ -546,6 +570,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       categoryKeyForRow,
       handleRowPress,
       handleRowDuplicate,
+      handleViewAccount,
+      handleViewHolding,
       editedTransactionId,
     ],
   );

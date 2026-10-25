@@ -31,9 +31,10 @@ export type LoanInstallment = {
  * manual price-point series, read directly by `loanOutstandingMinorAt`
  * below.
  *
- * Due dates fall on the calendar-anniversary of `startDate`, one per month
- * (`addMonths(startDate, k)`, clamped to the target month's length — the
- * same convention `depositLedger`/`bondCouponDates` already use). Interest
+ * Payment 1 is due ON `startDate`; later due dates fall on its
+ * calendar-anniversary, one per month (`addMonths(startDate, k - 1)` for the
+ * k-th, clamped to the target month's length — the same convention
+ * `depositLedger`/`bondCouponDates` already use). Interest
  * each period is `round(balance * annualRatePct / 100 / 12)`; the LAST
  * installment absorbs whatever rounding drifted across every prior period,
  * so the schedule always reduces the balance to EXACTLY 0 rather than
@@ -97,7 +98,7 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
 
     installments.push({
       index: k,
-      dueDate: addMonths(startDate, k),
+      dueDate: addMonths(startDate, k - 1),
       interestMinorUnits,
       principalMinorUnits,
       paymentMinorUnits,
@@ -117,6 +118,16 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
 export const isScheduledPayment = (
   installment: Pick<LoanInstallment, 'paymentMinorUnits'>,
 ): boolean => installment.paymentMinorUnits > 0;
+
+/**
+ * Whether `time` falls on or after the loan's start day: payment 1 is due ON the start day, so
+ * an earlier payment counts nowhere — not in the ledger's branch choice, paid total or
+ * outstanding, not in the installment a payment maps to, not in the matcher's date window, and
+ * not in the spending pie's loan-payment exclusion. The ONE start-day comparison every one of
+ * those reads.
+ */
+export const isOnOrAfterLoanStartDay = (meta: Pick<LoanMeta, 'startDate'>, time: number): boolean =>
+  dayKeyOf(time) >= dayKeyOf(meta.startDate);
 
 /**
  * A loan's installment table with each row's due-date day key alongside it.
@@ -141,7 +152,9 @@ export const loanPlanOf = (meta: LoanMeta): LoanPlan => {
  * `holding:<id>` instrument, WHEN ITS DAY IS ON OR BEFORE `instant`'s local
  * day, anchors a fresh baseline, and only the scheduled PRINCIPAL due
  * strictly AFTER that correction's day (and at or before `instant`) is
- * subtracted from it. A correction dated AFTER `instant` must never anchor a
+ * subtracted from it; the start-day anchor is the exception, since payment 1
+ * is due ON the start day and so counts. A correction dated AFTER `instant`
+ * must never anchor a
  * query for an earlier instant — `priceAt` itself falls back to the
  * EARLIEST stored point when every point is later than the requested day (a
  * fallback that is correct for the `none`/Property "manual series"
@@ -149,8 +162,8 @@ export const loanPlanOf = (meta: LoanMeta): LoanPlan => {
  * only correction), so that fallback is deliberately NOT trusted here; the
  * day is checked explicitly instead. With no correction (or none on or
  * before `instant`), the anchor is the loan's own principal at `startDate`
- * — every installment's due date is after `startDate`, so this reduces to
- * "principal minus every installment due so far", the plain no-correction
+ * — every installment's due date is on or after `startDate`, so this reduces
+ * to "principal minus every installment due so far", the plain no-correction
  * schedule. `none` (an informal debt) reads the manual series directly
  * (earliest-point fallback included), with no schedule to subtract against.
  * Both branches clamp the result to never go below 0 (an overpaid/
@@ -171,7 +184,7 @@ export const loanOutstandingMinorAt = (
   instant: number,
   plan: LoanPlan = loanPlanOf(meta),
 ): number => {
-  if (dayKeyOf(instant) < dayKeyOf(meta.startDate)) {
+  if (!isOnOrAfterLoanStartDay(meta, instant)) {
     return 0;
   }
 
@@ -189,7 +202,11 @@ export const loanOutstandingMinorAt = (
     .filter((_, index) => {
       const dueDayKey = plan.dueDayKeys[index];
 
-      return dueDayKey > anchor.dayKey && dueDayKey <= instantDayKey;
+      const isAfterAnchor = anchor.fromCorrection
+        ? dueDayKey > anchor.dayKey
+        : dueDayKey >= anchor.dayKey;
+
+      return isAfterAnchor && dueDayKey <= instantDayKey;
     })
     .reduce((sum, row) => sum + row.principalMinorUnits, 0);
 
@@ -241,8 +258,9 @@ type LinkedPayment = { time: number; amountMinorUnits: number };
 
 // The installment a payment pays: the one whose due date is NEAREST to the
 // payment's local day (an early or late payment still matches its intended
-// installment), or undefined when the loan has no schedule or the payment is
-// more than one period outside it (see `loanInterestPerPaymentMinor`). Also
+// installment), or undefined when the loan has no schedule, the payment is
+// before the start day, or it is more than one period after the last
+// installment (see `loanInterestPerPaymentMinor`). Also
 // read by `src/holdings/loan-ledger/`'s anchor so a late first link anchors
 // on the SAME installment its interest is attributed to.
 export const installmentIndexOf = (
@@ -257,10 +275,9 @@ export const installmentIndexOf = (
   }
 
   const paymentDayKey = dayKeyOf(paymentTime);
-  const lowerBoundDayKey = dayKeyOf(meta.startDate);
-  const upperBoundDayKey = dayKeyOf(addMonths(meta.startDate, installments.length + 1));
+  const upperBoundDayKey = dayKeyOf(addMonths(meta.startDate, installments.length));
 
-  if (paymentDayKey < lowerBoundDayKey || paymentDayKey > upperBoundDayKey) {
+  if (!isOnOrAfterLoanStartDay(meta, paymentTime) || paymentDayKey > upperBoundDayKey) {
     return undefined;
   }
 
@@ -286,15 +303,15 @@ export const installmentIndexOf = (
  * first half (and on the second only what the first could not cover), and a
  * partial payment never counts more interest than it actually paid.
  *
- * A payment MORE THAN ONE PERIOD outside the schedule counts 0 interest,
- * rather than mapping to the nearest (first/last) installment regardless of
- * distance — a payment years before the loan even started, or years after it
- * was fully paid off, is not this loan's interest. "One period" is the same
- * monthly cadence every due date is built from (`addMonths(startDate, k)`):
- * one period before the first installment is `startDate` itself, one period
- * after the last is `addMonths(startDate, installments.length + 1)`. Both
- * bounds are INCLUSIVE — a payment exactly on one still maps to its boundary
- * installment, only a payment strictly beyond it counts 0.
+ * A payment OUTSIDE the schedule counts 0 interest, rather than mapping to the
+ * nearest (first/last) installment regardless of distance — a payment before
+ * the loan even started, or more than one period after it was fully paid off,
+ * is not this loan's interest. The schedule begins on the start day itself
+ * (installment 1 is due then, `addMonths(startDate, k - 1)`), so nothing
+ * dated earlier counts, and one period after the last installment is
+ * `addMonths(startDate, installments.length)`. Both bounds are INCLUSIVE — a
+ * payment exactly on one still maps to its boundary installment, only a
+ * payment strictly beyond it counts 0.
  */
 export const loanInterestPerPaymentMinor = (
   meta: LoanMeta,

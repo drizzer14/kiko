@@ -8,10 +8,12 @@ import {
   loanPlanOf,
   loanAnchorAt,
   installmentIndexOf,
+  isOnOrAfterLoanStartDay,
   loanOutstandingMinorAt,
   loanPaymentSplitsMinor,
   type LoanPlan,
   type LoanAnchor,
+  type LoanInstallment,
 } from '../loan-schedule';
 import type { LoanMeta } from '../holding-metadata';
 
@@ -50,11 +52,15 @@ const ledgerKeyOf = (meta: LoanMeta, loan: LedgerLoan): string =>
   ]);
 
 // A linked payment pays this loan down only as a debit in the loan's own
-// currency (the rule the spending pie's loan-payment exclusion applies).
+// currency (the rule the spending pie's loan-payment exclusion applies), dated
+// on or after the start day.
 const buildLedger = (meta: LoanMeta, loan: LedgerLoan, book: PriceBook): Ledger => {
   const plan = loanPlanOf(meta);
   const payments = (book.loanPayments.get(loan.id) ?? []).filter(
-    (payment) => payment.currency === loan.currency && payment.amountMinorUnits < 0,
+    (payment) =>
+      payment.currency === loan.currency &&
+      payment.amountMinorUnits < 0 &&
+      isOnOrAfterLoanStartDay(meta, payment.time),
   );
   const splits = loanPaymentSplitsMinor(meta, payments, loan.currency, plan);
   const entries = payments.map((payment, index) => ({
@@ -160,6 +166,21 @@ const ledgerAnchorAt = (
   };
 };
 
+// The anchor's value less the principal of each of `paid` the anchor does not already cover: a
+// correction covers its own day (it was recorded with that day's payments in mind), the
+// start-day anchor does not (payment 1 is due on the start day). Never below 0. The header and
+// every linked payment's remainder read this one rule, so they cannot disagree.
+const balanceAfterPaymentsMinor = (anchor: LoanAnchor, paid: readonly LedgerEntry[]): number =>
+  Math.max(
+    0,
+    anchor.valueMinorUnits -
+      paid
+        .filter((entry) =>
+          anchor.fromCorrection ? entry.dayKey > anchor.dayKey : entry.dayKey >= anchor.dayKey,
+        )
+        .reduce((sum, entry) => sum + principalOf(entry), 0),
+  );
+
 /**
  * A loan's outstanding at `instant`, the ONE number every valuation site
  * reads (card, detail, totals, statistics, net-worth history). With no
@@ -169,7 +190,8 @@ const ledgerAnchorAt = (
  * EARLIER of the day before the first linked payment and the day before that
  * payment's own mapped installment's due date, else the principal at the
  * start day) minus the principal part of each counted payment dated strictly
- * after the anchor's day — what was actually repaid, not what the schedule
+ * after the anchor's day (ON it too for the start-day anchor, since payment 1
+ * is due on the start day) — what was actually repaid, not what the schedule
  * says was due — clamped to never go below 0. 0 before the loan's start day,
  * the same as the schedule.
  */
@@ -186,16 +208,105 @@ export const loanLedgerOutstandingMinorAt = (
     return loanOutstandingMinorAt(meta, loan.id, book, instant, ledger.plan);
   }
 
-  if (dayKeyOf(instant) < dayKeyOf(meta.startDate)) {
+  if (!isOnOrAfterLoanStartDay(meta, instant)) {
     return 0;
   }
 
-  const anchor = ledgerAnchorAt(meta, loan, book, instant, ledger, counted);
-  const principalRepaidAfterAnchor = counted
-    .filter((entry) => entry.dayKey > anchor.dayKey)
-    .reduce((sum, entry) => sum + principalOf(entry), 0);
+  return balanceAfterPaymentsMinor(
+    ledgerAnchorAt(meta, loan, book, instant, ledger, counted),
+    counted,
+  );
+};
 
-  return Math.max(0, anchor.valueMinorUnits - principalRepaidAfterAnchor);
+/** An upcoming installment with the loan balance left once it is paid. */
+export type UpcomingLoanInstallment = LoanInstallment & { remainderMinorUnits: number };
+
+/**
+ * The balance left after each of `rows` (the loan detail's upcoming installments, in schedule
+ * order) is paid, one value per row: the header outstanding (`loanLedgerOutstandingMinorAt`)
+ * less the scheduled principal of every row up to it that the header does not already count,
+ * never below 0. The header counts a row fully when it is a schedule row due on or before `now`
+ * (the schedule branch, so the row due today), and only the principal paid by the counted linked
+ * payments mapped to it otherwise (the ledger branch), so a partly paid row keeps its unpaid
+ * principal. Reading the header keeps the first remainder equal to the header less row 1 after a
+ * correction or a linked payment, not only for the untouched schedule.
+ */
+export const loanRemaindersAfterMinor = (
+  meta: LoanMeta,
+  loan: LedgerLoan,
+  book: PriceBook,
+  now: number,
+  rows: readonly LoanInstallment[],
+): readonly number[] => {
+  const ledger = ledgerOf(meta, loan, book);
+  const counted = countedEntries(ledger, now);
+  const header = loanLedgerOutstandingMinorAt(meta, loan, book, now);
+  const paidPrincipals = counted.flatMap(
+    (entry) =>
+      foldMap(maybe(installmentIndexOf(meta, ledger.plan, entry.payment.time)), (index) => [
+        { rowIndex: index + 1, principalMinorUnits: principalOf(entry) },
+      ]) ?? [],
+  );
+  const uncountedPrincipalOf = (row: LoanInstallment): number => {
+    if (counted.length === 0) {
+      return dayKeyOf(row.dueDate) <= dayKeyOf(now) ? 0 : row.principalMinorUnits;
+    }
+
+    const paidPrincipal = paidPrincipals
+      .filter((paid) => paid.rowIndex === row.index)
+      .reduce((sum, paid) => sum + paid.principalMinorUnits, 0);
+
+    return Math.max(0, row.principalMinorUnits - paidPrincipal);
+  };
+  let uncountedThroughRow = 0;
+
+  return rows.map((row) => {
+    uncountedThroughRow += uncountedPrincipalOf(row);
+
+    return Math.max(0, header - uncountedThroughRow);
+  });
+};
+
+/** One linked payment's own split and the loan balance left right after it. */
+export type LinkedPaymentBreakdown = {
+  principalMinorUnits: number;
+  interestMinorUnits: number;
+  remainderMinorUnits: number;
+};
+
+/**
+ * Each counted linked payment's principal and interest part and the loan balance right after it,
+ * keyed by transaction id; a payment the ledger does not count (another currency, a credit,
+ * before the start day, after `now`) has no entry. The balance reads the header's own rule
+ * (`loanLedgerOutstandingMinorAt`): the anchor at the payment's time, less the principal of
+ * every payment up to and including it that the anchor does not already cover, never below 0,
+ * so the last payment's balance is the header when no correction follows it. The split is
+ * order-dependent (`loanPaymentSplitsMinor`), so the whole payment list is read, never one row.
+ */
+export const loanLinkedPaymentBreakdownsMinor = (
+  meta: LoanMeta,
+  loan: LedgerLoan,
+  book: PriceBook,
+  now: number,
+): ReadonlyMap<string, LinkedPaymentBreakdown> => {
+  const ledger = ledgerOf(meta, loan, book);
+  const counted = countedEntries(ledger, now);
+
+  return new Map(
+    counted.map((entry, index) => {
+      const paidThroughHere = counted.slice(0, index + 1);
+      const anchor = ledgerAnchorAt(meta, loan, book, entry.payment.time, ledger, paidThroughHere);
+
+      return [
+        entry.payment.transactionId,
+        {
+          principalMinorUnits: principalOf(entry),
+          interestMinorUnits: entry.interestMinorUnits,
+          remainderMinorUnits: balanceAfterPaymentsMinor(anchor, paidThroughHere),
+        },
+      ];
+    }),
+  );
 };
 
 /**

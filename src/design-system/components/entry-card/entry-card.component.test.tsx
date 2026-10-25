@@ -22,13 +22,32 @@ const labelLayout = (label: string): LayoutNode => ({
   children: [{ variant: 'body', tone: 'textPrimary', children: [label] }],
 });
 
-const amountLayout: LayoutNode = {
-  style: { flexShrink: 0 },
-  children: [{ testID: 'amount', children: ['42'] }],
+const amountLayout = (captionLayouts: LayoutNode[] = []): LayoutNode => ({
+  style: { flexShrink: 0, alignItems: 'flex-end', gap: darkTheme.spacing(1) },
+  children: [{ testID: 'amount', children: ['42'] }, ...captionLayouts],
+});
+
+const captionLayout = (children: LayoutNode[]): LayoutNode => ({
+  style: { alignItems: 'center', flexDirection: 'row', gap: darkTheme.spacing(1) },
+  children,
+});
+
+const captionTextLayout = (caption: string): LayoutNode => ({
+  variant: 'caption',
+  tone: 'textSecondary',
+  children: [caption],
+});
+
+const captionIconLayout: LayoutNode = {
+  style: { height: darkTheme.iconSizes.caption, width: darkTheme.iconSizes.caption },
+  symbol: 'link',
+  tint: expect.any(String),
+  testID: 'marker',
+  children: [],
 };
 
 const mainRowLayout = (children: LayoutNode[]): LayoutNode => ({
-  style: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  style: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
   children,
 });
 
@@ -58,7 +77,7 @@ describe('EntryCard', () => {
     );
 
     expect(layoutOf(getByTestId('entry'))).toEqual(
-      cardLayout([mainRowLayout([labelLayout('Loan payment'), amountLayout])]),
+      cardLayout([mainRowLayout([labelLayout('Loan payment'), amountLayout()])]),
     );
   });
 
@@ -68,7 +87,7 @@ describe('EntryCard', () => {
     );
 
     expect(layoutOf(getByTestId('entry'))).toEqual(
-      cardLayout([mainRowLayout([labelLayout('Loan payment'), amountLayout])]),
+      cardLayout([mainRowLayout([labelLayout('Loan payment'), amountLayout()])]),
     );
   });
 
@@ -79,7 +98,7 @@ describe('EntryCard', () => {
 
     expect(layoutOf(getByTestId('entry'))).toEqual(
       cardLayout([
-        mainRowLayout([labelLayout('Interest'), amountLayout]),
+        mainRowLayout([labelLayout('Interest'), amountLayout()]),
         footerLayout(['Computed']),
       ]),
     );
@@ -97,7 +116,7 @@ describe('EntryCard', () => {
 
     expect(layoutOf(getByTestId('entry'))).toEqual(
       cardLayout([
-        mainRowLayout([labelLayout('Loan payment'), amountLayout]),
+        mainRowLayout([labelLayout('Loan payment'), amountLayout()]),
         footerLayout(['Scheduled', 'Principal 1 · interest 2']),
       ]),
     );
@@ -125,8 +144,83 @@ describe('EntryCard', () => {
             },
             children: [{ testID: 'lead', children: ['icon'] }, labelLayout('Coffee')],
           },
-          amountLayout,
+          amountLayout(),
         ]),
+      ]),
+    );
+  });
+
+  it('draws the caption directly under the amount, in the amount column, not in the footer', async () => {
+    const { getByTestId } = await render(
+      <EntryCard testID="entry" label="Coffee" amount={amount} amountCaption="09:05" />,
+    );
+
+    expect(layoutOf(getByTestId('entry'))).toEqual(
+      cardLayout([
+        mainRowLayout([
+          labelLayout('Coffee'),
+          amountLayout([captionLayout([captionTextLayout('09:05')])]),
+        ]),
+      ]),
+    );
+  });
+
+  it('draws the caption icon before the caption, centred on it, in the amount column', async () => {
+    const { getByTestId } = await render(
+      <EntryCard
+        testID="entry"
+        label="Coffee"
+        amount={amount}
+        amountCaption="09:05"
+        amountCaptionIcon={{ name: 'link', testID: 'marker' }}
+      />,
+    );
+
+    expect(layoutOf(getByTestId('entry'))).toEqual(
+      cardLayout([
+        mainRowLayout([
+          labelLayout('Coffee'),
+          amountLayout([captionLayout([captionIconLayout, captionTextLayout('09:05')])]),
+        ]),
+      ]),
+    );
+  });
+
+  it('draws the caption icon alone when there is no caption text', async () => {
+    const { getByTestId } = await render(
+      <EntryCard
+        testID="entry"
+        label="Coffee"
+        amount={amount}
+        amountCaptionIcon={{ name: 'link', testID: 'marker' }}
+      />,
+    );
+
+    expect(layoutOf(getByTestId('entry'))).toEqual(
+      cardLayout([
+        mainRowLayout([labelLayout('Coffee'), amountLayout([captionLayout([captionIconLayout])])]),
+      ]),
+    );
+  });
+
+  it('keeps the footer lines below the whole row beside an amount caption', async () => {
+    const { getByTestId } = await render(
+      <EntryCard
+        testID="entry"
+        label="Coffee"
+        amount={amount}
+        amountCaption="09:05"
+        footerLines={['Scheduled']}
+      />,
+    );
+
+    expect(layoutOf(getByTestId('entry'))).toEqual(
+      cardLayout([
+        mainRowLayout([
+          labelLayout('Coffee'),
+          amountLayout([captionLayout([captionTextLayout('09:05')])]),
+        ]),
+        footerLayout(['Scheduled']),
       ]),
     );
   });

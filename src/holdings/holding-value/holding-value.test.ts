@@ -717,19 +717,18 @@ const loan = (over: Record<string, unknown> = {}): ValuableHolding => ({
 describe('holdingValueBreakdown — loan', () => {
   it('is negative — gross and net equal minus the outstanding balance, principalOrCost equals minus the principal', () => {
     const b = holdingValueBreakdown(loan(), loanStart, EMPTY_PRICE_BOOK);
-    // At startDate itself, no installment is due yet: outstanding is the full principal.
-    expect(b.gross.minorUnits).toBe(-120_000_000);
-    expect(b.net.minorUnits).toBe(-120_000_000);
+    // At startDate itself payment 1 is due: the principal less its 1,213.03 principal part.
+    expect(b.gross.minorUnits).toBe(-119_878_697);
+    expect(b.net.minorUnits).toBe(-119_878_697);
     expect(b.principalOrCost.minorUnits).toBe(-120_000_000);
     expect(b.interest.minorUnits).toBe(0);
     expect(b.tax.minorUnits).toBe(0);
   });
 
   it('gross/net shrink toward 0 as the schedule pays the loan down, while principalOrCost stays at minus the ORIGINAL principal', () => {
-    // At `loanStart` itself, ZERO installments are due yet (the first is a
-    // month out), not ten.
+    // At `loanStart` itself only payment 1 is due.
     const atStart = loanStart;
-    const laterDay = local(2021, 0, 15); // one year (12 installments) later
+    const laterDay = local(2021, 0, 15); // one year (13 installments) later
     const before = holdingValueBreakdown(loan(), atStart, EMPTY_PRICE_BOOK);
     const after = holdingValueBreakdown(loan(), laterDay, EMPTY_PRICE_BOOK);
 
@@ -786,6 +785,7 @@ describe('holdingValueBreakdown — loan', () => {
       [],
       [
         {
+          transactionId: 'payment-1',
           loanHoldingId: 'loan-1',
           time: paymentDay,
           amountMinorUnits: -3_000_000,
@@ -793,11 +793,13 @@ describe('holdingValueBreakdown — loan', () => {
         },
       ],
     );
-    // The first installment's interest: 1% a month of the full principal.
-    const interest = 1_200_000;
+    // The payment on 2020-02-15 pays installment 2: its interest is 1% a month of the balance
+    // left by installment 1, which the schedule already counted as due on the start day.
+    const interest = 1_198_787;
+    const firstPrincipal = 121_303;
 
     expect(holdingValueBreakdown(loan(), paymentDay, book).net.minorUnits).toBe(
-      -(120_000_000 - (3_000_000 - interest)),
+      -(120_000_000 - firstPrincipal - (3_000_000 - interest)),
     );
     // A bucket before the payment day still reads the schedule.
     expect(holdingValueBreakdown(loan(), local(2020, 1, 14), book).net.minorUnits).toBe(

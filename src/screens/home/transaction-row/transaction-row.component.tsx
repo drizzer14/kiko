@@ -26,6 +26,8 @@ const TransactionRow: FC<TransactionRowProps> = ({
   categoryKeyForRow,
   onPress,
   onDuplicate,
+  onViewAccount,
+  onViewHolding,
   selected,
 }) => {
   const { t } = useTranslation();
@@ -61,9 +63,9 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // and routes its confirm through `transactionsRepo.remove`, which already
   // guards a synced row (throws) and reverses the balance in one transaction,
   // together with the rest of the movement the row is a part of;
-  // a synced (Monobank/crypto) row is not deletable, so `CardContextMenu`
-  // renders it bare — no gesture at all. An imported row is not duplicable
-  // either, so its hold opens the delete confirm directly.
+  // a synced (Monobank/crypto) row is not deletable, so its hold lists only the
+  // View account / View holding actions every row carries. An imported row is
+  // not duplicable, so its list is View account, View holding and Delete.
   //
   // This is a PLAIN list row (no `react-native-sortables` grid), unlike the
   // account/holding cards, so it gets no free scale-up lift from a grid's own
@@ -77,10 +79,11 @@ const TransactionRow: FC<TransactionRowProps> = ({
       deletable={isDeletableTransaction(item)}
       deleteMessage={deleteMessage}
       onDelete={() => transactionsRepo.remove(item.id)}
-      // A synced row is not duplicable — pass no handler so its long-press keeps
-      // offering nothing (it already renders bare). A manual row's Duplicate
+      // A synced row is not duplicable — pass no handler. A manual row's Duplicate
       // opens the create form pre-filled from this row.
       onDuplicate={isSynced ? undefined : () => onDuplicate(item.id)}
+      onViewAccount={() => onViewAccount(item)}
+      onViewHolding={() => onViewHolding(item)}
       liftOnHold
     >
       <Pressable

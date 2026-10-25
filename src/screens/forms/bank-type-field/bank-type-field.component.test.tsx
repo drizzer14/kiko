@@ -400,7 +400,7 @@ describe('BankTypeField', () => {
     const englishClause =
       'Kiko is an independent app. It is not a bank and is not affiliated with or endorsed by any bank.';
     const ukrainianClause =
-      'Кіко — незалежний застосунок. Це не банк, не є партнером та не пов’язаний з жодним банком.';
+      'Кіко — незалежний застосунок. Це не банк, не є партнером та не повʼязаний з жодним банком.';
 
     // One caption, under the trigger: the sheet repeats nothing.
     it('shows the clause once, under the field, while the sheet is open', async () => {

@@ -26,7 +26,8 @@ const PARITY = {
     name: 'Loans',
     holdingName: 'Mortgage',
     type: 'loan',
-    // A loan that starts now has no installment due, so it stands at its full principal.
+    // A loan that starts now has payment 1 due, so it stands at its principal less that
+    // payment's 24.41 principal part.
     metadata: {
       kind: 'personal',
       principalMinorUnits: 500_000,
@@ -35,8 +36,8 @@ const PARITY = {
       termMonths: 120,
       schedule: 'annuity',
     },
-    total: '-$125.00',
-    caption: '-5,000.00 ₴',
+    total: '-$124.39',
+    caption: '-4,975.59 ₴',
   },
 } as const;
 

@@ -111,13 +111,26 @@ if [ "$all_files" -eq 1 ]; then
   fi
 fi
 
-out="$(semgrep --quiet --error --json \
-  --config p/typescript --config p/react --config p/secrets \
-  --config "$ROOT/rules/semgrep-mobile.yml" \
-  --config "$ROOT/rules/semgrep-prewrite.yml" \
-  --exclude 'fixtures' \
-  "${EXCLUDE_RULE_ARGUMENTS[@]}" \
-  "${TARGETS[@]}" 2>/tmp/kiko-security-stderr.$$)"
+# Semgrep's default is 9 threads on this machine. Under load (300-500) with its 5 s per-rule
+# timer, jobs 6 drew 0-3 rule Timeouts per scan, jobs 10 drew 5-6 and the default 7-12, and the
+# scan took about half the wall time. A rule Timeout fails the scan below, so the cap is a floor
+# on reliability, not a speed knob.
+SEMGREP_JOBS=6
+
+# One definition of the scan, so a re-scan of a timed-out file below uses the same rule configs,
+# exclusions and 5 s timer as the first scan: the arguments are the targets, and the jobs count
+# is read from SEMGREP_JOBS (the re-scan overrides it for its own call).
+run_semgrep() {
+  semgrep --quiet --error --json --jobs "$SEMGREP_JOBS" \
+    --config p/typescript --config p/react --config p/secrets \
+    --config "$ROOT/rules/semgrep-mobile.yml" \
+    --config "$ROOT/rules/semgrep-prewrite.yml" \
+    --exclude 'fixtures' \
+    "${EXCLUDE_RULE_ARGUMENTS[@]}" \
+    "$@"
+}
+
+out="$(run_semgrep "${TARGETS[@]}" 2>/tmp/kiko-security-stderr.$$)"
 semgrep_code=$?
 stderr_out="$(cat /tmp/kiko-security-stderr.$$ 2>/dev/null)"
 rm -f /tmp/kiko-security-stderr.$$
@@ -172,6 +185,89 @@ fi
 # Semgrep error as a failed proof. Unparseable output fails too, since it
 # cannot prove zero findings. Other warn-level entries stay non-blocking.
 scan_problems="$(semgrep_error_text blocking)"
+
+# A rule Timeout under load is a stall, not a verdict on the file, so each file that timed out is
+# scanned ONCE more alone (--jobs 1, same configs and timer) and passes only if that scan reports
+# no Timeout and no error at all. Only a Timeout is ever re-scanned: any other blocking error, an
+# unreadable report, or more than MAXIMUM_RESCANNED_PAIRS timed-out (file, rule) pairs (a broad
+# stall, not a one-off) skips the re-scan and fails below. Each passing pair is warned on stderr.
+MAXIMUM_RESCANNED_PAIRS=10
+RESCAN_JOBS=1
+
+# Prints "path<TAB>rule" for each distinct Timeout entry; prints nothing when the report is
+# unreadable or holds any other blocking entry, so such a report is never re-scanned.
+semgrep_timeout_pairs() {
+  printf '%s' "$out" | node -e '
+let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
+  let errors;
+  try{errors=JSON.parse(text).errors||[]}catch{return}
+  const blocking=errors.filter((entry)=>entry.level==="error"||entry.type==="Timeout");
+  if(blocking.some((entry)=>entry.type!=="Timeout"||!entry.path||!entry.rule_id))return;
+  const pairs=new Set(blocking.map((entry)=>entry.path+"\t"+entry.rule_id));
+  process.stdout.write([...pairs].join("\n"));
+})'
+}
+
+# The first report plus the findings the re-scans added, minus its Timeout entries (resolved).
+# $1 is the directory of re-scan reports.
+semgrep_merged_report() {
+  printf '%s' "$out" | node -e '
+const fs=require("fs"),path=require("path");
+let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
+  const report=JSON.parse(text);
+  const keyOf=(entry)=>[entry.check_id,entry.path,JSON.stringify(entry.start),JSON.stringify(entry.end)].join("|");
+  const seen=new Set((report.results||[]).map(keyOf));
+  const results=[...(report.results||[])];
+  for(const name of fs.readdirSync(process.argv[1])){
+    for(const entry of JSON.parse(fs.readFileSync(path.join(process.argv[1],name),"utf8")).results||[]){
+      if(!seen.has(keyOf(entry))){seen.add(keyOf(entry));results.push(entry)}
+    }
+  }
+  report.results=results;
+  report.errors=(report.errors||[]).filter((entry)=>entry.type!=="Timeout");
+  process.stdout.write(JSON.stringify(report));
+})' "$1"
+}
+
+timeout_pairs="$(semgrep_timeout_pairs)"
+if [ -n "$scan_problems" ] && [ -n "$timeout_pairs" ]; then
+  pair_count="$(printf '%s\n' "$timeout_pairs" | grep -c .)"
+  if [ "$pair_count" -gt "$MAXIMUM_RESCANNED_PAIRS" ]; then
+    scan_problems="$scan_problems"$'\n'"$pair_count rule Timeouts is more than $MAXIMUM_RESCANNED_PAIRS: a broad stall, so nothing was re-scanned."
+  else
+    rescan_dir="$(mktemp -d "${TMPDIR:-/tmp}/kiko-security-rescan.XXXXXX")"
+    trap 'rm -rf "$rescan_dir"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    rescan_failed=""
+    rescan_index=0
+    while IFS= read -r rescan_file; do
+      rescan_index=$((rescan_index + 1))
+      rescan_out="$(SEMGREP_JOBS="$RESCAN_JOBS" run_semgrep "$rescan_file" 2>/dev/null)"
+      rescan_code=$?
+      printf '%s' "$rescan_out" >"$rescan_dir/$rescan_index.json"
+      rescan_errors="$(printf '%s' "$rescan_out" | node -e '
+let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
+  try{process.stdout.write(String((JSON.parse(text).errors||[]).length))}
+  catch{process.stdout.write("unreadable")}
+})')"
+      if { [ "$rescan_code" -ne 0 ] && [ "$rescan_code" -ne 1 ]; } || [ "$rescan_errors" != "0" ]; then
+        rescan_failed="$rescan_failed"$'\n'"A single-threaded re-scan of $rescan_file alone (exit $rescan_code) also reported a problem."
+      fi
+    done < <(printf '%s\n' "$timeout_pairs" | cut -f1 | sort -u)
+    if [ -n "$rescan_failed" ]; then
+      scan_problems="$scan_problems$rescan_failed"
+    else
+      out="$(semgrep_merged_report "$rescan_dir")"
+      scan_problems="$(semgrep_error_text blocking)"
+      while IFS=$'\t' read -r pair_file pair_rule; do
+        printf 'WARNING: security.sh: Semgrep rule %s timed out on %s; a single-threaded re-scan of that file passed (not a clean first scan).\n' "$pair_rule" "$pair_file" >&2
+      done <<<"$timeout_pairs"
+    fi
+    rm -rf "$rescan_dir"
+    trap - EXIT INT TERM
+  fi
+fi
 
 if [ -n "$scan_problems" ]; then
   print_block \
