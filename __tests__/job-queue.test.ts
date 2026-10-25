@@ -2325,12 +2325,6 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
   it.each([
     ['a clean tree', () => undefined, true],
     [
-      'a tracked edit',
-      (worktree: string) => writeFile(worktree, 'scripts/checks/mutation.sh', '# edited\n'),
-      false,
-    ],
-    ['an untracked file', (worktree: string) => writeFile(worktree, 'new.txt', 'new\n'), false],
-    [
       'a commit made by the job itself',
       (_worktree: string, sandbox: Sandbox) => installMake(sandbox, COMMITTING_MAKE_STUB),
       false,
@@ -2345,14 +2339,6 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
       'an untracked file made by the job itself',
       (_worktree: string, sandbox: Sandbox) =>
         installMake(sandbox, dirtyingMakeStub('echo new > made-by-job.txt')),
-      false,
-    ],
-    [
-      'an untracked file under status.showUntrackedFiles=no',
-      (worktree: string) => {
-        hideUntrackedFiles(worktree);
-        writeFile(worktree, 'new.txt', 'new\n');
-      },
       false,
     ],
     [
@@ -2432,6 +2418,156 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     expect(result.stdout).toMatch(
       /^START one at \d\d:\d\d head [0-9a-f]{12} \(load: 1\.50 2\.50 3\.50\)$/m,
     );
+  });
+});
+
+const TRACKED_PATH = 'scripts/checks/mutation.sh';
+
+const DIRTY_TREES: [string, string, (worktree: string) => void][] = [
+  [
+    'a modified tracked file',
+    TRACKED_PATH,
+    (worktree) => writeFile(worktree, TRACKED_PATH, '# edited\n'),
+  ],
+  ['an untracked file', 'new.txt', (worktree) => writeFile(worktree, 'new.txt', 'new\n')],
+  [
+    'an untracked file under status.showUntrackedFiles=no',
+    'new.txt',
+    (worktree) => {
+      hideUntrackedFiles(worktree);
+      writeFile(worktree, 'new.txt', 'new\n');
+    },
+  ],
+];
+
+const doneLogPresent = (sandbox: Sandbox): boolean => isPresent(join(sandbox.queue, 'done.log'));
+
+describe.each(['verify', 'gate'] as const)('scripts/job-queue.sh a %s on a dirty tree', (kind) => {
+  const queueArguments = (worktree: string, head: string): string[] =>
+    kind === 'gate' ? ['gate', worktree, 'one', 'main', head] : ['verify', worktree, 'one'];
+
+  it.each(DIRTY_TREES)('refuses %s at enqueue with exit 3', (_title, path, dirty) => {
+    const sandbox = createSandbox();
+    const { worktree, head } = createGateWorktree(sandbox, 'one', listing(1));
+    dirty(worktree);
+
+    const result = runQueue(sandbox, ...queueArguments(worktree, head));
+
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain(path);
+    expect(result.stderr).toContain('commit');
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+    expect(lockPresent(sandbox)).toBe(false);
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    expect(doneLogPresent(sandbox)).toBe(false);
+  });
+
+  it('refuses at START when the tree changed while queued, leaving no lock or ticket', async () => {
+    const sandbox = createSandbox();
+    const { worktree, head } = createGateWorktree(sandbox, 'one', listing(1));
+    const lock = holdLock(sandbox);
+
+    const waiter = startQueue(sandbox, ...queueArguments(worktree, head));
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 1);
+    writeFile(worktree, 'new.txt', 'new\n');
+    rmSync(lock);
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(3);
+    expect(result.stderr).toContain('new.txt');
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    expect(lockPresent(sandbox)).toBe(false);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+    expect(doneLogPresent(sandbox)).toBe(false);
+  });
+
+  it('runs the next queued clean job after a refusal at START', async () => {
+    const sandbox = createSandbox();
+    const first = createGateWorktree(sandbox, 'one', listing(1));
+    const second = createGateWorktree(sandbox, 'two', listing(1));
+    const lock = holdLock(sandbox);
+
+    const refused = startQueue(sandbox, ...queueArguments(first.worktree, first.head));
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 1);
+    const next = startQueue(
+      sandbox,
+      ...(kind === 'gate'
+        ? ['gate', second.worktree, 'two', 'main', second.head]
+        : ['verify', second.worktree, 'two']),
+    );
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 2);
+    writeFile(first.worktree, 'new.txt', 'new\n');
+    rmSync(lock);
+    const [refusedResult, nextResult] = await Promise.all([refused.finished, next.finished]);
+
+    expect(refusedResult.code).toBe(3);
+    expect(nextResult.code).toBe(0);
+    expect(startedWorktrees(sandbox)).toEqual([second.worktree]);
+    expect(finishedLine(sandbox).split(' ')[5]).toBe(second.head);
+    expect(lockPresent(sandbox)).toBe(false);
+  });
+});
+
+describe('scripts/job-queue.sh a job that changes the tree', () => {
+  it.each([
+    [
+      'a tracked file',
+      'ios/Podfile.lock',
+      (worktree: string) => {
+        writeFile(worktree, 'ios/Podfile.lock', 'PODS\n');
+        commitAll(worktree, 'lock');
+      },
+      'echo "COCOAPODS" >> ios/Podfile.lock',
+    ],
+    ['an untracked file', 'made-by-job.txt', () => undefined, 'echo new > made-by-job.txt'],
+  ])('prints a NOTE naming %s and records unknown', (_title, path, prepare, change) => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    prepare(worktree);
+    installMake(sandbox, dirtyingMakeStub(change));
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(finishedLine(sandbox).split(' ')[5]).toBe('unknown');
+    expect(result.stdout).toContain(`NOTE one: the tree changed during the job: ${path}`);
+  });
+
+  it('keeps the output of a failing verify in logs/verify-<label>.log', () => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    sandbox.environment.KIKO_STUB_OUTPUT = 'FAIL __tests__/example.test.ts';
+    sandbox.environment.KIKO_STUB_EXIT = '2';
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(2);
+    expect(readLines(join(sandbox.queue, 'logs/verify-one.log'))).toContain(
+      'FAIL __tests__/example.test.ts',
+    );
+  });
+
+  it('prints no NOTE when the tree stays clean', () => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.stdout).not.toContain('NOTE one: the tree changed during the job');
+  });
+});
+
+describe('scripts/job-queue.sh check-all and security on a dirty tree', () => {
+  it.each(['check-all', 'security'])('still runs a %s and records unknown', (kind) => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    writeFile(worktree, 'new.txt', 'new\n');
+
+    const result = runQueue(sandbox, kind, worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string).join('\n')).toContain('npm');
+    expect(finishedLine(sandbox).split(' ')[5]).toBe('unknown');
   });
 });
 
