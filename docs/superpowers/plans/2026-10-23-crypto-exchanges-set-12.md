@@ -844,6 +844,36 @@ USER CONFIRMED 2026-10-25.
   H = 16, failed the forward world on late records at 5 to 20 of 30 seeds on the moving clocks: slow, no stall.
   Red on the old hooks: 341 of 720 cases of the two worlds (all orders: 179 forward, 162 old owed; payments have
   no turns); green on the fix: 720 of 720; the whole file 4614 cases, about 360 s (it was about 260 s).
+- S12-Q37 (the fix, USER CONFIRMED 2026-10-25) an owed range wider than its failing ground was marked stuck
+  whole by the re-scan and owed whole by the owed pass (kiko:debugger proof, red by run: owed from the floor to the
+  cursor with one failing day 300 days back, and owed -1500 d to -800 d with a failing day at -1000 d: nothing in
+  them imported, orders and payments, throw and drift). Built (`binance.fiat-history.ts` only): (a) in the re-scan
+  a failed span that touches an owed range wider than a day (`ISOLATE_MS`) is halved to a day, and only the owed
+  range in it (`clipped`) is marked; (b) the owed pass (`readOwedSpan`, never the point windows) reads through
+  `attemptSpan`, halves a failed span to a day and owes only that day, keeps the first page that did not parse
+  (`owedUnreadable`) and the run rejects with it after its passes, a drift logs its stop and never rejects. A
+  readable record in the failing day stays owed (bounded loss of one day). Neither half alone fixes all worlds
+  (mutant-checked: (b) off reds the older-than-window shape, (a) off the floor shape). The owed pass owes the day
+  per type, so two pins move to per-series entries (FQ4 and the owed-ground pin). Bound, derived (named parts
+  in `binance.fiat-test-fixtures.ts`): the owed pass keeps no halving between a read that commits and the next
+  (the orders lane reads one span a run), so over one window with one failing day it takes at most
+  `(H + 1)(H + 4) / 2 + 1 = 78` reads, `H = ceil(log2(730 d / 1 day)) = 10`; the orders runs are 4 per owed read.
+  Measured worst: orders 297 runs of 340, payments 39 of 85.
+- S12-Q42 (COORDINATOR 2026-10-25, option 1 of the cost question, option 2 rejected) isolating the failing day
+  costs merged owed ranges: with a clock a day or more a run every run adds an overlap day, the list passes 12
+  entries, the nearest ranges merge, and a merged range is marked in chunks of under a day, each chunk a halving
+  from the window end. 41 cases of the orders day-clock cluster worlds went red on the old bound `r x (2z + 1 + H)`.
+  Built in the tests: a chunk term `MARKS_PER_FAILING_DAY x (H + 1) - 1 = 4 x 11 - 1 = 43` reads a failing day, on
+  the drift and throw worlds whose clock gap is `RESYNC_OVERLAP_MS` or more (not the wide worlds, which have their
+  own bound). Tried first and dropped: reading the piece after a clipped mark at a day (red 41 -> 19) and halving
+  inside the owed range (red 41 -> 17), neither tight. Cost to know: the orders lane there is up to 13 times
+  slower than before the fix (cluster, drift: 49 runs of 52 on hour clocks, 676 of 1084 on a day clock).
+- Generator (USER CONFIRMED 2026-10-25) the dense worlds put full pages only between the first two stuck days. New
+  worlds: a dense hour right after the last owed day, a dense hour with no owed day within 2 days, a dense hour in a
+  window with no owed day (the three share H = 3 x (ceil(log2(730 d / 1 h)) + 1) = 48, the piece after the last
+  stuck range runs to the window end), and a wide owed range with one failing day, from the history floor and older
+  than the window; the long worlds use every fifth seed. A record the re-scan window has left (a clock a day a run)
+  is not owed any more. The properties file goes 4614 -> 5262 cases, 1001 s under load.
 - S12-Q38 (the fix, USER CONFIRMED 2026-10-25) an unreadable owed window or point is never recorded in the
   lane budget (kiko:debugger proof, red by run). `budget.record` ran only after a page came back, so a request that
   threw was a made call the lane never counted; since S12-Q29 the pending and point passes go on after it, so 30
