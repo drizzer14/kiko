@@ -263,13 +263,14 @@ set 10 whole-branch items there (FR-Q1, FR-Q2) belong to set 10.
 | S12-Q43 (COORDINATOR 2026-10-25) | The caption shows while any of the 8 walks owes a range, through `historyOwesRange` over their `pending` lists (capital, Pay, Earn, Convert and P2P also owe ranges after a failed page with the cursor moving on); same copy, a pin per walk | 12 |
 | S12-Q44 (COORDINATOR 2026-10-25, design approved) | A pending point carries an optional `since` (epoch ms, the wall clock of the run that first owed it) in the walk's `exchange_state` entry; every writer of the list keeps the first `since` when the point is owed again or merged, and the caption counts a point once `lastBalanceSyncAt - since` is more than a day; a fresh point (read again each sync) and a point with no `since` stay quiet. No migration: a point stored before it, or with a `since` that is no non-negative integer, reads as having none and is stamped by the first run that owes it again; a range never carries one. The `.kiko` restore copies the walk state as text, so a file with or without `since` restores unchanged and a malformed `since` reads as none, never as a broken list | 12 |
 | S12-Q46 (regression from 697421a6; COORDINATOR 2026-10-25, deviation accepted) | The fiat orders forward turn stores its own planned overlap day [C0 - RESYNC_OVERLAP_MS, C0] (series-less, C0 = the cursor of the run before) with the cursor already moved on, and only the next sync's behind turn reads it, so `historyOwesRange` showed the caption on every other sync of a quiet account. The caption (`isPlannedOverlapDay`, `OVERLAP_KEEPING_WALKS`) does not count a fiatOrders range that is owed in every series, exactly RESYNC_OVERLAP_MS wide, and ends at or before the walk's cursor; a day owed in one series, any other width, a day after the cursor or with no cursor, and every other walk's day still show it. Pins: binance-history-status.quiet-syncs.test.ts (6 syncs, 8 walks, gaps 1 h, 1 d, 3 d; red 3/24, all fiatOrders) and per-walk pins in binance-history-status.test.ts. No shape change | 12 |
+| S12-Q47 (USER 2026-10-25) | A fiat order or fiat payment is one record with one `status`, and a refund is a later status of it (`Refunding`, `Refunded`). When a re-scan (or any read) reads one as `Refunding` or `Refunded` and a row with its key (`<accountId>:fiat:<orderNo>:<wallet>` or `<accountId>:fiatpay:<orderNo>:<wallet>`) is stored, the commit deletes that row (`transactionsRepo.removeSyncedRows`, by key, found in the database and not in a draft) after the span's rows and before its not-imported entry and its marks, and lists the record as not imported (one `fiat-unrecognized` entry, a union write, so a refund read twice lists once). A row the user categorized or noted goes with it; the holding's balance is the exchange's own and is not moved; a record that never had a row is only listed; `Refund Failed` keeps its row. A crash before the marks move has the next run read the span again, so a row is never left with a cursor past its refund | 12 |
 
 S12-Q45, the S12-Q42 chunk term follow-up, the properties split and the fiat fold are BACKLOG after 1.3
 (SCOPE RULE, USER 2026-10-25; `backlog-after-1.3.md`; side branch `binance-backlog-split`).
 
 Source of S12-Q1 ... S12-Q36, S12-Q38, S12-Q39, S12-Q40, S12-Q41, S12-Q43 and S12-Q44: `rulings.md`, section "Set 12 plan questions" and
 its "G2 review" items (S12-Q7 and S12-Q8 from probe 10; S12-Q3, S12-Q10 and S12-Q11 confirmed by the
-user 2026-10-23, S12-Q34, S12-Q35, S12-Q36, S12-Q38, S12-Q39, S12-Q40 and S12-Q41 confirmed by the user 2026-10-25, S12-Q43 and S12-Q44 coordinator rulings); the plan `docs/superpowers/plans/2026-10-23-crypto-exchanges-set-12.md`
+user 2026-10-23, S12-Q34, S12-Q35, S12-Q36, S12-Q38, S12-Q39, S12-Q40 and S12-Q41 confirmed by the user 2026-10-25, S12-Q43 and S12-Q44 coordinator rulings, S12-Q47 user ruling 2026-10-25); the plan `docs/superpowers/plans/2026-10-23-crypto-exchanges-set-12.md`
 holds each question with its options and its measurements.
 
 ### Rulings this spec reverses
@@ -1315,8 +1316,10 @@ connector paths are `GetFiatPaymentsHistoryResponseDataInner.md` and
 `get-fiat-payments-history-response-data-inner.ts`), and the three developers.binance.com pages
 (fiat orders, fiat payments, C2C) answered HTTP 202 with no body to a plain fetch. The words:
 `Failed` and `Refunded` (orders and payments) stay `fiat-unrecognized`, owed and visible (S12-Q3,
-user confirmed 2026-10-23), and so does every other word the walk does not settle or owe: for the
-orders `Finished`, `Refunding`, `Refund Failed` and `Order Partial Credit Stopped` (written as
+user confirmed 2026-10-23), and `Refunding` and `Refunded` also remove the row an earlier read of the
+record made (S12-Q47, user 2026-10-25; see "Refunds" below). So does every other word the walk
+does not settle or owe stay listed: for the
+orders `Finished`, `Refund Failed` and `Order Partial Credit Stopped` (written as
 Binance writes it: capital C in "Credit"), for the payments any word but `Completed` and
 `Processing` (S12-Q4, S12-Q13). The allowlist matches the status text exactly, spaces and case
 included, so a spelling such as `Order Partial credit Stopped` is not that word. The allowlists are
@@ -1344,6 +1347,16 @@ the constants `FIAT_ORDER_STATUSES` and `FIAT_PAYMENT_STATUSES` in `binance.fiat
     `fiat-unrecognized` entry and the cursor moves on, as a P2P `fiat` of that shape is (S12-Q39).
   - `operation = 'card'`. Wallet per C-NR3 (Spot).
   - Key `${accountId}:fiatpay:${orderNo}:<walletKey>`.
+- Refunds (orders and payments, S12-Q47, user 2026-10-25): the docs give a refund as a later status
+  of the same record (`Refunding`, `Refunded`; the payments take the order words). A read of a
+  record with one of them deletes the stored row of its key in the same commit as its marks (the
+  commit's order is the span's rows, the removal, the not-imported entry, then the marks; a crash
+  before the marks has the next run read the span again) and lists the record once as
+  `fiat-unrecognized`. The row is looked up in the database by key (`removeSyncedRows`), never from
+  a draft, and goes with the user's category or note; the balance of the holding is the
+  exchange's own and does not move. A refund that never had a row only lists the record, a refund
+  read again lists it once, and `Refund Failed` keeps its row. A key whose record is later read
+  settled again is written again, as no deleted key is kept.
 - Windows (C-NR-D): both fiat walks read 2-year windows. Probe 3: one 2-year span returned HTTP 200
   on orders and payments, both types. They cover `HISTORY_FLOOR_MS` to now, and empty windows never
   end them. Probe 5: no refusal to the floor on either endpoint (one series per endpoint,
@@ -2068,9 +2081,10 @@ round changes it.
 | F1 | fiat deposit EUR 100, Successful | Spot EUR +100, `bank:EUR:100.00` | none | not imported |
 | F2 | fiat withdraw EUR 50, Successful, `totalFee` 0.5 | Spot EUR -(50 + 0.5) (`amount + totalFee`), `bank:EUR:50.00` | excluded | not imported; spec was: `amount + fee` |
 | F3 | card buy 0.001 BTC for 2600 UAH, Completed | Spot BTC +0.001, `card:UAH:2600.00` | none | not imported |
-| F4 | fiat order with `Finished`, `Refunding`, `Refund Failed`, `Order Partial Credit Stopped` or an undocumented word; fiat payment with an undocumented word; any other spelling of an allowlisted word (`successful`, ` Successful`, `Order Partial credit Stopped`) | no row; one `fiat-unrecognized` entry each | none | not imported; spec was: `Order Partial credit Stopped` |
+| F4 | fiat order with `Finished`, `Refund Failed`, `Order Partial Credit Stopped` or an undocumented word; fiat payment with an undocumented word; any other spelling of an allowlisted word (`successful`, ` Successful`, `Order Partial credit Stopped`) | no row; one `fiat-unrecognized` entry each | none | not imported; spec was: `Order Partial credit Stopped` |
 | F5 | fiat walk: 2-year windows with no row from the floor (probe 5: the floor window is served empty) | every window is read, and empty windows never end the walk; orders take 6 runs to reach now (12 calls, lane 3; a run reads forward or behind, and a forward run follows a behind run, S12-Q18, S12-Q21) and report complete on run 10 (20 calls, S12-Q23; spec was: 4 runs), payments 1 run (10 calls, lane 10) (C-NR-D; R-Walk A) | - | not imported |
 | F6 | each allowlisted fiat word, from a fixture on the documented shape (C-NR-E: no real row observed): `Successful` / `Completed` -> row; `Processing` -> owed point; `Failed` and `Refunded` -> one `fiat-unrecognized` entry, no row (Binance's doc text for them says nothing about money, S12-Q3) | as stated | - | not imported |
+| F6a | a fiat order or payment read `Successful` / `Completed` (row), then `Refunded` or `Refunding` by a later re-scan; also `Refund Failed`, a refund with no earlier row, a row the user categorized and noted, and the refund read again (S12-Q47, USER 2026-10-25) | the row is gone, the holding balance unchanged, one `fiat-unrecognized` entry; `Refund Failed` keeps its row; a failed removal or entry write leaves the marks where they were and the next run finishes | - | not imported; spec was: the row stayed |
 
 V1 and V2 are gone with the dividend walk (C-Div). The old P4 row ("P2P with commission, before P5
 confirmed: owed point") is replaced by P1-P1h. There is no C7.

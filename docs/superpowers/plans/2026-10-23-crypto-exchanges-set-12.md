@@ -126,7 +126,8 @@ text, never a line. **The developer re-greps every fact on the actual base befor
   on every run stays visible: the log line each run, the history caption once the `p2p` cursor lags more than a
   day (as S8-C1 for Convert), and the other walks of the run still run (PW6-PW8, RW2, RW3).
 - Fiat orders: `Successful` row; `Processing` owes the point; `Failed` / `Refunded` none only if step 2/14 finds
-  doc text that no money moved (S12-Q3: expected not found, so `fiat-unrecognized`); every other word
+  doc text that no money moved (S12-Q3: expected not found, so `fiat-unrecognized`; S12-Q47: `Refunding` and
+  `Refunded` also remove the row an earlier read made); every other word
   `fiat-unrecognized`. Deposit `+amount`, withdraw `-(amount + totalFee)` (S12-Q11), on Spot (C-NR3), marker
   `bank:<fiatCurrency>:<indicatedAmount>`, `comment = '<indicatedAmount> <fiatCurrency>'`, `operation = 'fiat'`,
   key `${accountId}:fiat:${orderNo}:<walletKey>`. A `fiatCurrency` the tracked rule refuses: counted, listed.
@@ -941,5 +942,14 @@ and Q44 = an owed point shows once owed longer than a day (design approved), COO
   day after the cursor or with no cursor, and every other walk's day still show it. Pins:
   binance-history-status.quiet-syncs.test.ts (6 syncs, 8 walks, gaps 1 h, 1 d, 3 d; red 3/24, all fiatOrders)
   and per-walk pins in binance-history-status.test.ts. No shape change.
+- S12-Q47 (USER 2026-10-25): a fiat order or payment read `Refunding` or `Refunded` removes its stored row (key
+  `<accountId>:fiat:` or `:fiatpay:` + orderNo + wallet, found in the database) in the commit of the span that
+  lists it: `commitSettledSpan` gains `removed` (a `SettledSpan` field) and `remove`, run after the rows and
+  before the not-imported entry and the marks, through `transactionsRepo.removeSyncedRows('binance', ids)`
+  (no earlier delete path existed for a synced row: `remove` refuses it and moves the balance). The balance is
+  not moved (the exchange's own), a user edit goes with the row, `Refund Failed` keeps its row, a refund with
+  no row or read twice lists once. Pins: binance.fiat-history.refund.real-sqlite.test.ts (orders and payments;
+  red 16 of 20 before the fix) and transactions.repo.remove-synced.test.ts (red 5 of 5). Pin moved: the
+  fake deps of binance.fiat-history.test.ts and the status properties world gain `removeTransactions`.
 - BACKLOG after 1.3 (SCOPE RULE, USER 2026-10-25; `backlog-after-1.3.md`): S12-Q45, the S12-Q42 chunk term
   follow-up, the properties split and the fiat fold; the side branch is `binance-backlog-split`.

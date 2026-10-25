@@ -2121,7 +2121,12 @@ than restated here:
 - **Per-record commits, crash-safe.** The walk goes oldest -> newest.
   Rows commit (`transactionsRepo.addManyDedup`) BEFORE the mark moves
   (`syncStateRepo.patchExchangeState`) — separate writes, so a crash between
-  them re-imports idempotently rather than losing progress. In the forward
+  them re-imports idempotently rather than losing progress. A walk can also
+  REMOVE a row: the fiat walks delete the row of a record read `Refunding` or
+  `Refunded` (`SettledSpan.removed`, `commitSettledSpan`'s `remove`, the only
+  delete of a synced row: `transactionsRepo.removeSyncedRows`, by key, no balance move),
+  after the span's rows and before its not-imported entry and its marks, so a
+  crash before the marks has the next run read the span again. In the forward
   pass the owed list and the cursor are one patch list, and in the re-scan the
   list and the re-scan mark are, one write after the rows. In the pending
   pass `advancePending` writes only the list (the read span out, its points
