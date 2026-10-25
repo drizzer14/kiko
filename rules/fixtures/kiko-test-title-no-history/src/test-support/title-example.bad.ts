@@ -105,3 +105,21 @@ describe('pins the total (was 44)', () => {});
 
 // EXPECT-FINDING
 describe('pins the total; was 62', () => {});
+
+// A spec ruling id (`S12-Q34`), a review-question id (`FQ9`) or a spec clause id (`C-NR-E`,
+// `C-NR3`) anywhere in the title is history too.
+
+// EXPECT-FINDING
+describe('refuses a status the spec does not list (S12-Q3)', () => {});
+
+// EXPECT-FINDING
+it('keeps the hint on a re-scan run, FQ9 pinned', () => {});
+
+// EXPECT-FINDING
+it(`refuses into notImported per C-NR-E`, () => {});
+
+// EXPECT-FINDING
+it.each([1, 2])('keeps the key of the Spot holding (C-NR3) for %s', () => {});
+
+// EXPECT-FINDING
+describe.each([1, 2])('S12-Q34 pins the cap for %s', () => {});

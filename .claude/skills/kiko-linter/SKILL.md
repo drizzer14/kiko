@@ -2186,7 +2186,9 @@ opens with a numbered device check (`device check 3`, either case), carries `(wa
 or `; was 62` (an old-value label), or ends in a task id in parentheses (`(P2)`, `(task C2)`,
 `(spec A3, B4)`). `it was 44 rows`, `(was 3 of them)` and `; was 3x faster` stay silent: `(was N)`
 needs the digits to close the parenthesis, and `; was N` needs the semicolon and a word boundary
-after the digits.
+after the digits. A spec ruling id (`S\d{1,3}-Q\d{1,3}`), review-question id (`FQ\d{1,3}`) or spec
+clause id (`C-NR-?[A-Z0-9]+`) is caught anywhere in the title, as `kiko-no-history-id-comment`
+catches it in a comment; `FQDN`, `AS12-Q3`, a bare `S12` or `Q3` and a bare `C-NR` stay silent.
 
 **Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
 --metrics off --quiet --config rules/semgrep-prewrite.yml src __tests__ --json` before quoting
