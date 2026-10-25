@@ -105,20 +105,33 @@ appId: com.dmytro-vasylkivskyi.kiko
     timeout: 60000
 - takeScreenshot: ${OUT}/06-statistics-net-worth-line
 
-# 07 Statistics, account-contribution block (the pie card).
+# 07 Statistics, account-contribution block (the pie card). The card (523 pt) is taller than the
+# free area between the header and the tab bar, so Maestro's default 100% visibility never
+# matches: the scroll accepts 1% and centres, then a slow swipe brings the whole card on screen
+# (measured on the Duo outer display: card y 96..619 of a 644 pt scroll view).
 - scrollUntilVisible:
     element:
       id: "statistics-block-pie"
     direction: DOWN
+    visibilityPercentage: 1
+    centerElement: true
     timeout: 60000
+- swipe:
+    start: 50%, 60%
+    end: 50%, 42%
+    duration: 1500
+- assertVisible:
+    id: "statistics-block-pie"
 - takeScreenshot: ${OUT}/07-statistics-account-contribution
 
-# 08 Statistics, expenses-by-category block.
-- scrollUntilVisible:
-    element:
-      id: "statistics-block-category"
-    direction: DOWN
-    timeout: 60000
+# 08 Statistics, expenses-by-category block. The category card is already 1% visible below the
+# pie card, so a fixed swipe (measured: card y 106..634) replaces the scroll-until.
+- swipe:
+    start: 50%, 85%
+    end: 50%, 5%
+    duration: 2500
+- assertVisible:
+    id: "statistics-block-category"
 - takeScreenshot: ${OUT}/08-statistics-expenses-by-category
 
 # 09 Settings tab.
