@@ -11,6 +11,7 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import type { accountsRepo } from '@kiko/accounts';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { selectKind } from '@kiko/test-support/account-form-test-support';
@@ -68,7 +69,10 @@ const isKindFieldDisabled = (
 
 const mockCreate = jest.fn();
 const mockSaveFormAccount = jest.fn();
-const mockCreateCashAccount = jest.fn();
+const mockCreateCashAccount = jest.fn<
+  ReturnType<typeof accountsRepo.createCashAccount>,
+  Parameters<typeof accountsRepo.createCashAccount>
+>();
 // What `accountsRepo.createCashAccount` resolves to once its write has committed.
 const createdCashAccount = { accountId: 'new-cash-account-id', holdingId: 'new-cash-holding-id' };
 const mockCreateImplicitHolding = jest.fn();
@@ -192,7 +196,8 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     // The Save of a create form (`mockSaveFormAccount` records it): one write that finds the row
     // itself, so the form never reads it first either.
     saveFormAccount: (...args: unknown[]) => mockRegisterWrite(mockSaveFormAccount(...args)),
-    createCashAccount: (...args: unknown[]) => mockRegisterWrite(mockCreateCashAccount(...args)),
+    createCashAccount: (...args: Parameters<typeof accountsRepo.createCashAccount>) =>
+      mockRegisterWrite(mockCreateCashAccount(...args)),
     createImplicitHolding: (...args: unknown[]) =>
       mockRegisterWrite(mockCreateImplicitHolding(...args)),
     setIcon: (...args: unknown[]) => mockRegisterWrite(mockSetIcon(...args)),
@@ -651,10 +656,6 @@ describe('AccountFormScreen', () => {
     };
 
     it('hands the created cash holding id back to the handback id in its route params', async () => {
-      mockCreateCashAccount.mockResolvedValue({
-        accountId: 'new-cash-account-id',
-        holdingId: 'new-cash-holding-id',
-      });
       const handbackId = openHandback();
       const { navigation } = await saveCashAccount({ handbackId });
 
@@ -679,10 +680,6 @@ describe('AccountFormScreen', () => {
     });
 
     it('hands nothing back to an id its own route params do not carry', async () => {
-      mockCreateCashAccount.mockResolvedValue({
-        accountId: 'new-cash-account-id',
-        holdingId: 'new-cash-holding-id',
-      });
       const unrelatedId = openHandback();
       const { navigation } = await saveCashAccount();
 

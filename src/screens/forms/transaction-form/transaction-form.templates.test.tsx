@@ -1849,15 +1849,15 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       expect(utils.getByLabelText('Amount').props.value).toBe('42');
     });
 
-    it('selects nothing on return when the new-template form could not save', async () => {
+    it('selects nothing on return from a cancelled new-template form while a template appears', async () => {
       setLiveData({ draft: EXPENSE });
 
       const utils = await render(templateScreen({}));
       await openTemplateTab(utils);
       await pressAddTemplate(utils);
 
-      // The pushed form's create write rejected, so it handed nothing back to its id; a template
-      // still appears in the list, as a sync or another device could add one.
+      // The pushed form handed nothing back to its id; a template still appears in the list, as a
+      // sync or another device could add one.
       setLiveData({ draft: EXPENSE, templateList: [CREATED] });
       await utils.rerender(templateScreen({}));
       await regainFocus();
