@@ -164,6 +164,54 @@ describe('historyOwesRange', () => {
     });
   });
 
+  describe('the overlap day a forward turn plans', () => {
+    const dayEndingAt = (end: number, over: Record<string, unknown> = {}) => ({
+      start: end - DAY_MS,
+      end,
+      ...over,
+    });
+
+    const NOT_KEPT_WALK_NAMES = CAPTION_WALK_NAMES.filter((walkName) => walkName !== 'fiatOrders');
+
+    // The forward turn stores the day with a cursor that has moved on, so it ends before it.
+    it.each([
+      ['ending at the cursor', dayEndingAt(NOW)],
+      ['ending before the cursor', dayEndingAt(NOW - 2 * HOUR_MS)],
+    ])('is not owed by the fiat orders walk when it is the day %s', (_label, day) => {
+      expect(historyOwesRange(owing('fiatOrders', [day]), NOW)).toBe(false);
+    });
+
+    it.each([
+      ['a day owed in one series', dayEndingAt(NOW, { series: 'MAIN_FUNDING' })],
+      ['a day ending after the cursor', dayEndingAt(NOW + 1)],
+      ['a range a millisecond wider than the day', { start: NOW - DAY_MS - 1, end: NOW }],
+      ['a range a millisecond narrower than the day', { start: NOW - DAY_MS + 1, end: NOW }],
+      ['a range wider than the day, ending at the cursor', { start: NOW - 3 * DAY_MS, end: NOW }],
+    ])('is owed by the fiat orders walk as %s', (_label, range) => {
+      expect(historyOwesRange(owing('fiatOrders', [range]), NOW)).toBe(true);
+    });
+
+    it('is owed by the fiat orders walk beside a range that is not the day', () => {
+      const owed = [dayEndingAt(NOW), { start: 1, end: 3 }];
+
+      expect(historyOwesRange(owing('fiatOrders', owed), NOW)).toBe(true);
+    });
+
+    it('is owed by the fiat orders walk that has no cursor', () => {
+      const state = stateOf({ fiatOrders: { pending: [dayEndingAt(NOW)] } });
+
+      expect(historyOwesRange(state, NOW)).toBe(true);
+    });
+
+    it.each(NOT_KEPT_WALK_NAMES)(
+      'is owed by the %s walk, which reads that day in the run that plans it',
+      (walkName) => {
+        expect(historyOwesRange(owing(walkName, [dayEndingAt(NOW)]), NOW)).toBe(true);
+        expect(historyOwesRange(owing(walkName, [dayEndingAt(NOW - 2 * HOUR_MS)]), NOW)).toBe(true);
+      },
+    );
+  });
+
   it('is true when one walk owes a range, whichever the others hold', () => {
     expect(
       historyOwesRange(

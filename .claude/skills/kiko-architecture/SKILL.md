@@ -2206,7 +2206,14 @@ than restated here:
   cursor passed, read off the `pending` list of every one of the walks), or a point
   that has stayed owed for more than a day (`since`, below), false before the account's
   own first balance sync. A fresh owed point never shows it: the record it names is read
-  again on every sync. A point carries `since` (epoch ms, the wall clock of the run that
+  again on every sync. The fiat orders walk's own planned overlap day never shows it either
+  (`isPlannedOverlapDay`): its forward turn stores the day, and the next sync's behind turn
+  reads it, so a quiet account would show the caption on every other sync. The day is a range
+  owed in every series, exactly `RESYNC_OVERLAP_MS` wide, ending at or before the walk's cursor
+  (the turn stores it with the cursor already moved on, so its end is the earlier cursor); a
+  day owed in one series (how a failed fiat read is owed), a range of any other width, a day
+  ending after the cursor, and the same day of any other walk (they read it in the run that
+  plans it) all show it. A point carries `since` (epoch ms, the wall clock of the run that
   first owed it; `WalkPlan.ranAt`, stamped by `advanceWalkMarks`, kept by `distinctGround`);
   the caption counts it when `lastBalanceSyncAt - since` is more than a day. A point with
   no `since` (stored before it) is quiet until a run owes it again, and a `since` that is
