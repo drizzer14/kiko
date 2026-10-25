@@ -1575,6 +1575,7 @@ const HARNESS_NPM_STUB = [
   '{',
   '  printf "npm %s\\n" "$*"',
   '  printf "  force-color %s\\n" "$(printenv FORCE_COLOR || echo unset)"',
+  '  if [ /dev/fd/0 -ef /dev/null ]; then echo "  stdin dev-null"; else echo "  stdin other"; fi',
   '} >> "$KIKO_STUB_CALLS"',
   `if [ "\${*: -1}" = "test" ]; then`,
   '  while [ -n "$KIKO_STUB_RELEASE" ] && [ ! -e "$KIKO_STUB_RELEASE" ] &&',
@@ -1630,6 +1631,21 @@ describe('scripts/job-queue.sh harness-verify', () => {
     ]);
     expect(forceColorLines(sandbox)).toEqual(['  force-color unset', '  force-color unset']);
     expect(readLines(join(sandbox.queue, 'done.log'))[0]).toMatch(/^harness-verify one 0 /);
+  });
+
+  it('runs both npm calls of harness-verify with stdin from /dev/null', () => {
+    const sandbox = createSandbox();
+    useHarnessNpm(sandbox);
+    const worktree = createHarnessWorktree(sandbox, 'harness');
+
+    const result = runQueue(sandbox, 'harness-verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(
+      readLines(sandbox.environment.KIKO_STUB_CALLS as string).filter((line) =>
+        line.includes('stdin '),
+      ),
+    ).toEqual(['  stdin dev-null', '  stdin dev-null']);
   });
 
   it('does not run check:all when the harness test fails', () => {
