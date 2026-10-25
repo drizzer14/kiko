@@ -90,7 +90,7 @@ import { BinanceHistoryTooOldError, type FetchAccountOptions } from './binance.c
  * (`Processing, Failed, Successful, Finished, Refunding, Refunded, Refund Failed, Order Partial
  * Credit Stopped`) and say nothing about what any of them did to the balance, so only `Successful`
  * makes a row and `Processing` owes its point; every other word, `Failed` and `Refunded` too, is
- * refused into `notImported` (spec "### Fiat orders ...", C-NR-E, S12-Q3, S12-Q13). The text is
+ * refused into `notImported` (the spec's "### Fiat orders ..." section). The text is
  * matched exactly: no trim, no case fold. The status list is quoted from Binance's own fiat order
  * documentation, which names the eight words and describes none of them.
  */
@@ -98,7 +98,7 @@ const FIAT_ORDER_STATUSES = { settled: 'Successful', open: 'Processing' } as con
 
 /**
  * The words of a fiat payment that settle or wait. The Binance docs list no payment status at all,
- * so these two are the spec's and every other word is refused (S12-Q4), matched exactly like the
+ * so these two are the spec's and every other word is refused, matched exactly like the
  * order words: the payment documentation of Binance lists none, so no word of it is quoted.
  */
 const FIAT_PAYMENT_STATUSES = { settled: 'Completed', open: 'Processing' } as const;
@@ -128,7 +128,7 @@ const FIAT_FORWARD_OWES: readonly string[] = [
   ...AMOUNT_STOP_CODES,
 ];
 
-/** Both fiat reads are 2 years wide at most (spec C-NR-D; probe 3 served one 2-year span). */
+/** Both fiat reads are 2 years wide at most (probe 3 served one 2-year span). */
 export const FIAT_WINDOW_MS = 730 * DAY_MS;
 
 /** Deposit or buy (`'0'`) and withdraw or sell (`'1'`): the two series of one window. */
@@ -147,7 +147,7 @@ const ISOLATE_MS = DAY_MS;
 
 /**
  * A row mapped from a settled record, before its wallet is turned into a holding: `wallet` is the
- * key of the coin's Spot holding (C-NR3).
+ * key of the coin's Spot holding.
  */
 type PlannedFiatRow = {
   wallet: string;
@@ -209,7 +209,7 @@ const trackedOutcomeOf = (
 
 /**
  * A fiat order settles on its fiat holding on Spot: a deposit credits `amount`, a withdraw debits
- * `amount + totalFee` (S12-Q11), and the marker keeps the gross `indicatedAmount` the bank side
+ * `amount + totalFee`, and the marker keeps the gross `indicatedAmount` the bank side
  * paid. A record that lacks a text the row needs cannot be told, so it is refused.
  */
 const settledOrderOutcomeOf = ({
@@ -807,7 +807,7 @@ const commitSpan = <Item extends FiatRecord>(
 /**
  * A lane that cannot afford a forward read and a re-scan read in one run (both series of a window
  * each) alternates the two across runs: the re-scan is the walk's window re-scan, and a lane that
- * never read it would lose every record Binance writes late (S12-Q18).
+ * never read it would lose every record Binance writes late.
  */
 const alternatesTurns = (walkId: FiatWalk<FiatRecord>['walkId']): boolean =>
   LANE_CALL_CAPS[walkId] < 2 * FIAT_SERIES.length;
@@ -1185,7 +1185,7 @@ type FiatRequest = { targetAccountId: string; run: BinanceHistoryRun };
 
 /**
  * Import the user's successful fiat deposits and withdrawals as transactions on the Spot holding
- * of their fiat, marked with the bank total (C-NR1), and list every record whose status is not
+ * of their fiat, marked with the bank total, and list every record whose status is not
  * `Successful` or `Processing` as not recognized. The walk reads 2-year windows forward from the
  * history floor, a deposit and a withdraw series in each, empty ones too; the lane holds a window
  * a run, so the first walk takes several runs, and a run reads forward or behind, not both
@@ -1218,7 +1218,7 @@ export const syncBinanceFiatOrderHistory = (
 
 /**
  * Import the user's completed card buys and sells as transactions on the Spot holding of their
- * coin, marked with the fiat total (C-NR1), and list every record whose status is not `Completed`
+ * coin, marked with the fiat total, and list every record whose status is not `Completed`
  * or `Processing` as not recognized. Windows and failures are those of
  * `syncBinanceFiatOrderHistory`; the lane is wide enough to read forward and re-scan in one run.
  */

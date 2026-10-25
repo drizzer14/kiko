@@ -320,7 +320,7 @@ const WORLDS: World[] = [
 
 type NamedSeed = {
   kindName: 'fiat orders' | 'fiat payments';
-  ruling: string;
+  label: string;
   seed: number;
   stuck: Stuck;
   place: Place;
@@ -333,7 +333,7 @@ const denseSeedsOf = (
 ): NamedSeed[] =>
   seeds.map((seed) => ({
     kindName,
-    ruling: 'S12-Q33',
+    label: 'behind full pages',
     seed,
     stuck,
     place: 'in a cluster, behind full pages',
@@ -341,9 +341,10 @@ const denseSeedsOf = (
 
 /**
  * Seeds whose worlds a walk read slowly, each one run in the world it failed in. The payments
- * seeds of S12-Q32 failed while a read of the piece after a stuck day ended where a doubled span
- * did; the seeds of S12-Q33 failed behind full pages, where a re-scan that starts right after a
- * stuck range halved a full page again in every run and the pass never ended.
+ * seeds labelled "after a stuck day" failed while a read of the piece after a stuck day ended
+ * where a doubled span did; the seeds labelled "behind full pages" failed there, where a re-scan
+ * that starts right after a stuck range halved a full page again in every run and the pass never
+ * ended.
  */
 const NAMED_SEEDS: NamedSeed[] = [
   ...(
@@ -357,7 +358,7 @@ const NAMED_SEEDS: NamedSeed[] = [
   ).map(
     ({ seed, place }): NamedSeed => ({
       kindName: 'fiat payments',
-      ruling: 'S12-Q32',
+      label: 'after a stuck day',
       seed,
       stuck: 'drift',
       place,
@@ -707,9 +708,9 @@ const casesOf = (kind: BoundedKind, world: World): { seed: number; title: string
   ...NAMED_SEEDS.filter(
     ({ kindName, stuck, place }) =>
       kindName === kind.name && stuck === world.stuck && place === world.place,
-  ).map(({ seed, ruling }) => ({
+  ).map(({ seed, label }) => ({
     seed,
-    title: `imports every record Binance serves within the bound, each once (${ruling}): seed ${seed}`,
+    title: `imports every record Binance serves within the bound, each once (${label}): seed ${seed}`,
   })),
 ];
 

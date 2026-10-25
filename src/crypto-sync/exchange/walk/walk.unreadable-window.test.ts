@@ -149,7 +149,7 @@ describe('runWalkPlan, with a window that cannot be read', () => {
   });
 
   it.each(['forward', 'rescan'] as const)(
-    'stops the run at an unreadable window of the %s pass, as before',
+    'stops the run at an unreadable window of the %s pass, and reads no point after it',
     async (pass) => {
       const failure = new UnreadableWindowError(pass);
       const { result, calls } = runPlanOver({
