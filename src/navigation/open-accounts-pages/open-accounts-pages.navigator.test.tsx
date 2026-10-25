@@ -154,10 +154,9 @@ describe('openAccountsPages (real router)', () => {
     expect(accountsStack()).toEqual([LIST, CASH_PAGE, WALLET_PAGE]);
   });
 
-  // OVERNIGHT DEFAULT (plan open point O4): "View account" on a holding page, whose own account
-  // page sits right below it, is the plain navigate `useOpenInPane` falls back to outside a pane.
-  // It pushes the account page again instead of going back to the one below, so the user's
-  // holding page stays under it and Back returns there.
+  // The plain navigate `useOpenInPane` falls back to outside a pane pushes the account page again
+  // instead of going back to the one below it, so the holding page the user came from stays under
+  // it and Back returns there.
   it('pushes the account page again above the holding page that was opened from it, keeping that page for Back', async () => {
     await renderApp();
     await open(CASH, { screen: 'HoldingDetail', params: WALLET });

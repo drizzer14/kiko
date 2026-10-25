@@ -1611,12 +1611,12 @@ const readImportTwinsDatabaseTransaction = async (
     );
 };
 
-// The markers and the operation of an exchange leg move as one unit: onto a plain import row from
-// the sync input, or not at all when the row already carries a marker of the user's own, so a
-// half-marked row is never made.
 const keepsExchangeMarkers = (twin: ImportTwin): boolean =>
   EXCHANGE_MARKER_KEYS.some((key) => twin[key] !== null);
 
+// The markers and the operation of an exchange leg move as one unit: onto a plain import row from
+// the sync input, or not at all when the row already carries a marker of the user's own, so a
+// half-marked row is never made.
 const adoptedExchangeValuesOf = (twin: ImportTwin, input: NewTransaction) =>
   keepsExchangeMarkers(twin)
     ? {}

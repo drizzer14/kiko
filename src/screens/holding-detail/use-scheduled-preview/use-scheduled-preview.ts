@@ -13,7 +13,6 @@ type ScheduledPreview = {
 };
 
 // The scheduled payments the loan's list draws now: the next few, or all once the user asks.
-// `shown` keeps its identity between renders, so the screen's ledger is not rebuilt for nothing.
 export const useScheduledPreview = (
   installments: readonly UpcomingLoanInstallment[],
 ): ScheduledPreview => {

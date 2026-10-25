@@ -2519,6 +2519,7 @@ describe('HoldingDetailScreen', () => {
     expect(amountForLabel(getByText('Interest earned'))).toHaveTextContent(
       formatMoney(Money.of('UAH', 0)),
     );
+    expect(amountForLabel(getByText('Interest earned')).props.testID).toBe('money-tone-muted');
   });
 
   it('shows Interest earned for a bond whose coupon is 0%', async () => {
@@ -2530,6 +2531,7 @@ describe('HoldingDetailScreen', () => {
     const { getByText } = await renderScreen();
 
     expect(getByText('Interest earned')).toBeTruthy();
+    expect(amountForLabel(getByText('Interest earned')).props.testID).toBe('money-tone-muted');
   });
 
   describe('the loan payments list', () => {
