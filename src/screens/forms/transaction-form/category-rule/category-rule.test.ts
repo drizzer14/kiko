@@ -92,6 +92,12 @@ describe('categoryForDraft', () => {
     expect(categoryForDraft(draftOf({ description: 'Other', amount: '15' }), prepared)).toBeNull();
   });
 
+  it('gives none for a blank description to a rule on a name, even a name it starts with', () => {
+    const named = prepareRules([ruleOf('starts', [{ type: 'nameStartsWith', text: 's' }])]);
+
+    expect(categoryForDraft(draftOf({ description: '' }), named)).toBeNull();
+  });
+
   it('gives none in exchange mode even for a name a rule matches', () => {
     expect(categoryForDraft(draftOf({ mode: 'exchange' }), prepared)).toBeNull();
   });

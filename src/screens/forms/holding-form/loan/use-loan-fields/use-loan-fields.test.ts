@@ -613,6 +613,7 @@ describe('useLoanFields — saveEdit into a "none" schedule', () => {
       [],
       [
         {
+          transactionId: 'payment-1',
           loanHoldingId: 'h-1',
           time: baseMeta().startDate + 10 * DAY_MS,
           amountMinorUnits: -500_000,
@@ -707,8 +708,9 @@ describe('useLoanFields — saveEdit out of a "none" schedule', () => {
   };
 
   // The informal loan's start-day point holds the OLD principal; left in
-  // place it anchors the schedule as a correction (63,138.55 instead of
-  // 83,138.55 on 27 Sep).
+  // place it anchors the schedule as a correction, which payment 1 (due on
+  // the start day) does not count down from: 100,000.00 less rows 2-9 reads
+  // 62,769.94 instead of 78,321.12 on 27 Sep.
   it('drops the start-day point, so the schedule counts down from the new principal', async () => {
     const [newMeta, op] = await editIntoAnnuity(informalStart);
 
@@ -720,7 +722,7 @@ describe('useLoanFields — saveEdit out of a "none" schedule', () => {
         EMPTY_PRICE_BOOK,
         new Date(2026, 8, 27).getTime(),
       ),
-    ).toBe(8_313_855);
+    ).toBe(7_832_112);
   });
 
   it('drops the old start-day point when the schedule starts earlier', async () => {

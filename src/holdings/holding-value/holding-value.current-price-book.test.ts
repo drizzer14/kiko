@@ -186,6 +186,7 @@ const holdingsAt = (today: number): ValuableHolding[] => {
 
 const loanPaymentsAt = (today: number) =>
   [90, 60, 30, 3].map((daysAgo) => ({
+    transactionId: `loan-payment-${daysAgo}`,
     loanHoldingId: 'loan-1',
     time: today - daysAgo * DAY_MS + 9 * 3_600_000,
     amountMinorUnits: -11_000,

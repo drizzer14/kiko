@@ -3,6 +3,7 @@ import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { Money } from '@kiko/currency/money';
 import { darkTheme } from '@kiko/design-system/theme';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import TransactionCard from '.';
 
@@ -95,6 +96,28 @@ describe('TransactionCard', () => {
     );
 
     expect(JSON.stringify(toJSON())).toContain('link');
+  });
+
+  it('centres the loan-link marker with the footer caption on one line', async () => {
+    const { getByText } = await render(
+      <TransactionCard
+        title="Loan payment"
+        categoryIcon="banknote"
+        categoryIconColor="#8E44AD"
+        categoryAccessibilityLabel="Debt"
+        money={Money.of('UAH', -1_000)}
+        footerMeta="Debts · Loan payment"
+        loanLinked
+      />,
+    );
+
+    // The meta box is the nearest ancestor with `flex: 1`; it holds the icon and the caption.
+    const meta = ancestorWithStyle(getByText('Debts · Loan payment'), 'flex');
+
+    expect(StyleSheet.flatten(meta.props.style)).toMatchObject({
+      flexDirection: 'row',
+      alignItems: 'center',
+    });
   });
 
   it('takes the accent fill only when selected', async () => {

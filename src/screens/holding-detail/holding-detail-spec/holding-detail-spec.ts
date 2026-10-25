@@ -1,8 +1,8 @@
 import {
-  isScheduledPayment,
-  loanInstallments,
-  type LoanInstallment,
-} from '@kiko/holdings/loan-schedule';
+  loanRemaindersAfterMinor,
+  loanLedgerOutstandingMinorAt,
+  type UpcomingLoanInstallment,
+} from '@kiko/holdings/loan-ledger';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
@@ -11,9 +11,9 @@ import type { PriceBook } from '@kiko/prices/price-book';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 import { asBondMeta, asLoanMeta } from '@kiko/holdings/holding-metadata';
-import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
+import { isScheduledPayment, loanInstallments } from '@kiko/holdings/loan-schedule';
 
 /** Which add action the detail screen's footer offers. */
 export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
@@ -50,10 +50,10 @@ type HoldingDetailSpec = {
     holding: HoldingRow,
     book: PriceBook,
     now: number,
-  ) => readonly LoanInstallment[];
+  ) => readonly UpcomingLoanInstallment[];
 };
 
-const noInstallments = (): readonly LoanInstallment[] => [];
+const noInstallments = (): readonly UpcomingLoanInstallment[] => [];
 
 // Shared by every ledger-backed (non-ledgerless) type below: a synced
 // (Monobank) holding's ledger is owned by the sync, so it offers no add
@@ -78,11 +78,12 @@ const balanceSpec: HoldingDetailSpec = {
 // payments that repaid the loan hide the list even while `loanInstallments`
 // still has future rows on the ORIGINAL schedule. A zero-payment row (a tiny
 // loan repaid before its term ends) is not a payment, so it is never listed.
+// Each row carries the balance left once it is paid (`loanRemaindersAfterMinor`).
 const loanUpcomingInstallments = (
   holding: HoldingRow,
   book: PriceBook,
   now: number,
-): readonly LoanInstallment[] => {
+): readonly UpcomingLoanInstallment[] => {
   const meta = asLoanMeta(holding.metadata);
 
   if (meta === null || meta.schedule === 'none') {
@@ -95,9 +96,12 @@ const loanUpcomingInstallments = (
 
   const todayStart = startOfLocalDay(now);
 
-  return loanInstallments(meta).filter(
+  const rows = loanInstallments(meta).filter(
     (row) => isScheduledPayment(row) && row.dueDate >= todayStart,
   );
+  const remainders = loanRemaindersAfterMinor(meta, holding, book, now, rows);
+
+  return rows.map((row, position) => ({ ...row, remainderMinorUnits: remainders[position] }));
 };
 
 // A bond's whole-life expected profit (net coupons + nominal redeemed, less

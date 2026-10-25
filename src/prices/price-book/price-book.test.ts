@@ -51,15 +51,45 @@ describe('buildPriceBook', () => {
     const book = buildPriceBook(
       [],
       [
-        { loanHoldingId: 'loan-1', time: friday, amountMinorUnits: -200, currency: 'UAH' },
-        { loanHoldingId: 'loan-2', time: monday, amountMinorUnits: -300, currency: 'USD' },
-        { loanHoldingId: 'loan-1', time: monday, amountMinorUnits: -100, currency: 'UAH' },
+        {
+          transactionId: 'tx-1',
+          loanHoldingId: 'loan-1',
+          time: friday,
+          amountMinorUnits: -200,
+          currency: 'UAH',
+        },
+        {
+          transactionId: 'tx-2',
+          loanHoldingId: 'loan-2',
+          time: monday,
+          amountMinorUnits: -300,
+          currency: 'USD',
+        },
+        {
+          transactionId: 'tx-3',
+          loanHoldingId: 'loan-1',
+          time: monday,
+          amountMinorUnits: -100,
+          currency: 'UAH',
+        },
       ],
     );
 
     expect(book.loanPayments.get('loan-1')).toEqual([
-      { loanHoldingId: 'loan-1', time: monday, amountMinorUnits: -100, currency: 'UAH' },
-      { loanHoldingId: 'loan-1', time: friday, amountMinorUnits: -200, currency: 'UAH' },
+      {
+        transactionId: 'tx-3',
+        loanHoldingId: 'loan-1',
+        time: monday,
+        amountMinorUnits: -100,
+        currency: 'UAH',
+      },
+      {
+        transactionId: 'tx-1',
+        loanHoldingId: 'loan-1',
+        time: friday,
+        amountMinorUnits: -200,
+        currency: 'UAH',
+      },
     ]);
     expect(book.loanPayments.get('loan-2')?.map((payment) => payment.time)).toEqual([monday]);
   });
@@ -67,7 +97,15 @@ describe('buildPriceBook', () => {
   it('skips a payment row whose loan link is null', () => {
     const book = buildPriceBook(
       [],
-      [{ loanHoldingId: null, time: monday, amountMinorUnits: -100, currency: 'UAH' }],
+      [
+        {
+          transactionId: 'tx-1',
+          loanHoldingId: null,
+          time: monday,
+          amountMinorUnits: -100,
+          currency: 'UAH',
+        },
+      ],
     );
 
     expect(book.loanPayments.size).toBe(0);

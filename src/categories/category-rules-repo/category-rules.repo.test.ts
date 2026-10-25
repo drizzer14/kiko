@@ -11,12 +11,14 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { database } from '@kiko/db';
+import { i18n } from '@kiko/i18n/init';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { parseRuleMatchers, type CategoryRuleMatcher } from '@kiko/categories/category-rules';
 
 import {
   categoryRulesRepo,
+  rewriteBlankPageQuery,
   rewriteDescriptionRowsQuery,
   rewritePageQuery,
 } from './category-rules.repo';
@@ -987,6 +989,217 @@ describe('categoryRulesRepo.saveRule over a large ledger', () => {
   });
 });
 
+// A default-description row stores '' and shows its label ("UAH card expense") only at render
+// time, so a rule reads the label, in the language the app runs in now.
+describe('a row with no description', () => {
+  const startsWith = (text: string): CategoryRuleMatcher => ({ type: 'nameStartsWith', text });
+  const CARD_EXPENSE: CategoryRuleMatcher[] = [startsWith('UAH card expense')];
+  const insertBlank = (id: string, seed: Partial<TransactionSeed> = {}): void => {
+    insertTransaction({ id, description: '', category: 'groceries', ...seed });
+  };
+  const seedBlankRows = (): void => {
+    insertBlank('blank-1');
+    insertBlank('blank-2');
+    insertBlank('blank-income', { amountMinorUnits: 100 });
+    insertBlank('blank-dollar', { holdingId: 'usd-card' });
+    insertTransaction({ id: 'named', description: 'Silpo', category: 'groceries' });
+    insertBlank('leg', { exchangePairId: 'pair', exchangeCounterpartHoldingId: 'usd-card' });
+  };
+  const CARD_EXPENSE_DRAFT = { id: null, category: 'food', matchers: CARD_EXPENSE };
+  const applyCardExpense = () =>
+    categoryRulesRepo.saveRule({ ...CARD_EXPENSE_DRAFT, applyToExisting: true });
+
+  it('counts the rows whose label the rule matches, and not the legs a rule never rewrites', async () => {
+    seedBlankRows();
+
+    expect(await categoryRulesRepo.countRuleRewrite(CARD_EXPENSE_DRAFT)).toBe(2);
+  });
+
+  it('rewrites exactly the rows the confirm counted', async () => {
+    seedBlankRows();
+    insertRule({ id: 'other', category: 'shops', matchers: [{ type: 'nameIs', text: 'Atb' }] });
+
+    const counted = await categoryRulesRepo.countRuleRewrite(CARD_EXPENSE_DRAFT);
+    const { changed } = await applyCardExpense();
+
+    expect(changed).toBe(counted);
+    expect(categoriesOf()).toMatchObject({
+      'blank-1': 'food',
+      'blank-2': 'food',
+      'blank-income': 'groceries',
+      'blank-dollar': 'groceries',
+      named: 'groceries',
+      leg: 'groceries',
+    });
+  });
+
+  it('leaves a row with a real description to its description, whatever its label would read', async () => {
+    insertTransaction({ id: 'named', description: 'Silpo', category: 'groceries' });
+
+    expect((await applyCardExpense()).changed).toBe(0);
+    expect(categoriesOf().named).toBe('groceries');
+  });
+
+  it('names the label by the holding the row lies on', async () => {
+    seedBlankRows();
+
+    await categoryRulesRepo.saveRule({
+      id: null,
+      category: 'food',
+      matchers: [startsWith('USD card')],
+      applyToExisting: true,
+    });
+
+    expect(categoriesOf()).toMatchObject({ 'blank-dollar': 'food', 'blank-1': 'groceries' });
+  });
+
+  it('judges a rule on the label together with its other matchers', async () => {
+    seedBlankRows();
+    insertBlank('blank-large', { amountMinorUnits: -50_000 });
+
+    const { changed } = await categoryRulesRepo.saveRule({
+      id: null,
+      category: 'rent',
+      matchers: [
+        ...CARD_EXPENSE,
+        { type: 'amount', operator: 'gt', minorUnits: 10_000, currency: 'UAH' },
+      ],
+      applyToExisting: true,
+    });
+
+    expect(changed).toBe(1);
+    expect(categoriesOf()).toMatchObject({ 'blank-large': 'rent', 'blank-1': 'groceries' });
+  });
+
+  it('does not rewrite a blank row a stronger rule wins by its label, through a rule with no name', async () => {
+    insertRule({
+      id: 'stronger',
+      category: 'bills',
+      matchers: [startsWith('UAH card'), { type: 'direction', direction: 'expense' }],
+    });
+    insertBlank('blank-1', { category: 'bills' });
+    insertBlank('blank-dollar', { holdingId: 'usd-card' });
+
+    const { changed } = await categoryRulesRepo.saveRule({
+      id: null,
+      category: 'food',
+      matchers: [{ type: 'direction', direction: 'expense' }],
+      applyToExisting: true,
+    });
+
+    expect(changed).toBe(1);
+    expect(categoriesOf()).toMatchObject({ 'blank-1': 'bills', 'blank-dollar': 'food' });
+  });
+
+  it('reads every page of the blank rows', async () => {
+    mockDatabase.exec('BEGIN');
+
+    const insert = mockDatabase.prepare(
+      `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, source)
+       VALUES (?, 'uah-card', -300, 1000, '', 'manual')`,
+    );
+
+    for (let index = 0; index < 4_500; index += 1) {
+      insert.run(`blank-${String(index).padStart(5, '0')}`);
+    }
+
+    mockDatabase.exec('COMMIT');
+
+    expect((await applyCardExpense()).changed).toBe(4_500);
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it('counts and rewrites the rows the Ukrainian label matches, and not the English one', async () => {
+      seedBlankRows();
+
+      const counted = await categoryRulesRepo.countRuleRewrite({
+        id: null,
+        category: 'food',
+        matchers: [startsWith('Витрата')],
+      });
+      const english = await categoryRulesRepo.countRuleRewrite(CARD_EXPENSE_DRAFT);
+      const { changed } = await categoryRulesRepo.saveRule({
+        id: null,
+        category: 'food',
+        matchers: [startsWith('Витрата')],
+        applyToExisting: true,
+      });
+
+      expect([counted, english, changed]).toEqual([3, 0, 3]);
+      expect(categoriesOf()).toMatchObject({
+        'blank-1': 'food',
+        'blank-2': 'food',
+        'blank-dollar': 'food',
+        'blank-income': 'groceries',
+        leg: 'groceries',
+      });
+    });
+  });
+
+  describe('as the row the user applies a name rule from', () => {
+    const STRONGER_BY_LABEL: RuleSeed = {
+      id: 'stronger',
+      category: 'bills',
+      matchers: [startsWith('UAH card'), { type: 'direction', direction: 'expense' }],
+    };
+
+    it('sees the stronger rule that wins the row by its label and keeps the pick by hand', async () => {
+      insertRule(STRONGER_BY_LABEL);
+      insertBlank('source');
+
+      await applySilpoRule('source');
+
+      expect(categoriesOf().source).toBe('food');
+      expect(flagOf('source')).toBe(1);
+    });
+
+    it('sees a blank leg by its exchange label', async () => {
+      insertRule({
+        id: 'stronger',
+        category: 'bills',
+        matchers: [startsWith('Exchange to'), { type: 'direction', direction: 'expense' }],
+      });
+      insertBlank('source', { exchangePairId: 'pair', exchangeCounterpartHoldingId: 'usd-card' });
+
+      await applySilpoRule('source');
+
+      expect(categoriesOf().source).toBe('food');
+      expect(flagOf('source')).toBe(1);
+    });
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      afterEach(async () => {
+        await i18n.changeLanguage('en');
+      });
+
+      it('sees the stronger rule by the Ukrainian label', async () => {
+        insertRule({
+          id: 'stronger',
+          category: 'bills',
+          matchers: [startsWith('Витрата: UAH'), { type: 'direction', direction: 'expense' }],
+        });
+        insertBlank('source');
+
+        await applySilpoRule('source');
+
+        expect(flagOf('source')).toBe(1);
+      });
+    });
+  });
+});
+
 describe('the rewrite queries', () => {
   const planOf = (query: { toSQL: () => { sql: string; params: unknown[] } }): string[] => {
     const { sql, params } = query.toSQL();
@@ -1000,6 +1213,18 @@ describe('the rewrite queries', () => {
 
   it('pages the ledger by its primary key, with no sort step', () => {
     const plan = planOf(rewritePageQuery(database, 'some-id'));
+
+    expect(plan).toContainEqual(
+      expect.stringContaining(
+        'SEARCH transactions USING INDEX sqlite_autoindex_transactions_1 (id>?)',
+      ),
+    );
+    expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
+    expect(plan.join('\n')).not.toMatch(/transactions_exchange_pair_id/);
+  });
+
+  it('pages the blank rows by the primary key too, with no sort step', () => {
+    const plan = planOf(rewriteBlankPageQuery(database, 'some-id'));
 
     expect(plan).toContainEqual(
       expect.stringContaining(

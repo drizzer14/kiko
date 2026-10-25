@@ -1,12 +1,23 @@
+import { startOfLocalDay } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { buildPriceBook, dayKeyOf, type PriceBook } from '@kiko/prices/price-book';
 
+import {
+  loanInstallments,
+  isScheduledPayment,
+  loanOutstandingMinorAt,
+  type LoanInstallment,
+} from '../loan-schedule';
 import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
-import { loanInstallments, loanOutstandingMinorAt, type LoanInstallment } from '../loan-schedule';
 
-import { loanLedgerOutstandingMinorAt, loanLedgerSummary } from './loan-ledger';
+import {
+  loanLedgerSummary,
+  loanRemaindersAfterMinor,
+  loanLedgerOutstandingMinorAt,
+  loanLinkedPaymentBreakdownsMinor,
+} from './loan-ledger';
 
 const LOAN = { id: 'loan-1', currency: 'UAH' as const };
 
@@ -40,7 +51,12 @@ const noneMeta: LoanMeta = {
 
 const installments = loanInstallments(annuityMeta);
 
-type PaymentInput = { time: number; amountMinorUnits: number; currency?: Currency };
+type PaymentInput = {
+  time: number;
+  amountMinorUnits: number;
+  currency?: Currency;
+  transactionId?: string;
+};
 
 const bookWith = (
   payments: readonly PaymentInput[],
@@ -54,7 +70,8 @@ const bookWith = (
       currency: 'UAH' as const,
       source: 'manual' as const,
     })),
-    payments.map((payment) => ({
+    payments.map((payment, index) => ({
+      transactionId: payment.transactionId ?? `payment-${index}`,
       loanHoldingId: LOAN.id,
       time: payment.time,
       amountMinorUnits: payment.amountMinorUnits,
@@ -109,10 +126,20 @@ describe('loanLedgerOutstandingMinorAt', () => {
   it('counts a payment made later on the same local day as the instant', () => {
     const afternoon = local(2024, 1, 15, 14);
     const book = bookWith([
-      { time: afternoon, amountMinorUnits: -installments[0].paymentMinorUnits },
+      { time: afternoon, amountMinorUnits: -installments[1].paymentMinorUnits },
     ]);
 
     expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, local(2024, 1, 15))).toBe(
+      annuityMeta.principalMinorUnits -
+        installments[0].principalMinorUnits -
+        installments[1].principalMinorUnits,
+    );
+  });
+
+  it('lowers the outstanding by a linked payment made on the start day', () => {
+    const book = bookWith([onSchedule(0)]);
+
+    expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, annuityMeta.startDate)).toBe(
       annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
     );
   });
@@ -140,10 +167,10 @@ describe('loanLedgerOutstandingMinorAt', () => {
     const first = loanInstallments(twoYearMeta)[0];
     const half = first.paymentMinorUnits / 2;
     const book = bookWith([
-      { time: local(2024, 1, 9, 10), amountMinorUnits: -half },
-      { time: local(2024, 1, 10, 10), amountMinorUnits: -half },
+      { time: local(2024, 0, 15, 10), amountMinorUnits: -half },
+      { time: local(2024, 0, 16, 10), amountMinorUnits: -half },
     ]);
-    const summary = loanLedgerSummary(twoYearMeta, LOAN, book, local(2024, 1, 20));
+    const summary = loanLedgerSummary(twoYearMeta, LOAN, book, local(2024, 0, 20));
 
     expect(first.paymentMinorUnits).toBe(564_882);
     expect(summary.interestPaidMinorUnits).toBe(120_000);
@@ -296,6 +323,32 @@ describe('loanLedgerOutstandingMinorAt', () => {
     ).toBe(0);
   });
 
+  it('reads the schedule when the only linked payment is the day before the start', () => {
+    const book = bookWith([
+      {
+        time: addDays(annuityMeta.startDate, -1),
+        amountMinorUnits: -installments[0].paymentMinorUnits,
+      },
+    ]);
+
+    for (const instant of [annuityMeta.startDate, installments[3].dueDate]) {
+      expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, instant)).toBe(
+        loanOutstandingMinorAt(annuityMeta, LOAN.id, book, instant),
+      );
+    }
+  });
+
+  it('counts only the payment on or after the start when another is before it', () => {
+    const book = bookWith([
+      { time: addDays(annuityMeta.startDate, -1), amountMinorUnits: -400_000 },
+      onSchedule(0),
+    ]);
+
+    expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, installments[3].dueDate)).toBe(
+      annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
+    );
+  });
+
   // The same rule the spending pie's loan-payment exclusion applies: only a
   // debit in the loan's own currency pays it down.
   it('ignores a payment in another currency and a credit', () => {
@@ -370,6 +423,35 @@ describe('loanLedgerSummary', () => {
 
     expect(summary.interestPaidMinorUnits).toBe(0);
     expect(summary.principalRepaidMinorUnits).toBe(100_000);
+  });
+
+  it('reads zero paid and the schedule outstanding when the only payment is before the start', () => {
+    const book = bookWith([
+      { time: addDays(annuityMeta.startDate, -1), amountMinorUnits: -400_000 },
+    ]);
+    const now = installments[3].dueDate;
+
+    expect(loanLedgerSummary(annuityMeta, LOAN, book, now)).toEqual({
+      principalMinorUnits: 12_000_000,
+      paidSoFarMinorUnits: 0,
+      interestPaidMinorUnits: 0,
+      principalRepaidMinorUnits: 0,
+      outstandingMinorUnits: loanOutstandingMinorAt(annuityMeta, LOAN.id, book, now),
+    });
+  });
+
+  it('counts only the payment on or after the start when another is before it', () => {
+    const book = bookWith([
+      { time: addDays(annuityMeta.startDate, -1), amountMinorUnits: -400_000 },
+      onSchedule(0),
+    ]);
+    const summary = loanLedgerSummary(annuityMeta, LOAN, book, installments[3].dueDate);
+
+    expect(summary.paidSoFarMinorUnits).toBe(installments[0].paymentMinorUnits);
+    expect(summary.interestPaidMinorUnits).toBe(installments[0].interestMinorUnits);
+    expect(summary.outstandingMinorUnits).toBe(
+      annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
+    );
   });
 
   it('ignores a payment dated after now', () => {
@@ -486,5 +568,254 @@ describe('a within-tolerance over-payment', () => {
     expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, schedule[1].dueDate)).toBe(
       loanOutstandingMinorAt(mortgageMeta, LOAN.id, book, schedule[1].dueDate),
     );
+  });
+});
+
+// The rows the detail screen lists: due today or later, never a zero payment.
+const upcomingAt = (now: number): readonly LoanInstallment[] =>
+  installments.filter((row) => isScheduledPayment(row) && row.dueDate >= startOfLocalDay(now));
+
+const remaindersAt = (book: PriceBook, now: number): readonly number[] =>
+  loanRemaindersAfterMinor(annuityMeta, LOAN, book, now, upcomingAt(now));
+
+// The remainder after a row is the header outstanding less the principal of every listed row up
+// to it that the header does not already count: a chain that ends on the header minus row 1.
+const expectChainFrom = (
+  remainders: readonly number[],
+  rows: readonly LoanInstallment[],
+  header: number,
+): void => {
+  expect(remainders[0]).toBe(header - rows[0].principalMinorUnits);
+
+  rows.slice(1).forEach((row, offset) => {
+    expect(remainders[offset + 1]).toBe(remainders[offset] - row.principalMinorUnits);
+  });
+};
+
+describe('loanRemaindersAfterMinor', () => {
+  const between = local(2024, 3, 20, 12);
+
+  it('reads the header outstanding less each row principal for the schedule alone', () => {
+    const book = bookWith([]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, between);
+
+    expect(upcomingAt(between)[0].index).toBe(5);
+    expectChainFrom(remaindersAt(book, between), upcomingAt(between), header);
+  });
+
+  it('ends an untouched schedule on 0', () => {
+    const remainders = remaindersAt(bookWith([]), between);
+
+    expect(remainders[remainders.length - 1]).toBe(0);
+  });
+
+  it('reads the same chain after a mid-term correction', () => {
+    const book = bookWith([], [{ day: local(2024, 3, 16), price: '90000.00' }]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, between);
+
+    expect(header).toBe(9_000_000);
+    expectChainFrom(remaindersAt(book, between), upcomingAt(between), header);
+  });
+
+  it('reads the same chain after a mid-term linked payment', () => {
+    const book = bookWith([onSchedule(2)]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, between);
+
+    expect(header).not.toBe(loanOutstandingMinorAt(annuityMeta, LOAN.id, book, between));
+    expectChainFrom(remaindersAt(book, between), upcomingAt(between), header);
+  });
+
+  // The header already took the row due today, so its remainder IS the header.
+  it('does not take a row due today off the header a second time', () => {
+    const today = installments[3].dueDate;
+    const rows = upcomingAt(today);
+    const remainders = remaindersAt(bookWith([]), today);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, bookWith([]), today);
+
+    expect(rows[0].index).toBe(4);
+    expect(remainders[0]).toBe(header);
+    expect(remainders[1]).toBe(header - rows[1].principalMinorUnits);
+  });
+
+  it('reads the header on the start day, which lists row 1 as due today', () => {
+    const now = annuityMeta.startDate;
+    const rows = upcomingAt(now);
+    const remainders = remaindersAt(bookWith([]), now);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, bookWith([]), now);
+
+    expect(rows[0].index).toBe(1);
+    expect(header).toBe(annuityMeta.principalMinorUnits - rows[0].principalMinorUnits);
+    expect(remainders[0]).toBe(header);
+    expect(remainders[remainders.length - 1]).toBe(0);
+  });
+
+  it('reads the header for a row due today that a linked payment today already paid', () => {
+    const today = installments[3].dueDate;
+    const book = bookWith([onSchedule(3)]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, today);
+
+    expect(upcomingAt(today)[0].index).toBe(4);
+    expect(remaindersAt(book, today)[0]).toBe(header);
+  });
+
+  it('keeps the unpaid principal of a partly paid row in the remainder', () => {
+    const today = installments[3].dueDate;
+    const book = bookWith([
+      {
+        time: local(2024, 3, 15, 12),
+        amountMinorUnits: -Math.round(installments[3].paymentMinorUnits / 2),
+      },
+    ]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, today);
+    const remainders = remaindersAt(book, today);
+
+    expect(header).toBe(8_691_202);
+    expect(remainders[0]).toBe(8_158_110);
+    expect(remainders[0]).toBe(installments[3].balanceMinorUnits);
+    expect(remainders[remainders.length - 1]).toBe(0);
+  });
+
+  it('shows the unpaid half of a row that two payments pay, after the first half', () => {
+    const today = installments[3].dueDate;
+    const half = Math.floor(installments[3].paymentMinorUnits / 2);
+    const firstHalf = { time: local(2024, 3, 15, 12), amountMinorUnits: -half };
+    const secondHalf = {
+      time: local(2024, 3, 15, 18),
+      amountMinorUnits: -(installments[3].paymentMinorUnits - half),
+    };
+    const afterFirstHalf = remaindersAt(bookWith([firstHalf]), today);
+    const bothHalvesBook = bookWith([firstHalf, secondHalf]);
+
+    expect(afterFirstHalf[0]).toBe(installments[3].balanceMinorUnits);
+    expect(remaindersAt(bothHalvesBook, today)[0]).toBe(
+      loanLedgerOutstandingMinorAt(annuityMeta, LOAN, bothHalvesBook, today),
+    );
+    expect(remaindersAt(bothHalvesBook, today)[0]).toBe(installments[3].balanceMinorUnits);
+  });
+
+  it('takes a row due today off the header when the linked payments are for other rows', () => {
+    const today = installments[3].dueDate;
+    const book = bookWith([onSchedule(1)]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, today);
+
+    expect(remaindersAt(book, today)[0]).toBe(header - upcomingAt(today)[0].principalMinorUnits);
+  });
+
+  it('never reads below 0 once the balance is smaller than the rows left', () => {
+    const now = local(2024, 2, 1);
+    const book = bookWith([], [{ day: now, price: '25000.00' }]);
+    const header = loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, now);
+    const remainders = remaindersAt(book, now);
+
+    expect(header).toBe(2_500_000);
+    expect(remainders[0]).toBe(header - upcomingAt(now)[0].principalMinorUnits);
+    expect(remainders[0]).toBeGreaterThan(0);
+    expect(remainders.every((remainder) => remainder >= 0)).toBe(true);
+    expect(remainders[remainders.length - 1]).toBe(0);
+  });
+});
+
+describe('loanLinkedPaymentBreakdownsMinor', () => {
+  const now = installments[5].dueDate;
+  const breakdownsOf = (book: PriceBook, instant = now) =>
+    loanLinkedPaymentBreakdownsMinor(annuityMeta, LOAN, book, instant);
+
+  it('gives each payment its own split and the balance left right after it', () => {
+    const book = bookWith([
+      { ...onSchedule(0), transactionId: 'first' },
+      { ...onSchedule(1), transactionId: 'second' },
+    ]);
+    const breakdowns = breakdownsOf(book);
+
+    expect(breakdowns.get('first')).toEqual({
+      principalMinorUnits: installments[0].principalMinorUnits,
+      interestMinorUnits: installments[0].interestMinorUnits,
+      remainderMinorUnits: installments[0].balanceMinorUnits,
+    });
+    expect(breakdowns.get('second')).toEqual({
+      principalMinorUnits: installments[1].principalMinorUnits,
+      interestMinorUnits: installments[1].interestMinorUnits,
+      remainderMinorUnits: installments[1].balanceMinorUnits,
+    });
+  });
+
+  it('keeps the fee of a within-tolerance over-payment out of the principal', () => {
+    const feeMeta: LoanMeta = {
+      ...annuityMeta,
+      principalMinorUnits: 200_000_000,
+      annualRatePct: 15,
+      termMonths: 240,
+    };
+    const [row] = loanInstallments(feeMeta);
+    const book = bookWith([
+      { time: row.dueDate, amountMinorUnits: -(row.paymentMinorUnits + 3_000) },
+    ]);
+    const breakdowns = loanLinkedPaymentBreakdownsMinor(feeMeta, LOAN, book, row.dueDate);
+
+    expect([...breakdowns.values()]).toEqual([
+      {
+        principalMinorUnits: row.principalMinorUnits,
+        interestMinorUnits: row.interestMinorUnits,
+        remainderMinorUnits: row.balanceMinorUnits,
+      },
+    ]);
+  });
+
+  it('lowers the second remainder by the second principal when two payments land on one day', () => {
+    const day = installments[1].dueDate;
+    const book = bookWith([
+      { time: day + 10 * 3_600_000, amountMinorUnits: -installments[1].paymentMinorUnits },
+      { time: day + 18 * 3_600_000, amountMinorUnits: -1_000_000 },
+    ]);
+    const [first, second] = [...breakdownsOf(book, day).values()];
+
+    expect(second.principalMinorUnits).toBeGreaterThan(0);
+    expect(second.remainderMinorUnits).toBe(first.remainderMinorUnits - second.principalMinorUnits);
+    expect(second.remainderMinorUnits).toBe(
+      loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, day),
+    );
+  });
+
+  it('counts the balance from a correction recorded between two payments', () => {
+    const correctionDay = addDays(installments[0].dueDate, 5);
+    const book = bookWith(
+      [
+        { ...onSchedule(0), transactionId: 'before' },
+        { ...onSchedule(1), transactionId: 'after' },
+      ],
+      [{ day: correctionDay, price: '90000.00' }],
+    );
+    const breakdowns = breakdownsOf(book);
+
+    expect(breakdowns.get('before')?.remainderMinorUnits).toBe(installments[0].balanceMinorUnits);
+    expect(breakdowns.get('after')?.remainderMinorUnits).toBe(
+      9_000_000 - installments[1].principalMinorUnits,
+    );
+  });
+
+  it('clamps the remainder of an overpayment at 0', () => {
+    const book = bookWith([{ time: installments[0].dueDate, amountMinorUnits: -20_000_000 }]);
+
+    expect([...breakdownsOf(book).values()].map((value) => value.remainderMinorUnits)).toEqual([0]);
+  });
+
+  it('has no entry for a payment the ledger ignores', () => {
+    const book = bookWith([
+      { ...onSchedule(0), transactionId: 'counted' },
+      {
+        time: addDays(annuityMeta.startDate, -1),
+        amountMinorUnits: -50_000,
+        transactionId: 'before-start',
+      },
+      { ...onSchedule(1), currency: 'USD', transactionId: 'other-currency' },
+      { ...onSchedule(2), amountMinorUnits: 50_000, transactionId: 'credit' },
+      { time: addDays(now, 3), amountMinorUnits: -50_000, transactionId: 'after-now' },
+    ]);
+
+    expect([...breakdownsOf(book).keys()]).toEqual(['counted']);
+  });
+
+  it('reads nothing for a loan with no linked payment', () => {
+    expect(breakdownsOf(bookWith([])).size).toBe(0);
   });
 });

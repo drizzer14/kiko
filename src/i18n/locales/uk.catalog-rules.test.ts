@@ -4,8 +4,8 @@
 // object (not the source text), so a violation buried in a template literal
 // or a computed value is caught the same as a plain string:
 //
-// (a) no ASCII apostrophe `'` between two Cyrillic letters in any string
-//     value — Ukrainian text must use the U+02BC apostrophe `ʼ`.
+// (a) no ASCII apostrophe `'` and no right single quote U+2019 `’` between two Cyrillic
+//     letters in any string value — Ukrainian text must use the U+02BC apostrophe `ʼ`.
 // (b) the app name appears only as Cyrillic `Кіко`, never Latin `Kiko`, in
 //     any string value.
 // (c) a tap is asked for with «натиснути» only, never торкнутися, тапнути,
@@ -17,6 +17,7 @@ import { flattenCatalog } from './flatten-catalog';
 
 const CYRILLIC = 'А-Яа-яЁёІіЇїЄєҐґ';
 const ASCII_APOSTROPHE_IN_CYRILLIC_WORD = new RegExp(`[${CYRILLIC}]'[${CYRILLIC}]`);
+const RIGHT_QUOTE_IN_CYRILLIC_WORD = new RegExp(`[${CYRILLIC}]’[${CYRILLIC}]`);
 const LATIN_KIKO = /\bKiko\b/;
 const OTHER_TAP_VERB = /торкн|тапн|тицн|клацн/i;
 const OTHER_LONG_PRESS_VERB = /притисн|затисн|зажм|довг\S* (?:натиск|дотик|тап)|тривал\S* натиск/i;
@@ -28,6 +29,20 @@ describe('uk.ts catalogue rules', () => {
     );
 
     expect(offenders).toEqual([]);
+  });
+
+  it('never uses a right single quote (U+2019) inside a Cyrillic word (must be U+02BC ʼ)', () => {
+    const offenders = flattenCatalog(uk).filter(({ value }) =>
+      RIGHT_QUOTE_IN_CYRILLIC_WORD.test(value),
+    );
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('catches the U+2019 apostrophe in a Cyrillic word and lets U+02BC and a closing quote through', () => {
+    expect(RIGHT_QUOTE_IN_CYRILLIC_WORD.test('пов’язаний')).toBe(true);
+    expect(RIGHT_QUOTE_IN_CYRILLIC_WORD.test('повʼязаний')).toBe(false);
+    expect(RIGHT_QUOTE_IN_CYRILLIC_WORD.test('слово’ слово')).toBe(false);
   });
 
   it('never spells the app name in Latin script ("Kiko") — must be Cyrillic "Кіко"', () => {

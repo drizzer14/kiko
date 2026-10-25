@@ -17,6 +17,8 @@ import {
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
+  VIEW_ACCOUNT_ACTION_TEST_ID,
+  VIEW_HOLDING_ACTION_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
@@ -54,6 +56,9 @@ const baseItem: HomeTransactionRow = {
   loanHoldingId: null,
 };
 
+const onViewAccount = jest.fn();
+const onViewHolding = jest.fn();
+
 const renderRow = (
   item: HomeTransactionRow,
   onPress = jest.fn(),
@@ -70,6 +75,8 @@ const renderRow = (
       categoryKeyForRow={(raw) => raw ?? 'other'}
       onPress={onPress}
       onDuplicate={onDuplicate}
+      onViewAccount={onViewAccount}
+      onViewHolding={onViewHolding}
       selected={selected}
     />,
     { wrapper: GestureRootWrapper },
@@ -169,19 +176,60 @@ describe('TransactionRow', () => {
     expect(onDuplicate).toHaveBeenCalledWith('txn-1');
   });
 
-  it('offers no Duplicate on a synced row — it renders bare with no hold gesture', async () => {
-    const onDuplicate = jest.fn();
-    const { queryByTestId } = await renderRow(
-      { ...baseItem, id: 'txn-mono', source: 'monobank' },
-      jest.fn(),
-      onDuplicate,
-    );
+  describe('a synced row', () => {
+    const syncedItem: HomeTransactionRow = { ...baseItem, id: 'txn-mono', source: 'monobank' };
 
-    // A synced row is neither deletable nor duplicable, so it stays bare even
-    // though an onDuplicate handler was passed down.
-    expect(queryByTestId('card-context-menu')).toBeNull();
-    expect(() => getByGestureTestId(HOLD_GESTURE_TEST_ID)).toThrow();
-    expect(onDuplicate).not.toHaveBeenCalled();
+    it('takes a hold that opens View account and View holding, with no Duplicate and no Delete', async () => {
+      const onDuplicate = jest.fn();
+      const { getByTestId, queryByTestId } = await renderRow(syncedItem, jest.fn(), onDuplicate);
+
+      await holdCard();
+
+      expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+      expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeTruthy();
+      expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+      expect(onDuplicate).not.toHaveBeenCalled();
+    });
+
+    it('hands its own row to the View handlers', async () => {
+      const { getByTestId } = await renderRow(syncedItem);
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+      });
+
+      expect(onViewAccount).toHaveBeenCalledWith(syncedItem);
+      expect(onViewHolding).not.toHaveBeenCalled();
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_HOLDING_ACTION_TEST_ID));
+      });
+
+      expect(onViewHolding).toHaveBeenCalledWith(syncedItem);
+    });
+
+    it('still routes a tap to onPress, opening the read-only form', async () => {
+      const onPress = jest.fn();
+      const { getByText } = await renderRow(syncedItem, onPress);
+
+      await fireEvent.press(getByText('Coffee'));
+
+      expect(onPress).toHaveBeenCalledWith('txn-mono');
+    });
+  });
+
+  it('offers View account and View holding on a manual row, beside Duplicate and Delete', async () => {
+    const { getByTestId } = await renderRow(baseItem);
+
+    await holdCard();
+
+    expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+    expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeTruthy();
+    expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+    expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
   });
 
   describe('an imported row', () => {
@@ -200,8 +248,12 @@ describe('TransactionRow', () => {
       return screen;
     };
 
-    it('opens the delete confirm straight away on a hold and deletes through transactionsRepo.remove', async () => {
+    it('lists Delete with the View actions on a hold and deletes through transactionsRepo.remove', async () => {
       const { getByTestId, getByText } = await holdRow(importedItem);
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
 
       expect(getByText('Delete "Coffee"')).toBeTruthy();
 
@@ -210,11 +262,13 @@ describe('TransactionRow', () => {
       expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-import');
     });
 
-    it('offers no Duplicate, so the hold goes straight to the confirm', async () => {
+    it('offers no Duplicate, but both View actions', async () => {
       const onDuplicate = jest.fn();
       const { queryByTestId } = await holdRow(importedItem, onDuplicate);
 
       expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+      expect(queryByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).not.toBeNull();
+      expect(queryByTestId(VIEW_HOLDING_ACTION_TEST_ID)).not.toBeNull();
       expect(onDuplicate).not.toHaveBeenCalled();
     });
   });
@@ -274,17 +328,13 @@ describe('TransactionRow', () => {
       const { getByTestId, getByText } = await renderRow({ ...baseItem, source: 'import' });
 
       await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
 
       expect(getByText('Delete "Coffee"')).toBeTruthy();
       expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
     });
-  });
-
-  it('renders a synced row bare — no context-menu wrapper and no hold gesture', async () => {
-    const { queryByTestId } = await renderRow({ ...baseItem, id: 'txn-mono', source: 'monobank' });
-
-    expect(queryByTestId('card-context-menu')).toBeNull();
-    expect(() => getByGestureTestId(HOLD_GESTURE_TEST_ID)).toThrow();
   });
 
   it('still routes a tap on a manual row to onPress, opening the shared form', async () => {

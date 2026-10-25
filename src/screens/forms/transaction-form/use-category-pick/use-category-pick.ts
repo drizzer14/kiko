@@ -16,6 +16,8 @@ type UseCategoryPickParams = {
   mode: FormMode;
   // The picked holding's currency, null while no holding is picked.
   currency: Currency | null;
+  // The name a rule reads for a description: a blank one reads as the label the row will show.
+  ruleDescription: (description: string) => string;
   // What a form restored from its saved draft opens with, so a remount keeps the category and
   // whether it was picked by hand. The description it settled on is the one the field opens with.
   initial: { category: string | null; isPicked: boolean };
@@ -31,6 +33,7 @@ export const useCategoryPick = ({
   time,
   mode,
   currency,
+  ruleDescription,
   initial,
 }: UseCategoryPickParams) => {
   // The category rules: subscribed once and prepared once per change, so a create can pre-select
@@ -70,7 +73,10 @@ export const useCategoryPick = ({
 
   // The ONE rule lookup: the category the rules give the draft with this description, or null.
   const categoryForDescription = (name: string): string | null =>
-    categoryForDraft({ description: name, amount, time, mode, currency }, preparedRules);
+    categoryForDraft(
+      { description: ruleDescription(name), amount, time, mode, currency },
+      preparedRules,
+    );
 
   // What the rules give the LIVE draft, whatever the form holds: the reference a new transaction's
   // chosen category is compared against, so a create that picks what the rules already give is not
