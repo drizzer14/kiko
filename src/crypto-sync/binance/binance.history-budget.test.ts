@@ -67,14 +67,14 @@ describe('createBinanceRunBudget — per-lane call caps', () => {
   });
 
   it.each([
-    ['pay', COSTS.pay, 20],
-    ['transfer', COSTS.transfer, 80],
-    ['earn', COSTS.earn, 30],
-    ['convert', COSTS.convert, 20],
-    ['p2p', COSTS.p2p, 20],
-    ['fiatOrders', COSTS.fiatOrders, 3],
-    ['fiatPayments', COSTS.fiatPayments, 10],
-  ] as const)('caps the %s lane at %i calls', (lane, cost, cap) => {
+    { lane: 'pay', cost: COSTS.pay, cap: 20 },
+    { lane: 'transfer', cost: COSTS.transfer, cap: 80 },
+    { lane: 'earn', cost: COSTS.earn, cap: 30 },
+    { lane: 'convert', cost: COSTS.convert, cap: 20 },
+    { lane: 'p2p', cost: COSTS.p2p, cap: 20 },
+    { lane: 'fiatOrders', cost: COSTS.fiatOrders, cap: 3 },
+    { lane: 'fiatPayments', cost: COSTS.fiatPayments, cap: 10 },
+  ] as const)('caps the $lane lane at $cap calls', ({ lane, cost, cap }) => {
     const budget = createBinanceRunBudget();
 
     spendCalls(budget, lane, cap - 1);

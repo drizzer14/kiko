@@ -205,7 +205,7 @@ afterEach(() => {
 
 const entryOf = (orderNo: string) => `fiat-unrecognized:${orderNo}:${FIAT_CREATED_AT}`;
 
-describe('a fiat walk that stops', () => {
+describe('a fiat walk refused before its first read', () => {
   describe.each([ORDERS, PAYMENTS])('$name: a run that does not start', (kind) => {
     it('makes no request while the account is cooling down, nor reads its credentials or marks', async () => {
       const { accountId, depsOf, walk } = worldOf(kind);

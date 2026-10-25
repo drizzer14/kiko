@@ -198,7 +198,7 @@ const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 const PAUSED_CAPTION =
   'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to fix this. Your holdings and transactions are kept.';
 
-// The five forward cursors of the history walks, each `behindMs` behind the balance sync.
+// The forward cursor of every walk in `WALK_NAMES`, each `behindMs` behind the balance sync.
 const walkCursors = (
   behindMs: number,
   over: Partial<Record<WalkName, number>> = {},
