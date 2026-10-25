@@ -576,13 +576,14 @@ Files: the spec.
 - G-1 every step; G-2 steps 1, 4, 11; G-3 steps 4-11; G-6 step 4; G-7 steps 7, 10; G-8 step 5; G-9 steps 6, 9;
   G-10 steps 6, 8, 9, 10, 11; G-11 steps 12, 13; G-12 and G-13 every commit; G-14 steps 1, 11.
 
-## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21 ... S12-Q24, S12-Q27 ... S12-Q36, S12-Q38 ... S12-Q40)
+## Questions for the coordinator (S12-Q1 ... S12-Q15, S12-Q18, S12-Q21 ... S12-Q24, S12-Q27 ... S12-Q36, S12-Q38 ... S12-Q41, S12-Q43, S12-Q44)
 
 Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12-Q15 = A, FINAL coordinator rulings (Q7 = cap 20 after probe
 10); Q3, Q10, Q11 = A, USER CONFIRMED 2026-10-23; Q18 = C, Q21 = A (N = 1), Q22 = B, Q23 = B, Q24 = B, Q27 = the fix, Q28 = the
 fix as the entry builds it, Q29 = A, Q30 = the fix, Q32 = the fix and Q33 = the fix, FINAL coordinator rulings;
-Q34 = refuse, Q35 = A + B fiat-only, Q36 = the fix, Q38 = the fix, Q39 = refuse and Q40 = whole milliseconds,
-USER CONFIRMED 2026-10-25.
+Q34 = refuse, Q35 = A + B fiat-only, Q36 = the fix, Q38 = the fix, Q39 = refuse, Q40 = whole milliseconds and
+Q41 = the caption over the fiat walks, USER CONFIRMED 2026-10-25; Q43 = the caption over all 8 walks (subsumes Q41)
+and Q44 = an owed point shows once owed longer than a day (design approved), COORDINATOR 2026-10-25.
 
 - S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
   one exact existing title to each. B: a file-only row passes when the file exists. Recommend A: a file alone ties a
@@ -904,3 +905,30 @@ USER CONFIRMED 2026-10-25.
   stays owed (not refused: an unreadable row has no order number for an entry) and throws nothing; only a server
   that ignores its filter can send it. A stored point with a decimal end, written by a build before this one, is
   never matched again and stays owed; the fiat and P2P walks are new in set 12, so no shipped build wrote one.
+- S12-Q41 (USER CONFIRMED 2026-10-25) the history caption also shows while a fiat walk owes a range. The fiat
+  `rescanStuck` marks are a subset of `pending` (each is still in the list until a read of it passes), so the read
+  of `pending` covers them. Subsumed by S12-Q43.
+- S12-Q43 (the fix, COORDINATOR 2026-10-25, data visibility) capital, Pay, Earn, Convert and P2P also owe ranges
+  after a failed page with the cursor moving on, and only the Transfer and fiat ranges showed the caption. The
+  caption now shows while ANY of the 8 walks owes a range: `historyOwesRange` reads the `pending` list of every
+  walk of `CAPTION_WALKS`, a range of any series counts, a point does not (S12-Q44 adds the old ones). Same copy
+  (`accountDetail.binanceHistoryPending`); a pin per walk in `binance-history-status.test.ts`.
+- S12-Q44 (COORDINATOR 2026-10-25, design approved) a point owed for longer than a day shows the caption; a fresh
+  point, which every sync reads again, stays quiet. Built: an optional `since` on a pending POINT entry
+  (`BinancePendingRange`, `walk-values.ts`), the wall clock of the run that first owed it. The run's time is
+  `WalkPlan.ranAt` (`planWalkPasses` gets it from `endTime`, which every walk sets to `deps.now()`);
+  `advanceWalkMarks` gives each point a span owes that carries none that time, so a point is stamped by the run
+  that first owes it. The writers keep the first one: `distinctGround` keeps the earliest `since` among entries
+  of one ground wherever they stand in the list (so `normalizePending`, the planned list, the forward owed list,
+  `pendingAdvance` and the resume lists do too), `dropReadPoints` only removes entries, and `holdsPoint` and
+  `samePoint` ignore `since`, so a point owed again is still the same point. `pendingPatchesOf` also counts a
+  `since` that differs as a change, so a point an older build stored with none is stamped by the next write
+  though no ground changed. Read: `asPendingRange` keeps a `since` that is a non-negative integer on a point and
+  reads any other as none (never as a malformed list, which would owe all the ground again); a range never keeps
+  one. Caption: `historyOwesRange(state, lastBalanceSyncAt)` also counts a point when `lastBalanceSyncAt - since`
+  is more than a day; `lastBalanceSyncAt` null counts none. No migration: a point with no `since` is quiet, and a
+  walk stamps it the next run that owes it again, so an old point shows one day after that run. The `.kiko`
+  restore does not read into the walk state (the file check reads the tables as arrays and the restore copies
+  `exchange_state` as text), so a file with `since`, without it, or with a `since` no build writes restores
+  unchanged. Pins moved: the written-point assertions of the walk tests gain `since` (the clock of the run that
+  first owed the point); `settleRecords` results, which a run has not stored, stay without it.

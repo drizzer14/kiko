@@ -259,10 +259,13 @@ set 10 whole-branch items there (FR-Q1, FR-Q2) belong to set 10.
 | S12-Q38 the fix (USER CONFIRMED 2026-10-25) | Every page reader records the request that rejected as a call of its lane before its error goes on (`recordFailedCall`; the paging readers record `refusedCallWeights`), so the pending and point passes that go on after an unreadable window cannot pass the lane cap or the shared UID weight; a refusal is still recorded once, where its narrowing starts; the fiat duplicate record is dropped | 12 |
 | S12-Q39 refuse (USER CONFIRMED 2026-10-25) | A fiat payment whose `fiatCurrency` is blank or holds `:` is refused as `fiat-unrecognized`, like the P2P orders of S12-Q34: one visible entry, the cursor moves on (before: `amount-malformed`, owed for good) | 12 |
 | S12-Q40 whole milliseconds (USER CONFIRMED 2026-10-25) | The shared `pointOf` rounds a record's extent outward to whole milliseconds, so a fractional `createTime` no longer sends a decimal `beginTime`; a time past 2^53 stays owed and throws nothing | 12 |
+| S12-Q41 (USER CONFIRMED 2026-10-25) | The Binance history caption also shows while a fiat walk owes a range; the fiat `rescanStuck` marks are a subset of `pending`, so the one read of the lists covers them; subsumed by S12-Q43 | 12 |
+| S12-Q43 (COORDINATOR 2026-10-25) | The caption shows while any of the 8 walks owes a range, through `historyOwesRange` over their `pending` lists (capital, Pay, Earn, Convert and P2P also owe ranges after a failed page with the cursor moving on); same copy, a pin per walk | 12 |
+| S12-Q44 (COORDINATOR 2026-10-25, design approved) | A pending point carries an optional `since` (epoch ms, the wall clock of the run that first owed it) in the walk's `exchange_state` entry; every writer of the list keeps the first `since` when the point is owed again or merged, and the caption counts a point once `lastBalanceSyncAt - since` is more than a day; a fresh point (read again each sync) and a point with no `since` stay quiet. No migration: a point stored before it, or with a `since` that is no non-negative integer, reads as having none and is stamped by the first run that owes it again; a range never carries one. The `.kiko` restore copies the walk state as text, so a file with or without `since` restores unchanged and a malformed `since` reads as none, never as a broken list | 12 |
 
-Source of S12-Q1 ... S12-Q36, S12-Q38, S12-Q39 and S12-Q40: `rulings.md`, section "Set 12 plan questions" and
+Source of S12-Q1 ... S12-Q36, S12-Q38, S12-Q39, S12-Q40, S12-Q41, S12-Q43 and S12-Q44: `rulings.md`, section "Set 12 plan questions" and
 its "G2 review" items (S12-Q7 and S12-Q8 from probe 10; S12-Q3, S12-Q10 and S12-Q11 confirmed by the
-user 2026-10-23, S12-Q34, S12-Q35, S12-Q36, S12-Q38, S12-Q39 and S12-Q40 still overnight defaults); the plan `docs/superpowers/plans/2026-10-23-crypto-exchanges-set-12.md`
+user 2026-10-23, S12-Q34, S12-Q35, S12-Q36, S12-Q38, S12-Q39, S12-Q40 and S12-Q41 confirmed by the user 2026-10-25, S12-Q43 and S12-Q44 coordinator rulings); the plan `docs/superpowers/plans/2026-10-23-crypto-exchanges-set-12.md`
 holds each question with its options and its measurements.
 
 ### Rulings this spec reverses
@@ -502,10 +505,13 @@ byte-identical, a malformed one included. When no `sync_state` row exists, the w
 ### History-behind caption
 
 `isExchangeHistoryBehind` is true, after the account's first balance sync, when any walk's cursor
-is null or more than a day behind `latestSyncedAt`, when the Transfer walk owes a range, when any
-walk owes a `scope: 'backfill'` range, when the top-level state is malformed, or when a trade
-symbol in the candidate set was never read (no entry, or a null `fromId`; a completed read always
-stores a number, section 5). An owed point never shows it. The caption names the exchange
+is null or more than a day behind `latestSyncedAt`, when any of the eight history walks owes a range
+(S12-Q41, S12-Q43), when any walk owes a `scope: 'backfill'` range, when the top-level state is
+malformed, or when a trade symbol in the candidate set was never read (no entry, or a null
+`fromId`; a completed read always stores a number, section 5). A fresh owed point never shows it:
+the record it names is read again on every sync. A point owed for more than a day does (its
+`since`, the time of the run that first owed it, is more than a day before `latestSyncedAt`;
+S12-Q44). The caption names the exchange
 (`accountDetail.exchangeHistoryPending`, section 10); while the top-level state is malformed it
 shows `accountDetail.exchangeHistoryPaused` instead, which says history import is paused and that a
 disconnect and reconnect repairs it. The `convert` walk is in `CAPTION_WALKS`, so an existing user

@@ -2202,11 +2202,16 @@ than restated here:
   compares them against `latestBalanceSyncAt(holdings, stateStamp)` (the later of the
   holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when
   any of those walks never caught up (`null` cursor) or is behind by more than a day,
-  or when any walk owes a range (`historyOwesRange`: ground its cursor passed;
-  only an owed RANGE counts, as `historyOwesRange` reads the `pending` list of
-  every one of the walks), false before the account's own first balance sync.
-  An owed point never
-  shows it. A malformed walk state PAUSES the history: `CryptoSyncSection`'s
+  or when any walk owes a range (`historyOwesRange(state, lastBalanceSyncAt)`: ground its
+  cursor passed, read off the `pending` list of every one of the walks), or a point
+  that has stayed owed for more than a day (`since`, below), false before the account's
+  own first balance sync. A fresh owed point never shows it: the record it names is read
+  again on every sync. A point carries `since` (epoch ms, the wall clock of the run that
+  first owed it; `WalkPlan.ranAt`, stamped by `advanceWalkMarks`, kept by `distinctGround`);
+  the caption counts it when `lastBalanceSyncAt - since` is more than a day. A point with
+  no `since` (stored before it) is quiet until a run owes it again, and a `since` that is
+  no non-negative integer reads as none (`asPendingRange`), never as a malformed list. A
+  malformed walk state PAUSES the history: `CryptoSyncSection`'s
   `historyPaused` (Binance and `walkState.kind === 'malformed'`) shows
   `accountDetail.exchangeHistoryPaused` INSTEAD of `binanceHistoryPending`, and
   the repair is disconnect + reconnect (`resetExchangeStateDatabaseTransaction`
@@ -2337,7 +2342,8 @@ Read `settledOutcomeOf` in `binance.convert-history.ts`.
   (`runWalkPlan` `owedFirst`; `storePlannedList` stores the planned list before any pass) and
   keeps one read of the first forward window, of the re-scan and of the points for the later
   passes. A Transfer drift owes the span in the drifted type alone. The `binanceHistoryPending`
-  caption also shows while any walk owes a range (`historyOwesRange`), not a point.
+  caption also shows while any walk owes a range, or a point owed for more than a day
+  (`historyOwesRange`).
   A span read that narrows (a type is refused a start, finds its memory lapsed, asks the end of
   the span, or reads a band) draws its calls from the lane's narrowing calls first
   (`LANE_NARROWING_CALLS` in `binance.history-budget.ts`; `spanRunOf` in
@@ -2445,7 +2451,8 @@ stop codes and scenario rows.
   a point (`kind: 'point'`); the kind alone tells them apart. At most
   `MAX_PENDING_RANGES` ranges (`exchange/walk/walk.ts`; the two nearest
   merge); a point is never merged with, held by or dropped with a range;
-  equal points are one.
+  equal points are one, and keep the earliest `since` (the time of the run that
+  first owed the point; see the lagging-history caption).
 - **Canonical points.** A stuck record owes `[t - 1, t + 1]` (Pay, a
   deposit) or `[T - 1000, T + 1000]` (a withdrawal, whose `applyTime` may be
   cut or rounded to the second); never cut to the span.
