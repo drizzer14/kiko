@@ -5,9 +5,9 @@ import Text from '@kiko/design-system/components/text';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import FieldTrigger from '@kiko/design-system/components/field-trigger';
 import SelectableRow from '@kiko/design-system/components/selectable-row';
+import { useSelectCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 
 import { styles } from './holding-select-field.styles';
-import { useSelectCreatedHolding } from './use-select-created-holding';
 import type { HoldingSelectFieldProps } from './holding-select-field.props';
 
 // A labeled single-select holding picker for the Exchange "To" field: the
@@ -34,7 +34,7 @@ const HoldingSelectField = ({
 }: HoldingSelectFieldProps): ReactElement => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const startCreateRoundTrip = useSelectCreatedHolding(options, onSelect);
+  const startCreateRoundTrip = useSelectCreatedOption(options, onSelect);
 
   const selected = options.find((option) => option.id === selectedId) ?? null;
 

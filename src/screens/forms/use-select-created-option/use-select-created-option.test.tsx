@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react-native';
 import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
-import { useSelectCreatedHolding } from './use-select-created-holding';
-import type { HoldingSelectOption } from './holding-select-field.props';
+import { useSelectCreatedOption } from './use-select-created-option';
 
 const SECOND = 1_000;
 const TAPPED_AT = 100 * SECOND;
@@ -26,15 +26,28 @@ const setup = async (initialOptions: readonly HoldingSelectOption[] = []) => {
   const wrapper = ({ children }: { children: ReactNode }) => provide(children);
   const hook = await renderHook(
     ({ options }: { options: readonly HoldingSelectOption[] }) =>
-      useSelectCreatedHolding(options, onSelect),
+      useSelectCreatedOption(options, onSelect),
     { wrapper, initialProps: { options: initialOptions } },
   );
 
   return { onSelect, fireFocus, ...hook };
 };
 
-describe('useSelectCreatedHolding', () => {
+const pressCreateRow = async (result: { current: () => void }): Promise<void> => {
+  await act(async () => {
+    result.current();
+  });
+};
+
+describe('useSelectCreatedOption', () => {
   let clock = TAPPED_AT;
+
+  const returnToScreen = async (fireFocus: () => void): Promise<void> => {
+    clock = RETURNED_AT;
+    await act(async () => {
+      fireFocus();
+    });
+  };
 
   beforeEach(() => {
     clock = TAPPED_AT;
@@ -45,19 +58,17 @@ describe('useSelectCreatedHolding', () => {
     jest.restoreAllMocks();
   });
 
-  it('selects the holding that appears after the create row was pressed', async () => {
+  it('selects the option that appears after the create row was pressed', async () => {
     const { onSelect, result, rerender } = await setup();
 
-    await act(async () => {
-      result.current();
-    });
+    await pressCreateRow(result);
     await rerender({ options: [makeOption('new', SAVED_AT)] });
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('new');
   });
 
-  it('does not select a holding that appears without a press', async () => {
+  it('does not select an option that appears without a press', async () => {
     const { onSelect, rerender } = await setup();
 
     await rerender({ options: [makeOption('synced', SAVED_AT)] });
@@ -68,42 +79,28 @@ describe('useSelectCreatedHolding', () => {
   it('selects only once, however often the options change afterwards', async () => {
     const { onSelect, result, rerender } = await setup();
 
-    await act(async () => {
-      result.current();
-    });
+    await pressCreateRow(result);
     await rerender({ options: [makeOption('new', SAVED_AT)] });
     await rerender({ options: [makeOption('new', SAVED_AT), makeOption('other', SAVED_AT)] });
 
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  it('selects a holding saved before the screen regained focus, even when it lands after', async () => {
+  it('selects an option saved before the screen regained focus, even when it lands after', async () => {
     const { onSelect, result, rerender, fireFocus } = await setup();
 
-    await act(async () => {
-      result.current();
-    });
-
-    clock = RETURNED_AT;
-    await act(async () => {
-      fireFocus();
-    });
+    await pressCreateRow(result);
+    await returnToScreen(fireFocus);
     await rerender({ options: [makeOption('new', SAVED_AT)] });
 
     expect(onSelect).toHaveBeenCalledWith('new');
   });
 
-  it('selects nothing when a holding appears after HoldingForm was cancelled', async () => {
+  it('selects nothing when an option appears after the create form was cancelled', async () => {
     const { onSelect, result, rerender, fireFocus } = await setup();
 
-    await act(async () => {
-      result.current();
-    });
-
-    clock = RETURNED_AT;
-    await act(async () => {
-      fireFocus();
-    });
+    await pressCreateRow(result);
+    await returnToScreen(fireFocus);
 
     // A bank sync adds an eligible holding well after the user came back.
     await rerender({ options: [makeOption('synced', RETURNED_AT + 60 * SECOND)] });
@@ -111,24 +108,20 @@ describe('useSelectCreatedHolding', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('selects nothing for a holding created before the create row was pressed', async () => {
+  it('selects nothing for an option created before the create row was pressed', async () => {
     const { onSelect, result, rerender } = await setup();
 
-    await act(async () => {
-      result.current();
-    });
+    await pressCreateRow(result);
     await rerender({ options: [makeOption('older', TAPPED_AT - 60 * SECOND)] });
 
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('accepts a holding created in the same second as the press', async () => {
+  it('accepts an option created in the same second as the press', async () => {
     const { onSelect, result, rerender } = await setup();
 
     clock = TAPPED_AT + 400;
-    await act(async () => {
-      result.current();
-    });
+    await pressCreateRow(result);
     // The database stamps `created_at` in whole seconds, rounded down.
     await rerender({ options: [makeOption('new', TAPPED_AT)] });
 
@@ -139,15 +132,30 @@ describe('useSelectCreatedHolding', () => {
     const onSelect = jest.fn();
     const { result, rerender } = await renderHook(
       ({ options }: { options: readonly HoldingSelectOption[] }) =>
-        useSelectCreatedHolding(options, onSelect),
+        useSelectCreatedOption(options, onSelect),
       { initialProps: { options: [] as readonly HoldingSelectOption[] } },
     );
 
-    await act(async () => {
-      result.current();
-    });
+    await pressCreateRow(result);
     await rerender({ options: [makeOption('new', SAVED_AT)] });
 
     expect(onSelect).toHaveBeenCalledWith('new');
+  });
+
+  it('selects a created template-shaped option, which carries only an id, a name and a createdAt', async () => {
+    type TemplateShapedOption = { id: string; name: string; createdAt: number };
+
+    const onSelect = jest.fn();
+    const { result, rerender } = await renderHook(
+      ({ options }: { options: readonly TemplateShapedOption[] }) =>
+        useSelectCreatedOption(options, onSelect),
+      { initialProps: { options: [] as readonly TemplateShapedOption[] } },
+    );
+
+    await pressCreateRow(result);
+    await rerender({ options: [{ id: 'template-new', name: 'Rent', createdAt: SAVED_AT }] });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('template-new');
   });
 });

@@ -5,7 +5,7 @@ import Text from '@kiko/design-system/components/text';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import FieldTrigger from '@kiko/design-system/components/field-trigger';
 import SelectableRow from '@kiko/design-system/components/selectable-row';
-import { useSelectCreatedHolding } from '@kiko/screens/forms/holding-select-field';
+import { useSelectCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 
 import type { PaymentHoldingFieldProps } from './payment-holding-field.props';
 
@@ -37,7 +37,7 @@ const PaymentHoldingField = ({
 }: PaymentHoldingFieldProps): ReactElement => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const startCreateRoundTrip = useSelectCreatedHolding(options, onSelect);
+  const startCreateRoundTrip = useSelectCreatedOption(options, onSelect);
 
   const selected = options.find((option) => option.id === selectedId) ?? null;
 
