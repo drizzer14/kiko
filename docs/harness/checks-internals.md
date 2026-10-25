@@ -238,7 +238,9 @@ dedup always runs in full.
   passes one file, and a person may pass several). The key names every file
   and the fingerprint covers every file's content plus the two Semgrep rules
   files and the `EXCLUDED_RULE_IDS` exclusion list, so a changed file or a different file
-  set rescans; a skip prints `security.sh: SKIPPED, not a fresh scan` on stderr. A directory or
+  set rescans; a skip prints `security.sh: SKIPPED, not a fresh scan` on stderr. A timed-out
+  file is re-scanned once with `--jobs 1`; each pair that passes prints a WARNING on stderr
+  (exit 0). A directory or
   no-argument run always scans.
 - Dedups both a single-file run and the project-wide run:
   `check:import-order`, `check:full-word-identifiers`,
