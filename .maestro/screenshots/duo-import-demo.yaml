@@ -1,0 +1,104 @@
+# Imports the Ukrainian demo dataset into the app through the REAL Import UI, as the first step of
+# the manual App Store screenshot procedure (docs/harness/screenshots-check.md, step 3). NOT a
+# check: no `takeScreenshot` step; the shots are taken by `duo-outer.yaml` afterwards.
+#
+# PRECONDITION: e2e/screenshot/fixtures/kiko-demo-uk.kiko is in the Files app under "On My iPhone"
+# on the target simulator (Files shows it by its name). The key is passed in as the Maestro
+# variable KEY (the demo key is not a secret, see e2e/screenshot/fixtures/README.md).
+#
+# DESTRUCTIVE: the import REPLACES every account, holding, transaction and category in the app
+# with the demo data. Run on a simulator that holds nothing worth keeping.
+#
+# The flow uses only the shipped UI (Settings, Import Data, the document picker, the key field,
+# "Import data", "Replace data"). It reads no flag and passes no launch argument (Guideline
+# 2.5.19). After the import it stops and relaunches the app, so the imported language (uk) takes
+# effect on the next launch, as the screenshot procedure's cold relaunch requires.
+#
+# LANGUAGE: any app language. Ids first; a regex over the en and uk catalogues where no id
+# exists (the key field's placeholder, the confirm button).
+#
+# Run (ops skill "Maestro on this host"; the device id is the simulator's UDID):
+#   JAVA_HOME=/opt/homebrew/opt/openjdk@21 MAESTRO_DRIVER_STARTUP_TIMEOUT=400000 \
+#     maestro --device <UDID> test \
+#     -e KEY="$(tr -d '\n' < e2e/screenshot/fixtures/kiko-demo.key)" \
+#     --debug-output <dir outside the worktree> .maestro/screenshots/duo-import-demo.yaml
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- stopApp
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 60000
+
+- tapOn:
+    id: "gear"
+- tapOn:
+    id: "settings-row-import-data"
+- tapOn:
+    id: "settings-button-pick-file"
+
+# The picker opens on Recents the first time. Browse shows "On My iPhone" (the picker then
+# remembers where it was).
+- extendedWaitUntil:
+    visible:
+      id: "DOC.browsingRoot.*"
+    timeout: 60000
+- runFlow:
+    when:
+      visible:
+        id: "DOC.browsingRoot Source: com.apple.DocumentManager.RecentDocuments, Title: Recents"
+    commands:
+      - tapOn:
+          id: "folder.fill"
+# Browse can also open on its Locations list instead of the files.
+- runFlow:
+    when:
+      visible:
+        id: "DOC.sidebar.item.On My iPhone"
+    commands:
+      - tapOn:
+          id: "DOC.sidebar.item.On My iPhone"
+- extendedWaitUntil:
+    visible:
+      id: "kiko-demo-uk.kiko, kiko"
+    timeout: 60000
+- tapOn:
+    id: "kiko-demo-uk.kiko, kiko"
+
+- extendedWaitUntil:
+    visible:
+      id: "settings-card-import-key"
+    timeout: 60000
+- tapOn: "Paste the key.*|Вставте ключ.*"
+- inputText: ${KEY}
+- hideKeyboard
+- tapOn:
+    id: "settings-button-import"
+
+- extendedWaitUntil:
+    visible: "Replace data|Замінити дані"
+    timeout: 60000
+- tapOn: "Replace data|Замінити дані"
+
+# The sheet closes and the screen shows "Import complete" / "Імпорт завершено".
+- extendedWaitUntil:
+    visible: "Import complete.*|Імпорт завершено.*"
+    timeout: 120000
+
+- stopApp
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: "home-content"
+    timeout: 60000
+- assertVisible:
+    id: "home-header"
+- assertVisible:
+    id: "home-transactions"

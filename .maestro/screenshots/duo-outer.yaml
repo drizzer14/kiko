@@ -1,0 +1,140 @@
+# Takes the 10 App Store screenshots of docs/harness/screenshots-check.md, in order and with the
+# same names, on the iPhone Duo simulator in the CLOSED pose (outer display, portrait). NOT a
+# check: it asserts only that each screen's content is on screen before its capture.
+#
+# PRECONDITION: the simulator is closed (outer display), and the demo dataset is imported and the
+# app cold-relaunched (`.maestro/screenshots/duo-import-demo.yaml`), so the app runs in Ukrainian
+# with the demo data. The flow never changes data: it only navigates and scrolls. It takes the
+# dataset's anchor day into account the way the procedure does: the files thin out within weeks
+# of regeneration (e2e/screenshot/fixtures/README.md).
+#
+# OUT: a sub-folder NAME for the PNGs, passed with `-e OUT=<name>`; Maestro adds the `.png`. This
+# Maestro refuses a takeScreenshot path that resolves outside the run's own output folder
+# ("Invalid path ... resolves outside this run's takeScreenshot output folder": the first trial
+# passed an absolute OUT and failed at shot 01), so run with `--test-output-dir <dir>` and the
+# PNGs land under <dir>/takeScreenshot/. Maestro's `takeScreenshot` captures the display it
+# drives. Check each PNG's pixel size afterwards (`sips -g pixelWidth -g pixelHeight`); a size
+# other than the outer display's 1398x2034 means the shot has to be taken with `xcrun simctl io
+# <UDID> screenshot --display <outer display port> <file>` instead.
+#
+# NAVIGATION: every "return to a tab root" is a tab switch, never a back step: each tab stack
+# pops itself to its root on blur (src/navigation/reset-tab-stack-on-blur/).
+#
+# Shots 02, 07 and 08 are mid-scroll and their landing offset can drift; look at them before
+# accepting them. Shot 10 shows the Settings root with the base-currency card: in this build the
+# system section is a row that opens its own screen, not a block further down the page.
+#
+# LANGUAGE: ids only; the flow reads no text.
+#
+# Run (ops skill "Maestro on this host"):
+#   JAVA_HOME=/opt/homebrew/opt/openjdk@21 MAESTRO_DRIVER_STARTUP_TIMEOUT=400000 \
+#     maestro --device <UDID> test -e OUT=outer --test-output-dir <dir outside the worktree> \
+#     .maestro/screenshots/duo-outer.yaml
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 60000
+
+# 01 Home tab, top of screen.
+- tapOn:
+    id: "house.fill"
+- extendedWaitUntil:
+    visible:
+      id: "home-header"
+    timeout: 60000
+- assertVisible:
+    id: "home-transactions"
+- takeScreenshot: ${OUT}/01-home-networth
+
+# 02 Home tab, scrolled into the transaction list.
+- swipe:
+    direction: UP
+    duration: 800
+- assertVisible:
+    id: "transaction-row"
+- takeScreenshot: ${OUT}/02-home-transactions-scrolled
+
+# 03 Accounts tab.
+- tapOn:
+    id: "tray"
+- extendedWaitUntil:
+    visible:
+      id: "accounts-grid"
+    timeout: 60000
+- takeScreenshot: ${OUT}/03-accounts-grid
+
+# 04 The first account's detail.
+- tapOn:
+    id: "account-card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "account-detail-content"
+    timeout: 60000
+- assertVisible:
+    id: "account-detail-headline"
+- takeScreenshot: ${OUT}/04-account-detail
+
+# 05 The account's first holding. The holdings grid starts below the scroll view's visible area,
+# so the swipe (starting above the footer) brings it up before the tap.
+- swipe:
+    start: 50%, 60%
+    end: 50%, 15%
+    duration: 600
+- tapOn:
+    id: "holding-grid-item"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "ledger-list"
+    timeout: 60000
+- assertVisible:
+    id: "holding-value-header"
+- takeScreenshot: ${OUT}/05-holding-detail-ledger
+
+# 06 Statistics tab, net-worth line chart.
+- tapOn:
+    id: "chart.xyaxis.line"
+- extendedWaitUntil:
+    visible:
+      id: "statistics-block-line"
+    timeout: 60000
+- takeScreenshot: ${OUT}/06-statistics-net-worth-line
+
+# 07 Statistics, account-contribution block (the pie card).
+- scrollUntilVisible:
+    element:
+      id: "statistics-block-pie"
+    direction: DOWN
+    timeout: 60000
+- takeScreenshot: ${OUT}/07-statistics-account-contribution
+
+# 08 Statistics, expenses-by-category block.
+- scrollUntilVisible:
+    element:
+      id: "statistics-block-category"
+    direction: DOWN
+    timeout: 60000
+- takeScreenshot: ${OUT}/08-statistics-expenses-by-category
+
+# 09 Settings tab.
+- tapOn:
+    id: "gear"
+- extendedWaitUntil:
+    visible:
+      id: "settings-card-system"
+    timeout: 60000
+- takeScreenshot: ${OUT}/09-settings-main
+
+# 10 Settings tab with the base-currency card in view (the page fits one screen, nothing to
+# scroll).
+- scrollUntilVisible:
+    element:
+      id: "settings-card-base-currency"
+    direction: DOWN
+    timeout: 60000
+- takeScreenshot: ${OUT}/10-settings-system
