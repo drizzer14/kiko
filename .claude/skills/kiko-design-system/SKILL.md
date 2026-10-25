@@ -1585,12 +1585,16 @@ new component can land between reviews of this skill:
   `accepts(type)`, an optional `currency`, and `anchorAccountId`; the target is the anchor's own
   account or the first live account that can create an accepted type, opened on that type/currency,
   else `AccountForm`. `useSelectCreatedOption` (`src/screens/forms/use-select-created-option/`) is
-  the shared hook behind every empty picker's create row (holding and template). It selects the
-  NEWEST option stamped between the row press and the picker screen regaining focus (a `createdAt`
-  window; a tie picks the last in list order), once; after a plain cancel nothing is selected.
-  Known limit: a cancel while another tab creates an option inside the window still selects that
-  option (it only preselects a form value and writes no data); an exact-id handback is the planned
-  follow-up.
+  the shared hook behind every empty picker's create row (holding and template). The row press
+  opens a one-shot handback id (`openHandback`, `created-option-handback.ts`); a second press while
+  one is open gets none, so it pushes no second form. The id rides to the create form as the
+  `handbackId` route param (`TransactionForm {newTemplate}`, `HoldingForm`;
+  `resolveCreateHoldingTarget(picker, accounts, handbackId?)` adds it to the holding target, never
+  to the `AccountForm` one). The form hands the new id back (`handBackCreatedOption`) only after its
+  write commits; a cancel or a failed write hands back nothing. The picker selects exactly that id,
+  once, when its screen regains focus, whether the option reaches the list before or after the
+  focus. A blur drops an awaited id that never appeared; unmount closes the open handback. Outside
+  a navigator nothing is selected.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major. It renders every
   Money it is given; Home filters exact-zero totals first (see `kiko-domain`).
