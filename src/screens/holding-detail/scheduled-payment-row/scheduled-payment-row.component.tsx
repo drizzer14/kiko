@@ -13,9 +13,8 @@ import type { ScheduledPaymentRowProps } from './scheduled-payment-row.props';
 
 // One scheduled loan payment as a ledger entry, titled "Loan payment" with "Scheduled" as its
 // subtitle like a projected row, with the principal / interest split and the balance left once it
-// is paid. Its
-// day header comes from the list it sits in, and a due date has no time, so the card has no
-// caption under the amount. Memoized, since a 30-year mortgage can show 360 of them and an
+// is paid. Its day header comes from the list it sits in, and a due date has no time, so the card
+// has no caption under the amount. Memoized, since a 30-year mortgage can show 360 of them and an
 // unrelated screen render must not re-draw each one.
 const ScheduledPaymentRow: FC<ScheduledPaymentRowProps> = ({ installment, currency, style }) => {
   const { t } = useTranslation();

@@ -372,19 +372,7 @@ const giveSourceRowCategory = async (
   }
 
   // The row may be an exchange leg, whose label names its counterpart holding.
-  const labelHoldings = await databaseTransaction
-    .select({ id: holdings.id, name: holdings.name, currency: holdings.currency })
-    .from(holdings)
-    .where(
-      inArray(holdings.id, [
-        source.holdingId,
-        source.exchangeCounterpartHoldingId ?? source.holdingId,
-      ]),
-    );
-  const holdingNameById = new Map(labelHoldings.map((holding) => [holding.id, holding.name]));
-  const holdingCurrencyById = new Map(
-    labelHoldings.map((holding) => [holding.id, holding.currency]),
-  );
+  const { holdingNameById, holdingCurrencyById } = await readHoldingLabels(databaseTransaction);
   const winner = winningRule(
     prepared,
     subjectOfStoredRow({

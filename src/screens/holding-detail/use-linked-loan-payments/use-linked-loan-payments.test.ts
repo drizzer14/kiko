@@ -50,6 +50,18 @@ describe('useLinkedLoanPayments', () => {
     );
   });
 
+  it('hands a holding that is not a loan the same empty list on every render', async () => {
+    mockUseLiveQuery.mockImplementation(() => ({ data: [], isLoading: false }));
+
+    const { result, rerender } = await renderHook(() => useLinkedLoanPayments('card-1', false));
+    const before = result.current.payments;
+
+    await rerender({});
+
+    expect(result.current.payments).toBe(before);
+    expect(before).toEqual([]);
+  });
+
   it('never lists a payment for a holding that is not a loan, even if the read answered with one', async () => {
     mockUseLiveQuery.mockReturnValue({ data: [PAYMENT], isLoading: false });
 

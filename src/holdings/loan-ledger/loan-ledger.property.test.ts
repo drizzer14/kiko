@@ -144,7 +144,8 @@ describe('loan ledger property: remainders after each upcoming installment', () 
 // Which rows a linked payment pays, and how: a payment of a row's own amount at its due date,
 // of part of it, a few days late, or only some rows, so the loan's earlier rows are never linked.
 // A plan that pays every row from the first in full follows the schedule, so each remainder also
-// has the schedule's own balance of that row as an oracle that shares no code with the ledger.
+// has the schedule's own balance of that row as an oracle. It does not depend on the ledger's
+// remainder arithmetic, but it is not independent of the schedule the ledger reads.
 const PAYMENT_PLANS = [
   {
     label: 'every row in full',

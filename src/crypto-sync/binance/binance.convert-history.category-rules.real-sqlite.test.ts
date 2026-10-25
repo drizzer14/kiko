@@ -19,6 +19,7 @@ import {
   type BreakdownTransaction,
   buildCategoryBreakdown,
 } from '@kiko/statistics/category-breakdown';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { seedWalkMarks } from '@kiko/test-support/walk-marks';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
@@ -237,6 +238,7 @@ describe('a leg a rule reached, at a re-sync', () => {
 describe('the spending totals when a rule reaches exchange legs', () => {
   const DISPLAY = buildCategoryDisplayMap([
     { key: 'groceries', title: 'Groceries', icon: 'cart' },
+    { key: 'restaurants', title: 'Restaurants', icon: 'fork.knife' },
     { key: RULE_CATEGORY, title: 'Crypto', icon: 'bitcoinsign' },
     { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
   ]);
@@ -288,5 +290,60 @@ describe('the spending totals when a rule reaches exchange legs', () => {
     expect(categoryOfLegs(isOutgoingConvertLeg)).toEqual([RULE_CATEGORY, RULE_CATEGORY]);
     expect(before.map((slice) => slice.key)).toEqual(['groceries']);
     expect(spendingTotals()).toEqual(before);
+  });
+
+  // A bank-owned debit a Convert marks keeps only the pair id (no counterpart marker), and the
+  // statistics read the markers alone, so the row still counts as spending: a rule may move it
+  // between slices, and the total stays.
+  it('keep the total when a rule moves a synced debit with only a pair id between slices', async () => {
+    mockDatabase
+      .prepare("INSERT INTO accounts (id, name, kind) VALUES ('bank', 'Bank', 'bank')")
+      .run();
+    mockDatabase
+      .prepare(
+        `INSERT INTO holdings (id, account_id, name, type, currency) VALUES
+           ('bank-card', 'bank', 'Bank card', 'card', 'UAH'),
+           ('wallet', 'bank', 'Wallet', 'cash', 'UAH')`,
+      )
+      .run();
+    mockDatabase
+      .prepare(
+        `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category,
+           source)
+         VALUES ('coffee', 'bank-card', -5000, 1000, 'Coffee Roma', 'restaurants', 'monobank')`,
+      )
+      .run();
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'wallet',
+      counterpartType: 'cash',
+      amountMinorUnits: 5000,
+      existingTransactionId: 'coffee',
+      existingHoldingId: 'bank-card',
+      time: 1000,
+    });
+    const markers = mockDatabase
+      .prepare(
+        `SELECT exchange_pair_id IS NOT NULL AS hasPair,
+                exchange_counterpart_holding_id AS marker
+           FROM transactions WHERE id = 'coffee'`,
+      )
+      .get();
+    const before = spendingTotals();
+
+    const saved = await categoryRulesRepo.saveRule({
+      ...startingWith('Coffee'),
+      category: 'groceries',
+      applyToExisting: true,
+    });
+    const after = spendingTotals();
+    const totalOf = (slices: typeof before): number =>
+      slices.reduce((total, slice) => total + slice.amount, 0);
+
+    expect(markers).toEqual({ hasPair: 1, marker: null });
+    expect(saved.changed).toBe(1);
+    expect(before.map((slice) => slice.key)).toEqual(['restaurants']);
+    expect(after.map((slice) => slice.key)).toEqual(['groceries']);
+    expect(totalOf(after)).toBe(totalOf(before));
   });
 });

@@ -154,9 +154,9 @@ describe('openAccountsPages (real router)', () => {
     expect(accountsStack()).toEqual([LIST, CASH_PAGE, WALLET_PAGE]);
   });
 
-  // The plain navigate `useOpenInPane` falls back to outside a pane pushes the account page again
-  // instead of going back to the one below it, so the holding page the user came from stays under
-  // it and Back returns there.
+  // The plain navigate that `useOpenInPane` falls back to outside a pane pushes the account page
+  // again instead of going back to the one below it, so the holding page the user came from stays
+  // under it and Back returns there.
   it('pushes the account page again above the holding page that was opened from it, keeping that page for Back', async () => {
     await renderApp();
     await open(CASH, { screen: 'HoldingDetail', params: WALLET });

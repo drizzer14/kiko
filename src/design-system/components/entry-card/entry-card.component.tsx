@@ -11,8 +11,8 @@ import type { EntryCardProps } from './entry-card.props';
 
 /**
  * The shared ledger entry card: a `Card` holding a title and an amount on one row, an optional
- * leading cluster, a caption directly under the amount, and right-aligned footer lines beneath
- * the whole row. HoldingDetail's ledger rows (a
+ * subtitle directly under the title, an optional leading cluster, a caption directly under the
+ * amount, and right-aligned footer lines beneath the whole row. HoldingDetail's ledger rows (a
  * computed entry, a stored transaction) and its scheduled loan payments all render through it,
  * so the three can never drift apart.
  */

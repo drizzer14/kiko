@@ -4,7 +4,8 @@ import type { StyleProp, ViewStyle } from 'react-native';
 export type EntryCardProps = {
   // The entry's title, drawn as body text beside the amount.
   label: string;
-  // Smaller secondary text ("Planned", "Computed") drawn directly under the label, in its column.
+  // Smaller secondary text ("Computed", "Projected", "Scheduled") drawn directly under the label,
+  // in its column.
   subtitle?: string;
   // The trailing amount cell. The caller renders its own `MoneyText`, because the tone and
   // context differ per kind of entry.

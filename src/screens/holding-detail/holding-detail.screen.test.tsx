@@ -1851,7 +1851,7 @@ describe('HoldingDetailScreen', () => {
         expect(accountListEnabled()).toBe(false);
       });
 
-      it('re-reads the account list when the accounts table changes', async () => {
+      it('names the accounts table as the one the account list query reads', async () => {
         seedLoanWithLinkedPayment();
         await renderScreen();
 
@@ -2791,6 +2791,11 @@ describe('HoldingDetailScreen', () => {
 
       const [linked] = getAllByTestId('ledger-row');
 
+      expect(
+        within(linked).getByText(
+          `Principal ${money(one.principalMinorUnits)} · interest ${money(one.interestMinorUnits)}`,
+        ),
+      ).toBeTruthy();
       expect(within(linked).getByText(`Remaining ${money(one.balanceMinorUnits)}`)).toBeTruthy();
     });
 
