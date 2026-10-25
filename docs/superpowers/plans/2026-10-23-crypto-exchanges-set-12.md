@@ -582,7 +582,7 @@ Status (coordinator, 2026-10-23): Q1, Q2, Q4-Q9, Q12-Q15 = A, FINAL coordinator 
 10); Q3, Q10, Q11 = A, USER CONFIRMED 2026-10-23; Q18 = C, Q21 = A (N = 1), Q22 = B, Q23 = B, Q24 = B, Q27 = the fix, Q28 = the
 fix as the entry builds it, Q29 = A, Q30 = the fix, Q32 = the fix and Q33 = the fix, FINAL coordinator rulings;
 Q34 = refuse, Q35 = A + B fiat-only, Q36 = the fix, Q38 = the fix, Q39 = refuse and Q40 = whole milliseconds,
-OVERNIGHT DEFAULT, pending user.
+USER CONFIRMED 2026-10-25.
 
 - S12-Q1 (A, FINAL coordinator ruling) a TC/TW row that quotes no title (TC1, TC4, TW15, TW16). A: the doc test fails such a row; step 1/14 adds
   one exact existing title to each. B: a file-only row passes when the file exists. Recommend A: a file alone ties a
@@ -806,20 +806,20 @@ OVERNIGHT DEFAULT, pending user.
   17/25, 20/27, 19/29, orders 69/100, 81/108, 85/116 for z = 4, 5, 6; the other worlds are unchanged from S12-Q32
   (payments 1/1, 2/3, 3/5, 4/7, 6/9, 7/11, 9/13; orders 4/4, 11/12, 19/20, 25/28, 33/36, 41/44, 49/52, z = 0 ... 6).
   The file runs 3894 cases (4 min on one run at a load of about 5; it was 116 s before the dense worlds).
-- S12-Q34 (refuse, OVERNIGHT DEFAULT, pending user) a completed taker buy whose `fiat` text no code can carry (empty,
+- S12-Q34 (refuse, USER CONFIRMED 2026-10-25) a completed taker buy whose `fiat` text no code can carry (empty,
   or holding `:`). A: refused as `p2p-unrecognized` (one visible entry, the cursor moves on), as an order with no
   `fiat` field is (P12, P12b, and the `uncarriableFiat` category of the P2P properties). B: owe the point, as
   before: the walk threw `amount-malformed` on every run, the point stayed owed with nothing shown, and each run
   spent lane calls to read the window again. A is the default: the text is Binance's own and a re-read cannot
   change it, so owing it only hides the order. Order of the decision: the fiat is read after the coin (an order of
   a coin Kiko does not track reads no fiat), and before the amount values.
-- S12-Q35 (A + B fiat-only, OVERNIGHT DEFAULT, pending user) where the two fixes of S12-Q33 live. A + B: both in
+- S12-Q35 (A + B fiat-only, USER CONFIRMED 2026-10-25) where the two fixes of S12-Q33 live. A + B: both in
   `binance.fiat-history.ts`, around the engine's plan and hooks, with no change to the engine the other Binance
   walks share (they have no stuck-range split and no alternating turn, so neither cause is theirs). The other way is
   to build them in the engine, where every walk would read the same rule. A + B is the default: the shape is the
   fiat walks' (the stuck range and the turns are theirs), and a change to the engine would move the pins of every
   other walk for a stall they cannot meet.
-- S12-Q36 (the fix, OVERNIGHT DEFAULT, pending user) the fiat orders turns delete the forward and owed hints, not
+- S12-Q36 (the fix, USER CONFIRMED 2026-10-25) the fiat orders turns delete the forward and owed hints, not
   only the re-scan one (kiko:debugger proof, red by run). `planOfTurn` empties the windows of the passes a turn does
   not read and `hintsOfPlan` of the walk drops their stored hints, so a dense forward hour or a dense owed hour
   halves from scratch on every turn: 0 of 1002 rows imported in 60 runs (forward) and in 120 runs (old owed), and
@@ -844,7 +844,7 @@ OVERNIGHT DEFAULT, pending user.
   H = 16, failed the forward world on late records at 5 to 20 of 30 seeds on the moving clocks: slow, no stall.
   Red on the old hooks: 341 of 720 cases of the two worlds (all orders: 179 forward, 162 old owed; payments have
   no turns); green on the fix: 720 of 720; the whole file 4614 cases, about 360 s (it was about 260 s).
-- S12-Q38 (the fix, OVERNIGHT DEFAULT, pending user) an unreadable owed window or point is never recorded in the
+- S12-Q38 (the fix, USER CONFIRMED 2026-10-25) an unreadable owed window or point is never recorded in the
   lane budget (kiko:debugger proof, red by run). `budget.record` ran only after a page came back, so a request that
   threw was a made call the lane never counted; since S12-Q29 the pending and point passes go on after it, so 30
   owed points that all reject were 32 requests in one orders run with 2 recorded (cap 3; about 1.44M UID weight
@@ -858,14 +858,14 @@ OVERNIGHT DEFAULT, pending user.
   it now). A rate limit is a made call too, so it is recorded before the cooldown is set. The engine test stub of
   `walk.unreadable-window.test.ts` counts the calls the windows record, not the asks of `canAfford`. Pins moved:
   none.
-- S12-Q39 (refuse, OVERNIGHT DEFAULT, pending user) a fiat payment whose `fiatCurrency` is blank or holds `:`.
+- S12-Q39 (refuse, USER CONFIRMED 2026-10-25) a fiat payment whose `fiatCurrency` is blank or holds `:`.
   A: refused as `fiat-unrecognized` (one visible entry, the cursor moves on), the rule S12-Q34 gave the P2P orders,
   with `isAssetTicker` of `untracked-counterpart.ts` as the one test of a ticker a code can carry. B: owe the
   point, as before: `markerOf` threw `amount-malformed` on every run, the point stayed owed with nothing shown.
   A is the default for the reason of S12-Q34: the text is Binance's own and a re-read cannot change it. The check
   runs after the coin (an untracked coin reads no fiat) and before the amounts. The fiat orders walk is not
   changed: it takes the fiat as the coin of the row.
-- S12-Q40 (whole milliseconds, OVERNIGHT DEFAULT, pending user) a fractional `createTime` makes a point whose
+- S12-Q40 (whole milliseconds, USER CONFIRMED 2026-10-25) a fractional `createTime` makes a point whose
   request sends a decimal `beginTime`. The fiat client reads `createTime` as an integer, so such a record is
   unreadable and owes its point at `extent.start - 1` and `extent.end + 1`; the points pass then sends a decimal
   time, and a server that does not take one rejects every run (the answer is assumed, not probed). Built
