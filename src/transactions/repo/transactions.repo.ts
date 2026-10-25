@@ -1423,19 +1423,17 @@ export const bankOwnedTransactionSetWhere = sql.join(
 // the same rows.
 const GUARD_FIELD_IS_UNSET: Record<RewriteGuardField, SQL> = {
   categorySetByHand: sql`${transactions.categorySetByHand} = 0`,
-  exchangePairId: sql`${transactions.exchangePairId} IS NULL`,
-  exchangeCounterpartHoldingId: sql`${transactions.exchangeCounterpartHoldingId} IS NULL`,
-  untrackedCounterpart: sql`${transactions.untrackedCounterpart} IS NULL`,
   setsBalance: sql`${transactions.setsBalance} = 0`,
   changeGroupId: sql`${transactions.changeGroupId} IS NULL`,
 };
 
 // The refresh of a row a rule won at this batch: the bank-owned columns, and the rule's category
-// only when the row is one a rule may rewrite (`REWRITE_GUARD_FIELDS`: not picked by hand, not an
-// exchange leg, a balance-setting row or a split-change row) AND its amount changed, since the
-// amount is what the rules judge again. The CASE reads the OLD row (SQLite evaluates every SET
-// expression against it), so such a row, or a refresh with the same amount, keeps the category it
-// has. A row no rule won never reaches this set, so the bank's category is never written back.
+// only when the row is one a rule may rewrite (`REWRITE_GUARD_FIELDS`: not picked by hand, not a
+// balance-setting row or a split-change row; an exchange leg is rewritable) AND its amount
+// changed, since the amount is what the rules judge again. The CASE reads the OLD row (SQLite
+// evaluates every SET expression against it), so such a row, or a refresh with the same amount,
+// keeps the category it has. A row no rule won never reaches this set, so the bank's category is
+// never written back.
 const ruleWonTransactionSet = {
   ...bankOwnedTransactionSet,
   category: sql`CASE WHEN ${sql.join(

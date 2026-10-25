@@ -4,14 +4,13 @@ import { subjectOfStoredRow } from './rule-subject';
 import type { PreparedRules, RewriteCandidate } from './category-rules.d';
 
 // The fields that keep a row's category out of a rule's reach once they are set: a row the user
-// picked by hand, an exchange leg (a paired one, one with a counterpart holding, or a transfer to a
-// wallet Kiko does not track), a balance-setting row and a split-change row. The insert-time
-// refresh builds its SQL from this list too, typed over it, so the two cannot name different rows.
+// picked by hand, a balance-setting row and a split-change row. An exchange leg is NOT here: a rule
+// reaches it by the label it shows, on the insert, the rewrite and the re-sync refresh alike, and
+// the statistics leave it out of spending by its markers whatever category it holds. The
+// insert-time refresh builds its SQL from this list too, typed over it, so the two cannot name
+// different rows.
 export const REWRITE_GUARD_FIELDS = [
   'categorySetByHand',
-  'exchangePairId',
-  'exchangeCounterpartHoldingId',
-  'untrackedCounterpart',
   'setsBalance',
   'changeGroupId',
 ] as const satisfies readonly (keyof RewriteCandidate)[];

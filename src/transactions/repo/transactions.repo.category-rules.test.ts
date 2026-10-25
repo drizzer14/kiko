@@ -583,12 +583,30 @@ describe('a rule at a refresh', () => {
   // compile here until the refresh is proven to follow.
   const SET_FIELD: Record<RewriteGuardField, string> = {
     categorySetByHand: 'category_set_by_hand = 1',
-    exchangePairId: "exchange_pair_id = 'pair'",
-    exchangeCounterpartHoldingId: "exchange_counterpart_holding_id = 'usd'",
-    untrackedCounterpart: "untracked_counterpart = 'wallet:UMFUTURE'",
     setsBalance: 'sets_balance = 1',
     changeGroupId: "change_group_id = 'group'",
   };
+
+  const LEG_MARKER_SETS = [
+    ['a paired exchange leg', "exchange_pair_id = 'pair'"],
+    ['a leg with a counterpart holding', "exchange_counterpart_holding_id = 'usd'"],
+    ['a transfer to a wallet Kiko does not track', "untracked_counterpart = 'wallet:UMFUTURE'"],
+  ];
+
+  it.each(LEG_MARKER_SETS)(
+    'gives %s the category of the rule that wins at the new amount',
+    async (_label, markerSet) => {
+      insertRule('large', 'rent', [largeAmount]);
+      await transactionsRepo.addManyDedup([
+        syncItem('k1', { amountMinorUnits: -49_900, hold: true }),
+      ]);
+      run(`UPDATE transactions SET ${markerSet} WHERE external_id = 'k1'`);
+
+      await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -50_100 })]);
+
+      expect(categoryOf('k1')).toBe('rent');
+    },
+  );
 
   it.each(REWRITE_GUARD_FIELDS)(
     'leaves a row with %s set alone when it settles at an amount a rule wins',
