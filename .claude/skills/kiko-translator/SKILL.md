@@ -446,9 +446,13 @@ value (not the source text, so a template literal or a computed value
 is caught too):
 
 - The apostrophe inside a Ukrainian word is the modifier letter `ʼ` (U+02BC),
-  never the ASCII `'` — e.g. "пʼять", never "п'ять". The test enforces the
-  ASCII ban (`ASCII_APOSTROPHE_IN_CYRILLIC_WORD` in
-  `src/i18n/locales/uk.catalog-rules.test.ts`); read it there.
+  never the ASCII `'` and never the right single quote U+2019 inside a
+  Cyrillic word — e.g. "пʼять", never "п'ять". The test enforces both bans
+  (`ASCII_APOSTROPHE_IN_CYRILLIC_WORD` and `RIGHT_QUOTE_IN_CYRILLIC_WORD` in
+  `src/i18n/locales/uk.catalog-rules.test.ts`); read it there. A closing
+  quote outside a Cyrillic-letter pair is allowed. The same rule holds for
+  the Ukrainian sentences of `docs/privacy-policy.md` and
+  `docs/privacy-site/index.html`, which stay byte-equal (Q8 = A).
 - The app name in `uk` strings is always the Cyrillic "Кіко", never
   the Latin "Kiko". English strings keep "Kiko" — this rule applies to
   `uk.ts` only.

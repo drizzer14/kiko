@@ -1,11 +1,11 @@
-import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
+import { startOfLocalDay } from '@kiko/dates';
 import { logFailure } from '@kiko/diagnostics';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
-import { matchLoanPayments, WINDOW_BEFORE_DAYS } from '../payment-matcher';
+import { matchLoanPayments } from '../payment-matcher';
 
 /**
  * Runs the loan-payment auto-link matcher (`src/loans/payment-matcher/`)
@@ -41,11 +41,12 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
 
     // Bound the candidate read (op-sqlite's single-worker queue makes a
     // whole-table scan costly) to every loan's own currency and no earlier
-    // than the earliest start date minus the match window's own
-    // before-margin — the SAME constants `withinDateWindow` checks against,
-    // so this can never exclude an installment the matcher would otherwise
-    // consider. Unparseable metadata contributes no bound here, matching
-    // `matchLoanPayments`'s own treatment of it as having no installments.
+    // than the start of the earliest start day (a payment ON that day counts
+    // at any time of day) — a payment before it counts nowhere
+    // (`withinDateWindow`, `buildLedger`), so this can never exclude an
+    // installment the matcher would otherwise consider. Unparseable metadata
+    // contributes no bound here, matching `matchLoanPayments`'s own treatment
+    // of it as having no installments.
     const loanMetas = loanHoldingRows
       .map((row) => asLoanMeta(row.metadata))
       .filter((meta): meta is LoanMeta => meta !== null);
@@ -59,7 +60,7 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
 
     const [candidateRows, linkedPaymentRows] = await Promise.all([
       transactionsRepo.loanMatchCandidatesQuery({
-        minTime: earliestStartDate - WINDOW_BEFORE_DAYS * DAY_MS,
+        minTime: startOfLocalDay(earliestStartDate),
         currencies,
       }),
       // An already-linked row is excluded from `candidateRows` above, so the

@@ -27,7 +27,10 @@ export const styles = StyleSheet.create((theme) => ({
     justifyContent: 'space-between',
     alignItems: 'flex-end',
   },
+  // The link icon and the caption share one line's centre; without it the 16pt icon sits at the
+  // top of the shorter caption line.
   rowFooterMeta: {
     flex: 1,
+    alignItems: 'center',
   },
 }));

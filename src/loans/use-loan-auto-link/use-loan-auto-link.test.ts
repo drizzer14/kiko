@@ -1,7 +1,6 @@
-import { DAY_MS } from '@kiko/dates';
+import { startOfLocalDay } from '@kiko/dates';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
-import { WINDOW_BEFORE_DAYS } from '@kiko/loans/payment-matcher';
 
 const mockLoanHoldingsQuery = jest.fn();
 const mockLoanMatchCandidatesQuery = jest.fn();
@@ -119,16 +118,21 @@ describe('runLoanAutoLink', () => {
   });
 
   // Bound the candidate read (op-sqlite queue) to the earliest loan's own
-  // start date minus the match window's before-margin, and to the open
-  // loans' own currencies — never a whole-table scan.
-  it('bounds loanMatchCandidatesQuery to the earliest loan start minus the window margin, and to the loan currencies', async () => {
+  // start DAY and to the open loans' own currencies — never a whole-table
+  // scan. A payment before the start day counts nowhere, so none of the
+  // days before it are fetched; a payment ON the start day counts whatever
+  // its time of day, so the bound is the day's start, not the stored instant.
+  // `jest.config.js` pins the zone, so the test cannot switch it: the stored
+  // start has a time of day after local midnight instead.
+  it('bounds loanMatchCandidatesQuery to the start of the earliest loan start day and to the loan currencies', async () => {
     mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
     mockLoanMatchCandidatesQuery.mockResolvedValue([]);
 
     await runLoanAutoLink(NOW);
 
+    expect(startOfLocalDay(loanMeta.startDate)).toBeLessThan(loanMeta.startDate);
     expect(mockLoanMatchCandidatesQuery).toHaveBeenCalledWith({
-      minTime: loanMeta.startDate - WINDOW_BEFORE_DAYS * DAY_MS,
+      minTime: startOfLocalDay(loanMeta.startDate),
       currencies: ['UAH'],
     });
   });

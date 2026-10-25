@@ -1015,10 +1015,16 @@ exclusion runs over the account-filtered rows.
 A linked loan payment ("interest-only
 spending") is excluded the same way, but REPLACED rather than simply
 dropped: the loan-payments module (`src/statistics/loan-payments/`)
-exports `loanPaymentExcludedTransactionIds(transactions, loanHoldings)`, which
+exports `loanPaymentExcludedTransactionIds(transactions, loanHoldings)`
+(transactions carry `time`; `loanHoldings` are full `LoanHolding` rows
+with `metadata`), which
 drops a row from the pie/trend the same way every other exclusion
 rule does, IF AND ONLY IF its `transactions.loanHoldingId` marker
-points at a holding present in `loanHoldings` — a dangling link (its loan holding was
+points at a holding present in `loanHoldings`, in the same currency, AND
+the payment is on or after the loan's start day
+(`isOnOrAfterLoanStartDay`). A pre-start linked payment is ordinary
+spending (user ruling Q7 = A); a loan whose metadata cannot be read stays
+excluded; the interest mapping inherits the rule. A dangling link (its loan holding was
 deleted — `transactionsRepo.removeHolding`/`accountsRepo.remove` already clear
 the marker transactionally the moment that happens) is NOT
 excluded, so it counts as ordinary spending under its own category,
@@ -1073,6 +1079,8 @@ always, and the marker only when it is manual or imported and carries none; see
   `holdingNameById` and `holdingCurrencyById`, both built from the holdings live
   query. A persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
+  `ruleDescriptionOf` (`src/transactions/row-description/rule-description.ts`) is
+  the second reader of a blank row's label, for category-rule matching.
 - `transactions.untrackedCounterpart` (0058, nullable) holds a stored counterpart code for
   a leg whose other side the app does not track: a wallet, an asset, or a P2P, card or bank
   fiat. The forms and parse rules are `parseUntrackedCounterpart`
@@ -2367,7 +2375,9 @@ decimal-string rule.
   (`installmentIndexOf` and the ledger count rows) and its trailing rows
   are zero-payment rows. The LAST principal is whatever balance remains, so
   the principals sum exactly to the loan principal and the schedule ends at
-  exactly 0. Read `loanInstallments` and `isScheduledPayment` in
+  exactly 0. Payment 1 is due ON `startDate`; row k is
+  `addMonths(startDate, k - 1)`. Read `loanInstallments` and
+  `isScheduledPayment` in
   `src/holdings/loan-schedule/loan-schedule.ts`; its test
   (`loan-schedule.test.ts`) pins the invariants.
   A fix to shared money math ships with a property test of the invariant AND
@@ -2382,7 +2392,12 @@ decimal-string rule.
   day) anchors a fresh baseline value; only the scheduled PRINCIPAL
   due STRICTLY AFTER that correction's day (and at or before `instant`)
   is subtracted from it. With no correction ever recorded, the anchor
-  is simply the loan's own principal at `startDate`. Either path
+  is simply the loan's own principal at `startDate`, and rows due ON or
+  after (`>=`) that day are subtracted, because payment 1 is due on the
+  start day. The read is 0 before the start day
+  (`isOnOrAfterLoanStartDay`, exported from `loan-schedule.ts` and shared
+  by the schedule, the ledger, the matcher, statistics and
+  `use-loan-fields`). Either path
   clamps to 0 — an overpaid/over-corrected loan reads as paid off,
   never negative. The anchor itself is `loanAnchorAt(meta, holdingId,
   book, instant)` — `LoanAnchor`, `{ dayKey, valueMinorUnits,
@@ -2406,15 +2421,18 @@ decimal-string rule.
   unpaid one), and each installment's scheduled interest is counted
   ONCE across every payment mapped to it: earliest payment first, each
   counts what is left of that interest, capped at its own `|amount|`;
-  the rest is principal. So an installment paid in two halves (9 and 10
-  Feb) counts its interest on the first half only, and a partial
+  the rest is principal. So an installment paid in two halves (two
+  payments a day apart before the same due date; `loan-schedule.test.ts`,
+  "counts an installment paid in two halves") counts its interest on the
+  first half only, and a partial
   payment never counts more interest than it actually paid. Always pass
   ALL of one loan's counted payments together — interest per payment
   one at a time counted a split installment's interest twice. A payment MORE THAN ONE PERIOD outside the
-  schedule (before `addMonths(startDate, 0)`, after
-  `addMonths(startDate, installments.length + 1)`) counts 0 instead of
-  still mapping to the nearest boundary installment — both bounds are
-  inclusive, only a payment strictly beyond one counts 0.
+  schedule is not mapped: a payment
+  before the START DAY (lower bound = the start day,
+  `isOnOrAfterLoanStartDay`) counts 0, and so does one past the upper
+  bound, `addMonths(startDate, installments.length)`, inclusive. A start-day
+  payment IS row 1. Read `installmentIndexOf` for both bounds.
 - `loanPlanOf(meta)` → `LoanPlan` (`{ installments, dueDayKeys }`): the
   table plus each row's day key, built ONCE per loan. `loanOutstandingMinorAt`
   and `loanInterestPerPaymentMinor` take it as an optional last argument
@@ -2431,7 +2449,10 @@ payments from the `PriceBook` (`book.loanPayments`, kiko-pricing — one
 live read of every linked payment across all loans, never a query per
 holding). A payment COUNTS for an instant when it is a debit, in the
 loan's own currency (the rule `loanPaymentExcludedTransactionIds`
-applies), and its LOCAL day is on or before the instant's local day —
+applies), is on or after the loan's start day (`buildLedger` ignores a
+pre-start payment in the branch choice, paid-so-far, principal and
+outstanding; user ruling Q6 = A), and its LOCAL day is on or before the
+instant's local day —
 the local-day rule a ledger holding's running balance follows, so a
 net-worth bucket sees the payer card's debit and the loan's drop
 together.
@@ -2444,7 +2465,9 @@ together.
   a loan with no linked payment values as it always did). Otherwise:
   the anchor minus the principal part (`|amount|` minus its
   `loanInterestPerPaymentMinor` share minus its within-tolerance excess) of each counted payment dated strictly
-  after the anchor's day, clamped at 0; 0 before the start day. The
+  after a correction anchor's day (ON or after the day for the start-day
+  anchor, since payment 1 is due then; `loanLedgerOutstandingMinorAt`),
+  clamped at 0; 0 before the start day. The
   anchor (`ledgerAnchorAt`) is the latest correction on or before the
   instant (`loanAnchorAt`); with none, an `annuity`/`differentiated`
   loan anchors on the SCHEDULE outstanding (`loanOutstandingMinorAt`)
@@ -2462,8 +2485,9 @@ together.
   every loan with a late first link by one installment's principal. So
   the history never steps up at the first link: it follows the schedule
   up to that day, then drops by each linked payment's principal part. A
-  `none` loan (no schedule), or a first link on or before the start day,
-  keeps the principal at the start day. A payment on or before a
+  `none` loan (no schedule) keeps the principal at the start day. A link
+  before the start day is ignored. A link ON the start day is payment 1
+  and counts. A payment on or before a
   correction's day is already inside that correction. The ledger (the `LoanPlan` plus
   every paying-down payment with its day key, interest part and excess) is built
   once per `PriceBook` and cached in a `WeakMap` keyed by the book, then
@@ -2475,12 +2499,24 @@ together.
   `none`), `principalRepaidMinorUnits` (Σ principal parts; fees are left out, and
   `paidSoFarMinorUnits` stays the bank total, so the rows are not an equation), and
   `outstandingMinorUnits` (the function above at `now`).
+- `loanRemaindersAfterMinor(meta, loan, book, now, rows)` → one balance
+  per upcoming row (`UpcomingLoanInstallment`, a `LoanInstallment` plus
+  `remainderMinorUnits`): the header outstanding minus a running total of
+  the scheduled principal the header does not already count, floored at
+  0. Schedule branch: a row due on or before today is counted. Ledger
+  branch: a row subtracts `max(0, row principal - principal paid by the
+  counted payments mapped to it)`, so a partly paid row keeps its unpaid
+  principal. Pins: `loan-ledger.property.test.ts` and its due-today row;
+  read `loan-ledger.ts`.
 
 Known limit: with linked payments and no correction, the outstanding
 before the first link is the schedule's, so a loan paid off faster or
 slower than its schedule before the first link reads off by that
 difference until the user records a correction ("Update
 outstanding").
+
+Known limit: a manual link before the start day is ignored by money but
+still listed in the loan's list (a display-only gap).
 
 Known limit: a MANUAL loan link (not the automatic ±7-day matcher) more
 than half an installment period late still maps to its nearest
@@ -2556,30 +2592,27 @@ the shared `SummaryTable`: Principal / Paid so far / Interest paid /
 Principal repaid / Outstanding (`loanLedgerSummary`, above; testIDs
 `loan-ledger-principal`, `-paid-so-far`, `-interest-paid`,
 `-principal-repaid`, `-outstanding`). Its Outstanding row is the same
-number as the Value header, the card, and net worth.
-An `'annuity'`/`'differentiated'` loan additionally lists EVERY remaining
-scheduled payment under an "Upcoming Payments" heading (the loan entry's
-own `upcomingInstallments` — every `loanInstallments` row that
+number as the Value header, the card, and net worth. Principal repaid is
+hidden when it equals Paid so far (`showsPrincipalRepaid` in the screen). An
+interest-0 split reads `holdingDetail.paymentSplitPrincipalOnly`
+(`paymentSplitText`, `src/screens/holding-detail/payment-split-text/`).
+An `'annuity'`/`'differentiated'` loan additionally lists the next scheduled
+installments in the loan's ONE day-grouped ledger, beside its linked payments
+(the loan entry's own `upcomingInstallments` — every `loanInstallments` row that
 `isScheduledPayment` accepts and that is due on or after today's local day
-(zero-payment rows after an early payoff are skipped), in schedule order; its first row is the next
-installment). `UpcomingPayments`
-(`src/screens/holding-detail/upcoming-payments/`, memoized) draws them as
-ledger cards: one `UpcomingPaymentRow` (`upcoming-payment-row/`) per
-installment, built on the shared `EntryCard` under an `EntryDateHeader`. The
-title is `holdingDetail.loanPayment`, the amount is the payment read signed
-and red like a Linked Payments row (display-only negation through
-`MoneyText` with `context="transaction"`, the same call; the accessibility
-label reads the signed amount; the principal / interest split stays
-unsigned), and the footer is the `holdingDetail.scheduled` caption, then the
-`holdingDetail.paymentSplit` caption. Read `upcoming-payment-row.component.tsx`
-for the exact row testIDs. Only the first `UPCOMING_PAYMENT_PREVIEW_COUNT`
-installments render (see `upcoming-payments.component.tsx`). A shared
-`ExpandToggle` (testID `upcoming-payments-toggle`) shows only when more
-exist, and reveals or re-hides the rest. A 30-year mortgage still has 360
-installments in the list, but only the preview count mounts until expanded.
-The screen memoizes the list on the local day, so it is not rebuilt on every
-render. A `'none'` schedule and every other holding type render nothing
-there. The list is also empty once `loanLedgerOutstandingMinorAt` reads 0
+(zero-payment rows after an early payoff are skipped), in schedule order; its
+first row is the next installment). Read the screen's `LedgerRow` (a
+`kind: 'scheduled'` row), `scheduled-payment-row/`, `use-scheduled-preview/`
+(the preview count and the expand toggle) and `use-linked-loan-payments/`
+under `src/screens/holding-detail/`. A scheduled row is built on the shared
+`EntryCard`, signed and red like a linked row; read
+`scheduled-payment-row.component.tsx` for its lines. A linked payment card
+shows `paymentSplitText` plus `holdingDetail.remainingBalance`
+(`loanLinkedPaymentBreakdownsMinor` in `loan-ledger.ts`, which shares
+`balanceAfterPaymentsMinor` with the outstanding read). An ignored payment
+(before the start, another currency, a credit, a future one) shows neither.
+A `'none'` schedule and every other holding type list no scheduled rows.
+The scheduled list is also empty once `loanLedgerOutstandingMinorAt` reads 0
 (`upcomingInstallments`' own `<= 0` guard) — a loan fully repaid by its
 linked payments, or overpaid/over-corrected, lists nothing even while
 `loanInstallments` still has future rows on the loan's ORIGINAL schedule.
@@ -2622,8 +2655,7 @@ series against what the metadata edit just changed:
   OLD start day (`{ kind: 'delete', day }`) — the first point its create
   wrote, holding the OLD principal. Left in place, `loanAnchorAt` reads
   it as a correction and the schedule counts down from the old principal
-  (100,000 informal -> annuity 120,000 read 63,138.55 instead of
-  83,138.55). Moving it to the new start day is NOT equivalent: a
+  (pinned in `use-loan-fields.test.ts`). Moving it to the new start day is NOT equivalent: a
   correction anchor (`fromCorrection: true`) skips the ledger's
   "schedule before the first link" anchor. Any later correction stays —
   it is still valid for a scheduled loan.
@@ -2756,7 +2788,9 @@ first):
    scheduled payment as a fee, not principal; the cap is decided by amount
    alone, for an auto or a manual link.
 2. **Date**: the transaction's local day is 3 days before to 7 days after
-   the installment's own `dueDate` — both bounds inclusive.
+   the installment's own `dueDate` — both bounds inclusive — and never
+   before the loan's start day (`withinDateWindow` clamps with
+   `isOnOrAfterLoanStartDay`; row 1's window opens ON the start day).
 3. **A third signal**, at least one of: the transaction's `holdingId`
    equals the loan's own `paymentHoldingId`; its `counterIban` equals the
    loan's own `lenderIban` (both compared through `normalizeIban` — strips
@@ -2780,8 +2814,10 @@ false), and not one leg of an Exchange/Convert (the structural
 loanMatchCandidatesQuery({ minTime, currencies })` pre-filters all four in
 SQL (P-NOWORK: never read a row the matcher can never link) plus bounds the
 scan to `time >= minTime` and `currencies` (the caller derives `minTime`
-as the earliest open loan's own `startDate` minus the match window's
-own 3-day before-margin, and `currencies` as the open loans' own distinct
+as `startOfLocalDay` of the earliest open loan's own `startDate`, one
+eligibility definition with the matcher; `WINDOW_BEFORE_DAYS` is private
+to the matcher and `use-loan-auto-link` no longer imports it, and
+`currencies` as the open loans' own distinct
 currencies — never a whole-table scan), and the pure function also
 re-checks the four eligibility conditions itself, so it stays correct when
 unit-tested directly. An informal (`'none'`-schedule) loan is never
@@ -2791,7 +2827,8 @@ A zero-payment row is never a matcher candidate
 (`src/loans/payment-matcher/payment-matcher.ts`), because the matcher's 1.00
 tolerance floor would otherwise match a debit of up to 1.00.
 `now` bounds installments to `dueDate <= now + 3 days` (the window's own
-before-margin) — a cheap UPPER bound only, never a lower one, so a freshly
+before-margin) — a cheap UPPER bound only, never a lower one (the lower
+bound is the loan start day, above), so a freshly
 created/edited loan backfills its WHOLE past history the first time this
 runs.
 
@@ -2897,17 +2934,19 @@ carries `selectedLoanHoldingId`, regardless of the row's own amount
 sign — a linked row later edited from debit to credit must still reach the
 field where None/Undo live.
 
-**The loan holding-detail screen's own "Linked Payments" section is the
-only way to review an auto link** (a loan is ledgerless, so it carries no
-ledger of its own transactions worth reviewing there instead): every
-transaction linked (manual or auto) to that loan, newest first, via
-`transactionsRepo.listLinkedToLoanQuery(loanHoldingId)` — one live query,
-disabled outright for a non-loan holding. It reuses the same
-`LedgerRowItem` (and its own loan-link marker) the main ledger FlatList
-renders, as a plain `.map` rather than a second virtualized list (one
-loan's own linked payments is always small); tapping a row opens the
-transaction form, where None/Undo live. The section renders nothing at all
-once there are none — no placeholder heading over an empty list.
+**The loan holding-detail screen's own list is the only way to review an
+auto link** (a loan is ledgerless, so it carries no ledger of its own
+transactions to review). There is no separate Linked Payments section, divider
+or heading: a loan shows the same Transactions divider and heading as any
+holding, and every transaction linked (manual or auto) to that loan is a list
+row, via `useLinkedLoanPayments` (`transactionsRepo.listLinkedToLoanQuery`,
+one live query, disabled outright for a non-loan holding). A row with a blank
+label shows the payer holding's name. Tapping a row opens the transaction
+form, where None/Undo live. With no row at all the list shows an `EmptyState`
+(`holding-detail-loan-payments-empty`,
+`holdingDetail.emptyLoanPayments.title`/`.message`). A loan also reads
+`accountsRepo.listQuery()` for the View actions. Code: the list in
+`src/screens/holding-detail/holding-detail.screen.tsx`.
 
 ## A holding is deleted only after its cascade
 

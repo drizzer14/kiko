@@ -74,6 +74,7 @@ import {
   readOnlyNoticeKey,
   resolveBlankLabel,
   resolveDescriptionPlaceholder,
+  resolveRuleDescription,
   signedMinorUnits,
   storedDescription,
 } from './row-labels';
@@ -554,6 +555,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     time,
     mode,
     currency: holding?.currency ?? null,
+    ruleDescription: (typed) =>
+      resolveRuleDescription({ description: typed, holding, existing, holdings, mode, t }),
     initial: { category: opening.selectedCategory, isPicked: opening.userPickedCategory },
   });
   // A draft the route carries holds every field, so the stored row never seeds over it.
