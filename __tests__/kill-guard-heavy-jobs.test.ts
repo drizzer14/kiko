@@ -135,6 +135,10 @@ const ALLOWED_AROUND_HEAVY_JOBS: string[] = [
   `bash scripts/job-queue.sh gate ${WORKTREE} label base head`,
   `bash scripts/job-queue.sh check-all ${WORKTREE} label`,
   `bash scripts/job-queue.sh security ${WORKTREE} label`,
+  // Green at once: the queue script is exempt from the content scan (isQueueScript), so the new
+  // class needs no deny-list change.
+  `bash scripts/job-queue.sh harness-verify ${WORKTREE} label`,
+  `caffeinate -i bash scripts/job-queue.sh harness-verify ${WORKTREE} label`,
   'bash scripts/job-queue.sh status',
   'bash scripts/job-queue.sh hold label',
   'bash scripts/job-queue.sh release',

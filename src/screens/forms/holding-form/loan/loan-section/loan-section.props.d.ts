@@ -3,6 +3,7 @@ import type { TextInputInstance } from 'react-native';
 import type { TermUnit } from '@kiko/screens/forms/term-reasons';
 import type { LoanSchedule } from '@kiko/holdings/holding-metadata';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type LoanSectionProps = {
@@ -45,7 +46,7 @@ export type LoanSectionProps = {
   paymentHoldingOptions: readonly HoldingSelectOption[];
   // Opens the create form from the "Paid from" sheet's "Add holding" row, which
   // shows only while `paymentHoldingOptions` is empty. Omit it to show no row.
-  onCreatePaymentHolding?: () => void;
+  onCreatePaymentHolding?: (handbackId: HandbackId) => void;
   lenderName: string;
   onChangeLenderName: (text: string) => void;
   lenderIban: string;

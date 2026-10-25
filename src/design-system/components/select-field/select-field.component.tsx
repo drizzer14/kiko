@@ -1,5 +1,5 @@
 import maybe, { foldMap } from 'fnts/maybe';
-import { type ReactElement, useRef, useState } from 'react';
+import { type ReactElement, useEffect, useRef, useState } from 'react';
 
 import Box from '../box';
 import Text from '../text';
@@ -31,24 +31,42 @@ const SelectField = <Option extends string>({
   required,
   disabled,
   error,
+  emptyAction,
   testID,
 }: SelectFieldProps<Option>): ReactElement => {
   const [open, setOpen] = useState(false);
   const selectedOption = maybe(selected);
-  // The pick the sheet is closing for, held until the close has finished: a
-  // sheet closed by a scrim tap leaves it empty, so `onSelectClosed` never
-  // fires without a pick.
-  const pendingPick = useRef<Option | undefined>(undefined);
+  // What the sheet is closing for (a pick or the empty action), held until the
+  // close has finished: a sheet closed by a scrim tap leaves it empty, so
+  // nothing fires without a pick or the action. A pick keeps only the option,
+  // so the close runs the LATEST `onSelectClosed`, which sees the state the
+  // pick just set, not the one the pick rendered with.
+  const pendingClose = useRef<{ option: Option } | { action: () => void } | undefined>(undefined);
+  const latestSelectClosed = useRef(onSelectClosed);
+
+  // The host re-renders on the pick with a callback that closes over the picked state, and the
+  // sheet reports its close with the handler it was last given, which may be older still.
+  useEffect(() => {
+    latestSelectClosed.current = onSelectClosed;
+  });
   // Set in the same batch that hides the sheet, so the one render that hides
   // it hands the Modal `'none'` (native reads the animation flag again on that
   // very commit); the next open clears it, so the next open fades in.
   const [closingWithoutAnimation, setClosingWithoutAnimation] = useState(false);
 
   const handleSelect = (option: Option): void => {
-    pendingPick.current = option;
+    pendingClose.current = { option };
     setClosingWithoutAnimation(closesWithoutAnimation?.(option) ?? false);
     setOpen(false);
     onSelect(option);
+  };
+
+  // The action leaves the screen, so it waits for the close like a pick that
+  // navigates, and skips the fade: the fade is only a wait.
+  const handleEmptyAction = (onPress: () => void): void => {
+    pendingClose.current = { action: onPress };
+    setClosingWithoutAnimation(true);
+    setOpen(false);
   };
 
   const handleOpen = (): void => {
@@ -57,9 +75,14 @@ const SelectField = <Option extends string>({
   };
 
   const handleClosed = (): void => {
-    foldMap(maybe(pendingPick.current), (option) => {
-      pendingPick.current = undefined;
-      onSelectClosed?.(option);
+    foldMap(maybe(pendingClose.current), (pending) => {
+      pendingClose.current = undefined;
+
+      if ('action' in pending) {
+        pending.action();
+      } else {
+        latestSelectClosed.current?.(pending.option);
+      }
     });
   };
 
@@ -109,6 +132,16 @@ const SelectField = <Option extends string>({
             />
           );
         })}
+
+        {emptyAction && options.length === 0 && (
+          <SelectableRow
+            selected={false}
+            onPress={() => handleEmptyAction(emptyAction.onPress)}
+            label={emptyAction.label}
+            icon="plus"
+            testID={testID ? `${testID}-empty-action` : undefined}
+          />
+        )}
       </BottomSheet>
     </Box>
   );

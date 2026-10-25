@@ -39,5 +39,12 @@ export type SelectFieldProps<Option extends string> = {
   // Same contract as every other field: FieldTrigger renders this under the
   // field (reflow, not reserve) and tints the label negative.
   error?: string;
+  // One extra row, shown only while `options` is empty, for the way out of an
+  // empty list (create the first option). The caller resolves `label`, so the
+  // field stays translation-agnostic. Like a navigating pick, `onPress` runs
+  // once after the sheet has FINISHED closing (never on the press itself), and
+  // the sheet closes with no animation; it is never reported to `onSelect` or
+  // `onSelectClosed`.
+  emptyAction?: { label: string; onPress: () => void };
   testID?: string;
 };

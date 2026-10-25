@@ -7,6 +7,7 @@ import type { Currency } from '@kiko/currency/currency';
  * both the holding row and `price_points`.
  */
 export type LoanLedgerPayment = {
+  transactionId: string;
   loanHoldingId: string | null;
   time: number;
   amountMinorUnits: number;

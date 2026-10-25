@@ -1208,7 +1208,15 @@ describe('buildNetWorthSeries', () => {
           source: 'manual',
         },
       ],
-      [{ loanHoldingId: 'loan', time: paymentTime, amountMinorUnits: -10_000_00, currency: 'UAH' }],
+      [
+        {
+          transactionId: 'payment-1',
+          loanHoldingId: 'loan',
+          time: paymentTime,
+          amountMinorUnits: -10_000_00,
+          currency: 'UAH',
+        },
+      ],
     );
 
     const series = buildNetWorthSeries({
@@ -1282,6 +1290,7 @@ describe('buildNetWorthSeries', () => {
       },
     });
     const payments = Array.from({ length: 60 }, (_, index) => ({
+      transactionId: `payment-${index}`,
       loanHoldingId: 'loan',
       time: new Date(2021, index, 15, 10).getTime(),
       amountMinorUnits: -30_000_00,

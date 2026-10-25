@@ -2829,7 +2829,7 @@ SPEC CHECKSUMS:
   React-viewtransitionnativemodule: 58beffacaaf421485140cbccd7952dbcf8292df7
   React-webperformancenativemodule: 6af78dd64cb5a586b13da7a265329491908505f8
   ReactAppDependencyProvider: 531dee09fa5ac21ef8a236a0c4767c3b2f9db977
-  ReactCodegen: d29e935e4932b9412b547d2d4d6a8d1679450a5e
+  ReactCodegen: 91d78f07a49931c5928e2a01c59db8201aa29cdb
   ReactCommon: 59c2e19772dfac038571c93ed25fcb9c3b318227
   ReactNativeBiometrics: 0bb07c42709936f7bc750a020d8838e547178a55
   ReactNativeDependencies: 94c922c39e0e6150ee9ad05e2ca1946e0ef55783

@@ -1,6 +1,6 @@
 import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
-import { fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { DAY_MS } from '@kiko/dates';
 import {
@@ -9,9 +9,15 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import {
+  closeHandback,
+  handBackCreatedOption,
+  openHandback,
+} from '@kiko/screens/forms/use-select-created-option';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { TemplateNameTakenError } from '@kiko/transaction-templates/repo';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import { pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { EMPTY_DRAFT, type TemplateDraft } from '@kiko/transaction-templates/draft';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
@@ -251,14 +257,18 @@ const setLiveData = ({
 
 const navigation = navigationSpy();
 
+// The screen's own navigation context, which an empty picker's round trip hears the screen's focus
+// through; a test fires it with `fireFocus`.
+const { provide, fireFocus } = makeFocusNavigation();
+
 const templateScreen = (params: TransactionFormParams = { templateId: 'tpl' }) => {
   routeTemplateId = readRouteEntry(params).templateQueryId;
 
-  return (
+  return provide(
     <TransactionFormScreen
       route={asRouteProp<TransactionFormProps['route']>('TransactionForm', params)}
       navigation={asNavigationProp<TransactionFormProps['navigation']>(navigation)}
-    />
+    />,
   );
 };
 
@@ -642,6 +652,37 @@ describe('TransactionFormScreen — Add template', () => {
     });
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
     expect(mockRecordManual).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      title: 'saves a new template and hands its id back to the handback id in its route params',
+      settle: () => mockCreateTemplate.mockResolvedValue('new'),
+      handedBack: 'new',
+      goBackCalls: 1,
+      alertCalls: 0,
+    },
+    {
+      title: 'hands nothing back when the template create write fails',
+      settle: () => mockCreateTemplate.mockRejectedValue(new Error('disk full')),
+      handedBack: undefined,
+      goBackCalls: 0,
+      alertCalls: 1,
+    },
+  ])('$title', async ({ settle, handedBack, goBackCalls, alertCalls }) => {
+    setLiveData({ draft: EXPENSE, latestManualHoldingId: 'h1' });
+    settle();
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const handbackId = openHandback();
+    const { getByLabelText } = await render(templateScreen({ newTemplate: true, handbackId }));
+
+    await fireEvent.changeText(getByLabelText('Template name'), 'Rent');
+    await pressSave(navigation.setOptions);
+
+    expect(alertSpy).toHaveBeenCalledTimes(alertCalls);
+    expect(navigation.goBack).toHaveBeenCalledTimes(goBackCalls);
+    expect(closeHandback(handbackId)).toBe(handedBack);
   });
 
   it('stores what was entered, with the category lowercased and no date', async () => {
@@ -1720,6 +1761,119 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       await fireEvent.press(tabs.getByText('Manual'));
 
       expect(utils.getByLabelText('Amount').props.value).toBe('42');
+    });
+  });
+
+  describe('from the empty Template tab', () => {
+    const CREATED = { id: 'created', name: 'Rent', draft: EXPENSE };
+
+    // The id the pushed new-template form carries in its route params.
+    const pushedHandbackId = (): string => navigation.push.mock.calls[0][1].handbackId;
+
+    const openTemplateTab = async (utils: Utils): Promise<void> => {
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+    };
+
+    const pressAddTemplate = async (utils: Utils): Promise<void> => {
+      await fireEvent.press(utils.getByTestId('template-field'));
+      const sheet = utils.getByTestId('template-field-sheet-modal');
+      await fireEvent.press(utils.getByTestId('template-field-empty-action'));
+      await act(async () => (sheet.props.onDismiss as () => void)());
+    };
+
+    // The focus the screen regains when the pushed form goes back.
+    const regainFocus = async (): Promise<void> => {
+      await act(async () => {
+        fireFocus();
+      });
+    };
+
+    it("pushes a new-template form from the empty Template tab's Add template row, never navigate", async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({}));
+      await openTemplateTab(utils);
+      await pressAddTemplate(utils);
+
+      expect(navigation.push).toHaveBeenCalledTimes(1);
+      expect(navigation.push).toHaveBeenCalledWith('TransactionForm', {
+        newTemplate: true,
+        handbackId: expect.any(String),
+      });
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    it('fills the form from a template created through the row exactly as a manual pick of it does', async () => {
+      setLiveData({ draft: EXPENSE, templateList: [CREATED] });
+      const byHand = await render(templateScreen({}));
+      await openTemplateTab(byHand);
+      await fireEvent.press(byHand.getByTestId('template-field'));
+      await fireEvent.press(byHand.getByTestId('template-field-option-created'));
+      const expected = {
+        amount: byHand.getByLabelText('Amount').props.value,
+        description: byHand.getByLabelText('Description').props.value,
+      };
+      await byHand.unmount();
+      navigation.push.mockClear();
+
+      setLiveData({ draft: EXPENSE });
+      const utils = await render(templateScreen({}));
+      await openTemplateTab(utils);
+      await pressAddTemplate(utils);
+
+      handBackCreatedOption(pushedHandbackId(), CREATED.id);
+      setLiveData({ draft: EXPENSE, templateList: [CREATED] });
+      await utils.rerender(templateScreen({}));
+      await regainFocus();
+
+      expect(expected.amount).toBe('1 050');
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Rent');
+      expect(utils.getByLabelText('Amount').props.value).toBe(expected.amount);
+      expect(utils.getByLabelText('Description').props.value).toBe(expected.description);
+    });
+
+    it('picks nothing and keeps the typed fields when the new-template form is cancelled', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({}));
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '42');
+      await openTemplateTab(utils);
+      await pressAddTemplate(utils);
+      await regainFocus();
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Select a template');
+      expect(utils.queryByLabelText('Description')).toBeNull();
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Manual'));
+
+      expect(utils.getByLabelText('Amount').props.value).toBe('42');
+    });
+
+    it('selects nothing on return from a cancelled new-template form while a template appears', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({}));
+      await openTemplateTab(utils);
+      await pressAddTemplate(utils);
+
+      // The pushed form handed nothing back to its id; a template still appears in the list, as a
+      // sync or another device could add one.
+      setLiveData({ draft: EXPENSE, templateList: [CREATED] });
+      await utils.rerender(templateScreen({}));
+      await regainFocus();
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Select a template');
+    });
+
+    it('shows no entry tabs on the pushed new-template form, so it offers no Add template row', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({ newTemplate: true }));
+
+      expect(utils.getByLabelText('Template name')).toBeTruthy();
+      expect(utils.queryByTestId('entry-tabs')).toBeNull();
+      expect(utils.queryByTestId('template-field')).toBeNull();
+      expect(utils.queryByTestId('template-field-empty-action')).toBeNull();
     });
   });
 

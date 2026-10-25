@@ -314,6 +314,11 @@ a test in the fix commit.
   orchestrator does not ask there (no AskUserQuestion; its question goes through the coordinator).
 - A guard tightening is proven by a differential over every test literal x every cwd (kiko-linter
   "Probing the kill-guard").
+- When a ruling lands, grep the skills and docs for "pending" and for the draft's file name, and
+  fix each hit in the same step.
+- A ruled route that does not exist yet is written "not built yet" with its gap id, never as if
+  it exists. The change that builds it removes the phrase (grep for it). H11 task 2 is the
+  example.
 - A planner's count (files, cases, call sites) is a floor. The developer measures the real
   count and the brief says so.
 - A change that needs a port to the shared harness repository lists the port item in the
@@ -505,7 +510,8 @@ read just the tail with `orca terminal read`. Full CLI usage:
 Route commands this way, including: `npm run deploy:device`, `pod install`,
 `npm install`, and Metro (`npm start`). Heavy jobs (`check:all`, `check:deep`, the full jest,
 verify, the mutation gate) go through `scripts/job-queue.sh`, never an Orca terminal: kill-guard
-denies them typed (`heavyJob`, `fullJest`), and a quoted `orca terminal send` text is not judged.
+denies them typed (`heavyJob`, `fullJest`), and the guard judges a sent `orca`
+`--text`/`--command` value like a typed line.
 
 Read the tail before you close the terminal — closing
 (`orca terminal close --terminal <handle>`) removes its buffer, so a

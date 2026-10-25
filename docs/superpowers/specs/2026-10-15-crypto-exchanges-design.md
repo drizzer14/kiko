@@ -144,7 +144,7 @@ These are the coordinator's rulings, not the user's, except C-NR2, which the use
 | S7-Q1 A (2026-10-21) | REPLACED by user answer U3 (2026-10-21): the demo dust source is the existing XRP holding (dust pair XRP -> BNB); there is no Dogecoin holding. Seed pins stay at eight coins, 110 currency pairs | 9 |
 | S7-Q2 A (2026-10-21) | Every existing demo holding keeps its end balance (a deposit amount adjusted; a `bank:EUR:50.00` fiat withdrawal keeps EUR at 50); every set 7 demo row is dated more than 30 days before the anchor, so amounts and dates keep the default window unchanged; Home's net-worth card is unchanged | 9 |
 | S7-Q3 A (2026-10-21) | Code parse rules: the fiat is the segment as written, non-empty and free of `:`; a total exists only for a known non-crypto currency when the rest parses exactly at its scale to a value above zero; else no total and the label renders. `asset:` needs a non-empty code free of `:` (a code with `:` is unknown: default label) | 6 |
-| S7-Q4 A (2026-10-21) | `operation` is not a rewrite guard field (`REWRITE_GUARD_FIELDS`); it labels only, and every operation row carries another marker | 6 |
+| S7-Q4 A (2026-10-21) | `operation` is not a rewrite guard field (`REWRITE_GUARD_FIELDS`); it labels only (was: "every operation row carries another marker"; the guard list is now by-hand, balance-setting, split-change, ruling B, 2026-10-25) | 6 |
 | S7-Q5 A (2026-10-21) | The P2P cover rule keys on the `p2p:` code through `parseUntrackedCounterpart` plus the row's amount and holding currency, never on `operation`; set 7 adds nothing for it | 6 |
 | S7-Q6 A (2026-10-21) | Parsers only in set 7; the demo seed writes literal codes; each walk set adds its own builder (with the section 5 marker-total normalization) | 6 |
 | S7-Q7 A (2026-10-21) | No export version bump: `EXPORT_VERSION` stays 5; `VERSION_DECISIONS` `{ version: 5, migrationCount: 64 }` | 7 |
@@ -1413,7 +1413,9 @@ pasted, those words are `fiat-unrecognized` too. Every word with no quote is ref
 the dividend walk is not in 1.3-a (C-Div). Insert-only (not in
 `BANK_OWNED_TRANSACTION_COLUMNS`), exported by the snapshot (every column), restored as null from
 an older file. It labels; it never decides statistics, and it is not a rewrite guard field
-(`REWRITE_GUARD_FIELDS`; S7-Q4), because every operation row already carries another marker.
+(`REWRITE_GUARD_FIELDS`; S7-Q4): operation is not a guard field; the guard list is by-hand,
+balance-setting, split-change (ruling B, 2026-10-25; was: because every operation row already
+carries another marker).
 
 ### Untracked-counterpart codes (no migration)
 

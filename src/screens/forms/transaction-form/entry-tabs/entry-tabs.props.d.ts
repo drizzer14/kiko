@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 
 import type { EntryTab } from './entry-tabs';
 
@@ -14,6 +15,8 @@ export type EntryTabsProps = {
   templatesLoading: boolean;
   selectedTemplateId: string | null;
   onSelectTemplate: (templateId: string) => void;
+  // Opens the new-template form from the empty picker's "Add template" row.
+  onCreateTemplate: (handbackId: HandbackId) => void;
   // The form itself, which the tabs sit above and gate.
   children: ReactNode;
 };

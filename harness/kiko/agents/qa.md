@@ -38,7 +38,8 @@ Rules:
   red row before the fix (H9 I1: the xargs cp/mv fill had no red row).
 - Iterate with SCOPED tests (only the touched files) while developing. Ask the coordinator to
   queue the verify ONCE, at the end (`bash scripts/job-queue.sh verify <worktree> <label>`; it
-  runs lint, the full jest suite, and the gate in one fail-fast pass), and fix what it reports
+  runs lint, the full jest suite (two stages, 2a and 2b; see scripts/checks/verify.sh), and the
+  gate in one fail-fast pass), and fix what it reports
   until it is green, before you report done. `make verify`, `make gate`, `make deep`, and a full
   jest run are denied outside the queue.
 - The SHELL-WRITE deny matches the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`)

@@ -23,19 +23,20 @@ export const alongsideInsert = (input: {
 
 // Writes the form's template: a new one, or the one being edited. Every failure rejects, for the
 // form's shared save-error alert. That includes a name another template took since the form last
-// read the list: the inline taken error comes from the live list alone.
+// read the list: the inline taken error comes from the live list alone. Resolves to the id of the
+// template written, once the write has committed, for the handback to an empty picker.
 export const writeTemplate = async (input: {
   editTemplateId: string | null;
   name: string;
   draft: TemplateDraft;
-}): Promise<void> => {
+}): Promise<string> => {
   const { editTemplateId, name, draft } = input;
 
   if (editTemplateId === null) {
-    await transactionTemplatesRepo.create({ name, draft });
-
-    return;
+    return transactionTemplatesRepo.create({ name, draft });
   }
 
   await transactionTemplatesRepo.update({ id: editTemplateId, name, draft });
+
+  return editTemplateId;
 };
