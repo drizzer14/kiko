@@ -9,11 +9,13 @@ export type EntryTabsProps = {
   onSelectTab: (tab: EntryTab) => void;
   // True while the Template tab waits for a pick: the select shows alone, without the children.
   awaitsPick: boolean;
-  templates: readonly { id: string; name: string }[];
+  templates: readonly { id: string; name: string; createdAt: number }[];
   // The read of those templates has not settled yet.
   templatesLoading: boolean;
   selectedTemplateId: string | null;
   onSelectTemplate: (templateId: string) => void;
+  // Opens the new-template form from the empty picker's "Add template" row.
+  onCreateTemplate: () => void;
   // The form itself, which the tabs sit above and gate.
   children: ReactNode;
 };

@@ -21,6 +21,7 @@ const EntryTabs = ({
   templatesLoading,
   selectedTemplateId,
   onSelectTemplate,
+  onCreateTemplate,
   children,
 }: EntryTabsProps): ReactElement => {
   const { t } = useTranslation();
@@ -51,6 +52,7 @@ const EntryTabs = ({
           isLoading={templatesLoading}
           selectedId={selectedTemplateId}
           onSelect={onSelectTemplate}
+          onCreateTemplate={onCreateTemplate}
         />
       ) : null}
 

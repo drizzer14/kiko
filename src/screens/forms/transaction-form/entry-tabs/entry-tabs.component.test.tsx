@@ -1,16 +1,17 @@
 import { Text } from 'react-native';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
 
 import EntryTabs from './entry-tabs.component';
 import type { EntryTabsProps } from './entry-tabs.props';
 
-const TEMPLATES = [{ id: 't1', name: 'Rent' }];
+const TEMPLATES = [{ id: 't1', name: 'Rent', createdAt: 10_000 }];
 
 const setup = async (overrides: Partial<EntryTabsProps> = {}) => {
   const onSelectTab = jest.fn();
   const onSelectTemplate = jest.fn();
+  const onCreateTemplate = jest.fn();
 
   const utils = await render(
     <EntryTabs
@@ -22,13 +23,14 @@ const setup = async (overrides: Partial<EntryTabsProps> = {}) => {
       templatesLoading={false}
       selectedTemplateId={null}
       onSelectTemplate={onSelectTemplate}
+      onCreateTemplate={onCreateTemplate}
       {...overrides}
     >
       <Text>the form</Text>
     </EntryTabs>,
   );
 
-  return { onSelectTab, onSelectTemplate, ...utils };
+  return { onSelectTab, onSelectTemplate, onCreateTemplate, ...utils };
 };
 
 describe('EntryTabs', () => {
@@ -80,5 +82,20 @@ describe('EntryTabs', () => {
     await fireEvent.press(getByTestId('template-field-option-t1'));
 
     expect(onSelectTemplate).toHaveBeenCalledWith('t1');
+  });
+
+  it('hands onCreateTemplate to the template select', async () => {
+    const { getByTestId, onCreateTemplate } = await setup({
+      tab: 'template',
+      templates: [],
+      awaitsPick: true,
+    });
+
+    await fireEvent.press(getByTestId('template-field'));
+    const sheet = getByTestId('template-field-sheet-modal');
+    await fireEvent.press(getByTestId('template-field-empty-action'));
+    await act(async () => (sheet.props.onDismiss as () => void)());
+
+    expect(onCreateTemplate).toHaveBeenCalledTimes(1);
   });
 });

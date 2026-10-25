@@ -1370,6 +1370,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             templatesLoading={storedTemplatesLoading}
             selectedTemplateId={selectedTemplateId}
             onSelectTemplate={pickTemplate}
+            onCreateTemplate={() => navigation.push('TransactionForm', { newTemplate: true })}
           >
             <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
 

@@ -604,6 +604,7 @@ export const en = {
     },
     transaction: {
       addReturn: 'Add return',
+      addTemplate: 'Add template',
       addTemplateTitle: 'Add Template',
       addTitle: 'Add Transaction',
       amountError: 'Amount must be greater than 0.',

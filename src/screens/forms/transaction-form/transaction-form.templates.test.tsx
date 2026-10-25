@@ -1,6 +1,6 @@
 import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
-import { fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { DAY_MS } from '@kiko/dates';
 import {
@@ -1720,6 +1720,103 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       await fireEvent.press(tabs.getByText('Manual'));
 
       expect(utils.getByLabelText('Amount').props.value).toBe('42');
+    });
+  });
+
+  describe('from the empty Template tab', () => {
+    // A template stamped in the same whole second as the pinned clock, which the round trip's
+    // window takes in.
+    const CREATED = { id: 'created', name: 'Rent', draft: EXPENSE, createdAt: NOW };
+
+    const openTemplateTab = async (utils: Utils): Promise<void> => {
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+    };
+
+    const pressAddTemplate = async (utils: Utils): Promise<void> => {
+      await fireEvent.press(utils.getByTestId('template-field'));
+      const sheet = utils.getByTestId('template-field-sheet-modal');
+      await fireEvent.press(utils.getByTestId('template-field-empty-action'));
+      await act(async () => (sheet.props.onDismiss as () => void)());
+    };
+
+    // The focus the screen regains when the pushed form goes back.
+    const regainFocus = async (): Promise<void> => {
+      const listeners = navigation.addListener.mock.calls
+        .filter(([event]) => event === 'focus')
+        .map(([, callback]) => callback as () => void);
+
+      await act(async () => {
+        for (const listener of listeners) {
+          listener();
+        }
+      });
+    };
+
+    it("pushes a new-template form from the empty Template tab's Add template row, never navigate", async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({}));
+      await openTemplateTab(utils);
+      await pressAddTemplate(utils);
+
+      expect(navigation.push).toHaveBeenCalledTimes(1);
+      expect(navigation.push).toHaveBeenCalledWith('TransactionForm', { newTemplate: true });
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    it('fills the form from a template created through the row exactly as a manual pick of it does', async () => {
+      setLiveData({ draft: EXPENSE, templateList: [CREATED] });
+      const byHand = await render(templateScreen({}));
+      await openTemplateTab(byHand);
+      await fireEvent.press(byHand.getByTestId('template-field'));
+      await fireEvent.press(byHand.getByTestId('template-field-option-created'));
+      const expected = {
+        amount: byHand.getByLabelText('Amount').props.value,
+        description: byHand.getByLabelText('Description').props.value,
+      };
+      await byHand.unmount();
+      navigation.push.mockClear();
+
+      setLiveData({ draft: EXPENSE });
+      const utils = await render(templateScreen({}));
+      await openTemplateTab(utils);
+      await pressAddTemplate(utils);
+
+      setLiveData({ draft: EXPENSE, templateList: [CREATED] });
+      await utils.rerender(templateScreen({}));
+      await regainFocus();
+
+      expect(expected.amount).toBe('1 050');
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Rent');
+      expect(utils.getByLabelText('Amount').props.value).toBe(expected.amount);
+      expect(utils.getByLabelText('Description').props.value).toBe(expected.description);
+    });
+
+    it('picks nothing and keeps the typed fields when the new-template form is cancelled', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({}));
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '42');
+      await openTemplateTab(utils);
+      await pressAddTemplate(utils);
+      await regainFocus();
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Select a template');
+      expect(utils.queryByLabelText('Description')).toBeNull();
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Manual'));
+
+      expect(utils.getByLabelText('Amount').props.value).toBe('42');
+    });
+
+    it('shows no entry tabs on the pushed new-template form, so it offers no Add template row', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({ newTemplate: true }));
+
+      expect(utils.queryByTestId('entry-tabs')).toBeNull();
+      expect(utils.queryByTestId('template-field')).toBeNull();
+      expect(utils.queryByTestId('template-field-empty-action')).toBeNull();
     });
   });
 
