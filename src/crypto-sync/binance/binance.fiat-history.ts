@@ -1,5 +1,5 @@
-import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
+import { match, P } from 'ts-pattern';
 import { bifoldMap } from 'fnts/either';
 import {
   advanceWalkMarks,
@@ -103,6 +103,14 @@ const FIAT_ORDER_STATUSES = { settled: 'Successful', open: 'Processing' } as con
  */
 const FIAT_PAYMENT_STATUSES = { settled: 'Completed', open: 'Processing' } as const;
 
+/**
+ * The two words of a refund in progress or done. A refund is a later status of the same record, so
+ * a record read with one of them after it was read settled removes the row the settled read made.
+ * `Refund Failed` is not among them: its row stays. The payment docs list no status, so a payment
+ * takes the order words.
+ */
+const FIAT_REFUND_STATUS = P.union('Refunding', 'Refunded');
+
 /** The stop of a record that waits on Binance: its point is owed until it is final. */
 const FIAT_NOT_SETTLED = 'fiat-not-settled';
 
@@ -162,16 +170,22 @@ type PlannedFiatRow = {
 
 /**
  * What one record comes to: its row (`row`), the entry of a record a rule refuses for good
- * (`refused`), a record that waits on Binance (`owed`), or the ticker of a coin Kiko does not
- * track (`untracked`, counted, no row).
+ * (`refused`), a record that waits on Binance (`owed`), the ticker of a coin Kiko does not
+ * track (`untracked`, counted, no row), or a refund (`refunded`): the entry of the record, as a
+ * refusal, and the key of the row an earlier read of it made, which goes (`removed`, empty when
+ * the record names no coin Kiko tracks, as no row of it can exist).
  */
 type FiatOutcome =
   | { kind: 'row'; row: PlannedFiatRow }
   | { kind: 'refused'; entry: string }
   | { kind: 'owed' }
-  | { kind: 'untracked'; ticker: string };
+  | { kind: 'untracked'; ticker: string }
+  | { kind: 'refunded'; entry: string; removed: string[] };
 
 type FiatRecord = BinanceFiatOrder | BinanceFiatPayment;
+
+/** The part of a row's key that tells a fiat order (`fiat`) from a fiat payment (`fiatpay`). */
+type FiatKeyPart = 'fiat' | 'fiatpay';
 
 type OutcomeInput<Item extends FiatRecord> = {
   accountId: string;
@@ -179,10 +193,54 @@ type OutcomeInput<Item extends FiatRecord> = {
   type: FiatTransactionType;
 };
 
+const entryOf = (record: FiatRecord): string =>
+  notImportedEntry('fiat-unrecognized', record.orderNo, record.createTime);
+
 const refusedOutcomeOf = (record: FiatRecord): FiatOutcome => ({
   kind: 'refused',
-  entry: notImportedEntry('fiat-unrecognized', record.orderNo, record.createTime),
+  entry: entryOf(record),
 });
+
+/**
+ * The key a record's row is stored under: one for the record, its kind of order and the wallet its
+ * coin is on, so the read that makes the row and the read that removes it name the same row.
+ */
+const externalIdOf = (input: {
+  accountId: string;
+  part: FiatKeyPart;
+  orderNo: string;
+  wallet: string;
+}): string => `${input.accountId}:${input.part}:${input.orderNo}:${input.wallet}`;
+
+/**
+ * A record read as a refund: it is listed like a refusal, and the row an earlier read of it made
+ * (its key, on the Spot holding of its coin) is removed. A record with no coin, or one Kiko does
+ * not track, never made a row, so it removes none.
+ */
+const refundedOutcomeOf = (input: {
+  accountId: string;
+  record: FiatRecord;
+  asset: string | undefined;
+  part: FiatKeyPart;
+}): FiatOutcome => {
+  const { accountId, record, asset, part } = input;
+
+  return {
+    kind: 'refunded',
+    entry: entryOf(record),
+    removed:
+      asset !== undefined && isTrackedBinanceAsset(asset)
+        ? [
+            externalIdOf({
+              accountId,
+              part,
+              orderNo: record.orderNo,
+              wallet: holdingKeyOf(asset, 'spot'),
+            }),
+          ]
+        : [],
+  };
+};
 
 /** The marker for the fiat total as Binance sent it; a total no code can carry owes the point. */
 const markerOf = (kind: 'bank' | 'card', fiat: string, total: string): string =>
@@ -244,7 +302,7 @@ const settledOrderOutcomeOf = ({
         wallet,
         amountMinorUnits: type === '1' ? -magnitude : magnitude,
         time: record.createTime,
-        externalId: `${accountId}:fiat:${record.orderNo}:${wallet}`,
+        externalId: externalIdOf({ accountId, part: 'fiat', orderNo: record.orderNo, wallet }),
         description: '',
         comment: `${indicatedAmount} ${fiatCurrency}`,
         untrackedCounterpart: markerOf('bank', fiatCurrency, indicatedAmount),
@@ -293,7 +351,7 @@ const settledPaymentOutcomeOf = ({
         wallet,
         amountMinorUnits: type === '0' ? magnitude : -magnitude,
         time: record.createTime,
-        externalId: `${accountId}:fiatpay:${record.orderNo}:${wallet}`,
+        externalId: externalIdOf({ accountId, part: 'fiatpay', orderNo: record.orderNo, wallet }),
         description: '',
         comment: `${fiatAmount} ${fiatCurrency}`,
         untrackedCounterpart: markerOf('card', fiatCurrency, fiatAmount),
@@ -305,13 +363,22 @@ const settledPaymentOutcomeOf = ({
 /**
  * What one fiat order comes to, decided by its status first and by the status text exactly as
  * Binance sent it (`FIAT_ORDER_STATUSES`): only a settled order makes a row, one that waits owes
- * its point, and every other word is refused for good.
+ * its point, a refund (`FIAT_REFUND_STATUS`) removes the row of an earlier read, and every other
+ * word is refused for good.
  */
 const fiatOrderOutcomeOf = (input: OutcomeInput<BinanceFiatOrder>): FiatOutcome =>
   match(input.record.status)
     .returnType<FiatOutcome>()
     .with(FIAT_ORDER_STATUSES.settled, () => settledOrderOutcomeOf(input))
     .with(FIAT_ORDER_STATUSES.open, () => ({ kind: 'owed' }))
+    .with(FIAT_REFUND_STATUS, () =>
+      refundedOutcomeOf({
+        accountId: input.accountId,
+        record: input.record,
+        asset: input.record.fiatCurrency,
+        part: 'fiat',
+      }),
+    )
     .otherwise(() => refusedOutcomeOf(input.record));
 
 /** What one fiat payment comes to, as `fiatOrderOutcomeOf` with `FIAT_PAYMENT_STATUSES`. */
@@ -320,6 +387,14 @@ const fiatPaymentOutcomeOf = (input: OutcomeInput<BinanceFiatPayment>): FiatOutc
     .returnType<FiatOutcome>()
     .with(FIAT_PAYMENT_STATUSES.settled, () => settledPaymentOutcomeOf(input))
     .with(FIAT_PAYMENT_STATUSES.open, () => ({ kind: 'owed' }))
+    .with(FIAT_REFUND_STATUS, () =>
+      refundedOutcomeOf({
+        accountId: input.accountId,
+        record: input.record,
+        asset: input.record.cryptoCurrency,
+        part: 'fiatpay',
+      }),
+    )
     .otherwise(() => refusedOutcomeOf(input.record));
 
 /** The imported-transaction shape the fiat walks hand to `transactionsRepo.addManyDedup`. */
@@ -339,8 +414,8 @@ type FiatRead<Item> = (
 
 /**
  * The seams the two fiat walks share: the credential and holding reads, the insert-only holding
- * creation, the deduping import, and the walk state read and write. Pacing and the weight budget
- * come from the run.
+ * creation, the deduping import, the removal of the rows of refunded records (it gives the count
+ * removed), and the walk state read and write. Pacing and the weight budget come from the run.
  */
 type FiatCommonDeps = ExchangeStateDeps & {
   now: () => number;
@@ -349,6 +424,7 @@ type FiatCommonDeps = ExchangeStateDeps & {
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
   ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
   addTransactions: (rows: BinanceFiatRow[]) => Promise<number>;
+  removeTransactions: (externalIds: readonly string[]) => Promise<number>;
 };
 
 /** The seams of the fiat order walk: the common ones and the read of one page of one type. */
@@ -369,6 +445,7 @@ const defaultCommonDeps: FiatCommonDeps = {
   listHoldings: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
   ensureHoldings: (holdings) => holdingsRepo.ensureExchangeHoldings(holdings),
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
+  removeTransactions: (externalIds) => transactionsRepo.removeSyncedRows('binance', externalIds),
 };
 
 /** What tells the two walks apart: the walk (and lane), its cost, its read and its decision. */
@@ -679,18 +756,29 @@ const settledOutcomeOf = <Item extends FiatRecord>(
   return outcome;
 };
 
-/** What one record adds to its span: its rows, the tickers it names, and its refusal entry. */
-type RecordParts = { rows: PlannedFiatRow[]; untracked: string[]; notImported: string[] };
+/**
+ * What one record adds to its span: its rows, the tickers it names, its refusal entry, and the
+ * keys of the rows it removes.
+ */
+type RecordParts = {
+  rows: PlannedFiatRow[];
+  untracked: string[];
+  notImported: string[];
+  removed: string[];
+};
+
+const NO_PARTS: RecordParts = { rows: [], untracked: [], notImported: [], removed: [] };
 
 const partsOf = (outcome: SettledOutcome): RecordParts =>
   match(outcome)
     .returnType<RecordParts>()
-    .with({ kind: 'row' }, ({ row }) => ({ rows: [row], untracked: [], notImported: [] }))
-    .with({ kind: 'refused' }, ({ entry }) => ({ rows: [], untracked: [], notImported: [entry] }))
-    .with({ kind: 'untracked' }, ({ ticker }) => ({
-      rows: [],
-      untracked: [ticker],
-      notImported: [],
+    .with({ kind: 'row' }, ({ row }) => ({ ...NO_PARTS, rows: [row] }))
+    .with({ kind: 'refused' }, ({ entry }) => ({ ...NO_PARTS, notImported: [entry] }))
+    .with({ kind: 'untracked' }, ({ ticker }) => ({ ...NO_PARTS, untracked: [ticker] }))
+    .with({ kind: 'refunded' }, ({ entry, removed }) => ({
+      ...NO_PARTS,
+      notImported: [entry],
+      removed,
     }))
     .exhaustive();
 
@@ -744,6 +832,7 @@ const settledRecordsOf = <Item extends FiatRecord>(input: {
       rows: parts.flatMap((part) => part.rows),
       untracked: parts.flatMap((part) => part.untracked),
       notImported: parts.flatMap((part) => part.notImported),
+      removed: parts.flatMap((part) => part.removed),
     },
     settleUnreadable({
       span,
@@ -787,6 +876,7 @@ const commitSpan = <Item extends FiatRecord>(
         missingCode: FIAT_HOLDING_MISSING,
       }),
     add: deps.addTransactions,
+    remove: deps.removeTransactions,
     writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
     writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     writeNotImported: notImportedWriterOf(deps, accountId),
@@ -1186,16 +1276,17 @@ type FiatRequest = { targetAccountId: string; run: BinanceHistoryRun };
 /**
  * Import the user's successful fiat deposits and withdrawals as transactions on the Spot holding
  * of their fiat, marked with the bank total, and list every record whose status is not
- * `Successful` or `Processing` as not recognized. The walk reads 2-year windows forward from the
- * history floor, a deposit and a withdraw series in each, empty ones too; the lane holds a window
- * a run, so the first walk takes several runs, and a run reads forward or behind, not both
- * (`turnOf`); the run after a behind run reads forward, a run with no forward ground reads behind,
- * and the behind runs take turns on the owed windows and the re-scan. A re-scan read that fails
- * does not stop the walk: the stretch it failed on is read around (`readRescanSpan`).
- * `complete: false` means history, owed ground or the re-scan remains, and a run that read behind
- * is complete only when it had no forward ground and left nothing behind; a later run resumes from
- * the stored marks. A failure other than a rate limit or an unreadable re-scan page rejects, so the
- * caller can log it without failing the balance sync.
+ * `Successful` or `Processing` as not recognized. A record read `Refunding` or `Refunded` removes
+ * the row an earlier read of it made, in the commit that lists it. The walk reads 2-year windows
+ * forward from the history floor, a deposit and a withdraw series in each, empty ones too; the
+ * lane holds a window a run, so the first walk takes several runs, and a run reads forward or
+ * behind, not both (`turnOf`); the run after a behind run reads forward, a run with no forward
+ * ground reads behind, and the behind runs take turns on the owed windows and the re-scan. A
+ * re-scan read that fails does not stop the walk: the stretch it failed on is read around
+ * (`readRescanSpan`). `complete: false` means history, owed ground or the re-scan remains, and a
+ * run that read behind is complete only when it had no forward ground and left nothing behind; a
+ * later run resumes from the stored marks. A failure other than a rate limit or an unreadable
+ * re-scan page rejects, so the caller can log it without failing the balance sync.
  */
 export const syncBinanceFiatOrderHistory = (
   request: FiatRequest,
@@ -1219,8 +1310,9 @@ export const syncBinanceFiatOrderHistory = (
 /**
  * Import the user's completed card buys and sells as transactions on the Spot holding of their
  * coin, marked with the fiat total, and list every record whose status is not `Completed`
- * or `Processing` as not recognized. Windows and failures are those of
- * `syncBinanceFiatOrderHistory`; the lane is wide enough to read forward and re-scan in one run.
+ * or `Processing` as not recognized; a refund removes its row as an order's does. Windows and
+ * failures are those of `syncBinanceFiatOrderHistory`; the lane is wide enough to read forward
+ * and re-scan in one run.
  */
 export const syncBinanceFiatPaymentHistory = (
   request: FiatRequest,

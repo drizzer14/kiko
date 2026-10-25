@@ -148,6 +148,7 @@ const worldOf = (kind: FiatKind) => {
     readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
     ensureHoldings: jest.fn(async () => undefined),
     addTransactions: jest.fn(async (rows: unknown[]) => rows.length),
+    removeTransactions: jest.fn(async () => 0),
     [kind.readKey]: serverOf(),
     ...fake.freshDeps(),
     listHoldings: fake.listHoldings,

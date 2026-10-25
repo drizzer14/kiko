@@ -1259,6 +1259,8 @@ const runStatusWorld = async (kind: WorldKind, world: StatusWorld): Promise<Stat
 
             return rows.length;
           },
+          removeTransactions: async (externalIds) =>
+            externalIds.filter((externalId) => stored.delete(externalId)).length,
           ...fake.freshDeps(),
           listHoldings: fake.listHoldings,
         },
