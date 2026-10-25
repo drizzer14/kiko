@@ -10,6 +10,7 @@ import '@kiko/i18n/init';
 
 import HomeStack from '../home-stack';
 import AccountsStack from '../accounts-stack';
+import SettingsStack from '../settings-stack';
 import StatisticsStack from '../statistics-stack';
 
 /**
@@ -22,15 +23,17 @@ import StatisticsStack from '../statistics-stack';
  *
  * - TransactionForm: `navigate('HoldingForm', { accountId })`
  *   (transaction-form.screen.tsx, `onCreateHolding`).
+ * - Both pass the one-shot `handbackId` the picker row hands them as a route param, which the
+ *   stand-ins read back out of their own route.
  * - The loan form is HoldingForm itself: it must `push('HoldingForm', …)`,
  *   because `navigate` to the focused route's own name only updates that
  *   route's params (holding-form.screen.tsx).
  */
 
-jest.mock('@kiko/screens/home', () => {
+function mockRootScreen() {
   const { Pressable, Text } = require('react-native');
 
-  const HomeStub = ({
+  const RootStub = ({
     navigation,
   }: {
     navigation: { navigate: (name: string, p: object) => void };
@@ -43,27 +46,12 @@ jest.mock('@kiko/screens/home', () => {
     </Pressable>
   );
 
-  return { __esModule: true, default: HomeStub };
-});
+  return { __esModule: true, default: RootStub };
+}
 
-jest.mock('@kiko/screens/statistics', () => {
-  const { Pressable, Text } = require('react-native');
-
-  const StatisticsStub = ({
-    navigation,
-  }: {
-    navigation: { navigate: (name: string, p: object) => void };
-  }) => (
-    <Pressable
-      testID="open-transaction-form"
-      onPress={() => navigation.navigate('TransactionForm', {})}
-    >
-      <Text>Add transaction</Text>
-    </Pressable>
-  );
-
-  return { __esModule: true, default: StatisticsStub };
-});
+jest.mock('@kiko/screens/home', () => mockRootScreen());
+jest.mock('@kiko/screens/statistics', () => mockRootScreen());
+jest.mock('@kiko/screens/settings/settings', () => mockRootScreen());
 
 jest.mock('@kiko/screens/accounts', () => {
   const { Pressable, Text } = require('react-native');
@@ -112,7 +100,9 @@ jest.mock('@kiko/screens/forms/transaction-form', () => {
 
         <Pressable
           testID="add-holding"
-          onPress={() => navigation.navigate('HoldingForm', { accountId: 'acc-1' })}
+          onPress={() =>
+            navigation.navigate('HoldingForm', { accountId: 'acc-1', handbackId: 'h-1' })
+          }
         >
           <Text>Add holding</Text>
         </Pressable>
@@ -136,13 +126,15 @@ jest.mock('@kiko/screens/forms/holding-form', () => {
       navigate: (name: string, p: object) => void;
       push: (name: string, p: object) => void;
     };
-    route: { params: { accountId: string } };
+    route: { params: { accountId: string; handbackId?: string } };
   }) => {
     const [principal, setPrincipal] = useState('');
 
     return (
       <>
         <Text testID="holding-form-account">{route.params.accountId}</Text>
+
+        <Text testID="holding-form-handback">{route.params.handbackId ?? 'none'}</Text>
 
         <TextInput testID="draft-principal" value={principal} onChangeText={setPrincipal} />
 
@@ -152,7 +144,7 @@ jest.mock('@kiko/screens/forms/holding-form', () => {
 
         <Pressable
           testID="push-holding-form"
-          onPress={() => navigation.push('HoldingForm', { accountId: 'acc-2' })}
+          onPress={() => navigation.push('HoldingForm', { accountId: 'acc-2', handbackId: 'h-2' })}
         >
           <Text>Add holding</Text>
         </Pressable>
@@ -188,7 +180,17 @@ const routeNames = (): string[] => routes().map((route) => route.name);
 const keyOf = (name: string): string | undefined =>
   routes().find((route) => route.name === name)?.key;
 
-const STACKS = { home: HomeStack, accounts: AccountsStack, statistics: StatisticsStack };
+const STACKS = {
+  home: HomeStack,
+  accounts: AccountsStack,
+  settings: SettingsStack,
+  statistics: StatisticsStack,
+};
+
+type RouteWithParams = { key: string; name: string; params?: { handbackId?: string } };
+
+const topHandbackId = (): string | undefined =>
+  (routes() as RouteWithParams[]).at(-1)?.params?.handbackId;
 
 const renderStack = async (stack: keyof typeof STACKS) => {
   const Stack = STACKS[stack];
@@ -207,8 +209,27 @@ const renderStack = async (stack: keyof typeof STACKS) => {
 describe.each([
   ['Home', 'home', 'Home'],
   ['Accounts', 'accounts', 'Accounts'],
+  ['Settings', 'settings', 'Settings'],
   ['Statistics', 'statistics', 'Statistics'],
 ] as const)('%s stack — adding a holding from the transaction form', (_name, stack, rootName) => {
+  it('carries the handback id to the holding form in its params, and back to the SAME form', async () => {
+    const view = await renderStack(stack);
+
+    await fireEvent.press(view.getByTestId('open-transaction-form'));
+
+    const transactionFormKey = keyOf('TransactionForm');
+
+    await fireEvent.press(view.getByTestId('add-holding'));
+
+    expect(topHandbackId()).toBe('h-1');
+    expect(view.getByTestId('holding-form-handback')).toHaveTextContent('h-1');
+
+    await fireEvent.press(view.getByTestId('save-holding'));
+
+    expect(routeNames()).toEqual([rootName, 'TransactionForm']);
+    expect(keyOf('TransactionForm')).toBe(transactionFormKey);
+  });
+
   it('returns to the SAME transaction form instance with its draft, with no route left behind', async () => {
     const view = await renderStack(stack);
 
@@ -242,6 +263,11 @@ describe('Home stack — the create forms the picker row can open', () => {
 });
 
 describe('Accounts stack — adding a holding from the loan form', () => {
+  const expectBackOnLoanForm = (loanFormKey: string | undefined) => {
+    expect(routeNames()).toEqual(['Accounts', 'HoldingForm']);
+    expect(keyOf('HoldingForm')).toBe(loanFormKey);
+  };
+
   it('pushes a second holding form and returns to the SAME loan form instance', async () => {
     const view = await renderStack('accounts');
 
@@ -256,9 +282,28 @@ describe('Accounts stack — adding a holding from the loan form', () => {
 
     await fireEvent.press(view.getAllByTestId('save-holding').at(-1) as never);
 
-    expect(routeNames()).toEqual(['Accounts', 'HoldingForm']);
-    expect(keyOf('HoldingForm')).toBe(loanFormKey);
+    expectBackOnLoanForm(loanFormKey);
     expect(view.getByTestId('draft-principal').props.value).toBe('5000');
+  });
+
+  it('carries the handback id to the pushed holding form in its params, and back to the SAME loan form', async () => {
+    const view = await renderStack('accounts');
+
+    await fireEvent.press(view.getByTestId('open-loan-form'));
+
+    const loanFormKey = keyOf('HoldingForm');
+
+    expect(view.getByTestId('holding-form-handback')).toHaveTextContent('none');
+
+    await fireEvent.press(view.getByTestId('push-holding-form'));
+
+    expect(topHandbackId()).toBe('h-2');
+    expect(view.getAllByTestId('holding-form-handback').at(-1)).toHaveTextContent('h-2');
+
+    await fireEvent.press(view.getAllByTestId('save-holding').at(-1) as never);
+
+    expectBackOnLoanForm(loanFormKey);
+    expect(topHandbackId()).toBeUndefined();
   });
 
   it('adds no route when a holding form navigates to its own name, which is why the loan form pushes', async () => {

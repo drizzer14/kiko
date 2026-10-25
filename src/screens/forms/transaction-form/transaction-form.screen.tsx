@@ -27,6 +27,10 @@ import { parseAmount } from '@kiko/currency/parse';
 import { StyleSheet } from 'react-native-unistyles';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
+import {
+  type HandbackId,
+  handBackCreatedOption,
+} from '@kiko/screens/forms/use-select-created-option';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Screen from '@kiko/design-system/components/screen';
 import Button from '@kiko/design-system/components/button';
@@ -258,6 +262,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     seedsDefaultHolding,
     hasEntryTabs,
     initialTab,
+    handbackId,
   } = readRouteEntry(route.params);
   // Adding or editing a template: the form saves a template, not a transaction.
   const isTemplateMode = templateEntry !== null;
@@ -373,11 +378,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       accepts: (type: HoldingRow['type']) => boolean,
       pickerCurrency?: Currency,
     ) =>
-    (): void => {
+    (handbackId: HandbackId): void => {
       navigation.navigate(
         ...resolveCreateHoldingTarget(
           { anchorAccountId, accepts, currency: pickerCurrency },
           accounts,
+          handbackId,
         ),
       );
     };
@@ -1250,8 +1256,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // one being edited. No transaction is written and the category override sheet never opens. A
   // failed write rejects into `performSave`'s catch, like every other write here.
   const saveTemplate = async (): Promise<void> => {
-    await writeTemplate({ editTemplateId, name: templateName, draft: buildTemplateDraft() });
+    const templateId = await writeTemplate({
+      editTemplateId,
+      name: templateName,
+      draft: buildTemplateDraft(),
+    });
 
+    handBackCreatedOption(handbackId, templateId);
     navigation.goBack();
   };
 
@@ -1373,6 +1384,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             templatesLoading={storedTemplatesLoading}
             selectedTemplateId={selectedTemplateId}
             onSelectTemplate={pickTemplate}
+            onCreateTemplate={(newHandbackId) =>
+              navigation.push('TransactionForm', { newTemplate: true, handbackId: newHandbackId })
+            }
           >
             <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
 

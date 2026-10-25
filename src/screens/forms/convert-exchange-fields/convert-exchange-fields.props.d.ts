@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type ConvertExchangeFieldsProps = {
@@ -23,7 +24,7 @@ export type ConvertExchangeFieldsProps = {
   onSelectCounterpart: (id: string) => void;
   // Opens the create form from the counterpart sheet's "Add holding" row, which
   // shows only while `counterpartOptions` is empty. Omit it to show no row.
-  onCreateCounterpart?: () => void;
+  onCreateCounterpart?: (handbackId: HandbackId) => void;
   counterpartAmountLabel: string;
   counterpartAmount: string;
   onChangeCounterpartAmount: (text: string) => void;

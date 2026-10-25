@@ -525,6 +525,9 @@ The established patterns grouped under this heading:
   decorative). `InfoHint` serves two hints: this reminder and the Template tab's
   no-templates hint under the template select
   (`src/screens/forms/transaction-form/template-select/template-select.component.tsx`);
+  that select also carries the "Add template" row (`emptyAction`, hidden while the list loads;
+  the hint stays), and `transaction-form.screen.tsx` pushes the create form (params with
+  its `handbackId`: see "Empty holding picker");
   the plain hint (`forms.account.importOnlyBankHint`) stays a bare caption
   `Text`. Any other informational hint with no action stays a bare caption
   Text. A
@@ -1189,7 +1192,9 @@ new component can land between reviews of this skill:
   for it directly. `SelectField`'s optional `onSelectClosed(option)` runs
   once after the sheet a pick closed has finished closing (the
   `onClosed` contract above): wire a screen navigation to it, never to
-  `onSelect` (`AccountKindField` forwards it). `SelectField`'s optional
+  `onSelect` (`AccountKindField` forwards it).
+  The close calls the LATEST render's `onSelectClosed` (a ref refreshed every render), so it
+  sees the state the pick just set. `SelectField`'s optional
   `closesWithoutAnimation(option)` names the picks whose sheet closes with
   `BottomSheet`'s `animationType="none"` (`'fade' | 'slide' | 'none'`,
   default `'fade'`), so `onSelectClosed` follows the pick at once instead of
@@ -1197,7 +1202,14 @@ new component can land between reviews of this skill:
   pick that LEAVES the screen, where the fade is just a wait (the account
   form's Property and Debt, and the holding form's Bank, Cash, Crypto,
   Metals and Broker; the holding form's other implicit kind stays in that
-  form and keeps the fade). It is opt-in per call site; every other pick and
+  form and keeps the fade). `SelectField`'s optional `emptyAction`
+  (`{ label; onPress }`, `select-field.props.d.ts`) renders an action row with a plus glyph in the
+  sheet only when `options.length === 0`; the caller passes the translated label (no i18n in the
+  design-system component), the action runs after the sheet has closed with no animation, and it
+  is never reported to `onSelect` or `onSelectClosed`. `TemplateSelect`'s "Add template" row
+  (`forms.transaction.addTemplate`, en and uk) uses it; `HoldingSelectField` and
+  `PaymentHoldingField` build their own sheet and keep their own create row. The
+  `closesWithoutAnimation` flag is opt-in per call site; every other pick and
   every other sheet keeps the fade. It works because RN's iOS Modal host
   re-reads `animationType` on every props commit and uses it for the dismiss
   (`RCTModalHostViewComponentView.mm` `updateProps` sets
@@ -1274,7 +1286,8 @@ new component can land between reviews of this skill:
   icon-size token), top-left aligned, text wrapping beside the icon, one
   accessible element labelled by the message. Used for the Connect
   reminder in the three Connect fields and for the Template tab's
-  no-templates hint (`template-select`).
+  no-templates hint (`template-select`, which also carries the "Add template" row; `EntryTabs`
+  forwards `onCreateTemplate`).
 - **NoticeBanner** (`src/design-system/components/notice-banner/`) — an
   inline, non-modal notice for a state the user can keep working
   around (never an alert or sheet): a `surfaceHigh` box, a `caption`
@@ -1574,8 +1587,23 @@ new component can land between reviews of this skill:
   from `resolveCreateHoldingTarget` (`src/screens/forms/create-holding-target/`): the picker passes
   `accepts(type)`, an optional `currency`, and `anchorAccountId`; the target is the anchor's own
   account or the first live account that can create an accepted type, opened on that type/currency,
-  else `AccountForm`. `useSelectCreatedHolding` (`use-select-created-holding.ts`) selects only the
-  holding created between the tap and the return focus (a `createdAt` window), never after a cancel.
+  else `AccountForm`. `useSelectCreatedOption` (`src/screens/forms/use-select-created-option/`) is
+  the shared hook behind every empty picker's create row (holding and template). The row press
+  opens a one-shot handback id (`openHandback`, `created-option-handback.ts`); a second press while
+  one is open gets none, so it pushes no second form. The id rides to the create form as the
+  `handbackId` route param (`TransactionForm {newTemplate}`, `HoldingForm`;
+  `resolveCreateHoldingTarget(picker, accounts, handbackId?)` adds it to the holding target, never
+  to the `AccountForm` one when an account exists). With no account the target is `AccountForm`,
+  and the id rides there too: `AccountForm` hands back the new cash holding id
+  (`accountsRepo.createCashAccount` resolves `{ accountId, holdingId }`) after that write commits.
+  The Property/Loan swap (`replace` into `HoldingForm`) and the holding form's
+  `leaveForAccountForm` (`replace` back) carry the id. A non-cash kind hands back nothing, and
+  an `AccountForm` opened without `handbackId` (Accounts > Add account, edit) hands back nothing.
+  The form hands the new id back (`handBackCreatedOption`) only after its
+  write commits; a cancel or a failed write hands back nothing. The picker selects exactly that id,
+  once, when its screen regains focus, whether the option reaches the list before or after the
+  focus. A blur drops an awaited id that never appeared; unmount closes the open handback. Outside
+  a navigator nothing is selected.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major. It renders every
   Money it is given; Home filters exact-zero totals first (see `kiko-domain`).

@@ -26,7 +26,7 @@ describe('writeTemplate', () => {
 
     await expect(
       writeTemplate({ editTemplateId: null, name: 'Rent', draft: EMPTY_DRAFT }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe('new');
     expect(mockCreate).toHaveBeenCalledWith({ name: 'Rent', draft: EMPTY_DRAFT });
     expect(mockUpdate).not.toHaveBeenCalled();
   });
@@ -36,9 +36,25 @@ describe('writeTemplate', () => {
 
     await expect(
       writeTemplate({ editTemplateId: 'tpl', name: 'Rent', draft: EMPTY_DRAFT }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe('tpl');
     expect(mockUpdate).toHaveBeenCalledWith({ id: 'tpl', name: 'Rent', draft: EMPTY_DRAFT });
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('resolves to the id of the template it created', async () => {
+    mockCreate.mockResolvedValue('new-template-id');
+
+    await expect(
+      writeTemplate({ editTemplateId: null, name: 'Rent', draft: EMPTY_DRAFT }),
+    ).resolves.toBe('new-template-id');
+  });
+
+  it('resolves to the edited template id on an edit', async () => {
+    mockUpdate.mockResolvedValue(undefined);
+
+    await expect(
+      writeTemplate({ editTemplateId: 'tpl', name: 'Rent', draft: EMPTY_DRAFT }),
+    ).resolves.toBe('tpl');
   });
 
   it('lets any failure reject, a name the write itself refused included, for the form to alert on', async () => {

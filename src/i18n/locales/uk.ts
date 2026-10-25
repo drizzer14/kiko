@@ -536,6 +536,7 @@ export const uk: typeof en = {
     },
     transaction: {
       addReturn: 'Додати повернення',
+      addTemplate: 'Додати шаблон',
       addTemplateTitle: 'Додати шаблон',
       addTitle: 'Додати транзакцію',
       amountError: 'Сума має бути більшою за 0.',

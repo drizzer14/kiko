@@ -29,6 +29,7 @@ import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
+import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import { resolveCreateHoldingTarget } from '@kiko/screens/forms/create-holding-target';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
@@ -4850,6 +4851,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
       accountId: 'acc-1',
       initialType: 'cash',
+      handbackId: expect.any(String),
     });
   });
 
@@ -4873,6 +4875,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       accountId: 'acc-1',
       initialType: 'cash',
       initialCurrency: 'UAH',
+      handbackId: expect.any(String),
     });
   });
 
@@ -4888,6 +4891,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
       accountId: 'acc-1',
       initialType: 'cash',
+      handbackId: expect.any(String),
     });
   });
 
@@ -4967,6 +4971,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
         accountId: 'acc-1',
         initialType: 'cash',
         initialCurrency: 'USD',
+        handbackId: expect.any(String),
       });
     });
   });
@@ -4984,6 +4989,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
         accountId: 'acc-1',
         initialType: 'cash',
+        handbackId: expect.any(String),
       });
     });
 
@@ -5004,6 +5010,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
         accountId: 'acc-1',
         initialType: 'cash',
+        handbackId: expect.any(String),
       });
     });
 
@@ -5021,7 +5028,9 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       await fireEvent.press(utils.getByLabelText('Holding'));
       await fireEvent.press(utils.getByText('Add holding'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {
+        handbackId: expect.any(String),
+      });
     });
 
     it.each([
@@ -5034,27 +5043,62 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       await fireEvent.press(utils.getByLabelText('Holding'));
       await fireEvent.press(utils.getByText('Add holding'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {
+        handbackId: expect.any(String),
+      });
+    });
+
+    it('selects the cash holding the account form hands back when the user returns', async () => {
+      const { provide, fireFocus } = makeFocusNavigation();
+      const route = transactionFormRoute({});
+      const screenElement = () =>
+        provide(<TransactionFormScreen route={route} navigation={navigationProp} />);
+
+      setLiveData([], undefined, CATEGORIES, []);
+      const utils = await render(screenElement());
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      // The account form created a Cash account with its cash holding and handed that holding's
+      // id back to the id it was opened with, and the user came back.
+      handBackCreatedOption(navigation.navigate.mock.calls[0][1].handbackId, DOLLARS.id);
+      // A second holding appears too (a sync landing meanwhile), so a lone new holding is not
+      // seated by default and only the handed-back id can select one.
+      setLiveData([SOURCE, DOLLARS], undefined, CATEGORIES, [WALLET]);
+      await utils.rerender(screenElement());
+      await act(async () => {
+        fireFocus();
+      });
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent(/Cash USD/);
     });
   });
 
   it('keeps the draft and selects the new holding when it appears after the round trip', async () => {
+    const { provide, fireFocus } = makeFocusNavigation();
+    const route = transactionFormRoute({ holdingId: 'only-cash' });
+
     setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
-    const utils = await renderAddFromHolding('only-cash');
+    const utils = await render(
+      provide(<TransactionFormScreen route={route} navigation={navigationProp} />),
+    );
 
     await pickType(utils, 'exchange');
     await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Add holding'));
 
-    // The holding form saved a USD cash holding and the user came back.
-    setLiveData([SOURCE, { ...DOLLARS, createdAt: Date.now() }], undefined, CATEGORIES, [WALLET]);
+    // The holding form saved a USD cash holding, handed its id back to the id it was pushed
+    // with, and the user came back.
+    handBackCreatedOption(navigation.navigate.mock.calls[0][1].handbackId, DOLLARS.id);
+    setLiveData([SOURCE, DOLLARS], undefined, CATEGORIES, [WALLET]);
     await utils.rerender(
-      <TransactionFormScreen
-        route={transactionFormRoute({ holdingId: 'only-cash' })}
-        navigation={navigationProp}
-      />,
+      provide(<TransactionFormScreen route={route} navigation={navigationProp} />),
     );
+    await act(async () => {
+      fireFocus();
+    });
 
     expect(utils.getByLabelText('Value out').props.value).toBe('100');
     expect(utils.getByLabelText('To')).toHaveTextContent(/Cash USD/);
