@@ -3513,9 +3513,15 @@ are built with `createPaneStackNavigator`.
   source route and changes no router state (`pane-router.test.ts`). Params hold JSON only.
   Secrets, tokens, wallet and Binance keys never go in a draft (a lender IBAN lives only in the
   in-memory loan draft). Not saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`,
-  `leavingKind`. The "Add holding" round-trip
-  auto-select (`use-select-created-holding`, a `useRef`) does not survive a fold: the user picks the
-  new holding by hand (known limit, user-accepted 2026-10-10, no fix planned). Likewise a remounted
+  `leavingKind`. The "Add holding" and "Add template" round-trip
+  auto-select (`use-select-created-option`, a `useRef`, newest option in the press-to-return-focus
+  window) does not survive a fold: the user picks the new option by hand (known limit,
+  user-accepted 2026-10-10, no fix planned). The Add template row pushes
+  `TransactionForm {newTemplate:true}` (push, because a navigate to the form's own route name adds
+  no route and would replace the unsaved form); `create-template-return.navigator.test.tsx` and
+  `home.stack.create-template.navigator.test.tsx` pin the return to the same form in every stack.
+  A second known limit: a cancel plus another tab creating an option inside the window still
+  selects it (the tab bar stays visible over pushed forms). Likewise a remounted
   account form does not show the "Connected as <client name>" status of a Connect made before the
   fold: the status is local state in `MonobankConnectField`
   (`src/design-system/components/monobank-connect-field/`), the name comes from the token's
