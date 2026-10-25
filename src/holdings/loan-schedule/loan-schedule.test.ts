@@ -5,6 +5,7 @@ import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
 
 import {
+  isOnOrAfterLoanStartDay,
   isScheduledPayment,
   loanInstallments,
   loanOutstandingMinorAt,
@@ -60,10 +61,16 @@ describe('loanInstallments — annuity', () => {
     expect(installments).toHaveLength(240);
   });
 
+  it('is due on the start date for payment 1, then a month later for each next payment', () => {
+    expect(installments[0].dueDate).toBe(annuityMeta.startDate);
+    expect(installments[1].dueDate).toBe(addMonths(annuityMeta.startDate, 1));
+    expect(installments[239].dueDate).toBe(addMonths(annuityMeta.startDate, 239));
+  });
+
   it('matches a known amortization table on the first row', () => {
     expect(installments[0]).toEqual({
       index: 1,
-      dueDate: local(2020, 1, 15),
+      dueDate: local(2020, 0, 15),
       interestMinorUnits: 1_200_000,
       principalMinorUnits: 121_303,
       paymentMinorUnits: 1_321_303,
@@ -74,7 +81,7 @@ describe('loanInstallments — annuity', () => {
   it('matches a known amortization table on the last row, absorbing rounding', () => {
     expect(installments[239]).toEqual({
       index: 240,
-      dueDate: local(2040, 0, 15),
+      dueDate: local(2039, 11, 15),
       interestMinorUnits: 13_086,
       principalMinorUnits: 1_308_553,
       paymentMinorUnits: 1_321_639,
@@ -105,10 +112,16 @@ describe('loanInstallments — differentiated', () => {
     }
   });
 
+  it('is due on the start date for payment 1, then a month later for each next payment', () => {
+    expect(installments[0].dueDate).toBe(differentiatedMeta.startDate);
+    expect(installments[1].dueDate).toBe(addMonths(differentiatedMeta.startDate, 1));
+    expect(installments[239].dueDate).toBe(addMonths(differentiatedMeta.startDate, 239));
+  });
+
   it('matches a known amortization table on the first and last rows', () => {
     expect(installments[0]).toEqual({
       index: 1,
-      dueDate: local(2020, 1, 15),
+      dueDate: local(2020, 0, 15),
       interestMinorUnits: 1_200_000,
       principalMinorUnits: 500_000,
       paymentMinorUnits: 1_700_000,
@@ -116,7 +129,7 @@ describe('loanInstallments — differentiated', () => {
     });
     expect(installments[239]).toEqual({
       index: 240,
-      dueDate: local(2040, 0, 15),
+      dueDate: local(2039, 11, 15),
       interestMinorUnits: 5_000,
       principalMinorUnits: 500_000,
       paymentMinorUnits: 505_000,
@@ -263,6 +276,49 @@ describe('loanOutstandingMinorAt', () => {
     );
   });
 
+  it('on the start day, counts payment 1 as due: the principal less its principal part', () => {
+    const [first] = loanInstallments(annuityMeta);
+
+    expect(
+      loanOutstandingMinorAt(annuityMeta, HOLDING_ID, EMPTY_PRICE_BOOK, annuityMeta.startDate),
+    ).toBe(annuityMeta.principalMinorUnits - first.principalMinorUnits);
+  });
+
+  it('is 0 the day before the start, then drops by payment 1 on the start day', () => {
+    const dayBeforeStart = addDays(annuityMeta.startDate, -1);
+
+    expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, EMPTY_PRICE_BOOK, dayBeforeStart)).toBe(
+      0,
+    );
+    expect(
+      loanOutstandingMinorAt(annuityMeta, HOLDING_ID, EMPTY_PRICE_BOOK, annuityMeta.startDate),
+    ).toBeGreaterThan(0);
+  });
+
+  it('is 0 on the last due day and every day after it, never stuck on an earlier row', () => {
+    const lastDueDate = loanInstallments(annuityMeta)[239].dueDate;
+
+    expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, EMPTY_PRICE_BOOK, lastDueDate)).toBe(0);
+    expect(
+      loanOutstandingMinorAt(annuityMeta, HOLDING_ID, EMPTY_PRICE_BOOK, addDays(lastDueDate, 400)),
+    ).toBe(0);
+  });
+
+  it('does not count a payment due on the correction day again, the correction being the baseline', () => {
+    const [first] = loanInstallments(annuityMeta);
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument(HOLDING_ID),
+        day: dayKeyOf(first.dueDate),
+        price: '900000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, book, first.dueDate)).toBe(90_000_000);
+  });
+
   it('is 0 right after the last scheduled installment, with no correction', () => {
     const installments = loanInstallments(annuityMeta);
     const lastDueDate = installments[239].dueDate;
@@ -393,26 +449,29 @@ describe('loanInterestPerPaymentMinor', () => {
     );
   });
 
-  // A payment more than ONE PERIOD outside the schedule counts 0 interest,
-  // rather than mapping to the nearest
-  // (first/last) installment regardless of distance. "One period" is the
-  // same monthly cadence `loanInstallments` builds each due date from
-  // (`addMonths(startDate, k)`): one period before the first installment is
-  // `addMonths(startDate, 0)` (= `startDate` itself), one period after the
-  // last is `addMonths(startDate, termMonths + 1)`.
-  it('a payment more than one period before the first installment counts 0 interest', () => {
-    const beforeLowerBound = addDays(annuityMeta.startDate, -1);
-    expect(interestOfOnePayment(annuityMeta, beforeLowerBound, 10_000_000)).toBe(0);
+  // A payment outside the schedule counts 0 interest, rather than mapping to
+  // the nearest (first/last) installment regardless of distance. The schedule
+  // begins on the start day itself (a payment before it counts nowhere) and
+  // reaches one period past the last installment, `addMonths(startDate,
+  // termMonths)`.
+  it('a payment the day before the start day counts 0 interest', () => {
+    const beforeStart = addDays(annuityMeta.startDate, -1);
+    expect(interestOfOnePayment(annuityMeta, beforeStart, 10_000_000)).toBe(0);
+  });
+
+  it('a payment one period before the start day counts 0 interest', () => {
+    const onePeriodBefore = addMonths(annuityMeta.startDate, -1);
+    expect(interestOfOnePayment(annuityMeta, onePeriodBefore, 10_000_000)).toBe(0);
   });
 
   it('a payment more than one period after the last installment counts 0 interest', () => {
     const installments = loanInstallments(annuityMeta);
-    const upperBound = addMonths(annuityMeta.startDate, installments.length + 1);
+    const upperBound = addMonths(annuityMeta.startDate, installments.length);
     const afterUpperBound = addDays(upperBound, 1);
     expect(interestOfOnePayment(annuityMeta, afterUpperBound, 10_000_000)).toBe(0);
   });
 
-  it('a payment exactly one period before the first installment still maps to it (boundary is inclusive)', () => {
+  it('a payment on the start day maps to the first installment', () => {
     const installments = loanInstallments(annuityMeta);
     expect(interestOfOnePayment(annuityMeta, annuityMeta.startDate, 10_000_000)).toBe(
       installments[0].interestMinorUnits,
@@ -421,7 +480,7 @@ describe('loanInterestPerPaymentMinor', () => {
 
   it('a payment exactly one period after the last installment still maps to it (boundary is inclusive)', () => {
     const installments = loanInstallments(annuityMeta);
-    const upperBound = addMonths(annuityMeta.startDate, installments.length + 1);
+    const upperBound = addMonths(annuityMeta.startDate, installments.length);
     expect(interestOfOnePayment(annuityMeta, upperBound, 10_000_000)).toBe(
       installments[installments.length - 1].interestMinorUnits,
     );
@@ -431,29 +490,29 @@ describe('loanInterestPerPaymentMinor', () => {
   // the earlier half takes it, the later half is all principal.
   it('counts an installment paid in two halves as interest only once, earliest half first', () => {
     const twoYearMeta: LoanMeta = { ...annuityMeta, termMonths: 24 };
-    const first = loanInstallments(twoYearMeta)[0];
-    const half = Math.round(first.paymentMinorUnits / 2);
-    const earlier = { time: addDays(first.dueDate, -6), amountMinorUnits: -half };
-    const later = { time: addDays(first.dueDate, -5), amountMinorUnits: -half };
+    const installment = loanInstallments(twoYearMeta)[1];
+    const half = Math.round(installment.paymentMinorUnits / 2);
+    const earlier = { time: addDays(installment.dueDate, -6), amountMinorUnits: -half };
+    const later = { time: addDays(installment.dueDate, -5), amountMinorUnits: -half };
 
-    expect(half).toBeGreaterThan(first.interestMinorUnits);
+    expect(half).toBeGreaterThan(installment.interestMinorUnits);
     expect(loanInterestPerPaymentMinor(twoYearMeta, [later, earlier])).toEqual([
       0,
-      first.interestMinorUnits,
+      installment.interestMinorUnits,
     ]);
   });
 
   it('lets a later part take the interest an earlier, smaller part could not cover', () => {
-    const first = loanInstallments(annuityMeta)[0];
-    const small = Math.floor(first.interestMinorUnits / 3);
+    const installment = loanInstallments(annuityMeta)[1];
+    const small = Math.floor(installment.interestMinorUnits / 3);
     const payments = [
-      { time: addDays(first.dueDate, -1), amountMinorUnits: -small },
-      { time: first.dueDate, amountMinorUnits: -first.paymentMinorUnits },
+      { time: addDays(installment.dueDate, -1), amountMinorUnits: -small },
+      { time: installment.dueDate, amountMinorUnits: -installment.paymentMinorUnits },
     ];
 
     expect(loanInterestPerPaymentMinor(annuityMeta, payments)).toEqual([
       small,
-      first.interestMinorUnits - small,
+      installment.interestMinorUnits - small,
     ]);
   });
 
@@ -468,6 +527,21 @@ describe('loanInterestPerPaymentMinor', () => {
       first.interestMinorUnits,
       second.interestMinorUnits,
     ]);
+  });
+});
+
+describe('isOnOrAfterLoanStartDay', () => {
+  it('counts the whole start day, at any time of day, and nothing before it', () => {
+    const startDate = new Date(2020, 0, 15, 14, 30).getTime();
+
+    expect(isOnOrAfterLoanStartDay({ startDate }, local(2020, 0, 15))).toBe(true);
+    expect(isOnOrAfterLoanStartDay({ startDate }, new Date(2020, 0, 15, 23, 59).getTime())).toBe(
+      true,
+    );
+    expect(isOnOrAfterLoanStartDay({ startDate }, local(2020, 0, 16))).toBe(true);
+    expect(isOnOrAfterLoanStartDay({ startDate }, new Date(2020, 0, 14, 23, 59).getTime())).toBe(
+      false,
+    );
   });
 });
 
@@ -500,7 +574,7 @@ const splitsOf = (meta: LoanMeta, payments: Parameters<typeof loanPaymentSplitsM
 
 describe('loanPaymentSplitsMinor', () => {
   const installments = loanInstallments(annuityMeta);
-  const [first] = installments;
+  const [first, second] = installments;
 
   it('an exact match carries no excess', () => {
     expect(splitsOf(annuityMeta, [payAbove(first, 0)])).toEqual([
@@ -537,21 +611,21 @@ describe('loanPaymentSplitsMinor', () => {
   });
 
   it('a prepayment that took the interest leaves the regular payment its whole scheduled amount as principal', () => {
-    const prepayment = payAbove(first, 2_000_000, -2);
-    const regular = payAbove(first, 3_000);
+    const prepayment = payAbove(second, 2_000_000, -2);
+    const regular = payAbove(second, 3_000);
 
     expect(splitsOf(annuityMeta, [regular, prepayment])).toEqual([
       { interestMinorUnits: 0, excessMinorUnits: 3_000 },
-      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 0 },
+      { interestMinorUnits: second.interestMinorUnits, excessMinorUnits: 0 },
     ]);
   });
 
   it('gives every within-tolerance payment mapped to one installment its own excess', () => {
-    const earlier = payAbove(first, 3_000, -1);
-    const later = payAbove(first, 2_000, 1);
+    const earlier = payAbove(second, 3_000, -1);
+    const later = payAbove(second, 2_000, 1);
 
     expect(splitsOf(annuityMeta, [earlier, later])).toEqual([
-      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 3_000 },
+      { interestMinorUnits: second.interestMinorUnits, excessMinorUnits: 3_000 },
       { interestMinorUnits: 0, excessMinorUnits: 2_000 },
     ]);
   });
@@ -568,7 +642,10 @@ describe('loanPaymentSplitsMinor', () => {
   });
 
   it('counts no excess for a payment outside the schedule', () => {
-    const early = { time: addDays(annuityMeta.startDate, -1), amountMinorUnits: -1_323_303 };
+    const early = {
+      time: addDays(annuityMeta.startDate, -1),
+      amountMinorUnits: -1_323_303,
+    };
 
     expect(splitsOf(annuityMeta, [early])).toEqual([
       { interestMinorUnits: 0, excessMinorUnits: 0 },

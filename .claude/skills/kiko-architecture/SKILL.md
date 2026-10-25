@@ -380,6 +380,8 @@ A full scan hidden behind a repo helper called inside the write is not
 caught; that stays a review item. The rule cannot see a select inside a
 helper (for example `readAllRulesDatabaseTransaction`); such a read needs a
 `docs/harness/documented-exceptions.md` entry.
+A read of many rows inside a write pages by id-keyset (`rewriteBlankPageQuery` reads the blank
+rows so), never one whole-table select.
 
 ## The `useLiveQuery` pattern
 
@@ -776,7 +778,17 @@ start treating as an exchange leg joins the list in the same change. The insert 
 (`withCategoryRules`) applies rules to every new row, exchange legs and untracked-wallet legs
 included (user ruling Q1 = A, 2026-10-15); the rewrite of a saved rule and the re-sync refresh
 CASE (`ruleWonTransactionSet`) skip the rows that any `REWRITE_GUARD_FIELDS` field marks
-(OVERNIGHT DEFAULT D3, 2026-10-15).
+(a design default, 2026-10-15).
+A name matcher reads `ruleDescriptionOf` (`src/transactions/row-description/rule-description.ts`):
+the stored description, or for a blank one the label the row shows in the current language. Every
+apply path reads it so: the insert (`withCategoryRules`, which evaluates legs by their label), the
+rewrite and its count (`rowIdsRewrittenBy`), `giveSourceRowCategory`, and the form's
+`resolveRuleDescription`. A named rule's rewrite pages the blank rows by id-keyset
+(`rewriteBlankPageQuery`); legs keep `REWRITE_GUARD_FIELDS` on a rewrite.
+A sync input that adopts its import twin is judged as the adopted row (`adoptedRowOf` in
+`src/transactions/repo/transactions.repo.ts`): with the twin's own exchange markers and operation
+when it keeps them (`keepsExchangeMarkers`), so a kept leg reads by its exchange label; the twin's
+own category still wins over the rule's.
 `saveRule`, `countRuleRewrite` and `applyNameRule` go through one
 `stageDraft` (the stored rule, the row it becomes, every rule prepared with
 that row in place), so the rules are read once per write; `storeRule` is the
@@ -795,8 +807,11 @@ derived from the whole draft. Seed a loaded draft only through `seedCategory`
 the nav-bar Save settles the description first. Rule: coupled state is set by
 one seed function, never by a pair of exported setters. `useCategoryPick` takes a required
 `initial: { category, isPicked }` and opens with its description settled, so a restored draft shows
-the category and pick flag it was saved with; every caller passes `initial`. On a create, the
-name-rule sheet ("Apply to all transactions named X?") is offered only when the
+the category and pick flag it was saved with; every caller passes `initial`, and a
+`ruleDescription` mapper (the form's `resolveRuleDescription`): a blank name field with
+a holding reads as the placeholder label, and with no holding it stays blank, so name
+matchers refuse it. On a create, the name-rule sheet
+("Apply to all transactions named X?") is offered only when the
 user picked the category by hand or a Duplicate/template seed carries one
 (what a template stores is kiko-domain "Transaction templates"); a
 category the rules pre-selected saves flag 0 with no sheet; an edit is
@@ -3323,9 +3338,10 @@ what a change must keep.
   A reminder NOTIFICATION never names its account (its title and body are
   generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
-  Accounts stack, rebuilt from the root (`rebuiltStack`,
-  `src/reminders/routing/route-response.ts`; the rule and its known limit are in "Pane
-  navigation" below). Two nested navigates back to back lose
+  Accounts stack, rebuilt from the root (`openAccountsPages`,
+  `src/navigation/open-accounts-pages/open-accounts-pages.ts`, whose private `rebuiltStack`
+  builds it; the rule and its known limit are in "Pane navigation" below).
+  Two nested navigates back to back lose
   the first, because the second replaces the tab's nested params before
   the stack reads them (`route-response.navigator.test.tsx`, on the real
   routers). Before `navigationRef.isReady()` (a tap that launched
@@ -3490,8 +3506,11 @@ are built with `createPaneStackNavigator`.
   settled mode through its `mode` prop instead of reading the live one.
 - **Reminder tap rebuilds the Accounts stack from the root.** Rule (user ruling option B): a
   reminder notification tap sets the Accounts stack to `[Accounts, AccountDetail <tapped account>,
-  next screen?]` (`rebuiltStack`, `src/reminders/routing/route-response.ts`); nothing opened
-  earlier stays. The list route keeps its key (no remount). A page of the tapped account the user
+  next screen?]` (`openAccountsPages`, `src/navigation/open-accounts-pages/open-accounts-pages.ts`,
+  shared by the reminder tap and Home's View actions); nothing opened earlier stays. The holding
+  detail's View account / View holding go through `useOpenInPane` instead (`use-view-actions/`),
+  a push in the pane rule below, not this rebuild. The list route keeps its key (no remount).
+  A page of the tapped account the user
   opened right above the list (index 1, not flagged `isDefault`) keeps its key and takes the new
   params in place; an `isDefault` page is never reused. Why: an earlier page left below would
   close the reminder's page with it when its entity is deleted, and the list marks the detail

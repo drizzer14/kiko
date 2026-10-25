@@ -337,8 +337,9 @@ describe('buildDebtTotal', () => {
       }),
     ];
 
-    // Queried at each loan's own startDate: outstanding is the full principal,
-    // so each loan's own held value is exactly `-principal`.
+    // Queried at each loan's own startDate: payment 1 is due, so each loan's own
+    // held value is `-(principal - its first principal part)`: 5,000.00 less
+    // 397.91, and 100.00 less 16.49.
     const total = buildDebtTotal({
       holdings,
       rateTable: { USD: 40 },
@@ -347,7 +348,7 @@ describe('buildDebtTotal', () => {
     });
 
     expect(total.currency).toBe('UAH');
-    expect(total.minorUnits).toBe(-500_000 - 10_000 * 40);
+    expect(total.minorUnits).toBe(-(500_000 - 39_791) - (10_000 - 1_649) * 40);
   });
 
   it('ignores a POSITIVE non-loan holding entirely — only a negative balance counts as debt', () => {
@@ -395,7 +396,7 @@ describe('buildDebtTotal', () => {
 
     const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
 
-    expect(total.minorUnits).toBe(-500_000 - 300_000);
+    expect(total.minorUnits).toBe(-(500_000 - 39_791) - 300_000);
   });
 
   it('is 0 when there are no loan holdings at all', () => {

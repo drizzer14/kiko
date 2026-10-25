@@ -142,8 +142,8 @@ shares.
 ## No swipe actions — row edit/delete is the long-press CardContextMenu
 
 Swipe actions were removed on purpose. A row's edit/delete is the
-long-press `CardContextMenu` (Edit/Duplicate/Close/Delete, in that
-order, each only where the consumer passes it), never a swipe
+long-press `CardContextMenu` (Edit/Duplicate/View account/View
+holding/Close/Delete, in that order, each only where the consumer passes it), never a swipe
 gesture. Do not propose or add one: no gesture-handler `Swipeable` /
 `ReanimatedSwipeable`, no swipe-list package (by default, named, or
 namespace import), no fling recognizer
@@ -271,6 +271,11 @@ touch-and-hold gesture unclaimed for a synced card means the enclosing
 sortables drag can still claim it, so a synced card stays reorderable
 even though it is not deletable. Do not add a disabled/no-op `LongPress`
 here — it would only add a competing gesture with no benefit.
+
+The rule is for account and holding cards. A synced transaction row is
+different: it has a `LongPress` with `liftOnHold` (the View actions, no
+Delete), a moving finger still fails the hold, and a tap opens the
+read-only form. Read `card-context-menu.component.tsx`.
 
 ## Pure-gesture-math testability pattern
 

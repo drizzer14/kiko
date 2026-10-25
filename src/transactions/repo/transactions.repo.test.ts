@@ -196,10 +196,11 @@ describe('transactionsRepo', () => {
     expect(lower).toContain('"transactions"."loan_holding_id" is not null');
     expect(lower).toContain('inner join "holdings"');
     expect(lower).toContain('"holdings"."currency"');
+    expect(lower).toContain('"transactions"."id"');
     expect(params).toEqual([]);
   });
 
-  // The loan holding-detail screen's own "Linked payments" section.
+  // The linked payments the loan holding-detail screen lists beside its scheduled ones.
   it('builds a newest-first query of every transaction linked to one loan holding', () => {
     const { sql, params } = transactionsRepo.listLinkedToLoanQuery('loan-1').toSQL();
     const lower = sql.toLowerCase();

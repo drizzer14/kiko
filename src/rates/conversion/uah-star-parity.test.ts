@@ -269,7 +269,7 @@ const usdLoan = {
   balanceMinorUnits: 0,
   metadata: {
     kind: 'personal' as const,
-    principalMinorUnits: 200_000, // 2000.00 USD, no installment due yet at startDate
+    principalMinorUnits: 200_000, // 2000.00 USD, payment 1 due at startDate
     startDate: NOW,
     annualRatePct: 10,
     termMonths: 24,

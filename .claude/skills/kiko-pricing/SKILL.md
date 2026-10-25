@@ -391,7 +391,7 @@ place), `removeInstrument`.
 every valuation input a holding row does not carry itself.
 `points` groups the flat `price_points` row set by `instrument`, sorted
 `day` ascending. `loanPayments` groups every linked loan payment
-(`LoanLedgerPayment`: `loanHoldingId`, `time`, `amountMinorUnits`, and the
+(`LoanLedgerPayment`: `loanHoldingId`, `transactionId`, `time`, `amountMinorUnits`, and the
 PAYER holding's `currency`) by loan id, sorted `time` ascending — the input
 a loan's outstanding reads (`loanLedgerOutstandingMinorAt`, kiko-domain's
 "Debts" section), so the card, detail, totals, statistics, and every

@@ -17,6 +17,8 @@ import CardContextMenu, {
   HOLD_GESTURE_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
+  VIEW_ACCOUNT_ACTION_TEST_ID,
+  VIEW_HOLDING_ACTION_TEST_ID,
 } from './card-context-menu.component';
 
 describe('CardContextMenu', () => {
@@ -404,6 +406,138 @@ describe('CardContextMenu', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onDelete).not.toHaveBeenCalled();
     expect(queryByTestId(CLOSE_ACTION_TEST_ID)).toBeNull();
+  });
+
+  describe('the View actions', () => {
+    const ACTION_IDS = new RegExp(
+      `^(${[
+        EDIT_ACTION_TEST_ID,
+        DUPLICATE_ACTION_TEST_ID,
+        VIEW_ACCOUNT_ACTION_TEST_ID,
+        VIEW_HOLDING_ACTION_TEST_ID,
+        CLOSE_ACTION_TEST_ID,
+        DELETE_ACTION_TEST_ID,
+      ].join('|')})$`,
+    );
+
+    it('lists View account and View holding between Duplicate and Delete, in that order', async () => {
+      const { getAllByTestId } = await render(
+        <CardContextMenu
+          name="Coffee"
+          deletable
+          onDelete={jest.fn()}
+          onDuplicate={jest.fn()}
+          onViewAccount={jest.fn()}
+          onViewHolding={jest.fn()}
+          closeAction={{ label: 'Close holding', onPress: jest.fn() }}
+          onEdit={jest.fn()}
+        >
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(getAllByTestId(ACTION_IDS).map((node) => node.props.testID)).toEqual([
+        EDIT_ACTION_TEST_ID,
+        DUPLICATE_ACTION_TEST_ID,
+        VIEW_ACCOUNT_ACTION_TEST_ID,
+        VIEW_HOLDING_ACTION_TEST_ID,
+        CLOSE_ACTION_TEST_ID,
+        DELETE_ACTION_TEST_ID,
+      ]);
+    });
+
+    it('labels the buttons View account and View holding', async () => {
+      const { getByTestId } = await render(
+        <CardContextMenu
+          name="Coffee"
+          deletable={false}
+          onDelete={jest.fn()}
+          onViewAccount={jest.fn()}
+          onViewHolding={jest.fn()}
+        >
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toHaveTextContent('View account');
+      expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toHaveTextContent('View holding');
+    });
+
+    it('gives a card that cannot be deleted a hold that opens the list, with no Delete', async () => {
+      const { getByTestId, queryByTestId, queryByText } = await render(
+        <CardContextMenu
+          name="Coffee"
+          deletable={false}
+          onDelete={jest.fn()}
+          onViewAccount={jest.fn()}
+        >
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(trigger).toHaveBeenCalledWith('impactMedium');
+      expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+      expect(queryByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeNull();
+      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+      expect(queryByText('Delete "Coffee"')).toBeNull();
+    });
+
+    it('closes the list, then runs View account, deleting nothing', async () => {
+      const onViewAccount = jest.fn();
+      const onDelete = jest.fn();
+      const { getByTestId, queryByTestId } = await render(
+        <CardContextMenu name="Coffee" deletable onDelete={onDelete} onViewAccount={onViewAccount}>
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID));
+      });
+
+      expect(onViewAccount).toHaveBeenCalledTimes(1);
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(queryByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeNull();
+    });
+
+    it('closes the list, then runs View holding, deleting nothing', async () => {
+      const onViewHolding = jest.fn();
+      const onViewAccount = jest.fn();
+      const onDelete = jest.fn();
+      const { getByTestId, queryByTestId } = await render(
+        <CardContextMenu
+          name="Coffee"
+          deletable
+          onDelete={onDelete}
+          onViewAccount={onViewAccount}
+          onViewHolding={onViewHolding}
+        >
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(VIEW_HOLDING_ACTION_TEST_ID));
+      });
+
+      expect(onViewHolding).toHaveBeenCalledTimes(1);
+      expect(onViewAccount).not.toHaveBeenCalled();
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(queryByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeNull();
+    });
   });
 
   it('renders a synced (non-deletable) card bare, with no gesture and no confirm sheet', async () => {

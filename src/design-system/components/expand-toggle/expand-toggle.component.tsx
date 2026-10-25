@@ -16,7 +16,7 @@ const TOGGLE_HIT_SLOP = { top: 10, bottom: 10 } as const;
 
 /**
  * The one "Show all" / "Show less" link that expands or collapses a bounded list: the pie
- * legend, the statement-import raw preview, and the loan's upcoming payments share it.
+ * legend, the statement-import raw preview, and the loan's scheduled payments share it.
  */
 const ExpandToggle: FC<ExpandToggleProps> = ({ expanded, onPress, testID }) => {
   const { t } = useTranslation();

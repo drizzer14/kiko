@@ -524,11 +524,13 @@ describe('AccountsScreen', () => {
     });
 
     it('shows no caption for an account in the base currency', async () => {
-      const { account, holdings, rates } = implicitParityFixture(kind, 'x');
+      const { account, holdings, rates, caption } = implicitParityFixture(kind, 'x');
       setLiveData({ accounts: [{ ...account, currency: 'UAH' }], holdings, rates });
       const { getByTestId, queryByTestId } = await renderAccounts();
 
-      expect(within(getByTestId(totalTestID)).getByText(/5,000\.00 ₴/)).toBeTruthy();
+      expect(
+        within(getByTestId(totalTestID)).getByText(new RegExp(caption.replace('.', '\\.'))),
+      ).toBeTruthy();
       expect(queryByTestId(captionTestID)).toBeNull();
     });
   });
@@ -1064,9 +1066,9 @@ describe('AccountsScreen', () => {
 
       const { getByTestId } = await renderAccounts();
 
-      // Two loans, each -5,000.00 UAH (full principal, no installment due
-      // yet) -> section total -10,000.00 UAH.
-      expect(within(getByTestId('accounts-debts-total')).getByText(/-10,000\.00 ₴/)).toBeTruthy();
+      // Two loans, each -4,975.59 UAH (the principal less payment 1, due on
+      // the start day) -> section total -9,951.18 UAH.
+      expect(within(getByTestId('accounts-debts-total')).getByText(/-9,951\.18 ₴/)).toBeTruthy();
     });
 
     it('keeps the loans out of the main grid, in their own section grid', async () => {

@@ -171,9 +171,10 @@ describe('buildTypeBreakdown', () => {
       }),
     ];
 
-    // Queried AT the loan's own startDate: outstanding is the full principal, so
-    // the loan's own held value is a genuinely non-zero negative amount — a loose
-    // `amount !== 0` filter alone would let it through as a negative bar.
+    // Queried AT the loan's own startDate: payment 1 is due but most of the principal
+    // is still outstanding, so the loan's own held value is a genuinely non-zero
+    // negative amount — a loose `amount !== 0` filter alone would let it through as
+    // a negative bar.
     const result = buildTypeBreakdown({ holdings, rateTable: rates, baseCurrency: 'USD', now: 0 });
 
     expect(result.map((slice) => slice.type)).toEqual(['card']);

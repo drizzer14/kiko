@@ -59,6 +59,7 @@ const baseTransaction = (overrides: Partial<MatchableTransaction> = {}): Matchab
 // test can never silently drift from what `loanInstallments` actually
 // produces.
 const firstInstallment = loanInstallments(baseLoanMeta())[0];
+const secondInstallment = loanInstallments(baseLoanMeta())[1];
 
 // A loan paid from the holding every `baseTransaction` is debited on.
 const payerLoan = () => loanHolding({ paymentHoldingId: 'payer-1' });
@@ -147,7 +148,25 @@ describe('matchLoanPayments', () => {
     [7, 1],
     [8, 0],
   ])('links a transaction %i days from the due date: %i match(es)', (days, expected) => {
-    const matches = matchesOf(installmentDebit({ time: firstInstallment.dueDate + days * DAY_MS }));
+    const matches = matchesOf(
+      installmentDebit({
+        amountMinorUnits: -secondInstallment.paymentMinorUnits,
+        time: secondInstallment.dueDate + days * DAY_MS,
+      }),
+    );
+
+    expect(matches).toHaveLength(expected);
+  });
+
+  // Payment 1 is due on the start day, so its window would open before the loan
+  // exists; a payment dated before the start day counts nowhere.
+  it.each([
+    [-3, 0],
+    [-1, 0],
+    [0, 1],
+    [7, 1],
+  ])('links a transaction %i days from the start day: %i match(es)', (days, expected) => {
+    const matches = matchesOf(installmentDebit({ time: START_DATE + days * DAY_MS }));
 
     expect(matches).toHaveLength(expected);
   });
@@ -286,6 +305,18 @@ describe('matchLoanPayments — an installment already taken', () => {
 
   it('still links a fresh candidate when the only linked payment belongs to a DIFFERENT loan', () => {
     expect(matchesWithLinked(firstInstallmentPaidBy('some-other-loan'))).toHaveLength(1);
+  });
+
+  it('does not count a linked payment dated before the start day as taking payment 1', () => {
+    expect(
+      matchesWithLinked([
+        {
+          loanHoldingId: 'loan-1',
+          amountMinorUnits: -firstInstallment.paymentMinorUnits,
+          time: START_DATE - DAY_MS,
+        },
+      ]),
+    ).toHaveLength(1);
   });
 
   it('links normally when linkedPayments is omitted (backward-compatible default)', () => {

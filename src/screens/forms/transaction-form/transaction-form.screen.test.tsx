@@ -5213,6 +5213,79 @@ describe('TransactionFormScreen — category pre-select from the whole draft', (
     expect(field(utils)).toHaveTextContent('Dining');
   });
 
+  describe('by the label a blank description reads as', () => {
+    const WALLET: Holding = { ...UAH_CASH, name: 'Wallet' };
+    const labelRule = (text: string) =>
+      storedRule('label', 'dining', [{ type: 'nameStartsWith', text }]);
+
+    it('pre-selects by the English label once the amount is typed, and saves no description', async () => {
+      setLiveData([WALLET], undefined, CATEGORIES, [], [], [labelRule('Wallet expense')]);
+      const utils = await renderAdd();
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+
+      expect(field(utils)).toHaveTextContent('Dining');
+
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '', category: 'dining' }),
+      );
+    });
+
+    it('does not read the label of the other direction', async () => {
+      setLiveData([WALLET], undefined, CATEGORIES, [], [], [labelRule('Wallet income')]);
+      const utils = await renderAdd();
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+
+      expect(field(utils)).toHaveTextContent('Select category');
+    });
+
+    it('lets a description the user types win over the label', async () => {
+      setLiveData([WALLET], undefined, CATEGORIES, [], [], [labelRule('Wallet expense')]);
+      const utils = await renderAdd();
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Silpo');
+      await fireEvent(utils.getByLabelText('Description'), 'blur');
+
+      expect(field(utils)).toHaveTextContent('Select category');
+    });
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+      });
+
+      afterEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      });
+
+      it('pre-selects by the Ukrainian label, and not by the English one', async () => {
+        setLiveData(
+          [WALLET],
+          undefined,
+          CATEGORIES,
+          [],
+          [],
+          [
+            labelRule('Wallet expense'),
+            storedRule('uk', 'groceries', [{ type: 'nameStartsWith', text: 'Витрата' }]),
+          ],
+        );
+        const utils = await renderAdd();
+        await fireEvent.changeText(utils.getByLabelText('Сума'), '12.34');
+        await pressSave(navigation.setOptions, 'Зберегти');
+
+        expect(mockRecordManual).toHaveBeenCalledWith(
+          expect.objectContaining({ description: '', category: 'groceries' }),
+        );
+      });
+    });
+  });
+
   it('clears the pre-selection once the draft stops matching', async () => {
     setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
     const utils = await renderAdd();
