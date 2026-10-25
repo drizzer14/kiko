@@ -667,6 +667,7 @@ describe('what the Convert walk imports', () => {
       start: CONVERT_CREATED_AT - 1,
       end: CONVERT_CREATED_AT + 1,
       kind: 'point',
+      since: NOW,
     });
     expect(CURSOR(world)).toBe(NOW);
     expect(stopCodes()).toContain('convert-not-settled');
@@ -686,6 +687,7 @@ describe('what the Convert walk imports', () => {
       start: CONVERT_CREATED_AT - 1,
       end: CONVERT_CREATED_AT + 1,
       kind: 'point',
+      since: NOW,
     });
     expect(CURSOR(world)).toBe(NOW);
   });

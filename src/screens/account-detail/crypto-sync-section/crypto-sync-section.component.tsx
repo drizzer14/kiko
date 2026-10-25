@@ -202,7 +202,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       isBinanceHistoryBehind({
         cursors: walkCursorsOf(walkState),
         lastBalanceSyncAt,
-        owesRange: historyOwesRange(walkState),
+        owesRange: historyOwesRange(walkState, lastBalanceSyncAt),
       });
 
     return (

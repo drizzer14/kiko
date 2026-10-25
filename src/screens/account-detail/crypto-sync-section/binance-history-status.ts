@@ -32,31 +32,56 @@ export const walkCursorsOf = (state: ParsedExchangeState): (number | null)[] =>
 const isRange = (ground: { kind?: 'point' }): boolean => ground.kind !== 'point';
 
 /**
- * Whether any history walk owes a range, in every series or in one: ground its forward cursor has
- * passed and a later run still has to read (a page or a series the run could not afford or read,
- * a drift, an edge band). An owed point is not a range: a record the walk keeps owed is read
- * again on every sync. A list that is not well formed owes nothing here; the walk repairs it on
- * its next run. The ranges the fiat re-scan reads around (`rescanStuck`) are kept in the same
- * list, so they are read through it. A page that is stuck or a `drift` never rejects a run, so
- * this is how the ground it leaves owed stays visible.
+ * Whether a point has stayed owed for longer than the lag the caption allows a walk (a day): its
+ * `since` is the time of the run that first owed it, which every later run keeps. A point with no
+ * `since` (stored by a build before it) and one stamped after the balance sync are not old.
  */
-export const historyOwesRange = (state: ParsedExchangeState): boolean =>
+const isOldPoint = (
+  ground: { kind?: 'point'; since?: number },
+  lastBalanceSyncAt: number,
+): boolean =>
+  ground.kind === 'point' &&
+  ground.since !== undefined &&
+  lastBalanceSyncAt - ground.since > DAY_MS;
+
+/**
+ * Whether any history walk owes ground the caption is about: a range, in every series or in one
+ * (ground its forward cursor has passed and a later run still has to read: a page or a series the
+ * run could not afford or read, a drift, an edge band), or a point that has stayed owed for more
+ * than a day (`isOldPoint`). A fresh point is not owed ground the walk is behind on: the record
+ * it keeps owed is read again on every sync. A list that is not well formed owes nothing here;
+ * the walk repairs it on its next run. The ranges the fiat re-scan reads around (`rescanStuck`)
+ * are kept in the same list, so they are read through it. A page that is stuck or a `drift`
+ * never rejects a run, so this is how the ground it leaves owed stays visible. An account that
+ * has never synced (`lastBalanceSyncAt` is `null`) has no time to measure a point against.
+ */
+export const historyOwesRange = (
+  state: ParsedExchangeState,
+  lastBalanceSyncAt: number | null,
+): boolean =>
   match(state)
     .returnType<boolean>()
     .with({ kind: 'parsed' }, ({ walks }) =>
-      CAPTION_WALKS.some((walkId) => walks[walkId].pending?.some(isRange) ?? false),
+      CAPTION_WALKS.some(
+        (walkId) =>
+          walks[walkId].pending?.some(
+            (ground) =>
+              isRange(ground) ||
+              (lastBalanceSyncAt !== null && isOldPoint(ground, lastBalanceSyncAt)),
+          ) ?? false,
+      ),
     )
     .with({ kind: 'malformed' }, () => false)
     .exhaustive();
 
 /**
  * True when a Binance history walk is meaningfully behind the account's own balance sync: any
- * walk that never caught up (a `null` cursor), or lags by more than a day, or any walk owes a
- * range (`owesRange`, see `historyOwesRange`: its cursor has passed ground it has yet to read).
- * An owed point does not count: the caption is about the walks being behind, and a record the
- * walk keeps owed is read again on every sync. `lastBalanceSyncAt === null` (the account has
- * never synced) is never "behind": there's nothing yet to compare the history against, so the
- * caption would be noise before the very first sync.
+ * walk that never caught up (a `null` cursor), or lags by more than a day, or any walk owes
+ * ground (`owesRange`, see `historyOwesRange`: a range its cursor has passed, or a point owed for
+ * more than a day). A fresh owed point does not count: a record the walk keeps owed is read again
+ * on every sync. `lastBalanceSyncAt === null` (the account has never synced) is never "behind":
+ * there's nothing yet to compare the history against, so the caption would be noise before the
+ * very first sync.
  */
 export const isBinanceHistoryBehind = (input: {
   cursors: readonly (number | null)[];

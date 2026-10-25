@@ -142,6 +142,41 @@ describe('importData', () => {
     expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(expect.anything(), version);
   });
 
+  // The walk state is text the walks read and repair, so the file check never reads into it: a
+  // point an older build stored with no `since`, one with it, and one a hand-edited file gives a
+  // `since` no build writes all import, and the restore gets the row as the file holds it.
+  describe('a file whose walk state holds an owed point', () => {
+    const stateRowOf = (since: unknown) => ({
+      accountId: 'a1',
+      lastSyncAt: 5,
+      lastFullSyncAt: null,
+      lastSyncDisplayAt: null,
+      failedSyncMonobankIds: null,
+      exchangeState: JSON.stringify({
+        version: 1,
+        walks: { transfer: { cursor: 9, pending: [{ start: 1, end: 3, kind: 'point', since }] } },
+      }),
+    });
+
+    it.each([
+      ['with no `since`', undefined],
+      ['with a `since`', 1_700_000_000_000],
+      ['with a `since` that is text', '1700000000000'],
+      ['with a `since` below zero', -5],
+    ])('imports a point %s and hands the restore its row as stored', async (_name, since) => {
+      const row = stateRowOf(since);
+      const { fileText, keyBase64 } = encryptedWith(EXPORT_VERSION, { syncState: [row] });
+      mockReadFile.mockResolvedValue(fileText);
+
+      await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+      expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({ syncState: [row] }),
+        EXPORT_VERSION,
+      );
+    });
+  });
+
   // The data is already committed, so a credential that cannot be written is
   // not an import failure: the user reads a success, and which connections to
   // set up again.

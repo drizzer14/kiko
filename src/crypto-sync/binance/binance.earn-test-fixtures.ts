@@ -347,11 +347,18 @@ export const listOf = (world: World): unknown[] =>
 export const pointsIn = (list: unknown[]): unknown[] =>
   list.filter((ground) => (ground as { kind?: string }).kind === 'point');
 
-export const pointOf = (time: number, series: EarnRecordKind, reach = 1) => ({
+/** The point a read of a stuck record gives, before any run stores it. */
+export const settledPointOf = (time: number, series: EarnRecordKind, reach = 1) => ({
   start: time - reach,
   end: time + reach,
   kind: 'point',
   series,
+});
+
+/** The point as a walk stores it once the run at `NOW` owed it: stamped with that run's time. */
+export const pointOf = (time: number, series: EarnRecordKind, reach = 1) => ({
+  ...settledPointOf(time, series, reach),
+  since: NOW,
 });
 
 const STOP_TAG = '[binance sync] history window stopped';

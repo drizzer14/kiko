@@ -116,6 +116,7 @@ const pointOf = (time: number, series: string) => ({
   end: time + 1,
   kind: 'point',
   series,
+  since: NOW,
 });
 
 let warn: jest.SpyInstance;

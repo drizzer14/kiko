@@ -36,6 +36,7 @@ const plan: WalkPlan = {
   rescan: [window(10)],
   rescanEnd: 11,
   pendingRanges: [],
+  ranAt: 0,
 };
 
 const planWithTwoPoints: WalkPlan = {

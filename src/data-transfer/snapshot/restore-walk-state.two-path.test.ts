@@ -503,6 +503,59 @@ describe('restoring a .kiko file written before the walk state column', () => {
   });
 });
 
+// The time an owed point was first owed (`since`) is part of the stored walk state: a backup of a
+// build before it holds none, a backup of this build holds it, and the restore reads into neither:
+// it keeps the text as the file holds it, so a `since` no build writes (a hand-edited file) never
+// refuses the backup. The walk reads such a point as one with no time, never as a broken list.
+describe('restoring a walk state whose owed points carry the time they were first owed', () => {
+  const FIRST_OWED = 1_700_000_000_000;
+  const point = { start: 1_000, end: 1_002, kind: 'point', series: 'MAIN_FUNDING' };
+  const range = { start: 5_000, end: 6_000 };
+
+  const restoredPending = async (pending: unknown[]) => {
+    const stored = JSON.stringify({ version: 1, walks: { transfer: { cursor: 9, pending } } });
+    const source = freshDatabase();
+
+    seedSpot(source, 'account', { binanceHistoryCursor: 1000 });
+    source
+      .prepare("INSERT INTO sync_state (account_id, exchange_state) VALUES ('account', ?)")
+      .run(stored);
+
+    const restoredText = stateRowsOf(await restored(await exported(source)))[0]?.exchange_state;
+    const parsed = parseExchangeState(restoredText as string);
+
+    return {
+      restoredText,
+      stored,
+      pending: parsed.kind === 'parsed' ? parsed.walks.transfer.pending : 'malformed',
+    };
+  };
+
+  it.each([
+    ['a point with no time, as an older build stored it', point],
+    ['a point with its time', { ...point, since: FIRST_OWED }],
+  ])('restores %s unchanged, and it reads back as stored', async (_title, owed) => {
+    const result = await restoredPending([range, owed]);
+
+    expect(result.restoredText).toBe(result.stored);
+    expect(result.pending).toEqual([range, owed]);
+  });
+
+  it.each([
+    ['text', '1700000000000'],
+    ['below zero', -1],
+    ['a fraction', 1.5],
+  ])(
+    'restores a point whose time is %s unchanged, and the walk reads it as a point with none',
+    async (_title, since) => {
+      const result = await restoredPending([range, { ...point, since }]);
+
+      expect(result.restoredText).toBe(result.stored);
+      expect(result.pending).toEqual([range, point]);
+    },
+  );
+});
+
 // Two live property accounts cannot coexist in a current database (a partial unique index), so
 // the second one is added to the exported file, as an older build's export carried it.
 describe('an implicit-account merge', () => {

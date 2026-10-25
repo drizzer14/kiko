@@ -109,16 +109,58 @@ describe('historyOwesRange', () => {
         ],
       ],
     ])('is true for %s', (_label, owed) => {
-      expect(historyOwesRange(owing(walkName, owed))).toBe(true);
+      expect(historyOwesRange(owing(walkName, owed), NOW)).toBe(true);
     });
 
     it.each([
       ['no list', undefined],
       ['an empty list', []],
       ['only a point', [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' }]],
+      [
+        'only a point owed since a few hours',
+        [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING', since: NOW - HOUR_MS }],
+      ],
+      [
+        'only a point owed since exactly a day',
+        [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING', since: NOW - DAY_MS }],
+      ],
+      [
+        'only a point stamped after the balance sync',
+        [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING', since: NOW + DAY_MS }],
+      ],
+      [
+        'only a point whose `since` is not a time',
+        [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING', since: '0' }],
+      ],
       ['a list that is not well formed', 'x'],
     ])('is false for %s', (_label, owed) => {
-      expect(historyOwesRange(owing(walkName, owed))).toBe(false);
+      expect(historyOwesRange(owing(walkName, owed), NOW)).toBe(false);
+    });
+
+    it.each([
+      ['a day and a millisecond', NOW - DAY_MS - 1],
+      ['a week', NOW - 7 * DAY_MS],
+      ['the start of the epoch', 0],
+    ])('is true for a point owed since %s', (_label, since) => {
+      const owed = [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING', since }];
+
+      expect(historyOwesRange(owing(walkName, owed), NOW)).toBe(true);
+    });
+
+    it('is true for an old point beside fresh ones', () => {
+      const owed = [
+        { start: 1, end: 3, kind: 'point', since: NOW - HOUR_MS },
+        { start: 5, end: 7, kind: 'point' },
+        { start: 9, end: 11, kind: 'point', since: NOW - 2 * DAY_MS },
+      ];
+
+      expect(historyOwesRange(owing(walkName, owed), NOW)).toBe(true);
+    });
+
+    it('is false for an old point while the account has never synced', () => {
+      const owed = [{ start: 1, end: 3, kind: 'point', since: NOW - 2 * DAY_MS }];
+
+      expect(historyOwesRange(owing(walkName, owed), null)).toBe(false);
     });
   });
 
@@ -130,6 +172,23 @@ describe('historyOwesRange', () => {
           earn: { cursor: NOW, pending: [{ start: 1, end: 3, kind: 'point' }] },
           fiatPayments: { cursor: NOW, pending: [{ start: 1, end: 3 }] },
         }),
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
+  it('is true when one walk owes an old point, whichever the others hold', () => {
+    expect(
+      historyOwesRange(
+        stateOf({
+          capital: { cursor: NOW, pending: [] },
+          earn: { cursor: NOW, pending: [{ start: 1, end: 3, kind: 'point' }] },
+          p2p: {
+            cursor: NOW,
+            pending: [{ start: 1, end: 3, kind: 'point', since: NOW - 2 * DAY_MS }],
+          },
+        }),
+        NOW,
       ),
     ).toBe(true);
   });
@@ -138,7 +197,7 @@ describe('historyOwesRange', () => {
     ['no state row', null],
     ['a state that is not readable', '{not json'],
   ])('is false for %s', (_label, text) => {
-    expect(historyOwesRange(parseExchangeState(text))).toBe(false);
+    expect(historyOwesRange(parseExchangeState(text), NOW)).toBe(false);
   });
 });
 

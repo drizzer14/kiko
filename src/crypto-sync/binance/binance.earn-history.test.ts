@@ -37,6 +37,7 @@ import {
   pointOf,
   pointsIn,
   marksOf,
+  settledPointOf,
   stopCodeOf,
   stopCodes,
   unreadableEntryOf,
@@ -1390,7 +1391,9 @@ describe('a read that compares each end to the second, as Binance does', () => {
         }
 
         expect(marksOf(world).cursor).toBe(runs[1]);
-        expect(listOf(world)).toEqual([pointOf(AT, 'flexibleSubscription')]);
+        expect(listOf(world)).toEqual([
+          { ...settledPointOf(AT, 'flexibleSubscription'), since: runs[0] },
+        ]);
         expect(idsOf(world)).toEqual(LATER_IDS);
       });
 
@@ -1418,7 +1421,9 @@ describe('a read that compares each end to the second, as Binance does', () => {
         }
 
         expect(marksOf(world).cursor).toBe(first + HOUR_MS + gapMs);
-        expect(listOf(world)).toEqual([pointOf(AT, 'flexibleSubscription')]);
+        expect(listOf(world)).toEqual([
+          { ...settledPointOf(AT, 'flexibleSubscription'), since: first },
+        ]);
         expect(idsOf(world)).toEqual(LATER_IDS);
       });
 
@@ -1472,7 +1477,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
         { time: AT + HOUR_MS + 1_000, purchaseId: 'after' },
       ]);
 
-      expect(settled.owed).toEqual([pointOf(AT, 'flexibleSubscription'), span]);
+      expect(settled.owed).toEqual([settledPointOf(AT, 'flexibleSubscription'), span]);
     });
 
     it('owes the span itself, never one that starts at the second, for a row with no time', () => {
@@ -1480,7 +1485,9 @@ describe('a read that compares each end to the second, as Binance does', () => {
     });
 
     it('owes the point of an unreadable row in the second the span starts in', () => {
-      expect(settledIn([], [{ time: AT }]).owed).toEqual([pointOf(AT, 'flexibleSubscription')]);
+      expect(settledIn([], [{ time: AT }]).owed).toEqual([
+        settledPointOf(AT, 'flexibleSubscription'),
+      ]);
     });
   });
 
@@ -1501,11 +1508,15 @@ describe('a read that compares each end to the second, as Binance does', () => {
         flexibleSubscriptionOf({ time: AT, purchaseId: 'p-ok' }),
       );
 
-      for (const now of [base + 500 + HOUR_MS, base + 500 + 2 * HOUR_MS + gapMs]) {
+      const runs = [base + 500 + HOUR_MS, base + 500 + 2 * HOUR_MS + gapMs];
+
+      for (const now of runs) {
         await walkOnce({ world, entries: [neighbour, settled], precision: 'second', now });
       }
 
-      expect(listOf(world)).toEqual([pointOf(AT - 1_000, 'flexibleSubscription')]);
+      expect(listOf(world)).toEqual([
+        { ...settledPointOf(AT - 1_000, 'flexibleSubscription'), since: runs[0] },
+      ]);
       expect(idsOf(world)).toEqual([
         'acc-1:earn:sub:flexible:p-ok:BTC',
         'acc-1:earn:sub:flexible:p-ok:BTC:earn',

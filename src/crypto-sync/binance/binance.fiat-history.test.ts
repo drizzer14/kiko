@@ -188,6 +188,7 @@ const pointOf = (time: number, series: string) => ({
   end: time + 1,
   kind: 'point',
   series,
+  since: NOW,
 });
 
 let warn: jest.SpyInstance;
@@ -1838,7 +1839,31 @@ describe.each([ORDERS, PAYMENTS])(
         end: Math.ceil(FRACTIONAL_AT) + 1,
         kind: 'point',
         series: '0',
+        since: NOW,
       });
+    });
+
+    it('stamps its point with the time of the run that first owed it, and keeps it on every later run', async () => {
+      const world = recentWorld(kind);
+      const { fetchImpl } = serverOfFraction();
+
+      for (const hours of [0, 5, 30]) {
+        await world
+          .walk(
+            world.depsOf({
+              fetchImpl,
+              [kind.readKey]: realRead,
+              now: () => NOW + hours * HOUR_MS,
+            }),
+          )
+          .catch(() => undefined);
+      }
+
+      const points = pendingOf(kind, world) as { kind?: string; since?: number }[];
+
+      expect(points.filter((ground) => ground.kind === 'point').map(({ since }) => since)).toEqual([
+        NOW,
+      ]);
     });
   },
 );

@@ -567,6 +567,46 @@ describe('CryptoSyncSection', () => {
     });
   });
 
+  describe.each(WALK_NAMES)(
+    'while the cursors are current and the %s walk owes a point',
+    (walkName) => {
+      const pointWith = (stamp: { since?: number }) => ({
+        start: 5,
+        end: 7,
+        kind: 'point',
+        series: 'MAIN_FUNDING',
+        ...stamp,
+      });
+
+      it.each([
+        ['a day and a millisecond', CONNECTED_WALLET_SYNCED_AT - DAY_MS - 1],
+        ['a week', CONNECTED_WALLET_SYNCED_AT - 7 * DAY_MS],
+      ])('owed since %s, the caption shows', async (_label, since) => {
+        const { getByText } = await renderBinance(
+          withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, {
+            pending: [pointWith({ since })],
+          }),
+        );
+
+        expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
+      });
+
+      it.each([
+        ['since a few hours', { since: CONNECTED_WALLET_SYNCED_AT - 3 * HOUR_MS }],
+        ['since exactly a day', { since: CONNECTED_WALLET_SYNCED_AT - DAY_MS }],
+        ['with no time at all', {}],
+      ])('owed %s, the caption stays hidden', async (_label, stamp) => {
+        const { queryByText } = await renderBinance(
+          withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, {
+            pending: [pointWith(stamp)],
+          }),
+        );
+
+        expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+      });
+    },
+  );
+
   it('hides the lagging-history caption while a sync is in flight, even when the history walk is behind', async () => {
     mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
 

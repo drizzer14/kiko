@@ -1795,7 +1795,9 @@ describe('the pending overlap days of the capital walk', () => {
     expect(state.imported.has(keyOf(readable))).toBe(true);
     expect(state.imported.has(keyOf(inWindow))).toBe(true);
     const t = stuckDay.start + 3_600_000;
-    expect(state.account.pending()).toEqual([{ start: t - 1_000, end: t + 1_000, kind: 'point' }]);
+    expect(state.account.pending()).toEqual([
+      { start: t - 1_000, end: t + 1_000, kind: 'point', since: NOW },
+    ]);
     expect(second.result.complete).toBe(false);
   });
 
@@ -1959,6 +1961,7 @@ describe('the pending overlap days of the capital walk', () => {
       start: time - 1_000,
       end: time + 1_000,
       kind: 'point',
+      since: NOW,
     });
     // The overlap day behind the cursor lies in the window the re-scan reads; only the ground
     // older than that window is the pending pass's.
@@ -2200,7 +2203,7 @@ describe('the pending overlap days of the capital walk', () => {
       expect(state.imported).toEqual(new Set([`${ACCOUNT}:deposit:fixed-deposit`]));
       expect(beyondWindow(state.account.pending())).toEqual([
         pointAt(stuckAt),
-        { start: stuckAt + 4_999, end: stuckAt + 5_001, kind: 'point' },
+        { start: stuckAt + 4_999, end: stuckAt + 5_001, kind: 'point', since: NOW },
       ]);
     });
 
@@ -2287,7 +2290,7 @@ describe('the pending overlap days of the capital walk', () => {
 
         expect(state.imported).toEqual(new Set([depositKey]));
         expect(beyondWindow(state.account.pending())).toEqual([
-          { start: stuckAt - 1, end: stuckAt + 1, kind: 'point' },
+          { start: stuckAt - 1, end: stuckAt + 1, kind: 'point', since: NOW },
         ]);
         expect(warn.mock.calls).toEqual([
           [STOP_TAG, { name: 'BinanceWalkStop', code: UNREADABLE_CODE }],
@@ -2338,7 +2341,7 @@ describe('the pending overlap days of the capital walk', () => {
 
         expect(state.imported).toEqual(new Set([`${ACCOUNT}:deposit:later`]));
         expect(state.account.pending()).toEqual([
-          { start: unreadableAt - 1, end: unreadableAt + 1, kind: 'point' },
+          { start: unreadableAt - 1, end: unreadableAt + 1, kind: 'point', since: NOW },
         ]);
         expect(result.complete).toBe(false);
       });

@@ -115,7 +115,8 @@ export type OwedGround = BinancePendingRange;
  * ground behind the forward start, to catch a record that settles late, and never moves that
  * cursor. `rescanEnd` is where the re-scan ends. `pendingRanges` is the list of owed ground as it
  * stands once this run's own overlap day is in it: what to store before the forward pass first
- * moves the cursor.
+ * moves the cursor. `ranAt` is the wall-clock time of the run: the `since` of every point the run
+ * owes for the first time.
  */
 export type WalkPlan = {
   forward: WalkWindow[];
@@ -124,6 +125,7 @@ export type WalkPlan = {
   rescan: WalkWindow[];
   rescanEnd: number;
   pendingRanges: OwedGround[];
+  ranAt: number;
 };
 
 /**
@@ -212,9 +214,28 @@ const cutToBounds = <Range extends WalkWindow>(
   end: Math.min(range.end, bounds.endTime),
 });
 
-/** The ground of a list without a repeat: the first of each entry `sameGround` tells apart. */
+/**
+ * The earliest `since` among the entries that are the same ground as `entry`, which owe it again
+ * and so share the time of the run that first owed it.
+ */
+const firstSinceOf = (ground: OwedGround[], entry: OwedGround): number | undefined => {
+  const stamps = ground.flatMap((other) => (sameGround(other, entry) ? (other.since ?? []) : []));
+
+  return stamps.length === 0 ? undefined : minOf(stamps);
+};
+
+/**
+ * The ground of a list without a repeat: the first of each entry `sameGround` tells apart. A point
+ * owed more than once keeps the earliest `since` of them, wherever in the list it stands: the time
+ * of the run that first owed it is never replaced by a later run's.
+ */
 export const distinctGround = (ground: OwedGround[]): OwedGround[] =>
-  ground.filter((entry, index) => ground.findIndex((other) => sameGround(other, entry)) === index);
+  ground
+    .filter((entry, index) => ground.findIndex((other) => sameGround(other, entry)) === index)
+    .map((entry) => ({
+      ...entry,
+      ...foldMap(maybe(firstSinceOf(ground, entry)), (since) => ({ since })),
+    }));
 
 /**
  * The points of a list without a repeat. Two points that start together but differ both stay:
@@ -595,6 +616,7 @@ export const planWalkPasses = (input: {
     rescan,
     rescanEnd: behindEnd,
     pendingRanges,
+    ranAt: endTime,
   };
 };
 
@@ -686,11 +708,18 @@ const sameList = (left: OwedGround[], right: OwedGround[]): boolean =>
   left.length === right.length && left.every((ground, index) => sameGround(ground, right[index]));
 
 /**
+ * Whether two lists of the same ground (`sameList`) carry the same `since` on every entry: a point
+ * an older build stored with none is stamped by the write of the list, though no ground changed.
+ */
+const sameStamps = (left: OwedGround[], right: OwedGround[]): boolean =>
+  left.every((ground, index) => ground.since === right[index].since);
+
+/**
  * The write of `next` as the walk's list of owed ground: none when it is the list the run last
  * wrote, and the marks keep it as the one written.
  */
 const pendingPatchesOf = (marks: WalkMarks, next: OwedGround[]): WalkMarkPatch[] => {
-  if (sameList(next, marks.pending)) {
+  if (sameList(next, marks.pending) && sameStamps(next, marks.pending)) {
     return [];
   }
 
@@ -846,6 +875,16 @@ const advanceRescan = async (input: MarkAdvance): Promise<void> => {
 };
 
 /**
+ * The ground a span owes, each point with the time of the run on it, unless it has one: a point
+ * owed again keeps its first time (`distinctGround`, when it is joined to the list), so this one
+ * only stands for a point the list does not hold yet. A range is never stamped.
+ */
+const withRunTime = (owed: OwedGround[], ranAt: number): OwedGround[] =>
+  owed.map((ground) =>
+    isPoint(ground) && ground.since === undefined ? { ...ground, since: ranAt } : ground,
+  );
+
+/**
  * Move the walk's marks once a span's rows are durable. A forward span moves the cursor to
  * its end, never back: the first spans of a pass start behind it, and the mark to compare
  * with is the one this run last wrote, not the one it found. The first forward span also
@@ -857,13 +896,16 @@ const advanceRescan = async (input: MarkAdvance): Promise<void> => {
  * that owes exactly it came back, see `dropReadPoints`). `write` gets one write for the span: the
  * list when it changed, and the mark that moved.
  */
-export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> =>
-  match(input.pass)
+export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> => {
+  const stamped = { ...input, owed: withRunTime(input.owed ?? [], input.plan.ranAt) };
+
+  return match(stamped.pass)
     .returnType<Promise<void>>()
-    .with('forward', () => advanceCursor(input))
-    .with('pending', () => advancePending(input))
-    .with('rescan', () => advanceRescan(input))
+    .with('forward', () => advanceCursor(stamped))
+    .with('pending', () => advancePending(stamped))
+    .with('rescan', () => advanceRescan(stamped))
     .exhaustive();
+};
 
 /**
  * The first half of a span, or `undefined` for a span of one millisecond, which cannot be
