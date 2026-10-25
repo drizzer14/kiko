@@ -18,6 +18,7 @@ import type { EntryCardProps } from './entry-card.props';
  */
 const EntryCard: FC<EntryCardProps> = ({
   label,
+  subtitle,
   amount,
   lead,
   amountCaption,
@@ -31,6 +32,12 @@ const EntryCard: FC<EntryCardProps> = ({
   const description = (
     <Box style={styles.rowDescription}>
       <Text variant="body">{label}</Text>
+
+      {subtitle !== undefined && (
+        <Text variant="caption" tone="textSecondary">
+          {subtitle}
+        </Text>
+      )}
     </Box>
   );
 

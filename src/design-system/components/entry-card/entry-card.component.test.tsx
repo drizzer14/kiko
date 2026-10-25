@@ -225,6 +225,95 @@ describe('EntryCard', () => {
     );
   });
 
+  it('draws the subtitle directly under the label, as secondary caption text', async () => {
+    const { getByTestId } = await render(
+      <EntryCard testID="entry" label="Interest" amount={amount} subtitle="Computed" />,
+    );
+
+    expect(layoutOf(getByTestId('entry'))).toEqual(
+      cardLayout([
+        mainRowLayout([
+          {
+            ...labelLayout('Interest'),
+            children: [
+              { variant: 'body', tone: 'textPrimary', children: ['Interest'] },
+              captionTextLayout('Computed'),
+            ],
+          },
+          amountLayout(),
+        ]),
+      ]),
+    );
+  });
+
+  it('keeps the amount column as it is beside a long label with a subtitle', async () => {
+    const longLabel = 'A very long loan payment title that wraps onto several lines';
+    const { getByTestId } = await render(
+      <EntryCard
+        testID="entry"
+        label={longLabel}
+        amount={amount}
+        amountCaption="09:05"
+        subtitle="Planned"
+        footerLines={['Scheduled']}
+      />,
+    );
+
+    expect(layoutOf(getByTestId('entry'))).toEqual(
+      cardLayout([
+        mainRowLayout([
+          {
+            ...labelLayout(longLabel),
+            children: [
+              { variant: 'body', tone: 'textPrimary', children: [longLabel] },
+              captionTextLayout('Planned'),
+            ],
+          },
+          amountLayout([captionLayout([captionTextLayout('09:05')])]),
+        ]),
+        footerLayout(['Scheduled']),
+      ]),
+    );
+  });
+
+  it('draws the subtitle inside the label column of a card with a lead', async () => {
+    const { getByTestId } = await render(
+      <EntryCard
+        testID="entry"
+        label="Coffee"
+        amount={amount}
+        lead={<RNText testID="lead">icon</RNText>}
+        subtitle="Planned"
+      />,
+    );
+
+    expect(layoutOf(getByTestId('entry'))).toEqual(
+      cardLayout([
+        mainRowLayout([
+          {
+            style: {
+              alignItems: 'flex-start',
+              flex: 1,
+              flexDirection: 'row',
+              gap: darkTheme.spacing(2),
+            },
+            children: [
+              { testID: 'lead', children: ['icon'] },
+              {
+                ...labelLayout('Coffee'),
+                children: [
+                  { variant: 'body', tone: 'textPrimary', children: ['Coffee'] },
+                  captionTextLayout('Planned'),
+                ],
+              },
+            ],
+          },
+          amountLayout(),
+        ]),
+      ]),
+    );
+  });
+
   it('forwards its style to the card', async () => {
     const { getByTestId } = await render(
       <EntryCard testID="entry" label="Coffee" amount={amount} style={{ opacity: 0.5 }} />,
