@@ -526,7 +526,8 @@ The established patterns grouped under this heading:
   no-templates hint under the template select
   (`src/screens/forms/transaction-form/template-select/template-select.component.tsx`);
   that select also carries the "Add template" row (`emptyAction`, hidden while the list loads;
-  the hint stays), and `transaction-form.screen.tsx` pushes `TransactionForm {newTemplate:true}`;
+  the hint stays), and `transaction-form.screen.tsx` pushes the create form (params with
+  its `handbackId`: see "Empty holding picker");
   the plain hint (`forms.account.importOnlyBankHint`) stays a bare caption
   `Text`. Any other informational hint with no action stays a bare caption
   Text. A
@@ -1191,7 +1192,9 @@ new component can land between reviews of this skill:
   for it directly. `SelectField`'s optional `onSelectClosed(option)` runs
   once after the sheet a pick closed has finished closing (the
   `onClosed` contract above): wire a screen navigation to it, never to
-  `onSelect` (`AccountKindField` forwards it). `SelectField`'s optional
+  `onSelect` (`AccountKindField` forwards it).
+  The close calls the LATEST render's `onSelectClosed` (a ref refreshed every render), so it
+  sees the state the pick just set. `SelectField`'s optional
   `closesWithoutAnimation(option)` names the picks whose sheet closes with
   `BottomSheet`'s `animationType="none"` (`'fade' | 'slide' | 'none'`,
   default `'fade'`), so `onSelectClosed` follows the pick at once instead of
@@ -1590,7 +1593,13 @@ new component can land between reviews of this skill:
   one is open gets none, so it pushes no second form. The id rides to the create form as the
   `handbackId` route param (`TransactionForm {newTemplate}`, `HoldingForm`;
   `resolveCreateHoldingTarget(picker, accounts, handbackId?)` adds it to the holding target, never
-  to the `AccountForm` one). The form hands the new id back (`handBackCreatedOption`) only after its
+  to the `AccountForm` one when an account exists). With no account the target is `AccountForm`,
+  and the id rides there too: `AccountForm` hands back the new cash holding id
+  (`accountsRepo.createCashAccount` resolves `{ accountId, holdingId }`) after that write commits.
+  The Property/Loan swap (`replace` into `HoldingForm`) and the holding form's
+  `leaveForAccountForm` (`replace` back) carry the id. A non-cash kind hands back nothing, and
+  an `AccountForm` opened without `handbackId` (Accounts > Add account, edit) hands back nothing.
+  The form hands the new id back (`handBackCreatedOption`) only after its
   write commits; a cancel or a failed write hands back nothing. The picker selects exactly that id,
   once, when its screen regains focus, whether the option reaches the list before or after the
   focus. A blur drops an awaited id that never appeared; unmount closes the open handback. Outside

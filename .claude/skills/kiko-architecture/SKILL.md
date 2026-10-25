@@ -3538,10 +3538,11 @@ are built with `createPaneStackNavigator`.
   (known limit, user-accepted 2026-10-10, no fix planned). The handback id is a correlation id in
   the `handbackId` route param, not a secret, so it may ride in params. The Add template row pushes
   `TransactionForm {newTemplate:true, handbackId}` (push, because a navigate to the form's own
-  route name adds no route and would replace the unsaved form); the navigator pins
+  route name adds no route and would replace the unsaved form); the return
+  and the selection in every stack and the split layout are pinned by
   `create-template-return.navigator.test.tsx`, `create-holding-return.navigator.test.tsx` and
-  `home.stack.create-template.navigator.test.tsx` pin the return and the selection in every stack
-  and the split layout. Likewise a remounted
+  `home.stack.create-template.navigator.test.tsx`. The account form joins the handback; the detail
+  is in kiko-design-system's "Empty holding picker". Likewise a remounted
   account form does not show the "Connected as <client name>" status of a Connect made before the
   fold: the status is local state in `MonobankConnectField`
   (`src/design-system/components/monobank-connect-field/`), the name comes from the token's
