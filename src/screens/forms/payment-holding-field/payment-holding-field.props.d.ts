@@ -1,3 +1,4 @@
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type PaymentHoldingFieldProps = {
@@ -15,7 +16,7 @@ export type PaymentHoldingFieldProps = {
   onSelect: (id: string | null) => void;
   testID?: string;
   // When set AND `options` is empty (the "None" row is not an option), the sheet
-  // shows one "Add holding" row that calls this. The field then selects the
-  // holding created on that round trip, once it appears among `options`.
-  onCreateNew?: () => void;
+  // shows one "Add holding" row that calls this with the handback id the create form hands its
+  // holding to. The field then selects exactly that holding once it is among `options`.
+  onCreateNew?: (handbackId: HandbackId) => void;
 };

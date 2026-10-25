@@ -1,4 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
+import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
@@ -18,18 +20,31 @@ const options: HoldingSelectOption[] = [
   },
 ];
 
-const renderPaymentHoldingField = (overrides: Partial<PaymentHoldingFieldProps> = {}) =>
-  render(
-    <PaymentHoldingField
-      label="Paid from"
-      sheetTitle="Paid From"
-      noneLabel="None"
-      options={options}
-      selectedId={null}
-      onSelect={jest.fn()}
-      {...overrides}
-    />,
-  );
+// The field hears the screen's focus through its navigation, so it renders inside one the test
+// can fire focus on.
+const renderPaymentHoldingField = async (overrides: Partial<PaymentHoldingFieldProps> = {}) => {
+  const { provide, fireFocus } = makeFocusNavigation();
+  const field = (props: Partial<PaymentHoldingFieldProps>) =>
+    provide(
+      <PaymentHoldingField
+        label="Paid from"
+        sheetTitle="Paid From"
+        noneLabel="None"
+        options={options}
+        selectedId={null}
+        onSelect={jest.fn()}
+        {...overrides}
+        {...props}
+      />,
+    );
+  const view = await render(field({}));
+
+  return {
+    ...view,
+    fireFocus: () => act(async () => fireFocus()),
+    rerenderWith: (props: Partial<PaymentHoldingFieldProps>) => view.rerender(field(props)),
+  };
+};
 
 describe('PaymentHoldingField', () => {
   it('shows "None" when nothing is picked', async () => {
@@ -110,23 +125,27 @@ describe('PaymentHoldingField', () => {
       await fireEvent.press(view.getByText('Add holding'));
 
       expect(onCreateNew).toHaveBeenCalledTimes(1);
+      expect(onCreateNew).toHaveBeenCalledWith(expect.any(String));
       expect(view.queryByText('Paid From')).toBeNull();
 
-      const created = { ...options[0], id: 'created', createdAt: Date.now() };
-
-      await view.rerender(
-        <PaymentHoldingField
-          label="Paid from"
-          sheetTitle="Paid From"
-          noneLabel="None"
-          options={[created]}
-          selectedId={null}
-          onSelect={onSelect}
-          onCreateNew={onCreateNew}
-        />,
-      );
+      handBackCreatedOption(onCreateNew.mock.calls[0][0], 'created');
+      await view.rerenderWith({ options: [{ ...options[0], id: 'created' }] });
+      await view.fireFocus();
 
       expect(onSelect.mock.calls).toEqual([['created']]);
+    });
+
+    it('selects nothing on a cancel, even when another holding appeared during the round trip', async () => {
+      const onSelect = jest.fn();
+      const view = await openSheet({ options: [], onCreateNew: jest.fn(), onSelect });
+
+      await fireEvent.press(view.getByText('Add holding'));
+      await view.rerenderWith({
+        options: [{ ...options[0], id: 'synced', createdAt: Date.now() }],
+      });
+      await view.fireFocus();
+
+      expect(onSelect).not.toHaveBeenCalled();
     });
   });
 });

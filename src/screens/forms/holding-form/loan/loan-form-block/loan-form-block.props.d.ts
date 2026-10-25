@@ -1,3 +1,4 @@
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import type { UseLoanFieldsResult } from '../use-loan-fields/use-loan-fields';
@@ -11,5 +12,5 @@ export type LoanFormBlockProps = {
   // `useLoanFields` itself.
   paymentHoldingOptions: readonly HoldingSelectOption[];
   // Forwarded to the "Paid from" field's "Add holding" row (see LoanSection).
-  onCreatePaymentHolding?: () => void;
+  onCreatePaymentHolding?: (handbackId: HandbackId) => void;
 };

@@ -1,206 +1,238 @@
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react-native';
 import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
-import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import { useSelectCreatedOption } from './use-select-created-option';
+import { closeHandback, handBackCreatedOption } from './created-option-handback';
 
-const SECOND = 1_000;
-const TAPPED_AT = 100 * SECOND;
-const SAVED_AT = 130 * SECOND;
-const RETURNED_AT = 131 * SECOND;
+type NamedOption = { id: string; name: string };
 
-const makeOption = (id: string, createdAt: number): HoldingSelectOption => ({
-  id,
-  name: `Holding ${id}`,
-  icon: 'creditcard',
-  color: '#3366FF',
-  currency: 'USD',
-  accountName: 'Personal',
-  createdAt,
-});
+type StartRoundTrip = { current: () => string | undefined };
 
-const setup = async (initialOptions: readonly HoldingSelectOption[] = []) => {
+const makeOption = (id: string): NamedOption => ({ id, name: `Option ${id}` });
+
+const setup = async (initialOptions: readonly NamedOption[] = []) => {
   const onSelect = jest.fn();
-  const { provide, fireFocus } = makeFocusNavigation();
+  const { provide, fireFocus, fireBlur } = makeFocusNavigation();
   const wrapper = ({ children }: { children: ReactNode }) => provide(children);
   const hook = await renderHook(
-    ({ options }: { options: readonly HoldingSelectOption[] }) =>
-      useSelectCreatedOption(options, onSelect),
+    ({ options }: { options: readonly NamedOption[] }) => useSelectCreatedOption(options, onSelect),
     { wrapper, initialProps: { options: initialOptions } },
   );
 
-  return { onSelect, fireFocus, ...hook };
+  return { onSelect, fireFocus, fireBlur, ...hook };
 };
 
-const pressCreateRow = async (result: { current: () => void }): Promise<void> => {
+// The id the push would carry to the create form; undefined when the press must push nothing.
+const pressCreateRow = async (result: StartRoundTrip): Promise<string | undefined> => {
+  let handbackId: string | undefined;
+
   await act(async () => {
-    result.current();
+    handbackId = result.current();
+  });
+
+  return handbackId;
+};
+
+const pressedHandbackId = async (result: StartRoundTrip): Promise<string> => {
+  const handbackId = await pressCreateRow(result);
+
+  if (handbackId === undefined) {
+    throw new Error('The press opened no handback');
+  }
+
+  return handbackId;
+};
+
+const returnToScreen = async (fireFocus: () => void): Promise<void> => {
+  await act(async () => {
+    fireFocus();
   });
 };
 
 describe('useSelectCreatedOption', () => {
-  let clock = TAPPED_AT;
+  it('selects the handed-back option once the screen regains focus', async () => {
+    const { onSelect, result, rerender, fireFocus } = await setup();
+    const handbackId = await pressedHandbackId(result);
 
-  const returnToScreen = async (fireFocus: () => void): Promise<void> => {
-    clock = RETURNED_AT;
-    await act(async () => {
-      fireFocus();
-    });
-  };
+    handBackCreatedOption(handbackId, 'new');
+    await rerender({ options: [makeOption('new')] });
 
-  beforeEach(() => {
-    clock = TAPPED_AT;
-    jest.spyOn(Date, 'now').mockImplementation(() => clock);
-  });
+    expect(onSelect).not.toHaveBeenCalled();
 
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  it('selects the option that appears after the create row was pressed', async () => {
-    const { onSelect, result, rerender } = await setup();
-
-    await pressCreateRow(result);
-    await rerender({ options: [makeOption('new', SAVED_AT)] });
+    await returnToScreen(fireFocus);
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('new');
   });
 
   it('does not select an option that appears without a press', async () => {
-    const { onSelect, rerender } = await setup();
+    const { onSelect, rerender, fireFocus } = await setup();
 
-    await rerender({ options: [makeOption('synced', SAVED_AT)] });
+    await rerender({ options: [makeOption('synced')] });
+    await returnToScreen(fireFocus);
 
     expect(onSelect).not.toHaveBeenCalled();
   });
 
   it('selects only once, however often the options change afterwards', async () => {
-    const { onSelect, result, rerender } = await setup();
+    const { onSelect, result, rerender, fireFocus } = await setup();
+    const handbackId = await pressedHandbackId(result);
 
-    await pressCreateRow(result);
-    await rerender({ options: [makeOption('new', SAVED_AT)] });
-    await rerender({ options: [makeOption('new', SAVED_AT), makeOption('other', SAVED_AT)] });
+    handBackCreatedOption(handbackId, 'new');
+    await rerender({ options: [makeOption('new')] });
+    await returnToScreen(fireFocus);
+    await rerender({ options: [makeOption('new'), makeOption('other')] });
+    await rerender({ options: [makeOption('other'), makeOption('new')] });
+    await returnToScreen(fireFocus);
 
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  it('selects an option saved before the screen regained focus, even when it lands after', async () => {
+  it('selects the handed-back option when it reaches the options after the focus', async () => {
     const { onSelect, result, rerender, fireFocus } = await setup();
+    const handbackId = await pressedHandbackId(result);
 
-    await pressCreateRow(result);
+    handBackCreatedOption(handbackId, 'new');
     await returnToScreen(fireFocus);
-    await rerender({ options: [makeOption('new', SAVED_AT)] });
 
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await rerender({ options: [makeOption('new')] });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('new');
   });
 
-  it('selects nothing when an option appears after the create form was cancelled', async () => {
-    const { onSelect, result, rerender, fireFocus } = await setup();
+  it('selects the handed-back option already listed when the focus arrives', async () => {
+    const { onSelect, result, fireFocus } = await setup([makeOption('new')]);
+    const handbackId = await pressedHandbackId(result);
 
-    await pressCreateRow(result);
+    handBackCreatedOption(handbackId, 'new');
     await returnToScreen(fireFocus);
 
-    // A bank sync adds an eligible holding well after the user came back.
-    await rerender({ options: [makeOption('synced', RETURNED_AT + 60 * SECOND)] });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('new');
+  });
+
+  it('selects nothing on a cancel, even when another option appeared during the round trip', async () => {
+    const { onSelect, result, rerender, fireFocus } = await setup();
+
+    await pressedHandbackId(result);
+    await rerender({ options: [makeOption('synced')] });
+    await returnToScreen(fireFocus);
 
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('selects nothing for an option created before the create row was pressed', async () => {
-    const { onSelect, result, rerender } = await setup();
+  it('selects only the handed-back id, never another option listed with it', async () => {
+    const { onSelect, result, rerender, fireFocus } = await setup();
+    const handbackId = await pressedHandbackId(result);
 
-    await pressCreateRow(result);
-    await rerender({ options: [makeOption('older', TAPPED_AT - 60 * SECOND)] });
+    handBackCreatedOption(handbackId, 'middle');
+    await rerender({ options: [makeOption('first'), makeOption('middle'), makeOption('last')] });
+    await returnToScreen(fireFocus);
 
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('middle');
   });
 
-  it('accepts an option created in the same second as the press', async () => {
-    const { onSelect, result, rerender } = await setup();
+  it('selects Rent, handed back, and never Coffee, which another tab created during the round trip', async () => {
+    const { onSelect, result, rerender, fireFocus } = await setup();
+    const handbackId = await pressedHandbackId(result);
 
-    clock = TAPPED_AT + 400;
-    await pressCreateRow(result);
-    // The database stamps `created_at` in whole seconds, rounded down.
-    await rerender({ options: [makeOption('new', TAPPED_AT)] });
-
-    expect(onSelect).toHaveBeenCalledWith('new');
-  });
-
-  it('selects the newest option created in the window when another option was created elsewhere first', async () => {
-    const { onSelect, result, rerender } = await setup();
-
-    await pressCreateRow(result);
-    // "Coffee" is created on another tab while the pushed form is open; "Rent" is saved later.
-    await rerender({
-      options: [makeOption('coffee', SAVED_AT - 20 * SECOND), makeOption('rent', SAVED_AT)],
-    });
+    await rerender({ options: [makeOption('coffee')] });
+    handBackCreatedOption(handbackId, 'rent');
+    await rerender({ options: [makeOption('coffee'), makeOption('rent')] });
+    await returnToScreen(fireFocus);
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('rent');
   });
 
-  it('selects the last in list order when two options carry the same whole-second stamp', async () => {
-    const { onSelect, result, rerender } = await setup();
+  it('opens one handback for two presses, so the second press gets no id and one selection follows', async () => {
+    const { onSelect, result, rerender, fireFocus } = await setup();
+    const first = await pressCreateRow(result);
+    const second = await pressCreateRow(result);
 
-    await pressCreateRow(result);
-    await rerender({ options: [makeOption('first', SAVED_AT), makeOption('last', SAVED_AT)] });
+    expect(first).toEqual(expect.any(String));
+    expect(second).toBeUndefined();
 
-    expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect).toHaveBeenCalledWith('last');
-  });
-
-  it('selects the newest by createdAt even when it is listed before an older option', async () => {
-    const { onSelect, result, rerender } = await setup();
-
-    await pressCreateRow(result);
-    await rerender({
-      options: [makeOption('newer', SAVED_AT), makeOption('older', SAVED_AT - 20 * SECOND)],
-    });
-
-    expect(onSelect).toHaveBeenCalledWith('newer');
-  });
-
-  it('selects once for two presses before one close', async () => {
-    const { onSelect, result, rerender } = await setup();
-
-    await pressCreateRow(result);
-    await pressCreateRow(result);
-    await rerender({ options: [makeOption('new', SAVED_AT)] });
+    handBackCreatedOption(first, 'new');
+    await rerender({ options: [makeOption('new')] });
+    await returnToScreen(fireFocus);
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('new');
   });
 
-  it('works outside a navigator, where no focus event ever arrives', async () => {
+  it('selects nothing outside a navigator, where no focus event arrives', async () => {
     const onSelect = jest.fn();
     const { result, rerender } = await renderHook(
-      ({ options }: { options: readonly HoldingSelectOption[] }) =>
+      ({ options }: { options: readonly NamedOption[] }) =>
         useSelectCreatedOption(options, onSelect),
-      { initialProps: { options: [] as readonly HoldingSelectOption[] } },
+      { initialProps: { options: [] as readonly NamedOption[] } },
     );
+    const handbackId = await pressedHandbackId(result);
 
-    await pressCreateRow(result);
-    await rerender({ options: [makeOption('new', SAVED_AT)] });
+    handBackCreatedOption(handbackId, 'new');
+    await rerender({ options: [makeOption('new')] });
 
-    expect(onSelect).toHaveBeenCalledWith('new');
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('selects a created template-shaped option, which carries only an id, a name and a createdAt', async () => {
-    type TemplateShapedOption = { id: string; name: string; createdAt: number };
+  it('selects a handed-back template-shaped option, which carries only an id and a name', async () => {
+    const { onSelect, result, rerender, fireFocus } = await setup();
+    const handbackId = await pressedHandbackId(result);
 
-    const onSelect = jest.fn();
-    const { result, rerender } = await renderHook(
-      ({ options }: { options: readonly TemplateShapedOption[] }) =>
-        useSelectCreatedOption(options, onSelect),
-      { initialProps: { options: [] as readonly TemplateShapedOption[] } },
-    );
-
-    await pressCreateRow(result);
-    await rerender({ options: [{ id: 'template-new', name: 'Rent', createdAt: SAVED_AT }] });
+    handBackCreatedOption(handbackId, 'template-new');
+    await rerender({ options: [{ id: 'template-new', name: 'Rent' }] });
+    await returnToScreen(fireFocus);
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('template-new');
+  });
+
+  it('selects nothing for a handed-back id that never reaches the options, even after the screen left and came back', async () => {
+    const { onSelect, result, rerender, fireFocus, fireBlur } = await setup();
+    const handbackId = await pressedHandbackId(result);
+
+    handBackCreatedOption(handbackId, 'deleted');
+    await returnToScreen(fireFocus);
+    await act(async () => {
+      fireBlur();
+    });
+    await returnToScreen(fireFocus);
+    await rerender({ options: [makeOption('deleted')] });
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('closes the open handback on unmount, so a later hand-back is dropped', async () => {
+    const { result, unmount } = await setup();
+    const handbackId = await pressedHandbackId(result);
+
+    await unmount();
+    handBackCreatedOption(handbackId, 'new');
+
+    expect(closeHandback(handbackId)).toBeUndefined();
+  });
+
+  it('opens a new handback for a press after a cancel', async () => {
+    const { onSelect, result, rerender, fireFocus } = await setup();
+    const cancelled = await pressedHandbackId(result);
+
+    await returnToScreen(fireFocus);
+
+    const second = await pressedHandbackId(result);
+
+    expect(second).not.toBe(cancelled);
+
+    handBackCreatedOption(second, 'new');
+    await rerender({ options: [makeOption('new')] });
+    await returnToScreen(fireFocus);
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('new');
   });
 });

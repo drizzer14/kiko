@@ -25,8 +25,11 @@ const TemplateSelect = ({
   const labels = Object.fromEntries(templates.map((template) => [template.id, template.name]));
 
   const handleCreateTemplate = (): void => {
-    startCreateRoundTrip();
-    onCreateTemplate();
+    const handbackId = startCreateRoundTrip();
+
+    if (handbackId !== undefined) {
+      onCreateTemplate(handbackId);
+    }
   };
 
   return (

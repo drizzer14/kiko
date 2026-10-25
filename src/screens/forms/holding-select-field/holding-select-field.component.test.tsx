@@ -1,7 +1,9 @@
 import { StyleSheet } from 'react-native';
-import { fireEvent, render } from '@testing-library/react-native';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
+import { act, fireEvent, render } from '@testing-library/react-native';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -37,18 +39,38 @@ const options: HoldingSelectOption[] = [
   },
 ];
 
-const renderHoldingSelectField = (overrides: Partial<HoldingSelectFieldProps> = {}) =>
-  render(
-    <HoldingSelectField
-      label="To"
-      sheetTitle="Select a Holding"
-      placeholder="Select holding"
-      options={options}
-      selectedId={null}
-      onSelect={jest.fn()}
-      {...overrides}
-    />,
-  );
+// The field hears the screen's focus through its navigation, so it renders inside one the test
+// can fire focus on.
+const renderHoldingSelectField = async (overrides: Partial<HoldingSelectFieldProps> = {}) => {
+  const { provide, fireFocus } = makeFocusNavigation();
+  const field = (props: Partial<HoldingSelectFieldProps>) =>
+    provide(
+      <HoldingSelectField
+        label="To"
+        sheetTitle="Select a Holding"
+        placeholder="Select holding"
+        options={options}
+        selectedId={null}
+        onSelect={jest.fn()}
+        {...overrides}
+        {...props}
+      />,
+    );
+  const view = await render(field({}));
+
+  return {
+    ...view,
+    fireFocus: () => act(async () => fireFocus()),
+    rerenderWith: (props: Partial<HoldingSelectFieldProps>) => view.rerender(field(props)),
+  };
+};
+
+// The handback id the pressed row passed to onCreateNew, which the create form would carry.
+const pressedHandbackId = (onCreateNew: jest.Mock): string => {
+  const [handbackId] = onCreateNew.mock.calls[0];
+
+  return handbackId;
+};
 
 describe('HoldingSelectField', () => {
   it('shows the placeholder when nothing is selected', async () => {
@@ -195,54 +217,70 @@ describe('HoldingSelectField', () => {
       await fireEvent.press(getByTestId('holding-select-create-new'));
 
       expect(onCreateNew).toHaveBeenCalledTimes(1);
+      expect(onCreateNew).toHaveBeenCalledWith(expect.any(String));
       expect(queryByText('Select a Holding')).toBeNull();
     });
 
-    it('selects the holding created after the press', async () => {
+    it('selects the holding handed back for the id onCreateNew received, on return', async () => {
       const onSelect = jest.fn();
-      const { getByLabelText, getByTestId, rerender } = await renderHoldingSelectField({
-        options: [],
-        onCreateNew: jest.fn(),
-        onSelect,
-      });
+      const onCreateNew = jest.fn();
+      const { getByLabelText, getByTestId, rerenderWith, fireFocus } =
+        await renderHoldingSelectField({ options: [], onCreateNew, onSelect });
 
       await fireEvent.press(getByLabelText('To'));
       await fireEvent.press(getByTestId('holding-select-create-new'));
-      await rerender(
-        <HoldingSelectField
-          label="To"
-          sheetTitle="Select a Holding"
-          placeholder="Select holding"
-          options={[{ ...options[0], id: 'created', createdAt: Date.now() }]}
-          selectedId={null}
-          onSelect={onSelect}
-          onCreateNew={jest.fn()}
-        />,
-      );
+      handBackCreatedOption(pressedHandbackId(onCreateNew), 'created');
+      await rerenderWith({ options: [{ ...options[0], id: 'created' }] });
+      await fireFocus();
 
       expect(onSelect).toHaveBeenCalledTimes(1);
       expect(onSelect).toHaveBeenCalledWith('created');
     });
 
+    it('selects the handed-back holding, not another holding that appeared during the round trip', async () => {
+      const onSelect = jest.fn();
+      const onCreateNew = jest.fn();
+      const { getByLabelText, getByTestId, rerenderWith, fireFocus } =
+        await renderHoldingSelectField({ options: [], onCreateNew, onSelect });
+
+      await fireEvent.press(getByLabelText('To'));
+      await fireEvent.press(getByTestId('holding-select-create-new'));
+      await rerenderWith({ options: [{ ...options[1], id: 'synced', createdAt: Date.now() }] });
+      handBackCreatedOption(pressedHandbackId(onCreateNew), 'created');
+      await rerenderWith({
+        options: [
+          { ...options[1], id: 'synced', createdAt: Date.now() },
+          { ...options[0], id: 'created' },
+        ],
+      });
+      await fireFocus();
+
+      expect(onSelect.mock.calls).toEqual([['created']]);
+    });
+
+    it('selects nothing on a cancel, even when another holding appeared during the round trip', async () => {
+      const onSelect = jest.fn();
+      const { getByLabelText, getByTestId, rerenderWith, fireFocus } =
+        await renderHoldingSelectField({ options: [], onCreateNew: jest.fn(), onSelect });
+
+      await fireEvent.press(getByLabelText('To'));
+      await fireEvent.press(getByTestId('holding-select-create-new'));
+      await rerenderWith({ options: [{ ...options[1], id: 'synced', createdAt: Date.now() }] });
+      await fireFocus();
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
     it('selects nothing when a holding appears without the row having been pressed', async () => {
       const onSelect = jest.fn();
-      const { rerender } = await renderHoldingSelectField({
+      const { rerenderWith, fireFocus } = await renderHoldingSelectField({
         options: [],
         onCreateNew: jest.fn(),
         onSelect,
       });
 
-      await rerender(
-        <HoldingSelectField
-          label="To"
-          sheetTitle="Select a Holding"
-          placeholder="Select holding"
-          options={[{ ...options[0], createdAt: Date.now() }]}
-          selectedId={null}
-          onSelect={onSelect}
-          onCreateNew={jest.fn()}
-        />,
-      );
+      await rerenderWith({ options: [options[0]] });
+      await fireFocus();
 
       expect(onSelect).not.toHaveBeenCalled();
     });

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 
 import type { EntryTab } from './entry-tabs';
 
@@ -9,13 +10,13 @@ export type EntryTabsProps = {
   onSelectTab: (tab: EntryTab) => void;
   // True while the Template tab waits for a pick: the select shows alone, without the children.
   awaitsPick: boolean;
-  templates: readonly { id: string; name: string; createdAt: number }[];
+  templates: readonly { id: string; name: string }[];
   // The read of those templates has not settled yet.
   templatesLoading: boolean;
   selectedTemplateId: string | null;
   onSelectTemplate: (templateId: string) => void;
   // Opens the new-template form from the empty picker's "Add template" row.
-  onCreateTemplate: () => void;
+  onCreateTemplate: (handbackId: HandbackId) => void;
   // The form itself, which the tabs sit above and gate.
   children: ReactNode;
 };

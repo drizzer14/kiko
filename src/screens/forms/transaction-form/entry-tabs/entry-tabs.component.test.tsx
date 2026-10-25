@@ -6,7 +6,7 @@ import '@kiko/design-system/unistyles';
 import EntryTabs from './entry-tabs.component';
 import type { EntryTabsProps } from './entry-tabs.props';
 
-const TEMPLATES = [{ id: 't1', name: 'Rent', createdAt: 10_000 }];
+const TEMPLATES = [{ id: 't1', name: 'Rent' }];
 
 const setup = async (overrides: Partial<EntryTabsProps> = {}) => {
   const onSelectTab = jest.fn();

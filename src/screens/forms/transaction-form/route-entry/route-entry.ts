@@ -70,6 +70,9 @@ export const readRouteEntry = (
   hasEntryTabs: boolean;
   // The tab the form opens on: a template to fill from opens on Template, with it picked.
   initialTab: EntryTab;
+  // The handback id of the empty picker whose "Add template" row opened this new-template form,
+  // for its save to hand the template to. Undefined on every other entry.
+  handbackId: string | undefined;
 } => {
   const editingId = 'transactionId' in params ? params.transactionId : null;
   const duplicateOfId =
@@ -93,5 +96,6 @@ export const readRouteEntry = (
     seedsDefaultHolding: isEmptyCreate && templateId === null && editTemplateId === null,
     hasEntryTabs: editingId === null && duplicateOfId === null && templateEntry === null,
     initialTab: templateId === null ? 'manual' : 'template',
+    handbackId: 'handbackId' in params ? params.handbackId : undefined,
   };
 };

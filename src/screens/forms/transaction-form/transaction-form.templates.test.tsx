@@ -9,9 +9,15 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import {
+  closeHandback,
+  handBackCreatedOption,
+  openHandback,
+} from '@kiko/screens/forms/use-select-created-option';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { TemplateNameTakenError } from '@kiko/transaction-templates/repo';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import { pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { EMPTY_DRAFT, type TemplateDraft } from '@kiko/transaction-templates/draft';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
@@ -251,14 +257,18 @@ const setLiveData = ({
 
 const navigation = navigationSpy();
 
+// The screen's own navigation context, which an empty picker's round trip hears the screen's focus
+// through; a test fires it with `fireFocus`.
+const { provide, fireFocus } = makeFocusNavigation();
+
 const templateScreen = (params: TransactionFormParams = { templateId: 'tpl' }) => {
   routeTemplateId = readRouteEntry(params).templateQueryId;
 
-  return (
+  return provide(
     <TransactionFormScreen
       route={asRouteProp<TransactionFormProps['route']>('TransactionForm', params)}
       navigation={asNavigationProp<TransactionFormProps['navigation']>(navigation)}
-    />
+    />,
   );
 };
 
@@ -642,6 +652,19 @@ describe('TransactionFormScreen — Add template', () => {
     });
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
     expect(mockRecordManual).not.toHaveBeenCalled();
+  });
+
+  it('saves a new template and hands its id back to the handback id in its route params', async () => {
+    setLiveData({ draft: EXPENSE, latestManualHoldingId: 'h1' });
+    mockCreateTemplate.mockResolvedValue('new');
+
+    const handbackId = openHandback();
+    const { getByLabelText } = await render(templateScreen({ newTemplate: true, handbackId }));
+
+    await fireEvent.changeText(getByLabelText('Template name'), 'Rent');
+    await pressSave(navigation.setOptions);
+
+    expect(closeHandback(handbackId)).toBe('new');
   });
 
   it('stores what was entered, with the category lowercased and no date', async () => {
@@ -1724,9 +1747,10 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
   });
 
   describe('from the empty Template tab', () => {
-    // A template stamped in the same whole second as the pinned clock, which the round trip's
-    // window takes in.
-    const CREATED = { id: 'created', name: 'Rent', draft: EXPENSE, createdAt: NOW };
+    const CREATED = { id: 'created', name: 'Rent', draft: EXPENSE };
+
+    // The id the pushed new-template form carries in its route params.
+    const pushedHandbackId = (): string => navigation.push.mock.calls[0][1].handbackId;
 
     const openTemplateTab = async (utils: Utils): Promise<void> => {
       await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
@@ -1741,14 +1765,8 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
 
     // The focus the screen regains when the pushed form goes back.
     const regainFocus = async (): Promise<void> => {
-      const listeners = navigation.addListener.mock.calls
-        .filter(([event]) => event === 'focus')
-        .map(([, callback]) => callback as () => void);
-
       await act(async () => {
-        for (const listener of listeners) {
-          listener();
-        }
+        fireFocus();
       });
     };
 
@@ -1760,7 +1778,10 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       await pressAddTemplate(utils);
 
       expect(navigation.push).toHaveBeenCalledTimes(1);
-      expect(navigation.push).toHaveBeenCalledWith('TransactionForm', { newTemplate: true });
+      expect(navigation.push).toHaveBeenCalledWith('TransactionForm', {
+        newTemplate: true,
+        handbackId: expect.any(String),
+      });
       expect(navigation.navigate).not.toHaveBeenCalled();
     });
 
@@ -1782,6 +1803,7 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       await openTemplateTab(utils);
       await pressAddTemplate(utils);
 
+      handBackCreatedOption(pushedHandbackId(), CREATED.id);
       setLiveData({ draft: EXPENSE, templateList: [CREATED] });
       await utils.rerender(templateScreen({}));
       await regainFocus();

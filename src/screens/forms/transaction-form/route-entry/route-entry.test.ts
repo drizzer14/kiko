@@ -53,6 +53,17 @@ describe('readRouteEntry', () => {
     expect(readRouteEntry(params).hasEntryTabs).toBe(hasEntryTabs);
   });
 
+  it('reads the handback id of a new-template entry, and none for any other entry', () => {
+    expect(readRouteEntry({ newTemplate: true, handbackId: 'created-option-7' }).handbackId).toBe(
+      'created-option-7',
+    );
+    expect(readRouteEntry({ newTemplate: true }).handbackId).toBeUndefined();
+    expect(readRouteEntry({}).handbackId).toBeUndefined();
+    expect(readRouteEntry({ holdingId: 'h1' }).handbackId).toBeUndefined();
+    expect(readRouteEntry({ templateId: 'tpl1' }).handbackId).toBeUndefined();
+    expect(readRouteEntry({ editTemplateId: 'tpl1' }).handbackId).toBeUndefined();
+  });
+
   it('opens on the Template tab only for a template to create from', () => {
     expect(readRouteEntry({ templateId: 'tpl1' }).initialTab).toBe('template');
     expect(readRouteEntry({}).initialTab).toBe('manual');

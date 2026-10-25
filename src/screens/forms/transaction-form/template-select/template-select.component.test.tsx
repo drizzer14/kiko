@@ -1,22 +1,23 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
+import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
 
 import TemplateSelect from './template-select.component';
 import type { TemplateSelectProps } from './template-select.props';
 
-const SECOND = 1_000;
-const PRESSED_AT = 100 * SECOND;
-const SAVED_AT = 130 * SECOND;
-
 const TEMPLATES = [
-  { id: 't1', name: 'Rent', createdAt: 10 * SECOND },
-  { id: 't2', name: 'Coffee', createdAt: 20 * SECOND },
+  { id: 't1', name: 'Rent' },
+  { id: 't2', name: 'Coffee' },
 ];
 
+// The select hears the screen's focus through its navigation, so it renders inside one the test
+// can fire focus on.
 const setup = async (overrides: Partial<TemplateSelectProps> = {}) => {
   const onSelect = jest.fn();
   const onCreateTemplate = jest.fn();
+  const { provide, fireFocus } = makeFocusNavigation();
   const props: TemplateSelectProps = {
     templates: TEMPLATES,
     isLoading: false,
@@ -26,9 +27,16 @@ const setup = async (overrides: Partial<TemplateSelectProps> = {}) => {
     ...overrides,
   };
 
-  const utils = await render(<TemplateSelect {...props} />);
+  const utils = await render(provide(<TemplateSelect {...props} />));
 
-  return { onSelect, onCreateTemplate, props, ...utils };
+  return {
+    onSelect,
+    onCreateTemplate,
+    ...utils,
+    fireFocus: () => act(async () => fireFocus()),
+    rerenderWith: (changed: Partial<TemplateSelectProps>) =>
+      utils.rerender(provide(<TemplateSelect {...props} {...changed} />)),
+  };
 };
 
 // The sheet's Modal leaves the tree once closed, so its host is read while open and its own
@@ -45,17 +53,6 @@ const pressAddTemplate = async (utils: Awaited<ReturnType<typeof setup>>): Promi
 };
 
 describe('TemplateSelect', () => {
-  let clock = PRESSED_AT;
-
-  beforeEach(() => {
-    clock = PRESSED_AT;
-    jest.spyOn(Date, 'now').mockImplementation(() => clock);
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
   it('shows the placeholder while nothing is picked', async () => {
     const { getByTestId } = await setup();
 
@@ -153,44 +150,42 @@ describe('TemplateSelect', () => {
     expect(utils.onCreateTemplate).toHaveBeenCalledTimes(1);
   });
 
-  it('reports the template created after the row was pressed through onSelect', async () => {
+  it('reports the template handed back for the id onCreateTemplate received, on return', async () => {
     const utils = await setup({ templates: [] });
 
     await pressAddTemplate(utils);
-    await utils.rerender(
-      <TemplateSelect
-        {...utils.props}
-        templates={[{ id: 'created', name: 'Gym', createdAt: SAVED_AT }]}
-      />,
-    );
+    handBackCreatedOption(utils.onCreateTemplate.mock.calls[0][0], 'created');
+    await utils.rerenderWith({ templates: [{ id: 'created', name: 'Gym' }] });
+    await utils.fireFocus();
 
+    expect(utils.onCreateTemplate).toHaveBeenCalledWith(expect.any(String));
     expect(utils.onSelect).toHaveBeenCalledTimes(1);
     expect(utils.onSelect).toHaveBeenCalledWith('created');
   });
 
-  it('reports the newest template when two appear in the window, the older one created elsewhere', async () => {
+  it('reports the handed-back template, never one created elsewhere during the round trip', async () => {
     const utils = await setup({ templates: [] });
 
     await pressAddTemplate(utils);
-    await utils.rerender(
-      <TemplateSelect
-        {...utils.props}
-        templates={[
-          { id: 'coffee', name: 'Coffee', createdAt: SAVED_AT - 20 * SECOND },
-          { id: 'rent', name: 'Rent', createdAt: SAVED_AT },
-        ]}
-      />,
-    );
+    await utils.rerenderWith({ templates: [{ id: 'coffee', name: 'Coffee' }] });
+    handBackCreatedOption(utils.onCreateTemplate.mock.calls[0][0], 'rent');
+    await utils.rerenderWith({
+      templates: [
+        { id: 'coffee', name: 'Coffee' },
+        { id: 'rent', name: 'Rent' },
+      ],
+    });
+    await utils.fireFocus();
 
-    expect(utils.onSelect).toHaveBeenCalledTimes(1);
-    expect(utils.onSelect).toHaveBeenCalledWith('rent');
+    expect(utils.onSelect.mock.calls).toEqual([['rent']]);
   });
 
-  it('reports nothing when no template appears after the row was pressed', async () => {
+  it('reports nothing on a cancel, even when another template appeared during the round trip', async () => {
     const utils = await setup({ templates: [] });
 
     await pressAddTemplate(utils);
-    await utils.rerender(<TemplateSelect {...utils.props} templates={[]} />);
+    await utils.rerenderWith({ templates: [{ id: 'coffee', name: 'Coffee' }] });
+    await utils.fireFocus();
 
     expect(utils.onCreateTemplate).toHaveBeenCalledTimes(1);
     expect(utils.onSelect).not.toHaveBeenCalled();
@@ -199,12 +194,8 @@ describe('TemplateSelect', () => {
   it('reports no template that appears without a press', async () => {
     const utils = await setup({ templates: [] });
 
-    await utils.rerender(
-      <TemplateSelect
-        {...utils.props}
-        templates={[{ id: 'synced', name: 'Gym', createdAt: SAVED_AT }]}
-      />,
-    );
+    await utils.rerenderWith({ templates: [{ id: 'synced', name: 'Gym' }] });
+    await utils.fireFocus();
 
     expect(utils.onSelect).not.toHaveBeenCalled();
   });

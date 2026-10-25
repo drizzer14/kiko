@@ -151,6 +151,40 @@ describe('resolveCreateHoldingTarget', () => {
     ]);
   });
 
+  describe('the handback id', () => {
+    it('puts the handback id into the holding form params', () => {
+      expect(
+        resolveCreateHoldingTarget(
+          withoutAnchor(takesLedger, 'USD'),
+          [accountOf('wallet', 'cash')],
+          'created-option-3',
+        ),
+      ).toEqual([
+        'HoldingForm',
+        {
+          accountId: 'wallet',
+          initialType: 'cash',
+          initialCurrency: 'USD',
+          handbackId: 'created-option-3',
+        },
+      ]);
+    });
+
+    it('carries no handback id to the account form', () => {
+      expect(
+        resolveCreateHoldingTarget(withoutAnchor(takesLedger), [], 'created-option-3'),
+      ).toEqual(['AccountForm', {}]);
+    });
+
+    it('leaves the key out of the holding form params when there is no handback id', () => {
+      const [, params] = resolveCreateHoldingTarget(withoutAnchor(takesLedger), [
+        accountOf('wallet', 'cash'),
+      ]);
+
+      expect(params).not.toHaveProperty('handbackId');
+    });
+  });
+
   describe('the type the form opens on', () => {
     it('is the first creatable type the picker accepts, not the account default', () => {
       // A broker account creates a bond first, which a ledger picker does not list.

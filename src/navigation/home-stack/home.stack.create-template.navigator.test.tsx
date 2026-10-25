@@ -104,6 +104,8 @@ jest.mock('@kiko/transaction-templates/repo', () => ({
           updatedAt: Date.now(),
         });
       });
+
+      return 'created';
     }),
   },
 }));
@@ -187,6 +189,12 @@ const pressAddTemplate = async (): Promise<void> => {
   await act(async () => (sheet.props.onDismiss as () => void)());
 };
 
+// A template another writer stamps while the pushed form is open: not the one that form saves.
+const insertForeignTemplate = (id: string, name: string): void =>
+  mockChangeTemplates((templates) => {
+    templates.push({ id, name, draft: {}, createdAt: Date.now(), updatedAt: Date.now() });
+  });
+
 const renderHomeStack = async (): Promise<void> => {
   await render(
     <NavigationContainer ref={navigationRef}>
@@ -223,6 +231,36 @@ describe('HomeStack — adding a template from the empty Template tab', () => {
     expect(routes().map((route) => route.name)).toEqual(['Home', 'TransactionForm']);
     expect(formRoutes()[0]?.key).toBe(originalKey);
     expect(screen.getByTestId('template-field')).toHaveTextContent('Rent');
+  });
+
+  it('selects the template saved in the pushed form, not one inserted elsewhere while that form was open', async () => {
+    await renderHomeStack();
+    await openTransactionForm();
+    await openTemplateTab();
+    await pressAddTemplate();
+
+    // A sync, a restore or a split pane writes "Coffee" while the pushed form is on top.
+    await act(async () => insertForeignTemplate('coffee', 'Coffee'));
+
+    await fireEvent.changeText(screen.getByLabelText('Template name'), 'Rent');
+    await pressSaveOnTopForm();
+
+    expect(routes().map((route) => route.name)).toEqual(['Home', 'TransactionForm']);
+    expect(screen.getByTestId('template-field')).toHaveTextContent('Rent');
+    expect(screen.getByTestId('template-field')).not.toHaveTextContent('Coffee');
+  });
+
+  it('selects nothing on cancel, even when a template was inserted elsewhere while the pushed form was open', async () => {
+    await renderHomeStack();
+    await openTransactionForm();
+    await openTemplateTab();
+    await pressAddTemplate();
+
+    await act(async () => insertForeignTemplate('coffee', 'Coffee'));
+    await act(async () => navigationRef.goBack());
+
+    expect(routes().map((route) => route.name)).toEqual(['Home', 'TransactionForm']);
+    expect(screen.getByTestId('template-field')).toHaveTextContent('Select a template');
   });
 
   it('selects nothing on the original form when the pushed form goes back unsaved, keeping its typed amount', async () => {

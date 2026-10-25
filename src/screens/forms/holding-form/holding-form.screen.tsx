@@ -24,6 +24,10 @@ import {
   useFormHeaderItems,
 } from '@kiko/screens/forms/use-form-header-items';
 import Box from '@kiko/design-system/components/box';
+import {
+  type HandbackId,
+  handBackCreatedOption,
+} from '@kiko/screens/forms/use-select-created-option';
 import type { Currency } from '@kiko/currency/currency';
 import Screen from '@kiko/design-system/components/screen';
 import { type TextInputInstance, View } from 'react-native';
@@ -319,7 +323,7 @@ const startingType = (
 ): HoldingType => hinted ?? typeOptions[0];
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
-  const { holdingId, returnTo } = route.params;
+  const { holdingId, returnTo, handbackId } = route.params;
   // A named account, or the implicit one a create finds or makes on Save, and
   // the identity the account form carried over (an implicit create only).
   const target = holdingFormTarget(route.params);
@@ -517,7 +521,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // holding's form. A push leaves this one mounted underneath with its draft.
   // The picker lists the holdings `buildPaymentHoldingOptions` keeps that can be
   // created in the loan's currency.
-  const createPaymentHolding = (): void => {
+  const createPaymentHolding = (newHandbackId: HandbackId): void => {
     navigation.push(
       ...resolveCreateHoldingTarget(
         {
@@ -527,6 +531,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             !isLedgerlessHoldingType(type) && isCurrencyExpectedForHoldingType(type, currency),
         },
         allAccounts,
+        newHandbackId,
       ),
     );
   };
@@ -749,6 +754,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         icon,
         ...active.createPayload(),
       });
+
+      // Published only after the write committed, before anything below that could throw or
+      // navigate; a failed write threw above, so nothing is handed back for it.
+      handBackCreatedOption(handbackId, newHoldingId);
 
       // The FIRST metal, foreign-currency, or crypto holding needs its
       // price/rate visible without an app restart — trigger the SAME gated
