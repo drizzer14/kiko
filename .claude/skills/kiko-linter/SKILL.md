@@ -1532,7 +1532,8 @@ second pass, the large-file pass (WARN at or under a file's ceiling, FAIL otherw
   more than one file, so a scope with no large file runs no combined run and a one-file scope does
   not repeat its alone figure. The pass itself still costs the two file listings (about 1 s).
   The combined baseline is the `*combined*` row of `scripts/checks/dup-ceilings.tsv`, held by the
-  no-argument run only; read the row there, not a figure copied here.
+  no-argument run only; read the row there, not a figure copied here. A row at or under the
+  `.jscpd.json` threshold (`*combined*` included) fails `__tests__/dup-ceilings-rows.test.ts`.
 - The ceilings file `scripts/checks/dup-ceilings.tsv` is read up front on every run: a missing
   or malformed file (a bad row, a repeated path, no `*combined*` row) exits 2 before any jscpd
   run. Per class:
