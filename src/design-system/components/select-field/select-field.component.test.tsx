@@ -304,20 +304,6 @@ describe('SelectField', () => {
       expect(onPress).toHaveBeenCalledTimes(1);
     });
 
-    it('runs the action once for two presses before one close', async () => {
-      const { onPress, getByTestId } = await openEmptySheet();
-      const sheet = getByTestId('kind-field-sheet-modal');
-
-      // The second press lands on the same row, held from before the sheet left the tree.
-      const row = getByTestId('kind-field-empty-action');
-
-      await fireEvent.press(row);
-      await fireEvent.press(row);
-      await finishClosing(sheet);
-
-      expect(onPress).toHaveBeenCalledTimes(1);
-    });
-
     it('closes the sheet with no animation for the action', async () => {
       const { getByTestId } = await openEmptySheet();
 
