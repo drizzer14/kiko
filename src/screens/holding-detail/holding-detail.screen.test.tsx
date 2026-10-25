@@ -83,6 +83,11 @@ const amountForLabel = (label: TextNode, currencySign = /₴/): TextNode => {
   throw new Error('no amount found for label row');
 };
 
+// The ledger cards that carry `title`, so a test can read the subtitle drawn under that title
+// in the same card rather than anywhere on the screen.
+const cardsTitled = (cards: TextNode[], title: string): TextNode[] =>
+  cards.filter((card) => within(card).queryByText(title) !== null);
+
 // The mocked SFSymbolView forwards its resolved symbol `name` as a host prop,
 // so the footer's glyphs are exactly its host nodes that carry a string `name`.
 const footerGlyphNames = (footer: TextNode): string[] =>
@@ -865,17 +870,23 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Tax withheld')).toBeTruthy();
   });
 
-  it('marks future lifecycle entries as Projected in their title', async () => {
+  it('marks future lifecycle entries as Projected in a subtitle under their title', async () => {
     seed(futureDepositHolding);
 
-    const { getAllByText, queryByText } = await renderScreen();
+    const { getAllByTestId, queryByText } = await renderScreen();
+    const accruals = cardsTitled(getAllByTestId('ledger-row'), 'Interest accrual');
 
     // The separate schedule card is gone; the lifecycle renders inline. A brand-
-    // new deposit's future accruals render dimmed with "Projected" in the title.
+    // new deposit's future accruals render dimmed with "Projected" under the title.
     // futureDepositHolding is a term_deposit (day-granular), so no caption
     // sits under the amount.
-    expect(getAllByText('Interest accrual · Projected').length).toBeGreaterThan(0);
-    expect(queryByText('Projected')).toBeNull();
+    expect(accruals.length).toBeGreaterThan(0);
+
+    for (const accrual of accruals) {
+      expect(within(accrual).getByText('Projected')).toBeTruthy();
+    }
+
+    expect(queryByText('Interest accrual · Projected')).toBeNull();
   });
 
   it('renders the deposit lifecycle inline in the transactions list', async () => {
@@ -885,9 +896,9 @@ describe('HoldingDetailScreen', () => {
 
     // The lifecycle is inline ledger entries (no separate schedule card): the
     // opening deposit, per-period interest accruals, and capitalizations.
-    expect(getByText('Opening deposit · Computed')).toBeTruthy();
-    expect(getAllByText('Interest accrual · Computed').length).toBeGreaterThan(0);
-    expect(getAllByText('Capitalization · Computed').length).toBeGreaterThan(0);
+    expect(getByText('Opening deposit')).toBeTruthy();
+    expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
+    expect(getAllByText('Capitalization').length).toBeGreaterThan(0);
   });
 
   it('shows the shared default description for a transaction with an empty description', async () => {
@@ -1905,32 +1916,48 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
-  it('renders the derived lifecycle rows (opening, accrual, taxes) titled with Computed', async () => {
+  it('renders the derived lifecycle rows (opening, accrual, taxes) with Computed as a subtitle', async () => {
     seed(depositHolding);
 
-    const { getByText, getAllByText, queryByText } = await renderScreen();
+    const { getAllByTestId, queryByText } = await renderScreen();
+    const cards = getAllByTestId('ledger-row');
 
     // derivedEntries yields the opening deposit plus per-period interest and its
     // two withholding lines. These read distinctly from the value-breakdown
     // labels ("Interest earned"/"Tax withheld"). Every settled derived row
-    // carries "Computed" in its title so it reads as derived.
-    expect(getByText('Opening deposit · Computed')).toBeTruthy();
-    expect(getAllByText('Interest accrual · Computed').length).toBeGreaterThan(0);
-    expect(getAllByText('Income tax 18% · Computed').length).toBeGreaterThan(0);
-    expect(getAllByText('Military levy 5% · Computed').length).toBeGreaterThan(0);
-    expect(queryByText('Computed')).toBeNull();
+    // carries "Computed" under its title so it reads as derived.
+    for (const title of [
+      'Opening deposit',
+      'Interest accrual',
+      'Income tax 18%',
+      'Military levy 5%',
+    ]) {
+      const titled = cardsTitled(cards, title);
+
+      expect(titled.length).toBeGreaterThan(0);
+
+      for (const card of titled) {
+        expect(within(card).getByText('Computed')).toBeTruthy();
+      }
+    }
+
+    expect(queryByText('Opening deposit · Computed')).toBeNull();
   });
 
-  it('titles a paid bond coupon with Computed', async () => {
+  it('puts Computed under a paid bond coupon', async () => {
     seed(bondHolding);
 
-    const { getAllByText, queryByText } = await renderScreen();
+    const { getAllByTestId, queryByText } = await renderScreen();
+    const paidCoupons = cardsTitled(
+      cardsTitled(getAllByTestId('ledger-row'), 'Coupon'),
+      'Computed',
+    );
 
-    expect(getAllByText('Coupon · Computed').length).toBeGreaterThan(0);
-    expect(queryByText('Coupon')).toBeNull();
+    expect(paidCoupons.length).toBeGreaterThan(0);
+    expect(queryByText('Coupon · Computed')).toBeNull();
   });
 
-  it('titles a bond coupon still ahead with Projected', async () => {
+  it('puts Projected under a bond coupon still ahead', async () => {
     const now = new Date();
 
     seed({
@@ -1942,10 +1969,16 @@ describe('HoldingDetailScreen', () => {
       },
     });
 
-    const { getAllByText, queryByText } = await renderScreen();
+    const { getAllByTestId, queryByText } = await renderScreen();
+    const coupons = cardsTitled(getAllByTestId('ledger-row'), 'Coupon');
 
-    expect(getAllByText('Coupon · Projected').length).toBeGreaterThan(0);
-    expect(queryByText('Coupon')).toBeNull();
+    expect(coupons.length).toBeGreaterThan(0);
+
+    for (const coupon of coupons) {
+      expect(within(coupon).getByText('Projected')).toBeTruthy();
+    }
+
+    expect(queryByText('Coupon · Projected')).toBeNull();
   });
 
   // A lot is the user's own entry, unlike a computed one, so its row edits and
@@ -2014,16 +2047,16 @@ describe('HoldingDetailScreen', () => {
       alertSpy.mockRestore();
     });
 
-    it('is not titled Computed, since the user entered it', async () => {
+    it('has no subtitle, since the user entered it', async () => {
       seed(metalHolding);
 
       const { getByText, queryByText } = await renderScreen();
 
       expect(getByText('Purchase')).toBeTruthy();
-      expect(queryByText(/Computed/)).toBeNull();
+      expect(queryByText(/Computed|Projected|Scheduled/)).toBeNull();
     });
 
-    it('reads Projected in its title when dated ahead', async () => {
+    it('reads Projected in a subtitle under its title when dated ahead', async () => {
       seed({
         ...metalHolding,
         metadata: {
@@ -2038,10 +2071,11 @@ describe('HoldingDetailScreen', () => {
         },
       });
 
-      const { getByText, queryByText } = await renderScreen();
+      const { getAllByTestId, queryByText } = await renderScreen();
+      const [lot] = cardsTitled(getAllByTestId('ledger-row'), 'Purchase');
 
-      expect(getByText('Purchase · Projected')).toBeTruthy();
-      expect(queryByText('Purchase')).toBeNull();
+      expect(within(lot).getByText('Projected')).toBeTruthy();
+      expect(queryByText('Purchase · Projected')).toBeNull();
     });
 
     // The ledger lists newest first, so the January buy is the last row held.
@@ -2100,7 +2134,7 @@ describe('HoldingDetailScreen', () => {
     // all — no row is wrapped in the shared CardContextMenu.
     expect(queryByTestId('card-context-menu')).toBeNull();
     // Pressing a derived row's label opens no transaction form.
-    await fireEvent.press(getByText('Opening deposit · Computed'));
+    await fireEvent.press(getByText('Opening deposit'));
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
@@ -2119,7 +2153,7 @@ describe('HoldingDetailScreen', () => {
 
     // Both the real transaction and the derived opening deposit render together.
     expect(getByText('Fee')).toBeTruthy();
-    expect(getByText('Opening deposit · Computed')).toBeTruthy();
+    expect(getByText('Opening deposit')).toBeTruthy();
     // Only the real row is deletable; the derived rows expose no delete
     // action, so exactly one card-context-menu wrapper renders for the whole
     // ledger.
@@ -2135,10 +2169,10 @@ describe('HoldingDetailScreen', () => {
     // interest accrual reads in the positive (green) tone — by KIND, via the
     // derived entry's tone passed through MoneyText, not merely by the amount's
     // sign.
-    const taxAmount = amountForLabel(getAllByText('Income tax 18% · Computed')[0]);
+    const taxAmount = amountForLabel(getAllByText('Income tax 18%')[0]);
     expect(taxAmount.props.testID).toBe('money-tone-negative');
 
-    const interestAmount = amountForLabel(getAllByText('Interest accrual · Computed')[0]);
+    const interestAmount = amountForLabel(getAllByText('Interest accrual')[0]);
     expect(interestAmount.props.testID).toBe('money-tone-positive');
   });
 
@@ -2160,7 +2194,7 @@ describe('HoldingDetailScreen', () => {
     const { getAllByText, getByText } = await renderScreen();
 
     // A net coupon (money in) reads green as an interest payment.
-    const couponAmount = amountForLabel(getAllByText('Coupon · Computed')[0]);
+    const couponAmount = amountForLabel(getAllByText('Coupon')[0]);
     expect(couponAmount.props.testID).toBe('money-tone-positive');
 
     // The whole-life expected-profit breakdown line reads green as the expected gain.
@@ -2579,14 +2613,10 @@ describe('HoldingDetailScreen', () => {
       expect(upcoming.length).toBeGreaterThan(0);
       // The farthest scheduled payment is on top, the oldest linked one at the bottom.
       expect(
-        getAllByText(/^(Loan payment · Scheduled|First installment|Second installment)$/).map(
+        getAllByText(/^(Loan payment|First installment|Second installment)$/).map(
           (node) => node.props.children,
         ),
-      ).toEqual([
-        ...upcoming.map(() => 'Loan payment · Scheduled'),
-        'Second installment',
-        'First installment',
-      ]);
+      ).toEqual([...upcoming.map(() => 'Loan payment'), 'Second installment', 'First installment']);
       expect(getAllByTestId(/^scheduled-payment-/).map((node) => node.props.testID)).toEqual(
         upcoming.map((row) => `scheduled-payment-${row.index}`).reverse(),
       );
@@ -2667,9 +2697,7 @@ describe('HoldingDetailScreen', () => {
         positionOf('"Transactions"'),
       );
       expect(positionOf('"Transactions"')).toBeLessThan(positionOf('scheduled-payments-toggle'));
-      expect(positionOf('scheduled-payments-toggle')).toBeLessThan(
-        positionOf('Loan payment · Scheduled'),
-      );
+      expect(positionOf('scheduled-payments-toggle')).toBeLessThan(positionOf('"Loan payment"'));
     });
 
     it('offers no toggle when the scheduled payments already fit', async () => {
@@ -2681,18 +2709,19 @@ describe('HoldingDetailScreen', () => {
       expect(queryByTestId('scheduled-payments-toggle')).toBeNull();
     });
 
-    it('draws a scheduled payment as a dimmed card titled with its marker, with its split and what remains', async () => {
+    it('draws a scheduled payment as a dimmed card with its marker as a subtitle, its split and what remains', async () => {
       seedLoan(shortLoanHolding, [linkedPayment('txn-older', 1_000, 'First installment')]);
 
       const { getAllByTestId, getByTestId, queryByText } = await renderScreen();
       const [next] = upcomingOf(shortLoanMeta);
       const card = getByTestId(`scheduled-payment-${next.index}`);
 
-      expect(within(card).getByText('Loan payment · Scheduled')).toBeTruthy();
+      expect(within(card).getByText('Loan payment')).toBeTruthy();
+      expect(within(card).getByText('Scheduled')).toBeTruthy();
       expect(within(card).getByText(/^Principal .* · interest /)).toBeTruthy();
       expect(within(card).getByText(/^Remaining /)).toBeTruthy();
       expect(within(card).queryByText(/^\d{2}:\d{2}$/)).toBeNull();
-      expect(queryByText('Scheduled')).toBeNull();
+      expect(queryByText('Loan payment · Scheduled')).toBeNull();
 
       for (const scheduled of getAllByTestId(/^scheduled-payment-/)) {
         expect(StyleSheet.flatten(scheduled.props.style)).toMatchObject({ opacity: 0.5 });
@@ -3070,10 +3099,16 @@ describe('HoldingDetailScreen', () => {
       const { getAllByText } = await renderScreen();
 
       expect(
-        getAllByText(/^(Interest paid|Transactions|Loan payment · Scheduled|First installment)$/)
+        getAllByText(/^(Interest paid|Transactions|Loan payment|Scheduled|First installment)$/)
           .map((node) => String(node.children))
           .filter((text, position, texts) => texts.indexOf(text) === position),
-      ).toEqual(['Interest paid', 'Transactions', 'Loan payment · Scheduled', 'First installment']);
+      ).toEqual([
+        'Interest paid',
+        'Transactions',
+        'Loan payment',
+        'Scheduled',
+        'First installment',
+      ]);
     });
 
     it('opens the list with the Transactions Divider and heading, and no section of its own', async () => {
@@ -3483,11 +3518,101 @@ describe('HoldingDetailScreen — localization', () => {
       seed(annuityLoanHolding);
       const { getAllByText, getByTestId, queryByText } = await renderScreen();
 
-      expect(getAllByText('Платіж за кредитом · Заплановано').length).toBeGreaterThan(0);
+      expect(getAllByText('Платіж за кредитом').length).toBeGreaterThan(0);
+      expect(getAllByText('Заплановано').length).toBeGreaterThan(0);
       expect(
         within(getByTestId('scheduled-payments-toggle')).getByText('Показати всі'),
       ).toBeTruthy();
-      expect(queryByText('Loan payment · Scheduled')).toBeNull();
+      expect(queryByText('Loan payment')).toBeNull();
+      expect(queryByText('Scheduled')).toBeNull();
+    });
+  });
+
+  describe('the derived rows under the uk language', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    const expectSubtitle = (cards: TextNode[], title: string, subtitle: string) => {
+      const titled = cardsTitled(cards, title);
+
+      expect(titled.length).toBeGreaterThan(0);
+
+      for (const card of titled) {
+        expect(within(card).getByText(subtitle)).toBeTruthy();
+      }
+    };
+
+    it('puts Прогноз under a future deposit row', async () => {
+      seed(futureDepositHolding);
+      const { getAllByTestId, queryByText } = await renderScreen();
+
+      expectSubtitle(getAllByTestId('ledger-row'), 'Нарахування відсотків', 'Прогноз');
+      expect(queryByText('Нарахування відсотків · Прогноз')).toBeNull();
+    });
+
+    it('puts Обчислено under a past deposit row', async () => {
+      seed(depositHolding);
+      const { getAllByTestId } = await renderScreen();
+
+      expectSubtitle(getAllByTestId('ledger-row'), 'Відкриття депозиту', 'Обчислено');
+      expectSubtitle(getAllByTestId('ledger-row'), 'Нарахування відсотків', 'Обчислено');
+    });
+
+    it('puts Обчислено under a paid bond coupon', async () => {
+      seed(bondHolding);
+      const { getAllByTestId } = await renderScreen();
+      const paidCoupons = cardsTitled(
+        cardsTitled(getAllByTestId('ledger-row'), 'Купон'),
+        'Обчислено',
+      );
+
+      expect(paidCoupons.length).toBeGreaterThan(0);
+    });
+
+    it('puts Прогноз under a bond coupon still ahead', async () => {
+      const now = new Date();
+
+      seed({
+        ...bondHolding,
+        metadata: {
+          ...bondHolding.metadata,
+          purchaseDate: now.getTime(),
+          maturityDate: new Date(now.getFullYear() + 2, now.getMonth(), now.getDate()).getTime(),
+        },
+      });
+      const { getAllByTestId } = await renderScreen();
+
+      expectSubtitle(getAllByTestId('ledger-row'), 'Купон', 'Прогноз');
+    });
+
+    it('puts nothing under a past metal lot', async () => {
+      seed(metalHolding);
+      const { getAllByTestId, queryByText } = await renderScreen();
+
+      expect(cardsTitled(getAllByTestId('ledger-row'), 'Купівля').length).toBeGreaterThan(0);
+      expect(queryByText(/Прогноз|Обчислено|Заплановано/)).toBeNull();
+    });
+
+    it('puts Прогноз under a future metal lot', async () => {
+      seed({
+        ...metalHolding,
+        metadata: {
+          ...metalHolding.metadata,
+          lots: [
+            {
+              day: Date.UTC(new Date().getUTCFullYear() + 1, 0, 1),
+              quantityDelta: '10',
+              costMinorUnits: 5_000_000,
+            },
+          ],
+        },
+      });
+      const { getAllByTestId } = await renderScreen();
+
+      expectSubtitle(getAllByTestId('ledger-row'), 'Купівля', 'Прогноз');
     });
   });
 
@@ -3681,7 +3806,7 @@ describe('HoldingDetailScreen — bond yield to maturity', () => {
 
     const expectStepUpCoupons = async () => {
       const { getAllByText, getByText } = await renderScreen();
-      const couponAmounts = getAllByText(/^Coupon · /).map(
+      const couponAmounts = getAllByText('Coupon').map(
         (label) => amountForLabel(label, /\$/).props.children,
       );
 
@@ -3731,9 +3856,9 @@ describe('HoldingDetailScreen — bond yield to maturity', () => {
 
 const textLayout = (content: string): LayoutNode => ({ style: {}, children: [content] });
 
-const descriptionLayout = (label: string): LayoutNode => ({
+const descriptionLayout = (label: string, ...subtitles: string[]): LayoutNode => ({
   style: { flex: 1, marginRight: darkTheme.spacing(3) },
-  children: [textLayout(label)],
+  children: [label, ...subtitles].map(textLayout),
 });
 
 const amountLayout = (testID: string, caption: LayoutNode[] = []): LayoutNode => ({
@@ -3776,13 +3901,11 @@ const cardLayout = (children: LayoutNode[]): LayoutNode => ({
 // Pins the approved look of the ledger rows and their day header, which the shared
 // EntryCard / EntryDateHeader draw.
 describe('HoldingDetailScreen — ledger row look', () => {
-  it('draws a settled derived row as a card: marker in the label, amount right, no caption', async () => {
+  it('draws a settled derived row as a card: marker under the label, amount right, no caption', async () => {
     seed(depositHolding);
 
     const { getAllByTestId } = await renderScreen();
-    const row = getAllByTestId('ledger-row').find(
-      (candidate) => within(candidate).queryByText('Interest accrual · Computed') !== null,
-    );
+    const [row] = cardsTitled(getAllByTestId('ledger-row'), 'Interest accrual');
 
     if (row === undefined) {
       throw new Error('fixture must carry a settled interest accrual row');
@@ -3791,7 +3914,7 @@ describe('HoldingDetailScreen — ledger row look', () => {
     expect(layoutOf(row)).toEqual(
       cardLayout([
         mainRowLayout([
-          descriptionLayout('Interest accrual · Computed'),
+          descriptionLayout('Interest accrual', 'Computed'),
           amountLayout('money-tone-positive'),
         ]),
       ]),
@@ -3799,13 +3922,11 @@ describe('HoldingDetailScreen — ledger row look', () => {
     expect(StyleSheet.flatten(row.props.style)).not.toHaveProperty('opacity');
   });
 
-  it('dims a projected derived row to half opacity and titles it Projected', async () => {
+  it('dims a projected derived row to half opacity and puts Projected under its title', async () => {
     seed(futureDepositHolding);
 
     const { getAllByTestId } = await renderScreen();
-    const row = getAllByTestId('ledger-row').find(
-      (candidate) => within(candidate).queryByText('Interest accrual · Projected') !== null,
-    );
+    const [row] = cardsTitled(getAllByTestId('ledger-row'), 'Interest accrual');
 
     if (row === undefined) {
       throw new Error('fixture must carry a projected row');
@@ -3814,7 +3935,7 @@ describe('HoldingDetailScreen — ledger row look', () => {
     expect(layoutOf(row)).toEqual(
       cardLayout([
         mainRowLayout([
-          descriptionLayout('Interest accrual · Projected'),
+          descriptionLayout('Interest accrual', 'Projected'),
           amountLayout('money-tone-positive'),
         ]),
       ]),

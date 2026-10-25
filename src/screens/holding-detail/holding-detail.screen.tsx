@@ -491,9 +491,6 @@ const derivedMarker = (entry: DerivedEntry, t: TFunction): string | undefined =>
   return t('holdingDetail.computed');
 };
 
-const derivedTitle = (entry: DerivedEntry, t: TFunction): string =>
-  [entry.label, derivedMarker(entry, t)].filter((part) => part !== undefined).join(' · ');
-
 // A single ledger row, lifted verbatim out of the old eager `.map` so the
 // FlatList mounts only the visible rows — a synced card can carry thousands.
 // The row UI, props, spacing, and testIDs are unchanged. A derived (computed)
@@ -532,18 +529,19 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     .with({ kind: 'derived' }, (derivedRow) => {
       // A computed lifecycle entry (opening/top-up, interest accrual, the
       // 18%/5% withholding lines, capitalization, or a bond
-      // purchase/coupon/redemption): not tappable, and titled "<label> ·
-      // Computed" so it reads as derived, not a stored transaction; only a
-      // lot row takes a long-press menu (`LotRowMenu`). A projected
-      // (future-dated) entry — an upcoming accrual, coupon, or redemption —
-      // is dimmed and titled "<label> · Projected". The amount reads in its
+      // purchase/coupon/redemption): not tappable, and carrying "Computed" as
+      // a subtitle under its label so it reads as derived, not a stored
+      // transaction; only a lot row takes a long-press menu (`LotRowMenu`). A
+      // projected (future-dated) entry — an upcoming accrual, coupon, or
+      // redemption — is dimmed and carries "Projected" instead. The amount reads in its
       // kind-derived tone (tax red, interest/coupon green, principal
       // movements neutral/by-sign), with the time under it on a timed type.
       return (
         <LotRowMenu entry={derivedRow.entry} actions={lotActions}>
           <EntryCard
             testID="ledger-row"
-            label={derivedTitle(derivedRow.entry, t)}
+            label={derivedRow.entry.label}
+            subtitle={derivedMarker(derivedRow.entry, t)}
             style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
             amount={
               <MoneyText

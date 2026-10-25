@@ -917,7 +917,7 @@ export const en = {
     // is paid.
     remainingBalance: 'Remaining {{amount}}',
     sale: 'Sale',
-    // The marker in each scheduled loan payment's title ("Loan payment · Scheduled"): the
+    // The marker under each scheduled loan payment's title, as its subtitle: the
     // payment is on the loan's contractual schedule, so it reads "Scheduled", not "Projected".
     scheduled: 'Scheduled',
     shareChanges: 'Share Changes',

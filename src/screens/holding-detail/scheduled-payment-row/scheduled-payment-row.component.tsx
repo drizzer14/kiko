@@ -11,14 +11,16 @@ import { paymentSplitText } from '../payment-split-text';
 
 import type { ScheduledPaymentRowProps } from './scheduled-payment-row.props';
 
-// One scheduled loan payment as a ledger entry, titled "Loan payment · Scheduled" like a
-// projected row, with the principal / interest split and the balance left once it is paid. Its
+// One scheduled loan payment as a ledger entry, titled "Loan payment" with "Scheduled" as its
+// subtitle like a projected row, with the principal / interest split and the balance left once it
+// is paid. Its
 // day header comes from the list it sits in, and a due date has no time, so the card has no
 // caption under the amount. Memoized, since a 30-year mortgage can show 360 of them and an
 // unrelated screen render must not re-draw each one.
 const ScheduledPaymentRow: FC<ScheduledPaymentRowProps> = ({ installment, currency, style }) => {
   const { t } = useTranslation();
-  const title = `${t('holdingDetail.loanPayment')} · ${t('holdingDetail.scheduled')}`;
+  const title = t('holdingDetail.loanPayment');
+  const subtitle = t('holdingDetail.scheduled');
   // Signed like a linked payment: money leaving the user is negative, so MoneyText draws it red
   // with the minus and the label below reads it the same way.
   const payment = Money.of(currency, installment.paymentMinorUnits).negate();
@@ -34,15 +36,20 @@ const ScheduledPaymentRow: FC<ScheduledPaymentRowProps> = ({ installment, curren
 
   // One VoiceOver stop per installment, read in the order the row is drawn, built from the
   // already translated parts.
-  const accessibilityLabel = [title, formatMoney(payment, activeLocale()), split, remaining].join(
-    ', ',
-  );
+  const accessibilityLabel = [
+    title,
+    subtitle,
+    formatMoney(payment, activeLocale()),
+    split,
+    remaining,
+  ].join(', ');
 
   return (
     <Box accessible accessibilityLabel={accessibilityLabel}>
       <EntryCard
         testID={`scheduled-payment-${installment.index}`}
         label={title}
+        subtitle={subtitle}
         style={style}
         amount={<MoneyText money={payment} context="transaction" />}
         footerLines={[split, remaining]}
