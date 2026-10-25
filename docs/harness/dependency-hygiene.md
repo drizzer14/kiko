@@ -339,26 +339,20 @@ same class as the `image-size` CVEs above — do not suppress it;
 re-check periodically and pin once `query-string` ships an
 ESM-compatible or patched line.
 
-`check:deep` also flags `braces` 3.0.3, advisory GHSA-vfj7-8cjw-p6xm /
-CVE-2026-93687 (published 2026-09-18, severity high, 8.7): a
-stack-exhaustion denial of service through deeply nested patterns. No
-fixed version exists. It is installed only through `micromatch` under
-`@jest/transform`, from `babel-jest` (a test tool), never in the app
-bundle (`npm ls braces --all` shows that one path). Accepted as tracked
-debt (user decision 2026-10-03), same class
-as the `image-size` CVEs above — do not suppress it; re-check
-periodically with `bash scripts/checks/osv.sh` and bump the moment a
-fix ships. Last checked 2026-10-03.
+`bash scripts/checks/osv.sh` also flags `body-parser` 2.3.0, advisory
+GHSA-27r3-jxmh-p828 (CVSS 7.5), fixed in 2.4.0 (published 2026-10-22). It waits until
+2026-10-29 (user ruling 2026-10-25): until then 2.4.0 is younger than the `.npmrc` 7-day minimum
+age, so npm refuses it. Its one parent chain is `react-native` ->
+`@react-native/community-cli-plugin` -> `@react-native-community/cli` 20.2.0 ->
+`cli-server-api` (the Metro dev server, a `devOptional` lockfile entry; osv labels it dev), so
+it never reaches the app bundle. Not a suppressed finding: on or after 2026-10-29 pin
+`"body-parser": "2.4.0"` with a top-level override (the form used for `compression` above) and
+move this entry into "osv-scanner CVE remediation".
 
-`check:deep` also flags `sprintf-js` 1.0.3, advisory GHSA-hp3w-g68c-fv3c
-(CVSS 6.9). No fixed version exists. It is dev-only: both paths run
-through one `js-yaml` 3.15.2 -> `argparse` 1.0.10 -> `sprintf-js` chain,
-reached from two parents, `depcheck` (`^3.14.1`) and `babel-jest` ->
-`babel-plugin-istanbul` -> `@istanbuljs/load-nyc-config` (`^3.13.1`;
-`npm ls` shows this one as "deduped", `npm explain sprintf-js` shows
-both). Removing `depcheck` alone therefore does not clear the advisory.
-`npm ls sprintf-js --all --omit=dev` is empty, so it is never in the app
-bundle. Accepted as tracked debt (same class as the `braces` advisory
-above) — do not suppress it; re-check periodically with
-`bash scripts/checks/osv.sh` and bump the moment a fix ships. Last
-checked 2026-10-06.
+`bash scripts/checks/osv.sh` also flags `fast-uri` 3.1.8, four advisories (GHSA-333x-w4r6-6crp,
+GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h), fixed in 3.1.9 (published
+2026-10-19T23:05Z). It is dev-only: it comes through the overridden `ajv` (parents `ajv` and
+`@stryker-mutator/core`). Until 2026-10-26T23:05Z, 3.1.9 is younger than the `.npmrc` 7-day
+minimum age, so npm refuses it. Not a suppressed finding: as its own change set on or after
+2026-10-27 (coordinator ruling 2026-10-25), change the `overrides` entry `ajv.fast-uri` from
+`3.1.8` to `3.1.9` and move this entry into "osv-scanner CVE remediation".
