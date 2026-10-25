@@ -45,3 +45,7 @@ setOfThree=1
 setSteps=1
 # Retry up to the task 3 of 3 retries.
 taskOfThree=1
+# The FQDN names the host; AS12-Q3 and S12-Quality are no ruling id, nor is a bare S12 or Q3.
+rulingIdNearMiss=1
+# A c-nr-e flag and a C-NR with no clause after it are no clause id.
+clauseIdNearMiss=1

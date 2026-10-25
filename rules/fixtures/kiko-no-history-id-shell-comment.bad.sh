@@ -92,3 +92,15 @@ decisionAnswer=1
 # EXPECT-FINDING
 # Added in H10 Set 3: the retry sits here.
 trackCapitalSet=1
+
+# EXPECT-FINDING
+# The retry stops at a stuck day (S12-Q34): the pass never ends otherwise.
+rulingId=1
+
+# EXPECT-FINDING
+# The hint is kept on a re-scan run (FQ9).
+questionId=1
+
+# EXPECT-FINDING
+# Anything else is refused (spec C-NR-E).
+clauseId=1

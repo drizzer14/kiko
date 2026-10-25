@@ -1732,6 +1732,14 @@ letter), and a `T-shirt`/`U-turn` has no digit after the hyphen.
 match. Fixture pair: the four hyphen pins at the end of `.bad.ts`
 and item 19 in `.good.ts`.
 
+**Spec ruling, review-question and spec clause ids.** `S\d{1,3}-Q\d{1,3}` (`S12-Q34`),
+`FQ\d{1,3}` (`FQ9`) and `C-NR-?[A-Z0-9]+` (`C-NR-E`, `C-NR3`) name a ruling or a spec clause of the
+SDD process; a comment or a test title under `src` states the reason and the behaviour instead. The
+same three members sit in `kiko-no-history-id-shell-comment`. The leading `\b` keeps `AS12-Q3` and
+`FQDN` silent, and each member needs its digit or clause letter, so a bare `S12`, `Q3` or `C-NR`
+stays prose. Fixtures: the last pins of `.bad.ts`/`.bad.sh` and the last probes of
+`.good.ts`/`.good.sh`.
+
 **`Phase N` is not a family member at all** — a bare `Phase\s\d+`
 collides with ordinary engineering prose no digit-anchoring can fix
 ("Phase 1 copies the rows; Phase 2 deletes the source only after
