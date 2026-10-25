@@ -128,6 +128,51 @@ describe('useSelectCreatedOption', () => {
     expect(onSelect).toHaveBeenCalledWith('new');
   });
 
+  it('selects the newest option created in the window when another option was created elsewhere first', async () => {
+    const { onSelect, result, rerender } = await setup();
+
+    await pressCreateRow(result);
+    // "Coffee" is created on another tab while the pushed form is open; "Rent" is saved later.
+    await rerender({
+      options: [makeOption('coffee', SAVED_AT - 20 * SECOND), makeOption('rent', SAVED_AT)],
+    });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('rent');
+  });
+
+  it('selects the last in list order when two options carry the same whole-second stamp', async () => {
+    const { onSelect, result, rerender } = await setup();
+
+    await pressCreateRow(result);
+    await rerender({ options: [makeOption('first', SAVED_AT), makeOption('last', SAVED_AT)] });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('last');
+  });
+
+  it('selects the newest by createdAt even when it is listed before an older option', async () => {
+    const { onSelect, result, rerender } = await setup();
+
+    await pressCreateRow(result);
+    await rerender({
+      options: [makeOption('newer', SAVED_AT), makeOption('older', SAVED_AT - 20 * SECOND)],
+    });
+
+    expect(onSelect).toHaveBeenCalledWith('newer');
+  });
+
+  it('selects once for two presses before one close', async () => {
+    const { onSelect, result, rerender } = await setup();
+
+    await pressCreateRow(result);
+    await pressCreateRow(result);
+    await rerender({ options: [makeOption('new', SAVED_AT)] });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('new');
+  });
+
   it('works outside a navigator, where no focus event ever arrives', async () => {
     const onSelect = jest.fn();
     const { result, rerender } = await renderHook(

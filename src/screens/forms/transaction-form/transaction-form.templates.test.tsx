@@ -1814,6 +1814,7 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
 
       const utils = await render(templateScreen({ newTemplate: true }));
 
+      expect(utils.getByLabelText('Template name')).toBeTruthy();
       expect(utils.queryByTestId('entry-tabs')).toBeNull();
       expect(utils.queryByTestId('template-field')).toBeNull();
       expect(utils.queryByTestId('template-field-empty-action')).toBeNull();

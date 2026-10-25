@@ -25,18 +25,28 @@ const wasCreatedDuring = (option: CreatedOption, roundTrip: RoundTrip): boolean 
   option.createdAt >= floorToSecond(roundTrip.startedAt) &&
   (roundTrip.returnedAt === undefined || option.createdAt <= roundTrip.returnedAt);
 
+// The user's own option is the newest one in the window; on a tie in the
+// whole-second stamp, the one later in list order.
+const newerOrTied = (newest: CreatedOption, option: CreatedOption): CreatedOption =>
+  option.createdAt >= newest.createdAt ? option : newest;
+
 // Selects the option the user created through an empty picker's "Add ..." row
 // (a holding or a template). The returned function starts the round trip (call
-// it when the row is pressed); the first option stamped inside the window
+// it when the row is pressed); the newest option stamped inside the window
 // between that press and the screen regaining focus is then handed to
 // `onSelect`, once. The window is what keeps an option that a sync adds after
 // the user cancelled the create form from being selected into the field. Focus
 // is read from the screen's own navigation, because the new option can reach
 // this field before or after the focus event. Outside a navigator (only a test
-// renders the field that way) the window never closes, so the first option
+// renders the field that way) the window never closes, so the newest option
 // stamped after the press is selected.
-export const useSelectCreatedOption = <Option extends CreatedOption>(
-  options: readonly Option[],
+//
+// KNOWN LIMIT: if the user cancels the pushed create form while another tab
+// created an option inside the window, that option is still selected. Handing
+// the created option's exact id back through the navigation result is the
+// follow-up.
+export const useSelectCreatedOption = (
+  options: readonly CreatedOption[],
   onSelect: (id: string) => void,
 ): (() => void) => {
   const navigation = useContext(NavigationContext);
@@ -59,7 +69,12 @@ export const useSelectCreatedOption = <Option extends CreatedOption>(
       return;
     }
 
-    const created = options.find((option) => wasCreatedDuring(option, pending));
+    const created = options
+      .filter((option) => wasCreatedDuring(option, pending))
+      .reduce<CreatedOption | undefined>(
+        (newest, option) => (newest === undefined ? option : newerOrTied(newest, option)),
+        undefined,
+      );
 
     if (created !== undefined) {
       roundTrip.current = undefined;

@@ -168,6 +168,24 @@ describe('TemplateSelect', () => {
     expect(utils.onSelect).toHaveBeenCalledWith('created');
   });
 
+  it('reports the newest template when two appear in the window, the older one created elsewhere', async () => {
+    const utils = await setup({ templates: [] });
+
+    await pressAddTemplate(utils);
+    await utils.rerender(
+      <TemplateSelect
+        {...utils.props}
+        templates={[
+          { id: 'coffee', name: 'Coffee', createdAt: SAVED_AT - 20 * SECOND },
+          { id: 'rent', name: 'Rent', createdAt: SAVED_AT },
+        ]}
+      />,
+    );
+
+    expect(utils.onSelect).toHaveBeenCalledTimes(1);
+    expect(utils.onSelect).toHaveBeenCalledWith('rent');
+  });
+
   it('reports nothing when no template appears after the row was pressed', async () => {
     const utils = await setup({ templates: [] });
 
