@@ -393,11 +393,31 @@ function skipComment(state) {
   state.i = newline === -1 ? state.text.length : newline;
 }
 
+// Whether the `$` at `dollar`, right before a quote, opens an ANSI-C string. In bash `$$` is the
+// pid, so the quote after it is a plain one: the `$` opens only when the run of unescaped `$`
+// that ends here is odd (`$$'` plain, `$$$'` ANSI-C), and a `\$` is a literal that never counts.
+function opensAnsiCQuote(text, dollar) {
+  if (text[dollar] !== '$' || text[dollar + 1] !== "'") return false;
+  let start = dollar;
+  while (start > 0 && text[start - 1] === '$') {
+    tick();
+    start--;
+  }
+  let backslashes = 0;
+  while (start - backslashes > 0 && text[start - backslashes - 1] === '\\') {
+    tick();
+    backslashes++;
+  }
+  const escapedDollars = backslashes % 2;
+
+  return (dollar - start + 1 - escapedDollars) % 2 === 1;
+}
+
 // The index of the quote that closes the ANSI-C string `$'...'` whose `$` stands at `dollar`, or -1
 // when none does there. A backslash escapes the next character, so `\'` does not close it: the
 // splitters and the tokenizer all end the string here.
 function ansiCQuoteEnd(text, dollar) {
-  if (text[dollar] !== '$' || text[dollar + 1] !== "'") return -1;
+  if (!opensAnsiCQuote(text, dollar)) return -1;
   let end = dollar + 2;
   while (end < text.length && text[end] !== "'") {
     tick();
