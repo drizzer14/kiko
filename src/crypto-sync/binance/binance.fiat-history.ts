@@ -138,6 +138,14 @@ const FIAT_SERIES: readonly FiatTransactionType[] = ['0', '1'];
 const MAX_PAGES_PER_SPAN = 50;
 
 /**
+ * The width a failed span is halved down to before ground is owed for it: a day. The read that
+ * fails says nothing of where in the span it fails, so the ground owed for it is the span, and a
+ * span owed whole stops every record of it from importing; a day is the most that stays owed
+ * behind one failing page, and a range that is no wider than it has nothing to isolate.
+ */
+const ISOLATE_MS = DAY_MS;
+
+/**
  * A row mapped from a settled record, before its wallet is turned into a holding: `wallet` is the
  * key of the coin's Spot holding (C-NR3).
  */
@@ -384,6 +392,11 @@ type FiatContext<Item extends FiatRecord> = {
   write: WalkMarkWriter;
   /** The ranges the re-scan reads around, as the run last wrote the walk's `rescanStuck` mark. */
   rescanStuck: WalkWindow[];
+  /**
+   * The first page that did not parse in an owed read that halved to a day and owed it: the walk
+   * reads on, and the run rejects with it after its passes, so the failure is not silent.
+   */
+  owedUnreadable: BinanceHistoryParseError | undefined;
   depthMemories: Pick<DepthGuard, 'config' | 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
 };
 
@@ -438,10 +451,13 @@ type SpanReading<Item extends FiatRecord> =
   | SpanRead<SeriesSpan<FiatTransactionType, Item>>
   | undefined;
 
-/** The read of a span, or `failed`: a type's pages drifted, or a page could not be parsed. */
+/**
+ * The read of a span, or `failed`: a type's pages drifted (no `unreadable`), or a page could not
+ * be parsed (`unreadable` is its error).
+ */
 type Attempt<Item extends FiatRecord> =
   | { kind: 'read'; reading: SpanReading<Item> }
-  | { kind: 'failed' };
+  | { kind: 'failed'; unreadable?: BinanceHistoryParseError };
 
 const attemptSpan = async <Item extends FiatRecord>(
   context: FiatContext<Item>,
@@ -460,7 +476,7 @@ const attemptSpan = async <Item extends FiatRecord>(
       throw error;
     }
 
-    return { kind: 'failed' };
+    return { kind: 'failed', unreadable: error };
   }
 };
 
@@ -472,6 +488,21 @@ const overlaps = (left: WalkWindow, right: WalkWindow): boolean =>
   left.start < right.end && left.end > right.start;
 
 const byStart = (left: WalkWindow, right: WalkWindow): number => left.start - right.start;
+
+/**
+ * The first half of a failed span that is wider than `ISOLATE_MS`, when `owed` is wider than it
+ * too: an owed range of a day or less is already as narrow as the ground is owed.
+ */
+const isolatingHalfOf = (span: WalkWindow, owed: WalkWindow): WalkWindow | undefined =>
+  owed.end - owed.start > ISOLATE_MS && span.end - span.start > ISOLATE_MS
+    ? halfOf(span)
+    : undefined;
+
+/** The part of `range` that lies in `span`, or the whole range when it is no wider than a day. */
+const clipped = (range: WalkWindow, span: WalkWindow): WalkWindow =>
+  range.end - range.start > ISOLATE_MS
+    ? { start: Math.max(range.start, span.start), end: Math.min(range.end, span.end) }
+    : range;
 
 /** The span read as owed, nothing of it read: the ground a stuck range holds in `ground`. */
 const owedSpan = <Item extends FiatRecord>(
@@ -559,7 +590,13 @@ const readRescanSpan = async <Item extends FiatRecord>(
     .at(0);
 
   if (owed !== undefined) {
-    await markStuck(context, owed);
+    const isolating = isolatingHalfOf(span, owed);
+
+    if (isolating !== undefined) {
+      return { kind: 'split', half: isolating };
+    }
+
+    await markStuck(context, clipped(owed, span));
 
     return readRescanSpan(context, window, span, keep);
   }
@@ -575,16 +612,56 @@ const readRescanSpan = async <Item extends FiatRecord>(
   return owedSpan(window, span);
 };
 
+/**
+ * One span of an owed window. A read that fails halves down to a day (`ISOLATE_MS`) and owes the
+ * day, so the rest of the window reads, and a window that the walk owed whole would keep every
+ * record in it from importing for one failing page. A page that did not parse is kept for the run
+ * to reject with once its passes are read: the failure stays visible while the day is owed.
+ */
+const readOwedSpan = async <Item extends FiatRecord>(
+  context: FiatContext<Item>,
+  window: OwedWindow,
+  span: WalkWindow,
+  keep: number,
+): Promise<SpanReading<Item>> => {
+  const attempt = await attemptSpan(context, window, span, keep);
+
+  if (attempt.kind === 'read') {
+    return attempt.reading;
+  }
+
+  const half = span.end - span.start > ISOLATE_MS ? halfOf(span) : undefined;
+
+  if (half !== undefined) {
+    return { kind: 'split', half };
+  }
+
+  context.owedUnreadable ??= attempt.unreadable;
+
+  if (attempt.unreadable === undefined) {
+    logWalkStop(FIAT_PAGE_DRIFT);
+  }
+
+  return owedSpan(window, span);
+};
+
 const readSpan = <Item extends FiatRecord>(
   context: FiatContext<Item>,
   window: OwedWindow,
   span: WalkWindow,
   keep: number,
   pass: WalkPass,
-): Promise<SpanReading<Item>> =>
-  pass === 'rescan'
-    ? readRescanSpan(context, window, span, keep)
+): Promise<SpanReading<Item>> => {
+  if (pass === 'rescan') {
+    return readRescanSpan(context, window, span, keep);
+  }
+
+  // The points of the owed list read one record's own ground: the walk owes the point when its
+  // page cannot be read, and there is no wider ground to isolate it from.
+  return pass === 'pending' && !context.plan.points.includes(window)
+    ? readOwedSpan(context, window, span, keep)
     : readSpanOnce(context, window, span, keep);
+};
 
 type SettledOutcome = Exclude<FiatOutcome, { kind: 'owed' }>;
 
@@ -1040,6 +1117,7 @@ const runSync = async <Item extends FiatRecord>(
     plan,
     write,
     rescanStuck: stuck,
+    owedUnreadable: undefined,
     depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
   };
 
@@ -1077,6 +1155,11 @@ const runSync = async <Item extends FiatRecord>(
     isUnreadableWindowError,
     ...keepHintsOfOtherPasses(roundRobinHooksOf({ marks: context.marks, write }), turn),
   });
+
+  if (context.owedUnreadable !== undefined) {
+    throw context.owedUnreadable;
+  }
+
   const lastWindowEnd = plan.forward.at(-1)?.end;
 
   // A plan holds the lane's windows a run at most, so one that ends before now has more history

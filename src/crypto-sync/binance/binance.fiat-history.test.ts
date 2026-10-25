@@ -736,7 +736,13 @@ describe('the turn of the fiat order walk across runs', () => {
       ]);
       expect(runs.map(({ deps }) => addedRows(deps).length)).toEqual([0, 1, 1, 0, 0, 0]);
       expect(cursorOf(ORDERS, world)).toBe(NOW + 5 * LATER_MS);
-      expect(pendingOf(ORDERS, world)).toContainEqual(OLD_RANGE);
+      // The owed pass owes the day it halved to on both types it read.
+      expect(pendingOf(ORDERS, world)).toEqual(
+        expect.arrayContaining([
+          { ...OLD_RANGE, series: '0' },
+          { ...OLD_RANGE, series: '1' },
+        ]),
+      );
     });
   });
 });

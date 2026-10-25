@@ -21,9 +21,15 @@ import {
   LANE_CALL_CAPS,
   UID_WEIGHT_BUDGET_1M,
 } from './binance.history-budget';
+import {
+  fiatOrderOf,
+  fiatPageOf,
+  fiatPaymentOf,
+  fiatServerOf,
+  READS_OVER_A_WINDOW,
+} from './binance.fiat-test-fixtures';
 import { NOW } from './binance.pay-test-fixtures';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
-import { fiatOrderOf, fiatPageOf, fiatPaymentOf, fiatServerOf } from './binance.fiat-test-fixtures';
 
 type AnyDeps = Partial<BinanceFiatOrderHistoryDeps & BinanceFiatPaymentHistoryDeps>;
 
@@ -234,7 +240,11 @@ describe.each([ORDERS, PAYMENTS])('$name: an owed range whose page cannot be rea
 
     expect(first.error).toBeInstanceOf(BinanceHistoryParseError);
     expect(first.times).toContain(inSecond.createTime);
-    expect(world.marks().pending).toEqual([OWED_DAY]);
+    // The owed pass owes the day it halved to on both types it read.
+    expect(world.marks().pending).toEqual([
+      { ...OWED_DAY, series: '0' },
+      { ...OWED_DAY, series: '1' },
+    ]);
   });
 });
 
@@ -637,3 +647,153 @@ describe.each([ORDERS, PAYMENTS])('$name: 30 owed points that cannot be read', (
     }
   });
 });
+
+describe.each(
+  [ORDERS, PAYMENTS].flatMap((kind) =>
+    (['throw', 'drift'] as const).map((failure) => ({ kind, failure, name: kind.name })),
+  ),
+)(
+  '$name: an owed range wider than the one day of it that fails ($failure)',
+  ({ kind, failure }) => {
+    const CURSOR = NOW - HOUR_MS;
+    const at = (daysBack: number): number => CURSOR - Math.round(daysBack * DAY_MS);
+
+    /**
+     * An owed range that reaches from the history floor to the cursor, the shape a repaired list
+     * leaves, and one older than the re-scan window, so only the owed pass reads it. Each holds one
+     * failing day and records on both sides of it and in it; the records are of both types.
+     */
+    const SHAPES = [
+      {
+        name: 'from the history floor to the cursor',
+        range: { start: HISTORY_FLOOR_MS, end: CURSOR },
+        failing: { start: at(300), end: at(299) },
+        readable: [
+          { orderNo: 'older-than-window', createTime: at(2500) },
+          { orderNo: 'before-in-window', createTime: at(500) },
+          { orderNo: 'after-in-window', createTime: at(100) },
+          { orderNo: 'recent', createTime: at(20) },
+        ],
+      },
+      {
+        name: 'older than the re-scan window',
+        range: { start: at(1500), end: at(800) },
+        failing: { start: at(1000), end: at(999) },
+        readable: [
+          { orderNo: 'first', createTime: at(1400) },
+          { orderNo: 'before', createTime: at(1200) },
+          { orderNo: 'after', createTime: at(900) },
+        ],
+      },
+    ];
+
+    /**
+     * Runs the world an hour apart: what came in at which run, how the runs ended, what is owed.
+     */
+    const worldRunsOf = async (shape: (typeof SHAPES)[number], runs: number) => {
+      const onFailingDay = { orderNo: 'on-failing-day', createTime: shape.failing.start + HOUR_MS };
+      const all = [...shape.readable, onFailingDay].map((record, index) => ({
+        ...record,
+        type: index % 2 === 0 ? ('0' as const) : ('1' as const),
+      }));
+      const world = worldOf(kind);
+      const importedAt = new Map<string, number>();
+      const errors: unknown[] = [];
+      let rejectedWithRows = 0;
+
+      world.seed({ cursor: CURSOR, pending: [shape.range] });
+
+      for (let index = 0; index < runs; index += 1) {
+        const run = await world.runOnce({
+          now: NOW + index * HOUR_MS,
+          records: all.filter(({ type }) => type === '0'),
+          sells: all.filter(({ type }) => type === '1'),
+          unreadable: (span) => failure === 'throw' && overlapping(shape.failing)(span),
+          drifting: (span) => failure === 'drift' && overlapping(shape.failing)(span),
+        });
+
+        errors.push(run.error);
+
+        if (run.error !== undefined && run.orderNos.length > 0) {
+          rejectedWithRows += 1;
+        }
+
+        for (const orderNo of run.orderNos) {
+          importedAt.set(orderNo, importedAt.get(orderNo) ?? index);
+        }
+      }
+
+      return {
+        importedAt,
+        errors,
+        rejectedWithRows,
+        pending: (world.marks().pending ?? []) as Span[],
+        wanted: shape.readable.map(({ orderNo }) => orderNo),
+      };
+    };
+
+    /**
+     * The runs between two reads of the owed windows. The orders lane has three calls and a read
+     * costs two, so a run reads one span, and the runs go forward, owed, forward, re-scan: one
+     * owed read in four. The payments lane reads at least one owed span in every run.
+     */
+    const RUNS_PER_OWED_READ = kind === PAYMENTS ? 1 : 4;
+
+    /** Every window of the range is read once more, after the one with the failing day. */
+    const windowsOf = (range: Span): number =>
+      Math.ceil((range.end - range.start) / FIAT_WINDOW_MS);
+
+    const runsToClear = (shape: (typeof SHAPES)[number]): number =>
+      RUNS_PER_OWED_READ * (READS_OVER_A_WINDOW + windowsOf(shape.range));
+
+    it.each(SHAPES)(
+      'imports every record around the failing day of the range $name within the bound',
+      async (shape) => {
+        const { importedAt, wanted } = await worldRunsOf(shape, runsToClear(shape));
+
+        expect(wanted.filter((orderNo) => !importedAt.has(orderNo))).toEqual([]);
+      },
+    );
+
+    it.each(SHAPES)(
+      'owes the failing day and no more than a day around it, in $name',
+      async (shape) => {
+        const { importedAt, pending } = await worldRunsOf(shape, runsToClear(shape));
+        const behindCursor = pending.filter(({ start }) => start < CURSOR);
+
+        expect(importedAt.has('on-failing-day')).toBe(false);
+        expect(behindCursor.some(overlapping(shape.failing))).toBe(true);
+        expect(
+          behindCursor.filter(
+            ({ start, end }) =>
+              start < shape.failing.start - DAY_MS || end > shape.failing.end + DAY_MS,
+          ),
+        ).toEqual([]);
+      },
+    );
+
+    it.each(SHAPES)(
+      'keeps the failure visible in $name only when a page does not read',
+      async (shape) => {
+        const { errors } = await worldRunsOf(shape, runsToClear(shape));
+        const rejected = errors.filter((error) => error !== undefined);
+
+        expect(rejected).toEqual(
+          failure === 'throw' ? rejected.map(() => expect.any(BinanceHistoryParseError)) : [],
+        );
+        expect(rejected.length > 0).toBe(failure === 'throw');
+        expect(errors.slice(-8).some((error) => error !== undefined)).toBe(failure === 'throw');
+      },
+    );
+
+    it.each(SHAPES)(
+      'rejects only after the run has read on and imported what it could, in $name',
+      async (shape) => {
+        const { rejectedWithRows } = await worldRunsOf(shape, runsToClear(shape));
+
+        // A run of the orders lane has no read left after the one that failed.
+        expect(rejectedWithRows > 0).toBe(failure === 'throw' && kind === PAYMENTS);
+      },
+    );
+  },
+);
