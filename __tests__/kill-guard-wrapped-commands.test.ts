@@ -195,6 +195,21 @@ describe('kill-guard wrapped commands (parser only, fake repository)', () => {
     expect(decideInEachFolder(repository, command)).toEqual(bare);
   });
 
+  // Measured on /bin/bash 3.2.57: `$$` is the pid, so the quote after it is a plain single quote
+  // (`'a\'` ends at the second quote and the command after `&&` runs); `$` opens `$'` only after an
+  // odd run of unescaped `$`; an escaped `\$` is a literal `$` before a plain single quote.
+  it.each([
+    ["echo $$'a\\' && pkill node # '", 'pkill node'],
+    ["echo $$'a\\' && make verify # '", 'make verify'],
+    ["echo $$$'a\\'' && pkill node", 'pkill node'],
+    ["echo \\$'a\\' && pkill node", 'pkill node'],
+  ])('reads a dollar run before a quote like bash: %s', (command, second) => {
+    const bare = decideInEachFolder(repository, second);
+
+    expect(bare).not.toEqual(EVERY_FOLDER('allow'));
+    expect(decideInEachFolder(repository, command)).toEqual(bare);
+  });
+
   it.each(["git commit -m $'Fix: don\\'t\\nbody'", "echo $'a\\'b' 'c'"])(
     'allows an ANSI-C string with an escaped quote: %s',
     (command) => {
