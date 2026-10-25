@@ -314,6 +314,11 @@ a test in the fix commit.
   orchestrator does not ask there (no AskUserQuestion; its question goes through the coordinator).
 - A guard tightening is proven by a differential over every test literal x every cwd (kiko-linter
   "Probing the kill-guard").
+- When a ruling lands, grep the skills and docs for "pending" and for the draft's file name, and
+  fix each hit in the same step.
+- A ruled route that does not exist yet is written "not built yet" with its gap id, never as if
+  it exists. The change that builds it removes the phrase (grep for it). H11 task 2 is the
+  example.
 - A planner's count (files, cases, call sites) is a floor. The developer measures the real
   count and the brief says so.
 - A change that needs a port to the shared harness repository lists the port item in the

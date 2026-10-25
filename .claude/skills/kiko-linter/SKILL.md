@@ -2861,7 +2861,9 @@ a pre-existing finding points at. A Semgrep deny names
 
 A Jest invariant, `__tests__/cited-paths.test.ts`, fails when a skill,
 agent or harness doc cites a repo path in an inline code span that does
-not exist. Fix the citation in the text; never allowlist it. A sentence
+not exist. Fix the citation in the text; never allowlist it. A doc never cites an untracked
+folder that exists only in some checkouts (for example .claude/worktrees/ or memory/refs/): the
+citation resolves in one checkout and fails in another. Write it without backticks. A sentence
 that names a path that is gone (a move, a removal) writes it without
 backticks, so it is not a citation; no prose wording exempts a
 backticked path. The test's header defines what counts as a citation.
