@@ -770,21 +770,24 @@ with `rule-card/` and `rule-summary/` under it; the list card opens
 (`rowIdsRewrittenBy` over `planRuleRewrite`) and one unchanged-save
 short-circuit (`isStoredAsGiven`), so the count shown never differs from
 the write. `REWRITE_GUARD_FIELDS` (`src/categories/category-rules/`) is the
-one list of rows a rule never rewrites; `isRewriteEligible` and the
+one list of rows a rule never rewrites (by-hand, balance-setting and split-change rows only;
+read the list in `plan-rule-rewrite.ts`); `isRewriteEligible` and the
 refresh CASE in `src/transactions/repo/transactions.repo.ts` both derive
-from it. It names every structural marker `exchangeExcludedTransactionIds`
-reads (`plan-rule-rewrite.test.ts` pins that), so a marker the statistics
-start treating as an exchange leg joins the list in the same change. The insert path
-(`withCategoryRules`) applies rules to every new row, exchange legs and untracked-wallet legs
-included (user ruling Q1 = A, 2026-10-15); the rewrite of a saved rule and the re-sync refresh
-CASE (`ruleWonTransactionSet`) skip the rows that any `REWRITE_GUARD_FIELDS` field marks
-(a design default, 2026-10-15).
+from it. The list names none of the structural markers `exchangeExcludedTransactionIds`
+reads (`plan-rule-rewrite.test.ts` pins that), so an exchange leg is rewritable. The insert path
+(`withCategoryRules`), the rewrite of a saved rule with its count, and the re-sync refresh
+CASE (`ruleWonTransactionSet`) all reach exchange legs and untracked-wallet legs and skip only
+the rows a `REWRITE_GUARD_FIELDS` field marks (user ruling B, 2026-10-25). Statistics exclude
+legs by their markers (`exchange-exclusion.ts`), never by category.
 A name matcher reads `ruleDescriptionOf` (`src/transactions/row-description/rule-description.ts`):
 the stored description, or for a blank one the label the row shows in the current language. Every
 apply path reads it so: the insert (`withCategoryRules`, which evaluates legs by their label), the
 rewrite and its count (`rowIdsRewrittenBy`), `giveSourceRowCategory`, and the form's
 `resolveRuleDescription`. A named rule's rewrite pages the blank rows by id-keyset
-(`rewriteBlankPageQuery`); legs keep `REWRITE_GUARD_FIELDS` on a rewrite.
+(`rewriteBlankPageQuery`); a leg is rewritten like any row, and only the guard fields keep a
+row out. A leg is judged by its real label: `readHoldingLabels` (`category-rules.repo.ts`;
+every holding name and currency, read once per count or rewrite) feeds `withVisibleDescription`,
+and `giveSourceRowCategory` reuses it.
 A sync input that adopts its import twin is judged as the adopted row (`adoptedRowOf` in
 `src/transactions/repo/transactions.repo.ts`): with the twin's own exchange markers and operation
 when it keeps them (`keepsExchangeMarkers`), so a kept leg reads by its exchange label; the twin's
