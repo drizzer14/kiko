@@ -4,7 +4,7 @@ import { parseAmount } from '@kiko/currency/parse';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
 import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
-import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { ruleDescriptionOf, transactionRowDescription } from '@kiko/transactions/row-description';
 
 export type Sign = 'income' | 'expense';
 
@@ -104,17 +104,35 @@ export const resolveDescriptionPlaceholder = (input: {
   holdings: readonly Pick<HoldingRow, 'id' | 'name' | 'currency'>[];
   mode: FormMode;
   t: TFunction;
+}): string =>
+  input.holding === undefined
+    ? input.t('forms.transaction.descriptionPlaceholder')
+    : resolveRuleDescription({ ...input, description: '' });
+
+// The name a category rule reads from the form's description: what is typed, and for a blank field
+// the label the placeholder previews (the label the list shows once the row is saved), so the
+// pre-select judges what the user will see. A blank field with no holding picked has no label
+// yet, stays blank, and the name matchers refuse it. A rule never sees the example text.
+export const resolveRuleDescription = (input: {
+  description: string;
+  holding: Pick<HoldingRow, 'id' | 'name'> | undefined;
+  existing:
+    | Pick<TransactionRow, 'exchangeCounterpartHoldingId' | 'untrackedCounterpart' | 'operation'>
+    | undefined;
+  holdings: readonly Pick<HoldingRow, 'id' | 'name' | 'currency'>[];
+  mode: FormMode;
+  t: TFunction;
 }): string => {
-  const { holding, existing, holdings, mode, t } = input;
+  const { description, holding, existing, holdings, mode, t } = input;
 
   if (holding === undefined) {
-    return t('forms.transaction.descriptionPlaceholder');
+    return description;
   }
 
-  return transactionRowDescription({
+  return ruleDescriptionOf({
     transaction: {
       holdingId: holding.id,
-      description: '',
+      description,
       amountMinorUnits: mode === 'expense' || mode === 'split' ? -1 : 0,
       exchangeCounterpartHoldingId: existing?.exchangeCounterpartHoldingId ?? null,
       untrackedCounterpart: existing?.untrackedCounterpart ?? null,

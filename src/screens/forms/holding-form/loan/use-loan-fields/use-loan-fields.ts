@@ -19,7 +19,6 @@ import { parseAmount } from '@kiko/currency/parse';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import type { TextInputInstance } from 'react-native';
 import { normalizeIban } from '@kiko/loans/payment-matcher';
-import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import { dayKeyOf, type PriceBook } from '@kiko/prices/price-book';
 import { type RefObject, useCallback, useRef, useState } from 'react';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
@@ -27,6 +26,7 @@ import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
+import { isOnOrAfterLoanStartDay, loanInstallments } from '@kiko/holdings/loan-schedule';
 
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
@@ -327,7 +327,7 @@ const buildLoanPricePointOp = (params: {
     // permanent 0 that outlives the start date once it arrives. Write the
     // principal at the start day instead — mirroring the create-mode `'none'`
     // first point — whenever today is still before that day.
-    const beforeStart = dayKeyOf(now) < dayKeyOf(newMeta.startDate);
+    const beforeStart = !isOnOrAfterLoanStartDay(newMeta, now);
     const day = beforeStart ? dayKeyOf(newMeta.startDate) : dayKeyOf(now);
     const outstanding = beforeStart
       ? newMeta.principalMinorUnits

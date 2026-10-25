@@ -39,6 +39,7 @@ import {
   removeHoldingDatabaseTransaction,
 } from '@kiko/holdings/repo';
 import { match } from 'ts-pattern';
+import { i18n } from '@kiko/i18n/init';
 import {
   type RewriteGuardField,
   REWRITE_GUARD_FIELDS,
@@ -65,6 +66,7 @@ import type {
   RemoveHoldingsPlan,
   RemovePlan,
 } from '../remove-notice';
+import { ruleDescriptionOf } from '../row-description';
 import { balanceBoundaryOf, movesBalance } from '../balance-boundary';
 import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '../sync-adoption';
 
@@ -1468,10 +1470,11 @@ type RuledBatch = {
 
 // Apply the category rules at insert time: the winning rule of a row replaces its category, and a
 // row no rule wins keeps the bank's. The rules are read once per call and prepared once, and the
-// currencies of the batch's holdings are read only when some rule is readable (an amount matcher
-// compares the holding's currency). A row whose holding is not found has no currency, so only
-// the rules that need none can match it. Chunked over the holding ids (a large import can span
-// many holdings) — see `IN_CLAUSE_CHUNK_SIZE`.
+// names and currencies of the batch's holdings are read only when some rule is readable (an amount
+// matcher compares the holding's currency; a name matcher reads the label of a blank row, which
+// names its holding). A row whose holding is not found has no currency, so only the rules that
+// need none can match it. Chunked over the holding ids (a large import can span many holdings) —
+// see `IN_CLAUSE_CHUNK_SIZE`.
 const withCategoryRules = async (
   databaseTransaction: typeof database,
   batch: NewTransaction[],
@@ -1486,17 +1489,27 @@ const withCategoryRules = async (
     return { rows: batch, ruleWon: new Set() };
   }
 
-  const currencyByHoldingId = new Map<string, Currency>();
+  const holdingNameById = new Map<string, string>();
+  const holdingCurrencyById = new Map<string, Currency>();
 
+  // A leg's counterpart holding is read with the batch's own, because a blank leg's label names it.
   for (const holdingIdChunk of chunkRows(
-    Array.from(new Set(batch.map((input) => input.holdingId))),
+    Array.from(
+      new Set(
+        batch.flatMap((input) => [
+          input.holdingId,
+          input.exchangeCounterpartHoldingId ?? input.holdingId,
+        ]),
+      ),
+    ),
     IN_CLAUSE_CHUNK_SIZE,
   )) {
     for (const holding of await databaseTransaction
-      .select({ id: holdings.id, currency: holdings.currency })
+      .select({ id: holdings.id, name: holdings.name, currency: holdings.currency })
       .from(holdings)
       .where(inArray(holdings.id, holdingIdChunk))) {
-      currencyByHoldingId.set(holding.id, holding.currency);
+      holdingNameById.set(holding.id, holding.name);
+      holdingCurrencyById.set(holding.id, holding.currency);
     }
   }
 
@@ -1505,10 +1518,23 @@ const withCategoryRules = async (
     const winner = winningRule(
       prepared,
       subjectOfStoredRow({
-        description: input.description ?? '',
+        description: ruleDescriptionOf({
+          transaction: {
+            holdingId: input.holdingId,
+            description: input.description,
+            amountMinorUnits: input.amountMinorUnits,
+            exchangeCounterpartHoldingId: input.exchangeCounterpartHoldingId ?? null,
+            untrackedCounterpart: input.untrackedCounterpart ?? null,
+            operation: input.operation ?? null,
+          },
+          holdingName: holdingNameById.get(input.holdingId) ?? '',
+          holdingNameById,
+          holdingCurrencyById,
+          t: i18n.t,
+        }),
         amountMinorUnits: input.amountMinorUnits,
         time: input.time,
-        currency: currencyByHoldingId.get(input.holdingId) ?? null,
+        currency: holdingCurrencyById.get(input.holdingId) ?? null,
       }),
     );
 
@@ -1539,6 +1565,7 @@ type ImportTwin = Pick<
   | 'exchangePairId'
   | 'exchangeCounterpartHoldingId'
   | 'untrackedCounterpart'
+  | 'operation'
 >;
 
 // The three columns that mark a row as a leg of an exchange movement.
@@ -1568,6 +1595,7 @@ const readImportTwinsDatabaseTransaction = async (
       exchangePairId: transactions.exchangePairId,
       exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
       untrackedCounterpart: transactions.untrackedCounterpart,
+      operation: transactions.operation,
     })
     .from(transactions)
     .where(
@@ -1586,15 +1614,32 @@ const readImportTwinsDatabaseTransaction = async (
 // The markers and the operation of an exchange leg move as one unit: onto a plain import row from
 // the sync input, or not at all when the row already carries a marker of the user's own, so a
 // half-marked row is never made.
+const keepsExchangeMarkers = (twin: ImportTwin): boolean =>
+  EXCHANGE_MARKER_KEYS.some((key) => twin[key] !== null);
+
 const adoptedExchangeValuesOf = (twin: ImportTwin, input: NewTransaction) =>
-  EXCHANGE_MARKER_KEYS.every((key) => twin[key] === null)
-    ? {
+  keepsExchangeMarkers(twin)
+    ? {}
+    : {
         exchangePairId: input.exchangePairId ?? null,
         exchangeCounterpartHoldingId: input.exchangeCounterpartHoldingId ?? null,
         untrackedCounterpart: input.untrackedCounterpart ?? null,
         operation: input.operation ?? null,
+      };
+
+// The sync input as the adopted row will read: the twin's own markers and operation when it keeps
+// them, the input's otherwise (`adoptedExchangeValuesOf`). A category rule judges this row, so it
+// reads the label the lists will show for it, not the label the bare input would.
+const adoptedRowOf = (twin: ImportTwin, input: NewTransaction): NewTransaction =>
+  keepsExchangeMarkers(twin)
+    ? {
+        ...input,
+        exchangePairId: twin.exchangePairId,
+        exchangeCounterpartHoldingId: twin.exchangeCounterpartHoldingId,
+        untrackedCounterpart: twin.untrackedCounterpart,
+        operation: twin.operation,
       }
-    : {};
+    : input;
 
 // The bank's values go onto the import row through the same column list the
 // upsert refreshes, so a bank-owned column added there is adopted here too.
@@ -1622,7 +1667,8 @@ const adoptedValuesOf = (twin: ImportTwin, input: NewTransaction) => ({
  * structural column (`id`, `holding_id`, the loan link, `change_group_id`,
  * `sets_balance`, `created_at`) stays, and so do the exchange pair and its
  * markers when the import row carries one; a plain import row takes the sync
- * input's own (`adoptedExchangeValuesOf`). No `holdings` row is written. The
+ * input's own (`adoptedExchangeValuesOf`). The category rules judge the row as adopted
+ * (`adoptedRowOf`), so a kept leg reads by its exchange label. No `holdings` row is written. The
  * sync overwrites the stored balance from the bank's own figure, and an
  * adoption adds no amount anywhere, so the ledger keeps one row per purchase
  * without moving any balance. Runs only on the sync insert path: a statement
@@ -1642,7 +1688,7 @@ const adoptImportTwinsDatabaseTransaction = async (
   );
   const { rows: withRules } = await withCategoryRules(
     databaseTransaction,
-    adoptions.map(({ input }) => input),
+    adoptions.map(({ candidate, input }) => adoptedRowOf(candidate, input)),
   );
 
   for (const [index, { candidate }] of adoptions.entries()) {
@@ -2154,8 +2200,8 @@ export const transactionsRepo = {
    * shares, so a plain, unbounded scan of every eligible debit ever
    * recorded would grow with the WHOLE ledger, not with what the matcher
    * could ever possibly use — bounded to `time >= minTime` (the caller
-   * passes each loan's own earliest `startDate` minus the match window's own
-   * before-margin, so no installment's candidate window is ever excluded)
+   * passes the start of the earliest loan start day: a payment ON that day
+   * counts at any time of day, one before it counts nowhere)
    * and to `currencies` (only a loan's own currency can ever match rule 1,
    * the matcher's own per-pair check makes no currency decision of its own
    * either way — this is a P-NOWORK narrowing, not a correctness change).
@@ -2215,6 +2261,7 @@ export const transactionsRepo = {
   loanLedgerPaymentsQuery: () =>
     database
       .select({
+        transactionId: transactions.id,
         loanHoldingId: transactions.loanHoldingId,
         time: transactions.time,
         amountMinorUnits: transactions.amountMinorUnits,
@@ -2225,8 +2272,8 @@ export const transactionsRepo = {
       .where(isNotNull(transactions.loanHoldingId)),
   /**
    * Every transaction linked (manual or auto) to one loan holding, newest
-   * first — the loan holding-detail screen's own "Linked payments" section:
-   * the loan itself is ledgerless (`isLedgerlessHoldingType`), so
+   * first — the linked payments the loan holding-detail screen lists beside
+   * its scheduled ones: the loan itself is ledgerless (`isLedgerlessHoldingType`), so
    * its own `listByHoldingQuery` would read nothing; a payment always lives
    * on the PAYER holding instead, found only by this marker.
    */

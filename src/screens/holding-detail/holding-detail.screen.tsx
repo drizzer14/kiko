@@ -4,6 +4,12 @@ import {
   isDeletableTransaction,
 } from '@kiko/holdings/deletable';
 import { match } from 'ts-pattern';
+import {
+  loanLedgerSummary,
+  type LinkedPaymentBreakdown,
+  type UpcomingLoanInstallment,
+  loanLinkedPaymentBreakdownsMinor,
+} from '@kiko/holdings/loan-ledger';
 import type { TFunction } from 'i18next';
 import {
   holdsOnlyDebts,
@@ -50,7 +56,6 @@ import { asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { groupByDay } from '@kiko/transactions/group-by-day';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
-import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { removeNotice } from '@kiko/transactions/remove-notice';
@@ -61,11 +66,13 @@ import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import EntryCard from '@kiko/design-system/components/entry-card';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
+import EmptyState from '@kiko/design-system/components/empty-state';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import ExpandToggle from '@kiko/design-system/components/expand-toggle';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -89,11 +96,15 @@ import {
   holdingDetailSpecFor,
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
-import UpcomingPayments from './upcoming-payments';
+import { useViewActions } from './use-view-actions';
+import { paymentSplitText } from './payment-split-text';
 import { useCloseWhenGone } from './use-close-when-gone';
 import OversizedSaleNotice from './oversized-sale-notice';
+import ScheduledPaymentRow from './scheduled-payment-row';
 import LotRowMenu, { type LotActions } from './lot-row-menu';
+import { useScheduledPreview } from './use-scheduled-preview';
 import { useBondRegisterTerms } from './use-bond-register-terms';
+import { useLinkedLoanPayments } from './use-linked-loan-payments';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -234,6 +245,26 @@ const sharedPropertyBreakdownRows = (
   ];
 };
 
+// Principal repaid equals Paid so far when no payment carried interest or a fee (a 0% loan, or
+// a loan with no payments yet); repeating the same amount adds nothing.
+const showsPrincipalRepaid = (summary: ReturnType<typeof loanLedgerSummary>): boolean =>
+  summary.principalRepaidMinorUnits !== summary.paidSoFarMinorUnits;
+
+const NO_LINKED_BREAKDOWNS: ReadonlyMap<string, LinkedPaymentBreakdown> = new Map();
+
+// A loan's counted linked payments with their own split and the balance each left; nothing for
+// a holding that is not a loan with parsable metadata.
+const linkedBreakdownsOf = (
+  holding: HoldingRow | undefined,
+  book: PriceBook,
+  now: number,
+): ReadonlyMap<string, LinkedPaymentBreakdown> =>
+  foldMap(maybe(holding), (found) =>
+    foldMap(maybe(asLoanMeta(found.metadata)), (meta) =>
+      loanLinkedPaymentBreakdownsMinor(meta, found, book, now),
+    ),
+  ) ?? NO_LINKED_BREAKDOWNS;
+
 // A loan's breakdown: its principal and what its linked payments paid, split
 // into interest and principal (`loanLedgerSummary`; a within-tolerance fee is
 // in neither), ending on the SAME outstanding the Value header shows. Every
@@ -265,11 +296,15 @@ const loanBreakdownRows = (
         money: money(summary.interestPaidMinorUnits),
         testID: 'loan-ledger-interest-paid',
       },
-      {
-        label: t('holdingDetail.principalRepaid'),
-        money: money(summary.principalRepaidMinorUnits),
-        testID: 'loan-ledger-principal-repaid',
-      },
+      ...(showsPrincipalRepaid(summary)
+        ? [
+            {
+              label: t('holdingDetail.principalRepaid'),
+              money: money(summary.principalRepaidMinorUnits),
+              testID: 'loan-ledger-principal-repaid',
+            },
+          ]
+        : []),
       {
         label: t('holdingDetail.outstanding'),
         money: money(summary.outstandingMinorUnits),
@@ -351,20 +386,42 @@ const ValueHeaderSecondary: FC<{
   );
 };
 
-// One merged ledger row — either a real stored transaction or a computed
-// (derived) lifecycle entry. Shared by the FlatList's `data`, `keyExtractor`,
-// and `renderItem` so all three agree on the row shape.
+// One merged ledger row — a real stored transaction (a loan's linked payment
+// too), a computed (derived) lifecycle entry, or a loan's scheduled payment,
+// dated by its due day. Shared by the FlatList's `data`, `keyExtractor`, and
+// `renderItem` so all three agree on the row shape.
 type LedgerRow =
   | { kind: 'transaction'; time: number; transaction: TransactionRow }
-  | { kind: 'derived'; time: number; entry: DerivedEntry };
+  | { kind: 'derived'; time: number; entry: DerivedEntry }
+  | { kind: 'scheduled'; time: number; installment: UpcomingLoanInstallment };
 
 // A stable key per row, reusing the exact identity the eager `.map` keyed on: a
-// derived entry's synthetic id, a stored row's transaction id.
+// derived entry's synthetic id, a stored row's transaction id, a scheduled
+// payment's installment number.
 const ledgerKey = (row: LedgerRow): string =>
   match(row)
     .with({ kind: 'derived' }, (derivedRow) => derivedRow.entry.id)
     .with({ kind: 'transaction' }, (transactionRow) => transactionRow.transaction.id)
+    .with({ kind: 'scheduled' }, (scheduledRow) => `scheduled-${scheduledRow.installment.index}`)
     .exhaustive();
+
+// The ledger's rows newest first: the holding's own transactions, a loan's linked payments
+// (stored on the payer holding), the computed entries, and the scheduled payments to show.
+const mergedLedger = (parts: {
+  transactions: readonly TransactionRow[];
+  linkedPayments: readonly TransactionRow[];
+  derived: readonly DerivedEntry[];
+  scheduled: readonly UpcomingLoanInstallment[];
+}): LedgerRow[] =>
+  [
+    ...[...parts.transactions, ...parts.linkedPayments].map(
+      (transaction): LedgerRow => ({ kind: 'transaction', time: transaction.time, transaction }),
+    ),
+    ...parts.derived.map((entry): LedgerRow => ({ kind: 'derived', time: entry.time, entry })),
+    ...parts.scheduled.map(
+      (installment): LedgerRow => ({ kind: 'scheduled', time: installment.dueDate, installment }),
+    ),
+  ].sort((first, second) => second.time - first.time);
 
 // A flattened ledger entry for the FlatList: the merged row plus, on the FIRST
 // row of each calendar day, that day's header title ("Today"/"Yesterday"/
@@ -384,16 +441,41 @@ type LedgerRowContext = {
   showTime: boolean;
   categoryByKey: ReturnType<typeof buildCategoryDisplayMap>;
   defaultCategoryKey: string;
+  holdingId: string;
   holdingName: string;
   holdingNameById: Map<string, string>;
   holdingCurrencyById: Map<string, string>;
+  // A loan's counted linked payments, by transaction id; empty for every other holding.
+  linkedBreakdowns: ReadonlyMap<string, LinkedPaymentBreakdown>;
   onPressTransaction: (transactionId: string) => void;
   // Duplicate this ledger row into a pre-filled create form. Passed for
   // manual rows only (a synced row is not duplicable), stateless via the
   // `duplicateOfTransactionId` route param.
   onDuplicateTransaction: (transactionId: string) => void;
+  // The row's "open its account / its holding" actions, by the holding the row is stored on.
+  viewActionsFor: ReturnType<typeof useViewActions>;
   lotActions: LotActions | undefined;
 };
+
+// The name a stored row's blank-description fallback reads: its own holding's. A loan's linked
+// payment lives on the payer holding, so it reads the payer's name, never the loan's.
+const ledgerHoldingName = (rowHoldingId: string, context: LedgerRowContext): string =>
+  rowHoldingId === context.holdingId
+    ? context.holdingName
+    : (context.holdingNameById.get(rowHoldingId) ?? '');
+
+// A linked payment's own split and the loan balance right after it, the two lines a scheduled
+// payment's card carries; no fee part, since the fee is not the loan's principal or interest.
+const linkedPaymentFooterLines = (
+  breakdown: LinkedPaymentBreakdown,
+  currency: Currency,
+  t: TFunction,
+): string[] => [
+  paymentSplitText(t, currency, breakdown.principalMinorUnits, breakdown.interestMinorUnits),
+  t('holdingDetail.remainingBalance', {
+    amount: formatMoney(Money.of(currency, breakdown.remainderMinorUnits), activeLocale()),
+  }),
+];
 
 // A lot row is the user's own entry, so it is never marked "Computed"; a
 // future-dated one still reads "Projected".
@@ -409,8 +491,8 @@ const derivedMarker = (entry: DerivedEntry, t: TFunction): string | undefined =>
   return t('holdingDetail.computed');
 };
 
-const derivedFooterText = (entry: DerivedEntry, t: TFunction, timeText?: string): string =>
-  [derivedMarker(entry, t), timeText].filter((part) => part !== undefined).join(' · ');
+const derivedTitle = (entry: DerivedEntry, t: TFunction): string =>
+  [entry.label, derivedMarker(entry, t)].filter((part) => part !== undefined).join(' · ');
 
 // A single ledger row, lifted verbatim out of the old eager `.map` so the
 // FlatList mounts only the visible rows — a synced card can carry thousands.
@@ -426,35 +508,42 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     showTime,
     categoryByKey,
     defaultCategoryKey,
-    holdingName,
     holdingNameById,
     holdingCurrencyById,
+    linkedBreakdowns,
     onPressTransaction,
     onDuplicateTransaction,
+    viewActionsFor,
     lotActions,
   } = context;
 
   return match(row)
-    .with({ kind: 'derived' }, (derivedRow) => {
-      const footerText = derivedFooterText(
-        derivedRow.entry,
-        t,
-        showTime ? formatTime(derivedRow.entry.time, clock) : undefined,
+    .with({ kind: 'scheduled' }, (scheduledRow) => {
+      // A payment due on the loan's own schedule: not tappable, no menu, and dimmed like a
+      // projected entry, since it has not happened yet. The day header above it names its date.
+      return (
+        <ScheduledPaymentRow
+          installment={scheduledRow.installment}
+          currency={currency}
+          style={styles.futureRow}
+        />
       );
-
+    })
+    .with({ kind: 'derived' }, (derivedRow) => {
       // A computed lifecycle entry (opening/top-up, interest accrual, the
       // 18%/5% withholding lines, capitalization, or a bond
-      // purchase/coupon/redemption): not tappable, and marked "Computed" so
-      // it reads as derived, not a stored transaction; only a lot row takes
-      // a long-press menu (`LotRowMenu`). A projected (future-dated) entry —
-      // an upcoming accrual, coupon, or redemption — is dimmed and marked
-      // "Projected". The amount reads in its kind-derived tone (tax red,
-      // interest/coupon green, principal movements neutral/by-sign).
+      // purchase/coupon/redemption): not tappable, and titled "<label> ·
+      // Computed" so it reads as derived, not a stored transaction; only a
+      // lot row takes a long-press menu (`LotRowMenu`). A projected
+      // (future-dated) entry — an upcoming accrual, coupon, or redemption —
+      // is dimmed and titled "<label> · Projected". The amount reads in its
+      // kind-derived tone (tax red, interest/coupon green, principal
+      // movements neutral/by-sign), with the time under it on a timed type.
       return (
         <LotRowMenu entry={derivedRow.entry} actions={lotActions}>
           <EntryCard
             testID="ledger-row"
-            label={derivedRow.entry.label}
+            label={derivedTitle(derivedRow.entry, t)}
             style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
             amount={
               <MoneyText
@@ -462,7 +551,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                 tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
               />
             }
-            footerLines={[footerText].filter((line) => line !== '')}
+            amountCaption={showTime ? formatTime(derivedRow.entry.time, clock) : undefined}
           />
         </LotRowMenu>
       );
@@ -486,7 +575,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       // the name the delete confirmation spells out ("Delete <description>").
       const description = transactionRowDescription({
         transaction: transactionRow.transaction,
-        holdingName,
+        holdingName: ledgerHoldingName(transactionRow.transaction.holdingId, context),
         holdingNameById,
         holdingCurrencyById,
         t,
@@ -497,12 +586,13 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       // read-only — the form resolves which from the transaction's own
       // `source`, so the row only needs to pass the id. Delete is a
       // touch-and-hold that opens the shared card context menu (see
-      // `CardContextMenu`) with a single destructive Delete action — the
-      // same long-press pattern the account/holding cards use. A synced
-      // (Monobank) row is not deletable (its state is owned by the sync),
-      // so `CardContextMenu` renders it with no gesture at all. An imported
-      // row is deletable but not duplicable, so its hold opens the delete
-      // confirm directly.
+      // `CardContextMenu`), the same long-press pattern the account/holding
+      // cards use. Every row lists View account (and View holding, unless the
+      // row is on this very holding); a manual row adds Duplicate and Delete,
+      // an imported row Delete. A synced (Monobank) row is not deletable (its
+      // state is owned by the sync), so its hold lists the View actions only.
+      const { onViewAccount, onViewHolding } = viewActionsFor(transactionRow.transaction.holdingId);
+
       return (
         <CardContextMenu
           name={description}
@@ -521,6 +611,8 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
               ? undefined
               : () => onDuplicateTransaction(transactionRow.transaction.id)
           }
+          onViewAccount={onViewAccount}
+          onViewHolding={onViewHolding}
           liftOnHold
         >
           <Pressable
@@ -531,30 +623,25 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
               testID="ledger-row"
               label={description}
               lead={
-                <>
-                  <SymbolIcon
-                    name={category.icon}
-                    size={theme.iconSizes.body}
-                    tone="textSecondary"
-                    color={resolveCategoryColor(category.color, categoryKey)}
-                    accessibilityLabel={category.title}
-                  />
-
-                  {/* A small "loan payment" marker, uniform with Home's
-                      list row — shown regardless of `loanLinkSource` ('auto'
-                      or 'manual' read the same marker). No accessibility
-                      label: decorative, mirroring `SelectableRow`'s own
-                      checkmark glyph — the row's own accessible content
-                      already fully describes the transaction. */}
-                  {transactionRow.transaction.loanHoldingId != null && (
-                    <SymbolIcon
-                      name="link"
-                      size={theme.iconSizes.caption}
-                      tone="textSecondary"
-                      testID="ledger-row-loan-link-marker"
-                    />
-                  )}
-                </>
+                <SymbolIcon
+                  name={category.icon}
+                  size={theme.iconSizes.body}
+                  tone="textSecondary"
+                  color={resolveCategoryColor(category.color, categoryKey)}
+                  accessibilityLabel={category.title}
+                />
+              }
+              // A small "loan payment" marker beside the time, under the value —
+              // shown regardless of `loanLinkSource` ('auto' or 'manual' read the
+              // same marker). Decorative, so no accessibility label: the row's
+              // own accessible content already fully describes the transaction.
+              amountCaptionIcon={
+                transactionRow.transaction.loanHoldingId != null
+                  ? { name: 'link', testID: 'ledger-row-loan-link-marker' }
+                  : undefined
+              }
+              amountCaption={
+                showTime ? formatTime(transactionRow.transaction.time, clock) : undefined
               }
               amount={
                 <MoneyText
@@ -562,7 +649,12 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                   context="transaction"
                 />
               }
-              footerLines={showTime ? [formatTime(transactionRow.transaction.time, clock)] : []}
+              // A loan's linked payment the ledger counts also reads its split and the balance it
+              // left; one the ledger ignores (before the start day) reads neither.
+              footerLines={foldMap(
+                maybe(linkedBreakdowns.get(transactionRow.transaction.id)),
+                (breakdown) => linkedPaymentFooterLines(breakdown, currency, t),
+              )}
             />
           </Pressable>
         </CardContextMenu>
@@ -571,37 +663,26 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     .exhaustive();
 };
 
-// The loan detail's own "Linked payments" section — every transaction the
-// matcher (or a manual pick) linked to THIS loan, in the order the query
-// hands them (newest first). Hidden entirely (returns null) once there are
-// none, rather than an empty heading with nothing beneath it. Reuses the
-// shared `LedgerRowItem` (and its own loan-link marker) exactly as the
-// ledger FlatList does, but as a plain `.map` here rather than a second
-// FlatList — this list is always small (one loan's own payments), never a
-// synced card's thousands of rows. Each row's OWN `holdingName` is
-// resolved from the PAYER holding it actually belongs to (never the loan
-// being viewed), matching `transactionRowDescription`'s own blank-description
-// fallback convention.
-const LinkedPaymentsSection: FC<{
-  title: string;
-  payments: readonly TransactionRow[];
-  holdingNameById: ReadonlyMap<string, string>;
-  context: LedgerRowContext;
-}> = ({ title, payments, holdingNameById, context }) => {
-  if (payments.length === 0) {
-    return null;
+// What the list shows when it holds no row at all. A loan's rows are its linked and its
+// scheduled payments, so it reads the shared `EmptyState`; every other holding reads the
+// plain "No transactions" caption.
+const LedgerEmpty: FC<{ isLoan: boolean }> = ({ isLoan }) => {
+  const { t } = useTranslation();
+
+  if (isLoan) {
+    return (
+      <EmptyState
+        icon="link"
+        title={t('holdingDetail.emptyLoanPayments.title')}
+        message={t('holdingDetail.emptyLoanPayments.message')}
+        testID="holding-detail-loan-payments-empty"
+      />
+    );
   }
 
   return (
-    <Box gap={2}>
-      <Text variant="heading">{title}</Text>
-      {payments.map((transaction) => (
-        <LedgerRowItem
-          key={transaction.id}
-          row={{ kind: 'transaction', time: transaction.time, transaction }}
-          context={{ ...context, holdingName: holdingNameById.get(transaction.holdingId) ?? '' }}
-        />
-      ))}
+    <Box style={styles.empty}>
+      <Text tone="textSecondary">{t('holdingDetail.emptyTransactions')}</Text>
     </Box>
   );
 };
@@ -690,14 +771,13 @@ type LedgerReadyView = {
   headerComponent: ReactElement;
   emptyComponent: ReactElement | undefined;
 };
-
 // Resolves the ledger FlatList's own loading-vs-ready content in one place —
 // module scope, mirroring `ValueHeaderSecondary`/`breakdownRows` above — so
 // branching on `isReady` does not count against the screen component's own
 // cognitive-complexity budget. The FlatList itself stays MOUNTED either way
 // (`bleedTop` + `contentInsetAdjustmentBehavior` must apply from the very
 // first render — kiko-architecture's useLiveQuery consumer rule): while
-// `!isReady` it shows no ledger rows, no "no transactions" empty text, and no
+// `!isReady` it shows no ledger rows, no empty state, and no
 // loaded summary header — only the shared `LoadingState` in the header slot,
 // so nothing renders as a final (empty or partial) state while this screen's
 // own queries are still loading.
@@ -705,7 +785,7 @@ const resolveLedgerReadyView = (
   isReady: boolean,
   listData: LedgerListItem[],
   listHeader: ReactElement,
-  emptyText: string,
+  isLoan: boolean,
 ): LedgerReadyView => {
   if (!isReady) {
     return {
@@ -718,11 +798,7 @@ const resolveLedgerReadyView = (
   return {
     data: listData,
     headerComponent: listHeader,
-    emptyComponent: (
-      <Box style={styles.empty}>
-        <Text tone="textSecondary">{emptyText}</Text>
-      </Box>
-    ),
+    emptyComponent: <LedgerEmpty isLoan={isLoan} />,
   };
 };
 
@@ -793,18 +869,20 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
-  useCloseWhenGone({ routeKey: route.key, isFresh: holdingsFresh, holding });
-  // The loan detail's own "Linked payments" section: the transactions the
-  // matcher (or a manual pick) linked to THIS loan, newest first — a loan
-  // is ledgerless, so its own `transactions` query above never finds them
-  // (a payment always lives on the payer holding instead). Disabled outright
-  // for every other holding type (kiko-architecture: never read data a
-  // disabled caller does not need).
-  const { data: linkedPayments, isLoading: linkedPaymentsLoading } = useLiveQuery(
-    transactionsRepo.listLinkedToLoanQuery(holdingId),
-    ['transactions'],
-    holding?.type === 'loan',
+  const isLoan = holding?.type === 'loan';
+  // A loan's linked payments are stored on their payers, so their View account needs the payer's
+  // account too. Every other holding's rows sit on this holding, whose account is read below.
+  const { data: accountList, isLoading: accountListLoading } = useLiveQuery(
+    accountsRepo.listQuery(),
+    ['accounts'],
+    isLoan,
     { cached: true },
+  );
+  useCloseWhenGone({ routeKey: route.key, isFresh: holdingsFresh, holding });
+  // The loan's linked payments, listed beside its scheduled ones.
+  const { payments: linkedPayments, isLoading: linkedPaymentsLoading } = useLinkedLoanPayments(
+    holdingId,
+    isLoan,
   );
   // The register terms a bond's coupons, expected profit and yield to
   // maturity read its payments from.
@@ -823,6 +901,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     { cached: true },
   );
   const account = accounts.at(0);
+  const knownAccounts = useMemo(() => [...accounts, ...accountList], [accounts, accountList]);
+  const viewActionsFor = useViewActions({ holdingId, holdings, accounts: knownAccounts });
   // The empty-transactions text, the footer add action, and the Value header
   // must never render while any of this screen's own queries is still on its
   // first load (kiko-architecture's useLiveQuery consumer rule) — gated below,
@@ -835,6 +915,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     ratesLoading,
     priceBookLoading,
     accountsLoading,
+    accountListLoading,
     linkedPaymentsLoading,
     registerTermsLoading,
   );
@@ -843,16 +924,24 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // (`holdingDetailSpecFor` itself always tolerates an unrecognized type).
   const spec = foldMap(maybe(holding), (found) => holdingDetailSpecFor(found.type));
   const todayStart = startOfLocalDay(now);
-  // An annuity/differentiated loan's every remaining installment, listed just
-  // below the Value header. Keyed on the local DAY, not the per-render `now`
-  // millisecond (every input it reads is day-granular), so a 30-year
-  // mortgage's 360 rows are not rebuilt, nor re-rendered, on every render.
+  // An annuity/differentiated loan's every remaining installment, listed in
+  // the ledger beside its linked payments. Keyed on the local DAY, not the
+  // per-render `now` millisecond (every input it reads is day-granular), so a
+  // 30-year mortgage's 360 rows are not rebuilt, nor re-rendered, on every render.
   const upcomingInstallments = useMemo(
     () =>
       foldMap(maybe(holding), (found) =>
         spec?.upcomingInstallments(found, priceBook, todayStart),
       ) ?? [],
     [holding, spec, priceBook, todayStart],
+  );
+  const scheduled = useScheduledPreview(upcomingInstallments);
+  // Each counted linked payment's own split and the balance it left, read from the same ledger the
+  // header's outstanding comes from, so the last card's balance is that outstanding. Keyed on the
+  // local day for the same reason as the installments above.
+  const linkedBreakdowns = useMemo(
+    () => linkedBreakdownsOf(holding, priceBook, todayStart),
+    [holding, priceBook, todayStart],
   );
 
   // The user's main currency, and the rate table that converts into it. A
@@ -866,11 +955,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
 
   // The transaction ledger merges the holding's real (stored) transactions with
   // the computed entries a deposit/bond accrues (contributions, interest, tax,
-  // purchase, coupon — whatever `derivedEntries` yields for the type). Both
+  // purchase, coupon — whatever `derivedEntries` yields for the type), and, for
+  // a loan, its linked payments with the scheduled payments still to come. All
   // carry a `time`; the merged list is sorted newest-first to match the repo's
-  // `desc(time)` ordering. Real rows stay interactive (swipe-to-delete, tap to
-  // edit); derived rows are read-only and marked "Computed". A bond's coupons
-  // each take their own register rate (a step-up bond's rate changes).
+  // `desc(time)` ordering, so the future rows head it. Real rows stay interactive
+  // (hold to delete, tap to edit); derived and scheduled rows are read-only. A
+  // bond's coupons each take their own register rate (a step-up bond's rate changes).
   const derived: DerivedEntry[] = useMemo(
     () =>
       holding
@@ -884,16 +974,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     [holding, now, t, registerTerms],
   );
   const ledger = useMemo(
-    () =>
-      [
-        ...transactions.map((transaction) => ({
-          kind: 'transaction' as const,
-          time: transaction.time,
-          transaction,
-        })),
-        ...derived.map((entry) => ({ kind: 'derived' as const, time: entry.time, entry })),
-      ].sort((first, second) => second.time - first.time),
-    [transactions, derived],
+    () => mergedLedger({ transactions, linkedPayments, derived, scheduled: scheduled.shown }),
+    [transactions, linkedPayments, derived, scheduled.shown],
   );
   // Group the merged ledger into per-day sections the SAME way the Home
   // transaction list does — one section per calendar day, newest day first,
@@ -981,27 +1063,31 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
 
   // The per-row read context, threaded into each ledger row so the row
   // component stays at module scope. `holdingName` is always a string (the
-  // route param seeds it), so no `?? ''` fallback is needed. Built before
-  // `listHeader` so the Linked-payments section below can read it too.
+  // route param seeds it), so no `?? ''` fallback is needed.
   const rowContext: LedgerRowContext = {
     currency,
     showTime,
     categoryByKey,
     defaultCategoryKey,
+    holdingId,
     holdingName,
     holdingNameById,
     holdingCurrencyById,
+    linkedBreakdowns,
     onPressTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
+    viewActionsFor,
     lotActions: buildLotActions(holding, navigation, t),
   };
 
   // The header/summary block that scrolls above the ledger: the Value amount +
   // identity icon, the optional converted (main-currency) caption tucked
-  // directly under that amount, the optional breakdown lines, the hairline
-  // divider, and the Transactions heading. It sits in the FlatList's
+  // directly under that amount, the optional breakdown lines, and then the
+  // hairline divider with the Transactions heading. A loan has no ledger of its
+  // own, so it shows the divider and the Linked payments section there instead
+  // (an empty state when nothing is linked). It sits in the FlatList's
   // `ListHeaderComponent` so the list owns the scrolling (an eager list nested
   // in a ScrollView breaks virtualization).
   const listHeader = (
@@ -1047,22 +1133,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               />
             </Box>
           )}
-          {upcomingInstallments.length > 0 && (
-            <Box style={styles.breakdown}>
-              <UpcomingPayments installments={upcomingInstallments} currency={currency} />
-            </Box>
-          )}
         </Box>
       )}
 
       <OversizedSaleNotice holding={holding} />
-
-      <LinkedPaymentsSection
-        title={t('holdingDetail.linkedPayments')}
-        payments={linkedPayments}
-        holdingNameById={holdingNameById}
-        context={rowContext}
-      />
 
       <ShareChanges
         holding={holding}
@@ -1070,9 +1144,19 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         onDelete={(day) => holdingsRepo.removeOwnershipChange(holdingId, day)}
       />
 
-      <Divider spacing={2} />
+      <Divider spacing={2} testID="holding-detail-transactions-divider" />
 
       <Text variant="heading">{t('holdingDetail.transactionsHeading')}</Text>
+
+      {/* Newest first puts the scheduled payments on top of the list, so the toggle that
+          reveals the rest of them sits directly above them. */}
+      {scheduled.canExpand && (
+        <ExpandToggle
+          expanded={scheduled.expanded}
+          onPress={scheduled.toggle}
+          testID="scheduled-payments-toggle"
+        />
+      )}
     </Box>
   );
 
@@ -1104,12 +1188,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     theme.colors.textPrimary,
   ]);
 
-  const ledgerReadyView = resolveLedgerReadyView(
-    isReady,
-    listData,
-    listHeader,
-    t('holdingDetail.emptyTransactions'),
-  );
+  const ledgerReadyView = resolveLedgerReadyView(isReady, listData, listHeader, isLoan);
 
   return (
     <Screen

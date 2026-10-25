@@ -2,10 +2,11 @@ import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
   // The primary line of an entry: description on the left, amount on the right, split by
-  // space-between.
+  // space-between. Top-aligned so the amount stays at the row's top, with its caption directly
+  // under it, however tall a wrapped title makes the row.
   rowMain: {
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   // The leading cluster of an entry: icon + description, kept together on the left so the
   // row's space-between only splits this cluster from the amount. `flex: 1` bounds it to the
@@ -23,8 +24,14 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The trailing amount cell: never shrinks, so the amount stays fully visible no matter how
   // long the description grows.
+  // `alignItems` right-flushes the amount and its caption in one column.
   rowAmount: {
     flexShrink: 0,
+    alignItems: 'flex-end',
+  },
+  // The caption line under the amount: the marker icon shares the text's centre line.
+  amountCaption: {
+    alignItems: 'center',
   },
   // The entry's secondary lines pinned to the right so they sit BELOW the value column
   // instead of left-aligned under the description, mirroring the Home row's footer. The
