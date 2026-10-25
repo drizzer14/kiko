@@ -189,9 +189,8 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
    count).
 9. BATCH READY, then the coordinator re-runs `npm test` AND `npm run check:all` at the tip
    before any push (from a pff-ios session both commands are denied: heavy-job and full-jest
-   deny; the user chose route A, a pff-ios queue class `harness-verify`, not built yet (H11,
-   run-log gap 20261023T0023-kiko-harness-h10/3); until it exists, the user runs the two
-   commands in a plain terminal without the Claude hooks), then the user's OK, then
+   deny; run `bash scripts/job-queue.sh harness-verify <harness worktree> <label>` with
+   run_in_background and await its exit code), then the user's OK, then
    `git -C <harness main> merge --ff-only <tip>` (the raw form applies to a repo that has no
    `scripts/ff-main.sh`; where it exists, run `bash scripts/ff-main.sh <tip>` after a queued
    `verify` of the tip) and push. The

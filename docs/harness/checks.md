@@ -305,7 +305,9 @@ The same hook also denies a whole-repository job typed outside the queue (`heavy
 repository; the sets are `HEAVY_MAKE_TARGETS`, `HEAVY_NPM_SCRIPTS` and `HEAVY_SCRIPT` in
 kill-guard.js, read them there) and a jest run that would run every suite (`fullJest`: a runner
 with no test file, or an array option of jest-cli before a bare word; `npm test` needs
-`-- <files>`). The way out is `bash scripts/job-queue.sh verify|check-all|security|gate ...`.
+`-- <files>`). The way out is `bash scripts/job-queue.sh verify|check-all|security|gate ...`;
+a harness-repo sync uses
+`bash scripts/job-queue.sh harness-verify <harness worktree> <label>`.
 Only the typed command is judged. See kiko-linter's "Heavy-job and full-jest deny" for the
 rule, the dry-run and narrower forms that stay allowed, and the known limits.
 

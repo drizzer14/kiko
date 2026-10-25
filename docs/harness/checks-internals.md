@@ -48,7 +48,14 @@ it. Stryker's own `concurrency` is 2.
 
 ### The in-repo job queue
 
-`scripts/job-queue.sh` queues every heavy job (verify, check-all, security, the mutation gate) so one runs at a time across worktrees; read its header for the contract. State lives in `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. The lock is an atomic symlink whose target is the owner record `<waiter pid> <job group|-> <kind> <label> <worktree>`; a `claim` symlink (a pid) is held while a waiter checks, removes, and creates the lock. A lock is live while its waiter pid is alive OR its job group has a member. A gate holds this queue lock, then `mutation.sh` takes its own lock above.
+`scripts/job-queue.sh` queues every heavy job (verify, check-all, security,
+harness-verify, the mutation gate) so one runs at a time across worktrees;
+read its header for the contract. State lives in
+`${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. The lock is an atomic symlink whose target is the
+owner record `<waiter pid> <job group|-> <kind> <label> <worktree>`; a `claim` symlink (a pid) is
+held while a waiter checks, removes, and creates the lock. A lock is live while its waiter pid is
+alive OR its job group has a member. A gate holds this queue lock, then `mutation.sh` takes its
+own lock above.
 
 The load wait: a job of every class (verify, check-all, security, gate) at the head waits while
 the 5-minute load is at or above 10, at most `KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS` seconds

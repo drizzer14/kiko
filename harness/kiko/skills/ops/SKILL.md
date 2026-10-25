@@ -321,6 +321,8 @@ never raise a timeout. See memory `check-security-timeout-under-load`.
 
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full
 contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
+`scripts/job-queue.sh harness-verify <harness worktree> <label>` (runs `npm test` then
+`check:all` in a harness-repo worktree) or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
 await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. A per-rule
 Class B count comes from queued `scripts/job-queue.sh security <worktree> <label>` jobs, one per
