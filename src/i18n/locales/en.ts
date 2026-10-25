@@ -904,7 +904,7 @@ export const en = {
     ownedCost: 'Cost (your share)',
     ownedValue: 'Your value',
     paidSoFar: 'Paid so far',
-    // The caption under each scheduled loan payment: how much of it repays
+    // The caption under each scheduled or linked loan payment: how much of it repays
     // the principal and how much is interest.
     paymentSplit: 'Principal {{principal}} · interest {{interest}}',
     // The same caption for a payment that carries no interest (a 0% loan).
@@ -914,10 +914,11 @@ export const en = {
     projected: 'Projected',
     purchase: 'Purchase',
     redemption: 'Redemption',
-    // The caption under each scheduled loan payment: the loan balance left once it is paid.
+    // The caption under each scheduled or linked loan payment: the loan balance left once it
+    // is paid.
     remainingBalance: 'Remaining {{amount}}',
     sale: 'Sale',
-    // The marker in each scheduled loan payment's title ("Loan payment · Scheduled"): the
+    // The marker under each scheduled loan payment's title, as its subtitle: the
     // payment is on the loan's contractual schedule, so it reads "Scheduled", not "Projected".
     scheduled: 'Scheduled',
     shareChanges: 'Share Changes',
@@ -1135,7 +1136,7 @@ export const en = {
         steps: {
           '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
           '2': 'Tap it, make your changes, and tap "Save". If you changed the category, choose "Apply" to use it for every transaction with that name, or "Just for this one". In a synced or imported transaction, you can change only the category and the loan link.',
-          '3': 'Touch and hold a transaction, then tap "View account" or "View holding" to open that page. On the page of the holding the transaction belongs to, only "View account" is offered. On a transaction you added or imported, tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
+          '3': 'Touch and hold a transaction, then tap "View account" or "View holding" to open that page. On the page of the holding the transaction belongs to, of the two, only "View account" is offered. On a transaction you added or imported, tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
         },
         title: 'Edit, Duplicate, or Delete a Transaction',
       },

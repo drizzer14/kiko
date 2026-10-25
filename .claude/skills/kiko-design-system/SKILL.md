@@ -249,8 +249,14 @@ an entry (date + value) the moment the user approves a new visual.
   ledger rows use (`rowMain` is `flex-start`; a USER-APPROVED change of the
   locked visual, 2026-10-23, Q4 = B: the amount sits at the top, its caption —
   time only — sits directly under it in one right column, and the
-  scheduled split lines stay below the whole row; a derived row's marker is
-  in its label, `derivedTitle` in `holding-detail.screen.tsx`). The
+  scheduled split lines stay below the whole row; a derived row's marker
+  (Scheduled / Projected / Computed) is the `EntryCard` subtitle, smaller `textSecondary` text
+  under the label, from `derivedMarker` in `holding-detail.screen.tsx`; a past lot has none, and
+  the scheduled loan row passes "Loan payment" + "Scheduled"; a USER-APPROVED round 3 change,
+  2026-10-25, of the earlier title form). The subtitle sits under the wrapped title in the same
+  `rowDescription` box, `spacing(2)` under the label: the same step as `TransactionCard`'s gap
+  between its title row and its meta row (a user request, 2026-10-25; see
+  `entry-card.styles.ts` `rowDescriptionWithSubtitle` and `transaction-card.component.tsx`). The
   account card (`accounts.screen.tsx` `renderAccountCard`, the main
   grid only) and the shared `HoldingCard` (also the Property and Debts
   section cards) stay
@@ -1357,8 +1363,8 @@ new component can land between reviews of this skill:
   is offered only while every later sale stays covered without the lot,
   and a refusal inside the write shows the shared save-error alert). A
   lot row is the user's own entry, so unlike every other derived ledger
-  row it is not titled with a marker. A transaction row keeps
-  tap-to-edit and passes `onDuplicate` (manual rows) and the View actions
+  row it carries no marker subtitle (`derivedMarker` returns undefined for a lot row).
+  A transaction row keeps tap-to-edit and passes `onDuplicate` (manual rows) and the View actions
   (`use-view-actions`; Home's transaction row). A synced transaction row gets
   the View actions only, and an imported row lists View account, View
   holding and Delete: a hold never opens the delete confirm directly there. `closeAction`
@@ -1660,7 +1666,11 @@ new component can land between reviews of this skill:
   the category icon; the link marker goes in `amountCaptionIcon` beside the
   time (`amountCaption`); `footerLines` are lines under the WHOLE row (the
   scheduled split lines, and the linked loan-payment transaction card's
-  split and balance-left lines). Read `entry-card.props.d.ts` for the props.
+  split and balance-left lines). An optional `subtitle` (caption, `textSecondary`, no new
+  token) sits `spacing(2)` under the label in the `rowDescription` column, wrapping with the
+  title and never beside the amount; that is `TransactionCard`'s title-to-meta step
+  (`rowDescriptionWithSubtitle` in `entry-card.styles.ts`). Read `entry-card.props.d.ts` for
+  the props.
   `TransactionCard`'s `rowFooterMeta` is `alignItems: 'center'`, so the link
   icon shares the caption's centre line (Q5 = A, the Home footer;
   `transaction-card.styles.ts`).

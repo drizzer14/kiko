@@ -1,6 +1,7 @@
 // The rewrite and the rule write are SQL over the stored ledger: which rows are candidates, which
-// the exchange, balance-setting and split-change columns and the by-hand flag exclude, and how the
-// statements are chunked can only be shown against a real engine.
+// the balance-setting and split-change columns and the by-hand flag exclude, how an exchange leg
+// reads by its counterpart holding, and how the statements are chunked can only be shown against a
+// real engine.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -278,22 +279,24 @@ describe('categoryRulesRepo.applyNameRule', () => {
     expect(categoriesOf()).toEqual({ already: 'food', moved: 'food' });
   });
 
-  it('leaves an exchange leg, a balance-setting row and a split-change row alone', async () => {
+  it('gives an exchange leg the category, and leaves a balance-setting row and a split-change row alone', async () => {
     insertSilpo('exchange-pair', { exchangePairId: 'pair' });
     insertSilpo('exchange-counterpart', { exchangeCounterpartHoldingId: 'usd-card' });
+    insertSilpo('untracked', { untrackedCounterpart: 'wallet:UMFUTURE' });
     insertSilpo('balance', { setsBalance: true });
     insertSilpo('change', { changeGroupId: 'group' });
     insertSilpo('plain');
 
     const updated = await applySilpoRule();
 
-    expect(updated).toBe(1);
+    expect(updated).toBe(4);
     expect(categoriesOf()).toEqual({
       balance: 'groceries',
       change: 'groceries',
-      'exchange-counterpart': 'groceries',
-      'exchange-pair': 'groceries',
+      'exchange-counterpart': 'food',
+      'exchange-pair': 'food',
       plain: 'food',
+      untracked: 'food',
     });
   });
 
@@ -469,13 +472,13 @@ describe('categoryRulesRepo.applyNameRule', () => {
     expect(flagOf('source')).toBe(0);
   });
 
-  it('gives an exchange-leg source row the picked category, while other exchange legs keep theirs', async () => {
+  it('gives an exchange-leg source row the picked category, and the other exchange legs follow the rule', async () => {
     insertSilpo('source', { exchangePairId: 'pair', categorySetByHand: true });
     insertSilpo('other-leg', { exchangeCounterpartHoldingId: 'usd-card' });
 
     await applySilpoRule('source');
 
-    expect(categoriesOf()).toEqual({ 'other-leg': 'groceries', source: 'food' });
+    expect(categoriesOf()).toEqual({ 'other-leg': 'food', source: 'food' });
     expect(flagOf('source')).toBe(0);
   });
 
@@ -636,12 +639,14 @@ describe('categoryRulesRepo.countRuleRewrite', () => {
     expect(await countFoodRewrite(null)).toBe(1);
   });
 
-  it('counts only the rows a rule may rewrite', async () => {
+  it('counts only the rows a rule may rewrite, an exchange leg among them', async () => {
     insertSilpo('picked', { categorySetByHand: true });
-    insertSilpo('exchange', { exchangePairId: 'pair' });
+    insertSilpo('balance', { setsBalance: true });
+    insertSilpo('change', { changeGroupId: 'group' });
+    insertSilpo('exchange', { exchangeCounterpartHoldingId: 'usd-card' });
     insertSilpo('plain');
 
-    expect(await countFoodRewrite(null)).toBe(1);
+    expect(await countFoodRewrite(null)).toBe(2);
   });
 
   it('writes nothing', async () => {
@@ -699,9 +704,8 @@ describe('categoryRulesRepo.saveRule', () => {
     expect(categoriesOf()).toEqual({ expense: 'groceries', income: 'food' });
   });
 
-  it('leaves a row picked by hand, an exchange leg, a balance-setting row and a split-change row alone', async () => {
+  it('leaves a row picked by hand, a balance-setting row and a split-change row alone', async () => {
     insertSilpo('picked', { categorySetByHand: true });
-    insertSilpo('exchange', { exchangePairId: 'pair' });
     insertSilpo('balance', { setsBalance: true });
     insertSilpo('change', { changeGroupId: 'group' });
 
@@ -711,13 +715,26 @@ describe('categoryRulesRepo.saveRule', () => {
     expect(categoriesOf()).toEqual({
       balance: 'groceries',
       change: 'groceries',
-      exchange: 'groceries',
       picked: 'groceries',
     });
     expect(flagOf('picked')).toBe(1);
   });
 
-  it('leaves both legs of a wallet transfer alone for a rule with no name, and rewrites a plain row', async () => {
+  it('rewrites an exchange leg of every kind, and counts it in what the confirm promised', async () => {
+    insertSilpo('pair', { exchangePairId: 'pair' });
+    insertSilpo('counterpart', { exchangeCounterpartHoldingId: 'usd-card' });
+    insertSilpo('untracked', { untrackedCounterpart: 'wallet:UMFUTURE' });
+    const draft = { id: null, category: 'food', matchers: SILPO_FOOD };
+
+    const promised = await categoryRulesRepo.countRuleRewrite(draft);
+    const saved = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+
+    expect(promised).toBe(3);
+    expect(saved.changed).toBe(3);
+    expect(categoriesOf()).toEqual({ counterpart: 'food', pair: 'food', untracked: 'food' });
+  });
+
+  it('rewrites both legs of a wallet transfer for a rule with no name, and a plain row', async () => {
     const withoutName: CategoryRuleMatcher[] = [{ type: 'direction', direction: 'expense' }];
 
     insertTransaction({
@@ -739,12 +756,12 @@ describe('categoryRulesRepo.saveRule', () => {
     const promised = await categoryRulesRepo.countRuleRewrite(draft);
     const saved = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
 
-    expect(promised).toBe(1);
-    expect(saved.changed).toBe(1);
+    expect(promised).toBe(3);
+    expect(saved.changed).toBe(3);
     expect(categoriesOf()).toEqual({
       plain: 'food',
-      'to-funding': 'groceries',
-      'to-futures': 'groceries',
+      'to-funding': 'food',
+      'to-futures': 'food',
     });
   });
 
@@ -987,6 +1004,18 @@ describe('categoryRulesRepo.saveRule over a large ledger', () => {
       statements.filter((sql) => /^select/i.test(sql) && /from "transactions"/i.test(sql)),
     ).toHaveLength(3);
   });
+
+  it('reads the first page from the lowest id, including an id that starts with a digit', async () => {
+    insertTransaction({ id: '0-first', description: 'a', amountMinorUnits: -300 });
+    insertTransaction({ id: 'second', description: 'b', amountMinorUnits: -300 });
+
+    const draft = { id: null, category: 'coffee', matchers: SMALL_EXPENSE };
+    const counted = await categoryRulesRepo.countRuleRewrite(draft);
+    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+
+    expect([counted, changed]).toEqual([2, 2]);
+    expect(categoriesOf()).toEqual({ '0-first': 'coffee', second: 'coffee' });
+  });
 });
 
 // A default-description row stores '' and shows its label ("UAH card expense") only at render
@@ -1009,10 +1038,45 @@ describe('a row with no description', () => {
   const applyCardExpense = () =>
     categoryRulesRepo.saveRule({ ...CARD_EXPENSE_DRAFT, applyToExisting: true });
 
-  it('counts the rows whose label the rule matches, and not the legs a rule never rewrites', async () => {
+  it('counts the rows whose label the rule matches, and not a leg whose label reads another way', async () => {
     seedBlankRows();
 
     expect(await categoryRulesRepo.countRuleRewrite(CARD_EXPENSE_DRAFT)).toBe(2);
+  });
+
+  it('counts and rewrites a blank leg by the label it shows, with its counterpart named', async () => {
+    seedBlankRows();
+    const draft = { id: null, category: 'food', matchers: [startsWith('Exchange to USD card')] };
+
+    const counted = await categoryRulesRepo.countRuleRewrite(draft);
+    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+
+    expect([counted, changed]).toEqual([1, 1]);
+    expect(categoriesOf()).toMatchObject({ leg: 'food', 'blank-1': 'groceries' });
+  });
+
+  it('reads a blank leg between two holdings of one currency as a transfer', async () => {
+    mockDatabase.exec(`
+      INSERT INTO holdings (id, account_id, name, type, currency)
+        VALUES ('uah-savings', 'account', 'UAH savings', 'card', 'UAH');
+    `);
+    insertBlank('transfer-leg', {
+      exchangePairId: 'pair',
+      exchangeCounterpartHoldingId: 'uah-savings',
+    });
+
+    const exchange = await categoryRulesRepo.countRuleRewrite({
+      id: null,
+      category: 'food',
+      matchers: [startsWith('Exchange to')],
+    });
+    const transfer = await categoryRulesRepo.countRuleRewrite({
+      id: null,
+      category: 'food',
+      matchers: [startsWith('Transfer to UAH savings')],
+    });
+
+    expect([exchange, transfer]).toEqual([0, 1]);
   });
 
   it('rewrites exactly the rows the confirm counted', async () => {
@@ -1142,6 +1206,17 @@ describe('a row with no description', () => {
         leg: 'groceries',
       });
     });
+
+    it('counts and rewrites a blank leg by the Ukrainian label with its counterpart', async () => {
+      seedBlankRows();
+      const draft = { id: null, category: 'food', matchers: [startsWith('Обмін на USD card')] };
+
+      const counted = await categoryRulesRepo.countRuleRewrite(draft);
+      const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+
+      expect([counted, changed]).toEqual([1, 1]);
+      expect(categoriesOf()).toMatchObject({ leg: 'food', 'blank-1': 'groceries' });
+    });
   });
 
   describe('as the row the user applies a name rule from', () => {
@@ -1172,6 +1247,39 @@ describe('a row with no description', () => {
       await applySilpoRule('source');
 
       expect(categoriesOf().source).toBe('food');
+      expect(flagOf('source')).toBe(1);
+    });
+
+    it('sees the counterpart holding named in the label of an exchange leg', async () => {
+      insertRule({
+        id: 'stronger',
+        category: 'bills',
+        matchers: [startsWith('Exchange to USD card'), { type: 'direction', direction: 'expense' }],
+      });
+      insertBlank('source', { exchangePairId: 'pair', exchangeCounterpartHoldingId: 'usd-card' });
+
+      await applySilpoRule('source');
+
+      expect(flagOf('source')).toBe(1);
+    });
+
+    it('reads a leg between two holdings of one currency as a transfer', async () => {
+      mockDatabase.exec(`
+        INSERT INTO holdings (id, account_id, name, type, currency)
+          VALUES ('uah-savings', 'account', 'UAH savings', 'card', 'UAH');
+      `);
+      insertRule({
+        id: 'stronger',
+        category: 'bills',
+        matchers: [startsWith('Transfer to'), { type: 'direction', direction: 'expense' }],
+      });
+      insertBlank('source', {
+        exchangePairId: 'pair',
+        exchangeCounterpartHoldingId: 'uah-savings',
+      });
+
+      await applySilpoRule('source');
+
       expect(flagOf('source')).toBe(1);
     });
 

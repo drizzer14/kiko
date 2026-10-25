@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import type { AccountRow, HoldingRow } from '@kiko/db';
@@ -26,29 +25,26 @@ export const useViewActions = ({
   const { t } = useTranslation();
   const openInPane = useOpenInPane();
 
-  return useCallback(
-    (rowHoldingId) => {
-      const rowHolding = holdings.find(({ id }) => id === rowHoldingId);
-      const rowAccount = foldMap(maybe(rowHolding), ({ accountId }) =>
-        accounts.find(({ id }) => id === accountId),
-      );
+  return (rowHoldingId) => {
+    const rowHolding = holdings.find(({ id }) => id === rowHoldingId);
+    const rowAccount = foldMap(maybe(rowHolding), ({ accountId }) =>
+      accounts.find(({ id }) => id === accountId),
+    );
 
-      return {
-        onViewAccount: foldMap(maybe(rowAccount), (found) => () => {
-          openInPane('AccountDetail', {
-            accountId: found.id,
-            name: accountDisplayName(found, t),
-            kind: found.kind,
-          });
-        }),
-        onViewHolding:
-          rowHoldingId === holdingId
-            ? undefined
-            : foldMap(maybe(rowHolding), (found) => () => {
-                openInPane('HoldingDetail', { holdingId: found.id, name: found.name });
-              }),
-      };
-    },
-    [holdingId, holdings, accounts, openInPane, t],
-  );
+    return {
+      onViewAccount: foldMap(maybe(rowAccount), (found) => () => {
+        openInPane('AccountDetail', {
+          accountId: found.id,
+          name: accountDisplayName(found, t),
+          kind: found.kind,
+        });
+      }),
+      onViewHolding:
+        rowHoldingId === holdingId
+          ? undefined
+          : foldMap(maybe(rowHolding), (found) => () => {
+              openInPane('HoldingDetail', { holdingId: found.id, name: found.name });
+            }),
+    };
+  };
 };

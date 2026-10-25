@@ -11,13 +11,14 @@ import type { EntryCardProps } from './entry-card.props';
 
 /**
  * The shared ledger entry card: a `Card` holding a title and an amount on one row, an optional
- * leading cluster, a caption directly under the amount, and right-aligned footer lines beneath
- * the whole row. HoldingDetail's ledger rows (a
+ * subtitle directly under the title, an optional leading cluster, a caption directly under the
+ * amount, and right-aligned footer lines beneath the whole row. HoldingDetail's ledger rows (a
  * computed entry, a stored transaction) and its scheduled loan payments all render through it,
  * so the three can never drift apart.
  */
 const EntryCard: FC<EntryCardProps> = ({
   label,
+  subtitle,
   amount,
   lead,
   amountCaption,
@@ -29,8 +30,16 @@ const EntryCard: FC<EntryCardProps> = ({
   const { theme } = useUnistyles();
   const hasAmountCaption = amountCaption !== undefined || amountCaptionIcon !== undefined;
   const description = (
-    <Box style={styles.rowDescription}>
+    <Box
+      style={[styles.rowDescription, subtitle !== undefined && styles.rowDescriptionWithSubtitle]}
+    >
       <Text variant="body">{label}</Text>
+
+      {subtitle !== undefined && (
+        <Text variant="caption" tone="textSecondary">
+          {subtitle}
+        </Text>
+      )}
     </Box>
   );
 

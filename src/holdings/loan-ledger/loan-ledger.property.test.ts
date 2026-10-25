@@ -143,13 +143,52 @@ describe('loan ledger property: remainders after each upcoming installment', () 
 
 // Which rows a linked payment pays, and how: a payment of a row's own amount at its due date,
 // of part of it, a few days late, or only some rows, so the loan's earlier rows are never linked.
+// A plan that pays every row from the first in full follows the schedule, so each remainder also
+// has the schedule's own balance of that row as an oracle. It does not depend on the ledger's
+// remainder arithmetic, but it is not independent of the schedule the ledger reads.
 const PAYMENT_PLANS = [
-  { label: 'every row in full', rowOffsets: [0, 1, 2, 3], fraction: 1, daysLate: 0 },
-  { label: 'every other row', rowOffsets: [0, 2], fraction: 1, daysLate: 0 },
-  { label: 'later rows only', rowOffsets: [1, 2, 3], fraction: 1, daysLate: 0 },
-  { label: 'half of each row', rowOffsets: [0, 1, 2], fraction: 0.5, daysLate: 0 },
-  { label: 'one and a half of each row', rowOffsets: [0, 1], fraction: 1.5, daysLate: 0 },
-  { label: 'three days late', rowOffsets: [0, 1, 2], fraction: 1, daysLate: 3 },
+  {
+    label: 'every row in full',
+    rowOffsets: [0, 1, 2, 3],
+    fraction: 1,
+    daysLate: 0,
+    followsSchedule: true,
+  },
+  {
+    label: 'every other row',
+    rowOffsets: [0, 2],
+    fraction: 1,
+    daysLate: 0,
+    followsSchedule: false,
+  },
+  {
+    label: 'later rows only',
+    rowOffsets: [1, 2, 3],
+    fraction: 1,
+    daysLate: 0,
+    followsSchedule: false,
+  },
+  {
+    label: 'half of each row',
+    rowOffsets: [0, 1, 2],
+    fraction: 0.5,
+    daysLate: 0,
+    followsSchedule: false,
+  },
+  {
+    label: 'one and a half of each row',
+    rowOffsets: [0, 1],
+    fraction: 1.5,
+    daysLate: 0,
+    followsSchedule: false,
+  },
+  {
+    label: 'three days late',
+    rowOffsets: [0, 1, 2],
+    fraction: 1,
+    daysLate: 3,
+    followsSchedule: true,
+  },
 ] as const;
 
 const paymentsOf = (
@@ -173,6 +212,7 @@ const paymentsOf = (
 const breakdownMismatchesOf = (
   meta: LoanMeta,
   payments: readonly LoanLedgerPayment[],
+  scheduleRows: readonly LoanInstallment[],
 ): string[] => {
   const book = buildPriceBook([], payments);
   const last = payments[payments.length - 1];
@@ -195,6 +235,15 @@ const breakdownMismatchesOf = (
             `${payment.transactionId} remainder ${remainderAfter(payment)}, header then ${headerThen}`,
           ];
     }),
+    ...(scheduleRows.length === 0
+      ? []
+      : payments.flatMap((payment, position) =>
+          remainderAfter(payment) === scheduleRows[position].balanceMinorUnits
+            ? []
+            : [
+                `${payment.transactionId} remainder ${remainderAfter(payment)}, schedule balance ${scheduleRows[position].balanceMinorUnits}`,
+              ],
+        )),
   ];
 };
 
@@ -206,7 +255,7 @@ describe('loan ledger property: the balance after each linked payment', () => {
 
         return payments.length === 0
           ? []
-          : breakdownMismatchesOf(meta, payments).map(
+          : breakdownMismatchesOf(meta, payments, plan.followsSchedule ? rows : []).map(
               (message) => `${label} ${plan.label}: ${message}`,
             );
       }),

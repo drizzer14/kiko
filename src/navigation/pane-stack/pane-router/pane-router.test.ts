@@ -104,6 +104,25 @@ describe('PaneRouter', () => {
       expect(form.panes[keyOf(form, 'HoldingForm')]).toBe('primary');
     });
 
+    it('opens the account page again above a holding page that sits above that account’s own page, and Back lands on the holding page', () => {
+      const account = withDetail();
+      const holding = run(
+        account,
+        PaneActions.open(keyOf(account, 'AccountDetail'), 'HoldingDetail', { holdingId: 'h' }),
+      );
+      const again = run(
+        holding,
+        PaneActions.open(keyOf(holding, 'HoldingDetail'), 'AccountDetail', { accountId: 'a' }),
+      );
+      const back = run(again, CommonActions.goBack());
+
+      expect(names(again)).toEqual(['Accounts', 'AccountDetail', 'HoldingDetail', 'AccountDetail']);
+      expect(again.routes[3].key).not.toBe(again.routes[1].key);
+      expect(again.panes[again.routes[3].key]).toBe('primary');
+      expect(names(back)).toEqual(['Accounts', 'AccountDetail', 'HoldingDetail']);
+      expect(back.routes[2].params).toEqual({ holdingId: 'h' });
+    });
+
     it('opens from a default that stands in the stack, and makes it a real route', () => {
       const shown = run(
         initial(),

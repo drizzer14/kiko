@@ -50,13 +50,15 @@ const remaining = `Remaining ${money(installment.remainderMinorUnits)}`;
 const dim = { opacity: 0.5 };
 
 describe('ScheduledPaymentRow', () => {
-  it('shows a card of the loan payment titled with its marker, its split, and what remains', async () => {
+  it('shows a card of the loan payment with its marker as a subtitle, its split, and what remains', async () => {
     const { getByTestId } = await render(
       <ScheduledPaymentRow installment={installment} currency="UAH" />,
     );
     const card = within(getByTestId(`scheduled-payment-${installment.index}`));
 
-    expect(card.getByText('Loan payment · Scheduled')).toBeTruthy();
+    expect(card.getByText('Loan payment')).toBeTruthy();
+    expect(card.getByText('Scheduled')).toBeTruthy();
+    expect(card.queryByText('Loan payment · Scheduled')).toBeNull();
     expect(card.getByText(money(-installment.paymentMinorUnits))).toBeTruthy();
     expect(card.getByText(split)).toBeTruthy();
     expect(card.getByText(remaining)).toBeTruthy();
@@ -77,12 +79,12 @@ describe('ScheduledPaymentRow', () => {
     });
   });
 
-  it('keeps the marker out of the footer and draws no date and no time of its own', async () => {
-    const { queryByText } = await render(
+  it('draws the marker once, not in the footer, and no date and no time of its own', async () => {
+    const { getAllByText, queryByText } = await render(
       <ScheduledPaymentRow installment={installment} currency="UAH" />,
     );
 
-    expect(queryByText('Scheduled')).toBeNull();
+    expect(getAllByText(/Scheduled/)).toHaveLength(1);
     expect(queryByText(formatDate(installment.dueDate))).toBeNull();
     expect(queryByText(/^\d{2}:\d{2}$/)).toBeNull();
   });
@@ -125,13 +127,16 @@ describe('ScheduledPaymentRow', () => {
         <ScheduledPaymentRow installment={installment} currency="UAH" />,
       );
 
-      expect(getByText('Платіж за кредитом · Заплановано')).toBeTruthy();
+      expect(getByText('Платіж за кредитом')).toBeTruthy();
+      expect(getByText('Заплановано')).toBeTruthy();
+      expect(queryByText('Платіж за кредитом · Заплановано')).toBeNull();
       expect(
         getByText(
           `Залишок ${formatMoney(Money.of('UAH', installment.remainderMinorUnits), 'uk-UA')}`,
         ),
       ).toBeTruthy();
-      expect(queryByText('Loan payment · Scheduled')).toBeNull();
+      expect(queryByText('Loan payment')).toBeNull();
+      expect(queryByText('Scheduled')).toBeNull();
       expect(queryByText(remaining)).toBeNull();
     });
   });
@@ -143,7 +148,7 @@ describe('ScheduledPaymentRow', () => {
 
     expect(
       getByLabelText(
-        ['Loan payment · Scheduled', money(-installment.paymentMinorUnits), split, remaining].join(
+        ['Loan payment', 'Scheduled', money(-installment.paymentMinorUnits), split, remaining].join(
           ', ',
         ),
       ).props.accessible,
@@ -170,7 +175,8 @@ describe('ScheduledPaymentRow', () => {
       expect(
         getByLabelText(
           [
-            'Loan payment · Scheduled',
+            'Loan payment',
+            'Scheduled',
             money(-interestFree.paymentMinorUnits),
             `Principal ${money(interestFree.principalMinorUnits)}`,
             remaining,
