@@ -362,3 +362,13 @@ bundle. Accepted as tracked debt (same class as the `braces` advisory
 above) — do not suppress it; re-check periodically with
 `bash scripts/checks/osv.sh` and bump the moment a fix ships. Last
 checked 2026-10-06.
+
+`bash scripts/checks/osv.sh` also flags `body-parser` 2.3.0, advisory
+GHSA-27r3-jxmh-p828 (CVSS 7.5), fixed in 2.4.0 (published 2026-10-22). It waits until
+2026-10-29 (user ruling 2026-10-25): until then 2.4.0 is younger than the `.npmrc` 7-day minimum
+age, so npm refuses it. Its one parent chain is `react-native` ->
+`@react-native/community-cli-plugin` -> `@react-native-community/cli` 20.2.0 ->
+`cli-server-api` (the Metro dev server, a `devOptional` lockfile entry; osv labels it dev), so
+it never reaches the app bundle. Not a suppressed finding: on or after 2026-10-29 pin
+`"body-parser": "2.4.0"` with a top-level override (the form used for `compression` above) and
+move this entry into "osv-scanner CVE remediation".
