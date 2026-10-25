@@ -932,3 +932,14 @@ and Q44 = an owed point shows once owed longer than a day (design approved), COO
   `exchange_state` as text), so a file with `since`, without it, or with a `since` no build writes restores
   unchanged. Pins moved: the written-point assertions of the walk tests gain `since` (the clock of the run that
   first owed the point); `settleRecords` results, which a run has not stored, stay without it.
+- S12-Q46 (regression from 697421a6; COORDINATOR 2026-10-25, deviation accepted): the fiat orders forward turn
+  stores its own planned overlap day [C0 - RESYNC_OVERLAP_MS, C0] (series-less, C0 = the cursor of the run
+  before) with the cursor already moved on, and only the next sync's behind turn reads it, so `historyOwesRange`
+  showed the caption on every other sync of a quiet account. The caption (`isPlannedOverlapDay`,
+  `OVERLAP_KEEPING_WALKS`) does not count a fiatOrders range that is owed in every series, exactly
+  RESYNC_OVERLAP_MS wide, and ends at or before the walk's cursor; a day owed in one series, any other width, a
+  day after the cursor or with no cursor, and every other walk's day still show it. Pins:
+  binance-history-status.quiet-syncs.test.ts (6 syncs, 8 walks, gaps 1 h, 1 d, 3 d; red 3/24, all fiatOrders)
+  and per-walk pins in binance-history-status.test.ts. No shape change.
+- BACKLOG after 1.3 (SCOPE RULE, USER 2026-10-25; `backlog-after-1.3.md`): S12-Q45, the S12-Q42 chunk term
+  follow-up, the properties split and the fiat fold; the side branch is `binance-backlog-split`.
