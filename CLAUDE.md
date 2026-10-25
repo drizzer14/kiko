@@ -4,7 +4,8 @@ This project uses a Biome-adapted, LLM-guarding quality harness. Every
 check runs through a wrapper in `scripts/checks/` that prints a
 structured failure block on failure and stays silent on success. The
 stated exceptions (`security.sh` and `dup.sh` write notices and WARNINGs to
-stderr with exit 0; `medium.sh` writes a one-line skip note on a repeated Stop; the deep tier's
+stderr with exit 0, `security.sh`'s WARNINGs including the re-scan WARNING per timed-out pair;
+`medium.sh` writes a one-line skip note on a repeated Stop; the deep tier's
 streaming; the hook guards' JSON, which are `kill-guard.sh` and `pre-write-guard.sh`) are listed in
 kiko-linter's "The wrapper contract". `scripts/job-queue.sh` is not a checks wrapper: its
 QUEUED/WAITING/START/DONE lines are normal stdout.
@@ -25,7 +26,7 @@ row is the short form; read the full row there before relying on edge cases.
 | `npm run check:dup` | jscpd (`scripts/checks/dup.sh`) | >5% duplicated lines/tokens fails; a large file over jscpd's size limit is measured alone against `scripts/checks/dup-ceilings.tsv`: above its ceiling, or over 5% and unlisted, fails; at or under the ceiling it WARNs (tracked debt) | medium (Stop/SubagentStop) |
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
 | `npm run check:deps` | depcheck, `npm ci --dry-run`, `deps-ranges.js`, `npm ls --all` | unused/missing dep, broken lockfile, non-exact spec, ELSPROBLEMS, or a `node_modules/node_modules` link/folder fails (fix: `rm node_modules/node_modules` for a link, `npm ci` for a folder, never `rm -r node_modules`) | medium |
-| `npm run check:security` | Semgrep | any Class A (ERROR) finding or Semgrep failure fails; Class B (WARNING) is surfaced, non-blocking | fast |
+| `npm run check:security` | Semgrep | any Class A (ERROR) finding or Semgrep failure fails; Class B (WARNING) is surfaced, non-blocking; the main scan runs `--jobs 6`; a timed-out file is re-scanned once with `--jobs 1`, a pass is a WARNING per rule and file pair, more than 10 pairs or any re-scan problem fails | fast |
 | `npm run check:rules` | `scripts/checks/semgrep-rules.sh` | a rule that misses its positive fixture or matches its negative one fails | medium |
 | `npm run check:plist` | plist.sh (`plutil`) | any Info.plist / privacy-manifest security invariant violation fails | medium |
 | `npm run check:secrets` | gitleaks | any detected secret fails | fast |
@@ -95,7 +96,9 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
 - `PreToolUse` `Bash`: `scripts/checks/kill-guard.sh` denies (rationale and
   limits in kiko-linter, section names in quotes):
   - `pkill`, `killall`, any pattern/process-group `kill` (incl. via `xargs`,
-    `$(...)`, `sh -c`); stop only a pid you started with `kill <pid>`.
+    `$(...)`, `sh -c`; also behind `caffeinate`, `arch`, `sandbox-exec`, `script`, `screen` or
+    `tmux`, or inside an `orca` `--text`/`--command` or an `osascript` shell script); stop only
+    a pid you started with `kill <pid>`.
   - any `git stash`, in any directory (user-approved; binds the user's own
     sessions too; commit a WIP or copy files instead).
   - a heredoc with an unquoted delimiter (`<<EOF`; `<<'EOF'` passes).
@@ -126,9 +129,12 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
   - a whole-repository job typed outside the queue (`make verify|gate|deep|security`,
     `npm run check:all|check:deep|check:mutation`, `scripts/checks/verify.sh`, `mutation.sh`,
     `security.sh` or `check:security` with no path, a Semgrep scan of the whole repository;
-    "Heavy-job and full-jest deny"); queue it with
-    `bash scripts/job-queue.sh verify|check-all|security|gate ...`; a dry run (`make -n`),
-    `make mutable` and a scan of a file or subfolder stay allowed.
+    "Heavy-job and full-jest deny"; also behind `caffeinate`, `arch`, `sandbox-exec`, `script`,
+    `screen` or `tmux`, or inside an `orca` `--text`/`--command` or an `osascript` shell
+    script); queue it with `bash scripts/job-queue.sh verify|check-all|security|gate ...`; a
+    harness-repo sync is verified with
+    `bash scripts/job-queue.sh harness-verify <harness worktree> <label>`; a dry run
+    (`make -n`), `make mutable` and a scan of a file or subfolder stay allowed.
   - a jest run that would run every suite ("Heavy-job and full-jest deny"): a runner (`jest`,
     `npx jest`, `npm test`, `make jest`) with no test file, or an array option of jest-cli
     (`JEST_ARRAY_OPTIONS` in `scripts/checks/kill-guard.js`) before a bare word, in the space
