@@ -2202,9 +2202,9 @@ than restated here:
   compares them against `latestBalanceSyncAt(holdings, stateStamp)` (the later of the
   holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when
   any of those walks never caught up (`null` cursor) or is behind by more than a day,
-  or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
-  passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
-  the Transfer `pending` list alone), false before the account's own first balance sync.
+  or when any walk owes a range (`historyOwesRange`: ground its cursor passed;
+  only an owed RANGE counts, as `historyOwesRange` reads the `pending` list of
+  every one of the walks), false before the account's own first balance sync.
   An owed point never
   shows it. A malformed walk state PAUSES the history: `CryptoSyncSection`'s
   `historyPaused` (Binance and `walkState.kind === 'malformed'`) shows
@@ -2337,7 +2337,7 @@ Read `settledOutcomeOf` in `binance.convert-history.ts`.
   (`runWalkPlan` `owedFirst`; `storePlannedList` stores the planned list before any pass) and
   keeps one read of the first forward window, of the re-scan and of the points for the later
   passes. A Transfer drift owes the span in the drifted type alone. The `binanceHistoryPending`
-  caption also shows while the Transfer walk owes a range (`transferOwesRange`), not a point.
+  caption also shows while any walk owes a range (`historyOwesRange`), not a point.
   A span read that narrows (a type is refused a start, finds its memory lapsed, asks the end of
   the span, or reads a band) draws its calls from the lane's narrowing calls first
   (`LANE_NARROWING_CALLS` in `binance.history-budget.ts`; `spanRunOf` in

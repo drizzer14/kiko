@@ -35,7 +35,7 @@ import { styles } from '../account-detail.styles';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestBalanceSyncAt } from '../format-last-sync';
 
-import { isBinanceHistoryBehind, transferOwesRange, walkCursorsOf } from './binance-history-status';
+import { historyOwesRange, isBinanceHistoryBehind, walkCursorsOf } from './binance-history-status';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
@@ -202,7 +202,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       isBinanceHistoryBehind({
         cursors: walkCursorsOf(walkState),
         lastBalanceSyncAt,
-        owesRange: transferOwesRange(walkState),
+        owesRange: historyOwesRange(walkState),
       });
 
     return (

@@ -2,7 +2,7 @@ import { DAY_MS } from '@kiko/dates';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import { type WalkMarkSeed, type WalkName, withWalkMarkSeeds } from '@kiko/test-support/walk-marks';
 
-import { isBinanceHistoryBehind, transferOwesRange, walkCursorsOf } from './binance-history-status';
+import { historyOwesRange, isBinanceHistoryBehind, walkCursorsOf } from './binance-history-status';
 
 const NOW = 1_704_326_400_000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -93,38 +93,52 @@ describe('isBinanceHistoryBehind', () => {
   });
 });
 
-describe('transferOwesRange', () => {
-  const owing = (owed: unknown) =>
-    stateOf({ capital: { cursor: NOW }, transfer: { pending: owed } });
+describe('historyOwesRange', () => {
+  const owing = (walkName: WalkName, owed: unknown) =>
+    stateOf({ capital: { cursor: NOW }, [walkName]: { cursor: NOW, pending: owed } });
 
-  it.each([
-    ['a range owed in every type', [{ start: 1, end: 3 }]],
-    ['a range owed in one type', [{ start: 1, end: 3, series: 'MAIN_FUNDING' }]],
-    [
-      'a range beside a point',
+  describe.each(CAPTION_WALK_NAMES)('the %s walk', (walkName) => {
+    it.each([
+      ['a range owed in every series', [{ start: 1, end: 3 }]],
+      ['a range owed in one series', [{ start: 1, end: 3, series: 'MAIN_FUNDING' }]],
       [
-        { start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' },
-        { start: 5, end: 9 },
+        'a range beside a point',
+        [
+          { start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' },
+          { start: 5, end: 9 },
+        ],
       ],
-    ],
-  ])('is true for %s', (_label, owed) => {
-    expect(transferOwesRange(owing(owed))).toBe(true);
+    ])('is true for %s', (_label, owed) => {
+      expect(historyOwesRange(owing(walkName, owed))).toBe(true);
+    });
+
+    it.each([
+      ['no list', undefined],
+      ['an empty list', []],
+      ['only a point', [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' }]],
+      ['a list that is not well formed', 'x'],
+    ])('is false for %s', (_label, owed) => {
+      expect(historyOwesRange(owing(walkName, owed))).toBe(false);
+    });
   });
 
-  it.each([
-    ['no list', undefined],
-    ['an empty list', []],
-    ['only a point', [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' }]],
-    ['a list that is not well formed', 'x'],
-  ])('is false for %s', (_label, owed) => {
-    expect(transferOwesRange(owing(owed))).toBe(false);
+  it('is true when one walk owes a range, whichever the others hold', () => {
+    expect(
+      historyOwesRange(
+        stateOf({
+          capital: { cursor: NOW, pending: [] },
+          earn: { cursor: NOW, pending: [{ start: 1, end: 3, kind: 'point' }] },
+          fiatPayments: { cursor: NOW, pending: [{ start: 1, end: 3 }] },
+        }),
+      ),
+    ).toBe(true);
   });
 
   it.each([
     ['no state row', null],
     ['a state that is not readable', '{not json'],
   ])('is false for %s', (_label, text) => {
-    expect(transferOwesRange(parseExchangeState(text))).toBe(false);
+    expect(historyOwesRange(parseExchangeState(text))).toBe(false);
   });
 });
 

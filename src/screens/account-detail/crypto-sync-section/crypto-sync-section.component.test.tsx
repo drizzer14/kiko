@@ -541,29 +541,31 @@ describe('CryptoSyncSection', () => {
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
   });
 
-  it('shows no caption while the cursors are current and only a Transfer point is owed', async () => {
-    const { queryByText } = await renderBinance(
-      withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, 'transfer', {
-        pending: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
-      }),
-    );
+  it.each(WALK_NAMES)(
+    'shows no caption while the cursors are current and only a %s point is owed',
+    async (walkName) => {
+      const { queryByText } = await renderBinance(
+        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, {
+          pending: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
+        }),
+      );
 
-    expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
-  });
+      expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+    },
+  );
 
-  it.each([
-    ['a range owed in every type', { start: 5, end: 7 }],
-    ['a range owed in one type', { start: 5, end: 7, series: 'MAIN_FUNDING' }],
-  ])(
-    'shows the caption while the cursors are current and the Transfer walk owes %s',
-    async (_label, owed) => {
+  describe.each(WALK_NAMES)('while the cursors are current and the %s walk owes', (walkName) => {
+    it.each([
+      ['a range owed in every series', { start: 5, end: 7 }],
+      ['a range owed in one series', { start: 5, end: 7, series: 'MAIN_FUNDING' }],
+    ])('%s, the caption shows', async (_label, owed) => {
       const { getByText } = await renderBinance(
-        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, 'transfer', { pending: [owed] }),
+        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, { pending: [owed] }),
       );
 
       expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
-    },
-  );
+    });
+  });
 
   it('hides the lagging-history caption while a sync is in flight, even when the history walk is behind', async () => {
     mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
