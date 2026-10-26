@@ -28,6 +28,7 @@ import {
   accountsForFilter,
   hasNoAccounts,
 } from '@kiko/holdings/implicit-account';
+import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
 import {
@@ -91,6 +92,7 @@ import { toggleFilterValue } from '@kiko/design-system/toggle-filter-value';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
+import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
@@ -894,11 +896,37 @@ const StatisticsScreen: FC = () => {
     [breakdownTransactions],
   );
 
+  // The account kind of each holding, so the funding matcher can tell a crypto account's own rows
+  // from the bank rows that paid for them. A holding whose account is not in the list is left out
+  // of the map, and the matcher counts such a holding as a bank side.
+  const accountKindByHoldingId = useMemo(() => {
+    const kindByAccountId = new Map(accounts.map((account) => [account.id, account.kind]));
+
+    return new Map(
+      holdings.flatMap(
+        (holding) =>
+          foldMap(maybe(kindByAccountId.get(holding.accountId)), (kind) => [
+            [holding.id, kind] as const,
+          ]) ?? [],
+      ),
+    );
+  }, [accounts, holdings]);
+
+  // The bank debits that paid for an exchange purchase (a P2P buy, a card buy or a fiat deposit)
+  // are not spending: the purchase is not the money leaving. Over the unfiltered ledger, never the
+  // account-filtered rows, because the exchange row sits under a crypto account the filter may
+  // hide, and the debit would then count again.
+  const exchangeFundingExcludedIds = useMemo(
+    () => exchangeFundingMatches(ledgerWithCurrency, accountKindByHoldingId).excludedIds,
+    [ledgerWithCurrency, accountKindByHoldingId],
+  );
+
   // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
-  // the exchange-marker rule, the cheap secondary matched-pair matcher, and
-  // the linked-loan-payment rule (its own derived interest and within-tolerance
-  // fee entries, `loanInterestRows` above, replace the raw row this drops). A
-  // row is dropped from the spending pie if ANY rule catches it.
+  // the exchange-marker rule, the cheap secondary matched-pair matcher, the
+  // exchange-funding matcher, and the linked-loan-payment rule (its own derived
+  // interest and within-tolerance fee entries, `loanInterestRows` above,
+  // replace the raw row this drops). A row is dropped from the spending pie if
+  // ANY rule catches it.
   const excludedTransactionIds = useMemo(
     () =>
       new Set([
@@ -906,6 +934,7 @@ const StatisticsScreen: FC = () => {
         ...mccExcludedIds,
         ...descriptionExcludedIds,
         ...exchangeExcludedIds,
+        ...exchangeFundingExcludedIds,
         ...loanPaymentExcludedIds,
       ]),
     [
@@ -913,6 +942,7 @@ const StatisticsScreen: FC = () => {
       mccExcludedIds,
       descriptionExcludedIds,
       exchangeExcludedIds,
+      exchangeFundingExcludedIds,
       loanPaymentExcludedIds,
     ],
   );
