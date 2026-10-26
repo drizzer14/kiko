@@ -401,8 +401,12 @@ const createGateWorktree = (
       { cwd: worktree, encoding: 'utf8' },
     ).trim();
   git('init', '-q', '-b', 'main');
-  // The stub's `listed` marker is not a change to the tree a job is tested on.
-  writeFileSync(join(worktree, '.git/info/exclude'), 'scripts/checks/listed\n');
+  // The stub's `listed` marker and the Stryker state are not changes to the tree a job is tested
+  // on (the real repository ignores the state in .gitignore).
+  writeFileSync(
+    join(worktree, '.git/info/exclude'),
+    'scripts/checks/listed\n/reports\n.stryker-tmp/\n',
+  );
   mkdirSync(join(worktree, 'scripts/checks'), { recursive: true });
   writeExecutable(
     join(worktree, 'scripts/checks/mutation.sh'),
@@ -744,8 +748,13 @@ describe('scripts/job-queue.sh gate refusals', () => {
     const sandbox = createSandbox();
     const gate = createGateWorktree(sandbox, 'gate', listing(12));
     rmSync(join(gate.worktree, 'scripts/checks/mutation.sh'));
+    commitAll(gate.worktree, 'remove mutation.sh');
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: gate.worktree,
+      encoding: 'utf8',
+    }).trim();
 
-    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', head);
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('merge main');
@@ -2359,7 +2368,7 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     expect(finishedLine(sandbox).split(' ')[5]).toBe(namesHead ? head : 'unknown');
   });
 
-  it('reads the tree status at START and at the end without taking the index lock', () => {
+  it('reads the tree status of a verify four times without taking the index lock', () => {
     const sandbox = createSandbox();
     const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
     const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
@@ -2383,7 +2392,8 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     runQueue(sandbox, 'verify', worktree, 'one');
 
     const statusCalls = readLines(calls).filter((call) => call.includes(' status'));
-    expect(statusCalls).toHaveLength(2);
+    // Enqueue refusal, START refusal, the START head, and the end of the job.
+    expect(statusCalls).toHaveLength(4);
     expect(statusCalls.every((call) => call.startsWith('--no-optional-locks '))).toBe(true);
   });
 

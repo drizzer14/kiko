@@ -23,12 +23,18 @@
 #              waiter takes the lock, then looks for the file and gives the lock back if it is
 #              there. So a start that began before the file existed either backs off or is the
 #              `running:` line `hold` prints; the start that line names may still back off.
-#   logs/      gate-<label>.log, the whole output of a gate (other jobs print to stdout)
+#   logs/      gate-<label>.log, the whole output of a gate, and verify-<label>.log, the last
+#              VERIFY_LOG_LINES lines of a verify (its last VERIFY_TAIL_LINES also go to stdout at
+#              the end); the other jobs print to stdout
 #   done.log   one line per finished job: kind label exit start end head. head is the full
 #              40-character HEAD of the worktree, read at START only when `git status --porcelain`
 #              (untracked files included) was empty at START and again at the end and HEAD is the
 #              same at the end; it is `unknown` for a changed tree at either point, a moved HEAD,
-#              or an unreadable repository. Known limit: an edit made and reverted while the job
+#              or an unreadable repository. A verify or a gate never starts on a changed tree (it
+#              is refused with exit 3, at enqueue and again at START), so its head is `unknown`
+#              only when the job itself changed the tree (a NOTE names the first path), moved HEAD,
+#              or the repository is unreadable; check-all and security still run on a changed tree
+#              and record `unknown`. Known limit: an edit made and reverted while the job
 #              runs, or a change to an ignored file, leaves the head set (no content hash).
 #              A line from before this field has five fields.
 #              A job whose result was never recorded leaves a LOST line in the same six-field order,
@@ -145,6 +151,10 @@ SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # GATE_START_MAX_WAIT seconds. The two values are a fixed policy, not a tuning knob.
 GATE_START_MAX_LOAD=10
 GATE_START_MAX_WAIT="${KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS:-1200}"
+# A verify keeps the end of its output, where the failure block is: a long jest run would otherwise
+# leave a large file per label.
+VERIFY_LOG_LINES=400
+VERIFY_TAIL_LINES=40
 
 usage() {
   [ "$#" -eq 0 ] || printf '%s\n' "$1" >&2
@@ -407,6 +417,36 @@ refuse_moved_head() {
   esac
 }
 
+# Succeeds only when the worktree has no change at all (untracked files count). --no-optional-locks
+# keeps the read from taking the worktree's index.lock, so it never races a git command of the user.
+# --untracked-files=all overrides a status.showUntrackedFiles=no in the worktree's own config.
+tree_is_clean() {
+  local changes
+  changes="$(git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all \
+    2> /dev/null)" || return 1
+  [ -z "$changes" ]
+}
+
+# The first $1 changed paths, one per line (the status letters are cut off).
+first_changed_paths() {
+  git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all 2> /dev/null \
+    | sed -n "1,${1}p" | cut -c4-
+}
+
+# A verify or a gate records the commit it ran on, and a queued job reads the working tree, so a
+# tree with any change is refused, at enqueue and again at start (a device build can rewrite
+# ios/Podfile.lock while the job waits). An unreadable repository lists no path and is not this
+# refusal's concern: it still records `unknown`.
+refuse_dirty_tree() {
+  local paths
+  tree_is_clean && return 0
+  paths="$(first_changed_paths 3 | paste -s -d, -)"
+  [ -n "$paths" ] || return 0
+  printf 'job-queue.sh: %s has uncommitted changes (first paths: %s); a %s of a changed tree is not a result of any commit. Commit them first (for example ios/Podfile.lock after a pod install) or copy the files aside, never stash, then re-queue.\n' \
+    "$worktree" "$paths" "$command_name" >&2
+  exit 3
+}
+
 # A gate's size is the changed-line count of the change set, so a short gate runs before a long
 # one. A tip from before the changed-line gate has a mutation.sh that ignores --list and would run
 # a whole Stryker here, outside the lock, so it is refused before it is run.
@@ -427,8 +467,10 @@ read_gate_size() {
 
 if [ "$command_name" = gate ]; then
   refuse_moved_head
+  refuse_dirty_tree
   read_gate_size
 fi
+[ "$command_name" != verify ] || refuse_dirty_tree
 
 mkdir -p "$TICKETS_DIRECTORY"
 ticket_name="${job_class}-$(printf '%010d' "$job_size")-$(date +%s)-$$-${label}"
@@ -806,6 +848,13 @@ start_gate_job() {
     make -C "$worktree" deep > "$gate_log" 2>&1 < /dev/null &
 }
 
+# The output goes to a log, so the cause of a failed verify is kept; keep_verify_log trims it.
+start_verify_job() {
+  verify_log="$QUEUE_DIRECTORY/logs/verify-$label.log"
+  mkdir -p "$QUEUE_DIRECTORY/logs"
+  env -u FORCE_COLOR make -C "$worktree" verify > "$verify_log" 2>&1 < /dev/null &
+}
+
 # The job runs in the background, in a process group of its own (`set -m`), and the script waits
 # on it, so a trapped signal interrupts the wait at once instead of after the job. Job control
 # also stops giving a background job /dev/null as stdin, so each job gets it by hand. FORCE_COLOR
@@ -814,7 +863,7 @@ run_job() {
   starting=1
   set -m
   case "$command_name" in
-    verify) env -u FORCE_COLOR make -C "$worktree" verify < /dev/null & ;;
+    verify) start_verify_job ;;
     check-all) env -u FORCE_COLOR npm --prefix "$worktree" run check:all < /dev/null & ;;
     security) (cd "$worktree" && exec env -u FORCE_COLOR npm run check:security) < /dev/null & ;;
     harness-verify)
@@ -857,16 +906,6 @@ full_head() {
   esac
 }
 
-# Succeeds only when the worktree has no change at all (untracked files count). --no-optional-locks
-# keeps the read from taking the worktree's index.lock, so it never races a git command of the user.
-# --untracked-files=all overrides a status.showUntrackedFiles=no in the worktree's own config.
-tree_is_clean() {
-  local changes
-  changes="$(git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all \
-    2> /dev/null)" || return 1
-  [ -z "$changes" ]
-}
-
 # The commit a job ran on, named only while that is certain: a queued job reads the working tree,
 # so a tree with any change (untracked files count) at START is not "the job at that commit".
 read_tested_head() {
@@ -881,12 +920,33 @@ read_tested_head() {
 
 # A HEAD that moved during the job means the job ran on more than one commit, and a tree that is
 # not clean at the end means the job ran on content that is not that commit. make verify writes
-# its state outside the tree, so a job that dirties its own tree records unknown.
+# its state outside the tree, so a job that dirties its own tree records unknown, and a NOTE names
+# the first changed path so the cause is visible.
 confirm_tested_head() {
+  local changed
   [ "$tested_head" = unknown ] && return 0
-  [ "$(full_head)" = "$tested_head" ] && tree_is_clean || tested_head=unknown
+  if [ "$(full_head)" = "$tested_head" ] && tree_is_clean; then
+    return 0
+  fi
+  tested_head=unknown
+  changed="$(first_changed_paths 1)"
+  [ -z "$changed" ] || printf 'NOTE %s: the tree changed during the job: %s\n' "$label" "$changed"
 }
 
+# A verify log is trimmed to its last lines once the job ended, and the end of it is printed
+# because the output goes to the log, not to the waiter, while the job runs.
+keep_verify_log() {
+  local trimmed
+  [ "$command_name" = verify ] || return 0
+  trimmed="$verify_log.trimmed"
+  tail -n "$VERIFY_LOG_LINES" "$verify_log" > "$trimmed" 2> /dev/null \
+    && mv -f "$trimmed" "$verify_log"
+  tail -n "$VERIFY_TAIL_LINES" "$verify_log" 2> /dev/null
+}
+
+case "$command_name" in
+  verify | gate) refuse_dirty_tree ;;
+esac
 [ "$command_name" = gate ] && prepare_gate
 started_at="$(iso_stamp)"
 # The START line names the commit the job runs on: a gate was refused unless HEAD starts with its
@@ -897,6 +957,7 @@ tested_head="$(read_tested_head)"
 printf 'START %s at %s head %s (load: %s)\n' "$label" "$(clock_time)" "${head_sha:-unknown}" "$(uptime 2> /dev/null | sed 's/.*averages: //')"
 run_job
 drain_job_group
+keep_verify_log
 [ "$command_name" = gate ] \
   && {
     # The first run of a rerun gate prints its score lines with a FIRST RUN: prefix; the verdict is
