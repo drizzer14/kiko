@@ -1235,7 +1235,7 @@ export const en = {
           '4': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
           '5': '"Expenses by Category" shows your spending over the chosen dates, with the total in the middle. "Categories" chooses which categories it counts. The list under the chart shows categories of 5% or more, and "Show all" shows the rest.',
           '6': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
-          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category.',
+          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category.',
           '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
         },
         title: 'Read Your Statistics',
@@ -1357,6 +1357,11 @@ export const en = {
     // not an exchange. Also names a wallet Kiko does not track.
     transferFrom: 'Transfer from {{name}}',
     transferTo: 'Transfer to {{name}}',
+    // The caption under the category of a bank debit that paid for an exchange purchase: it is
+    // left out of spending, and this says why.
+    matchedP2pPurchase: 'Matched to P2P purchase.',
+    matchedCardPurchase: 'Matched to card purchase.',
+    matchedExchangeDeposit: 'Matched to exchange deposit.',
   },
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.

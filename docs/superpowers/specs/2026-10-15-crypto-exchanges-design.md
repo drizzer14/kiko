@@ -2398,9 +2398,9 @@ not in 1.3-a (C-Div).
 | `transactions.p2pPurchase` (no `p2pSale` in 1.3-a, C-NR-F) | P2P purchase ({{currency}}) | Купівля через P2P ({{currency}}) |
 | `transactions.cardPurchase` / `cardSale` | Card purchase ({{currency}}) / Sale to card ({{currency}}) | Купівля карткою ({{currency}}) / Продаж на картку ({{currency}}) |
 | `transactions.bankDeposit` / `bankWithdrawal` | Bank deposit ({{currency}}) / Bank withdrawal ({{currency}}) | Поповнення з банку ({{currency}}) / Виведення в банк ({{currency}}) |
-| `transactions.matchedP2pPurchase` (set 13, not set 7, S7-Q8) | Matched to P2P purchase | Зіставлено з купівлею P2P |
-| `transactions.matchedCardPurchase` | Matched to card purchase | Зіставлено з купівлею карткою |
-| `transactions.matchedExchangeDeposit` | Matched to exchange deposit | Зіставлено з поповненням біржі |
+| `transactions.matchedP2pPurchase` (set 13, not set 7, S7-Q8) | Matched to P2P purchase. | Зіставлено з купівлею через P2P. |
+| `transactions.matchedCardPurchase` | Matched to card purchase. | Зіставлено з купівлею карткою. |
+| `transactions.matchedExchangeDeposit` | Matched to exchange deposit. | Зіставлено з поповненням біржі. |
 | `accountDetail.notImported` (set 8) | Not imported: {{items}}. Kiko does not import these {{exchange}} records yet. | Не імпортовано: {{items}}. Кіко поки не імпортує ці записи {{exchange}}. |
 | `accountDetail.notImportedKind.convertUnrecognized` (set 8) | Convert orders Kiko does not recognize ({{count}}) | операції Convert, яких Кіко не розпізнає ({{count}}) |
 | `accountDetail.notImportedKind.p2pSale` (set 8) | P2P sales ({{count}}) | продажі P2P ({{count}}) |
