@@ -55,6 +55,22 @@ export type WalkMarks = {
   pointCursor?: number;
   rangeCursor?: number;
   spanHints?: BinanceSpanHints;
+  /**
+   * The walk's last run read behind its cursor (the fiat orders walk alternates behind and
+   * forward runs), so its next run reads forward. A disconnect drops it with the other run marks.
+   */
+  behindRun?: boolean;
+  /**
+   * The walk's next behind run reads the window re-scan rather than the owed windows (it alternates
+   * them, and the forward run between two behind runs keeps this). A disconnect drops it too.
+   */
+  rescanTurn?: boolean;
+  /**
+   * The owed ranges the walk's window re-scan failed on and now reads around (the fiat orders walk
+   * isolates a stuck stretch instead of owing, or failing on, the whole window). Each is still in
+   * the list of owed ground, which clears it once a read of it passes. A disconnect drops it too.
+   */
+  rescanStuck?: BinancePendingRange[];
   /** The cursor the walk's first multi-coin run planned from: ground before it holds BTC only. */
   multiCoinSince?: number;
   /** The walk's first multi-coin run committed a window, so it never records a start again. */
@@ -124,6 +140,9 @@ export type ParsedWalkMarks = {
   pointCursor: number | null | undefined;
   rangeCursor: number | null | undefined;
   spanHints: BinanceSpanHints | undefined;
+  behindRun?: true;
+  rescanTurn?: true;
+  rescanStuck?: BinancePendingRange[];
   multiCoinSince?: number;
   multiCoinSeen?: true;
 };
@@ -186,6 +205,7 @@ const multiCoinSinceOf = (entry: Metadata, cursor: number | null): number | unde
 /** Each field parses with the one rule that decides what is readable and what a walk repairs. */
 const marksOf = (entry: Metadata): ParsedWalkMarks => {
   const cursor = finiteNumberOrNull(entry.cursor);
+  const stuck = binanceWalkPendingValueOf(entry.rescanStuck) ?? [];
 
   return {
     cursor,
@@ -194,6 +214,9 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     pointCursor: binanceWalkRoundRobinValueOf(entry.pointCursor),
     rangeCursor: binanceWalkRoundRobinValueOf(entry.rangeCursor),
     spanHints: binanceWalkSpanHintsValueOf(entry.spanHints),
+    ...(entry.behindRun === true ? { behindRun: true as const } : {}),
+    ...(entry.rescanTurn === true ? { rescanTurn: true as const } : {}),
+    ...(stuck.length > 0 ? { rescanStuck: stuck } : {}),
     ...foldMap(maybe(multiCoinSinceOf(entry, cursor)), (multiCoinSince) => ({ multiCoinSince })),
     ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
   };

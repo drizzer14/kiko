@@ -15,6 +15,7 @@ import {
   listOf,
   lockedRewardOf,
   pointOf,
+  settledPointOf,
   stopCodeOf,
   stopCodes,
   unreadableEntryOf,
@@ -294,7 +295,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
     expect(settled.rows.map((row) => row.externalId)).toEqual([
       keyOf('flexible', 'BTC001', 'REALTIME', at + 5, 0),
     ]);
-    expect(settled.owed).toEqual([pointOf(at, 'flexibleRewards')]);
+    expect(settled.owed).toEqual([settledPointOf(at, 'flexibleRewards')]);
     expect(settled.codes).toEqual(['amount-malformed']);
   });
 
@@ -314,7 +315,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
     });
 
     expect(settled.rows.map((row) => row.time)).toEqual([at + 5]);
-    expect(settled.owed).toEqual([pointOf(at, 'flexibleRewards')]);
+    expect(settled.owed).toEqual([settledPointOf(at, 'flexibleRewards')]);
     expect(new Set(settled.codes)).toEqual(new Set(['earn-row-unreadable']));
   });
 
@@ -337,7 +338,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
     });
 
     expect(settled.rows.map((row) => row.wallet)).toEqual([SPOT_KEY]);
-    expect(settled.owed).toEqual([pointOf(at, 'flexibleRewards')]);
+    expect(settled.owed).toEqual([settledPointOf(at, 'flexibleRewards')]);
   });
 
   it('owes the span for an unreadable reward row with no time, and blocks no group', () => {

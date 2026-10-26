@@ -1,5 +1,8 @@
+import { bifoldMap } from 'fnts/either';
+
 import {
   UNTRACKED_WALLETS,
+  fiatTotalCode,
   untrackedAssetCode,
   untrackedWalletCode,
   parseUntrackedCounterpart,
@@ -40,6 +43,72 @@ describe('untrackedAssetCode', () => {
       });
     },
   );
+});
+
+describe('fiatTotalCode', () => {
+  type Outcome = { error: string } | { code: string };
+
+  const outcome = (kind: 'p2p' | 'card' | 'bank', fiat: string, totalText: string): Outcome =>
+    bifoldMap(
+      fiatTotalCode(kind, fiat, totalText),
+      (error): Outcome => ({ error }),
+      (code): Outcome => ({ code }),
+    );
+
+  it.each([
+    ['p2p', 'UAH', '4150', 'p2p:UAH:4150.00', 415_000],
+    ['p2p', 'UAH', '4145.85', 'p2p:UAH:4145.85', 414_585],
+    ['p2p', 'UAH', '4000.0', 'p2p:UAH:4000.00', 400_000],
+    ['p2p', 'UAH', '4150.000', 'p2p:UAH:4150.00', 415_000],
+    ['card', 'UAH', '2600', 'card:UAH:2600.00', 260_000],
+    ['bank', 'EUR', '100.5', 'bank:EUR:100.50', 10_050],
+    ['bank', 'EUR', '0.01', 'bank:EUR:0.01', 1],
+  ] as const)(
+    'builds a %s code at the fiat scale from %s %s',
+    (kind, fiat, totalText, code, totalMinorUnits) => {
+      expect(outcome(kind, fiat, totalText)).toEqual({ code });
+      expect(parseUntrackedCounterpart(code)).toEqual({ kind, fiat, totalMinorUnits });
+    },
+  );
+
+  it.each([
+    ['4150.001', 'amount-precision'],
+    ['abc', 'amount-malformed'],
+    ['', 'amount-malformed'],
+    ['-5.00', 'amount-malformed'],
+    [' 4150', 'amount-malformed'],
+    ['4150 ', 'amount-malformed'],
+    ['4,150', 'amount-malformed'],
+    ['1e3', 'amount-malformed'],
+    ['90071992547409.93', 'amount-too-large'],
+  ])('stops at the total %p of a tracked fiat with %s', (totalText, error) => {
+    expect(outcome('p2p', 'UAH', totalText)).toEqual({ error });
+  });
+
+  it.each([
+    ['XYZ', '100.50'],
+    ['XYZ', '100.500'],
+    ['XYZ', '7'],
+    ['BTC', '0.00012345'],
+  ])('keeps the total of the fiat %s as sent: %s', (fiat, totalText) => {
+    expect(outcome('p2p', fiat, totalText)).toEqual({ code: `p2p:${fiat}:${totalText}` });
+    expect(parseUntrackedCounterpart(`p2p:${fiat}:${totalText}`)).toEqual({
+      kind: 'p2p',
+      fiat,
+      totalMinorUnits: undefined,
+    });
+  });
+
+  it.each(['abc', '', '-5', ' 5', '1e3', '5.'])(
+    'stops at the total %p of a fiat Kiko does not know',
+    (totalText) => {
+      expect(outcome('card', 'XYZ', totalText)).toEqual({ error: 'amount-malformed' });
+    },
+  );
+
+  it.each(['', 'A:B', ':UAH'])('stops at the fiat code %p that no code can carry', (fiat) => {
+    expect(outcome('bank', fiat, '100.00')).toEqual({ error: 'amount-malformed' });
+  });
 });
 
 describe('parseUntrackedCounterpart', () => {

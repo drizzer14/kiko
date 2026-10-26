@@ -1767,6 +1767,14 @@ letter), and a `T-shirt`/`U-turn` has no digit after the hyphen.
 match. Fixture pair: the four hyphen pins at the end of `.bad.ts`
 and item 19 in `.good.ts`.
 
+**Spec ruling, review-question and spec clause ids.** `S\d{1,3}-Q\d{1,3}` (`S12-Q34`),
+`FQ\d{1,3}` (`FQ9`) and `C-NR-?[A-Z0-9]+` (`C-NR-E`, `C-NR3`) name a ruling or a spec clause of the
+SDD process; a comment or a test title under `src` states the reason and the behaviour instead. The
+same three members sit in `kiko-no-history-id-shell-comment`. The leading `\b` keeps `AS12-Q3` and
+`FQDN` silent, and each member needs its digit or clause letter, so a bare `S12`, `Q3` or `C-NR`
+stays prose. Fixtures: the last pins of `.bad.ts`/`.bad.sh` and the last probes of
+`.good.ts`/`.good.sh`.
+
 **`Phase N` is not a family member at all** — a bare `Phase\s\d+`
 collides with ordinary engineering prose no digit-anchoring can fix
 ("Phase 1 copies the rows; Phase 2 deletes the source only after
@@ -2213,7 +2221,9 @@ opens with a numbered device check (`device check 3`, either case), carries `(wa
 or `; was 62` (an old-value label), or ends in a task id in parentheses (`(P2)`, `(task C2)`,
 `(spec A3, B4)`). `it was 44 rows`, `(was 3 of them)` and `; was 3x faster` stay silent: `(was N)`
 needs the digits to close the parenthesis, and `; was N` needs the semicolon and a word boundary
-after the digits.
+after the digits. A spec ruling id (`S\d{1,3}-Q\d{1,3}`), review-question id (`FQ\d{1,3}`) or spec
+clause id (`C-NR-?[A-Z0-9]+`) is caught anywhere in the title, as `kiko-no-history-id-comment`
+catches it in a comment; `FQDN`, `AS12-Q3`, a bare `S12` or `Q3` and a bare `C-NR` stay silent.
 
 **Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
 --metrics off --quiet --config rules/semgrep-prewrite.yml src __tests__ --json` before quoting

@@ -115,7 +115,8 @@ export type OwedGround = BinancePendingRange;
  * ground behind the forward start, to catch a record that settles late, and never moves that
  * cursor. `rescanEnd` is where the re-scan ends. `pendingRanges` is the list of owed ground as it
  * stands once this run's own overlap day is in it: what to store before the forward pass first
- * moves the cursor.
+ * moves the cursor. `ranAt` is the wall-clock time of the run: the `since` of every point the run
+ * owes for the first time.
  */
 export type WalkPlan = {
   forward: WalkWindow[];
@@ -124,6 +125,7 @@ export type WalkPlan = {
   rescan: WalkWindow[];
   rescanEnd: number;
   pendingRanges: OwedGround[];
+  ranAt: number;
 };
 
 /**
@@ -212,9 +214,28 @@ const cutToBounds = <Range extends WalkWindow>(
   end: Math.min(range.end, bounds.endTime),
 });
 
-/** The ground of a list without a repeat: the first of each entry `sameGround` tells apart. */
+/**
+ * The earliest `since` among the entries that are the same ground as `entry`, which owe it again
+ * and so share the time of the run that first owed it.
+ */
+const firstSinceOf = (ground: OwedGround[], entry: OwedGround): number | undefined => {
+  const stamps = ground.flatMap((other) => (sameGround(other, entry) ? (other.since ?? []) : []));
+
+  return stamps.length === 0 ? undefined : minOf(stamps);
+};
+
+/**
+ * The ground of a list without a repeat: the first of each entry `sameGround` tells apart. A point
+ * owed more than once keeps the earliest `since` of them, wherever in the list it stands: the time
+ * of the run that first owed it is never replaced by a later run's.
+ */
 export const distinctGround = (ground: OwedGround[]): OwedGround[] =>
-  ground.filter((entry, index) => ground.findIndex((other) => sameGround(other, entry)) === index);
+  ground
+    .filter((entry, index) => ground.findIndex((other) => sameGround(other, entry)) === index)
+    .map((entry) => ({
+      ...entry,
+      ...foldMap(maybe(firstSinceOf(ground, entry)), (since) => ({ since })),
+    }));
 
 /**
  * The points of a list without a repeat. Two points that start together but differ both stay:
@@ -595,6 +616,7 @@ export const planWalkPasses = (input: {
     rescan,
     rescanEnd: behindEnd,
     pendingRanges,
+    ranAt: endTime,
   };
 };
 
@@ -686,11 +708,18 @@ const sameList = (left: OwedGround[], right: OwedGround[]): boolean =>
   left.length === right.length && left.every((ground, index) => sameGround(ground, right[index]));
 
 /**
+ * Whether two lists of the same ground (`sameList`) carry the same `since` on every entry: a point
+ * an older build stored with none is stamped by the write of the list, though no ground changed.
+ */
+const sameStamps = (left: OwedGround[], right: OwedGround[]): boolean =>
+  left.every((ground, index) => ground.since === right[index].since);
+
+/**
  * The write of `next` as the walk's list of owed ground: none when it is the list the run last
  * wrote, and the marks keep it as the one written.
  */
 const pendingPatchesOf = (marks: WalkMarks, next: OwedGround[]): WalkMarkPatch[] => {
-  if (sameList(next, marks.pending)) {
+  if (sameList(next, marks.pending) && sameStamps(next, marks.pending)) {
     return [];
   }
 
@@ -846,6 +875,16 @@ const advanceRescan = async (input: MarkAdvance): Promise<void> => {
 };
 
 /**
+ * The ground a span owes, each point with the time of the run on it, unless it has one: a point
+ * owed again keeps its first time (`distinctGround`, when it is joined to the list), so this one
+ * only stands for a point the list does not hold yet. A range is never stamped.
+ */
+const withRunTime = (owed: OwedGround[], ranAt: number): OwedGround[] =>
+  owed.map((ground) =>
+    isPoint(ground) && ground.since === undefined ? { ...ground, since: ranAt } : ground,
+  );
+
+/**
  * Move the walk's marks once a span's rows are durable. A forward span moves the cursor to
  * its end, never back: the first spans of a pass start behind it, and the mark to compare
  * with is the one this run last wrote, not the one it found. The first forward span also
@@ -857,13 +896,16 @@ const advanceRescan = async (input: MarkAdvance): Promise<void> => {
  * that owes exactly it came back, see `dropReadPoints`). `write` gets one write for the span: the
  * list when it changed, and the mark that moved.
  */
-export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> =>
-  match(input.pass)
+export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> => {
+  const stamped = { ...input, owed: withRunTime(input.owed ?? [], input.plan.ranAt) };
+
+  return match(stamped.pass)
     .returnType<Promise<void>>()
-    .with('forward', () => advanceCursor(input))
-    .with('pending', () => advancePending(input))
-    .with('rescan', () => advanceRescan(input))
+    .with('forward', () => advanceCursor(stamped))
+    .with('pending', () => advancePending(stamped))
+    .with('rescan', () => advanceRescan(stamped))
     .exhaustive();
+};
 
 /**
  * The first half of a span, or `undefined` for a span of one millisecond, which cannot be
@@ -1099,10 +1141,19 @@ const sameHints = (left: BinanceSpanHints, right: BinanceSpanHints): boolean =>
  * round-robin from the range cursor, see `windowsFrom`), then the re-scan, then the owed points,
  * each on what budget is left. A window that does not finish ends the pass it is in where
  * `STOP_ENDS_PASS` says so, and a window the budget cannot afford ends the pass; no pass ends the
- * run, so a stop in the forward pass (whose cursor never passes the stuck record) still leaves the
- * owed ground, the re-scan and the points their reads. A later run resumes from the stored marks.
+ * run by that alone (a failure a window throws does, below), so a stop in the forward pass (whose
+ * cursor never passes the stuck record) still leaves the owed ground, the re-scan and the points
+ * their reads. A later run resumes from the stored marks.
  * An owed window that does not finish stays owed and the run goes on to the next one and to the
  * re-scan.
+ *
+ * An owed window (a range or a point) whose page cannot be read, which `isUnreadableWindowError`
+ * says of the error it throws (the walk's own test; none by default), is the one failure that
+ * does not end the run: it stays owed, counts as started so the round-robin moves past it, and
+ * the owed ground behind it, the re-scan and the points are read, then the run rejects with the
+ * first such error. A window of the forward pass or the re-scan that cannot be read, and every
+ * other failure in any pass (a rate limit, an auth failure, a clock skew, the network), ends the
+ * run at once with no further call: more calls after a refusal would extend a ban.
  *
  * A read commits every record it can trust and leaves the ground of the others owed (see
  * `settleRecords`), so a stuck record never holds back the rest of a span, a range or the
@@ -1139,14 +1190,24 @@ export const runWalkPlan = async (input: {
   hints?: { stored: BinanceSpanHints; store: (next: BinanceSpanHints) => Promise<void> };
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
+  isUnreadableWindowError?: (error: unknown) => boolean;
 }): Promise<WalkResult> => {
-  const { plan, canAfford, runWindow, markPointRead, markRangeRead, callsOf = () => 1 } = input;
+  const {
+    plan,
+    canAfford,
+    runWindow,
+    markPointRead,
+    markRangeRead,
+    callsOf = () => 1,
+    isUnreadableWindowError = () => false,
+  } = input;
   const pointKeep = plan.points.length > 0 ? POINT_KEEP * callsOf(plan.points[0]) : 0;
   const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP * callsOf(plan.rescan[0]) : 0;
   const forwardKeep = plan.forward.length > 0 ? FORWARD_KEEP * callsOf(plan.forward[0]) : 0;
   let imported = 0;
   let complete = true;
   let hints = input.hints?.stored ?? NO_HINTS;
+  let firstUnreadable: { error: unknown } | undefined;
 
   const saveHints = async (next: BinanceSpanHints): Promise<void> => {
     if (!sameHints(next, hints)) {
@@ -1197,7 +1258,19 @@ export const runWalkPlan = async (input: {
         return;
       }
 
-      const outcome = await runWithHint(window, pass, keep, hintPass);
+      const outcome = await runWithHint(window, pass, keep, hintPass).catch(
+        (error: unknown): WindowOutcome => {
+          if (pass !== 'pending' || !isUnreadableWindowError(error)) {
+            throw error;
+          }
+
+          firstUnreadable ??= { error };
+
+          // Owed and started, so the round-robin moves on past a window that cannot be read and
+          // the ground behind it, the re-scan and the points get their reads.
+          return { imported: 0, complete: false, owed: true, started: true, hint: null };
+        },
+      );
       imported += outcome.imported;
       complete = complete && outcome.complete && !outcome.owed;
 
@@ -1229,6 +1302,10 @@ export const runWalkPlan = async (input: {
 
   await readPass(plan.rescan, 'rescan', pointKeep, 'rescan');
   await readPass(plan.points, 'pending', 0, 'point', markPointRead);
+
+  if (firstUnreadable !== undefined) {
+    throw firstUnreadable.error;
+  }
 
   return { imported, complete };
 };

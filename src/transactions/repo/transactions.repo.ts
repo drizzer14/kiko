@@ -2721,6 +2721,40 @@ export const transactionsRepo = {
       await removeHoldingDatabaseTransaction(databaseTransaction, holdingId);
     }),
   /**
+   * Delete the rows a sync wrote under `source` that hold these `(source, external_id)` keys, on
+   * any holding, and say how many went; a key no row holds is skipped, so the same call twice
+   * deletes once. Only the sync that owns a row calls this (a Binance fiat order that Binance
+   * refunded), which is why it takes no row id and has no `isDeletableTransaction` gate: the user
+   * cannot delete such a row. A row the user categorized or noted goes with the rest, and a
+   * manual or statement-import row with the same key is a different row and stays.
+   *
+   * The holding's balance is NOT moved, unlike `remove`: an exchange holding's balance is the
+   * exchange's own figure, and a synced row (`addManyDedup`) never moved it. A deleted key leaves
+   * no `deleted_import_keys` entry either, so a later read of the record as settled writes the row
+   * again. The newest synced row sets `importRows`'s boundary, so deleting it can lower that
+   * boundary on an account that was disconnected from the exchange and then given a statement.
+   */
+  removeSyncedRows: (
+    source: Exclude<TransactionRow['source'], 'manual' | 'import'>,
+    externalIds: readonly string[],
+  ): Promise<number> =>
+    write(async (databaseTransaction) => {
+      let removed = 0;
+
+      for (const externalIdChunk of chunkRows([...new Set(externalIds)], IN_CLAUSE_CHUNK_SIZE)) {
+        const deleted = await databaseTransaction
+          .delete(transactions)
+          .where(
+            and(eq(transactions.source, source), inArray(transactions.externalId, externalIdChunk)),
+          )
+          .returning({ id: transactions.id });
+
+        removed += deleted.length;
+      }
+
+      return removed;
+    }),
+  /**
    * What deleting these holdings (one holding, or every holding of an account)
    * would take from OTHER holdings, for the delete confirm's text: nothing
    * (`removeHoldingsNotice` gives no text) for holdings no movement links to.

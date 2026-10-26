@@ -10,6 +10,7 @@ import type { BinancePageWeights } from './binance.history-client';
  * One lane per walk, so a long backfill in one walk cannot starve the others. The
  * capital walk has two: its withdraw reads are the expensive ones, its deposit
  * reads are not. `dust` is no walk: one read of the newest records per run, so its cap is 1.
+ * `p2p`, `fiatOrders` and `fiatPayments` are the P2P order history and the two fiat histories.
  * `market` is the public price reads of `src/rates/binance-market/`. `tradeSymbols` is the one
  * public `exchangeInfo` read per run that lists the symbols a trade read can walk. `trades` is
  * the signed `myTrades` reads, whole-order re-reads included, both judged by the `/api/*` reading.
@@ -22,6 +23,9 @@ export type BudgetLane =
   | 'earn'
   | 'convert'
   | 'dust'
+  | 'p2p'
+  | 'fiatOrders'
+  | 'fiatPayments'
   | 'market'
   | 'tradeSymbols'
   | 'trades';
@@ -72,6 +76,9 @@ export const LANE_CALL_CAPS: Record<BudgetLane, number> = {
   earn: 30,
   convert: 20,
   dust: 1,
+  p2p: 20,
+  fiatOrders: 3,
+  fiatPayments: 10,
   market: 150,
   tradeSymbols: 1,
   trades: 100,
@@ -95,6 +102,9 @@ export const LANE_NARROWING_CALLS: Record<BudgetLane, number> = {
   earn: 0,
   convert: 0,
   dust: 0,
+  p2p: 0,
+  fiatOrders: 0,
+  fiatPayments: 0,
   market: 0,
   tradeSymbols: 0,
   trades: 0,
@@ -110,6 +120,9 @@ export const COSTS = {
   earn: { ip: 150 },
   convert: { uid: 3_000 },
   dust: { ip: 1 },
+  p2p: { uid: 900 },
+  fiatOrders: { uid: 45_000 },
+  fiatPayments: { ip: 1 },
   klines: { api: 2 },
   exchangeInfo: { api: 20 },
   myTrades: { api: 20 },
@@ -118,35 +131,30 @@ export const COSTS = {
 
 export type BinanceRunBudget = RunBudget<BudgetLane, CallCost, BinancePageWeights>;
 
+/** A fresh count per lane: the two counters of one run must never share an object. */
+const noCallsByLane = (): Record<BudgetLane, number> => ({
+  capitalWithdraw: 0,
+  capitalDeposit: 0,
+  pay: 0,
+  transfer: 0,
+  earn: 0,
+  convert: 0,
+  dust: 0,
+  p2p: 0,
+  fiatOrders: 0,
+  fiatPayments: 0,
+  market: 0,
+  tradeSymbols: 0,
+  trades: 0,
+});
+
 /**
  * One budget per Binance arm run. A response without a header keeps the last
  * reading, so a missing header never reads as an empty minute.
  */
 export const createBinanceRunBudget = (): BinanceRunBudget => {
-  const callsByLane: Record<BudgetLane, number> = {
-    capitalWithdraw: 0,
-    capitalDeposit: 0,
-    pay: 0,
-    transfer: 0,
-    earn: 0,
-    convert: 0,
-    dust: 0,
-    market: 0,
-    tradeSymbols: 0,
-    trades: 0,
-  };
-  const narrowingCallsByLane: Record<BudgetLane, number> = {
-    capitalWithdraw: 0,
-    capitalDeposit: 0,
-    pay: 0,
-    transfer: 0,
-    earn: 0,
-    convert: 0,
-    dust: 0,
-    market: 0,
-    tradeSymbols: 0,
-    trades: 0,
-  };
+  const callsByLane = noCallsByLane();
+  const narrowingCallsByLane = noCallsByLane();
   let usedUidWeight: number | undefined;
   let usedIpWeight: number | undefined;
   let usedApiWeight: number | undefined;
@@ -192,6 +200,13 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
 
 /** The pacing gate and the weight budget every walk of one Binance arm run shares. */
 export type BinanceHistoryRun = ExchangeRun<BudgetLane, CallCost, BinancePageWeights>;
+
+/**
+ * A request that rejected was made all the same, and Binance counted its weight: it is a call of
+ * the lane that gave no weights to read, so a lane's cap holds when its requests fail.
+ */
+export const recordFailedCall = (run: BinanceHistoryRun, lane: BudgetLane): void =>
+  run.budget.record(lane, { usedUidWeight1m: undefined, usedIpWeight1m: undefined });
 
 export const createBinanceHistoryRun = (clock: {
   now: () => number;

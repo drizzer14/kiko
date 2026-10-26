@@ -275,6 +275,7 @@ describe('the Earn walk on real SQLite', () => {
         end: REWARD_TIME - 5 * DAY_MS + 1,
         kind: 'point',
         series: 'flexibleRewards',
+        since: NOW,
       },
     ]);
 

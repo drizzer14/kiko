@@ -612,3 +612,30 @@ export const trackCapitalSetLine = true;
 // EXPECT-FINDING
 /* Added in H10 Set 3: the chip row wraps. */
 export const trackCapitalSetBlock = true;
+
+// A spec ruling id (`S12-Q34`), a review-question id (`FQ9`) and a spec clause id (`C-NR-E`,
+// `C-NR3`) are history too.
+
+// EXPECT-FINDING
+// The text is matched exactly (S12-Q34): no trim, no case fold.
+export const rulingIdLine = true;
+
+// EXPECT-FINDING
+/* The text is matched exactly (S12-Q34): no trim, no case fold. */
+export const rulingIdBlock = true;
+
+// EXPECT-FINDING
+// The hint is kept on a re-scan run (FQ9).
+export const questionIdLine = true;
+
+// EXPECT-FINDING
+/* The hint is kept on a re-scan run (FQ9). */
+export const questionIdBlock = true;
+
+// EXPECT-FINDING
+// Anything else is refused into `notImported` (spec C-NR-E).
+export const clauseIdHyphenLine = true;
+
+// EXPECT-FINDING
+/* The key of the coin's Spot holding (C-NR3). */
+export const clauseIdDigitBlock = true;

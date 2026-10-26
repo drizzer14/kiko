@@ -9,13 +9,18 @@ import { isRecord } from '@kiko/type-guards';
  * record was read under on a point (`series`): the point is read in that series only, and leaves
  * the list only for a record of it. A range with a `series` is owed in that series alone (the
  * ground one series left unread, or skipped at the edge of its depth) and leaves the list once a
- * read of it in that series has committed; a range with none is owed in every series.
+ * read of it in that series has committed; a range with none is owed in every series. A point
+ * also carries `since`, the wall-clock time (epoch ms) of the run that first owed it, which every
+ * later run keeps: the history caption reads it to tell a point that has stayed owed for long from
+ * one that every sync reads again. A point stored without one (by a build before it) is quiet
+ * until a run owes it again and stamps it; a range never carries one.
  */
 export type BinancePendingRange = {
   start: number;
   end: number;
   kind?: 'point';
   series?: string;
+  since?: number;
 };
 
 /**
@@ -62,12 +67,22 @@ export const finiteNumberOrNull = (stored: unknown): number | null =>
 const isSeries = (value: unknown): value is string =>
   typeof value === 'string' && value.trim() !== '';
 
+const isSince = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0;
+
+/**
+ * The time a point was first owed, when the stored one is a time. A `since` that is not one is
+ * read as none, and never as a malformed list: it only decides what the caption shows, so a bad
+ * one must not have the walk repair (and re-read) every owed range.
+ */
+const sinceOf = (since: unknown): { since?: number } => (isSince(since) ? { since } : {});
+
 const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const { start, end, kind, series } = value;
+  const { start, end, kind, series, since } = value;
 
   if (!isNumber(start) || !isNumber(end) || start >= end) {
     return undefined;
@@ -78,14 +93,16 @@ const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
   }
 
   if (series === undefined) {
-    return kind === undefined ? { start, end } : { start, end, kind };
+    return kind === undefined ? { start, end } : { start, end, kind, ...sinceOf(since) };
   }
 
   if (!isSeries(series)) {
     return undefined;
   }
 
-  return kind === undefined ? { start, end, series } : { start, end, kind, series };
+  return kind === undefined
+    ? { start, end, series }
+    : { start, end, kind, series, ...sinceOf(since) };
 };
 
 const asPendingRanges = (value: unknown): BinancePendingRange[] | undefined => {
