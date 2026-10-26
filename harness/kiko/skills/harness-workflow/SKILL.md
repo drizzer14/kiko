@@ -280,10 +280,9 @@ files in it still gets the verify, because check:all and the hooks run
 from it. Then fast-forward main with `bash scripts/ff-main.sh <sha>`. It
 runs only for a sha whose LAST `verify` line in the queue's done.log is exit 0, so queue the
 verify through `scripts/job-queue.sh verify` (a bare `make verify` leaves no line), keep the
-tree untouched until DONE, and do not move HEAD after. The line's head field is the full sha
-only when the tree is clean at START and again at the end and HEAD is unchanged; a job that
-edits its own tree without committing records `unknown`. Limits: an edit reverted before the
-end is not seen, and ignored files (`.env`, `node_modules`) are not counted. The
+tree untouched until DONE, and do not move HEAD after. When the head field is the full sha or
+`unknown`, and the dirty-tree refusal: see the queue paragraph below and the
+`scripts/job-queue.sh` header. The
 kill-guard denies a raw
 `merge --ff-only` on main (kind `mainFastForward`). There is no bypass: an override goes to the
 user plus a run-log note. The script prints `git log -1 --oneline` of main on success.
