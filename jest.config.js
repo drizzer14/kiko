@@ -13,6 +13,17 @@ process.env.ENVFILE = process.env.ENVFILE || '.env.test';
 // host `TZ` on purpose.
 process.env.TZ = 'Europe/Kyiv';
 
+// A suite that runs scripts/job-queue.sh or scripts/ff-main.sh with no KIKO_QUEUE_DIR of its own
+// would use the real shared queue ($HOME/.claude/kiko-queue), whose done.log ff-main.sh trusts to
+// move main. Like the TZ pin, it lives here and not in jest/setup.js: a setup file writes only the
+// test sandbox's copy of `process.env`, so a child spawned with no `env` option would not see it.
+// Set unconditionally; a suite that needs the default path points HOME at a temporary folder and
+// deletes this variable from the environment it gives the child.
+process.env.KIKO_QUEUE_DIR = require('node:path').join(
+  require('node:os').tmpdir(),
+  `kiko-jest-queue-${process.pid}`,
+);
+
 module.exports = {
   preset: '@react-native/jest-preset',
   setupFiles: ['./jest/setup.js'],

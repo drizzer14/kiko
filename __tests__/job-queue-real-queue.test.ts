@@ -1,6 +1,13 @@
+import {
+  existsSync,
+  mkdirSync,
+  symlinkSync,
+  realpathSync,
+  readFileSync,
+  copyFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, copyFileSync, mkdirSync, realpathSync } from 'node:fs';
 
 import {
   createTemporaryDirectory,
@@ -11,11 +18,10 @@ import { isolatedGitEnvironment } from './test-support/isolated-git';
 import { LOW_LOAD, writeSysctlStub } from './test-support/sysctl-stub';
 import { writeFile, writeExecutable } from './test-support/mutation-repository';
 
-// The real queue is ${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}, and scripts/ff-main.sh trusts the
-// `verify` lines in its done.log. A hand-run `job-queue.sh verify <scratch repository>` once wrote
-// a verify line there for a commit nobody had verified. Every row here points HOME at a temporary
-// folder and leaves KIKO_QUEUE_DIR unset, so the default queue resolves inside that folder and no
-// row can touch the real one.
+// The real queue is ${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}, and scripts/ff-main.sh trusts
+// every `verify` line in its done.log, so a verify of a repository other than the script's own
+// must never reach it. Every row here points HOME at a temporary folder and leaves KIKO_QUEUE_DIR
+// unset, so the default queue resolves inside that folder and no row can touch the real one.
 const SCRIPT = join(__dirname, '../scripts/job-queue.sh');
 
 jest.setTimeout(120_000);
@@ -39,15 +45,19 @@ const createFixture = (): Fixture => {
   mkdirSync(home);
   mkdirSync(bin);
   const stub = ['#!/usr/bin/env bash', 'exit 0', ''].join('\n');
+  // Runs the command it wraps, as the real `caffeinate -i <command>`, so no row starts a real one.
+  const caffeinateStub = ['#!/usr/bin/env bash', 'shift', 'exec "$@"', ''].join('\n');
   warmExecutables([
     writeExecutable(join(bin, 'make'), stub),
     writeExecutable(join(bin, 'npm'), stub),
+    writeExecutable(join(bin, 'caffeinate'), caffeinateStub),
   ]);
   writeSysctlStub(bin, LOW_LOAD, LOW_LOAD, 0);
   warmExecutables([join(bin, 'sysctl')]);
   const environment = isolatedGitEnvironment(home, {
     PATH: `${bin}:${process.env.PATH}`,
     KIKO_QUEUE_PMSET: join(bin, 'no-such-pmset'),
+    KIKO_QUEUE_CAFFEINATE: join(bin, 'caffeinate'),
     KIKO_QUEUE_POLL_SECONDS: '0.1',
     GIT_AUTHOR_NAME: 'Test',
     GIT_AUTHOR_EMAIL: 'test@example.com',
@@ -146,6 +156,50 @@ describe('scripts/job-queue.sh on the real queue: a foreign repository', () => {
 
     expect(result.status).toBe(3);
     expect(existsSync(fixture.queue)).toBe(false);
+  });
+
+  it.each([
+    ['a trailing slash', (fixture: Fixture) => `${fixture.queue}/`],
+    // A template, because `join` would normalize the dot-dot segment away.
+    ['a dot-dot segment', (fixture: Fixture) => `${fixture.home}/.claude/elsewhere/../kiko-queue`],
+    ['a doubled slash', (fixture: Fixture) => `${fixture.home}/.claude//kiko-queue`],
+  ])(
+    'refuses a scratch verify when KIKO_QUEUE_DIR spells the default path with %s',
+    (_title, spell) => {
+      const fixture = createFixture();
+      const scratch = createRepository(fixture, 'scratch');
+      fixture.environment.KIKO_QUEUE_DIR = spell(fixture);
+
+      const result = runQueue(fixture, SCRIPT, 'verify', scratch, 'spelled');
+
+      expect(result.status).toBe(3);
+      expect(existsSync(fixture.queue)).toBe(false);
+    },
+  );
+
+  it('refuses a scratch verify when KIKO_QUEUE_DIR is a symlink to the default path', () => {
+    const fixture = createFixture();
+    const scratch = createRepository(fixture, 'scratch');
+    const link = join(fixture.root, 'queue-link');
+    mkdirSync(fixture.queue, { recursive: true });
+    symlinkSync(fixture.queue, link);
+    fixture.environment.KIKO_QUEUE_DIR = link;
+
+    const result = runQueue(fixture, SCRIPT, 'verify', scratch, 'linked');
+
+    expect(result.status).toBe(3);
+    expect(doneLines(fixture)).toEqual([]);
+  });
+
+  it('says the queue is the default real path, not that KIKO_QUEUE_DIR is unset', () => {
+    const fixture = createFixture();
+    const scratch = createRepository(fixture, 'scratch');
+    fixture.environment.KIKO_QUEUE_DIR = fixture.queue;
+
+    const result = runQueue(fixture, SCRIPT, 'verify', scratch, 'message');
+
+    expect(result.stderr).toContain('default real queue path');
+    expect(result.stderr).not.toContain('is unset');
   });
 
   it('does not restrict a temporary KIKO_QUEUE_DIR, which is how every other test runs', () => {

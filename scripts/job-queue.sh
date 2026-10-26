@@ -387,19 +387,37 @@ common_directory_of() {
   (cd "$1" && cd "$common" && pwd -P)
 }
 
-# scripts/ff-main.sh moves main on a `verify` line of the real queue's done.log, so a verify, a
-# gate, or a check-all of any other repository (a scratch repository run by hand once wrote a
-# verify line for a commit nobody had verified) must not reach it. harness-verify keeps working
+# A path made physical without needing it to exist: trailing and doubled slashes go, symlinks of
+# the part that exists resolve, and a `.` or `..` in the part that does not exist is applied as
+# text. So every spelling of one folder compares equal.
+physical_path() {
+  local path="$1" parent
+  while [ "${#path}" -gt 1 ] && [ "${path%/}" != "$path" ]; do path="${path%/}"; done
+  if [ -d "$path" ]; then
+    (cd "$path" && pwd -P)
+    return
+  fi
+  parent="$(physical_path "$(dirname "$path")")" || return 1
+  case "$(basename "$path")" in
+    .) printf '%s\n' "$parent" ;;
+    ..) dirname "$parent" ;;
+    *) printf '%s/%s\n' "${parent%/}" "$(basename "$path")" ;;
+  esac
+}
+
+# scripts/ff-main.sh trusts every `verify` line of the real queue's done.log, so a verify, a gate,
+# or a check-all of any other repository must not reach it. harness-verify keeps working
 # on a harness repository because its line has another kind, and security because it never
 # names a commit that ff-main.sh counts. A temporary KIKO_QUEUE_DIR is not the real queue, so a
 # test queues any repository there.
 refuse_foreign_repository_on_real_queue() {
   local own target
-  [ "$QUEUE_DIRECTORY" = "$HOME/.claude/kiko-queue" ] || return 0
+  [ "$(physical_path "$QUEUE_DIRECTORY")" = "$(physical_path "$HOME/.claude/kiko-queue")" ] \
+    || return 0
   own="$(common_directory_of "$SCRIPT_DIRECTORY")" || own=''
   target="$(common_directory_of "$worktree")" || target=''
   [ -n "$own" ] && [ "$own" = "$target" ] && return 0
-  printf 'job-queue.sh: %s is not a worktree of this script'"'"'s repository (%s), and the queue is the real one (KIKO_QUEUE_DIR is unset), whose done.log scripts/ff-main.sh trusts. Queue a worktree of this repository, or set KIKO_QUEUE_DIR to a temporary folder to run a scratch repository.\n' \
+  printf 'job-queue.sh: %s is not a worktree of this script'"'"'s repository (%s), and the queue is the default real queue path, whose done.log scripts/ff-main.sh trusts. Queue a worktree of this repository, or set KIKO_QUEUE_DIR to a temporary folder to run a scratch repository.\n' \
     "$worktree" "${own:-unknown}" >&2
   exit 3
 }
