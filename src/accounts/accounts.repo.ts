@@ -397,8 +397,17 @@ export const accountsRepo = {
    * this matters) — at the SAME instant as the ledger row's `time`, and the
    * row carries `transactions.setsBalance` and is the holding's
    * `balanceSetRowId`.
+   *
+   * Resolves the new account's and holding's ids once the write has committed, so a caller
+   * hands the holding on only after it exists (like `createImplicitHolding`).
    */
-  createCashAccount: ({ name, currency, initialBalance, icon, color }: NewCashAccount) =>
+  createCashAccount: ({
+    name,
+    currency,
+    initialBalance,
+    icon,
+    color,
+  }: NewCashAccount): Promise<{ accountId: string; holdingId: string }> =>
     write(async (databaseTransaction) => {
       if (initialBalance.currency !== currency) {
         throw new Error(
@@ -437,20 +446,20 @@ export const accountsRepo = {
         balanceSetRowId: initialBalanceMinorUnits !== 0 ? openingRowId : null,
       });
 
-      if (initialBalanceMinorUnits === 0) {
-        return;
+      if (initialBalanceMinorUnits !== 0) {
+        await databaseTransaction.insert(transactions).values({
+          id: openingRowId,
+          holdingId,
+          amountMinorUnits: initialBalanceMinorUnits,
+          time: now,
+          description: '',
+          category: null,
+          source: 'manual',
+          setsBalance: true,
+        });
       }
 
-      await databaseTransaction.insert(transactions).values({
-        id: openingRowId,
-        holdingId,
-        amountMinorUnits: initialBalanceMinorUnits,
-        time: now,
-        description: '',
-        category: null,
-        source: 'manual',
-        setsBalance: true,
-      });
+      return { accountId, holdingId };
     }),
   /**
    * Disconnect a synced account (Monobank, wallet, or Binance), turning it into

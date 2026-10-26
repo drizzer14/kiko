@@ -43,7 +43,7 @@ export type TransactionFormParams =
   | { duplicateOfTransactionId: string; draft?: TransactionFormDraft }
   | { templateId: string; draft?: TransactionFormDraft }
   | { editTemplateId: string; draft?: TransactionFormDraft }
-  | { newTemplate: true; draft?: TransactionFormDraft }
+  | { newTemplate: true; handbackId?: string; draft?: TransactionFormDraft }
   | { draft?: TransactionFormDraft };
 
 /**
@@ -157,6 +157,9 @@ type HoldingFormParams = (
   // Edit only: whether the account holds only debts, so the title reads "Loan"
   // on the first frame; the form reads the account itself when this is absent.
   debtAccount?: boolean;
+  // Set when an empty picker's "Add holding" row opened the form: the save hands the new holding's
+  // id back to this id, so the picker selects exactly that holding.
+  handbackId?: string;
 };
 
 // `Statistics` is the companion pane of the Home tab on a wide window, and Home with
@@ -213,6 +216,10 @@ export type AccountsStackParamList = {
     accountId?: string;
     initialKind?: Exclude<AccountRow['kind'], ImplicitAccountKind>;
     draft?: FormDraft | AccountFormDraft;
+    // Set when an empty picker's "Add holding" row opened the form with no account to add to: a
+    // new Cash account hands its cash holding's id back to this id, and the Property/Loan swap
+    // to the holding form carries it on.
+    handbackId?: string;
   };
   // `returnTo` is the CREATE-only return channel for a "Create new holding"
   // launched from the statement-import preview or Map Columns: the caller's

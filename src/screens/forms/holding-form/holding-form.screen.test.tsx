@@ -21,12 +21,18 @@ import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { darkTheme } from '@kiko/design-system/theme';
+import {
+  closeHandback,
+  handBackCreatedOption,
+  openHandback,
+} from '@kiko/screens/forms/use-select-created-option';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
@@ -2319,6 +2325,46 @@ describe('HoldingFormScreen create-and-return', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
     expect(navigation.navigate).not.toHaveBeenCalledWith('ColumnMapping', expect.anything());
   });
+
+  // Opens the create form with a fresh handback id in its route params, fills it and presses Save;
+  // returns the id for the test to close.
+  const saveWithHandback = async (): Promise<string> => {
+    const handbackId = openHandback();
+    const handbackRoute = asRouteProp<HoldingFormProps['route']>('HoldingForm', {
+      accountId: 'acc-1',
+      handbackId,
+    });
+    const screen = await render(
+      <HoldingFormScreen navigation={navigationProp(navigation)} route={handbackRoute} />,
+    );
+
+    await fill(screen, 'Name', 'Apartment');
+    await fill(screen, 'Cost', '5000');
+    await pressSave(navigation.setOptions);
+
+    return handbackId;
+  };
+
+  it('hands the created holding id back to the handback id in its route params, after the write', async () => {
+    const handbackId = await saveWithHandback();
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+
+    expect(closeHandback(handbackId)).toBe('new-holding-id');
+  });
+
+  it('hands nothing back when the create write fails', async () => {
+    createMock.mockRejectedValueOnce(new Error('boom'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const handbackId = await saveWithHandback();
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+
+    expect(closeHandback(handbackId)).toBeUndefined();
+    alertSpy.mockRestore();
+  });
 });
 
 describe('HoldingFormScreen metal', () => {
@@ -3042,6 +3088,7 @@ describe('HoldingFormScreen loan', () => {
         accountId: 'acc-2',
         initialType: 'card',
         initialCurrency: 'UAH',
+        handbackId: expect.any(String),
       });
       expect(navigation.navigate).not.toHaveBeenCalled();
     });
@@ -3110,6 +3157,7 @@ describe('HoldingFormScreen loan', () => {
         accountId: 'coins',
         initialType: 'crypto_asset',
         initialCurrency: 'BTC',
+        handbackId: expect.any(String),
       });
     });
 
@@ -3173,7 +3221,9 @@ describe('HoldingFormScreen loan', () => {
       await openPaidFromSheet(screen);
       await fireEvent.press(screen.getByText('Add holding'));
 
-      expect(navigation.push).toHaveBeenCalledWith('AccountForm', {});
+      expect(navigation.push).toHaveBeenCalledWith('AccountForm', {
+        handbackId: expect.any(String),
+      });
     });
 
     it('shows no row while a payer holding in the loan currency exists', async () => {
@@ -3199,14 +3249,20 @@ describe('HoldingFormScreen loan', () => {
 
     it('keeps the loan draft and selects the holding created on the round trip', async () => {
       mockAllAccounts = [IMPORT_BANK];
-      const screen = await renderScreen();
+      const { provide, fireFocus } = makeFocusNavigation();
+      // A new element per render, so the rerender is not skipped as an unchanged tree.
+      const screenElement = () =>
+        provide(<HoldingFormScreen navigation={navigationProp(navigation)} route={route} />);
+      const screen = await render(screenElement());
 
       await fill(screen, 'Principal', '500000');
       await fill(screen, 'Lender name', 'PrivatBank');
       await openPaidFromSheet(screen);
       await pressAddHolding(screen);
 
-      // The pushed holding form saved a hryvnia card and the user came back.
+      // The pushed holding form saved a hryvnia card, handed its id back to the id it was pushed
+      // with, and the user came back.
+      handBackCreatedOption(navigation.push.mock.calls[0][1].handbackId, 'h-new');
       mockAllHoldings = [
         {
           id: 'h-new',
@@ -3217,12 +3273,12 @@ describe('HoldingFormScreen loan', () => {
           closedAt: null,
           icon: null,
           color: null,
-          createdAt: Date.now(),
         },
       ];
-      await screen.rerender(
-        <HoldingFormScreen navigation={navigationProp(navigation)} route={route} />,
-      );
+      await screen.rerender(screenElement());
+      await act(async () => {
+        fireFocus();
+      });
 
       // The amount groups its thousands with a no-break space.
       expect(screen.getByLabelText('Principal').props.value).toMatch(/^500\s000$/);
@@ -5336,6 +5392,22 @@ describe('HoldingFormScreen implicit create', () => {
         draft: { name: 'Flat', icon: null, color: null },
       });
       expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('carries its handback id back to the account form it replaces itself with', async () => {
+      const screen = await renderImplicit({
+        implicitKind: 'property',
+        handbackId: 'created-option-9',
+      });
+
+      await fill(screen, 'Name', 'Flat');
+      await pickKind(screen, 'cash');
+
+      expect(navigation.replace).toHaveBeenCalledWith('AccountForm', {
+        initialKind: 'cash',
+        draft: { name: 'Flat', icon: null, color: null },
+        handbackId: 'created-option-9',
+      });
     });
 
     it('waits for the kind sheet to finish closing before replacing the screen', async () => {

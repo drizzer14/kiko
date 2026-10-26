@@ -4,6 +4,7 @@ import {
   isImplicitAccountKind,
 } from '@kiko/holdings/implicit-account';
 import type { TFunction } from 'i18next';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { useSync } from '@kiko/sync/use-sync';
 import { accountsRepo } from '@kiko/accounts';
@@ -46,6 +47,7 @@ import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
 import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
+import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
@@ -333,6 +335,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // create form.
   const editId = route.params?.accountId;
   const isEdit = editId !== undefined;
+  const handbackId = route.params?.handbackId;
 
   const { t } = useTranslation();
   const cashCurrencyGroups = useCurrencyPickerGroups(CASH_CURRENCY_CONTEXT);
@@ -724,13 +727,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // `initialValueInvalid` (checked in `scrollTargets` above) already
         // blocked Save on a blank or negative value, so reaching here means it
         // is a valid amount.
-        await accountsRepo.createCashAccount({
+        const { holdingId } = await accountsRepo.createCashAccount({
           name: trimmedName,
           currency,
           initialBalance: Money.fromMajor(currency, parseAmount(initialValue)),
           icon,
           color,
         });
+
+        // After the commit, so a rejected write hands nothing back to the picker.
+        handBackCreatedOption(handbackId, holdingId);
         // The one pick is the cash holding's currency too, so this create needs its rate like
         // the holding form's does.
         refreshAfterCurrencyWrite();
@@ -810,6 +816,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       navigation.replace('HoldingForm', {
         implicitKind: nextKind,
         draft: { name, icon: iconIsDirty ? icon : null, color },
+        // Only a defined id: the holding form's params carry no `handbackId` key otherwise.
+        ...foldMap(maybe(handbackId), (carriedId) => ({ handbackId: carriedId })),
       });
     }
   };

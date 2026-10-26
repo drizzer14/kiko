@@ -18,10 +18,13 @@ tree today.
 The root `Makefile`'s `verify` target (`make verify`, wrapping
 `scripts/checks/verify.sh`) is the end-of-work verify. The role agents ask the coordinator to
 queue it (`bash scripts/job-queue.sh verify <worktree> <label>`); a typed `make verify` is
-denied (see "Heavy-job and full-jest deny"). It runs lint, then the full Jest suite, then
+denied (see "Heavy-job and full-jest deny"). It runs lint, then the full Jest suite in two
+stages (2a: every suite but the real-semgrep ones, with the tripwire shim
+`scripts/checks/semgrep-tripwire/semgrep` first on PATH; 2b: the suites listed in
+`scripts/checks/semgrep-jest-suites.txt`, in band; a missing or empty list fails closed), then
 `check:all` (the fast+medium gate) as ORDERED, FAIL-FAST stages,
 stopping at the first failing stage rather than always running all
-three. Read `verify.sh` directly for the exact stage commands rather
+of them. Read `verify.sh` directly for the exact stage commands rather
 than restating them here; a new harness check that belongs in the
 fast+medium gate is picked up by `make verify` automatically through
 `check:all`, with no `Makefile` change needed.
@@ -78,7 +81,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   stderr and exit 0, namely (a) the dedup-skip notice (`SKIPPED, not a fresh
   scan`), because a skip exits 0 without scanning and must never read as a
   fresh scan; and (b) the Class B WARNING block, because a non-blocking
-  finding is override-eligible and still has to be seen. `dup.sh` states
+  finding is override-eligible and still has to be seen; and (c) the re-scan WARNING, one per
+  timed-out rule and file pair that passed its single re-scan (exit 0; see "Semgrep errors fail
+  the check too" below). `dup.sh` states
   its own exception: its large-file `WARNING` lines (a listed file at or under its ceiling; see
   "`check:dup` measures the files jscpd skips for size" below), because a measurement of
   tracked debt still has to be seen. Any other large-file finding exits 2. `medium.sh` states
@@ -157,6 +162,28 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   as a value: its string is split into words and re-parsed as the
   command line (`envSplitCommand`). `xargs --rep=R` sets the
   placeholder like `--replace=R`.
+  The unwrap also reads a command typed inside a wrapper (read `kill-guard.js`; rows in
+  `__tests__/kill-guard-wrapped-commands.test.ts`): `caffeinate` (`-t`/`-w` take a value),
+  `arch`, `sandbox-exec`, `script` (BSD `script [-q] [file] cmd`), `screen` (a command
+  argument, and `-X stuff|screen|exec|eval`, also with `-r`/`-x`), and `tmux`
+  (`new-session`, `new-window`, `split-window`, `respawn-pane`, `respawn-window`, `run-shell`,
+  `if-shell`, `display-popup` (`popup` is its alias), `pipe-pane`; `send-keys` words joined in
+  order and shell-quoted; a `;` splits tmux commands; a global `-c` text; unique command
+  prefixes). The tmux tables are UNVERIFIED (tmux is not installed here; deny-leaning). Every
+  `--text`/`--command` value of any `orca` call is judged as a typed line (ruling R2); a next
+  word that starts with `--` is not a value. `osascript` text matching the case-insensitive
+  regex `/\bdo\s*(?:shell\s*)?script\b/i` (any whitespace; covers "do shell script",
+  "do script", `doShellScript`, `doScript`) is denied as kind `osascriptShell`
+  (R3: prose false positives are accepted; the sender rewords). A `$'...'` ANSI-C string is
+  decoded in the shared quote removal; `$'` opens one only after an odd run of unescaped `$`
+  (`opensAnsiCQuote`: `$$'` is a pid then a quote).
+  Known limits, NOT denied (each blind spot sits beside the deny): `ssh`; `at` (gap
+  `20261023T1404-kiko-harness-h11/1`); an osascript script file or stdin; an orca text in a
+  variable, split across sends, or judged by the target terminal's cwd; util-linux
+  `script -c`; other `screen -X` commands; the tmux commands inside an `if-shell` argument;
+  `caffeinate -ti` (the tool refuses it); a backslash-newline inside a `$` run
+  (`$\<newline>$'...'` reads as the opposite quote kind); R3 prose false positives, incl. a
+  backticked command and `set doscript to 1`.
   There is no closer stripping: an unquoted `)` ends the segment, like
   `;`. Any shell flag group holding `c` (`-lc`, `-xc`) counts as `-c`,
   and `eval`'s arguments are scanned as a command string. `$(...)`,
@@ -508,10 +535,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`noteQueuedJob`, `isQueueScript`). Rows: `__tests__/kill-guard-heavy-jobs.test.ts`,
   `-jest-runs`, `-jest-options`, `-queue-edges`. Known limits (all allowed; the docs never
   prescribe one of these routes, and (a) is a gap in the run log): (a) a command typed
-  inside another command is not unwrapped: `caffeinate -i make verify|make deep|bash
-  scripts/checks/verify.sh` is allowed (it also lets a kill through), and `orca terminal send
-  --text "npm run check:all"` or `"npx jest"` is allowed; (b) `make -Nn verify`, `make -I -n
-  verify`, `make -o -n verify` and `make -W -n verify` read as a dry run
+  inside ssh, at, an osascript script file or stdin, or an orca text held in a variable, split
+  across sends, or judged against the target terminal's cwd, is not judged (the unwrap and
+  the wrapper blind spots are listed after "The unwrap" paragraph); (b) `make -Nn verify`,
+  `make -I -n verify`, `make -o -n verify` and `make -W -n verify` read as a dry run
   (`MAKE_DRY_RUN_FLAGS` lacks `N`; the word test accepts any word); (c) `$PWD/`, `${PWD}/`,
   `$(pwd)` and other `$X` targets for `security.sh` and Semgrep are allowed (only an exact
   `$PWD` names the repository); (d) `cd scripts/checks && bash verify.sh` is allowed (the
@@ -1421,8 +1448,15 @@ findings-handling for the exact mechanism, not restated here):
 - **Semgrep errors fail the check too.** A Semgrep exit code other than
   0/1, output that is not valid JSON, or an `errors[]` entry at level
   `error` or of type `Timeout` (Semgrep reports a timeout at warn level
-  with exit 0) fails `check:security`. Other warn-level errors stay
-  non-blocking. Read `scripts/checks/security.sh` for the exact test.
+  with exit 0) fails `check:security`, except a Timeout the single re-scan clears (next bullet).
+  Other warn-level errors stay non-blocking. Read `scripts/checks/security.sh` for the exact
+  test.
+- **One re-scan for timed-out files.** The main scan runs with `--jobs 6`. Each file that timed
+  out is re-scanned once alone with `--jobs 1`, with the same configs and the same 5 s
+  timer. A pass prints one WARNING per rule and file pair (exit 0). More than 10 pairs, or any
+  re-scan problem, fails. A warn-level `PartialParsing` entry in a re-scan also fails it
+  (accepted ruling, I0-5 review F3). The re-scan is not an override. Read
+  `scripts/checks/security.sh` for the limits.
 - **Only registry rules that cannot match this repo are excluded.**
   `security.sh` passes `--exclude-rule <full check_id>`; the full id is
   the registry rule file's dotted path plus the rule's own id; copy it from
@@ -1435,7 +1469,7 @@ findings-handling for the exact mechanism, not restated here):
   `kiko-*` rule, a file, or an id that can match here; the proof is
   handler-shaped (any `(request, response)` HTTP handler, a sink package, or
   a DOM target means the matching ids come back). A Semgrep Timeout on a
-  rule that still runs keeps failing `check:security`.
+  rule that still runs fails `check:security` unless the single re-scan clears it.
 - **Every argument is scanned.** `security.sh` takes any number of targets
   (none means the whole repo), drops a `rules/fixtures/` file among them,
   and hands the rest to ONE Semgrep call. A call whose targets are all
@@ -1520,7 +1554,8 @@ second pass, the large-file pass (WARN at or under a file's ceiling, FAIL otherw
   more than one file, so a scope with no large file runs no combined run and a one-file scope does
   not repeat its alone figure. The pass itself still costs the two file listings (about 1 s).
   The combined baseline is the `*combined*` row of `scripts/checks/dup-ceilings.tsv`, held by the
-  no-argument run only; read the row there, not a figure copied here.
+  no-argument run only; read the row there, not a figure copied here. A row at or under the
+  `.jscpd.json` threshold (`*combined*` included) fails `__tests__/dup-ceilings-rows.test.ts`.
 - The ceilings file `scripts/checks/dup-ceilings.tsv` is read up front on every run: a missing
   or malformed file (a bad row, a repeated path, no `*combined*` row) exits 2 before any jscpd
   run. Per class:
@@ -2848,7 +2883,9 @@ a pre-existing finding points at. A Semgrep deny names
 
 A Jest invariant, `__tests__/cited-paths.test.ts`, fails when a skill,
 agent or harness doc cites a repo path in an inline code span that does
-not exist. Fix the citation in the text; never allowlist it. A sentence
+not exist. Fix the citation in the text; never allowlist it. A doc never cites an untracked
+folder that exists only in some checkouts (for example .claude/worktrees/ or memory/refs/): the
+citation resolves in one checkout and fails in another. Write it without backticks. A sentence
 that names a path that is gone (a move, a removal) writes it without
 backticks, so it is not a citation; no prose wording exempts a
 backticked path. The test's header defines what counts as a citation.

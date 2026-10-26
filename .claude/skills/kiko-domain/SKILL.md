@@ -291,9 +291,9 @@ implemented, and callers must skip it rather than assume every id resolves.
   Re-syncing an existing `externalId` **refreshes** that row's
   bank-owned columns — the settled `amountMinorUnits` and `hold`
   among them — and **never** its `comment`; its `category` is written
-  only for an unflagged (`category_set_by_hand = 0`), non-structural row
-  (a row that no field of `REWRITE_GUARD_FIELDS` in
-  `src/categories/category-rules/plan-rule-rewrite.ts` marks) whose amount changed and a
+  only for an unflagged (`category_set_by_hand = 0`) row no `REWRITE_GUARD_FIELDS` field marks
+  (`src/categories/category-rules/plan-rule-rewrite.ts`; an exchange leg is refreshed when its
+  amount changed and a rule wins) whose amount changed and a
   category rule wins
   (`ruleWonTransactionSet`, `src/transactions/repo/transactions.repo.ts`). Read `addManyDedup` in
   `src/transactions/` for the exact refreshable
@@ -1067,7 +1067,12 @@ always, and the marker only when it is manual or imported and carries none; see
 - The marker is what the spending view excludes on, in the
   exchange-exclusion module (`src/statistics/`): no other rule can see these
   rows — a null `mcc`, an empty description, and a cross-currency pair
-  the matched-pair matcher rejects.
+  the matched-pair matcher rejects. The exclusion reads ONLY
+  `exchangeCounterpartHoldingId` and `untrackedCounterpart` (`exchange-exclusion.ts`). A
+  category rule can re-categorize a leg (user ruling B, 2026-10-25); spending still excludes it
+  by its marker. A row with only `exchangePairId` (a synced bank debit a Convert marked) still
+  counts as spending, and a rule may move it between slices with the total unchanged (user
+  ruling M-1 = A, 2026-10-25).
 - **The repository never writes a description for a leg.** The label is
   resolved at render time through `t`. `transactionRowDescription`
   (`src/transactions/row-description/`) applies the ordered steps its JSDoc lists in

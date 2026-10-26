@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stage 2a of scripts/checks/verify.sh puts this directory first on PATH. A jest suite that is
+# not on the list and still starts `semgrep` lands here instead of the real binary, and fails.
+printf 'a stage 2a suite ran the real semgrep: add it to scripts/checks/semgrep-jest-suites.txt\n' >&2
+exit 2

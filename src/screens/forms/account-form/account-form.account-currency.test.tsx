@@ -10,6 +10,7 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import type { accountsRepo } from '@kiko/accounts';
 import { pressSave } from '@kiko/test-support/form-header-items';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { selectKind } from '@kiko/test-support/account-form-test-support';
@@ -25,7 +26,10 @@ const HINT =
 
 const mockSaveFormAccount = jest.fn();
 const mockCreateIfAbsent = jest.fn();
-const mockCreateCashAccount = jest.fn();
+const mockCreateCashAccount = jest.fn<
+  ReturnType<typeof accountsRepo.createCashAccount>,
+  Parameters<typeof accountsRepo.createCashAccount>
+>();
 const mockUpdate = jest.fn();
 const mockSetIcon = jest.fn();
 const mockCryptoSync = jest.fn();
@@ -53,7 +57,8 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     exists: async () => false,
     createIfAbsent: (...args: unknown[]) => mockCreateIfAbsent(...args),
     saveFormAccount: (...args: unknown[]) => mockSaveFormAccount(...args),
-    createCashAccount: (...args: unknown[]) => mockCreateCashAccount(...args),
+    createCashAccount: (...args: Parameters<typeof accountsRepo.createCashAccount>) =>
+      mockCreateCashAccount(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
     setIcon: (...args: unknown[]) => mockSetIcon(...args),
   },
@@ -156,7 +161,10 @@ beforeEach(() => {
   holdCurrencies([]);
   mockSaveFormAccount.mockResolvedValue('new-account-id');
   mockCreateIfAbsent.mockResolvedValue('new-account-id');
-  mockCreateCashAccount.mockResolvedValue(undefined);
+  mockCreateCashAccount.mockResolvedValue({
+    accountId: 'new-cash-account-id',
+    holdingId: 'new-cash-holding-id',
+  });
   mockUpdate.mockResolvedValue(undefined);
   mockSetIcon.mockResolvedValue(undefined);
   mockCryptoSync.mockResolvedValue(true);

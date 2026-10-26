@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import type { ReactElement, RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import type { ConvertView } from '../convert-view';
@@ -11,7 +12,7 @@ export type FieldGroupProps = {
   convertView: ConvertView;
   counterpartHoldingId: string | null;
   onSelectCounterpart: (id: string) => void;
-  onCreateCounterpart: () => void;
+  onCreateCounterpart: (handbackId: HandbackId) => void;
   counterpartAmount: string;
   onChangeCounterpartAmount: (text: string) => void;
   isExchange: boolean;
@@ -23,7 +24,7 @@ export type FieldGroupProps = {
   destinationOptions: HoldingSelectOption[];
   destinationHoldingId: string | null;
   onSelectDestination: (id: string) => void;
-  onCreateDestination: () => void;
+  onCreateDestination: (handbackId: HandbackId) => void;
   valueIn: string;
   onChangeValueIn: (text: string) => void;
   // The destination holding's currency glyph, shown as the Value-In field's

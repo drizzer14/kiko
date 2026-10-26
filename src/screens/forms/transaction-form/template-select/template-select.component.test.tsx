@@ -1,4 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
+import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
 
@@ -10,20 +12,44 @@ const TEMPLATES = [
   { id: 't2', name: 'Coffee' },
 ];
 
+// The select hears the screen's focus through its navigation, so it renders inside one the test
+// can fire focus on.
 const setup = async (overrides: Partial<TemplateSelectProps> = {}) => {
   const onSelect = jest.fn();
+  const onCreateTemplate = jest.fn();
+  const { provide, fireFocus } = makeFocusNavigation();
+  const props: TemplateSelectProps = {
+    templates: TEMPLATES,
+    isLoading: false,
+    selectedId: null,
+    onSelect,
+    onCreateTemplate,
+    ...overrides,
+  };
 
-  const utils = await render(
-    <TemplateSelect
-      templates={TEMPLATES}
-      isLoading={false}
-      selectedId={null}
-      onSelect={onSelect}
-      {...overrides}
-    />,
-  );
+  const utils = await render(provide(<TemplateSelect {...props} />));
 
-  return { onSelect, ...utils };
+  return {
+    onSelect,
+    onCreateTemplate,
+    ...utils,
+    fireFocus: () => act(async () => fireFocus()),
+    rerenderWith: (changed: Partial<TemplateSelectProps>) =>
+      utils.rerender(provide(<TemplateSelect {...props} {...changed} />)),
+  };
+};
+
+// The sheet's Modal leaves the tree once closed, so its host is read while open and its own
+// `onDismiss` (the end of the close) is called directly.
+const finishClosing = async (sheet: { props: Record<string, unknown> }): Promise<void> => {
+  await act(async () => (sheet.props.onDismiss as () => void)());
+};
+
+const pressAddTemplate = async (utils: Awaited<ReturnType<typeof setup>>): Promise<void> => {
+  await fireEvent.press(utils.getByTestId('template-field'));
+  const sheet = utils.getByTestId('template-field-sheet-modal');
+  await fireEvent.press(utils.getByTestId('template-field-empty-action'));
+  await finishClosing(sheet);
 };
 
 describe('TemplateSelect', () => {
@@ -75,5 +101,102 @@ describe('TemplateSelect', () => {
     expect(
       getByText('No templates yet. Turn on "Save as a new template" when you save a transaction.'),
     ).toBeTruthy();
+  });
+
+  it('offers an Add template row in the empty sheet, and still shows the hint under the select', async () => {
+    const { getByTestId, getByText } = await setup({ templates: [] });
+
+    await fireEvent.press(getByTestId('template-field'));
+
+    expect(getByTestId('template-field-empty-action')).toHaveTextContent('Add template');
+    expect(
+      getByText('No templates yet. Turn on "Save as a new template" when you save a transaction.'),
+    ).toBeTruthy();
+  });
+
+  it('offers no Add template row while the list is still loading', async () => {
+    const { getByTestId, queryByTestId, queryByText } = await setup({
+      templates: [],
+      isLoading: true,
+    });
+
+    await fireEvent.press(getByTestId('template-field'));
+
+    expect(queryByTestId('template-field-empty-action')).toBeNull();
+    expect(queryByText('Add template')).toBeNull();
+  });
+
+  it('offers no Add template row while there are templates', async () => {
+    const { getByTestId, queryByTestId, queryByText } = await setup();
+
+    await fireEvent.press(getByTestId('template-field'));
+
+    expect(getByTestId('template-field-option-t1')).toBeTruthy();
+    expect(queryByTestId('template-field-empty-action')).toBeNull();
+    expect(queryByText('Add template')).toBeNull();
+  });
+
+  it('asks for the new-template form through onCreateTemplate once the sheet has closed', async () => {
+    const utils = await setup({ templates: [] });
+
+    await fireEvent.press(utils.getByTestId('template-field'));
+    const sheet = utils.getByTestId('template-field-sheet-modal');
+    await fireEvent.press(utils.getByTestId('template-field-empty-action'));
+
+    expect(utils.onCreateTemplate).not.toHaveBeenCalled();
+
+    await finishClosing(sheet);
+
+    expect(utils.onCreateTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the template handed back for the id onCreateTemplate received, on return', async () => {
+    const utils = await setup({ templates: [] });
+
+    await pressAddTemplate(utils);
+    handBackCreatedOption(utils.onCreateTemplate.mock.calls[0][0], 'created');
+    await utils.rerenderWith({ templates: [{ id: 'created', name: 'Gym' }] });
+    await utils.fireFocus();
+
+    expect(utils.onCreateTemplate).toHaveBeenCalledWith(expect.any(String));
+    expect(utils.onSelect).toHaveBeenCalledTimes(1);
+    expect(utils.onSelect).toHaveBeenCalledWith('created');
+  });
+
+  it('reports the handed-back template, never one created elsewhere during the round trip', async () => {
+    const utils = await setup({ templates: [] });
+
+    await pressAddTemplate(utils);
+    await utils.rerenderWith({ templates: [{ id: 'coffee', name: 'Coffee' }] });
+    handBackCreatedOption(utils.onCreateTemplate.mock.calls[0][0], 'rent');
+    await utils.rerenderWith({
+      templates: [
+        { id: 'coffee', name: 'Coffee' },
+        { id: 'rent', name: 'Rent' },
+      ],
+    });
+    await utils.fireFocus();
+
+    expect(utils.onSelect.mock.calls).toEqual([['rent']]);
+  });
+
+  it('reports nothing on a cancel, even when another template appeared during the round trip', async () => {
+    const utils = await setup({ templates: [] });
+
+    await pressAddTemplate(utils);
+    await utils.rerenderWith({ templates: [{ id: 'coffee', name: 'Coffee' }] });
+    await utils.fireFocus();
+
+    expect(utils.onCreateTemplate).toHaveBeenCalledTimes(1);
+    expect(utils.onSelect).not.toHaveBeenCalled();
+  });
+
+  it('reports no template that appears without a press', async () => {
+    const utils = await setup({ templates: [] });
+
+    await utils.rerenderWith({ templates: [{ id: 'synced', name: 'Gym' }] });
+    await utils.fireFocus();
+
+    expect(utils.onSelect).not.toHaveBeenCalled();
   });
 });

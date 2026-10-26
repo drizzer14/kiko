@@ -19,7 +19,7 @@ import {
   execFileSync,
 } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 import {
   writeFile,
@@ -1563,6 +1563,200 @@ describe('scripts/job-queue.sh LOST lines', () => {
     expect([kind, label, outcome, head]).toEqual(['gate', 'ghost', 'lost', 'unknown']);
     expect(start).toMatch(new RegExp(`^${ISO_STAMP}$`));
     expect(end).toBe(start);
+  });
+});
+
+// Records each call, fails the `test` call with KIKO_STUB_TEST_EXIT, and holds the `test` call
+// until the release file exists, so one stub covers a failing, a passing, and a running job.
+const HARNESS_NPM_STUB = [
+  '#!/usr/bin/env bash',
+  // A warm-up run has no sandbox variables.
+  '[ -n "$KIKO_STUB_CALLS" ] || exit 0',
+  '{',
+  '  printf "npm %s\\n" "$*"',
+  '  printf "  force-color %s\\n" "$(printenv FORCE_COLOR || echo unset)"',
+  '  if [ /dev/fd/0 -ef /dev/null ]; then echo "  stdin dev-null"; else echo "  stdin other"; fi',
+  '} >> "$KIKO_STUB_CALLS"',
+  `if [ "\${*: -1}" = "test" ]; then`,
+  '  while [ -n "$KIKO_STUB_RELEASE" ] && [ ! -e "$KIKO_STUB_RELEASE" ] &&',
+  `    [ -d "\${KIKO_STUB_RELEASE%/*}" ]; do`,
+  '    sleep 0.05',
+  '  done',
+  '  exit "$(printenv KIKO_STUB_TEST_EXIT || echo 0)"',
+  'fi',
+  'exit 0',
+  '',
+].join('\n');
+
+const useHarnessNpm = (sandbox: Sandbox): void => {
+  warmExecutables([writeExecutable(join(sandbox.root, 'bin/npm'), HARNESS_NPM_STUB)]);
+};
+
+const createHarnessWorktree = (sandbox: Sandbox, name: string): string => {
+  const worktree = createWorktree(sandbox, name);
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: worktree });
+  writeFileSync(join(worktree, 'package.json'), '{}\n');
+
+  return worktree;
+};
+
+const npmCalls = (sandbox: Sandbox): string[] =>
+  readLines(sandbox.environment.KIKO_STUB_CALLS as string).filter((line) =>
+    line.startsWith('npm '),
+  );
+
+const forceColorLines = (sandbox: Sandbox): string[] =>
+  readLines(sandbox.environment.KIKO_STUB_CALLS as string).filter((line) =>
+    line.includes('force-color'),
+  );
+
+describe('scripts/job-queue.sh harness-verify', () => {
+  it('lists the class in the usage block', () => {
+    const result = runQueue(createSandbox());
+
+    expect(result.stderr).toContain('harness-verify <harness worktree> <label>');
+  });
+
+  it('runs npm --prefix <worktree> test, then run check:all, for harness-verify', () => {
+    const sandbox = createSandbox();
+    useHarnessNpm(sandbox);
+    const worktree = createHarnessWorktree(sandbox, 'harness');
+
+    const result = runQueue(sandbox, 'harness-verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(npmCalls(sandbox)).toEqual([
+      `npm --prefix ${worktree} test`,
+      `npm --prefix ${worktree} run check:all`,
+    ]);
+    expect(forceColorLines(sandbox)).toEqual(['  force-color unset', '  force-color unset']);
+    expect(readLines(join(sandbox.queue, 'done.log'))[0]).toMatch(/^harness-verify one 0 /);
+  });
+
+  it('runs both npm calls of harness-verify with stdin from /dev/null', () => {
+    const sandbox = createSandbox();
+    useHarnessNpm(sandbox);
+    const worktree = createHarnessWorktree(sandbox, 'harness');
+
+    const result = runQueue(sandbox, 'harness-verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(
+      readLines(sandbox.environment.KIKO_STUB_CALLS as string).filter((line) =>
+        line.includes('stdin '),
+      ),
+    ).toEqual(['  stdin dev-null', '  stdin dev-null']);
+  });
+
+  it('does not run check:all when the harness test fails', () => {
+    const sandbox = createSandbox();
+    useHarnessNpm(sandbox);
+    sandbox.environment.KIKO_STUB_TEST_EXIT = '5';
+    const worktree = createHarnessWorktree(sandbox, 'harness');
+
+    const result = runQueue(sandbox, 'harness-verify', worktree, 'one');
+
+    expect(result.status).toBe(5);
+    expect(npmCalls(sandbox)).toEqual([`npm --prefix ${worktree} test`]);
+  });
+
+  describe('refuses a worktree that is not a harness worktree', () => {
+    const refusals: [string, (sandbox: Sandbox) => string, string][] = [
+      [
+        'a relative path',
+        (sandbox) => relative(process.cwd(), createHarnessWorktree(sandbox, 'relative')),
+        'absolute',
+      ],
+      [
+        'a folder that is not a git top level',
+        (sandbox) => {
+          const worktree = createWorktree(sandbox, 'plain');
+          writeFileSync(join(worktree, 'package.json'), '{}\n');
+
+          return worktree;
+        },
+        'git top level',
+      ],
+      [
+        'a subfolder of a git repository',
+        (sandbox) => {
+          const inner = join(createHarnessWorktree(sandbox, 'outer'), 'inner');
+          mkdirSync(inner);
+          writeFileSync(join(inner, 'package.json'), '{}\n');
+
+          return inner;
+        },
+        'git top level',
+      ],
+      [
+        'a worktree without package.json',
+        (sandbox) => {
+          const worktree = createHarnessWorktree(sandbox, 'bare');
+          rmSync(join(worktree, 'package.json'));
+
+          return worktree;
+        },
+        'package.json',
+      ],
+      [
+        'a pff-ios worktree',
+        (sandbox) => {
+          const worktree = createHarnessWorktree(sandbox, 'app');
+          mkdirSync(join(worktree, 'harness/kiko/.claude-plugin'), { recursive: true });
+          writeFileSync(join(worktree, 'harness/kiko/.claude-plugin/plugin.json'), '{}\n');
+
+          return worktree;
+        },
+        'pff-ios',
+      ],
+    ];
+
+    it.each(refusals)('exits 2 naming the reason for %s', (_title, build, reason) => {
+      const sandbox = createSandbox();
+      useHarnessNpm(sandbox);
+      const worktree = build(sandbox);
+
+      const result = runQueue(sandbox, 'harness-verify', worktree, 'one');
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('usage:');
+      expect(result.stderr).toContain(reason);
+      expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+      expect(npmCalls(sandbox)).toEqual([]);
+    });
+  });
+
+  it('prints no copy WARNING for a harness worktree that has its own scripts/job-queue.sh', () => {
+    const sandbox = createSandbox();
+    useHarnessNpm(sandbox);
+    const worktree = createHarnessWorktree(sandbox, 'harness');
+    mkdirSync(join(worktree, 'scripts'));
+    writeFileSync(join(worktree, 'scripts/job-queue.sh'), '#!/usr/bin/env bash\n# a newer copy\n');
+
+    const result = runQueue(sandbox, 'harness-verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('WARNING');
+  });
+
+  it('takes the queue lock like verify: a second job waits while harness-verify runs', async () => {
+    const sandbox = createSandbox();
+    useHarnessNpm(sandbox);
+    sandbox.environment.KIKO_STUB_RELEASE = join(sandbox.root, 'release');
+    const worktree = createHarnessWorktree(sandbox, 'harness');
+    const other = createWorktree(sandbox, 'other');
+
+    const first = startQueue(sandbox, 'harness-verify', worktree, 'first');
+    await waitFor(() => npmCalls(sandbox).length === 1);
+    const second = startQueue(sandbox, 'verify', other, 'second');
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 1);
+    await waitForPasses(sandbox);
+
+    expect(second.child.exitCode).toBeNull();
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    writeFileSync(join(sandbox.root, 'release'), '');
+    await Promise.all([first.finished, second.finished]);
+    expect(startedWorktrees(sandbox)).toEqual([other]);
   });
 });
 

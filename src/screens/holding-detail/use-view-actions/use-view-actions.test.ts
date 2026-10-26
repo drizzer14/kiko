@@ -103,6 +103,27 @@ describe('useViewActions', () => {
     });
   });
 
+  it('offers the actions once the holdings and accounts load after the first render', async () => {
+    const { result, rerender } = await renderHook(
+      ({ loaded }: { loaded: boolean }) =>
+        useViewActions({
+          holdingId: 'loan',
+          holdings: loaded ? [CARD, LOAN] : [],
+          accounts: loaded ? [BANK, DEBTS] : [],
+        }),
+      { initialProps: { loaded: false } },
+    );
+
+    expect(result.current('card')).toEqual({ onViewAccount: undefined, onViewHolding: undefined });
+
+    await rerender({ loaded: true });
+
+    const { onViewAccount, onViewHolding } = result.current('card');
+
+    expect(onViewAccount).toBeDefined();
+    expect(onViewHolding).toBeDefined();
+  });
+
   it('offers no View account while its account is not loaded, yet still View holding', async () => {
     const { result } = await renderHook(() =>
       useViewActions({ holdingId: 'loan', holdings: [CARD, LOAN], accounts: [DEBTS] }),

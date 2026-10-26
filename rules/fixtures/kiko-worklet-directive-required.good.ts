@@ -54,3 +54,15 @@ const dimByLater = (dimOpacityValue: number): number => {
 
   return dimOpacityValue * 0.75;
 };
+
+// Probe:a tagged helper whose body is ONLY the directive.
+const settleForRest = (): void => {
+  'worklet';
+};
+
+export const useRestStyle = (restScale: { value: number }) =>
+  useAnimatedStyle(() => {
+    settleForRest();
+
+    return { transform: [{ scale: restScale.value }] };
+  });
