@@ -32,6 +32,9 @@ type FundingLedgerRow = {
   amountMinorUnits: number;
   currency: Currency;
   untrackedCounterpart: string | null;
+  description: string;
+  mcc: number | null;
+  categorySetByHand: boolean;
 };
 
 type FundingMatch = { exchangeId: string; kind: FundingKind };
@@ -148,21 +151,49 @@ const candidatePairsOf = (
   return pairs;
 };
 
-// Each bank row and each exchange row is used at most once.
-const pairOneToOne = (pairs: readonly FundingPair[]): Map<string, FundingMatch> => {
-  const matches = new Map<string, FundingMatch>();
-  const consumedExchangeIds = new Set<string>();
+// How a card payment to an exchange shows on a bank statement: a wire transfer (4829) or a
+// top-up at a financial institution (6012). A debit like this is the likelier funding than a shop
+// purchase of the same amount, so it takes the match first.
+const TRANSFER_LIKE_MCCS: readonly (number | null)[] = [4829, 6012];
+const EXCHANGE_NAME = 'binance';
 
-  for (const { bank, funding } of pairs) {
-    if (matches.has(bank.id) || consumedExchangeIds.has(funding.exchange.id)) {
+// The stored description, not the one a category rule matches on: a bank debit is not an exchange
+// leg, and a blank manual row's label is a category or default text, never the exchange's name.
+const isTransferLike = ({ mcc, description }: FundingLedgerRow): boolean =>
+  TRANSFER_LIKE_MCCS.includes(mcc) || description.toLowerCase().includes(EXCHANGE_NAME);
+
+const gapOf = ({ bank, funding }: FundingPair): number =>
+  Math.abs(bank.time - funding.exchange.time);
+
+const compareText = (left: string, right: string): number =>
+  Number(left > right) - Number(left < right);
+
+// The ids end the order so the same ledger pairs the same rows whatever order it arrives in.
+const byPriority = (left: FundingPair, right: FundingPair): number =>
+  Number(isTransferLike(right.bank)) - Number(isTransferLike(left.bank)) ||
+  gapOf(left) - gapOf(right) ||
+  compareText(left.bank.id, right.bank.id) ||
+  compareText(left.funding.exchange.id, right.funding.exchange.id);
+
+// The best pair of ALL candidates is taken first and each bank row and each exchange row is used
+// at most once, so a debit another rule already leaves out of spending still takes its match
+// instead of handing it to a later, genuine purchase.
+const pairOneToOne = (pairs: readonly FundingPair[]): FundingPair[] => {
+  const consumedBankIds = new Set<string>();
+  const consumedExchangeIds = new Set<string>();
+  const taken: FundingPair[] = [];
+
+  for (const pair of [...pairs].sort(byPriority)) {
+    if (consumedBankIds.has(pair.bank.id) || consumedExchangeIds.has(pair.funding.exchange.id)) {
       continue;
     }
 
-    matches.set(bank.id, { exchangeId: funding.exchange.id, kind: funding.kind });
-    consumedExchangeIds.add(funding.exchange.id);
+    consumedBankIds.add(pair.bank.id);
+    consumedExchangeIds.add(pair.funding.exchange.id);
+    taken.push(pair);
   }
 
-  return matches;
+  return taken;
 };
 
 /**
@@ -170,7 +201,8 @@ const pairOneToOne = (pairs: readonly FundingPair[]): Map<string, FundingMatch> 
  * total, positive amount) with the bank debit that funded it: a negative row on a holding of a
  * non-crypto account, in the code's fiat, for exactly minus the total in minor units, dated inside
  * the kind's window around the exchange row. Returns the pairs by bank row id and the ids to leave
- * out of spending.
+ * out of spending: every matched debit except one the user categorized by hand, which stays in
+ * spending as set but still takes its match.
  */
 export const exchangeFundingMatches = (
   ledger: readonly FundingLedgerRow[],
@@ -180,7 +212,17 @@ export const exchangeFundingMatches = (
   const pairs = ledger
     .flatMap((row) => fundingOf(row) ?? [])
     .flatMap((funding) => candidatePairsOf(funding, buckets));
-  const matches = pairOneToOne(pairs);
+  const taken = pairOneToOne(pairs);
 
-  return { matches, excludedIds: new Set(matches.keys()) };
+  const matches = new Map<string, FundingMatch>(
+    taken.map(({ bank, funding }) => [
+      bank.id,
+      { exchangeId: funding.exchange.id, kind: funding.kind },
+    ]),
+  );
+  const excludedIds = new Set(
+    taken.flatMap(({ bank }) => (bank.categorySetByHand ? [] : [bank.id])),
+  );
+
+  return { matches, excludedIds };
 };

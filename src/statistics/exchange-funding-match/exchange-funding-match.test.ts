@@ -1,4 +1,5 @@
 import type { AccountRow } from '@kiko/db';
+import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
 import { exchangeFundingMatches } from './exchange-funding-match';
 
@@ -24,7 +25,17 @@ const exchangeRow = (
   amountMinorUnits = 9_990_000_000,
   holdingId = 'usdt',
   currency: Row['currency'] = 'USDT',
-): Row => ({ id, holdingId, time, amountMinorUnits, currency, untrackedCounterpart });
+): Row => ({
+  id,
+  holdingId,
+  time,
+  amountMinorUnits,
+  currency,
+  untrackedCounterpart,
+  description: '',
+  mcc: null,
+  categorySetByHand: false,
+});
 
 const debit = (
   id: string,
@@ -32,11 +43,163 @@ const debit = (
   time: number,
   holdingId = 'card',
   currency: Row['currency'] = 'UAH',
-): Row => ({ id, holdingId, time, amountMinorUnits, currency, untrackedCounterpart: null });
+): Row => ({
+  id,
+  holdingId,
+  time,
+  amountMinorUnits,
+  currency,
+  untrackedCounterpart: null,
+  description: '',
+  mcc: null,
+  categorySetByHand: false,
+});
+
+const GROCERY_MCC = 5411;
+const CASH_OUT_MCC = 6012;
+const OWN_TRANSFER_MCC = 4829;
+
+// A UAH card debit of the P2P total the tests below fund, so a case names only what differs.
+const fundingDebit = (id: string, time: number, extra: Partial<Row> = {}): Row => ({
+  ...debit(id, -415_000, time),
+  ...extra,
+});
 
 const matchesOf = (ledger: Row[]) => exchangeFundingMatches(ledger, ACCOUNT_KIND_BY_HOLDING_ID);
 
 const NO_MATCHES = { matches: new Map(), excludedIds: new Set() };
+
+const WINDOW_MS = {
+  p2p: { before: HOUR, after: 2 * HOUR },
+  card: { before: DAY, after: 3 * DAY },
+  bank: { before: 5 * DAY, after: HOUR },
+};
+
+type GeneratedFunding = {
+  kind: keyof typeof WINDOW_MS;
+  fiat: 'UAH' | 'EUR';
+  totalMinorUnits: number;
+};
+
+const GENERATED_KINDS = ['p2p', 'card', 'bank'] as const;
+const GENERATED_FIATS = ['UAH', 'EUR'] as const;
+const GENERATED_TOTALS = [100_000, 200_000];
+const GENERATED_HOLDING_CURRENCY: Record<string, Row['currency']> = {
+  card: 'UAH',
+  'card-eur': 'EUR',
+  'funding-uah': 'UAH',
+};
+// Ten-minute steps over a few hours make equal time gaps common, so every tie-break runs.
+const GENERATED_STEP = 10 * MINUTE;
+const PROPERTY_RUNS = 150;
+const SHUFFLES_PER_RUN = 2;
+
+const pick = <Item>(random: Random, items: readonly Item[]): Item =>
+  items[Math.floor(random() * items.length)];
+
+const shuffled = <Item>(random: Random, items: readonly Item[]): Item[] => {
+  const copy = [...items];
+
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(random() * (index + 1));
+
+    [copy[index], copy[other]] = [copy[other], copy[index]];
+  }
+
+  return copy;
+};
+
+const generatedLedgerOf = (random: Random) => {
+  const fundingById = new Map<string, GeneratedFunding>();
+  const exchanges = Array.from({ length: 1 + Math.floor(random() * 6) }, (_unused, index) => {
+    const funding: GeneratedFunding = {
+      kind: pick(random, GENERATED_KINDS),
+      fiat: pick(random, GENERATED_FIATS),
+      totalMinorUnits: pick(random, GENERATED_TOTALS),
+    };
+    const id = `exchange-${index}`;
+    const code = `${funding.kind}:${funding.fiat}:${(funding.totalMinorUnits / 100).toFixed(2)}`;
+
+    fundingById.set(id, funding);
+
+    return exchangeRow(id, code, T + Math.floor(random() * 6) * GENERATED_STEP);
+  });
+  const debits = Array.from({ length: 1 + Math.floor(random() * 10) }, (_unused, index) => {
+    const holdingId = pick(random, Object.keys(GENERATED_HOLDING_CURRENCY));
+    const row = debit(
+      `debit-${index}`,
+      -pick(random, GENERATED_TOTALS),
+      T + (Math.floor(random() * 23) - 8) * GENERATED_STEP,
+      holdingId,
+      GENERATED_HOLDING_CURRENCY[holdingId],
+    );
+
+    return {
+      ...row,
+      mcc: pick(random, [null, OWN_TRANSFER_MCC, CASH_OUT_MCC, GROCERY_MCC]),
+      description: pick(random, ['', 'Binance', 'shop']),
+      categorySetByHand: random() < 0.25,
+    };
+  });
+
+  return { ledger: [...exchanges, ...debits], fundingById };
+};
+
+const signatureOf = ({ matches, excludedIds }: ReturnType<typeof matchesOf>): string =>
+  JSON.stringify([[...matches].sort(), [...excludedIds].sort()]);
+
+// The rule a pair must satisfy, restated from the generator's own description of the exchange row
+// rather than read back from the matcher.
+const fundsDebit = (funding: GeneratedFunding, bank: Row, exchange: Row): boolean => {
+  const gap = bank.time - exchange.time;
+  const window = WINDOW_MS[funding.kind];
+
+  return (
+    bank.currency === funding.fiat &&
+    bank.amountMinorUnits === -funding.totalMinorUnits &&
+    bank.holdingId !== 'funding-uah' &&
+    -window.before <= gap &&
+    gap <= window.after
+  );
+};
+
+// Every way a result can break the matcher's contract, named with the seed that produced it.
+const violationsOf = (seed: number): { violations: string[]; pairCount: number } => {
+  const random = seededRandom(seed * 2_654_435 + 1);
+  const { ledger, fundingById } = generatedLedgerOf(random);
+  const rowById = new Map(ledger.map((row) => [row.id, row]));
+  const result = matchesOf(ledger);
+  const pairs = [...result.matches];
+  const violations: string[] = [];
+
+  if (new Set(pairs.map(([, { exchangeId }]) => exchangeId)).size !== pairs.length) {
+    violations.push(`seed ${seed}: an exchange row matched twice`);
+  }
+
+  for (const [bankId, { exchangeId, kind }] of pairs) {
+    const bank = rowById.get(bankId);
+    const exchange = rowById.get(exchangeId);
+    const funding = fundingById.get(exchangeId);
+
+    if (!(bank && exchange && funding?.kind === kind && fundsDebit(funding, bank, exchange))) {
+      violations.push(`seed ${seed}: ${bankId} to ${exchangeId} breaks the match rule`);
+    }
+  }
+
+  const expectedExcluded = pairs.filter(([bankId]) => !rowById.get(bankId)?.categorySetByHand);
+
+  if (result.excludedIds.size !== expectedExcluded.length) {
+    violations.push(`seed ${seed}: the excluded ids are not the matched rows set by rule`);
+  }
+
+  for (let shuffle = 0; shuffle < SHUFFLES_PER_RUN; shuffle += 1) {
+    if (signatureOf(matchesOf(shuffled(random, ledger))) !== signatureOf(result)) {
+      violations.push(`seed ${seed}: shuffle ${shuffle} gave other pairs`);
+    }
+  }
+
+  return { violations, pairCount: pairs.length };
+};
 
 describe('exchangeFundingMatches', () => {
   it('matches a P2P purchase to the bank debit of its exact total twenty minutes earlier', () => {
@@ -71,11 +234,7 @@ describe('exchangeFundingMatches', () => {
   ] as const)(
     'matches a $kind debit at each edge of its window and not one millisecond past it',
     ({ kind, code, total, currency, holdingId }) => {
-      const windowMs = {
-        p2p: { before: HOUR, after: 2 * HOUR },
-        card: { before: DAY, after: 3 * DAY },
-        bank: { before: 5 * DAY, after: HOUR },
-      }[kind];
+      const windowMs = WINDOW_MS[kind];
       const matchedAt = (offset: number) =>
         matchesOf([
           exchangeRow('funding', code, T),
@@ -197,4 +356,129 @@ describe('exchangeFundingMatches', () => {
       expect(result.matches.get('debit')).toEqual({ exchangeId: 'buy', kind: 'p2p' });
     },
   );
+
+  it('matches one debit to the nearer of two P2P purchases of the same total', () => {
+    const result = matchesOf([
+      exchangeRow('buy-a', 'p2p:UAH:4150.00', T),
+      exchangeRow('buy-b', 'p2p:UAH:4150.00', T + 30 * MINUTE),
+      fundingDebit('debit', T + 25 * MINUTE),
+    ]);
+
+    expect(result.matches).toEqual(new Map([['debit', { exchangeId: 'buy-b', kind: 'p2p' }]]));
+  });
+
+  it('matches a hand-categorized debit but keeps it out of the excluded ids', () => {
+    const result = matchesOf([
+      exchangeRow('buy', 'p2p:UAH:4150.00', T),
+      fundingDebit('debit', T - 20 * MINUTE, { categorySetByHand: true }),
+    ]);
+
+    expect(result.matches.get('debit')).toEqual({ exchangeId: 'buy', kind: 'p2p' });
+    expect(result.excludedIds).toEqual(new Set());
+  });
+
+  it('prefers a transfer debit over a nearer grocery debit', () => {
+    const result = matchesOf([
+      exchangeRow('buy', 'p2p:UAH:4150.00', T),
+      fundingDebit('a-grocery', T - 5 * MINUTE, { mcc: GROCERY_MCC }),
+      fundingDebit('z-transfer', T - 30 * MINUTE, { mcc: OWN_TRANSFER_MCC }),
+    ]);
+
+    expect(result.matches).toEqual(new Map([['z-transfer', { exchangeId: 'buy', kind: 'p2p' }]]));
+    expect(result.excludedIds).toEqual(new Set(['z-transfer']));
+  });
+
+  it('treats a debit whose description holds binance in any case as a transfer', () => {
+    const result = matchesOf([
+      exchangeRow('buy', 'p2p:UAH:4150.00', T),
+      fundingDebit('a-grocery', T - 5 * MINUTE, { mcc: GROCERY_MCC }),
+      fundingDebit('z-transfer', T - 30 * MINUTE, { description: 'Transfer to BiNaNcE' }),
+    ]);
+
+    expect(result.matches).toEqual(new Map([['z-transfer', { exchangeId: 'buy', kind: 'p2p' }]]));
+  });
+
+  it('lets an already excluded cash-out debit take the match, so the grocery debit still counts', () => {
+    const result = matchesOf([
+      exchangeRow('buy', 'p2p:UAH:4150.00', T),
+      fundingDebit('a-grocery', T - 5 * MINUTE, { mcc: GROCERY_MCC }),
+      fundingDebit('z-cash-out', T - 30 * MINUTE, { mcc: CASH_OUT_MCC }),
+    ]);
+
+    expect(result.matches).toEqual(new Map([['z-cash-out', { exchangeId: 'buy', kind: 'p2p' }]]));
+    expect(result.excludedIds).toEqual(new Set(['z-cash-out']));
+  });
+
+  it('lets a hand-categorized debit take the match, so the grocery debit still counts', () => {
+    const result = matchesOf([
+      exchangeRow('buy', 'p2p:UAH:4150.00', T),
+      fundingDebit('a-grocery', T - 5 * MINUTE, { mcc: GROCERY_MCC }),
+      fundingDebit('z-hand', T - 30 * MINUTE, {
+        mcc: OWN_TRANSFER_MCC,
+        categorySetByHand: true,
+      }),
+    ]);
+
+    expect(result.matches).toEqual(new Map([['z-hand', { exchangeId: 'buy', kind: 'p2p' }]]));
+    expect(result.excludedIds).toEqual(new Set());
+  });
+
+  it.each([
+    {
+      key: 'transfer-like bank row',
+      ledger: [
+        exchangeRow('buy', 'p2p:UAH:4150.00', T),
+        fundingDebit('debit-a', T - 5 * MINUTE),
+        fundingDebit('debit-b', T + 50 * MINUTE, { mcc: OWN_TRANSFER_MCC }),
+      ],
+      expected: [['debit-b', 'buy']],
+    },
+    {
+      key: 'time gap',
+      ledger: [
+        exchangeRow('buy', 'p2p:UAH:4150.00', T),
+        fundingDebit('debit-a', T - 30 * MINUTE),
+        fundingDebit('debit-b', T - 5 * MINUTE),
+      ],
+      expected: [['debit-b', 'buy']],
+    },
+    {
+      key: 'bank row id',
+      ledger: [
+        exchangeRow('buy', 'p2p:UAH:4150.00', T),
+        fundingDebit('debit-b', T - 10 * MINUTE),
+        fundingDebit('debit-a', T + 10 * MINUTE),
+      ],
+      expected: [['debit-a', 'buy']],
+    },
+    {
+      key: 'exchange row id',
+      ledger: [
+        exchangeRow('buy-b', 'p2p:UAH:4150.00', T - 10 * MINUTE),
+        exchangeRow('buy-a', 'p2p:UAH:4150.00', T + 10 * MINUTE),
+        fundingDebit('debit', T),
+      ],
+      expected: [['debit', 'buy-a']],
+    },
+  ])(
+    'breaks a tie by the time gap, then the bank row id, then the exchange row id ($key)',
+    ({ ledger, expected }) => {
+      const result = matchesOf(ledger);
+
+      expect([...result.matches].map(([bankId, { exchangeId }]) => [bankId, exchangeId])).toEqual(
+        expected,
+      );
+    },
+  );
+});
+
+describe('exchangeFundingMatches over generated ledgers', () => {
+  it('matches each row at most once and gives the same pairs for any input order', () => {
+    const runs = Array.from({ length: PROPERTY_RUNS }, (_unused, index) => violationsOf(index + 1));
+
+    expect(runs.flatMap(({ violations }) => violations)).toEqual([]);
+    expect(runs.reduce((total, { pairCount }) => total + pairCount, 0)).toBeGreaterThan(
+      PROPERTY_RUNS,
+    );
+  });
 });
