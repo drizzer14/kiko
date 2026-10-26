@@ -220,7 +220,7 @@ describe('guardedNetWorth', () => {
       metadata: {
         kind: 'mortgage' as const,
         principalMinorUnits: 900_000, // 9,000.00 UAH
-        startDate: NOW, // no installment due yet: outstanding is the full principal
+        startDate: NOW, // payment 1 is due on the start day: its 43.94 principal part is repaid
         annualRatePct: 10,
         termMonths: 120,
         schedule: 'annuity' as const,
@@ -228,11 +228,11 @@ describe('guardedNetWorth', () => {
     };
 
     const partialOffset = guardedNetWorth([cash('UAH', 500_000), loan], 'UAH', rates, NOW);
-    expect(partialOffset.minorUnits).toBe(500_000 - 900_000);
+    expect(partialOffset.minorUnits).toBe(500_000 - 895_606);
     expect(partialOffset.minorUnits).toBeLessThan(0);
 
     const debtOnly = guardedNetWorth([loan], 'UAH', rates, NOW);
-    expect(debtOnly.minorUnits).toBe(-900_000);
+    expect(debtOnly.minorUnits).toBe(-895_606);
   });
 });
 

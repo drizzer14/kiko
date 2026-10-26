@@ -29,6 +29,7 @@ import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
+import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import { resolveCreateHoldingTarget } from '@kiko/screens/forms/create-holding-target';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
@@ -4850,6 +4851,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
       accountId: 'acc-1',
       initialType: 'cash',
+      handbackId: expect.any(String),
     });
   });
 
@@ -4873,6 +4875,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       accountId: 'acc-1',
       initialType: 'cash',
       initialCurrency: 'UAH',
+      handbackId: expect.any(String),
     });
   });
 
@@ -4888,6 +4891,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
       accountId: 'acc-1',
       initialType: 'cash',
+      handbackId: expect.any(String),
     });
   });
 
@@ -4967,6 +4971,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
         accountId: 'acc-1',
         initialType: 'cash',
         initialCurrency: 'USD',
+        handbackId: expect.any(String),
       });
     });
   });
@@ -4984,6 +4989,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
         accountId: 'acc-1',
         initialType: 'cash',
+        handbackId: expect.any(String),
       });
     });
 
@@ -5004,6 +5010,7 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
         accountId: 'acc-1',
         initialType: 'cash',
+        handbackId: expect.any(String),
       });
     });
 
@@ -5021,7 +5028,9 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       await fireEvent.press(utils.getByLabelText('Holding'));
       await fireEvent.press(utils.getByText('Add holding'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {
+        handbackId: expect.any(String),
+      });
     });
 
     it.each([
@@ -5034,27 +5043,62 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       await fireEvent.press(utils.getByLabelText('Holding'));
       await fireEvent.press(utils.getByText('Add holding'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {
+        handbackId: expect.any(String),
+      });
+    });
+
+    it('selects the cash holding the account form hands back when the user returns', async () => {
+      const { provide, fireFocus } = makeFocusNavigation();
+      const route = transactionFormRoute({});
+      const screenElement = () =>
+        provide(<TransactionFormScreen route={route} navigation={navigationProp} />);
+
+      setLiveData([], undefined, CATEGORIES, []);
+      const utils = await render(screenElement());
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      // The account form created a Cash account with its cash holding and handed that holding's
+      // id back to the id it was opened with, and the user came back.
+      handBackCreatedOption(navigation.navigate.mock.calls[0][1].handbackId, DOLLARS.id);
+      // A second holding appears too (a sync landing meanwhile), so a lone new holding is not
+      // seated by default and only the handed-back id can select one.
+      setLiveData([SOURCE, DOLLARS], undefined, CATEGORIES, [WALLET]);
+      await utils.rerender(screenElement());
+      await act(async () => {
+        fireFocus();
+      });
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent(/Cash USD/);
     });
   });
 
   it('keeps the draft and selects the new holding when it appears after the round trip', async () => {
+    const { provide, fireFocus } = makeFocusNavigation();
+    const route = transactionFormRoute({ holdingId: 'only-cash' });
+
     setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
-    const utils = await renderAddFromHolding('only-cash');
+    const utils = await render(
+      provide(<TransactionFormScreen route={route} navigation={navigationProp} />),
+    );
 
     await pickType(utils, 'exchange');
     await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Add holding'));
 
-    // The holding form saved a USD cash holding and the user came back.
-    setLiveData([SOURCE, { ...DOLLARS, createdAt: Date.now() }], undefined, CATEGORIES, [WALLET]);
+    // The holding form saved a USD cash holding, handed its id back to the id it was pushed
+    // with, and the user came back.
+    handBackCreatedOption(navigation.navigate.mock.calls[0][1].handbackId, DOLLARS.id);
+    setLiveData([SOURCE, DOLLARS], undefined, CATEGORIES, [WALLET]);
     await utils.rerender(
-      <TransactionFormScreen
-        route={transactionFormRoute({ holdingId: 'only-cash' })}
-        navigation={navigationProp}
-      />,
+      provide(<TransactionFormScreen route={route} navigation={navigationProp} />),
     );
+    await act(async () => {
+      fireFocus();
+    });
 
     expect(utils.getByLabelText('Value out').props.value).toBe('100');
     expect(utils.getByLabelText('To')).toHaveTextContent(/Cash USD/);
@@ -5197,6 +5241,79 @@ describe('TransactionFormScreen — category pre-select from the whole draft', (
     await fireEvent.press(utils.getByLabelText('Card, Bank'));
 
     expect(field(utils)).toHaveTextContent('Dining');
+  });
+
+  describe('by the label a blank description reads as', () => {
+    const WALLET: Holding = { ...UAH_CASH, name: 'Wallet' };
+    const labelRule = (text: string) =>
+      storedRule('label', 'dining', [{ type: 'nameStartsWith', text }]);
+
+    it('pre-selects by the English label once the amount is typed, and saves no description', async () => {
+      setLiveData([WALLET], undefined, CATEGORIES, [], [], [labelRule('Wallet expense')]);
+      const utils = await renderAdd();
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+
+      expect(field(utils)).toHaveTextContent('Dining');
+
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '', category: 'dining' }),
+      );
+    });
+
+    it('does not read the label of the other direction', async () => {
+      setLiveData([WALLET], undefined, CATEGORIES, [], [], [labelRule('Wallet income')]);
+      const utils = await renderAdd();
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+
+      expect(field(utils)).toHaveTextContent('Select category');
+    });
+
+    it('lets a description the user types win over the label', async () => {
+      setLiveData([WALLET], undefined, CATEGORIES, [], [], [labelRule('Wallet expense')]);
+      const utils = await renderAdd();
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Silpo');
+      await fireEvent(utils.getByLabelText('Description'), 'blur');
+
+      expect(field(utils)).toHaveTextContent('Select category');
+    });
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+      });
+
+      afterEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      });
+
+      it('pre-selects by the Ukrainian label, and not by the English one', async () => {
+        setLiveData(
+          [WALLET],
+          undefined,
+          CATEGORIES,
+          [],
+          [],
+          [
+            labelRule('Wallet expense'),
+            storedRule('uk', 'groceries', [{ type: 'nameStartsWith', text: 'Витрата' }]),
+          ],
+        );
+        const utils = await renderAdd();
+        await fireEvent.changeText(utils.getByLabelText('Сума'), '12.34');
+        await pressSave(navigation.setOptions, 'Зберегти');
+
+        expect(mockRecordManual).toHaveBeenCalledWith(
+          expect.objectContaining({ description: '', category: 'groceries' }),
+        );
+      });
+    });
   });
 
   it('clears the pre-selection once the draft stops matching', async () => {

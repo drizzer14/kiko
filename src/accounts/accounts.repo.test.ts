@@ -635,6 +635,28 @@ describe('accountsRepo', () => {
     expect((accountInsert.id as string).length).toBeGreaterThan(0);
   });
 
+  it.each([0, 25050])(
+    'createCashAccount resolves the ids of the account and holding it inserted (balance %d)',
+    async (minorUnits) => {
+      const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      const created = await accountsRepo.createCashAccount({
+        name: 'Wallet',
+        currency: 'EUR',
+        initialBalance: Money.of('EUR', minorUnits),
+      });
+
+      const [accountInsert, holdingInsert] = inserts as [
+        Record<string, unknown>,
+        Record<string, unknown>,
+      ];
+
+      expect(created).toEqual({ accountId: accountInsert.id, holdingId: holdingInsert.id });
+      expect(created.holdingId).not.toBe(created.accountId);
+    },
+  );
+
   it('seeds an opening transaction for the initial balance', async () => {
     const { databaseTransaction, inserts, insertTables } = makeCreateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;

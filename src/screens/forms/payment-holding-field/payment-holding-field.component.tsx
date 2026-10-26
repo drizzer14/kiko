@@ -2,10 +2,13 @@ import { useTranslation } from 'react-i18next';
 import { type ReactElement, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
+import {
+  type HandbackId,
+  useSelectCreatedOption,
+} from '@kiko/screens/forms/use-select-created-option';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import FieldTrigger from '@kiko/design-system/components/field-trigger';
 import SelectableRow from '@kiko/design-system/components/selectable-row';
-import { useSelectCreatedHolding } from '@kiko/screens/forms/holding-select-field';
 
 import type { PaymentHoldingFieldProps } from './payment-holding-field.props';
 
@@ -37,7 +40,7 @@ const PaymentHoldingField = ({
 }: PaymentHoldingFieldProps): ReactElement => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const startCreateRoundTrip = useSelectCreatedHolding(options, onSelect);
+  const startCreateRoundTrip = useSelectCreatedOption(options, onSelect);
 
   const selected = options.find((option) => option.id === selectedId) ?? null;
 
@@ -46,9 +49,13 @@ const PaymentHoldingField = ({
     setOpen(false);
   };
 
-  const handleCreateNew = (createNew: () => void): void => {
-    startCreateRoundTrip();
-    createNew();
+  const handleCreateNew = (createNew: (handbackId: HandbackId) => void): void => {
+    const handbackId = startCreateRoundTrip();
+
+    if (handbackId !== undefined) {
+      createNew(handbackId);
+    }
+
     setOpen(false);
   };
 

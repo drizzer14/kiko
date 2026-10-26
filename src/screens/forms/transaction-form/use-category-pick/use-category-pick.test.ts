@@ -30,6 +30,10 @@ const ruleOf = (
   updatedAt: 1,
 });
 
+const CARD_EXPENSE_RULE = ruleOf('card-expense', 'dining', [
+  { type: 'nameStartsWith', text: 'Card expense' },
+]);
+
 const COFFEE_RULE = ruleOf('coffee', 'dining', [{ type: 'nameIs', text: 'coffee' }]);
 const LARGE_EXPENSE_RULE = ruleOf('large-expense', 'groceries', [
   { type: 'amount', operator: 'gt', minorUnits: 100_000, currency: 'UAH' },
@@ -49,6 +53,7 @@ type Draft = {
   mode: FormMode;
   currency: Currency | null;
   isEditing: boolean;
+  ruleDescription: (description: string) => string;
 };
 
 const BLANK_DRAFT: Draft = {
@@ -58,7 +63,12 @@ const BLANK_DRAFT: Draft = {
   mode: 'expense',
   currency: 'UAH',
   isEditing: false,
+  ruleDescription: (description) => description,
 };
+
+// What the form reads for a blank field once a holding is picked: the label the row will show.
+const readsLabelWhenBlank = (label: string) => (description: string) =>
+  description === '' ? label : description;
 
 const setup = async (rules: CategoryRuleRow[], draft: Partial<Draft> = {}) => {
   mockUseLiveQuery.mockReturnValue({ data: rules });
@@ -117,6 +127,37 @@ describe('useCategoryPick', () => {
       await change({ currency: 'USD' });
 
       expect(result.current.selectedCategory).toBe('dining');
+    });
+
+    it('pre-selects by the label a blank description reads as', async () => {
+      const { result } = await setup([CARD_EXPENSE_RULE], {
+        ruleDescription: readsLabelWhenBlank('Card expense'),
+      });
+
+      expect(result.current.selectedCategory).toBe('dining');
+      expect(result.current.effectiveCategory).toBe('dining');
+      expect(result.current.ruleCategory).toBe('dining');
+    });
+
+    it('pre-selects by the label of a description the user clears', async () => {
+      const { result, change, run } = await setup([CARD_EXPENSE_RULE], {
+        description: 'Silpo',
+        ruleDescription: readsLabelWhenBlank('Card expense'),
+      });
+
+      expect(result.current.selectedCategory).toBeNull();
+
+      await change({ description: '' });
+      await run(result.current.settleDescription);
+
+      expect(result.current.selectedCategory).toBe('dining');
+    });
+
+    it('pre-selects nothing for a blank description that has no label yet', async () => {
+      const { result } = await setup([CARD_EXPENSE_RULE]);
+
+      expect(result.current.selectedCategory).toBeNull();
+      expect(result.current.ruleCategory).toBeNull();
     });
 
     it('pre-selects once the mode matches the direction of the rule', async () => {

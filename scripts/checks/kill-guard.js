@@ -224,6 +224,19 @@ const SHELL_WRITE_REASON_LINES = [
     'another tool (cp, mv, dd) to get past this guard.',
 ];
 
+const OSASCRIPT_SHELL_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied an osascript whose script text holds `do shell script`, ' +
+    '`do script` (Terminal), or `doShellScript` (JavaScript), which run an arbitrary command ' +
+    'inside the script.',
+  'WHY IT MATTERS: the guard cannot read a command held in script text, so a kill, a git stash, ' +
+    'a write into a guarded tree, a main-checkout change, or a whole-repository job would run ' +
+    'through it with none of those denies applied.',
+  'HOW TO FIX:     run the command in Bash itself, where the guard judges it. osascript stays ' +
+    'allowed for a script without those words (`display notification`, `tell application`).',
+  'DO NOT:         hide the command in a variable, a script file, or another spelling of the ' +
+    'same call to get past this guard.',
+];
+
 function blockReason(reasonLines, detail) {
   const [what, ...rest] = reasonLines;
 
@@ -340,6 +353,7 @@ const REASON_BY_KIND = {
   mainFastForward: (finding) => blockReason(MAIN_FAST_FORWARD_REASON_LINES, finding.detail),
   mainMove: (finding) => blockReason(MAIN_MOVE_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
+  osascriptShell: (finding) => blockReason(OSASCRIPT_SHELL_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
   hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
@@ -377,6 +391,40 @@ function tick() {
 function skipComment(state) {
   const newline = state.text.indexOf('\n', state.i);
   state.i = newline === -1 ? state.text.length : newline;
+}
+
+// Whether the `$` at `dollar`, right before a quote, opens an ANSI-C string. In bash `$$` is the
+// pid, so the quote after it is a plain one: the `$` opens only when the run of unescaped `$`
+// that ends here is odd (`$$'` plain, `$$$'` ANSI-C), and a `\$` is a literal that never counts.
+function opensAnsiCQuote(text, dollar) {
+  if (text[dollar] !== '$' || text[dollar + 1] !== "'") return false;
+  let start = dollar;
+  while (start > 0 && text[start - 1] === '$') {
+    tick();
+    start--;
+  }
+  let backslashes = 0;
+  while (start - backslashes > 0 && text[start - backslashes - 1] === '\\') {
+    tick();
+    backslashes++;
+  }
+  const escapedDollars = backslashes % 2;
+
+  return (dollar - start + 1 - escapedDollars) % 2 === 1;
+}
+
+// The index of the quote that closes the ANSI-C string `$'...'` whose `$` stands at `dollar`, or -1
+// when none does there. A backslash escapes the next character, so `\'` does not close it: the
+// splitters and the tokenizer all end the string here.
+function ansiCQuoteEnd(text, dollar) {
+  if (!opensAnsiCQuote(text, dollar)) return -1;
+  let end = dollar + 2;
+  while (end < text.length && text[end] !== "'") {
+    tick();
+    end += text[end] === '\\' ? 2 : 1;
+  }
+
+  return end >= text.length ? -1 : end;
 }
 
 // A `#` after one of these starts a word (`a#b`, `${#x}`, and `$#` are not
@@ -535,6 +583,11 @@ function stepUnquotedInDelimited(state) {
   }
   trackParameterBraces(state, c);
   state.wordStart = state.braceDepth === 0 && WORD_BOUNDARY.test(c);
+  const ansiCEnd = ansiCQuoteEnd(state.text, state.i);
+  if (ansiCEnd !== -1) {
+    state.i = ansiCEnd + 1;
+    return;
+  }
   state.i++;
   if (c === "'" || c === '"') state.quote = c;
   else if (c === state.open) state.depth++;
@@ -783,6 +836,24 @@ function consumeAtWordStart(context) {
   return consumeArithmeticCommand(context);
 }
 
+// A quote that opens at the cursor: an ANSI-C `$'...'` string is taken whole (its `\'` is no
+// close), a plain `'` or `"` starts the quoted state.
+function consumeQuoteOpen(context) {
+  const { text, i } = context;
+  const ansiCEnd = ansiCQuoteEnd(text, i);
+  if (ansiCEnd !== -1) {
+    context.buf += text.slice(i, ansiCEnd + 1);
+    context.i = ansiCEnd + 1;
+    return true;
+  }
+  if (text[i] !== "'" && text[i] !== '"') return false;
+  context.quote = text[i];
+  context.buf += text[i];
+  context.i++;
+
+  return true;
+}
+
 function stepTopLevel(context) {
   const { text, i, n } = context;
   const c = text[i];
@@ -798,12 +869,7 @@ function stepTopLevel(context) {
     context.i += 2;
     return;
   }
-  if (c === "'" || c === '"') {
-    context.quote = c;
-    context.buf += c;
-    context.i++;
-    return;
-  }
+  if (consumeQuoteOpen(context)) return;
   if (tryConsumeSubshell(context) || tryConsumeProcessSubstitution(context)) return;
   if (consumeHeredocOperator(context)) return;
   if (c === '(' && context.braceDepth === 0) openParen(context, atWordStart);
@@ -942,8 +1008,55 @@ function stepWordQuoted(context) {
   context.i++;
 }
 
+// `\a`, `\b`, `\e`, `\E`, `\f`, `\n`, `\r`, `\t`, `\v` and the escaped quote and backslash of an
+// ANSI-C `$'...'` string, which bash and zsh both read.
+const ANSI_C_SIMPLE_ESCAPES = new Map([
+  ['a', '\x07'],
+  ['b', '\b'],
+  ['e', '\x1b'],
+  ['E', '\x1b'],
+  ['f', '\f'],
+  ['n', '\n'],
+  ['r', '\r'],
+  ['t', '\t'],
+  ['v', '\v'],
+  ['\\', '\\'],
+  ["'", "'"],
+  ['"', '"'],
+  ['?', '?'],
+]);
+const ANSI_C_ESCAPE =
+  /\\(?:([abeEfnrtv\\'"?])|([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|c([\s\S]))/g;
+
+// The character one escape of an ANSI-C string stands for; an unknown escape stays as written.
+function ansiCEscape(match, simple, octal, hexadecimal, unicode, control) {
+  if (simple !== undefined) return ANSI_C_SIMPLE_ESCAPES.get(simple);
+  if (octal !== undefined) return String.fromCharCode(Number.parseInt(octal, 8) % 256);
+  if (hexadecimal !== undefined) return String.fromCharCode(Number.parseInt(hexadecimal, 16));
+  if (control !== undefined) return String.fromCharCode(control.charCodeAt(0) % 32);
+  const codePoint = Number.parseInt(unicode ?? match.slice(2), 16);
+
+  return codePoint > 0x10ffff ? match : String.fromCodePoint(codePoint);
+}
+
+// A `$'...'` string: its text with the escapes decoded, so `$'make' verify` is `make verify` to
+// the shell. Ends at the first quote no backslash escapes; an unterminated one is not read (the
+// `$` stays a plain character).
+function tryAnsiCQuote(context) {
+  const { segment } = context;
+  const end = ansiCQuoteEnd(segment, context.i);
+  if (end === -1) return false;
+  context.cur += segment.slice(context.i + 2, end).replace(ANSI_C_ESCAPE, ansiCEscape);
+  context.i = end + 1;
+  context.started = true;
+  context.literal = true;
+
+  return true;
+}
+
 function stepWordUnquoted(context) {
   const c = context.segment[context.i];
+  if (c === '$' && context.segment[context.i + 1] === "'" && tryAnsiCQuote(context)) return;
   if (c === "'" || c === '"') {
     context.quote = c;
     context.started = true;
@@ -1053,6 +1166,20 @@ const OPTION_WRAPPERS = new Map([
   ['stdbuf', new Set(['-i', '-o', '-e', '--input', '--output', '--error'])],
   ['env', new Set(['-C', '-P', '-a', '-u', '--chdir', '--unset', '--argv0'])],
   ['timeout', new Set(['-k', '-s', '--kill-after', '--signal'])],
+  // `man caffeinate`: `[-disu] [-t timeout] [-w pid]`, no long options. `-ti 5` is a usage error
+  // that never runs the utility, so reading `5` as its command only misjudges a command that
+  // does not run.
+  ['caffeinate', new Set(['-t', '-w'])],
+  // `man arch`: `-arch name`, `-d envname`, `-e envname=value`; `-arm64`, `-x86_64` and the like
+  // are one architecture word each (`ARCH_NAME_GROUPS`).
+  ['arch', new Set(['-arch', '-d', '-e'])],
+  // `man sandbox-exec`: `-f profile-file`, `-n profile-name`, `-p profile-string`, `-D key=value`.
+  ['sandbox-exec', new Set(['-f', '-n', '-p', '-D'])],
+  // `man script` (BSD): `-t time` and `-T fmt`; the output file comes before the command.
+  ['script', new Set(['-t', '-T'])],
+  // `man screen`: `-c file`, `-e xy`, `-h num`, `-p page`, `-s shell`, `-S name`, `-t title`,
+  // `-T term`; `-dmS name cmd` is a flag group whose last letter takes the value.
+  ['screen', new Set(['-S', '-c', '-e', '-h', '-p', '-s', '-t', '-T'])],
   [
     'xargs',
     new Set([
@@ -1089,6 +1216,18 @@ const SHELL_COMMAND_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
 // GNU `xargs -i[R]`, `-e[EOF]`, and `-l[N]` take only a value glued on (`-iR`),
 // never the next word, so a letter after one of them is part of that value.
 const XARGS_GLUED_ONLY_OPTIONS = new Set(['i', 'e', 'l']);
+
+// `arch` reads no flag group: `-arm64e` names an architecture, it is not `-e` after `-arm64`.
+const ARCH_NAME_GROUPS = new Set(['d', 'e']);
+
+const GLUED_ONLY_LETTERS = new Map([
+  ['xargs', XARGS_GLUED_ONLY_OPTIONS],
+  ['arch', ARCH_NAME_GROUPS],
+]);
+
+// Wrappers whose first word after the options is an operand of their own, not the command: the
+// duration of `timeout` and the output file of `script`.
+const WRAPPERS_WITH_OPERAND = new Set(['timeout', 'script']);
 
 // A `--long` option written without `=` that is a prefix of a listed
 // value-taking one (`--max-p` for `--max-procs`), as getopt_long accepts it.
@@ -1236,7 +1375,7 @@ function unwrap(tokens) {
       t = t.slice(1);
       continue;
     }
-    if (!OPTION_WRAPPERS.has(base)) {
+    if (!OPTION_WRAPPERS.has(base) || (base === 'screen' && screenRemoteOperands(t) !== null)) {
       return {
         tokens: [word, ...t.slice(1)],
         viaXargs,
@@ -1248,12 +1387,8 @@ function unwrap(tokens) {
       viaXargs = true;
       placeholder = xargsPlaceholder(t);
     }
-    t = skipOptions(
-      t,
-      OPTION_WRAPPERS.get(base),
-      base === 'xargs' ? XARGS_GLUED_ONLY_OPTIONS : undefined,
-    );
-    if (base === 'timeout') t = t.slice(1);
+    t = skipOptions(t, OPTION_WRAPPERS.get(base), GLUED_ONLY_LETTERS.get(base));
+    if (WRAPPERS_WITH_OPERAND.has(base)) t = t.slice(1);
   }
 
   return { tokens: t, viaXargs, xargsPlaceholder: placeholder, environment };
@@ -3059,6 +3194,342 @@ function sourceFinding(base, rest, context) {
   return stdinFileFinding(context);
 }
 
+// ---- commands that type or hand on a command line ----
+
+// The values of orca's `--text` and `--command` (`terminal send`, `terminal create`, `computer
+// type-text`), as its `parseArgs` reads them: `--flag=value` glued, or the next word, which is no
+// value when it starts with `--` (the flag is then a boolean with no text). Every occurrence
+// counts, although orca keeps only the last.
+const ORCA_TEXT_FLAG = /^--(?:text|command)(?:=(.*))?$/s;
+
+function orcaTypedTexts(tokens) {
+  return tokens.flatMap((word, index) => {
+    const match = ORCA_TEXT_FLAG.exec(word);
+    if (match === null) return [];
+    if (match[1] !== undefined) return [match[1]];
+    const next = tokens[index + 1];
+
+    return next === undefined || next.startsWith('--') ? [] : [next];
+  });
+}
+
+// tmux, from tmux(1) as known: NOT probed (tmux is not installed on this machine), so every list
+// below is unverified. Global options that take a value, and per command the options that do.
+const TMUX_GLOBAL_OPTIONS_WITH_VALUE = new Set(['-c', '-f', '-L', '-S', '-T']);
+const TMUX_NEW_SESSION_OPTIONS = new Set(['-c', '-e', '-f', '-F', '-n', '-s', '-t', '-x', '-y']);
+const TMUX_SPLIT_WINDOW_OPTIONS = new Set(['-c', '-e', '-F', '-l', '-p', '-t']);
+const TMUX_RESPAWN_PANE_OPTIONS = new Set(['-c', '-e', '-t']);
+const TMUX_SEND_KEYS_OPTIONS = new Set(['-c', '-N', '-t']);
+const TMUX_NEW_WINDOW_OPTIONS = new Set(['-c', '-e', '-F', '-n', '-t']);
+const TMUX_RUN_SHELL_OPTIONS = new Set(['-d', '-t']);
+const TMUX_IF_SHELL_OPTIONS = new Set(['-t']);
+const TMUX_POPUP_OPTIONS = new Set([
+  '-b',
+  '-c',
+  '-d',
+  '-e',
+  '-h',
+  '-s',
+  '-S',
+  '-t',
+  '-T',
+  '-w',
+  '-x',
+  '-y',
+]);
+const TMUX_PIPE_PANE_OPTIONS = new Set(['-t']);
+
+// The commands that start a shell command or type keys, by full name. `join`: the words after the
+// options are one shell command; `each`: every word is its own text (the shell command and the
+// commands of `if-shell`); `keys`: the words are the keys `send-keys` types, in order.
+const TMUX_JUDGED_COMMANDS = new Map([
+  ['new-session', { options: TMUX_NEW_SESSION_OPTIONS, mode: 'join' }],
+  ['new-window', { options: TMUX_NEW_WINDOW_OPTIONS, mode: 'join' }],
+  ['split-window', { options: TMUX_SPLIT_WINDOW_OPTIONS, mode: 'join' }],
+  ['respawn-pane', { options: TMUX_RESPAWN_PANE_OPTIONS, mode: 'join' }],
+  ['respawn-window', { options: TMUX_RESPAWN_PANE_OPTIONS, mode: 'join' }],
+  ['display-popup', { options: TMUX_POPUP_OPTIONS, mode: 'join' }],
+  ['pipe-pane', { options: TMUX_PIPE_PANE_OPTIONS, mode: 'join' }],
+  ['run-shell', { options: TMUX_RUN_SHELL_OPTIONS, mode: 'join' }],
+  ['if-shell', { options: TMUX_IF_SHELL_OPTIONS, mode: 'each' }],
+  ['send-keys', { options: TMUX_SEND_KEYS_OPTIONS, mode: 'keys' }],
+]);
+
+// Every tmux command and its manual alias, so a prefix resolves only when it is unique, as tmux
+// resolves it (an alias first, then the one command whose name starts with the word). From
+// tmux(1) as known: unverified.
+const TMUX_ALIASES = new Map([
+  // `prev` is the one alias the full-word check reads as an abbreviated key, so it is a pair.
+  ['prev', 'previous-window'],
+  ...Object.entries({
+    attach: 'attach-session',
+    bind: 'bind-key',
+    breakp: 'break-pane',
+    capturep: 'capture-pane',
+    clearhist: 'clear-history',
+    clearphist: 'clear-prompt-history',
+    confirm: 'confirm-before',
+    deleteb: 'delete-buffer',
+    detach: 'detach-client',
+    display: 'display-message',
+    menu: 'display-menu',
+    displayp: 'display-panes',
+    popup: 'display-popup',
+    findw: 'find-window',
+    has: 'has-session',
+    if: 'if-shell',
+    joinp: 'join-pane',
+    killp: 'kill-pane',
+    killw: 'kill-window',
+    lastp: 'last-pane',
+    last: 'last-window',
+    linkw: 'link-window',
+    lsb: 'list-buffers',
+    lsc: 'list-clients',
+    lscm: 'list-commands',
+    lsk: 'list-keys',
+    lsp: 'list-panes',
+    ls: 'list-sessions',
+    lsw: 'list-windows',
+    loadb: 'load-buffer',
+    lockc: 'lock-client',
+    lock: 'lock-server',
+    locks: 'lock-session',
+    movep: 'move-pane',
+    movew: 'move-window',
+    new: 'new-session',
+    neww: 'new-window',
+    nextl: 'next-layout',
+    next: 'next-window',
+    pasteb: 'paste-buffer',
+    pipep: 'pipe-pane',
+    prevl: 'previous-layout',
+    refresh: 'refresh-client',
+    rename: 'rename-session',
+    renamew: 'rename-window',
+    resizep: 'resize-pane',
+    resizew: 'resize-window',
+    respawnp: 'respawn-pane',
+    respawnw: 'respawn-window',
+    rotatew: 'rotate-window',
+    run: 'run-shell',
+    saveb: 'save-buffer',
+    selectl: 'select-layout',
+    selectp: 'select-pane',
+    selectw: 'select-window',
+    send: 'send-keys',
+    setb: 'set-buffer',
+    setenv: 'set-environment',
+    set: 'set-option',
+    setw: 'set-window-option',
+    showb: 'show-buffer',
+    showenv: 'show-environment',
+    showmsgs: 'show-messages',
+    show: 'show-options',
+    showphist: 'show-prompt-history',
+    showw: 'show-window-options',
+    source: 'source-file',
+    splitw: 'split-window',
+    start: 'start-server',
+    suspendc: 'suspend-client',
+    swapp: 'swap-pane',
+    swapw: 'swap-window',
+    switchc: 'switch-client',
+    unbind: 'unbind-key',
+    unlinkw: 'unlink-window',
+    wait: 'wait-for',
+  }),
+]);
+const TMUX_COMMAND_NAMES = [
+  ...new Set([
+    ...TMUX_ALIASES.values(),
+    ...TMUX_JUDGED_COMMANDS.keys(),
+    'choose-buffer',
+    'choose-client',
+    'choose-tree',
+    'clock-mode',
+    'command-prompt',
+    'copy-mode',
+    'customize-mode',
+    'kill-server',
+    'kill-session',
+    'send-prefix',
+    'server-access',
+    'set-hook',
+    'show-hooks',
+  ]),
+];
+
+// The full name of the tmux command a word names, or undefined.
+function tmuxCommandName(word) {
+  const aliased = TMUX_ALIASES.get(word);
+  if (aliased !== undefined) return aliased;
+  if (TMUX_COMMAND_NAMES.includes(word)) return word;
+  const named = TMUX_COMMAND_NAMES.filter((name) => name.startsWith(word));
+
+  return named.length === 1 ? named[0] : undefined;
+}
+
+// A word as one shell word, so words joined into a command line keep their grouping
+// (`bash -c 'make verify'`).
+const SHELL_SAFE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/;
+const shellQuote = (word) =>
+  SHELL_SAFE_WORD.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`;
+// One word is already a command line (tmux and screen hand a lone argument to a shell as is).
+const shellJoin = (parts) => (parts.length === 1 ? parts[0] : parts.map(shellQuote).join(' '));
+
+// The keys `send-keys` types, in order, as the text they make: the names of Enter end a line.
+const TMUX_KEY_TEXT = new Map([
+  ['Enter', '\n'],
+  ['KPEnter', '\n'],
+  ['C-m', '\n'],
+  ['C-j', '\n'],
+  ['Space', ' '],
+  ['Tab', '\t'],
+]);
+const tmuxKeysText = (keys) => keys.map((key) => TMUX_KEY_TEXT.get(key) ?? key).join('');
+
+// The words after a tmux command's own options; `--` ends them.
+function tmuxOperands(parameters, optionsWithValue) {
+  let index = 0;
+  while (index < parameters.length && /^-./.test(parameters[index])) {
+    if (parameters[index] === '--') return parameters.slice(index + 1);
+    index += takesNextWord(parameters[index], optionsWithValue) ? 2 : 1;
+  }
+
+  return parameters.slice(index);
+}
+
+// The text one tmux command (its words, the name first) starts or types as a command line, per
+// `TMUX_JUDGED_COMMANDS`. Nothing for any other command.
+function tmuxCommandTexts(words) {
+  const name = words.length === 0 ? undefined : tmuxCommandName(words[0]);
+  const command = TMUX_JUDGED_COMMANDS.get(name);
+  if (command === undefined) return [];
+  const rest = tmuxOperands(words.slice(1), command.options);
+  if (rest.length === 0) return [];
+  if (command.mode === 'keys') return [tmuxKeysText(rest)];
+
+  return command.mode === 'each' ? rest : [shellJoin(rest)];
+}
+
+// A tmux command line split at its `;` words (`\;` once the shell has read it).
+function tmuxCommandsOf(words) {
+  const commands = [[]];
+  for (const word of words) {
+    if (word === ';') commands.push([]);
+    else commands.at(-1).push(word);
+  }
+
+  return commands;
+}
+
+// The shell command of tmux's own `-c` option (`-c cmd` or `-ccmd`) and the words after the global
+// options.
+function tmuxGlobalOptions(words) {
+  const texts = [];
+  let index = 0;
+  while (index < words.length && /^-./.test(words[index])) {
+    const word = words[index];
+    if (word === '--') return { texts, rest: words.slice(index + 1) };
+    if (word === '-c' && index + 1 < words.length) texts.push(words[index + 1]);
+    else if (word.startsWith('-c') && word.length > 2) texts.push(word.slice(2));
+    index += takesNextWord(word, TMUX_GLOBAL_OPTIONS_WITH_VALUE) ? 2 : 1;
+  }
+
+  return { texts, rest: words.slice(index) };
+}
+
+// Every command line a tmux call starts or types: its `-c` text and the text of each command of
+// its `;` separated list.
+function tmuxTypedTexts(tokens) {
+  const [first, ...others] = tmuxCommandsOf(tokens.slice(1));
+  const { texts, rest } = tmuxGlobalOptions(first);
+
+  return [...texts, ...[rest, ...others].flatMap(tmuxCommandTexts)];
+}
+
+// A word that starts with `-X` or holds it as its last flag, with no value-taking flag before it
+// (`-S name` reads `X` of `-SX` as the name).
+const SCREEN_REMOTE_FLAG = /^-(?:(?![ScehpstT])[A-Za-z])*X$/;
+// The flags whose session word is optional (`-r name`, `-x`, `-d`, `-D`, `-R`, `-RR`).
+const SCREEN_SESSION_FLAG = /^-[A-Za-z]*[rRxdD]$/;
+
+// The words after screen's `-X` (`screen -S name -X stuff text`: send a screen command to a running
+// session), else null. `unwrap` keeps such a `screen` as the command word, so the text of the
+// command reaches `screenTypedTexts`. The options before it are read as screen reads them, the
+// session word of `-r`/`-x` included (`screen -r name -X stuff text`).
+function screenRemoteOperands(tokens) {
+  const optionsWithValue = OPTION_WRAPPERS.get('screen');
+  let index = 1;
+  while (index < tokens.length && tokens[index].startsWith('-')) {
+    const word = tokens[index];
+    if (SCREEN_REMOTE_FLAG.test(word)) return tokens.slice(index + 1);
+    index += takesNextWord(word, optionsWithValue) ? 2 : 1;
+    const session = tokens[index];
+    if (SCREEN_SESSION_FLAG.test(word) && session !== undefined && !session.startsWith('-')) {
+      index++;
+    }
+  }
+
+  return null;
+}
+
+// screen reads `^M` (caret notation) and `\015`, `\n`, `\r` in the text it stuffs as the keys of an
+// Enter, so each ends a command line.
+const SCREEN_KEY_ESCAPES = /\^[@-_?]|\\(?:[0-7]{1,3}|[nr])/g;
+
+// The command line the screen command `screen` (a new window; options and a window number first)
+// or `exec` (a leading `fdpat` of `.`, `!`, `|` first) starts.
+const SCREEN_LEADING_OPERAND = { screen: /^\d+$/, exec: /^[.!|]+$/ };
+
+function screenStartedText(name, args) {
+  const operands = skipOptions(['screen', ...args], OPTION_WRAPPERS.get('screen'));
+  const [first, ...others] = operands;
+  const command = SCREEN_LEADING_OPERAND[name].test(first ?? '') ? others : operands;
+
+  return command.length === 0 ? [] : [shellJoin(command)];
+}
+
+// The command lines one screen command (`-X` and its words) types or starts: `stuff` types its
+// text, `screen` and `exec` start a command, and `eval` holds screen commands of its own.
+function screenCommandTexts([name, ...args]) {
+  if (name === 'stuff') return args.map((word) => word.replace(SCREEN_KEY_ESCAPES, '\n'));
+  if (name === 'eval') return args.flatMap((arg) => screenCommandTexts(words(arg)));
+  if (name === 'screen' || name === 'exec') return screenStartedText(name, args);
+
+  return [];
+}
+
+const screenTypedTexts = (tokens) => screenCommandTexts(screenRemoteOperands(tokens) ?? []);
+
+// A script that runs a shell (`do shell script`, `doShellScript`), or types a command into Terminal
+// (`do script`, `doScript`). AppleScript is case-insensitive and any whitespace, or none in the
+// JavaScript spelling, separates its words. The guard cannot read the command inside any of them.
+const OSASCRIPT_SHELL = /\bdo\s*(?:shell\s*)?script\b/i;
+
+function osascriptFinding(tokens, context) {
+  const texts = [...tokens.slice(1), ...context.stdinScripts];
+  if (!OSASCRIPT_SHELL.test(texts.join(' '))) return null;
+
+  return {
+    kind: 'osascriptShell',
+    detail: `${context.segment.trim()} (osascript runs a shell command or types one into Terminal)`,
+  };
+}
+
+// The command lines an `orca`, `tmux` or `screen -X stuff` call types or starts go to
+// `context.scripts`, judged like an `eval` string; an `osascript` that can run one is its own
+// finding.
+function typedTextFinding(base, tokens, context) {
+  if (base === 'orca') context.scripts.push(...orcaTypedTexts(tokens));
+  if (base === 'tmux') context.scripts.push(...tmuxTypedTexts(tokens));
+  if (base === 'screen') context.scripts.push(...screenTypedTexts(tokens));
+  if (base === 'osascript') return osascriptFinding(tokens, context);
+
+  return null;
+}
+
 // The finding for one unwrapped command (see `segmentFinding`).
 function commandFinding(command, context) {
   const { tokens: rest, environment } = command;
@@ -3076,6 +3547,9 @@ function commandFinding(command, context) {
     context.scripts.push(rest.slice(1).join(' '), ...context.stdinScripts);
     return null;
   }
+
+  const typed = typedTextFinding(base, rest, context);
+  if (typed !== null) return typed;
 
   const kill = killFinding(base, command, context);
   if (kill !== null || base === 'kill') return kill;

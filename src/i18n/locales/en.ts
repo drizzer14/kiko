@@ -60,6 +60,8 @@ export const en = {
     // React Native's own tab/tablist accessibility roles map to no trait
     // on iOS (RN 0.87).
     segmentPosition: '{{index}} of {{count}}',
+    viewAccount: 'View account',
+    viewHolding: 'View holding',
   },
   settings: {
     appLock: {
@@ -604,6 +606,7 @@ export const en = {
     },
     transaction: {
       addReturn: 'Add return',
+      addTemplate: 'Add template',
       addTemplateTitle: 'Add Template',
       addTitle: 'Add Transaction',
       amountError: 'Amount must be greater than 0.',
@@ -863,6 +866,12 @@ export const en = {
     computed: 'Computed',
     coupon: 'Coupon',
     cost: 'Cost',
+    // The loan detail's list while it holds no row at all, neither a linked payment nor a
+    // scheduled one: the shared EmptyState under the Transactions heading.
+    emptyLoanPayments: {
+      title: 'No payments yet',
+      message: 'Linked and scheduled payments appear here.',
+    },
     // The ledger FlatList's own empty state — the SAME "no rows yet"
     // pattern `home.emptyTransactions` uses, replacing a bare
     // "Transactions" heading with nothing below it.
@@ -882,11 +891,7 @@ export const en = {
     // part (fees left out), and the outstanding every other screen shows for
     // the loan.
     interestPaid: 'Interest paid',
-    // The loan detail screen's own "Linked payments" section heading: the
-    // transactions the auto-link matcher (or a manual pick) linked to this
-    // loan, newest first.
-    linkedPayments: 'Linked Payments',
-    // The title of each upcoming loan payment's card: the schedule lists only
+    // The title of each scheduled loan payment's card: the schedule lists only
     // loan payments, so one fixed label names them all.
     loanPayment: 'Loan payment',
     militaryLevy: 'Military levy {{pct}}%',
@@ -899,17 +904,22 @@ export const en = {
     ownedCost: 'Cost (your share)',
     ownedValue: 'Your value',
     paidSoFar: 'Paid so far',
-    // The caption under each upcoming loan payment: how much of it repays
+    // The caption under each scheduled or linked loan payment: how much of it repays
     // the principal and how much is interest.
     paymentSplit: 'Principal {{principal}} · interest {{interest}}',
+    // The same caption for a payment that carries no interest (a 0% loan).
+    paymentSplitPrincipalOnly: 'Principal {{principal}}',
     principal: 'Principal',
     principalRepaid: 'Principal repaid',
     projected: 'Projected',
     purchase: 'Purchase',
     redemption: 'Redemption',
+    // The caption under each scheduled or linked loan payment: the loan balance left once it
+    // is paid.
+    remainingBalance: 'Remaining {{amount}}',
     sale: 'Sale',
-    // The marker under each upcoming loan payment: the payment is on the loan's
-    // contractual schedule, so it is not an estimate and not "Projected".
+    // The marker under each scheduled loan payment's title, as its subtitle: the
+    // payment is on the loan's contractual schedule, so it reads "Scheduled", not "Projected".
     scheduled: 'Scheduled',
     shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
@@ -918,9 +928,6 @@ export const en = {
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',
     transactionsHeading: 'Transactions',
-    // The loan detail's list of every remaining scheduled payment
-    // (annuity/differentiated only).
-    upcomingPayments: 'Upcoming Payments',
     // The loan footer action's label — writes a correction to the loan's
     // manual outstanding series via `PricePointForm` (same mechanism as
     // `updateValue` below, for a priced holding).
@@ -1129,7 +1136,7 @@ export const en = {
         steps: {
           '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
           '2': 'Tap it, make your changes, and tap "Save". If you changed the category, choose "Apply" to use it for every transaction with that name, or "Just for this one". In a synced or imported transaction, you can change only the category and the loan link.',
-          '3': 'Touch and hold a transaction you added or imported, then tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
+          '3': 'Touch and hold a transaction, then tap "View account" or "View holding" to open that page. On the page of the holding the transaction belongs to, of the two, only "View account" is offered. On a transaction you added or imported, tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
         },
         title: 'Edit, Duplicate, or Delete a Transaction',
       },

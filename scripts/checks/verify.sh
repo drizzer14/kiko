@@ -43,10 +43,55 @@ if [ "$code" -ne 0 ]; then
   exit "$code"
 fi
 
-run_stage 2 "jest (full suite)" npx jest
+# The suites that start the real semgrep run alone (2b), in band: beside the rest of the suite
+# (2a) on every core they starve semgrep of CPU and its 5 s per-rule timer fires. The list is
+# one file, shared with the pin in __tests__/semgrep-load-limits.test.ts. A --testPathIgnorePatterns
+# on the command line REPLACES the config's own list, so the config's patterns are read back and
+# passed again; each listed suite gets an anchored, dot-escaped pattern so it can swallow no
+# other path (a bare path would also match `x.test.tsx` beside `x.test.ts`).
+SEMGREP_SUITE_LIST="$DIR/semgrep-jest-suites.txt"
+SEMGREP_SUITES=()
+while IFS= read -r suite; do
+  case "$suite" in
+    '' | '#'*) ;;
+    *) SEMGREP_SUITES+=("$suite") ;;
+  esac
+done < <(cat "$SEMGREP_SUITE_LIST" 2>/dev/null)
+
+# A missing, empty or comments-only list would run no suite in 2b and leave the real-semgrep suites
+# unproven, so it fails here with a block instead of an "unbound variable" abort under bash 3.2.
+if [ "${#SEMGREP_SUITES[@]}" -eq 0 ]; then
+  {
+    echo "✖ make verify FAILED before stage 2: no suite is listed in scripts/checks/semgrep-jest-suites.txt"
+    echo "  The list is missing, empty or holds only comments, so stage 2b would run nothing."
+    echo "  Restore the list: one exact __tests__ path per line for every suite that runs the real semgrep."
+  } >&2
+  exit 2
+fi
+
+PART_A_ARGUMENTS=()
+while IFS= read -r pattern; do
+  PART_A_ARGUMENTS+=("--testPathIgnorePatterns=$pattern")
+done < <(node -e 'for (const pattern of require("./jest.config.js").testPathIgnorePatterns) console.log(pattern)')
+for suite in "${SEMGREP_SUITES[@]}"; do
+  PART_A_ARGUMENTS+=("--testPathIgnorePatterns=<rootDir>/${suite//./\\.}\$")
+done
+
+# Stage 2a also puts a `semgrep` that fails with a message first on PATH (a tracked script, so
+# the dir outlives this run): a suite that starts the real binary and is missing from the list
+# fails in 2a instead of timing out under load. 2b keeps the real PATH.
+PATH="$DIR/semgrep-tripwire:$PATH" run_stage 2a "jest (all but the real-semgrep suites)" \
+  npx jest "${PART_A_ARGUMENTS[@]}"
 code=$?
 if [ "$code" -ne 0 ]; then
-  echo "✖ make verify FAILED at stage 2 (jest) — exit code $code" >&2
+  echo "✖ make verify FAILED at stage 2a (jest) — exit code $code" >&2
+  exit "$code"
+fi
+
+run_stage 2b "jest (real-semgrep suites, in band)" npx jest "${SEMGREP_SUITES[@]}" --runInBand
+code=$?
+if [ "$code" -ne 0 ]; then
+  echo "✖ make verify FAILED at stage 2b (jest) — exit code $code" >&2
   exit "$code"
 fi
 

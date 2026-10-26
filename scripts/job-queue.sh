@@ -4,6 +4,7 @@
 #
 # Usage (run it with run_in_background and wait on its exit code):
 #   job-queue.sh verify|check-all|security <worktree> <label>
+#   job-queue.sh harness-verify <harness worktree> <label>
 #   job-queue.sh gate <worktree> <label> <mutation-base> <expected-head> [--long]
 #   job-queue.sh hold <reason>    stop every start until `release`; running jobs are not stopped
 #                                 (one holding the lock when `hold` returns is named on stdout)
@@ -46,18 +47,24 @@
 #              it is missing or lower, and exits 2 when it is higher, because a copy of this script
 #              older than the one that wrote the queue directory would misread its state.
 #
+# harness-verify runs the harness's own checks in a harness worktree (an absolute path, the git top
+# level of its repository, holding package.json, and not a pff-ios worktree): `npm test`, then
+# `npm run check:all` only when it passes. It is class 1 and takes the same lock as verify. Its
+# done.log line has the kind `harness-verify`, so scripts/ff-main.sh (which matches `verify`
+# exactly) never counts it, and it prints no old-copy WARNING.
+#
 # Old copy: a job command prints one WARNING on stderr when the running script differs from
 # <worktree>/scripts/job-queue.sh (the job still runs): a copy kept outside the worktree misses the
 # fixes made there since.
 #
-# Order is a plain `sort` of the ticket names. Class 1 is verify, check-all, and security (size
-# 0, first come first served); class 2 is a gate, class 3 a gate with --long. A gate's size is the
-# `changed lines:` figure of `KIKO_MUTATION_BASE=<base> scripts/checks/mutation.sh --list` in its
-# worktree, read when it is queued, so a short gate runs before a long one. A change set above the
-# file cap is refused (exit 2), and so is a tip whose mutation.sh has no changed-line gate (it
-# would ignore --list and run a whole Stryker outside the lock): merge main into it first. A gate
-# whose worktree HEAD does not start with <expected-head> is refused at once (exit 3), and again
-# when its turn comes.
+# Order is a plain `sort` of the ticket names. Class 1 is verify, check-all, security, and
+# harness-verify (size 0, first come first served); class 2 is a gate, class 3 a gate with --long.
+# A gate's size is the `changed lines:` figure of
+# `KIKO_MUTATION_BASE=<base> scripts/checks/mutation.sh --list` in its worktree, read when it is
+# queued, so a short gate runs before a long one. A change set above the file cap is refused
+# (exit 2), and so is a tip whose mutation.sh has no changed-line gate (it would ignore --list and
+# run a whole Stryker outside the lock): merge main into it first. A gate whose worktree HEAD does
+# not start with <expected-head> is refused at once (exit 3), and again when its turn comes.
 #
 # The first ticket in order starts once no hold exists, the power state is known and is not
 # battery, and the lock is free. A gate then removes the stale Stryker state and runs `make deep`
@@ -143,6 +150,7 @@ usage() {
   [ "$#" -eq 0 ] || printf '%s\n' "$1" >&2
   cat >&2 <<'USAGE'
 usage: job-queue.sh verify|check-all|security <worktree> <label>
+       job-queue.sh harness-verify <harness worktree> <label>
        job-queue.sh gate <worktree> <label> <mutation-base> <expected-head> [--long]
        job-queue.sh hold <reason>
        job-queue.sh release
@@ -300,6 +308,9 @@ case "$command_name" in
   verify | check-all | security)
     [ "$#" -eq 3 ] || usage
     ;;
+  harness-verify)
+    [ "$#" -eq 3 ] || usage
+    ;;
   gate)
     [ "$#" -eq 5 ] || { [ "$#" -eq 6 ] && [ "$6" = '--long' ]; } || usage
     mutation_base="$4"
@@ -322,7 +333,28 @@ esac
 worktree="$2"
 label="$3"
 valid_label "$label" || usage "invalid label: $label"
+if [ "$command_name" = harness-verify ]; then
+  case "$worktree" in
+    /*) ;;
+    *) usage "harness-verify needs an absolute path: $worktree" ;;
+  esac
+fi
 [ -d "$worktree" ] || usage "not a directory: $worktree"
+
+# A harness worktree is the top level of its own repository with a package.json, and never the
+# pff-ios app: that one is checked by verify.
+refuse_non_harness_worktree() {
+  local top_level physical
+  top_level="$(git -C "$worktree" rev-parse --show-toplevel 2> /dev/null)"
+  physical="$(cd "$worktree" && pwd -P)"
+  [ -n "$top_level" ] && [ "$top_level" = "$physical" ] \
+    || usage "not the git top level of a repository: $worktree"
+  [ -f "$worktree/package.json" ] || usage "no package.json in $worktree"
+  [ ! -f "$worktree/harness/kiko/.claude-plugin/plugin.json" ] \
+    || usage "$worktree is a pff-ios worktree; queue it with verify"
+}
+
+[ "$command_name" != harness-verify ] || refuse_non_harness_worktree
 
 clock_time() { date +%H:%M; }
 iso_stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -350,6 +382,7 @@ check_queue_format() {
 
 warn_if_copy_differs() {
   local worktree_copy="$worktree/scripts/job-queue.sh"
+  [ "$command_name" != harness-verify ] || return 0
   [ -f "$worktree_copy" ] || return 0
   cmp -s "${BASH_SOURCE[0]}" "$worktree_copy" \
     || printf 'WARNING: this job-queue.sh differs from %s; it may lack fixes made there.\n' \
@@ -784,6 +817,10 @@ run_job() {
     verify) env -u FORCE_COLOR make -C "$worktree" verify < /dev/null & ;;
     check-all) env -u FORCE_COLOR npm --prefix "$worktree" run check:all < /dev/null & ;;
     security) (cd "$worktree" && exec env -u FORCE_COLOR npm run check:security) < /dev/null & ;;
+    harness-verify)
+      (env -u FORCE_COLOR npm --prefix "$worktree" test \
+        && exec env -u FORCE_COLOR npm --prefix "$worktree" run check:all) < /dev/null &
+      ;;
     gate) start_gate_job ;;
   esac
   # Test-only hook, empty in production: it runs inside the window where the job exists but its pid

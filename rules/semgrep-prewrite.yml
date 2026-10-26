@@ -812,7 +812,11 @@ rules:
   # declaration sequence is split into a declaration-then-`...` arm and a
   # `...`-then-declaration arm, never one `... decl ...`: the two-sided `...`
   # creates O(k*m) ranges per declaration, so it timed out on a long
-  # component body, while the one-sided arms keep the same findings.
+  # component body, while the one-sided arms keep the same findings. "Untagged" is one
+  # `metavariable-regex` on the declaration's body, not four `pattern-not-inside` arms that repeat
+  # each declaration with a `'worklet'` first statement: those arms doubled the sequence matching
+  # (0.25 s to 0.14 s on net-worth-line.component.tsx at --jobs 1). An empty body binds no
+  # `$...HELPER_BODY` for the regex to test, so the four `{}` arms report an empty untagged helper.
   - id: kiko-worklet-directive-required
     languages: [typescript]
     severity: ERROR
@@ -854,30 +858,35 @@ rules:
               - focus-metavariable: $CALLBACK
       - pattern: $F(...)
       - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern-inside: |
+                      const $F = (...) => { $...HELPER_BODY }
+                      ...
+                  - pattern-inside: |
+                      ...
+                      const $F = (...) => { $...HELPER_BODY }
+                  - pattern-inside: |
+                      function $F(...) { $...HELPER_BODY }
+                      ...
+                  - pattern-inside: |
+                      ...
+                      function $F(...) { $...HELPER_BODY }
+              - metavariable-regex:
+                  metavariable: $...HELPER_BODY
+                  regex: ^(?!\s*['"]worklet['"])
           - pattern-inside: |
-              const $F = (...) => { ... }
+              const $F = (...) => {}
               ...
           - pattern-inside: |
               ...
-              const $F = (...) => { ... }
+              const $F = (...) => {}
           - pattern-inside: |
-              function $F(...) { ... }
+              function $F(...) {}
               ...
           - pattern-inside: |
               ...
-              function $F(...) { ... }
-      - pattern-not-inside: |
-          const $F = (...) => { 'worklet'; ... }
-          ...
-      - pattern-not-inside: |
-          ...
-          const $F = (...) => { 'worklet'; ... }
-      - pattern-not-inside: |
-          function $F(...) { 'worklet'; ... }
-          ...
-      - pattern-not-inside: |
-          ...
-          function $F(...) { 'worklet'; ... }
+              function $F(...) {}
       - pattern-not-inside: |
           $HOOK(..., (...) => {
             ...

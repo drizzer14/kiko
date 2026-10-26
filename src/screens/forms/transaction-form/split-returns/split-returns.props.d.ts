@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { TFunction } from 'i18next';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import type { ChangeReturnRow } from '../row-labels';
@@ -13,7 +14,7 @@ export type SplitReturnsProps = {
   returns: readonly ChangeReturnRow[];
   buildOptions: (index: number) => HoldingSelectOption[];
   onSelectHolding: (index: number, holdingId: string) => void;
-  onCreateHolding: () => void;
+  onCreateHolding: (handbackId: HandbackId) => void;
   onChangeAmount: (index: number, text: string) => void;
   onRemove: (index: number) => void;
   onAdd: () => void;

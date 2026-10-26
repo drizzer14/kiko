@@ -13,6 +13,7 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { DAY_MS } from '@kiko/dates';
+import { i18n } from '@kiko/i18n/init';
 import {
   type CategoryRuleMatcher,
   type RewriteGuardField,
@@ -97,7 +98,7 @@ const rulesReadsOf = (statements: string[]): number =>
   statements.filter((sql) => /^select .* from "category_rules"/i.test(sql)).length;
 
 const currencyReadsOf = (statements: string[]): number =>
-  statements.filter((sql) => /^select "id", "currency" from "holdings"/i.test(sql)).length;
+  statements.filter((sql) => /^select "id", "name", "currency" from "holdings"/i.test(sql)).length;
 
 beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
@@ -240,6 +241,124 @@ describe('a rule at insert', () => {
   });
 });
 
+describe('a rule at insert on a row with no description', () => {
+  const startsWith = (text: string): CategoryRuleMatcher => ({ type: 'nameStartsWith', text });
+  const blankItem = (externalId: string, overrides: Partial<SyncItem> = {}): SyncItem =>
+    syncItem(externalId, { description: '', source: 'binance', category: undefined, ...overrides });
+
+  it('matches the label the lists show for a blank expense, not the stored empty text', async () => {
+    insertRule('card-expense', 'food', [startsWith('Card expense')]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('expense'),
+      blankItem('income', { amountMinorUnits: 5_000 }),
+    ]);
+
+    expect(categoryOf('expense')).toBe('food');
+    expect(categoryOf('income')).toBeNull();
+  });
+
+  it('names the label by the holding the row lands on', async () => {
+    insertRule('dollar-card', 'food', [startsWith('Dollar card expense')]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('own'),
+      blankItem('dollar', { holdingId: 'usd' }),
+    ]);
+
+    expect(categoryOf('own')).toBeNull();
+    expect(categoryOf('dollar')).toBe('food');
+  });
+
+  it('leaves a row with a real description to its description, whatever its label would read', async () => {
+    insertRule('card-expense', 'food', [startsWith('Card expense')]);
+
+    await transactionsRepo.addManyDedup([blankItem('named', { description: 'Silpo' })]);
+
+    expect(categoryOf('named')).toBeNull();
+  });
+
+  it('matches the label of a blank exchange leg, read from a counterpart outside the batch', async () => {
+    insertRule('exchange-to', 'food', [startsWith('Exchange to')]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('leg', { exchangeCounterpartHoldingId: 'usd', exchangePairId: 'pair' }),
+    ]);
+
+    expect(categoryOf('leg')).toBe('food');
+  });
+
+  it('matches the label of a blank row whose counterpart is a wallet Kiko does not track', async () => {
+    insertRule('transfer-to', 'food', [startsWith('Transfer to USDⓈ-M Futures')]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('wallet', { untrackedCounterpart: 'wallet:UMFUTURE' }),
+      blankItem('plain'),
+    ]);
+
+    expect(categoryOf('wallet')).toBe('food');
+    expect(categoryOf('plain')).toBeNull();
+  });
+
+  it('matches the trading fee label of a blank fee row', async () => {
+    insertRule('trading-fee', 'food', [startsWith('Trading fee')]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('fee', { operation: 'trade-fee' }),
+      blankItem('plain'),
+    ]);
+
+    expect(categoryOf('fee')).toBe('food');
+    expect(categoryOf('plain')).toBeNull();
+  });
+
+  it('matches a rule on an amount and the label together', async () => {
+    insertRule('big-card-expense', 'rent', [
+      startsWith('Card expense'),
+      { type: 'amount', operator: 'eq', minorUnits: 50_000, currency: 'UAH' },
+    ]);
+
+    await transactionsRepo.addManyDedup([
+      blankItem('big', { amountMinorUnits: -50_000 }),
+      blankItem('small', { amountMinorUnits: -5_000 }),
+    ]);
+
+    expect(categoryOf('big')).toBe('rent');
+    expect(categoryOf('small')).toBeNull();
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it('matches the Ukrainian label, and not the English one', async () => {
+      insertRule('ukrainian', 'food', [startsWith('Витрата')]);
+      insertRule('english', 'rent', [startsWith('Card expense')]);
+
+      await transactionsRepo.addManyDedup([
+        blankItem('expense'),
+        blankItem('income', { amountMinorUnits: 5_000 }),
+      ]);
+
+      expect(categoryOf('expense')).toBe('food');
+      expect(categoryOf('income')).toBeNull();
+    });
+
+    it('matches the Ukrainian label with the holding name in it', async () => {
+      insertRule('named', 'food', [{ type: 'nameIs', text: 'Витрата: Card' }]);
+
+      await transactionsRepo.addManyDedup([blankItem('expense')]);
+
+      expect(categoryOf('expense')).toBe('food');
+    });
+  });
+});
+
 describe('a sync row that adopts its import twin', () => {
   it('keeps the twin category and by-hand mark whatever rule matches', async () => {
     insertRule('silpo', 'food', [nameIs('silpo')]);
@@ -267,6 +386,105 @@ describe('a sync row that adopts its import twin', () => {
     await transactionsRepo.addManyDedup([syncItem('k1', { time: T + SECOND })]);
 
     expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'food', flag: 0 }]);
+  });
+
+  describe('with no description', () => {
+    const startsWith = (text: string): CategoryRuleMatcher => ({ type: 'nameStartsWith', text });
+    const blankSyncItem = (externalId: string): SyncItem =>
+      syncItem(externalId, { description: '', category: undefined, time: T + SECOND });
+
+    const insertTwin = (markers: { pairId: string | null; counterpart: string | null }): void => {
+      run(
+        `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id,
+           description, category, exchange_pair_id, exchange_counterpart_holding_id)
+         VALUES ('twin', 'card', -5000, ?, 'import', 'twin', 'Silpo', NULL, ?, ?)`,
+        T,
+        markers.pairId,
+        markers.counterpart,
+      );
+    };
+
+    type TwinCase = {
+      title: string;
+      ruleId: string;
+      matcher: CategoryRuleMatcher;
+      markers: { pairId: string | null; counterpart: string | null };
+      category: string | null;
+    };
+
+    const PLAIN = { pairId: null, counterpart: null };
+    const LEG = { pairId: 'pair', counterpart: 'usd' };
+
+    const expectAdoptedCategory = async (twinCase: TwinCase): Promise<void> => {
+      insertRule(twinCase.ruleId, 'food', [twinCase.matcher]);
+      insertTwin(twinCase.markers);
+
+      await transactionsRepo.addManyDedup([blankSyncItem('k1')]);
+
+      expect(storedRows()).toMatchObject([
+        { externalId: 'k1', category: twinCase.category, flag: 0 },
+      ]);
+    };
+
+    it.each<TwinCase>([
+      {
+        title: 'gives a plain twin the rule that matches the label the lists show',
+        ruleId: 'card-expense',
+        matcher: startsWith('Card expense'),
+        markers: PLAIN,
+        category: 'food',
+      },
+      {
+        title: 'judges a twin that keeps its exchange markers by the exchange label it shows',
+        ruleId: 'card-expense',
+        matcher: startsWith('Card expense'),
+        markers: LEG,
+        category: null,
+      },
+      {
+        title:
+          'gives a twin that keeps its exchange markers the rule of its exchange label, as an insert does',
+        ruleId: 'exchange-to',
+        matcher: startsWith('Exchange to Dollar card'),
+        markers: LEG,
+        category: 'food',
+      },
+    ])('$title', expectAdoptedCategory);
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      afterEach(async () => {
+        await i18n.changeLanguage('en');
+      });
+
+      it.each<TwinCase>([
+        {
+          title: 'judges a twin that keeps its exchange markers by the Ukrainian exchange label',
+          ruleId: 'expense',
+          matcher: startsWith('Витрата'),
+          markers: LEG,
+          category: null,
+        },
+        {
+          title: 'gives a plain twin the rule that matches the Ukrainian label',
+          ruleId: 'expense',
+          matcher: startsWith('Витрата'),
+          markers: PLAIN,
+          category: 'food',
+        },
+        {
+          title:
+            'gives a twin that keeps its exchange markers the rule of its Ukrainian exchange label',
+          ruleId: 'exchange-to',
+          matcher: startsWith('Обмін на Dollar card'),
+          markers: LEG,
+          category: 'food',
+        },
+      ])('$title', expectAdoptedCategory);
+    });
   });
 });
 
@@ -365,12 +583,30 @@ describe('a rule at a refresh', () => {
   // compile here until the refresh is proven to follow.
   const SET_FIELD: Record<RewriteGuardField, string> = {
     categorySetByHand: 'category_set_by_hand = 1',
-    exchangePairId: "exchange_pair_id = 'pair'",
-    exchangeCounterpartHoldingId: "exchange_counterpart_holding_id = 'usd'",
-    untrackedCounterpart: "untracked_counterpart = 'wallet:UMFUTURE'",
     setsBalance: 'sets_balance = 1',
     changeGroupId: "change_group_id = 'group'",
   };
+
+  const LEG_MARKER_SETS = [
+    ['a paired exchange leg', "exchange_pair_id = 'pair'"],
+    ['a leg with a counterpart holding', "exchange_counterpart_holding_id = 'usd'"],
+    ['a transfer to a wallet Kiko does not track', "untracked_counterpart = 'wallet:UMFUTURE'"],
+  ];
+
+  it.each(LEG_MARKER_SETS)(
+    'gives %s the category of the rule that wins at the new amount',
+    async (_label, markerSet) => {
+      insertRule('large', 'rent', [largeAmount]);
+      await transactionsRepo.addManyDedup([
+        syncItem('k1', { amountMinorUnits: -49_900, hold: true }),
+      ]);
+      run(`UPDATE transactions SET ${markerSet} WHERE external_id = 'k1'`);
+
+      await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -50_100 })]);
+
+      expect(categoryOf('k1')).toBe('rent');
+    },
+  );
 
   it.each(REWRITE_GUARD_FIELDS)(
     'leaves a row with %s set alone when it settles at an amount a rule wins',

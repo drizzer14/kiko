@@ -1,4 +1,5 @@
 import type { Currency } from '@kiko/currency/currency';
+import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 
 export type HoldingSelectOption = {
   id: string;
@@ -7,8 +8,7 @@ export type HoldingSelectOption = {
   color: string;
   currency: Currency;
   accountName: string; // the parent account's display name
-  // The holding's `created_at` (ms). The "Add holding" round trip selects only
-  // a holding stamped inside its own window, never one a sync adds later.
+  // The holding's `created_at` (ms).
   createdAt: number;
 };
 
@@ -33,7 +33,8 @@ export type HoldingSelectFieldProps = {
   // Forwarded to the shared FieldTrigger.
   invalid?: boolean;
   // When set AND `options` is empty, the sheet shows one "Add holding" row that
-  // calls this (the caller opens the create form). The field then selects the
-  // holding created on that round trip, once it appears among `options`.
-  onCreateNew?: () => void;
+  // calls this with a handback id (the caller opens the create form, which hands
+  // its holding to that id). The field then selects exactly that holding once it
+  // is among `options`.
+  onCreateNew?: (handbackId: HandbackId) => void;
 };

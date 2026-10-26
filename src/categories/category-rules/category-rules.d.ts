@@ -68,9 +68,6 @@ export type RewriteCandidate = {
   currency: Currency | null;
   category: string | null;
   categorySetByHand: boolean;
-  exchangePairId: string | null;
-  exchangeCounterpartHoldingId: string | null;
-  untrackedCounterpart: string | null;
   setsBalance: boolean;
   changeGroupId: string | null;
 };

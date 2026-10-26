@@ -245,15 +245,26 @@ an entry (date + value) the moment the user approves a new visual.
   its full width.
   Short titles render exactly as before: each family keeps its own
   vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
-  body-size glyph), the holding-detail ledger rows stay `center`, and
-  the account card (`accounts.screen.tsx` `renderAccountCard`, the main
+  body-size glyph), and so does the shared `EntryCard` that the holding-detail
+  ledger rows use (`rowMain` is `flex-start`; a USER-APPROVED change of the
+  locked visual, 2026-10-23, Q4 = B: the amount sits at the top, its caption —
+  time only — sits directly under it in one right column, and the
+  scheduled split lines stay below the whole row; a derived row's marker
+  (Scheduled / Projected / Computed) is the `EntryCard` subtitle, smaller `textSecondary` text
+  under the label, from `derivedMarker` in `holding-detail.screen.tsx`; a past lot has none, and
+  the scheduled loan row passes "Loan payment" + "Scheduled"; a USER-APPROVED round 3 change,
+  2026-10-25, of the earlier title form). The subtitle sits under the wrapped title in the same
+  `rowDescription` box, `spacing(2)` under the label: the same step as `TransactionCard`'s gap
+  between its title row and its meta row (a user request, 2026-10-25; see
+  `entry-card.styles.ts` `rowDescriptionWithSubtitle` and `transaction-card.component.tsx`). The
+  account card (`accounts.screen.tsx` `renderAccountCard`, the main
   grid only) and the shared `HoldingCard` (also the Property and Debts
   section cards) stay
   `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
   wraps in its own `legendLabel` (`flex: 1`) box beside the swatch; its
   fixed-width value/percent columns are unchanged. Rows whose label is a
-  fixed short string (`SummaryTable`, the bar chart's type rows,
-  upcoming payments' dates) are not this pattern. The Accounts screen's
+  fixed short string (`SummaryTable`, the bar chart's type rows) are
+  not this pattern. The Accounts screen's
   Property and Debts section headings are user data (the implicit
   account's name) and DO follow it (`ImplicitAccountHeading`).
   `TransactionCard`'s `money` prop is optional (a transaction template's
@@ -520,6 +531,9 @@ The established patterns grouped under this heading:
   decorative). `InfoHint` serves two hints: this reminder and the Template tab's
   no-templates hint under the template select
   (`src/screens/forms/transaction-form/template-select/template-select.component.tsx`);
+  that select also carries the "Add template" row (`emptyAction`, hidden while the list loads;
+  the hint stays), and `transaction-form.screen.tsx` pushes the create form (params with
+  its `handbackId`: see "Empty holding picker");
   the plain hint (`forms.account.importOnlyBankHint`) stays a bare caption
   `Text`. Any other informational hint with no action stays a bare caption
   Text. A
@@ -1184,7 +1198,9 @@ new component can land between reviews of this skill:
   for it directly. `SelectField`'s optional `onSelectClosed(option)` runs
   once after the sheet a pick closed has finished closing (the
   `onClosed` contract above): wire a screen navigation to it, never to
-  `onSelect` (`AccountKindField` forwards it). `SelectField`'s optional
+  `onSelect` (`AccountKindField` forwards it).
+  The close calls the LATEST render's `onSelectClosed` (a ref refreshed every render), so it
+  sees the state the pick just set. `SelectField`'s optional
   `closesWithoutAnimation(option)` names the picks whose sheet closes with
   `BottomSheet`'s `animationType="none"` (`'fade' | 'slide' | 'none'`,
   default `'fade'`), so `onSelectClosed` follows the pick at once instead of
@@ -1192,7 +1208,14 @@ new component can land between reviews of this skill:
   pick that LEAVES the screen, where the fade is just a wait (the account
   form's Property and Debt, and the holding form's Bank, Cash, Crypto,
   Metals and Broker; the holding form's other implicit kind stays in that
-  form and keeps the fade). It is opt-in per call site; every other pick and
+  form and keeps the fade). `SelectField`'s optional `emptyAction`
+  (`{ label; onPress }`, `select-field.props.d.ts`) renders an action row with a plus glyph in the
+  sheet only when `options.length === 0`; the caller passes the translated label (no i18n in the
+  design-system component), the action runs after the sheet has closed with no animation, and it
+  is never reported to `onSelect` or `onSelectClosed`. `TemplateSelect`'s "Add template" row
+  (`forms.transaction.addTemplate`, en and uk) uses it; `HoldingSelectField` and
+  `PaymentHoldingField` build their own sheet and keep their own create row. The
+  `closesWithoutAnimation` flag is opt-in per call site; every other pick and
   every other sheet keeps the fade. It works because RN's iOS Modal host
   re-reads `animationType` on every props commit and uses it for the dismiss
   (`RCTModalHostViewComponentView.mm` `updateProps` sets
@@ -1269,7 +1292,8 @@ new component can land between reviews of this skill:
   icon-size token), top-left aligned, text wrapping beside the icon, one
   accessible element labelled by the message. Used for the Connect
   reminder in the three Connect fields and for the Template tab's
-  no-templates hint (`template-select`).
+  no-templates hint (`template-select`, which also carries the "Add template" row; `EntryTabs`
+  forwards `onCreateTemplate`).
 - **NoticeBanner** (`src/design-system/components/notice-banner/`) — an
   inline, non-modal notice for a state the user can keep working
   around (never an alert or sheet): a `surfaceHigh` box, a `caption`
@@ -1316,7 +1340,10 @@ new component can land between reviews of this skill:
   Transaction templates list (`transaction-templates-empty`, Settings stack,
   `src/screens/settings/transaction-templates/transaction-templates.screen.tsx`)
   shows it with Add template as its action, and its footer button hides
-  while it shows.
+  while it shows. The loan holding detail's one payments list shows it
+  when no row exists (`holding-detail-loan-payments-empty`, copy
+  `holdingDetail.emptyLoanPayments.*`).
+  The list above can drift: grep `<EmptyState` for the call sites.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
@@ -1328,15 +1355,19 @@ new component can land between reviews of this skill:
   'Reminders').
 - **CardContextMenu** (`src/design-system/components/card-context-menu/`)
   — wraps a grid/list card in a touch-and-hold delete (and, when an
-  `onEdit`, `onDuplicate`, and/or `closeAction` is passed, an
-  Edit/Duplicate/Close/Delete choice, in that order) menu. `onEdit` is
+  `onEdit`, `onDuplicate`, `onViewAccount`, `onViewHolding` and/or `closeAction`
+  is passed, an Edit/Duplicate/View account/View holding/Close/Delete choice,
+  in that order; read the JSX in `card-context-menu.component.tsx`) menu. `onEdit` is
   for a row with no tap target of its own: the holding detail's
   share-change rows and lot rows (`LotRowMenu`, Edit + Delete; Delete
   is offered only while every later sale stays covered without the lot,
   and a refusal inside the write shows the shared save-error alert). A
   lot row is the user's own entry, so unlike every other derived ledger
-  row it is not captioned "Computed". A transaction row keeps
-  tap-to-edit and passes only `onDuplicate`. `closeAction`
+  row it carries no marker subtitle (`derivedMarker` returns undefined for a lot row).
+  A transaction row keeps tap-to-edit and passes `onDuplicate` (manual rows) and the View actions
+  (`use-view-actions`; Home's transaction row). A synced transaction row gets
+  the View actions only, and an imported row lists View account, View
+  holding and Delete: a hold never opens the delete confirm directly there. `closeAction`
   (`{ label, onPress }`, the consumer names the entry) is the account
   detail's manual holding cards ("Close holding"/"Close loan" + Delete):
   a hold there opens the action list, never the delete confirm
@@ -1348,8 +1379,9 @@ new component can land between reviews of this skill:
   `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
   still hold, while a hold that MOVES fails the gesture so an enclosing
   `react-native-sortables` drag can still claim it — see `kiko-gestures`
-  for the full arbitration. A non-deletable entity with no action (a
-  synced account/holding) renders with no gesture at all, `<>{children}</>`,
+  for the full arbitration. A non-deletable account or holding card with no action (a
+  synced one; a card with a View action is not bare) renders with no
+  gesture at all, `<>{children}</>`,
   so a synced card stays reorderable. This replaced the app's earlier
   swipe-to-reveal-delete row (`SwipeableRow`, removed) as the one
   delete-affordance pattern; a new deletable card/row wraps in this
@@ -1561,8 +1593,23 @@ new component can land between reviews of this skill:
   from `resolveCreateHoldingTarget` (`src/screens/forms/create-holding-target/`): the picker passes
   `accepts(type)`, an optional `currency`, and `anchorAccountId`; the target is the anchor's own
   account or the first live account that can create an accepted type, opened on that type/currency,
-  else `AccountForm`. `useSelectCreatedHolding` (`use-select-created-holding.ts`) selects only the
-  holding created between the tap and the return focus (a `createdAt` window), never after a cancel.
+  else `AccountForm`. `useSelectCreatedOption` (`src/screens/forms/use-select-created-option/`) is
+  the shared hook behind every empty picker's create row (holding and template). The row press
+  opens a one-shot handback id (`openHandback`, `created-option-handback.ts`); a second press while
+  one is open gets none, so it pushes no second form. The id rides to the create form as the
+  `handbackId` route param (`TransactionForm {newTemplate}`, `HoldingForm`;
+  `resolveCreateHoldingTarget(picker, accounts, handbackId?)` adds it to the holding target, never
+  to the `AccountForm` one when an account exists). With no account the target is `AccountForm`,
+  and the id rides there too: `AccountForm` hands back the new cash holding id
+  (`accountsRepo.createCashAccount` resolves `{ accountId, holdingId }`) after that write commits.
+  The Property/Loan swap (`replace` into `HoldingForm`) and the holding form's
+  `leaveForAccountForm` (`replace` back) carry the id. A non-cash kind hands back nothing, and
+  an `AccountForm` opened without `handbackId` (Accounts > Add account, edit) hands back nothing.
+  The form hands the new id back (`handBackCreatedOption`) only after its
+  write commits; a cancel or a failed write hands back nothing. The picker selects exactly that id,
+  once, when its screen regains focus, whether the option reaches the list before or after the
+  focus. A blur drops an awaited id that never appeared; unmount closes the open handback. Outside
+  a navigator nothing is selected.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major. It renders every
   Money it is given; Home filters exact-zero totals first (see `kiko-domain`).
@@ -1591,8 +1638,9 @@ new component can land between reviews of this skill:
   layout/alignment/styling for their own summary rows (transaction count,
   currency, date span) — never the deposit table's value/percent/tax
   COLUMNS, only its layout. The loan detail's ledger breakdown is a
-  `SummaryTable` too; its "Upcoming Payments" list is NOT (it is
-  `EntryCard` rows, see **EntryCard**). A property owned in part swaps the priced
+  `SummaryTable` too; its linked and scheduled payments are NOT (they are
+  `EntryCard` rows in the day-grouped ledger, see **EntryCard**). A property
+  owned in part swaps the priced
   Cost / Value / Gain rows for Whole value / Your share / Your value /
   Cost (your share) / Gain (`sharedPropertyBreakdownRows`,
   `holding-detail.screen.tsx`; testIDs `ownership-whole-value`,
@@ -1614,8 +1662,18 @@ new component can land between reviews of this skill:
   default (unlike jest-dom's substring default on web), so a testID
   spanning both label and value would break every such assertion.
 - **EntryCard** (`src/design-system/components/entry-card/`) — the shared
-  ledger card: a label, an amount, and footer lines. Read
-  `entry-card.props.d.ts` for the props.
+  ledger card: a label, an amount, and footer lines. The `lead` holds only
+  the category icon; the link marker goes in `amountCaptionIcon` beside the
+  time (`amountCaption`); `footerLines` are lines under the WHOLE row (the
+  scheduled split lines, and the linked loan-payment transaction card's
+  split and balance-left lines). An optional `subtitle` (caption, `textSecondary`, no new
+  token) sits `spacing(2)` under the label in the `rowDescription` column, wrapping with the
+  title and never beside the amount; that is `TransactionCard`'s title-to-meta step
+  (`rowDescriptionWithSubtitle` in `entry-card.styles.ts`). Read `entry-card.props.d.ts` for
+  the props.
+  `TransactionCard`'s `rowFooterMeta` is `alignItems: 'center'`, so the link
+  icon shares the caption's centre line (Q5 = A, the Home footer;
+  `transaction-card.styles.ts`).
 - **EntryDateHeader** (`src/design-system/components/entry-date-header/`) —
   the date heading drawn above an `EntryCard`. Read
   `entry-date-header.props.d.ts` for the props.
@@ -1623,7 +1681,8 @@ new component can land between reviews of this skill:
   shared "Show all" / "Show less" link with a chevron. `testID` is required
   (`expand-toggle.props.d.ts`); the chevron takes `${testID}-chevron`. Its
   copy reads `components.expandToggle.*` (en, uk). Never inline a second Show all / Show less
-  copy.
+  copy. A consumer: `scheduled-payments-toggle`, the last child of the loan
+  list header, shown only past `SCHEDULED_PAYMENT_PREVIEW_COUNT`.
 - Characterization first: before extracting a shared component, pin the
   current rendered tree with `layoutOf` BEFORE moving any JSX, and keep that
   pin as a consumer test when the visual is locked.

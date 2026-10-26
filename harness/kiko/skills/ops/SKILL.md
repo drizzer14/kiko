@@ -98,7 +98,7 @@ Rules:
   "All files" line covers the whole incremental report and is only a
   whole-report sanity floor. A dry run can time out under load
   ("Initial test run timed out"): re-run. A window tip must be a commit
-  where the full jest suite passes.
+  where the full jest suite (two stages, 2a and 2b; see `scripts/checks/verify.sh`) passes.
 - **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
   dispatch.** The coordinator queues the long, no-incremental checks
   (Stryker mutation + osv) ITSELF as a background gate and launches
@@ -111,8 +111,8 @@ Rules:
   small change sets only".
 - **Keep the Mac awake for a gate.** Laptop sleep voided two gates on 2026-10-09 (13 h,
   78/151 timeouts). Queue the gate (`bash scripts/job-queue.sh gate ...`); never type a
-  heavy command under `caffeinate -i`: kill-guard does not unwrap it, which is a known gap,
-  not a route.
+  heavy command under `caffeinate -i`: kill-guard unwraps it and denies it like the bare
+  command (the queued form stays allowed).
 - **After a tests-only fix for module-scope (static) mutants, delete
   `reports/stryker-incremental.json` and `.stryker-tmp` in the gating
   checkout before the re-run.** Run 4 reused old Survived results (only
@@ -298,7 +298,8 @@ then starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery 
 load prints a NOTE and does not defer. A
 TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
 `docs/harness/checks.md`). Do not
-add your own limit. Never run a whole-repo semgrep, a full jest run, or stryker outside
+add your own limit. Never run a whole-repo semgrep, a full jest run
+(verify runs it as stages 2a and 2b), or stryker outside
 `scripts/job-queue.sh`: a brief that asks for one is refused and goes to the coordinator for a
 queued job (2026-10-18: two parallel whole-repo semgrep runs outside the queue overlapped a
 queued check-all and made it fail on registry timeouts at load 106; their counts had 45-68
@@ -320,6 +321,8 @@ never raise a timeout. See memory `check-security-timeout-under-load`.
 
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full
 contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
+`scripts/job-queue.sh harness-verify <harness worktree> <label>` (runs `npm test` then
+`check:all` in a harness-repo worktree) or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
 await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. A per-rule
 Class B count comes from queued `scripts/job-queue.sh security <worktree> <label>` jobs, one per

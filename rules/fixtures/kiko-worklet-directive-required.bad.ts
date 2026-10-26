@@ -60,3 +60,17 @@ export const useRiseStyle = (riseScale: { value: number }) =>
 const growForRise = (riseScaleValue: number): number => {
   return riseScaleValue * 3;
 };
+
+// Probe:an untagged helper with an EMPTY body, and one with an EXPRESSION body, each
+// called from a worklet callback. The rule must report each call line.
+const settleForFall = (): void => {};
+
+const flipForFall = (fallScaleValue: number): number => -fallScaleValue;
+
+export const useFallStyle = (fallScale: { value: number }) =>
+  useAnimatedStyle(() => {
+    // EXPECT-FINDING
+    settleForFall();
+    // EXPECT-FINDING
+    return { transform: [{ scale: flipForFall(fallScale.value) }] };
+  });

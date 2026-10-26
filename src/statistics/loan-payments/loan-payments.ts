@@ -1,8 +1,12 @@
+import {
+  isOnOrAfterLoanStartDay,
+  loanPaymentSplitsMinor,
+  type LoanPaymentSplit,
+} from '@kiko/holdings/loan-schedule';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
-import { loanPaymentSplitsMinor, type LoanPaymentSplit } from '@kiko/holdings/loan-schedule';
 
 import type { TrendTransaction } from '../category-trend';
 
@@ -46,26 +50,35 @@ export type LoanHolding = Pick<HoldingRow, 'id' | 'metadata' | 'currency'>;
  * existed. Either way the payment counts as ordinary spending under its own
  * category, in full, exactly like an unlinked payment — a wrong-currency
  * interest amount would otherwise be silently wrong.
+ *
+ * A payment dated before its loan's start day is not a loan payment either
+ * (`isOnOrAfterLoanStartDay`, the rule the loan schedule and ledger read): it counts as
+ * ordinary spending in full, even when the user linked it by hand. A loan
+ * whose metadata cannot be read has no start day to compare, so its payments
+ * stay excluded.
  */
 export const loanPaymentExcludedTransactionIds = (
-  transactions: readonly Pick<LoanPaymentTransaction, 'id' | 'loanHoldingId' | 'currency'>[],
-  loanHoldings: readonly Pick<LoanHolding, 'id' | 'currency'>[],
+  transactions: readonly Pick<
+    LoanPaymentTransaction,
+    'id' | 'loanHoldingId' | 'currency' | 'time'
+  >[],
+  loanHoldings: readonly LoanHolding[],
 ): Set<string> => {
-  const currencyByLoanHoldingId = new Map(
-    loanHoldings.map((holding) => [holding.id, holding.currency] as const),
-  );
-  const ids = new Set<string>();
+  const holdingById = new Map(loanHoldings.map((holding) => [holding.id, holding] as const));
+  const isLoanPayment = (transaction: (typeof transactions)[number]): boolean =>
+    foldMap(maybe(transaction.loanHoldingId), (loanHoldingId) => {
+      const holding = holdingById.get(loanHoldingId);
 
-  for (const transaction of transactions) {
-    if (
-      transaction.loanHoldingId !== null &&
-      currencyByLoanHoldingId.get(transaction.loanHoldingId) === transaction.currency
-    ) {
-      ids.add(transaction.id);
-    }
-  }
+      return (
+        holding?.currency === transaction.currency &&
+        (foldMap(maybe(asLoanMeta(holding.metadata)), (meta) =>
+          isOnOrAfterLoanStartDay(meta, transaction.time),
+        ) ??
+          true)
+      );
+    }) ?? false;
 
-  return ids;
+  return new Set(transactions.filter(isLoanPayment).map((transaction) => transaction.id));
 };
 
 /**

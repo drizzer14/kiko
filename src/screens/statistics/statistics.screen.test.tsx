@@ -769,8 +769,9 @@ describe('StatisticsScreen', () => {
       const { getByTestId, queryByTestId } = await renderScreen();
 
       const debtsTotal = getByTestId('statistics-debts-total');
-      expect(within(debtsTotal).getByText(/-5,000\.00 ₴/)).toBeTruthy();
-      // A loan just started (no installment due yet) has no OTHER pie
+      // Payment 1 is due on the start day, so 5,000.00 less its 24.41 principal part.
+      expect(within(debtsTotal).getByText(/-4,975\.59 ₴/)).toBeTruthy();
+      // A loan just started (only its first installment due) has no OTHER pie
       // contribution of its own to worry about, but the account it lives
       // under must still not get a negative slice.
       expect(queryByTestId('pie-chart-arc-d')).toBeNull();
@@ -2723,10 +2724,10 @@ describe('StatisticsScreen', () => {
   });
 
   describe('Loan interest', () => {
-    // A single-installment (termMonths: 1) annuity loan whose one due date
-    // falls exactly on "now" (`addMonths(startDate, 1)` reconstructs today's
-    // Y/M/D from a start one calendar month earlier), so a payment a couple
-    // of days before "now" lands comfortably inside the schedule's window.
+    // A single-installment (termMonths: 1) annuity loan whose one due date is
+    // its start, one calendar month before "now", so a payment a couple of
+    // days before "now" lands inside the schedule's window (up to one period
+    // after the last installment, `addMonths(startDate, 1)`, which is "now").
     // 900,000.00 principal at 12% annual (1% monthly) gives 9,000.00 interest.
     const startDate = (() => {
       const date = new Date(now);
