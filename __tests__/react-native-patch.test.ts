@@ -160,7 +160,7 @@ describe('the react-native-screens fixed content margin patch', () => {
         const layoutPass = source.slice(source.indexOf('- (void)viewDidLayoutSubviews'));
         const released = source.slice(
           source.indexOf('} else if (wasFixed) {'),
-          source.indexOf('- (void)applyFixedContentMargin'),
+          source.indexOf('- (void)clampSafeAreaTopInset'),
         );
 
         expect(layoutPass.indexOf('[self clampSafeAreaTopInset];')).toBeGreaterThan(
