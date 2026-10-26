@@ -2056,9 +2056,13 @@ than restated here:
   once (or bound the range): it is never rewritten, so it reads as the current cursor and moves
   later every run, and an owed range that grows each run could keep the history caption up
   forever.
-- **Passes per walk; 89-day windows on capital and Pay, 30-day on Transfer.**
-  The Transfer walk reads 30-day windows within a 179-day floor
-  (`TRANSFER_WINDOW_MS`, `transferFloorMs`). Binance rejects a `startTime`/
+- **Passes per walk; a window length per walk.** The fiat walks read one
+  window (`FIAT_WINDOW_MS`, `binance.fiat-history.ts`); capital (`WINDOW_MS`,
+  `binance.transactions.ts`) and Pay (`PAY_WINDOW_MS`) read the longest
+  windows under the limit; Transfer, Earn, Convert and P2P read 30-day
+  windows (`TRANSFER_WINDOW_MS`, `EARN_WINDOW_MS`, `CONVERT_WINDOW_MS`,
+  `P2P_WINDOW_MS`); Transfer reads them within a floor
+  (`transferFloorMs`). Binance rejects a `startTime`/
   `endTime` span of 90 days or more and caps a page at 1000 rows
   (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`); every walk
   reads windows under 90 days. A run is the FORWARD pass (the cursor to
@@ -2067,7 +2071,23 @@ than restated here:
   `WalkPass` is `'forward' | 'pending' | 'rescan'` plus the points
   pass (read it in `exchange/walk/walk.ts`); a run reads the forward pass, the owed
   ranges (`pending`, in a round-robin from the range cursor), the re-scan,
-  then the owed points last.
+  then the owed points last. The fiat orders walk reads ONE turn per run
+  (`turnOf`, `FiatTurn`, `binance.fiat-history.ts`): the forward turn, or,
+  on a behind run, the owed turn or the re-scan turn in turns
+  (`behindRun`, `rescanTurn`); `keepHintsOfOtherPasses` keeps the stored
+  hints of the passes a turn did not read, and `rescanStuck` holds the
+  ranges the re-scan cannot clear.
+  `binance.walk-wiring.ts` holds the wiring every Binance walk shares; read
+  it there.
+- **A failed read.** `isUnreadableWindowError` (`binance.walk-config.ts`):
+  the pending and points passes read on past an unreadable owed window and
+  the first such error is rethrown after; a rate limit, rejected key, clock
+  skew or network failure stops the run with no further call.
+  `recordFailedCall` (`binance.history-budget.ts`): every rejected page
+  request is a recorded lane call, so a lane cap holds when requests fail.
+  The re-scan halves a failing span down to a day before marking it, the
+  owed pass owes only the failing day, and a failed owed read is owed per
+  series.
 - **One pacing gate per run.** `createBinanceHistoryRun`
   (`binance.history-budget.ts`) builds ONE `createRequestGate` (the helper
   Monobank uses, `src/monobank/`) plus the run budget; `runCryptoSync`'s
@@ -2119,7 +2139,12 @@ than restated here:
 - **Per-record commits, crash-safe.** The walk goes oldest -> newest.
   Rows commit (`transactionsRepo.addManyDedup`) BEFORE the mark moves
   (`syncStateRepo.patchExchangeState`) — separate writes, so a crash between
-  them re-imports idempotently rather than losing progress. In the forward
+  them re-imports idempotently rather than losing progress. A walk can also
+  REMOVE a row: the fiat walks delete the row of a record read `Refunding` or
+  `Refunded` (`SettledSpan.removed`, `commitSettledSpan`'s `remove`, the only
+  delete of a synced row: `transactionsRepo.removeSyncedRows`, by key, no balance move),
+  after the span's rows and before its not-imported entry and its marks, so a
+  crash before the marks has the next run read the span again. In the forward
   pass the owed list and the cursor are one patch list, and in the re-scan the
   list and the re-scan mark are, one write after the rows. In the pending
   pass `advancePending` writes only the list (the read span out, its points
@@ -2220,11 +2245,23 @@ than restated here:
   compares them against `latestBalanceSyncAt(holdings, stateStamp)` (the later of the
   holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when
   any of those walks never caught up (`null` cursor) or is behind by more than a day,
-  or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
-  passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
-  the Transfer `pending` list alone), false before the account's own first balance sync.
-  An owed point never
-  shows it. A malformed walk state PAUSES the history: `CryptoSyncSection`'s
+  or when any walk owes a range (`historyOwesRange(state, lastBalanceSyncAt)`: ground its
+  cursor passed, read off the `pending` list of every one of the walks), or a point
+  that has stayed owed for more than a day (`since`, below), false before the account's
+  own first balance sync. A fresh owed point never shows it: the record it names is read
+  again on every sync. The fiat orders walk's own planned overlap day never shows it either
+  (`isPlannedOverlapDay`): its forward turn stores the day, and the next sync's behind turn
+  reads it, so a quiet account would show the caption on every other sync. The day is a range
+  owed in every series, exactly `RESYNC_OVERLAP_MS` wide, ending at or before the walk's cursor
+  (the turn stores it with the cursor already moved on, so its end is the earlier cursor); a
+  day owed in one series (how a failed fiat read is owed), a range of any other width, a day
+  ending after the cursor, and the same day of any other walk (they read it in the run that
+  plans it) all show it. A point carries `since` (epoch ms, the wall clock of the run that
+  first owed it; `WalkPlan.ranAt`, stamped by `advanceWalkMarks`, kept by `distinctGround`);
+  the caption counts it when `lastBalanceSyncAt - since` is more than a day. A point with
+  no `since` (stored before it) is quiet until a run owes it again, and a `since` that is
+  no non-negative integer reads as none (`asPendingRange`), never as a malformed list. A
+  malformed walk state PAUSES the history: `CryptoSyncSection`'s
   `historyPaused` (Binance and `walkState.kind === 'malformed'`) shows
   `accountDetail.exchangeHistoryPaused` INSTEAD of `binanceHistoryPending`, and
   the repair is disconnect + reconnect (`resetExchangeStateDatabaseTransaction`
@@ -2355,7 +2392,8 @@ Read `settledOutcomeOf` in `binance.convert-history.ts`.
   (`runWalkPlan` `owedFirst`; `storePlannedList` stores the planned list before any pass) and
   keeps one read of the first forward window, of the re-scan and of the points for the later
   passes. A Transfer drift owes the span in the drifted type alone. The `binanceHistoryPending`
-  caption also shows while the Transfer walk owes a range (`transferOwesRange`), not a point.
+  caption also shows while any walk owes a range, or a point owed for more than a day
+  (`historyOwesRange`).
   A span read that narrows (a type is refused a start, finds its memory lapsed, asks the end of
   the span, or reads a band) draws its calls from the lane's narrowing calls first
   (`LANE_NARROWING_CALLS` in `binance.history-budget.ts`; `spanRunOf` in
@@ -2463,10 +2501,14 @@ stop codes and scenario rows.
   a point (`kind: 'point'`); the kind alone tells them apart. At most
   `MAX_PENDING_RANGES` ranges (`exchange/walk/walk.ts`; the two nearest
   merge); a point is never merged with, held by or dropped with a range;
-  equal points are one.
-- **Canonical points.** A stuck record owes `[t - 1, t + 1]` (Pay, a
-  deposit) or `[T - 1000, T + 1000]` (a withdrawal, whose `applyTime` may be
-  cut or rounded to the second); never cut to the span.
+  equal points are one, and keep the earliest `since` (the time of the run that
+  first owed the point; see the lagging-history caption).
+- **Canonical points.** `pointOf` (`exchange/walk/records.ts`) rounds the
+  record's extent outward to whole milliseconds, one more on each side, so a
+  request never sends a fraction; a record with no finite extent, or outside
+  the read span, has no point. A withdrawal's extent reaches a second either
+  way (`APPLY_TIME_PRECISION_MS`, `binance.transactions.ts`: `applyTime` may
+  be cut or rounded to the second); never cut to the span.
 - **The point-leave rule.** A point leaves only when a WINDOW read to its end
   holds all of it and returned a record whose own point equals it (a point
   window's progress across runs is the resume below), or by the floor.

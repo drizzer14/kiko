@@ -256,11 +256,11 @@ const probeOf =
 
       return true;
     } catch (error) {
+      run.budget.record(lane, config.refusedCallWeights);
+
       if (!depth.isRefusal(error)) {
         throw error;
       }
-
-      run.budget.record(lane, config.refusedCallWeights);
 
       return false;
     }
@@ -540,6 +540,10 @@ const attemptSeries = async <Series extends string, Row, Lane extends string, Co
       : { kind: 'read', paged, startMs: reading.start };
   } catch (error) {
     if (depth === undefined || !depth.isRefusal(error)) {
+      // A request that rejected was made all the same, so the lane counts it; a refusal is
+      // counted where the narrowing starts.
+      run.budget.record(lane, config.refusedCallWeights);
+
       throw error;
     }
 
@@ -583,11 +587,11 @@ const readBand = async <Series extends string, Row, Lane extends string, Cost, W
       .with(P.union(undefined, { kind: 'split' }, { kind: 'drift' }), () => undefined)
       .exhaustive();
   } catch (error) {
+    run.budget.record(lane, config.refusedCallWeights);
+
     if (depth === undefined || !depth.isRefusal(error)) {
       throw error;
     }
-
-    run.budget.record(lane, config.refusedCallWeights);
 
     return undefined;
   }

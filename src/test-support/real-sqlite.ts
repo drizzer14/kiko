@@ -211,3 +211,18 @@ export const executingClient = (resolveDatabase: () => DatabaseSync): ExecutingC
  */
 export const executingDrizzle = <Database>(database: DatabaseSync): Database =>
   executingClient(() => database).database as unknown as Database;
+
+/**
+ * What a `jest.mock('@kiko/db/client', ...)` factory returns: the real module with `database` and
+ * `write` executing on the database the test has open when a query runs. It lives here, not in
+ * a module that imports app code, because the factory runs while `@kiko/db` is first loaded.
+ */
+export const databaseClientOver = (resolveDatabase: () => DatabaseSync) => {
+  const client = executingClient(resolveDatabase);
+
+  return {
+    ...jest.requireActual('@kiko/db/client'),
+    database: client.database,
+    write: client.write,
+  };
+};

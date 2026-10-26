@@ -9,6 +9,8 @@ export * from './binance.transfer-history';
 export * from './binance.earn-history';
 export { syncBinanceConvertHistory } from './binance.convert-history';
 export { syncBinanceDustHistory } from './binance.dust-history';
+export { syncBinanceP2pHistory } from './binance.p2p-history';
+export { syncBinanceFiatOrderHistory, syncBinanceFiatPaymentHistory } from './binance.fiat-history';
 export { syncBinanceTradeHistory } from './binance.trade-history';
 export * from './binance.history-budget';
 export * from './migrate-binance-credential';

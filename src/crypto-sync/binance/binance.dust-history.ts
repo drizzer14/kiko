@@ -1,3 +1,4 @@
+import { rethrow } from 'fnts';
 import { match } from 'ts-pattern';
 import {
   BinanceWalkStop,
@@ -26,10 +27,10 @@ import { holdingKeyOf } from './binance.holding-keys';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import type { BinanceTransactionRow } from './binance.transactions';
-import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
+import { type BinanceHistoryRun, COSTS, recordFailedCall } from './binance.history-budget';
 
 /** The stop of an entry the rules cannot read, and of a page record the client could not read. */
 const DUST_ROW_UNREADABLE = 'dust-row-unreadable';
@@ -253,10 +254,12 @@ const fetchPage = async (
 ): Promise<DustHistoryPage | undefined> => {
   try {
     await run.gate.wait();
-    const page = await deps.fetchDustHistory(credentials.apiKey, credentials.secret, {
-      fetchImpl: deps.fetchImpl,
-      now: deps.now,
-    });
+    const page = await deps
+      .fetchDustHistory(credentials.apiKey, credentials.secret, {
+        fetchImpl: deps.fetchImpl,
+        now: deps.now,
+      })
+      .catch(rethrow(() => recordFailedCall(run, 'dust')));
     run.budget.record('dust', page);
 
     return page;

@@ -26,6 +26,7 @@ const planOf = (over: Partial<WalkPlan> = {}): WalkPlan => ({
   rescan: [],
   rescanEnd: 0,
   pendingRanges: [],
+  ranAt: 0,
   ...over,
 });
 

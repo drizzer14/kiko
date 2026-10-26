@@ -596,6 +596,7 @@ const pointOf = (time: number, series: string, reach = 1) => ({
   end: time + reach,
   kind: 'point',
   series,
+  since: NOW,
 });
 
 const stopCodes = (spy: jest.SpyInstance): string[] =>
@@ -2627,6 +2628,13 @@ describe('the range cursor and the span hints of the round-robin', () => {
   describe('with a point whose window comes back full at its first millisecond', () => {
     const time = agoMs(60);
     const point = pointOf(time, 'MAIN_FUNDING');
+    // A record a read returned names its point as the record owes it, with no time of any run.
+    const returnedPoint = {
+      start: point.start,
+      end: point.end,
+      kind: 'point',
+      series: 'MAIN_FUNDING',
+    };
     const entries = [entryOf({ tranId: 't-point', timestamp: time })];
     const dense: Answer = (query) =>
       query.type === 'MAIN_FUNDING' && query.startTime === point.start && query.endTime > time
@@ -2655,7 +2663,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
         {
           start: point.start,
           end: point.end,
-          resume: { from: time, returned: [point], stuck: [], series: ['MAIN_FUNDING'] },
+          resume: { from: time, returned: [returnedPoint], stuck: [], series: ['MAIN_FUNDING'] },
         },
       ]);
       expect(pointsIn(listOf(world))).toEqual([point]);

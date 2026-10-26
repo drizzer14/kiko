@@ -63,6 +63,17 @@ describe('the footer', () => {
 
 describe.each([1, 2])('suite for %s', () => {});
 
+// A host name, a quarter and a ruling-shaped word that carry no digits after the Q are data.
+describe('ids in a title', () => {
+  it('resolves the FQDN of the host', () => {});
+
+  it('reads the AS12-Q3 column and the S12-Quality column', () => {});
+
+  it('reads the S12 and Q3 cells apart', () => {});
+
+  it('keeps a c-nr-e flag and a C-NR with no clause', () => {});
+});
+
 // A title that is not a string literal is out of the rule's reach.
 const title = 'A1 not a literal call';
 it(title, () => {});

@@ -49,6 +49,7 @@ import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 const WINDOW_MS = 89 * DAY_MS;
 const FLOOR_MS = Date.UTC(2017, 6, 14);
+const RAN_AT = Date.UTC(2026, 9, 10);
 
 describe('planWalkPasses', () => {
   const END_MS = Date.UTC(2026, 9, 10);
@@ -870,6 +871,7 @@ const planOf = (over: Partial<WalkPlan> = {}): WalkPlan => ({
   rescan: [],
   rescanEnd: 0,
   pendingRanges: [],
+  ranAt: RAN_AT,
   ...over,
 });
 
@@ -1681,7 +1683,13 @@ describe('advanceWalkMarks', () => {
     ...over,
   });
 
-  const pointOf = (start: number, end: number): OwedGround => ({ start, end, kind: 'point' });
+  // Owed at the run these tests plan with (`plan.ranAt`), so what a span owes is what it stores.
+  const pointOf = (start: number, end: number): OwedGround => ({
+    start,
+    end,
+    kind: 'point',
+    since: RAN_AT,
+  });
 
   const advanceCalls = async (
     pass: WalkPass,
