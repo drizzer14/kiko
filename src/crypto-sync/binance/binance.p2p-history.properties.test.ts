@@ -7,6 +7,7 @@ import {
   readFailureOf,
   walkRuns,
 } from '@kiko/test-support/walk-disturbances';
+import { sweep } from '@kiko/test-support/property-sweep';
 import { walkStateFake } from '@kiko/test-support/walk-marks';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
@@ -29,7 +30,7 @@ const HOUR_MS = 3_600_000;
 const RUN_GAPS = [0, HOUR_MS, DAY_MS];
 const NOISY_RUNS = 14;
 const RUNS = 40;
-const SEEDS = Array.from({ length: 35 }, (_unused, position) => 31 + position * 7);
+const SEEDS = sweep(Array.from({ length: 35 }, (_unused, position) => 31 + position * 7));
 const FIRST_RUN_AT = NOW;
 const HISTORY_DAYS = 400;
 const START_CURSOR = FIRST_RUN_AT - HISTORY_DAYS * DAY_MS;

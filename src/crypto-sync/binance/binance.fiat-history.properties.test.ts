@@ -8,6 +8,7 @@ import {
   readFailureOf,
   walkRuns,
 } from '@kiko/test-support/walk-disturbances';
+import { sweep } from '@kiko/test-support/property-sweep';
 import { walkStateFake } from '@kiko/test-support/walk-marks';
 import type { WalkResult } from '@kiko/crypto-sync/exchange/walk';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
@@ -70,14 +71,16 @@ const GENERATED_RUNS = 60;
 
 /** The runs a dense world is driven for: its bound adds the reads of a halving to each pass. */
 const DENSE_RUNS = 120;
-const SEEDS = Array.from({ length: 30 }, (_unused, position) => 5 + position * 7);
+const FULL_SEEDS = Array.from({ length: 30 }, (_unused, position) => 5 + position * 7);
+const SEEDS = sweep(FULL_SEEDS);
 
 /**
  * The seeds of the worlds that are driven for a few hundred runs a case (a wide owed range, a
- * dense hour of the whole re-scan window): every fifth of `SEEDS`, so the file does not take
- * minutes more for the runs those worlds need.
+ * dense hour of the whole re-scan window): every fifth of `FULL_SEEDS`, so the file does not take
+ * minutes more for the runs those worlds need. They are swept on their own: a sweep of `SEEDS`
+ * first would leave one seed of the fifths.
  */
-const LONG_WORLD_SEEDS = SEEDS.filter((_unused, position) => position % 5 === 0);
+const LONG_WORLD_SEEDS = sweep(FULL_SEEDS.filter((_unused, position) => position % 5 === 0));
 const ACCOUNT_ID = 'acc-fiat-orders-properties';
 const FIRST_RUN_AT = NOW;
 
@@ -1039,7 +1042,7 @@ describe.each(KIND_CLOCKS)(
 const STATUS_RUN_GAPS = [0, HOUR_MS, DAY_MS];
 const STATUS_RUNS = 60;
 const STATUS_NOISY_RUNS = 14;
-const STATUS_SEEDS = Array.from({ length: 32 }, (_unused, position) => 33 + position * 11);
+const STATUS_SEEDS = sweep(Array.from({ length: 32 }, (_unused, position) => 33 + position * 11));
 const STATUS_ACCOUNT_ID = 'acc-fiat-statuses-properties';
 
 type StatusCategory = 'settled' | 'refused' | 'untracked' | 'openThenSettled' | 'openThenRefused';

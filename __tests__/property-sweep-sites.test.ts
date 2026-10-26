@@ -35,8 +35,10 @@ describe('property sweep sites', () => {
     expect(seedSites()).toEqual([
       'src/crypto-sync/binance/binance.convert-history.properties.test.ts',
       'src/crypto-sync/binance/binance.dust-history.properties.test.ts',
+      'src/crypto-sync/binance/binance.fiat-history.properties.test.ts',
       'src/crypto-sync/binance/binance.history-walk.properties.test.ts',
       'src/crypto-sync/binance/binance.id-cursor-pager.test.ts',
+      'src/crypto-sync/binance/binance.p2p-history.properties.test.ts',
       'src/crypto-sync/binance/binance.trade-history.properties.test.ts',
       'src/crypto-sync/binance/binance.trade-symbols.properties.test.ts',
       'src/crypto-sync/binance/binance.walks.multi-coin.properties.test.ts',
