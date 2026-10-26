@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import {
   type BalanceProviderId,
   balanceProviderIds,
@@ -8,6 +9,7 @@ import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BinanceWriteToken } from '@kiko/crypto-sync/binance';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
+import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 
 import Box from '../box';
 import FieldLabel from '../field-label';
@@ -22,6 +24,9 @@ type CryptoSyncFormProps = {
   // account-form.screen's ensureCryptoAccount). Either way the field binds its
   // Keychain write and first sync to this id.
   accountId: string;
+  // The exchange or wallet whose field to mount. Absent: the form keeps its own Wallet/Binance
+  // toggle, which the create form uses until it picks its source itself.
+  source?: ExchangeCatalogId;
   onConnectWallet: (address: string) => Promise<boolean>;
   onConnectBinance: (stored: BinanceWriteToken) => Promise<boolean>;
   // Each source's field takes its own reminder: only the picked source's field is mounted.
@@ -47,6 +52,7 @@ const sourceLabels = (t: TFunction): Record<BalanceProviderId, string> => ({
 // hand-rolling a second copy — each field's own Connect runs the first sync.
 const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
   accountId,
+  source,
   onConnectWallet,
   onConnectBinance,
   walletReminder,
@@ -54,41 +60,46 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
   onBinanceStoredWhileUnmounted,
 }) => {
   const { t } = useTranslation();
-  const [source, setSource] = useState<BalanceProviderId>('btc_wallet');
+  const [toggledSource, setToggledSource] = useState<BalanceProviderId>('btc_wallet');
+  const shownSource = source ?? toggledSource;
 
   return (
     <Box gap={3}>
-      {/* Wallet vs Binance swaps which credential field renders below
-          (WalletAddressField / BinanceCredentialsField), so this is a mode
-          toggle, not a same-form value pick — a SegmentedControl, matching
-          the amount/currency mode selectors. SegmentedControl carries no
-          visible label of its own (only the non-visual accessibilityLabel),
-          so the caller composes its own FieldLabel above it, the same way
-          ChipRow/BondIsinSection do. */}
-      <Box gap={1}>
-        <FieldLabel label={t('accountDetail.sourceLabel')} />
+      {source === undefined && (
+        // Wallet vs Binance swaps which credential field renders below
+        // (WalletAddressField / BinanceCredentialsField), so this is a mode
+        // toggle, not a same-form value pick — a SegmentedControl, matching
+        // the amount/currency mode selectors. SegmentedControl carries no
+        // visible label of its own (only the non-visual accessibilityLabel),
+        // so the caller composes its own FieldLabel above it, the same way
+        // ChipRow/BondIsinSection do.
+        <Box gap={1}>
+          <FieldLabel label={t('accountDetail.sourceLabel')} />
 
-        <SegmentedControl<BalanceProviderId>
-          options={balanceProviderIds}
-          selected={source}
-          onSelect={setSource}
-          labels={sourceLabels(t)}
-          accessibilityLabel={t('accountDetail.sourceLabel')}
-        />
-      </Box>
-
-      {source === 'btc_wallet' && (
-        <WalletAddressField onConnect={onConnectWallet} reminder={walletReminder} />
+          <SegmentedControl<BalanceProviderId>
+            options={balanceProviderIds}
+            selected={toggledSource}
+            onSelect={setToggledSource}
+            labels={sourceLabels(t)}
+            accessibilityLabel={t('accountDetail.sourceLabel')}
+          />
+        </Box>
       )}
 
-      {source === 'binance' && (
-        <BinanceCredentialsField
-          accountId={accountId}
-          onConnect={onConnectBinance}
-          reminder={binanceReminder}
-          onStoredWhileUnmounted={onBinanceStoredWhileUnmounted}
-        />
-      )}
+      {match(shownSource)
+        .with('btc_wallet', () => (
+          <WalletAddressField onConnect={onConnectWallet} reminder={walletReminder} />
+        ))
+        .with('binance', () => (
+          <BinanceCredentialsField
+            accountId={accountId}
+            onConnect={onConnectBinance}
+            reminder={binanceReminder}
+            onStoredWhileUnmounted={onBinanceStoredWhileUnmounted}
+          />
+        ))
+        .with('other', () => null)
+        .exhaustive()}
     </Box>
   );
 };

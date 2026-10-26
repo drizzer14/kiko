@@ -338,6 +338,7 @@ export const en = {
       bankType: 'Bank type',
       bankTypePlaceholder: 'Select a bank',
       bankTypeSheetTitle: 'Bank Type',
+      bitcoinWallet: 'Bitcoin wallet address',
       broker: 'Broker',
       brokerDisclaimer:
         'Kiko is an independent app. It is not affiliated with or endorsed by any broker.',
@@ -352,6 +353,9 @@ export const en = {
         'The account card shows its total in this currency. Holdings keep their own currencies.',
       debt: 'Debt',
       editTitle: 'Edit Account',
+      exchangeConnectable: 'Connect with a read-only API key.',
+      exchangeOther: 'Other exchange or wallet',
+      exchangeOtherCaption: 'Add holdings by hand.',
       importOnlyBankHint: 'You can import a statement for this bank after saving.',
       initialValue: 'Initial value',
       initialValueNegativeError: 'Initial value must be 0 or greater.',
@@ -380,6 +384,7 @@ export const en = {
       otherBank: 'Other bank',
       otherBroker: 'Other broker',
       property: 'Property',
+      walletConnectable: 'Connect with a public address.',
     },
     contribution: {
       addTitle: 'Add Contribution',
@@ -767,6 +772,7 @@ export const en = {
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
+    changeExchangeAction: 'Change exchange',
     checking: 'Checking…',
     closeHoldingAction: 'Close holding',
     closeHoldingErrorTitle: 'Could not close holding',
@@ -780,6 +786,10 @@ export const en = {
     closeLoanTitle: 'Close Loan "{{name}}"',
     connectBinance: 'Connect Binance',
     connectedAs: 'Connected as {{name}}',
+    connectExchangeAction: 'Connect an exchange or wallet',
+    // The crypto `ProviderSheet` header — a sheet title, Title Case — kept separate from
+    // `connectExchangeAction` above (the Button that opens it, sentence case).
+    connectExchangeSheetTitle: 'Connect an Exchange or Wallet',
     connectMonobank: 'Connect Monobank',
     connectWallet: 'Connect wallet',
     couldNotConnectBinance: 'Could not connect Binance',
