@@ -330,6 +330,23 @@ describe('scripts/checks/jest-affected.sh', () => {
     expect(relatedArguments(result)).toContain('src/env.d.ts');
   });
 
+  it('adds suites that read a changed __tests__ fixture relative to their own folder', () => {
+    const sandbox = createSandbox({
+      files: {
+        '__tests__/fixtures/x.json': '{}\n',
+        '__tests__/reads-fixture.test.ts': "readFileSync(join(__dirname, 'fixtures/x.json'));\n",
+        '__tests__/reads-other.test.ts': "readFileSync(join(__dirname, 'fixtures/y.json'));\n",
+      },
+    });
+
+    writeAll(sandbox, { '__tests__/fixtures/x.json': '{"changed":true}\n' });
+
+    const result = runScript(sandbox);
+
+    expect(suitesRun(result)).toContain('__tests__/reads-fixture.test.ts');
+    expect(suitesRun(result)).not.toContain('__tests__/reads-other.test.ts');
+  });
+
   it('adds suites that import a deleted src module by its extensionless specifier', () => {
     const sandbox = createSandbox({
       files: {

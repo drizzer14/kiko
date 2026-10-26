@@ -17,8 +17,11 @@
 #              outside src/ and a src/ file jest cannot trace (an asset) also match by basename;
 #              an existing src/ code file matches by its full path only. A deleted code file also
 #              matches its extensionless import specifier (`/name'`, or the folder name for an
-#              index file), since an importer nobody edited still imports it
-#   related    an existing .ts/.tsx/.js/.mjs/.json path goes to `jest --findRelatedTests`
+#              index file), since an importer nobody edited still imports it. Known limit: a
+#              deleted module still imported by an unedited non-test file is not found here; tsc
+#              (the Stop tier) and the queued verify catch it. A path under __tests__ also
+#              matches without that prefix, the way a suite names its fixture
+#   related   an existing .ts/.tsx/.js/.mjs/.json path goes to `jest --findRelatedTests`
 # The suites in jest-inventory-suites.txt run on every call that has a change, since they walk a
 # tree and see a file no import reaches. A call with no change exits 0 before them.
 #
@@ -159,6 +162,10 @@ while IFS= read -r path; do
     HAS_EVERY=1
     printf 'AFFECTS EVERY SUITE: %s (the queued verify tests it)\n' "$path"
   fi
+
+  # A suite in __tests__ reads its fixtures relative to its own folder (`'fixtures/x.json'`), so a
+  # path under __tests__ is also named without that prefix.
+  case "$path" in __tests__/?*) add_name_patterns "${path#__tests__/}" ;; esac
 
   # A src/ file jest can trace goes to --findRelatedTests, and by its full path only to the suites
   # that read it as text: its basename would match a suite that names an unrelated file of that
