@@ -94,6 +94,7 @@ const GENERATED_HOLDING_CURRENCY: Record<string, Row['currency']> = {
 const GENERATED_STEP = 10 * MINUTE;
 const PROPERTY_RUNS = 150;
 const SHUFFLES_PER_RUN = 2;
+const GREEDY_SHORTFALL_RUNS_FLOOR = 1;
 
 const pick = <Item>(random: Random, items: readonly Item[]): Item =>
   items[Math.floor(random() * items.length)];
@@ -193,36 +194,76 @@ const maximumMatchingSize = (candidatesByExchange: readonly (readonly string[])[
   return best(0);
 };
 
-// Where a bucket's matched count falls short of the most rows any pairing could match.
+const isTransferLikeRow = ({ mcc, description }: Row): boolean =>
+  mcc === OWN_TRANSFER_MCC || mcc === CASH_OUT_MCC || description.toLowerCase().includes('binance');
+
+type CandidatePair = { exchange: Row; bank: Row };
+
+// A plain nearest-first greedy, written here so the test knows when taking the best pair first
+// strands a row that a different pairing would have matched.
+const greedyMatchingSize = (candidatePairs: readonly CandidatePair[]): number => {
+  const byPriority = (left: CandidatePair, right: CandidatePair): number =>
+    Number(isTransferLikeRow(right.bank)) - Number(isTransferLikeRow(left.bank)) ||
+    Math.abs(left.bank.time - left.exchange.time) -
+      Math.abs(right.bank.time - right.exchange.time) ||
+    left.bank.id.localeCompare(right.bank.id) ||
+    left.exchange.id.localeCompare(right.exchange.id);
+  const usedBankIds = new Set<string>();
+  const usedExchangeIds = new Set<string>();
+
+  for (const { exchange, bank } of [...candidatePairs].sort(byPriority)) {
+    if (!(usedBankIds.has(bank.id) || usedExchangeIds.has(exchange.id))) {
+      usedBankIds.add(bank.id);
+      usedExchangeIds.add(exchange.id);
+    }
+  }
+
+  return usedExchangeIds.size;
+};
+
+// Where a bucket's matched count falls short of the most rows any pairing could match, and how
+// many buckets the plain greedy alone would have fallen short in.
 const matchingShortfallsOf = (
   seed: number,
   ledger: readonly Row[],
   fundingById: ReadonlyMap<string, GeneratedFunding>,
   matchedExchangeIds: ReadonlySet<string>,
-): string[] => {
+): { shortfalls: string[]; greedyShortBuckets: number } => {
   const exchanges = ledger.flatMap(
     (row) => foldMap(maybe(fundingById.get(row.id)), (funding) => [{ row, funding }]) ?? [],
   );
   const debits = ledger.filter(({ id }) => !fundingById.has(id));
   const bucketKeys = new Set(exchanges.map(({ funding }) => fundingBucketOf(funding)));
+  let greedyShortBuckets = 0;
 
-  return [...bucketKeys].flatMap((bucketKey) => {
+  const shortfalls = [...bucketKeys].flatMap((bucketKey) => {
     const inBucket = exchanges.filter(({ funding }) => fundingBucketOf(funding) === bucketKey);
+    const candidatesByExchange = inBucket.map(({ row, funding }) =>
+      debits
+        .filter((bank) => fundsDebit(funding, bank, row))
+        .map((bank) => ({ exchange: row, bank })),
+    );
     const possible = maximumMatchingSize(
-      inBucket.map(({ row, funding }) =>
-        debits.filter((bank) => fundsDebit(funding, bank, row)).map(({ id }) => id),
-      ),
+      candidatesByExchange.map((candidates) => candidates.map(({ bank }) => bank.id)),
     );
     const matched = inBucket.filter(({ row }) => matchedExchangeIds.has(row.id)).length;
+
+    if (greedyMatchingSize(candidatesByExchange.flat()) < possible) {
+      greedyShortBuckets += 1;
+    }
 
     return matched === possible
       ? []
       : [`seed ${seed}: bucket ${bucketKey} matched ${matched} rows, ${possible} were possible`];
   });
+
+  return { shortfalls, greedyShortBuckets };
 };
 
 // Every way a result can break the matcher's contract, named with the seed that produced it.
-const violationsOf = (seed: number): { violations: string[]; pairCount: number } => {
+const violationsOf = (
+  seed: number,
+): { violations: string[]; pairCount: number; greedyFellShort: boolean } => {
   const random = seededRandom(seed * 2_654_435 + 1);
   const { ledger, fundingById } = generatedLedgerOf(random);
   const rowById = new Map(ledger.map((row) => [row.id, row]));
@@ -254,14 +295,14 @@ const violationsOf = (seed: number): { violations: string[]; pairCount: number }
     violations.push(`seed ${seed}: the excluded ids are not the matched rows set by rule`);
   }
 
-  violations.push(
-    ...matchingShortfallsOf(
-      seed,
-      ledger,
-      fundingById,
-      new Set(pairs.map(([, { exchangeId }]) => exchangeId)),
-    ),
+  const { shortfalls, greedyShortBuckets } = matchingShortfallsOf(
+    seed,
+    ledger,
+    fundingById,
+    new Set(pairs.map(([, { exchangeId }]) => exchangeId)),
   );
+
+  violations.push(...shortfalls);
 
   for (let shuffle = 0; shuffle < SHUFFLES_PER_RUN; shuffle += 1) {
     if (signatureOf(matchesOf(shuffled(random, ledger))) !== signatureOf(result)) {
@@ -269,7 +310,7 @@ const violationsOf = (seed: number): { violations: string[]; pairCount: number }
     }
   }
 
-  return { violations, pairCount: pairs.length };
+  return { violations, pairCount: pairs.length, greedyFellShort: greedyShortBuckets > 0 };
 };
 
 describe('exchangeFundingMatches', () => {
@@ -472,7 +513,7 @@ describe('exchangeFundingMatches', () => {
     );
   });
 
-  it('frees the nearest debit of an unmatched purchase before an earlier one that frees another', () => {
+  it('moves the purchase holding the debit to its nearer other debit before a farther free one', () => {
     const result = matchesOf([
       exchangeRow('buy-early', 'p2p:UAH:4150.00', T - 30 * MINUTE),
       exchangeRow('buy-late', 'p2p:UAH:4150.00', T + 10 * MINUTE),
@@ -604,6 +645,11 @@ describe('exchangeFundingMatches over generated ledgers', () => {
     expect(runs.flatMap(({ violations }) => violations)).toEqual([]);
     expect(runs.reduce((total, { pairCount }) => total + pairCount, 0)).toBeGreaterThan(
       PROPERTY_RUNS,
+    );
+    // Without these runs the maximum-matching check would pass for a matcher that only pairs
+    // the nearest first.
+    expect(runs.filter(({ greedyFellShort }) => greedyFellShort).length).toBeGreaterThanOrEqual(
+      GREEDY_SHORTFALL_RUNS_FLOOR,
     );
   });
 });
