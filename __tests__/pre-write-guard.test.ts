@@ -192,7 +192,6 @@ function writeFindingsStub(directory: string): string {
     ].join('\n'),
   );
   chmodSync(stubPath, 0o755);
-  warmExecutables([stubPath]);
 
   return stubPath;
 }
@@ -1199,7 +1198,6 @@ describe('Semgrep pass + new-findings-only diff', () => {
       ].join('\n'),
     );
     chmodSync(stub, 0o755);
-    warmExecutables([stub]);
 
     const result = runGuard(
       payloadFor('Write', {
@@ -1238,7 +1236,6 @@ describe('Semgrep pass + new-findings-only diff', () => {
       ].join('\n'),
     );
     chmodSync(stub, 0o755);
-    warmExecutables([stub]);
 
     const result = runGuard(
       payloadFor('Write', {

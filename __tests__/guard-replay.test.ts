@@ -126,7 +126,6 @@ const writeExecutable = (root: string, relativePath: string, body: string): stri
   writeFile(root, relativePath, body);
   const absolutePath = join(root, relativePath);
   execFileSync('chmod', ['755', absolutePath]);
-  warmExecutables([absolutePath]);
 
   return absolutePath;
 };
@@ -213,9 +212,12 @@ const runReplay = (
   options: ScriptOptions = {},
 ): Run => runScript(checkout, 'guard-replay.sh', environment, options);
 
-const crashingSemgrep = (checkout: Checkout): Record<string, string> => ({
-  KIKO_PREWRITE_SEMGREP_BIN: writeExecutable(checkout.root, 'semgrep-crash', CRASHING_SEMGREP),
-});
+const crashingSemgrep = (checkout: Checkout): Record<string, string> => {
+  const engine = writeExecutable(checkout.root, 'semgrep-crash', CRASHING_SEMGREP);
+  warmExecutables([engine]);
+
+  return { KIKO_PREWRITE_SEMGREP_BIN: engine };
+};
 
 // A replay that passes records that checkout's own mark, the way a passed
 // Stop does. The stub engine lets a finding through, so a later replay tells
@@ -223,6 +225,7 @@ const crashingSemgrep = (checkout: Checkout): Record<string, string> => ({
 // failing).
 const passReplayWithStubEngine = (checkout: Checkout, directory = checkout.main): void => {
   const engine = writeExecutable(checkout.root, 'semgrep-clean', CLEAN_SEMGREP);
+  warmExecutables([engine]);
   const run = runReplay(checkout, { KIKO_PREWRITE_SEMGREP_BIN: engine }, { directory });
 
   expect(run).toEqual({ code: 0, stderr: '' });
