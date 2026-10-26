@@ -1,3 +1,5 @@
+import { sweep } from '@kiko/test-support/property-sweep';
+
 import {
   internalTransferTransactionIds,
   rowsForTransferMatch,
@@ -96,6 +98,8 @@ const mulberry32 = (seed: number): (() => number) => {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 };
+
+const SEEDS = sweep(Array.from({ length: 40 }, (_unused, position) => 1 + position));
 
 const CURRENCIES: Transaction['currency'][] = ['BTC', 'USD', 'EUR', 'UAH'];
 
@@ -288,7 +292,7 @@ describe('internalTransferTxIds', () => {
   });
 
   it('matches the quadratic reference implementation on randomized ledgers, including multi-candidate ties', () => {
-    for (let seed = 1; seed <= 40; seed += 1) {
+    for (const seed of SEEDS) {
       const random = mulberry32(seed);
       const ledger = withMultiCandidateClusters(random, randomLedger(random, 300));
 

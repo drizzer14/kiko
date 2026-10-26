@@ -84,7 +84,8 @@ uploads to the App Store on the user's behalf.
   separate. After publication only the version bump goes to `main` by cherry-pick, and `main`
   regenerates its own demo `.kiko` files (never the branch's binary). Test-infra fixes `main`
   already has are cherry-picked from `main`, never re-authored.
-- The mutation gate runs per small change set, base = the branch's cut commit.
+- The mutation gate runs per small change set, base = the branch's cut commit. Paused by the
+  user since 2026-10-25 until lifted; verify + review only.
 
 ## Part B — App Store prep, then hand off
 

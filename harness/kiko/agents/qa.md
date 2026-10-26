@@ -36,7 +36,9 @@ Rules:
 - For a shell-write guard test, list the write forms per target AND every code path that
   computes a target (name each helper, for example `xargsCopyMoveTargets`); each path needs a
   red row before the fix (H9 I1: the xargs cp/mv fill had no red row).
-- Iterate with SCOPED tests (only the touched files) while developing. Ask the coordinator to
+- Iterate with `make jest-affected` (the default test command; exit 3 `AFFECTS EVERY SUITE` means
+  the verify must run) or SCOPED tests (`npx jest <files> --maxWorkers=2`) while developing.
+  Ask the coordinator to
   queue the verify ONCE, at the end (`bash scripts/job-queue.sh verify <worktree> <label>`; it
   runs lint, the full jest suite (two stages, 2a and 2b; see scripts/checks/verify.sh), and the
   gate in one fail-fast pass), and fix what it reports
@@ -103,6 +105,9 @@ Rules:
   typed helpers in `src/test-support/navigation-props.ts` instead.
 - A RED must fail for the stated reason, and the report must show the
   failing output, not just claim it failed.
+- A new property-test seed list is `const SEEDS = sweep([...])` from
+  `@kiko/test-support/property-sweep` (kiko-code-style, "A property test's seed list goes through
+  `sweep`"); add the site to `__tests__/property-sweep-sites.test.ts`.
 - Never edit or loosen an existing expectation to make new code pass.
   If a new requirement genuinely conflicts with an existing assertion,
   stop and report both expectations for a human to rule on — do not

@@ -42,7 +42,9 @@ Rules:
 - Keep the diff small and scoped to the task. Do not refactor unrelated code.
 - Iterate with SCOPED tests (only the touched files) to save tokens. Do not run a manual
   `make lint` after each change — the PostToolUse hook (`scripts/checks/fast.sh`) already lints
-  every file you edit automatically, so a per-edit lint is redundant. Ask the coordinator to queue
+  every file you edit automatically, so a per-edit lint is redundant. Run `make jest-affected` as
+  your default test command (exit 3 `AFFECTS EVERY SUITE` means the verify must run); a focused
+  `npx jest <files> --maxWorkers=2` stays allowed. Ask the coordinator to queue
   the verify ONCE, at the end (`bash scripts/job-queue.sh verify <worktree> <label>`; it runs
   lint, the full jest suite (two stages, 2a and 2b; see scripts/checks/verify.sh), and the gate
   in one fail-fast pass), and fix what it reports until it

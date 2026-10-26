@@ -4,6 +4,7 @@ import {
   exchangeStatePatched,
   parseExchangeState,
 } from '@kiko/crypto-sync/exchange/walk-state';
+import { sweep } from '@kiko/test-support/property-sweep';
 
 import {
   FIRST_FILL_AT,
@@ -33,7 +34,8 @@ const HOUR_MS = 3_600_000;
 const RUN_GAPS = [0, HOUR_MS, DAY_MS];
 const STRESS_RUNS = 5;
 const SETTLE_RUNS = 5;
-const SEEDS = Array.from({ length: 36 }, (_unused, position) => 30 + position * 11);
+const FULL_SEEDS = Array.from({ length: 36 }, (_unused, position) => 30 + position * 11);
+const SEEDS = sweep(FULL_SEEDS);
 const RETRY_AFTER_MS = 30_000;
 const MOST_ORDER_NUMBERS = 150;
 const FIRST_RUN_FILLS = 6;
@@ -46,6 +48,7 @@ const LEAST_QUOTE_UNITS = 1_000_000;
  */
 const MOST_DUST_QUOTE_UNITS = 49_999;
 const DUST_SHARE = 0.4;
+/** The floor over all the seeds; a dev run's fewer seeds owe the same share of it. */
 const LEAST_SHAPES = 10;
 
 type Spec = { symbol: string; baseAsset: string; quoteAsset: string };
@@ -720,6 +723,8 @@ describe('the orders the random exchanges generate', () => {
       note: 'the coverage check needs the whole file: a -t filter skips worlds',
       worlds: shapes.worlds,
     }).toEqual({ note: expect.any(String), worlds: SEEDS.length * RUN_GAPS.length });
-    expect(shapes.count).toBeGreaterThanOrEqual(LEAST_SHAPES);
+    expect(shapes.count).toBeGreaterThanOrEqual(
+      Math.ceil((LEAST_SHAPES * SEEDS.length) / FULL_SEEDS.length),
+    );
   });
 });

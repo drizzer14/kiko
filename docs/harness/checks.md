@@ -50,6 +50,7 @@ Composite scripts:
   bypasses the cap. An unpatched `@stryker-mutator/jest-runner` (patched-runner preflight,
   marker missing) also exits 2 before Stryker starts; it runs after the 0-file exit, so a
   0-file change set exits 0 on an unpatched tree. There is no release-scope deep gate.
+  **Paused by the user since 2026-10-25 until lifted; verify + review only.**
   **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached (queued with
@@ -117,6 +118,32 @@ Composite scripts:
   for a human to watch directly. The full never-poll rule
   (agents await only the exit code) lives in the `ops` skill — see it,
   and the `kiko-linter` skill, before running this yourself.
+
+## Makefile targets: `make jest-affected`
+
+`make jest-affected [BASE=<ref>]` is THE default dev test command. It runs
+`bash scripts/checks/jest-affected.sh [<ref>] [--list]`, which runs only the jest suites a change
+can affect. The full suite runs only in the queued verify. A focused run of named files
+(`npx jest <files> --maxWorkers=2`) stays allowed.
+
+- Property seeds: a dev run and `make jest-affected` draw 3 seeds per property list;
+  `scripts/checks/verify.sh` exports `KIKO_PROPERTY_SWEEP=full` before stage 2a (both jest
+  stages) and `scripts/checks/mutation.sh` exports it for Stryker. To reproduce a verify failure
+  in a property suite, run that file with `KIKO_PROPERTY_SWEEP=full`.
+- Base: the default is `git merge-base HEAD main`; `BASE=<ref>` overrides it. An unresolvable base
+  exits 2. The changed paths are the tracked diff against the base plus untracked files.
+- How a changed path maps to suites (the buckets, the name matching, the inventory list) and the
+  known limits: read the header of `scripts/checks/jest-affected.sh`; it is the one place.
+- An every-suite path (`package.json`, `package-lock.json`, `jest.config.js`, `jest/**`,
+  `babel.config.js`, `tsconfig*.json`, `__mocks__/**`, `patches/**`, `.env.test`) prints
+  `AFFECTS EVERY SUITE: <path>`; the related run still happens, then the runner exits 3 with a
+  notice to queue the verify (`bash scripts/job-queue.sh verify <worktree> <label>`).
+- `--list` prints the plan line, the suites and `npm run check:rules` when it applies, runs
+  nothing and exits 0. A call with no change exits 0 and runs nothing.
+- Exit codes: 0 green; 1 (or the first non-zero code) from a jest call or `check:rules`; 2 a failure
+  block (bad argument, unresolvable base, missing list, git or jest listing failure), nothing ran;
+  3 an every-suite path.
+- The queued verify stays the backstop.
 
 ## Automatic wiring
 
@@ -231,9 +258,20 @@ The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines a
 `unknown` unless the tree is clean at START and again at the end (`git --no-optional-locks
 status --porcelain --untracked-files=all`), HEAD is unchanged, and the repository is readable.
 The queue never takes the worktree's index.lock for these reads. A job that edits its own tree
-without committing records `unknown`; an edit reverted before the end is not seen, and ignored
-files (`.env`, `node_modules`) are not counted; keep the tree untouched until DONE. The LAST
-`verify` line whose head equals the full sha decides and needs exit 0;
+without committing records `unknown` plus a `NOTE <label>: the tree changed during the job:
+<path>` line; `verify` and `gate` refuse a tree with any change (untracked included) with exit 3,
+at enqueue and again at START, naming the first 3 paths (commit or copy aside, never stash;
+`check-all` and `security` still run on a dirty tree). On the real queue (`KIKO_QUEUE_DIR` unset
+or equal to `~/.claude/kiko-queue`) `verify`, `gate` and `check-all` also exit 3 for a target
+worktree of another repository (git common dir) or a script copy outside any repository
+(`harness-verify` and `security` are exempt); jest.config.js sets a temporary `KIKO_QUEUE_DIR`
+for every jest run, and a by-hand test run must do the same (see the `scripts/job-queue.sh`
+header, `refuse_foreign_repository_on_real_queue`). A verify prints no live output: its log is
+`<queue dir>/logs/verify-<label>.log` (default `~/.claude/kiko-queue`), kept for every verify and
+trimmed to the summary lines plus the last 400 lines; the end prints the summary, `log: <path>`
+and the last 40 lines (header of `scripts/job-queue.sh`). An edit reverted before the end is not
+seen, and ignored files (`.env`, `node_modules`) are not counted; keep the tree untouched until
+DONE. The LAST `verify` line whose head equals the full sha decides and needs exit 0;
 `check-all`, `gate`, `unknown`, `lost`, and old 5-field lines never count. The queue writes one
 `lost` line when a waiter prunes a dead waiter's ticket, and a lock-form `lost` line when it
 reclaims a dead lock (its job may have run fully). `$QUEUE_DIRECTORY/format` is a format stamp: an

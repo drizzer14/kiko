@@ -129,7 +129,7 @@ if [ -z "$verified_line" ] || [ "$verified_exit" != 0 ]; then
     'No successful queued verify at this commit' \
     "$DONE_LOG, last verify line for it: ${verified_line:-none}" \
     'Main moves only to a commit a queued verify passed on, so an unverified commit never reaches it.' \
-    "Queue: bash scripts/job-queue.sh verify <clean worktree at $full_commit> <label>, wait for exit 0 (a tree changed at START or at the end, or a moved HEAD, is recorded as unknown and does not count), then re-run bash scripts/ff-main.sh $requested"
+    "Queue: bash scripts/job-queue.sh verify <clean worktree at $full_commit> <label>, wait for exit 0 (a verify of a changed tree is refused with exit 3, at enqueue and at START; a tree the job changed, or a moved HEAD, is recorded as unknown and does not count), then re-run bash scripts/ff-main.sh $requested"
 fi
 
 if ! git -C "$main_checkout" merge-base --is-ancestor HEAD "$full_commit" 2> /dev/null; then

@@ -234,6 +234,21 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
     });
   });
 
+  it('runs Stryker with KIKO_PROPERTY_SWEEP=full', () => {
+    const { temporaryDirectory } = freshProject();
+    const callLog = join(temporaryDirectory, 'calls');
+    const bin = writeStrykerStub(
+      temporaryDirectory,
+      stubWritingReport(reportOf(['Killed']), [
+        'printf "%s\\n" "${KIKO_PROPERTY_SWEEP-unset}" >> "$KIKO_STUB_CALLS"',
+      ]),
+    );
+
+    runWithStub(bin, temporaryDirectory, callLog);
+
+    expect(readFileSync(callLog, 'utf8').split('\n').filter(Boolean)).toEqual(['full']);
+  });
+
   it('never reads a stale report left by an earlier run', () => {
     const { temporaryDirectory, root } = freshProject();
     writeFile(root, REPORT_PATH, reportOf(['Killed', 'Killed', 'Killed', 'Killed']));

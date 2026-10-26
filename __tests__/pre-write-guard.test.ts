@@ -14,6 +14,7 @@ import {
   createTemporaryDirectory,
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
+import { warmExecutables } from './test-support/warm-executables';
 
 // scripts/checks/pre-write-guard.sh is the PreToolUse hook for Edit/Write/
 // MultiEdit (wired in harness/kiko/hooks/hooks.json). It reads the hook's
@@ -33,14 +34,15 @@ const SCRIPT = join(__dirname, '../scripts/checks/pre-write-guard.sh');
 // the rendezvous. Run concurrently, every stub meets the count however slow
 // the machine is; run one after another, the first stub never sees the
 // others and records `timeout` (a later stub gives up at once on seeing it).
-// The bound is 200 polls, so it only ends a run that can never meet.
+// The bound is $STUB_BARRIER_POLLS polls (200 unless set), so it only ends a run that can
+// never meet.
 function barrierLinesFor(stubName: string): string[] {
   return [
     `case " $STUB_BARRIER_EXPECT " in *" ${stubName}="*)`,
     `  printf '${stubName} start\\n' >> "$STUB_BARRIER_FILE"`,
     '  attempts=0',
     '  met=no',
-    '  while [ "$attempts" -lt 200 ] && ! grep -q "^timeout$" "$STUB_BARRIER_FILE"; do',
+    `  while [ "$attempts" -lt "\${STUB_BARRIER_POLLS:-200}" ] && ! grep -q "^timeout$" "$STUB_BARRIER_FILE"; do`,
     '    met=yes',
     '    for expectation in $STUB_BARRIER_EXPECT; do',
     `      started="$(grep -c "^\${expectation%%=*} start$" "$STUB_BARRIER_FILE")"`,
@@ -91,6 +93,7 @@ function writeSemgrepStub(directory: string): string {
     ].join('\n'),
   );
   chmodSync(stubPath, 0o755);
+  warmExecutables([stubPath]);
 
   return stubPath;
 }
@@ -548,6 +551,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
       "#!/usr/bin/env bash\nprintf 'boom\\n    at first (stack.js:1)\\n    at second (stack.js:2)\\n' >&2\nexit 42\n",
     );
     chmodSync(fakeNodePath, 0o755);
+    warmExecutables([fakeNodePath]);
 
     const result = runGuard(
       '{}',
@@ -1624,6 +1628,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     const nodeStubPath = join(project, 'node-stub.sh');
     writeFileSync(nodeStubPath, '#!/usr/bin/env bash\nexit 3\n');
     chmodSync(nodeStubPath, 0o755);
+    warmExecutables([nodeStubPath]);
     const targetFile = join(project, 'src', 'example.ts');
 
     const result = runGuard(
@@ -1655,6 +1660,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     const nodeStubPath = join(project, 'node-stub.sh');
     writeFileSync(nodeStubPath, '#!/usr/bin/env bash\necho "TypeError: boom" >&2\nexit 1\n');
     chmodSync(nodeStubPath, 0o755);
+    warmExecutables([nodeStubPath]);
     const targetFile = join(project, 'src', 'example.ts');
 
     const result = runGuard(
@@ -1686,6 +1692,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
       '#!/usr/bin/env bash\necho "unexpected output with no violation line"\nexit 1\n',
     );
     chmodSync(nodeStubPath, 0o755);
+    warmExecutables([nodeStubPath]);
     const targetFile = join(project, 'src', 'example.ts');
 
     const result = runGuard(
@@ -1751,6 +1758,7 @@ describe('spawnAsync stdout decoding (multibyte character split across chunks)',
       ].join('\n'),
     );
     chmodSync(stubPath, 0o755);
+    warmExecutables([stubPath]);
 
     return stubPath;
   }
@@ -2596,13 +2604,23 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     return count;
   }
 
-  function writeRendezvousNodeStub(directory: string): string {
+  function writeRendezvousNodeStub(directory: string, firstRunDelaySeconds = 0): string {
     const stubPath = join(directory, 'node-rendezvous-stub.sh');
+    const markerPath = join(directory, 'node-rendezvous-first-run');
     writeFileSync(
       stubPath,
-      ['#!/usr/bin/env bash', ...barrierLinesFor('node'), 'exit 0', ''].join('\n'),
+      [
+        '#!/usr/bin/env bash',
+        ...(firstRunDelaySeconds > 0
+          ? [`[ -e "${markerPath}" ] || { : >"${markerPath}"; sleep ${firstRunDelaySeconds}; }`]
+          : []),
+        ...barrierLinesFor('node'),
+        'exit 0',
+        '',
+      ].join('\n'),
     );
     chmodSync(stubPath, 0o755);
+    warmExecutables([stubPath]);
 
     return stubPath;
   }
@@ -2652,6 +2670,7 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
         ].join('\n'),
       );
       chmodSync(nodeStub, 0o755);
+      warmExecutables([nodeStub]);
       mkdirSync(join(project, 'src'), { recursive: true });
       const targetFile = join(project, 'src', 'example.ts');
       writeFileSync(targetFile, beforeContent);
@@ -2703,6 +2722,34 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     expect(result.status).toBe(0);
     // Each checker returns only after all of them have started, so one run
     // after another leaves the first alone and ends in `timeout`.
+    expect(readFileSync(barrierFile, 'utf8').trim().split('\n')).toEqual(
+      Array(spawnedCheckerCount).fill('node start'),
+    );
+  });
+
+  it('keeps a slow first exec of the Node stub out of the rendezvous bound', () => {
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const semgrepStub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const nodeStub = writeRendezvousNodeStub(project, 3);
+    const targetFile = join(project, 'src', 'component', 'component.tsx');
+    const barrierFile = join(project, 'barrier.txt');
+    const spawnedCheckerCount = countSpawnedCheckers();
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: cleanComponentContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: semgrepStub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_NODE_BIN: nodeStub,
+        STUB_BARRIER_FILE: barrierFile,
+        STUB_BARRIER_EXPECT: `node=${spawnedCheckerCount}`,
+        STUB_BARRIER_POLLS: '20',
+      }),
+    );
+
+    expect(result.status).toBe(0);
     expect(readFileSync(barrierFile, 'utf8').trim().split('\n')).toEqual(
       Array(spawnedCheckerCount).fill('node start'),
     );

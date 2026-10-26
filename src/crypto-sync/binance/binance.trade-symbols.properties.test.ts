@@ -1,3 +1,4 @@
+import { sweep } from '@kiko/test-support/property-sweep';
 import { IdCursorPageError } from '@kiko/crypto-sync/exchange/paging';
 import type { ExchangeTrades } from '@kiko/crypto-sync/exchange/walk-state';
 
@@ -20,7 +21,7 @@ const seededRandom = (seed: number): (() => number) => {
   };
 };
 
-const SEEDS = Array.from({ length: 40 }, (_unused, position) => 1 + position * 13);
+const SEEDS = sweep(Array.from({ length: 40 }, (_unused, position) => 1 + position * 13));
 
 const MOST_LISTED = 150;
 const UNIVERSE = 600;

@@ -7,7 +7,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deploy pods gate jest doc-suites deep mutable typecheck lint dup knip deps \
+.PHONY: help deploy pods gate jest jest-affected doc-suites deep mutable typecheck lint dup knip deps \
         security secrets rules plist overrides start clean-ios verify
 
 help: ## List available targets
@@ -35,6 +35,9 @@ verify: ## Fail-fast end-of-work check: lint, then full jest, then gate — stop
 
 jest: ## Run the full Jest suite
 	npx jest
+
+jest-affected: ## Run only the jest suites a change can affect, plus the tree-scanning inventory (BASE=<ref>, default the merge-base with main; exit 3 names a config change only the queued verify tests)
+	bash scripts/checks/jest-affected.sh $(BASE)
 
 doc-suites: ## Run the jest suites that read skill, agent, docs and CLAUDE.md text (found by harness_doc_suites; run before a doc commit; a pass clears the Stop tier's doc step)
 	bash -c '. scripts/checks/_lib.sh; harness_doc_suites_by_hand .'

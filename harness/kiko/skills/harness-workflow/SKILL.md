@@ -68,6 +68,12 @@ Rules:
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
 - A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
 
+- `make jest-affected` is the default dev test command: it runs only the suites a change can
+  affect (base: merge-base with main; `BASE=<ref>` overrides). Exit 3 with `AFFECTS EVERY SUITE`
+  (package files, jest/babel/tsconfig, `__mocks__`, `patches`, `.env.test`) means queue the
+  verify. Named-file jest (`npx jest <files> --maxWorkers=2`) stays allowed. The queued verify
+  stays the backstop. Mapping rules and limits: the header of `scripts/checks/jest-affected.sh`;
+  usage: `docs/harness/checks.md` "Makefile targets".
 - Run the FULL jest through the queued verify (`bash scripts/job-queue.sh verify <worktree>
   <label>`; a typed `make verify` is denied) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory
@@ -204,6 +210,22 @@ result, and lists the candidate lessons per "Memory writes".
 
 ## Mutation testing: small change sets only
 
+Status: the per-change-set gate below is paused by the user since 2026-10-25 until lifted;
+verify + review only. The gate text stays for when the user lifts the pause.
+
+Strict scope (user ruling 2026-10-25, every track): a track fixes only visible wrong data or
+UI, its own regressions, wrong texts, and release requirements. Everything else goes to a
+per-track backlog file. Classify a finding this way before asking the user about it, so the
+user sees only real decisions.
+
+Batch merge: several READY, reviewed tracks with a clean `git merge-tree` may merge together
+onto main. Merge them in one detached worktree with a real `git merge` (hooks run), run ONE
+queued verify on the result, then `bash scripts/ff-main.sh <sha>`. One verify replaces one per
+track.
+
+Status is on demand: there is no Status session. The coordinator runs an in-session named
+`kiko:pm` agent that gets `EVENT:` lines, and asks it when the user wants status.
+
 Mutation testing (`check:deep` / `check:mutation`) runs per SMALL change
 set, never on a whole project or a whole release — a whole-release run
 went 10 h 16 min with no result. There is no whole-release or
@@ -274,10 +296,9 @@ files in it still gets the verify, because check:all and the hooks run
 from it. Then fast-forward main with `bash scripts/ff-main.sh <sha>`. It
 runs only for a sha whose LAST `verify` line in the queue's done.log is exit 0, so queue the
 verify through `scripts/job-queue.sh verify` (a bare `make verify` leaves no line), keep the
-tree untouched until DONE, and do not move HEAD after. The line's head field is the full sha
-only when the tree is clean at START and again at the end and HEAD is unchanged; a job that
-edits its own tree without committing records `unknown`. Limits: an edit reverted before the
-end is not seen, and ignored files (`.env`, `node_modules`) are not counted. The
+tree untouched until DONE, and do not move HEAD after. When the head field is the full sha or
+`unknown`, and the dirty-tree refusal: see the queue paragraph below and the
+`scripts/job-queue.sh` header. The
 kill-guard denies a raw
 `merge --ff-only` on main (kind `mainFastForward`). There is no bypass: an override goes to the
 user plus a run-log note. The script prints `git log -1 --oneline` of main on success.
@@ -728,6 +749,11 @@ class starts (orchestrator default D1, accepted by the user 2026-10-13); an unre
 state holds too. A load wait at the head of the queue is in the ops skill, "Load rule". A gate
 refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
 exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
+On the real queue (`KIKO_QUEUE_DIR` unset or equal to `~/.claude/kiko-queue`), `verify`, `gate`
+and `check-all` refuse (exit 3) a target worktree of another repository and a script copy
+outside any repository; `harness-verify` and `security` are exempt. A test or scratch run never
+uses `job-queue.sh` without `KIKO_QUEUE_DIR` on a temporary folder (see the `scripts/job-queue.sh`
+header, `refuse_foreign_repository_on_real_queue`).
 Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
 (an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
 WARNING). Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's
@@ -739,8 +765,12 @@ queue directly (the queue serializes) and throttle feature tracks with a LOAD HO
 or tsc agent until RESUME; a RESUME names its limits). Keep `wait-load.sh` for a lone security
 run only. A queued check:all or verify reads the worktree until
 the job is DONE; keep that tree untouched from the queue time until DONE, and never queue one while
-a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
-START or at the end, or HEAD moved.
+a developer still edits that tree. `verify` and `gate` refuse a changed tree (untracked included)
+with exit 3, at enqueue and again at START: commit it (for example `ios/Podfile.lock`) or copy
+files aside, never stash. done.log's head field is `unknown` if the job itself changed the tree
+(a `NOTE` names the path) or HEAD moved; `check-all` and `security` still run on a dirty tree. A
+verify prints no live output: read `<queue dir>/logs/verify-<label>.log` (path printed at the
+end) for a failure, and wait only for the exit code. Detail: the `scripts/job-queue.sh` header.
 
 During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
 `check:all` or `make verify` outside the queue (kill-guard denies it: `heavyJob`, `fullJest`);

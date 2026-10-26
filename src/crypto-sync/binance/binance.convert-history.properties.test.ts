@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
+import { sweep } from '@kiko/test-support/property-sweep';
 import { walkStateFake } from '@kiko/test-support/walk-marks';
 
 import { NOW } from './binance.pay-test-fixtures';
@@ -18,7 +19,7 @@ import type { BinanceConvertRecord, ConvertHistoryPage } from './binance.history
 const HOUR_MS = 3_600_000;
 const RUN_GAPS = [0, HOUR_MS, DAY_MS];
 const RUNS = 5;
-const SEEDS = Array.from({ length: 25 }, (_unused, position) => 3 + position * 8);
+const SEEDS = sweep(Array.from({ length: 25 }, (_unused, position) => 3 + position * 8));
 const ACCOUNT_ID = 'acc-convert-properties';
 const FIRST_RUN_AT = NOW;
 const HISTORY_DAYS = 25;

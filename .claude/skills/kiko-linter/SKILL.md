@@ -32,6 +32,9 @@ fast+medium gate is picked up by `make verify` automatically through
 ## The wrapper contract
 
 `scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
+`scripts/checks/jest-affected.sh` (`make jest-affected`) is a runner, not a `scripts/checks` wrapper
+either: its stdout plan line and, for an every-suite path, its exit 3 notice are normal output
+(its exit 2 prints a failure block). Detail: `docs/harness/checks.md` "Makefile targets".
 A gate forwards the `--list` over-count `warning:` line before QUEUED and prints each
 `TIMEOUT-HEAVY` line of its log before the DONE line (the ops skill's "Load rule" has the order).
 The rerun and the manual fallback for a TIMEOUT-HEAVY file:
@@ -402,7 +405,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   worktree's `.git/worktrees/<n>/`).
   A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
   build the scratch from a git merge or commit, or use `git archive <sha> scripts |
-  tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
+  tar -x -C <folder>` into a folder that is not a worktree (a `job-queue.sh` run from that copy
+  gets exit 3 for verify/gate/check-all on the real queue; use a temporary `KIKO_QUEUE_DIR`;
+  the guard judges redirects, `cp`/`mv`,
   `sed`, `tee`, and interpreters, not the archive extractor; not run against the guard, so
   re-verify). Formatter
   `--write` and reads stay allowed. `drizzle/` is
@@ -1040,10 +1045,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   cap tests share their throwaway-repository, stub, and wrapper-run helpers
   through `__tests__/test-support/mutation-repository.ts` (excluded from
   Jest's suite list by `jest.config.js` `testPathIgnorePatterns`, which
-  ignores only the non-`*.test.*` files there). Those helpers drop an
-  inherited `KIKO_MUTATION_BASE` and `KIKO_MUTATION_FULL` from the wrapper's
-  env, so a developer's own `export` never changes the scope a test runs;
-  a test's own explicit setting still wins.
+  ignores only the non-`*.test.*` files there). Those helpers drop
+  the variables in `SCOPE_VARIABLES` (same file; read the set there) from the
+  wrapper's env, so a developer's own `export`, or one the verify makes,
+  never changes the scope a test runs or lets a row pass without the
+  wrapper's own export; a test's own explicit setting still wins. A new env
+  switch a wrapper exports joins that set in the same commit.
 
   `mutation.sh` also gives a watching HUMAN a live progress display and a
   split ETA, so nobody polls the run — its exit code stays the only
