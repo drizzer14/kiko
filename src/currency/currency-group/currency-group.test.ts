@@ -1,4 +1,5 @@
 import { i18n } from '@kiko/i18n/init';
+import { sweep } from '@kiko/test-support/property-sweep';
 
 import { type Currency, currencyOptions } from '../currency';
 
@@ -10,6 +11,8 @@ const order = (codes: readonly Currency[], held: readonly Currency[] = []) =>
   orderCurrencies(codes, { held, nameOf, language: 'en' });
 
 const pinnedTrio: readonly Currency[] = ['UAH', 'USD', 'EUR'];
+
+const SEEDS = sweep([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 
 // A small seeded generator keeps the property table reproducible without a dependency.
 const seededRandom = (seed: number) => {
@@ -86,25 +89,22 @@ describe('orderCurrencies', () => {
     ).toEqual(['AOA', 'DZD']);
   });
 
-  it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])(
-    'keeps held first, then the pinned trio, over shuffled slice %i',
-    (seed) => {
-      const random = seededRandom(seed);
-      const codes = shuffled(currencyOptions, random).slice(0, 20 + seed * 8);
-      const held = shuffled(currencyOptions, random).slice(0, seed % 5);
-      const withPinned = [...new Set([...codes, ...(seed % 2 === 0 ? pinnedTrio : [])])];
-      const result = order(withPinned, held);
+  it.each(SEEDS)('keeps held first, then the pinned trio, over shuffled slice %i', (seed) => {
+    const random = seededRandom(seed);
+    const codes = shuffled(currencyOptions, random).slice(0, 20 + seed * 8);
+    const held = shuffled(currencyOptions, random).slice(0, seed % 5);
+    const withPinned = [...new Set([...codes, ...(seed % 2 === 0 ? pinnedTrio : [])])];
+    const result = order(withPinned, held);
 
-      const heldInput = withPinned.filter((code) => held.includes(code));
-      const trioAfterHeld = pinnedTrio.filter(
-        (code) => withPinned.includes(code) && !held.includes(code),
-      );
+    const heldInput = withPinned.filter((code) => held.includes(code));
+    const trioAfterHeld = pinnedTrio.filter(
+      (code) => withPinned.includes(code) && !held.includes(code),
+    );
 
-      expect([...result].sort()).toEqual([...withPinned].sort());
-      expect(new Set(result.slice(0, heldInput.length))).toEqual(new Set(heldInput));
-      expect(result.slice(heldInput.length, heldInput.length + trioAfterHeld.length)).toEqual(
-        trioAfterHeld,
-      );
-    },
-  );
+    expect([...result].sort()).toEqual([...withPinned].sort());
+    expect(new Set(result.slice(0, heldInput.length))).toEqual(new Set(heldInput));
+    expect(result.slice(heldInput.length, heldInput.length + trioAfterHeld.length)).toEqual(
+      trioAfterHeld,
+    );
+  });
 });

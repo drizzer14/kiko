@@ -77,6 +77,10 @@ for suite in "${SEMGREP_SUITES[@]}"; do
   PART_A_ARGUMENTS+=("--testPathIgnorePatterns=<rootDir>/${suite//./\\.}\$")
 done
 
+# The queued verify is the only full property sweep: a dev jest run draws 3 seeds per list
+# (src/test-support/property-sweep.ts). Exported once here, so 2a and 2b both inherit it.
+export KIKO_PROPERTY_SWEEP=full
+
 # Stage 2a also puts a `semgrep` that fails with a message first on PATH (a tracked script, so
 # the dir outlives this run): a suite that starts the real binary and is missing from the list
 # fails in 2a instead of timing out under load. 2b keeps the real PATH.

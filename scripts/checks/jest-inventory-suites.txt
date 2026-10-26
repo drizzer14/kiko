@@ -17,6 +17,7 @@ __tests__/kill-guard-scripts.test.ts
 __tests__/memory-writes-rule.test.ts
 __tests__/one-component-per-file.test.ts
 __tests__/plural-count.test.ts
+__tests__/property-sweep-sites.test.ts
 __tests__/react-native-patch.test.ts
 __tests__/reminders-gregorian-calendar.test.ts
 __tests__/semgrep-load-limits.test.ts

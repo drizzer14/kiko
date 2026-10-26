@@ -28,6 +28,7 @@ import {
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
 import maybe, { foldMap } from 'fnts/maybe';
+import { sweep } from '@kiko/test-support/property-sweep';
 import { walkStateFake, type WalkField, type WalkName } from '@kiko/test-support/walk-marks';
 import type { BinanceSpanHintPass, BinanceSpanHints } from '@kiko/crypto-sync/exchange/walk-state';
 
@@ -67,7 +68,7 @@ const BASE_MS = Date.UTC(2025, 6, 1);
 const WINDOW_MS = 89 * DAY_MS;
 const TWO_POWER_32_MS = 2 ** 32;
 const NEVER = Number.POSITIVE_INFINITY;
-const SEEDS = [11, 23, 37];
+const SEEDS = sweep([11, 23, 37]);
 
 /**
  * The runs come this far apart, or all at one instant: the start of a re-scan pass and the floor
