@@ -68,6 +68,12 @@ Rules:
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
 - A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
 
+- `make jest-affected` is the default dev test command: it runs only the suites a change can
+  affect (base: merge-base with main; `BASE=<ref>` overrides). Exit 3 with `AFFECTS EVERY SUITE`
+  (package files, jest/babel/tsconfig, `__mocks__`, `patches`, `.env.test`) means queue the
+  verify. Named-file jest (`npx jest <files> --maxWorkers=2`) stays allowed. It is not the
+  backstop: a suite that reads source text without importing it is reached only through the
+  inventory list or a quoted path. Detail: `docs/harness/checks.md` "Makefile targets".
 - Run the FULL jest through the queued verify (`bash scripts/job-queue.sh verify <worktree>
   <label>`; a typed `make verify` is denied) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory

@@ -99,6 +99,8 @@ Rules:
   whole-report sanity floor. A dry run can time out under load
   ("Initial test run timed out"): re-run. A window tip must be a commit
   where the full jest suite (two stages, 2a and 2b; see `scripts/checks/verify.sh`) passes.
+  The default dev test command is `make jest-affected` (the affected suites only; exit 3 means
+  queue the verify); the full suite stays in the queued verify.
 - **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
   dispatch.** The coordinator queues the long, no-incremental checks
   (Stryker mutation + osv) ITSELF as a background gate and launches

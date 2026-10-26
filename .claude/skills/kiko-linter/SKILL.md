@@ -32,6 +32,9 @@ fast+medium gate is picked up by `make verify` automatically through
 ## The wrapper contract
 
 `scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
+`scripts/checks/jest-affected.sh` (`make jest-affected`) is a runner, not a `scripts/checks` wrapper
+either: its stdout plan line and, for an every-suite path, its exit 3 notice are normal output
+(its exit 2 prints a failure block). Detail: `docs/harness/checks.md` "Makefile targets".
 A gate forwards the `--list` over-count `warning:` line before QUEUED and prints each
 `TIMEOUT-HEAVY` line of its log before the DONE line (the ops skill's "Load rule" has the order).
 The rerun and the manual fallback for a TIMEOUT-HEAVY file:

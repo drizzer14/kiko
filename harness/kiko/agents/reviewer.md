@@ -49,7 +49,8 @@ Rules:
   repository, or for a path the guard cannot resolve. Build a fixture repository's tree with the
   committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with Edit/Write.
   A denied suite run is a blocker to report, never a silent "no suite ran".
-- Run the changed tests (`npx jest <files> --maxWorkers=2`) and any new check. The report lists
+- Run `make jest-affected` (the default test command; exit 3 means queue the verify) or the changed
+  tests (`npx jest <files> --maxWorkers=2`), and any new check. The report lists
   which suites ran, which did not, and why.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain

@@ -118,6 +118,36 @@ Composite scripts:
   (agents await only the exit code) lives in the `ops` skill — see it,
   and the `kiko-linter` skill, before running this yourself.
 
+## Makefile targets: `make jest-affected`
+
+`make jest-affected [BASE=<ref>]` is THE default dev test command. It runs
+`bash scripts/checks/jest-affected.sh [<ref>] [--list]`, which runs only the jest suites a change
+can affect. The full suite runs only in the queued verify. A focused run of named files
+(`npx jest <files> --maxWorkers=2`) stays allowed.
+
+- Base: the default is `git merge-base HEAD main`; `BASE=<ref>` overrides it. An unresolvable base
+  exits 2. The changed paths are the tracked diff against the base plus untracked files.
+- Buckets (a path can land in several): related (an existing `.ts`, `.tsx`, `.js`, `.mjs` or
+  `.json` path goes to `jest --findRelatedTests`); named (every test file that names the path or
+  its basename in a quoted literal; a `src/` code file matches by full path only); docs (a skill,
+  agent, docs or CLAUDE.md path adds the doc-reading suites, found as `make doc-suites` finds
+  them); rules (a `rules/` path adds `npm run check:rules`); inventory (the suites in
+  `scripts/checks/jest-inventory-suites.txt` run on every call that has a change, because they walk
+  a tree).
+- An every-suite path (`package.json`, `package-lock.json`, `jest.config.js`, `jest/**`,
+  `babel.config.js`, `tsconfig*.json`, `__mocks__/**`, `patches/**`, `.env.test`) prints
+  `AFFECTS EVERY SUITE: <path>`; the related run still happens, then the runner exits 3 with a
+  notice to queue the verify (`bash scripts/job-queue.sh verify <worktree> <label>`).
+- `--list` prints the plan line, the suites and `npm run check:rules` when it applies, runs
+  nothing and exits 0. A call with no change exits 0 and runs nothing.
+- Exit codes: 0 green; 1 (or the first non-zero code) from a jest call or `check:rules`; 2 a failure
+  block (bad argument, unresolvable base, missing list, git or jest listing failure), nothing ran;
+  3 an every-suite path.
+- Known limits: a suite that reads source text without importing it is reached only by the
+  inventory list or a quoted path in the suite. A deleted module still imported by an unedited
+  non-test file is not found; `tsc` (the Stop tier) and the verify catch it. The verify stays the
+  backstop.
+
 ## Automatic wiring
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
