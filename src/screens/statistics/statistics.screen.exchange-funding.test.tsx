@@ -159,6 +159,8 @@ describe('StatisticsScreen with an exchange purchase a bank debit funded', () =>
 
     const { getByTestId, queryByTestId } = await renderScreen();
 
+    expect(getByTestId('pie-chart-arc-binance')).toBeTruthy();
+
     await act(async () => {
       await fireEvent.press(getByTestId(ACCOUNT_FILTER));
     });

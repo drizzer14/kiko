@@ -1,4 +1,5 @@
 import type { AccountRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
 import { exchangeFundingMatches } from './exchange-funding-match';
@@ -163,6 +164,63 @@ const fundsDebit = (funding: GeneratedFunding, bank: Row, exchange: Row): boolea
   );
 };
 
+const fundingBucketOf = ({ fiat, totalMinorUnits }: GeneratedFunding): string =>
+  `${fiat}:${totalMinorUnits}`;
+
+// The most exchange rows that can each take a different debit, tried by exhaustion so the answer
+// does not depend on any pairing order the matcher uses.
+const maximumMatchingSize = (candidatesByExchange: readonly (readonly string[])[]): number => {
+  const used = new Set<string>();
+
+  const best = (index: number): number => {
+    if (index === candidatesByExchange.length) {
+      return 0;
+    }
+
+    let most = best(index + 1);
+
+    for (const debitId of candidatesByExchange[index]) {
+      if (!used.has(debitId)) {
+        used.add(debitId);
+        most = Math.max(most, 1 + best(index + 1));
+        used.delete(debitId);
+      }
+    }
+
+    return most;
+  };
+
+  return best(0);
+};
+
+// Where a bucket's matched count falls short of the most rows any pairing could match.
+const matchingShortfallsOf = (
+  seed: number,
+  ledger: readonly Row[],
+  fundingById: ReadonlyMap<string, GeneratedFunding>,
+  matchedExchangeIds: ReadonlySet<string>,
+): string[] => {
+  const exchanges = ledger.flatMap(
+    (row) => foldMap(maybe(fundingById.get(row.id)), (funding) => [{ row, funding }]) ?? [],
+  );
+  const debits = ledger.filter(({ id }) => !fundingById.has(id));
+  const bucketKeys = new Set(exchanges.map(({ funding }) => fundingBucketOf(funding)));
+
+  return [...bucketKeys].flatMap((bucketKey) => {
+    const inBucket = exchanges.filter(({ funding }) => fundingBucketOf(funding) === bucketKey);
+    const possible = maximumMatchingSize(
+      inBucket.map(({ row, funding }) =>
+        debits.filter((bank) => fundsDebit(funding, bank, row)).map(({ id }) => id),
+      ),
+    );
+    const matched = inBucket.filter(({ row }) => matchedExchangeIds.has(row.id)).length;
+
+    return matched === possible
+      ? []
+      : [`seed ${seed}: bucket ${bucketKey} matched ${matched} rows, ${possible} were possible`];
+  });
+};
+
 // Every way a result can break the matcher's contract, named with the seed that produced it.
 const violationsOf = (seed: number): { violations: string[]; pairCount: number } => {
   const random = seededRandom(seed * 2_654_435 + 1);
@@ -186,11 +244,24 @@ const violationsOf = (seed: number): { violations: string[]; pairCount: number }
     }
   }
 
-  const expectedExcluded = pairs.filter(([bankId]) => !rowById.get(bankId)?.categorySetByHand);
+  const expectedExcluded = pairs
+    .filter(([bankId]) => !rowById.get(bankId)?.categorySetByHand)
+    .map(([bankId]) => bankId);
 
-  if (result.excludedIds.size !== expectedExcluded.length) {
+  if (
+    JSON.stringify([...result.excludedIds].sort()) !== JSON.stringify([...expectedExcluded].sort())
+  ) {
     violations.push(`seed ${seed}: the excluded ids are not the matched rows set by rule`);
   }
+
+  violations.push(
+    ...matchingShortfallsOf(
+      seed,
+      ledger,
+      fundingById,
+      new Set(pairs.map(([, { exchangeId }]) => exchangeId)),
+    ),
+  );
 
   for (let shuffle = 0; shuffle < SHUFFLES_PER_RUN; shuffle += 1) {
     if (signatureOf(matchesOf(shuffled(random, ledger))) !== signatureOf(result)) {
@@ -283,7 +354,7 @@ describe('exchangeFundingMatches', () => {
     expect(result).toEqual(NO_MATCHES);
   });
 
-  it('leaves a debit in another currency than the total fiat unmatched', () => {
+  it("leaves a debit in another currency than the total's fiat unmatched", () => {
     const result = matchesOf([
       exchangeRow('buy', 'p2p:UAH:4150.00', T),
       debit('debit', -415_000, T - 20 * MINUTE, 'card-usd', 'USD'),
@@ -319,7 +390,7 @@ describe('exchangeFundingMatches', () => {
     expect(beside.matches.get('card-debit')).toEqual({ exchangeId: 'buy', kind: 'p2p' });
   });
 
-  it('never takes a debit on a holding with no account', () => {
+  it('counts a debit on a holding of an unknown account as a bank debit', () => {
     const result = exchangeFundingMatches(
       [exchangeRow('buy', 'p2p:UAH:4150.00', T), debit('debit', -415_000, T - 20 * MINUTE)],
       new Map([['usdt', 'crypto']]),
@@ -365,6 +436,60 @@ describe('exchangeFundingMatches', () => {
     ]);
 
     expect(result.matches).toEqual(new Map([['debit', { exchangeId: 'buy-b', kind: 'p2p' }]]));
+  });
+
+  it('matches both debits of two P2P purchases of the same total when the nearest pair would leave one unmatched', () => {
+    const result = matchesOf([
+      exchangeRow('buy-first', 'p2p:UAH:4150.00', T),
+      exchangeRow('buy-second', 'p2p:UAH:4150.00', T + 90 * MINUTE),
+      fundingDebit('debit-after', T + 40 * MINUTE),
+      fundingDebit('debit-before', T - 50 * MINUTE),
+    ]);
+
+    expect(result.matches).toEqual(
+      new Map([
+        ['debit-before', { exchangeId: 'buy-first', kind: 'p2p' }],
+        ['debit-after', { exchangeId: 'buy-second', kind: 'p2p' }],
+      ]),
+    );
+    expect(result.excludedIds).toEqual(new Set(['debit-before', 'debit-after']));
+  });
+
+  it('gives the one debit a purchase can release to the nearer of two purchases left unmatched', () => {
+    const result = matchesOf([
+      exchangeRow('buy-far', 'p2p:UAH:4150.00', T - 60 * MINUTE),
+      exchangeRow('buy-near', 'p2p:UAH:4150.00', T - 45 * MINUTE),
+      exchangeRow('buy-held', 'p2p:UAH:4150.00', T),
+      fundingDebit('debit-shared', T),
+      fundingDebit('debit-spare', T + 90 * MINUTE),
+    ]);
+
+    expect(result.matches).toEqual(
+      new Map([
+        ['debit-shared', { exchangeId: 'buy-near', kind: 'p2p' }],
+        ['debit-spare', { exchangeId: 'buy-held', kind: 'p2p' }],
+      ]),
+    );
+  });
+
+  it('frees the nearest debit of an unmatched purchase before an earlier one that frees another', () => {
+    const result = matchesOf([
+      exchangeRow('buy-early', 'p2p:UAH:4150.00', T - 30 * MINUTE),
+      exchangeRow('buy-late', 'p2p:UAH:4150.00', T + 10 * MINUTE),
+      exchangeRow('buy-unmatched', 'p2p:UAH:4150.00', T),
+      fundingDebit('debit-early', T - 30 * MINUTE),
+      fundingDebit('debit-late', T + 10 * MINUTE),
+      fundingDebit('debit-before-all', T - 80 * MINUTE),
+      fundingDebit('debit-after-all', T + 125 * MINUTE),
+    ]);
+
+    expect(result.matches).toEqual(
+      new Map([
+        ['debit-before-all', { exchangeId: 'buy-early', kind: 'p2p' }],
+        ['debit-early', { exchangeId: 'buy-late', kind: 'p2p' }],
+        ['debit-late', { exchangeId: 'buy-unmatched', kind: 'p2p' }],
+      ]),
+    );
   });
 
   it('matches a hand-categorized debit but keeps it out of the excluded ids', () => {

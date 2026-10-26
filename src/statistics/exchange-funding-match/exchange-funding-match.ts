@@ -79,8 +79,8 @@ const fundingOf = (exchange: FundingLedgerRow): Funding | undefined => {
 
 const bucketKey = (fiat: string, totalMinorUnits: number): string => `${fiat}:${totalMinorUnits}`;
 
-// A holding with no account, or one the map does not know, counts as not crypto: only a crypto
-// account's own rows are an exchange's books, never the bank statement that funded them.
+// A holding of an account not yet in the list, so not in the map, counts as not crypto: only a
+// crypto account's own rows are an exchange's books, never the bank statement that funded them.
 const isBankSide = (
   row: FundingLedgerRow,
   accountKindByHoldingId: ReadonlyMap<string, AccountRow['kind']>,
@@ -119,12 +119,12 @@ const lowerBoundByTime = (bucket: readonly FundingLedgerRow[], lowTime: number):
   let high = bucket.length;
 
   while (low < high) {
-    const mid = (low + high) >>> 1;
+    const middle = (low + high) >>> 1;
 
-    if (bucket[mid].time < lowTime) {
-      low = mid + 1;
+    if (bucket[middle].time < lowTime) {
+      low = middle + 1;
     } else {
-      high = mid;
+      high = middle;
     }
   }
 
@@ -178,12 +178,12 @@ const byPriority = (left: FundingPair, right: FundingPair): number =>
 // The best pair of ALL candidates is taken first and each bank row and each exchange row is used
 // at most once, so a debit another rule already leaves out of spending still takes its match
 // instead of handing it to a later, genuine purchase.
-const pairOneToOne = (pairs: readonly FundingPair[]): FundingPair[] => {
+const pairNearestFirst = (sortedPairs: readonly FundingPair[]): FundingPair[] => {
   const consumedBankIds = new Set<string>();
   const consumedExchangeIds = new Set<string>();
   const taken: FundingPair[] = [];
 
-  for (const pair of [...pairs].sort(byPriority)) {
+  for (const pair of sortedPairs) {
     if (consumedBankIds.has(pair.bank.id) || consumedExchangeIds.has(pair.funding.exchange.id)) {
       continue;
     }
@@ -194,6 +194,62 @@ const pairOneToOne = (pairs: readonly FundingPair[]): FundingPair[] => {
   }
 
   return taken;
+};
+
+// The nearest-first pass can strand an exchange row whose only debit went to a neighbour that had
+// another one. A path that hands each blocking debit's holder a different debit frees the first,
+// and it only ever adds a pair: every row already matched stays matched, just maybe to another
+// partner, so no debit leaves the excluded ids that was in them. Rows and their debits are tried
+// in the priority order, so the paths found do not depend on the order the ledger arrives in.
+const addAugmentingPairs = (
+  taken: readonly FundingPair[],
+  sortedPairs: readonly FundingPair[],
+): FundingPair[] => {
+  const pairsByExchangeId = new Map<string, FundingPair[]>();
+
+  for (const pair of sortedPairs) {
+    const exchangePairs = pairsByExchangeId.get(pair.funding.exchange.id) ?? [];
+
+    exchangePairs.push(pair);
+    pairsByExchangeId.set(pair.funding.exchange.id, exchangePairs);
+  }
+
+  const pairByBankId = new Map(taken.map((pair) => [pair.bank.id, pair]));
+  const matchedExchangeIds = new Set(taken.map(({ funding }) => funding.exchange.id));
+
+  const augment = (exchangeId: string, visitedBankIds: Set<string>): boolean => {
+    for (const pair of pairsByExchangeId.get(exchangeId) ?? []) {
+      if (visitedBankIds.has(pair.bank.id)) {
+        continue;
+      }
+
+      visitedBankIds.add(pair.bank.id);
+
+      const holder = pairByBankId.get(pair.bank.id);
+
+      if (holder === undefined || augment(holder.funding.exchange.id, visitedBankIds)) {
+        pairByBankId.set(pair.bank.id, pair);
+
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  for (const exchangeId of pairsByExchangeId.keys()) {
+    if (!matchedExchangeIds.has(exchangeId)) {
+      augment(exchangeId, new Set());
+    }
+  }
+
+  return [...pairByBankId.values()];
+};
+
+const pairOneToOne = (pairs: readonly FundingPair[]): FundingPair[] => {
+  const sortedPairs = [...pairs].sort(byPriority);
+
+  return addAugmentingPairs(pairNearestFirst(sortedPairs), sortedPairs);
 };
 
 /**
