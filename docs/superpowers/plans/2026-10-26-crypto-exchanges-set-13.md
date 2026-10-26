@@ -18,7 +18,8 @@ caption. Model the bucket search (currency + amount buckets, time-sorted, binary
 on the loan field's `autoLinkedCaption` (`src/screens/forms/loan-payment-field/`) and its route through
 `ModeAndActions` (`src/screens/forms/transaction-form/mode-and-actions/`).
 
-**Tech stack:** React Native, op-sqlite + Drizzle, Jest (`fast-check`), fnts `maybe`/`Either`, ts-pattern.
+**Tech stack:** React Native, op-sqlite + Drizzle, Jest (property cases through `seededRandom` from
+`@kiko/test-support/seeded-random`; `fast-check` is not installed), fnts `maybe`/`Either`, ts-pattern.
 
 **Spec:** `docs/superpowers/specs/2026-10-15-crypto-exchanges-design.md`: "Read-time bank-debit matcher (R-Q14,
 set 13)", "Matcher (set 13)" (M1-M14), section 10 copy rows `transactions.matched*`, section 9 "Demo `.kiko`"
@@ -112,7 +113,9 @@ Set 13 closes none. Left open, each unrelated or not on a set 13 path:
   kind's window around the exchange row's time.
 - One-to-one: candidate pairs sorted by (1) transfer-like bank row first (MCC 4829 or 6012, or a stored
   description containing `BINANCE` case-insensitively, S13-Q8), (2) absolute time gap, (3) bank row id,
-  (4) exchange row id; greedy, each row once.
+  (4) exchange row id; greedy, each row once. Then an augmenting-path pass inside each (fiat, amount) bucket
+  that only adds pairs: every greedy-matched row stays matched (its partner may change), so the excluded set
+  only grows (S13-Q10 = B, USER).
 - Output: `matches: Map<bankId, { exchangeId, kind }>` and `excludedIds`: the matched bank ids whose
   `categorySetByHand` is false. The caption shows only for a bank id in `excludedIds`.
 - `exchangeExcludedTransactionIds` is unchanged: a `p2p:` row stays out (S13-Q2).
@@ -145,11 +148,12 @@ Set 13 closes none. Left open, each unrelated or not on a set 13 path:
 | M10 | ef, "prefers a transfer debit over a nearer grocery debit"; ef, "treats a debit whose description holds binance in any case as a transfer" | grocery at t - 5 min, MCC 4829 at t - 30 min | 4829 excluded; grocery counts | counts |
 | M11 | screen, "leaves the funding debit out of spending while the account filter hides the crypto account" | M1 with the crypto account filtered out | debit not in the pie | counts |
 | M12 | ef, "lets an already excluded cash-out debit take the match, so the grocery debit still counts"; form, "shows the caption on a matched debit another rule already excludes" | MCC 6012 at t - 30 min, grocery at t - 5 min | 6012 consumed, caption; grocery counts | 6012 excluded; grocery counts |
-| M13 | ef, "lets a hand-categorized debit take the match, so the grocery debit still counts"; form, "shows no caption on a hand-categorized debit that took the match" | hand row at t - 30 min, grocery at t - 5 min | hand row as set, no caption; grocery counts | hand row as set; grocery counts |
+| M13 | ef, "lets a hand-categorized debit take the match, so the grocery debit still counts"; form, "shows no caption on a hand-categorized debit that took the match" | hand row (MCC 4829, transfer-like) at t - 30 min, grocery at t - 5 min | hand row as set, no caption; grocery counts | hand row as set; grocery counts |
 | M14 | ef, "matches a P2P purchase of a fiat asset to its bank debit"; ef, "never takes a debit on a holding of a crypto account" | `p2p:UAH:4000.00` +400_000 on "Binance Funding · UAH"; -400_000 on a bank card; a -400_000 UAH row on a crypto holding | bank-card debit excluded, caption; crypto-holding row never bank side | counts |
 | T1 (tie-breaks, spec row 13/15) | ef, "breaks a tie by the time gap, then the bank row id, then the exchange row id" (one case per key, each key the only distinct value) | - | the expected pair per key | - |
 | T2 | ef, "ignores a coded row with no total, a negative amount, or a wallet or asset code" | `p2p:UAH` (no total), `card:UAH:1300.00` at -1_300_000 ETH, `asset:PEPE` | no match | - |
-| T3 (property) | ef, "matches each row at most once and gives the same pairs for any input order" (fast-check, generated ledgers) | - | invariants | - |
+| T3 (property) | ef, "matches each row at most once and gives the same pairs for any input order" (`seededRandom`, generated ledgers) | - | invariants | - |
+| M15 | ef, "matches both debits of two P2P purchases of the same total when the nearest pair would leave one unmatched" | `p2p:UAH:4150.00` buys at t and t + 90 min; -415_000 at t + 40 min and t - 50 min | both debits in `excludedIds` (t - 50 with the first buy, t + 40 with the second) | counts (one) |
 | T4 (wiring) | screen, "keeps a matched debit out of the category trend too" | M1 | trend bucket without it | counts |
 | T5 (wiring) | screen, "still counts a debit the matcher leaves unmatched" | M3 | in the pie | counts |
 | D1 | demo, "shows a matched bank debit for each funding kind" (through `exchangeFundingMatches` over the snapshot) | three demo debits | three matches, each in `excludedIds` | - |
@@ -178,10 +182,12 @@ Rule fix B removed `exchangePairId`, `exchangeCounterpartHoldingId` and `untrack
 
 ## 7. Compliance
 
-- Copy (section 10): `transactions.matchedP2pPurchase` "Matched to P2P purchase" / «Зіставлено з купівлею
-  через P2P» (S13-Q7; spec row today reads «Зіставлено з купівлею P2P», step 4/8 changes it);
-  `matchedCardPurchase` "Matched to card purchase" / «Зіставлено з купівлею карткою»;
-  `matchedExchangeDeposit` "Matched to exchange deposit" / «Зіставлено з поповненням біржі». Translator review
+- Copy (section 10): `transactions.matchedP2pPurchase` "Matched to P2P purchase." / «Зіставлено з купівлею
+  через P2P.» (S13-Q7; spec row today reads «Зіставлено з купівлею P2P», step 4/8 changes it);
+  `matchedCardPurchase` "Matched to card purchase." / «Зіставлено з купівлею карткою.»;
+  `matchedExchangeDeposit` "Matched to exchange deposit." / «Зіставлено з поповненням біржі.». Each ends with "."
+  because a caption under a form field always does (kiko-translator "Final '.' follows one rule per UI role too";
+  orchestrator ruling s13-o3, 2026-10-26, like `loanLinkedAuto` "Linked automatically."). Translator review
   (kiko-translator: parity test, caption casing and full-stop rule per UI role, uk sentence case, U+02BC). The
   uk P2P caption goes on the user's uk review list (release step 6).
 - 2.5.19: no flag; the caption is reachable in the reviewer's demo (step 6/8: three debits, D1). The
@@ -242,7 +248,7 @@ sentence, S13-Q6), `docs/superpowers/specs/2026-10-15-crypto-exchanges-design.md
 `transactions.matchedP2pPurchase`: uk cell to «Зіставлено з купівлею через P2P», S13-Q7, in the SAME commit as
 the catalogue key).
 - [ ] Red first: the i18n parity test fails with the keys in one catalogue only (quote it), then both.
-- [ ] Tests that read the uk P2P caption assert «Зіставлено з купівлею через P2P».
+- [ ] Tests that read the uk P2P caption assert «Зіставлено з купівлею через P2P.» (final "." per s13-o3).
 - [ ] Translator review (kiko-translator "Review new/changed keys before a shipping deploy"), the three keys
       and the help sentence.
 - Check: parity and catalogue tests green; `npm run check:component-i18n-namespace`;
@@ -278,7 +284,8 @@ needed), `build-demo-snapshot.test.ts`, both `kiko-demo-{en,uk}.kiko` regenerate
 
 ### step 7/8: spec alignment, reviews, retrospect, scribe
 
-- [ ] Spec: the M rows gain their test titles; S13-Q1 ... S13-Q9 rulings into section 1 (from "Rulings"
+- [ ] Spec: the M rows gain their test titles (the real titles in the test files); the "One-to-one" bullet of
+      "Matcher (set 13)" gains the augmenting-pass sentence and row M15 (S13-Q10); S13-Q1 ... S13-Q10 rulings into section 1 (from "Rulings"
       below); S12-Q17 closed (S13-Q2); section 9 Notes text names all three kinds. The S12-Q10 row is already
       CLOSED (plan commit). The rulings file already has the S13 block ("SET 13 PLAN RULINGS").
 - [ ] `kiko:reviewer` G1 = steps 1/8-3/8. Top question: "can a debit leave spending that did not fund the
@@ -329,5 +336,6 @@ Source: `rulings.md` (main checkout, `memory/refs/binance-multicoin-sdd-2026-10-
 | S13-Q7 | uk `transactions.matchedP2pPurchase` = «Зіставлено з купівлею через P2P» in the spec, the uk catalogue and the tests (step 4/8 changes the spec section 10 row with the catalogue key); on the user's uk review list at release step 6 | COORDINATOR (text); USER review at release step 6 | 2026-10-26 |
 | S13-Q8 | A: the `BINANCE` priority reads the stored description, not `ruleDescriptionOf` | COORDINATOR | 2026-10-26 |
 | S13-Q9 | Accept: a hand edit or a saved (outranked) rule on a matched debit makes it a hand row that counts as spending, no caption; no change | USER | 2026-10-26 |
+| S13-Q10 | B: keep the greedy pass, then an augmenting-path pass inside each (fiat, amount) bucket that only adds pairs; every greedy-matched row stays matched; pinned by M15; G1 Minors C1, C2, C3, C5 (rename), O2 ride the fix round; spec sentence in step 7/8 | USER | 2026-10-26 |
 
 Backlog S13-B1 ... S13-B3 (section 1): accepted by the coordinator, 2026-10-26.
