@@ -1,10 +1,10 @@
-import { match } from 'ts-pattern';
 import {
   type BalanceProviderId,
   isBalanceProviderId,
   providerDisplayName,
 } from '@kiko/crypto-sync/provider';
 import { type FC, useState } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
 import {
@@ -29,6 +29,7 @@ import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
 import { type NotImportedKind, parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import { styles } from '../account-detail.styles';
@@ -42,11 +43,9 @@ type CryptoSyncSectionProps = {
   holdings: HoldingRow[];
 };
 
-const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string =>
-  match(providerId)
-    .with('btc_wallet', () => t('accountDetail.disconnectProviderMessage.wallet'))
-    .with('binance', () => t('accountDetail.disconnectProviderMessage.binance'))
-    .exhaustive();
+// An id the registry does not wire has no message: the confirm then shows its title alone.
+const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string | undefined =>
+  foldMap(maybe(exchangeProviderRegistry[providerId]), (entry) => t(entry.disconnectMessageKey));
 
 type CoinLinesProps = { untrackedCoins: string[]; oversizedCoins: string[] };
 

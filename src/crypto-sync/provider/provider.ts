@@ -1,8 +1,9 @@
-import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeMetadataField } from '@kiko/holdings/holding-metadata';
+import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
 import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
 
 /**
@@ -20,14 +21,13 @@ export const isBalanceProviderId = (value: string | null): value is BalanceProvi
 // Title-case display name used in UI copy. 'Binance' is a brand name and
 // reads the same in every language, so its catalog entry is identical
 // English/Ukrainian text (the same convention every other Binance-branded
-// string in the catalog already follows) — routed through the catalog
-// anyway, both for the one genuinely-translated 'Wallet' case and so a
-// future rename only touches the catalog, not this call site.
+// string in the catalog already follows) — routed through the registry
+// entry's catalog key anyway, both for the one genuinely-translated 'Wallet'
+// case and so a future rename only touches the catalog, not this call site.
+// An id the registry does not wire reads as its raw id, never a crash.
 export const providerDisplayName = (providerId: BalanceProviderId, t: TFunction): string =>
-  match(providerId)
-    .with('btc_wallet', () => t('accountDetail.wallet'))
-    .with('binance', () => t('accountDetail.binance'))
-    .exhaustive();
+  foldMap(maybe(exchangeProviderRegistry[providerId]), (entry) => t(entry.displayNameKey)) ??
+  providerId;
 
 export type ProviderBalance = {
   /** The currency the balance and the holding it writes are in. */

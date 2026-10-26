@@ -794,7 +794,7 @@ export const en = {
     disconnectProvider: 'Disconnect {{provider}}',
     disconnectProviderMessage: {
       binance:
-        'This clears the connection and the stored API key. Your BTC holding stays as a manual snapshot.',
+        'This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot.',
       wallet: 'This clears the connection. Your BTC holding stays as a manual snapshot.',
     },
     emptyHoldings: {
