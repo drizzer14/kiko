@@ -356,6 +356,16 @@ clean at START and again at the end and HEAD is
 unchanged, else `unknown`; an edit reverted before the end is not seen, and ignored files (`.env`,
 `node_modules`) are not counted.
 
+`verify` and `gate` refuse a tree with any change (untracked included) with exit 3, at enqueue and
+again at START; the message names the first 3 paths. Commit the change (for example
+`ios/Podfile.lock` after a pod install) or copy the files aside; never stash. `check-all` and
+`security` still run on a dirty tree and record `unknown`. A tree the job itself changed records
+`unknown` plus a `NOTE <label>: the tree changed during the job: <path>` line. A verify prints no
+live output: its log is `<queue dir>/logs/verify-<label>.log` (default queue dir
+`~/.claude/kiko-queue`), kept for every verify; at the end it prints the summary lines, `log:
+<path>` and the last lines. Read the log for the failure; keep waiting only for the exit code.
+Sizes and trimming: read the `logs/` entry in the `scripts/job-queue.sh` header.
+
 done.log lines are `kind label exit start end head`. Main moves only through
 `bash scripts/ff-main.sh <sha>`, for a sha whose last `verify` line has that full head and exit 0;
 never fast-forward main by hand (the kill-guard denies it).

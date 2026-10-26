@@ -745,8 +745,12 @@ queue directly (the queue serializes) and throttle feature tracks with a LOAD HO
 or tsc agent until RESUME; a RESUME names its limits). Keep `wait-load.sh` for a lone security
 run only. A queued check:all or verify reads the worktree until
 the job is DONE; keep that tree untouched from the queue time until DONE, and never queue one while
-a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
-START or at the end, or HEAD moved.
+a developer still edits that tree. `verify` and `gate` refuse a changed tree (untracked included)
+with exit 3, at enqueue and again at START: commit it (for example `ios/Podfile.lock`) or copy
+files aside, never stash. done.log's head field is `unknown` if the job itself changed the tree
+(a `NOTE` names the path) or HEAD moved; `check-all` and `security` still run on a dirty tree. A
+verify prints no live output: read `<queue dir>/logs/verify-<label>.log` (path printed at the
+end) for a failure, and wait only for the exit code. Detail: the `scripts/job-queue.sh` header.
 
 During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
 `check:all` or `make verify` outside the queue (kill-guard denies it: `heavyJob`, `fullJest`);

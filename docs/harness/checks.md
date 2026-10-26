@@ -253,9 +253,15 @@ The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines a
 `unknown` unless the tree is clean at START and again at the end (`git --no-optional-locks
 status --porcelain --untracked-files=all`), HEAD is unchanged, and the repository is readable.
 The queue never takes the worktree's index.lock for these reads. A job that edits its own tree
-without committing records `unknown`; an edit reverted before the end is not seen, and ignored
-files (`.env`, `node_modules`) are not counted; keep the tree untouched until DONE. The LAST
-`verify` line whose head equals the full sha decides and needs exit 0;
+without committing records `unknown` plus a `NOTE <label>: the tree changed during the job:
+<path>` line; `verify` and `gate` refuse a tree with any change (untracked included) with exit 3,
+at enqueue and again at START, naming the first 3 paths (commit or copy aside, never stash;
+`check-all` and `security` still run on a dirty tree). A verify prints no live output: its log is
+`<queue dir>/logs/verify-<label>.log` (default `~/.claude/kiko-queue`), kept for every verify and
+trimmed to the summary lines plus the last 400 lines; the end prints the summary, `log: <path>`
+and the last 40 lines (header of `scripts/job-queue.sh`). An edit reverted before the end is not
+seen, and ignored files (`.env`, `node_modules`) are not counted; keep the tree untouched until
+DONE. The LAST `verify` line whose head equals the full sha decides and needs exit 0;
 `check-all`, `gate`, `unknown`, `lost`, and old 5-field lines never count. The queue writes one
 `lost` line when a waiter prunes a dead waiter's ticket, and a lock-form `lost` line when it
 reclaims a dead lock (its job may have run fully). `$QUEUE_DIRECTORY/format` is a format stamp: an
