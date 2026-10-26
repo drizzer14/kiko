@@ -810,6 +810,16 @@ const BLOCKING_MAKE_STUB = [
   '',
 ].join('\n');
 
+// Prints more lines than a verify log keeps, then blocks like BLOCKING_MAKE_STUB.
+const LOUD_BLOCKING_MAKE_STUB = [
+  '#!/usr/bin/env bash',
+  '[ -n "$KIKO_STUB_PID" ] || exit 0',
+  'seq 1 1000',
+  'echo $$ > "$KIKO_STUB_PID"',
+  'exec sleep 60',
+  '',
+].join('\n');
+
 // The queue runs this in the window between starting the job and learning its pid, with its own pid
 // as the argument. It waits until the job has written its pid, so the job is certainly running,
 // then sends the queue the signal a test names. It ends on its own once the sandbox is deleted.
@@ -993,6 +1003,23 @@ describe.each([
     expect(isPresent(join(sandbox.queue, 'claim'))).toBe(false);
     expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
     expect(existsSync(join(sandbox.queue, 'done.log'))).toBe(false);
+  });
+
+  it(`trims the log of a verify ended by ${signal} to the log size rule`, async () => {
+    const sandbox = createSandbox();
+    warmExecutables([writeExecutable(join(sandbox.root, 'bin/make'), LOUD_BLOCKING_MAKE_STUB)]);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    const worktree = createWorktree(sandbox, 'one');
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    await waitFor(() => readLines(join(sandbox.root, 'job-pid')).length === 1);
+    waiter.child.kill(signal);
+    const result = await waiter.finished;
+
+    const log = readLines(join(sandbox.queue, 'logs/verify-one.log'));
+    expect(result.code).toBe(exitCode);
+    expect(log.length).toBeLessThanOrEqual(410);
+    expect(log[log.length - 1]).toBe('1000');
   });
 
   it(`exits ${exitCode} without removing a lock another waiter now holds`, async () => {
@@ -2328,6 +2355,30 @@ const hideUntrackedFiles = (worktree: string): void => {
 const finishedLine = (sandbox: Sandbox): string =>
   readLines(join(sandbox.queue, 'done.log'))[0] as string;
 
+// Puts a `git` first on the PATH that logs its arguments, one line per call, then runs the real
+// one; returns the log path. The paths travel in the environment so the warm-up run, which has
+// none, appends nothing and execs nothing.
+const logGitCalls = (sandbox: Sandbox): string => {
+  const calls = join(sandbox.root, 'git-calls');
+  sandbox.environment.KIKO_STUB_GIT_CALLS = calls;
+  sandbox.environment.KIKO_STUB_REAL_GIT = execFileSync('which', ['git'], {
+    encoding: 'utf8',
+  }).trim();
+  warmExecutables([
+    writeExecutable(
+      join(sandbox.root, 'bin/git'),
+      [
+        '#!/usr/bin/env bash',
+        'printf \'%s\\n\' "$*" >> "$KIKO_STUB_GIT_CALLS"',
+        'exec "$KIKO_STUB_REAL_GIT" "$@"',
+        '',
+      ].join('\n'),
+    ),
+  ]);
+
+  return calls;
+};
+
 describe('scripts/job-queue.sh done.log tested HEAD', () => {
   // The 6th field names the commit a job ran on only while the tree was clean at START and at the
   // end and HEAD had not moved: a dirty tree or a moved HEAD is not "verify at that sha".
@@ -2368,32 +2419,29 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     expect(finishedLine(sandbox).split(' ')[5]).toBe(namesHead ? head : 'unknown');
   });
 
-  it('reads the tree status of a verify four times without taking the index lock', () => {
+  it('reads the tree status of a clean verify four times without taking the index lock', () => {
     const sandbox = createSandbox();
     const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
-    const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
-    const calls = join(sandbox.root, 'git-calls');
-    // The paths travel in the environment so the warm-up run, which has none, appends nothing
-    // and execs nothing.
-    sandbox.environment.KIKO_STUB_GIT_CALLS = calls;
-    sandbox.environment.KIKO_STUB_REAL_GIT = realGit;
-    warmExecutables([
-      writeExecutable(
-        join(sandbox.root, 'bin/git'),
-        [
-          '#!/usr/bin/env bash',
-          'printf \'%s\\n\' "$*" >> "$KIKO_STUB_GIT_CALLS"',
-          'exec "$KIKO_STUB_REAL_GIT" "$@"',
-          '',
-        ].join('\n'),
-      ),
-    ]);
+    const calls = logGitCalls(sandbox);
 
     runQueue(sandbox, 'verify', worktree, 'one');
 
     const statusCalls = readLines(calls).filter((call) => call.includes(' status'));
     // Enqueue refusal, START refusal, the START head, and the end of the job.
     expect(statusCalls).toHaveLength(4);
+    expect(statusCalls.every((call) => call.startsWith('--no-optional-locks '))).toBe(true);
+  });
+
+  it('reads the tree status once to refuse a dirty verify, without the index lock', () => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    writeFile(worktree, 'new.txt', 'new\n');
+    const calls = logGitCalls(sandbox);
+
+    runQueue(sandbox, 'verify', worktree, 'one');
+
+    const statusCalls = readLines(calls).filter((call) => call.includes(' status'));
+    expect(statusCalls).toHaveLength(1);
     expect(statusCalls.every((call) => call.startsWith('--no-optional-locks '))).toBe(true);
   });
 
@@ -2475,6 +2523,9 @@ describe.each(['verify', 'gate'] as const)('scripts/job-queue.sh a %s on a dirty
   it('refuses at START when the tree changed while queued, leaving no lock or ticket', async () => {
     const sandbox = createSandbox();
     const { worktree, head } = createGateWorktree(sandbox, 'one', listing(1));
+    mkdirSync(join(worktree, 'reports'));
+    writeFileSync(join(worktree, 'reports/stryker-incremental.json'), '{}');
+    mkdirSync(join(worktree, '.stryker-tmp'));
     const lock = holdLock(sandbox);
 
     const waiter = startQueue(sandbox, ...queueArguments(worktree, head));
@@ -2489,6 +2540,8 @@ describe.each(['verify', 'gate'] as const)('scripts/job-queue.sh a %s on a dirty
     expect(lockPresent(sandbox)).toBe(false);
     expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
     expect(doneLogPresent(sandbox)).toBe(false);
+    expect(existsSync(join(worktree, 'reports/stryker-incremental.json'))).toBe(true);
+    expect(existsSync(join(worktree, '.stryker-tmp'))).toBe(true);
   });
 
   it('runs the next queued clean job after a refusal at START', async () => {
@@ -2553,6 +2606,32 @@ describe('scripts/job-queue.sh a job that changes the tree', () => {
     expect(result.status).toBe(2);
     expect(readLines(join(sandbox.queue, 'logs/verify-one.log'))).toContain(
       'FAIL __tests__/example.test.ts',
+    );
+  });
+
+  it('keeps the summary lines of a long verify in the log and on stdout, and names the log', () => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    const tests = 'Tests:       4390 passed, 4390 total';
+    sandbox.environment.KIKO_STUB_OUTPUT = [
+      '── make verify: stage 2a (jest) ──',
+      tests,
+      ...Array.from({ length: 500 }, (_, index) => `noise ${index}`),
+      '✔ make verify: lint, jest, and gate all passed',
+    ].join('\n');
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    const logPath = join(sandbox.queue, 'logs/verify-one.log');
+    const log = readLines(logPath);
+    expect(log).toContain(tests);
+    expect(log).toContain('── make verify: stage 2a (jest) ──');
+    expect(log).not.toContain('noise 0');
+    expect(log.length).toBeLessThanOrEqual(410);
+    expect(result.stdout.indexOf(tests)).toBeGreaterThan(-1);
+    expect(result.stdout.indexOf(tests)).toBeLessThan(result.stdout.indexOf(`log: ${logPath}`));
+    expect(result.stdout.indexOf(`log: ${logPath}`)).toBeLessThan(
+      result.stdout.indexOf('noise 499'),
     );
   });
 

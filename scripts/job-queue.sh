@@ -23,9 +23,11 @@
 #              waiter takes the lock, then looks for the file and gives the lock back if it is
 #              there. So a start that began before the file existed either backs off or is the
 #              `running:` line `hold` prints; the start that line names may still back off.
-#   logs/      gate-<label>.log, the whole output of a gate, and verify-<label>.log, the last
-#              VERIFY_LOG_LINES lines of a verify (its last VERIFY_TAIL_LINES also go to stdout at
-#              the end); the other jobs print to stdout
+#   logs/      gate-<label>.log, the whole output of a gate, and verify-<label>.log, a verify's
+#              summary lines (jest counts, FAIL, stage markers, CHECK FAILED) from the whole run
+#              followed by its last VERIFY_LOG_LINES lines, also after INT or TERM. At the end a
+#              verify prints the summary lines, `log: <path>`, and its last VERIFY_TAIL_LINES
+#              lines; the other jobs print to stdout
 #   done.log   one line per finished job: kind label exit start end head. head is the full
 #              40-character HEAD of the worktree, read at START only when `git status --porcelain`
 #              (untracked files included) was empty at START and again at the end and HEAD is the
@@ -155,6 +157,10 @@ GATE_START_MAX_WAIT="${KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS:-1200}"
 # leave a large file per label.
 VERIFY_LOG_LINES=400
 VERIFY_TAIL_LINES=40
+# The jest counts, the failing suites, verify.sh's stage markers (`── make verify: stage`,
+# `✖ make verify FAILED`, `✔ make verify:`), and a failure block header, from the whole log.
+VERIFY_SUMMARY_PATTERN='^(Tests|Test Suites):|^FAIL |^[^[:alnum:]]+ make verify[ :]|CHECK FAILED'
+VERIFY_SUMMARY_LINES=100
 
 usage() {
   [ "$#" -eq 0 ] || printf '%s\n' "$1" >&2
@@ -438,10 +444,11 @@ first_changed_paths() {
 # ios/Podfile.lock while the job waits). An unreadable repository lists no path and is not this
 # refusal's concern: it still records `unknown`.
 refuse_dirty_tree() {
-  local paths
-  tree_is_clean && return 0
-  paths="$(first_changed_paths 3 | paste -s -d, -)"
-  [ -n "$paths" ] || return 0
+  local changes paths
+  changes="$(git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all \
+    2> /dev/null)" || return 0
+  [ -n "$changes" ] || return 0
+  paths="$(printf '%s\n' "$changes" | sed -n '1,3p' | cut -c4- | paste -s -d, -)"
   printf 'job-queue.sh: %s has uncommitted changes (first paths: %s); a %s of a changed tree is not a result of any commit. Commit them first (for example ios/Podfile.lock after a pod install) or copy the files aside, never stash, then re-queue.\n' \
     "$worktree" "$paths" "$command_name" >&2
   exit 3
@@ -478,6 +485,9 @@ ticket_path="$TICKETS_DIRECTORY/$ticket_name"
 job=''
 job_group=''
 sleeper=''
+verify_log=''
+verify_log_trimmed=0
+verify_summary=''
 owns_claim=0
 
 # The owner record; `-` names no job group yet.
@@ -649,6 +659,21 @@ end_in_flight() {
   rm -f "$QUEUE_DIRECTORY/lock.$$"
 }
 
+# The counts and failure markers of the whole run go to the top of the kept log: the counts of an
+# early stage are far from the last lines. It runs once, from the normal end or from cleanup after a
+# signal; the EXIT trap runs cleanup again after the normal end.
+trim_verify_log() {
+  local trimmed
+  [ -n "$verify_log" ] && [ -f "$verify_log" ] && [ "$verify_log_trimmed" -eq 0 ] || return 0
+  verify_log_trimmed=1
+  trimmed="$verify_log.trimmed"
+  verify_summary="$(grep -a -E "$VERIFY_SUMMARY_PATTERN" "$verify_log" | sed -n "1,${VERIFY_SUMMARY_LINES}p")"
+  {
+    [ -z "$verify_summary" ] || printf '%s\n' "$verify_summary"
+    tail -n "$VERIFY_LOG_LINES" "$verify_log"
+  } > "$trimmed" && mv -f "$trimmed" "$verify_log"
+}
+
 # Stops only the processes this script started (its own job, sleep, and in-flight record command),
 # never one found by name. The in-flight command is ended before the lock is read.
 cleanup() {
@@ -662,6 +687,7 @@ cleanup() {
     wait "$job" 2> /dev/null
     job=''
   fi
+  trim_verify_log
   rm -f "$ticket_path"
   release_claim
   release_lock
@@ -933,14 +959,13 @@ confirm_tested_head() {
   [ -z "$changed" ] || printf 'NOTE %s: the tree changed during the job: %s\n' "$label" "$changed"
 }
 
-# A verify log is trimmed to its last lines once the job ended, and the end of it is printed
-# because the output goes to the log, not to the waiter, while the job runs.
+# The output goes to the log, not to the waiter, while the job runs, so the end prints the counts
+# and failure markers of the whole run, the log path, and the last lines.
 keep_verify_log() {
-  local trimmed
-  [ "$command_name" = verify ] || return 0
-  trimmed="$verify_log.trimmed"
-  tail -n "$VERIFY_LOG_LINES" "$verify_log" > "$trimmed" 2> /dev/null \
-    && mv -f "$trimmed" "$verify_log"
+  [ -n "$verify_log" ] || return 0
+  trim_verify_log
+  [ -z "$verify_summary" ] || printf '%s\n' "$verify_summary"
+  printf 'log: %s\n' "$verify_log"
   tail -n "$VERIFY_TAIL_LINES" "$verify_log" 2> /dev/null
 }
 
