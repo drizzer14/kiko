@@ -248,3 +248,13 @@ jest.mock('@kiko/native-specs/NativeDisplayRegions', () => ({
 jest.mock('@kiko/navigation/fitting-large-title/use-title-fit', () => ({
   useTitleFit: jest.fn(() => ({ fits: true, measurer: null })),
 }));
+
+// A harness suite that runs scripts/job-queue.sh or scripts/ff-main.sh with no KIKO_QUEUE_DIR of its
+// own would use the real shared queue ($HOME/.claude/kiko-queue), whose done.log ff-main.sh trusts
+// to move main. Set unconditionally, per worker process, so a suite that forgets its own folder
+// writes into a temporary one; a suite that needs the default path points HOME at a temporary
+// folder and deletes this variable.
+process.env.KIKO_QUEUE_DIR = require('node:path').join(
+  require('node:os').tmpdir(),
+  `kiko-jest-queue-${process.pid}`,
+);

@@ -117,8 +117,15 @@
 # MISMATCH`, `RERUN `, and `RERUN SKIPPED` line at the start of a log line, once although the
 # failure block repeats it.
 #
-# Exit codes: the job's own code (2 also covers a refused request); 3 a gate whose HEAD moved; 130
-# after SIGINT; 143 after SIGTERM.
+# Real queue: when the queue directory is the default $HOME/.claude/kiko-queue (KIKO_QUEUE_DIR unset
+# or naming it), a verify, gate, or check-all of a worktree that does not share the git common
+# directory of this script's own checkout is refused at once (exit 3, nothing written): ff-main.sh
+# trusts the verify lines of that done.log, so a scratch repository must not write one. A script
+# outside any repository cannot name its own, so it is refused too. harness-verify (another
+# repository by design) and security are not checked. Tests and scratch runs set KIKO_QUEUE_DIR.
+#
+# Exit codes: the job's own code (2 also covers a refused request); 3 a gate whose HEAD moved, a
+# tree with changes, or a foreign repository on the real queue; 130 after SIGINT; 143 after SIGTERM.
 #
 # Known limits: the group check is a liveness test only. A pid reused by an unrelated process makes
 # a dead owner read as alive, so a lock can stall, never run two jobs at once. A claim whose holder
@@ -371,6 +378,35 @@ refuse_non_harness_worktree() {
 }
 
 [ "$command_name" != harness-verify ] || refuse_non_harness_worktree
+
+# The git common directory of $1 as a physical absolute path; fails for a folder that is no
+# repository. `git -C` prints it relative to $1, so the cd resolves both forms.
+common_directory_of() {
+  local common
+  common="$(git -C "$1" rev-parse --git-common-dir 2> /dev/null)" || return 1
+  (cd "$1" && cd "$common" && pwd -P)
+}
+
+# scripts/ff-main.sh moves main on a `verify` line of the real queue's done.log, so a verify, a
+# gate, or a check-all of any other repository (a scratch repository run by hand once wrote a
+# verify line for a commit nobody had verified) must not reach it. harness-verify keeps working
+# on a harness repository because its line has another kind, and security because it never
+# names a commit that ff-main.sh counts. A temporary KIKO_QUEUE_DIR is not the real queue, so a
+# test queues any repository there.
+refuse_foreign_repository_on_real_queue() {
+  local own target
+  [ "$QUEUE_DIRECTORY" = "$HOME/.claude/kiko-queue" ] || return 0
+  own="$(common_directory_of "$SCRIPT_DIRECTORY")" || own=''
+  target="$(common_directory_of "$worktree")" || target=''
+  [ -n "$own" ] && [ "$own" = "$target" ] && return 0
+  printf 'job-queue.sh: %s is not a worktree of this script'"'"'s repository (%s), and the queue is the real one (KIKO_QUEUE_DIR is unset), whose done.log scripts/ff-main.sh trusts. Queue a worktree of this repository, or set KIKO_QUEUE_DIR to a temporary folder to run a scratch repository.\n' \
+    "$worktree" "${own:-unknown}" >&2
+  exit 3
+}
+
+case "$command_name" in
+  verify | gate | check-all) refuse_foreign_repository_on_real_queue ;;
+esac
 
 clock_time() { date +%H:%M; }
 iso_stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
