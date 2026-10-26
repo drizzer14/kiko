@@ -210,6 +210,22 @@ result, and lists the candidate lessons per "Memory writes".
 
 ## Mutation testing: small change sets only
 
+Status: the per-change-set gate below is paused by the user since 2026-10-25 until lifted;
+verify + review only. The gate text stays for when the user lifts the pause.
+
+Strict scope (user ruling 2026-10-25, every track): a track fixes only visible wrong data or
+UI, its own regressions, wrong texts, and release requirements. Everything else goes to a
+per-track backlog file. Classify a finding this way before asking the user about it, so the
+user sees only real decisions.
+
+Batch merge: several READY, reviewed tracks with a clean `git merge-tree` may merge together
+onto main. Merge them in one detached worktree with a real `git merge` (hooks run), run ONE
+queued verify on the result, then `bash scripts/ff-main.sh <sha>`. One verify replaces one per
+track.
+
+Status is on demand: there is no Status session. The coordinator runs an in-session named
+`kiko:pm` agent that gets `EVENT:` lines, and asks it when the user wants status.
+
 Mutation testing (`check:deep` / `check:mutation`) runs per SMALL change
 set, never on a whole project or a whole release — a whole-release run
 went 10 h 16 min with no result. There is no whole-release or
@@ -733,6 +749,11 @@ class starts (orchestrator default D1, accepted by the user 2026-10-13); an unre
 state holds too. A load wait at the head of the queue is in the ops skill, "Load rule". A gate
 refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
 exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
+On the real queue (`KIKO_QUEUE_DIR` unset or equal to `~/.claude/kiko-queue`), `verify`, `gate`
+and `check-all` refuse (exit 3) a target worktree of another repository and a script copy
+outside any repository; `harness-verify` and `security` are exempt. A test or scratch run never
+uses `job-queue.sh` without `KIKO_QUEUE_DIR` on a temporary folder (see the `scripts/job-queue.sh`
+header, `refuse_foreign_repository_on_real_queue`).
 Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
 (an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
 WARNING). Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's

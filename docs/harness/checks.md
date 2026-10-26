@@ -50,6 +50,7 @@ Composite scripts:
   bypasses the cap. An unpatched `@stryker-mutator/jest-runner` (patched-runner preflight,
   marker missing) also exits 2 before Stryker starts; it runs after the 0-file exit, so a
   0-file change set exits 0 on an unpatched tree. There is no release-scope deep gate.
+  **Paused by the user since 2026-10-25 until lifted; verify + review only.**
   **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached (queued with
@@ -260,7 +261,12 @@ The queue never takes the worktree's index.lock for these reads. A job that edit
 without committing records `unknown` plus a `NOTE <label>: the tree changed during the job:
 <path>` line; `verify` and `gate` refuse a tree with any change (untracked included) with exit 3,
 at enqueue and again at START, naming the first 3 paths (commit or copy aside, never stash;
-`check-all` and `security` still run on a dirty tree). A verify prints no live output: its log is
+`check-all` and `security` still run on a dirty tree). On the real queue (`KIKO_QUEUE_DIR` unset
+or equal to `~/.claude/kiko-queue`) `verify`, `gate` and `check-all` also exit 3 for a target
+worktree of another repository (git common dir) or a script copy outside any repository
+(`harness-verify` and `security` are exempt); jest.config.js sets a temporary `KIKO_QUEUE_DIR`
+for every jest run, and a by-hand test run must do the same (see the `scripts/job-queue.sh`
+header, `refuse_foreign_repository_on_real_queue`). A verify prints no live output: its log is
 `<queue dir>/logs/verify-<label>.log` (default `~/.claude/kiko-queue`), kept for every verify and
 trimmed to the summary lines plus the last 400 lines; the end prints the summary, `log: <path>`
 and the last 40 lines (header of `scripts/job-queue.sh`). An edit reverted before the end is not

@@ -101,6 +101,9 @@ Rules:
   where the full jest suite (two stages, 2a and 2b; see `scripts/checks/verify.sh`) passes.
   The default dev test command is `make jest-affected` (the affected suites only; exit 3 means
   queue the verify); the full suite stays in the queued verify.
+- Status is on demand: there is no Status session; the coordinator's in-session named
+  `kiko:pm` agent gets `EVENT:` lines.
+- Mutation gates are paused by the user since 2026-10-25 until lifted; verify + review only.
 - **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
   dispatch.** The coordinator queues the long, no-incremental checks
   (Stryker mutation + osv) ITSELF as a background gate and launches
@@ -343,6 +346,12 @@ state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `-
 old H6 overlay is gone). Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a
 copy from another branch: the queue directory's `format` stamp makes an older copy refuse with
 exit 2, and a copy that differs from the target worktree's own script prints a WARNING.
+On the real queue (`KIKO_QUEUE_DIR` unset, or its physical path equal to `~/.claude/kiko-queue`)
+`verify`, `gate` and `check-all` also refuse (exit 3) a target worktree of another repository
+(git common dir) and a script copy outside any repository; `harness-verify` and `security` are
+exempt. Never run `job-queue.sh` by hand without `KIKO_QUEUE_DIR` set to a temporary folder in a
+test or scratch run. Read `refuse_foreign_repository_on_real_queue` and the header of
+`scripts/job-queue.sh`.
 Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's ticket
 writes one `lost` done.log line, and a reclaimed dead lock writes a lock-form `lost` line (its
 job may have run fully). At handover or close run `scripts/job-queue.sh status`, re-queue or
