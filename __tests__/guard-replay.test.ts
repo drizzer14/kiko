@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
+import { warmExecutables } from './test-support/warm-executables';
+
 // scripts/checks/guard-replay.sh replays the pre-write guard on the Stop tier
 // for every .ts/.tsx file the session changed, whatever tool wrote it (a Bash
 // or python write, or a commit of one, is what it exists to catch). Every
@@ -124,6 +126,7 @@ const writeExecutable = (root: string, relativePath: string, body: string): stri
   writeFile(root, relativePath, body);
   const absolutePath = join(root, relativePath);
   execFileSync('chmod', ['755', absolutePath]);
+  warmExecutables([absolutePath]);
 
   return absolutePath;
 };
