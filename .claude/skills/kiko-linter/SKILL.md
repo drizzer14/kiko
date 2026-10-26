@@ -1043,10 +1043,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   cap tests share their throwaway-repository, stub, and wrapper-run helpers
   through `__tests__/test-support/mutation-repository.ts` (excluded from
   Jest's suite list by `jest.config.js` `testPathIgnorePatterns`, which
-  ignores only the non-`*.test.*` files there). Those helpers drop an
-  inherited `KIKO_MUTATION_BASE` and `KIKO_MUTATION_FULL` from the wrapper's
-  env, so a developer's own `export` never changes the scope a test runs;
-  a test's own explicit setting still wins.
+  ignores only the non-`*.test.*` files there). Those helpers drop
+  the variables in `SCOPE_VARIABLES` (same file; read the set there) from the
+  wrapper's env, so a developer's own `export`, or one the verify makes,
+  never changes the scope a test runs or lets a row pass without the
+  wrapper's own export; a test's own explicit setting still wins. A new env
+  switch a wrapper exports joins that set in the same commit.
 
   `mutation.sh` also gives a watching HUMAN a live progress display and a
   split ETA, so nobody polls the run — its exit code stays the only
