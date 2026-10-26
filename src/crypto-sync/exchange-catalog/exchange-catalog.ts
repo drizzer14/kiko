@@ -49,7 +49,7 @@ export const exchangeCatalog: readonly ExchangeCatalogEntry[] = [
   },
 ];
 
-export const isExchangeCatalogId = (value: string | null): value is ExchangeCatalogId =>
+const isExchangeCatalogId = (value: string | null): value is ExchangeCatalogId =>
   value !== null && (exchangeCatalogIds as readonly string[]).includes(value);
 
 /** The entry's name as the user reads it. */

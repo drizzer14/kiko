@@ -9,7 +9,21 @@ import CryptoSyncSection from './crypto-sync-section.component';
 
 const mockSync = jest.fn();
 const mockDisconnect = jest.fn();
+const mockAccountsRepoCall = jest.fn();
 
+// Every repo method reports its name, so a write the pick makes fails the test whichever method it
+// reaches for.
+jest.mock('@kiko/accounts/accounts.repo', () => ({
+  accountsRepo: new Proxy(
+    {},
+    {
+      get:
+        (_target, method) =>
+        (...args: unknown[]) =>
+          mockAccountsRepoCall(method, ...args),
+    },
+  ),
+}));
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: [], isLoading: false }),
 }));
@@ -171,6 +185,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
     await fireEvent.press(getByText(CONNECT));
     await fireEvent.press(getByTestId('connect-exchange-option-binance'));
 
+    expect(mockAccountsRepoCall).not.toHaveBeenCalled();
     expect(mockSync).not.toHaveBeenCalled();
   });
 

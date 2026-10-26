@@ -4,7 +4,6 @@ export type ProviderSheetEntry<Id extends string> = {
   label: string;
   /** The caption lines under the label, in order. */
   captions: string[];
-  accessibilityLabel: string;
 };
 
 export type ProviderSheetProps<Id extends string> = {

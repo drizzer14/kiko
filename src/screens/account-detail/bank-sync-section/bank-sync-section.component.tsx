@@ -283,16 +283,11 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     monobank: <MonobankConnectField onConnect={connectMonobank} />,
   };
 
-  const providerSheetEntries = visibleCatalogEntries().map((entry) => {
-    const captions = [t(entry.aboutKey), t(entry.eligibilityKey)];
-
-    return {
-      id: entry.id,
-      label: entry.displayName,
-      captions,
-      accessibilityLabel: [entry.displayName, ...captions].join('. '),
-    };
-  });
+  const providerSheetEntries = visibleCatalogEntries().map((entry) => ({
+    id: entry.id,
+    label: entry.displayName,
+    captions: [t(entry.aboutKey), t(entry.eligibilityKey)],
+  }));
 
   return (
     <Box gap={3}>

@@ -1,10 +1,11 @@
 import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import type { AccountRow } from '@kiko/db';
 
 import BankSyncSection from './bank-sync-section.component';
+import visibleCatalogEntries from './visible-catalog-entries';
 
 const mockUseLiveQuery = jest.fn();
 const mockMonobankSync = jest.fn();
@@ -86,6 +87,22 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByTestId('add-bank-sheet')).toBeTruthy();
     expect(view.getByText('Monobank')).toBeTruthy();
   });
+
+  it.each(visibleCatalogEntries())(
+    'titles the picker "Add a Bank" and gives $id its catalog about and eligibility copy and its spoken label',
+    async (entry) => {
+      const about = i18n.t(entry.aboutKey);
+      const eligibility = i18n.t(entry.eligibilityKey);
+      const view = await render(<BankSyncSection account={bankAccount()} />);
+
+      await fireEvent.press(view.getByText('Add a bank'));
+
+      expect(view.getByText('Add a Bank')).toBeTruthy();
+      expect(view.getByText(about)).toBeTruthy();
+      expect(view.getByText(eligibility)).toBeTruthy();
+      expect(view.getByLabelText(`${entry.displayName}. ${about}. ${eligibility}`)).toBeTruthy();
+    },
+  );
 
   it('renders the Monobank field after picking Monobank, and connecting saves the token then syncs', async () => {
     const view = await render(<BankSyncSection account={bankAccount()} />);

@@ -1,13 +1,7 @@
 import { i18n } from '@kiko/i18n/init';
 import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
 
-import {
-  exchangeCatalog,
-  exchangeCatalogIdOf,
-  exchangeLabelOf,
-  isExchangeCatalogId,
-  visibleExchangeEntries,
-} from '.';
+import { exchangeCatalog, exchangeCatalogIdOf, exchangeLabelOf, visibleExchangeEntries } from '.';
 
 describe('exchangeCatalogIdOf', () => {
   it.each(['binance', 'btc_wallet', 'other'] as const)(
@@ -34,14 +28,6 @@ describe('exchangeCatalogIdOf', () => {
     { bankId: null, institution: 'monobank' },
   ])('reads no catalog id from an unknown bank id and no institution (%j)', (account) => {
     expect(exchangeCatalogIdOf(account)).toBeNull();
-  });
-});
-
-describe('isExchangeCatalogId', () => {
-  it('accepts every catalog id and nothing else', () => {
-    expect(exchangeCatalog.every((entry) => isExchangeCatalogId(entry.id))).toBe(true);
-    expect(isExchangeCatalogId('monobank')).toBe(false);
-    expect(isExchangeCatalogId(null)).toBe(false);
   });
 });
 

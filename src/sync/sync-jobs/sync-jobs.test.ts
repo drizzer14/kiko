@@ -58,12 +58,6 @@ describe('syncJobsFor', () => {
     });
   });
 
-  it('contributes no job for an unconnected crypto account whose bank id names an exchange', () => {
-    const account = { ...syncable({ id: 'c', name: 'Crypto' }), bankId: 'binance' };
-
-    expect(syncJobsFor(account)).toEqual([]);
-  });
-
   it.each(exchangeCatalog.filter((entry) => entry.connectable))(
     'contributes no job for an unconnected account of any connectable exchange catalog entry ($id)',
     ({ id }) => {

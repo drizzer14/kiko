@@ -39,7 +39,7 @@ const ProviderSheet = <Id extends string>({
         <Pressable
           key={entry.id}
           accessibilityRole="button"
-          accessibilityLabel={entry.accessibilityLabel}
+          accessibilityLabel={[entry.label, ...entry.captions].join('. ')}
           onPress={() => handleSelect(entry.id)}
           style={styles.option}
           testID={`${testIDPrefix}-option-${entry.id}`}

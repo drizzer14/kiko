@@ -9,7 +9,7 @@ import type { TargetHoldingOption, TargetHoldingSheetProps } from './target-hold
 
 /**
  * The `BottomSheet` + `SelectableRow` holding picker (docs/plans/statement-
- * import.md section B), mirroring `AddBankProviderSheet`'s shape: a plain
+ * import.md section B), mirroring `ProviderSheet`'s shape: a plain
  * `onSelect`/`onCreateNew` callback pair, no navigation of its own. Scoped to
  * `accountId`'s own holdings — the document-picker entry point always knows
  * its own account.

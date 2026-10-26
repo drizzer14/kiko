@@ -135,17 +135,11 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
   const namedId = entries.find((entry) => entry.id === catalogId)?.id;
   const shownId = selectedId ?? namedId;
 
-  const providerSheetEntries = entries.map((entry) => {
-    const label = exchangeLabelOf(entry, t);
-    const captions = [t(entry.captionKey)];
-
-    return {
-      id: entry.id,
-      label,
-      captions,
-      accessibilityLabel: [label, ...captions].join('. '),
-    };
-  });
+  const providerSheetEntries = entries.map((entry) => ({
+    id: entry.id,
+    label: exchangeLabelOf(entry, t),
+    captions: [t(entry.captionKey)],
+  }));
 
   return (
     <>

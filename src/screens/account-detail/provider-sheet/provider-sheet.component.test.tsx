@@ -8,11 +8,10 @@ const monobankEntry = {
   id: 'monobank',
   label: 'Monobank',
   captions: ['Reads your Monobank account.', 'Works with any personal Monobank account.'],
-  accessibilityLabel: 'Monobank',
 };
 
 describe('ProviderSheet', () => {
-  it('renders the wired catalog entries with their about + eligibility copy', async () => {
+  it('renders an entry label and every caption of it', async () => {
     const view = await render(
       <ProviderSheet
         visible
@@ -34,13 +33,8 @@ describe('ProviderSheet', () => {
         visible
         title="Pick a Provider"
         entries={[
-          {
-            id: 'alpha',
-            label: 'Alpha',
-            captions: ['First caption.'],
-            accessibilityLabel: 'Alpha. First caption.',
-          },
-          { id: 'beta', label: 'Beta', captions: [], accessibilityLabel: 'Beta' },
+          { id: 'alpha', label: 'Alpha', captions: ['First caption', 'Second caption'] },
+          { id: 'beta', label: 'Beta', captions: [] },
         ]}
         onDismiss={jest.fn()}
         onSelect={jest.fn()}
@@ -52,8 +46,9 @@ describe('ProviderSheet', () => {
     expect(view.getByTestId('pick-sheet')).toBeTruthy();
     expect(view.getByTestId('pick-option-alpha')).toBeTruthy();
     expect(view.getByTestId('pick-option-beta')).toBeTruthy();
-    expect(view.getByText('First caption.')).toBeTruthy();
-    expect(view.getByLabelText('Alpha. First caption.')).toBeTruthy();
+    expect(view.getByText('First caption')).toBeTruthy();
+    expect(view.getByLabelText('Alpha. First caption. Second caption')).toBeTruthy();
+    expect(view.getByLabelText('Beta')).toBeTruthy();
   });
 
   it('reports the chosen provider and closes the sheet on selection', async () => {
