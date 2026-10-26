@@ -1,4 +1,4 @@
-import { PROPERTY_SWEEP_VARIABLE, sweep } from './property-sweep';
+import { DEVELOPMENT_SWEEP_COUNT, PROPERTY_SWEEP_VARIABLE, sweep } from './property-sweep';
 
 const range = (length: number): number[] => Array.from({ length }, (_unused, position) => position);
 
@@ -24,6 +24,7 @@ describe('sweep', () => {
     delete process.env[PROPERTY_SWEEP_VARIABLE];
 
     expect(sweep(range(25))).toEqual([0, 12, 24]);
+    expect(sweep(range(25))).toHaveLength(DEVELOPMENT_SWEEP_COUNT);
   });
 
   it('spreads 40 and 100 entries the same way', () => {
