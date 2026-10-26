@@ -1080,9 +1080,10 @@ always, and the marker only when it is manual or imported and carries none; see
   by its marker. A row with only `exchangePairId` (a synced bank debit a Convert marked) still
   counts as spending, and a rule may move it between slices with the total unchanged (user
   ruling M-1 = A, 2026-10-25).
-- A P2P / card / fiat-deposit purchase row has no exchange marker; its funding BANK debit
-  leaves spending through the funding matcher
-  (`src/statistics/exchange-funding-match/`), not this rule.
+- A P2P / card / fiat-deposit purchase row carries no `exchangeCounterpartHoldingId`; its
+  `untrackedCounterpart` code is its marker, so this rule leaves the row itself out. Its
+  funding BANK debit is a separate row and leaves spending through the funding matcher
+  (`src/statistics/exchange-funding-match/`).
 - **The repository never writes a description for a leg.** The label is
   resolved at render time through `t`. `transactionRowDescription`
   (`src/transactions/row-description/`) applies the ordered steps its JSDoc lists in

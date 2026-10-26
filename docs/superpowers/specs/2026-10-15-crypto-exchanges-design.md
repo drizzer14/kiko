@@ -1724,7 +1724,7 @@ the bank row ids with the other exclusion sets; nothing is written.
 - Shown on the bank row: the transaction form of a matched bank row in the exclusion set (not
   hand-categorized) shows a caption under its
   category, `transactions.matchedP2pPurchase` / `matchedCardPurchase` / `matchedExchangeDeposit`
-  ("Matched to P2P purchase", section 10), from a hook in the same folder that runs the pure
+  ("Matched to P2P purchase.", section 10), from a hook in the same folder that runs the pure
   function over the same ledger query. The developer re-greps the transaction form's caption slot.
 
 ### Not-imported line (sets 8 and 12)
@@ -2276,7 +2276,7 @@ takes the first file of the row above.
 
 | # | Exchange row | Bank debit | Result | was: | Test |
 |---|---|---|---|---|---|
-| M1 | P2P buy, `p2p:UAH:4150.00` at t | -4150.00 UAH at t - 20 min | debit excluded; caption "Matched to P2P purchase" | counts | `src/statistics/exchange-funding-match/exchange-funding-match.test.ts`: "matches a P2P purchase to the bank debit of its exact total twenty minutes earlier"; `src/screens/forms/transaction-form/transaction-form.exchange-funding.test.tsx`: "shows Matched to P2P purchase under the category of a matched bank debit" |
+| M1 | P2P buy, `p2p:UAH:4150.00` at t | -4150.00 UAH at t - 20 min | debit excluded; caption "Matched to P2P purchase." | counts | `src/statistics/exchange-funding-match/exchange-funding-match.test.ts`: "matches a P2P purchase to the bank debit of its exact total twenty minutes earlier"; `src/screens/forms/transaction-form/transaction-form.exchange-funding.test.tsx`: "shows Matched to P2P purchase under the category of a matched bank debit" |
 | M2 | same | -4150.00 UAH at t - 2 h | counts (outside window) | counts | same, "leaves a debit of the total two hours before a P2P purchase unmatched", "matches a $kind debit at each edge of its window and not one millisecond past it" |
 | M3 | same | -4150.01 UAH | counts | counts | same, "leaves a debit one minor unit off the total unmatched" |
 | M4 | two P2P buys of 4150.00 | one debit | one match (nearest gap) | counts | same, "matches one debit to the nearer of two P2P purchases of the same total" |
@@ -2289,7 +2289,7 @@ takes the first file of the row above.
 | M11 | P2P buy on a crypto account hidden by the account filter | -4150.00 UAH at t - 20 min | excluded | counts | `src/screens/statistics/statistics.screen.exchange-funding.test.tsx`: "leaves the funding debit out of spending while the account filter hides the crypto account" |
 | M12 | P2P buy 4150.00 | two debits of -4150.00 UAH: an MCC 6012 row at t - 30 min (already excluded), a grocery row at t - 5 min | the 6012 row is consumed by the match (stays excluded; caption shown); the grocery row counts | 6012 excluded; grocery counts | `src/statistics/exchange-funding-match/exchange-funding-match.test.ts`: "lets an already excluded cash-out debit take the match, so the grocery debit still counts"; `src/screens/forms/transaction-form/transaction-form.exchange-funding.test.tsx`: "shows the caption on a matched debit another rule already excludes" |
 | M13 | P2P buy 4150.00 | two debits of -4150.00 UAH: a hand-categorized funding debit at t - 30 min, a grocery row at t - 5 min | the hand row is consumed and stays as the user set it (its category decides; no caption); the grocery row counts | hand row as set; grocery counts | same, "lets a hand-categorized debit take the match, so the grocery debit still counts"; `src/screens/forms/transaction-form/transaction-form.exchange-funding.test.tsx`: "shows no caption on a hand-categorized debit that took the match" |
-| M14 | P2P buy of the fiat asset UAH on "Binance Funding · UAH", `p2p:UAH:4000.00` at t | -4000.00 UAH at t - 20 min on a bank card | debit excluded; caption "Matched to P2P purchase" | counts | same, "matches a P2P purchase of a fiat asset to its bank debit", "never takes a debit on a holding of a crypto account" |
+| M14 | P2P buy of the fiat asset UAH on "Binance Funding · UAH", `p2p:UAH:4000.00` at t | -4000.00 UAH at t - 20 min on a bank card | debit excluded; caption "Matched to P2P purchase." | counts | same, "matches a P2P purchase of a fiat asset to its bank debit", "never takes a debit on a holding of a crypto account" |
 | M15 | two P2P buys of 4150.00, at t and at t + 90 min | -4150.00 UAH at t + 40 min and at t - 50 min | both debits excluded (the t - 50 min debit with the first buy, the t + 40 min debit with the second); the nearest-first pass alone would leave one (S13-Q10) | one debit counts | same, "matches both debits of two P2P purchases of the same total when the nearest pair would leave one unmatched" |
 | T1 (set 13) | tie on every key but one (one case per key) | - | the expected pair per key: time gap, then bank row id, then exchange row id | - | same, "breaks a tie by the time gap, then the bank row id, then the exchange row id ($key)" |
 | T2 (set 13) | one coded row per case: `p2p:UAH` (no total), `card:UAH:1300.00` with a negative amount, `asset:PEPE`, `wallet:MARGIN`, no code | -4150.00 and -1300.00 UAH at t | no match | - | same, "ignores a coded row with no total, a negative amount, or a wallet or asset code ($title)" |
