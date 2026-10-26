@@ -1363,6 +1363,18 @@ matcher's argument. Known limits: a Set held in a variable (`{ tags: seen }`), a
 element or inside a call (`[new Set()]`, `wrap(new Set())`), and a Set reached through another
 matcher such as `expect.arrayContaining` are not matched.
 
+## A property test's seed list goes through `sweep`
+
+A property test declares its seeds as `const SEEDS = sweep([...])`, with `sweep` from
+`@kiko/test-support/property-sweep` (`src/test-support/property-sweep.ts`; read it there).
+
+- A dev run gets the first, middle and last seed. `KIKO_PROPERTY_SWEEP=full` gives every seed;
+  any other value throws. The queued verify and the mutation gate set `full`.
+- A clock list (`RUN_GAPS`) is not swept.
+- A coverage floor measured on the full list scales with `SEEDS.length / FULL_SEEDS.length`
+  (`src/crypto-sync/binance/binance.trade-history.properties.test.ts` is the example).
+- `__tests__/property-sweep-sites.test.ts` pins the exact list of sites: add a new site there.
+
 ## A rejection names its error
 
 A `.rejects` assertion names what the call rejects with: the error class, a message, or

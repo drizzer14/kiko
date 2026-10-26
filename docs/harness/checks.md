@@ -125,6 +125,10 @@ Composite scripts:
 can affect. The full suite runs only in the queued verify. A focused run of named files
 (`npx jest <files> --maxWorkers=2`) stays allowed.
 
+- Property seeds: a dev run and `make jest-affected` draw 3 seeds per property list;
+  `scripts/checks/verify.sh` exports `KIKO_PROPERTY_SWEEP=full` before stage 2a (both jest
+  stages) and `scripts/checks/mutation.sh` exports it for Stryker. To reproduce a verify failure
+  in a property suite, run that file with `KIKO_PROPERTY_SWEEP=full`.
 - Base: the default is `git merge-base HEAD main`; `BASE=<ref>` overrides it. An unresolvable base
   exits 2. The changed paths are the tracked diff against the base plus untracked files.
 - How a changed path maps to suites (the buckets, the name matching, the inventory list) and the
