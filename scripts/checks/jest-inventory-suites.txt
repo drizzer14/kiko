@@ -1,11 +1,15 @@
 # Jest suites that walk a tree (readdirSync, git ls-files) and fail when a file changes that no
-# import reaches. scripts/checks/jest-affected.sh runs them on every call, since --findRelatedTests
-# cannot see them: they caused 5 of the 45 verify failures measured 2026-10-15 to 2026-10-25.
+# import reaches. scripts/checks/jest-affected.sh runs them on every call that has a change, since
+# --findRelatedTests cannot see them: they caused 5 of the 45 verify failures measured 2026-10-15
+# to 2026-10-25.
 # One exact path per line. __tests__/jest-affected.test.ts pins this file to the suites that walk a
-# tree: a suite found by `git grep -lE "readdirSync\(|'ls-files'|git ls-files"` over the test files
-# must be listed here or named on a `# not inventory: <path> <reason>` line.
+# tree: a suite found by
+# `git grep -lE "readdirSync\(|'ls-files'|git ls-files|repositoryFiles"` over the test files
+# must be listed here or named on a `# not inventory: <path> <reason>` line. repositoryFiles is
+# the shared helper in __tests__/test-support/repository-files.ts that runs git ls-files.
 __tests__/agent-handback.test.ts
 __tests__/cited-paths.test.ts
+__tests__/error-class-pins.test.ts
 __tests__/guard-tests-no-wall-clock.test.ts
 __tests__/harness-tests-do-not-depend-on-src.test.ts
 __tests__/jest-affected.test.ts
@@ -16,23 +20,26 @@ __tests__/plural-count.test.ts
 __tests__/react-native-patch.test.ts
 __tests__/reminders-gregorian-calendar.test.ts
 __tests__/semgrep-load-limits.test.ts
+__tests__/skill-identifiers.test.ts
 __tests__/symbol-deployment-target.test.tsx
 __tests__/tracked-scripts-executable.test.ts
 __tests__/wrapper-missing-path.test.ts
 __tests__/wrapper-stderr-exit-zero.test.ts
 drizzle/migrations/0044-move-crypto-cash-holdings.test.ts
+src/db/schema.category-overrides.test.ts
 src/db/settings-columns.test.ts
 src/help/help-topics.test.ts
 src/i18n/locales/title-keys.call-sites.test.ts
-# not inventory: __tests__/commit-typecheck.test.ts — reads a temporary sandbox it creates, never the repository tree
+# not inventory: __tests__/commit-typecheck.test.ts — its sandbox is a temporary directory, and its one repository read, git ls-files -s on githooks/pre-commit and githooks/pre-merge-commit, names both in quoted literals, so a hook change reaches it by name
+# not inventory: __tests__/docs-known-limit.test.ts — reads only docs/superpowers markdown files, so a change to one adds it through the doc bucket
 # not inventory: __tests__/job-queue.test.ts — reads the queue directory of its own sandbox
 # not inventory: __tests__/kill-guard-hook-load.test.ts — reads a temporary folder it creates
+# not inventory: __tests__/markdown-prose-width.test.ts — reads only markdown under the skill, agent and docs/harness roots plus its own pin file, so a change to one adds it through the doc bucket
 # not inventory: __tests__/mutation-ranges.test.ts — reads the temporary directories its own run leaves
 # not inventory: __tests__/pre-write-guard.test.ts — reads the scratch temporary directory of its own run
 # not inventory: __tests__/run-log.test.ts — reads the runs folder of a sandbox it creates
 # not inventory: src/categories/repo/categories.repo.test.ts — reads the shipped migrations, which never change (check:shipped-migrations), and finds the first match
 # not inventory: src/db/schema.bond-register.test.ts — reads shipped migrations that never change; a new migration cannot break its positive checks
-# not inventory: src/db/schema.category-overrides.test.ts — reads shipped migrations by exact name; they never change
 # not inventory: src/db/schema.change-group.test.ts — reads shipped migrations that never change; a new migration cannot break its positive checks
 # not inventory: src/db/schema.loan-link.test.ts — reads shipped migrations that never change; a new migration cannot break its positive checks
 # not inventory: src/db/schema.namespace-external-ids.test.ts — reads shipped migrations by exact name; they never change

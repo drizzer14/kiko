@@ -12,16 +12,20 @@
 #   every      a config that every suite reads (jest, babel, tsconfig, package files, mocks,
 #              patches, .env.test) prints a notice and makes the run exit 3, never green, because
 #              only the queued verify tests it
-#   named      a path outside src/, a deleted path, or a src/ file jest cannot trace (an asset)
-#              adds every test file that names its basename or its path in a quoted literal: this
-#              is how a suite reaches a shell script or a spawned checker
+#   named      adds every test file that names the path in a quoted literal: this is how a suite
+#              reaches a shell script, a spawned checker or a src/ file it reads as text. A path
+#              outside src/ and a src/ file jest cannot trace (an asset) also match by basename;
+#              an existing src/ code file matches by its full path only. A deleted code file also
+#              matches its extensionless import specifier (`/name'`, or the folder name for an
+#              index file), since an importer nobody edited still imports it
 #   related    an existing .ts/.tsx/.js/.mjs/.json path goes to `jest --findRelatedTests`
-# The suites in jest-inventory-suites.txt run on every call, since they walk a tree and see a file
-# no import reaches.
+# The suites in jest-inventory-suites.txt run on every call that has a change, since they walk a
+# tree and see a file no import reaches. A call with no change exits 0 before them.
 #
 # Exit codes: 2 on a failure block (nothing ran), else the first non-zero code of the jest calls
-# and check:rules, else 3 when a path affects every suite, else 0. It never calls jest without a
-# test path.
+# and check:rules, else 3 when a path affects every suite, else 0. --list prints the plan and the
+# suites and always exits 0, since it runs nothing. The runner never calls jest without a test
+# path.
 #
 # Deliberately `set -uo pipefail`, NOT `set -e`: each call's exit code is kept, and the first
 # non-zero one is the result.
@@ -127,6 +131,16 @@ has_traceable_extension() {
   return 1
 }
 
+# add_name_patterns <literal>... : append each literal, in each quote form, to the pattern file.
+add_name_patterns() {
+  local literal quote
+  for literal in "$@"; do
+    for quote in "'" '"' '`'; do
+      printf '%s%s%s\n' "$quote" "$literal" "$quote" >> "$WORK/name_patterns"
+    done
+  done
+}
+
 DOC_PATTERN="$(harness_doc_roots_pattern)"
 HAS_DOC=0
 HAS_RULES=0
@@ -146,19 +160,37 @@ while IFS= read -r path; do
     printf 'AFFECTS EVERY SUITE: %s (the queued verify tests it)\n' "$path"
   fi
 
-  # A src/ file jest can trace goes only to --findRelatedTests. Everything else is mapped by name,
-  # because no import links it to the suites that read it.
+  # A src/ file jest can trace goes to --findRelatedTests, and by its full path only to the suites
+  # that read it as text: its basename would match a suite that names an unrelated file of that
+  # name. Everything else is mapped by name, because no import links it to the suites that read it.
   if [ -f "$path" ] && has_traceable_extension "$path"; then
     printf '%s\n' "$path" >> "$WORK/related_paths"
 
-    case "$path" in src/*) continue ;; esac
+    case "$path" in
+      src/*)
+        add_name_patterns "$path"
+        continue
+        ;;
+    esac
   fi
 
-  for literal in "$path" "$(basename "$path")"; do
-    for quote in "'" '"' '`'; do
-      printf '%s%s%s\n' "$quote" "$literal" "$quote" >> "$WORK/name_patterns"
-    done
-  done
+  add_name_patterns "$path" "$(basename "$path")"
+
+  # A deleted module is not in --findRelatedTests, and an importer nobody edited still names it.
+  if [ ! -e "$path" ] && has_traceable_extension "$path"; then
+    specifier="$(basename "$path")"
+    specifier="${specifier%.*}"
+
+    if [ "$specifier" = index ]; then
+      specifier="$(basename "$(dirname "$path")")"
+    fi
+
+    if [ "$specifier" != . ] && [ "$specifier" != / ]; then
+      for quote in "'" '"' '`'; do
+        printf '/%s%s\n' "$specifier" "$quote" >> "$WORK/name_patterns"
+      done
+    fi
+  fi
 done < "$WORK/changed"
 
 list_suites() {
@@ -168,9 +200,14 @@ list_suites() {
   done < "$1" | LC_ALL=C sort -u
 }
 
-# A list file holds one exact path per line; comments and blank lines are skipped.
+# A list file holds one exact path per line; comments and blank lines are skipped. A line is
+# trimmed first, as the pin in __tests__/jest-affected.test.ts trims it, so an indented entry or a
+# trailing space cannot pass the pin and then fail here.
 read_list() {
-  while IFS= read -r line; do
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
     case "$line" in '' | '#'*) ;; *) printf '%s\n' "$line" ;; esac
   done < "$1"
 }

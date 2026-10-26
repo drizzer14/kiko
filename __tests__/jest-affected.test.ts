@@ -312,6 +312,75 @@ describe('scripts/checks/jest-affected.sh', () => {
     expect(result.jestCalls.flat()).not.toContain('scripts/checks/gone.sh');
   });
 
+  it('adds suites that read a changed src file by its quoted repo-relative path, not its basename', () => {
+    const sandbox = createSandbox({
+      files: {
+        'src/env.d.ts': 'export const A: string;\n',
+        '__tests__/reads-env.test.ts': "readFileSync(join(ROOT, 'src/env.d.ts'));\n",
+        '__tests__/names-basename.test.ts': "spawn('env.d.ts');\n",
+      },
+    });
+
+    writeAll(sandbox, { 'src/env.d.ts': 'export const A: string;\nexport const B: string;\n' });
+
+    const result = runScript(sandbox);
+
+    expect(suitesRun(result)).toContain('__tests__/reads-env.test.ts');
+    expect(suitesRun(result)).not.toContain('__tests__/names-basename.test.ts');
+    expect(relatedArguments(result)).toContain('src/env.d.ts');
+  });
+
+  it('adds suites that import a deleted src module by its extensionless specifier', () => {
+    const sandbox = createSandbox({
+      files: {
+        'src/lib/gone.ts': 'export const gone = 1;\n',
+        'src/lib/user.test.ts': "import { gone } from './gone';\n",
+        'src/lib/quoted.test.ts': 'import { gone } from "../lib/gone";\n',
+        'src/lib/other.test.ts': "import { gone } from './gone-other';\n",
+      },
+    });
+
+    rmSync(join(sandbox.root, 'src/lib/gone.ts'));
+
+    const result = runScript(sandbox);
+
+    expect(suitesRun(result)).toEqual(
+      expect.arrayContaining(['src/lib/user.test.ts', 'src/lib/quoted.test.ts']),
+    );
+    expect(suitesRun(result)).not.toContain('src/lib/other.test.ts');
+    expect(result.jestCalls.flat()).not.toContain('src/lib/gone.ts');
+  });
+
+  it('maps a deleted index module by the name of its folder', () => {
+    const sandbox = createSandbox({
+      files: {
+        'src/feature/index.ts': 'export const feature = 1;\n',
+        'src/screen/screen.test.ts': "import { feature } from '../feature';\n",
+      },
+    });
+
+    rmSync(join(sandbox.root, 'src/feature/index.ts'));
+
+    const result = runScript(sandbox);
+
+    expect(suitesRun(result)).toContain('src/screen/screen.test.ts');
+  });
+
+  it('reads inventory entries trimmed, as the pin does', () => {
+    const inventory = ['__tests__/inventory-one.test.ts', '__tests__/inventory-two.test.ts'];
+    const sandbox = createSandbox({
+      files: { [inventory[0]]: SUITE_BODY, [inventory[1]]: SUITE_BODY },
+      inventory: [`  ${inventory[0]}  `, `${inventory[1]}\t`, '  # an indented comment'],
+    });
+
+    writeAll(sandbox, { 'src/lonely.ts': 'export const lonely = 1;\n' });
+
+    const result = runScript(sandbox);
+
+    expect(result.status).toBe(0);
+    expect(suitesRun(result)).toEqual(expect.arrayContaining(inventory));
+  });
+
   it('runs check:rules for a rules change', () => {
     const sandbox = createSandbox({ files: { 'rules/semgrep-prewrite.yml': 'rules: []\n' } });
 
@@ -510,14 +579,28 @@ describe('scripts/checks/jest-inventory-suites.txt', () => {
 
   // The quote character is built, not typed, so this file does not match its own search.
   const quote = String.fromCharCode(39);
-  const WALKING_PATTERN = ['readdirSync\\(', `${quote}ls-files${quote}`, 'git ls-files'].join('|');
+  // `repositoryFiles` is the shared helper that runs `git ls-files`, so its importers walk the
+  // tree without naming the git call themselves.
+  const WALKING_LITERALS = [
+    'readdirSync(',
+    `${quote}ls-files${quote}`,
+    'git ls-files',
+    'repositoryFiles',
+  ];
+  const WALKING_PATTERN = WALKING_LITERALS.map((literal) => literal.replace('(', '\\(')).join('|');
 
-  const walkingSuites = (): string[] => {
+  // git grep exits 1 for no match, so only a status above that means the search itself broke; an
+  // empty list from a broken search would read as every suite being listed.
+  const walkingSuites = (cwd: string = REPOSITORY_ROOT): string[] => {
     const result = spawnSync(
       'git',
       ['grep', '-lE', WALKING_PATTERN, '--', '*.test.ts', '*.test.tsx'],
-      { cwd: REPOSITORY_ROOT, encoding: 'utf8' },
+      { cwd, encoding: 'utf8' },
     );
+
+    if (result.status !== 0 && result.status !== 1) {
+      throw new Error(`git grep failed with status ${result.status}: ${result.stderr}`);
+    }
 
     return result.stdout.split('\n').filter((line) => line !== '');
   };
@@ -534,6 +617,21 @@ describe('scripts/checks/jest-inventory-suites.txt', () => {
     const known = new Set([...listed(), ...excepted()]);
 
     expect(walkingSuites().filter((path) => !known.has(path))).toEqual([]);
+  });
+
+  it('fails instead of finding no suite when git grep itself fails', () => {
+    const missingDirectory = join(createTemporaryDirectory('jest-affected-missing-'), 'nowhere');
+
+    expect(() => walkingSuites(missingDirectory)).toThrow(/git grep failed/);
+  });
+
+  it('documents every part of the discovery pattern in its header', () => {
+    const header = lines()
+      .filter((line) => line.startsWith('#') && !line.startsWith(NOT_INVENTORY.trimEnd()))
+      .join('\n')
+      .replace(/\\/g, '');
+
+    expect(WALKING_LITERALS.filter((literal) => !header.includes(literal))).toEqual([]);
   });
 
   it('names a reason for every exception', () => {
