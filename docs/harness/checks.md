@@ -127,13 +127,8 @@ can affect. The full suite runs only in the queued verify. A focused run of name
 
 - Base: the default is `git merge-base HEAD main`; `BASE=<ref>` overrides it. An unresolvable base
   exits 2. The changed paths are the tracked diff against the base plus untracked files.
-- Buckets (a path can land in several): related (an existing `.ts`, `.tsx`, `.js`, `.mjs` or
-  `.json` path goes to `jest --findRelatedTests`); named (every test file that names the path or
-  its basename in a quoted literal; a `src/` code file matches by full path only); docs (a skill,
-  agent, docs or CLAUDE.md path adds the doc-reading suites, found as `make doc-suites` finds
-  them); rules (a `rules/` path adds `npm run check:rules`); inventory (the suites in
-  `scripts/checks/jest-inventory-suites.txt` run on every call that has a change, because they walk
-  a tree).
+- How a changed path maps to suites (the buckets, the name matching, the inventory list) and the
+  known limits: read the header of `scripts/checks/jest-affected.sh`; it is the one place.
 - An every-suite path (`package.json`, `package-lock.json`, `jest.config.js`, `jest/**`,
   `babel.config.js`, `tsconfig*.json`, `__mocks__/**`, `patches/**`, `.env.test`) prints
   `AFFECTS EVERY SUITE: <path>`; the related run still happens, then the runner exits 3 with a
@@ -143,10 +138,7 @@ can affect. The full suite runs only in the queued verify. A focused run of name
 - Exit codes: 0 green; 1 (or the first non-zero code) from a jest call or `check:rules`; 2 a failure
   block (bad argument, unresolvable base, missing list, git or jest listing failure), nothing ran;
   3 an every-suite path.
-- Known limits: a suite that reads source text without importing it is reached only by the
-  inventory list or a quoted path in the suite. A deleted module still imported by an unedited
-  non-test file is not found; `tsc` (the Stop tier) and the verify catch it. The verify stays the
-  backstop.
+- The queued verify stays the backstop.
 
 ## Automatic wiring
 

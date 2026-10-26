@@ -71,9 +71,9 @@ Rules:
 - `make jest-affected` is the default dev test command: it runs only the suites a change can
   affect (base: merge-base with main; `BASE=<ref>` overrides). Exit 3 with `AFFECTS EVERY SUITE`
   (package files, jest/babel/tsconfig, `__mocks__`, `patches`, `.env.test`) means queue the
-  verify. Named-file jest (`npx jest <files> --maxWorkers=2`) stays allowed. It is not the
-  backstop: a suite that reads source text without importing it is reached only through the
-  inventory list or a quoted path. Detail: `docs/harness/checks.md` "Makefile targets".
+  verify. Named-file jest (`npx jest <files> --maxWorkers=2`) stays allowed. The queued verify
+  stays the backstop. Mapping rules and limits: the header of `scripts/checks/jest-affected.sh`;
+  usage: `docs/harness/checks.md` "Makefile targets".
 - Run the FULL jest through the queued verify (`bash scripts/job-queue.sh verify <worktree>
   <label>`; a typed `make verify` is denied) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory
