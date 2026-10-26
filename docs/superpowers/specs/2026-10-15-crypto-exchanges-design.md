@@ -145,7 +145,7 @@ These are the coordinator's rulings, not the user's, except C-NR2, which the use
 | S7-Q2 A (2026-10-21) | Every existing demo holding keeps its end balance (a deposit amount adjusted; a `bank:EUR:50.00` fiat withdrawal keeps EUR at 50); every set 7 demo row is dated more than 30 days before the anchor, so amounts and dates keep the default window unchanged; Home's net-worth card is unchanged | 9 |
 | S7-Q3 A (2026-10-21) | Code parse rules: the fiat is the segment as written, non-empty and free of `:`; a total exists only for a known non-crypto currency when the rest parses exactly at its scale to a value above zero; else no total and the label renders. `asset:` needs a non-empty code free of `:` (a code with `:` is unknown: default label) | 6 |
 | S7-Q4 A (2026-10-21) | `operation` is not a rewrite guard field (`REWRITE_GUARD_FIELDS`); it labels only (was: "every operation row carries another marker"; the guard list is now by-hand, balance-setting, split-change, ruling B, 2026-10-25) | 6 |
-| S7-Q5 A (2026-10-21) | The P2P cover rule keys on the `p2p:` code through `parseUntrackedCounterpart` plus the row's amount and holding currency, never on `operation`; set 7 adds nothing for it | 6 |
+| S7-Q5 A (2026-10-21; CLOSED 2026-10-26: superseded by S13-Q1, USER) | The P2P cover rule keys on the `p2p:` code through `parseUntrackedCounterpart` plus the row's amount and holding currency, never on `operation`; set 7 adds nothing for it | 6 |
 | S7-Q6 A (2026-10-21) | Parsers only in set 7; the demo seed writes literal codes; each walk set adds its own builder (with the section 5 marker-total normalization) | 6 |
 | S7-Q7 A (2026-10-21) | No export version bump: `EXPORT_VERSION` stays 5; `VERSION_DECISIONS` `{ version: 5, migrationCount: 64 }` | 7 |
 | S7-Q8 A (2026-10-21) | The `transactions.matched*` keys wait for set 13 (their consumer); set 7 adds the six row labels only | 10 |
@@ -1637,7 +1637,7 @@ The order is:
 5. `defaultTransactionDescription`.
 
 A negative `p2p:` row cannot be written in 1.3-a (C-P2P-SELL-MAKER B); it would render "P2P
-purchase (<FIAT>)" as well. The P2P cover rule keys on the `p2p:` code through
+purchase (<FIAT>)" as well. (Superseded by S13-Q1: the cover rule was never built.) The P2P cover rule keys on the `p2p:` code through
 `parseUntrackedCounterpart` (kind, fiat, total) plus the row's amount and holding currency, never
 on `operation` (S7-Q5). Set 7 drops `transactions.p2pSale` (C-NR-F), and the follow-up adds the
 sale label back.

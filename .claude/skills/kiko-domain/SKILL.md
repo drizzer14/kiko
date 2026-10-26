@@ -1000,7 +1000,9 @@ excluded from the spending view — read
 the transfer-exclusion module (`src/statistics/`, MCC/description based, backed by
 `transactions.counterIban` and `settings.defaultCategoryKey`),
 the internal-transfers module (`src/statistics/`, the matched-pair fallback), and
-the exchange-exclusion module (`src/statistics/`, the exchange-marker rule)
+the exchange-exclusion module (`src/statistics/`, the exchange-marker rule), and
+the exchange-funding module (`src/statistics/exchange-funding-match/`, which pairs a
+purchase row with its funding bank debit)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
@@ -1009,7 +1011,12 @@ the spending charts always draw every row of the holdings under the KEPT
 accounts, open or closed (`transactionsWithCurrency`, filtered from
 `filtered.netWorthHoldings`), so a closed card keeps its past spending.
 The internal-transfer matcher runs over `ledgerWithCurrency` (every
-holding, whatever the account filter or `closedAt`). The loan-payment
+holding, whatever the account filter or `closedAt`). The funding matcher
+(`exchangeFundingMatches`) reads the same unfiltered `ledgerWithCurrency` plus an
+account-kind-by-holding map (a holding with no account counts as a bank side), so the
+account filter never brings a funding debit back; the transaction form reads its
+`excludedIds` through `useExchangeFundingCaption`
+(`src/statistics/exchange-funding-match/use-exchange-funding-caption/`). The loan-payment
 exclusion runs over the account-filtered rows.
 
 A linked loan payment ("interest-only
@@ -1073,6 +1080,9 @@ always, and the marker only when it is manual or imported and carries none; see
   by its marker. A row with only `exchangePairId` (a synced bank debit a Convert marked) still
   counts as spending, and a rule may move it between slices with the total unchanged (user
   ruling M-1 = A, 2026-10-25).
+- A P2P / card / fiat-deposit purchase row has no exchange marker; its funding BANK debit
+  leaves spending through the funding matcher
+  (`src/statistics/exchange-funding-match/`), not this rule.
 - **The repository never writes a description for a leg.** The label is
   resolved at render time through `t`. `transactionRowDescription`
   (`src/transactions/row-description/`) applies the ordered steps its JSDoc lists in

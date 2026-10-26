@@ -1817,8 +1817,8 @@ the kind of thing that can still change:
 ## Spending-exclusion pipeline
 
 See `kiko-domain`'s "Spending-exclusion pipeline" section for the
-transfer-exclusion/internal-transfers/exchange-exclusion/loan-payments
-module pointers — read it there rather than a duplicated list here.
+module pointers (the section lists them) — read it there rather than a
+duplicated list here.
 
 ## Binance exchange sync — every asset of three wallets, one holding per coin and wallet
 
