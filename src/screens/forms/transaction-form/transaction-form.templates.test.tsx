@@ -58,6 +58,7 @@ jest.mock('@kiko/transactions/repo', () => ({
       __kind: 'transactionById',
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
+    listAllQuery: () => ({ __kind: 'ledger', toSQL: () => ({ sql: '', params: [] }) }),
     distinctDescriptionsQuery: () => ({
       __kind: 'distinctDescriptions',
       toSQL: () => ({ sql: '', params: [] }),

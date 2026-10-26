@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { TFunction } from 'i18next';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { FundingCaptionKey } from '@kiko/statistics/exchange-funding-match';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type ModeAndActionsProps = {
@@ -25,4 +26,7 @@ export type ModeAndActionsProps = {
   onSelectLoanPayment: (loanHoldingId: string | null) => void;
   loanLinkSource: 'auto' | 'manual' | null;
   onUndoLoanLink: () => void;
+  // The copy key of the caption under the category picker that says why a bank debit is left out
+  // of spending (it paid for an exchange purchase), or `undefined` when the row has none.
+  exchangeFundingCaptionKey?: FundingCaptionKey;
 };

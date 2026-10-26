@@ -19,7 +19,7 @@ const P2P_FUNDING_WINDOW: FundingWindow = { beforeMs: HOUR_MS, afterMs: 2 * HOUR
 const CARD_FUNDING_WINDOW: FundingWindow = { beforeMs: DAY_MS, afterMs: 3 * DAY_MS };
 const FIAT_DEPOSIT_FUNDING_WINDOW: FundingWindow = { beforeMs: 5 * DAY_MS, afterMs: HOUR_MS };
 
-type FundingKind = 'p2p' | 'card' | 'bank';
+export type FundingKind = 'p2p' | 'card' | 'bank';
 
 /**
  * The minimal row shape the matcher needs. `currency` is the parent HOLDING's currency (a
