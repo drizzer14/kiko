@@ -317,6 +317,15 @@ left and right mapped to leading and trailing by the view's layout direction), w
 leading and trailing margins, skips an equal write, and saves the stored margins for the restore
 path. Writing the getter's value back would add the inset at every layout pass.
 
+The safe top clamp: `clampSafeAreaTopInset` (run after `applyFixedContentMargin` in
+`viewDidLayoutSubviews`, only while the value is above 0 and the view is in a window) writes a
+negative top `additionalSafeAreaInsets`, so a pane below the window's top keeps the safe top it
+had on the first visit, where UIKit adds the ancestor top bar's contribution on a tab revisit
+(the iPad Settings pane: bar at window y 86 on the first visit, 96 after Accounts then Settings).
+It writes only when the top value changes (no layout loop), and going back to 0 resets that top
+to 0. A re-derived patch must keep it, and the re-measure must show the bar at the same y on the
+first and every later visit.
+
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
 side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 16

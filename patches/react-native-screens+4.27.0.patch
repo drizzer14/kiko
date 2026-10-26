@@ -17,13 +17,13 @@ index 9ae11c3..f16c51b 100644
  
  @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-index c233036..1882b38 100644
+index c233036..9fde79d 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-@@ -38,7 +38,87 @@ namespace react = facebook::react;
-
+@@ -38,7 +38,117 @@ namespace react = facebook::react;
+ 
  @end
-
+ 
 -@implementation RNSNavigationController
 +// A view's `directionalLayoutMargins` getter adds the safe area insets to the stored margins while
 +// `insetsLayoutMarginsFromSafeArea` is YES (a controller's root view does), so writing the
@@ -90,6 +90,36 @@ index c233036..1882b38 100644
 +    self.viewRespectsSystemMinimumLayoutMargins = YES;
 +    self.view.directionalLayoutMargins = _viewMarginsBeforeFixedContentMargin;
 +    self.navigationBar.directionalLayoutMargins = _barMarginsBeforeFixedContentMargin;
++
++    UIEdgeInsets additional = self.additionalSafeAreaInsets;
++    additional.top = 0;
++    self.additionalSafeAreaInsets = additional;
++  }
++}
++
++// On a tab revisit UIKit adds the ancestor top bar's contribution to the safe top of a pane that
++// sits below the window's top, which drops the navigation bar. The pane keeps the safe top it had
++// on the first visit: the inherited top (the safe top without this controller's own additional
++// inset) is capped at what the window's top safe area still reaches below the pane's top edge, by
++// a negative additional top inset. A stack at the window's top is left alone. The inset is
++// written only when it changes, so the layout pass does not loop.
++- (void)clampSafeAreaTopInset
++{
++  UIWindow *window = self.view.window;
++
++  if (_fixedContentMargin <= 0 || window == nil) {
++    return;
++  }
++
++  CGFloat inheritedTop = self.view.safeAreaInsets.top - self.additionalSafeAreaInsets.top;
++  CGFloat viewTopInWindow = [self.view convertPoint:CGPointZero toView:nil].y;
++  CGFloat allowedTop = MAX(0, window.safeAreaInsets.top - viewTopInWindow);
++  CGFloat wantedAdditionalTop = MIN(0, allowedTop - inheritedTop);
++  UIEdgeInsets additional = self.additionalSafeAreaInsets;
++
++  if (additional.top != wantedAdditionalTop) {
++    additional.top = wantedAdditionalTop;
++    self.additionalSafeAreaInsets = additional;
 +  }
 +}
 +
@@ -109,18 +139,19 @@ index c233036..1882b38 100644
  
  #if !TARGET_OS_TV
  - (UIViewController *)childViewControllerForStatusBarStyle
-@@ -59,6 +139,7 @@ namespace react = facebook::react;
+@@ -59,6 +169,8 @@ namespace react = facebook::react;
  - (void)viewDidLayoutSubviews
  {
    [super viewDidLayoutSubviews];
 +  [self applyFixedContentMargin];
++  [self clampSafeAreaTopInset];
    if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
      RNSScreen *screenController = (RNSScreen *)self.topViewController;
      BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
-@@ -1279,6 +1360,9 @@ RNS_IGNORE_SUPER_CALL_END
+@@ -1279,6 +1391,9 @@ RNS_IGNORE_SUPER_CALL_END
      _controller.view.backgroundColor = _nativeContainerBackgroundColor;
    }
-
+ 
 +  RNSNavigationController *navigationController = static_cast<RNSNavigationController *>(_controller);
 +  navigationController.fixedContentMargin = newScreenProps.fixedContentMargin;
 +
