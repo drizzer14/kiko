@@ -725,7 +725,7 @@ verified usage, not dead weight:
   longer carries a `SHOW_UNREADY_BANKS`-style flag — that release-readiness
   visibility gate was removed outright, not merely defaulted off. The "add
   a bank" sheet's `visibleCatalogEntries`
-  (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`)
+  (`src/screens/account-detail/bank-sync-section/visible-catalog-entries/visible-catalog-entries.ts`)
   now takes no flag argument: it shows every wired-registry provider in the
   catalog unconditionally, so there is nothing left for a test-env value to
   gate. See the `kiko-architecture` skill's "Guideline 2.5.19 — no hidden

@@ -742,7 +742,7 @@ export const en = {
   },
   accountDetail: {
     addBankAction: 'Add a bank',
-    // The `AddBankProviderSheet` header — a sheet title, Title Case — kept
+    // The bank `ProviderSheet` header — a sheet title, Title Case — kept
     // separate from `addBankAction` above (the Button that opens it, sentence
     // case): the same string reads correctly in only one of the two roles.
     addBankSheetTitle: 'Add a Bank',
