@@ -26,6 +26,7 @@ export type WalkField =
   | 'pending'
   | 'pointCursor'
   | 'rangeCursor'
+  | 'backfillCursor'
   | 'spanHints'
   | 'behindRun'
   | 'rescanTurn'
@@ -55,6 +56,7 @@ export const NUMBER_MARK_FIELDS = ['cursor', 'rescan', 'pointCursor', 'rangeCurs
 
 const FIELDS: readonly WalkField[] = [
   ...NUMBER_MARK_FIELDS,
+  'backfillCursor',
   'pending',
   'spanHints',
   'behindRun',

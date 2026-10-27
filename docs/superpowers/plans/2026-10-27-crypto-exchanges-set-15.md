@@ -476,3 +476,11 @@ Step 4/8:
   `binance.transfer-history.test.ts`; the backfill then waits while that ground stays owed); the plan order and every amount and row are unchanged. A backfill window read
   after one of those leaves the range cursor where that window set it. The 3 acceptance pins (tx:1743/1827, pay:1333)
   pass UNCHANGED in their upgrade world.
+
+Step 4c:
+- S15-Q16 = A (COORDINATOR; the step 4b residual): a backfill window refused every run stayed first among the
+  backfill windows and held back every one behind it. The backfill is a round-robin of its own: a new walk mark
+  `backfillCursor` (the end of the backfill window the last run started; absent or malformed reads as none, no repair,
+  a disconnect drops it) orders the backfill windows, so a window that was tried goes behind the others, and a
+  backfill read never moves the range cursor of the windows owed for every coin. Only the order changes; no amount
+  or row.

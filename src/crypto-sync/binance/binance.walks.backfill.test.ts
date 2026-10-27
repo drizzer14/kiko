@@ -289,3 +289,54 @@ describe('the backfill of a capital walk whose owed ground for every coin is ref
     expect(lateArrived).toEqual([false, true]);
   });
 });
+
+// The backfill is a round-robin of its own: a window of it that is refused every run goes behind
+// the others once it has been tried, where read first in every run it would hold back every
+// window of the backfill behind it while the owed ground for every coin spends the rest.
+describe('the backfill of a capital walk whose first window is refused every run', () => {
+  const START = NOW - 1_200 * DAY_MS;
+  const WINDOW_MS = 89 * DAY_MS;
+  const USDT_WINDOW = 3;
+  const REFUSED_BEFORE = NOW - 300 * DAY_MS;
+
+  const refusedAllCoin = Array.from({ length: 10 }, (_unused, index) => ({
+    start: REFUSED_BEFORE - index * 80 * DAY_MS,
+    end: REFUSED_BEFORE - index * 80 * DAY_MS + 10 * DAY_MS,
+  }));
+  const usdt = recordOf('withdraw', {
+    id: 'usdt-1',
+    coin: 'USDT',
+    time: HISTORY_FLOOR_MS + (USDT_WINDOW - 1) * WINDOW_MS + DAY_MS,
+    units: 5,
+  });
+
+  const runsOfRefusedFirstWindow = async (runs: number) => {
+    const world = backfillWorldOf({
+      marks: {
+        capital: {
+          cursor: NOW - DAY_MS,
+          multiCoinSince: START,
+          multiCoinSeen: true,
+          pending: refusedAllCoin,
+        },
+      },
+      records: [usdt],
+      refusing: ({ start }) =>
+        (start >= START && start <= REFUSED_BEFORE) || start === HISTORY_FLOOR_MS,
+    });
+    const arrived: boolean[] = [];
+
+    for (let run = 1; run <= runs; run += 1) {
+      await expect(world.walk('capital')).rejects.toBeInstanceOf(BinanceHistoryParseError);
+      arrived.push(world.stored.has('acc-1:withdraw:usdt-1'));
+    }
+
+    return { arrived, world };
+  };
+
+  it('imports a USDT record behind it within as many runs as its window is deep', async () => {
+    const { arrived } = await runsOfRefusedFirstWindow(USDT_WINDOW);
+
+    expect(arrived).toEqual([false, false, true]);
+  });
+});

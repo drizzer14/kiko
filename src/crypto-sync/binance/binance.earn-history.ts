@@ -839,6 +839,7 @@ const runSync = async (
     rescanCursor,
     pointCursor: roundRobins.pointCursor,
     rangeCursor: roundRobins.rangeCursor,
+    backfillCursor: roundRobins.backfillCursor,
     pending,
     floorMs: EARN_FLOOR_MS,
     endTime: now,

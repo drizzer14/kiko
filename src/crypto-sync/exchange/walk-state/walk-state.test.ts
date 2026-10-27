@@ -96,12 +96,13 @@ const HINTS = { forward: [{ start: 1, end: 2 }], pending: [], rescan: [], point:
 type StoredReads = [label: string, stored: unknown, reads: unknown];
 
 /**
- * The fields this table covers: the multi-coin marks and the two turn marks read by their own
- * rules, which `walk-state.multi-coin.test.ts` and `walk-state.behind-run.test.ts` cover.
+ * The fields this table covers: the multi-coin marks, the backfill cursor and the two turn marks
+ * read by their own rules, which `walk-state.multi-coin.test.ts`,
+ * `walk-state.backfill-cursor.test.ts` and `walk-state.behind-run.test.ts` cover.
  */
 type TableField = Exclude<
   WalkField,
-  'multiCoinSince' | 'multiCoinSeen' | 'behindRun' | 'rescanTurn' | 'rescanStuck'
+  'multiCoinSince' | 'multiCoinSeen' | 'backfillCursor' | 'behindRun' | 'rescanTurn' | 'rescanStuck'
 >;
 
 /** What a field reads for a stored value: `undefined` is a value that is stored but unreadable. */
