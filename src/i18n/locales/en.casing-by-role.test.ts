@@ -49,19 +49,10 @@ import { flattenCatalog } from './flatten-catalog';
 // they appear, per the DECISION's keep-list ("Keep: proper nouns and brand
 // names ... acronyms"). `Settings` covers "iOS Settings" (the OS app);
 // `Ukrainian` is a demonym (a proper adjective — English capitalizes these
-// regardless of position, not a casing choice). `Card`, `Auto`, `Dual`, `Investment`, `Simple`,
-// `Earn`, `Funding` and `Spot` are the parts of Binance's own product and wallet names ("Binance
-// Card", "Auto-Invest", "Dual Investment", "Simple Earn", "Funding", "Spot") that the Binance
-// not-listed note names.
+// regardless of position, not a casing choice). Binance's own product and wallet names are NOT
+// here word by word: "Card", "Spot" or "Simple" would then pass in every en string. They are
+// whole phrases in `BINANCE_PRODUCT_PHRASES` below.
 const PROPER_NOUNS = new Set([
-  'Card',
-  'Auto',
-  'Dual',
-  'Investment',
-  'Simple',
-  'Earn',
-  'Funding',
-  'Spot',
   'Kiko',
   "Kiko's",
   'Monobank',
@@ -159,13 +150,27 @@ const withoutQuotedTitles = (value: string): string =>
     TITLE_VALUES.has(inner) ? ' '.repeat(span.length) : span,
   );
 
+// The Binance product and wallet names the not-listed note
+// (`holdingDetail.exchangeNotListed.binance`) names, as whole phrases. "on Funding" and "on Spot"
+// carry the preposition because Funding and Spot are common words as a lone capital; only that
+// exact text, as the note writes it, is a wallet name.
+const BINANCE_PRODUCT_PHRASES = new RegExp(
+  `\\b(?:${['Binance Card', 'Auto-Invest', 'Dual Investment', 'Simple Earn', 'on Funding', 'on Spot'].join('|')})\\b`,
+  'g',
+);
+
+// Blanks every Binance product phrase, so the words inside are not read as sentence text.
+const withoutBinanceProductNames = (value: string): string =>
+  value.replace(BINANCE_PRODUCT_PHRASES, (phrase) => ' '.repeat(phrase.length));
+
 // Sentence case: a word may be capitalized only at the very start of the
 // string, at the start of a later sentence (after `. ! ? : — -  " “`), when it
 // is an acronym (starts with 2+ uppercase letters/digits, e.g. "ISIN's"),
 // or when it is on the proper-noun allow-list above.
 const sentenceCaseViolations = (value: string): string[] => {
-  const stripped = withoutQuotedTitles(value).replace(/\{\{[^}]*\}\}/g, (match) =>
-    ' '.repeat(match.length),
+  const stripped = withoutBinanceProductNames(withoutQuotedTitles(value)).replace(
+    /\{\{[^}]*\}\}/g,
+    (match) => ' '.repeat(match.length),
   );
   const wordPattern = /[A-Za-z0-9']+/g;
   const violations: string[] = [];
@@ -224,6 +229,33 @@ describe('a sentence that quotes a Title-role value', () => {
 
   it('rejects a span that only contains a Title-role value', () => {
     expect(sentenceCaseViolations('Tap "Export Data Now" to continue.')).toEqual(['Data', 'Now']);
+  });
+});
+
+describe('a sentence that names a Binance product or wallet', () => {
+  it.each([
+    'Not listed: Binance Card spending.',
+    'Not listed: loans; Auto-Invest; mining.',
+    'Not listed: loans; Dual Investment; mining.',
+    'Not listed: distributions other than Simple Earn rewards.',
+    'Kiko shows P2P orders on Funding and fiat operations on Spot.',
+  ])('accepts the whole product name in "%s"', (sentence) => {
+    expect(sentenceCaseViolations(sentence)).toEqual([]);
+  });
+
+  it('still rejects a lone Spot or a lone Funding outside the wallet phrases', () => {
+    expect(sentenceCaseViolations('Move it to Spot now')).toEqual(['Spot']);
+    expect(sentenceCaseViolations('Move it to Funding now')).toEqual(['Funding']);
+    expect(sentenceCaseViolations('Orders shown on Spot and Funding')).toEqual(['Funding']);
+  });
+
+  it('still rejects the first or the second word of a product name on its own', () => {
+    expect(sentenceCaseViolations('Try a Simple plan')).toEqual(['Simple']);
+    expect(sentenceCaseViolations('Use the Card now')).toEqual(['Card']);
+    expect(sentenceCaseViolations('Earn more with Auto mode')).toEqual(['Auto']);
+    expect(sentenceCaseViolations('Open a Dual order')).toEqual(['Dual']);
+    expect(sentenceCaseViolations('Hold an Investment now')).toEqual(['Investment']);
+    expect(sentenceCaseViolations('Rewards you Earn')).toEqual(['Earn']);
   });
 });
 
