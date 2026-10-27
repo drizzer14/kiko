@@ -2547,10 +2547,9 @@ stop codes and scenario rows.
   finished or not. The windows owed for every coin and the windows owed to the
   backfill (`scope: 'backfill'`) are TWO groups, each a round-robin with its own
   cursor (`rangeCursor`, `backfillCursor`), and the backfill group comes after
-  the other (S15-Q9). A run that enters the pending pass with a budget of more
-  than one window reads at least one window of each group: the run keeps the
-  calls of one window for the backfill, and the first window owed for every
-  coin keeps none (S15-Q15). A budget of one window goes to the groups in turn
+  the other (S15-Q9). The run keeps the calls of one window for the backfill
+  against the windows owed for every coin, and the first of those keeps none
+  (S15-Q15). A budget of one window goes to the groups in turn
   (`backfillTurn`): the windows owed for every coin keep it while a read
   finishes its window, and the backfill gets it after a read that leaves its
   window owed (S15-Q16, S15-Q18: one window per turn, the turn given back after
