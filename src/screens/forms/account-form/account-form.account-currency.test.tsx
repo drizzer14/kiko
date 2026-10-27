@@ -13,7 +13,7 @@ import {
 import type { accountsRepo } from '@kiko/accounts';
 import { pressSave } from '@kiko/test-support/form-header-items';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
-import { selectKind } from '@kiko/test-support/account-form-test-support';
+import { selectExchange, selectKind } from '@kiko/test-support/account-form-test-support';
 
 import AccountFormScreen from './account-form.screen';
 
@@ -229,6 +229,7 @@ describe('the account currency field on a create form', () => {
     const view = await renderForm();
     await fireEvent.changeText(view.getByLabelText('Name'), 'Wallet');
     await selectKind(view.getByTestId, 'crypto');
+    await selectExchange(view.getByTestId, 'btc_wallet');
 
     await fireEvent.press(view.getByLabelText('wallet-field'));
     await pickCurrency(view, 'BTC');
@@ -250,6 +251,7 @@ describe('the account currency field on a create form', () => {
     const view = await renderForm();
     await fireEvent.changeText(view.getByLabelText('Name'), 'Wallet');
     await selectKind(view.getByTestId, 'crypto');
+    await selectExchange(view.getByTestId, 'btc_wallet');
 
     await pickCurrency(view, 'EUR');
     await fireEvent.press(view.getByLabelText('wallet-field'));

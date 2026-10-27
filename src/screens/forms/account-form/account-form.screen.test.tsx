@@ -14,12 +14,12 @@ import {
 import type { accountsRepo } from '@kiko/accounts';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
-import { selectKind } from '@kiko/test-support/account-form-test-support';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { selectExchange, selectKind } from '@kiko/test-support/account-form-test-support';
 import { closeHandback, openHandback } from '@kiko/screens/forms/use-select-created-option';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 
@@ -233,8 +233,8 @@ jest.mock('@kiko/sync/use-crypto-sync', () =>
     (...args: unknown[]) => mockCryptoSync(...args),
   ),
 );
-// The crypto create form now reuses the shared Wallet|Binance sync form
-// (CryptoSyncForm). Its two leaf fields own their own inputs, validation, and
+// The crypto create form reuses the shared sync form (CryptoSyncForm) for the exchange or wallet
+// picked. Its two leaf fields own their own inputs, validation, and
 // Keychain writes (covered by their own tests); here each collapses to one
 // pressable that fires the screen's `onConnect*` closure, so what is under test
 // is the create screen's wiring (create-first, no duplicate, secret stays in the
@@ -2428,35 +2428,40 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(view.queryByTestId('holding-identity-name-field-error')).toBeNull();
   });
 
-  it('reuses the shared Wallet|Binance sync form (picker + fields) on the crypto create', async () => {
+  it("reuses the shared sync form for the picked entry's field on the crypto create", async () => {
     // The crypto create form must present the SAME synchronization form as the
-    // account-detail screen: a Wallet/Binance source picker and the matching
-    // field, proving it reuses CryptoSyncForm rather than hand-rolling a second
-    // Binance-only copy. The two secure API-key/secret TextFields are gone.
-    const { getByLabelText, getByTestId, getByText, queryByLabelText } = await renderForm();
+    // account-detail screen: the picked exchange or wallet's field, proving it
+    // reuses CryptoSyncForm rather than hand-rolling a second Binance-only copy.
+    // The two secure API-key/secret TextFields are gone.
+    const { getByLabelText, getByTestId, queryByLabelText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await selectKind(getByTestId, 'crypto');
 
-    expect(getByText('Wallet')).toBeTruthy();
-    expect(getByText('Binance')).toBeTruthy();
-    // Wallet is the default source, so its field shows first.
+    expect(queryByLabelText('wallet-field')).toBeNull();
+    expect(queryByLabelText('binance-field')).toBeNull();
+
+    await selectExchange(getByTestId, 'btc_wallet');
     expect(getByLabelText('wallet-field')).toBeTruthy();
     expect(queryByLabelText('API key')).toBeNull();
 
-    await fireEvent.press(getByText('Binance'));
+    await selectExchange(getByTestId, 'binance');
     expect(getByLabelText('binance-field')).toBeTruthy();
   });
 
-  it('shows the crypto sync form immediately on selecting Crypto, with no name gate', async () => {
-    // Full parity with the bank form: the sync form appears the moment Crypto is
-    // selected, empty name or not. No account row is created without a name — that
-    // is enforced at Connect/Save time, not by hiding the form.
+  it('shows the exchange picker immediately on selecting Crypto, and the picked field with no name gate', async () => {
+    // Full parity with the bank form: the picker appears the moment Crypto is
+    // selected, empty name or not, and so does the field a pick mounts. No account
+    // row is created without a name — that is enforced at Connect/Save time, not by
+    // hiding the form.
     const { getByLabelText, getByTestId } = await renderForm();
 
     await selectKind(getByTestId, 'crypto');
+    expect(getByTestId('account-exchange-type-field')).toBeTruthy();
 
-    // The Wallet source field (the default source) is present with no name typed.
+    await selectExchange(getByTestId, 'btc_wallet');
+
+    // The wallet field is present with no name typed.
     expect(getByLabelText('wallet-field')).toBeTruthy();
   });
 
@@ -2464,6 +2469,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const { getByLabelText, getByTestId, queryByTestId } = await renderForm();
 
     await selectKind(getByTestId, 'crypto');
+    await selectExchange(getByTestId, 'btc_wallet');
     expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
 
     await fireEvent.press(getByLabelText('wallet-field'));
@@ -2477,6 +2483,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const { getByLabelText, getByTestId, queryByTestId } = await renderForm();
 
     await selectKind(getByTestId, 'crypto');
+    await selectExchange(getByTestId, 'btc_wallet');
     await fireEvent.press(getByLabelText('wallet-field'));
 
     expect(mockCreate).not.toHaveBeenCalled();
@@ -2491,6 +2498,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const { getByLabelText, getByTestId, navigation } = await renderForm();
 
     await selectKind(getByTestId, 'crypto');
+    await selectExchange(getByTestId, 'btc_wallet');
     await fireEvent(getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
     scrollToFieldMock.mockClear();
     await fireEvent.press(getByLabelText('wallet-field'));
@@ -2528,10 +2536,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('does not create a crypto account when the Binance field Connect is tapped with an empty name', async () => {
-    const { getByLabelText, getByTestId, getByText, queryByTestId } = await renderForm();
+    const { getByLabelText, getByTestId, queryByTestId } = await renderForm();
 
     await selectKind(getByTestId, 'crypto');
-    await fireEvent.press(getByText('Binance'));
+    await selectExchange(getByTestId, 'binance');
     await fireEvent.press(getByLabelText('binance-field'));
 
     expect(mockCreate).not.toHaveBeenCalled();
@@ -2545,10 +2553,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
   describe('the key pair the Binance field stored before the connect', () => {
     it('is cleared when the empty name blocks the account row', async () => {
       mockClearCredentialsIfWrittenBy.mockResolvedValue(undefined);
-      const { getByLabelText, getByTestId, getByText } = await renderForm();
+      const { getByLabelText, getByTestId } = await renderForm();
 
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledTimes(1));
@@ -2563,11 +2571,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     it('is cleared when the account row cannot be inserted', async () => {
       mockClearCredentialsIfWrittenBy.mockResolvedValue(undefined);
       mockCreate.mockRejectedValueOnce(new Error('db locked'));
-      const { getByLabelText, getByTestId, getByText } = await renderForm();
+      const { getByLabelText, getByTestId } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledTimes(1));
@@ -2581,11 +2589,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     it('stays when the empty name blocks a second Connect while the row exists', async () => {
       storeCreatedRows();
       mockCryptoSync.mockResolvedValue(true);
-      const { getByLabelText, getByTestId, getByText, queryByTestId } = await renderForm();
+      const { getByLabelText, getByTestId, queryByTestId } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       await fireEvent.press(getByLabelText('binance-field'));
       await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
 
@@ -2606,11 +2614,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
           finishInsert = resolve;
         }),
       );
-      const { getByLabelText, getByTestId, getByText } = await renderForm();
+      const { getByLabelText, getByTestId } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       // This Connect's insert waits in the queue, as the one of the screen a fold replaced does.
       let queuedConnect: Promise<unknown> = Promise.resolve();
       await act(async () => {
@@ -2641,11 +2649,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
         return input.id;
       });
       mockCryptoSync.mockResolvedValue(true);
-      const { getByLabelText, getByTestId, getByText } = await renderForm();
+      const { getByLabelText, getByTestId } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
@@ -2660,11 +2668,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
     it('stays once the row exists, even when the first sync fails', async () => {
       mockCryptoSync.mockResolvedValue(false);
-      const { getByLabelText, getByTestId, getByText } = await renderForm();
+      const { getByLabelText, getByTestId } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
@@ -2674,11 +2682,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     it('stays when an icon write fails after the row exists, since the icon goes in the create', async () => {
       mockSetIcon.mockRejectedValue(new Error('icon write failed'));
       mockCryptoSync.mockResolvedValue(true);
-      const { getByLabelText, getByTestId, getByText } = await renderForm();
+      const { getByLabelText, getByTestId } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
@@ -2692,10 +2700,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
     it('does not fail the connect when the clear itself fails', async () => {
       mockClearCredentialsIfWrittenBy.mockRejectedValueOnce(new Error('keychain delete failed'));
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-      const { getByLabelText, getByTestId, getByText } = await renderForm();
+      const { getByLabelText, getByTestId } = await renderForm();
 
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledTimes(1));
@@ -2712,11 +2720,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const oldWrite = Symbol('write of the old pair');
 
     const storedAfterKindSwitch = async (): Promise<(stored: symbol) => Promise<void>> => {
-      const { getByLabelText, getByTestId, getByText } = await renderForm();
+      const { getByLabelText, getByTestId } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       const stored = mockBinanceStoredWhileUnmounted;
 
       expect(stored).toBeDefined();
@@ -2739,11 +2747,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
     it('is cleared after a fold when no row owns it', async () => {
       mockClearCredentialsIfWrittenBy.mockResolvedValue(undefined);
-      const { getByLabelText, getByTestId, getByText, unmount } = await renderForm();
+      const { getByLabelText, getByTestId, unmount } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
       await selectKind(getByTestId, 'crypto');
-      await fireEvent.press(getByText('Binance'));
+      await selectExchange(getByTestId, 'binance');
       const stored = mockBinanceStoredWhileUnmounted;
       await emitLayoutMode('columns');
       await unmount();
@@ -2802,11 +2810,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
       // The remounted field saves its own pair before its row insert is queued, so the existence
       // check for the old write can answer "no row" after that pair is already stored.
       const checkOldWriteWhileRemountedFieldSaves = async (): Promise<void> => {
-        const { getByLabelText, getByTestId, getByText } = await renderForm();
+        const { getByLabelText, getByTestId } = await renderForm();
 
         await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
         await selectKind(getByTestId, 'crypto');
-        await fireEvent.press(getByText('Binance'));
+        await selectExchange(getByTestId, 'binance');
         const stored = mockBinanceStoredWhileUnmounted;
         await selectKind(getByTestId, 'bank');
         let finishQueuedWrite = (): void => undefined;
@@ -2820,7 +2828,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
         });
 
         await selectKind(getByTestId, 'crypto');
-        await fireEvent.press(getByText('Binance'));
+        await selectExchange(getByTestId, 'binance');
         await fireEvent.press(getByLabelText('binance-field'));
         await act(async () => {
           finishQueuedWrite();
@@ -2854,6 +2862,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
     await fireEvent.changeText(getByLabelText('Name'), '   ');
     await selectKind(getByTestId, 'crypto');
+    await selectExchange(getByTestId, 'btc_wallet');
 
     expect(getByLabelText('wallet-field')).toBeTruthy();
     expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
@@ -2873,6 +2882,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const { getByLabelText, getByTestId } = await renderForm();
 
     await selectKind(getByTestId, 'crypto');
+    await selectExchange(getByTestId, 'btc_wallet');
     await fireEvent.press(getByLabelText('wallet-field'));
 
     expect(mockCreate).not.toHaveBeenCalled();
@@ -2900,6 +2910,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await selectKind(getByTestId, 'crypto');
+    await selectExchange(getByTestId, 'btc_wallet');
     await fireEvent.press(getByLabelText('wallet-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
@@ -2918,11 +2929,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it("creates the crypto account first, then runs the Binance field's connect against its id", async () => {
-    const { getByLabelText, getByTestId, getByText } = await renderForm();
+    const { getByLabelText, getByTestId } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await selectKind(getByTestId, 'crypto');
-    await fireEvent.press(getByText('Binance'));
+    await selectExchange(getByTestId, 'binance');
     await fireEvent.press(getByLabelText('binance-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
@@ -2943,11 +2954,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // Save is the one write that finds that row and stores any later name/color/icon
     // edit on it, never a second account.
     storeCreatedRows();
-    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await selectKind(getByTestId, 'crypto');
-    await fireEvent.press(getByText('Binance'));
+    await selectExchange(getByTestId, 'binance');
     await fireEvent.press(getByLabelText('binance-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
@@ -2961,7 +2972,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
     expect(mockSaveFormAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ id: createdId, name: 'Renamed', color: null, bankId: null }),
+      expect.objectContaining({ id: createdId, name: 'Renamed', color: null, bankId: 'binance' }),
     );
     expect(mockUpdate).not.toHaveBeenCalled();
   });
@@ -2971,11 +2982,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // row when it finds none, so it never takes an update that matches nothing and goes back
     // while no account exists.
     mockCreate.mockRejectedValueOnce(new Error('db locked'));
-    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await selectKind(getByTestId, 'crypto');
-    await fireEvent.press(getByText('Binance'));
+    await selectExchange(getByTestId, 'binance');
     // The field's Connect fails cleanly (no unhandled rejection); nothing saved.
     await fireEvent.press(getByLabelText('binance-field'));
 
@@ -3001,11 +3012,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // kind field is disabled once connected — pressing it is inert, and Save
     // stays on the crypto UPDATE path.
     storeCreatedRows();
-    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await selectKind(getByTestId, 'crypto');
-    await fireEvent.press(getByText('Binance'));
+    await selectExchange(getByTestId, 'binance');
     await fireEvent.press(getByLabelText('binance-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
@@ -3075,11 +3086,12 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
 
   const openWallet = async (view: FormView): Promise<void> => {
     await selectKind(view.getByTestId, 'crypto');
+    await selectExchange(view.getByTestId, 'btc_wallet');
   };
 
   const openBinance = async (view: FormView): Promise<void> => {
     await selectKind(view.getByTestId, 'crypto');
-    await fireEvent.press(view.getByText('Binance'));
+    await selectExchange(view.getByTestId, 'binance');
   };
 
   const sourceCases: SourceCase[] = [
@@ -3344,12 +3356,12 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
     });
   });
 
-  it('reminds only about the source that is on screen after switching the crypto source', async () => {
+  it('reminds only about the source that is on screen after picking another exchange or wallet', async () => {
     const view = await fillForm(sourceCases[2], 'typed');
     await pressSave(view.navigation.setOptions);
     expect(view.getByTestId('wallet-reminder')).toBeTruthy();
 
-    await fireEvent.press(view.getByText('Binance'));
+    await selectExchange(view.getByTestId, 'binance');
 
     expect(view.queryByTestId('wallet-reminder')).toBeNull();
 
@@ -3418,6 +3430,7 @@ describe('AccountFormScreen — draft', () => {
     initialValue: '250.50',
     bankId: null,
     brokerId: null,
+    exchangeId: null,
     pendingAccountId: 'pending-1',
   } as const;
 
@@ -3512,6 +3525,7 @@ describe('AccountFormScreen — draft', () => {
       initialValue: '',
       bankId: null,
       brokerId: null,
+      exchangeId: null,
       pendingAccountId: expect.any(String),
     });
     expect(JSON.parse(JSON.stringify(draft))).toEqual(draft);

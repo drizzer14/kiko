@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
@@ -20,7 +20,7 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
   };
 });
 
-const renderForm = (source?: ExchangeCatalogId) =>
+const renderForm = (source: ExchangeCatalogId) =>
   render(
     <CryptoSyncForm
       accountId="a"
@@ -52,15 +52,10 @@ describe('CryptoSyncForm', () => {
     expect(queryByLabelText('binance-field')).toBeNull();
   });
 
-  it('keeps the source toggle, starting on the wallet field, when it is given no source', async () => {
-    const { getByText, getByLabelText, queryByLabelText } = await renderForm();
+  it('shows no source toggle, whichever source it is given', async () => {
+    const { queryByText } = await renderForm('binance');
 
-    expect(getByText('Source')).toBeTruthy();
-    expect(getByLabelText('wallet-field')).toBeTruthy();
-
-    await fireEvent.press(getByText('Binance'));
-
-    expect(getByLabelText('binance-field')).toBeTruthy();
-    expect(queryByLabelText('wallet-field')).toBeNull();
+    expect(queryByText('Source')).toBeNull();
+    expect(queryByText('Wallet')).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import {
   accountDisplayName,
   implicitAccountStoredName,
@@ -40,9 +41,11 @@ import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
 import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
+import ExchangeTypeField from '@kiko/screens/forms/exchange-type-field';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
+import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
@@ -89,6 +92,7 @@ type CreateSeed = {
   initialValue: string;
   bankId: BankId | null;
   brokerId: BrokerId | null;
+  exchangeId: ExchangeCatalogId | null;
 };
 
 // What a create form opens with: a plain create opens on the default kind with
@@ -102,8 +106,12 @@ const createSeed = (
   draft: FormDraft | AccountFormDraft | undefined,
 ): CreateSeed => {
   if (isSavedDraft(draft)) {
-    // A draft saved before the field existed has no such key, and reads as untouched.
-    return { ...draft, accountCurrency: draft.accountCurrency ?? null };
+    // A draft saved before a field existed has no such key, and reads as untouched.
+    return {
+      ...draft,
+      accountCurrency: draft.accountCurrency ?? null,
+      exchangeId: draft.exchangeId ?? null,
+    };
   }
 
   const kind = initialKind ?? INITIAL_KIND;
@@ -119,6 +127,7 @@ const createSeed = (
     initialValue: '',
     bankId: null,
     brokerId: null,
+    exchangeId: null,
   };
 };
 
@@ -158,12 +167,15 @@ const isSupportedKind = (value: string): value is Kind => Object.hasOwn(accountK
 
 // `accounts.bankId` holds the catalog identity of whichever kind has a picker,
 // so each kind writes only its own picker's pick: a broker id never lands on a
-// bank account, and a bank id never on a broker.
+// bank account, a bank id never on a broker, and an exchange id only on a crypto account.
 const catalogIdFor = (
   kind: Kind,
-  bankId: BankId | null,
-  brokerId: BrokerId | null,
-): BankId | BrokerId | null => (kind === 'broker' ? brokerId : bankId);
+  picks: { bankId: BankId | null; brokerId: BrokerId | null; exchangeId: ExchangeCatalogId | null },
+): BankId | BrokerId | ExchangeCatalogId | null =>
+  match(kind)
+    .with('broker', () => picks.brokerId)
+    .with('crypto', () => picks.exchangeId)
+    .otherwise(() => picks.bankId);
 
 // A NEW bank or broker account must say which one it is; the picker's kind
 // names the issue so its error key follows. Edit never requires it, so an
@@ -383,7 +395,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const [bankId, setBankId] = useState<BankId | null>(opening.bankId);
   // The broker picked in BrokerTypeField, the same shape as `bankId`.
   const [brokerId, setBrokerId] = useState<BrokerId | null>(opening.brokerId);
-  const catalogId = catalogIdFor(kind, bankId, brokerId);
+  // The exchange or wallet picked in ExchangeTypeField on a crypto create form, the same shape as
+  // `bankId`. null = nothing picked: the account saves with no bank id, and is not required to
+  // pick one.
+  const [exchangeId, setExchangeId] = useState<ExchangeCatalogId | null>(opening.exchangeId);
+  const catalogId = catalogIdFor(kind, { bankId, brokerId, exchangeId });
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
   // (setColor(editingAccount.color) / setKind(editingAccount.kind) below): a
@@ -439,6 +455,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     initialValue,
     bankId,
     brokerId,
+    exchangeId,
     pendingAccountId,
   };
   const onFieldBlur = useDraftAutosave(draft, saveDraft);
@@ -804,6 +821,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     setIconIsDirty(false);
     setBankId(null);
     setBrokerId(null);
+    setExchangeId(null);
   };
 
   // Property and Loan are the one implicit account of their kind, so there is
@@ -988,29 +1006,43 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           </Box>
         )}
 
-        {/* The SAME Wallet|Binance sync form the account-detail screen uses,
-            reused here rather than hand-rolled. It renders the moment Crypto is
-            selected — full parity with the bank form above, with NO name gate.
-            The create invariant is enforced instead of hidden: each field's own
-            Connect inserts the account row (via ensureAccount) keyed by the
-            pre-generated id, and ensureAccount refuses to create a row while
-            `!canSave` (empty name), mirroring the bank Save gate. A Connect tapped
-            early surfaces both the field's "could not connect" state and the
-            name-required reason above, and writes no row. */}
+        {/* The exchange or wallet picker, and below it the SAME sync form the account-detail
+            screen uses, reused here rather than hand-rolled, for the picked entry. The picker
+            shows on CREATE only: an edit never changes what the account is connected to, and an
+            edit's connection is managed on the account-detail screen. It renders the moment
+            Crypto is selected — full parity with the bank form above, with NO name gate and
+            no required pick — and the sync form follows the pick (an unpicked or manual account
+            has no field). The create invariant is enforced instead of hidden: each field's own
+            Connect inserts the account row (via ensureAccount) keyed by the pre-generated id,
+            and ensureAccount refuses to create a row while `!canSave` (empty name), mirroring
+            the bank Save gate. A Connect tapped early surfaces both the field's "could not
+            connect" state and the name-required reason above, and writes no row. */}
         {!isEdit && kind === 'crypto' && (
           <Box gap={4}>
             <Divider testID="form-divider" />
 
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-            <CryptoSyncForm
-              accountId={pendingAccountId}
-              onConnectWallet={connectWallet}
-              onConnectBinance={connectBinance}
-              walletReminder={reminderFor('wallet')}
-              binanceReminder={reminderFor('binance')}
-              onBinanceStoredWhileUnmounted={clearPairIfRowMissing}
+            <ExchangeTypeField
+              label={t('forms.account.exchangeType')}
+              sheetTitle={t('forms.account.exchangeTypeSheetTitle')}
+              selected={exchangeId}
+              onSelect={setExchangeId}
+              disabled={isPickLocked}
+              testID="account-exchange-type-field"
             />
+
+            {foldMap(maybe(exchangeId), (source) => (
+              <CryptoSyncForm
+                accountId={pendingAccountId}
+                source={source}
+                onConnectWallet={connectWallet}
+                onConnectBinance={connectBinance}
+                walletReminder={reminderFor('wallet')}
+                binanceReminder={reminderFor('binance')}
+                onBinanceStoredWhileUnmounted={clearPairIfRowMissing}
+              />
+            ))}
           </Box>
         )}
       </Box>

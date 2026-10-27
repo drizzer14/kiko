@@ -12,6 +12,7 @@ import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 import type { HoldingFormDraft } from '@kiko/screens/forms/holding-form';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
+import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 import type { OwnershipEntry } from '@kiko/screens/forms/property-ownership';
 
 /**
@@ -111,6 +112,9 @@ export type AccountFormDraft = {
   initialValue: string;
   bankId: BankId | null;
   brokerId: BrokerId | null;
+  // The exchange or wallet picked on a crypto create form. A draft saved before the picker
+  // existed has no such key, and reads as no pick.
+  exchangeId: ExchangeCatalogId | null;
   // The id the form made for the account it may create: a remount keeps it, so a row a Connect
   // already created under it is saved onto, not created again.
   pendingAccountId: string;

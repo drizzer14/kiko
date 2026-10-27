@@ -57,6 +57,7 @@ export const TITLE_KEYS = new Set([
   'forms.account.bankTypeSheetTitle',
   'forms.account.brokerTypeSheetTitle',
   'forms.account.editTitle',
+  'forms.account.exchangeTypeSheetTitle',
   'forms.account.kindSheetTitle',
   'forms.contribution.addTitle',
   'forms.fields.currencySheetTitle',

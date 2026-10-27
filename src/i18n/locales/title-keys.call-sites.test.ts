@@ -80,6 +80,8 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
   'screens/forms/category-field/category-field.component.tsx#sheetTitle':
     'CategoryField.sheetTitle',
   'screens/forms/date-field/date-field.component.tsx#sheetTitle': 'DateField.sheetTitle',
+  'screens/forms/exchange-type-field/exchange-type-field.component.tsx#sheetTitle':
+    'ExchangeTypeField.sheetTitle',
   'screens/forms/holding-select-field/holding-select-field.component.tsx#sheetTitle':
     'HoldingSelectField.sheetTitle',
   'screens/forms/loan-payment-field/loan-payment-field.component.tsx#sheetTitle':
