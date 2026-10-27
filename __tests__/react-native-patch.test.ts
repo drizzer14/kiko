@@ -115,67 +115,6 @@ describe('the react-native-screens fixed content margin patch', () => {
     );
   });
 
-  // On a tab revisit UIKit adds the ancestor top bar's contribution to a pane below the window's
-  // top, so its safe top grows and the navigation bar drops. The clamp keeps the first-visit safe
-  // top by writing a negative additional top inset, and only while the margin is fixed.
-  describe('safe top clamp', () => {
-    const patchedLines = () =>
-      readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8')
-        .split('\n')
-        .filter((line) => (line.startsWith('+') && !line.startsWith('+++')) || line.startsWith(' '))
-        .map((line) => line.slice(1))
-        .join('\n');
-
-    it.each([
-      ['the patch file', patchedLines],
-      ['the installed file', () => read('ios/RNSScreenStack.mm')],
-    ])('is in %s', (_name, load) => {
-      const source = load();
-
-      expect(source).toContain('- (void)clampSafeAreaTopInset');
-      expect(source).toContain('UIWindow *window = self.view.window;');
-      expect(source).toContain('if (_fixedContentMargin <= 0 || window == nil) {');
-      expect(source).toContain(
-        'CGFloat inheritedTop = self.view.safeAreaInsets.top - self.additionalSafeAreaInsets.top;',
-      );
-      expect(source).toContain(
-        'CGFloat viewTopInWindow = [self.view convertPoint:CGPointZero toView:nil].y;',
-      );
-      expect(source).toContain(
-        'CGFloat allowedTop = MAX(0, window.safeAreaInsets.top - viewTopInWindow);',
-      );
-      expect(source).toContain('CGFloat wantedAdditionalTop = MIN(0, allowedTop - inheritedTop);');
-      expect(source).toContain('if (additional.top != wantedAdditionalTop) {');
-      expect(source).toContain('additional.top = wantedAdditionalTop;');
-      expect(source).toContain('self.additionalSafeAreaInsets = additional;');
-    });
-
-    it.each([
-      ['the patch file', patchedLines],
-      ['the installed file', () => read('ios/RNSScreenStack.mm')],
-    ])(
-      'runs after each layout and is reset to 0 when the margin is released, in %s',
-      (_name, load) => {
-        const source = load();
-        const layoutPass = source.slice(source.indexOf('- (void)viewDidLayoutSubviews'));
-        const released = source.slice(
-          source.indexOf('} else if (wasFixed) {'),
-          source.indexOf('- (void)clampSafeAreaTopInset'),
-        );
-
-        expect(layoutPass.indexOf('[self clampSafeAreaTopInset];')).toBeGreaterThan(
-          layoutPass.indexOf('[self applyFixedContentMargin];'),
-        );
-        expect(layoutPass.indexOf('[self clampSafeAreaTopInset];')).toBeLessThan(
-          layoutPass.indexOf('if ([self.topViewController isKindOfClass:[RNSScreen class]]) {'),
-        );
-        expect(released).toContain('UIEdgeInsets additional = self.additionalSafeAreaInsets;');
-        expect(released).toContain('additional.top = 0;');
-        expect(released).toContain('self.additionalSafeAreaInsets = additional;');
-      },
-    );
-  });
-
   it('is applied to the codegen spec, the context and the stack that reads it', () => {
     expect(read('src/fabric/ScreenStackNativeComponent.ts')).toContain(
       'fixedContentMargin?: CT.WithDefault<CT.Float, 0>;',

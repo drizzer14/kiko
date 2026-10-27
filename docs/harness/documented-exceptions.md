@@ -1215,15 +1215,6 @@ verified usage, not dead weight:
     writes only the leading and trailing margins through `RNSSetHorizontalLayoutMargins`, and
     skips the write when the margins already hold. The margins saved for the restore path are
     the stored ones too.
-    Safe top clamp: on a tab revisit UIKit adds the ancestor top bar's contribution to the safe
-    top of a pane below the window's top (iPad, Settings tab: 0 on the first visit, 20 after
-    Accounts then Settings), which drops the navigation bar 10 pt; `clampSafeAreaTopInset`, run
-    after `applyFixedContentMargin` in `viewDidLayoutSubviews` while the value is above 0 and the
-    view is in a window, writes a negative top `additionalSafeAreaInsets` so the pane keeps the
-    safe top it had on the first visit (`MIN(0, MAX(0, window safe top - view top in window) -
-    inherited top)`; a stack at the window's top gets 0), only when the value changes, and going
-    back to 0 resets that top to 0 (user ruling: keep the first-visit position on every visit).
-    The negative inset is not verified on a device yet.
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or
@@ -1242,8 +1233,7 @@ verified usage, not dead weight:
     Pinned by `__tests__/react-native-patch.test.ts` ("the react-native-screens fixed content
     margin patch": the patch touches only react-native-screens, the version is exactly `4.27.0`,
     the installed files carry the patch, the margins written back are the stored ones and are
-    skipped when equal, the safe top clamp and its reset, and the context reads 0 outside a
-    provider) and by
+    skipped when equal, and the context reads 0 outside a provider) and by
     `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, the single stack 0).
     Re-check rule: `docs/harness/dependency-hygiene.md` ("Standing patch: react-native-screens").
     A device re-measurement is the real proof (Jest cannot see native margins), and it covers:
