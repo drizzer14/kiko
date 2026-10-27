@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -63,6 +63,12 @@ describe('ExchangeTypeField', () => {
 
   it("shows each entry's capability caption under its name", async () => {
     const { getByTestId } = await renderOpenSheet();
+
+    for (const entry of exchangeCatalog) {
+      expect(
+        within(getByTestId(`exchange-type-option-${entry.id}`)).getByText(i18n.t(entry.captionKey)),
+      ).toBeTruthy();
+    }
 
     expect(getByTestId('exchange-type-option-binance').props.accessibilityLabel).toBe(
       'Binance. Connect with a read-only API key.',

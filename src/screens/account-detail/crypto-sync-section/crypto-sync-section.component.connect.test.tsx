@@ -151,7 +151,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
     expect(getByText('Connect with a public address.')).toBeTruthy();
   });
 
-  it("shows the picked provider's field and Change exchange after a sheet pick", async () => {
+  it("shows the picked provider's field and Change exchange or wallet after a sheet pick", async () => {
     const { getByText, getByTestId, getByLabelText, queryByLabelText } = await renderSection();
 
     await fireEvent.press(getByText(CONNECT));
@@ -162,7 +162,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
     expect(getByText('Change exchange or wallet')).toBeTruthy();
   });
 
-  it('returns to Connect an exchange or wallet on Change exchange', async () => {
+  it('returns to Connect an exchange or wallet on Change exchange or wallet', async () => {
     const { getByText, getByTestId, queryByLabelText } = await renderSection();
 
     await fireEvent.press(getByText(CONNECT));
@@ -173,7 +173,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
     expect(queryByLabelText('wallet-field')).toBeNull();
   });
 
-  it('shows no Change exchange when the bank id names the provider', async () => {
+  it('shows no Change exchange or wallet when the bank id names the provider', async () => {
     const { queryByText } = await renderSection({ bankId: 'binance' });
 
     expect(queryByText('Change exchange or wallet')).toBeNull();

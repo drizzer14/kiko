@@ -4,7 +4,6 @@ import type { BinanceWriteToken } from '@kiko/crypto-sync/binance';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 
-import Box from '../box';
 import WalletAddressField from '../wallet-address-field';
 import BinanceCredentialsField from '../binance-credentials-field';
 
@@ -12,7 +11,7 @@ type CryptoSyncFormProps = {
   // The account the entered credential/address belongs to. On the detail screen
   // this is the existing account's id; on the create form it is the id the
   // screen pre-generated for the row it will insert on Connect (see
-  // account-form.screen's ensureCryptoAccount). Either way the field binds its
+  // account-form.screen's ensureAccount). Either way the field binds its
   // Keychain write and first sync to this id.
   accountId: string;
   // The exchange or wallet whose field to mount; the caller picks it.
@@ -40,24 +39,20 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
   binanceReminder,
   onBinanceStoredWhileUnmounted,
 }) => {
-  return (
-    <Box gap={3}>
-      {match(source)
-        .with('btc_wallet', () => (
-          <WalletAddressField onConnect={onConnectWallet} reminder={walletReminder} />
-        ))
-        .with('binance', () => (
-          <BinanceCredentialsField
-            accountId={accountId}
-            onConnect={onConnectBinance}
-            reminder={binanceReminder}
-            onStoredWhileUnmounted={onBinanceStoredWhileUnmounted}
-          />
-        ))
-        .with('other', () => null)
-        .exhaustive()}
-    </Box>
-  );
+  return match(source)
+    .with('btc_wallet', () => (
+      <WalletAddressField onConnect={onConnectWallet} reminder={walletReminder} />
+    ))
+    .with('binance', () => (
+      <BinanceCredentialsField
+        accountId={accountId}
+        onConnect={onConnectBinance}
+        reminder={binanceReminder}
+        onStoredWhileUnmounted={onBinanceStoredWhileUnmounted}
+      />
+    ))
+    .with('other', () => null)
+    .exhaustive();
 };
 
 export default CryptoSyncForm;

@@ -52,6 +52,12 @@ describe('CryptoSyncForm', () => {
     expect(queryByLabelText('binance-field')).toBeNull();
   });
 
+  it('renders nothing at all for the manual source, so no blank strip is left under the picker', async () => {
+    const { toJSON } = await renderForm('other');
+
+    expect(toJSON()).toBeNull();
+  });
+
   it('shows no source toggle, whichever source it is given', async () => {
     const { queryByText } = await renderForm('binance');
 
