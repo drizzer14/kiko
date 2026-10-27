@@ -240,7 +240,7 @@ const bodyOf = (records: ServedRecord[], url: URL): unknown => {
 };
 
 /** A read window as the endpoint is asked for it. */
-export type AskedWindow = { start: number; end: number };
+type AskedWindow = { start: number; end: number };
 
 /** A body no client reads: the page of a window that Binance serves off its contract. */
 const OFF_CONTRACT_BODY = { unexpected: true };
