@@ -151,11 +151,8 @@ const markdownFilesUnder = (directory: string): string[] =>
 
 const citingFilesIn = (root: string): string[] =>
   [
-    ...markdownFilesUnder(join(root, '.claude/skills')).filter((file) =>
-      file.endsWith('/SKILL.md'),
-    ),
-    ...['harness/kiko/skills', 'harness/kiko/agents', 'docs/harness'].flatMap((directory) =>
-      markdownFilesUnder(join(root, directory)),
+    ...['.claude/skills', 'harness/kiko/skills', 'harness/kiko/agents', 'docs/harness'].flatMap(
+      (directory) => markdownFilesUnder(join(root, directory)),
     ),
     join(root, 'CLAUDE.md'),
     join(root, 'docs/security/README.md'),

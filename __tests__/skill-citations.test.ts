@@ -5,6 +5,7 @@ import {
   createTemporaryDirectory,
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
+import { readSkillText } from './test-support/skill-text';
 
 // A guard deny points the agent at `metadata.skill` ("<skill> › <heading>").
 // A heading renamed or cited from memory leaves the deny pointing nowhere, and
@@ -112,7 +113,7 @@ const readRepositoryFile = (file: string): string =>
 const readSkillIn = (repositoryRoot: string, skill: string): string | undefined =>
   SKILL_ROOTS.map((root) => join(repositoryRoot, `${root}/${skill}/SKILL.md`))
     .filter((file) => existsSync(file))
-    .map((file) => readFileSync(file, 'utf8'))[0];
+    .map(readSkillText)[0];
 
 const readRepositorySkill = (skill: string): string | undefined =>
   readSkillIn(REPOSITORY_ROOT, skill);
