@@ -523,14 +523,17 @@ const startingAfter = <Ground extends WalkWindow>(
  * range that was cut by a read is the next one to read.
  *
  * The bound is per group, because the windows owed to the backfill come after all the others
- * (`planWalkPasses`) and the run keeps the calls of one window for them (`runWalkPlan`). Each
- * group is a round-robin of its own, with a cursor of its own (`storeRangeCursor`,
- * `storeBackfillCursor`): a backfill window that is refused every run goes behind the others once
- * it has been tried, and so holds none of them back. A run that enters the pending pass reads at
- * least one window of each group: so each of the windows owed for every coin is read within
- * `ceil(windows / reads a run)` such runs, the reads a run has being its budget less that one
- * window, and each of the windows of the backfill within `windows` such runs, whatever the other
- * ground costs.
+ * (`planWalkPasses`). Each group is a round-robin of its own, with a cursor of its own
+ * (`storeRangeCursor`, `storeBackfillCursor`): a backfill window that is refused every run goes
+ * behind the others once it has been tried, and so holds none of them back. A run that enters the
+ * pending pass with a budget of more than one window reads at least one window of each group (the
+ * run keeps the calls of one window for the backfill, `runWalkPlan`): each of the windows owed for
+ * every coin is then read within `ceil(windows / reads a run)` such runs, the reads a run has being
+ * its budget less that one window, and each of the windows of the backfill within `windows` such
+ * runs. A budget of one window reads one of the groups, in turn (`backfillTurn`): the windows owed
+ * for every coin keep it while a read finishes its window, and give it to the backfill after a
+ * read that leaves its window owed, so each of them is read within `2 * windows` runs, and each
+ * of the windows of the backfill within `windows owed for every coin + 2 * windows` runs.
  */
 const windowsFrom = (windows: OwedWindow[], cursor: number | null): OwedWindow[] =>
   cursor === null
@@ -541,6 +544,9 @@ const windowsFrom = (windows: OwedWindow[], cursor: number | null): OwedWindow[]
       ];
 
 const isBackfillWindow = (window: OwedWindow): boolean => window.scope === 'backfill';
+
+/** The two groups of owed windows a run reads: those owed for every coin, and the backfill. */
+type PendingGroup = 'everyCoin' | 'backfill';
 
 /**
  * The series a window of points has to be read in: those of every point, or none named (every
@@ -617,9 +623,9 @@ const pointsToRead = (points: OwedGround[], endTime: number): OwedWindow[] => {
  * its own range or of another, from being read. The windows owed to the backfill come after all
  * the others, each group in that round-robin, the backfill with a cursor of its own: the backfill
  * starts at the floor, so read first it would hold back the recent days a run could finish at
- * once. Last, but not left without a read: the run keeps the calls of one of its windows
- * (`runWalkPlan`). The list is separate from the re-scan mark: a stop inside one range leaves the
- * other ranges and the re-scan to run.
+ * once. Last, but not left without a read: the run keeps the calls of one of its windows, or takes
+ * turns with the other group when its budget is one window (`runWalkPlan`). The list is separate
+ * from the re-scan mark: a stop inside one range leaves the other ranges and the re-scan to run.
  */
 export const planWalkPasses = (input: {
   cursor: number | null;
@@ -627,7 +633,7 @@ export const planWalkPasses = (input: {
   pointCursor: number | null;
   rangeCursor: number | null;
   /** None until a window of the backfill was tried: the backfill then follows the range cursor. */
-  backfillCursor?: number | null;
+  backfillCursor?: number;
   pending: OwedGround[];
   floorMs: number;
   endTime: number;
@@ -727,7 +733,12 @@ export type WalkMarks = {
   pointCursor: number | null;
   rangeCursor: number | null;
   /** None until a window of the backfill was tried (see `planWalkPasses`). */
-  backfillCursor?: number | null;
+  backfillCursor?: number;
+  /**
+   * The next pending read of one window goes to the backfill rather than to the windows owed for
+   * every coin (see `runWalkPlan`). None reads as the windows owed for every coin.
+   */
+  backfillTurn?: boolean;
   hints: BinanceSpanHints;
   pending: OwedGround[];
   /** What the forward spans of this run owed, kept in the list each later forward span stores. */
@@ -1127,6 +1138,23 @@ const storeBackfillCursor = async (input: {
   }
 };
 
+/**
+ * Store whose turn the next pending read of one window is, unless it is already the stored one.
+ * A turn that was never stored is the turn of the windows owed for every coin.
+ */
+const storeBackfillTurn = async (input: {
+  backfill: boolean;
+  marks: WalkMarks;
+  write: WalkMarkWriter;
+}): Promise<void> => {
+  const { backfill, marks, write } = input;
+
+  if ((marks.backfillTurn ?? false) !== backfill) {
+    marks.backfillTurn = backfill;
+    await write([{ field: 'backfillTurn', value: backfill }]);
+  }
+};
+
 /** Store the walk's span hints, and keep them in the marks. */
 export const storeSpanHints = async (input: {
   hints: BinanceSpanHints;
@@ -1141,26 +1169,30 @@ export const storeSpanHints = async (input: {
 
 /**
  * What a walk reads of its round-robins and its span hints from its stored marks, each repaired
- * when malformed (see `readRoundRobinCursor`, `readSpanHints`). The backfill cursor has no repair
- * and is left out when none is stored (see `ParsedWalkMarks`).
+ * when malformed (see `readRoundRobinCursor`, `readSpanHints`). The backfill cursor and the
+ * backfill turn have no repair and are left out when none is stored (see `ParsedWalkMarks`).
  */
 export const readWalkRoundRobins = async (input: {
   stored: ParsedWalkMarks;
   write: WalkMarkWriter;
-}): Promise<Pick<WalkMarks, 'pointCursor' | 'rangeCursor' | 'backfillCursor' | 'hints'>> => {
+}): Promise<
+  Pick<WalkMarks, 'pointCursor' | 'rangeCursor' | 'backfillCursor' | 'backfillTurn' | 'hints'>
+> => {
   const { stored, write } = input;
 
   return {
     pointCursor: await readPointCursor({ stored: stored.pointCursor, write }),
     rangeCursor: await readRangeCursor({ stored: stored.rangeCursor, write }),
     ...foldMap(maybe(stored.backfillCursor), (backfillCursor) => ({ backfillCursor })),
+    ...foldMap(maybe(stored.backfillTurn), (backfillTurn) => ({ backfillTurn })),
     hints: await readSpanHints({ stored: stored.spanHints, write }),
   };
 };
 
 /**
  * What `runWalkPlan` needs of a walk's round-robins and span hints, over the walk's own `marks`:
- * mark a point, a range or a window of the backfill once its read has started, and store the hints.
+ * mark a point, a range or a window of the backfill once its read has started, give the turn of
+ * the backfill and store it, and store the hints.
  */
 export const roundRobinHooksOf = (input: { marks: WalkMarks; write: WalkMarkWriter }) => {
   const { marks, write } = input;
@@ -1169,6 +1201,8 @@ export const roundRobinHooksOf = (input: { marks: WalkMarks; write: WalkMarkWrit
     markPointRead: (window: OwedWindow) => storePointCursor({ window, marks, write }),
     markRangeRead: (window: OwedWindow) => storeRangeCursor({ window, marks, write }),
     markBackfillRead: (window: OwedWindow) => storeBackfillCursor({ window, marks, write }),
+    backfillTurn: marks.backfillTurn === true,
+    markBackfillTurn: (backfill: boolean) => storeBackfillTurn({ backfill, marks, write }),
     hints: {
       stored: marks.hints,
       store: (hints: BinanceSpanHints) => storeSpanHints({ hints, marks, write }),
@@ -1306,15 +1340,17 @@ const sameHints = (left: BinanceSpanHints, right: BinanceSpanHints): boolean =>
  * first of them, keep in the same way the calls of the first window owed to the backfill: ground
  * that is refused every run, which spends its calls and stays owed, would otherwise leave the
  * backfill no read, and its rows would never arrive. The first keeps none, so that a budget of
- * one window still reads the ground owed for every coin. The owed points are read after the
- * re-scan, on the budget that is left, one call each: reading them first would let many of them
- * take the whole budget of every run from the owed days and the re-scan. One that the budget
- * skips stays owed; the plan gives them in a round-robin (`startingAfter`) that `markPointRead`
- * moves on once the read of a point has started, whether or not its window finished (a window
- * that splits and runs out of calls stays owed, and the round-robin goes on to the next point),
- * so each is among those a run reads in a bounded number of runs. `canAfford` takes the number
- * of calls to keep after the one it asks about, and must also say no once Binance has rate
- * limited the account, or the run would go on asking after a 429. The walk is reported complete
+ * one window still reads the ground owed for every coin: that one window goes to the two groups
+ * in turn (`backfillTurn`, kept in the walk's marks), as the first of them leaves its window owed.
+ * The owed points are read after the re-scan, on the budget that is left, one call each: reading
+ * them first would let many of them take the whole budget of every run from the owed days and the
+ * re-scan. One that the budget skips stays owed; the plan gives them in a round-robin
+ * (`startingAfter`) that `markPointRead` moves on once the read of a point has started, whether
+ * or not its window finished (a window that splits and runs out of calls stays owed, and the
+ * round-robin goes on to the next point), so each is among those a run reads in a bounded number
+ * of runs. `canAfford` takes the number of calls to keep after the one it asks about, and must
+ * also say no once Binance has rate limited the account, or the run would go on asking after a
+ * 429. The walk is reported complete
  * only when every window was read to its end and no record is left owed.
  *
  * A walk that reads several series (a Transfer type each) spends `callsOf(window)` calls on one
@@ -1335,6 +1371,8 @@ export const runWalkPlan = async (input: {
   markPointRead?: (window: OwedWindow) => Promise<void>;
   markRangeRead?: (window: OwedWindow) => Promise<void>;
   markBackfillRead?: (window: OwedWindow) => Promise<void>;
+  backfillTurn?: boolean;
+  markBackfillTurn?: (backfill: boolean) => Promise<void>;
   hints?: { stored: BinanceSpanHints; store: (next: BinanceSpanHints) => Promise<void> };
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
@@ -1347,6 +1385,8 @@ export const runWalkPlan = async (input: {
     markPointRead,
     markRangeRead,
     markBackfillRead,
+    backfillTurn = false,
+    markBackfillTurn,
     callsOf = () => 1,
     isUnreadableWindowError = () => false,
   } = input;
@@ -1397,7 +1437,7 @@ export const runWalkPlan = async (input: {
     pass: WalkPass,
     keep: number,
     hintPass: BinanceSpanHintPass,
-    afterRead?: (window: OwedWindow) => Promise<void>,
+    afterRead?: (window: OwedWindow, finished: boolean) => Promise<void>,
     heldFor: (window: OwedWindow) => number = () => 0,
   ): Promise<void> => {
     for (const window of windows) {
@@ -1424,11 +1464,13 @@ export const runWalkPlan = async (input: {
           return { imported: 0, complete: false, owed: true, started: true, hint: null };
         },
       );
+      const finished = outcome.complete && !outcome.owed;
+
       imported += outcome.imported;
-      complete = complete && outcome.complete && !outcome.owed;
+      complete = complete && finished;
 
       if (outcome.started) {
-        await afterRead?.(window);
+        await afterRead?.(window, finished);
       }
 
       if (!outcome.complete && STOP_ENDS_PASS[pass]) {
@@ -1442,30 +1484,60 @@ export const runWalkPlan = async (input: {
   // The backfill starts at the floor, older than the other ground, so its window read last would
   // set the range cursor back before the windows read just now, and the next run would read the
   // first of them again, those behind them never: it has a cursor of its own.
-  const markPendingRead = async (window: OwedWindow): Promise<void> => {
-    await (isBackfillWindow(window) ? markBackfillRead : markRangeRead)?.(window);
+  let oneWindowTurn: PendingGroup | undefined;
+
+  const markPendingRead = async (window: OwedWindow, finished: boolean): Promise<void> => {
+    const group: PendingGroup = isBackfillWindow(window) ? 'backfill' : 'everyCoin';
+
+    await (group === 'backfill' ? markBackfillRead : markRangeRead)?.(window);
+
+    // The turn of a budget of one window goes to the other group once a read of the group whose
+    // turn it is has started, as the cursors move on; but a window owed for every coin that was
+    // read to its end keeps it, as the ground of that group moves on and leaves the budget.
+    if (group === oneWindowTurn && !(group === 'everyCoin' && finished)) {
+      await markBackfillTurn?.(group === 'everyCoin');
+    }
   };
 
   /**
    * The owed ranges: the windows owed for every coin on the budget less the calls kept for the
    * backfill, then the backfill on what is left, which holds the calls of that window. Two reads
    * of one pass, because a window the budget cannot afford ends the pass it is in. The first
-   * window owed for every coin keeps nothing for the backfill: a budget of one window would
-   * otherwise go to the backfill in every run and leave that ground unread.
+   * window owed for every coin keeps nothing for the backfill, so that a budget of one window is
+   * not left to the backfill in every run. A budget of one window (two windows would not both be
+   * entered) goes to the two groups in turn instead: the windows owed for every coin keep it
+   * (`backfillTurn` absent) while a read finishes its window, which takes that ground off the
+   * list, and give it to the backfill after a read that leaves its window owed (refused, or owed
+   * whole for good), which would otherwise take that one window in every run and leave the
+   * backfill unread. The backfill, read first on its turn and with nothing kept, gives the turn
+   * back after one window. A budget that fits more windows keeps the order and the calls.
    */
   const readPending = async (keep: number): Promise<void> => {
     const owedForEveryCoin = plan.pending.filter((window) => !isBackfillWindow(window));
+    const owedToBackfill = plan.pending.filter(isBackfillWindow);
+    const bothAffordable =
+      owedForEveryCoin.length === 0 ||
+      owedToBackfill.length === 0 ||
+      canAfford(keep + callsOf(owedForEveryCoin[0]) + callsOf(owedToBackfill[0]) - 1);
 
-    await readPass(owedForEveryCoin, 'pending', keep, 'pending', markPendingRead, (window) =>
-      window === owedForEveryCoin[0] ? 0 : backfillKeep,
-    );
-    await readPass(
-      plan.pending.filter(isBackfillWindow),
-      'pending',
-      keep,
-      'pending',
-      markPendingRead,
-    );
+    const storedTurn: PendingGroup = backfillTurn ? 'backfill' : 'everyCoin';
+
+    oneWindowTurn = bothAffordable ? undefined : storedTurn;
+
+    const readOwedForEveryCoin = () =>
+      readPass(owedForEveryCoin, 'pending', keep, 'pending', markPendingRead, (window) =>
+        window === owedForEveryCoin[0] || oneWindowTurn === 'backfill' ? 0 : backfillKeep,
+      );
+    const readBackfill = () =>
+      readPass(owedToBackfill, 'pending', keep, 'pending', markPendingRead);
+
+    if (oneWindowTurn === 'backfill') {
+      await readBackfill();
+      await readOwedForEveryCoin();
+    } else {
+      await readOwedForEveryCoin();
+      await readBackfill();
+    }
   };
 
   if (input.owedFirst === true) {

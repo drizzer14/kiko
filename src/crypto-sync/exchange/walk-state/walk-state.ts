@@ -59,6 +59,12 @@ export type WalkMarks = {
    * round-robin, apart from `rangeCursor`, which the windows owed for every coin move.
    */
   backfillCursor?: number;
+  /**
+   * The walk's next pending read of one window goes to the backfill rather than to the windows
+   * owed for every coin (the two take turns while the run's budget fits one window). A disconnect
+   * drops it with the other run marks.
+   */
+  backfillTurn?: boolean;
   spanHints?: BinanceSpanHints;
   /**
    * The walk's last run read behind its cursor (the fiat orders walk alternates behind and
@@ -145,7 +151,8 @@ export type ExchangeState = {
  * value (`multiCoinSinceOf`) and the walk repairs it by converting it once into the range it owes
  * to the backfill (`backfillGroundOf`), which stores the floor in its place; a seen mark that is
  * not `true` is absent. A backfill cursor that is no finite number only orders the reads of the
- * backfill, so it is absent too.
+ * backfill, so it is absent too, and so is a backfill turn that is not `true`: it only orders the
+ * reads of the two groups of owed windows.
  */
 export type ParsedWalkMarks = {
   cursor: number | null;
@@ -154,6 +161,7 @@ export type ParsedWalkMarks = {
   pointCursor: number | null | undefined;
   rangeCursor: number | null | undefined;
   backfillCursor?: number;
+  backfillTurn?: true;
   spanHints: BinanceSpanHints | undefined;
   behindRun?: true;
   rescanTurn?: true;
@@ -232,6 +240,7 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     ...foldMap(maybe(numberOrUndefined(entry.backfillCursor)), (backfillCursor) => ({
       backfillCursor,
     })),
+    ...(entry.backfillTurn === true ? { backfillTurn: true as const } : {}),
     spanHints: binanceWalkSpanHintsValueOf(entry.spanHints),
     ...(entry.behindRun === true ? { behindRun: true as const } : {}),
     ...(entry.rescanTurn === true ? { rescanTurn: true as const } : {}),

@@ -12,10 +12,12 @@ import {
   NOW,
   recordOf,
   ROWS_PER_RECORD,
+  type ServedRecord,
   SINCE,
 } from '@kiko/test-support/binance-backfill-world';
 
 import { HISTORY_FLOOR_MS } from './binance.transactions';
+import { transferFloorMs } from './binance.transfer-history';
 import { BinanceHistoryParseError } from './binance.history-client';
 
 const MARKS = { cursor: SINCE, multiCoinSince: SINCE, multiCoinSeen: true };
@@ -338,5 +340,146 @@ describe('the backfill of a capital walk whose first window is refused every run
     const { arrived } = await runsOfRefusedFirstWindow(USDT_WINDOW);
 
     expect(arrived).toEqual([false, false, true]);
+  });
+});
+
+// The Transfer walk reads 80 calls a run and a window of it costs 20: the forward window, the
+// re-scan window and the point of a FAILED transfer (1 call, owed every run) leave the pending
+// pass the calls of one window. That read went to the ground owed for every coin in every run, so
+// with such a window owed for good (a record with no time can never be placed in it) the backfill
+// was never read: the pending pass alternates between the two while the budget fits one window.
+describe('the backfill of a Transfer walk whose pending budget fits one window', () => {
+  const HOUR_MS = 3_600_000;
+  const FAILED_AT = NOW - 10 * DAY_MS;
+  const RUNS = 20;
+  const failedPoint = {
+    start: FAILED_AT - 1,
+    end: FAILED_AT + 1,
+    kind: 'point',
+    series: 'MAIN_FUNDING',
+  };
+  const failed = recordOf('transfer', { id: 'failed-1', coin: 'USDT', time: FAILED_AT, units: 1 });
+  // The oldest and the newest ground of the backfill, which lies between the floor and SINCE.
+  const oldest = recordOf('transfer', {
+    id: 'oldest-1',
+    coin: 'USDT',
+    time: transferFloorMs(NOW) + 5 * DAY_MS,
+    units: 5,
+  });
+  const newest = recordOf('transfer', {
+    id: 'newest-1',
+    coin: 'USDT',
+    time: NOW - 40 * DAY_MS,
+    units: 5,
+  });
+
+  /** A record of the walk's 30-day windows that Binance serves without its time. */
+  const timeless = recordOf('transfer', {
+    id: 'timeless-1',
+    coin: 'USDT',
+    time: NOW - 70 * DAY_MS,
+    units: 1,
+  });
+  const readable = recordOf('transfer', {
+    id: 'every-coin-1',
+    coin: 'USDT',
+    time: NOW - 55 * DAY_MS,
+    units: 1,
+  });
+
+  /**
+   * The run (counted from 1) in which each record first arrived, none for one that never did, and
+   * the turn of the backfill the walk held after each run.
+   */
+  const runsOfTransferWorld = async (input: {
+    pending: unknown[];
+    records: ServedRecord[];
+    marks?: Record<string, unknown>;
+  }) => {
+    const world = backfillWorldOf({
+      marks: {
+        transfer: {
+          cursor: NOW - HOUR_MS,
+          multiCoinSince: SINCE,
+          multiCoinSeen: true,
+          pending: [...input.pending, failedPoint],
+          ...input.marks,
+        },
+      },
+      records: [{ ...failed, body: { ...failed.body, status: 'FAILED' } }, ...input.records],
+    });
+    const arrivedIn: Record<string, number> = {};
+    const turns: unknown[] = [];
+
+    for (let run = 1; run <= RUNS; run += 1) {
+      // An hour a run, so each run has a forward window and a re-scan window to read.
+      await world.walk('transfer', NOW + run * HOUR_MS).catch(() => undefined);
+      turns.push(world.state.marksOf('transfer').backfillTurn);
+
+      for (const { body } of input.records) {
+        const id = String(body.tranId);
+
+        if ([...world.stored.keys()].some((key) => key.includes(`:${id}:`))) {
+          arrivedIn[id] ??= run;
+        }
+      }
+    }
+
+    return { world, arrivedIn, turns };
+  };
+
+  describe('and a window owed for every coin that no read can finish', () => {
+    const pending = [{ start: NOW - 80 * DAY_MS, end: NOW - 60 * DAY_MS }];
+    const records = [
+      oldest,
+      newest,
+      { ...timeless, body: { ...timeless.body, type: 'MAIN_UMFUTURE', timestamp: undefined } },
+    ];
+
+    // One window owed for every coin and 5 of the backfill, which reads in every other run: the
+    // bound is 1 + 2 * 5 runs (`windowsFrom`); measured 2 (oldest window) and 10 (last window).
+    it('imports the USDT records of the backfill within 1 + 2 * 5 runs', async () => {
+      const { arrivedIn } = await runsOfTransferWorld({ pending, records });
+
+      expect(arrivedIn['oldest-1']).toBeLessThanOrEqual(1 + 2 * 5);
+      expect(arrivedIn['newest-1']).toBeLessThanOrEqual(1 + 2 * 5);
+    });
+
+    it('gives the turn to the backfill after a read of the window left owed, and takes it back after a read of the backfill', async () => {
+      const { turns } = await runsOfTransferWorld({ pending, records });
+
+      expect(turns.slice(0, 4)).toEqual([true, false, true, false]);
+    });
+
+    it('reads the backfill first in a run that starts on its turn', async () => {
+      const { arrivedIn } = await runsOfTransferWorld({
+        pending,
+        records,
+        marks: { backfillTurn: true },
+      });
+
+      expect(arrivedIn['oldest-1']).toBe(1);
+    });
+  });
+
+  // Ground owed for every coin that moves on keeps the read of one window, as it did: it leaves the
+  // budget once its 2 windows are read (measured: in 2 runs, the backfill in 4 and 3).
+  describe('and ground owed for every coin that reads', () => {
+    const pending = [{ start: NOW - 100 * DAY_MS, end: NOW - 50 * DAY_MS }];
+    const records = [oldest, newest, readable];
+
+    it('reads each of its 2 windows in a run of its own, beside the backfill that waits', async () => {
+      const { arrivedIn } = await runsOfTransferWorld({ pending, records });
+
+      expect(arrivedIn['every-coin-1']).toBeLessThanOrEqual(2);
+      expect(arrivedIn['oldest-1']).toBeLessThanOrEqual(2 + 5);
+      expect(arrivedIn['newest-1']).toBeLessThanOrEqual(2 + 5);
+    });
+
+    it('keeps the turn of the windows owed for every coin while a read of them finishes its window', async () => {
+      const { turns } = await runsOfTransferWorld({ pending, records });
+
+      expect(turns.slice(0, 2)).toEqual([undefined, undefined]);
+    });
   });
 });

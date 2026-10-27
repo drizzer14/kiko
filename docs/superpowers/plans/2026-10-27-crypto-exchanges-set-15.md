@@ -484,3 +484,16 @@ Step 4c:
   a disconnect drops it) orders the backfill windows, so a window that was tried goes behind the others, and a
   backfill read never moves the range cursor of the windows owed for every coin. Only the order changes; no amount
   or row.
+
+Step 4d:
+- S15-Q17 = A (COORDINATOR; review G1 of steps 4/4b/4c): the first window owed for every coin kept no calls for the
+  backfill, so in the Transfer walk with a FAILED point (budget of one window) the backfill never read and its USDT
+  records before the start were lost, the caption up for good. When the pending budget fits only one window (the
+  first window of each group would not both be entered), that read goes to the two groups in turn: a new walk mark
+  `backfillTurn` (true = the backfill's turn; malformed or absent = the windows owed for every coin, no repair;
+  written by raw patch; a disconnect drops it) is given to the backfill after a read of a window owed for every
+  coin that left its window owed, and taken back after a read of the backfill. Developer deviation, flagged: a
+  read of a window owed for every coin that FINISHES its window keeps the turn, because strict alternation fails
+  the unchanged pin `binance.transfer-history.test.ts` "imports a transfer in a later window of the range within
+  ceil(windows / reads a run) runs" (4 reads of the ground for every coin are needed in 5 runs). Only the order
+  changes; no amount or row.
