@@ -2553,7 +2553,9 @@ stop codes and scenario rows.
   (`backfillTurn`): the windows owed for every coin keep it while a read
   finishes its window, and the backfill gets it after a read that leaves its
   window owed (S15-Q16, S15-Q18: one window per turn, the turn given back after
-  one backfill window). The bound of each group is stated in the `windowsFrom`
+  one backfill window). When the budget fits more than one window, every
+  window owed for every coin holds the backfill's calls, the first included
+  (S15-Q19). The bound of each group is stated in the `windowsFrom`
   doc (`exchange/walk/walk.ts`); read it there, never copy a formula. A pin of
   a group that a rule demotes proves the demoted group is still read (a
   starvation pin), not only the order. A malformed `rangeCursor` is repaired at

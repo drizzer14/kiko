@@ -505,3 +505,10 @@ Step 4d:
   bounds are stated in the `windowsFrom` doc (`exchange/walk/walk.ts`). The whole-branch review checks: no input
   keeps the all-coin ground finishing windows forever; `backfillTurn` beside `backfillCursor`; the per-group bound
   in the doc against the pins.
+
+Step 4e:
+- S15-Q19 = A (COORDINATOR; whole-branch review at ac1faee3; SUPERSEDES "the first keeps none" of S15-Q15): when
+  the budget fits more than one window, every window owed for every coin holds the backfill's calls, the first
+  included; the one-window case keeps the S15-Q18 turn. Before, the first all-coin window spent the backfill's
+  calls and a dense window owed for good starved the backfill. The bound is stated in the `windowsFrom` doc
+  (`exchange/walk/walk.ts`).

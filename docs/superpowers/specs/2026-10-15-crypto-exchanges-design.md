@@ -295,8 +295,9 @@ S13-B1 ... S13-B3 are accepted by the coordinator (2026-10-26).
 | S15-Q15 B | While a backfill window is owed, a run keeps the calls of its first window from the windows owed for every coin (the first of those keeps none) | 15 |
 | S15-Q16 A | The backfill is a round-robin of its own (`backfillCursor`); a refused window goes behind the others | 15 |
 | S15-Q17 A, S15-Q18 A | With a one-window budget the two groups take turns (`backfillTurn`): an all-coin read that finishes its window keeps the turn, one that leaves it owed gives it to the backfill, which hands it back after one window. S15-Q18 supersedes the S15-Q17 "alternate from run to run" wording | 15 |
+| S15-Q19 A | When the budget fits more than one window, every window owed for every coin holds the backfill's calls, the first included (supersedes "the first keeps none" of S15-Q15) | 15 |
 
-Source of S15-Q1 ... S15-Q18: `rulings.md`, "Set 15 plan questions"; the plan
+Source of S15-Q1 ... S15-Q19: `rulings.md`, "Set 15 plan questions"; the plan
 `docs/superpowers/plans/2026-10-27-crypto-exchanges-set-15.md` ("Rulings") holds each. Backlog
 S15-B1 (the caption file move), S15-B2 and S15-B3 are accepted by the coordinator.
 
@@ -1861,7 +1862,8 @@ effect.
   resume; a range owed to the backfill never merges with one owed for every coin. Read order: the
   windows owed for every coin first, then the backfill, each group a round-robin with its own
   cursor (S15-Q9, S15-Q16), one window kept for the backfill (S15-Q15), and a one-window budget
-  taken in turns (S15-Q18); the bounds are stated in the `windowsFrom` doc comment in
+  taken in turns (S15-Q18); when the budget fits more than one window, every window owed for
+  every coin holds the backfill's calls, the first included (S15-Q19); the bounds are stated in the `windowsFrom` doc comment in
   `exchange/walk/walk.ts`. A disconnect drops `backfillCursor` and `backfillTurn` (they have no
   repair: a malformed one reads as absent).
 - New streams (Convert, dust, P2P, fiat, trades) start from their own floors with null cursors
