@@ -234,7 +234,9 @@ string:
   Kiko/Кіко, Monobank, Binance; the closed set is `PROPER_NOUNS` in
   `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
   — read them there, add a new name to the right one). A uk word
-  missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence.
+  missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence. A Binance
+  product or wallet name is a whole PHRASE in `BINANCE_PRODUCT_PHRASES` (same en file), never a
+  single word added to `PROPER_NOUNS`: "Card" or "Spot" alone would then pass in every string.
   Untracked-wallet product names (`UNTRACKED_WALLETS`,
   `src/transactions/untracked-counterpart/`) are kept out of the i18n
   catalogue: code-side proper nouns; only the 'Transfer to/from {{name}}'

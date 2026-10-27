@@ -1308,6 +1308,11 @@ new component can land between reviews of this skill:
   own folder (`holding-detail/<name>-notice/`, `holding` prop, `null` when
   nothing is wrong): `OversizedSaleNotice` (a metal sale larger than what was held before it;
   kiko-pricing's "Stored lots are costed again once per device").
+- **The exchange history footer** (`holding-detail/exchange-history-footer/`): the caption
+  lines under the last ledger card of an exchange holding (an "Earlier history" amount and the
+  not-listed note), `caption` `textSecondary`. The list container's gap puts it 8pt under the
+  last card, and its `paddingTop` step (`exchange-history-footer.styles.ts`) makes the gap the
+  20pt a day header keeps above its caption label: keep that gap, read the comment there.
 - **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
   — the NoticeBanner family's two-action sibling: an inline, non-modal
   invitation (never a notification, sheet, or alert, and never an

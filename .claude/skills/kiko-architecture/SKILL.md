@@ -1945,7 +1945,8 @@ id + 1). The pair id `${accountId}:trade:${symbol}:${orderId}` has no `:<COIN>` 
 (symbol, orderId) names one order, and every leg and fee key ends with the wallet key, which
 holds the coin. Design rule: a "seen" mark must not depend on a written row. The trade-symbol
 discovery and rotation (candidate rule, status filter, the rotation cursor stored as text in
-`trades.rotation`, per-symbol vs run-stopping errors) live in
+`trades.rotation`, and the candidates still unread in `trades.unreadSymbols`, which the history
+caption reads; per-symbol vs run-stopping errors) live in
 `src/crypto-sync/binance/binance.trade-symbols.ts`; the id-cursor pager is
 `src/crypto-sync/exchange/paging/id-cursor-pager.ts`. Read `TRADE_MAIN_QUOTES` and
 `TRADING_SYMBOL_STATUSES` there, never a copied list. Convert reads `/sapi/v1/convert/tradeFlow`
@@ -2052,11 +2053,12 @@ than restated here:
   `exchange/walk-state/walk-state.ts`) never
   repairs a value: a malformed start reads as the stored cursor (absent if there is none), so
   it owes a range rather than none, and a seen mark that is not `true` is absent. The backfill
-  of the other coins, which reads `[floor, multiCoinSince)`, MUST treat an empty or negative
-  range as nothing owed, and MUST repair a malformed start that sits beside `multiCoinSeen`
-  once (or bound the range): it is never rewritten, so it reads as the current cursor and moves
-  later every run, and an owed range that grows each run could keep the history caption up
-  forever.
+  of the other coins (`backfillGroundOf`, `exchange/walk/walk.ts`) turns `[floor, multiCoinSince)`
+  into one owed range with `scope: 'backfill'` and stores the floor as the start in the SAME
+  write, so a malformed start is converted once and an empty or negative range owes nothing: the
+  range cannot grow each run. A window of that scope writes every row but BTC's (`rowsOfScope`,
+  `binance.walk-wiring.ts`): the BTC rows are already stored, and one the user deleted must not
+  come back. The scope also rides on a point window's span resume.
 - **Passes per walk; a window length per walk.** The fiat walks read one
   window (`FIAT_WINDOW_MS`, `binance.fiat-history.ts`); capital (`WINDOW_MS`,
   `binance.transactions.ts`) and Pay (`PAY_WINDOW_MS`) read the longest
@@ -2071,7 +2073,8 @@ than restated here:
   writes the forward cursor). Every walk runs it.
   `WalkPass` is `'forward' | 'pending' | 'rescan'` plus the points
   pass (read it in `exchange/walk/walk.ts`); a run reads the forward pass, the owed
-  ranges (`pending`, in a round-robin from the range cursor), the re-scan,
+  ranges (`pending`: a round-robin from the range cursor, then the backfill group in its own;
+  see `planWalkPasses` and the round-robin item below), the re-scan,
   then the owed points last. The fiat orders walk reads ONE turn per run
   (`turnOf`, `FiatTurn`, `binance.fiat-history.ts`): the forward turn, or,
   on a behind run, the owed turn or the re-scan turn in turns
@@ -2248,7 +2251,11 @@ than restated here:
   any of those walks never caught up (`null` cursor) or is behind by more than a day,
   or when any walk owes a range (`historyOwesRange(state, lastBalanceSyncAt)`: ground its
   cursor passed, read off the `pending` list of every one of the walks), or a point
-  that has stayed owed for more than a day (`since`, below), false before the account's
+  that has stayed owed for more than a day (`since`, below), or when a candidate trade
+  symbol still waits for its first read (`historyOwesTrades`, the `tradesUnread` input, off
+  `trades.unreadSymbols` in `exchange/walk-state/walk-state.ts`; S15-Q14: a symbol whose
+  read failed is not counted, so one that fails every run never keeps the caption up), false
+  before the account's
   own first balance sync. A fresh owed point never shows it: the record it names is read
   again on every sync. The fiat orders walk's own planned overlap day never shows it either
   (`isPlannedOverlapDay`): its forward turn stores the day, and the next sync's behind turn
@@ -2435,8 +2442,9 @@ coin on the same shared walk (see above and "Binance Transfer"), in 30-day windo
 (`EARN_WINDOW_MS`) from `EARN_FLOOR_MS`
 (2022-01-01). One window is one read per record kind (`EARN_SERIES`: the flexible and locked
 rewards first, then subscriptions and redemptions; `callsOf` counts them, `LANE_CALL_CAPS.earn`
-caps the lane). It keeps six marks in its `earn` entry of `exchange_state` (`cursor`,
-`rescan`, `pending`, `pointCursor`, `rangeCursor`, `spanHints`), reset by a disconnect
+caps the lane). It keeps the marks of `WalkMarks` (`exchange/walk-state/walk-state.ts`; read the
+type for the list, never a copy) in its `earn` entry of `exchange_state`, among them the two
+backfill marks `backfillCursor` and `backfillTurn`, reset by a disconnect
 (`exchangeStateReset`). The stop codes live in
 `binance.earn-history.ts`; the design is in the spec (section 6, the E matrix) and the plan.
 
@@ -2536,9 +2544,23 @@ stop codes and scenario rows.
   reads that window every run and starves the ones behind it. `>=`, not `>`:
   the next window starts exactly at the cursor, and `>` skips every second
   window of a long range. The cursor moves once a window's read has started,
-  finished or not. Each of W owed windows is read within `ceil(W / L)` runs
-  that enter the pending pass (L >= 1, the windows such a run reads). A
-  malformed cursor is repaired at once and logged (`range-cursor-malformed`).
+  finished or not. The windows owed for every coin and the windows owed to the
+  backfill (`scope: 'backfill'`) are TWO groups, each a round-robin with its own
+  cursor (`rangeCursor`, `backfillCursor`), and the backfill group comes after
+  the other (S15-Q9). A run that enters the pending pass with a budget of more
+  than one window reads at least one window of each group: the run keeps the
+  calls of one window for the backfill, and the first window owed for every
+  coin keeps none (S15-Q15). A budget of one window goes to the groups in turn
+  (`backfillTurn`): the windows owed for every coin keep it while a read
+  finishes its window, and the backfill gets it after a read that leaves its
+  window owed (S15-Q16, S15-Q18: one window per turn, the turn given back after
+  one backfill window). The bound of each group is stated in the `windowsFrom`
+  doc (`exchange/walk/walk.ts`); read it there, never copy a formula. A pin of
+  a group that a rule demotes proves the demoted group is still read (a
+  starvation pin), not only the order. A malformed `rangeCursor` is repaired at
+  once and logged (`range-cursor-malformed`); `backfillCursor` and `backfillTurn`
+  have no repair: a malformed one reads as absent, and a disconnect drops them
+  with the other run marks.
   One hints mark per walk (`spanHints`) holds, per pass (forward, pending, re-scan,
   point), the narrowest span a window was left at when `walkSpans` stopped
   before any span committed; a window whose start the hint HOLDS
@@ -2565,7 +2587,8 @@ stop codes and scenario rows.
   `resume` in the hint then (`BinanceSpanHint.resume`: `from` = the next
   span's start, `returned` = the points of the records the committed spans
   returned, `stuck` = the ground the untrusted ones owe, `series` = the series
-  the window was read in); `runWalkPlan` keeps it for the points list ONLY
+  the window was read in, `scope` = the scope it was read in, so the ground it
+  owes again stays the backfill's); `runWalkPlan` keeps it for the points list ONLY
   (the other passes keep progress in their cursor, list and re-scan mark; the
   parser drops a resume found in another list). The next run begins at `from`
   and folds `returned` and `stuck` into what it hands `onComplete`, so the
