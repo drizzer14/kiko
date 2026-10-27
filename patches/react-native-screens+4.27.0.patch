@@ -17,13 +17,21 @@ index 9ae11c3..f16c51b 100644
  
  @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-index c233036..1882b38 100644
+index c233036..5d6329e 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-@@ -38,7 +38,87 @@ namespace react = facebook::react;
-
+@@ -3,6 +3,7 @@
+ #import <React/RCTFabricComponentsPlugins.h>
+ #import <React/RCTFabricSurface.h>
+ #import <React/RCTMountingTransactionObserving.h>
++#import <objc/runtime.h>
+ #import <React/RCTSurfaceTouchHandler.h>
+ #import <React/RCTSurfaceView.h>
+ #import <React/UIView+React.h>
+@@ -38,7 +39,158 @@ namespace react = facebook::react;
+ 
  @end
-
+ 
 -@implementation RNSNavigationController
 +// A view's `directionalLayoutMargins` getter adds the safe area insets to the stored margins while
 +// `insetsLayoutMarginsFromSafeArea` is YES (a controller's root view does), so writing the
@@ -60,6 +68,10 @@ index c233036..1882b38 100644
 +  }
 +}
 +
++// Set on a parent view controller while `syncParentSafeAreaTopInset` has written its additional
++// top safe inset, so only this code's write is ever reset.
++static char RNSParentSafeAreaTopInsetWrittenKey;
++
 +@implementation RNSNavigationController {
 +  NSDirectionalEdgeInsets _viewMarginsBeforeFixedContentMargin;
 +  NSDirectionalEdgeInsets _barMarginsBeforeFixedContentMargin;
@@ -90,6 +102,7 @@ index c233036..1882b38 100644
 +    self.viewRespectsSystemMinimumLayoutMargins = YES;
 +    self.view.directionalLayoutMargins = _viewMarginsBeforeFixedContentMargin;
 +    self.navigationBar.directionalLayoutMargins = _barMarginsBeforeFixedContentMargin;
++    [self releaseParentSafeAreaTopInset];
 +  }
 +}
 +
@@ -106,21 +119,98 @@ index c233036..1882b38 100644
 +  // UIKit lays the bar out and sets its margins on its own, so they are set again after each layout.
 +  RNSSetHorizontalLayoutMargins(self.navigationBar, _fixedContentMargin);
 +}
++
++// In a split view with a top tab bar, UIKit's safe top for the per-tab hosting controller that
++// parents this stack is 96 at every first attach, then stays 96 on a tab revisit instead of
++// relaxing to the window's 32. The stack's own safe top (the parent's, less the pane's distance to
++// the window's top) is then 20 instead of 0 and the navigation bar drops 10 pt. UIKit ignores a
++// negative `additionalSafeAreaInsets` on the stack itself and honors one on the parent, so the
++// parent's effective top is made to equal the window's safe top by a negative additional top
++// inset, at most the tab bar's height deep. Both panes of a tab share the parent and compute the
++// same absolute value. The value is derived only from the window's safe top and the parent's safe
++// top without the stored additional inset, never from a safe area read after the write, so the
++// inset cannot accumulate: if UIKit ignored the write, the clamp stops it at the second one.
++// Nothing here runs while `fixedContentMargin` is 0 or without a tab bar controller.
++- (void)syncParentSafeAreaTopInset
++{
++  UIViewController *parent = self.parentViewController;
++  UIWindow *window = self.view.window;
++  UITabBarController *tabBarController = self.tabBarController;
++
++  if (_fixedContentMargin <= 0 || parent == nil || !parent.isViewLoaded || window == nil ||
++      tabBarController == nil) {
++    return;
++  }
++
++  UIEdgeInsets additional = parent.additionalSafeAreaInsets;
++  CGFloat inheritedTop = parent.view.safeAreaInsets.top - additional.top;
++  CGFloat tabBarHeight = tabBarController.tabBar.frame.size.height;
++  CGFloat target = MIN(0, MAX(-tabBarHeight, window.safeAreaInsets.top - inheritedTop));
++
++  if (fabs(target - additional.top) > 0.5) {
++    additional.top = target;
++    parent.additionalSafeAreaInsets = additional;
++    objc_setAssociatedObject(
++        parent, &RNSParentSafeAreaTopInsetWrittenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++  }
++}
++
++// The parent's additional top inset goes back to 0 only if this code wrote it and no other stack
++// of the same parent still has a fixed margin.
++- (void)releaseParentSafeAreaTopInset
++{
++  UIViewController *parent = self.parentViewController;
++
++  if (parent == nil ||
++      objc_getAssociatedObject(parent, &RNSParentSafeAreaTopInsetWrittenKey) == nil) {
++    return;
++  }
++
++  for (UIViewController *sibling in parent.childViewControllers) {
++    if (sibling != self && [sibling isKindOfClass:RNSNavigationController.class] &&
++        static_cast<RNSNavigationController *>(sibling).fixedContentMargin > 0) {
++      return;
++    }
++  }
++
++  UIEdgeInsets additional = parent.additionalSafeAreaInsets;
++  additional.top = 0;
++  parent.additionalSafeAreaInsets = additional;
++  objc_setAssociatedObject(
++      parent, &RNSParentSafeAreaTopInsetWrittenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++}
++
++- (void)viewSafeAreaInsetsDidChange
++{
++  [super viewSafeAreaInsetsDidChange];
++  [self syncParentSafeAreaTopInset];
++}
  
  #if !TARGET_OS_TV
  - (UIViewController *)childViewControllerForStatusBarStyle
-@@ -59,6 +139,7 @@ namespace react = facebook::react;
+@@ -59,6 +211,8 @@ namespace react = facebook::react;
  - (void)viewDidLayoutSubviews
  {
    [super viewDidLayoutSubviews];
 +  [self applyFixedContentMargin];
++  [self syncParentSafeAreaTopInset];
    if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
      RNSScreen *screenController = (RNSScreen *)self.topViewController;
      BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
-@@ -1279,6 +1360,9 @@ RNS_IGNORE_SUPER_CALL_END
+@@ -121,6 +275,9 @@ namespace react = facebook::react;
+ - (void)willMoveToParentViewController:(UIViewController *)parent
+ {
+   [super willMoveToParentViewController:parent];
++  if (parent != self.parentViewController) {
++    [self releaseParentSafeAreaTopInset];
++  }
+   if ([self.parentViewController isKindOfClass:RNSTabsScreenViewController.class]) {
+     RNSTabsScreenViewController *previousParentTabsScreenVC =
+         static_cast<RNSTabsScreenViewController *>(self.parentViewController);
+@@ -1279,6 +1436,9 @@ RNS_IGNORE_SUPER_CALL_END
      _controller.view.backgroundColor = _nativeContainerBackgroundColor;
    }
-
+ 
 +  RNSNavigationController *navigationController = static_cast<RNSNavigationController *>(_controller);
 +  navigationController.fixedContentMargin = newScreenProps.fixedContentMargin;
 +

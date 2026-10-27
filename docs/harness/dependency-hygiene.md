@@ -317,6 +317,22 @@ left and right mapped to leading and trailing by the view's layout direction), w
 leading and trailing margins, skips an equal write, and saves the stored margins for the restore
 path. Writing the getter's value back would add the inset at every layout pass.
 
+The parent safe top inset: the stack's parent is a per-tab SwiftUI `TabHostingController`, whose
+view safe top is 96 at every first attach, relaxes to the window's 32 on a first visit and stays
+96 on a tab revisit; the stack then has a safe top of 20 instead of 0 and the iPad Settings bar
+sits at window y 96 instead of 86. `syncParentSafeAreaTopInset` (run after
+`applyFixedContentMargin` in `viewDidLayoutSubviews` and in `viewSafeAreaInsetsDidChange`) writes
+a negative top `additionalSafeAreaInsets` on `parentViewController`, so the parent's effective
+top equals the window's safe top (clamped to the tab bar height). Measured on the iOS 27.0
+simulator: UIKit ignores a navigation controller's own negative `additionalSafeAreaInsets` and
+honors one on the parent controller, so the write must stay on the parent. The target uses the
+parent's safe top minus the stored additional top (never a read after the write), is written only
+past a 0.5 pt change, and is reset to 0 only when this code wrote it and no other stack of the
+parent still has a value above 0. It runs only with a value above 0, a window and a tab bar
+controller. A re-derived patch must keep it, and the re-measure must show the bar at the same y
+on the first and every later visit, and the parent's top back at 0 after a resize to a bottom
+tab bar.
+
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
 side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 16

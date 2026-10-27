@@ -115,6 +115,158 @@ describe('the react-native-screens fixed content margin patch', () => {
     );
   });
 
+  // In a split view with a top tab bar the per-tab hosting controller that parents the stack keeps
+  // a safe top of 96 on a revisit (32 on the first visit), which drops the navigation bar 10 pt.
+  // UIKit ignores a negative additional inset on the stack itself and honors one on the parent.
+  describe('parent safe top inset', () => {
+    const patchedLines = () =>
+      readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8')
+        .split('\n')
+        .filter((line) => (line.startsWith('+') && !line.startsWith('+++')) || line.startsWith(' '))
+        .map((line) => line.slice(1))
+        .join('\n');
+    const sources = [
+      ['the patch file', patchedLines],
+      ['the installed file', () => read('ios/RNSScreenStack.mm')],
+    ] as const;
+    // A method's code up to the next method, comments dropped and whitespace collapsed.
+    const methodCode = (source: string, signature: string) => {
+      const start = source.indexOf(signature);
+      const end = source.indexOf('\n- (', start + 1);
+
+      return source
+        .slice(start, end)
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('//'))
+        .join(' ')
+        .replace(/\s+/g, ' ');
+    };
+
+    it.each(sources)(
+      'writes only while the fixed margin, a window and a tab bar hold, in %s',
+      (_name, load) => {
+        const sync = methodCode(load(), '- (void)syncParentSafeAreaTopInset');
+
+        expect(sync).toContain('UIViewController *parent = self.parentViewController;');
+        expect(sync).toContain('UIWindow *window = self.view.window;');
+        expect(sync).toContain('UITabBarController *tabBarController = self.tabBarController;');
+        expect(sync).toContain(
+          'if (_fixedContentMargin <= 0 || parent == nil || !parent.isViewLoaded || window == nil || tabBarController == nil) { return; }',
+        );
+      },
+    );
+
+    it.each(sources)(
+      'targets the window safe top, clamped to the tab bar height, in %s',
+      (_name, load) => {
+        const sync = methodCode(load(), '- (void)syncParentSafeAreaTopInset');
+
+        expect(sync).toContain('UIEdgeInsets additional = parent.additionalSafeAreaInsets;');
+        expect(sync).toContain(
+          'CGFloat inheritedTop = parent.view.safeAreaInsets.top - additional.top;',
+        );
+        expect(sync).toContain('CGFloat tabBarHeight = tabBarController.tabBar.frame.size.height;');
+        expect(sync).toContain(
+          'CGFloat target = MIN(0, MAX(-tabBarHeight, window.safeAreaInsets.top - inheritedTop));',
+        );
+      },
+    );
+
+    it.each(sources)(
+      'writes on the parent, not the stack, and only past half a point, in %s',
+      (_name, load) => {
+        const source = load();
+        const sync = methodCode(source, '- (void)syncParentSafeAreaTopInset');
+
+        expect(sync).toContain(
+          'if (fabs(target - additional.top) > 0.5) { additional.top = target; parent.additionalSafeAreaInsets = additional;',
+        );
+        expect(source).not.toContain('self.additionalSafeAreaInsets');
+        expect(sync).not.toMatch(/layoutIfNeeded|setNeedsLayout|dispatch_|NSTimer/);
+      },
+    );
+
+    it.each(sources)('runs after each layout and each safe area change, in %s', (_name, load) => {
+      const source = load();
+      const layoutPass = methodCode(source, '- (void)viewDidLayoutSubviews');
+      const safeAreaChange = methodCode(source, '- (void)viewSafeAreaInsetsDidChange');
+
+      expect(layoutPass.indexOf('[self syncParentSafeAreaTopInset];')).toBeGreaterThan(
+        layoutPass.indexOf('[self applyFixedContentMargin];'),
+      );
+      expect(layoutPass).toContain('[self syncParentSafeAreaTopInset];');
+      expect(safeAreaChange).toContain('[super viewSafeAreaInsetsDidChange];');
+      expect(safeAreaChange).toContain('[self syncParentSafeAreaTopInset];');
+    });
+
+    it.each(sources)(
+      'resets to 0 only what it wrote and only when no other stack is fixed, in %s',
+      (_name, load) => {
+        const source = load();
+        const sync = methodCode(source, '- (void)syncParentSafeAreaTopInset');
+        const release = methodCode(source, '- (void)releaseParentSafeAreaTopInset');
+        const released = methodCode(source, '- (void)setFixedContentMargin:').slice(
+          methodCode(source, '- (void)setFixedContentMargin:').indexOf('} else if (wasFixed) {'),
+        );
+        const leaving = methodCode(source, '- (void)willMoveToParentViewController:');
+
+        expect(sync).toContain(
+          'objc_setAssociatedObject( parent, &RNSParentSafeAreaTopInsetWrittenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);',
+        );
+        expect(release).toContain(
+          'objc_getAssociatedObject(parent, &RNSParentSafeAreaTopInsetWrittenKey) == nil) { return; }',
+        );
+        expect(release).toContain(
+          'if (sibling != self && [sibling isKindOfClass:RNSNavigationController.class] && static_cast<RNSNavigationController *>(sibling).fixedContentMargin > 0) { return; }',
+        );
+        expect(release).toContain(
+          'for (UIViewController *sibling in parent.childViewControllers) {',
+        );
+        expect(release).toContain(
+          'additional.top = 0; parent.additionalSafeAreaInsets = additional;',
+        );
+        expect(release).toContain(
+          'objc_setAssociatedObject( parent, &RNSParentSafeAreaTopInsetWrittenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);',
+        );
+        expect(released).toContain('[self releaseParentSafeAreaTopInset];');
+        expect(leaving).toContain(
+          'if (parent != self.parentViewController) { [self releaseParentSafeAreaTopInset]; }',
+        );
+      },
+    );
+
+    // UIKit ignoring the write cannot grow the inset: the inherited top subtracts the stored
+    // inset, so an ignored -64 reads back as a 160 inherited top, the target clamps to the tab bar
+    // height and the next pass finds the same target. Only the source text is pinned here; that
+    // UIKit then stops at the second write is shown by the runtime check, not by Jest.
+    it.each(sources)(
+      'cannot ratchet: the target depends on the window and the stored inset only, in %s',
+      (_name, load) => {
+        const source = load();
+        const sync = methodCode(source, '- (void)syncParentSafeAreaTopInset');
+
+        expect(source.match(/\badditional\.top = [^;]+;/g)).toEqual([
+          'additional.top = target;',
+          'additional.top = 0;',
+        ]);
+        expect(source.match(/\.additionalSafeAreaInsets = [^;]+;/g)).toEqual([
+          '.additionalSafeAreaInsets = additional;',
+          '.additionalSafeAreaInsets = additional;',
+        ]);
+        expect(sync.match(/\bparent\.additionalSafeAreaInsets\b/g)).toHaveLength(2);
+        expect(sync.match(/\w+\.(?:view\.)?safeAreaInsets\.\w+/g)).toEqual([
+          'parent.view.safeAreaInsets.top',
+          'window.safeAreaInsets.top',
+        ]);
+        expect(sync.match(/CGFloat \w+ = [^;]+;/g)).toEqual([
+          'CGFloat inheritedTop = parent.view.safeAreaInsets.top - additional.top;',
+          'CGFloat tabBarHeight = tabBarController.tabBar.frame.size.height;',
+          'CGFloat target = MIN(0, MAX(-tabBarHeight, window.safeAreaInsets.top - inheritedTop));',
+        ]);
+      },
+    );
+  });
+
   it('is applied to the codegen spec, the context and the stack that reads it', () => {
     expect(read('src/fabric/ScreenStackNativeComponent.ts')).toContain(
       'fixedContentMargin?: CT.WithDefault<CT.Float, 0>;',
