@@ -239,9 +239,30 @@ const bodyOf = (records: ServedRecord[], url: URL): unknown => {
   return totalOf([]);
 };
 
-export const servedFetch = (records: ServedRecord[]): typeof fetch =>
+/** A read window as the endpoint is asked for it. */
+export type AskedWindow = { start: number; end: number };
+
+/** A body no client reads: the page of a window that Binance serves off its contract. */
+const OFF_CONTRACT_BODY = { unexpected: true };
+
+const isRefused = (url: URL, refusing: ((window: AskedWindow) => boolean) | undefined): boolean =>
+  url.pathname.endsWith('/capital/withdraw/history') &&
+  refusing?.({
+    start: Number(url.searchParams.get('startTime')),
+    end: Number(url.searchParams.get('endTime')),
+  }) === true;
+
+/**
+ * The fetch of an account that holds `records`. A withdrawal read of a window that `refusing`
+ * names is answered off the contract, which the capital walk reads as a page that cannot be read.
+ */
+export const servedFetch = (
+  records: ServedRecord[],
+  refusing?: (window: AskedWindow) => boolean,
+): typeof fetch =>
   (async (input: string) => {
-    const body = bodyOf(records, new URL(input));
+    const url = new URL(input);
+    const body = isRefused(url, refusing) ? OFF_CONTRACT_BODY : bodyOf(records, url);
 
     return { ok: true, status: 200, headers: new Headers(), json: async () => body };
   }) as unknown as typeof fetch;
@@ -268,6 +289,8 @@ export const MAXIMUM_RUNS = 40;
 export const backfillWorldOf = (input: {
   marks?: Partial<Record<BackfillWalk, WalkMarkSeed>>;
   records?: ServedRecord[];
+  /** The withdrawal windows Binance serves off its contract, in every run. */
+  refusing?: (window: AskedWindow) => boolean;
 }) => {
   const records = input.records ?? [];
   const state = walkStateFake({ accountId: ACCOUNT_ID, marks: input.marks });
@@ -304,7 +327,7 @@ export const backfillWorldOf = (input: {
     const deps = {
       ...state.freshDeps(),
       now: () => now,
-      fetchImpl: servedFetch(records),
+      fetchImpl: servedFetch(records, input.refusing),
       readCredentials: async () => ({ apiKey: 'key', secret: 'secret' }),
       listHoldings: listed,
       ensureHoldings,

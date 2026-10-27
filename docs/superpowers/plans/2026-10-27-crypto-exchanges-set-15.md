@@ -468,3 +468,11 @@ Step 4/8:
   rate-limit stop leaves unread (`budget`, `stopped`, or not started) are waiting and ARE listed. `BinanceWalkStop`
   (`walk.ts`) is a row the walk will not trust, a per-symbol failure, not a budget or rate-limit stop. Each run
   replaces the list; a disconnect drops the `trades` with it.
+- S15-Q15 = B (COORDINATOR; review steps 2-3 finding #1, step 4b): since S15-Q9 the backfill is read only after every
+  other owed window, so 8 or more all-coin windows refused each run (an error `isUnreadableWindowError` accepts)
+  starve it. While a backfill window is owed, `runWalkPlan` keeps the calls of its first window (`backfillKeep`)
+  from the windows owed for every coin, except the first of those (a budget of one window, as the Transfer walk has
+  beside a FAILED point, stays with the ground owed for every coin: the existing round-robin pin of
+  `binance.transfer-history.test.ts`; the backfill then waits while that ground stays owed); the plan order and every amount and row are unchanged. A backfill window read
+  after one of those leaves the range cursor where that window set it. The 3 acceptance pins (tx:1743/1827, pay:1333)
+  pass UNCHANGED in their upgrade world.

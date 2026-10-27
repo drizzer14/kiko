@@ -9,10 +9,14 @@ import {
   coinOfRow,
   KIND_OF,
   mixedPaySendOf,
+  NOW,
   recordOf,
   ROWS_PER_RECORD,
   SINCE,
 } from '@kiko/test-support/binance-backfill-world';
+
+import { HISTORY_FLOOR_MS } from './binance.transactions';
+import { BinanceHistoryParseError } from './binance.history-client';
 
 const MARKS = { cursor: SINCE, multiCoinSince: SINCE, multiCoinSeen: true };
 
@@ -203,5 +207,85 @@ describe('a dense day behind the cursor of a capital walk upgraded from 1.2', ()
     expect(complete.length).toBeLessThanOrEqual(BACKFILL_WITHIN_RUNS);
     expect(world.owed('capital')).toEqual([]);
     expect(world.stored.size).toBe(records.length);
+  });
+});
+
+// The capital walk reads at most 9 withdrawal pages a run. The owed ground for every coin is read
+// before the backfill, so ground that is refused every run (a page Binance serves off its
+// contract, which the walk reads on past) could spend the whole budget of every run and the
+// backfill would never be read: the backfill keeps one window a run while it is owed.
+describe('the backfill of a capital walk whose owed ground for every coin is refused every run', () => {
+  const START = NOW - 1_200 * DAY_MS;
+  const REFUSED_WINDOWS = 10;
+  const WINDOW_MS = 89 * DAY_MS;
+  const USDT_WINDOW = 3;
+  const REFUSED_BEFORE = NOW - 300 * DAY_MS;
+
+  const refused = Array.from({ length: REFUSED_WINDOWS }, (_unused, index) => ({
+    start: REFUSED_BEFORE - index * 80 * DAY_MS,
+    end: REFUSED_BEFORE - index * 80 * DAY_MS + 10 * DAY_MS,
+  }));
+  const usdt = recordOf('withdraw', {
+    id: 'usdt-1',
+    coin: 'USDT',
+    time: HISTORY_FLOOR_MS + (USDT_WINDOW - 1) * WINDOW_MS + DAY_MS,
+    units: 5,
+  });
+  // The newest owed window of the walk, the last one a run reads: the only one that can be read.
+  const readable = { start: NOW - 250 * DAY_MS, end: NOW - 240 * DAY_MS };
+  const late = recordOf('withdraw', {
+    id: 'btc-1',
+    coin: 'BTC',
+    time: readable.start + DAY_MS,
+    units: 5,
+  });
+
+  const runsOfRefusedWorld = async (runs: number) => {
+    const world = backfillWorldOf({
+      marks: {
+        capital: {
+          cursor: NOW - DAY_MS,
+          multiCoinSince: START,
+          multiCoinSeen: true,
+          pending: [...refused, readable],
+        },
+      },
+      records: [usdt, late],
+      refusing: ({ start }) => start >= START && start <= REFUSED_BEFORE,
+    });
+    const owedFrom: (number | undefined)[] = [];
+    const arrived: boolean[] = [];
+    const lateArrived: boolean[] = [];
+
+    for (let run = 1; run <= runs; run += 1) {
+      await expect(world.walk('capital')).rejects.toBeInstanceOf(BinanceHistoryParseError);
+      owedFrom.push(world.owed('capital').at(0)?.start);
+      arrived.push(world.stored.has('acc-1:withdraw:usdt-1'));
+      lateArrived.push(world.stored.has('acc-1:withdraw:btc-1'));
+    }
+
+    return { owedFrom, arrived, lateArrived };
+  };
+
+  it('reads one window of the backfill in each run, so its ground shrinks every run', async () => {
+    const { owedFrom } = await runsOfRefusedWorld(USDT_WINDOW);
+
+    expect(owedFrom).toEqual([
+      HISTORY_FLOOR_MS + WINDOW_MS,
+      HISTORY_FLOOR_MS + 2 * WINDOW_MS,
+      HISTORY_FLOOR_MS + 3 * WINDOW_MS,
+    ]);
+  });
+
+  it('imports a USDT record of the backfill within as many runs as its window is deep', async () => {
+    const { arrived } = await runsOfRefusedWorld(USDT_WINDOW);
+
+    expect(arrived).toEqual([false, false, true]);
+  });
+
+  it('still reaches the one owed window that can be read, behind the refused ones', async () => {
+    const { lateArrived } = await runsOfRefusedWorld(2);
+
+    expect(lateArrived).toEqual([false, true]);
   });
 });

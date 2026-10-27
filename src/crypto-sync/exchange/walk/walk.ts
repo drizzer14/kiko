@@ -520,9 +520,16 @@ const startingAfter = <Ground extends WalkWindow>(
  * every run merges back into one range that starts before the cursor, so a rotation over ranges
  * would read that first window every run and never the windows behind it. At the cursor, not
  * after it: the window that follows the one read last starts exactly at its end, and a window of a
- * range that was cut by a read is the next one to read. A run that enters the pending pass reads
- * at least one window, so each of `windows` windows is read within `ceil(windows / reads a run)`
- * such runs.
+ * range that was cut by a read is the next one to read.
+ *
+ * The bound is per group, because the windows owed to the backfill come after all the others
+ * (`planWalkPasses`) and the run keeps the calls of one window for them (`runWalkPlan`). A run
+ * that enters the pending pass reads at least one window of each group: so each of the windows
+ * owed for every coin is read within `ceil(windows / reads a run)` such runs, the reads a run has
+ * being its budget less that one window, and each of the windows of the backfill within `windows`
+ * such runs, whatever the other ground costs. A backfill window refused every run is the first
+ * one read in every run, and holds the windows behind it back while the other ground spends the
+ * budget.
  */
 const windowsFrom = (windows: OwedWindow[], cursor: number | null): OwedWindow[] =>
   cursor === null
@@ -608,7 +615,8 @@ const pointsToRead = (points: OwedGround[], endTime: number): OwedWindow[] => {
  * loses no day, and a window that is owed whole every run cannot keep the windows behind it, of
  * its own range or of another, from being read. The windows owed to the backfill come after all
  * the others, each group in that round-robin: the backfill starts at the floor, so read first it
- * would hold back the recent days a run could finish at once. The list is separate from the
+ * would hold back the recent days a run could finish at once. Last, but not left without a read:
+ * the run keeps the calls of one of its windows (`runWalkPlan`). The list is separate from the
  * re-scan mark: a stop inside one range leaves the other ranges and the re-scan to run.
  */
 export const planWalkPasses = (input: {
@@ -1263,7 +1271,11 @@ const sameHints = (left: BinanceSpanHints, right: BinanceSpanHints): boolean =>
  * `settleRecords`), so a stuck record never holds back the rest of a span, a range or the
  * re-scan. The owed ranges are read before the re-scan, but never into the call it needs
  * (`RESCAN_KEEP`), nor into the one the points need (`POINT_KEEP`): a range that is read whole
- * every run would otherwise leave the re-scan nothing. The owed points are read after the
+ * every run would otherwise leave the re-scan nothing. The windows owed for every coin, but the
+ * first of them, keep in the same way the calls of the first window owed to the backfill: ground
+ * that is refused every run, which spends its calls and stays owed, would otherwise leave the
+ * backfill no read, and its rows would never arrive. The first keeps none, so that a budget of
+ * one window still reads the ground owed for every coin. The owed points are read after the
  * re-scan, on the budget that is left, one call each: reading them first would let many of them
  * take the whole budget of every run from the owed days and the re-scan. One that the budget
  * skips stays owed; the plan gives them in a round-robin (`startingAfter`) that `markPointRead`
@@ -1308,6 +1320,7 @@ export const runWalkPlan = async (input: {
   const pointKeep = plan.points.length > 0 ? POINT_KEEP * callsOf(plan.points[0]) : 0;
   const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP * callsOf(plan.rescan[0]) : 0;
   const forwardKeep = plan.forward.length > 0 ? FORWARD_KEEP * callsOf(plan.forward[0]) : 0;
+  const backfillKeep = foldMap(maybe(plan.pending.find(isBackfillWindow)), callsOf) ?? 0;
   let imported = 0;
   let complete = true;
   let hints = input.hints?.stored ?? NO_HINTS;
@@ -1352,17 +1365,20 @@ export const runWalkPlan = async (input: {
     keep: number,
     hintPass: BinanceSpanHintPass,
     afterRead?: (window: OwedWindow) => Promise<void>,
+    heldFor: (window: OwedWindow) => number = () => 0,
   ): Promise<void> => {
     for (const window of windows) {
+      const windowKeep = keep + heldFor(window);
+
       // The window is entered only when every call of it fits beside the calls kept after it, so
       // a read never pays for part of its series and then gives up.
-      if (!canAfford(keep + callsOf(window) - 1)) {
+      if (!canAfford(windowKeep + callsOf(window) - 1)) {
         complete = false;
 
         return;
       }
 
-      const outcome = await runWithHint(window, pass, keep, hintPass).catch(
+      const outcome = await runWithHint(window, pass, windowKeep, hintPass).catch(
         (error: unknown): WindowOutcome => {
           if (pass !== 'pending' || !isUnreadableWindowError(error)) {
             throw error;
@@ -1390,18 +1406,49 @@ export const runWalkPlan = async (input: {
 
   await saveHints(hintsOfPlan(hints, plan));
 
-  if (input.owedFirst === true) {
-    await readPass(
-      plan.pending,
-      'pending',
-      forwardKeep + rescanKeep + pointKeep,
-      'pending',
-      markRangeRead,
+  let readOtherThanBackfill = false;
+
+  // The backfill starts at the floor, older than the other ground, so its window read last would
+  // set the range cursor back before the windows read just now, and the next run would read the
+  // first of them again, those behind them never.
+  const markPendingRead = async (window: OwedWindow): Promise<void> => {
+    if (!isBackfillWindow(window)) {
+      readOtherThanBackfill = true;
+    } else if (readOtherThanBackfill) {
+      return;
+    }
+
+    await markRangeRead?.(window);
+  };
+
+  /**
+   * The owed ranges: the windows owed for every coin on the budget less the calls kept for the
+   * backfill, then the backfill on what is left, which holds the calls of that window. Two reads
+   * of one pass, because a window the budget cannot afford ends the pass it is in. The first
+   * window owed for every coin keeps nothing for the backfill: a budget of one window would
+   * otherwise go to the backfill in every run and leave that ground unread.
+   */
+  const readPending = async (keep: number): Promise<void> => {
+    const owedForEveryCoin = plan.pending.filter((window) => !isBackfillWindow(window));
+
+    await readPass(owedForEveryCoin, 'pending', keep, 'pending', markPendingRead, (window) =>
+      window === owedForEveryCoin[0] ? 0 : backfillKeep,
     );
+    await readPass(
+      plan.pending.filter(isBackfillWindow),
+      'pending',
+      keep,
+      'pending',
+      markPendingRead,
+    );
+  };
+
+  if (input.owedFirst === true) {
+    await readPending(forwardKeep + rescanKeep + pointKeep);
     await readPass(plan.forward, 'forward', 0, 'forward');
   } else {
     await readPass(plan.forward, 'forward', 0, 'forward');
-    await readPass(plan.pending, 'pending', rescanKeep + pointKeep, 'pending', markRangeRead);
+    await readPending(rescanKeep + pointKeep);
   }
 
   await readPass(plan.rescan, 'rescan', pointKeep, 'rescan');
