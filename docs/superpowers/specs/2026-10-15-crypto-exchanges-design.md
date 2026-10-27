@@ -292,7 +292,7 @@ S13-B1 ... S13-B3 are accepted by the coordinator (2026-10-26).
 | S15-Q12 A | A stored start beside a lost seen mark is kept as the END of the owed backfill range, `multiCoinSince` = the floor; supersedes STEP 10 (1) | 15 |
 | S15-Q13 B | The acceptance pins keep their original upgrade-world seed; other pins get the seen mark per pin | 15 |
 | S15-Q14 A | A symbol whose trade read ended `failed` is not listed in `trades.unreadSymbols`; the symbols a budget or rate-limit stop leaves unread are listed | 15 |
-| S15-Q15 B | While a backfill window is owed, a run keeps the calls of its first window from the windows owed for every coin (the first of those keeps none) | 15 |
+| S15-Q15 B | While a backfill window is owed, a run keeps the calls of its first window from the windows owed for every coin (the first of those keeps none; superseded by S15-Q19 unless the budget fits one window alone) | 15 |
 | S15-Q16 A | The backfill is a round-robin of its own (`backfillCursor`); a refused window goes behind the others | 15 |
 | S15-Q17 A, S15-Q18 A | With a one-window budget the two groups take turns (`backfillTurn`): an all-coin read that finishes its window keeps the turn, one that leaves it owed gives it to the backfill, which hands it back after one window. S15-Q18 supersedes the S15-Q17 "alternate from run to run" wording | 15 |
 | S15-Q19 A | When the budget fits more than one window, every window owed for every coin holds the backfill's calls, the first included (supersedes "the first keeps none" of S15-Q15) | 15 |
