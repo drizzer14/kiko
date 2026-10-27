@@ -38,6 +38,11 @@ Rules:
   that shows the old result next to the new one.
 - A plan that adds a migration (even a pure CREATE INDEX) includes a `kiko:reviewer` step
   before BATCH READY and, for an index, an EXPLAIN QUERY PLAN test.
+- A plan line "existing suites green unchanged" for a change that adds owed state first asks
+  which seeds are 1.2-upgrade worlds (harness-workflow, "An acceptance pin's seed or world").
+- A plan that removes or renames a catalogue key greps the help topics, the pin suites and uk
+  first, with every dependent edit in the SAME step (harness-workflow, "Removing or renaming a
+  catalogue key").
 - A plan's code facts name a symbol or anchor text, never a line number (the base moves and
   lines go stale); tell the developer to re-grep every plan fact on the actual base.
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.

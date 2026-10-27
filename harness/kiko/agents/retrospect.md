@@ -30,6 +30,8 @@ Rules:
   enumerable data), and flag prose that only describes current usage
   instead of prescribing a rule. Name the scribe's drift-fix commit sha
   (or "no drift found") when you hand back.
+- The two skill locations hold DISJOINT skills, not mirrors (`ls` both). Never claim a mirror
+  without `diff -rq` on a skill that exists in both; check each skill in the one place it lives.
 - Inputs: the orchestrator passes the run id. Read the current run's `events.jsonl` (under
   `${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/<runId>/`; no `summary.json` yet, `finish`
   runs after you) and the `stats` rows from

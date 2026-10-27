@@ -103,6 +103,10 @@ Rules:
 - Every test must typecheck under `npm run check:typecheck`. Do not
   reach for `as never` to satisfy a navigation-prop type — use the
   typed helpers in `src/test-support/navigation-props.ts` instead.
+- An acceptance pin's seed or world is part of the pin (harness-workflow, "An acceptance pin's
+  seed or world"): re-seed it with one per-pin seed line, never in the shared helper. The
+  shared helpers (`src/test-support/walk-marks.ts`, `binance-backfill-world.ts`) are an edit of
+  every pin on them.
 - A RED must fail for the stated reason, and the report must show the
   failing output, not just claim it failed.
 - A new property-test seed list is `const SEEDS = sweep([...])` from

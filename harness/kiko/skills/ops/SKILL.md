@@ -101,8 +101,8 @@ Rules:
   where the full jest suite (two stages, 2a and 2b; see `scripts/checks/verify.sh`) passes.
   The default dev test command is `make jest-affected` (the affected suites only; exit 3 means
   queue the verify); the full suite stays in the queued verify.
-- Status is on demand: there is no Status session; the coordinator's in-session named
-  `kiko:pm` agent gets `EVENT:` lines.
+- Status is on demand, with no long-lived PM and no `EVENT:` push (harness-workflow,
+  "Status is on demand").
 - Mutation gates are paused by the user since 2026-10-25 until lifted; verify + review only.
 - **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
   dispatch.** The coordinator queues the long, no-incremental checks
@@ -214,7 +214,10 @@ actually landed.
   `xcrun simctl uninstall <udid> com.dmytro-vasylkivskyi.kiko`. `simctl install` keeps the old
   data container, and an older `kiko-encrypted.db` whose key sits in a keychain group that the
   ad-hoc re-signed build cannot see shows the "Kiko cannot read its encryption key" screen
-  (2026-10-16, sim A9850113; cause unproven, evidence deleted).
+  (2026-10-16, sim A9850113). Release 1.3 reproduced the cause: a re-signed sim build over an
+  old install keeps the old DB and a key that does not open it (`migrations-gate-error`). So
+  uninstall, run `xcrun simctl keychain <udid> reset`, install, and only then import the demo.
+  An ops brief for a screenshot sim never says "do not delete app data".
 - After the first launch, confirm the app's first screen (the user or an allowed check) before
   you report the sim as ready.
 - The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) holds what
@@ -278,6 +281,12 @@ Maestro needs `JAVA_HOME=/opt/homebrew/opt/openjdk@21`; without it the
 run fails before the flow starts (verified 2026-10-08,
 `.maestro/onboarding-fresh-install.yaml`, 17/17 steps).
 
+Maestro's screenshot command needs a relative file name plus `--test-output-dir <dir>`
+(release 1.3).
+On an unfolded Duo (iOS 27.1 sim, 2026-10-25), Maestro taps by id and by point do not land, and
+the `simctl io` display port ids change after the unfold: enumerate them again after a pose
+change.
+
 ## Commits run a typecheck
 
 A commit runs `githooks/pre-commit`, a `tsc --noEmit` of the staged index that can take up to
@@ -290,6 +299,9 @@ During a queue hold no role agent runs `check:security`, a Semgrep-spawning guar
 `check:all` or `make verify` outside the queue (kill-guard `heavyJob` denies it), and no other
 pass replaces a green queued
 verify line (harness-workflow skill, "Load rule").
+
+`wait-load.sh` takes `<load> <timeout>` (exit 64 with no arguments). In a fresh worktree run
+`npm ci` only after it exits 0.
 
 Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queue.sh`, which
 serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
@@ -325,7 +337,9 @@ timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full
-contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
+contract, including the label charset). The COORDINATOR queues (harness-workflow, "Run the FULL
+jest"); an orchestrator reports READY FOR VERIFY and ops queues only when the coordinator's
+brief says so. Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
 `scripts/job-queue.sh harness-verify <harness worktree> <label>` (runs `npm test` then
 `check:all` in a harness-repo worktree) or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and

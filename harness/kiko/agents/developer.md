@@ -54,6 +54,12 @@ Rules:
   or router rule, memory "Pin router matrix at first ruling"). Scope a scan or exemption by
   structure and state the scope. Run new diagnostic output against the real data (for example
   `scripts/job-queue.sh status` on the real done.log) before review.
+- Knip runs only in the Stop tier (`medium.sh`), so your "checks clean" list names
+  `npm run check:knip` and you run it before you report done (an unused export slipped through).
+- An acceptance pin's seed or world is part of the pin (harness-workflow, "An acceptance pin's
+  seed or world"): when a shared seed helper edit changes it, re-seed that pin with one per-pin
+  seed line, never in the shared helper. After a stall or a fix round you re-run every check and
+  re-prove each red test yourself; you trust no earlier green.
 - When a check fails, fix the code. Never weaken a check, add `|| true`, or bare-suppress a lint rule.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain

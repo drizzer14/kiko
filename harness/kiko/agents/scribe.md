@@ -34,6 +34,8 @@ Rules:
   that changes often. Apply this whenever you write or edit a skill, and when retrospect
   flags drift (see the retrospect agent's standing verification job), fix it this way
   rather than just patching the stale value back to correct.
+- When you add a rule, grep the skill for its own counter-examples (a cited example that
+  contradicts the new rule) and fix each in the same commit.
 - Before EVERY commit that edits skill, agent, docs/ or CLAUDE.md text, run the suites that
   read that text. Run `make doc-suites`, which finds them at run time (`harness_doc_suites` in
   `scripts/checks/_lib.sh`: `readFileSync` plus a doc-root literal); a pass is recorded. The

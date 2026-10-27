@@ -66,7 +66,14 @@ Rules:
   owns the estimate-from-history rules. A BATCH READY's TIMES line comes
   from the run log (see "Run log"), not from hand-written text.
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
-- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
+- A fresh agent is the default for each task, and a FRESH developer takes each fix round (user
+  2026-10-26). Reuse an agent via SendMessage only for a same-task re-review by the SAME agent
+  under about 150k context (never across tasks, never for a different diff, never after a large
+  amount of work). A fresh developer after a stall re-runs every check and re-proves each red
+  test itself; it trusts no earlier green. A resumed agent's later report is read from its
+  transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents
+  cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its
+  worktree — never use it to tidy a finished agent.
 
 - `make jest-affected` is the default dev test command: it runs only the suites a change can
   affect (base: merge-base with main; `BASE=<ref>` overrides). Exit 3 with `AFFECTS EVERY SUITE`
@@ -74,6 +81,14 @@ Rules:
   verify. Named-file jest (`npx jest <files> --maxWorkers=2`) stays allowed. The queued verify
   stays the backstop. Mapping rules and limits: the header of `scripts/checks/jest-affected.sh`;
   usage: `docs/harness/checks.md` "Makefile targets".
+- The COORDINATOR owns the queue (user 2026-10-26). An orchestrator never queues a verify,
+  check-all, security or gate job: it reports READY FOR VERIFY naming the worktree, the label and
+  the base sha, and the coordinator queues it. Every "queue the verify" below means that report.
+- An acceptance pin's seed or world is part of the pin. An edit of a shared seed helper that
+  changes an acceptance pin's world is an edit of that pin (Binance S15-Q13): re-seed that pin
+  with its own per-pin seed line, never in the shared helper. A plan line "existing suites green
+  unchanged" for a change that adds owed state first asks which seeds are 1.2-upgrade worlds
+  (S15: 48 pins went red).
 - Run the FULL jest through the queued verify (`bash scripts/job-queue.sh verify <worktree>
   <label>`; a typed `make verify` is denied) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory
@@ -223,8 +238,9 @@ onto main. Merge them in one detached worktree with a real `git merge` (hooks ru
 queued verify on the result, then `bash scripts/ff-main.sh <sha>`. One verify replaces one per
 track.
 
-Status is on demand: there is no Status session. The coordinator runs an in-session named
-`kiko:pm` agent that gets `EVENT:` lines, and asks it when the user wants status.
+Status is on demand (user 2026-10-26): there is no Status session, no long-lived PM and no
+`EVENT:` push. The coordinator spawns a fresh `kiko:pm` only when the user asks for status; the
+HANDOFF.md table is the open-loop record.
 
 Mutation testing (`check:deep` / `check:mutation`) runs per SMALL change
 set, never on a whole project or a whole release — a whole-release run
@@ -288,8 +304,8 @@ am, or apply in the main checkout
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
 real merge, conflicts and all, in a separate detached worktree. Verify
-it there = a queued `scripts/job-queue.sh verify` (not a bare `make verify`)
-at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
+it there = a verify the coordinator queues with `scripts/job-queue.sh verify` (not a bare
+`make verify`) at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
 the merge result). Move main only on exit 0 with the full test count. A
 clean `git merge-tree` is not proof of a green merge. A merge with 0 src
 files in it still gets the verify, because check:all and the hooks run
@@ -340,6 +356,13 @@ a test in the fix commit.
 - A ruled route that does not exist yet is written "not built yet" with its gap id, never as if
   it exists. The change that builds it removes the phrase (grep for it). H11 task 2 is the
   example.
+- A priority ruling ("read X first") names and pins the starvation world of the demoted group
+  in the same ruling (S15-Q9 led to the Q15-Q19 chain).
+- A ruling worded as a mechanism can contradict an unchanged pin: the brief tells the developer
+  to measure the unchanged pins first.
+- Removing or renaming a catalogue key: the plan greps the help topics, the pin suites and uk
+  first, and every dependent edit lands in the SAME step. A copy ruling greps the old literal
+  across `it(`/`describe(` titles and plan/spec rows in the same commit.
 - A planner's count (files, cases, call sites) is a floor. The developer measures the real
   count and the brief says so.
 - A change that needs a port to the shared harness repository lists the port item in the
@@ -460,7 +483,8 @@ the track branch fast-forwarded.
 A fix round for an earlier change set never sits on top of a later one:
 fix it in its own worktree off that set's tip, then have ops run
 `git rebase --onto <fix tip> <old base> <branch>` for the later set, then
-run the full verify, queued (`bash scripts/job-queue.sh verify <worktree> <label>`).
+run the full verify, queued by the coordinator (`bash scripts/job-queue.sh verify <worktree>
+<label>`).
 
 ## Mutation base after a track merged next
 
@@ -552,7 +576,8 @@ workspace clean.
 
 An orchestrator session cannot see its own context-usage gauge (it is
 in the terminal status line). The coordinator watches it from outside
-and hands over at about 50%: the session writes a handoff file in its
+and hands over at 20% (about 200k tokens, user 2026-10-26; an idle track over 20% writes its
+handoff file and stops): the session writes a handoff file in its
 worktree, waits until its own in-process subagents finish (closing
 the terminal kills them mid-work), then the coordinator closes the
 old terminal and starts a new claude session in the same worktree
@@ -671,7 +696,8 @@ same scoped command yourself before reporting done:
 this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
 which accepts file args and falls back to the whole repo with none).
 Each touched test file must also pass the check alone, not only as
-part of the whole changed-file set. A `WARNING` on exit 0 means a large
+part of the whole changed-file set. A touched test file that is already over 5% alone is step
+work: the step dedups it, never a later cleanup. A `WARNING` on exit 0 means a large
 file (or a scoped combined large-file run) is over 5% but at or under its ceiling in
 `scripts/checks/dup-ceilings.tsv`: it does not block, but do not grow a figure. Every other
 large-file finding (above the ceiling, unlisted, could not measure or list, mktemp) exits 2
@@ -704,6 +730,12 @@ red row.
 
 A date written into a doc comes from `git log -1 --format=%cs` (or `date +%F`) at write time,
 never from a session's own notes clock.
+
+## Probe an unmeasured UIKit behavior before a native fix
+
+A native fix that rests on an unmeasured UIKit behavior gets a cheap, behavior-changing probe in a
+scratch worktree BEFORE a developer starts (iPad F2, 2026-10-27). The probe's measured result goes
+into the brief; a source read is a hypothesis only.
 
 ## Probe a live API before building on its shape
 
@@ -754,6 +786,8 @@ and `check-all` refuse (exit 3) a target worktree of another repository and a sc
 outside any repository; `harness-verify` and `security` are exempt. A test or scratch run never
 uses `job-queue.sh` without `KIKO_QUEUE_DIR` on a temporary folder (see the `scripts/job-queue.sh`
 header, `refuse_foreign_repository_on_real_queue`).
+A queue label holds only letters, digits, `.`, `_` and `-` (`scripts/job-queue.sh` exits 2
+"invalid label" otherwise).
 Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
 (an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
 WARNING). Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's
