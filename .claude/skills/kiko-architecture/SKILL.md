@@ -1500,7 +1500,8 @@ entry points drive the same connected token —
 `useAutoSync` and `useSyncAll` share ONE fan-out job builder
 (`syncJobsFor`, `src/sync/`), so the app-open sync drives
 EXACTLY the pull-to-refresh set — the connected Monobank account (only
-when a token is stored) PLUS every connected crypto account — under
+when a token is stored) PLUS each connected crypto account whose id the exchange registry
+wires (read `src/sync/sync-jobs/sync-jobs.ts`) — under
 `Promise.allSettled`. So a crypto balance + Binance transaction import
 now happens on app open, not only on pull. `useAutoSync` is throttled by
 `throttleElapsed(syncState.lastSyncAt)` and never touches the pull spinner

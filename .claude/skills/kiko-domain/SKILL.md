@@ -67,7 +67,11 @@ absent** — this skill states the shape and non-enum facts only:
   own kind**: a bank-catalog id for a `bank` account, a broker-catalog
   id for a `broker` account, never one kind's id on the other. Route
   every write through `catalogIdFor` in
-  `src/screens/forms/account-form/account-form.screen.tsx`.
+  `src/screens/forms/account-form/account-form.screen.tsx`. A `crypto` account's `bankId`
+  holds an `ExchangeCatalogId` (`src/crypto-sync/exchange-catalog/`) or NULL (saved with no
+  pick, or a legacy connected account with only `institution`); `catalogIdFor` has a `crypto`
+  arm for it, and readers go through `exchangeCatalogIdOf`, never `bankId` alone. It is set
+  from `ExchangeTypeField` on the create form only (S14-Q3).
 
   **`bankId`** is the "which bank does this account represent" field
   set from the account-form's bank picker (`BankTypeField`,
@@ -96,7 +100,10 @@ absent** — this skill states the shape and non-enum facts only:
   `FieldTrigger`, so VoiceOver reads each as dimmed; no
   caption explains it), and an edit Save writes only the name, color and icon
   — never `kind`, `bankId` or `institution`. A wrong kind or bank therefore
-  has no edit path; delete and recreate the account. In CREATE mode the
+  has no edit path; delete and recreate the account. The exchange picker
+  (`ExchangeTypeField`) is rendered on a crypto CREATE form only (`!isEdit && kind === 'crypto'`),
+  so an edit form has no exchange field at all; on create it takes the same `isPickLocked`
+  state as the pickers below. In CREATE mode the
   kind and bank pickers lock too once the account row may exist (read the
   `isPickLocked` boolean in `account-form.screen.tsx` for its conditions,
   never a copy of them; a create form remounted from its own saved draft,
@@ -177,6 +184,8 @@ hardcode a provider list — adding a new live-sync provider is one registry
 entry, not a change to either caller. The registry is intentionally
 `Partial`: a `BankProviderId` with no entry here is simply not yet
 implemented, and callers must skip it rather than assume every id resolves.
+`exchangeProviderRegistry` (`src/crypto-sync/exchange/registry/`) is the crypto twin of
+`bankProviderRegistry`; `syncJobsFor` skips a crypto id the registry does not wire.
 
   **Implicit accounts: at most one LIVE `property` account and one LIVE
   `debt` account** (`archivedAt` NULL), enforced by the partial unique index

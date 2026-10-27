@@ -38,7 +38,7 @@ developer measures.
 | Exchange catalog in `accounts.bankId` (crypto), `exchangeCatalogIdOf` with the institution fallback | planned set 14 work (spec 8, row 14/15) | yes |
 | `ExchangeTypeField` on the crypto CREATE form only; `SegmentedControl` + `accountDetail.sourceLabel` removed | planned set 14 work (Q10, USER; S14-Q3 = B, USER) | yes |
 | Exchange registry: `syncJobsFor` / auto-sync / refresh skip an unwired id; display name and disconnect copy from the registry | planned set 14 work; (b) no regression of today's jobs | yes |
-| `ProviderSheet` shared by bank and crypto sections; "Connect an exchange or wallet", "Change exchange" | planned set 14 work | yes |
+| `ProviderSheet` shared by bank and crypto sections; "Connect an exchange or wallet", "Change exchange or wallet" | planned set 14 work | yes |
 | `accountDetail.disconnectProviderMessage.binance` says "Your BTC holding" while Binance now syncs every coin | (c) wrong caption (S14-Q4 = A) | yes, en + uk |
 | `help.topics.connectCrypto.steps.2` names the "Source" toggle that this set removes | (c) wrong text after the set's own change, (b) | yes |
 | en + uk copy, translator review; `exchangeDisclaimer` under the picker; no logo | compliance (ship; spec 9 logos row, C2 ruling) | yes |
@@ -187,7 +187,7 @@ Set 14 closes none. Left open:
   `SegmentedControl` consumer and under "Native iOS chip/segment style"; the locked style itself is unchanged, this
   removes a consumer). Edit: no picker (S14-Q3 = B; the crypto sync block stays create-only as today).
 - Account detail, crypto not connected: the field directly (bank id names a wired provider), else a
-  `secondaryTonal` "Connect an exchange or wallet" button -> `ProviderSheet` -> field + "Change exchange" (the
+  `secondaryTonal` "Connect an exchange or wallet" button -> `ProviderSheet` -> field + "Change exchange or wallet" (the
   bank section's exact button pattern).
 - Account detail, bank: `ProviderSheet` replaces `AddBankProviderSheet` with an identical render (B1 pins it).
 - Connected crypto: unchanged layout; the Binance disconnect message text changes (S14-Q4).
@@ -199,8 +199,9 @@ Set 14 closes none. Left open:
 - New (texts from spec section 10): `forms.account.exchangeType`, `exchangeTypePlaceholder`,
   `exchangeTypeSheetTitle` (Title Case en; add to `src/i18n/locales/title-keys.ts`), `exchangeDisclaimer`,
   `exchangeConnectable`, `walletConnectable`, `bitcoinWallet`, `exchangeOther`, `exchangeOtherCaption`;
-  `accountDetail.connectExchangeAction`, `connectExchangeSheetTitle` (title-keys.ts), `changeExchangeAction` ("Change exchange or wallet" / «Змінити біржу або
-  гаманець», S14-Q8 = A; the spec row said "Change exchange" / «Змінити біржу»).
+  `accountDetail.connectExchangeAction`, `connectExchangeSheetTitle` (title-keys.ts),
+  `changeExchangeAction` ("Change exchange or wallet" / «Змінити біржу або гаманець», S14-Q8 = A;
+  the spec row said "Change exchange" / «Змінити біржу»).
 - Changed: `help.topics.connectCrypto.steps.2` (en + uk); `accountDetail.disconnectProviderMessage.binance` (en
   AND uk, the translator reviews the uk; S14-Q4 = A).
 - Removed: `accountDetail.sourceLabel` (en + uk). `accountDetail.wallet` / `accountDetail.binance` (the

@@ -269,7 +269,8 @@ Account"). It is not a rule for every row that opens a screen.
 A string used in TWO roles otherwise (a menu item or button doubling as
 a sheet title) still needs TWO keys, one per role, not one key reused —
 `accountDetail.addBankSheetTitle` (Title Case) vs
-`accountDetail.addBankAction` (sentence case), and
+`accountDetail.addBankAction` (sentence case), `accountDetail.connectExchangeSheetTitle`
+vs `accountDetail.connectExchangeAction` (the second pair), and
 `statementImport.chooseHoldingSheetTitle` vs
 `statementImport.chooseHolding`, are the instances. An
 `Alert.alert` title (a key ending `errorTitle`) is an ERROR, not a
@@ -307,15 +308,18 @@ into `HEADING_PROPS`. A component prop that forwards a heading into a
 `ConfirmSheet` title (`CardContextMenu` `deleteTitle`) goes into both
 `HEADING_PROPS` and `FORWARDED_HEADING_SITES` of that test, and its key
 into `TITLE_KEYS`; read the test for the current entries. Every picker sheet (`SelectField` and its wrappers,
-`DateField`, `TimeField`, `CategoryField`, `BankTypeField`,
+`DateField`, `TimeField`, `CategoryField`, `BankTypeField`, `ExchangeTypeField`
+(`forms.account.exchangeTypeSheetTitle`),
 `HoldingSelectField`, `PaymentHoldingField`/`LoanPaymentField`,
 `CurrencyField`, `FilterMenu`, `ColumnSelectField`) takes a REQUIRED
 `sheetTitle` prop, never its `label` repeated: give each field-label key a
 `<labelKey>SheetTitle` twin (en Title Case, uk the label's own sentence-case
 text) and add it to `TITLE_KEYS` (sheet-title decision, 2026-09-26). A
-sheet title is a noun ("Account Kind" / "Вид рахунку"), never an imperative
-"Select a …" / "Оберіть …" — that form belongs to the field's placeholder
-only (noun-title decision, 2026-09-26). Read the FAILURE MESSAGE'S key path before
+PICKER field's sheet title is a noun ("Account Kind" / "Вид рахунку"), never an
+imperative "Select a …" / "Оберіть …" — that form belongs to the field's placeholder
+only (noun-title decision, 2026-09-26). An action sheet opened by a Button
+(`ProviderSheet`) is not a picker field: its title takes the action's imperative in Title
+Case ("Add a Bank", "Connect an Exchange or Wallet"). Read the FAILURE MESSAGE'S key path before
 assuming a new string is miscased: add a new title key to
 `title-keys.ts`, not just to the catalogue.
 

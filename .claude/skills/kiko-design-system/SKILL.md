@@ -518,7 +518,8 @@ The established patterns grouped under this heading:
   instead of `onConnect` when the field unmounted after the Keychain write stored the pair.
   Both callbacks receive the write's `BinanceWriteToken`; `CryptoSyncForm`'s `onConnectBinance`
   and `onBinanceStoredWhileUnmounted` carry the same type. The pair leaves the field only into
-  `fetchAccount` (the check) and `saveCredentials`.
+  `fetchAccount` (the check) and `saveCredentials`. `CryptoSyncForm` takes a required `source`
+  and renders that source's field, nothing for `'other'`; the caller picks the source.
 - The "Connect first" reminder (user-approved 2026-10-08, create form only).
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly
@@ -1243,8 +1244,9 @@ new component can land between reviews of this skill:
   its own copy. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
-  gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
-  is the one remaining hand-rolled implementation, kept apart because it
+  gate (a convert has no mode toggle at all) ahead of it. `BankTypeField` and
+  `ExchangeTypeField` (`src/screens/forms/exchange-type-field/`) are the hand-rolled
+  `FieldTrigger` + `BottomSheet` pickers; `BankTypeField` is kept apart because it
   carries extra behavior `SelectField` doesn't generalize (an
   always-last "Other bank" row (`OTHER_BANK_ID`) that shows no capability
   caption and carries one column-mapping glyph (`increase.indent`, the same
@@ -1265,7 +1267,7 @@ new component can land between reviews of this skill:
   different UI roles per `kiko-translator`'s casing-by-role rule, so the
   sheet header can never just reuse the label verbatim. The same REQUIRED
   `sheetTitle` prop is on every other picker-sheet field too (`DateField`,
-  `TimeField`, `CategoryField`, `BankTypeField`, `HoldingSelectField`,
+  `TimeField`, `CategoryField`, `BankTypeField`, `ExchangeTypeField`, `HoldingSelectField`,
   `PaymentHoldingField`, `CurrencyField`, `FilterMenu`,
   `ColumnSelectField`); the trigger's `label` stays its caption and
   accessibility label. `SelectField`'s
@@ -1574,7 +1576,7 @@ new component can land between reviews of this skill:
   caption above a bordered row showing the current icon (or leading
   text mark) + value, tapping which opens the caller's own
   `BottomSheet`. `CategoryField`, `HoldingSelectField`,
-  `ModeSelectField`, `BankTypeField` (`src/screens/forms/`),
+  `ModeSelectField`, `BankTypeField`, `ExchangeTypeField` (`src/screens/forms/`),
   `SelectField` and `CurrencyField` below all compose this rather than
   re-implementing the same bordered-row JSX. Lives in
   `design-system/components/`, not
@@ -1865,8 +1867,8 @@ new component can land between reviews of this skill:
   `SegmentedControl` carries no VISIBLE label prop of its own (only the
   non-visual `accessibilityLabel`) — a caller that needs a visible
   caption above it composes its own `FieldLabel` above the control, the
-  same way `ChipRow` does internally (the crypto-sync Wallet/Binance
-  source toggle and the Bond form's "ISIN / Manual" mode both do this).
+  same way `ChipRow` does internally (grep `<SegmentedControl` for the
+  consumers that do this, e.g. the Bond form's "ISIN / Manual" mode).
 
   **The tabs-vs-chips rule (binding), quoted verbatim from the user:**
   "Tabs (SegmentedControl) are used when the selection changes the
@@ -1947,7 +1949,11 @@ is available" — shown on every bank row (a dedicated parser or not), the `othe
 row included, from one `COLUMN_MAPPING_SYMBOL` constant; the `other` row shows
 no connect or statement-format icon and no caption; `arrow.trianglehead.2.clockwise.rotate.90`
 means "this bank supports a live sync connection" — gated on the
-catalog's own `connectable` field. Derive a capability icon's gate from
+catalog's own `connectable` field. The exchange picker (`ExchangeTypeField`,
+`src/screens/forms/exchange-type-field/`) is the second consumer: the same connect icon,
+gated on the exchange catalog's `connectable` field (`src/crypto-sync/exchange-catalog/`;
+read the entries there); every row has a capability caption; the Other row shows its
+caption and no icon. Derive a capability icon's gate from
 catalog DATA (a field on the entry), never a hard-coded id list — a
 hard-coded list drifts the moment the catalog gains or loses an entry,
 silently misrepresenting that entry's real capabilities.
