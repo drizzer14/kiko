@@ -6,6 +6,7 @@ import {
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
 import { readSkillText } from './test-support/skill-text';
+import { orphanReferenceFiles } from './test-support/orphan-reference-files';
 
 // A guard deny points the agent at `metadata.skill` ("<skill> › <heading>").
 // A heading renamed or cited from memory leaves the deny pointing nowhere, and
@@ -246,6 +247,16 @@ describe('metadata.skill citations in rules and NODE_RULES', () => {
       [...yamlCitations, ...guardCitations].filter(
         (citation) => !citationResolves(citation, readRepositorySkill),
       ),
+    ).toEqual([]);
+  });
+});
+
+// Here, not beside the fixture rows in test-support: the doc-suite discovery lists only this
+// folder's top-level suites, so a row elsewhere never runs in the Stop tier or `make doc-suites`.
+describe('the reference files of the real skill folders', () => {
+  it('are all linked from their SKILL.md, so the doc suites read every one', () => {
+    expect(
+      SKILL_ROOTS.flatMap((skills) => orphanReferenceFiles(join(REPOSITORY_ROOT, skills))),
     ).toEqual([]);
   });
 });

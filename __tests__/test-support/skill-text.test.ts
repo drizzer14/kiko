@@ -109,14 +109,4 @@ describe('orphanReferenceFiles', () => {
 
     expect(orphanReferenceFiles(root)).toEqual([]);
   });
-
-  it('finds no orphan reference file in the real skill folders', () => {
-    const repository = join(__dirname, '../..');
-
-    expect(
-      ['.claude/skills', 'harness/kiko/skills'].flatMap((skills) =>
-        orphanReferenceFiles(join(repository, skills)),
-      ),
-    ).toEqual([]);
-  });
 });

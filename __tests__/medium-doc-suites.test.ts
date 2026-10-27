@@ -686,3 +686,23 @@ describe('medium.sh doc-suites step', () => {
     expect(jestRuns(project)).toEqual([[...DISCOVERED, '__tests__/e-new.test.ts']]);
   });
 });
+
+describe('the real repository doc suites', () => {
+  // Joined at run time: this suite is not itself a discovered doc suite, and must not match.
+  const ORPHAN_CHECK = ['orphanReferenceFiles', '('].join('');
+
+  it('include one that checks every skill folder for an orphan reference file', () => {
+    const repository = join(__dirname, '..');
+    const suites = execFileSync(
+      'bash',
+      ['-c', '. scripts/checks/_lib.sh; harness_doc_suites "$1"', '_', repository],
+      { cwd: repository, encoding: 'utf8' },
+    )
+      .split('\n')
+      .filter(Boolean);
+
+    expect(
+      suites.filter((suite) => readTextFile(join(repository, suite)).includes(ORPHAN_CHECK)),
+    ).not.toEqual([]);
+  });
+});

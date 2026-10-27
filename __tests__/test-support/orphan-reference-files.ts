@@ -5,7 +5,8 @@ import { skillFiles } from './skill-text';
 
 // Every `.md` file in a skill folder other than SKILL.md must be one `readSkillText` reads, or a
 // suite that checks the skill never sees it. This catches a reference file nobody links and a link
-// form the reader does not follow (a title, angle brackets, a reference-style link, `%20`).
+// form the reader does not follow (a title, angle brackets, a reference-style link). A `%20` link
+// never gets here: `skillFiles` throws on it first.
 export const orphanReferenceFiles = (root: string): string[] =>
   readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && existsSync(join(root, entry.name, 'SKILL.md')))
