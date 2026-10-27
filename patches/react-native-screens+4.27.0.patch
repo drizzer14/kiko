@@ -17,7 +17,7 @@ index 9ae11c3..f16c51b 100644
  
  @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-index c233036..5d6329e 100644
+index c233036..f02d676 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
 @@ -3,6 +3,7 @@
@@ -28,7 +28,7 @@ index c233036..5d6329e 100644
  #import <React/RCTSurfaceTouchHandler.h>
  #import <React/RCTSurfaceView.h>
  #import <React/UIView+React.h>
-@@ -38,7 +39,158 @@ namespace react = facebook::react;
+@@ -38,7 +39,154 @@ namespace react = facebook::react;
  
  @end
  
@@ -129,8 +129,10 @@ index c233036..5d6329e 100644
 +// inset, at most the tab bar's height deep. Both panes of a tab share the parent and compute the
 +// same absolute value. The value is derived only from the window's safe top and the parent's safe
 +// top without the stored additional inset, never from a safe area read after the write, so the
-+// inset cannot accumulate: if UIKit ignored the write, the clamp stops it at the second one.
-+// Nothing here runs while `fixedContentMargin` is 0 or without a tab bar controller.
++// inset cannot accumulate: if UIKit ignored every write, the clamp bounds them at
++// ceil(tab bar height / (parent top - window top)), which is two for the measured 96, 32 and 72.
++// It runs only from `viewDidLayoutSubviews`, so the parent is never changed during UIKit's own
++// safe area propagation. Nothing here runs while `fixedContentMargin` is 0 or without a tab bar controller.
 +- (void)syncParentSafeAreaTopInset
 +{
 +  UIViewController *parent = self.parentViewController;
@@ -179,16 +181,10 @@ index c233036..5d6329e 100644
 +  objc_setAssociatedObject(
 +      parent, &RNSParentSafeAreaTopInsetWrittenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 +}
-+
-+- (void)viewSafeAreaInsetsDidChange
-+{
-+  [super viewSafeAreaInsetsDidChange];
-+  [self syncParentSafeAreaTopInset];
-+}
  
  #if !TARGET_OS_TV
  - (UIViewController *)childViewControllerForStatusBarStyle
-@@ -59,6 +211,8 @@ namespace react = facebook::react;
+@@ -59,6 +207,8 @@ namespace react = facebook::react;
  - (void)viewDidLayoutSubviews
  {
    [super viewDidLayoutSubviews];
@@ -197,7 +193,7 @@ index c233036..5d6329e 100644
    if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
      RNSScreen *screenController = (RNSScreen *)self.topViewController;
      BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
-@@ -121,6 +275,9 @@ namespace react = facebook::react;
+@@ -121,6 +271,9 @@ namespace react = facebook::react;
  - (void)willMoveToParentViewController:(UIViewController *)parent
  {
    [super willMoveToParentViewController:parent];
@@ -207,7 +203,7 @@ index c233036..5d6329e 100644
    if ([self.parentViewController isKindOfClass:RNSTabsScreenViewController.class]) {
      RNSTabsScreenViewController *previousParentTabsScreenVC =
          static_cast<RNSTabsScreenViewController *>(self.parentViewController);
-@@ -1279,6 +1436,9 @@ RNS_IGNORE_SUPER_CALL_END
+@@ -1279,6 +1432,9 @@ RNS_IGNORE_SUPER_CALL_END
      _controller.view.backgroundColor = _nativeContainerBackgroundColor;
    }
  

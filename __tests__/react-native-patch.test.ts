@@ -156,10 +156,16 @@ describe('the react-native-screens fixed content margin patch', () => {
       },
     );
 
+    // The inherited top subtracts the stored inset, so an ignored write reads back as a larger
+    // inherited top and the target moves one step per write down to the clamp: at most
+    // ceil(tab bar height / (parent top - window top)) writes, two for the measured 96, 32 and 72.
+    // Only the source text is pinned here (no other assignment or safe area read feeds the target);
+    // that UIKit then stops at that count is shown by the runtime check, not by Jest.
     it.each(sources)(
-      'targets the window safe top, clamped to the tab bar height, in %s',
+      'derives the target from the window and the stored inset only, so the writes are bounded by the clamp, in %s',
       (_name, load) => {
-        const sync = methodCode(load(), '- (void)syncParentSafeAreaTopInset');
+        const source = load();
+        const sync = methodCode(source, '- (void)syncParentSafeAreaTopInset');
 
         expect(sync).toContain('UIEdgeInsets additional = parent.additionalSafeAreaInsets;');
         expect(sync).toContain(
@@ -169,6 +175,18 @@ describe('the react-native-screens fixed content margin patch', () => {
         expect(sync).toContain(
           'CGFloat target = MIN(0, MAX(-tabBarHeight, window.safeAreaInsets.top - inheritedTop));',
         );
+        expect(source.match(/\badditional\.top = [^;]+;/g)).toEqual([
+          'additional.top = target;',
+          'additional.top = 0;',
+        ]);
+        expect(source.match(/\.additionalSafeAreaInsets = [^;]+;/g)).toEqual([
+          '.additionalSafeAreaInsets = additional;',
+          '.additionalSafeAreaInsets = additional;',
+        ]);
+        expect(sync.match(/\w+\.(?:view\.)?safeAreaInsets\.\w+/g)).toEqual([
+          'parent.view.safeAreaInsets.top',
+          'window.safeAreaInsets.top',
+        ]);
       },
     );
 
@@ -186,17 +204,17 @@ describe('the react-native-screens fixed content margin patch', () => {
       },
     );
 
-    it.each(sources)('runs after each layout and each safe area change, in %s', (_name, load) => {
+    // Probe 3 wrote the parent only from the layout pass; a write from the safe area change hook
+    // would change the parent during UIKit's own safe area propagation.
+    it.each(sources)('runs only after each layout pass, in %s', (_name, load) => {
       const source = load();
       const layoutPass = methodCode(source, '- (void)viewDidLayoutSubviews');
-      const safeAreaChange = methodCode(source, '- (void)viewSafeAreaInsetsDidChange');
 
       expect(layoutPass.indexOf('[self syncParentSafeAreaTopInset];')).toBeGreaterThan(
         layoutPass.indexOf('[self applyFixedContentMargin];'),
       );
-      expect(layoutPass).toContain('[self syncParentSafeAreaTopInset];');
-      expect(safeAreaChange).toContain('[super viewSafeAreaInsetsDidChange];');
-      expect(safeAreaChange).toContain('[self syncParentSafeAreaTopInset];');
+      expect(source.match(/\[self syncParentSafeAreaTopInset\]/g)).toHaveLength(1);
+      expect(source).not.toContain('viewSafeAreaInsetsDidChange');
     });
 
     it.each(sources)(
@@ -232,37 +250,6 @@ describe('the react-native-screens fixed content margin patch', () => {
         expect(leaving).toContain(
           'if (parent != self.parentViewController) { [self releaseParentSafeAreaTopInset]; }',
         );
-      },
-    );
-
-    // UIKit ignoring the write cannot grow the inset: the inherited top subtracts the stored
-    // inset, so an ignored -64 reads back as a 160 inherited top, the target clamps to the tab bar
-    // height and the next pass finds the same target. Only the source text is pinned here; that
-    // UIKit then stops at the second write is shown by the runtime check, not by Jest.
-    it.each(sources)(
-      'cannot ratchet: the target depends on the window and the stored inset only, in %s',
-      (_name, load) => {
-        const source = load();
-        const sync = methodCode(source, '- (void)syncParentSafeAreaTopInset');
-
-        expect(source.match(/\badditional\.top = [^;]+;/g)).toEqual([
-          'additional.top = target;',
-          'additional.top = 0;',
-        ]);
-        expect(source.match(/\.additionalSafeAreaInsets = [^;]+;/g)).toEqual([
-          '.additionalSafeAreaInsets = additional;',
-          '.additionalSafeAreaInsets = additional;',
-        ]);
-        expect(sync.match(/\bparent\.additionalSafeAreaInsets\b/g)).toHaveLength(2);
-        expect(sync.match(/\w+\.(?:view\.)?safeAreaInsets\.\w+/g)).toEqual([
-          'parent.view.safeAreaInsets.top',
-          'window.safeAreaInsets.top',
-        ]);
-        expect(sync.match(/CGFloat \w+ = [^;]+;/g)).toEqual([
-          'CGFloat inheritedTop = parent.view.safeAreaInsets.top - additional.top;',
-          'CGFloat tabBarHeight = tabBarController.tabBar.frame.size.height;',
-          'CGFloat target = MIN(0, MAX(-tabBarHeight, window.safeAreaInsets.top - inheritedTop));',
-        ]);
       },
     );
   });

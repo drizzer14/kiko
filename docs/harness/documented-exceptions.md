@@ -1221,16 +1221,20 @@ verified usage, not dead weight:
     top (the parent's less the pane's window y 76) is then 20 instead of 0 and the Settings
     navigation bar sits at window y 96 instead of 86 (user ruling: keep the first-visit
     position). `syncParentSafeAreaTopInset`, run after `applyFixedContentMargin` in
-    `viewDidLayoutSubviews` and in `viewSafeAreaInsetsDidChange`, writes a negative top
+    `viewDidLayoutSubviews` only (not from `viewSafeAreaInsetsDidChange`, so the parent is never
+    changed during UIKit's own safe area propagation), writes a negative top
     `additionalSafeAreaInsets` on `parentViewController` (never on the stack: UIKit ignores a
     navigation controller's own negative additional inset and honors one on the parent;
     measured on the iOS 27.0 simulator) so the parent's effective top equals the window's safe
     top: `MIN(0, MAX(-tab bar height, window safe top - (parent safe top - stored additional
     top)))`. It runs only while the value is above 0, the parent's view is loaded, the stack is
-    in a window and has a tab bar controller (iPhone, a Duo bottom bar and a side bar stay
-    untouched), writes only when the target differs by more than 0.5 pt, and never reads the
-    safe area back after a write as the inherited value, so it cannot accumulate (an ignored
-    write stops at the clamp after two). A flag on the parent marks that this code wrote it; the
+    in a window and has a tab bar controller (an iPhone and a Duo bottom bar have the value 0,
+    so the gate stops them; a side bar has the value 16, and stays untouched only because the
+    parent's top there is at most the window's, so the target is 0), writes only when the target
+    differs by more than 0.5 pt, and never reads the safe area back after a write as the
+    inherited value, so it cannot accumulate: if UIKit ignored every write, the clamp bounds
+    them at ceil(tab bar height / (parent top - window top)), which is two for the measured
+    96, 32 and 72. A flag on the parent marks that this code wrote it; the
     inset goes back to 0 only for a marked parent, when the stack's value goes to 0 or it leaves
     the parent, and only if no other stack of that parent still has a value above 0. A re-derived
     patch must keep it.
@@ -1252,7 +1256,7 @@ verified usage, not dead weight:
     Pinned by `__tests__/react-native-patch.test.ts` ("the react-native-screens fixed content
     margin patch": the patch touches only react-native-screens, the version is exactly `4.27.0`,
     the installed files carry the patch, the margins written back are the stored ones and are
-    skipped when equal, the parent safe top inset (gate, formula, threshold, reset, no ratchet),
+    skipped when equal, the parent safe top inset (gate, formula, threshold, reset, layout pass only, bounded writes),
     and the context reads 0 outside a provider) and by
     `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, the single stack 0).
     Re-check rule: `docs/harness/dependency-hygiene.md` ("Standing patch: react-native-screens").
