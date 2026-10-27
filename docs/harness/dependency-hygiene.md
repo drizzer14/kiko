@@ -323,16 +323,17 @@ view safe top is 96 at every first attach, relaxes to the window's 32 on a first
 sits at window y 96 instead of 86. `syncParentSafeAreaTopInset` (run after
 `applyFixedContentMargin` in `viewDidLayoutSubviews` only, never from
 `viewSafeAreaInsetsDidChange`, so the parent is not changed during UIKit's own safe area
-propagation) writes a negative top `additionalSafeAreaInsets` on `parentViewController`, so the parent's effective
-top equals the window's safe top (clamped to the tab bar height). Measured on the iOS 27.0
-simulator: UIKit ignores a navigation controller's own negative `additionalSafeAreaInsets` and
-honors one on the parent controller, so the write must stay on the parent. The target uses the
-parent's safe top minus the stored additional top (never a read after the write), is written only
-past a 0.5 pt change, and is reset to 0 only when this code wrote it and no other stack of the
-parent still has a value above 0. It runs only with a value above 0, a window and a tab bar
-controller. A re-derived patch must keep it, and the re-measure must show the bar at the same y
-on the first and every later visit, and, after a resize to a bottom tab bar, the parent's
-additional top inset back at 0 and its safe top back at the window's 32.
+propagation) writes a negative top `additionalSafeAreaInsets` on `parentViewController`, so the
+parent's effective top equals the window's safe top (clamped to the tab bar height). Measured on
+the iOS 27.0 simulator: UIKit ignores a navigation controller's own negative
+`additionalSafeAreaInsets` and honors one on the parent controller, so the write must stay on
+the parent. The target uses the parent's safe top minus the stored additional top (never a read
+after the write), is written only past a 0.5 pt change, and is reset to 0 only when this code
+wrote it and no other stack of the parent still has a value above 0. It runs only with a value
+above 0, a window and a tab bar controller. A re-derived patch must keep it, and the re-measure
+must show the bar at the same y on the first and every later visit, and, after a resize to a
+bottom tab bar, the parent's additional top inset back at 0 and its safe top back at the
+window's 32.
 
 The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a

@@ -1256,8 +1256,8 @@ verified usage, not dead weight:
     Pinned by `__tests__/react-native-patch.test.ts` ("the react-native-screens fixed content
     margin patch": the patch touches only react-native-screens, the version is exactly `4.27.0`,
     the installed files carry the patch, the margins written back are the stored ones and are
-    skipped when equal, the parent safe top inset (gate, formula, threshold, reset, layout pass only, bounded writes),
-    and the context reads 0 outside a provider) and by
+    skipped when equal, the parent safe top inset (gate, formula, threshold, reset, layout pass
+    only, bounded writes), and the context reads 0 outside a provider) and by
     `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, the single stack 0).
     Re-check rule: `docs/harness/dependency-hygiene.md` ("Standing patch: react-native-screens").
     A device re-measurement is the real proof (Jest cannot see native margins), and it covers:
