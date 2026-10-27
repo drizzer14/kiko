@@ -461,3 +461,10 @@ Step 3/8 red pins (debugger 2026-10-27: 48 old pins red, all 1.2-upgrade seeds, 
   and pass UNCHANGED through the S15-Q9 order; the other pins on those helpers get the seen mark per pin
   (seed-only, one line). An acceptance pin's world is part of the pin, so a shared helper is no place to change it.
   If one fails in its original world: STOP to the coordinator.
+
+Step 4/8:
+- S15-Q14 = A (COORDINATOR): a candidate trade symbol whose read ENDED `failed` in the run is NOT listed in
+  `trades.unreadSymbols` (it fails every run and would hold the caption up forever); the symbols a budget or a
+  rate-limit stop leaves unread (`budget`, `stopped`, or not started) are waiting and ARE listed. `BinanceWalkStop`
+  (`walk.ts`) is a row the walk will not trust, a per-symbol failure, not a budget or rate-limit stop. Each run
+  replaces the list; a disconnect drops the `trades` with it.

@@ -26,9 +26,9 @@ type WalkFieldPatch = WalkMarkPatch & { kind: 'walk'; walkId: WalkId };
 
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
- * trade symbol, the trades' rotation or balance snapshot, one coin list, or the balance sync
- * stamp, or entries to add to the not-imported list. A patch names fields, never whole entries, so
- * a field it does not name is never written from a parse.
+ * trade symbol, the trades' rotation, balance snapshot or unread symbols, one coin list, or the
+ * balance sync stamp, or entries to add to the not-imported list. A patch names fields, never
+ * whole entries, so a field it does not name is never written from a parse.
  *
  * The oversized balance list has its own patch and no `coinList` form, so no write can set
  * `balance` apart from the wallet arrays it is derived from.
@@ -38,6 +38,7 @@ export type ExchangeStatePatch =
   | { kind: 'tradeSymbol'; symbol: string; entry: TradeSymbol }
   | { kind: 'tradesRotation'; value: string }
   | { kind: 'tradesBalanceSnapshot'; value: ExchangeTrades['balanceSnapshot'] }
+  | { kind: 'tradesUnreadSymbols'; value: string[] }
   | {
       kind: 'coinList';
       coins: 'untrackedCoins';
@@ -172,6 +173,9 @@ const patchedState = (
     .with({ kind: 'tradesRotation' }, ({ value }) => withTradesPart(stored, { rotation: value }))
     .with({ kind: 'tradesBalanceSnapshot' }, ({ value }) =>
       withTradesPart(stored, { balanceSnapshot: value }),
+    )
+    .with({ kind: 'tradesUnreadSymbols' }, ({ value }) =>
+      withTradesPart(stored, { unreadSymbols: value }),
     )
     .with({ kind: 'coinList' }, (coinListPatch) => withCoinList(stored, coinListPatch))
     .with({ kind: 'oversizedBalance' }, (oversizedPatch) =>

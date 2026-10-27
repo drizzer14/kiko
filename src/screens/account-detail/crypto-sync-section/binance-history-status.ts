@@ -107,23 +107,40 @@ export const historyOwesRange = (
     .exhaustive();
 
 /**
+ * Whether the last trade read left a candidate symbol waiting for its first read
+ * (`trades.unreadSymbols`). The list only holds symbols that can still be read, so a symbol whose
+ * read fails on every run never keeps the caption up. A state that is not readable owes nothing
+ * here, as in `historyOwesRange`.
+ */
+export const historyOwesTrades = (state: ParsedExchangeState): boolean =>
+  match(state)
+    .returnType<boolean>()
+    .with({ kind: 'parsed' }, ({ trades }) => (trades.unreadSymbols ?? []).length > 0)
+    .with({ kind: 'malformed' }, () => false)
+    .exhaustive();
+
+/**
  * True when a Binance history walk is meaningfully behind the account's own balance sync: any
  * walk that never caught up (a `null` cursor), or lags by more than a day, or any walk owes
  * ground (`owesRange`, see `historyOwesRange`: a range its cursor has passed, or a point owed for
  * more than a day). A fresh owed point does not count: a record the walk keeps owed is read again
- * on every sync. `lastBalanceSyncAt === null` (the account has never synced) is never "behind":
- * there's nothing yet to compare the history against, so the caption would be noise before the
- * very first sync.
+ * on every sync. A candidate trade symbol still waiting for its first read (`tradesUnread`, see
+ * `historyOwesTrades`) counts too. `lastBalanceSyncAt === null` (the account has never synced) is
+ * never "behind": there's nothing yet to compare the history against, so the caption would be
+ * noise before the very first sync.
  */
 export const isBinanceHistoryBehind = (input: {
   cursors: readonly (number | null)[];
   lastBalanceSyncAt: number | null;
   owesRange?: boolean;
+  tradesUnread?: boolean;
 }): boolean => {
-  const { cursors, lastBalanceSyncAt, owesRange = false } = input;
+  const { cursors, lastBalanceSyncAt, owesRange = false, tradesUnread = false } = input;
 
   return (
     lastBalanceSyncAt !== null &&
-    (owesRange || cursors.some((cursor) => cursor === null || lastBalanceSyncAt - cursor > DAY_MS))
+    (owesRange ||
+      tradesUnread ||
+      cursors.some((cursor) => cursor === null || lastBalanceSyncAt - cursor > DAY_MS))
   );
 };

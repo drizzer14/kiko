@@ -556,6 +556,32 @@ describe('restoring a walk state whose owed points carry the time they were firs
   );
 });
 
+// The symbols the trade read has not read yet are part of the stored trades: the restore keeps the
+// text as the file holds it, and the caption reads the list back.
+describe('restoring a walk state that lists the trade symbols not read yet', () => {
+  it('restores the list unchanged, and it reads back as stored', async () => {
+    const stored = JSON.stringify({
+      version: 1,
+      walks: {},
+      trades: { symbols: {}, rotation: '', balanceSnapshot: {}, unreadSymbols: ['BTCUSDT'] },
+    });
+    const source = freshDatabase();
+
+    seedSpot(source, 'account', { binanceHistoryCursor: 1000 });
+    source
+      .prepare("INSERT INTO sync_state (account_id, exchange_state) VALUES ('account', ?)")
+      .run(stored);
+
+    const restoredText = stateRowsOf(await restored(await exported(source)))[0]?.exchange_state;
+    const parsed = parseExchangeState(restoredText as string);
+
+    expect(restoredText).toBe(stored);
+    expect(parsed.kind === 'parsed' ? parsed.trades.unreadSymbols : 'malformed').toEqual([
+      'BTCUSDT',
+    ]);
+  });
+});
+
 // Two live property accounts cannot coexist in a current database (a partial unique index), so
 // the second one is added to the exported file, as an older build's export carried it.
 describe('an implicit-account merge', () => {

@@ -109,6 +109,12 @@ export type ExchangeTrades = {
   /** The last symbol whose round-robin read returned; empty starts at the first symbol. */
   rotation: string;
   balanceSnapshot: Record<string, string>;
+  /**
+   * The candidate symbols the last run that listed the exchange had no cursor for and did not
+   * end as failed, which the history caption reads. Each such run replaces it; a list that is
+   * absent, empty or unreadable reads as none, and a disconnect drops it with the trades.
+   */
+  unreadSymbols?: string[];
 };
 
 /** The JSON stored in `sync_state.exchange_state`. */
@@ -337,17 +343,26 @@ const tradesOf = (stored: unknown): ReadEntry<ExchangeTrades> => {
     textOrUndefined,
   );
 
+  const unreadSymbols = entryOf(
+    'trades.unreadSymbols',
+    container.value.unreadSymbols,
+    stringListOrUndefined,
+    emptyList,
+  );
+
   return {
     value: {
       symbols: symbols.value,
       rotation: rotation.value,
       balanceSnapshot: balanceSnapshot.value,
+      ...(unreadSymbols.value.length > 0 ? { unreadSymbols: unreadSymbols.value } : {}),
     },
     unreadable: [
       ...container.unreadable,
       ...symbols.unreadable,
       ...rotation.unreadable,
       ...balanceSnapshot.unreadable,
+      ...unreadSymbols.unreadable,
     ],
   };
 };
