@@ -1175,8 +1175,9 @@ verified usage, not dead weight:
     `RNSScreenStack` header and implementation, the codegen spec `ScreenStackNativeComponent.ts`,
     `contexts.tsx`, `ScreenStack.tsx` and `index.tsx` of the package's own `src`, and the
     `lib/commonjs` and `lib/typescript` copies of them, which Jest and `tsc` load): the native
-    large title of a pane whose tab bar is not at the bottom (top or side) takes the content's
-    16 pt margin (under a top bar that content is uncapped, `useContentCap`, so it starts at the
+    large title of a split pane whose tab bar is not at the bottom (top or side), and of a single
+    stack under a side bar (the Duo outer pose), takes the content's 16 pt margin (under a top
+    bar that content is uncapped, `useContentCap`, so it starts at the
     same margin; under a side bar the content stays capped and centred, so the margins are the
     pane's own; a pane under a bottom bar keeps UIKit's margin). UIKit insets the large title by
     the navigation bar's layout margin, which it derives from the stack's distance to the
@@ -1187,9 +1188,13 @@ verified usage, not dead weight:
     `RNSNavigationController`. While it is above 0 the controller stops respecting the system
     minimum layout margins and sets the leading and trailing margins of its view and of its
     navigation bar to that value, again after each `viewDidLayoutSubviews`.
-    Scope: only `PaneStackView` in a split (`columns`/`rows`) whose native tab bar is not at the
-    bottom (`useIsTabBarNotAtBottom()`: the bar at the top or at a side; user ruling 2026-10-23)
-    provides a value (`theme.spacing(4)`, the content's side padding), around both panes' stacks.
+    Scope: only `PaneStackView` provides a value (`theme.spacing(4)`, the content's side
+    padding). In a split (`columns`/`rows`) whose native tab bar is not at the bottom
+    (`useIsTabBarNotAtBottom()`: the bar at the top or at a side; user ruling 2026-10-23) it
+    wraps both panes' stacks. In `single` mode it wraps the one stack only under a side bar
+    (`useTabBarPlacement() === 'side'`, the Duo outer pose, 466x678, whose title otherwise
+    starts at UIKit's 20 pt while the content starts at 16 pt); under a top or a bottom bar a
+    single stack reads 0.
     That is every two-pane window of a regular iPad, small Stage Manager splits (for example
     1032x683 columns or 683x909 rows) included, whatever the window's size (user ruling
     2026-10-21), and every Surface Duo pose with a side bar (the outer and the inner landscape
@@ -1198,7 +1203,8 @@ verified usage, not dead weight:
     on `useIsTabBarAtTop()`), so such a top-bar pane's content is uncapped and starts at the same
     margin as its title (user ruling 2026-10-21, which replaces the large-window-only cap of
     2026-10-20), while a pane with a SIDE tab bar stays capped at 600 pt, with no large-window
-    exception. Every other stack (iPhone, single-pane, a stack outside `PaneStackView`) and the
+    exception. Every other stack (iPhone, a single stack under a top or a bottom bar, a stack
+    outside `PaneStackView`) and the
     panes of any window whose tab bar is at the bottom (the Surface Duo inner portrait pose,
     669x951), which keeps its look completely, read 0. The placement is the one `Screen` clears,
     read from the bar's real frame, so the margin and the content cap can both lag for about

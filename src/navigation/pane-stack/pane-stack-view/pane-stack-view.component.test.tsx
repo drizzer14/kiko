@@ -355,13 +355,27 @@ describe('PaneStackView', () => {
       },
     );
 
-    it('is 0, which leaves UIKit’s margins alone, for the single native stack even with a top bar', async () => {
-      mockUseTabBarEdge.mockReturnValue('top');
+    it('is the content’s side padding for the single native stack under a side bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
 
       await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
 
-      expect(mockFixedContentMargin.mock.calls).toEqual([[0]]);
+      expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(4)]]);
     });
+
+    it.each([
+      ['a top bar', 'top'],
+      ['a bottom bar', 'bottom'],
+    ] as const)(
+      'is 0, which leaves UIKit’s margins alone, for the single native stack under %s',
+      async (_name, tabBarEdge) => {
+        mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+
+        await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([[0]]);
+      },
+    );
   });
 
   describe('context for the screens', () => {
