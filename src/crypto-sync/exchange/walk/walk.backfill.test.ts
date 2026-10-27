@@ -1,8 +1,10 @@
 import { DAY_MS } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
+import { walkStateFake } from '@kiko/test-support/walk-marks';
 
 import {
   advanceWalkMarks,
+  backfillGroundOf,
   dropReadPoints,
   NO_HINTS,
   type OwedGround,
@@ -14,6 +16,7 @@ import {
   type WalkWindow,
   walkSpans,
 } from './walk';
+import { readWalkMarks, walkMarkWriterOf } from './exchange-state-deps';
 
 const END_MS = Date.UTC(2026, 9, 10);
 
@@ -117,6 +120,38 @@ describe('planWalkPasses, with ground that is owed to the backfill', () => {
     });
 
     expect(plan.pending.map(({ scope }) => scope)).toEqual([undefined, 'backfill']);
+  });
+
+  it('reads an old owed day before the backfill ground', () => {
+    const owedDay = rangeOf(start + 40 * DAY_MS, start + 41 * DAY_MS);
+    const plan = planWalkPasses({
+      ...input,
+      pending: [rangeOf(start, start + DAY_MS, 'backfill'), owedDay],
+    });
+
+    expect(plan.pending.map(({ start: first, scope }) => [first, scope])).toEqual([
+      [owedDay.start, undefined],
+      [start, 'backfill'],
+    ]);
+  });
+
+  it('keeps the round-robin order inside the ground for every coin and inside the backfill', () => {
+    const first = start;
+    const second = start + 10 * DAY_MS;
+    const third = start + 40 * DAY_MS;
+    const fourth = start + 50 * DAY_MS;
+    const plan = planWalkPasses({
+      ...input,
+      rangeCursor: first + DAY_MS,
+      pending: [
+        rangeOf(first, first + DAY_MS, 'backfill'),
+        rangeOf(second, second + DAY_MS, 'backfill'),
+        rangeOf(third, third + DAY_MS),
+        rangeOf(fourth, fourth + DAY_MS),
+      ],
+    });
+
+    expect(plan.pending.map((window) => window.start)).toEqual([third, fourth, second, first]);
   });
 
   it('reads a backfill range in every Transfer series', () => {
@@ -443,5 +478,114 @@ describe('runWalkPlan, with a resume made for the backfill', () => {
 
   it('never gives a resume made for every coin to a window of the backfill', async () => {
     expect((await given(undefined, 'backfill'))[3]).toBeUndefined();
+  });
+});
+
+describe('backfillGroundOf', () => {
+  const ACCOUNT_ID = 'acc-1';
+  const FLOOR_MS = Date.UTC(2022, 0, 1);
+  const CURSOR_MS = FLOOR_MS + 400 * DAY_MS;
+
+  type World = ReturnType<typeof walkStateFake>;
+
+  const ownedOn = async (world: World) => {
+    const deps = world.freshDeps();
+    const stored = await readWalkMarks(deps, ACCOUNT_ID, 'capital');
+    const { pending: owed, stored: converted } = await backfillGroundOf({
+      stored,
+      pending: stored.pending ?? [],
+      floorMs: FLOOR_MS,
+      write: walkMarkWriterOf(deps, ACCOUNT_ID, 'capital'),
+    });
+
+    return { world, deps, owed, converted };
+  };
+
+  const ownedFor = (marks: Record<string, unknown>) =>
+    ownedOn(walkStateFake({ accountId: ACCOUNT_ID, marks: { capital: marks } }));
+
+  it('owes a malformed start once, up to the cursor, and stores the floor in its place', async () => {
+    const { world, owed } = await ownedFor({
+      cursor: CURSOR_MS,
+      multiCoinSince: 'junk',
+      multiCoinSeen: true,
+    });
+
+    expect(owed).toEqual([rangeOf(FLOOR_MS, CURSOR_MS, 'backfill')]);
+    expect(world.marksOf('capital')).toMatchObject({
+      pending: [rangeOf(FLOOR_MS, CURSOR_MS, 'backfill')],
+      multiCoinSince: FLOOR_MS,
+    });
+  });
+
+  it('owes the ground before a start, and keeps the ground the walk already owes', async () => {
+    const stored = rangeOf(FLOOR_MS + DAY_MS, FLOOR_MS + 2 * DAY_MS);
+    const { owed } = await ownedFor({
+      cursor: CURSOR_MS,
+      multiCoinSince: CURSOR_MS - 10 * DAY_MS,
+      multiCoinSeen: true,
+      pending: [stored],
+    });
+
+    expect(owed).toEqual([stored, rangeOf(FLOOR_MS, CURSOR_MS - 10 * DAY_MS, 'backfill')]);
+  });
+
+  it('stores the backfill range and the floor start in one write', async () => {
+    const { deps } = await ownedFor({ cursor: CURSOR_MS, multiCoinSince: CURSOR_MS });
+
+    expect(deps.patchExchangeState).toHaveBeenCalledTimes(1);
+    expect(deps.patchExchangeState).toHaveBeenCalledWith(ACCOUNT_ID, [
+      {
+        kind: 'walk',
+        walkId: 'capital',
+        field: 'pending',
+        value: [rangeOf(FLOOR_MS, CURSOR_MS, 'backfill')],
+      },
+      { kind: 'walk', walkId: 'capital', field: 'multiCoinSince', value: FLOOR_MS },
+    ]);
+  });
+
+  it('hands the marks back with the floor as the start it stored', async () => {
+    const { converted } = await ownedFor({ cursor: CURSOR_MS, multiCoinSince: CURSOR_MS });
+
+    expect(converted).toMatchObject({ cursor: CURSOR_MS, multiCoinSince: FLOOR_MS });
+  });
+
+  it('hands the marks back as they were when it owes nothing', async () => {
+    const { converted } = await ownedFor({ cursor: CURSOR_MS, multiCoinSince: FLOOR_MS - 1 });
+
+    expect(converted).toMatchObject({ cursor: CURSOR_MS, multiCoinSince: FLOOR_MS - 1 });
+  });
+
+  it('owes nothing and writes nothing for a start at the floor', async () => {
+    const { deps, owed } = await ownedFor({ cursor: CURSOR_MS, multiCoinSince: FLOOR_MS });
+
+    expect(owed).toEqual([]);
+    expect(deps.patchExchangeState).not.toHaveBeenCalled();
+  });
+
+  it('owes nothing and writes nothing for a start before the floor', async () => {
+    const { deps, owed } = await ownedFor({ cursor: CURSOR_MS, multiCoinSince: FLOOR_MS - 1 });
+
+    expect(owed).toEqual([]);
+    expect(deps.patchExchangeState).not.toHaveBeenCalled();
+  });
+
+  it('owes nothing and writes nothing for a walk that recorded no start', async () => {
+    const { deps, owed } = await ownedFor({ cursor: CURSOR_MS });
+
+    expect(owed).toEqual([]);
+    expect(deps.patchExchangeState).not.toHaveBeenCalled();
+  });
+
+  it('owes no second range on the run after the start was converted', async () => {
+    const first = await ownedFor({ cursor: CURSOR_MS, multiCoinSince: CURSOR_MS });
+    const second = await ownedOn(first.world);
+
+    expect(second.owed).toEqual([rangeOf(FLOOR_MS, CURSOR_MS, 'backfill')]);
+    expect(second.deps.patchExchangeState).not.toHaveBeenCalled();
+    expect(first.world.marksOf('capital').pending).toEqual([
+      rangeOf(FLOOR_MS, CURSOR_MS, 'backfill'),
+    ]);
   });
 });

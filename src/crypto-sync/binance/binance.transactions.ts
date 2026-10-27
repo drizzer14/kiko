@@ -2,6 +2,7 @@ import { rethrow } from 'fnts';
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
+  backfillGroundOf,
   BinanceWalkStop,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
@@ -9,6 +10,7 @@ import {
   instantAt,
   joinSettled,
   multiCoinPatchesOf,
+  type OwedWindow,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
@@ -558,6 +560,7 @@ const unreadableExtentOf = (kind: CapitalKind, row: UnreadableRow): WalkWindow |
  */
 const commitSpan = (
   context: WindowContext,
+  window: OwedWindow,
   span: WalkWindow,
   records: SpanRecords,
   pass: WalkPass,
@@ -568,6 +571,7 @@ const commitSpan = (
     context,
     pass,
     span,
+    scope: window.scope,
     settled: joinSettled<PlannedRow>([
       settleRecords({
         span,
@@ -644,9 +648,14 @@ const runSync = async (
     deps.latestTransactionTime(id, [`${accountId}:deposit:`, `${accountId}:withdraw:`]),
   );
   const planCursor = cursor ?? latest ?? null;
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: planCursor ?? HISTORY_FLOOR_MS },
+  const { pending, stored: converted } = await backfillGroundOf({
+    stored,
+    pending: await readPendingMark({
+      stored: stored.pending,
+      owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: planCursor ?? HISTORY_FLOOR_MS },
+      write,
+    }),
+    floorMs: HISTORY_FLOOR_MS,
     write,
   });
   const plan = planWalkPasses({
@@ -673,7 +682,7 @@ const runSync = async (
       rescanCursor,
       ...roundRobins,
       pending,
-      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor }),
+      multiCoinPatches: multiCoinPatchesOf({ stored: converted, planCursor }),
     },
     plan,
     write,
@@ -684,7 +693,7 @@ const runSync = async (
     lane: 'capitalWithdraw',
     cost: COSTS.withdraw,
     read: (_window, span, keepCalls) => readSpan(context, span, keepCalls),
-    commit: (_window, span, records, pass) => commitSpan(context, span, records, pass),
+    commit: (window, span, records, pass) => commitSpan(context, window, span, records, pass),
   });
 };
 

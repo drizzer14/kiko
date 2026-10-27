@@ -140,7 +140,7 @@ describe.each(WALKS)('the history caption over syncs of a quiet $name walk', ({ 
   ])('shows no owed range after any of six syncs %s apart', async (_label, gap) => {
     const world = walkStateFake({
       accountId: ACCOUNT_ID,
-      marks: { [name]: { cursor: START - gap } },
+      marks: { [name]: { cursor: START - gap, multiCoinSeen: true } },
     });
 
     const owing: boolean[] = [];

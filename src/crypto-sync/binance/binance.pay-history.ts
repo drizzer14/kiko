@@ -2,6 +2,7 @@ import { rethrow } from 'fnts';
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
+  backfillGroundOf,
   BinanceWalkStop,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
@@ -10,6 +11,7 @@ import {
   joinSettled,
   logWalkStop,
   multiCoinPatchesOf,
+  type OwedWindow,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
@@ -670,6 +672,7 @@ const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistory
  */
 const commitSpan = (
   context: PayContext,
+  window: OwedWindow,
   span: WalkWindow,
   page: PayHistoryPage,
   pass: WalkPass,
@@ -678,6 +681,7 @@ const commitSpan = (
     context,
     pass,
     span,
+    scope: window.scope,
     settled: settledOrdersOf(context, span, page),
     place: walletPlacerOf(context, 'pay-holding-missing'),
     restartMs: HISTORY_FLOOR_MS,
@@ -762,9 +766,14 @@ const runSync = async (
   const write = walkMarkWriterOf(deps, accountId, 'pay');
   const roundRobins = await readWalkRoundRobins({ stored, write });
   const floorMs = payFloorMs(now);
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: floorMs, end: payCursor ?? floorMs },
+  const { pending, stored: converted } = await backfillGroundOf({
+    stored,
+    pending: await readPendingMark({
+      stored: stored.pending,
+      owedIfUnreadable: { start: floorMs, end: payCursor ?? floorMs },
+      write,
+    }),
+    floorMs,
     write,
   });
   const plan = planWalkPasses({
@@ -797,7 +806,7 @@ const runSync = async (
       rescanCursor,
       ...roundRobins,
       pending,
-      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: payCursor }),
+      multiCoinPatches: multiCoinPatchesOf({ stored: converted, planCursor: payCursor }),
     },
     plan,
     write,
@@ -815,7 +824,7 @@ const runSync = async (
     lane: 'pay',
     cost: COSTS.pay,
     read: (_window, span, keepCalls) => readSpan(context, span, keepCalls),
-    commit: (_window, span, page, pass) => commitSpan(context, span, page, pass),
+    commit: (window, span, page, pass) => commitSpan(context, window, span, page, pass),
   });
 };
 

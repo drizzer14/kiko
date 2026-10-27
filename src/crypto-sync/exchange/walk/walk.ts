@@ -372,6 +372,43 @@ export const readPendingMark = async (input: {
 };
 
 /**
+ * The list of owed ground with the backfill of the other coins in it: the ground a walk read for
+ * one coin only, from its floor to the start of its multi-coin reading (`multiCoinSince`). The
+ * range and the floor as the new start go in ONE write, so no crash leaves the range stored beside
+ * the old start (a second range on the next run) or the new start without the range (ground never
+ * read). A start at or before the floor is no ground, which is what every later run finds: the
+ * floor never moves earlier, so the range cannot grow, and a malformed start (read as the cursor,
+ * see `ParsedWalkMarks`) is converted once and is a floor after it. The marks come back with the
+ * start as stored, so the walk hands those to `multiCoinPatchesOf`: it keeps the earlier of two
+ * starts, and the one read before the conversion would store the old start again beside a lost
+ * seen mark, which the next run would convert a second time.
+ */
+export const backfillGroundOf = async <
+  Stored extends Pick<ParsedWalkMarks, 'multiCoinSince'>,
+>(input: {
+  stored: Stored;
+  pending: OwedGround[];
+  floorMs: number;
+  write: WalkMarkWriter;
+}): Promise<{ pending: OwedGround[]; stored: Stored }> => {
+  const { stored, pending, floorMs, write } = input;
+  const since = stored.multiCoinSince;
+
+  if (since === undefined || since <= floorMs) {
+    return { pending, stored };
+  }
+
+  const owed: OwedGround[] = [...pending, { start: floorMs, end: since, scope: 'backfill' }];
+
+  await write([
+    { field: 'pending', value: owed },
+    { field: 'multiCoinSince', value: floorMs },
+  ]);
+
+  return { pending: owed, stored: { ...stored, multiCoinSince: floorMs } };
+};
+
+/**
  * A cursor before every point or range, so the next run starts at the oldest: what a malformed
  * stored cursor is repaired to. It is a number the cursor key can hold, and reads like no key.
  */
@@ -495,6 +532,8 @@ const windowsFrom = (windows: OwedWindow[], cursor: number | null): OwedWindow[]
         ...windows.filter((window) => window.start < cursor),
       ];
 
+const isBackfillWindow = (window: OwedWindow): boolean => window.scope === 'backfill';
+
 /**
  * The series a window of points has to be read in: those of every point, or none named (every
  * series) when one of the points has no series.
@@ -567,8 +606,10 @@ const pointsToRead = (points: OwedGround[], endTime: number): OwedWindow[] => {
  * those that start at or after the range cursor first, then the rest, oldest first), so a
  * catch-up from a cursor of any age, a long absence, or a window that outran an unfinished pass
  * loses no day, and a window that is owed whole every run cannot keep the windows behind it, of
- * its own range or of another, from being read. The list is separate from the re-scan mark: a
- * stop inside one range leaves the other ranges and the re-scan to run.
+ * its own range or of another, from being read. The windows owed to the backfill come after all
+ * the others, each group in that round-robin: the backfill starts at the floor, so read first it
+ * would hold back the recent days a run could finish at once. The list is separate from the
+ * re-scan mark: a stop inside one range leaves the other ranges and the re-scan to run.
  */
 export const planWalkPasses = (input: {
   cursor: number | null;
@@ -619,24 +660,28 @@ export const planWalkPasses = (input: {
     start: rescan.at(0)?.start ?? behindEnd,
     end: rescan.at(-1)?.end ?? behindEnd,
   };
+  const owedWindows = withoutRead(
+    pendingRanges.filter((ground) => !isPoint(ground)),
+    rescanned,
+  ).flatMap((range) =>
+    buildWalkWindows(range.start, range.end, windowMs, maxWindows).map(
+      (window): OwedWindow => ({
+        ...window,
+        ...foldMap(maybe(range.series), (series) => ({ series: [series] })),
+        ...foldMap(maybe(range.scope), (scope) => ({ scope })),
+      }),
+    ),
+  );
 
   return {
     forward: buildWalkWindows(forwardStart, endTime, windowMs, maxWindows),
-    pending: windowsFrom(
-      withoutRead(
-        pendingRanges.filter((ground) => !isPoint(ground)),
-        rescanned,
-      ).flatMap((range) =>
-        buildWalkWindows(range.start, range.end, windowMs, maxWindows).map(
-          (window): OwedWindow => ({
-            ...window,
-            ...foldMap(maybe(range.series), (series) => ({ series: [series] })),
-            ...foldMap(maybe(range.scope), (scope) => ({ scope })),
-          }),
-        ),
+    pending: [
+      ...windowsFrom(
+        owedWindows.filter((window) => !isBackfillWindow(window)),
+        rangeCursor,
       ),
-      rangeCursor,
-    ),
+      ...windowsFrom(owedWindows.filter(isBackfillWindow), rangeCursor),
+    ],
     points: startingAfter(pointsToRead(pendingRanges.filter(isPoint), endTime), pointCursor),
     rescan,
     rescanEnd: behindEnd,

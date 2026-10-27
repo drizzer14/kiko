@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
   AMOUNT_STOP_CODES,
+  backfillGroundOf,
   BinanceWalkStop,
   createDepthMemories,
   type DepthGuard,
@@ -458,6 +459,7 @@ const commitSpan = (
     place: walletPlacerOf(context, 'transfer-holding-missing'),
     restartMs: HISTORY_FLOOR_MS,
     series: window.series,
+    scope: window.scope,
   });
 
 const runSync = async (
@@ -483,10 +485,15 @@ const runSync = async (
   const write = walkMarkWriterOf(deps, accountId, 'transfer');
   const roundRobins = await readWalkRoundRobins({ stored, write });
   const floorMs = transferFloorMs(now);
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: floorMs, end: cursor ?? floorMs },
-    knownSeries: UNIVERSAL_TRANSFER_TYPES,
+  const { pending, stored: converted } = await backfillGroundOf({
+    stored,
+    pending: await readPendingMark({
+      stored: stored.pending,
+      owedIfUnreadable: { start: floorMs, end: cursor ?? floorMs },
+      knownSeries: UNIVERSAL_TRANSFER_TYPES,
+      write,
+    }),
+    floorMs,
     write,
   });
   const plan = planWalkPasses({
@@ -518,7 +525,7 @@ const runSync = async (
       rescanCursor,
       ...roundRobins,
       pending,
-      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: cursor }),
+      multiCoinPatches: multiCoinPatchesOf({ stored: converted, planCursor: cursor }),
     },
     plan,
     write,

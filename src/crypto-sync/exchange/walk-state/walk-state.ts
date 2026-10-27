@@ -130,8 +130,10 @@ export type ExchangeState = {
  * (the walk logs a fixed code and writes the repair of that one field), where an absent field
  * reads as its empty value. A `pending` list that is defined can still fail its walk's series
  * check (`readPendingMark`, `hasKnownSeries`), which repairs it in the walk, not here. The two
- * multi-coin marks are absent keys when the walk has none, and a malformed one is never repaired:
- * it reads as the fail-safe value (`multiCoinSinceOf`; a seen mark that is not `true` is absent).
+ * multi-coin marks are absent keys when the walk has none. A malformed start reads as the fail-safe
+ * value (`multiCoinSinceOf`) and the walk repairs it by converting it once into the range it owes
+ * to the backfill (`backfillGroundOf`), which stores the floor in its place; a seen mark that is
+ * not `true` is absent.
  */
 export type ParsedWalkMarks = {
   cursor: number | null;
@@ -193,6 +195,7 @@ const listOrUndefined = (value: unknown): unknown[] | undefined =>
 /**
  * A stored range start that is no finite number reads as the entry's cursor, and as none when that
  * is null: the later start owes a range rather than none, so a malformed one never skips ground.
+ * The backfill converts it once (`backfillGroundOf`), so it does not grow the range on every run.
  */
 const multiCoinSinceOf = (entry: Metadata, cursor: number | null): number | undefined => {
   if (!('multiCoinSince' in entry)) {

@@ -354,7 +354,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
 });
 
 describe('the reward groups of a walk', () => {
-  const caughtUp = { cursor: agoMs(5) };
+  const caughtUp = { cursor: agoMs(5), multiCoinSeen: true };
   const stuckAt = agoMs(10);
   let warn: jest.SpyInstance;
 

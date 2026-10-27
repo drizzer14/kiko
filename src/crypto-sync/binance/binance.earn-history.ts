@@ -2,6 +2,7 @@ import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
 import {
   AMOUNT_STOP_CODES,
+  backfillGroundOf,
   BinanceWalkStop,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
@@ -797,6 +798,7 @@ const commitSpan = (
     place: walletPlacerOf(context, 'earn-holding-missing'),
     restartMs: HISTORY_FLOOR_MS,
     series: window.series,
+    scope: window.scope,
   });
 
 const runSync = async (
@@ -821,10 +823,15 @@ const runSync = async (
   const { cursor, rescan: rescanCursor } = stored;
   const write = walkMarkWriterOf(deps, accountId, 'earn');
   const roundRobins = await readWalkRoundRobins({ stored, write });
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: EARN_FLOOR_MS, end: cursor ?? EARN_FLOOR_MS },
-    knownSeries: EARN_SERIES,
+  const { pending, stored: converted } = await backfillGroundOf({
+    stored,
+    pending: await readPendingMark({
+      stored: stored.pending,
+      owedIfUnreadable: { start: EARN_FLOOR_MS, end: cursor ?? EARN_FLOOR_MS },
+      knownSeries: EARN_SERIES,
+      write,
+    }),
+    floorMs: EARN_FLOOR_MS,
     write,
   });
   const plan = planWalkPasses({
@@ -856,7 +863,7 @@ const runSync = async (
       rescanCursor,
       ...roundRobins,
       pending,
-      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: cursor }),
+      multiCoinPatches: multiCoinPatchesOf({ stored: converted, planCursor: cursor }),
     },
     plan,
     write,

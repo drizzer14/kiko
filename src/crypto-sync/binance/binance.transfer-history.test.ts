@@ -1432,6 +1432,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     it('cuts an owed range that reaches back before the floor, and reads the rest of it', async () => {
       const world = worldOf({
         cursor: agoMs(1),
+        multiCoinSeen: true,
         rescan: agoMs(1) - 1,
         pending: [{ start: agoMs(190), end: agoMs(170) }],
       });
@@ -2532,7 +2533,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
     end: agoMs(150) + index * 10 * DAY_MS + DAY_MS,
   });
   const days = [dayAt(0), dayAt(1), dayAt(2)];
-  const base = { cursor: agoMs(2), pending: days };
+  const base = { cursor: agoMs(2), multiCoinSeen: true, pending: days };
   const dayStartsOf = (requests: TransferQuery[]): number[] => [
     ...new Set(
       requests
@@ -2644,7 +2645,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
       requests.filter((query) => query.type === 'MAIN_FUNDING' && query.endTime <= time + 1);
 
     it('keeps the resume of the window when the run ends after its first span committed, and the next run goes on from there', async () => {
-      const world = worldOf({ cursor: agoMs(2), pending: [point] });
+      const world = worldOf({ cursor: agoMs(2), multiCoinSeen: true, pending: [point] });
       const fetcher = serverOf(entries, dense);
       // The point is the last read of a run, and this run affords the read of its whole window
       // (which comes back full) and of its first half, and no read after them.
