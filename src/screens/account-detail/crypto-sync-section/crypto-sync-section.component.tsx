@@ -332,7 +332,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
           {historyBehind && (
             <Text variant="caption" tone="textSecondary">
-              {t('accountDetail.binanceHistoryPending')}
+              {t('accountDetail.exchangeHistoryPending', {
+                exchange: providerDisplayName(connectedProvider, t),
+              })}
             </Text>
           )}
 

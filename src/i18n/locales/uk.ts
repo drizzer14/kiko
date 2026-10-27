@@ -675,8 +675,6 @@ export const uk: typeof en = {
     binanceApiSecretPlaceholder: 'API секрет Binance',
     binanceConnected: 'Binance підключено',
     binanceFundingResponseNotArray: 'Відповідь Binance funding не була масивом',
-    binanceHistoryPending:
-      'Частину історії транзакцій Binance ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій.',
     binanceKeychainDisclosure:
       'Ваш API-ключ Binance зберігається лише в Keychain вашого пристрою, використовується лише для отримання ваших власних даних безпосередньо з Binance і ніколи не надсилається до Кіко чи на будь-який сервер.',
     binanceMissingBalancesArray: 'Відповідь рахунку Binance не містила масиву балансів',
@@ -723,6 +721,8 @@ export const uk: typeof en = {
     },
     exchangeHistoryPaused:
       'Імпорт історії {{exchange}} призупинено: Кіко не зміг прочитати збережений стан імпорту. Щоб це виправити, відключіть і знову підключіть {{exchange}}. Ваші активи й транзакції збережуться.',
+    exchangeHistoryPending:
+      'Частину історії транзакцій {{exchange}} ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій.',
     holdingsHeading: 'Активи',
     importStatement: 'Імпортувати виписку',
     invalidApiKeyOrSecret: 'Недійсний API ключ або секрет',

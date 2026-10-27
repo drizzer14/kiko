@@ -767,8 +767,6 @@ export const en = {
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
     binanceFundingResponseNotArray: 'Binance funding response was not an array',
-    binanceHistoryPending:
-      'Some Binance transaction history is not imported yet. Kiko will keep importing on each sync.',
     binanceKeychainDisclosure:
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
     binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
@@ -818,6 +816,8 @@ export const en = {
     },
     exchangeHistoryPaused:
       '{{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to fix this. Your holdings and transactions are kept.',
+    exchangeHistoryPending:
+      'Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync.',
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',

@@ -2264,10 +2264,10 @@ than restated here:
   no non-negative integer reads as none (`asPendingRange`), never as a malformed list. A
   malformed walk state PAUSES the history: `CryptoSyncSection`'s
   `historyPaused` (Binance and `walkState.kind === 'malformed'`) shows
-  `accountDetail.exchangeHistoryPaused` INSTEAD of `binanceHistoryPending`, and
+  `accountDetail.exchangeHistoryPaused` INSTEAD of `exchangeHistoryPending`, and
   the repair is disconnect + reconnect (`resetExchangeStateDatabaseTransaction`
   replaces a malformed top level with a capital floor cursor). `CryptoSyncSection`
-  renders the `accountDetail.binanceHistoryPending` caption under the
+  renders the `accountDetail.exchangeHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
   account never evaluates or shows it.
 - **The not-imported line.** `crypto-sync-section.component.tsx` shows it only when the
@@ -2392,7 +2392,7 @@ Read `settledOutcomeOf` in `binance.convert-history.ts`.
   which are then owed in full without a request. The walk reads the owed ranges first
   (`runWalkPlan` `owedFirst`; `storePlannedList` stores the planned list before any pass) and
   keeps one read of the first forward window, of the re-scan and of the points for the later
-  passes. A Transfer drift owes the span in the drifted type alone. The `binanceHistoryPending`
+  passes. A Transfer drift owes the span in the drifted type alone. The `exchangeHistoryPending`
   caption also shows while any walk owes a range, or a point owed for more than a day
   (`historyOwesRange`).
   A span read that narrows (a type is refused a start, finds its memory lapsed, asks the end of
