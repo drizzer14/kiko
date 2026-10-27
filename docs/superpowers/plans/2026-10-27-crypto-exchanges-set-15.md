@@ -279,7 +279,10 @@ splits (about 10 files in the step).
       `payFloorMs(now)`, `transferFloorMs(now)`, `EARN_FLOOR_MS`; re-grep), threads `window.scope` into its
       `advanceWalkMarks` call and its row write, and drops BTC rows in a backfill window.
 - Check: new files green; every `binance.*-history*.test.ts`, `binance.transactions*.test.ts`,
-  `binance.walks.*.test.ts` green unchanged; `make jest-affected`; dup alone on each new test file.
+  `binance.walks.*.test.ts` green, with the class (i) pins re-seeded per pin, seed-only (never through a shared seed
+  helper); the 4 acceptance pins unchanged (tx:1592 seed-only per S15-Q11, with its upgrade-world twin in
+  `binance.walks.backfill.test.ts`; the other 3 in their original upgrade-world seed, S15-Q13); the 4 lost-seen pins
+  of `binance.walks.multi-coin.test.ts` moved per S15-Q12; `make jest-affected`; dup alone on each new test file.
 - Estimate source: set 6 multi-coin walk rows (`kiko-binance-backfill-fix`, 20261019T0817).
 
 ### step 4/8: caption rows K4 and K6
@@ -429,3 +432,32 @@ final privacy text is still required before publish and stays on the release use
 (follows user S14-Q2), S15-Q6 = A (spec: exchange-synced only), S15-Q7 = A (a display ban or a bot-checked page is a
 STOP to the coordinator), S15-Q8 = A. Backlog S15-B1, S15-B2, S15-B3 approved. Every "per S15-Qn" above reads as
 option A.
+
+Step 3/8 red pins (debugger 2026-10-27: 48 old pins red, all 1.2-upgrade seeds, no defect in them; 44 re-seeded,
+4 acceptance):
+- S15-Q9 = A (COORDINATOR): the pending pass reads every owed window that is NOT backfill first (today's
+  oldest-first order among them), then the backfill windows from the budget left; no amount or row change. An
+  acceptance pin that says a recent record arrives, or arrives within N runs, is never moved or retitled to fit the
+  backfill. Stop: an acceptance pin that still fails only on `complete` or the run count while backfill is owed goes
+  to the coordinator.
+- S15-Q10 = fix now (ORCHESTRATOR, SCOPE RULE (b) own regression; CONFIRMED by the coordinator): a stored
+  `multiCoinSince` beside a lost seen mark was converted twice; `backfillGroundOf` hands the converted marks to
+  `multiCoinPatchesOf`; a lost-seen pin over the 4 walks.
+- Re-seed of the 44 class (i) pins APPROVED as SEED ONLY (add `multiCoinSeen: true`; titles and assertions
+  unchanged); the reviewer checks that each changed pin diff is seed-only.
+- S15-Q11 = A (COORDINATOR): the acceptance pin `binance.transactions.test.ts` "reaches now and imports every
+  record once, with a dense day just behind the cursor" failed only on the run count (7 vs <= 6) in its 1.2-upgrade
+  seed (the backfill adds runs; every record arrives). It gets the seed-only change (bound 6 and every assertion
+  unchanged) PLUS a new upgrade-world acceptance pin in `binance.walks.backfill.test.ts`: every dense-day record
+  imported within 6 runs, the backfill complete within the measured 7. The reviewer names WHY the other 3 acceptance
+  pins went green; no named cause is a finding for the coordinator before the merge.
+- S15-Q12 = A (COORDINATOR; revises STEP 10 (1) of 2026-10-19, which was not a user answer): a stored start beside a
+  lost seen mark is kept as the END of the owed backfill range; `multiCoinSince` = the floor; the start is never
+  raised. The 4 pins `binance.walks.multi-coin.test.ts` "keeps the earlier range start of a walk whose seen mark was
+  lost" move and are retitled "keeps the earlier stored start of a walk whose seen mark was lost as the end of its
+  backfill range". The scribe marks STEP 10 (1) as superseded in `rulings.md` and the spec.
+- S15-Q13 = B (COORDINATOR): the acceptance pins tx:1759, tx:1844 and pay:1345 were green only because the class (i)
+  re-seed edited the shared seed helpers `stateOf` / `storedState`. They go back to their ORIGINAL upgrade-world seed
+  and pass UNCHANGED through the S15-Q9 order; the other pins on those helpers get the seen mark per pin
+  (seed-only, one line). An acceptance pin's world is part of the pin, so a shared helper is no place to change it.
+  If one fails in its original world: STOP to the coordinator.
