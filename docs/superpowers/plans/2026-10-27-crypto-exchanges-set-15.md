@@ -144,20 +144,20 @@ Set 15 closes none. Left open:
 | B2 | BTC record in a backfill window | same | "writes no row for a BTC record the %s backfill reads" | skipped | n/a |
 | B2b | mixed Pay send in a backfill window | same | "writes the USDT rows of a Pay send the backfill reads and skips its BTC rows" | USDT only | n/a |
 | B3 | USDT record read by the live pass and the backfill | same | "writes one row for a USDT record the forward pass and the %s backfill both read" | one row | n/a |
-| B4 | UA-1 | `src/crypto-sync/binance/binance.walks.backfill.real-sqlite.test.ts` (new) | "imports the 41 USDT Pay orders over the next syncs and skips the 5 BTC orders"; "imports the USDT withdrawal on Spot through the capital backfill"; "finds no non-BTC record in the Transfer and Earn backfills"; "shows the caption until every backfill range is read" | as titled | USDT never imported |
-| B5 | every backfill range read | same | "hides the caption once every backfill range is read" | hidden (K1) | n/a |
+| B4 | UA-1 | `src/crypto-sync/binance/binance.walks.backfill.real-sqlite.test.ts` (new) | "imports the 41 USDT Pay orders over the next syncs and skips the 5 BTC orders"; "imports the USDT withdrawal on Spot through the capital backfill"; "finds no non-BTC record in the backfill and writes no row" (it.each transfer, earn); "keeps a range owed after the first sync, which reads a part of the ground" | as titled | USDT never imported |
+| B5 | every backfill range read | same | "owes no range once every backfill window was read"; "imports nothing more on the sync after the backfill was read" | no range owed, so the caption is hidden (K1, K4) | n/a |
 | R1 | malformed `multiCoinSince` beside `multiCoinSeen: true` | `src/crypto-sync/exchange/walk/walk.backfill.test.ts` (new) | "owes a malformed start once, up to the cursor, and stores the floor in its place" | one range, start repaired | read as the cursor every run, never repaired, range grows |
 | R1p | same, over runs | `src/crypto-sync/binance/binance.walks.backfill.properties.test.ts` (new) | "owes one backfill range that never grows, over ten runs at a %s clock gap, from a malformed start" (0, 1 h, 1 day) | bounded | grows each run |
 | R2 | start at the floor `[floor, floor)` | `walk.backfill.test.ts` | "owes nothing and writes nothing for a start at the floor" | nothing owed | n/a |
 | R3 | start below the floor (negative) | same | "owes nothing and writes nothing for a start before the floor" | nothing owed | n/a |
 | R4 | one write | same | "stores the backfill range and the floor start in one write" | one patch | n/a |
 | R5 | next run | same | "owes no second range on the run after the start was converted" | none | n/a |
-| S1 | parse | `src/crypto-sync/exchange/walk-state/walk-values.backfill-scope.test.ts` (new) | "reads a range owed to the backfill with its scope"; "reads a list holding a scope it does not know as malformed" | | n/a |
+| S1 | parse | `src/crypto-sync/exchange/walk-state/walk-values.backfill-scope.test.ts` (new) | "reads a range owed to the backfill with its scope"; "reads a list holding %s as malformed" (an unknown scope, a scope that is no text, a null scope, an empty scope); "reads the scope of a resume" | | n/a |
 | S2 | merge | `walk.backfill.test.ts` | "never merges a backfill range with a range owed for every coin" | two entries | n/a |
 | S3 | read-in | same | "takes backfill ground out by a read for every coin"; "keeps ground owed for every coin after a backfill read of it" | | n/a |
 | S4 | point in a backfill window | same | "owes a point found in a backfill window to the backfill" | point has scope | n/a |
 | S5 | Transfer series | same | "reads a backfill range in every Transfer series" | | n/a |
-| P1 | property | `binance.walks.backfill.properties.test.ts` | "imports every non-BTC record before the start exactly once and adds no BTC row, at a %s clock gap" (0, 1 h, 1 day; production caller) | | n/a |
+| P1 | property | `binance.walks.backfill.properties.test.ts` | "imports every non-BTC record before the start exactly once and adds no BTC row (seed %d)" under "the backfill at a clock gap of %d ms" (0, 1 h, 1 day; production caller) | | n/a |
 | K1 | nothing owed | `src/screens/account-detail/crypto-sync-section/binance-history-status.test.ts` (existing) | existing "is not behind when every walk lags the balance sync by only a few hours" | hidden | hidden |
 | K2 | cursor null or a day behind | same (existing) | existing "is behind when any walk has never caught up ..." | shown | shown |
 | K3 | Transfer owes a range | same (existing) | existing "is behind when the Transfer walk owes a range, though every cursor is current" | shown | shown |
@@ -497,3 +497,11 @@ Step 4d:
   the unchanged pin `binance.transfer-history.test.ts` "imports a transfer in a later window of the range within
   ceil(windows / reads a run) runs" (4 reads of the ground for every coin are needed in 5 runs). Only the order
   changes; no amount or row.
+- S15-Q18 = A (COORDINATOR; SUPERSEDES the S15-Q17 "alternate from run to run" wording; the rule as shipped in
+  ac1faee3): with a one-window pending budget a read of a window owed for every coin that FINISHES its window keeps
+  the turn; the turn passes to the backfill only after such a read leaves its window owed (refused, or owed whole
+  for good); the backfill hands it back after one window. `backfillTurn` is true only (anything else is absent) and
+  a disconnect drops it. The wait of the backfill is bounded because the ground owed for every coin is finite. The
+  bounds are stated in the `windowsFrom` doc (`exchange/walk/walk.ts`). The whole-branch review checks: no input
+  keeps the all-coin ground finishing windows forever; `backfillTurn` beside `backfillCursor`; the per-group bound
+  in the doc against the pins.

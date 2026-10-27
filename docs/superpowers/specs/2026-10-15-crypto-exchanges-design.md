@@ -279,6 +279,27 @@ Source of S13-Q1 ... S13-Q10: `rulings.md`, "SET 13 PLAN RULINGS"; the plan
 `docs/superpowers/plans/2026-10-26-crypto-exchanges-set-13.md` ("Rulings") holds each. Backlog
 S13-B1 ... S13-B3 are accepted by the coordinator (2026-10-26).
 
+| Ruling | Answer | Sets |
+|---|---|---|
+| S15-Q1 A (COORDINATOR 2026-10-27) | The backfill is a `scope: 'backfill'` entry in each walk's `pending`, converted once from `multiCoinSince`, which is rewritten to the floor in the same write | 15 |
+| S15-Q2 A | `trades.unreadSymbols` stores the run's never-read candidate symbols; the caption reads it (K6) | 15 |
+| S15-Q3 A, S15-Q4 A | Privacy revision 2 committed verbatim (the user's OK of the final text stays on the release list); set 15 sends Notes for Review delta lines to the release session | 15 |
+| S15-Q5 A | No demo change, byte-identical check (follows user S14-Q2) | 15 |
+| S15-Q6 A | "Earlier history" and the not-listed note on exchange-synced holdings only, not on a wallet | 15 |
+| S15-Q7 A, S15-Q8 A | The terms are read by `kiko:researcher` (a display ban or a bot-checked page is a STOP); the doc test reads the closed path list in `binance.endpoints.ts` | 15 |
+| S15-Q9 A | The pending pass reads the windows owed for every coin first, then the backfill windows from the budget left; an acceptance pin that says a recent record arrives is never moved to fit the backfill | 15 |
+| S15-Q10, S15-Q11 A | A stored start beside a lost seen mark is converted once, not twice; the dense-day acceptance pin keeps its bound 6 and gains an upgrade-world pin | 15 |
+| S15-Q12 A | A stored start beside a lost seen mark is kept as the END of the owed backfill range, `multiCoinSince` = the floor; supersedes STEP 10 (1) | 15 |
+| S15-Q13 B | The acceptance pins keep their original upgrade-world seed; other pins get the seen mark per pin | 15 |
+| S15-Q14 A | A symbol whose trade read ended `failed` is not listed in `trades.unreadSymbols`; the symbols a budget or rate-limit stop leaves unread are listed | 15 |
+| S15-Q15 B | While a backfill window is owed, a run keeps the calls of its first window from the windows owed for every coin (the first of those keeps none) | 15 |
+| S15-Q16 A | The backfill is a round-robin of its own (`backfillCursor`); a refused window goes behind the others | 15 |
+| S15-Q17 A, S15-Q18 A | With a one-window budget the two groups take turns (`backfillTurn`): an all-coin read that finishes its window keeps the turn, one that leaves it owed gives it to the backfill, which hands it back after one window. S15-Q18 supersedes the S15-Q17 "alternate from run to run" wording | 15 |
+
+Source of S15-Q1 ... S15-Q18: `rulings.md`, "Set 15 plan questions"; the plan
+`docs/superpowers/plans/2026-10-27-crypto-exchanges-set-15.md` ("Rulings") holds each. Backlog
+S15-B1 (the caption file move), S15-B2 and S15-B3 are accepted by the coordinator.
+
 S12-Q45, the S12-Q42 chunk term follow-up, the properties split and the fiat fold are BACKLOG after 1.3
 (SCOPE RULE, USER 2026-10-25; `backlog-after-1.3.md`; side branch `binance-backlog-split`).
 
@@ -448,6 +469,8 @@ type CoinLists = {
 type WalkMarks = {
   cursor?: number | null; rescan?: number; pending?: BinancePendingRange[];
   pointCursor?: number; rangeCursor?: number; spanHints?: BinanceSpanHints; multiCoinSince?: number;
+  backfillCursor?: number;                    // the end of the backfill window the last run started (S15-Q16)
+  backfillTurn?: boolean;                     // a one-window pending budget goes to the backfill next (S15-Q18)
   multiCoinSeen?: true;                       // the walk's first multi-coin run happened (section 7)
 };
 // The closed kind list: a const tuple, the union derived from it (kiko-code-style), and one copy
@@ -527,7 +550,8 @@ byte-identical, a malformed one included. When no `sync_state` row exists, the w
 is null or more than a day behind `latestSyncedAt`, when any of the eight history walks owes a range
 (S12-Q41, S12-Q43), when any walk owes a `scope: 'backfill'` range, when the top-level state is
 malformed, or when a trade symbol in the candidate set was never read (no entry, or a null
-`fromId`; a completed read always stores a number, section 5). A fresh owed point never shows it:
+`fromId`; a completed read always stores a number, section 5; a symbol whose read failed is not
+counted, S15-Q14). A fresh owed point never shows it:
 the record it names is read again on every sync. A point owed for more than a day does (its
 `since`, the time of the run that first owed it, is more than a day before `latestSyncedAt`;
 S12-Q44). The caption names the exchange
@@ -1812,9 +1836,10 @@ effect.
   writes either field again, so a later run after a null-cursor first run records none.
   Disconnect removes `multiCoinSince` and keeps `multiCoinSeen`: the reset cursor is the floor,
   so every coin is read from it and nothing is owed.
-  Step 10 rulings (coordinator, standing approval, 2026-10-19; `a1c51603`): a stored
-  `multiCoinSince` with a lost or malformed `multiCoinSeen` keeps the EARLIER of the stored start
-  and the plan cursor and writes seen again (`multiCoinPatchesOf`); a plan cursor at or below the
+  Step 10 rulings (coordinator, standing approval, 2026-10-19; `a1c51603`): (1) is SUPERSEDED by
+  S15-Q12 (the old text stays): a stored `multiCoinSince` with a lost or malformed `multiCoinSeen`
+  keeps the EARLIER of the stored start and the plan cursor and writes seen again
+  (`multiCoinPatchesOf`); a plan cursor at or below the
   floor is recorded as `multiCoinSince`, an empty range the set 15 backfill reads as nothing
   owed; the marks ride only the first FORWARD cursor write of a run.
   Review requirement (slice B m5, no fix in set 6): a malformed `multiCoinSince` beside
@@ -1824,9 +1849,21 @@ effect.
 - Set 15: each of capital, Pay, Transfer, Earn with a `multiCoinSince` owes one range
   `[floor, multiCoinSince)` with `scope: 'backfill'`, read in the existing round-robin of owed
   ranges. A read in a backfill range imports every coin except BTC; BTC records there are skipped
-  (not re-read into rows). A record the live pass and the backfill pass both read (the overlap
-  re-read, Pay's R22 margin) gives one row (same key, `addManyDedup`). Floors as section 5. The
-  caption shows while any backfill range is owed.
+  (not re-read into rows; `rowsOfScope` in `binance.walk-wiring.ts`, so a BTC row the user deleted
+  does not come back, while the other coins of the same record are written). A record the live
+  pass and the backfill pass both read (the overlap re-read, Pay's R22 margin) gives one row (same
+  key, `addManyDedup`). Floors as section 5. The caption shows while any backfill range is owed.
+  Conversion rule (S15-Q1, S15-Q12): the range is converted once from `multiCoinSince` in ONE
+  write that stores the floor as the new `multiCoinSince`, so a malformed start (read as the
+  cursor) is repaired once and an empty or negative range owes nothing (`backfillGroundOf`); a
+  stored start beside a lost seen mark is kept as the END of the range, and the start is never
+  raised. Scope: the `scope: 'backfill'` rides on the range, on a point found in it and on a span
+  resume; a range owed to the backfill never merges with one owed for every coin. Read order: the
+  windows owed for every coin first, then the backfill, each group a round-robin with its own
+  cursor (S15-Q9, S15-Q16), one window kept for the backfill (S15-Q15), and a one-window budget
+  taken in turns (S15-Q18); the bounds are stated in the `windowsFrom` doc comment in
+  `exchange/walk/walk.ts`. A disconnect drops `backfillCursor` and `backfillTurn` (they have no
+  repair: a malformed one reads as absent).
 - New streams (Convert, dust, P2P, fiat, trades) start from their own floors with null cursors
   (dust: no cursor); they need no backfill range. R-Walk A: Convert, P2P and fiat read forward from
   `HISTORY_FLOOR_MS`, so their recent records arrive last (section 5, "Refused window and walk
@@ -2315,7 +2352,7 @@ Caption (set 15):
 | K3 | Transfer owes a range | shown | shown |
 | K4 | a backfill range owed | shown | hidden |
 | K5 | only owed points | hidden | hidden |
-| K6 | a candidate trade symbol never read (no entry or null `fromId`) | shown | n/a |
+| K6 | a candidate trade symbol never read (no entry or null `fromId`; a symbol whose read failed is not counted) | shown | n/a |
 | K6b | every candidate symbol read, one read empty (`fromId` 0) | hidden | n/a |
 | K7 | top-level `exchange_state` malformed | shown, with the paused copy (`exchangeHistoryPaused`) | n/a |
 | K8 | every cursor current; only `notImported` entries | caption hidden; the not-imported line shows | n/a |
@@ -2359,7 +2396,7 @@ Caption (set 15):
 | Privacy policy, Binance data (set 15) | The Binance bullet adds: balances of every coin and fiat, trades, Convert, P2P orders (amounts and fiat totals of purchases; order numbers and times of records Kiko does not import yet; no counterparty data), fiat deposits and withdrawals, card purchases, dust conversions, and the ids and times of Convert and fiat records Kiko does not import yet. The ids and times of records not imported are kept on the device in the import progress (`exchange_state`) and travel in a `.kiko` export |
 | App Privacy label | stays "Data Not Collected" (everything stays on device); the review is recorded in `memory/refs/resubmission-kit.md` section D |
 | Stored counterparty data | Pay nickname only (D4). The P2P fields `counterPartNickName`, `advNo`, `payMethodName` and `additionalKycVerify` (probes 2-4 key list) and fiat payment method details are never read into a type. A not-imported entry stores the record id and time only |
-| API terms gate | Before set 15 merges, read and record (URL, date, clauses) Binance's Terms of Use, its API terms (the clauses on read-only third-party apps) and its market-data display terms (the clauses on showing Binance price data in a third-party app, attribution included); scribe records them in kiko-compliance. A clause that forbids the price display removes the fallback before ship. Bybit's terms (PDF in `research-bybit.md`) gate 1.3-b. **C2 note (set 5, 2026-10-18).** Terms read: Binance Terms of Use, ADGM Binance entities (NEL/NCCL/NTL), effective 21 July 2026 (the version served to this region; other regions can get other terms); PDF `https://bin.bnbstatic.com/static/cms/cg08ou2ak0tn7mcplvfg/file/bf4879710c904b991848972ec4818ba2cf9e4ce314c09adae84fa2750d3477f7.pdf`, checked 2026-10-18 (the `/en/terms` page is a pdf.js iframe). Cl. 27: IP licence non-exclusive, only as necessary to receive Binance Services, non-commercial personal or internal business use; trade marks EXCLUDED. Cl. 14.1.2(b): account access via APIs is "subject to separate API terms and our approval". Cl. 31.1(d): no IP infringement. Cl. 31.1(e) and 25.5: no use from the List of Prohibited Countries, no VPN circumvention. Cl. 33.6: third-party apps are the user's own risk, no endorsement. Cl. 33.11: market data is "for information purposes", no accuracy or availability warranty. NOT found: a clause on keyless public market data, attribution text, or an explicit redistribution or display ban. Prohibited Countries (updated 5 Jan 2026): United States (also citizens), Canada, Netherlands, Cuba, North Korea, Iran, Crimea, so-called DPR and LPR. NOT read: the separate API terms, the Prohibited Use Policy. Docs read: market-data-endpoints (no licence text); general-api-information ("please use the base endpoint https://data-api.binance.vision" for public market data; 429/418 bans of 2 minutes to 3 days with Retry-After; 403 WAF; per IP). Ruling D1: keep `api.binance.com`; `data-api.binance.vision` is a later option. **User ruling C2 (2026-10-18):** the release hold is LIFTED on two conditions: (1) no Binance logo anywhere in the app or the metadata; (2) the fallback stays fail-soft (451, 403, 418, 429 or any error is no price this sync, never a crash or a wrong value, never a retry loop). There is NO device-region check: the fallback runs for every user, also in a Prohibited Country. |
+| API terms gate | Before set 15 merges, read and record (URL, date, clauses) Binance's Terms of Use, its API terms (the clauses on read-only third-party apps) and its market-data display terms (the clauses on showing Binance price data in a third-party app, attribution included); scribe records them in kiko-compliance. A clause that forbids the price display removes the fallback before ship. Bybit's terms (PDF in `research-bybit.md`) gate 1.3-b. **C2 note (set 5, 2026-10-18).** Terms read: Binance Terms of Use, ADGM Binance entities (NEL/NCCL/NTL), effective 21 July 2026 (the version served to this region; other regions can get other terms); PDF `https://bin.bnbstatic.com/static/cms/cg08ou2ak0tn7mcplvfg/file/bf4879710c904b991848972ec4818ba2cf9e4ce314c09adae84fa2750d3477f7.pdf`, checked 2026-10-18 (the `/en/terms` page is a pdf.js iframe). Cl. 27: IP licence non-exclusive, only as necessary to receive Binance Services, non-commercial personal or internal business use; trade marks EXCLUDED. Cl. 14.1.2(b): account access via APIs is "subject to separate API terms and our approval". Cl. 31.1(d): no IP infringement. Cl. 31.1(e) and 25.5: no use from the List of Prohibited Countries, no VPN circumvention. Cl. 33.6: third-party apps are the user's own risk, no endorsement. Cl. 33.11: market data is "for information purposes", no accuracy or availability warranty. NOT found: a clause on keyless public market data, attribution text, or an explicit redistribution or display ban. Prohibited Countries (updated 5 Jan 2026): United States (also citizens), Canada, Netherlands, Cuba, North Korea, Iran, Crimea, so-called DPR and LPR. **Terms read 2026-10-27 (set 15, coordinator ruling PASS):** "API KEYS PRODUCT TERMS", Version 2.0, effective July 9th, 2026 (`https://www.binance.com/en/about-legal/terms-binance-api`; cl. 1.3 they are the Product Terms for the API; 3.1 a personal, limited, revocable licence to use the API Key solely to integrate with Binance; 2.6 and 4(g) a key given to a third-party provider is contemplated; 4(a)(b)(f) single purpose, no unnecessary permissions, no key in a cloud venue; 3.2(b) no derivatives of the API data without written authorization) and the "Prohibited Use Policy" (last updated 5 January 2026; D no resale or transactions on behalf of others, I automated access only as permitted). No clause bans showing the user's own data or prices. The record, with the standing items (3.2(b) residual, device-only Keychain, read-only key help), is in kiko-compliance. Docs read: market-data-endpoints (no licence text); general-api-information ("please use the base endpoint https://data-api.binance.vision" for public market data; 429/418 bans of 2 minutes to 3 days with Retry-After; 403 WAF; per IP). Ruling D1: keep `api.binance.com`; `data-api.binance.vision` is a later option. **User ruling C2 (2026-10-18):** the release hold is LIFTED on two conditions: (1) no Binance logo anywhere in the app or the metadata; (2) the fallback stays fail-soft (451, 403, 418, 429 or any error is no price this sync, never a crash or a wrong value, never a retry loop). There is NO device-region check: the fallback runs for every user, also in a Prohibited Country. |
 | Demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`, `kiko-demo-uk.kiko`, built by `build-demo-snapshot.ts`) | a crypto account (`institution` null) with manual holdings in at least five curated coins incl. USDT, USDC, ETH, BNB and a non-top coin (one with a dated price history), plus UAH and EUR holdings; on that account (set 7) an Exchange pair USDT -> BTC with `operation = 'trade'` and its third-coin fee row (BNB, `operation = 'trade-fee'`, same pair id, labelled "Trading fee"), a Convert pair UAH -> USDT (`operation = 'convert'`), a dust pair XRP -> BNB on the existing XRP holding (`operation = 'dust'`; no Dogecoin holding, user answer U3), a P2P buy row with `p2p:UAH:4150.00` and `operation = 'p2p'`, a card buy row with `card:UAH:2600.00` (`operation = 'card'`), a card SALE row (Ethereum, `card:UAH:1300.00`) and a trade with an untracked side (Solana, `asset:PEPE`, `operation = 'trade'`) so every label set 7 adds is reachable (orchestrator ruling R6, Guideline 2.5.19), a fiat deposit row on the EUR holding with `bank:EUR:100.00` (`operation = 'fiat'`), a fiat withdrawal `bank:EUR:50.00` (EUR stays at 50), every set 7 row older than the 30-day window, every existing holding keeping its end balance (S7-Q2), and the three bank debits that fund the P2P, card and fiat deposit rows so the statistics matcher and its caption show (set 13; step 6/8: Monobank UAH -4150.00 and -2600.00 and Wise EUR -100.00, described "Binance P2P" or "Binance", opening balances raised so every end balance stays). Set 14 changes no demo file (S14-Q2, user ruling): the reviewer reaches the Binance and wallet fields through the picker on the create form, and the connectable-account fixtures are built inside the tests, not in the demo. Regenerated (`KIKO_REGEN_DEMO=1`) with each snapshot-shape change: set 1 (`EXPORT_VERSION` 4; `generate-demo-kiko.test.ts` pins `envelope.version` to it), set 4 (`exchange_state` column), set 7 (rows, `operation`), set 13, set 14 |
 | 3.1.5 | read-only viewer; the notes state no trading, withdrawal or transfer is possible |
 
@@ -2498,7 +2535,7 @@ sets 1 and 4 also change `envelope.test.ts`'s `VERSION_DECISIONS`).
 | 12/15 | P2P walk: status first, then side, role and amount (C-P5, C-NR-B), BUY TAKER only, SELL and MAKER into `notImported`, fiat-asset rows on the fiat holding, floor `HISTORY_FLOOR_MS` read forward with every window read (probe 5: no refusal to the floor; C-P2P-stop; R-Walk A), UID 900. Fiat orders and payments walks (no real row observed): 2-year windows from `HISTORY_FLOOR_MS` read forward with every window read (probe 5; C-NR-D; R-Walk A), the strict status allowlist with the doc-quote rule (C-NR-E), UID 45000 lane; the P2P lane cap 20 from probe 10 (S12-Q7); the rulings S12-Q1 ... S12-Q35 (section 1). First step: quote Binance's doc text for the ignored fiat words (found none: no word is ignored, S12-Q3) | `binance.p2p-history.ts` and `binance.fiat-history.ts` (new), `binance.walk-wiring.ts` (new), client, budget, walk config, run wiring, the walk engine, the exchange walk state, the history caption, the marker builders (mutable files: 16 (cap 30), 2452 changed lines, timeout share 1.2%, measured: `KIKO_MUTATION_BASE=79094ae8 make mutable` at baf97910) | none | P1-P12 (P1b-P1h, P2b-P2d, P3b-P3d, P7b, P8b, P12b included), F1-F6; N5b; the rows of the set 12 table in section 7 (PC, FC, BL, PW, FW, FQ, RW, FR, K-P, MK); the fiat-orders budget cases (section 5); properties at 0 / 1 h / 1 day; measured P2P first-walk report (calls, runs; section 5) | P5 settled; P6 open (no real row observed), allowlist defaults |
 | 13/15 | read-time bank-debit matcher and its caption | `src/statistics/exchange-funding-match/` (new), `statistics.screen.tsx`, the transaction form caption slot, i18n, demo bank debit (~6) | none | M1-M14 (M14: fiat-asset P2P); one-to-one tie-breaks with a distinct value per sort key | no |
 | 14/15 | exchange catalog, picker field, registry wiring, shared provider sheet, `syncJobsFor` | `exchange-catalog/`, `exchange/registry/`, `exchange-type-field/` (new), `crypto-sync-form`, `account-form.screen.tsx`, `crypto-sync-section`, `add-bank-sheet` -> `provider-sheet`, `bank-sync-section`, `sync-jobs.ts`, `provider.ts`, `deletable.ts`, i18n, no demo change (S14-Q2; fixtures are built in the tests) (~14) | none | picker and caption render; registry skip of an unwired id; connect-first rollback | no |
-| 15/15 | backfill ranges, caption, "Earlier history", the not-listed note's final text (section 10: Convert out of the wallet sentence, P2P sales and advertiser orders named), privacy policy Binance paragraph per section 9, terms check, Notes for Review per section 9 (the "Not imported" line included; no reward wording), demo regen, kiko-architecture/kiko-domain/kiko-compliance updates via scribe | `exchange/walk/` (backfill scope), the four walk files, `exchange/history-status/`, `holding-detail.screen.tsx`, i18n, `docs/privacy-policy*.md`, `e2e/screenshot/` seed (~12) | none | K1-K7 (K6b included; K7 uses the paused copy that set 4 adds); B1-B5; N1; earlier-history sum exact | no (terms gate) |
+| 15/15 | backfill ranges, caption, "Earlier history", the not-listed note's final text (section 10: Convert out of the wallet sentence, P2P sales and advertiser orders named), privacy policy Binance paragraph per section 9, terms check, Notes for Review per section 9 (the "Not imported" line included; no reward wording), no demo regen (S15-Q5, user S14-Q2; byte-identical check), `binance-history-status.ts` stays where it is (S15-B1), the closed endpoint list `binance.endpoints.ts` with its doc test `binance.privacy-policy.test.ts`, kiko-architecture/kiko-domain/kiko-compliance updates via scribe | `exchange/walk/` (backfill scope), the four walk files, `exchange/history-status/`, `holding-detail.screen.tsx`, i18n, `docs/privacy-policy*.md`, `e2e/screenshot/` seed (~12) | none | K1-K7 (K6b included; K7 uses the paused copy that set 4 adds); B1-B5; N1; earlier-history sum exact | no (terms gate) |
 
 Probes 2-5 ran (2026-10-15 and 2026-10-16), so sets 8-12 have no probe gate left. The facts that
 are still open (P6, P7, P11, P16) have safe defaults (section 12). Sets 1, 4 and 7 each carry a
