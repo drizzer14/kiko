@@ -13,7 +13,8 @@ import { readSkillText } from './test-support/skill-text';
 // citation that names no real heading fail `make verify`.
 //
 // Resolution: the skill's SKILL.md under `.claude/skills/`, else under
-// `harness/kiko/skills/`. The heading matches any `#`-`######` heading outside
+// `harness/kiko/skills/`, plus the reference files that SKILL.md links to (read through
+// `readSkillText`). The heading matches any `#`-`######` heading outside
 // a fenced block, backticks stripped from both sides: exactly; else with a
 // trailing ` (Qualifier)` cut off the citation; else split on ` / ` with every
 // part resolving. A prefix of a heading never counts.
