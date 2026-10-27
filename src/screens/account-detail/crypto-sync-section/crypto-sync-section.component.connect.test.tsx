@@ -159,7 +159,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
 
     expect(getByLabelText('binance-field')).toBeTruthy();
     expect(queryByLabelText('wallet-field')).toBeNull();
-    expect(getByText('Change exchange')).toBeTruthy();
+    expect(getByText('Change exchange or wallet')).toBeTruthy();
   });
 
   it('returns to Connect an exchange or wallet on Change exchange', async () => {
@@ -167,7 +167,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
 
     await fireEvent.press(getByText(CONNECT));
     await fireEvent.press(getByTestId('connect-exchange-option-btc_wallet'));
-    await fireEvent.press(getByText('Change exchange'));
+    await fireEvent.press(getByText('Change exchange or wallet'));
 
     expect(getByText(CONNECT)).toBeTruthy();
     expect(queryByLabelText('wallet-field')).toBeNull();
@@ -176,7 +176,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
   it('shows no Change exchange when the bank id names the provider', async () => {
     const { queryByText } = await renderSection({ bankId: 'binance' });
 
-    expect(queryByText('Change exchange')).toBeNull();
+    expect(queryByText('Change exchange or wallet')).toBeNull();
   });
 
   it('saves nothing to the account when a provider is picked in the sheet', async () => {

@@ -2340,7 +2340,7 @@ Caption (set 15):
   sheet is `AddBankProviderSheet` generalized into `ProviderSheet`
   (`src/screens/account-detail/provider-sheet/`), listing registry-wired catalog entries
   (`visibleCatalogEntries` over a registry), used by both the bank and the crypto sections, plus
-  "Change exchange".
+  "Change exchange or wallet".
 - Connected: unchanged UI; the display name and the disconnect copy come from the registry. Under
   the status line sit the not-tracked line, the oversized line, the not-imported line
   (`notImportedCountsOf`, C-NR-A; set 8) and the caption.
@@ -2411,20 +2411,20 @@ not in 1.3-a (C-Div).
 | `forms.account.exchangeTypePlaceholder` | Select an exchange or wallet | Оберіть біржу або гаманець |
 | `forms.account.exchangeTypeSheetTitle` | Exchange or Wallet | Біржа або гаманець |
 | `forms.account.exchangeDisclaimer` | Kiko is an independent app. It is not affiliated with or endorsed by any exchange or wallet provider. | Кіко — незалежний застосунок. Він не пов’язаний із жодною біржею чи гаманцем і не є їхнім партнером. |
-| `forms.account.exchangeConnectable` | Connect with a read-only API key. | Підключення з ключем API лише для читання. |
+| `forms.account.exchangeConnectable` | Connect with a read-only API key. | Підключення з API-ключем лише для читання. |
 | `forms.account.walletConnectable` | Connect with a public address. | Підключення за публічною адресою. |
 | `forms.account.bitcoinWallet` | Bitcoin wallet address | Адреса гаманця Bitcoin |
 | `forms.account.exchangeOther` | Other exchange or wallet | Інша біржа або гаманець |
 | `forms.account.exchangeOtherCaption` | Add holdings by hand. | Додавайте активи вручну. |
 | `accountDetail.connectExchangeAction` | Connect an exchange or wallet | Підключити біржу або гаманець |
 | `accountDetail.connectExchangeSheetTitle` | Connect an Exchange or Wallet | Підключити біржу або гаманець |
-| `accountDetail.changeExchangeAction` | Change exchange | Змінити біржу |
+| `accountDetail.changeExchangeAction` | Change exchange or wallet | Змінити біржу або гаманець |
 | `accountDetail.exchangeHistoryPending` (replaces `binanceHistoryPending`) | Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync. | Частину історії транзакцій {{exchange}} ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій. |
 | `accountDetail.exchangeHistoryPaused` (set 4; shown instead of the pending caption while the top-level state is malformed, X1 and K7) | {{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to fix this. Your holdings and transactions are kept. | Імпорт історії {{exchange}} призупинено: Кіко не зміг прочитати збережений стан імпорту. Щоб це виправити, відключіть і знову підключіть {{exchange}}. Ваші активи й транзакції збережуться. |
 | `accountDetail.untrackedCoins` | Not tracked: {{tickers}}. Kiko does not import a currency its Binance sync does not support. | Не відстежуються: {{tickers}}. Кіко не імпортує валюту, яку не підтримує синхронізація Binance. |
 | `accountDetail.oversizedAmount` | {{coin}}: Kiko could not import an amount exactly, so it was skipped. | {{coin}}: Кіко не зміг точно імпортувати суму, тому її пропущено. |
 | `settings.dataImport.amountTooLargeError` (set 1; a version 1-3 backup refused by the USDT safe-integer bound, U8b) | The "export file" text (`en.ts` and `uk.ts` are the source: read it there) | The "export file" text (read it in `uk.ts`) |
-| `accountDetail.disconnectProviderMessage.binance` (changed) | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | (unchanged) Акаунт буде відʼєднано, але ви можете й надалі керувати ним вручну. |
+| `accountDetail.disconnectProviderMessage.binance` (changed) | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | Акаунт буде відʼєднано, а збережений API-ключ очищено. Ваші активи й транзакції збережуться, і ви можете й надалі керувати ними вручну. |
 | `holdingDetail.earlierHistory` | Earlier history: {{amount}} | Попередня історія: {{amount}} |
 | `holdingDetail.exchangeNotListed.binance` | Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot. | Не показано: угоди з ф’ючерсами, маржею та опціонами; витрати з Binance Card і подарункових карток; Auto-Invest; позики; стейкінг ETH і SOL; майнінг; NFT; копітрейдинг; Dual Investment; субакаунти; розподіли, крім винагород Simple Earn; продажі P2P і замовлення P2P, які ви розмістили у ролі оголошувача; угоди з монетами, проданими до цієї версії, яких Кіко ніде більше не бачив; записи, старіші за ті, що зберігає Binance. Binance не вказує гаманець для операцій P2P і фіатних операцій: Кіко показує замовлення P2P на Funding, а фіатні операції — на Spot. |
 | `transactions.tradingFee` | Trading fee | Торгова комісія |

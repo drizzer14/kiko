@@ -67,6 +67,25 @@ const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   ...overrides,
 });
 
+type View = Awaited<ReturnType<typeof render>>;
+
+const renderConnectedBank = () =>
+  render(<BankSyncSection account={bankAccount({ institution: 'monobank' })} />);
+
+const pickMonobankFromSheet = async (): Promise<View> => {
+  const view = await render(<BankSyncSection account={bankAccount()} />);
+
+  await fireEvent.press(view.getByText('Add a bank'));
+  await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+
+  return view;
+};
+
+const confirmDisconnect = async (view: View) => {
+  await fireEvent.press(view.getByText('Disconnect'));
+  await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseLiveQuery.mockReturnValue({ data: [] });
@@ -105,10 +124,7 @@ describe('BankSyncSection — disconnected', () => {
   );
 
   it('renders the Monobank field after picking Monobank, and connecting saves the token then syncs', async () => {
-    const view = await render(<BankSyncSection account={bankAccount()} />);
-
-    await fireEvent.press(view.getByText('Add a bank'));
-    await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+    const view = await pickMonobankFromSheet();
 
     expect(view.getByText('monobank field')).toBeTruthy();
 
@@ -150,10 +166,7 @@ describe('BankSyncSection — disconnected', () => {
   });
 
   it('offers a Change action once a provider is picked, which re-shows the "Add a bank" trigger', async () => {
-    const view = await render(<BankSyncSection account={bankAccount()} />);
-
-    await fireEvent.press(view.getByText('Add a bank'));
-    await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+    const view = await pickMonobankFromSheet();
 
     expect(view.getByText('monobank field')).toBeTruthy();
     expect(view.getByText('Change bank')).toBeTruthy();
@@ -175,10 +188,7 @@ describe('BankSyncSection — disconnected', () => {
       error: 'monobank boom',
       sync: mockMonobankSync,
     });
-    const view = await render(<BankSyncSection account={bankAccount()} />);
-
-    await fireEvent.press(view.getByText('Add a bank'));
-    await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+    const view = await pickMonobankFromSheet();
 
     expect(view.getByText('monobank boom')).toBeTruthy();
   });
@@ -241,8 +251,7 @@ describe('BankSyncSection — disconnected', () => {
       <BankSyncSection account={bankAccount({ institution: 'monobank', bankId: 'monobank' })} />,
     );
 
-    await fireEvent.press(view.getByText('Disconnect'));
-    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+    await confirmDisconnect(view);
     await waitFor(() => expect(mockDisconnectMonobank).toHaveBeenCalledWith('a'));
 
     // Disconnect itself clears `institution`, not `bankId` — the live query
@@ -266,9 +275,7 @@ describe('BankSyncSection — connected', () => {
     // themselves do not depend on that query, so they stay available.
     mockUseLiveQuery.mockReturnValue({ data: [], isLoading: true });
 
-    const view = await render(
-      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
-    );
+    const view = await renderConnectedBank();
 
     expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
     expect(view.queryByText(/Last sync/)).toBeNull();
@@ -277,9 +284,7 @@ describe('BankSyncSection — connected', () => {
   });
 
   it('shows Sync + Disconnect for a Monobank-connected account, syncing through the Monobank action', async () => {
-    const view = await render(
-      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
-    );
+    const view = await renderConnectedBank();
 
     expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
     await fireEvent.press(view.getByText('Sync'));
@@ -288,9 +293,7 @@ describe('BankSyncSection — connected', () => {
   });
 
   it('confirms and routes Disconnect to disconnectMonobank for a Monobank-connected account', async () => {
-    const view = await render(
-      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
-    );
+    const view = await renderConnectedBank();
 
     await fireEvent.press(view.getByText('Disconnect'));
     expect(view.getByText('Disconnect Monobank')).toBeTruthy();
@@ -300,12 +303,9 @@ describe('BankSyncSection — connected', () => {
   });
 
   it('re-plans the reminders after a Disconnect, since the manual account takes them again', async () => {
-    const view = await render(
-      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
-    );
+    const view = await renderConnectedBank();
 
-    await fireEvent.press(view.getByText('Disconnect'));
-    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+    await confirmDisconnect(view);
 
     await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
     expect(mockDisconnectMonobank.mock.invocationCallOrder[0]).toBeLessThan(
@@ -316,12 +316,9 @@ describe('BankSyncSection — connected', () => {
   it('re-plans nothing after a failed Disconnect', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     mockDisconnectMonobank.mockRejectedValue(new Error('keychain locked'));
-    const view = await render(
-      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
-    );
+    const view = await renderConnectedBank();
 
-    await fireEvent.press(view.getByText('Disconnect'));
-    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+    await confirmDisconnect(view);
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
     expect(mockSyncReminders).not.toHaveBeenCalled();
@@ -331,9 +328,7 @@ describe('BankSyncSection — connected', () => {
 
   it('shows a syncing label while the active provider is syncing', async () => {
     mockUseSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockMonobankSync });
-    const view = await render(
-      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
-    );
+    const view = await renderConnectedBank();
 
     expect(view.getByText('Syncing…')).toBeTruthy();
   });

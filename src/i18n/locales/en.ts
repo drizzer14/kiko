@@ -777,7 +777,7 @@ export const en = {
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
-    changeExchangeAction: 'Change exchange',
+    changeExchangeAction: 'Change exchange or wallet',
     checking: 'Checking…',
     closeHoldingAction: 'Close holding',
     closeHoldingErrorTitle: 'Could not close holding',

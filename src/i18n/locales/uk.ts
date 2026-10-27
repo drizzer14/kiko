@@ -314,7 +314,7 @@ export const uk: typeof en = {
       currencyHint: 'Картка рахунку показує суму в цій валюті. Активи зберігають свої валюти.',
       debt: 'Борг',
       editTitle: 'Редагувати рахунок',
-      exchangeConnectable: 'Підключення з ключем API лише для читання.',
+      exchangeConnectable: 'Підключення з API-ключем лише для читання.',
       exchangeDisclaimer:
         'Кіко — незалежний застосунок. Він не повʼязаний із жодною біржею чи гаманцем і не є їхнім партнером.',
       exchangeOther: 'Інша біржа або гаманець',
@@ -685,7 +685,7 @@ export const uk: typeof en = {
     blockExplorerRequestFailed: 'Запит до оглядача блокчейну не вдався: {{status}}',
     btcAddressPlaceholder: 'BTC-адреса',
     changeBankAction: 'Змінити банк',
-    changeExchangeAction: 'Змінити біржу',
+    changeExchangeAction: 'Змінити біржу або гаманець',
     checking: 'Перевірка…',
     closeHoldingAction: 'Закрити актив',
     closeHoldingErrorTitle: 'Не вдалося закрити актив',
@@ -714,7 +714,7 @@ export const uk: typeof en = {
     disconnectProvider: 'Відключити {{provider}}',
     disconnectProviderMessage: {
       binance:
-        'Акаунт буде відʼєднано, а збережений ключ API очищено. Ваші активи й транзакції збережуться, і ви можете й надалі керувати ними вручну.',
+        'Акаунт буде відʼєднано, а збережений API-ключ очищено. Ваші активи й транзакції збережуться, і ви можете й надалі керувати ними вручну.',
       wallet: 'Гаманець буде відʼєднано, але ви можете й надалі керувати ним вручну.',
     },
     emptyHoldings: {

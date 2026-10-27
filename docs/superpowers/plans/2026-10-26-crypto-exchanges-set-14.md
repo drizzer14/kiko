@@ -199,7 +199,8 @@ Set 14 closes none. Left open:
 - New (texts from spec section 10): `forms.account.exchangeType`, `exchangeTypePlaceholder`,
   `exchangeTypeSheetTitle` (Title Case en; add to `src/i18n/locales/title-keys.ts`), `exchangeDisclaimer`,
   `exchangeConnectable`, `walletConnectable`, `bitcoinWallet`, `exchangeOther`, `exchangeOtherCaption`;
-  `accountDetail.connectExchangeAction`, `connectExchangeSheetTitle` (title-keys.ts), `changeExchangeAction`.
+  `accountDetail.connectExchangeAction`, `connectExchangeSheetTitle` (title-keys.ts), `changeExchangeAction` ("Change exchange or wallet" / «Змінити біржу або
+  гаманець», S14-Q8 = A; the spec row said "Change exchange" / «Змінити біржу»).
 - Changed: `help.topics.connectCrypto.steps.2` (en + uk); `accountDetail.disconnectProviderMessage.binance` (en
   AND uk, the translator reviews the uk; S14-Q4 = A).
 - Removed: `accountDetail.sourceLabel` (en + uk). `accountDetail.wallet` / `accountDetail.binance` (the
@@ -304,7 +305,8 @@ removed), `title-keys.ts`. About 12 files: above 8 because knip needs the field'
 Class: (c) + compliance. Files: `src/i18n/locales/{en,uk}.ts` (`help.topics.connectCrypto.steps.2`), the spec
 section 10 rows if the translator changes a uk text (same commit).
 - [ ] Red first: none (copy); the help-topic suites that read step texts, if any, are updated with it (developer
-      greps `connectCrypto`).
+      greps `connectCrypto`). `help.topics.connectCrypto.steps.2` landed in step 4/7 (the help-topics pins need it
+      once `accountDetail.sourceLabel` goes).
 - [ ] Translator review of every set 14 key (section 7), the uk `disconnectProviderMessage.binance` among them,
       recorded in the step report.
 - Check: section 7 suites; `__tests__/spec-test-rows.test.ts` and `__tests__/docs-known-limit.test.ts` if the spec
@@ -358,7 +360,7 @@ section 10 rows if the translator changes a uk text (same commit).
    the picker shown on the edit form.
 5. Demo: any file under `e2e/screenshot/` changed.
 
-## Rulings (S14-Q1 ... S14-Q7)
+## Rulings (S14-Q1 ... S14-Q8)
 
 Source: `rulings.md` (main checkout, `memory/refs/binance-multicoin-sdd-2026-10-21/`), "## Set 14 plan questions".
 
@@ -371,5 +373,6 @@ Source: `rulings.md` (main checkout, `memory/refs/binance-multicoin-sdd-2026-10-
 | S14-Q5 | A: keep `accountDetail.wallet` / `accountDetail.binance`; only `accountDetail.sourceLabel` goes | COORDINATOR | 2026-10-26 |
 | S14-Q6 | A: the picker is optional, placeholder first, no new error key | USER | 2026-10-26 |
 | S14-Q7 | A: a provider picked in the account-detail sheet is not saved to `bankId`; backlog S14-B2 | COORDINATOR | 2026-10-26 |
+| S14-Q8 | A: `accountDetail.changeExchangeAction` reads "Change exchange or wallet" / «Змінити біржу або гаманець» | COORDINATOR | 2026-10-26 |
 
 Backlog S14-B1, S14-B2 (section 1): accepted by the coordinator, 2026-10-26.
