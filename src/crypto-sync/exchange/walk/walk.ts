@@ -23,12 +23,16 @@ export type WalkResult = { imported: number; complete: boolean };
 
 export type WalkWindow = { start: number; end: number };
 
+/** The reads that own ground (see `BinancePendingRange`); no scope is a read of every coin. */
+type OwedScope = NonNullable<BinancePendingRange['scope']>;
+
 /**
  * A window to read, and the series to read it in: a walk that reads several series (a Transfer
  * type each) reads an owed point in the series of its record only. No `series` is every series
- * of the walk.
+ * of the walk. A window with a `scope` is the read of that scope, which skips the coin the walk
+ * already holds for its ground; none reads every coin.
  */
-export type OwedWindow = WalkWindow & { series?: readonly string[] };
+export type OwedWindow = WalkWindow & { series?: readonly string[]; scope?: OwedScope };
 
 /** Split [start, end] into contiguous windows of at most `windowMs`, oldest first. */
 export const buildWalkWindows = (
@@ -144,15 +148,18 @@ const sameWindow = (left: WalkWindow, right: WalkWindow): boolean =>
 
 /**
  * Whether two entries are the same ground: the same window, both a range or both a point, and a
- * point in the same series. Two stuck records of different series at one millisecond owe two
- * points, and each leaves only for a record of its own series.
+ * point in the same series, owed to the same scope. Two stuck records of different series at one
+ * millisecond owe two points, and each leaves only for a record of its own series.
  */
 const sameGround = (left: OwedGround, right: OwedGround): boolean =>
-  sameWindow(left, right) && left.kind === right.kind && left.series === right.series;
+  sameWindow(left, right) &&
+  left.kind === right.kind &&
+  left.series === right.series &&
+  left.scope === right.scope;
 
-/** Whether two points are the same: the same window in the same series. */
+/** Whether two points are the same: the same window in the same series, owed to the same scope. */
 const samePoint = (left: OwedGround, right: OwedGround): boolean =>
-  sameWindow(left, right) && left.series === right.series;
+  sameWindow(left, right) && left.series === right.series && left.scope === right.scope;
 
 /**
  * Whether `owed` keeps `point` from leaving the list: it is the same window, in the same series,
@@ -248,10 +255,11 @@ const distinctPoints = (points: OwedGround[]): OwedGround[] =>
     (left, right) =>
       byStart(left, right) ||
       left.end - right.end ||
-      (left.series ?? '').localeCompare(right.series ?? ''),
+      (left.series ?? '').localeCompare(right.series ?? '') ||
+      (left.scope ?? '').localeCompare(right.scope ?? ''),
   );
 
-/** The ranges of one series (or of none: every series) merged and held to `limit`. */
+/** The ranges of one series and scope (or of none) merged and held to `limit`. */
 const mergedRangesOf = (sorted: OwedGround[], limit: number): OwedGround[] => {
   const merged = mergeTouching(sorted);
 
@@ -263,30 +271,35 @@ const mergedRangesOf = (sorted: OwedGround[], limit: number): OwedGround[] => {
   return merged;
 };
 
-/** The ranges of a list grouped by the series they are owed in, a group for none. */
-const groupedBySeries = (ranges: OwedGround[]): OwedGround[][] => {
-  const groups = new Map<string | undefined, OwedGround[]>();
+/** The ranges of a list grouped by the series and scope they are owed in, a group for none. */
+const groupedBySeriesAndScope = (ranges: OwedGround[]): OwedGround[][] => {
+  const groups = new Map<string, OwedGround[]>();
 
   for (const range of ranges) {
-    const group = groups.get(range.series) ?? [];
+    const key = JSON.stringify([range.series, range.scope]);
+    const group = groups.get(key) ?? [];
 
     group.push(range);
-    groups.set(range.series, group);
+    groups.set(key, group);
   }
 
   return [...groups.values()];
 };
 
 const byStartThenSeries = (left: OwedGround, right: OwedGround): number =>
-  byStart(left, right) || (left.series ?? '').localeCompare(right.series ?? '');
+  byStart(left, right) ||
+  (left.series ?? '').localeCompare(right.series ?? '') ||
+  (left.scope ?? '').localeCompare(right.scope ?? '');
 
 /**
  * Owed ground in its stored form, oldest first. A range is cut to what the walk can still ask
  * for (`cutToBounds`) and merged with the ranges of its series that it touches; past `limit`
  * the two nearest ranges of one series merge into their hull, which reads the gap between them
  * too and loses no ground. A range owed in one series never merges with one of another series,
- * or with one owed in every series: the hull of the two would read the gap in every series. A
- * point is kept exactly as its record owes it, uncut, and dropped only once the floor has passed
+ * or with one owed in every series: the hull of the two would read the gap in every series. The
+ * same holds for a scope: a range owed to the backfill never merges with one owed for every coin,
+ * because the hull would be read by one scope and leave the other's ground unread or read twice.
+ * A point is kept exactly as its record owes it, uncut, and dropped only once the floor has passed
  * all of it: it is never merged with anything, held by a range or shortened, so it is still the
  * ground its record owes, and a read of it can be told from a read of any other ground.
  */
@@ -305,7 +318,7 @@ const normalizePending = (
   );
 
   return [
-    ...groupedBySeries(ranges).flatMap((group) => mergedRangesOf(group, limit)),
+    ...groupedBySeriesAndScope(ranges).flatMap((group) => mergedRangesOf(group, limit)),
     ...points,
   ].sort(byStart);
 };
@@ -493,6 +506,16 @@ const seriesOfPoints = (points: OwedGround[]): string[] | undefined => {
 };
 
 /**
+ * The scope a window of points is read in: that of every point, or none (every coin) when one of
+ * the points is owed for every coin, whose read also reads what the other points owe.
+ */
+const scopeOfPoints = (points: OwedGround[]): OwedScope | undefined => {
+  const scopes = new Set(points.map((point) => point.scope));
+
+  return scopes.size === 1 ? [...scopes][0] : undefined;
+};
+
+/**
  * The windows to read for the points of a list, oldest first: one for each start, the widest
  * (a point that starts with it and ends before it lies inside it, so its read returns that
  * record too), cut at the end of the walk, with no window for a point the end has not reached.
@@ -511,6 +534,7 @@ const pointsToRead = (points: OwedGround[], endTime: number): OwedWindow[] => {
       start,
       end: Math.min(maxOf(here.map((point) => point.end)), endTime),
       ...foldMap(maybe(seriesOfPoints(here)), (series) => ({ series })),
+      ...foldMap(maybe(scopeOfPoints(here)), (scope) => ({ scope })),
     };
   });
 };
@@ -607,6 +631,7 @@ export const planWalkPasses = (input: {
           (window): OwedWindow => ({
             ...window,
             ...foldMap(maybe(range.series), (series) => ({ series: [series] })),
+            ...foldMap(maybe(range.scope), (scope) => ({ scope })),
           }),
         ),
       ),
@@ -666,6 +691,11 @@ type MarkAdvance = {
    * a walk that reads some series per window cannot leave it out and cut ground it never read.
    */
   series: readonly string[] | undefined;
+  /**
+   * The scope the span was read in, none for a read of every coin (see `OwedWindow`). The ground
+   * the span owes again is owed to that scope.
+   */
+  scope?: OwedScope;
   /** The ground of `span` the walk could not commit, which stays owed (a point, or the span). */
   owed?: OwedGround[];
   plan: WalkPlan;
@@ -779,6 +809,20 @@ const advanceCursor = async (input: MarkAdvance): Promise<void> => {
   }
 };
 
+/** Whether a read in `read` (none: every coin) reads the ground owed to `owed`. */
+const isReadAs = (read: OwedScope | undefined, owed: OwedScope | undefined): boolean =>
+  owed === undefined
+    ? read === undefined
+    : match(owed)
+        .returnType<boolean>()
+        // Either read covers it: the backfill owes only the coins the walk has not read there.
+        .with('backfill', () => true)
+        .exhaustive();
+
+/** Whether the point of a record `read` settles `owed`: same window and series, read as owed. */
+const readsPoint = (read: OwedGround, owed: OwedGround): boolean =>
+  sameWindow(read, owed) && read.series === owed.series && isReadAs(read.scope, owed.scope);
+
 /** Whether `outer` holds all of `inner`. */
 const holdsAll = (outer: WalkWindow, inner: WalkWindow): boolean =>
   outer.start <= inner.start && inner.end <= outer.end;
@@ -789,14 +833,16 @@ const holdsAll = (outer: WalkWindow, inner: WalkWindow): boolean =>
  * part of it can return one record of the second it owes and miss another, so a point leaves
  * the list only when its whole window was read to its end (`dropReadPoints`). A range owed in
  * one series loses what a span read in that series, or in every series; a range owed in every
- * series loses only what a span read in every series, since the series left out still owe it.
+ * series loses only what a span read in every series, since the series left out still owe it. A
+ * range owed to the backfill loses what a span read for every coin or for the backfill; a range
+ * owed for every coin loses only what a span read for every coin, since the backfill skips a coin.
  */
 const withoutReadGround = (input: MarkAdvance): OwedGround[] => {
-  const { series, span } = input;
+  const { series, scope, span } = input;
   const isReadIn = (ground: OwedGround): boolean =>
-    ground.series === undefined
+    (ground.series === undefined
       ? series === undefined
-      : series === undefined || series.includes(ground.series);
+      : series === undefined || series.includes(ground.series)) && isReadAs(scope, ground.scope);
 
   return input.marks.pending.flatMap((ground) =>
     !isPoint(ground) && isReadIn(ground) ? withoutRead([ground], span) : [ground],
@@ -827,7 +873,7 @@ export const dropReadPoints = async (input: {
   }
 
   const isSettled = (ground: OwedGround): boolean =>
-    isPoint(ground) && holdsAll(window, ground) && read.some((point) => samePoint(point, ground));
+    isPoint(ground) && holdsAll(window, ground) && read.some((point) => readsPoint(point, ground));
 
   await writeAll(
     write,
@@ -885,6 +931,14 @@ const withRunTime = (owed: OwedGround[], ranAt: number): OwedGround[] =>
   );
 
 /**
+ * `ground` owed to `scope`. What a window of the backfill owes again stays the backfill's: owed for
+ * every coin, a later read would read the coin the backfill skips and bring back a row the user
+ * deleted.
+ */
+const inScope = (ground: OwedGround[], scope: OwedScope | undefined): OwedGround[] =>
+  ground.map((entry) => ({ ...entry, ...foldMap(maybe(scope), (name) => ({ scope: name })) }));
+
+/**
  * Move the walk's marks once a span's rows are durable. A forward span moves the cursor to
  * its end, never back: the first spans of a pass start behind it, and the mark to compare
  * with is the one this run last wrote, not the one it found. The first forward span also
@@ -897,7 +951,10 @@ const withRunTime = (owed: OwedGround[], ranAt: number): OwedGround[] =>
  * list when it changed, and the mark that moved.
  */
 export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> => {
-  const stamped = { ...input, owed: withRunTime(input.owed ?? [], input.plan.ranAt) };
+  const stamped = {
+    ...input,
+    owed: withRunTime(inScope(input.owed ?? [], input.scope), input.plan.ranAt),
+  };
 
   return match(stamped.pass)
     .returnType<Promise<void>>()
@@ -1084,7 +1141,8 @@ const holdsStart = (hint: BinanceSpanHint, start: number): boolean =>
  */
 const isHintOf = (hint: BinanceSpanHint, window: OwedWindow, pass: BinanceSpanHintPass): boolean =>
   (pass === 'point' ? hint.start === window.start : holdsStart(hint, window.start)) &&
-  (hint.resume === undefined || sameSeries(hint.resume.series, window.series));
+  (hint.resume === undefined ||
+    (sameSeries(hint.resume.series, window.series) && hint.resume.scope === window.scope));
 
 /**
  * The hint a window of `pass` begins with: of those that hold its start, the one that starts
@@ -1122,7 +1180,8 @@ const sameResume = (left?: BinanceSpanResume, right?: BinanceSpanResume): boolea
     : left.from === right.from &&
       sameList(left.returned, right.returned) &&
       sameList(left.stuck, right.stuck) &&
-      sameSeries(left.series, right.series);
+      sameSeries(left.series, right.series) &&
+      left.scope === right.scope;
 
 const sameHints = (left: BinanceSpanHints, right: BinanceSpanHints): boolean =>
   (['forward', 'pending', 'rescan', 'point'] as const).every(
@@ -1407,6 +1466,7 @@ const leftAt = (input: {
       returned: distinctGround(returned.map((point): OwedGround => ({ ...point, kind: 'point' }))),
       stuck: distinctGround(stuck),
       ...foldMap(maybe(window.series), (series) => ({ series: [...series] })),
+      ...foldMap(maybe(window.scope), (scope) => ({ scope })),
     },
   };
 };
@@ -1490,10 +1550,13 @@ export const walkSpans = async <Page>(input: {
   }
 
   await onComplete?.(
-    returned.filter(
-      (point, index) =>
-        returned.findIndex((other) => samePoint(other, point)) === index &&
-        !stuck.some((owed) => holdsPoint(owed, point)),
+    inScope(
+      returned.filter(
+        (point, index) =>
+          returned.findIndex((other) => samePoint(other, point)) === index &&
+          !stuck.some((owed) => holdsPoint(owed, point)),
+      ),
+      window.scope,
     ),
   );
 
