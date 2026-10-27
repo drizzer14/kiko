@@ -1081,6 +1081,10 @@ not a class.
 The sync pipeline is deliberately functional, not OOP — see
 `kiko-code-style` for when each style applies.
 
+The global Monobank token (`kiko.monobank.token`) moves to a per-account Keychain item once, at
+bootstrap, in `src/monobank/migrate-credential/` (`migrateSingleTokenToPerAccount`); read its
+header for the crash-safe order and never write a second migration path for it.
+
 1. Read the personal token from the iOS Keychain via
    `react-native-keychain`. **Never** store the token in the
    database or write it to a log — Settings holds `baseCurrency` and
@@ -1821,6 +1825,10 @@ See `kiko-domain`'s "Spending-exclusion pipeline" section for the
 module pointers (the section lists them) — read it there rather than a
 duplicated list here.
 
+A re-sync of a connected crypto account carries no address: `resyncRequest`
+(`src/crypto-sync/resync-request/`) builds the request for both the account-detail "Sync now" and
+the Home pull-to-refresh fan-out; never build a second re-sync shape.
+
 ## Binance exchange sync — every asset of three wallets, one holding per coin and wallet
 
 `binanceProvider` (`src/crypto-sync/binance/binance.provider.ts`) reads
@@ -2445,7 +2453,11 @@ rewards first, then subscriptions and redemptions; `callsOf` counts them, `LANE_
 caps the lane). It keeps the marks of `WalkMarks` (`exchange/walk-state/walk-state.ts`; read the
 type for the list, never a copy) in its `earn` entry of `exchange_state`, among them the two
 backfill marks `backfillCursor` and `backfillTurn`, reset by a disconnect
-(`exchangeStateReset`). The stop codes live in
+(`exchangeStateReset`). A test seeds or reads walk marks only through
+`src/test-support/walk-marks.ts` (`walkStateFake`, `walkMarksOf`, `WalkMarkSeed`), never a raw
+`exchange_state` literal; `binance-backfill-world.ts` is the shared world of the four backfill
+walks, `binance-real-sqlite.ts` the real-database twin and `navigator-stack-probe.tsx` the stack
+probe. An edit of one of these helpers is an edit of every pin on it. The stop codes live in
 `binance.earn-history.ts`; the design is in the spec (section 6, the E matrix) and the plan.
 
 - **A reward group is ONE record.** Binance gives a reward no id: the rows of a group
@@ -3209,7 +3221,8 @@ what a change must keep.
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
   (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.
-  The Home AND Settings stacks register `TransactionForm`, `AccountForm` and `HoldingForm`
+  The Settings stack lives in `src/navigation/settings-stack/` (its screen list is the code's).
+The Home AND Settings stacks register `TransactionForm`, `AccountForm` and `HoldingForm`
   (`HoldingFormParams`, no `returnTo`; neither stack passes `returnTo`) as
   well as the Accounts stack, because leaving the tab resets its stack and would lose the
   transaction form's draft; both take options from `src/navigation/swapped-form-options/`. A form

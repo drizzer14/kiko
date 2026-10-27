@@ -95,6 +95,13 @@ non-currency `price_points` store.
   a legacy `X:Y` pair, or `UAH` itself as `base` — unread rather than
   corrupting the table.
 
+## Coin ids and per-currency totals
+
+`cryptoCoinGeckoId` (`src/rates/coingecko-ids/`) is the one map from a crypto currency to its
+CoinGecko id; the live and history fetches both read it. `sumByCurrency`
+(`src/rates/currency-totals/`) sums holdings into one `Money` per currency, valued net of tax;
+read both there and never rebuild either.
+
 ## Rate history
 
 `src/rates/rate-history-repo/rate-history.repo.ts` keeps

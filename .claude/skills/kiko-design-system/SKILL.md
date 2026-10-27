@@ -1683,7 +1683,12 @@ new component can land between reviews of this skill:
   `transaction-card.styles.ts`).
 - **EntryDateHeader** (`src/design-system/components/entry-date-header/`) —
   the date heading drawn above an `EntryCard`. Read
-  `entry-date-header.props.d.ts` for the props.
+  `entry-date-header.props.d.ts` for the props. A transaction list's day sections come from
+  `groupByDay` and `DaySection` (`src/transactions/group-by-day/`), shared by Home and the
+  holding-detail ledger; never regroup by day inline.
+- **Field and filter helpers.** A field's nested testID comes from `deriveFieldTestID`
+  (`src/design-system/derive-field-test-id/`), a `FilterMenu` toggle from `toggleFilterValue`
+  (`src/design-system/toggle-filter-value/`); never re-implement either.
 - **ExpandToggle** (`src/design-system/components/expand-toggle/`) — the
   shared "Show all" / "Show less" link with a chevron. `testID` is required
   (`expand-toggle.props.d.ts`); the chevron takes `${testID}-chevron`. Its

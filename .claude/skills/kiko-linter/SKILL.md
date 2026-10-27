@@ -16,8 +16,9 @@ that check the app, not the app's own code style (see
 tree today.
 
 The root `Makefile`'s `verify` target (`make verify`, wrapping
-`scripts/checks/verify.sh`) is the end-of-work verify. The role agents ask the coordinator to
-queue it (`bash scripts/job-queue.sh verify <worktree> <label>`); a typed `make verify` is
+`scripts/checks/verify.sh`) is the end-of-work verify. The COORDINATOR queues it
+(`bash scripts/job-queue.sh verify <worktree> <label>`) when an orchestrator reports
+READY FOR VERIFY; a typed `make verify` is
 denied (see "Heavy-job and full-jest deny"). It runs lint, then the full Jest suite in two
 stages (2a: every suite but the real-semgrep ones, with the tripwire shim
 `scripts/checks/semgrep-tripwire/semgrep` first on PATH; 2b: the suites listed in
@@ -305,7 +306,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   run bodies, same-command variables, data bodies, scanned scripts); its HOW TO FIX is
   `bash scripts/ff-main.sh <sha>`. Any other merge on main stays `mainCheckout`, whose HOW TO
   FIX also names `scripts/ff-main.sh`. The way out: do the real merge in a separate detached
-  worktree, run a queued `scripts/job-queue.sh verify` on the merge commit, then
+  worktree, have the coordinator queue `scripts/job-queue.sh verify` on the merge commit, then
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
   sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
   version strictly above main's, and no commit may lower, remove, or make unreadable that

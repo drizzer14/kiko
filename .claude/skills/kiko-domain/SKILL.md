@@ -437,7 +437,10 @@ closing import over a holding the user logged by hand shows it).
 throws an Error with the message transactions/ledgerless-holding when its
 type is `isLedgerlessHoldingType`. The whole split or exchange write rolls
 back. It covers `recordManual`, `recordManualWithReturns`, the plain legs of
-`recordExchange`, and `recordExchangeCounterpart` (Convert-mode). A term_deposit exchange DESTINATION still
+`recordExchange`, and `recordExchangeCounterpart` (Convert-mode). Convert-mode eligibility and
+direction live in `src/holdings/exchange-convert/` (`canConvertToExchange`,
+`exchangeConvertDirection`), and the counterpart's seed amount in `src/holdings/exchange-prefill/`
+(`seedCounterpartMinorUnits`); read them there. A term_deposit exchange DESTINATION still
 works: its receive path `contribution` writes metadata, not a row. The
 transaction form's split change-return picker offers only
 `isTransactionEligibleType` holdings, the same gate as the primary picker.
@@ -1026,7 +1029,10 @@ The internal-transfer matcher runs over `ledgerWithCurrency` (every
 holding, whatever the account filter or `closedAt`). The funding matcher
 (`exchangeFundingMatches`) reads the same unfiltered `ledgerWithCurrency` plus an
 account-kind-by-holding map (a holding with no account counts as a bank side), so the
-account filter never brings a funding debit back; the transaction form reads its
+account filter never brings a funding debit back. The nearest-first pass alone can strand an
+exchange row, so the matcher adds an augmenting-path pass (`addAugmentingPairs` in
+`exchange-funding-match.ts`) and its test file holds a maximum-matching floor test
+(`maximumMatchingSize`): a change to the matcher keeps both. The transaction form reads its
 `excludedIds` through `useExchangeFundingCaption`
 (`src/statistics/exchange-funding-match/use-exchange-funding-caption/`). The loan-payment
 exclusion runs over the account-filtered rows.

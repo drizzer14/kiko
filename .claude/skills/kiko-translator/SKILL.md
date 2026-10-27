@@ -268,6 +268,11 @@ rows (`help.topics.*.rowLabel`, `SettingsRow` in `help.screen.tsx` that
 also open a screen) stay sentence case ("Add an account" vs title "Add an
 Account"). It is not a rule for every row that opens a screen.
 
+Removing or renaming a catalogue key: first grep the old key and its literal across the help
+topics, the pin suites (`it(`/`describe(` titles included), the plan and spec rows, and uk, then
+make every dependent edit in the SAME step and commit. A copy ruling greps the old literal the
+same way before it lands.
+
 A string used in TWO roles otherwise (a menu item or button doubling as
 a sheet title) still needs TWO keys, one per role, not one key reused —
 `accountDetail.addBankSheetTitle` (Title Case) vs
