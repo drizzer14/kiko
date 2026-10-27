@@ -15,6 +15,7 @@ import {
   usedApiWeightFromHeaders,
   usedWeightsFromHeaders,
 } from './binance.client';
+import type { BinanceSignedPath } from './binance.endpoints';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 
 /**
@@ -776,7 +777,7 @@ export const EARN_REDEMPTION_SETTLED_STATUS = 'PAID';
  */
 const EARN_READS = {
   flexibleSubscription: {
-    path: `${EARN_HISTORY_ROOT}/flexible/history/subscriptionRecord`,
+    path: `${EARN_HISTORY_ROOT}/flexible/history/subscriptionRecord` as const,
     extraParams: {},
     settledStatus: EARN_SUBSCRIPTION_SETTLED_STATUS,
     readRow: recordReader({
@@ -793,7 +794,7 @@ const EARN_READS = {
     }),
   },
   flexibleRedemption: {
-    path: `${EARN_HISTORY_ROOT}/flexible/history/redemptionRecord`,
+    path: `${EARN_HISTORY_ROOT}/flexible/history/redemptionRecord` as const,
     extraParams: {},
     settledStatus: EARN_REDEMPTION_SETTLED_STATUS,
     readRow: recordReader({
@@ -807,7 +808,7 @@ const EARN_READS = {
     }),
   },
   flexibleRewards: {
-    path: `${EARN_HISTORY_ROOT}/flexible/history/rewardsRecord`,
+    path: `${EARN_HISTORY_ROOT}/flexible/history/rewardsRecord` as const,
     extraParams: { type: 'ALL' },
     settledStatus: undefined,
     readRow: recordReader({
@@ -819,7 +820,7 @@ const EARN_READS = {
     }),
   },
   lockedSubscription: {
-    path: `${EARN_HISTORY_ROOT}/locked/history/subscriptionRecord`,
+    path: `${EARN_HISTORY_ROOT}/locked/history/subscriptionRecord` as const,
     extraParams: {},
     settledStatus: EARN_SUBSCRIPTION_SETTLED_STATUS,
     readRow: recordReader({
@@ -836,7 +837,7 @@ const EARN_READS = {
     }),
   },
   lockedRedemption: {
-    path: `${EARN_HISTORY_ROOT}/locked/history/redemptionRecord`,
+    path: `${EARN_HISTORY_ROOT}/locked/history/redemptionRecord` as const,
     extraParams: {},
     settledStatus: EARN_REDEMPTION_SETTLED_STATUS,
     readRow: recordReader({
@@ -852,7 +853,7 @@ const EARN_READS = {
     }),
   },
   lockedRewards: {
-    path: `${EARN_HISTORY_ROOT}/locked/history/rewardsRecord`,
+    path: `${EARN_HISTORY_ROOT}/locked/history/rewardsRecord` as const,
     extraParams: {},
     settledStatus: undefined,
     readRow: recordReader({
@@ -1430,7 +1431,7 @@ const fiatPaymentsPage = identifiedTotalPage(FIAT_IDENTITY_FIELDS, FIAT_PAYMENT_
 const fiatRequestPage = (input: {
   apiKey: string;
   secret: string;
-  path: string;
+  path: BinanceSignedPath;
   rows: number;
   transactionType: FiatTransactionType;
   span: WalkWindow;
