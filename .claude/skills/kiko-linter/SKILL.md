@@ -100,7 +100,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   human or a manual `check:security`/`check:dup` run.
   `__tests__/wrapper-stderr-exit-zero.test.ts` pins this: a `scripts/checks/*.sh` wrapper that
   writes to stderr and exits 0 must be named in the list item that cites that test, and a new one
-  without a mention fails; keep `dup.sh`, `medium.sh` and `security.sh` named.
+  without a mention fails; keep `dup.sh`, `medium.sh` and `security.sh` named. The test reads
+  the skill through `readSkillText`, so the list item may live in a reference file that SKILL.md
+  links to.
 
   `medium.sh`'s doc step (see `docs/harness/checks.md` "Automatic wiring") has a deadline exit
   shaped like the guard replay's: at hookStarted + the budget that
@@ -1042,7 +1044,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   broad run after a narrow pass fail without it). Every doc that copies
   the cap number is pinned to the assignment by
   `__tests__/mutation-cap-docs.test.ts`; a doc that newly states the
-  number goes in its list. The stream, lock, and
+  number goes in its list. A skill in that list is read through `readSkillText`, so a cap
+  statement in a linked reference file counts and must match too. The stream, lock, and
   cap tests share their throwaway-repository, stub, and wrapper-run helpers
   through `__tests__/test-support/mutation-repository.ts` (excluded from
   Jest's suite list by `jest.config.js` `testPathIgnorePatterns`, which
@@ -2778,9 +2781,11 @@ Every `NODE_RULES` row's `ruleId` must be named in this section. The
 Jest invariant `__tests__/node-rules-skill-coverage.test.ts` fails,
 naming the missing ids, when a row has no bullet here (it matches the
 id as a whole token, so `kiko-a-longer` does not cover `kiko-a`, and
-reads only from this heading to the next `##` heading, ignoring `#`
+reads the skill through `readSkillText` (SKILL.md plus linked reference files), and only from
+this heading to the next `##` heading, ignoring `#`
 lines inside fenced blocks). Add the bullet in the same commit as the
-row.
+row. A section moved into a reference file keeps its heading line there, and a bullet for each
+rule id goes under it.
 
 Each `NODE_RULES` row names its own `projectCheck`, the gate a deny for
 a pre-existing finding points at. A Semgrep deny names
@@ -2899,12 +2904,12 @@ a pre-existing finding points at. A Semgrep deny names
   require keeps every file (fail closed). It is not a `NODE_RULES` row and
   has no `.sh` wrapper, `check:*` gate, or `--write`; `knip.json` ignores it.
 
-A Jest invariant, `__tests__/cited-paths.test.ts`, fails when a skill,
-agent or harness doc cites a repo path in an inline code span that does
-not exist. Fix the citation in the text; never allowlist it. A doc never cites an untracked
-folder that exists only in some checkouts (for example .claude/worktrees/ or memory/refs/): the
-citation resolves in one checkout and fails in another. Write it without backticks. A sentence
-that names a path that is gone (a move, a removal) writes it without
+A Jest invariant, `__tests__/cited-paths.test.ts`, fails when a skill
+(SKILL.md or reference file), agent or harness doc cites a repo path in an inline code span
+that does not exist. Fix the citation in the text; never allowlist it. A doc never cites an
+untracked folder that exists only in some checkouts (for example .claude/worktrees/ or
+memory/refs/): the citation resolves in one checkout and fails in another. Write it without
+backticks. A sentence that names a path that is gone (a move, a removal) writes it without
 backticks, so it is not a citation; no prose wording exempts a
 backticked path. The test's header defines what counts as a citation.
 A partial citation that drops the root (`design-system/entity-tint/`,
@@ -2915,6 +2920,20 @@ disk that git tracks or would track
 (the file listing in `__tests__/test-support/repository-files.ts`, kept when
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
+
+A skill is its SKILL.md plus its reference files: the other `.md` files in the skill folder
+that SKILL.md links to. The doc suites that read a skill read it through `readSkillText` in
+`__tests__/test-support/skill-text.ts`, so a section moved into a reference file needs no suite
+edit. Link a reference file with a Markdown link whose target is file.md or file.md#anchor: a
+relative path with no space, one level deep, inside the skill folder. A link with a title, angle
+brackets, reference style or `%20` is not read, a link to a target outside the skill folder or a
+URL is ignored, and a link inside a reference file is not followed. A link to a file that is not
+there throws, so a typo fails the suite; the link regex reads raw text, so a link inside a fenced
+block counts too. A `.md` file at any depth in a skill folder that SKILL.md does not link fails
+the orphan row in `__tests__/skill-citations.test.ts` (`orphanReferenceFiles`); fix it by
+linking the file in the accepted form, never by dropping the row. Start each reference file with
+a `##` heading, or a concatenating reader runs the last SKILL.md section into its first lines.
+`cited-paths` reads every `.md` under `.claude/skills`, reference files included.
 
 A skill sentence that lists a guard's conditions, or a write-queue read's
 callers, drifts when one is added: point at the boolean's definition or at a
@@ -3210,7 +3229,8 @@ mechanizable (see harness-workflow's "Classify every finding").
      `metadata.skill` uses `"<skill> › <heading>"`. A finding without
      `metadata.skill` makes the guard deny "could not check".
      `__tests__/skill-citations.test.ts` fails a `metadata.skill` or a
-     `NODE_RULES` `skill` that names no real heading. Cite the heading
+     `NODE_RULES` `skill` that names no real heading in the skill's SKILL.md or in a reference
+     file it links to (see the cited-paths paragraph for the link form). Cite the heading
      exactly (backticks do not matter); a trailing ` (Qualifier)` and
      ` / `-joined headings are allowed, a prefix is not.
    - The guard, `check:security`, and `check:rules` load the whole file.
