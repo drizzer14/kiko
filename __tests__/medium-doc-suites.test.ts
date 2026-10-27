@@ -499,6 +499,8 @@ describe('medium.sh doc-suites step', () => {
     ['harness/kiko/skills/', 'harness/kiko/skills/demo/SKILL.md'],
     ['harness/kiko/agents/', 'harness/kiko/agents/demo.md'],
     ['.claude/skills/', '.claude/skills/demo/SKILL.md'],
+    ['a .claude skill reference file', '.claude/skills/demo/reference.md'],
+    ['a harness skill reference file', 'harness/kiko/skills/demo/reference/details.md'],
     ['docs/', 'docs/harness/new.md'],
     ['CLAUDE.md', 'CLAUDE.md'],
   ])('runs the discovered suites after an uncommitted change under %s', (_root, path) => {

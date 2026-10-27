@@ -1,5 +1,10 @@
 import { join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
 
 // A guard deny points the agent at `metadata.skill` ("<skill> › <heading>").
 // A heading renamed or cited from memory leaves the deny pointing nowhere, and
@@ -104,10 +109,13 @@ const citationResolves = (citation: string, readSkill: (skill: string) => string
 const readRepositoryFile = (file: string): string =>
   readFileSync(join(REPOSITORY_ROOT, file), 'utf8');
 
+const readSkillIn = (repositoryRoot: string, skill: string): string | undefined =>
+  SKILL_ROOTS.map((root) => join(repositoryRoot, `${root}/${skill}/SKILL.md`))
+    .filter((file) => existsSync(file))
+    .map((file) => readFileSync(file, 'utf8'))[0];
+
 const readRepositorySkill = (skill: string): string | undefined =>
-  SKILL_ROOTS.map((root) => `${root}/${skill}/SKILL.md`)
-    .filter((file) => existsSync(join(REPOSITORY_ROOT, file)))
-    .map(readRepositoryFile)[0];
+  readSkillIn(REPOSITORY_ROOT, skill);
 
 const yamlCitations = RULE_FILES.map(readRepositoryFile).flatMap((text) =>
   [...text.matchAll(YAML_SKILL_PATTERN)].map((match) => match[1]),
@@ -170,6 +178,51 @@ describe('headingResolves', () => {
   it('does not resolve a citation of a missing skill or one without the separator', () => {
     expect(citationResolves('kiko-gone › Component set', () => undefined)).toBe(false);
     expect(citationResolves('Component set', () => '## Component set')).toBe(false);
+  });
+});
+
+describe('a citation into a skill reference file', () => {
+  afterEach(removeTemporaryDirectories);
+
+  const skillWithReference = (skillText: string, referenceText: string): string => {
+    const root = createTemporaryDirectory('kiko-skill-citations-');
+
+    mkdirSync(join(root, '.claude/skills/demo'), { recursive: true });
+    writeFileSync(join(root, '.claude/skills/demo/SKILL.md'), skillText);
+    writeFileSync(join(root, '.claude/skills/demo/reference.md'), referenceText);
+
+    return root;
+  };
+
+  const resolvesIn = (root: string, citation: string): boolean =>
+    citationResolves(citation, (skill) => readSkillIn(root, skill));
+
+  it('resolves a heading of a reference file the SKILL.md links to (POSITIVE)', () => {
+    const root = skillWithReference(
+      '# Demo\n\n## Overview\n\nSee [the details](reference.md).\n',
+      '# Reference\n\n## Wrapper details\n',
+    );
+
+    expect(resolvesIn(root, 'demo › Wrapper details')).toBe(true);
+    expect(resolvesIn(root, 'demo › Overview')).toBe(true);
+  });
+
+  it('does not resolve a heading of a reference file the SKILL.md does not link to (NEGATIVE)', () => {
+    const root = skillWithReference(
+      '# Demo\n\n## Overview\n',
+      '# Reference\n\n## Orphan heading\n',
+    );
+
+    expect(resolvesIn(root, 'demo › Orphan heading')).toBe(false);
+  });
+
+  it('does not resolve a heading that neither file holds', () => {
+    const root = skillWithReference(
+      '# Demo\n\nSee [the details](reference.md).\n',
+      '# Reference\n\n## Wrapper details\n',
+    );
+
+    expect(resolvesIn(root, 'demo › Gone')).toBe(false);
   });
 });
 
