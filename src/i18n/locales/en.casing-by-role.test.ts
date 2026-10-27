@@ -49,8 +49,19 @@ import { flattenCatalog } from './flatten-catalog';
 // they appear, per the DECISION's keep-list ("Keep: proper nouns and brand
 // names ... acronyms"). `Settings` covers "iOS Settings" (the OS app);
 // `Ukrainian` is a demonym (a proper adjective — English capitalizes these
-// regardless of position, not a casing choice).
+// regardless of position, not a casing choice). `Card`, `Auto`, `Dual`, `Investment`, `Simple`,
+// `Earn`, `Funding` and `Spot` are the parts of Binance's own product and wallet names ("Binance
+// Card", "Auto-Invest", "Dual Investment", "Simple Earn", "Funding", "Spot") that the Binance
+// not-listed note names.
 const PROPER_NOUNS = new Set([
+  'Card',
+  'Auto',
+  'Dual',
+  'Investment',
+  'Simple',
+  'Earn',
+  'Funding',
+  'Spot',
   'Kiko',
   "Kiko's",
   'Monobank',

@@ -5,6 +5,9 @@ export type ExchangeProviderEntry = {
   id: BalanceProviderId;
   displayNameKey: ParseKeys;
   disconnectMessageKey: ParseKeys;
+  // The note under a holding of this provider that names what its sync never lists. Absent for a
+  // provider with nothing to name, and the holding detail then shows no footer for it.
+  notListedKey?: ParseKeys;
 };
 
 /**
@@ -24,5 +27,6 @@ export const exchangeProviderRegistry: Partial<Record<BalanceProviderId, Exchang
     id: 'binance',
     displayNameKey: 'accountDetail.binance',
     disconnectMessageKey: 'accountDetail.disconnectProviderMessage.binance',
+    notListedKey: 'holdingDetail.exchangeNotListed.binance',
   },
 };

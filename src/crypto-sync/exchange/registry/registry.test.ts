@@ -37,6 +37,15 @@ const expectedByLanguage = {
   },
 } as const;
 
+describe('exchange provider registry not-listed notes', () => {
+  it('gives the Binance entry a not-listed note and the wallet entry none', () => {
+    expect(exchangeProviderRegistry.binance?.notListedKey).toBe(
+      'holdingDetail.exchangeNotListed.binance',
+    );
+    expect(exchangeProviderRegistry.btc_wallet?.notListedKey).toBeUndefined();
+  });
+});
+
 describe.each(['en', 'uk'] as const)('exchange provider registry in %s', (language) => {
   beforeEach(async () => {
     await i18n.changeLanguage(language);

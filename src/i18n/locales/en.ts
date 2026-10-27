@@ -880,6 +880,9 @@ export const en = {
     computed: 'Computed',
     coupon: 'Coupon',
     cost: 'Cost',
+    // The line under an exchange holding's ledger: the balance less the sum of its rows, the part
+    // of the balance the imported history does not explain.
+    earlierHistory: 'Earlier history: {{amount}}',
     // The loan detail's list while it holds no row at all, neither a linked payment nor a
     // scheduled one: the shared EmptyState under the Transactions heading.
     emptyLoanPayments: {
@@ -890,6 +893,13 @@ export const en = {
     // pattern `home.emptyTransactions` uses, replacing a bare
     // "Transactions" heading with nothing below it.
     emptyTransactions: 'No transactions',
+    // The note under an exchange holding's ledger, by provider: what its sync never lists. The
+    // wallet sentence names the wallets the code uses for records that name none (P2P on
+    // Funding, fiat on Spot), so it changes together with that code.
+    exchangeNotListed: {
+      binance:
+        'Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot.',
+    },
     expectedProfit: 'Expected profit',
     // A priced type's (property, metal) breakdown gain row: gross value minus
     // cost basis. Reads green for a gain, red for a loss (MoneyText's own
