@@ -5,6 +5,7 @@ import { DAY_MS } from '@kiko/dates';
 import {
   BACKFILL_AT,
   BACKFILL_WALKS,
+  type BackfillWalk,
   backfillWorldOf,
   coinOfRow,
   KIND_OF,
@@ -16,6 +17,8 @@ import {
   SINCE,
 } from '@kiko/test-support/binance-backfill-world';
 
+import { payFloorMs } from './binance.pay-history';
+import { EARN_FLOOR_MS } from './binance.earn-history';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { transferFloorMs } from './binance.transfer-history';
 import { BinanceHistoryParseError } from './binance.history-client';
@@ -343,11 +346,131 @@ describe('the backfill of a capital walk whose first window is refused every run
   });
 });
 
+// A window owed for every coin whose read splits and pages in every run (a dense stretch, and a
+// record with no time that can never be placed in it, so the window stays owed whole) spends the
+// calls of its pass down to what the pass keeps. The backfill is read after it, on the calls it
+// kept, so the first such window keeps them too: without that hold no window of the backfill is
+// read, for as long as the dense window stays owed.
+describe('the backfill of a walk whose first window owed for every coin is dense', () => {
+  const HOUR_MS = 3_600_000;
+  const DENSE_RECORDS = 150;
+
+  type DenseWorld = {
+    kind: Parameters<typeof recordOf>[0];
+    owed: { start: number; end: number };
+    dense: number;
+    floor: number;
+    since: number;
+    windowMs: number;
+    newest: number;
+    noTime: Record<string, unknown>;
+  };
+
+  // The windows owed for every coin sit where a walk's re-scan does not read them: it reads the
+  // last 89 days of the capital and Pay walks and the last 30 of the other two. The capital
+  // walk's lane of 9 withdrawal calls a run pages 1000 records, so its dense stretch holds more.
+  const DENSE_WORLDS: Record<BackfillWalk, DenseWorld> = {
+    transfer: {
+      kind: 'transfer',
+      owed: { start: NOW - 80 * DAY_MS, end: NOW - 60 * DAY_MS },
+      dense: DENSE_RECORDS,
+      floor: transferFloorMs(NOW),
+      since: SINCE,
+      windowMs: 30 * DAY_MS,
+      newest: NOW - 40 * DAY_MS,
+      noTime: { type: 'MAIN_UMFUTURE', timestamp: undefined },
+    },
+    capital: {
+      kind: 'withdraw',
+      owed: { start: NOW - 300 * DAY_MS, end: NOW - 280 * DAY_MS },
+      dense: 1_500,
+      floor: HISTORY_FLOOR_MS,
+      since: HISTORY_FLOOR_MS + 3 * 89 * DAY_MS,
+      windowMs: 89 * DAY_MS,
+      newest: HISTORY_FLOOR_MS + 3 * 89 * DAY_MS - 5 * DAY_MS,
+      noTime: { applyTime: undefined },
+    },
+    pay: {
+      kind: 'pay',
+      owed: { start: NOW - 200 * DAY_MS, end: NOW - 180 * DAY_MS },
+      dense: DENSE_RECORDS,
+      floor: payFloorMs(NOW),
+      since: payFloorMs(NOW) + 3 * 89 * DAY_MS,
+      windowMs: 89 * DAY_MS,
+      newest: payFloorMs(NOW) + 3 * 89 * DAY_MS - 5 * DAY_MS,
+      noTime: { transactionTime: undefined },
+    },
+    earn: {
+      kind: 'earn',
+      owed: { start: NOW - 80 * DAY_MS, end: NOW - 60 * DAY_MS },
+      dense: DENSE_RECORDS,
+      floor: EARN_FLOOR_MS,
+      since: EARN_FLOOR_MS + 3 * 30 * DAY_MS,
+      windowMs: 30 * DAY_MS,
+      newest: EARN_FLOOR_MS + 3 * 30 * DAY_MS - 5 * DAY_MS,
+      noTime: { time: undefined },
+    },
+  };
+
+  /** The runs, an hour apart, after which both USDT records of the backfill have arrived. */
+  const runsOfDenseWorld = async (name: BackfillWalk, runs: number) => {
+    const { kind, owed, dense, floor, since, newest, noTime } = DENSE_WORLDS[name];
+    const at = owed.start + 10 * DAY_MS;
+    const usdt = (id: string, time: number) => recordOf(kind, { id, coin: 'USDT', time, units: 1 });
+    const timeless = usdt('timeless-1', at - 7_777_777);
+    const world = backfillWorldOf({
+      marks: {
+        [name]: {
+          cursor: NOW - HOUR_MS,
+          multiCoinSince: since,
+          multiCoinSeen: true,
+          pending: [owed],
+        },
+      },
+      records: [
+        usdt('oldest-1', floor + 5 * DAY_MS),
+        usdt('newest-1', newest),
+        { ...timeless, body: { ...timeless.body, ...noTime } },
+        ...Array.from({ length: dense }, (_unused, index) => usdt(`dense-${index}`, at + index)),
+      ],
+    });
+    const arrived = (id: string) =>
+      [...world.stored.keys()].some((key) => key.split(':').includes(id));
+
+    for (let run = 1; run <= runs; run += 1) {
+      await world.walk(name, NOW + run * HOUR_MS);
+    }
+
+    const stillOwed = (world.state.marksOf(name).pending as { scope?: string }[]).filter(
+      ({ scope }) => scope !== 'backfill',
+    );
+
+    return { oldest: arrived('oldest-1'), newest: arrived('newest-1'), stillOwed };
+  };
+
+  // Each window of the backfill is read within as many runs as there are windows (`windowsFrom`):
+  // 3 on the capital, Pay and Earn walks and 6 on Transfer. Measured with the hold: the oldest in
+  // run 1 and the newest in run 3 (run 6 on Transfer); without it neither arrives in 20 runs.
+  it.each(BACKFILL_WALKS)(
+    'imports the USDT records of the %s backfill within as many runs as it has windows',
+    async (name) => {
+      const { floor, since, windowMs } = DENSE_WORLDS[name];
+      const { oldest, newest, stillOwed } = await runsOfDenseWorld(
+        name,
+        Math.ceil((since - floor) / windowMs),
+      );
+
+      expect(stillOwed).not.toEqual([]);
+      expect({ oldest, newest }).toEqual({ oldest: true, newest: true });
+    },
+  );
+});
+
 // The Transfer walk reads 80 calls a run and a window of it costs 20: the forward window, the
 // re-scan window and the point of a FAILED transfer (1 call, owed every run) leave the pending
-// pass the calls of one window. That read went to the ground owed for every coin in every run, so
-// with such a window owed for good (a record with no time can never be placed in it) the backfill
-// was never read: the pending pass alternates between the two while the budget fits one window.
+// pass the calls of one window. A window owed for every coin that no read can finish (a record
+// with no time can never be placed in it) would take that one window in every run and leave the
+// backfill unread, so the pending pass gives the window to the two groups in turn.
 describe('the backfill of a Transfer walk whose pending budget fits one window', () => {
   const HOUR_MS = 3_600_000;
   const FAILED_AT = NOW - 10 * DAY_MS;
