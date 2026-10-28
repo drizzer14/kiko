@@ -19,7 +19,8 @@ export type CurrencyPickerContext =
   | { kind: 'fiat' }
   | { kind: 'holding'; type: HoldingType }
   | { kind: 'statement'; target: { currency: Currency; type: HoldingType } | undefined }
-  | { kind: 'any' };
+  | { kind: 'any' }
+  | { kind: 'crypto-first' };
 
 const holdingGroups = (type: HoldingType): CurrencyGroup[] => {
   const expected = currencyOptions.filter((code) => isCurrencyExpectedForHoldingType(type, code));
@@ -62,6 +63,7 @@ const unorderedGroups = (
       ({ target }) => foldMap(maybe(target), statementGroups) ?? anyGroups(held),
     )
     .with({ kind: 'any' }, () => anyGroups(held))
+    .with({ kind: 'crypto-first' }, () => holdingGroups('crypto_asset'))
     .exhaustive();
 
 // What each currency picker lists, as groups in display order: the context says which currencies

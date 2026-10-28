@@ -11,6 +11,10 @@ import { useSync } from '@kiko/sync/use-sync';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import {
+  type CurrencyPickerContext,
+  useCurrencyPickerGroups,
+} from '@kiko/holdings/currency-picker-groups';
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
@@ -49,7 +53,6 @@ import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
-import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
@@ -216,7 +219,10 @@ const INITIAL_KIND: Kind = 'bank';
 
 const CASH_CURRENCY_CONTEXT = { kind: 'fiat' } as const;
 
-const ACCOUNT_CURRENCY_CONTEXT = { kind: 'any' } as const;
+// A crypto account lists the coins first; every other kind keeps the one list of held, fiat and
+// crypto, which is not widened or narrowed per kind (account-currency spec, Q7).
+const accountCurrencyContext = (kind: Kind): CurrencyPickerContext =>
+  kind === 'crypto' ? { kind: 'crypto-first' } : { kind: 'any' };
 
 // A new cash account has one currency field, the cash one, which also sets the account currency.
 // Every other kind has the account-currency field, on create and on edit. A property or debt
@@ -316,7 +322,7 @@ const AccountCurrencyField: FC<AccountCurrencyFieldProps> = ({
   onSelect,
 }) => {
   const { t } = useTranslation();
-  const groups = useCurrencyPickerGroups(ACCOUNT_CURRENCY_CONTEXT);
+  const groups = useCurrencyPickerGroups(accountCurrencyContext(kind));
 
   if (!hasAccountCurrencyField(isEdit, kind)) {
     return null;
