@@ -371,7 +371,7 @@ It prices one instrument (a metal, or one specific holding priced
 directly — the `metal:`/`holding:` namespaces in
 `src/prices/instrument/`) per `(instrument, day)` row:
 
-- `instrument` is a free-text key, never an FK, built by one of three
+- `instrument` is a free-text key, never an FK, built by one of two
   namespacing functions — `metal:<metal>`, `holding:<holdingId>` — so
   the two kinds can never collide in one table. `holding:<id>` is for a
   thing priced directly (e.g. a property), not through a market symbol.

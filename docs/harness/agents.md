@@ -41,11 +41,6 @@ and every other agent's output stay unaffected.
 
 The plugin does not copy superpowers. Its skills (the folders under
 `harness/kiko/skills/`) and its agents point at superpowers skills directly
-(`superpowers:test-driven-development`, `superpowers:systematic-debugging`,
-`superpowers:using-git-worktrees`, `superpowers:requesting-code-review`,
-`superpowers:writing-skills`, `superpowers:dispatching-parallel-agents`,
-`superpowers:brainstorming`, `superpowers:writing-plans`,
-`superpowers:executing-plans`, `superpowers:subagent-driven-development`,
-`superpowers:verification-before-completion`,
-`superpowers:finishing-a-development-branch`), reusing the installed
+(the superpowers skills named in `harness-workflow` SKILL.md and the agent files;
+grep `superpowers:`), reusing the installed
 `superpowers` plugin rather than duplicating any of its content.

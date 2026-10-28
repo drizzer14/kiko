@@ -908,7 +908,7 @@ verified usage, not dead weight:
     `drizzle/` and `src/` text for the literal `crypto-from-`; Stryker
     keeps the original string beside its mutant.
   - `e2e/screenshot/fixtures/generate-demo-kiko.test.ts`: reads its
-    `.kiko` fixtures by a `fileName` from the `LANGUAGES` table, which
+    `.kiko` fixtures by a `fileName` from the `DEMO_FILES` table, which
     the rule cannot resolve through the loop.
 
   The nested fixture pair proves the rule in `check:rules`;

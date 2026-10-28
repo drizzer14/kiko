@@ -287,7 +287,7 @@ primitive" above for why): `category-trend-line-line-<key>` (one
 `category-trend-line-empty` (the empty state when `series` is `[]`).
 
 It needs no new entry in `__mocks__/react-native-svg.tsx` — it only
-uses `Polyline`, `Line`, `G`, `Svg`, and `Text`, all already exported
+uses `Polyline`, `Line`, `G` and `Svg`, all already exported
 by that mock.
 
 Which categories the chart draws is decided by the saved trend filter

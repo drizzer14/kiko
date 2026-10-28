@@ -492,9 +492,10 @@ no exact heading resolves only when its qualifier occurs in the body of that hea
 subsections included. Quote the heading or the lead's first words.
 
 Four more readers check the skill text beside the citations. `directionCitations` reads a
-quoted text followed by "above" or "below" with no skill name, in documents and not in code
-comments: it must be a heading or an anchored lead of the SAME file, before the line for
-"above" and after it for "below". `__tests__/skill-text-checks.test.ts` holds
+double-quoted text followed by "above" or "below" that no prose citation reads, in documents and
+not in code comments: it must be a heading or an anchored lead of the SAME file, before the line
+for "above" and after it for "below". The readers are in `__tests__/test-support/skill-text.ts`,
+their rows in `__tests__/skill-text-checks.test.ts`:
 `helperCatalogueGaps` (kiko-testing lists every top-level helper file of `src/test-support/` and
 `__tests__/test-support/`, test files aside), `unnamedLockedMarks` (each `**Locked` mark of a
 kiko-design-system reference file is named by its date and `Component` in the "Locked decisions
@@ -503,14 +504,16 @@ reference file is named in its index bullet in SKILL.md, as a whole word, any ca
 fails, add the name to the list or the bullet. `unnamedLockedMarks` and `indexLeadGaps` read the
 reference files through the same link reader, so a link to a missing file throws. A quote that
 a prose citation reads is never read again as a direction citation; a quote after a short skill
-name used as a plain word before a comma is no prose citation, so the direction check reads it.
+name used as a plain word before a comma or a parenthesis is no prose citation, so the direction
+check reads it.
 
 A skill sentence that lists a guard's conditions, or a write-queue read's
 callers, drifts when one is added: point at the boolean's definition or at a
 `grep` that finds the callers, and grep the skills for a screen's boolean
 names when a hook joins it.
 
-The same test checks the comments of `src/**` sources (read through the TypeScript parse, so
+`__tests__/cited-paths.test.ts` also checks the comments of `src/**` sources (read through
+the TypeScript parse, so
 a path in a string or JSX text is not read). A rooted path (the roots are in `TREE_PATH_PATTERN` in
 `__tests__/test-support/source-comment-citations.ts`; read them there) or a bare migration file name in a comment must
 exist. A rootless partial citation in a comment counts only when it ends in a file extension

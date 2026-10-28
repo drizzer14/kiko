@@ -29,8 +29,9 @@ contract every format implements:
   a cheap, non-throwing header/content-signature sniff; `parse` throws
   `StatementParseError` on a file `detect` accepted but whose body
   doesn't actually parse.
-- `ParsedStatement = { formatId, account, transactions,
-  unresolvedRows? }` — `formatId` is a `StatementFormatId` (the
+- `ParsedStatement` (`parser.ts`; read it for the fields: `formatId`,
+  `account`, `transactions`, and the optional `unresolvedRows`,
+  `closingBalance`, `sourceTimeZone`) — `formatId` is a `StatementFormatId` (the
   registry id) or `'column-mapping'` (see below).
 - `ParsedTransaction.currency` is REQUIRED and is THIS ROW's own
   currency — a single-currency CSV format sets the same value on every

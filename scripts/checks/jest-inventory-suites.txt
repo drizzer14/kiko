@@ -40,7 +40,7 @@ src/i18n/locales/title-keys.call-sites.test.ts
 # not inventory: __tests__/job-queue.test.ts — reads the queue directory of its own sandbox
 # not inventory: __tests__/kill-guard-hook-load.test.ts — reads a temporary folder it creates
 # not inventory: __tests__/markdown-prose-width.test.ts — reads only markdown under the skill, agent and docs/harness roots plus its pin file __tests__/fixtures/markdown-prose-width.pinned.json; a change to a markdown file adds it through the doc bucket, and a change to the pin file reaches it by the quoted name 'fixtures/markdown-prose-width.pinned.json' (the __tests__ prefix mapping)
-# not inventory: __tests__/mutation-cap-docs.test.ts — imports skill-text.ts only for readSkillText, which reads the one skill file it names and the .md files that file links; a change to one of them adds it through the doc bucket
+# not inventory: __tests__/mutation-cap-docs.test.ts — imports skill-text.ts only for readSkillText, which reads the skill files it names and the .md files that file links; a change to one of them adds it through the doc bucket
 # not inventory: __tests__/mutation-ranges.test.ts — reads the temporary directories its own run leaves
 # not inventory: __tests__/node-rules-skill-coverage.test.ts — imports skill-text.ts only for readSkillText, which reads the one skill file it names and the .md files that file links; a change to one of them adds it through the doc bucket
 # not inventory: __tests__/pre-write-guard.test.ts — reads the scratch temporary directory of its own run

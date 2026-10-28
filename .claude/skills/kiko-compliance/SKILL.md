@@ -309,10 +309,10 @@ loads remote code, so this stays a reviewer question backed by
 Ask: does this diff add a bank/exchange logo asset, name, or wording
 that could read as an official partnership or endorsement Kiko does
 not have? Judgment only — no mechanized check. Satisfied today for the
-account form's bank and broker pickers: each shows a "not affiliated with
-or endorsed by any bank/broker" caption under its trigger
-(`forms.account.bankDisclaimer`, which also says Kiko is not a bank, and
-`brokerDisclaimer`), and neither picker draws a logo.
+account form's bank, broker and exchange pickers: each shows a "not
+affiliated with or endorsed by" caption under its trigger
+(`forms.account.bankDisclaimer`, which also says Kiko is not a bank,
+`brokerDisclaimer` and `exchangeDisclaimer`), and none draws a logo.
 
 Binance (user ruling C2, 2026-10-18): the release hold is lifted on two
 conditions. No Binance logo appears anywhere in the app or the store
@@ -341,7 +341,8 @@ Standing items:
 - (b) CHECK ITEM, device-only Keychain (4(f)): the Binance key entry must not be iCloud
   synchronizable. `hardenedFor` (`src/crypto-sync/exchange/credentials/credentials.ts`) sets
   `accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY`, and both Binance writers
-  use it (`saveExchangeCredentials` in that file, `migrate-binance-credential.ts`). Re-check
+  use it (`saveExchangeCredentials` in that file,
+  `src/crypto-sync/binance/migrate-binance-credential.ts`). Re-check
   that any new writer of the key goes through `hardenedFor`.
 - (c) The Connect help keeps asking for a read-only key with no trading or withdrawal
   permission (4(b)); a change to that help text re-opens this item.

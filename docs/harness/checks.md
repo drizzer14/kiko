@@ -248,9 +248,9 @@ The same hook also denies `git apply`, `merge`, `rebase`, `pull`,
 `cherry-pick`, `revert`, and `am` that target the MAIN checkout
 (`/Users/drizzer14/Developer/Projects/pff-ios`), by cwd, `cd`, `-C`,
 `--git-dir`/`--work-tree`, or `GIT_DIR=`, because every session's hooks
-run from it. Allowed there: the recovery options `--abort`, `--quit`,
-`--skip`, `--continue`, help, and a read-only `git apply`. A merge or pull whose only option is
-`--ff-only` is its own finding, `mainFastForward`: main moves only through
+run from it. Allowed there: the recovery options (`RECOVERY_OPTIONS` in
+`scripts/checks/kill-guard.js`), help, and a read-only `git apply`. A merge or pull whose only
+option is `--ff-only` is its own finding, `mainFastForward`: main moves only through
 `bash scripts/ff-main.sh <sha>`. Do the real merge in a separate detached worktree, run a queued
 `scripts/job-queue.sh verify` on the merge commit, then run `bash scripts/ff-main.sh <sha>`.
 The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines are

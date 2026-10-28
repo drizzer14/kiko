@@ -123,8 +123,8 @@ e2e/screenshot/fixtures/README.md).
 
 6. `kiko:ops` archives the `Release` configuration (signed with the
    KikoDistribution provisioning profile and the distribution
-   certificate). Only Debug and Release configurations exist;
-   Release-AdHoc is the device-test configuration only.
+   certificate). Archive `Release`; `Release-AdHoc` exists only
+   for `scripts/deploy-device.sh`.
 7. Verify the archive invariants:
    - `UIDeviceFamily` is `[1]` (iPhone only).
    - The distribution signing identity is used.
@@ -229,8 +229,8 @@ This two-phase ordering is the **general rule for every release**:
 Part A's steps 1-5 are written above as one sequence, but steps 4-5
 (tag + publish) always wait for the App Store to actually publish the
 app, never merely for it to be submitted, in review, or rejected. Step
-3 (version sync + archive) always runs first and always tag-less, even
-across multiple rejected submissions.
+3 (the version sync) and step 6 (the archive) always run first and always
+tag-less, even across multiple rejected submissions.
 
 Durable lessons carried forward from `1.0.0`'s submission history (see
 memory `release-5-6-audit-findings` and

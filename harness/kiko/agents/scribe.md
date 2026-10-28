@@ -50,9 +50,10 @@ Rules:
   an unlinked `.md` in a skill folder or a link to a missing file fails `make doc-suites`.
 - In the commit that splits a skill or moves a section, grep SKILL.md and every reference file for
   "above", "below", "earlier", "the next section" and "in this skill"; a pointer that now crosses
-  a file names the file. A quoted heading beside "above" or "below" is checked inside its own
-  file; only an unquoted pointer ("earlier", "the next section", "in this skill", "gotchas above")
-  is read by no check and fails silently.
+  a file names the file. A double-quoted heading beside "above" or "below" is checked inside its
+  own file (a single-quoted one is read by no check); only an unquoted pointer ("earlier",
+  "the next section", "in this skill", "gotchas above") is read by no check and fails
+  silently.
 - A move commit proves "nothing dropped" by comparing every non-blank source line, every bullet
   form included: a diff filter `^-[^-]` hides a removed `- ` bullet (it shows as `-- `).
 - A moved heading, or a section split across two files (heading plus "(continued)"), changes
