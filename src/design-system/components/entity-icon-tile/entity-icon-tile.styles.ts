@@ -12,7 +12,7 @@ type AppTheme = UnistylesThemes[keyof UnistylesThemes];
 // `body` glyph (20pt, see theme.ts) with generous internal padding around it,
 // the iOS Settings icon-tile proportion. Derived from the shared spacing
 // scale (`theme.spacing(9)` = 36), never a bare literal, per the
-// design-system skill's "spacing comes from the shared scale" rule. Exported
+// kiko-design-system's "Spacing" rule. Exported
 // so the component's own `Svg` width/height (a runtime prop, not a style —
 // react-native-svg has no percentage-of-parent sizing here) stays in
 // lockstep with this StyleSheet's own tile size.

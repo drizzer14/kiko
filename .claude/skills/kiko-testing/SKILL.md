@@ -39,8 +39,8 @@ words, `fnts`, one component per file) stay in kiko-code-style and apply to a te
 
 Reuse a helper before writing a second double; read the module's exports there, and extend it
 rather than declaring one per file. `@kiko/test-support/<name>` is `src/test-support/<name>`.
-Before adding a double or helper, list the test-support folder(s) for the current set; the
-catalogue below may lag the folders.
+Before adding a double or helper, list the test-support folder(s) for the current set. A helper
+file the catalogue below does not list fails `__tests__/skill-text-checks.test.ts`: list yours.
 
 ### `src/test-support/`
 

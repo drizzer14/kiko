@@ -111,8 +111,8 @@ export const lightenHex = (hex: string, percent: number): string => {
 
 // The two gradient stops for `EntityIconTile`'s squircle-gradient treatment —
 // see `design-system/components/entity-icon-tile/`. A vertical gradient of the
-// entity's OWN hue, lighter at the top and darker at the bottom, following the
-// design-system "one hue, several renderings" rule: never a second, unrelated
+// entity's OWN hue, lighter at the top and darker at the bottom, following
+// kiko-design-system's "One hue, several renderings" rule: never a second, unrelated
 // color, always derived from `resolveEntityColor`'s result. Percentages are
 // deliberately gentle — the tile is small and meant to read as a saturated,
 // legible chip behind a white glyph (the iOS Settings icon-tile look).

@@ -489,7 +489,7 @@ reads worse than plain code — see the carve-outs below — but check
 
 - **`maybe`** — for a nullable value, in place of a hand-rolled
   `!= null` check or a nullable ternary (see "Banned: the nullable-map
-  ternary" below):
+  ternary" above):
 
   ```ts
   import maybe, { fmap, fold } from 'fnts/maybe';

@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve, relative } from 'node:path';
+import maybe, { foldMap } from 'fnts/maybe';
+import { dirname, join, resolve, relative } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 const MARKDOWN_LINK_PATTERN = /\]\(([^)\s#]+\.md)(?:#[^)\s]*)?\)/g;
 
@@ -8,15 +9,19 @@ const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 const insideFolder = (folder: string, file: string): boolean =>
   !relative(folder, file).startsWith('..');
 
+const linkedFiles = (skillFile: string): { link: string; file: string }[] => {
+  const folder = dirname(skillFile);
+
+  return [...readFileSync(skillFile, 'utf8').matchAll(MARKDOWN_LINK_PATTERN)]
+    .map((match) => ({ link: match[1], file: resolve(folder, match[1]) }))
+    .filter(({ link, file }) => !URL_SCHEME_PATTERN.test(link) && insideFolder(folder, file));
+};
+
 // The files a skill is made of: SKILL.md first, then the `.md` files it links to with a relative
 // link, one level deep. A link to a file that is not there throws instead of being skipped, so a
 // typo or a renamed file fails loudly instead of silently dropping a whole reference file.
 export const skillFiles = (skillFile: string): string[] => {
-  const folder = dirname(skillFile);
-
-  const references = [...readFileSync(skillFile, 'utf8').matchAll(MARKDOWN_LINK_PATTERN)]
-    .map((match) => ({ link: match[1], file: resolve(folder, match[1]) }))
-    .filter(({ link, file }) => !URL_SCHEME_PATTERN.test(link) && insideFolder(folder, file));
+  const references = linkedFiles(skillFile);
 
   references.forEach(({ link, file }) => {
     if (!existsSync(file)) {
@@ -35,7 +40,7 @@ export const readSkillText = (skillFile: string): string =>
     .map((file) => readFileSync(file, 'utf8'))
     .join('\n');
 
-const HEADING_PATTERN = /^#{1,6}\s+(.+?)\s*#*\s*$/;
+const HEADING_PATTERN = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 
 const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
 
@@ -72,7 +77,7 @@ export const headingsOf = (markdown: string): Set<string> =>
     linesOutsideFences(markdown)
       .map((lineText) => HEADING_PATTERN.exec(lineText))
       .filter((headingMatch) => headingMatch !== null)
-      .map((headingMatch) => withoutBackticks(headingMatch[1])),
+      .map((headingMatch) => withoutBackticks(headingMatch[2])),
   );
 
 export const headingResolves = (heading: string, headings: Set<string>): boolean => {
@@ -91,27 +96,217 @@ export const headingResolves = (heading: string, headings: Set<string>): boolean
   return parts.length > 1 && parts.every((part) => headingResolves(part, headings));
 };
 
+const QUALIFIED_PATTERN = /^(.+?)\s+\(([^()]*)\)$/;
+
+const squashed = (text: string): string => withoutBackticks(text).replace(/\s+/g, ' ');
+
+// A quoted `Heading (Qualifier)` that is no heading itself names a part of the section: the
+// qualifier must occur in the body of a heading called `Heading`, so a heading that exists does
+// not vouch for a qualifier it lacks. Any other text resolves as `headingResolves` reads it.
+export const quotedHeadingResolves = (cited: string, markdown: string): boolean => {
+  const headings = headingsOf(markdown);
+
+  const text = withoutBackticks(cited);
+
+  const qualified = QUALIFIED_PATTERN.exec(text);
+
+  if (headings.has(text) || qualified === null) {
+    return headingResolves(text, headings);
+  }
+
+  return sectionBodies(markdown, qualified[1]).some((body) =>
+    squashed(body).includes(squashed(qualified[2])),
+  );
+};
+
+// The text under every heading called `heading`, down to the next heading of the same or a higher
+// level, subsections included.
+const sectionBodies = (markdown: string, heading: string): string[] => {
+  const lines = linesOutsideFences(markdown);
+
+  return lines.flatMap((lineText, index) => {
+    const opening = HEADING_PATTERN.exec(lineText);
+
+    if (opening === null || withoutBackticks(opening[2]) !== heading) {
+      return [];
+    }
+
+    const end = lines.findIndex(
+      (later, offset) =>
+        offset > index &&
+        (HEADING_PATTERN.exec(later)?.[1].length ?? Infinity) <= opening[1].length,
+    );
+
+    return [lines.slice(index + 1, end < 0 ? undefined : end).join('\n')];
+  });
+};
+
+// The list items of a text: a `- ` line and its continuation lines, up to a blank line or the next
+// `- ` line at the line start.
+const bulletsOf = (text: string): string[] =>
+  text.split(/\n\s*\n|\n(?=- )/).filter((chunk) => chunk.startsWith('- '));
+
+const TOP_LEVEL_LEAD_PATTERN = /^- \*\*(.+?)\*\*/;
+
+// A heading or a bold lead as an index names it: no backticks or bold marks, one space between
+// words, no closing period or colon, and no trailing `()` of a call.
+const leadName = (text: string): string =>
+  text
+    .replace(/`|\*\*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[.:]$/, '')
+    .replace(/\(\)$/, '');
+
+// The reference files that are there: a link to a missing one is for the readers of the skill text
+// to throw on, not for a lead check to read as an empty file.
+const linkedReferenceFiles = (skillFile: string): string[] => [
+  ...new Set(
+    linkedFiles(skillFile)
+      .map(({ file }) => file)
+      .filter((file) => existsSync(file)),
+  ),
+];
+
+const HELPER_FOLDERS = ['src/test-support', '__tests__/test-support'];
+
+const HELPER_NAME_PATTERN = /`([\w.-]+\.tsx?)`/g;
+
+const TEST_FILE_PATTERN = /\.test\.tsx?$/;
+
 export type HelperCatalogueGaps = {
   missing: string[];
   unlisted: string[];
   staleExemptions: string[];
 };
 
+const listedHelpers = (catalogue: string): string[] => {
+  let folder: string | undefined;
+
+  return linesOutsideFences(catalogue).flatMap((lineText) => {
+    const heading = HEADING_PATTERN.exec(lineText);
+
+    if (heading !== null) {
+      folder = HELPER_FOLDERS.find((candidate) => heading[2].includes(`\`${candidate}/\``));
+
+      return [];
+    }
+
+    return (
+      foldMap(maybe(folder), (section) =>
+        [...lineText.matchAll(HELPER_NAME_PATTERN)].map((match) => `${section}/${match[1]}`),
+      ) ?? []
+    );
+  });
+};
+
+const helperFilesIn = (root: string): string[] =>
+  HELPER_FOLDERS.filter((folder) => existsSync(join(root, folder))).flatMap((folder) =>
+    readdirSync(join(root, folder), { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isFile() && /\.tsx?$/.test(entry.name) && !TEST_FILE_PATTERN.test(entry.name),
+      )
+      .map(({ name }) => `${folder}/${name}`),
+  );
+
+// kiko-testing lists the helper files of `src/test-support/` and `__tests__/test-support/` under a
+// heading that names the folder; a helper added or removed without the list drifts, and a file
+// that is meant to stay out of it goes on the exemptions with a reason.
 export const helperCatalogueGaps = (
   root: string,
   exemptions: readonly string[],
 ): HelperCatalogueGaps => {
-  throw new Error(`helperCatalogueGaps is not implemented (${root}, ${exemptions.length})`);
+  const listed = new Set(
+    listedHelpers(readSkillText(join(root, '.claude/skills/kiko-testing/SKILL.md'))),
+  );
+
+  const present = new Set(helperFilesIn(root));
+
+  const unlisted = [...present].filter((file) => !listed.has(file));
+
+  return {
+    missing: [...listed].filter((file) => !present.has(file)).sort(),
+    unlisted: unlisted.filter((file) => !exemptions.includes(file)).sort(),
+    staleExemptions: exemptions.filter((file) => !unlisted.includes(file)).sort(),
+  };
 };
 
 export type UnnamedLockedMark = { file: string; line: number; component: string; date: string };
 
+const DATE_PATTERN = /\d{4}-\d{2}-\d{2}/;
+
+const LOCKED_LIST_HEADING = 'Locked decisions (user-approved)';
+
+// A Locked mark in a reference file is named in the SKILL.md list of locked decisions: a bullet
+// there holds the mark's date and the component in backticks. The component is the nearest
+// top-level bold lead above the mark, the date the first one in the mark and the two lines after.
 export const unnamedLockedMarks = (skillFile: string): UnnamedLockedMark[] => {
-  throw new Error(`unnamedLockedMarks is not implemented (${skillFile})`);
+  const lockedBullets = bulletsOf(
+    sectionBodies(readFileSync(skillFile, 'utf8'), LOCKED_LIST_HEADING).join('\n'),
+  );
+
+  return linkedReferenceFiles(skillFile).flatMap((reference) => {
+    const lines = linesOutsideFences(readFileSync(reference, 'utf8'));
+
+    return lines.flatMap((lineText, index) => {
+      const markAt = lineText.indexOf('**Locked');
+
+      if (markAt < 0) {
+        return [];
+      }
+
+      const component = leadName(
+        lines
+          .slice(0, index + 1)
+          .reverse()
+          .map((above) => TOP_LEVEL_LEAD_PATTERN.exec(above)?.[1])
+          .find((lead) => lead !== undefined) ?? '',
+      );
+
+      const markText = [lineText.slice(markAt), ...lines.slice(index + 1, index + 3)].join('\n');
+
+      const date = DATE_PATTERN.exec(markText)?.[0] ?? '';
+
+      const named = lockedBullets.some(
+        (bullet) => bullet.includes(date) && bullet.includes(`\`${component}\``),
+      );
+
+      return date !== '' && named
+        ? []
+        : [{ file: relative(dirname(skillFile), reference), line: index + 1, component, date }];
+    });
+  });
 };
 
 export type IndexLeadGap = { file: string; lead: string };
 
+// SKILL.md indexes each reference file in one bullet (`- [x.md](x.md) — ...`); every `##` heading
+// (cut at ` — `) and every top-level bold lead of the file must be named in it, or a reader of the
+// index never learns the entry exists.
 export const indexLeadGaps = (skillFile: string): IndexLeadGap[] => {
-  throw new Error(`indexLeadGaps is not implemented (${skillFile})`);
+  const bullets = bulletsOf(readFileSync(skillFile, 'utf8'));
+
+  return linkedReferenceFiles(skillFile).flatMap((reference) => {
+    const file = relative(dirname(skillFile), reference);
+
+    const indexed = leadName(
+      bullets.find((bullet) => bullet.startsWith('- [') && bullet.includes(`](${file}`)) ?? '',
+    ).toLowerCase();
+
+    return linesOutsideFences(readFileSync(reference, 'utf8'))
+      .flatMap((lineText) => {
+        const heading = HEADING_PATTERN.exec(lineText);
+
+        if (heading !== null) {
+          return heading[1] === '##' ? [leadName(heading[2].split(' — ')[0])] : [];
+        }
+
+        return (
+          foldMap(maybe(TOP_LEVEL_LEAD_PATTERN.exec(lineText)), (lead) => [leadName(lead[1])]) ?? []
+        );
+      })
+      .filter((lead) => !indexed.includes(lead.toLowerCase()))
+      .map((lead) => ({ file, lead }));
+  });
 };

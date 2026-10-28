@@ -108,6 +108,15 @@ in the harness repo):
   reference-file rule; and a "Skill reference files" paragraph rewritten for the harness repo.
   Do NOT port the Kiko skill text, the section moves or the pin-file keys. The `SKILL_ROOTS`
   literals are per repo.
+- Skills-finish track (pff-ios branch skills-finish, plugin 0.4.52), more generic skill-check
+  readers in `skill-text.ts` and `prose-citations.ts`: `directionCitations` (a quoted heading
+  beside "above" or "below", checked inside its own document); `helperCatalogueGaps`,
+  `unnamedLockedMarks` and `indexLeadGaps` with their rows in
+  `__tests__/skill-text-checks.test.ts` (folders, skill names and the Locked list heading are per
+  repo); and the `proseCitations` changes: the forms `<skill> skill's "X"`, `` `skill`, "X" ``
+  and `` `skill` ("X") ``, an escaped `\"` inside a quote, the comments of `src/**/*.ts(x)` and
+  `rules/fixtures/**` as sources (through `sourceComments`), and a qualified `H (Q)` citation
+  that must find Q in the section of H. Port the readers and rows, not the Kiko skill text.
 
 ## Classification
 

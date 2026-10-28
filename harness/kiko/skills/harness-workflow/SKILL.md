@@ -83,7 +83,7 @@ Rules:
   usage: `docs/harness/checks.md` "Makefile targets".
 - The COORDINATOR owns the queue (user 2026-10-26). An orchestrator never queues a verify,
   check-all, security or gate job: it reports READY FOR VERIFY naming the worktree, the label and
-  the base sha, and the coordinator queues it. Every "queue the verify" below means that report.
+  the base sha, and the coordinator queues it. Every later "queue the verify" means that report.
 - An acceptance pin's seed or world is part of the pin. An edit of a shared seed helper that
   changes an acceptance pin's world is an edit of that pin (Binance S15-Q13): re-seed that pin
   with its own per-pin seed line, never in the shared helper. A plan line "existing suites green

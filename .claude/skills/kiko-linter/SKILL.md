@@ -44,17 +44,26 @@ code it describes.
   it before you change a wrapper, a hook guard or the mutation gate, or when a deny reason
   cites a kind.
 - [semgrep-facts.md](semgrep-facts.md) — the "Semgrep facts verified on ..." sections:
-  measured Semgrep behaviour (`paths.include`, taint, `pattern-inside`, YAML quoting, speed).
-  Read it before you write or debug a Semgrep rule.
+  measured Semgrep behaviour (`paths.include`, taint, `pattern-inside`, YAML quoting, speed),
+  as "Semgrep facts verified on 1.175", "Semgrep facts verified on 2026-10-11
+  (kiko-no-typed-jest-require-actual)", "Semgrep facts verified on 2026-09-25 (pre-write guard
+  build-out)", "Semgrep facts verified on 2026-09-28 (the Round A guard rules)", "Semgrep facts
+  verified on 2026-09-29 (kiko-no-needless-async-either-thunk)", "Semgrep facts verified on
+  2026-09-29 (kiko-no-source-text-read-in-test)" and "Semgrep facts verified on 2026-10-01 (the
+  P5 guard rules)". Read it before you write or debug a Semgrep rule.
 - [rules-comments.md](rules-comments.md) — the per-rule sections for the comment and test-title
-  guards (`kiko-no-history-*-comment`, `kiko-no-task-id-comment`,
+  guards ("F4 code-style mechanization candidates", `kiko-no-stale-guideline-2-3-1a-citation`,
+  `kiko-no-history-id-comment`, `kiko-no-history-word-comment`,
+  `kiko-no-history-date-comment`, `kiko-no-task-id-comment`,
   `kiko-no-change-language-in-test-body`, `kiko-test-title-no-history`, and the rules
   implemented beside them). Read it before you change one of those rules or their fixtures.
 - [rules-code.md](rules-code.md) — the per-rule sections for the code-shape rules and
-  invariants (the worklet-directive rule `kiko-worklet-directive-required`,
-  `kiko-rejects-to-throw-needs-error`, `kiko-sortable-grid-lone-card-lifts`, ternary and match
-  rules, `kiko-no-inline-text-variant-mock`, explicit return, "The `docs-known-limit`
-  invariant", the typed `requireActual` ban, one exported component per `.tsx`, import
+  invariants ("Implemented: a rule for a plain function called inside a worklet" with
+  `kiko-worklet-directive-required`, `kiko-rejects-to-throw-needs-error`,
+  `kiko-sortable-grid-lone-card-lifts`, `kiko-kind-ternary-prefers-match`,
+  `kiko-type-ternary-prefers-match`, `kiko-no-inline-text-variant-mock`,
+  `kiko-component-explicit-return`, "The `docs-known-limit` invariant",
+  `kiko-no-typed-jest-require-actual`, one exported component per `.tsx`, import
   length-sort, `kiko-no-switch`, full words in identifiers). Read it
   before you change one of those rules or their fixtures.
 
@@ -471,12 +480,27 @@ or a concatenating reader runs the last SKILL.md section into its first lines.
 `kiko-x's "Heading"`, the plural possessive `kiko-x' "Heading"`, the bare `kiko-x "Heading"`,
 single-quoted text (`kiko-x's 'Heading'`) and a backticked skill name in skills, agents,
 CLAUDE.md, docs/harness, docs/plans and the message text and comments of `rules/*.yml`
-(`__tests__/test-support/prose-citations.ts`). A citation resolves against the skill's text,
+(`__tests__/test-support/prose-citations.ts`), and the forms `kiko-x skill's "Heading"`, plus
+`` `x`, "Heading" `` and `` `x` ("Heading") `` for a backticked or `kiko-` name (a `\"` inside
+the quote does not end it). It reads the comments, not the strings, of `src/**/*.ts(x)` and
+`rules/fixtures/**` too. A citation resolves against the skill's text,
 reference files included, on an exact heading (a trailing parenthesized qualifier is cut) or
 on an anchored lead: the cited text starts a heading, a list item, a paragraph's first line
 outside fences, or a bold span, with an optional A, An or The. A match at a sentence start
-inside a paragraph, or inside a longer phrase, does not resolve. Quote the heading or the
-lead's first words.
+inside a paragraph, or inside a longer phrase, does not resolve. A qualified citation that is
+no exact heading resolves only when its qualifier occurs in the body of that heading,
+subsections included. Quote the heading or the lead's first words.
+
+Four more readers check the skill text beside the citations. `directionCitations` reads a
+quoted text followed by "above" or "below" with no skill name, in documents and not in code
+comments: it must be a heading or an anchored lead of the SAME file, before the line for
+"above" and after it for "below". `__tests__/skill-text-checks.test.ts` holds
+`helperCatalogueGaps` (kiko-testing lists every top-level helper file of `src/test-support/` and
+`__tests__/test-support/`, test files aside), `unnamedLockedMarks` (each `**Locked` mark of a
+kiko-design-system reference file is named by its date and `Component` in the "Locked decisions
+(user-approved)" list) and `indexLeadGaps` (each `##` heading and top-level bold lead of a
+reference file is named in its index bullet in SKILL.md). When one fails, add the name to the
+list or the bullet; an exemption needs a reason.
 
 A skill sentence that lists a guard's conditions, or a write-queue read's
 callers, drifts when one is added: point at the boolean's definition or at a

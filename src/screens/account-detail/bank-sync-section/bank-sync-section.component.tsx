@@ -117,9 +117,9 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // seeded once into `selectedProviderId`'s initial state: a `useState`
   // initializer only runs at MOUNT, so it would never react to the
   // account row changing after this component was already mounted. A
-  // Disconnect clears `institution` but never `bankId` (see
-  // `kiko-domain`'s "bankId is identity-only, independent of institution"),
-  // so the bank stays known while `AccountDetail`/this section stays mounted.
+  // Disconnect clears `institution` but never `bankId` (see `kiko-domain`'s "Account":
+  // `bankId` is identity-only, independent of `institution`), so the bank stays known
+  // while `AccountDetail`/this section stays mounted.
   const bankIdProviderId = isBankProviderId(account.bankId) ? account.bankId : undefined;
   // The account form's `BankTypeField` already identified this account as
   // Monobank, so re-asking through the generic "Add a bank" picker (today a

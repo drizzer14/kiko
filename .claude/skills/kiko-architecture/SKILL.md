@@ -18,15 +18,18 @@ feature. Read the file before you edit the code it describes.
 
 - [monobank-sync.md](monobank-sync.md) — "Monobank sync pipeline (functional)": the token and
   statement import steps, the balance-diff skip and crash-safe marker, the statement queue
-  and per-card from-window, sync-closed holdings reopening, `failedSyncMonobankIds` and
-  graduation, the per-token rate limit gate and single-flight lock, the market refresh beside
+  ("Changed-first queue order", "Jars are statement sources") and per-card from-window ("A
+  reopened card reaches back to its mark"), sync-closed holdings reopening,
+  `failedSyncMonobankIds` and graduation, the per-token rate limit gate and single-flight lock,
+  the market refresh beside
   the fan-out, the three sync signals with the spinner and `SyncProgressBar`, and
   partial-progress resilience. Read it before you touch `src/monobank/`, `src/sync/` or the
   Home sync affordances.
-- [reminders.md](reminders.md) — "Reminders (local notifications)": the `reminders` table and
-  repository, eligibility rules, the notification permission store, re-plan after a write, the
+- [reminders.md](reminders.md) — "Reminders (local notifications)": Storage (the `reminders`
+  table), the repository, eligibility rules, the schedule Summary, the notification permission
+  store, Shared system status, Shared UI state across screens, re-plan after a write, the
   reminder screens, the offer, the planner and scheduler with the Swift request-identifier
-  contract, mount, tap routing, account delete and backup restore. Read it before you touch
+  contract, mount, tap routing, account delete and Backup/restore. Read it before you touch
   `src/reminders/`, anything that schedules, pauses or routes a notification, or a write that
   connects, disconnects or deletes an account (each calls `replanReminders`).
 
@@ -459,7 +462,7 @@ one for the other:
   marks the query dirty instead. `data` keeps its last rows (never
   `[]`), `isLoading` stays `false`, and `isFresh` turns `false` for a
   dirty query (so a `backfillRanForSpanRef`-style effect guard —
-  "Local state on a cached display screen follows the row" above —
+  "Local state on a cached display screen follows the row" below —
   keeps working across a pause exactly the way it already does across
   an ordinary cached mount). Flipping back to `false` runs exactly ONE
   read if the query went dirty while paused, zero if it did not; the

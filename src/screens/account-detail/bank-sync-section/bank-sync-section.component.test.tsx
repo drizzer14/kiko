@@ -243,8 +243,8 @@ describe('BankSyncSection — disconnected', () => {
   });
 
   // A second transition: Disconnect does not clear `bankId` (only
-  // `institution` — see `kiko-architecture`'s "bankId is identity-only,
-  // independent of institution"), so a just-disconnected account is STILL
+  // `institution` — see `kiko-domain`'s "Account": `bankId` is identity-only,
+  // independent of `institution`), so a just-disconnected account is STILL
   // Monobank and must show Connect again, not "Add a bank".
   it('follows bankId LIVE: disconnecting a Monobank account (bankId unchanged) shows Connect again, not "Add a bank"', async () => {
     const view = await render(

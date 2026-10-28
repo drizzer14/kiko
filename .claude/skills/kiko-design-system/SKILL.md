@@ -35,11 +35,13 @@ file before you edit the component it describes.
   card, form-field and chart components (`ConfirmSheet`, `InfoHint`, `NoticeBanner`,
   the exchange history footer, `ReminderOfferCard`, `EmptyState`, `NotificationPreAlertSheet`,
   `CardContextMenu`, `ImportBalanceLine`, `HoldingCard`, `CloseHoldingSheet`, `SymbolIcon`,
-  `EntityIconTile`, the section heading disclosure row, `Switch`, `TextField`, `FieldError`,
+  `EntityIconTile`, the section heading disclosure row, `Divider`, `Switch`, `TextField`,
+  `FieldError`,
   `useIsMounted`, `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`,
   `EntryDateHeader`, the field and filter helpers (`deriveFieldTestID`, `toggleFilterValue`),
   `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `DayOfMonthGrid`,
-  `SegmentedControl` with the tabs-vs-chips rule, the chart components, `ColorPicker`,
+  `SegmentedControl` with the tabs-vs-chips rule, the chart components (`BarChart`, `PieChart`,
+  `NetWorthLine`), `ColorPicker`,
   `TransactionCard`, and the form header) and the rules "No imports across screen folders",
   "Scroll to the first invalid field" and "Empty holding picker". Read it before you build
   or change any of them.
@@ -501,7 +503,7 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryForm` (edit mode: a star via `useFormHeaderItems` `extraItems`, before Save; the star is `star.fill` and disabled on the default category, a state marker; shown only once the category row is read), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
+  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryForm` (edit mode: a star via `useFormHeaderItems` `extraItems`, before Save; the star is `star.fill` and disabled on the default category, a state marker; shown only once the category row is read), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" in component-set-forms.md, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring

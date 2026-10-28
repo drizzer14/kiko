@@ -386,8 +386,8 @@ skipped, failures, elapsedMs})`, behind a justified `noConsole`
 OVERRIDE — so a dev can tell from a device log whether a run is
 actually taking the fast balance-diff path or is stuck in full-fetch
 mode. This is in addition to, not a replacement for, the
-unrepresentable-currency skip warn in "Map Monobank's ISO 4217..."
-above.
+unrepresentable-currency skip warn in "Map Monobank's ISO 4217 numeric
+currency codes" above.
 
 ### The rate limit is per TOKEN, not per call site
 
