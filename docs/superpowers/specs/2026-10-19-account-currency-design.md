@@ -343,8 +343,8 @@ with the base caption, and the field shows on the implicit edit (task 6/6).
   plumbing.
 - Recommendation: A, applied.
 - Note 2026-10-28 (user device feedback): a crypto account (create and edit) lists the crypto group
-  first, then fiat, through the context `{ kind: 'crypto-first' }` (the group order of a crypto
-  holding). Every other kind keeps `{ kind: 'any' }`; the list is not widened or narrowed.
+  first, then fiat, through the context `{ kind: 'holding', type: 'crypto_asset' }` (the group
+  order of a crypto holding). Every other kind keeps `{ kind: 'any' }`; the list is not widened or narrowed.
 
 ## Non-goals
 

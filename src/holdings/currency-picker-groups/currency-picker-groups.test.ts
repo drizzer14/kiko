@@ -76,24 +76,6 @@ describe('currencyPickerGroups', () => {
     });
   });
 
-  describe('the crypto-first context (a crypto account)', () => {
-    it('lists the coins, then the fiat currencies, as a crypto holding does', () => {
-      const held: readonly Currency[] = ['USD', 'BTC'];
-
-      expect(groupsFor({ kind: 'crypto-first' }, held)).toEqual(
-        groupsFor({ kind: 'holding', type: 'crypto_asset' }, held),
-      );
-    });
-
-    it('orders each group with the held codes first, and has no held group', () => {
-      const groups = groupsFor({ kind: 'crypto-first' }, ['USD', 'BTC']);
-
-      expect(kindsOf(groups)).toEqual(['crypto', 'fiat']);
-      expect(currenciesOf(groups, 'crypto').slice(0, 1)).toEqual(['BTC']);
-      expect(currenciesOf(groups, 'fiat').slice(0, 3)).toEqual(['USD', 'UAH', 'EUR']);
-    });
-  });
-
   describe('a statement context', () => {
     it('puts the target first and not below', () => {
       const groups = groupsFor({ kind: 'statement', target: { currency: 'EUR', type: 'cash' } }, [

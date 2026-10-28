@@ -219,10 +219,17 @@ const INITIAL_KIND: Kind = 'bank';
 
 const CASH_CURRENCY_CONTEXT = { kind: 'fiat' } as const;
 
-// A crypto account lists the coins first; every other kind keeps the one list of held, fiat and
-// crypto, which is not widened or narrowed per kind (account-currency spec, Q7).
-const accountCurrencyContext = (kind: Kind): CurrencyPickerContext =>
-  kind === 'crypto' ? { kind: 'crypto-first' } : { kind: 'any' };
+// A crypto account lists the coins first, as a crypto holding does; every other kind keeps the one
+// list of held, fiat and crypto, which is not widened or narrowed per kind.
+const ACCOUNT_CURRENCY_CONTEXT: Record<Kind, CurrencyPickerContext> = {
+  bank: { kind: 'any' },
+  cash: { kind: 'any' },
+  crypto: { kind: 'holding', type: 'crypto_asset' },
+  property: { kind: 'any' },
+  metals: { kind: 'any' },
+  debt: { kind: 'any' },
+  broker: { kind: 'any' },
+};
 
 // A new cash account has one currency field, the cash one, which also sets the account currency.
 // Every other kind has the account-currency field, on create and on edit. A property or debt
@@ -322,7 +329,7 @@ const AccountCurrencyField: FC<AccountCurrencyFieldProps> = ({
   onSelect,
 }) => {
   const { t } = useTranslation();
-  const groups = useCurrencyPickerGroups(accountCurrencyContext(kind));
+  const groups = useCurrencyPickerGroups(ACCOUNT_CURRENCY_CONTEXT[kind]);
 
   if (!hasAccountCurrencyField(isEdit, kind)) {
     return null;
