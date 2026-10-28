@@ -3175,3 +3175,103 @@ describe.each(SEEDS)('walk marks in one shared state, order seed %d', (seed) => 
     },
   );
 });
+
+describe.each(SEEDS)(
+  'the planner over random owed ranges, newest-first option, seed %d',
+  (seed) => {
+    const PLANS = 60;
+    const GENERATED_WINDOW_MS = 30 * DAY_MS;
+    const GENERATED_END_MS = Date.UTC(2026, 9, 10);
+    // Spread from variables: the option is not part of every build's input type.
+    const NEWEST_FIRST = { newestFirst: true };
+    const OLDEST_FIRST = { newestFirst: false };
+
+    type Generated = Parameters<typeof planWalkPasses>[0];
+
+    const generatedInput = (random: () => number): Generated => {
+      const count = 1 + Math.floor(random() * 4);
+      let start = GENERATED_END_MS - 900 * DAY_MS;
+      const pending: OwedGround[] = [];
+
+      for (let range = 0; range < count; range += 1) {
+        const length = Math.floor((0.5 + random() * 5) * GENERATED_WINDOW_MS);
+
+        pending.push({ start, end: start + length });
+        start += length + Math.floor((1 + random() * 20) * DAY_MS);
+      }
+
+      const rangeCursors = [
+        null,
+        Number.MIN_SAFE_INTEGER,
+        GENERATED_END_MS,
+        pending[Math.floor(random() * pending.length)].end,
+        pending[Math.floor(random() * pending.length)].start + Math.floor(random() * 5 * DAY_MS),
+      ];
+
+      return {
+        cursor: GENERATED_END_MS - Math.floor(random() * 3 * DAY_MS),
+        rescanCursor: null,
+        pointCursor: null,
+        rangeCursor: rangeCursors[Math.floor(random() * rangeCursors.length)],
+        pending,
+        floorMs: Date.UTC(2017, 6, 14),
+        endTime: GENERATED_END_MS,
+        windowMs: GENERATED_WINDOW_MS,
+        overlapMs: DAY_MS,
+        maxWindows: 500,
+      };
+    };
+
+    const coverageOf = (windows: WalkWindow[]): [number, number][] => {
+      const covered: [number, number][] = [];
+
+      for (const { start, end } of [...windows].sort((left, right) => left.start - right.start)) {
+        const last = covered.at(-1);
+
+        if (last !== undefined && start <= last[1]) {
+          last[1] = Math.max(last[1], end);
+        } else {
+          covered.push([start, end]);
+        }
+      }
+
+      return covered;
+    };
+
+    it('plans the same as with the option off or left out, for every generated input', () => {
+      const random = seededRandom(seed);
+
+      for (let plan = 0; plan < PLANS; plan += 1) {
+        const generated = generatedInput(random);
+
+        expect(planWalkPasses({ ...generated, ...OLDEST_FIRST })).toEqual(
+          planWalkPasses(generated),
+        );
+      }
+    });
+
+    it('plans the same ground newest first, the windows older than the range cursor before the others, when no cap cuts', () => {
+      const random = seededRandom(seed);
+
+      for (let plan = 0; plan < PLANS; plan += 1) {
+        const generated = generatedInput(random);
+        const oldest = planWalkPasses({ ...generated, ...OLDEST_FIRST });
+        const newest = planWalkPasses({ ...generated, ...NEWEST_FIRST });
+        const cursor = generated.rangeCursor;
+        const older = newest.pending.filter(({ end }) => cursor !== null && end < cursor);
+        const rest = newest.pending.filter((window) => !older.includes(window));
+        const newestFirst = (windows: WalkWindow[]): WalkWindow[] =>
+          [...windows].sort((left, right) => right.start - left.start);
+
+        expect(coverageOf(newest.pending)).toEqual(coverageOf(oldest.pending));
+        expect(newest.pending).toEqual([...newestFirst(older), ...newestFirst(rest)]);
+        expect(newest.pending.every(({ start, end }) => end - start <= GENERATED_WINDOW_MS)).toBe(
+          true,
+        );
+        expect(newest.forward).toEqual(oldest.forward);
+        expect(newest.rescan).toEqual(oldest.rescan);
+        expect(newest.pendingRanges).toEqual(oldest.pendingRanges);
+      }
+    });
+  },
+);

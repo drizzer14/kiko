@@ -82,8 +82,10 @@ jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
 
+import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
+import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
 
 import { runCryptoSync } from './run-crypto-sync';
 
@@ -134,13 +136,49 @@ const bodyOf = (path: string): unknown => {
 type RunReport = {
   calls: Record<string, number>;
   complete: Record<string, boolean>;
+  p2pSpans: { side: string; start: number; end: number }[];
 };
 
-// The world both pins share: weight headers on, five minutes between runs, an account with no
+// What a pin that needs more than the empty world adds, each pin on its own: the P2P orders
+// Binance holds, rows seeded before the first run, and a read of the database after a run.
+type P2pOrderBody = {
+  orderNumber: string;
+  createTime: number;
+  orderStatus: string;
+  tradeType: string;
+  advertisementRole: string;
+  asset: string;
+  fiat: string;
+  amount: string;
+  totalPrice: string;
+  takerAmount: string;
+};
+
+// A completed taker buy of 1000 UAH, as Binance sends it, paid for with 1000 UAH.
+const uahBuyOf = (orderNumber: string, createTime: number): P2pOrderBody => ({
+  orderNumber,
+  createTime,
+  orderStatus: 'COMPLETED',
+  tradeType: 'BUY',
+  advertisementRole: 'TAKER',
+  asset: 'UAH',
+  fiat: 'UAH',
+  amount: '1000',
+  totalPrice: '1000',
+  takerAmount: '1000',
+});
+
+type Seeding = {
+  p2pOrders?: (now: number) => P2pOrderBody[];
+  seed?: (database: DatabaseSync, now: number) => void;
+  afterRun?: (run: number, database: DatabaseSync, now: number) => void;
+};
+
+// The world the pins share: weight headers on, five minutes between runs, an account with no
 // stored state, so every walk starts from its floor.
 const GAP_MS = 300_000;
 
-const simulate = async (runs: number): Promise<RunReport[]> => {
+const simulate = async (runs: number, seeding: Seeding = {}): Promise<RunReport[]> => {
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
   mockDatabase.exec('PRAGMA foreign_keys = ON;');
@@ -149,6 +187,10 @@ const simulate = async (runs: number): Promise<RunReport[]> => {
     .run(ACCOUNT_ID, 'My Binance', 'crypto');
 
   let virtual = Date.now();
+
+  seeding.seed?.(mockDatabase, virtual);
+
+  const p2pOrders = seeding.p2pOrders?.(virtual) ?? [];
   const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => virtual);
   const timeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((
     callback: () => void,
@@ -162,9 +204,10 @@ const simulate = async (runs: number): Promise<RunReport[]> => {
   const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   const weightLog: { at: number; weight: number }[] = [];
   let calls: Record<string, number> = {};
+  let p2pSpans: RunReport['p2pSpans'] = [];
 
   mockFetch.mockImplementation(async (input) => {
-    const { pathname } = new URL(String(input));
+    const { pathname, searchParams } = new URL(String(input));
     const lane = laneOf(pathname);
 
     calls = { ...calls, [lane]: (calls[lane] ?? 0) + 1 };
@@ -173,7 +216,23 @@ const simulate = async (runs: number): Promise<RunReport[]> => {
     const used = weightLog
       .filter(({ at }) => at > virtual - 60_000)
       .reduce((sum, { weight }) => sum + weight, 0);
-    const text = JSON.stringify(bodyOf(pathname));
+    const side = searchParams.get('tradeType') ?? '';
+    const span = {
+      start: Number(searchParams.get('startTimestamp')),
+      end: Number(searchParams.get('endTimestamp')),
+    };
+    const found = p2pOrders.filter(
+      ({ tradeType, createTime }) =>
+        tradeType === side && createTime >= span.start && createTime <= span.end,
+    );
+
+    if (lane === 'p2p') {
+      p2pSpans = [...p2pSpans, { side, ...span }];
+    }
+
+    const text = JSON.stringify(
+      lane === 'p2p' ? { code: '000000', data: found, total: found.length } : bodyOf(pathname),
+    );
 
     return {
       ok: true,
@@ -189,6 +248,7 @@ const simulate = async (runs: number): Promise<RunReport[]> => {
   try {
     for (let run = 1; run <= runs; run += 1) {
       calls = {};
+      p2pSpans = [];
 
       for (const name of Object.keys(mockWalkResults)) {
         delete mockWalkResults[name];
@@ -198,6 +258,7 @@ const simulate = async (runs: number): Promise<RunReport[]> => {
 
       reports.push({
         calls,
+        p2pSpans,
         complete: Object.fromEntries(
           Object.entries(mockWalkResults).map(([name, results]) => [
             name,
@@ -205,6 +266,7 @@ const simulate = async (runs: number): Promise<RunReport[]> => {
           ]),
         ),
       });
+      seeding.afterRun?.(run, mockDatabase, virtual);
       virtual += GAP_MS;
     }
   } finally {
@@ -249,4 +311,156 @@ describe('the P2P budget share (headers on, 300 s between runs, empty state)', (
       }).toEqual({ firstCallRun, completeRun });
     },
   );
+});
+
+const P2P_WINDOW_MS = 30 * DAY_MS;
+
+const p2pExternalIdsOf = (database: DatabaseSync): string[] =>
+  (
+    database
+      .prepare("SELECT external_id FROM transactions WHERE operation = 'p2p' ORDER BY external_id")
+      .all() as { external_id: string }[]
+  ).map(({ external_id }) => external_id);
+
+type FundingLedger = Parameters<typeof exchangeFundingMatches>[0];
+
+type StoredLedgerRow = {
+  id: string;
+  holdingId: string;
+  time: number;
+  amountMinorUnits: number;
+  currency: FundingLedger[number]['currency'];
+  untrackedCounterpart: string | null;
+  description: string;
+  mcc: number | null;
+  categorySetByHand: number;
+};
+
+const fundingLedgerOf = (database: DatabaseSync): FundingLedger =>
+  (
+    database
+      .prepare(
+        `SELECT transactions.id, holding_id AS holdingId, time,
+                amount_minor_units AS amountMinorUnits, holdings.currency,
+                untracked_counterpart AS untrackedCounterpart, description, mcc,
+                category_set_by_hand AS categorySetByHand
+           FROM transactions JOIN holdings ON holdings.id = transactions.holding_id`,
+      )
+      .all() as StoredLedgerRow[]
+  ).map((row) => ({ ...row, categorySetByHand: row.categorySetByHand === 1 }));
+
+const accountKindsOf = (database: DatabaseSync) =>
+  new Map(
+    (
+      database
+        .prepare(
+          `SELECT holdings.id AS holdingId, accounts.kind AS kind
+             FROM holdings JOIN accounts ON accounts.id = holdings.account_id`,
+        )
+        .all() as { holdingId: string; kind: 'bank' | 'crypto' }[]
+    ).map(({ holdingId, kind }) => [holdingId, kind] as const),
+  );
+
+describe('the P2P orders of a first run (headers on, 300 s between runs, empty state)', () => {
+  it('imports the newest order, made two days before the clock, in run 1', async () => {
+    let imported: string[] = [];
+
+    await simulate(1, {
+      p2pOrders: (now) => [uahBuyOf('newest', now - 2 * DAY_MS)],
+      afterRun: (_run, database) => {
+        imported = p2pExternalIdsOf(database);
+      },
+    });
+
+    expect(imported).toEqual([`${ACCOUNT_ID}:p2p:newest:UAH:funding`]);
+  });
+
+  // The previous calendar month is a user-visible span: whichever day the clock stands on, a
+  // run reaches back at least 240 days behind the head window.
+  it('imports every order of the previous calendar month in run 1 and reads deeper in run 2', async () => {
+    let imported: string[] = [];
+    let previousMonthStart = 0;
+    let clockAtStart = 0;
+
+    const reports = await simulate(2, {
+      p2pOrders: (now) => {
+        const clock = new Date(now);
+        const first = Date.UTC(clock.getUTCFullYear(), clock.getUTCMonth() - 1, 1);
+        const next = Date.UTC(clock.getUTCFullYear(), clock.getUTCMonth(), 1);
+
+        previousMonthStart = first;
+        clockAtStart = now;
+
+        return [
+          uahBuyOf('first-day', first + 12 * 3_600_000),
+          uahBuyOf('middle', first + 14 * DAY_MS + 12 * 3_600_000),
+          uahBuyOf('last-day', next - 12 * 3_600_000),
+        ];
+      },
+      afterRun: (run, database) => {
+        if (run === 1) {
+          imported = p2pExternalIdsOf(database);
+        }
+      },
+    });
+    const oldestStartOf = (report: RunReport) =>
+      Math.min(...report.p2pSpans.map(({ start }) => start));
+
+    expect(imported).toHaveLength(3);
+    expect(reports[0].calls.p2p).toBeLessThanOrEqual(20);
+
+    for (const side of ['BUY', 'SELL']) {
+      const spans = reports[0].p2pSpans
+        .filter((span) => span.side === side)
+        .sort((left, right) => left.start - right.start);
+      let covered = spans[0].start;
+
+      for (const { start, end } of spans) {
+        if (start <= covered) {
+          covered = Math.max(covered, end);
+        }
+      }
+
+      expect(spans[0].start).toBeLessThanOrEqual(previousMonthStart);
+      expect(covered).toBeGreaterThanOrEqual(clockAtStart);
+    }
+
+    expect(oldestStartOf(reports[1])).toBeLessThanOrEqual(
+      oldestStartOf(reports[0]) - 7 * P2P_WINDOW_MS,
+    );
+  });
+
+  it('takes the bank debit that paid for the newest order out of spending in run 1', async () => {
+    const orderAgo = 2 * DAY_MS;
+    let excludedIds = new Set<string>();
+
+    await simulate(1, {
+      p2pOrders: (now) => [uahBuyOf('paid', now - orderAgo)],
+      seed: (database, now) => {
+        database
+          .prepare("INSERT INTO accounts (id, name, kind) VALUES ('acc-bank', 'Monobank', 'bank')")
+          .run();
+        database
+          .prepare(
+            `INSERT INTO holdings (id, account_id, name, type, currency)
+               VALUES ('h-card', 'acc-bank', 'Card', 'card', 'UAH')`,
+          )
+          .run();
+        database
+          .prepare(
+            `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id)
+               VALUES ('tx-debit', 'h-card', -100000, ?, 'monobank', 'mono-debit')`,
+          )
+          .run(now - orderAgo + 20 * 60_000);
+      },
+      afterRun: (_run, database) => {
+        excludedIds = exchangeFundingMatches(
+          fundingLedgerOf(database),
+          accountKindsOf(database),
+        ).excludedIds;
+      },
+    });
+
+    expect([...excludedIds]).toEqual(['tx-debit']);
+  });
 });
