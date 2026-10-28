@@ -185,7 +185,7 @@ verified usage, not dead weight:
   into a guarded tree (`WRITE_GUARDED_TREES` in the file), or a YAML
   file, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
-  `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
+  `.claude/skills/kiko-linter/wrapper-contract.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
   any TypeScript/JavaScript source, and never a package.json script Knip's
   static scan can see (unlike `scripts/ensure-env.js`, which IS a
@@ -209,7 +209,7 @@ verified usage, not dead weight:
   (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to
   rebuild an Edit/Write/MultiEdit's proposed file content and deny the
   write when it introduces a known violation (see `docs/harness/checks.md` "Automatic
-  wiring" and `.claude/skills/kiko-linter/SKILL.md`), the same reason as
+  wiring" and `.claude/skills/kiko-linter/wrapper-contract.md`), the same reason as
   `kill-guard.js` above. It is reached only from a sibling `.sh` wrapper's
   `node` invocation — never a static `import`/`require` from any
   TypeScript/JavaScript source, and never a package.json script Knip's

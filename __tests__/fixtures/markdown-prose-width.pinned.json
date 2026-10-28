@@ -58,7 +58,7 @@
     "`settings.lockEnabled` is LIVE (a `.kiko` restore never changes it) — wired through `src/auth/use-app-lock.ts`",
     "bank-owned partner is kept, never deleted, and loses its exchange marker only when the leg that marker names goes too (see \"A bank-owned (synced) partner is kept\"). `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`"
   ],
-  ".claude/skills/kiko-linter/SKILL.md": [
+  ".claude/skills/kiko-linter/wrapper-contract.md": [
     "`scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.",
     "  failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a",
     "  The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. An agent's own group or pattern kill is still denied.",
@@ -71,13 +71,19 @@
     "  (its `did not result in any files` warning) fails the run. Stryker `disable` comments turn mutants into",
     "  scorer takes the exact `--mutate` entries as arguments and grades only mutants fully inside a range,",
     "  `reports/mutation/mutation.json` (core `incremental-differ.js` lines 128-142). It exits 2 when one file is given both as a",
-    "  `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as \"nothing to do\" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The",
+    "  `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as \"nothing to do\" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The"
+  ],
+  ".claude/skills/kiko-linter/rules-comments.md": [
     "  hits are the `was:` pins in the bad fixture. A scan of the whole repo hits the 3 per-rule timeouts on",
     "finding(s)`; `approved|probed|ruled|ruling|decided|confirmed` (also the all-caps `RULED`/`RULING`) then an ISO date, with an",
     "plan id such as `(A1)`/`(P3)`, and a ruling id such as `ruling A2`/`RULING B1`). The members are the two `pattern-regex`",
-    "`check:security`, and the pre-write guard denies a NEW one. Count the findings with `semgrep --metrics off --quiet --config",
+    "`check:security`, and the pre-write guard denies a NEW one. Count the findings with `semgrep --metrics off --quiet --config"
+  ],
+  ".claude/skills/kiko-linter/rules-code.md": [
     "not an AST pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched",
-    "at the **fast tier** (`fast.sh`; read it for the tool list): the rule is purely per-file with no cross-file",
+    "at the **fast tier** (`fast.sh`; read it for the tool list): the rule is purely per-file with no cross-file"
+  ],
+  ".claude/skills/kiko-linter/SKILL.md": [
     "`check:all` (`plural-count.js`: a Jest invariant instead, see its bullet). Every checker and the shared scanner stay reachable for",
     "`__tests__/test-support/source-comment-citations.ts`; read them there) or a bare migration file name in a comment must",
     "On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, `medium.sh` exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. Read `medium.sh`'s header comment for the exact check.",
