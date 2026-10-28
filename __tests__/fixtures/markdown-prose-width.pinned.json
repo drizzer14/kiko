@@ -31,18 +31,22 @@
     "  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryForm` (edit mode: a star via `useFormHeaderItems` `extraItems`, before Save; the star is `star.fill` and disabled on the default category, a state marker; shown only once the category row is read), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see \"Section heading disclosure row\" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.",
     "  in either header item list, and `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either",
     "  shared `InfoHint` (`src/design-system/components/info-hint/`): the icon is a `SymbolIcon` at the caption icon-size token,",
+    "chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of"
+  ],
+  ".claude/skills/kiko-design-system/component-set.md": [
     "  `variant=\"secondaryTonal\"` in `src/` for the live consumers), replacing a plain `secondary` `surfaceHigh`",
     "  `surfaceTranslucent` backdrop (iOS 26+; below it the BottomSheet bypasses GlassSurface) and no wash, so the screen behind reads",
     "  DEVICE BUG fix of its own (below iOS 26 the scrim is a plain `scrimFallback` View with no rim to hide;",
     "  it shares `styles.backdropFill`'s sizing, so the overscan is harmless there, not a fix): Liquid Glass draws a native specular rim at",
-    "  `src/statement-import/column-mapping/source-time-zone.ts`), `AccountKindField`, and `ModeSelectField` all reach",
+    "  `src/statement-import/column-mapping/source-time-zone.ts`), `AccountKindField`, and `ModeSelectField` all reach"
+  ],
+  ".claude/skills/kiko-design-system/component-set-forms.md": [
     "  read as disproportionately tall) non-full-width `Button` from `action: { label, icon?, onPress }`. Strings come in as",
     "  ruling 2026-09-30 (apply repeated feedback app-wide). Without `label` it is a bare toggle whose label sits",
     "  card on the category form (the rule card under `src/screens/forms/category-form/`) is the caller. At",
     "  property is owned in part (`propertyOwnershipView`). `value` is always a caller-rendered `ReactNode`",
     "  vertical padding, not a fixed cell height, so a chip grown by Dynamic Type keeps the inset the grid's",
-    "  `Pressable`/`Box`/`Text` instead of adding one. Touch target: each segment `Pressable` is a REAL layout box with",
-    "chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of"
+    "  `Pressable`/`Box`/`Text` instead of adding one. Touch target: each segment `Pressable` is a REAL layout box with"
   ],
   ".claude/skills/kiko-domain/SKILL.md": [
     "  throws before any insert. `accountsRepo.create` throws for a property or debt kind. Read the unit and",
