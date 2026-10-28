@@ -43,13 +43,12 @@ const QUALIFIER_PATTERN = /\s+\([^()]*\)$/;
 
 const withoutBackticks = (text: string): string => text.replace(/`/g, '').trim();
 
-// The `#`-`######` headings outside a fenced block, backticks stripped, so a citation of a
-// heading resolves the same way for the guard citations and the prose ones.
-export const headingsOf = (markdown: string): Set<string> => {
-  const headings = new Set<string>();
+// The lines of a markdown text with every line of a fenced block, the fence lines too, emptied,
+// so a reader of the prose never sees code.
+export const linesOutsideFences = (markdown: string): string[] => {
   let fence: string | undefined;
 
-  markdown.split('\n').forEach((lineText) => {
+  return markdown.split('\n').map((lineText) => {
     const fenceMatch = FENCE_PATTERN.exec(lineText);
 
     if (fenceMatch !== null) {
@@ -59,18 +58,22 @@ export const headingsOf = (markdown: string): Set<string> => {
         fence = undefined;
       }
 
-      return;
+      return '';
     }
 
-    const headingMatch = fence === undefined ? HEADING_PATTERN.exec(lineText) : null;
-
-    if (headingMatch !== null) {
-      headings.add(withoutBackticks(headingMatch[1]));
-    }
+    return fence === undefined ? lineText : '';
   });
-
-  return headings;
 };
+
+// The `#`-`######` headings outside a fenced block, backticks stripped, so a citation of a
+// heading resolves the same way for the guard citations and the prose ones.
+export const headingsOf = (markdown: string): Set<string> =>
+  new Set(
+    linesOutsideFences(markdown)
+      .map((lineText) => HEADING_PATTERN.exec(lineText))
+      .filter((headingMatch) => headingMatch !== null)
+      .map((headingMatch) => withoutBackticks(headingMatch[1])),
+  );
 
 export const headingResolves = (heading: string, headings: Set<string>): boolean => {
   const cited = withoutBackticks(heading);

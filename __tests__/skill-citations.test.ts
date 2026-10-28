@@ -215,6 +215,27 @@ describe('prose citations of a skill section', () => {
     '',
     'See [the details](reference.md).',
     '',
+    'Mid bold has a **middle bold** span.',
+    '',
+    '- Bullet lead item.',
+    '  Wrapped bullet tail.',
+    '- A first article thing.',
+    '- An other article thing.',
+    '- The third article thing.',
+    '',
+    'Paragraph lead opens the paragraph',
+    'Soft wrapped line goes on. Sentence start follows here.',
+    '',
+    '### Directly under',
+    'Tight paragraph lead.',
+    'Soft tail line.',
+    '',
+    '```',
+    'Fenced line text',
+    '**Fenced bold**',
+    '- Fenced bullet',
+    '```',
+    '',
   ].join('\n');
 
   const REFERENCE = '# Reference\n\n## Reference heading\n';
@@ -236,13 +257,16 @@ describe('prose citations of a skill section', () => {
 
   const NOTES = 'docs/harness/notes.md';
 
-  const citationOf = (text: string, resolved: boolean, line = 1, file = NOTES) => ({
+  const citationOf = (text: string, resolved: boolean, line = 1, file = NOTES, skill = 'demo') => ({
     file,
     line,
-    skill: 'demo',
+    skill,
     text,
     resolved,
   });
+
+  // A skill name that ends in s, so its possessive is a bare apostrophe.
+  const PLURAL_SKILL = { '.claude/skills/demos/SKILL.md': '# Demos\n\n## Exact heading\n' };
 
   it('resolves a citation of an exact heading (POSITIVE)', () => {
     expect(proseCitations(demoRoot({ [NOTES]: 'See demo\'s "Exact heading" first.\n' }))).toEqual([
@@ -259,6 +283,126 @@ describe('prose citations of a skill section', () => {
   it('resolves a citation of a bold lead (POSITIVE)', () => {
     expect(proseCitations(demoRoot({ [NOTES]: "See demo's 'Bold lead' first.\n" }))).toEqual([
       citationOf('Bold lead', true),
+    ]);
+  });
+
+  it('resolves a citation of a bullet lead, the bullet text wrapped or not (POSITIVE)', () => {
+    expect(
+      proseCitations(
+        demoRoot({
+          [NOTES]: 'demo "Bullet lead item"\ndemo "Bullet lead item. Wrapped bullet tail"\n',
+        }),
+      ),
+    ).toEqual([
+      citationOf('Bullet lead item', true),
+      citationOf('Bullet lead item. Wrapped bullet tail', true, 2),
+    ]);
+  });
+
+  it('resolves a citation of a paragraph lead, over its wrapped line too (POSITIVE)', () => {
+    expect(
+      proseCitations(
+        demoRoot({
+          [NOTES]:
+            'demo "Paragraph lead opens the paragraph"\n' +
+            'demo "Paragraph lead opens the paragraph Soft wrapped line"\n' +
+            'demo "Tight paragraph lead"\n',
+        }),
+      ),
+    ).toEqual([
+      citationOf('Paragraph lead opens the paragraph', true),
+      citationOf('Paragraph lead opens the paragraph Soft wrapped line', true, 2),
+      citationOf('Tight paragraph lead', true, 3),
+    ]);
+  });
+
+  it('resolves a citation of a bold span in the middle of a line (POSITIVE)', () => {
+    expect(proseCitations(demoRoot({ [NOTES]: 'demo "middle bold"\n' }))).toEqual([
+      citationOf('middle bold', true),
+    ]);
+  });
+
+  it('resolves a citation that leaves out the leading A, An or The (POSITIVE)', () => {
+    expect(
+      proseCitations(
+        demoRoot({
+          [NOTES]:
+            'demo "first article thing"\ndemo "other article thing"\ndemo "third article thing"\n',
+        }),
+      ),
+    ).toEqual([
+      citationOf('first article thing', true),
+      citationOf('other article thing', true, 2),
+      citationOf('third article thing', true, 3),
+    ]);
+  });
+
+  it('does not resolve a sentence start inside a paragraph (NEGATIVE)', () => {
+    expect(
+      unresolvedProseCitations(demoRoot({ [NOTES]: 'demo "Sentence start follows here"\n' })),
+    ).toEqual([citationOf('Sentence start follows here', false)]);
+  });
+
+  it('does not resolve a part of a word (NEGATIVE)', () => {
+    expect(unresolvedProseCitations(demoRoot({ [NOTES]: 'demo "Exact head"\n' }))).toEqual([
+      citationOf('Exact head', false),
+    ]);
+  });
+
+  it('does not resolve the soft-wrapped line of a paragraph or of a bullet (NEGATIVE)', () => {
+    expect(
+      unresolvedProseCitations(
+        demoRoot({
+          [NOTES]:
+            'demo "Soft wrapped line goes on"\ndemo "Wrapped bullet tail"\ndemo "Soft tail line"\n',
+        }),
+      ),
+    ).toEqual([
+      citationOf('Soft wrapped line goes on', false),
+      citationOf('Wrapped bullet tail', false, 2),
+      citationOf('Soft tail line', false, 3),
+    ]);
+  });
+
+  it('does not resolve a line, a bullet or a bold span inside a fenced block (NEGATIVE)', () => {
+    expect(
+      unresolvedProseCitations(
+        demoRoot({
+          [NOTES]: 'demo "Fenced line text"\ndemo "Fenced bold"\ndemo "Fenced bullet"\n',
+        }),
+      ),
+    ).toEqual([
+      citationOf('Fenced line text', false),
+      citationOf('Fenced bold', false, 2),
+      citationOf('Fenced bullet', false, 3),
+    ]);
+  });
+
+  it('resolves a citation after a plural possessive, with the name in backticks or not (POSITIVE)', () => {
+    expect(
+      proseCitations(
+        demoRoot({
+          ...PLURAL_SKILL,
+          [NOTES]: 'See demos\' "Exact heading" first.\nSee `demos`\' "Exact heading" first.\n',
+        }),
+      ),
+    ).toEqual([
+      citationOf('Exact heading', true, 1, NOTES, 'demos'),
+      citationOf('Exact heading', true, 2, NOTES, 'demos'),
+    ]);
+  });
+
+  it('names a stale citation after a plural possessive (NEGATIVE)', () => {
+    expect(
+      unresolvedProseCitations(
+        demoRoot({
+          ...PLURAL_SKILL,
+          [NOTES]: 'See demos\' "Gone heading" first.\nSee `demos`\' "Gone heading" first.\n',
+        }),
+      ),
+    ).toEqual([
+      citationOf('Gone heading', false, 1, NOTES, 'demos'),
+      citationOf('Gone heading', false, 2, NOTES, 'demos'),
     ]);
   });
 

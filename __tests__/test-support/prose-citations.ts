@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 import { lineCountBefore } from './markdown-code-spans';
-import { headingResolves, headingsOf, readSkillText } from './skill-text';
+import { headingResolves, headingsOf, linesOutsideFences, readSkillText } from './skill-text';
 
 // A prose citation names a skill and quotes a section of it: `kiko-testing's "Test traps"`,
 // kiko-testing "Test traps", with double or single quotes. It is checked against the skill text
@@ -71,14 +71,36 @@ const normalizedText = (quoted: string): string =>
     .trim()
     .replace(/[.,]$/, '');
 
-// The text starts a heading, a bullet or list item, a bold span or a line (after an optional
-// leading A, An or The) and ends at a non-word character. A word inside a sentence is no lead.
+const LIST_ITEM_OR_HEADING = /^[ \t>]*(?:(?:[-*+]|\d+[.)])[ \t]+|#{1,6}[ \t])/;
+
+const HEADING = /^[ \t>]*#{1,6}[ \t]/;
+
+// A soft-wrapped line is joined onto the line before it, so only a paragraph's first line, a
+// list item and a heading begin a line, and a fenced block is no text at all.
+const withParagraphsJoined = (skillText: string): string =>
+  linesOutsideFences(skillText)
+    .map((lineText, index, lines) => {
+      const previous = lines[index - 1] ?? '';
+
+      const wraps =
+        previous.trim() !== '' &&
+        !HEADING.test(previous) &&
+        lineText.trim() !== '' &&
+        !LIST_ITEM_OR_HEADING.test(lineText);
+
+      return `${wraps ? ' ' : '\n'}${lineText}`;
+    })
+    .join('');
+
+// The text starts a heading, a list item, the first line of a paragraph or a bold span (after an
+// optional leading A, An or The) and ends at a non-word character. A word inside a sentence, a
+// wrapped line, or a fenced line is no lead.
 const startsALead = (text: string, skillText: string): boolean =>
   new RegExp(
     `(?:^[ \\t>]*(?:(?:[-*+]|\\d+[.)])[ \\t]+)*(?:#{1,6}[ \\t]+)?|\\*\\*)(?:\\*\\*)?` +
       `(?:(?:A|An|The)[ \\t]+)?${escapePattern(text).replace(/ /g, '\\s+')}(?!\\w)`,
     'm',
-  ).test(skillText.replace(/`/g, ''));
+  ).test(withParagraphsJoined(skillText).replace(/`/g, ''));
 
 export const proseCitations = (root: string): ProseCitation[] => {
   const skillFiles = skillFilesIn(root);
@@ -86,7 +108,7 @@ export const proseCitations = (root: string): ProseCitation[] => {
   const skills = [...skillFiles.keys()].sort((first, second) => second.length - first.length);
 
   const citationPattern = new RegExp(
-    `(?<![\\w-])\`?(${skills.map(escapePattern).join('|')})\`?(?:'s)?\\s+` +
+    `(?<![\\w-])\`?(${skills.map(escapePattern).join('|')})\`?(?:'s?)?\\s+` +
       `(?:"(${QUOTED_TEXT})"|'(${SINGLE_QUOTED_TEXT})')`,
     'g',
   );
