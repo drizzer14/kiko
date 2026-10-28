@@ -2921,18 +2921,29 @@ disk that git tracks or would track
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
 
+## Skill reference files
+
 A skill is its SKILL.md plus its reference files: the other `.md` files in the skill folder
 that SKILL.md links to. The doc suites that read a skill read it through `readSkillText` in
-`__tests__/test-support/skill-text.ts`, so a section moved into a reference file needs no suite
-edit. Link a reference file with a Markdown link whose target is file.md or file.md#anchor: a
-relative path with no space, one level deep, inside the skill folder. A link with a title, angle
-brackets, reference style or `%20` is not read, a link to a target outside the skill folder or a
-URL is ignored, and a link inside a reference file is not followed. A link to a file that is not
-there throws, so a typo fails the suite; the link regex reads raw text, so a link inside a fenced
-block counts too. A `.md` file at any depth in a skill folder that SKILL.md does not link fails
-the orphan row in `__tests__/skill-citations.test.ts` (`orphanReferenceFiles`); fix it by
-linking the file in the accepted form, never by dropping the row. Start each reference file with
-a `##` heading, or a concatenating reader runs the last SKILL.md section into its first lines.
+`__tests__/test-support/skill-text.ts`, so the readers of section text need no edit when a
+section moves into a reference file. Per-file pins and exemptions do follow moved text: a line
+pinned in `__tests__/fixtures/markdown-prose-width.pinned.json` (keyed by file; the key may
+move to the new file, the count does not grow) and an entry in
+`__tests__/skill-identifiers.test.ts` (the example-name exemptions, keyed by file). When text
+moves, rewrap a pinned line so it needs no pin, or move the pin or exemption key to the new
+file.
+
+Link a reference file with a Markdown link whose target is file.md or file.md#anchor: a
+relative path with no space, inside the skill folder (a subfolder target is accepted). A link
+with a title, angle brackets or reference style is not read, a link to a target outside the
+skill folder or a URL is ignored, and a link inside a reference file is not followed. A link to
+a file that is not there throws, so a typo fails the suite; a `%20` link is read and throws as
+a missing file. The link regex reads raw text, so a link inside a fenced block or an inline
+code span counts too: describe an example link in words, never write it as a link. A `.md`
+file at any depth in a skill folder that SKILL.md does not link fails the orphan row in
+`__tests__/skill-citations.test.ts` (`orphanReferenceFiles`); fix it by linking the file in
+the accepted form, never by dropping the row. Start each reference file with a `##` heading,
+or a concatenating reader runs the last SKILL.md section into its first lines.
 `cited-paths` reads every `.md` under `.claude/skills`, reference files included.
 
 A skill sentence that lists a guard's conditions, or a write-queue read's
@@ -3230,7 +3241,7 @@ mechanizable (see harness-workflow's "Classify every finding").
      `metadata.skill` makes the guard deny "could not check".
      `__tests__/skill-citations.test.ts` fails a `metadata.skill` or a
      `NODE_RULES` `skill` that names no real heading in the skill's SKILL.md or in a reference
-     file it links to (see the cited-paths paragraph for the link form). Cite the heading
+     file it links to (see "Skill reference files" for the link form). Cite the heading
      exactly (backticks do not matter); a trailing ` (Qualifier)` and
      ` / `-joined headings are allowed, a prefix is not.
    - The guard, `check:security`, and `check:rules` load the whole file.

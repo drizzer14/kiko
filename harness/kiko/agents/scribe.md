@@ -45,7 +45,7 @@ Rules:
   skill or agent text; point at `make doc-suites` and
   `harness_doc_suites` in `scripts/checks/_lib.sh`, since a new invariant would make the
   list stale.
-- A skill may be split into reference files (the kiko-linter cited-paths paragraph says the
+- A skill may be split into reference files (kiko-linter's "Skill reference files" says the
   link form). Link each one from SKILL.md with a relative Markdown link, no title, no spaces;
   an unlinked `.md` in a skill folder or a link to a missing file fails `make doc-suites`.
 - Wrap a long line; never lengthen a pinned one (pin lists only shrink). Never leave a red
