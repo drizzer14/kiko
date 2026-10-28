@@ -304,6 +304,12 @@ knip only through `knip.json`'s `ignore` (read the list there; it
 includes `feature-imports.js` and `specifier-scanner.js`). None has a
 report or JSON mode.
 
+A Node checker never pre-filters RAW source text with a pattern that can span a comment
+leader: test the name alone, or the leader-stripped text, or the filter fails open. A test
+that skips what the checker skips reuses the checker's own pattern and form test, never a
+second regex. A reader never filters out a missing link (`existsSync`): it reuses the throwing
+reader.
+
 Knip flags an exported type that no module imports; export a type in the
 commit that first imports it.
 
@@ -371,7 +377,9 @@ a pre-existing finding points at. A Semgrep deny names
   `harness/kiko/scripts/run-log.mjs` is left out: it stays byte-identical with the harness
   repository. `scripts/checks/comment-line-width.pinned` lists, as `<path><TAB><exact line>`,
   the lines that cannot wrap; it is shrink-only (a pin whose line is gone or now fits fails as
-  stale) and a line that can wrap is wrapped, never pinned. `__tests__/pin-count-ceilings.test.ts`
+  stale) and a line that can wrap is wrapped, never pinned. Editing a pinned line, even by one
+  word, fails until its pin key is edited to the same new text (the count stays).
+  `__tests__/pin-count-ceilings.test.ts`
   caps how many pins each pin file (this one and the markdown prose-width one) may hold; read
   the test for the ceilings. `fast.sh` runs the per-file mode on
   a shell, YAML or githooks write, and on a `.js` write only for the per-file case pattern in

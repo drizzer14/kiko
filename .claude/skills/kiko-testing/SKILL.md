@@ -126,6 +126,12 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 
 ## Acceptance pins, fix rounds and red proofs
 
+- A red row (or red-fixture file) is run through a working prototype of its check before the
+  red commit: a row written without one can contradict its own spec (a wrong-direction row
+  that listed two of its three citations).
+- A pin that greps tests for a walking literal misses a suite that walks through a helper:
+  grep the helper folder first, then the importers of each helper found.
+
 - An acceptance pin's seed or world is part of the pin (harness-workflow, "An acceptance pin's
   seed or world"): re-seed it with one per-pin seed line, never in the shared helper. The shared
   helpers (`src/test-support/walk-marks.ts`, `binance-backfill-world.ts`) are an edit of every pin

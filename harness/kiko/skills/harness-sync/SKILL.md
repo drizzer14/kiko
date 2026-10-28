@@ -27,6 +27,10 @@ changelog head, and `git -C <pff-ios> log --oneline -1 main`.
   `git -C <pff-ios> log --oneline <last point>..main -- harness scripts/checks scripts/wait-load.sh rules docs/harness CLAUDE.md __tests__`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
 
+A sync closeout prunes this list against the harness CHANGELOG: git-grep each item in harness
+main before striking it, and strike a bullet whole only when every sub-item is found.
+Per-mode wrapper behavior (per-file versus project-wide) lives in one place only.
+
 Pending for the next sync (landed in pff-ios 2026-10-11 on branch loan-schedule-cards, not yet
 in the harness repo). A generic test-support reader (a helper under `__tests__/test-support/`
 that holds no Kiko name) goes on this list in the same task that adds or changes it:

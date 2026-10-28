@@ -67,12 +67,21 @@ Rules:
   skill's description states its trigger, and each parent's description names where its text
   went.
 - A dated plan or audit snapshot is not a live pointer: repoint only a step that is still open.
-- Wrap a long line; never lengthen a pinned one (pin lists only shrink). Never leave a red
+- Wrap a long line; never lengthen a pinned one (pin lists only shrink; the ratchet cannot
+  see a lengthened line without a git call, so only this rule holds it). Never leave a red
   intermediate commit.
 - A skill states the RULE, never a survey of current usage: "always do X" or
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads
   as correct.
+- Describe an example in words: a backticked example with a quote before "above" or "below"
+  is read as a heading citation.
+- A sentence listing the members of a family goes stale when a sibling is added: name the
+  shared mechanism and point at the code.
+- Never write a bare filename in skill prose: give the repository-relative path. After you
+  insert a paragraph, a "the same test" or "the previous" pronoun re-resolves: name the file.
+  Name a table or constant by its defining file and symbol, and add an override's doc entry
+  in the commit that adds the override.
 - A statement that is true only until a future event (a cutover, a merge, a promotion) puts its
   status in the paragraph's first sentence and names its own removal trigger.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
