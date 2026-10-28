@@ -65,6 +65,7 @@ const runPlanOver = (input: {
   plan?: WalkPlan;
   canAfford?: () => boolean;
   predicate?: (error: unknown) => boolean;
+  readOnPastUnreadableForward?: boolean;
 }) => {
   const calls: Call[] = [];
   const marked = { ranges: [] as number[], points: [] as number[] };
@@ -72,6 +73,7 @@ const runPlanOver = (input: {
     plan: input.plan ?? plan,
     canAfford: input.canAfford ?? (() => true),
     isUnreadableWindowError: input.predicate,
+    readOnPastUnreadableForward: input.readOnPastUnreadableForward,
     runWindow: async (owed, pass) => {
       calls.push([owed.start, pass]);
 
@@ -219,5 +221,64 @@ describe('runWalkPlan, with a window that cannot be read', () => {
         [5, 'pending'],
       ]);
     });
+  });
+});
+
+describe('runWalkPlan, with readOnPastUnreadableForward', () => {
+  it('reads the owed windows, the re-scan and the points past an unreadable forward window, then rejects with its error', async () => {
+    const forwardFailure = new UnreadableWindowError('forward');
+    const { result, calls, marked } = runPlanOver({
+      runWindow: failingAt('forward', new Map<number, Error>([[0, forwardFailure]])),
+      predicate: isUnreadableWindowError,
+      readOnPastUnreadableForward: true,
+    });
+
+    await expect(result).rejects.toBe(forwardFailure);
+    expect(calls).toEqual([
+      [0, 'forward'],
+      [5, 'pending'],
+      [20, 'pending'],
+      [40, 'pending'],
+      [10, 'rescan'],
+      [500, 'pending'],
+    ]);
+    expect(marked).toEqual({ ranges: [5, 20, 40], points: [500] });
+  });
+
+  it.each([
+    ['a 429 rate limit', new StopError('429')],
+    ['an auth failure', new StopError('auth')],
+    ['a network failure', new StopError('network')],
+  ])('still stops the run at once on a forward window failing with %s', async (_label, failure) => {
+    const { result, calls } = runPlanOver({
+      runWindow: failingAt('forward', new Map<number, Error>([[0, failure]])),
+      predicate: isUnreadableWindowError,
+      readOnPastUnreadableForward: true,
+    });
+
+    await expect(result).rejects.toBe(failure);
+    expect(calls).toEqual([[0, 'forward']]);
+  });
+
+  it('still stops at once on a rate limit in an owed window behind an unreadable forward one', async () => {
+    const rateLimit = new StopError('429');
+    const { result, calls } = runPlanOver({
+      runWindow: async (owed, ran) => {
+        if (ran === 'forward') {
+          throw new UnreadableWindowError('forward');
+        }
+
+        return failingAt('pending', new Map<number, Error>([[20, rateLimit]]))(owed, ran);
+      },
+      predicate: isUnreadableWindowError,
+      readOnPastUnreadableForward: true,
+    });
+
+    await expect(result).rejects.toBe(rateLimit);
+    expect(calls).toEqual([
+      [0, 'forward'],
+      [5, 'pending'],
+      [20, 'pending'],
+    ]);
   });
 });

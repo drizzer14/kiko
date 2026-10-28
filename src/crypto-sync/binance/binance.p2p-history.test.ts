@@ -5,6 +5,7 @@ import {
   walkStateFake,
 } from '@kiko/test-support/walk-marks';
 import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { createExchangeRun } from '@kiko/crypto-sync/exchange/budget';
 
 import {
@@ -68,10 +69,14 @@ const wideRun = () => {
 };
 
 /** A connected account with its walk state, and the walk's deps over that one state. */
-const worldOf = () => {
+const worldOf = (storedP2p?: Record<string, unknown>) => {
   accountSequence += 1;
   const accountId = `acc-p2p-${accountSequence}`;
-  const fake = walkStateFake({ accountId, alongside: FUNDING_HOLDINGS });
+  const fake = walkStateFake({
+    accountId,
+    alongside: FUNDING_HOLDINGS,
+    ...foldMap(maybe(storedP2p), (walk) => ({ unknown: { walks: { p2p: walk } } })),
+  });
   const depsOf = (over: Partial<BinanceP2pHistoryDeps> = {}): BinanceP2pHistoryDeps => ({
     now: () => NOW,
     fetchImpl: (async () => ({})) as unknown as typeof fetch,
@@ -840,6 +845,136 @@ describe('a failure of the P2P walk', () => {
 
     await expect(world.walk(deps, wideRun())).rejects.toThrow('403');
     expect(isBinanceCoolingDown(world.accountId, NOW)).toBe(false);
+  });
+});
+
+// The mark is read from the stored JSON at runtime: the field is not part of the shared seed
+// helper, and this file must typecheck before the walk writes it.
+const readFailedAtOf = async (world: ReturnType<typeof worldOf>): Promise<unknown> => {
+  const stored = JSON.parse((await world.fake.deps.readExchangeState(world.accountId)) ?? '{}') as {
+    walks?: { p2p?: Record<string, unknown> };
+  };
+
+  return stored.walks?.p2p?.readFailedAt;
+};
+
+const PRIOR_FAILURE_AT = 5_000;
+
+const markedWorld = () => {
+  const world = worldOf({ readFailedAt: PRIOR_FAILURE_AT });
+
+  world.fake.seed('p2p', { cursor: NOW - HOUR_MS });
+
+  return world;
+};
+
+describe('the read-failed mark of the P2P walk', () => {
+  it.each([
+    ['a page the client cannot read', new BinanceHistoryParseError()],
+    ['a request that failed', new Error('Binance request failed: 403')],
+  ])('stores the time of the run and rethrows the same error on %s', async (_label, failure) => {
+    const world = recentWorld();
+    const deps = world.depsOf({
+      fetchP2pOrders: jest.fn(async () => {
+        throw failure;
+      }),
+    });
+
+    await expect(world.walk(deps)).rejects.toBe(failure);
+
+    expect(await readFailedAtOf(world)).toBe(NOW);
+  });
+
+  it('clears a stored mark when a later run reads and resolves', async () => {
+    const world = markedWorld();
+
+    await world.walk(world.depsOf({ fetchP2pOrders: p2pServerOf([p2pOrderOf()]) }));
+
+    expect(await readFailedAtOf(world)).toBeNull();
+  });
+
+  it('writes no mark on a run that reads and resolves when none is stored', async () => {
+    const world = recentWorld();
+
+    await world.walk(world.depsOf({ fetchP2pOrders: p2pServerOf([p2pOrderOf()]) }));
+
+    expect(await readFailedAtOf(world)).toBeUndefined();
+  });
+
+  it('leaves a stored mark as it was on a run that ends at a 429', async () => {
+    const world = markedWorld();
+    const deps = world.depsOf({
+      fetchP2pOrders: jest.fn(async () => {
+        throw new BinanceRateLimitError(429, 30_000);
+      }),
+    });
+
+    await expect(world.walk(deps)).resolves.toEqual({ imported: 0, complete: false });
+
+    expect(await readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+  });
+
+  it('leaves a stored mark as it was on a run the cooldown skips', async () => {
+    const world = markedWorld();
+    const deps = world.depsOf();
+
+    setBinanceCooldownUntil(world.accountId, NOW + 60_000);
+
+    await world.walk(deps);
+
+    expect(deps.fetchP2pOrders).not.toHaveBeenCalled();
+    expect(await readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+  });
+
+  it('leaves a stored mark as it was on a run with no credentials', async () => {
+    const world = markedWorld();
+    const deps = world.depsOf({ readCredentials: async () => undefined });
+
+    await expect(world.walk(deps)).resolves.toEqual({ imported: 0, complete: true });
+
+    expect(await readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+  });
+
+  it('keeps the mark set on every run while the head window cannot be read, and still reads the owed ground', async () => {
+    const world = worldOf();
+
+    world.fake.seed('p2p', { cursor: NOW - 75 * DAY_MS });
+
+    const runAt = async (now: number) => {
+      const server = p2pServerOf([]);
+      const deps = world.depsOf({
+        now: () => now,
+        fetchP2pOrders: jest.fn(
+          async (
+            apiKey: string,
+            secret: string,
+            side: 'BUY' | 'SELL',
+            span: Span,
+            page: number,
+          ) => {
+            if (span.end === now) {
+              throw new BinanceHistoryParseError();
+            }
+
+            return server(apiKey, secret, side, span, page);
+          },
+        ),
+      });
+
+      await expect(world.walk(deps)).rejects.toBeInstanceOf(BinanceHistoryParseError);
+
+      return queriesOf(deps);
+    };
+
+    const first = await runAt(NOW);
+
+    expect(first.some(({ end }) => end <= OWED_END)).toBe(true);
+    expect(await readFailedAtOf(world)).toBe(NOW);
+
+    const second = await runAt(NOW + 1_000);
+
+    expect(second.some(({ end }) => end <= OWED_END + 1_000)).toBe(true);
+    expect(await readFailedAtOf(world)).toBe(NOW + 1_000);
   });
 });
 
