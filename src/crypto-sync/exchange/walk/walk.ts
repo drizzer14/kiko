@@ -469,6 +469,46 @@ export const readRangeCursor = (input: {
     write: input.write,
   });
 
+/**
+ * The marks of a walk that reads its newest window first (`newestFirst` of `planWalkPasses`):
+ * the ground from the walk's start (the cursor, or the floor) to the head window, the last
+ * `windowMs` before `endTime`, goes into the owed list, and the cursor moves to the head start, so
+ * the forward pass of this run is the head window alone. The list, the cursor and the reset of
+ * the range cursor go in ONE write, so no crash leaves the cursor moved without the ground owed
+ * (never read) or the ground owed beside the old cursor (read twice). The range cursor is reset
+ * to `BEFORE_EVERY_GROUND`, not to none, because the patch holds a number: the first window read
+ * is then the newest, whatever order the stored cursor was made in (`newestWindowsFrom`). A
+ * cursor at or past the head start, or a clock so near the floor that the head window starts
+ * before it, owes nothing and writes nothing. The range is owed for every series and every coin:
+ * the walk never read this ground.
+ */
+export const headFirstGroundOf = async (input: {
+  cursor: number | null;
+  pending: OwedGround[];
+  floorMs: number;
+  endTime: number;
+  windowMs: number;
+  write: WalkMarkWriter;
+}): Promise<{ cursor: number | null; pending: OwedGround[]; rangeCursor?: number }> => {
+  const { cursor, pending, floorMs, endTime, windowMs, write } = input;
+  const forwardStart = Math.max(floorMs, cursor ?? floorMs);
+  const headStart = endTime - windowMs;
+
+  if (forwardStart >= headStart) {
+    return { cursor, pending };
+  }
+
+  const owed: OwedGround[] = [...pending, { start: forwardStart, end: headStart }];
+
+  await write([
+    { field: 'pending', value: owed },
+    { field: 'cursor', value: headStart },
+    { field: 'rangeCursor', value: BEFORE_EVERY_GROUND },
+  ]);
+
+  return { cursor: headStart, pending: owed, rangeCursor: BEFORE_EVERY_GROUND };
+};
+
 /** A run with no span hint to resume from. */
 export const NO_HINTS: BinanceSpanHints = { forward: [], pending: [], rescan: [], point: [] };
 
@@ -547,7 +587,42 @@ const windowsFrom = (windows: OwedWindow[], cursor: number | null): OwedWindow[]
         ...windows.filter((window) => window.start < cursor),
       ];
 
-const isBackfillWindow = (window: OwedWindow): boolean => window.scope === 'backfill';
+/**
+ * The windows of the owed ranges for the walks that read the newest ground first (`newestFirst` of
+ * `planWalkPasses`), in the order a run reads them: the windows that end before the cursor (the
+ * end of the window the last run read), then the rest, each part newest first. A window ends at
+ * the cursor when it is the one read last, or its rest: it goes behind the older windows, so a
+ * window that fails every run holds none of them back, as in `windowsFrom`. A cursor of none, or
+ * before every window, is all of them newest first. Every window is then entered within
+ * `ceil(windows / reads a run)` runs, whatever windows fail.
+ */
+const newestWindowsFrom = (windows: OwedWindow[], cursor: number | null): OwedWindow[] => {
+  const newestFirst = [...windows].sort((left, right) => right.start - left.start);
+
+  return cursor === null
+    ? newestFirst
+    : [
+        ...newestFirst.filter((window) => window.end < cursor),
+        ...newestFirst.filter((window) => window.end >= cursor),
+      ];
+};
+
+/**
+ * Split [start, end] into contiguous windows of at most `windowMs` from its END back, newest
+ * first, so the oldest one is the one cut at `start`. No count is cut: the caller orders them
+ * all before it cuts (`newestWindowsFrom`), and the range is bound by the floor.
+ */
+const buildWalkWindowsFromEnd = (start: number, end: number, windowMs: number): WalkWindow[] => {
+  const windows: WalkWindow[] = [];
+
+  for (let windowEnd = end; windowEnd > start; windowEnd -= windowMs) {
+    windows.push({ start: Math.max(start, windowEnd - windowMs), end: windowEnd });
+  }
+
+  return windows;
+};
+
+const isBackfillWindow = (window: { scope?: OwedScope }): boolean => window.scope === 'backfill';
 
 /**
  * The series a window of points has to be read in: those of every point, or none named (every
@@ -618,7 +693,8 @@ const pointsToRead = (points: OwedGround[], endTime: number): OwedWindow[] => {
  * committed span has read it (`advanceWalkMarks`); only the floor passing it drops it
  * unread. Each run reads, after the forward pass and before the re-scan, the owed ground
  * the re-scan will not read, in a round-robin over the WINDOWS of the owed ranges (`windowsFrom`:
- * those that start at or after the range cursor first, then the rest, oldest first), so a
+ * those that start at or after the range cursor first, then the rest, oldest first; a walk that
+ * passes `newestFirst` reads them newest first, `newestWindowsFrom`), so a
  * catch-up from a cursor of any age, a long absence, or a window that outran an unfinished pass
  * loses no day, and a window that is owed whole every run cannot keep the windows behind it, of
  * its own range or of another, from being read. The windows owed to the backfill come after all
@@ -641,6 +717,13 @@ export const planWalkPasses = (input: {
   windowMs: number;
   overlapMs: number;
   maxWindows: number;
+  /**
+   * Read the windows owed for every coin newest first (`newestWindowsFrom`) instead of oldest
+   * first (`windowsFrom`), cut to `maxWindows` once ordered, not per range: a range whose newest
+   * windows fail every run must not hide the ground behind them. Off or left out is the plan of
+   * every other walk; the windows owed to the backfill are not affected.
+   */
+  newestFirst?: boolean;
 }): WalkPlan => {
   const {
     cursor,
@@ -654,6 +737,7 @@ export const planWalkPasses = (input: {
     windowMs,
     overlapMs,
     maxWindows,
+    newestFirst = false,
   } = input;
   const windowStart = Math.max(floorMs, endTime - windowMs);
   const forwardStart = Math.max(floorMs, cursor ?? floorMs);
@@ -680,27 +764,40 @@ export const planWalkPasses = (input: {
     start: rescan.at(0)?.start ?? behindEnd,
     end: rescan.at(-1)?.end ?? behindEnd,
   };
-  const owedWindows = withoutRead(
+  const owedRanges = withoutRead(
     pendingRanges.filter((ground) => !isPoint(ground)),
     rescanned,
-  ).flatMap((range) =>
-    buildWalkWindows(range.start, range.end, windowMs, maxWindows).map(
+  );
+  const owedWindowsOf = (range: OwedGround, windows: WalkWindow[]): OwedWindow[] =>
+    windows.map(
       (window): OwedWindow => ({
         ...window,
         ...foldMap(maybe(range.series), (series) => ({ series: [series] })),
         ...foldMap(maybe(range.scope), (scope) => ({ scope })),
       }),
-    ),
-  );
+    );
+  const oldestWindowsOf = (ranges: OwedGround[]): OwedWindow[] =>
+    ranges.flatMap((range) =>
+      owedWindowsOf(range, buildWalkWindows(range.start, range.end, windowMs, maxWindows)),
+    );
+  const everyCoinRanges = owedRanges.filter((range) => !isBackfillWindow(range));
+  const everyCoinWindows = newestFirst
+    ? newestWindowsFrom(
+        everyCoinRanges.flatMap((range) =>
+          owedWindowsOf(range, buildWalkWindowsFromEnd(range.start, range.end, windowMs)),
+        ),
+        rangeCursor,
+      ).slice(0, maxWindows)
+    : windowsFrom(oldestWindowsOf(everyCoinRanges), rangeCursor);
 
   return {
     forward: buildWalkWindows(forwardStart, endTime, windowMs, maxWindows),
     pending: [
+      ...everyCoinWindows,
       ...windowsFrom(
-        owedWindows.filter((window) => !isBackfillWindow(window)),
-        rangeCursor,
+        oldestWindowsOf(owedRanges.filter(isBackfillWindow)),
+        backfillCursor ?? rangeCursor,
       ),
-      ...windowsFrom(owedWindows.filter(isBackfillWindow), backfillCursor ?? rangeCursor),
     ],
     points: startingAfter(pointsToRead(pendingRanges.filter(isPoint), endTime), pointCursor),
     rescan,
@@ -1332,6 +1429,10 @@ const sameHints = (left: BinanceSpanHints, right: BinanceSpanHints): boolean =>
  * first such error. A window of the forward pass or the re-scan that cannot be read, and every
  * other failure in any pass (a rate limit, an auth failure, a clock skew, the network), ends the
  * run at once with no further call: more calls after a refusal would extend a ban.
+ * A walk that passes `readOnPastUnreadableForward` reads on past a forward window that cannot be
+ * read in the same way: the cursor stays at its start, the owed ground behind it is read, and the
+ * run rejects at the end with the error, so that window comes first next run and does not hold
+ * back the ground behind it forever.
  *
  * A read commits every record it can trust and leaves the ground of the others owed (see
  * `settleRecords`), so a stuck record never holds back the rest of a span, a range or the
@@ -1379,6 +1480,7 @@ export const runWalkPlan = async (input: {
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
   isUnreadableWindowError?: (error: unknown) => boolean;
+  readOnPastUnreadableForward?: boolean;
 }): Promise<WalkResult> => {
   const {
     plan,
@@ -1391,6 +1493,7 @@ export const runWalkPlan = async (input: {
     markBackfillTurn,
     callsOf = () => 1,
     isUnreadableWindowError = () => false,
+    readOnPastUnreadableForward = false,
   } = input;
   const pointKeep = plan.points.length > 0 ? POINT_KEEP * callsOf(plan.points[0]) : 0;
   const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP * callsOf(plan.rescan[0]) : 0;
@@ -1455,14 +1558,18 @@ export const runWalkPlan = async (input: {
 
       const outcome = await runWithHint(window, pass, windowKeep, hintPass).catch(
         (error: unknown): WindowOutcome => {
-          if (pass !== 'pending' || !isUnreadableWindowError(error)) {
+          const toleratedPass =
+            pass === 'pending' || (pass === 'forward' && readOnPastUnreadableForward);
+
+          if (!toleratedPass || !isUnreadableWindowError(error)) {
             throw error;
           }
 
           firstUnreadable ??= { error };
 
           // Owed and started, so the round-robin moves on past a window that cannot be read and
-          // the ground behind it, the re-scan and the points get their reads.
+          // the ground behind it, the re-scan and the points get their reads. A forward window
+          // that cannot be read keeps its cursor, so it is the first read of the next run.
           return { imported: 0, complete: false, owed: true, started: true, hint: null };
         },
       );

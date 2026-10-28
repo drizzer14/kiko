@@ -8,6 +8,7 @@ import {
   type DepthGuard,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
+  headFirstGroundOf,
   instantAt,
   joinSettled,
   type OwedWindow,
@@ -526,17 +527,27 @@ const runSync = async (
     write,
   });
   const endTime = deps.now();
-  const plan = planWalkPasses({
+  const head = await headFirstGroundOf({
     cursor,
-    rescanCursor,
-    pointCursor: roundRobins.pointCursor,
-    rangeCursor: roundRobins.rangeCursor,
     pending,
+    floorMs: HISTORY_FLOOR_MS,
+    endTime,
+    windowMs: P2P_WINDOW_MS,
+    write,
+  });
+  const marks = { ...roundRobins, rangeCursor: head.rangeCursor ?? roundRobins.rangeCursor };
+  const plan = planWalkPasses({
+    cursor: head.cursor,
+    rescanCursor,
+    pointCursor: marks.pointCursor,
+    rangeCursor: marks.rangeCursor,
+    pending: head.pending,
     floorMs: HISTORY_FLOOR_MS,
     endTime,
     windowMs: P2P_WINDOW_MS,
     overlapMs: RESYNC_OVERLAP_MS,
     maxWindows: P2P_MAX_WINDOWS,
+    newestFirst: true,
   });
 
   if (plan.forward.length === 0 && plan.rescan.length === 0) {
@@ -549,7 +560,7 @@ const runSync = async (
     accountId,
     ...credentials,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor, rescanCursor, ...roundRobins, pending },
+    marks: { cursor: head.cursor, rescanCursor, ...marks, pending: head.pending },
     plan,
     write,
     depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
@@ -560,6 +571,7 @@ const runSync = async (
     lane: 'p2p',
     cost: COSTS.p2p,
     callsOf,
+    readOnPastUnreadableForward: true,
     read: (window, span, keepCalls) => readSpan(context, window, span, keepCalls),
     commit: (window, span, read, pass) => commitSpan(context, window, span, read, pass),
   });
@@ -570,13 +582,14 @@ const runSync = async (
 /**
  * Import the user's completed P2P buys as a taker as transactions on the Funding holding of their
  * coin, list the sales, the orders placed as an advertiser and the ones it cannot tell, and
- * commit a window's rows before advancing the mark past it. The walk reads 30-day windows forward
- * from the history floor, both sides of each, empty ones too, because Binance has no refusal to
- * the floor to stop at; a run reads as many windows as the lane's calls allow, so the first walk
- * takes several runs. `complete: false` means history, owed ground or the re-scan remains and a
- * later run resumes from the stored marks; a failure other than a rate limit rejects, so the
- * caller can log it without failing the balance sync, and the run that fails reads the same window
- * again.
+ * commit a window's rows before advancing the mark past it. The walk reads the newest 30-day
+ * window first and owes the ground behind it (`headFirstGroundOf`), which it reads newest first,
+ * a window at a time down to the history floor, both sides of each, empty ones too, because
+ * Binance has no refusal to the floor to stop at; a run reads as many windows as the lane's calls
+ * allow, so the first walk takes several runs. `complete: false` means history, owed ground or
+ * the re-scan remains and a later run resumes from the stored marks; a failure other than a rate
+ * limit rejects, so the caller can log it without failing the balance sync, and the run that
+ * fails reads the same window again.
  */
 export const syncBinanceP2pHistory = (
   request: { targetAccountId: string; run: BinanceHistoryRun },

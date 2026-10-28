@@ -161,6 +161,7 @@ export const runBinanceWalkPlan = <Page>(input: {
   ) => Promise<SpanCommit | undefined>;
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
+  readOnPastUnreadableForward?: boolean;
 }): Promise<WalkResult> => {
   const { context, lane, cost, read, commit } = input;
   const { deps, run, accountId, plan, marks, write } = context;
@@ -169,6 +170,7 @@ export const runBinanceWalkPlan = <Page>(input: {
     plan,
     callsOf: input.callsOf,
     owedFirst: input.owedFirst,
+    readOnPastUnreadableForward: input.readOnPastUnreadableForward,
     canAfford: (keep) =>
       run.budget.canAfford(lane, cost, keep) && !isBinanceCoolingDown(accountId, deps.now()),
     runWindow: (window, pass, keep, hint) =>
