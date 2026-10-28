@@ -165,6 +165,7 @@ anything there ships in plaintext) are in
 `docs/harness/dependency-hygiene.md` ("`.env` is public-only") — read
 that section. A secret belongs in the iOS Keychain
 (`react-native-keychain`); see `.claude/skills/kiko-architecture/SKILL.md`
+(and `.claude/skills/kiko-architecture/monobank-sync.md` for the token)
 for the existing Keychain-backed examples: the Monobank token, the
 SQLCipher database key in `src/db/keys/db-key.ts`, and the Binance credentials
 (`src/crypto-sync/binance/binance.credentials.ts` holds the service name; the

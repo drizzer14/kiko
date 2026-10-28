@@ -5,7 +5,9 @@
     "  parallel and price_points disables afterwards if nothing needs it. `needsPriceBook` (`src/holdings/priced-value/`)",
     "  now\"): no tips feature folder, no tip card component, no dismiss-tip or reset-tips settings function, and the Help",
     "  empty array in it, as a no-op, not an error — `import-data.ts` still restores `payload.tables` regardless. Follow",
-    "  glyph never stands for several former accounts. It runs right after `withBankAccountsBankIdBackfilled` (a live device",
+    "  glyph never stands for several former accounts. It runs right after `withBankAccountsBankIdBackfilled` (a live device"
+  ],
+  ".claude/skills/kiko-architecture/reminders.md": [
     "  (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.",
     "  (`statement-import.screen.tsx`, `column-mapping.screen.tsx`). A per-mount `offerDecided` latch, set"
   ],
