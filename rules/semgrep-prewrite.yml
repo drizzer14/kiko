@@ -1359,7 +1359,7 @@ rules:
       call expects: its message, a pattern, or its own class.
     metadata:
       fix: "Pass the expected error to toThrow: its message (a string), a pattern (a regex) or its class."
-      skill: "kiko-code-style › A rejection names its error"
+      skill: "kiko-testing › A rejection names its error"
     paths:
       include:
         - "*.test.ts"
@@ -1865,7 +1865,7 @@ rules:
             - pattern: Date.parse(...)
             - pattern: startOfLocalDay(...)
             - pattern: endOfLocalDay(...)
-  # kiko-code-style's "Tests read a module, never a source file's text":
+  # kiko-testing's "Tests read a module, never a source file's text":
   # Stryker rewrites every mutable `.ts`/`.tsx` source in its sandbox, so a
   # test that reads that source's TEXT sees instrumented code and its parse
   # breaks the dry run. A read is flagged unless its path provably ends in a
@@ -1887,7 +1887,7 @@ rules:
       "Tests read a module, never a source file's text".
     metadata:
       fix: "Import the module and read its structure (e.g. getTableColumns(table)); for a data fixture, name the file with its own extension in the join (join(__dirname, '__fixtures__/sample.csv'))."
-      skill: "kiko-code-style › Tests read a module, never a source file's text"
+      skill: "kiko-testing › Tests read a module, never a source file's text"
     options:
       symbolic_propagation: true
     paths:
@@ -2237,7 +2237,7 @@ rules:
         - "*.test.ts"
         - "*.test.tsx"
     pattern: removeHoldingDatabaseTransaction
-  # kiko-code-style's "A jest.requireActual call takes no type argument". A regex,
+  # kiko-testing's "A jest.requireActual call takes no type argument". A regex,
   # not an AST pattern: Semgrep reads an absent type argument as matching `<$T>`, so
   # `jest.requireActual('m') as T` would match too. The `<` right after the callee is
   # the whole signal, and the regex reads across a line break. No `paths.include`:
@@ -2257,7 +2257,7 @@ rules:
       "A jest.requireActual call takes no type argument".
     metadata:
       fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call; the same for requireMock, createMockFromModule and genMockFromModule."
-      skill: "kiko-code-style › A jest.requireActual call takes no type argument"
+      skill: "kiko-testing › A jest.requireActual call takes no type argument"
     pattern-regex: '\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<'
   # kiko-design-system's "Component set": a test that must read a label's `variant` or `tone`
   # mocks the `Text` primitive with the shared `src/test-support/mock-text-variant-tone.tsx`,
@@ -2343,7 +2343,7 @@ rules:
       "A subset matcher never holds a Set or a Map".
     metadata:
       fix: "Take the field out of the subset and `toEqual` it: `expect(actual.field).toEqual(new Set([...]))`."
-      skill: "kiko-code-style › A subset matcher never holds a Set or a Map"
+      skill: "kiko-testing › A subset matcher never holds a Set or a Map"
     patterns:
       - pattern-either:
           - pattern: |

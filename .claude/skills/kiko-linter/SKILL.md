@@ -2258,7 +2258,7 @@ such a title.
 
 ## `kiko-rejects-to-throw-needs-error`
 
-Mechanizes kiko-code-style's "A rejection names its error": any `.rejects` form that passes on
+Mechanizes kiko-testing's "A rejection names its error": any `.rejects` form that passes on
 every failure, so a test that fails for the wrong reason stays green. The forms are the patterns
 of `kiko-rejects-to-throw-needs-error` in `rules/semgrep-prewrite.yml`; read them there.
 
@@ -2406,7 +2406,7 @@ shrinks; a new doc is never added. The reason is in `docs/harness/documented-exc
 
 ## `kiko-no-typed-jest-require-actual`
 
-Mechanizes kiko-code-style's "A jest.requireActual call takes no type argument": a type argument
+Mechanizes kiko-testing's "A jest.requireActual call takes no type argument": a type argument
 on `jest.requireActual`, `jest.requireMock`, `jest.createMockFromModule` or
 `jest.genMockFromModule` (`jest.requireActual<{ ... }>('m')`), including a
 multi-line generic. **Why:** jest-haste-map's dependency extractor (`JEST_EXTENSIONS_RE` in

@@ -30,6 +30,7 @@ Rules:
 - The nullable-map ternary (`x === undefined ? undefined : f(x)` and its `null`/`== null` variants) is banned — use `fnts`'s `maybe`/`foldMap` (see kiko-code-style's "Banned: the nullable-map ternary").
 - No more than one component per file, except a small local, non-exported component extracted for readability or re-render reasons — see kiko-code-style's "One component per file" section.
 - Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
+- Load kiko-testing (`.claude/skills/kiko-testing/SKILL.md`) before you write or change a test.
 - Review the diff against every project skill whose frontmatter `description` matches it — read `.claude/skills/*/SKILL.md` frontmatter to find the match rather than trusting a fixed list here (a skill can be added between reviews of this agent file); kiko-code-style and kiko-design-system apply to nearly everything (import length-sort, folder-per-thing layout, currency mapping). kiko-compliance applies when the diff adds a new network host, a native permission, a build/env flag that controls what a user sees, a credential, or a third-party API. Read the one that fits before you write, if unsure.
 - Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`; kiko-linter
   "SHELL-WRITE deny" names them, including `.claude/skills/`, `.claude/agents/` and all of
