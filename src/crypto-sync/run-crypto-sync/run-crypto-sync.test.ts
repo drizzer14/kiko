@@ -157,17 +157,17 @@ describe('runCryptoSync', () => {
     );
   });
 
-  it('runs the walks in order, capital, Pay, Transfer, Earn, Convert, the dust read, P2P, fiat orders, fiat payments, then the trade read, all on one run object', async () => {
+  it('runs the walks in order, P2P, capital, Pay, Transfer, Earn, Convert, the dust read, fiat orders, fiat payments, then the trade read, all on one run object', async () => {
     await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
     const inOrder = [
+      mockSyncBinanceP2pHistory,
       mockSyncBinanceTransactions,
       mockSyncBinancePayHistory,
       mockSyncBinanceTransferHistory,
       mockSyncBinanceEarnHistory,
       mockSyncBinanceConvertHistory,
       mockSyncBinanceDustHistory,
-      mockSyncBinanceP2pHistory,
       mockSyncBinanceFiatOrderHistory,
       mockSyncBinanceFiatPaymentHistory,
       mockSyncBinanceTradeHistory,
@@ -550,17 +550,17 @@ describe('runCryptoSync', () => {
 
   describe('a walk state this build cannot read', () => {
     // How many times each of the five walks, the dust read, the three P2P and fiat walks and the
-    // trade read ran, in the order capital, Pay, Transfer, Earn, Convert, dust, P2P, fiat orders,
+    // trade read ran, in the order P2P, capital, Pay, Transfer, Earn, Convert, dust, fiat orders,
     // fiat payments, trade.
     const walkRunCounts = (): number[] =>
       [
+        mockSyncBinanceP2pHistory,
         mockSyncBinanceTransactions,
         mockSyncBinancePayHistory,
         mockSyncBinanceTransferHistory,
         mockSyncBinanceEarnHistory,
         mockSyncBinanceConvertHistory,
         mockSyncBinanceDustHistory,
-        mockSyncBinanceP2pHistory,
         mockSyncBinanceFiatOrderHistory,
         mockSyncBinanceFiatPaymentHistory,
         mockSyncBinanceTradeHistory,
