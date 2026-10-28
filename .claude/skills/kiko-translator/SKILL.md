@@ -19,8 +19,8 @@ stayed English after a language switch and went stale after a rename. The fix:
 the row stores a structural marker (`exchangeCounterpartHoldingId`,
 `untrackedCounterpart`) and `transactionRowDescription`
 (`src/transactions/row-description/`) resolves the label with `t` at render
-time (see kiko-domain 'Exchange/Convert legs'). The same rule applies to a placeholder like "Never" for
-last-sync (T-17, `src/screens/account-detail/format-last-sync.ts`): add
+time (see kiko-exchange-sync 'Exchange/Convert legs'). The same rule applies to a placeholder
+like "Never" for last-sync (T-17, `src/screens/account-detail/format-last-sync.ts`): add
 a catalogue key and thread `t` through, don't hardcode the fallback.
 
 ## A seeded default category is named by its displayed title everywhere

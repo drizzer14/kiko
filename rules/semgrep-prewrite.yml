@@ -1040,7 +1040,7 @@ rules:
       fix: "Remove the bare `fullWidth` / `fullWidth={true}` from the Button; it already defaults to true. Pass only `fullWidth={false}`."
       skill: "kiko-design-system › Component set (Button)"
     pattern: <Button ... fullWidth={true} ... />
-  # kiko-domain's "Exchange/Convert legs": a blank row's fallback label has ONE
+  # kiko-exchange-sync's "Exchange/Convert legs": a blank row's fallback label has ONE
   # owner, `transactionRowDescription`, which tries the exchange-leg label
   # before the holding-name default. A surface calling
   # `defaultTransactionDescription` itself skips that branch — the transaction
@@ -1059,7 +1059,7 @@ rules:
       <counterpart>" for a same-currency pair) everywhere.
     metadata:
       fix: "Call `transactionRowDescription({ transaction, holdingName, holdingNameById, holdingCurrencyById, t })` from `@kiko/transactions/row-description` instead of `defaultTransactionDescription`."
-      skill: "kiko-domain › Exchange/Convert legs: a structural marker, a resolved label"
+      skill: "kiko-exchange-sync › Exchange/Convert legs: a structural marker, a resolved label"
     paths:
       exclude:
         - "src/transactions/row-description/**"

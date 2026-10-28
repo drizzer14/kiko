@@ -4,9 +4,6 @@
     "`usePriceBook(enabled, { cached: true })`) READS it. Only a display screen's readiness query opts in — never a",
     "  parallel and price_points disables afterwards if nothing needs it. `needsPriceBook` (`src/holdings/priced-value/`)",
     "  now\"): no tips feature folder, no tip card component, no dismiss-tip or reset-tips settings function, and the Help",
-    "  an account with no capital row starts at the floor. The forward pass starts at `max(floor, cursor)`. The",
-    "- **Transfer forward stops (O1; the Earn lane does the same with `EARN_FORWARD_OWES`).** A stop tied to ONE transfer with a usable",
-    "  failure: ignored, nothing owed. Any other value (a pending status such as PURCHASING or CREATED, or an unknown one) is",
     "  empty array in it, as a no-op, not an error — `import-data.ts` still restores `payload.tables` regardless. Follow",
     "  glyph never stands for several former accounts. It runs right after `withBankAccountsBankIdBackfilled` (a live device",
     "  (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.",
@@ -117,7 +114,6 @@
     "being trusted as exact); any other account (bank id `other`, or no recognized bank id; `isSpecificBankId` decides) is keyed by"
   ],
   ".claude/skills/kiko-translator/SKILL.md": [
-    "time (see kiko-domain 'Exchange/Convert legs'). The same rule applies to a placeholder like \"Never\" for",
     "into `TITLE_KEYS`; read the test for the current entries. Every picker sheet (`SelectField` and its wrappers,"
   ],
   "docs/harness/checks-internals.md": [

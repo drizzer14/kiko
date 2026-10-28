@@ -24,7 +24,8 @@ Rules:
 - You are read-only; you do not stop processes at all — no pkill, killall, kill, or
   any pattern/group kill.
 - Load the project skills that match your focus for the mental model: kiko-architecture
-  and kiko-domain for storage/sync/Money; kiko-charts and kiko-gestures for render cost;
+  and kiko-domain for storage/sync/Money (kiko-exchange-sync for exchange sync); kiko-charts
+  and kiko-gestures for render cost;
   kiko-design-system and kiko-code-style for styling and conventions. For a security
   focus, also run the built-in Claude Code `security-review` skill ("Complete a security
   review of the pending changes on the current branch"), and apply the standing refs

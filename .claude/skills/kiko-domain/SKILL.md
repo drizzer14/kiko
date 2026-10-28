@@ -185,7 +185,8 @@ entry, not a change to either caller. The registry is intentionally
 `Partial`: a `BankProviderId` with no entry here is simply not yet
 implemented, and callers must skip it rather than assume every id resolves.
 `exchangeProviderRegistry` (`src/crypto-sync/exchange/registry/`) is the crypto twin of
-`bankProviderRegistry`; `syncJobsFor` skips a crypto id the registry does not wire.
+`bankProviderRegistry`; `syncJobsFor` skips a crypto id the registry does not wire. For exchange
+sync and Exchange/Convert legs see `kiko-exchange-sync`.
 
   **Implicit accounts: at most one LIVE `property` account and one LIVE
   `debt` account** (`archivedAt` NULL), enforced by the partial unique index
@@ -294,7 +295,7 @@ implemented, and callers must skip it rather than assume every id resolves.
   external_id)`. For a SYNCED row it is NAMESPACED by the holding's
   account id — `${accountId}:${sourceId}` — so the global index cannot
   collide across two connections of one provider, Binance record ids
-  being only per-account unique; see `kiko-architecture`'s "Namespaced
+  being only per-account unique; see `kiko-exchange-sync`'s "Namespaced
   synced externalId". A manual row's is null), `createdAt`.
 
   Re-syncing an existing `externalId` **refreshes** that row's
@@ -368,8 +369,8 @@ so it and the Statistics series never disagree; a backfill still owed leaves it 
 until the ground is read. None of the three routes
 through `transactionsRepo.recordManual` (which would apply the amount to
 the balance a second time), and none persists a description or a
-category — the label resolves at render time (see the exchange section
-below and `transactionRowDescription`, `src/transactions/`). A null category folds
+category — the label resolves at render time (see kiko-exchange-sync's
+"Exchange/Convert legs" and `transactionRowDescription`, `src/transactions/`). A null category folds
 onto `settings.defaultCategoryKey`, so a downward correction counts as
 spending like any other uncategorised manual row; that is a RULED
 decision (the row is editable), not an oversight to be quietly patched.
@@ -1073,89 +1074,6 @@ per loan over all of that loan's linked payments).
 row — not into the exclusion-RULE inputs themselves (a synthetic
 entry carries no mcc/description/IBAN signal, so it plays no part in
 detecting a transfer).
-
-## Exchange/Convert legs: a structural marker, a resolved label
-
-An Exchange/Convert leg is NOT identified by its description. Both legs
-carry the counterpart holding's id in a dedicated column — read
-`src/db/schema.ts` (`transactions.exchangeCounterpartHoldingId`, whose
-comment records why it is a column rather than a reserved `category`
-value or a shared `externalId`) and `src/transactions/`
-(`recordExchange` / `recordExchangeCounterpart`, which write it on both
-legs inside the one transaction; an exchange into a term deposit writes
-the marker on its single debit leg). The legs of one Exchange or Convert also
-share `transactions.exchangePairId`, written beside the marker, which is what a
-delete follows to the other legs (the existing row of a Convert gets the pair id
-always, and the marker only when it is manual or imported and carries none; see
-"Deleting a movement takes its other parts"). Three consequences hold together:
-
-- The marker is what the spending view excludes on, in the
-  exchange-exclusion module (`src/statistics/`): no other rule can see these
-  rows — a null `mcc`, an empty description, and a cross-currency pair
-  the matched-pair matcher rejects. The exclusion reads ONLY
-  `exchangeCounterpartHoldingId` and `untrackedCounterpart` (`exchange-exclusion.ts`). A
-  category rule can re-categorize a leg (user ruling B, 2026-10-25); spending still excludes it
-  by its marker. A row with only `exchangePairId` (a synced bank debit a Convert marked) still
-  counts as spending, and a rule may move it between slices with the total unchanged (user
-  ruling M-1 = A, 2026-10-25).
-- A P2P / card / fiat-deposit purchase row carries no `exchangeCounterpartHoldingId`; its
-  `untrackedCounterpart` code is its marker, so this rule leaves the row itself out. Its
-  funding BANK debit is a separate row and leaves spending through the funding matcher
-  (`src/statistics/exchange-funding-match/`).
-- **The repository never writes a description for a leg.** The label is
-  resolved at render time through `t`. `transactionRowDescription`
-  (`src/transactions/row-description/`) applies the ordered steps its JSDoc lists in
-  `row-description.ts`: read the order there, never from this skill. Pair legs take
-  their label from `exchangeLegDescription` / `transferLegDescription`
-  (`src/transactions/exchange-description/`); wallet names are proper nouns kept in code,
-  not in i18n. Same-currency legs,
-  including manual ones, read 'Transfer', not 'Exchange'. The caller supplies
-  `holdingNameById` and `holdingCurrencyById`, both built from the holdings live
-  query. A persisted sentence stayed English after a language switch and went
-  stale after a rename; that is the bug the column exists to prevent.
-  `ruleDescriptionOf` (`src/transactions/row-description/rule-description.ts`) is
-  the second reader of a blank row's label, for category-rule matching.
-- `transactions.untrackedCounterpart` (0058, nullable) holds a stored counterpart code for
-  a leg whose other side the app does not track: a wallet, an asset, or a P2P, card or bank
-  fiat. The forms and parse rules are `parseUntrackedCounterpart`
-  (`src/transactions/untracked-counterpart/untracked-counterpart.ts`); an unknown code,
-  such as an `asset:` code with a `:` in it, parses to nothing. The exchange-exclusion module
-  also excludes these rows from spending (read
-  `src/statistics/exchange-exclusion/`). The column is insert-only: it is not in
-  `BANK_OWNED_TRANSACTION_COLUMNS` (`src/transactions/repo/transactions.repo.ts`).
-- `transactions.operation` (0063, nullable) is the exchange operation code of a row. It is
-  insert-only (not in `BANK_OWNED_TRANSACTION_COLUMNS`) and is not a rewrite guard field
-  (`REWRITE_GUARD_FIELDS` in `src/categories/category-rules/plan-rule-rewrite.ts`). It is read
-  only for the Trading fee label and is never a statistics input.
-- **The 2-minute same-amount matcher sees only unmarked rows.**
-  `rowsForTransferMatch` (`src/statistics/internal-transfers/internal-transfers.ts`)
-  drops every row that carries `exchangePairId`, `exchangeCounterpartHoldingId` or
-  `untrackedCounterpart` before `internalTransferTransactionIds` runs
-  (`statistics.screen.tsx`). A marked row is an exchange leg the structural rules already
-  exclude; left in the ledger it could be matched as the partner of an unmarked
-  same-amount row (a Pay send) and drop real spending.
-- **`transactionRowDescription` is the ONE owner of a blank row's label.**
-  Every surface that shows it calls it: both lists, `ExampleTransaction`,
-  and the transaction form. On an edit, the form pre-fills a blank
-  stored description with that label as the field VALUE (and previews it
-  as the placeholder once cleared); Save stores `''` when the text still
-  equals the pre-filled label, and the typed text otherwise — so an
-  untouched leg keeps resolving at render time. A direct
-  `defaultTransactionDescription(` call outside
-  `src/transactions/row-description/` (or the helper's own folder)
-  skips the exchange, transfer and untracked branches, and is denied by the
-  `kiko-no-direct-default-transaction-description` Semgrep rule.
-- A repository input therefore carries holding IDs, never holding
-  display names, for an exchange.
-- **Convert's counterpart never lands on a synced holding.** The
-  counterpart picker (`resolveConvertView` in the transaction form)
-  excludes every synced/syncable holding — a sync already owns that
-  holding's balance, and the counterpart is a NEW manual leg `save`
-  writes. `recordExchangeCounterpart` (`src/transactions/repo/`) enforces
-  the same rule again, in depth, inside the write itself: it re-reads the
-  counterpart's own holding+account INSIDE the transaction and throws
-  rather than trust a caller-supplied flag, since the write is reachable
-  directly, not only through the picker.
 
 ## Deleting a movement takes its other parts
 

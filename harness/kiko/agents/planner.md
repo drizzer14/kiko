@@ -23,7 +23,8 @@ Rules:
 - Invoke superpowers:writing-plans before you write a plan.
 - Invoke superpowers:brainstorming first when the request is not yet a clear spec.
 - Read the project knowledge before you plan against the code: the kiko-architecture,
-  kiko-code-style, kiko-design-system, kiko-domain, and kiko-compliance skills.
+  kiko-code-style, kiko-design-system, kiko-domain, and kiko-compliance skills (and
+  kiko-exchange-sync for exchange or sync work).
 - Read `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --gaps --repo kiko` first, and name each open gap the plan closes or leaves open.
 - Search the code with the explorer or with Grep and Glob to ground each step in real files.
 - Write the plan to a file. Name each step, each file it touches, and each check it must pass.

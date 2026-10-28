@@ -94,7 +94,7 @@ written down; SHALLOW = named in 1-2 lines; NONE = no skill.
 | holdings | 26 | kiko-domain | DEEP |
 | statistics | 23 | kiko-domain, kiko-charts, kiko-architecture `:651` | DEEP (duplicated, #22) |
 | monobank | 19 | kiko-architecture `:162-606` | DEEP, but drifted (#2) |
-| crypto-sync | 18 | kiko-architecture `:676-833` | DEEP (Binance); BTC wallet provider NONE |
+| crypto-sync | 18 | kiko-exchange-sync (was kiko-architecture `:676-833`) | DEEP (Binance); BTC wallet provider NONE |
 | transactions | 14 | kiko-domain | DEEP (schema); row formatting SHALLOW |
 | sync | 12 | kiko-architecture (indirect) | SHALLOW |
 | i18n | 12 | kiko-translator | DEEP; uk apostrophe + Кіко missing (#17) |

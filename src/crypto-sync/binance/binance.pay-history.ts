@@ -152,7 +152,7 @@ const EARN_WALLET_TYPE = 5;
 /**
  * A receive carries no field that says which wallet took it (`walletType` and `walletTypes`
  * may describe the payer), so its time decides: Spot from this UTC midnight, Funding before.
- * Where the date comes from: kiko-architecture, the Binance Pay section.
+ * Where the date comes from: kiko-exchange-sync, the Binance Pay section.
  */
 const PAY_RECEIPTS_TO_SPOT_FROM_MS = Date.UTC(2026, 8, 29);
 
