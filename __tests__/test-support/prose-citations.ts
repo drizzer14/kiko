@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 import {
+  escapePattern,
   headingResolves,
   headingsOf,
   linesOutsideFences,
@@ -45,8 +46,6 @@ const SINGLE_FILES = ['CLAUDE.md'];
 const QUOTED_TEXT = '(?:(?!\\n[ \\t]*\\n)(?:\\\\[\\s\\S]|[^"\\\\]))+';
 
 const SINGLE_QUOTED_TEXT = "(?:(?!\\n[ \\t]*\\n)[^'])+";
-
-const escapePattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const CODE_FILE_PATTERN = /\.tsx?$/;
 
@@ -130,8 +129,6 @@ const isCitationForm = (match: RegExpMatchArray): boolean =>
 // A quoted text, an optional closing mark, then `above` or `below`: a pointer into the same file.
 const DIRECTION_PATTERN = new RegExp(`"(${QUOTED_TEXT})"[,;:)]?\\s+(above|below)\\b`, 'g');
 
-const PRECEDING_WORD_PATTERN = /([\w-]+)(?:'s?)?(?:\s+skill's)?[`\s,(]*$/;
-
 const COMMENT_LEADER_PATTERN = /^\s*(?:\/\/+|\/\*+|\*+(?!\/))\s?/;
 
 const COMMENT_TRAILER_PATTERN = /\s*\*\/\s*$/;
@@ -164,22 +161,20 @@ const sourceTextOf = (file: string, text: string): string =>
         .join('\n')
     : text;
 
-// A code file is parsed only when its raw text could hold a citation: most of `src` holds none.
-const scannedSources = (root: string, skills: string[], withCodeComments: boolean): Source[] => {
-  const couldCite = new RegExp(`${citationPatternFor(skills).source}|${DIRECTION_PATTERN.source}`);
+// A code file is parsed only when its raw text names a skill: most of `src` holds no citation. The
+// raw text cannot show a citation whole, since a wrapped comment may end a line on the name and
+// open the quote on the next `//` line, so the test looks for the name alone.
+const scannedSources = (root: string, skills: string[], files: string[]): Source[] => {
+  const namesASkill = new RegExp(`(?<![\\w-])(?:${skills.map(escapePattern).join('|')})`);
 
-  return sourceFilesIn(root).flatMap((file) => {
-    if (CODE_FILE_PATTERN.test(file) && !withCodeComments) {
-      return [];
-    }
-
+  return files.flatMap((file) => {
     const text = readFileSync(join(root, file), 'utf8');
 
     if (!CODE_FILE_PATTERN.test(file)) {
       return [{ file, text: sourceTextOf(file, text) }];
     }
 
-    return couldCite.test(text) ? [{ file, text: commentOnlyText(file, text) }] : [];
+    return namesASkill.test(text) ? [{ file, text: commentOnlyText(file, text) }] : [];
   });
 };
 
@@ -212,7 +207,7 @@ export const proseCitations = (root: string): ProseCitation[] => {
     return read;
   };
 
-  return scannedSources(root, skills, true).flatMap(({ file, text }) =>
+  return scannedSources(root, skills, sourceFilesIn(root)).flatMap(({ file, text }) =>
     [...text.matchAll(citationPattern)].filter(isCitationForm).map((match) => {
       const skill = match[2];
       const cited = normalizedText(match[5]?.replace(/\\"/g, '"') ?? match[6]);
@@ -239,9 +234,15 @@ export type DirectionCitation = {
   resolved: boolean;
 };
 
-const namesASkill = (text: string, quoteIndex: number, skills: Set<string>): boolean =>
-  skills.has(
-    PRECEDING_WORD_PATTERN.exec(text.slice(Math.max(0, quoteIndex - 80), quoteIndex))?.[1] ?? '',
+// Where the double-quoted text of every prose citation opens: such a quote is the prose citation
+// check's, read by the same pattern and form test, so a short name before a comma that check
+// leaves alone is left to the direction check.
+const citedQuoteStarts = (text: string, skills: string[]): Set<number> =>
+  new Set(
+    [...text.matchAll(citationPatternFor(skills))]
+      .filter(isCitationForm)
+      .filter((match) => match[5] !== undefined)
+      .map((match) => (match.index ?? 0) + match[0].length - match[5].length - 2),
   );
 
 // The heading or lead is in the same file, before the cited line for `above` and after it for
@@ -263,13 +264,15 @@ const resolvedInDirection = (
 export const directionCitations = (root: string): DirectionCitation[] => {
   const skills = sortedSkillNames(skillFilesIn(root));
 
-  const skillSet = new Set(skills);
+  const documents = sourceFilesIn(root).filter((file) => !CODE_FILE_PATTERN.test(file));
 
-  return scannedSources(root, skills, false).flatMap(({ file, text }) => {
+  return scannedSources(root, skills, documents).flatMap(({ file, text }) => {
     const lines = linesOutsideFences(text);
 
+    const cited = citedQuoteStarts(text, skills);
+
     return [...text.matchAll(DIRECTION_PATTERN)]
-      .filter((match) => !namesASkill(text, match.index ?? 0, skillSet))
+      .filter((match) => !cited.has(match.index ?? 0))
       .map((match) => {
         const line = lineCountBefore(text, match.index ?? 0) + 1;
         const cited = normalizedText(match[1].replace(/\\"/g, '"'));

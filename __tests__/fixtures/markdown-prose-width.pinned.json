@@ -30,7 +30,6 @@
   ],
   ".claude/skills/kiko-design-system/SKILL.md": [
     "  centers the control and chevron on the label and body together, as a UIKit cell centers its accessory view; the body then",
-    "  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryForm` (edit mode: a star via `useFormHeaderItems` `extraItems`, before Save; the star is `star.fill` and disabled on the default category, a state marker; shown only once the category row is read), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see \"Section heading disclosure row\" in component-set-forms.md, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.",
     "  in either header item list, and `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either",
     "  shared `InfoHint` (`src/design-system/components/info-hint/`): the icon is a `SymbolIcon` at the caption icon-size token,",
     "chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of"

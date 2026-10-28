@@ -608,18 +608,37 @@ describe('scripts/checks/jest-inventory-suites.txt', () => {
 
   // git grep exits 1 for no match, so only a status above that means the search itself broke; an
   // empty list from a broken search would read as every suite being listed.
-  const walkingSuites = (cwd: string = REPOSITORY_ROOT): string[] => {
-    const result = spawnSync(
-      'git',
-      ['grep', '-lE', WALKING_PATTERN, '--', '*.test.ts', '*.test.tsx'],
-      { cwd, encoding: 'utf8' },
-    );
+  const gitGrep = (cwd: string, pattern: string, pathspecs: string[]): string[] => {
+    const result = spawnSync('git', ['grep', '-lE', pattern, '--', ...pathspecs], {
+      cwd,
+      encoding: 'utf8',
+    });
 
     if (result.status !== 0 && result.status !== 1) {
       throw new Error(`git grep failed with status ${result.status}: ${result.stderr}`);
     }
 
     return result.stdout.split('\n').filter((line) => line !== '');
+  };
+
+  // A suite that imports a harness helper which itself walks a folder walks it too: its rows read
+  // the tree through the helper, with no walking literal in the suite.
+  const walkingSuites = (cwd: string = REPOSITORY_ROOT): string[] => {
+    const helperNames = gitGrep(cwd, WALKING_PATTERN, ['__tests__/test-support/*.ts'])
+      .filter((path) => !path.endsWith('.test.ts'))
+      .map((path) => path.replace(/^.*\/|\.ts$/g, ''));
+
+    return [
+      ...new Set([
+        ...gitGrep(cwd, WALKING_PATTERN, ['*.test.ts', '*.test.tsx']),
+        ...(helperNames.length === 0
+          ? []
+          : gitGrep(cwd, `test-support/(${helperNames.join('|')})${quote}`, [
+              '*.test.ts',
+              '*.test.tsx',
+            ])),
+      ]),
+    ];
   };
 
   it('exists and lists at least one suite', () => {

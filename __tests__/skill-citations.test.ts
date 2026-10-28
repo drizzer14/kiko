@@ -624,6 +624,29 @@ describe('prose citations of a skill section', () => {
       ]);
     });
 
+    it('reads a citation whose skill name ends a comment line and whose quote opens the next (POSITIVE)', () => {
+      expect(
+        proseCitations(
+          demoRoot({
+            'rules/fixtures/demo.bad.ts': [
+              '// Semgrep fixture: demo',
+              '// "Exact heading".',
+              '',
+            ].join('\n'),
+            'src/feature/feature.ts': [
+              'export {};',
+              '// See demo',
+              '// "Gone heading" first.',
+              '',
+            ].join('\n'),
+          }),
+        ),
+      ).toEqual([
+        citationOf('Exact heading', true, 1, 'rules/fixtures/demo.bad.ts'),
+        citationOf('Gone heading', false, 2, 'src/feature/feature.ts'),
+      ]);
+    });
+
     it('does not read a citation inside a string or a template of a src file (NEGATIVE)', () => {
       expect(
         proseCitations(
@@ -835,6 +858,17 @@ describe('prose citations of a skill section', () => {
       expect(
         directionCitations(demoRoot({ [NOTES]: 'See demo\'s "Exact heading" below.\n' })),
       ).toEqual([]);
+    });
+
+    it('reads a short skill name before a comma as a plain word, so the quote is checked (NEGATIVE)', () => {
+      expect(
+        unresolvedDirectionCitations(
+          demoRoot({
+            '.claude/skills/ops/SKILL.md': '# Ops\n\n## Exact heading\n',
+            [NOTES]: 'Then ops, "Gone heading" above.\nThen `ops`, "Gone heading" above.\n',
+          }),
+        ),
+      ).toEqual([directionOf('Gone heading', 'above', false, 1)]);
     });
 
     it('are all resolved in the real repository (the sources are scanned and none is stale)', () => {

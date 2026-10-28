@@ -26,7 +26,8 @@ changelog head, and `git -C <pff-ios> log --oneline -1 main`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
 
 Pending for the next sync (landed in pff-ios 2026-10-11 on branch loan-schedule-cards, not yet
-in the harness repo):
+in the harness repo). A generic test-support reader (a helper under `__tests__/test-support/`
+that holds no Kiko name) goes on this list in the same task that adds or changes it:
 - The generic Node rule `kiko-component-i18n-namespace` (pff-ios `99a6f0bc`, fixed in
   `0fb10efc`): a `NODE_RULES` row with `overridable: false`,
   `component-i18n-namespace.js`/`.sh`, `check:component-i18n-namespace` in `check:all`, exit 2
@@ -116,7 +117,13 @@ in the harness repo):
   repo); and the `proseCitations` changes: the forms `<skill> skill's "X"`, `` `skill`, "X" ``
   and `` `skill` ("X") ``, an escaped `\"` inside a quote, the comments of `src/**/*.ts(x)` and
   `rules/fixtures/**` as sources (through `sourceComments`), and a qualified `H (Q)` citation
-  that must find Q in the section of H. Port the readers and rows, not the Kiko skill text.
+  that must find Q in the section of H. Fix round 1: a source is read when its raw text names a
+  skill, so a comment that ends a line on the name and opens the quote on the next line is read;
+  `directionCitations` skips exactly the quotes `proseCitations` reads; `indexLeadGaps` and
+  `unnamedLockedMarks` read the reference files through `skillFiles`, so a link to a missing file
+  throws; `indexLeadGaps` matches a lead as a whole word; `helperCatalogueGaps` takes no
+  exemptions; and the jest-affected inventory pin also finds a suite that imports a walking
+  `__tests__/test-support` helper. Port the readers and rows, not the Kiko skill text.
 
 ## Classification
 

@@ -11,7 +11,7 @@ type AppTheme = UnistylesThemes[keyof UnistylesThemes];
 // The squircle tile's fixed side length — roomy enough to hold the default
 // `body` glyph (20pt, see theme.ts) with generous internal padding around it,
 // the iOS Settings icon-tile proportion. Derived from the shared spacing
-// scale (`theme.spacing(9)` = 36), never a bare literal, per the
+// scale (`theme.spacing(9)` = 36), never a bare literal, per
 // kiko-design-system's "Spacing" rule. Exported
 // so the component's own `Svg` width/height (a runtime prop, not a style —
 // react-native-svg has no percentage-of-parent sizing here) stays in

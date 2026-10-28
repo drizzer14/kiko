@@ -21,10 +21,9 @@ feature. Read the file before you edit the code it describes.
   ("Changed-first queue order", "Jars are statement sources") and per-card from-window ("A
   reopened card reaches back to its mark"), sync-closed holdings reopening,
   `failedSyncMonobankIds` and graduation, the per-token rate limit gate and single-flight lock,
-  the market refresh beside
-  the fan-out, the three sync signals with the spinner and `SyncProgressBar`, and
-  partial-progress resilience. Read it before you touch `src/monobank/`, `src/sync/` or the
-  Home sync affordances.
+  the market refresh beside the fan-out, the three sync signals with the spinner and
+  `SyncProgressBar`, and partial-progress resilience. Read it before you touch `src/monobank/`,
+  `src/sync/` or the Home sync affordances.
 - [reminders.md](reminders.md) — "Reminders (local notifications)": Storage (the `reminders`
   table), the repository, eligibility rules, the schedule Summary, the notification permission
   store, Shared system status, Shared UI state across screens, re-plan after a write, the

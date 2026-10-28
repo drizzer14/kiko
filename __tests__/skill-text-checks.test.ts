@@ -1,11 +1,16 @@
 import { dirname, join } from 'node:path';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
+import {
+  helperCatalogueGaps,
+  indexLeadGaps,
+  skillFiles,
+  unnamedLockedMarks,
+} from './test-support/skill-text';
 import {
   createTemporaryDirectory,
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
-import { helperCatalogueGaps, indexLeadGaps, unnamedLockedMarks } from './test-support/skill-text';
 
 // What the skill text must say about the files beside it: the kiko-testing helper catalogue, the
 // Locked marks of the kiko-design-system reference files, and the index bullets of a skill with
@@ -22,9 +27,6 @@ const fixtureRoot = (files: Record<string, string>): string => {
 
   return root;
 };
-
-// A helper the catalogue may leave out on purpose. The key is the path, the value the reason.
-const HELPER_CATALOGUE_EXEMPTIONS: Record<string, string> = {};
 
 describe('the kiko-testing helper catalogue', () => {
   afterEach(removeTemporaryDirectories);
@@ -64,15 +66,15 @@ describe('the kiko-testing helper catalogue', () => {
   const shapeFilesWithout = (file: string): Record<string, string> =>
     Object.fromEntries(Object.entries(SHAPE_FILES).filter(([path]) => path !== file));
 
-  const NO_GAPS = { missing: [], unlisted: [], staleExemptions: [] };
+  const NO_GAPS = { missing: [], unlisted: [] };
 
   it('lists exactly the helper files of both folders, test files aside (POSITIVE)', () => {
-    expect(helperCatalogueGaps(fixtureRoot(SHAPE_FILES), [])).toEqual(NO_GAPS);
+    expect(helperCatalogueGaps(fixtureRoot(SHAPE_FILES))).toEqual(NO_GAPS);
   });
 
   it('names a listed helper whose file is gone (NEGATIVE)', () => {
     expect(
-      helperCatalogueGaps(fixtureRoot(shapeFilesWithout('src/test-support/second-helper.tsx')), []),
+      helperCatalogueGaps(fixtureRoot(shapeFilesWithout('src/test-support/second-helper.tsx'))),
     ).toEqual({
       ...NO_GAPS,
       missing: ['src/test-support/second-helper.tsx'],
@@ -87,7 +89,6 @@ describe('the kiko-testing helper catalogue', () => {
           'src/test-support/new-helper.ts': '',
           '__tests__/test-support/new-harness-helper.ts': '',
         }),
-        [],
       ),
     ).toEqual({
       ...NO_GAPS,
@@ -102,7 +103,6 @@ describe('the kiko-testing helper catalogue', () => {
           ...shapeFilesWithout('__tests__/test-support/harness-helper.ts'),
           'src/test-support/harness-helper.ts': '',
         }),
-        [],
       ),
     ).toEqual({
       ...NO_GAPS,
@@ -111,28 +111,8 @@ describe('the kiko-testing helper catalogue', () => {
     });
   });
 
-  it('lets an exemption excuse an unlisted file and names an exemption that is stale (POSITIVE)', () => {
-    expect(
-      helperCatalogueGaps(fixtureRoot({ ...SHAPE_FILES, 'src/test-support/odd-helper.ts': '' }), [
-        'src/test-support/odd-helper.ts',
-        'src/test-support/first-helper.ts',
-        'src/test-support/gone-helper.ts',
-      ]),
-    ).toEqual({
-      ...NO_GAPS,
-      staleExemptions: ['src/test-support/first-helper.ts', 'src/test-support/gone-helper.ts'],
-    });
-  });
-
-  it('matches the real folder listings, every exemption with a reason', () => {
-    expect(Object.values(HELPER_CATALOGUE_EXEMPTIONS).every((reason) => reason.length > 0)).toBe(
-      true,
-    );
-    expect(helperCatalogueGaps(REPOSITORY_ROOT, Object.keys(HELPER_CATALOGUE_EXEMPTIONS))).toEqual({
-      missing: [],
-      unlisted: [],
-      staleExemptions: [],
-    });
+  it('matches the real folder listings', () => {
+    expect(helperCatalogueGaps(REPOSITORY_ROOT)).toEqual(NO_GAPS);
   });
 });
 
@@ -234,10 +214,15 @@ describe('the index bullets of a skill with reference files', () => {
 
   const SKILL_FILE = '.claude/skills/demo/SKILL.md';
 
-  const skillWithReference = (bullet: string, reference: string): string => {
+  const skillWithReference = (
+    bullet: string,
+    reference: string,
+    otherFiles: Record<string, string> = {},
+  ): string => {
     const root = fixtureRoot({
       [SKILL_FILE]: ['# Demo', '', '## Reference files', '', bullet, '', '## After', ''].join('\n'),
       '.claude/skills/demo/parts.md': reference,
+      ...otherFiles,
     });
 
     return join(root, SKILL_FILE);
@@ -285,6 +270,7 @@ describe('the index bullets of a skill with reference files', () => {
         skillWithReference(
           '- [parts.md](parts.md) — "Parts": only that.\n\n- [other.md](other.md) — the Widget.',
           PARTS,
+          { '.claude/skills/demo/other.md': '## Other\n' },
         ),
       ),
     ).toEqual([
@@ -296,6 +282,34 @@ describe('the index bullets of a skill with reference files', () => {
     ]);
   });
 
+  it('name a lead the bullet holds only as part of a longer word (NEGATIVE)', () => {
+    expect(
+      indexLeadGaps(
+        skillWithReference(
+          BULLET.replace('Read it', 'The chartreuse and charts. Read it'),
+          `${PARTS}- **Chart** — new.\n`,
+        ),
+      ),
+    ).toEqual([{ file: 'parts.md', lead: 'Chart' }]);
+  });
+
+  it('read a lead the bullet names as a whole word in another case (POSITIVE)', () => {
+    expect(
+      indexLeadGaps(
+        skillWithReference(
+          BULLET.replace('Read it', 'The chart. Read it'),
+          `${PARTS}- **Chart** — new.\n`,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('throw on a link to a reference file that is not there (NEGATIVE)', () => {
+    expect(() =>
+      indexLeadGaps(skillWithReference(`${BULLET}\n\n- [gone.md](gone.md) — "Gone".`, PARTS)),
+    ).toThrow(/gone\.md, which does not exist/);
+  });
+
   it('do not read a heading or a lead inside a fenced block (NEGATIVE)', () => {
     expect(
       indexLeadGaps(
@@ -305,12 +319,15 @@ describe('the index bullets of a skill with reference files', () => {
   });
 
   it('are complete for every reference file of the real skills', () => {
-    const skills = ['kiko-architecture', 'kiko-design-system', 'kiko-linter'];
+    const skillFilesWithReferences = ['.claude/skills', 'harness/kiko/skills']
+      .flatMap((skillRoot) =>
+        readdirSync(join(REPOSITORY_ROOT, skillRoot), { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map(({ name }) => join(REPOSITORY_ROOT, skillRoot, name, 'SKILL.md')),
+      )
+      .filter((skillFile) => existsSync(skillFile) && skillFiles(skillFile).length > 1);
 
-    expect(
-      skills.flatMap((skill) =>
-        indexLeadGaps(join(REPOSITORY_ROOT, '.claude/skills', skill, 'SKILL.md')),
-      ),
-    ).toEqual([]);
+    expect(skillFilesWithReferences.length).toBeGreaterThanOrEqual(3);
+    expect(skillFilesWithReferences.flatMap(indexLeadGaps)).toEqual([]);
   });
 });

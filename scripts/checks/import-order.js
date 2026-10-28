@@ -519,10 +519,10 @@ function duplicateCount(declarations) {
   return declarations.length;
 }
 
-// kiko-code-style's "one import per specifier": a type-only and a value
-// import of one module merge into one declaration with the inline `type`
-// modifier, so any two declarations of one specifier fail, whatever their
-// kind, except a bare side-effect import beside type-only ones.
+// kiko-code-style's "Import ordering and `import type`": a type-only and a
+// value import of one module merge into one declaration with the inline
+// `type` modifier, so any two declarations of one specifier fail, whatever
+// their kind, except a bare side-effect import beside type-only ones.
 function checkDuplicateSpecifiers(items, violations) {
   const declarationsBySpecifier = new Map();
 

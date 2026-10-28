@@ -73,13 +73,11 @@ const GRABBER_REGION_MIN_HEIGHT = 44;
 
 // The ONE token controlling the gap between the grabber/title band and the
 // first row of a sheet's body, for every sheet in the app. Every sheet's own
-// inline `<Text variant="heading">` title goes through the `header` prop
-// (see `kiko-design-system`'s "BottomSheet"), so this single step —
-// applied to `grabberRegion.paddingBottom` below — is the one spacing between
-// the title and the body. It gives the title clear breathing room, since the
-// title consistently anchors the header band above every sheet's content,
-// matching `SHEET_PADDING_STEP`'s own weight rather than reading as a smaller,
-// secondary gap.
+// inline `<Text variant="heading">` title goes through the `header` prop, so this single step —
+// applied to `grabberRegion.paddingBottom` below — is the one spacing between the title and the
+// body. It gives the title clear breathing room, since the title consistently anchors the header
+// band above every sheet's content, matching `SHEET_PADDING_STEP`'s own weight rather than
+// reading as a smaller, secondary gap.
 const TITLE_TO_BODY_GAP_STEP = 4;
 
 export const styles = StyleSheet.create((theme) => ({

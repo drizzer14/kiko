@@ -311,7 +311,7 @@
   `kiko-no-import-screens-outside-ui` Semgrep rule (see `kiko-linter`).
 - **Divider** (`src/design-system/components/divider/`) — the shared one-line rule between
   sections. Read its props in `divider.props.d.ts`; the form placement rule (where it goes in a
-  form's gap `Box`) is in SKILL.md under "UX patterns" (SKILL.md).
+  form's gap `Box`) is in SKILL.md under "UX patterns".
 - **No imports across screen folders.** A file under
   `src/screens/<a>/` must never import from `src/screens/<b>/**`
   (relative path, `@kiko/` alias, or `jest.mock`). Move shared code to

@@ -499,8 +499,11 @@ comments: it must be a heading or an anchored lead of the SAME file, before the 
 `__tests__/test-support/`, test files aside), `unnamedLockedMarks` (each `**Locked` mark of a
 kiko-design-system reference file is named by its date and `Component` in the "Locked decisions
 (user-approved)" list) and `indexLeadGaps` (each `##` heading and top-level bold lead of a
-reference file is named in its index bullet in SKILL.md). When one fails, add the name to the
-list or the bullet; an exemption needs a reason.
+reference file is named in its index bullet in SKILL.md, as a whole word, any case). When one
+fails, add the name to the list or the bullet. `unnamedLockedMarks` and `indexLeadGaps` read the
+reference files through the same link reader, so a link to a missing file throws. A quote that
+a prose citation reads is never read again as a direction citation; a quote after a short skill
+name used as a plain word before a comma is no prose citation, so the direction check reads it.
 
 A skill sentence that lists a guard's conditions, or a write-queue read's
 callers, drifts when one is added: point at the boolean's definition or at a

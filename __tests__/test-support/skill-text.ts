@@ -44,9 +44,11 @@ const HEADING_PATTERN = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 
 const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
 
-const QUALIFIER_PATTERN = /\s+\([^()]*\)$/;
+const QUALIFIER_PATTERN = /\s+\(([^()]*)\)$/;
 
 const withoutBackticks = (text: string): string => text.replace(/`/g, '').trim();
+
+export const escapePattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // The lines of a markdown text with every line of a fenced block, the fence lines too, emptied,
 // so a reader of the prose never sees code.
@@ -96,8 +98,6 @@ export const headingResolves = (heading: string, headings: Set<string>): boolean
   return parts.length > 1 && parts.every((part) => headingResolves(part, headings));
 };
 
-const QUALIFIED_PATTERN = /^(.+?)\s+\(([^()]*)\)$/;
-
 const squashed = (text: string): string => withoutBackticks(text).replace(/\s+/g, ' ');
 
 // A quoted `Heading (Qualifier)` that is no heading itself names a part of the section: the
@@ -108,14 +108,14 @@ export const quotedHeadingResolves = (cited: string, markdown: string): boolean 
 
   const text = withoutBackticks(cited);
 
-  const qualified = QUALIFIED_PATTERN.exec(text);
+  const qualifier = QUALIFIER_PATTERN.exec(text);
 
-  if (headings.has(text) || qualified === null) {
+  if (headings.has(text) || qualifier === null) {
     return headingResolves(text, headings);
   }
 
-  return sectionBodies(markdown, qualified[1]).some((body) =>
-    squashed(body).includes(squashed(qualified[2])),
+  return sectionBodies(markdown, text.slice(0, qualifier.index)).some((body) =>
+    squashed(body).includes(squashed(qualifier[1])),
   );
 };
 
@@ -158,16 +158,6 @@ const leadName = (text: string): string =>
     .replace(/[.:]$/, '')
     .replace(/\(\)$/, '');
 
-// The reference files that are there: a link to a missing one is for the readers of the skill text
-// to throw on, not for a lead check to read as an empty file.
-const linkedReferenceFiles = (skillFile: string): string[] => [
-  ...new Set(
-    linkedFiles(skillFile)
-      .map(({ file }) => file)
-      .filter((file) => existsSync(file)),
-  ),
-];
-
 const HELPER_FOLDERS = ['src/test-support', '__tests__/test-support'];
 
 const HELPER_NAME_PATTERN = /`([\w.-]+\.tsx?)`/g;
@@ -177,7 +167,6 @@ const TEST_FILE_PATTERN = /\.test\.tsx?$/;
 export type HelperCatalogueGaps = {
   missing: string[];
   unlisted: string[];
-  staleExemptions: string[];
 };
 
 const listedHelpers = (catalogue: string): string[] => {
@@ -211,24 +200,17 @@ const helperFilesIn = (root: string): string[] =>
   );
 
 // kiko-testing lists the helper files of `src/test-support/` and `__tests__/test-support/` under a
-// heading that names the folder; a helper added or removed without the list drifts, and a file
-// that is meant to stay out of it goes on the exemptions with a reason.
-export const helperCatalogueGaps = (
-  root: string,
-  exemptions: readonly string[],
-): HelperCatalogueGaps => {
+// heading that names the folder; a helper added or removed without the list drifts.
+export const helperCatalogueGaps = (root: string): HelperCatalogueGaps => {
   const listed = new Set(
     listedHelpers(readSkillText(join(root, '.claude/skills/kiko-testing/SKILL.md'))),
   );
 
   const present = new Set(helperFilesIn(root));
 
-  const unlisted = [...present].filter((file) => !listed.has(file));
-
   return {
     missing: [...listed].filter((file) => !present.has(file)).sort(),
-    unlisted: unlisted.filter((file) => !exemptions.includes(file)).sort(),
-    staleExemptions: exemptions.filter((file) => !unlisted.includes(file)).sort(),
+    unlisted: [...present].filter((file) => !listed.has(file)).sort(),
   };
 };
 
@@ -246,37 +228,39 @@ export const unnamedLockedMarks = (skillFile: string): UnnamedLockedMark[] => {
     sectionBodies(readFileSync(skillFile, 'utf8'), LOCKED_LIST_HEADING).join('\n'),
   );
 
-  return linkedReferenceFiles(skillFile).flatMap((reference) => {
-    const lines = linesOutsideFences(readFileSync(reference, 'utf8'));
+  return skillFiles(skillFile)
+    .slice(1)
+    .flatMap((reference) => {
+      const lines = linesOutsideFences(readFileSync(reference, 'utf8'));
 
-    return lines.flatMap((lineText, index) => {
-      const markAt = lineText.indexOf('**Locked');
+      return lines.flatMap((lineText, index) => {
+        const markAt = lineText.indexOf('**Locked');
 
-      if (markAt < 0) {
-        return [];
-      }
+        if (markAt < 0) {
+          return [];
+        }
 
-      const component = leadName(
-        lines
-          .slice(0, index + 1)
-          .reverse()
-          .map((above) => TOP_LEVEL_LEAD_PATTERN.exec(above)?.[1])
-          .find((lead) => lead !== undefined) ?? '',
-      );
+        const component = leadName(
+          lines
+            .slice(0, index + 1)
+            .reverse()
+            .map((above) => TOP_LEVEL_LEAD_PATTERN.exec(above)?.[1])
+            .find((lead) => lead !== undefined) ?? '',
+        );
 
-      const markText = [lineText.slice(markAt), ...lines.slice(index + 1, index + 3)].join('\n');
+        const markText = [lineText.slice(markAt), ...lines.slice(index + 1, index + 3)].join('\n');
 
-      const date = DATE_PATTERN.exec(markText)?.[0] ?? '';
+        const date = DATE_PATTERN.exec(markText)?.[0] ?? '';
 
-      const named = lockedBullets.some(
-        (bullet) => bullet.includes(date) && bullet.includes(`\`${component}\``),
-      );
+        const named = lockedBullets.some(
+          (bullet) => bullet.includes(date) && bullet.includes(`\`${component}\``),
+        );
 
-      return date !== '' && named
-        ? []
-        : [{ file: relative(dirname(skillFile), reference), line: index + 1, component, date }];
+        return date !== '' && named
+          ? []
+          : [{ file: relative(dirname(skillFile), reference), line: index + 1, component, date }];
+      });
     });
-  });
 };
 
 export type IndexLeadGap = { file: string; lead: string };
@@ -287,26 +271,29 @@ export type IndexLeadGap = { file: string; lead: string };
 export const indexLeadGaps = (skillFile: string): IndexLeadGap[] => {
   const bullets = bulletsOf(readFileSync(skillFile, 'utf8'));
 
-  return linkedReferenceFiles(skillFile).flatMap((reference) => {
-    const file = relative(dirname(skillFile), reference);
+  return skillFiles(skillFile)
+    .slice(1)
+    .flatMap((reference) => {
+      const file = relative(dirname(skillFile), reference);
 
-    const indexed = leadName(
-      bullets.find((bullet) => bullet.startsWith('- [') && bullet.includes(`](${file}`)) ?? '',
-    ).toLowerCase();
+      const indexed = leadName(
+        bullets.find((bullet) => bullet.startsWith('- [') && bullet.includes(`](${file}`)) ?? '',
+      );
 
-    return linesOutsideFences(readFileSync(reference, 'utf8'))
-      .flatMap((lineText) => {
-        const heading = HEADING_PATTERN.exec(lineText);
+      return linesOutsideFences(readFileSync(reference, 'utf8'))
+        .flatMap((lineText) => {
+          const heading = HEADING_PATTERN.exec(lineText);
 
-        if (heading !== null) {
-          return heading[1] === '##' ? [leadName(heading[2].split(' — ')[0])] : [];
-        }
+          if (heading !== null) {
+            return heading[1] === '##' ? [leadName(heading[2].split(' — ')[0])] : [];
+          }
 
-        return (
-          foldMap(maybe(TOP_LEVEL_LEAD_PATTERN.exec(lineText)), (lead) => [leadName(lead[1])]) ?? []
-        );
-      })
-      .filter((lead) => !indexed.includes(lead.toLowerCase()))
-      .map((lead) => ({ file, lead }));
-  });
+          return (
+            foldMap(maybe(TOP_LEVEL_LEAD_PATTERN.exec(lineText)), (lead) => [leadName(lead[1])]) ??
+            []
+          );
+        })
+        .filter((lead) => !new RegExp(`(?<!\\w)${escapePattern(lead)}(?!\\w)`, 'i').test(indexed))
+        .map((lead) => ({ file, lead }));
+    });
 };
