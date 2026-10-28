@@ -154,3 +154,18 @@ export const proseCitations = (root: string): ProseCitation[] => {
 
 export const unresolvedProseCitations = (root: string): ProseCitation[] =>
   proseCitations(root).filter(({ resolved }) => !resolved);
+
+export type DirectionCitation = {
+  file: string;
+  line: number;
+  text: string;
+  direction: 'above' | 'below';
+  resolved: boolean;
+};
+
+export const directionCitations = (root: string): DirectionCitation[] => {
+  throw new Error(`directionCitations is not implemented (${root})`);
+};
+
+export const unresolvedDirectionCitations = (root: string): DirectionCitation[] =>
+  directionCitations(root).filter(({ resolved }) => !resolved);

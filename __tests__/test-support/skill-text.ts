@@ -90,3 +90,28 @@ export const headingResolves = (heading: string, headings: Set<string>): boolean
 
   return parts.length > 1 && parts.every((part) => headingResolves(part, headings));
 };
+
+export type HelperCatalogueGaps = {
+  missing: string[];
+  unlisted: string[];
+  staleExemptions: string[];
+};
+
+export const helperCatalogueGaps = (
+  root: string,
+  exemptions: readonly string[],
+): HelperCatalogueGaps => {
+  throw new Error(`helperCatalogueGaps is not implemented (${root}, ${exemptions.length})`);
+};
+
+export type UnnamedLockedMark = { file: string; line: number; component: string; date: string };
+
+export const unnamedLockedMarks = (skillFile: string): UnnamedLockedMark[] => {
+  throw new Error(`unnamedLockedMarks is not implemented (${skillFile})`);
+};
+
+export type IndexLeadGap = { file: string; lead: string };
+
+export const indexLeadGaps = (skillFile: string): IndexLeadGap[] => {
+  throw new Error(`indexLeadGaps is not implemented (${skillFile})`);
+};
