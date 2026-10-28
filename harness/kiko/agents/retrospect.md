@@ -23,7 +23,9 @@ Rules:
   file paths, symbol/function names) against the actual current code
   (grep/read the referenced files, don't trust the skill's prose) in
   BOTH `.claude/skills/` and `harness/kiko/skills/`, plus
-  `harness/kiko/agents/`. Flag any drift you find to the scribe as its
+  `harness/kiko/agents/`. A skill is its SKILL.md plus the reference
+  files it links to (kiko-linter's "Skill reference files"); verify code
+  references in every one of them. Flag any drift you find to the scribe as its
   own item, distinct from new lessons, so the scribe can fix the skill
   or, better, replace the stale copied fact with a pointer to its
   source file (see the scribe's own authoring rule for copied

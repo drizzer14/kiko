@@ -63,7 +63,7 @@ Mechanizes kiko-code-style's "`ts-pattern` for exhaustive mapping": a ternary
 plain `kind` string. A site on a closed union does not fit kiko-code-style's single-boolean-guard
 allowance, because that allowance covers only a guard with no closed-set enum behind it. A site
 uses `match(...).exhaustive()`. To re-measure, run the Semgrep command in the
-`kiko-test-title-no-history` section above, filtered to this id; the tree must hold 0
+`kiko-test-title-no-history` section in rules-comments.md, filtered to this id; the tree must hold 0
 findings. `// nosemgrep:
 kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>` is only for a site where `kind` is
 not a closed union.
@@ -90,7 +90,8 @@ ERROR. `check:security` surfaces them without failing and the
 pre-write guard denies a NEW one. **Promotion condition:** flip to ERROR, and add the id to
 `PINNED_SEVERITIES` in `__tests__/rule-inventory.test.ts`, when `check:security` reports 0
 findings for this id. To re-measure, run the Semgrep command in the `kiko-test-title-no-history`
-section above, filtered to this id. A site on a `type` that is a plain string (a DOM or event
+section in rules-comments.md, filtered to this id. A site on a `type` that is a plain
+string (a DOM or event
 `type`) is not a union: it keeps the ternary under `// nosemgrep: kiko-type-ternary-prefers-match
 OVERRIDE(<reason>) <why>`.
 
@@ -110,7 +111,7 @@ mocks `Text` with the shared `src/test-support/mock-text-variant-tone.tsx` (a ge
 `jest.mock` factory), never with its own factory that forwards `variant` onto the host node.
 
 **Severity ERROR.** The tree holds 0 findings; re-measure with the Semgrep command in the
-`kiko-test-title-no-history` section above, filtered to this id.
+`kiko-test-title-no-history` section in rules-comments.md, filtered to this id.
 
 **Scope.** `paths.include` is `*.test.ts`, `*.test.tsx` and `src/test-support/**`; the last entry
 is only what lets the guard's probe file reach the rule, so the fixture pair is NESTED under
@@ -137,7 +138,7 @@ Mechanizes kiko-code-style's "One component per file, each in its own folder": a
 uses an explicit `return`, never the arrow-shorthand implicit return.
 
 **Severity ERROR.** The tree holds 0 findings; re-measure with the Semgrep command in the
-`kiko-test-title-no-history` section above, filtered to this id.
+`kiko-test-title-no-history` section in rules-comments.md, filtered to this id.
 
 **Scope.** `paths.include` is `*.tsx` and `paths.exclude` is `*.test.tsx`. The rule reads source
 text, string contents included, so a `.ts` file (a `__tests__/` harness test that embeds component
@@ -325,7 +326,7 @@ block or a one-line-body block still hides the imports after it.
 
 `--write` (`node scripts/checks/import-order.js --write <file...>`) is
 a repo-sweep tool, not part of the check-wrapper contract (see "The
-wrapper contract" above — a checker only checks) — it is invoked by
+wrapper contract" in wrapper-contract.md — a checker only checks) — it is invoked by
 hand, never from `import-order.sh`.
 
 Two adjacent groups of the SAME kind (no other-kind group or
@@ -468,7 +469,7 @@ identifier-bearing syntax position (a `const` declaration, a function
 parameter, a type/interface member, a destructuring binding, a JSX prop) at
 once — writing that as `pattern-either` branches would need one branch per
 syntax position, is fragile the same way the quoting/anchoring gotchas
-above are, and Semgrep still couldn't do the case-preserving word-part
+in semgrep-facts.md are, and Semgrep still couldn't do the case-preserving word-part
 split itself.
 
 **Exact-path exemption allowlist, not an inline suppression comment.** The

@@ -2,7 +2,7 @@
 
 The nullable-ternary rule is `kiko-no-nullable-map-ternary` (Semgrep
 ERROR, `rules/semgrep-prewrite.yml`) — see "Semgrep pattern strings need
-quoting" below for the one gotcha that cost the most time writing it.
+quoting" in semgrep-facts.md for the one gotcha that cost the most time writing it.
 The one-exported-component-per-`.tsx` check is a Jest invariant plus a
 pre-write guard Node rule, not Semgrep — see "One exported component per
 `.tsx` — a Jest invariant and a guard rule" in rules-code.md. The import-length-sort check is a
@@ -78,7 +78,7 @@ skipping every complete string earlier on that line can.
 path-prefixed `paths.include` would silently draw ZERO findings when
 `semgrep-rules.sh` scans `rules/fixtures/` directly for this rule's
 own positive fixture — the exact `paths.include` gotcha documented
-above (a fixture isn't under a `src/**`-prefixed include, so it fails
+in semgrep-facts.md (a fixture isn't under a `src/**`-prefixed include, so it fails
 CLOSED, invisibly). `paths.exclude` has no such failure mode (see
 "Semgrep facts verified on 1.175" in semgrep-facts.md), so the rule instead excludes
 `__tests__/**`, `e2e/**`, `scripts/**`, and `harness/**` (harness/test

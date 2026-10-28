@@ -101,6 +101,13 @@ in the harness repo):
   to the harness repo: without it, a red row's stub loop, which ends only on sandbox removal,
   hangs the afterEach.
 - The CLAUDE.md trim (docs/harness/checks.md split).
+- Skill-split track (pff-ios branch skill-split, plugin 0.4.51), generic skill-reader port: the
+  GENERIC `__tests__/test-support/skill-text.ts`, `prose-citations.ts` and
+  `orphan-reference-files.ts`; the skill-citations.test.ts reference-file and prose-citation
+  rows; the `readSkillText` switch in every suite that reads a skill; the scribe.md
+  reference-file rule; and a "Skill reference files" paragraph rewritten for the harness repo.
+  Do NOT port the Kiko skill text, the section moves or the pin-file keys. The `SKILL_ROOTS`
+  literals are per repo.
 
 ## Classification
 

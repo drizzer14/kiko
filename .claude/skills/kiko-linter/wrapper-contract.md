@@ -15,7 +15,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 - `source "$DIR/_lib.sh"` for `print_block`.
 - Comments in a shell script wrap at 100 columns, as in any other source file;
   `npm run check:comment-line-width` checks it (`__tests__/comment-line-width.test.ts`; scope
-  in the `comment-line-width.js` bullet below).
+  in the `comment-line-width.js` bullet in SKILL.md).
 - On failure: call `print_block` (a structured WHAT/DETAILS/WHY/HOW/
   DO-NOT block) to stderr, then `exit 2`.
 - A missing path is a failure, never a pass. A missing scan root or a missing path argument
@@ -55,7 +55,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   fresh scan; and (b) the Class B WARNING block, because a non-blocking
   finding is override-eligible and still has to be seen; and (c) the re-scan WARNING, one per
   timed-out rule and file pair that passed its single re-scan (exit 0; see "Semgrep errors fail
-  the check too" below). `dup.sh` states
+  the check too" in SKILL.md). `dup.sh` states
   its own exception: its large-file `WARNING` lines (a listed file at or under its ceiling; see
   "`check:dup` measures the files jscpd skips for size" in SKILL.md), because a measurement of
   tracked debt still has to be seen. Any other large-file finding exits 2. `medium.sh` states

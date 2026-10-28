@@ -70,7 +70,7 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
 - Discovery is by **filename**: the runner credits a finding toward a
   rule only when the finding's fixture file is literally named for
   that rule id. A companion rule (see "taint does not propagate
-  through `.then`" below) needs **its own** dedicated fixture pair —
+  through `.then`" in semgrep-facts.md) needs **its own** dedicated fixture pair —
   a finding that happens to land on a *different* rule's fixture file
   proves nothing about the companion rule; this was a real gap, caught
   and fixed only because a reviewer deliberately broke the companion
@@ -418,7 +418,7 @@ a pre-existing finding points at. A Semgrep deny names
 - `comment-only-changes.js` is the one exception to "dependency-free": it
   requires `typescript` (a pinned devDependency) to decide, from the
   compiler's own parse, which changed files `mutation.sh` may leave out as
-  comment/whitespace-only (the mutation paragraphs above state the rule).
+  comment/whitespace-only (the mutation paragraphs in wrapper-contract.md state the rule).
   That is safe because it runs only inside `mutation.sh`, in a full worktree
   where Stryker itself needs `node_modules`, never in the pre-write guard,
   the hooks, or the guard-replay scratch checkout, and because a failed
@@ -468,7 +468,8 @@ or a concatenating reader runs the last SKILL.md section into its first lines.
 `cited-paths` reads every `.md` under `.claude/skills`, reference files included.
 
 `__tests__/skill-citations.test.ts` also resolves prose citations of the form
-`kiko-x's "Heading"` (and the plural possessive `kiko-x' "Heading"`) in skills, agents,
+`kiko-x's "Heading"`, the plural possessive `kiko-x' "Heading"`, the bare `kiko-x "Heading"`,
+single-quoted text (`kiko-x's 'Heading'`) and a backticked skill name in skills, agents,
 CLAUDE.md, docs/harness, docs/plans and the message text and comments of `rules/*.yml`
 (`__tests__/test-support/prose-citations.ts`). A citation resolves against the skill's text,
 reference files included, on an exact heading (a trailing parenthesized qualifier is cut) or

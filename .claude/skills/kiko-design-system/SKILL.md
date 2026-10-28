@@ -33,10 +33,11 @@ file before you edit the component it describes.
   (continued)".
 - [component-set-forms.md](component-set-forms.md) — "Component set (continued)": the sheet,
   card, form-field and chart components (`ConfirmSheet`, `InfoHint`, `NoticeBanner`,
-  `ReminderOfferCard`, `EmptyState`, `NotificationPreAlertSheet`, `CardContextMenu`,
-  `ImportBalanceLine`, `HoldingCard`, `CloseHoldingSheet`, `SymbolIcon`, `EntityIconTile`, the
-  section heading disclosure row, `Switch`, `TextField`, `FieldError`, `useIsMounted`,
-  `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`, `EntryDateHeader`,
+  the exchange history footer, `ReminderOfferCard`, `EmptyState`, `NotificationPreAlertSheet`,
+  `CardContextMenu`, `ImportBalanceLine`, `HoldingCard`, `CloseHoldingSheet`, `SymbolIcon`,
+  `EntityIconTile`, the section heading disclosure row, `Switch`, `TextField`, `FieldError`,
+  `useIsMounted`, `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`,
+  `EntryDateHeader`, the field and filter helpers (`deriveFieldTestID`, `toggleFilterValue`),
   `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `DayOfMonthGrid`,
   `SegmentedControl` with the tabs-vs-chips rule, the chart components, `ColorPicker`,
   `TransactionCard`, and the form header) and the rules "No imports across screen folders",

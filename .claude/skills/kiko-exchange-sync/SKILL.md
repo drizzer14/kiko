@@ -414,16 +414,16 @@ than restated here:
   cursor, which a reconnected DIFFERENT Binance account would inherit as if
   it were its own already-imported history, silently skipping that account's
   own older
-  records. A Binance or wallet connect (after its sync) and a successful disconnect also
-  re-plan reminders: see kiko-architecture's "Re-plan after a write".
-  `binanceAsset`/`walletAddress` are untouched, so a SAME-account
+  records. `binanceAsset`/`walletAddress` are untouched, so a SAME-account
   reconnect still re-adopts the holding (`upsertByMetadataKey`'s
   match-by-key) and simply re-walks from the floor. Connecting a DIFFERENT
   Binance account afterward walks its own history from the floor instead
   of inheriting a stale, forward watermark. A malformed top level becomes
   `{capital: {cursor: floor}}`; another walk's unreadable entry is dropped
   (it starts at its floor). A failure in either half of
-  `accountsRepo.disconnectExchange` rolls back both.
+  `accountsRepo.disconnectExchange` rolls back both. A Binance or wallet connect (after its
+  sync) and a successful disconnect also re-plan reminders: see kiko-architecture's "Re-plan
+  after a write".
 - **A BTC wallet re-sync fetches every OPEN holding's stored address.**
   `bitcoinWalletProvider` (`src/crypto-sync/btc-wallet/`) syncs the Connect
   address first, then each open holding's stored address (a closed holding's

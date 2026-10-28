@@ -13,7 +13,9 @@ Rules:
   concrete code references (enum members, the component list, file
   paths, symbol names) against the actual code in BOTH
   `.claude/skills/` and `harness/kiko/skills/`, plus
-  `harness/kiko/agents/`. Flag any drift found to the scribe as a
+  `harness/kiko/agents/`. A skill is its SKILL.md plus the reference
+  files it links to (kiko-linter's "Skill reference files"); verify code
+  references in every one of them. Flag any drift found to the scribe as a
   distinct item from new lessons, including prose that only describes
   current usage instead of prescribing a rule. The queued verify (or `make doc-suites`) already
   fails a stale path in a skill, agent, doc code span, or a `src` comment
