@@ -34,3 +34,56 @@ export const readSkillText = (skillFile: string): string =>
   skillFiles(skillFile)
     .map((file) => readFileSync(file, 'utf8'))
     .join('\n');
+
+const HEADING_PATTERN = /^#{1,6}\s+(.+?)\s*#*\s*$/;
+
+const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
+
+const QUALIFIER_PATTERN = /\s+\([^()]*\)$/;
+
+const withoutBackticks = (text: string): string => text.replace(/`/g, '').trim();
+
+// The `#`-`######` headings outside a fenced block, backticks stripped, so a citation of a
+// heading resolves the same way for the guard citations and the prose ones.
+export const headingsOf = (markdown: string): Set<string> => {
+  const headings = new Set<string>();
+  let fence: string | undefined;
+
+  markdown.split('\n').forEach((lineText) => {
+    const fenceMatch = FENCE_PATTERN.exec(lineText);
+
+    if (fenceMatch !== null) {
+      if (fence === undefined) {
+        fence = fenceMatch[1];
+      } else if (fenceMatch[1].startsWith(fence)) {
+        fence = undefined;
+      }
+
+      return;
+    }
+
+    const headingMatch = fence === undefined ? HEADING_PATTERN.exec(lineText) : null;
+
+    if (headingMatch !== null) {
+      headings.add(withoutBackticks(headingMatch[1]));
+    }
+  });
+
+  return headings;
+};
+
+export const headingResolves = (heading: string, headings: Set<string>): boolean => {
+  const cited = withoutBackticks(heading);
+
+  if (headings.has(cited)) {
+    return true;
+  }
+
+  if (QUALIFIER_PATTERN.test(cited)) {
+    return headings.has(cited.replace(QUALIFIER_PATTERN, ''));
+  }
+
+  const parts = cited.split(' / ');
+
+  return parts.length > 1 && parts.every((part) => headingResolves(part, headings));
+};

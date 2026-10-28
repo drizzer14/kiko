@@ -5,8 +5,8 @@ import {
   createTemporaryDirectory,
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
-import { readSkillText } from './test-support/skill-text';
 import { orphanReferenceFiles } from './test-support/orphan-reference-files';
+import { headingResolves, headingsOf, readSkillText } from './test-support/skill-text';
 import { proseCitations, unresolvedProseCitations } from './test-support/prose-citations';
 
 // A guard deny points the agent at `metadata.skill` ("<skill> › <heading>").
@@ -40,57 +40,6 @@ const ANY_YAML_SKILL_PATTERN = /^\s+skill:/gm;
 const GUARD_SKILL_PATTERN = /\bskill:\s*(['"])((?:(?!\1)[^\n])*)\1/g;
 
 const ANY_GUARD_SKILL_PATTERN = /\bskill:/g;
-
-const HEADING_PATTERN = /^#{1,6}\s+(.+?)\s*#*\s*$/;
-
-const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
-
-const QUALIFIER_PATTERN = /\s+\([^()]*\)$/;
-
-const withoutBackticks = (text: string): string => text.replace(/`/g, '').trim();
-
-const headingsOf = (markdown: string): Set<string> => {
-  const headings = new Set<string>();
-  let fence: string | undefined;
-
-  markdown.split('\n').forEach((lineText) => {
-    const fenceMatch = FENCE_PATTERN.exec(lineText);
-
-    if (fenceMatch !== null) {
-      if (fence === undefined) {
-        fence = fenceMatch[1];
-      } else if (fenceMatch[1].startsWith(fence)) {
-        fence = undefined;
-      }
-
-      return;
-    }
-
-    const headingMatch = fence === undefined ? HEADING_PATTERN.exec(lineText) : null;
-
-    if (headingMatch !== null) {
-      headings.add(withoutBackticks(headingMatch[1]));
-    }
-  });
-
-  return headings;
-};
-
-const headingResolves = (heading: string, headings: Set<string>): boolean => {
-  const cited = withoutBackticks(heading);
-
-  if (headings.has(cited)) {
-    return true;
-  }
-
-  if (QUALIFIER_PATTERN.test(cited)) {
-    return headings.has(cited.replace(QUALIFIER_PATTERN, ''));
-  }
-
-  const parts = cited.split(' / ');
-
-  return parts.length > 1 && parts.every((part) => headingResolves(part, headings));
-};
 
 const citationResolves = (citation: string, readSkill: (skill: string) => string | undefined) => {
   const separatorIndex = citation.indexOf(CITATION_SEPARATOR);
