@@ -572,7 +572,7 @@ New `transactions.source` enum member `'import'` (`src/db/schema.ts:125`, TS-onl
 
 ### Phase 1 — Document-picker infrastructure + Monobank CSV (pure JavaScript, ship first)
 
-**Dependencies — all three APPROVED by the user 2026-09-17 (exact-pin, 7-day min-age; C.5), none installed yet:** `@react-native-documents/picker` (document picker), `react-native-fs` (file-read), `papaparse` (+ `@types/papaparse` if needed, CSV). The two native modules (`@react-native-documents/picker`, `react-native-fs`) need a **pod install** at build time (`cd ios && pod install`) once actually added to `package.json` — neither is pure JS. Each is pinned exact (`.npmrc`) and added to `jest.config.js`'s `transformIgnorePatterns` allow-list ONLY if it ships untransformed source (`kiko-code-style`'s "Testing a native/ESM dependency" — check each package's actual `node_modules` output before assuming it needs the entry).
+**Dependencies — all three APPROVED by the user 2026-09-17 (exact-pin, 7-day min-age; C.5), none installed yet:** `@react-native-documents/picker` (document picker), `react-native-fs` (file-read), `papaparse` (+ `@types/papaparse` if needed, CSV). The two native modules (`@react-native-documents/picker`, `react-native-fs`) need a **pod install** at build time (`cd ios && pod install`) once actually added to `package.json` — neither is pure JS. Each is pinned exact (`.npmrc`) and added to `jest.config.js`'s `transformIgnorePatterns` allow-list ONLY if it ships untransformed source (`kiko-testing`'s "Testing a native/ESM dependency" — check each package's actual `node_modules` output before assuming it needs the entry).
 
 **Files:**
 

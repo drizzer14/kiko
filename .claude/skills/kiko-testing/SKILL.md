@@ -35,6 +35,8 @@ words, `fnts`, one component per file) stay in kiko-code-style and apply to a te
 
 Reuse a helper before writing a second double; read the module's exports there, and extend it
 rather than declaring one per file. `@kiko/test-support/<name>` is `src/test-support/<name>`.
+Before adding a double or helper, list the test-support folder(s) for the current set; the
+catalogue below may lag the folders.
 
 ### `src/test-support/`
 
@@ -190,14 +192,11 @@ test from being decorative.
 - Jest runs on Node (V8, ICU, jsdom); the app runs on Hermes. A green Jest run does not prove code
   runs on the device. Check a dependency that targets the browser or Node (browser-only globals
   such as the DOM parser, file reader and blob classes) separately, by reading its entry point's
-  runtime deps or running it on the device, before shipping. Hermes has no
-  `TextEncoder`/`TextDecoder` polyfill: app code turns bytes into text with
-  `src/data-transfer/utf8/utf8.ts` and
-  `src/data-transfer/base64/base64.ts`, never `TextDecoder`, `TextEncoder`, `atob`, `btoa` or
-  `Buffer`. Hermes has no `Intl.PluralRules`: `src/i18n/plural-rules/` installs the fallback and
-  `plural-rules.shipped-locales.test.ts` fails a locale that ships without its rule (Semgrep
-  `kiko-no-direct-intl-plural-rules`). Before relying on any `Intl.*` or Web global, check Hermes
-  has it; prove it on the device or with a test that deletes the global.
+  runtime deps or running it on the device, before shipping. Hermes lacks `TextDecoder`,
+  `TextEncoder` and `Intl.PluralRules`; app code also never uses `atob`, `btoa` or `Buffer`. The
+  codec rule is kiko-architecture's "No `TextDecoder`/`TextEncoder`", the plural fallback is
+  kiko-translator's "Hermes on iOS has no `Intl.PluralRules`". Before relying on any `Intl.*` or
+  Web global, check Hermes has it; prove it on the device or with a test that deletes the global.
 - Jest cannot verify real navigator behavior (whether `navigate()` or `popTo()` pushes a duplicate
   route on React Navigation 7: a mocked navigation prop cannot catch that) or native hit-testing
   geometry (whether a `hitSlop` or `minHeight`-grown touch target is reachable on the device). A

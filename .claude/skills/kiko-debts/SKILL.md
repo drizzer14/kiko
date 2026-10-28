@@ -1,6 +1,6 @@
 ---
 name: kiko-debts
-description: Invoke whenever you touch src/loans/**, src/holdings/loan-schedule/**, src/holdings/loan-ledger/**, src/screens/forms/holding-form/loan/**, or work on a debt account, a `loan` holding, loan schedule math (annuity, differentiated, none), the loan ledger and its outstanding read, a loan payment link (`loanHoldingId`, `loanLinkSource`, `loanLinkRejected`), or the automatic loan-payment matcher. Read before writing a loan form field, a schedule or outstanding read, a loan-link write or the matcher. For the Money value object, the holding schema and every shared amount rule see kiko-domain; for the price book see kiko-pricing; for the form and screen patterns see kiko-architecture.
+description: Invoke whenever you touch src/loans/**, src/holdings/loan-schedule/**, src/holdings/loan-ledger/**, src/screens/forms/holding-form/loan/**, src/statistics/loan-payments/**, src/screens/forms/loan-payment-field/**, src/holdings/holding-descriptor/loan/**, or work on a debt account, a `loan` holding, loan schedule math (annuity, differentiated, none), the loan ledger and its outstanding read, a loan payment link (`loanHoldingId`, `loanLinkSource`, `loanLinkRejected`), or the automatic loan-payment matcher. Read before writing a loan form field, a schedule or outstanding read, a loan-link write or the matcher. For the Money value object, the holding schema and every shared amount rule see kiko-domain; for the price book see kiko-pricing; for the form and screen patterns see kiko-architecture.
 ---
 
 # Kiko debts
@@ -120,8 +120,8 @@ decimal-string rule.
   `none` loan have no excess).
 - `loanInterestPerPaymentMinor(meta, payments, plan?)` → one interest
   amount per payment, in the given order ("interest-only spending" — the
-  derived-entry wiring itself is the "Spending-exclusion pipeline" section
-  above): `none` always counts 0 interest
+  derived-entry wiring itself is kiko-domain's "Spending-exclusion
+  pipeline" section): `none` always counts 0 interest
   (an informal debt has no schedule to derive interest from).
   Otherwise each payment maps to the installment whose `dueDate` is
   NEAREST to the payment's own local day (not necessarily the next
@@ -245,8 +245,8 @@ wrong installment in the first place.
 accrues either AT VALUATION time) backs the net-worth assets-minus-debt
 rule. The `loanHoldingId` link column + its repo
 functions are covered in their own subsection below. Interest-only
-spending is wired through the "Spending-exclusion pipeline" section's
-loan-payments module, above. The transaction-form field (`LoanPaymentField`)
+spending is wired through kiko-domain's "Spending-exclusion pipeline"
+section's loan-payments module. The transaction-form field (`LoanPaymentField`)
 and the automatic payment-linking matcher are BOTH wired — see "The
 automatic loan-payment matcher" subsection below for the matcher's own
 rules and every call site.
@@ -434,7 +434,8 @@ conflict path both the Monobank sync and statement import share) never
 refreshes any of the three loan-link columns on a re-sync — its
 `onConflictDoUpdate` `set` names only the bank-owned columns, the same
 exclusion `comment` relies on (`category` is excluded except in
-`ruleWonTransactionSet`'s guarded CASE; see the sync paragraph above) (see
+`ruleWonTransactionSet`'s guarded CASE; see kiko-domain's "Re-syncing an
+existing `externalId`" paragraph) (see
 that function's own existing doc comment). Its `setWhere` is derived from
 that SAME `set`
 column list (`BANK_OWNED_TRANSACTION_COLUMNS`), so the UPDATE — and the

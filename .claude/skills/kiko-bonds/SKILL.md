@@ -1,6 +1,6 @@
 ---
 name: kiko-bonds
-description: Invoke whenever you touch src/bonds/**, src/screens/forms/holding-form/bond/**, or work on a bond holding, an ISIN, the NBU securities register and its `bond_register` cache, bond coupons (the step-up schedule, `BondMeta.payments`), the bond purchase price, or the yield to maturity. Read before writing a bond form field, an ISIN check, a register fetch or backfill, or a coupon or yield read. For the Money value object, the holding schema and every shared amount rule see kiko-domain; for the price series and `dayKeyOf` see kiko-pricing; for the form and screen patterns see kiko-architecture.
+description: Invoke whenever you touch src/bonds/**, src/screens/forms/holding-form/bond/**, src/holdings/holding-descriptor/bond/**, or work on a bond holding, an ISIN, the NBU securities register and its `bond_register` cache, bond coupons (the step-up schedule, `BondMeta.payments`), the bond purchase price, or the yield to maturity. Read before writing a bond form field, an ISIN check, a register fetch or backfill, or a coupon or yield read. For the Money value object, the holding schema and every shared amount rule see kiko-domain; for the price series and `dayKeyOf` see kiko-pricing; for the form and screen patterns see kiko-architecture.
 ---
 
 # Kiko bonds
