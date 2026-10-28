@@ -240,7 +240,7 @@ The account argument is the HOLDING's own account, passed to `isSyncedHolding(ho
 - [ ] **step 2/5: Failing screen tests.** AccountForm: picking Property calls `replace('HoldingForm', { implicitKind: 'property', draft })` with the typed name and the picked icon/color. `initialKind: 'bank'` + draft seeds the form. HoldingForm implicit property: shows the property fields and no bank/account pickers. Save calls `createImplicitHolding('property', …)` once and `goBack`. An implicit loan Save calls `createImplicitHolding('debt', …)` and `runLoanAutoLink`. Picking Bank in the implicit form calls `replace('AccountForm', { initialKind: 'bank', draft })`. A second create reuses the account: covered by task 3/8's real-SQLite test, and here asserted as a single repo call per Save. accounts.stack: the swapped routes have `animation: 'none'`.
 - [ ] **step 3/5: Implement.**
 - [ ] **step 4/5: Green.** `npx jest src/screens/forms src/navigation`, `make typecheck && make lint && make gate`. Run the Maestro flow when a simulator is available (ops), otherwise flag it for the device check.
-- [ ] **step 5/5 (scribe):** kiko-domain "`property_item` / `metal` create-form sections" and "Loan form + detail": the implicit entry and the swap. Commit.
+- [ ] **step 5/5 (scribe):** kiko-domain "`property_item` / `metal` create-form sections" and kiko-debts "Loan form + detail": the implicit entry and the swap. Commit.
 
 **Mutation:** about 4–5 files (`holding-form-target.ts`, `holding-form.screen.tsx`, `account-form.screen.tsx`, `accounts.stack.tsx`, `use-account-kind-labels.ts`).
 
