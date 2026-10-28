@@ -759,7 +759,7 @@ rules:
           - pattern: 'cancelLabel: "..."'
           - pattern: "fallbackLabel: '...'"
           - pattern: 'fallbackLabel: "..."'
-  # kiko-linter's "Backlog: a rule for a plain function called inside a
+  # kiko-linter's "Implemented: a rule for a plain function called inside a
   # worklet" / kiko-gestures' "Every function called inside a worklet needs
   # its own 'worklet' directive". A same-file helper (a `const` arrow or a
   # `function`) called synchronously inside a reanimated worklet-hook

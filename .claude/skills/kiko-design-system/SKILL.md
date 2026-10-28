@@ -1187,7 +1187,7 @@ new component can land between reviews of this skill:
   `error`/`testID` — and is now the ONE shared implementation: a
   `property` account's Type-as-category field (`PropertyTypeField`,
   replacing the generic holding-type picker for that one account
-  kind — see `kiko-domain`'s "`property_item`/`metal` create-form
+  kind — see `kiko-domain`'s "`property_item` / `metal` create-form
   sections"), the `debt` account's Type-as-loan-kind field
   (`LoanKindField`, with one `loanKindSymbol` glyph per kind; 6 and
   4 long option names, too wide for a `ChipRow`), the Bond form's
@@ -1719,7 +1719,8 @@ new component can land between reviews of this skill:
   among a small fixed set instead.
 - **DateRangeField** (`src/design-system/components/date-range-field/`) —
   the date-range picker trigger + sheet. The range behind a DateRangeField
-  is shared by Home and Statistics (kiko-domain "no custom range" pattern);
+  is shared by Home and Statistics (kiko-domain 'The "no custom range = derive the default from now"
+  pattern');
   never give a screen its own range state.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
   shared wrap-flow chips component: a compact wrap-flow row for a short

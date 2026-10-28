@@ -692,7 +692,7 @@ follow the same layout conventions as every other Kiko screen:
   every row is a tap target (it sets the header row), and the rows sit
   too close together for `hitSlop` to reach 44pt without overlapping
   the next row, the one documented exception to `kiko-design-system`'s
-  "hitSlop, never a bigger visual" touch-target rule — and paints the
+  "Touch targets" rule — and paints the
   tapped header row with the theme's accent BLUE
   (`theme.colors.accent`) with `onAccent` cell text — replacing the
   former neutral `surfaceHigh` tint — matching the app's standard

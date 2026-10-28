@@ -748,8 +748,8 @@ with `rule-card/` and `rule-summary/` under it; the list card opens
   the delete removes or clears them whatever the read did, so the confirm always warns.
   Never pin a failed read as silent. A second track that adds a delete-time line appends
   it there.
-- The category form has no Delete (kiko-design-system "A form has no
-  in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`). A
+- The category form has no Delete (kiko-design-system "CardContextMenu";
+  pre-write rule `kiko-no-confirm-sheet-in-form`). A
   category is deleted only from its list card's hold menu, which is not
   offered on the default.
 - The rule editor is the CategoryRuleForm route
@@ -2295,8 +2295,9 @@ what a change must keep.
   (`useSyncExternalStore`; see `src/monobank/sync-status/`,
   `src/reminders/permission/`), never in per-component `useState`.
 - **Shared UI state across screens.** State two mounted screens must show
-  identically (the Home/Statistics date range; see kiko-domain's "no custom
-  range" pattern) lives in ONE module store read with `useSyncExternalStore`
+  identically (the Home/Statistics date range; see kiko-domain's 'The "no custom
+  range = derive the default from now" pattern') lives in ONE module store read
+  with `useSyncExternalStore`
   (`src/design-system/use-date-range-selection/`), never per-screen
   `useState`. It resets when no reader is mounted, deferred one
   `Promise.resolve().then(...)` microtask with a `listeners.size === 0`
