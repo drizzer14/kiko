@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 import {
@@ -7,6 +7,7 @@ import {
 } from './test-support/temporary-directory';
 import { readSkillText } from './test-support/skill-text';
 import { orphanReferenceFiles } from './test-support/orphan-reference-files';
+import { proseCitations, unresolvedProseCitations } from './test-support/prose-citations';
 
 // A guard deny points the agent at `metadata.skill` ("<skill> › <heading>").
 // A heading renamed or cited from memory leaves the deny pointing nowhere, and
@@ -248,6 +249,147 @@ describe('metadata.skill citations in rules and NODE_RULES', () => {
         (citation) => !citationResolves(citation, readRepositorySkill),
       ),
     ).toEqual([]);
+  });
+});
+
+describe('prose citations of a skill section', () => {
+  afterEach(removeTemporaryDirectories);
+
+  const DEMO_SKILL = [
+    '# Demo',
+    '',
+    '## Exact heading',
+    '',
+    '## Prefix heading — with a tail',
+    '',
+    '**Bold lead.** The sentence goes on and mentions a lonely word.',
+    '',
+    'See [the details](reference.md).',
+    '',
+  ].join('\n');
+
+  const REFERENCE = '# Reference\n\n## Reference heading\n';
+
+  const demoRoot = (files: Record<string, string>): string => {
+    const root = createTemporaryDirectory('kiko-prose-citations-');
+
+    mkdirSync(join(root, '.claude/skills/demo'), { recursive: true });
+    writeFileSync(join(root, '.claude/skills/demo/SKILL.md'), DEMO_SKILL);
+    writeFileSync(join(root, '.claude/skills/demo/reference.md'), REFERENCE);
+
+    Object.entries(files).forEach(([file, text]) => {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(join(root, file), text);
+    });
+
+    return root;
+  };
+
+  const NOTES = 'docs/harness/notes.md';
+
+  const citationOf = (text: string, resolved: boolean, line = 1, file = NOTES) => ({
+    file,
+    line,
+    skill: 'demo',
+    text,
+    resolved,
+  });
+
+  it('resolves a citation of an exact heading (POSITIVE)', () => {
+    expect(proseCitations(demoRoot({ [NOTES]: 'See demo\'s "Exact heading" first.\n' }))).toEqual([
+      citationOf('Exact heading', true),
+    ]);
+  });
+
+  it('resolves a citation of the part of a heading before its dash (POSITIVE)', () => {
+    expect(proseCitations(demoRoot({ [NOTES]: 'See demo "Prefix heading" first.\n' }))).toEqual([
+      citationOf('Prefix heading', true),
+    ]);
+  });
+
+  it('resolves a citation of a bold lead (POSITIVE)', () => {
+    expect(proseCitations(demoRoot({ [NOTES]: "See demo's 'Bold lead' first.\n" }))).toEqual([
+      citationOf('Bold lead', true),
+    ]);
+  });
+
+  it('resolves a citation of a heading in a linked reference file (POSITIVE)', () => {
+    expect(
+      proseCitations(demoRoot({ [NOTES]: 'See demo\'s "Reference heading" first.\n' })),
+    ).toEqual([citationOf('Reference heading', true)]);
+  });
+
+  it('resolves a cited text that ends with the quote-closing period (POSITIVE)', () => {
+    expect(proseCitations(demoRoot({ [NOTES]: 'See demo\'s "Exact heading."\n' }))).toEqual([
+      citationOf('Exact heading', true),
+    ]);
+  });
+
+  it('names a citation of text the skill does not have (NEGATIVE)', () => {
+    expect(
+      unresolvedProseCitations(demoRoot({ [NOTES]: 'one\nSee demo\'s "Gone heading" first.\n' })),
+    ).toEqual([citationOf('Gone heading', false, 2)]);
+  });
+
+  it('does not resolve a word that occurs in the skill only inside a sentence (NEGATIVE)', () => {
+    expect(
+      unresolvedProseCitations(demoRoot({ [NOTES]: 'See demo\'s "lonely word" first.\n' })),
+    ).toEqual([citationOf('lonely word', false)]);
+  });
+
+  it('does not read a citation of a name that is no skill folder (NEGATIVE)', () => {
+    expect(
+      proseCitations(
+        demoRoot({ [NOTES]: 'kiko-gone "Gone heading"\nSee demo\'s "Gone heading" first.\n' }),
+      ),
+    ).toEqual([citationOf('Gone heading', false, 2)]);
+  });
+
+  it('reads the message and the comments of a rule file, a wrapped comment too (POSITIVE)', () => {
+    expect(
+      proseCitations(
+        demoRoot({
+          'rules/demo.yml': [
+            '# see demo "Exact',
+            '# heading" above',
+            'rules:',
+            '  - message: |',
+            '      Read demo\'s "Gone heading" first.',
+            '',
+          ].join('\n'),
+        }),
+      ),
+    ).toEqual([
+      citationOf('Exact heading', true, 1, 'rules/demo.yml'),
+      citationOf('Gone heading', false, 5, 'rules/demo.yml'),
+    ]);
+  });
+
+  it('reads agents, CLAUDE.md, plans and the skill folders, not superpowers or reviews (POSITIVE)', () => {
+    const stale = 'See demo\'s "Gone heading" first.\n';
+
+    expect(
+      unresolvedProseCitations(
+        demoRoot({
+          'harness/kiko/agents/worker.md': stale,
+          'CLAUDE.md': stale,
+          'docs/plans/plan.md': stale,
+          'harness/kiko/skills/other/SKILL.md': stale,
+          'docs/superpowers/plans/dated.md': stale,
+          'docs/reviews/dated.md': stale,
+        }),
+      ).map(({ file }) => file),
+    ).toEqual([
+      'CLAUDE.md',
+      'docs/plans/plan.md',
+      'harness/kiko/agents/worker.md',
+      'harness/kiko/skills/other/SKILL.md',
+    ]);
+  });
+
+  it('are all resolved in the real repository (the sources are scanned and none is stale)', () => {
+    expect(proseCitations(REPOSITORY_ROOT).length).toBeGreaterThan(300);
+    expect(unresolvedProseCitations(REPOSITORY_ROOT)).toEqual([]);
   });
 });
 
