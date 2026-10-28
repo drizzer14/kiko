@@ -58,14 +58,6 @@
     "  whose marker names a deleted holding is cleared. The delete keeps the pair id and moves no balance: a",
     "  `exchange` sentence already names is not named again there; with a split, the exchange sentences that say",
     "`settings.lockEnabled` is LIVE (a `.kiko` restore never changes it) — wired through `src/auth/use-app-lock.ts`",
-    "tell the two modes apart; `BondMeta.entryMode` does (below). Once saved, the holding's stored terms never depend",
-    "result `null`; an edit's own stored ISIN is exempt, above); `isinCurrencyMismatchError` in edit mode per the currency-lock rule above.",
-    "  one at a time counted a split installment's interest twice. A payment MORE THAN ONE PERIOD outside the",
-    "  `loanInterestPerPaymentMinor` share minus its within-tolerance excess) of each counted payment dated strictly",
-    "  any count, else the schedule's), so the value does not jump. Normally that point is dated TODAY. But",
-    "reached through `transactionsRepo.removeHolding`) AND `accountsRepo.remove` (every holding a deleted DEBT",
-    "`refreshMarketData` through `settleJobsBesideMarketRefresh`; `grep -rn \"refreshMarketData(\" src` lists the direct callers)); `importParsedStatement` (ONE",
-    "(`src/screens/forms/transaction-form/mode-and-actions/mode-and-actions.ts`) shows that field whenever the row already",
     "bank-owned partner is kept, never deleted, and loses its exchange marker only when the leg that marker names goes too (see \"A bank-owned (synced) partner is kept\"). `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`"
   ],
   ".claude/skills/kiko-linter/SKILL.md": [

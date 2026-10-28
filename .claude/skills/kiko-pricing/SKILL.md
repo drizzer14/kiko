@@ -400,7 +400,7 @@ every valuation input a holding row does not carry itself.
 `day` ascending. `loanPayments` groups every linked loan payment
 (`LoanLedgerPayment`: `loanHoldingId`, `transactionId`, `time`, `amountMinorUnits`, and the
 PAYER holding's `currency`) by loan id, sorted `time` ascending — the input
-a loan's outstanding reads (`loanLedgerOutstandingMinorAt`, kiko-domain's
+a loan's outstanding reads (`loanLedgerOutstandingMinorAt`, kiko-debts's
 "Debts" section), so the card, detail, totals, statistics, and every
 net-worth bucket read the same number with no new parameter.
 `buildPriceBook(points, payments = [])` builds both; a payment row whose

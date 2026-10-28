@@ -121,7 +121,7 @@ export type ExchangeHolding = SyncBalanceHolding & {
  * reads as 0. `'move'`: a `'none'` loan's principal/start-date edit relocates
  * its start-day point, leaving any later correction alone. `'delete'`: a
  * `'none'` loan moving to a schedule drops its start-day point, which would
- * otherwise anchor the schedule as a correction. See `kiko-domain`'s "Loan
+ * otherwise anchor the schedule as a correction. See `kiko-debts`'s "Loan
  * form + detail" for the full ruling.
  */
 export type LoanPricePointOp =
