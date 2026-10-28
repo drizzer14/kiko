@@ -66,9 +66,9 @@ type NewHoldingBase = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency
   Partial<Pick<HoldingRow, 'metadata' | 'sortOrder' | 'color' | 'icon'>>;
 
 // `holdingsRepo.create`'s own input: the identity fields above, plus an
-// OPTIONAL opening balance as `Money` (kiko-domain "Money at the boundary")
-// — converted to minor units, and currency-checked against `currency`,
-// inside the write itself, never by the caller.
+// OPTIONAL opening balance as `Money` (kiko-domain "Any table column holding an amount
+// is an integer minor-units column") — converted to minor units, and currency-checked
+// against `currency`, inside the write itself, never by the caller.
 export type NewHolding = NewHoldingBase & {
   openingBalance?: Money;
   // A priced holding's (property_item) first manual price point,
@@ -658,10 +658,10 @@ export const holdingsRepo = {
       .where(and(eq(holdings.type, 'loan'), isNull(holdings.closedAt))),
   /**
    * Converts a stored row's raw `balanceMinorUnits` column into `Money`, in
-   * the row's own currency — kiko-domain's "Money at the boundary" (a repo
-   * is the only place that conversion may happen). Every non-repo reader
-   * that needs a holding's CURRENT stored balance as a value goes through
-   * this, never `row.balanceMinorUnits` directly.
+   * the row's own currency — kiko-domain's "Any table column holding an amount is an
+   * integer minor-units column" (a repo is the only place that conversion may happen).
+   * Every non-repo reader that needs a holding's CURRENT stored balance as a value goes
+   * through this, never `row.balanceMinorUnits` directly.
    */
   balanceOf: (row: Pick<HoldingRow, 'currency' | 'balanceMinorUnits'>): Money =>
     Money.of(row.currency, row.balanceMinorUnits),

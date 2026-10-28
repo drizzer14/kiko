@@ -14,7 +14,7 @@ fail() {
     "A file under src/screens/<screen>/ imports from another screen's folder." \
     "$1" \
     "Design spec rule 12: a file under src/screens/<screen-a>/ must not import from src/screens/<screen-b>/** for any screen-b != screen-a. Shared code belongs in src/design-system/ (a UI component) or the owning domain module (a hook/util), never in the importing screen-b via a direct path." \
-    "Move the shared module out of src/screens/ into src/design-system/components/ or the owning domain module, following the FieldTrigger precedent in kiko-design-system's 'Component set' section, then import it from there. If the module is really screen-owned and only mis-placed, move the IMPORTER instead." \
+    "Move the shared module out of src/screens/ into src/design-system/components/ or the owning domain module, following the FieldTrigger precedent in kiko-design-system's 'Component set (continued)' section, then import it from there. If the module is really screen-owned and only mis-placed, move the IMPORTER instead." \
     "Do not re-export the module through a barrel still nested inside src/screens/ — the barrel itself is still 'another screen's folder'."
   exit 2
 }

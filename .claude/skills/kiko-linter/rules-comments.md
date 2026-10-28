@@ -5,9 +5,10 @@ ERROR, `rules/semgrep-prewrite.yml`) — see "Semgrep pattern strings need
 quoting" below for the one gotcha that cost the most time writing it.
 The one-exported-component-per-`.tsx` check is a Jest invariant plus a
 pre-write guard Node rule, not Semgrep — see "One exported component per
-`.tsx` — a Jest invariant and a guard rule" below. The import-length-sort check is a hand-rolled
+`.tsx` — a Jest invariant and a guard rule" in rules-code.md. The import-length-sort check is a
+hand-rolled
 shell+JS checker/fixer at the fast tier — see "Import length-sort — a
-hand-rolled checker (and fixer)" below. The comment checks are the comment-history
+hand-rolled checker (and fixer)" in rules-code.md. The comment checks are the comment-history
 rules (`kiko-no-history-*`, `kiko-no-task-id-comment`) in `rules/semgrep-prewrite.yml` and
 `rules/semgrep-mobile.yml` (the `*-shell-comment` rules); read both files for the set. See each
 rule's section below; each rule's own `severity:` field is the source for its tier.
@@ -79,7 +80,7 @@ path-prefixed `paths.include` would silently draw ZERO findings when
 own positive fixture — the exact `paths.include` gotcha documented
 above (a fixture isn't under a `src/**`-prefixed include, so it fails
 CLOSED, invisibly). `paths.exclude` has no such failure mode (see
-"Semgrep facts verified on 1.175" above), so the rule instead excludes
+"Semgrep facts verified on 1.175" in semgrep-facts.md), so the rule instead excludes
 `__tests__/**`, `e2e/**`, `scripts/**`, and `harness/**` (harness/test
 tooling, not shipped app comments — some of these are covered by their
 own dedicated harness checks instead), plus the two root files

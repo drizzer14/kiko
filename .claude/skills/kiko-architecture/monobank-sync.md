@@ -20,7 +20,8 @@ header for the crash-safe order and never write a second migration path for it.
    `fetchClientInfo`, then `markMonobankAccount` writes the mark. A
    wrong token, an offline device or a 429 must never leave the
    account half-connected; mirrors `src/crypto-sync/`'s
-   `runBalanceSync` ordering. `runSync` does not create the settings
+   `runBalanceSync` ordering. A Connect and a successful disconnect re-plan reminders: see
+   "Re-plan after a write" in reminders.md. `runSync` does not create the settings
    row itself — the single settings row is guaranteed to exist by the
    app-boot migrations gate (`src/migration/`) before any
    sync can run.

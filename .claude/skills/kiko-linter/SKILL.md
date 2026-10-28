@@ -51,9 +51,12 @@ code it describes.
   `kiko-no-change-language-in-test-body`, `kiko-test-title-no-history`, and the rules
   implemented beside them). Read it before you change one of those rules or their fixtures.
 - [rules-code.md](rules-code.md) — the per-rule sections for the code-shape rules and
-  invariants (ternary and match rules, explicit return, the typed `requireActual` ban, one
-  exported component per `.tsx`, import length-sort, `kiko-no-switch`, full words in
-  identifiers). Read it before you change one of those rules or their fixtures.
+  invariants (the worklet-directive rule `kiko-worklet-directive-required`,
+  `kiko-rejects-to-throw-needs-error`, `kiko-sortable-grid-lone-card-lifts`, ternary and match
+  rules, `kiko-no-inline-text-variant-mock`, explicit return, "The `docs-known-limit`
+  invariant", the typed `requireActual` ban, one exported component per `.tsx`, import
+  length-sort, `kiko-no-switch`, full words in identifiers). Read it
+  before you change one of those rules or their fixtures.
 
 ## The fixture contract (Semgrep rules)
 
@@ -317,7 +320,7 @@ a pre-existing finding points at. A Semgrep deny names
   output.
 - `screen-imports.js` (`kiko-no-cross-screen-import`) enforces
   the "No imports across screen folders" bullet in
-  kiko-design-system's "Component set". It resolves
+  kiko-design-system's "Component set (continued)". It resolves
   relative specifiers against the importing file, which Semgrep cannot
   do. No `--write`.
 - `feature-imports.js` (`kiko-feature-imports`) enforces
@@ -464,6 +467,16 @@ the accepted form, never by dropping the row. Start each reference file with a `
 or a concatenating reader runs the last SKILL.md section into its first lines.
 `cited-paths` reads every `.md` under `.claude/skills`, reference files included.
 
+`__tests__/skill-citations.test.ts` also resolves prose citations of the form
+`kiko-x's "Heading"` (and the plural possessive `kiko-x' "Heading"`) in skills, agents,
+CLAUDE.md, docs/harness, docs/plans and the message text and comments of `rules/*.yml`
+(`__tests__/test-support/prose-citations.ts`). A citation resolves against the skill's text,
+reference files included, on an exact heading (a trailing parenthesized qualifier is cut) or
+on an anchored lead: the cited text starts a heading, a list item, a paragraph's first line
+outside fences, or a bold span, with an optional A, An or The. A match at a sentence start
+inside a paragraph, or inside a longer phrase, does not resolve. Quote the heading or the
+lead's first words.
+
 A skill sentence that lists a guard's conditions, or a write-queue read's
 callers, drifts when one is added: point at the boolean's definition or at a
 `grep` that finds the callers, and grep the skills for a screen's boolean
@@ -550,7 +563,7 @@ a new tree. See `conflictSides`, `afterTreesFor`, and
 On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, `medium.sh` exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. Read `medium.sh`'s header comment for the exact check.
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
-kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
+kill-guard's SHELL-WRITE deny (in wrapper-contract.md) blocks the common Bash write
 forms into the trees in "SHELL-WRITE deny" (`WRITE_GUARDED_TREES`, including `.claude/skills/`,
 `.claude/agents/` and `harness/kiko/`) and YAML files (`YAML_FILE`). It allows the `--write`
 fixers and git itself, which write source legitimately. What it does

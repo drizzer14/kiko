@@ -149,7 +149,7 @@ new component can land between reviews of this skill:
   inline/standalone secondary action (grep
   `variant="secondaryTonal"` in `src/` for the live consumers), replacing a plain `secondary` `surfaceHigh`
   pill for that class of control. Both tonal variants are the exception
-  to the `onAccent` rule below: a same-hue (or neutral) label on a
+  to the `onAccent` rule (in SKILL.md): a same-hue (or neutral) label on a
   same-hue tint is the tinted-button convention, so the label stays
   `negative` or `textPrimary`, never `onAccent`. The label has no
   `textTransform`: each catalogue supplies its own casing (English
@@ -221,7 +221,7 @@ new component can land between reviews of this skill:
   "Update outstanding" add no entity, so they stay text-only. A
   generic glyph must exist on the iOS 18.2 deployment target (the holding
   glyph is `list.bullet.rectangle`, not the iOS-26 `text.pad.header`); see
-  "SF Symbol availability" below. A new footer "Add …" action takes its
+  "SF Symbol availability" (in SKILL.md). A new footer "Add …" action takes its
   entity's glyph the same way.
 
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
@@ -278,13 +278,14 @@ new component can land between reviews of this skill:
   its header comment (`card.component.tsx`) for the HIG rationale
   (Liquid Glass is reserved for the NAVIGATION layer, not content).
 - **GlassSurface** — the shared NAV-LAYER surface only: the tab bar,
-  bottom sheets, the FAB (its edge: see "FAB edge" below), and the keyboard-done accessory (grep
+  bottom sheets, the FAB (its edge: see "FAB edge" in SKILL.md), and
+  the keyboard-done accessory (grep
   `<GlassSurface` for the current consumer list; content cards use
   `Card` above instead). Real Liquid Glass on iOS 26+, a themed flat
   fallback everywhere else, an optional `bordered` edge, and
   neutral/tinted variants of the backdrop under the glass. A `tint`
   (an entity card, e.g. the FAB) paints an OPAQUE `surface` backdrop
-  and an entity-color wash — see "Entity color and tint" below. A
+  and an entity-color wash — see "Entity color and tint" in SKILL.md. A
   `transparent` variant paints a TRANSLUCENT
   `surfaceTranslucent` backdrop (iOS 26+; below it the BottomSheet bypasses GlassSurface) and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
@@ -298,7 +299,7 @@ new component can land between reviews of this skill:
   read it for how `transparent`/`bloom`/`material` behave, not as a
   current list of content-card consumers. A list row wrapped in
   `CardContextMenu` (the holding-detail ledger's manual-transaction
-  rows — see `CardContextMenu` below) takes `transparent bloom` too;
+  rows — see `CardContextMenu` in component-set-forms.md) takes `transparent bloom` too;
   there is no swipe-reveal layer to clip a radius around any more — the
   app's one swipe-to-delete row, `SwipeableRow`, was removed in favor of
   the touch-and-hold context menu. Neither prop keeps the fully-live see-through material (no
@@ -392,7 +393,7 @@ new component can land between reviews of this skill:
   than `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
   it, so a control reads as raised instead of blending into the sheet
   (a chip or segment on it uses the faint `neutralSubtle` fill — see
-  `ChipRow` and `SegmentedControl` below); a base at `surfaceHigh`
+  `ChipRow` and `SegmentedControl` in component-set-forms.md); a base at `surfaceHigh`
   itself would swallow a selected pill. The scrim stays full-bleed. The card is full width on
   one pane; on two panes it is narrowed to `theme.layout.sheetMaxWidth` and centred, and with a
   fold reported it is centred inside the primary pane, so it never straddles the hinge; with
@@ -456,7 +457,7 @@ new component can land between reviews of this skill:
   hit-test area past that View's edges the way `hitSlop` would, so the
   fix can never bleed into the scrollable body that starts only once the
   region ends — see "Touch targets" under the standing HIG reference
-  above for the general rule this follows.
+  in SKILL.md for the general rule this follows.
 
   **Keyboard-aware sheet geometry.** A sheet whose content includes a
   focusable input (e.g. `CurrencyField`'s search) must not let the
@@ -502,7 +503,7 @@ new component can land between reviews of this skill:
   (mutually exclusive, for a glyph with no SF Symbol form — a currency
   sign or ISO code), an optional trailing node pinned to the row's far
   right and top-aligned to the label (the bank picker's capability
-  icons — see the transparency principle below), and an optional
+  icons — see the transparency principle in SKILL.md), and an optional
   `description` — a second line rendered below
   the label in the SAME leading-slot-aligned column, wrapping onto
   multiple lines rather than truncating, for a subtitle explaining what
@@ -614,3 +615,5 @@ new component can land between reviews of this skill:
   account always has a kind, a transaction always has a mode) still
   supplies a `placeholder` to satisfy the contract — it is simply never
   shown.
+
+The set continues in component-set-forms.md under "Component set (continued)".

@@ -1,6 +1,6 @@
 ---
 name: kiko-architecture
-description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, reminders or local notifications (`src/reminders/`), or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, any reminder schedule or notification-permission code, or any `.kiko` export/import code. For currency rates, price_points, or a priced holding's value, see kiko-pricing; for statement-import parsing or column mapping, see kiko-statement-import; for Binance and crypto-sync history walks, exchange_state marks and Exchange/Convert legs, see kiko-exchange-sync.
+description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, reminders or local notifications (`src/reminders/`), a write that connects, disconnects or deletes an account (it re-plans reminders), or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, any reminder schedule or notification-permission code, or any `.kiko` export/import code. For currency rates, price_points, or a priced holding's value, see kiko-pricing; for statement-import parsing or column mapping, see kiko-statement-import; for Binance and crypto-sync history walks, exchange_state marks and Exchange/Convert legs, see kiko-exchange-sync.
 ---
 
 # Kiko architecture
@@ -27,7 +27,8 @@ feature. Read the file before you edit the code it describes.
   repository, eligibility rules, the notification permission store, re-plan after a write, the
   reminder screens, the offer, the planner and scheduler with the Swift request-identifier
   contract, mount, tap routing, account delete and backup restore. Read it before you touch
-  `src/reminders/` or anything that schedules, pauses or routes a notification.
+  `src/reminders/`, anything that schedules, pauses or routes a notification, or a write that
+  connects, disconnects or deletes an account (each calls `replanReminders`).
 
 ## Guideline 2.5.19 — no hidden features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 

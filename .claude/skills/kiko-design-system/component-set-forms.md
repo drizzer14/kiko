@@ -179,11 +179,11 @@
   holdings passes that row.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
-  below before passing it a color.
+  in SKILL.md before passing it a color.
 - **EntityIconTile** (`src/design-system/components/entity-icon-tile/`)
   — the entity glyph tile (an account/holding card's icon swatch):
   takes the SF Symbol `name` plus the entity's already-RESOLVED hex
-  `color` (see "Entity color and tint" below — never a raw stored/
+  `color` (see "Entity color and tint" in SKILL.md — never a raw stored/
   nullable value) and derives its own gradient from that hex via
   `entityIconTileGradient`. An optional `size` mirrors `SymbolIcon`'s
   own, defaulting to the `body` icon-size token when omitted.
@@ -238,7 +238,7 @@
   `TimeField` (`src/screens/forms/`) consume the SAME helper so a
   read-only date/time field renders identically to a read-only text
   field. This is a DIFFERENT token from the pressable `DISABLED_OPACITY`
-  token above (`disabled-opacity.ts`) — a disabled field is a different
+  token (`disabled-opacity.ts`, in component-set.md) — a disabled field is a different
   control class from a disabled pressable (e.g. Button), and the two must
   not be conflated. A third disabled-field-like control reuses
   `disabledFieldStyle`, not a fresh inline dim. Its `multiline` prop
@@ -303,7 +303,7 @@
   text mark) + value, tapping which opens the caller's own
   `BottomSheet`. `CategoryField`, `HoldingSelectField`,
   `ModeSelectField`, `BankTypeField`, `ExchangeTypeField` (`src/screens/forms/`),
-  `SelectField` and `CurrencyField` below all compose this rather than
+  `SelectField` (component-set.md) and `CurrencyField` below all compose this rather than
   re-implementing the same bordered-row JSX. Lives in
   `design-system/components/`, not
   `screens/forms/` where it used to sit — a design-system component
@@ -661,4 +661,4 @@
   Home marks a `TransactionRow` selected through `useDetailPaneRoute` and `detailParamOf`
   (`kiko-architecture`, "Row marking").
 - **Form header** (`useFormHeaderItems`, `src/screens/forms/use-form-header-items/`) — see
-  "Form Save and Cancel live in the native nav bar" above.
+  "Form Save and Cancel live in the native nav bar" in SKILL.md.

@@ -57,7 +57,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   timed-out rule and file pair that passed its single re-scan (exit 0; see "Semgrep errors fail
   the check too" below). `dup.sh` states
   its own exception: its large-file `WARNING` lines (a listed file at or under its ceiling; see
-  "`check:dup` measures the files jscpd skips for size" below), because a measurement of
+  "`check:dup` measures the files jscpd skips for size" in SKILL.md), because a measurement of
   tracked debt still has to be seen. Any other large-file finding exits 2. `medium.sh` states
   a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line
   `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0

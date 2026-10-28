@@ -29,13 +29,18 @@ file before you edit the component it describes.
   action and surface components (`TwoPaneLayout`, `Screen`, `LoadingState`, `Box`, `Text`,
   `MoneyText`, `ConvertedCaption`, `Button` with its pinned treatments and sizes, `Card`,
   `GlassSurface`, `BottomSheet`, `SelectableRow` and `SelectField`). Read it before you build
-  or change any of them.
+  or change any of them. The set continues in component-set-forms.md under "Component set
+  (continued)".
 - [component-set-forms.md](component-set-forms.md) — "Component set (continued)": the sheet,
   card, form-field and chart components (`ConfirmSheet`, `InfoHint`, `NoticeBanner`,
-  `EmptyState`, `CardContextMenu`, `HoldingCard`, `SymbolIcon`, `EntityIconTile`, `Switch`,
-  `TextField`, `FieldError`, `FieldTrigger`, `SummaryTable`, `EntryCard`, `CurrencyField`,
-  `ChipRow`, `DayOfMonthGrid`, `SegmentedControl` with the tabs-vs-chips rule, the chart
-  components, `ColorPicker`, `TransactionCard`, and the form header). Read it before you build
+  `ReminderOfferCard`, `EmptyState`, `NotificationPreAlertSheet`, `CardContextMenu`,
+  `ImportBalanceLine`, `HoldingCard`, `CloseHoldingSheet`, `SymbolIcon`, `EntityIconTile`, the
+  section heading disclosure row, `Switch`, `TextField`, `FieldError`, `useIsMounted`,
+  `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`, `EntryDateHeader`,
+  `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `DayOfMonthGrid`,
+  `SegmentedControl` with the tabs-vs-chips rule, the chart components, `ColorPicker`,
+  `TransactionCard`, and the form header) and the rules "No imports across screen folders",
+  "Scroll to the first invalid field" and "Empty holding picker". Read it before you build
   or change any of them.
 
 ## iOS Human Interface Guidelines (standing reference)
@@ -62,7 +67,7 @@ control. Apply HIG on every design task, on four axes:
   pixel value.
 - **Contrast and materials/glass** — legible contrast on the dark
   theme (WCAG AA for text), and the `GlassSurface` / `BottomSheet`
-  materials used per "GlassSurface" below.
+  materials used per `GlassSurface` in component-set.md.
 
 The ranked, file-grounded audit of the app against these axes lives at
 `docs/design/2026-09-10-ios-hig-audit.md`. Read it before a design task
@@ -214,6 +219,17 @@ not in a refactor, a cleanup, or a HIG pass — without the user's own
 explicit approval; a change request from an agent is not approval. Add
 an entry (date + value) the moment the user approves a new visual.
 
+Component entries in the reference files carry their own **Locked** marks; this list names
+every one of them, so scan this list rather than the reference files for what is locked.
+
+- **EntityIconTile compact in Settings > Reminders** (2026-09-30). The account heading tile is
+  `compact` (32pt); the account and holding cards keep 36pt. See `EntityIconTile` in
+  component-set-forms.md.
+- **Switch toggle centered on its label** (2026-09-30). A labeled `Switch` row centers the toggle
+  on the label (the Face ID row; extended app-wide). See `Switch` in component-set-forms.md.
+- **DayOfMonthGrid shares the weekday cell size** (2026-09-30). The day chips take the weekday
+  row's chip height and horizontal gap from one shared source. See `DayOfMonthGrid` in
+  component-set-forms.md.
 - **NetWorthLine current-day label** (2026-10-19). No background; the
   amount/date gap sits on the scrub line's top end; the label stays fixed
   while dragging; at accessibility sizes it stops under the card title
@@ -234,7 +250,7 @@ an entry (date + value) the moment the user approves a new visual.
   label. Segment: the `neutralSubtle` track under a `segmentSelected`
   thumb, `#747478`, with a `textPrimary` semibold label. The icon
   picker's tiles follow the chip look. See `ChipRow` and
-  `SegmentedControl` under "Component set".
+  `SegmentedControl` under "Component set (continued)".
 - **Compact chip: 34pt visible + hitSlop** (2026-09-26). Every
   `ChipRow` chip draws a 34pt `minHeight` pill with `spacing(1)`
   vertical padding at every label step, and reaches the 44pt tap
@@ -379,9 +395,10 @@ here).
 
 The established patterns grouped under this heading:
 
-- The form validation pattern — `FieldError` in "Component set" below.
-- The tabs-vs-chips rule (binding) — in "Component set" below, under
-  `SegmentedControl`.
+- The form validation pattern — `FieldError` in "Component set (continued)"
+  (component-set-forms.md).
+- The tabs-vs-chips rule (binding) — in "Component set (continued)" (component-set-forms.md),
+  under `SegmentedControl`.
 - The capability-icon transparency principle — its own heading further
   down this file.
 - Field placeholder and error copy — below.
@@ -839,7 +856,7 @@ side. Read the file for the current map (R33).
 
 This section documents `GlassSurface` itself — now a NAV-LAYER-only
 component (tab bar, sheets, FAB, keyboard accessory; content cards use
-`Card` — see "Entity color and tint" above and `Card`'s own bullet).
+`Card` — see "Entity color and tint" above and `Card`'s own bullet in component-set.md).
 `GlassSurface` renders two structurally different trees, not one tree
 with a conditional prop: `isLiquidGlassSupported` (from
 `@callstack/liquid-glass`) picks between a real `LiquidGlassView` (iOS
@@ -899,7 +916,7 @@ Use title case for every heading and sub-heading shown in the UI —
 screen titles, section headers, sheet/modal titles — styled through
 the typography tokens (see "Token categories" above). This does not
 cover Button labels: buttons are actions, not headings, and case
-themselves per the catalogue (see "Button" above) — English Button
+themselves per the catalogue (see `Button` in component-set.md) — English Button
 copy is sentence case. Casing is decided per UI ROLE, not per
 component in isolation — the full rule (which roles are Title Case
 vs sentence case, the proper-noun keep-list, the uk

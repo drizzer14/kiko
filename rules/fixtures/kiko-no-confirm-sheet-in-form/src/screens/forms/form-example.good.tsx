@@ -1,5 +1,5 @@
 // Semgrep fixture (NEGATIVE): kiko-design-system's "Component set
-// (CardContextMenu)". Nothing here brings the confirm sheet into a form, so
+// (continued)". Nothing here brings the confirm sheet into a form, so
 // `kiko-no-confirm-sheet-in-form` (and every other rule) MUST report zero
 // findings.
 

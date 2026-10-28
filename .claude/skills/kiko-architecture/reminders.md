@@ -346,7 +346,7 @@ The Home AND Settings stacks register `TransactionForm`, `AccountForm` and `Hold
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
   Accounts stack, rebuilt from the root (`openAccountsPages`,
   `src/navigation/open-accounts-pages/open-accounts-pages.ts`, whose private `rebuiltStack`
-  builds it; the rule and its known limit are in "Pane navigation" below).
+  builds it; the rule and its known limit are in "Pane navigation" in SKILL.md).
   Two nested navigates back to back lose
   the first, because the second replaces the tab's nested params before
   the stack reads them (`route-response.navigator.test.tsx`, on the real
@@ -378,7 +378,7 @@ The Home AND Settings stacks register `TransactionForm`, `AccountForm` and `Hold
   and a rejection would show the save error and skip the re-plan. On the
   create form, a Binance connect that fails clears only the write it made, and only
   when row P does not exist, read through
-  `accountsRepo.exists` (the write queue rule in the repository section above;
+  `accountsRepo.exists` (the write queue rule in the repository section of SKILL.md;
   `grep -rn accountsRepo.exists src` lists the callers), so no pair stays
   under an id with no account. A failed read keeps the keys. The same helper
   (`clearPairIfRowMissing` in `account-form.screen.tsx`) also clears the write stored after

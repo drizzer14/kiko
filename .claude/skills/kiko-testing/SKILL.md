@@ -89,8 +89,9 @@ catalogue below may lag the folders.
 - `sysctl-stub.ts`, `warm-executables.ts`: a load stub and the warm-up of a never-run stub script,
   so a spawned script never waits.
 - `skill-text.ts`, `orphan-reference-files.ts`, `markdown-code-spans.ts`,
-  `source-comment-citations.ts`, `spec-test-rows.ts`: the readers the doc suites share (a skill's
-  files, its backtick spans, the paths a source comment names, a spec table's Test cells).
+  `source-comment-citations.ts`, `prose-citations.ts`, `spec-test-rows.ts`: the readers the doc
+  suites share (a skill's files, its backtick spans, the paths a source comment names, the
+  skill sections a prose citation quotes, a spec table's Test cells).
 - `deployment-target.ts`, `sf-symbol-catalogue.ts`: the readers of the iOS target and of the
   SF Symbols availability data.
 

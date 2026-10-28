@@ -543,7 +543,7 @@ rules:
       `undefined`, or a bare optional prop straight through.
     metadata:
       fix: "Pass a value that is always a string (e.g. the symbol's own `name`, as `SymbolIcon` does) instead of a value that can still be `undefined`."
-      skill: "kiko-design-system › Component set (SymbolIcon)"
+      skill: "kiko-design-system › Component set (continued)"
     patterns:
       - pattern-either:
           - pattern: '<SFSymbolView ... fallbackName={undefined} ...></SFSymbolView>'
@@ -613,7 +613,7 @@ rules:
       `<FieldError message={...} />` instead.
     metadata:
       fix: 'Render `<FieldError message={...} />` instead of a bespoke `Text variant="caption" tone="negative"`.'
-      skill: "kiko-design-system › Component set"
+      skill: "kiko-design-system › Component set (continued)"
     paths:
       exclude:
         - "src/design-system/components/field-error/**"
@@ -1494,10 +1494,10 @@ rules:
       A form has no in-form Delete, so it never imports `ConfirmSheet`. An
       entity is deleted only from its page's touch-and-hold
       `CardContextMenu`, which raises the confirm itself — see
-      kiko-design-system's "Component set (CardContextMenu)".
+      kiko-design-system's "Component set (continued)".
     metadata:
       fix: "Remove the `ConfirmSheet` import from the form; wrap the entity's card or row on its page in `CardContextMenu` with `onDelete` instead."
-      skill: "kiko-design-system › Component set (CardContextMenu)"
+      skill: "kiko-design-system › Component set (continued)"
     paths:
       include:
         - "src/screens/forms/**"
