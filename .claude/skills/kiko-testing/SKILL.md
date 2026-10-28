@@ -16,6 +16,10 @@ words, `fnts`, one component per file) stay in kiko-code-style and apply to a te
   `__tests__/` holds the harness tests (scripts, rules, docs); an iOS end-to-end test is a Maestro
   YAML flow under `e2e/`.
 - A test asserts real behavior. An assertion-free test fails the Stryker check.
+- A real-repository inventory row lives in a top-level `__tests__/*.test.ts` that `make doc-suites`
+  discovers; a row under `__tests__/test-support/` runs only in the queued verify, too late for a
+  scribe. Each explicit NO in a matching ruling gets its own negative fixture row: a rule pinned
+  only by the real-repository row moves whenever the docs change.
 - An assertion that reads back a fixture literal instead of a value the code under test wrote or
   computed is not a test of the code: it only proves the fixture equals itself.
 - Every test typechecks under `npm run check:typecheck`. Never `as never` to satisfy a

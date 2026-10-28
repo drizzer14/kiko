@@ -48,6 +48,23 @@ Rules:
 - A skill may be split into reference files (kiko-linter's "Skill reference files" says the
   link form). Link each one from SKILL.md with a relative Markdown link, no title, no spaces;
   an unlinked `.md` in a skill folder or a link to a missing file fails `make doc-suites`.
+- In the commit that splits a skill or moves a section, grep SKILL.md and every reference file for
+  "above", "below", "earlier", "the next section" and "in this skill"; a pointer that now crosses
+  a file names the file. The resolver reads quoted headings only, so these fail silently.
+- A move commit proves "nothing dropped" by comparing every non-blank source line, every bullet
+  form included: a diff filter `^-[^-]` hides a removed `- ` bullet (it shows as `-- `).
+- A moved heading changes three kinds of citation: skill to skill (grep other skills for links to
+  it), plan or doc text, and guard `message:` strings in `rules/*.yml` (skill-citations checks
+  only `metadata.skill`). Grep the whole repository for each moved heading, plus
+  `<skill> › <heading>` strings in `rules/*.yml` and `NODE_RULES`.
+- A split also repoints agent text: each agent that works in the moved area names the new skill
+  or routes by frontmatter description; a pointer only in the parent skill is not enough. A new
+  skill's description states its trigger, and each parent's description names where its text
+  went.
+- A dated plan or audit snapshot is not a live pointer: repoint only a step that is still open.
+- A section split across two files (heading plus "(continued)") has every citation of it fixed
+  in the same commit: grep the old heading across rules, scripts, docs and src comments, and name
+  the file where the cited text now lives.
 - Wrap a long line; never lengthen a pinned one (pin lists only shrink). Never leave a red
   intermediate commit.
 - A skill states the RULE, never a survey of current usage: "always do X" or

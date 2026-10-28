@@ -1225,10 +1225,8 @@ See `kiko-domain`'s "Spending-exclusion pipeline" section for the
 module pointers (the section lists them) — read it there rather than a
 duplicated list here.
 
-A re-sync of a connected crypto account carries no address: `resyncRequest`
-(`src/crypto-sync/resync-request/`) builds the request for both the account-detail "Sync now" and
-the Home pull-to-refresh fan-out; never build a second re-sync shape. For the Binance exchange sync
-(balance reads, history walks, walk marks) see `kiko-exchange-sync`.
+For the crypto re-sync request (`resyncRequest`) and the Binance exchange sync (balance reads,
+history walks, walk marks) see `kiko-exchange-sync`.
 
 ## Price data
 

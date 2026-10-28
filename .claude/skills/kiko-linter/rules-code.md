@@ -469,8 +469,8 @@ identifier-bearing syntax position (a `const` declaration, a function
 parameter, a type/interface member, a destructuring binding, a JSX prop) at
 once — writing that as `pattern-either` branches would need one branch per
 syntax position, is fragile the same way the quoting/anchoring gotchas
-in semgrep-facts.md are, and Semgrep still couldn't do the case-preserving word-part
-split itself.
+under "Semgrep facts verified on 1.175" in semgrep-facts.md are, and
+Semgrep still couldn't do the case-preserving word-part split itself.
 
 **Exact-path exemption allowlist, not an inline suppression comment.** The
 brief's exception for "a name forced by a third-party API, a DB column, a

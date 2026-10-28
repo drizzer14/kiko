@@ -683,7 +683,8 @@ Split a big review into parallel read-only reviewer slices by commit
 range, each writing its own output file. Review a mechanical sweep by
 static proof, not by sampling: resolve every import binding and
 `jest.mock`/`require` target at both commits, count cycles, and check
-each side-effect import's predecessors.
+each side-effect import's predecessors. A reviewer of a multi-thousand-line move goes past 150k
+context: split the review per new skill and re-review with a fresh reviewer.
 
 ## The Stop-hook dup check is scoped
 

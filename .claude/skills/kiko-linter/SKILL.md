@@ -320,7 +320,7 @@ a pre-existing finding points at. A Semgrep deny names
   output.
 - `screen-imports.js` (`kiko-no-cross-screen-import`) enforces
   the "No imports across screen folders" bullet in
-  kiko-design-system's "Component set (continued)". It resolves
+  kiko-design-system's "Component set (continued)" (component-set-forms.md). It resolves
   relative specifiers against the importing file, which Semgrep cannot
   do. No `--write`.
 - `feature-imports.js` (`kiko-feature-imports`) enforces

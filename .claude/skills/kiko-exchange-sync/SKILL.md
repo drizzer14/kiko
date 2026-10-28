@@ -969,6 +969,12 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
   rather than trust a caller-supplied flag, since the write is reachable
   directly, not only through the picker.
 
+## Crypto re-sync request
+
+A re-sync of a connected crypto account carries no address: `resyncRequest`
+(`src/crypto-sync/resync-request/`) builds the request for both the account-detail "Sync now" and
+the Home pull-to-refresh fan-out; never build a second re-sync shape.
+
 ## Registry pointer
 
 The provider registry (`bankProviderRegistry`, and `exchangeProviderRegistry` in

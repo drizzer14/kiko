@@ -1494,7 +1494,7 @@ rules:
       A form has no in-form Delete, so it never imports `ConfirmSheet`. An
       entity is deleted only from its page's touch-and-hold
       `CardContextMenu`, which raises the confirm itself — see
-      kiko-design-system's "Component set (continued)".
+      kiko-design-system's "Component set (continued)" (component-set-forms.md).
     metadata:
       fix: "Remove the `ConfirmSheet` import from the form; wrap the entity's card or row on its page in `CardContextMenu` with `onDelete` instead."
       skill: "kiko-design-system › Component set (continued)"

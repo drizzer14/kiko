@@ -1,8 +1,9 @@
 ## F4 code-style mechanization candidates — all four now implemented
 
 The nullable-ternary rule is `kiko-no-nullable-map-ternary` (Semgrep
-ERROR, `rules/semgrep-prewrite.yml`) — see "Semgrep pattern strings need
-quoting" in semgrep-facts.md for the one gotcha that cost the most time writing it.
+ERROR, `rules/semgrep-prewrite.yml`) — see the YAML-quoting
+paragraph under "Semgrep facts verified on 1.175" in semgrep-facts.md for the one gotcha that
+cost the most time writing it.
 The one-exported-component-per-`.tsx` check is a Jest invariant plus a
 pre-write guard Node rule, not Semgrep — see "One exported component per
 `.tsx` — a Jest invariant and a guard rule" in rules-code.md. The import-length-sort check is a
