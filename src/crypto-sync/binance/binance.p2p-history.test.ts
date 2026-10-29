@@ -1258,3 +1258,106 @@ describe('a first run after the upgrade, a stored cursor of 2024-01-01 and one o
     expect(emptiedOnRun).toBeLessThanOrEqual(3);
   });
 });
+
+describe('a head window that cannot be read while the clock moves between runs', () => {
+  // G owed windows behind the head, the newest 12 of them unreadable, the older 12 holding one
+  // order each. A full lane reads R = READS_A_RUN owed windows a run (the first run is shown to
+  // read that many), so the older windows must all be read within ceil(G / R) + 1 runs.
+  const OWED_WINDOWS = 24;
+  const UNREADABLE_WINDOWS = 12;
+  const READS_A_RUN = 10;
+  const RUNS_BOUND = Math.ceil(OWED_WINDOWS / READS_A_RUN) + 1;
+  const OLDEST_START = HEAD_START - OWED_WINDOWS * P2P_WINDOW_MS;
+
+  const ranksFrom = (first: number, last: number): number[] =>
+    Array.from({ length: last - first + 1 }, (_unused, offset) => first + offset);
+
+  const spanOfRank = (rank: number): Span => ({
+    ...owedWindowOf(rank),
+    start: Math.max(OLDEST_START, owedWindowOf(rank).start),
+  });
+
+  const READABLE_RANKS = ranksFrom(UNREADABLE_WINDOWS + 1, OWED_WINDOWS);
+
+  const orderNumberOf = (rank: number): string => `window-${rank}`;
+
+  const ORDERS = READABLE_RANKS.map((rank) =>
+    p2pOrderOf({
+      orderNumber: orderNumberOf(rank),
+      createTime: spanOfRank(rank).start + 3 * DAY_MS,
+    }),
+  );
+
+  const unreadableSpans = ranksFrom(1, UNREADABLE_WINDOWS).map(spanOfRank);
+
+  const fetchAt = (runNow: number) => {
+    const server = p2pServerOf(ORDERS);
+
+    return jest.fn(
+      async (apiKey: string, secret: string, side: 'BUY' | 'SELL', span: Span, page: number) => {
+        const insideUnreadable = unreadableSpans.some(
+          ({ start, end }) => span.start >= start && span.end <= end,
+        );
+
+        if (span.end === runNow || insideUnreadable) {
+          throw new BinanceHistoryParseError();
+        }
+
+        return server(apiKey, secret, side, span, page);
+      },
+    );
+  };
+
+  const runsWithGap = async (gapMs: number, runCount: number) => {
+    const world = worldOf();
+    const importedRanks: number[][] = [];
+    const owedWindowsRead: number[] = [];
+
+    world.fake.seed('p2p', { cursor: OLDEST_START });
+
+    for (let run = 0; run < runCount; run += 1) {
+      const runNow = NOW + run * gapMs;
+      const deps = world.depsOf({ now: () => runNow, fetchP2pOrders: fetchAt(runNow) });
+      const walkRun = createBinanceHistoryRun({ now: () => runNow, sleep: async () => undefined });
+
+      await expect(world.walk(deps, walkRun)).rejects.toBeInstanceOf(BinanceHistoryParseError);
+
+      importedRanks.push(
+        addedRows(deps).map(({ externalId }) =>
+          Number(externalId.split('window-')[1].split(':')[0]),
+        ),
+      );
+      owedWindowsRead.push(
+        queriesOf(deps).filter(({ side, end }) => side === 'BUY' && end <= OWED_END).length,
+      );
+    }
+
+    return { importedRanks, owedWindowsRead };
+  };
+
+  const readableRanksWithin = (importedRanks: number[][], runs: number): number[] =>
+    importedRanks
+      .slice(0, runs)
+      .flat()
+      .sort((left, right) => left - right);
+
+  it('reads the R owed windows of a full lane on the first run, with the clock still or moving', async () => {
+    const still = await runsWithGap(0, 1);
+    const moving = await runsWithGap(HOUR_MS, 1);
+
+    expect(still.owedWindowsRead).toEqual([READS_A_RUN]);
+    expect(moving.owedWindowsRead).toEqual([READS_A_RUN]);
+  });
+
+  it('imports every readable older window within ceil(G / R) + 1 runs when the clock stands still', async () => {
+    const { importedRanks } = await runsWithGap(0, RUNS_BOUND);
+
+    expect(readableRanksWithin(importedRanks, RUNS_BOUND)).toEqual(READABLE_RANKS);
+  });
+
+  it('imports every readable older window within ceil(G / R) + 1 runs when the clock moves an hour a run', async () => {
+    const { importedRanks } = await runsWithGap(HOUR_MS, RUNS_BOUND);
+
+    expect(readableRanksWithin(importedRanks, RUNS_BOUND)).toEqual(READABLE_RANKS);
+  });
+});
