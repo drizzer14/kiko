@@ -180,7 +180,9 @@ Section 1, HIG Layout).
    `ipad-phase3`) stays out of main until the iPad release and merges to main WITH `ipad-family`.
    With device family 1 no device reaches a large window, so an early merge would ship dormant
    code (the merged Home, the hidden Statistics tab, help step 1; Guideline 2.5.19), and the
-   branch changes the Duo (the content margin 20, the layout rule). This replaces the 2026-10-17
+   branch changes the Duo (the content margin 20 on the inner landscape, the shrink-to-fit Home
+   net worth and currency breakdown, the layout rule; row 1 look ruling 2026-10-29 in decision 12
+   of `2026-10-20-ipad-step8-layout-design.md`). This replaces the 2026-10-17
    allowance to reach main earlier as a no-op for iPhone and Duo.
 
 ## Section 3 - tab bar, bars, and clearance (verification first)

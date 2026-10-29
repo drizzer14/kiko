@@ -52,11 +52,20 @@ points (5 and 7) are bugs; they are fixed first (section F).
     title inside the navigation bar's content view at x 20, and no bar margin or title position
     input moves it; the iPad Pro (27.0) title follows the bar margin, so the Pro and every iPad
     window keep 16. Design: `.superpowers/sdd/ipad-phase3/flag1-design.md`.
+    **Row 1 look ruling (user, 2026-10-29, relayed by the coordinator; narrows ruling A).**
+    User's words: "B + shrink to fit, same as category expense chart". The content margin and the
+    margin told to the native stack are 20 only on the Duo inner landscape (both panes: two panes
+    under a side bar); the folded Duo outer pose (one stack under a side bar) goes back to 16 for
+    both, and the user accepts its 4 pt title offset. The Home net worth and the currency
+    breakdown values take the Statistics category chart's shrink-to-fit rule (one line, shrink
+    to fit, minimum scale 0.7), so they fit at 16 and at 20. Every other pose keeps 16.
+    Design: `.superpowers/sdd/ipad-phase3/look-fix-design.md`.
 
 ## Goals
 
 - The rules above on every iPad window from 320 to 1376 pt; the Duo and iPhone looks unchanged
-  except the card order (decision 9) and the Duo side-bar content margin (decision 12).
+  except the card order (decision 9), the Duo inner landscape content margin and the
+  shrink-to-fit Home money (decision 12).
 - No code reads the device idiom (base spec rule). Size class and window size decide.
 
 ## Non-goals
