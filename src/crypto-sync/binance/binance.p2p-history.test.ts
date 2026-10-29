@@ -885,6 +885,37 @@ describe('the read-failed mark of the P2P walk', () => {
     expect(await readFailedAtOf(world)).toBe(NOW);
   });
 
+  it('a failed mark write keeps the original error', async () => {
+    const world = recentWorld();
+    const original = new BinanceHistoryParseError();
+    const writeFailure = new Error('the state row cannot be written');
+    const base = world.depsOf({
+      fetchP2pOrders: jest.fn(async () => {
+        throw original;
+      }),
+    });
+    const isMarkWrite = (patch: object): boolean =>
+      (patch as { field?: string }).field === 'readFailedAt';
+    const patchExchangeState = jest.fn(
+      async (...[accountId, patches]: Parameters<BinanceP2pHistoryDeps['patchExchangeState']>) => {
+        if (patches.some(isMarkWrite)) {
+          throw writeFailure;
+        }
+
+        await base.patchExchangeState(accountId, patches);
+      },
+    );
+    const deps = { ...base, patchExchangeState };
+
+    await expect(world.walk(deps)).rejects.toBe(original);
+
+    const markWrites = patchExchangeState.mock.calls
+      .flatMap(([, patches]) => patches)
+      .filter(isMarkWrite);
+
+    expect(markWrites).toEqual([expect.objectContaining({ walkId: 'p2p', value: NOW })]);
+  });
+
   it('clears a stored mark when a later run reads and resolves', async () => {
     const world = markedWorld();
 
