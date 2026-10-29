@@ -969,7 +969,9 @@ describe('the read-failed mark of the P2P walk', () => {
   it('keeps the mark set on every run while the head window cannot be read, and still reads the owed ground', async () => {
     const world = worldOf();
 
-    world.fake.seed('p2p', { cursor: NOW - 75 * DAY_MS });
+    // 400 days behind is about thirteen owed windows, so a run of eight leaves older ground for
+    // the second run to read.
+    world.fake.seed('p2p', { cursor: NOW - 400 * DAY_MS });
 
     const runAt = async (now: number) => {
       const server = p2pServerOf([]);
