@@ -74,8 +74,11 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
+import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import StatisticsScreen from './statistics.screen';
+
+afterEach(resetStatisticsFilterSelection);
 
 const mockUseLiveQuery = jest.fn();
 
@@ -3347,6 +3350,7 @@ describe('StatisticsScreen — filter sheets when the screen stops being shown',
     ['account filter', ACCOUNT_FILTER, `${ACCOUNT_FILTER}-option-${FILTER_ALL}`],
     ['category filter', CATEGORY_FILTER, `${CATEGORY_FILTER}-option-${FILTER_ALL}`],
     ['trend filter', 'statistics-trend-filter', 'statistics-trend-filter-save'],
+    ['date range', 'Date range', 'date-range-calendar'],
   ] as const;
 
   beforeEach(() => {
@@ -3360,7 +3364,7 @@ describe('StatisticsScreen — filter sheets when the screen stops being shown',
     trigger: string,
   ): Promise<void> => {
     await act(async () => {
-      await fireEvent.press(view.getByTestId(trigger));
+      await fireEvent.press(view.queryByTestId(trigger) ?? view.getByLabelText(trigger));
     });
   };
 

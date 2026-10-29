@@ -10,13 +10,14 @@ import {
 import { render, within } from '@testing-library/react-native';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import StatisticsScreen from './statistics.screen';
 
 /**
  * Two Statistics screens mounted at once (the Statistics tab's and the Home companion's) read ONE
  * account selection and ONE category selection, like the shared date range: a pick made in one
- * shows in the other, and with no screen mounted the next mount starts on "all" again.
+ * shows in the other, and the pick outlives every screen for the app session.
  */
 
 jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
@@ -57,6 +58,8 @@ describe('shared Statistics filters across two Statistics screens', () => {
     mockUseLiveQuery.mockImplementation(answerFilterData);
   });
 
+  afterEach(resetStatisticsFilterSelection);
+
   describe('the account filter', () => {
     it('shows an account picked in the first screen in the second too', async () => {
       const rendered = await renderBoth();
@@ -84,7 +87,7 @@ describe('shared Statistics filters across two Statistics screens', () => {
       expect(pane(rendered, 'companion-pane').queryByText(/^Accounts · /)).toBeNull();
     });
 
-    it('starts on all accounts after both screens unmount and mount again', async () => {
+    it('keeps the account pick after both screens unmount and mount again', async () => {
       const first = await renderBoth();
 
       await pressIn(first, 'tab-pane', ACCOUNT_FILTER, 'a');
@@ -92,8 +95,7 @@ describe('shared Statistics filters across two Statistics screens', () => {
 
       const second = await renderBoth();
 
-      expect(pane(second, 'tab-pane').queryByText(/^Accounts · /)).toBeNull();
-      expect(pane(second, 'companion-pane').queryByText(/^Accounts · /)).toBeNull();
+      expectBothShow(second, 'Accounts · 1');
     });
   });
 
@@ -114,7 +116,7 @@ describe('shared Statistics filters across two Statistics screens', () => {
       expectBothShow(rendered, 'Categories · 1');
     });
 
-    it('starts on all categories after both screens unmount and mount again', async () => {
+    it('keeps the category pick after both screens unmount and mount again', async () => {
       const first = await renderBoth();
 
       await pressIn(first, 'tab-pane', CATEGORY_FILTER, 'groceries');
@@ -122,8 +124,7 @@ describe('shared Statistics filters across two Statistics screens', () => {
 
       const second = await renderBoth();
 
-      expect(pane(second, 'tab-pane').queryByText(/^Categories · /)).toBeNull();
-      expect(pane(second, 'companion-pane').queryByText(/^Categories · /)).toBeNull();
+      expectBothShow(second, 'Categories · 1');
     });
   });
 

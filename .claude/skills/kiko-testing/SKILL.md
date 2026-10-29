@@ -89,6 +89,8 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `mock-statistics-data-layer.ts`, `statistics-filter-data.ts`: the mocked data layer a real
   Statistics screen (or Home) mounts on, and its filter fixtures (`answerFilterData`,
   `pressFilterOption`, the filter testIDs).
+- `reset-statistics-filter-selection.ts`: `resetStatisticsFilterSelection`, an `afterEach` that
+  puts the session-long Statistics account and category picks back on "all".
 - `node-handles.ts`: `mockFindNodeHandle`, a stand-in that gives each distinct host its own handle
   where Jest's `findNodeHandle` returns null, for a share-anchor pin.
 

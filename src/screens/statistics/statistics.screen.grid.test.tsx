@@ -154,10 +154,13 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { PaneContext, PaneWidthContext, paneContextOf } from '@kiko/design-system/pane-context';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import '@kiko/design-system/unistyles';
 
 import StatisticsScreen from './statistics.screen';
+
+afterEach(resetStatisticsFilterSelection);
 import { NET_WORTH_SCRUB_GESTURE_TEST_ID } from './net-worth-line/net-worth-line.component';
 
 const now = Date.now();

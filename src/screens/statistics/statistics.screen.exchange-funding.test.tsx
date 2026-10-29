@@ -2,8 +2,11 @@ import '@kiko/design-system/unistyles';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import StatisticsScreen from './statistics.screen';
+
+afterEach(resetStatisticsFilterSelection);
 
 const mockUseLiveQuery = jest.fn();
 

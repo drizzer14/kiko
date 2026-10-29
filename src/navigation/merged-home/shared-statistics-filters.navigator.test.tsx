@@ -13,10 +13,11 @@ import {
   pressFilterOption,
 } from '@kiko/test-support/statistics-filter-data';
 import LazyTabs from '@kiko/test-support/lazy-tabs';
-import { act, render, within } from '@testing-library/react-native';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { reportWindow, resizeWindow } from '@kiko/test-support/window-size';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -32,6 +33,19 @@ import StatisticsStack from '../statistics-stack';
  * they need to mount.
  */
 
+// The form's own screen is not under test: it needs the pane it opens in and a way to close.
+jest.mock('@kiko/screens/forms/transaction-form', () => {
+  const { Pressable, View } = require('react-native');
+
+  const FormStub = ({ navigation }: { navigation: { goBack: () => void } }) => (
+    <View testID="transaction-form-stub">
+      <Pressable testID="transaction-form-stub-close" onPress={() => navigation.goBack()} />
+    </View>
+  );
+
+  return { __esModule: true, default: FormStub };
+});
+
 const Tabs = createNavigatorFactory(LazyTabs)();
 const navigationRef = createNavigationContainerRef<ParamListBase>();
 
@@ -39,10 +53,10 @@ const AccountsStub: FC = () => <View />;
 
 type Rendered = Awaited<ReturnType<typeof render>>;
 
-const renderStatisticsTab = (): ReturnType<typeof render> =>
+const renderTabs = (initialRouteName: 'HomeTab' | 'StatisticsTab'): ReturnType<typeof render> =>
   render(
     <NavigationContainer ref={navigationRef}>
-      <Tabs.Navigator initialRouteName="StatisticsTab">
+      <Tabs.Navigator initialRouteName={initialRouteName}>
         <Tabs.Screen name="HomeTab" component={HomeStack} />
 
         <Tabs.Screen name="AccountsTab" component={AccountsStub} />
@@ -52,6 +66,20 @@ const renderStatisticsTab = (): ReturnType<typeof render> =>
     </NavigationContainer>,
     { wrapper: GestureRootWrapper },
   );
+
+const renderStatisticsTab = (): ReturnType<typeof render> => renderTabs('StatisticsTab');
+
+const renderMergedHome = async (): Promise<Rendered> => {
+  const rendered = await renderTabs('HomeTab');
+
+  await act(async () => {
+    jest.advanceTimersByTime(SETTLE_DELAY_MS);
+  });
+
+  return rendered;
+};
+
+afterEach(resetStatisticsFilterSelection);
 
 const focusedTab = (): string | undefined => {
   const state = navigationRef.getRootState();
@@ -120,6 +148,41 @@ describe('the Statistics filters when the window turns into a merged Home', () =
     await pressFilterOption(rendered.getByTestId, ACCOUNT_FILTER, 'b');
     await pressFilterOption(rendered.getByTestId, CATEGORY_FILTER, 'transport');
     await becomeLarge();
+
+    expectEveryMenuShows(rendered, ACCOUNT_FILTER, 'Accounts · 1');
+    expectEveryMenuShows(rendered, CATEGORY_FILTER, 'Categories · 1');
+  });
+});
+
+describe('the Statistics filters across a form opened from a merged Home', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    reportWindow('regular', 1376, 1032);
+    mockUseLiveQuery.mockImplementation(answerFilterData);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('keeps the account and category picks of the companion once the form closes', async () => {
+    const rendered = await renderMergedHome();
+
+    await pressFilterOption(rendered.getByTestId, ACCOUNT_FILTER, 'a');
+    await pressFilterOption(rendered.getByTestId, CATEGORY_FILTER, 'groceries');
+
+    await act(async () => {
+      await fireEvent.press(rendered.getByLabelText('Add transaction'));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(SETTLE_DELAY_MS);
+    });
+
+    expect(rendered.getByTestId('transaction-form-stub')).toBeTruthy();
+
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId('transaction-form-stub-close'));
+    });
 
     expectEveryMenuShows(rendered, ACCOUNT_FILTER, 'Accounts · 1');
     expectEveryMenuShows(rendered, CATEGORY_FILTER, 'Categories · 1');

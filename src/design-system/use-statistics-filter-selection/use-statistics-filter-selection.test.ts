@@ -2,10 +2,13 @@ import '@kiko/design-system/unistyles';
 import { createElement, Fragment } from 'react';
 import { act, render, renderHook } from '@testing-library/react-native';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
+import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import { useStatisticsFilterSelection } from './use-statistics-filter-selection';
 
 describe('useStatisticsFilterSelection', () => {
+  afterEach(resetStatisticsFilterSelection);
+
   it('starts on all accounts and all categories', async () => {
     const { result } = await renderHook(() => useStatisticsFilterSelection());
 
@@ -58,17 +61,22 @@ describe('useStatisticsFilterSelection', () => {
     expect(second.result.current.selectedCategories).toEqual(new Set(['transport']));
   });
 
-  it('starts on all again once no reader is mounted', async () => {
+  it('keeps the pick for the app session once every reader unmounts and a microtask passes', async () => {
     const first = await renderHook(() => useStatisticsFilterSelection());
 
     await act(async () => {
       first.result.current.toggleAccount('b');
+      first.result.current.toggleCategory('transport');
     });
     await first.unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     const second = await renderHook(() => useStatisticsFilterSelection());
 
-    expect(second.result.current.selectedAccounts).toEqual(new Set());
+    expect(second.result.current.selectedAccounts).toEqual(new Set(['b']));
+    expect(second.result.current.selectedCategories).toEqual(new Set(['transport']));
   });
 
   it('keeps the pick while one reader unmounts and another stays mounted', async () => {
@@ -84,7 +92,8 @@ describe('useStatisticsFilterSelection', () => {
     expect(second.result.current.selectedAccounts).toEqual(new Set(['a']));
     expect(second.result.current.selectedCategories).toEqual(new Set(['groceries']));
 
-    // A reset writes no notification, so a reader that reads the store afresh shows whether it ran.
+    // A late reader reads the store afresh, so it shows what the store holds, not what a stale
+    // reader last rendered.
     const late = await renderHook(() => useStatisticsFilterSelection());
 
     expect(late.result.current.selectedAccounts).toEqual(new Set(['a']));
@@ -122,13 +131,6 @@ describe('useStatisticsFilterSelection', () => {
       expect(latest.first.selectedCategories).toEqual(new Set(['groceries']));
       expect(latest.second.selectedAccounts).toEqual(new Set(['a']));
       expect(latest.second.selectedCategories).toEqual(new Set(['groceries']));
-
-      // The deferred reset writes no notification, so only a reader that reads the store afresh
-      // shows whether it ran.
-      const late = await renderHook(() => useStatisticsFilterSelection());
-
-      expect(late.result.current.selectedAccounts).toEqual(new Set(['a']));
-      expect(late.result.current.selectedCategories).toEqual(new Set(['groceries']));
     });
   });
 });
