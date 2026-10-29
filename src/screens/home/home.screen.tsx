@@ -682,7 +682,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                   {t('home.netWorth')}
                 </Text>
 
-                <MoneyText money={total} context="balance" style={styles.balance} />
+                <MoneyText
+                  money={total}
+                  context="balance"
+                  style={styles.balance}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                />
 
                 <Box style={styles.breakdown}>
                   <CurrencyBreakdown items={breakdown} />

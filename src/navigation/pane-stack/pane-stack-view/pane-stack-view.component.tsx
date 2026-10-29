@@ -1,7 +1,7 @@
 import { type FC, useMemo } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import {
-  useContentMargin,
+  useContentMarginFor,
   useIsTabBarNotAtBottom,
   useTabBarPlacement,
 } from '@kiko/design-system/components/screen';
@@ -34,7 +34,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   const tabBarPlacement = useTabBarPlacement();
   const isSplit = mode !== 'single';
   const hasFixedContentMargin = isSplit ? isTabBarNotAtBottom : tabBarPlacement === 'side';
-  const contentMargin = useContentMargin();
+  const contentMargin = useContentMarginFor(isSplit);
   const { dispatch } = navigation;
   const companion = isSplit
     ? paneSlice(state, paneConfig, 'companion', descriptors, describe, dispatch)
@@ -77,10 +77,10 @@ const PaneStackView: FC<PaneStackViewProps> = ({
       <PaneVisibilityContext.Provider value={visibility}>
         {/* UIKit insets a native large title by the stack's distance to the window's edge, so the
             title and the content line up only if the stack is told the content's margin (16 pt,
-            20 pt under a side bar). A bottom bar keeps UIKit's margin. Split panes are told under a
-            top or a side bar, whatever the window's size; the single stack only under a side bar
-            (the Duo outer pose), where UIKit's title would start off the content's margin. A
-            single stack under a top bar keeps UIKit's margin. */}
+            20 pt for a split under a side bar). A bottom bar keeps UIKit's margin. Split panes are
+            told under a top or a side bar, whatever the window's size; the single stack only under
+            a side bar (the Duo outer pose, told 16), where UIKit's title would start off the
+            content's margin. A single stack under a top bar keeps UIKit's margin. */}
         <FixedContentMarginContext.Provider value={hasFixedContentMargin ? contentMargin : 0}>
           {isSplit ? (
             <TwoPaneLayout
