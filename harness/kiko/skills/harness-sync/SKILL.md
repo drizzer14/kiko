@@ -40,6 +40,10 @@ that holds no Kiko name) goes on this list in the same task that adds or changes
   on a missing scan root. Portable only to a repo that uses the
   `src/design-system/components/<name>/` convention.
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+- The red-phase scaffolding phrases in the history-word comment rule (binance-p2p-fix fix round 1):
+  `<key|field|export|helper|function> does not exist yet` and `before the field exists`, with the
+  bad and good fixture lines. Portable as is; the bare `does not exist yet` stays out (it names a
+  runtime state in ordinary comments).
 - H8 generic ports (pff-ios branch harness-h8): the TIMEOUT-HEAVY rerun inside the mutation gate
   (`mutation.sh`, `mutation-score.js --rerun-candidates`, `mutation-rerun.js`); the gate start
   defer on load in `job-queue.sh` (every job class, one cap); the `ff-main.sh` rule refusing a

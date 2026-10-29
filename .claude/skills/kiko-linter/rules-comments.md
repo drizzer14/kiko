@@ -381,8 +381,11 @@ history". `kiko-no-history-id-comment` catches an id or a citation; this
 rule catches the phrases a comment uses to narrate a change, among them a
 `was:` label before an old value (`// was: 30`, ` * was: the old cap`), and `as before`
 at the end of a clause (`fails as before`, `as before, ...`; a noun phrase after it, such as
-`as before the request`, is an ordering and stays silent). A comment states how the code
-works today and why, never how it worked before.
+`as before the request`, is an ordering and stays silent), and the red-phase scaffolding of a
+test written ahead of its code (`the caption key does not exist yet`, `before the field exists`;
+only a key, field, export, helper or function as the subject of `does not exist yet`, so a row,
+file or category the user has not made stays silent: name that runtime state). A comment states
+how the code works today and why, never how it worked before.
 The members are the `pattern-regex` alternation and the `message` of
 `kiko-no-history-word-comment` in `rules/semgrep-prewrite.yml`; read the
 phrases there, never copy them. The match is capitalization-tolerant, and
