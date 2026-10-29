@@ -196,6 +196,17 @@ test from being decorative.
   generator's ranges, not only its pass count.
 - A property suite drives the production caller (the lane's real entry point), or pins the caller's
   arguments in a separate test: a suite that re-implements the caller proves only the callee.
+- A property whose seeds go through `seededRandom` (`src/test-support/seeded-random.ts`) must prove
+  its worlds vary: small consecutive seeds of that Lehmer generator draw the same first value, so
+  every case can build the same world and the property passes vacuously. Multiply the seed by a
+  spread constant (`SEED_SPREAD` in
+  `src/crypto-sync/binance/binance.p2p-history.properties.test.ts`) and assert that the drawn
+  worlds exceed the boundary the property is about (more windows than a run reads).
+- A walk world needs a moving clock: a fixed-clock world hid a reset bug in `headFirstGroundOf`.
+  Run it at gaps of 0, one hour and one day, and pin the cases that need the clock to move (a head
+  held across runs).
+- A red commit for a missing export or field reads it by a runtime lookup so the file type-checks;
+  after the green, tidy the lookup into a typed import or field.
 - The seed list goes through `sweep` (below).
 
 ## Device, engine and configuration traps

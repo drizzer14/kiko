@@ -244,7 +244,9 @@ The "changed because …" narrative words are mechanized too, by the
 `rules/semgrep-prewrite.yml` (they include a `was:` label before an old value,
 `// was: 30`). Write
 how the code works today and why ("matches the holding", "a card absent
-from the snapshot"), never what it did before.
+from the snapshot"), never what it did before. A comment left over from a red commit is history
+too: one saying a key, field or export does not exist yet, or that a test runs before a field
+exists, is deleted after the green, or reworded to state what the test pins.
 
 When you reword a history comment into the present tense, re-derive its
 reason from the current code; never only swap the verb ("was" to

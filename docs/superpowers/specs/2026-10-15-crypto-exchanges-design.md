@@ -962,14 +962,19 @@ Walk direction (R-Walk A, user, 2026-10-16):
 - The P2P walk (user, 2026-10-28; was: forward like the others) reads the head window first: the
   last 30 days before now are the forward pass of the run, the cursor moves to the head start, and
   the ground from the old cursor (or the floor) to the head start is written as owed ground, in
-  ONE write with the cursor and the range cursor reset (`headFirstGroundOf`). The owed ground is
+  ONE write with the cursor (`headFirstGroundOf`); the range cursor is reset only when
+  `cursor === null || headStart - forwardStart > windowMs` (was: on every run), and a gap of over one
+  window between runs counts as a jump on every such run. The owed ground is
   read newest first, a window at a time (`newestFirst` of `planWalkPasses`, P2P only), down to the
   floor; a cursor already at or past the head start owes nothing. The rest of a window that a run's
   budget cuts waits behind the older owed windows (R3, the mirror of the oldest-first rotation).
   A window whose page cannot be read does not block the windows after it: its ground stays in the
   owed list, the other windows are read and written, and the run rejects at the end with the
   original error (R4). The bound: with G owed windows, R of them read a run, and a failing set,
-  every other window is read within `ceil(G / R) + 1` runs.
+  every other window is read within `ceil(G / R) + 1` runs. Edge (R11, backlog): at a steady sync
+  cadence of over 30 days every run counts as a jump and restarts the rotation, so when the head and
+  the R - 1 newest owed windows fail on every run the older ground stays unread; the fix would be a
+  persisted once-mark.
 - Safety net (P2P and fiat; NOT Convert): a start answered -5026 would be narrowed by `DepthGuard`
   to the served depth; the ground below that depth is not owed, and the walk goes on forward. It
   never ends the walk. Probe 5 expects no such answer.

@@ -1,6 +1,6 @@
 ---
 name: kiko-exchange-sync
-description: Invoke whenever you touch src/crypto-sync/**, src/sync-state/**, src/statistics/exchange-exclusion/**, src/statistics/exchange-funding-match/**, src/transactions/exchange-description/**, src/holdings/exchange-convert/**, src/holdings/exchange-destination/**, src/holdings/exchange-prefill/**, src/screens/forms/exchange-fields/**, or work on exchange sync, Binance (the Spot, Funding and Earn balance reads and the capital, Pay, Transfer, Earn, Convert, trade and dust history walks), a wallet or coin holding, an Exchange or Convert leg, or `exchange_state` in sync-state. Read before writing a Binance client call, a history walk, a cursor, pending or re-scan mark, a coin-keyed holding or pair id, or the label of an exchange leg. For the bank provider registry see kiko-domain; for the sync pipeline and `.kiko` export see kiko-architecture; for the public Binance price fallback see kiko-pricing.
+description: Invoke whenever you touch src/crypto-sync/**, src/sync-state/**, src/statistics/exchange-exclusion/**, src/statistics/exchange-funding-match/**, src/transactions/exchange-description/**, src/holdings/exchange-convert/**, src/holdings/exchange-destination/**, src/holdings/exchange-prefill/**, src/screens/forms/exchange-fields/**, or work on exchange sync, Binance (the Spot, Funding and Earn balance reads and the capital, Pay, Transfer, Earn, Convert, P2P, fiat, trade and dust history walks), a wallet or coin holding, an Exchange or Convert leg, or `exchange_state` in sync-state. Read before writing a Binance client call, a history walk, a cursor, pending or re-scan mark, a coin-keyed holding or pair id, or the label of an exchange leg. For the bank provider registry see kiko-domain; for the sync pipeline and `.kiko` export see kiko-architecture; for the public Binance price fallback see kiko-pricing.
 ---
 
 # Kiko exchange sync
@@ -123,6 +123,8 @@ fails the balance sync. The Binance arm runs its history reads in
 `runBinanceHistoryWalks` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`: read
 the order and the `logOnFailure` tags there). Each runs in its own `logOnFailure` and
 all share one `run`; a rate limit met by an earlier read puts the shared cooldown on the later ones.
+P2P is the first walk, so a rate limit P2P itself meets (429 cooldown) skips every later walk of
+that run (see "Binance P2P").
 The trade read runs as the LAST walk of `runBinanceHistoryWalks`, so an earlier rate limit
 skips it. Read `binance.trade-history.ts` and `binance.history-client.ts` for its rules: one
 text sum per order and one conversion; the imported-order prefix lookup
@@ -330,7 +332,8 @@ than restated here:
   card's `statementFromMs`) and `DEFAULT_NAME_RENAME_FIELD`
   (`withCarriedMetadataKeys`), and a walk key an older build left in the
   metadata is dropped by the next upsert.
-- **Per-record commits, crash-safe.** The walk goes oldest -> newest.
+- **Per-record commits, crash-safe.** The walk goes oldest -> newest within a window and across
+  the forward pass; the P2P owed ground reads its windows newest first (see "Binance P2P").
   Rows commit (`transactionsRepo.addManyDedup`) BEFORE the mark moves
   (`syncStateRepo.patchExchangeState`) — separate writes, so a crash between
   them re-imports idempotently rather than losing progress. A walk can also
@@ -469,6 +472,11 @@ than restated here:
   renders the `accountDetail.exchangeHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
   account never evaluates or shows it.
+- **The P2P read-failure caption** is separate from the lagging caption. `p2pReadFailed(state)`
+  (`binance-history-status.ts`) is true when `walks.p2p.readFailedAt` is set, and false for a
+  malformed state. `CryptoSyncSection` shows `accountDetail.exchangeP2pReadFailed` as one generic
+  line, with no cause split (R2). It shows with the coin lines (`coinLinesShown`), so it never
+  doubles the paused caption. The uk copy is reviewed by kiko-translator before a shipping deploy.
 - **The not-imported line.** `crypto-sync-section.component.tsx` shows it only when the
   coin lines show, and keeps it during a sync. The counts come from
   `notImportedCountsOf(walkState)`, the copy from `notImportedKindCopyKeys`, and the kinds
@@ -538,6 +546,39 @@ than restated here:
   appears; a stored description wins in `row-description.ts`. The other walks
   set theirs in their own files (`description` in `binance.transfer-history.ts`,
   `binance.earn-history.ts`, `binance.pay-history.ts`): read them there.
+
+### Binance P2P
+
+The P2P walk (`src/crypto-sync/binance/binance.p2p-history.ts`) differs from the other walks in
+its order of reading and in how it fails.
+
+- It runs FIRST in `runBinanceHistoryWalks`, before the capital walk, because its lane cap is its
+  own share of the minute: running first reserves it (R1). Read the order in that function, never
+  copy it.
+- Each run reads the HEAD window first: `headFirstGroundOf`
+  (`src/crypto-sync/exchange/walk/walk.ts`) makes the last `P2P_WINDOW_MS` before now the forward
+  pass, moves `cursor` to the head start, and writes the ground from the old cursor (or the floor)
+  to the head start as owed ground, in ONE write with `cursor` and `pending`. The owed ground is
+  read NEWEST FIRST (`newestFirst` of `planWalkPasses`, P2P only, `newestWindowsFrom`).
+- `rangeCursor` is reset to `BEFORE_EVERY_GROUND` only when
+  `cursor === null || headStart - forwardStart > windowMs`. A gap of more than one window between
+  runs counts as a jump on EVERY such run (R11), so a steady sync cadence of over 30 days restarts
+  the rotation each run. Accepted debt; the fix would be a persisted once-mark (backlog).
+- Failing-window rule (user Q1): a window whose page cannot be read must not block the windows
+  after it. With G owed windows and R read per run, every other window is read within
+  `ceil(G / R) + 1` runs. A budget-cut window's rest waits behind the older owed windows (R3). The
+  bound is stated in the `walk.ts` docs and the spec; read it there.
+- R4: P2P passes `readOnPastUnreadableForward` through `runBinanceWalkPlan` to `runWalkPlan`. An
+  unreadable HEAD (forward) window does not end the run: the cursor stays at the head start, the
+  owed ground is still read, and the run rejects at the end with the first error. Other walks are
+  unchanged (off by default).
+- `readFailedAt` mark on the `p2p` walk entry (`WalkMarks`,
+  `src/crypto-sync/exchange/walk-state/walk-state.ts`; absent or malformed reads as none,
+  unrepaired). It is written with the run time ONLY when the rejection comes after the walk marks
+  were read (R7); a malformed state or a failed credentials read writes none. The next run that
+  reads and resolves outside the cooldown writes `null`. A disconnect drops it with the other
+  marks. A failed mark write never replaces the original error. The caption it drives is in "The
+  P2P read-failure caption".
 
 ### Binance Transfer
 
@@ -737,7 +778,9 @@ stop codes and scenario rows.
   cursor per walk (`rangeCursor`) holds the END of the window
   of a range read last; `planWalkPasses` builds the windows of all owed ranges
   first (oldest first), and the pending pass reads the windows that start AT OR
-  AFTER the cursor first (`windowsFrom`), then wraps. It rotates windows, not
+  AFTER the cursor first (`windowsFrom`), then wraps. This is the order for every walk but P2P: a
+  walk that passes `newestFirst` (P2P only) builds the same windows newest first
+  (`newestWindowsFrom`); read that function for its wrap rule. It rotates windows, not
   ranges: a range longer than a window whose first window is owed whole every
   run merges back and starts before the cursor, so a rotation over ranges
   reads that window every run and starves the ones behind it. `>=`, not `>`:
@@ -913,7 +956,10 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
 - A P2P / card / fiat-deposit purchase row carries no `exchangeCounterpartHoldingId`; its
   `untrackedCounterpart` code is its marker, so this rule leaves the row itself out. Its
   funding BANK debit is a separate row and leaves spending through the funding matcher
-  (`src/statistics/exchange-funding-match/`).
+  (`src/statistics/exchange-funding-match/`). The matcher (`exchangeFundingMatches`) removes a
+  bank debit only once its P2P order row is imported, so the P2P walk order (P2P first, head
+  window first, newest first behind it) decides WHEN a P2P-paid debit leaves spending; until the
+  order is read, the debit counts as spending.
 - **The repository never writes a description for a leg.** The label is
   resolved at render time through `t`. `transactionRowDescription`
   (`src/transactions/row-description/`) applies the ordered steps its JSDoc lists in
