@@ -175,9 +175,13 @@ Section 1, HIG Layout).
 6. Release placement (user ruling 2026-10-17): the iPad ships in its OWN release after 1.3
    (1.3 = exchanges), and only after Duo is on main. The device-family flip lands only in that
    release, never in a 1.3 build: no 1.3 release branch or 1.3 archive may carry
-   `TARGETED_DEVICE_FAMILY = "1,2"`. The layout work (Section 2) is device-agnostic and may reach
-   main earlier only if it is a no-op for iPhone and Duo; the family flip itself merges to main
-   only when 1.3 has shipped or has its own release branch.
+   `TARGETED_DEVICE_FAMILY = "1,2"`. The family flip merges to main only when 1.3 has shipped or
+   has its own release branch. User ruling 2026-10-29: the layout work (Section 2, branch
+   `ipad-phase3`) stays out of main until the iPad release and merges to main WITH `ipad-family`.
+   With device family 1 no device reaches a large window, so an early merge would ship dormant
+   code (the merged Home, the hidden Statistics tab, help step 1; Guideline 2.5.19), and the
+   branch changes the Duo (the content margin 20, the layout rule). This replaces the 2026-10-17
+   allowance to reach main earlier as a no-op for iPhone and Duo.
 
 ## Section 3 - tab bar, bars, and clearance (verification first)
 
@@ -285,7 +289,8 @@ top/bottom (left and right 0). "tbh" is `useBottomTabBarHeight()`. "n/r" = not r
 6. 13-inch capture in this track; reviewer kit and upload in the release track.
 7. `check:plist` and pbxproj invariants pin the iPad keys and the device family.
 8. Keyboard shortcuts, pointer hover, and card reordering are out of scope (later ideas).
-- The track merges to main only after Duo. It does not merge main on its own.
+- The track merges to main only after Duo, and only with `ipad-family` in the iPad release
+  (Section 1, item 6). It does not merge main on its own.
 
 ## Open questions
 
