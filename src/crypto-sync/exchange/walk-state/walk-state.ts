@@ -86,6 +86,11 @@ export type WalkMarks = {
   multiCoinSince?: number;
   /** The walk's first multi-coin run committed a window, so it never records a start again. */
   multiCoinSeen?: true;
+  /**
+   * When the walk's last run rejected (the P2P walk only), which the account's caption reads; the
+   * next run that reads and resolves writes `null`. A disconnect drops it with the other marks.
+   */
+  readFailedAt?: number | null;
 };
 
 export type CoinLists = {
@@ -168,6 +173,7 @@ export type ParsedWalkMarks = {
   rescanStuck?: BinancePendingRange[];
   multiCoinSince?: number;
   multiCoinSeen?: true;
+  readFailedAt?: number;
 };
 
 /**
@@ -213,6 +219,10 @@ const stringListOrUndefined = (value: unknown): string[] | undefined =>
 const listOrUndefined = (value: unknown): unknown[] | undefined =>
   Array.isArray(value) ? value : undefined;
 
+/** A time is a non-negative whole number; any other stored value reads as absent, unrepaired. */
+const timeOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+
 /**
  * A stored range start that is no finite number reads as the entry's cursor, and as none when that
  * is null: the later start owes a range rather than none, so a malformed one never skips ground.
@@ -247,6 +257,7 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     ...(stuck.length > 0 ? { rescanStuck: stuck } : {}),
     ...foldMap(maybe(multiCoinSinceOf(entry, cursor)), (multiCoinSince) => ({ multiCoinSince })),
     ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
+    ...foldMap(maybe(timeOrUndefined(entry.readFailedAt)), (readFailedAt) => ({ readFailedAt })),
   };
 };
 

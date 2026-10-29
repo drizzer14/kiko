@@ -48,6 +48,7 @@ import {
   historyOwesRange,
   historyOwesTrades,
   isBinanceHistoryBehind,
+  p2pReadFailed,
   walkCursorsOf,
 } from './binance-history-status';
 
@@ -331,6 +332,16 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
           {historyPaused && (
             <Text variant="caption" tone="textSecondary">
               {t('accountDetail.exchangeHistoryPaused', {
+                exchange: providerDisplayName(connectedProvider, t),
+              })}
+            </Text>
+          )}
+
+          {/* A standing fact of the last run, like the coin lines, so a sync in flight keeps it; a
+              state that is malformed holds no mark, so it never doubles the paused caption. */}
+          {coinLinesShown && p2pReadFailed(walkState) && (
+            <Text variant="caption" tone="textSecondary">
+              {t('accountDetail.exchangeP2pReadFailed', {
                 exchange: providerDisplayName(connectedProvider, t),
               })}
             </Text>

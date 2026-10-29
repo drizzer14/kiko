@@ -818,6 +818,8 @@ export const en = {
       '{{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to fix this. Your holdings and transactions are kept.',
     exchangeHistoryPending:
       'Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync.',
+    exchangeP2pReadFailed:
+      '{{exchange}} P2P orders could not be read on the last sync. Kiko will try again on the next sync.',
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',

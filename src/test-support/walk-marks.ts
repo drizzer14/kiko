@@ -207,7 +207,7 @@ const writesOfCall = (
   patches.map((patch, patchIndex) => ({
     accountId,
     walkName: patch.walkId as WalkName,
-    field: patch.field,
+    field: patch.field as WalkField,
     value: patch.value,
     order: callOrder + patchIndex / patches.length,
   }));

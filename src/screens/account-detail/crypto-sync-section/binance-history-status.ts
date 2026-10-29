@@ -10,7 +10,8 @@ import { RESYNC_OVERLAP_MS } from '@kiko/crypto-sync/binance';
 /**
  * The walks whose forward cursor the caption compares: capital, Pay, Transfer, Earn, Convert,
  * P2P, fiat orders, fiat payments. A P2P page that cannot be read holds its cursor on every run,
- * so the caption is how that stays visible.
+ * which this caption shows once the cursor lags a day; the failure itself has its own, immediate
+ * caption (`p2pReadFailed`).
  */
 const CAPTION_WALKS: readonly WalkId[] = [
   'capital',
@@ -116,6 +117,17 @@ export const historyOwesTrades = (state: ParsedExchangeState): boolean =>
   match(state)
     .returnType<boolean>()
     .with({ kind: 'parsed' }, ({ trades }) => (trades.unreadSymbols ?? []).length > 0)
+    .with({ kind: 'malformed' }, () => false)
+    .exhaustive();
+
+/**
+ * Whether the P2P walk's last run rejected (`readFailedAt`, cleared by the next run that reads and
+ * resolves). A state that is not readable has no mark, as in `historyOwesRange`.
+ */
+export const p2pReadFailed = (state: ParsedExchangeState): boolean =>
+  match(state)
+    .returnType<boolean>()
+    .with({ kind: 'parsed' }, ({ walks }) => walks.p2p.readFailedAt !== undefined)
     .with({ kind: 'malformed' }, () => false)
     .exhaustive();
 

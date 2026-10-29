@@ -1,6 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
-import { bifoldMap } from 'fnts/either';
 import {
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
@@ -29,12 +28,17 @@ import {
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import {
+  type NotImportedKind,
+  notImportedEntry,
+  type ParsedWalkMarks,
+} from '@kiko/crypto-sync/exchange/walk-state';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import either, { bifold, bifoldMap, isLeft } from 'fnts/either';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 import { fiatTotalCode, isAssetTicker } from '@kiko/transactions/untracked-counterpart';
-import { type NotImportedKind, notImportedEntry } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
   type BinanceWalkContext,
@@ -501,22 +505,16 @@ const commitSpan = (
     series: window.series,
   });
 
-const runSync = async (
-  deps: BinanceP2pHistoryDeps,
-  accountId: string,
-  run: BinanceHistoryRun,
-): Promise<WalkResult> => {
-  if (isBinanceCoolingDown(accountId, deps.now())) {
-    return { imported: 0, complete: false };
-  }
+type P2pRunInput = {
+  deps: BinanceP2pHistoryDeps;
+  accountId: string;
+  run: BinanceHistoryRun;
+  credentials: BinanceCredentials;
+  stored: ParsedWalkMarks;
+};
 
-  const credentials = await deps.readCredentials(accountId);
-
-  if (credentials === undefined) {
-    return { imported: 0, complete: true };
-  }
-
-  const stored = await readWalkMarks(deps, accountId, 'p2p');
+const runWalk = async (input: P2pRunInput): Promise<WalkResult> => {
+  const { deps, accountId, run, credentials, stored } = input;
   const { cursor, rescan: rescanCursor } = stored;
   const write = walkMarkWriterOf(deps, accountId, 'p2p');
   const roundRobins = await readWalkRoundRobins({ stored, write });
@@ -576,7 +574,51 @@ const runSync = async (
     commit: (window, span, read, pass) => commitSpan(context, window, span, read, pass),
   });
 
+  // A rate limit ends the run with a result and sets the cooldown, so it read nothing to clear on.
+  if (stored.readFailedAt !== undefined && !isBinanceCoolingDown(accountId, deps.now())) {
+    await write([{ field: 'readFailedAt', value: null }]);
+  }
+
   return completeIfPlanReached(result, plan, endTime);
+};
+
+/**
+ * A run that does not start (the cooldown, no credentials, a state no build reads) neither reads
+ * nor marks. Once the marks are read, any rejection of the run stores its time in the walk's
+ * `readFailedAt` mark, which the account's caption reads, and the original error is rethrown even
+ * when the mark cannot be written, so `logOnFailure` still logs the cause.
+ */
+const runSync = async (
+  deps: BinanceP2pHistoryDeps,
+  accountId: string,
+  run: BinanceHistoryRun,
+): Promise<WalkResult> => {
+  if (isBinanceCoolingDown(accountId, deps.now())) {
+    return { imported: 0, complete: false };
+  }
+
+  const credentials = await deps.readCredentials(accountId);
+
+  if (credentials === undefined) {
+    return { imported: 0, complete: true };
+  }
+
+  const stored = await readWalkMarks(deps, accountId, 'p2p');
+  const attempt = await either<unknown, WalkResult>(() =>
+    runWalk({ deps, accountId, run, credentials, stored }),
+  );
+
+  if (isLeft(attempt)) {
+    await either(() =>
+      walkMarkWriterOf(deps, accountId, 'p2p')([{ field: 'readFailedAt', value: deps.now() }]),
+    );
+
+    throw bifold(attempt);
+  }
+
+  const result: WalkResult = bifold(attempt);
+
+  return result;
 };
 
 /**
