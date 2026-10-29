@@ -12,6 +12,7 @@ import {
 } from '@kiko/test-support/navigation-props';
 import type { accountsRepo } from '@kiko/accounts';
 import { pressSave } from '@kiko/test-support/form-header-items';
+import { type Currency, isCrypto } from '@kiko/currency/currency';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { selectExchange, selectKind } from '@kiko/test-support/account-form-test-support';
 
@@ -312,6 +313,66 @@ describe('the account currency field on a create form', () => {
 
       expect(view.queryByTestId('currency-option-BTC')).toBeNull();
     });
+  });
+});
+
+describe('the order of the account currency list', () => {
+  const firstOptionCode = (getAllByTestId: Rendered['getAllByTestId']): string =>
+    String(getAllByTestId(/^currency-option-/)[0].props.testID).replace('currency-option-', '');
+
+  // The list renders only its first rows, so a search that keeps a held, a fiat and a crypto
+  // match ('US': USD, Australian Dollar, USDT) brings every group heading into the tree.
+  const groupTestIds = async (view: Rendered): Promise<string[]> => {
+    await fireEvent.changeText(view.getByPlaceholderText('Search by code or name'), 'US');
+
+    return view.getAllByTestId(/^currency-group-/).map((group) => String(group.props.testID));
+  };
+
+  const HELD_FIAT_CRYPTO = ['currency-group-held', 'currency-group-fiat', 'currency-group-crypto'];
+  const CRYPTO_FIAT = ['currency-group-crypto', 'currency-group-fiat'];
+
+  it('lists the held currency first on a new bank account', async () => {
+    holdCurrencies(['USD']);
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByTestId('account-currency-field'));
+
+    expect(firstOptionCode(view.getAllByTestId)).toBe('USD');
+    expect(await groupTestIds(view)).toEqual(HELD_FIAT_CRYPTO);
+  });
+
+  it('lists the coins before the fiat currencies once the kind is switched to crypto', async () => {
+    holdCurrencies(['USD']);
+    const view = await renderForm();
+
+    await selectKind(view.getByTestId, 'crypto');
+    await fireEvent.press(view.getByTestId('account-currency-field'));
+
+    expect(isCrypto(firstOptionCode(view.getAllByTestId) as Currency)).toBe(true);
+    expect(await groupTestIds(view)).toEqual(CRYPTO_FIAT);
+  });
+
+  it('lists the held currency first again when the kind is switched back to bank', async () => {
+    holdCurrencies(['USD']);
+    const view = await renderForm();
+
+    await selectKind(view.getByTestId, 'crypto');
+    await selectKind(view.getByTestId, 'bank');
+    await fireEvent.press(view.getByTestId('account-currency-field'));
+
+    expect(firstOptionCode(view.getAllByTestId)).toBe('USD');
+    expect(await groupTestIds(view)).toEqual(HELD_FIAT_CRYPTO);
+  });
+
+  it('lists the coins first on the edit of a crypto account', async () => {
+    holdCurrencies(['USD']);
+    mockAccounts = [storedAccount({ kind: 'crypto' })];
+    const view = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(view.getByTestId('account-currency-field'));
+
+    expect(isCrypto(firstOptionCode(view.getAllByTestId) as Currency)).toBe(true);
+    expect(await groupTestIds(view)).toEqual(CRYPTO_FIAT);
   });
 });
 
