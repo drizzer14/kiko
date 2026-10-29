@@ -386,6 +386,12 @@ every one of them, so scan this list rather than the reference files for what is
 - **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
   tap via `SMALL_HIT_SLOP`, not full width, never the regular 50pt. Pinned
   by `empty-state.component.test.tsx`.
+- **Duo side-bar content aligns to the native title** (2026-10-29, user ruling, FLAG 1). On the
+  Duo side-bar poses the content margin is the native title's, not the base one: on iOS 27.1
+  the bar-hosted large title ignores the bar margin and the bar's title position
+  adjustment and starts at x 20. The value lives in
+  `src/design-system/components/screen/use-content-margin.ts`;
+  see `Screen` in component-set.md, which points back here.
 
 ## UX patterns
 

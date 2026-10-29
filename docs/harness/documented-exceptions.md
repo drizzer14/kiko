@@ -1048,7 +1048,7 @@ verified usage, not dead weight:
   single stack under a side bar) once, above both panes, to give their native large titles the
   content's margin (a top or a side bar), while `useContentCap` keeps the narrower
   `useIsTabBarAtTop` for the pane's cap. The margin itself comes from `useContentMargin`, which
-  the rule does not list: it is a window-wide margin (both Duo panes have the title at 20), so
+  the rule does not list: it is a window-wide margin (20 under a side bar, else 16), so
   it carries no pane-dependent answer (every `Screen`, `HoldingDetailScreen` and `useTitleFit`
   read it). A whole-folder exclude is right for both because each holds only the hook's owner
   or sanctioned consumer and their tests; the rule still reaches every other importer.
@@ -1197,8 +1197,8 @@ verified usage, not dead weight:
     padding: `theme.spacing(4)`, or `theme.spacing(5)` under a side bar). In a split
     (`columns`/`rows`) whose native tab bar is not at the bottom
     (`useIsTabBarNotAtBottom()`: the bar at the top or at a side; user ruling 2026-10-23) it
-    wraps both panes' stacks. The Provider wraps every stack, but in `single` mode it gives the
-    one stack a value above 0 only under a side bar
+    gives both panes' stacks the value. The Provider wraps every stack, but in `single` mode
+    it gives the one stack a value above 0 only under a side bar
     (`useTabBarPlacement() === 'side'`, the Duo outer pose, 466x678, whose title otherwise
     starts at UIKit's 20 pt, which the content now matches at 20 pt: ruling 2026-10-29, after
     540b4ba3 first told the stack 16 pt); under a top or a bottom bar a single stack reads 0.

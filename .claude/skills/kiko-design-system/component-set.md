@@ -44,9 +44,10 @@ new component can land between reviews of this skill:
   The hook is pane-aware: a pane that is not at the window's bottom has
   no tab bar over it and gets 0. `resolveBottomClearance` is pane-blind,
   so nothing outside `src/design-system/components/screen/` may import
-  it (`kiko-no-pane-blind-bottom-clearance`). `useIsTabBarNotAtBottom` (the Screen
-  barrel) and `useIsTabBarAtTop` (a Screen-folder module, read by `useContentCap`) are
-  pane-blind window reads too: only `src/design-system/components/screen/` and
+  it (`kiko-no-pane-blind-bottom-clearance`). `useIsTabBarNotAtBottom` and
+  `useTabBarPlacement` (both exported by the Screen barrel) and `useIsTabBarAtTop` (a
+  Screen-folder module, read by `useContentCap`) are pane-blind window reads too: only
+  `src/design-system/components/screen/` and
   `src/navigation/pane-stack/pane-stack-view/` may import them, or `useTabBarPlacement`
   (`kiko-tab-bar-placement-only-in-screen-and-pane-stack-view`). In a pane (a
   `PaneContext` from `TwoPaneLayout`), the `SafeAreaView` keeps only the
@@ -59,16 +60,21 @@ new component can land between reviews of this skill:
   caps its root. The one exception is a pane whose tab bar is at the top
   (`useIsTabBarAtTop()`, every regular iPad window, small Stage Manager
   splits included; user ruling 2026-10-21): `useContentCap()` returns no
-  cap there, so the content spans the pane from the 16 pt margin where
+  cap there, so the content spans the pane from the content margin where
   the native large title starts. The title margin is a wider test:
-  `PaneStackView` gives the stacks the 16 pt margin on
+  `PaneStackView` gives the stacks `useContentMargin()` (value in
+  `src/design-system/components/screen/use-content-margin.ts`; the Screen barrel exports it, a
+  window-wide margin not on the pane-blind rule list) on
   `useIsTabBarNotAtBottom()` (the bar at the top OR a side; user ruling
   D1 2026-10-23), so a pane under a side bar (every Duo pose with a side
-  bar) also starts its title at the content's margin. Only the top bar
+  bar) also starts its title at the content's margin; a single stack under a side bar (the
+  Duo outer pose, `placement === 'side'`) gets it too. On the Duo side-bar poses that margin
+  aligns the content to the native title (user ruling 2026-10-29; the reason is in
+  kiko-design-system SKILL.md "Locked decisions"). Only the top bar
   lifts the cap: a pane with a SIDE tab bar (a Duo side-bar pose, or a
   large window) stays capped at 600 pt, with no large-window exception
   (user ruling 2026-10-21), and a pane whose bar is at the bottom keeps
-  the cap and UIKit's title margin. A screen
+  the cap and, for a bottom bar, UIKit's title margin. A screen
   that sizes itself by the room its content has (the Statistics shared
   chart row) reads `usePaneContentWidth()` (the Screen barrel: the pane
   width limited by that cap), never the pane or window width alone. The
