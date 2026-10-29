@@ -420,8 +420,8 @@ const spanOfRank = (rank: number, windows: number): { start: number; end: number
  */
 const failingWorldOf = (seed: number, gapMs: number, newestUnreadable = false): FailingWorld => {
   // The first draw of the generator on a seed this small is near zero, so every plain seed makes a
-  // world of two windows; the spread seed draws worlds of every size.
-  const random = seededRandom(newestUnreadable ? seed * SEED_SPREAD : seed);
+  // world of two windows; the spread seed draws worlds of every size, past one run of windows.
+  const random = seededRandom(seed * SEED_SPREAD);
   const windows =
     WINDOW_COUNTS.fewest + Math.floor(random() * (WINDOW_COUNTS.most - WINDOW_COUNTS.fewest + 1));
   const windowsPerRun = 1 + Math.floor(random() * 8);
