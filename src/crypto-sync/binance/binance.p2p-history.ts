@@ -574,7 +574,8 @@ const runWalk = async (input: P2pRunInput): Promise<WalkResult> => {
     commit: (window, span, read, pass) => commitSpan(context, window, span, read, pass),
   });
 
-  // A rate limit ends the run with a result and sets the cooldown, so it read nothing to clear on.
+  // A rate limit ends the run with a result and sets the cooldown, and the run may have ended
+  // before it read the ground the last failure left, so the mark stays until a run reads it.
   if (stored.readFailedAt !== undefined && !isBinanceCoolingDown(accountId, deps.now())) {
     await write([{ field: 'readFailedAt', value: null }]);
   }
@@ -616,9 +617,7 @@ const runSync = async (
     throw bifold(attempt);
   }
 
-  const result: WalkResult = bifold(attempt);
-
-  return result;
+  return bifold(attempt);
 };
 
 /**

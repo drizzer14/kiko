@@ -474,13 +474,22 @@ export const readRangeCursor = (input: {
  * the ground from the walk's start (the cursor, or the floor) to the head window, the last
  * `windowMs` before `endTime`, goes into the owed list, and the cursor moves to the head start, so
  * the forward pass of this run is the head window alone. The list, the cursor and the reset of
- * the range cursor go in ONE write, so no crash leaves the cursor moved without the ground owed
- * (never read) or the ground owed beside the old cursor (read twice). The range cursor is reset
+ * the range cursor (when there is one, see below) go in ONE write, so no crash leaves the cursor
+ * moved without the ground owed (never read) or the ground owed beside the old cursor (read
+ * twice). The range cursor is reset
  * to `BEFORE_EVERY_GROUND`, not to none, because the patch holds a number: the first window read
  * is then the newest, whatever order the stored cursor was made in (`newestWindowsFrom`). A
  * cursor at or past the head start, or a clock so near the floor that the head window starts
  * before it, owes nothing and writes nothing. The range is owed for every series and every coin:
  * the walk never read this ground.
+ *
+ * The range cursor is reset only on that jump: a walk with no cursor, or a cursor more than a
+ * window behind the head start, is a walk that read forward or never read. A cursor within a
+ * window of the head start is the head start a held head left (an unreadable head window, or a
+ * forward stop that keeps the cursor) while the clock moved: the gap since is owed on top of the
+ * older ground, and the rotation goes on where it was. Reset on every run, a head held on a
+ * moving clock would start the rotation again from the newest window every run, and the older
+ * windows behind a failing set would never be read.
  */
 export const headFirstGroundOf = async (input: {
   cursor: number | null;
@@ -500,13 +509,19 @@ export const headFirstGroundOf = async (input: {
 
   const owed: OwedGround[] = [...pending, { start: forwardStart, end: headStart }];
 
+  const jumps = cursor === null || headStart - forwardStart > windowMs;
+
   await write([
     { field: 'pending', value: owed },
     { field: 'cursor', value: headStart },
-    { field: 'rangeCursor', value: BEFORE_EVERY_GROUND },
+    ...(jumps ? [{ field: 'rangeCursor' as const, value: BEFORE_EVERY_GROUND }] : []),
   ]);
 
-  return { cursor: headStart, pending: owed, rangeCursor: BEFORE_EVERY_GROUND };
+  return {
+    cursor: headStart,
+    pending: owed,
+    ...(jumps ? { rangeCursor: BEFORE_EVERY_GROUND } : {}),
+  };
 };
 
 /** A run with no span hint to resume from. */
