@@ -6,9 +6,9 @@ import {
   historyOwesRange,
   historyOwesTrades,
   isBinanceHistoryBehind,
+  p2pReadFailed,
   walkCursorsOf,
 } from './binance-history-status';
-import * as statusModule from './binance-history-status';
 
 const NOW = 1_704_326_400_000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -421,34 +421,19 @@ describe('the history caption over the P2P and fiat walks', () => {
   });
 });
 
-// `p2pReadFailed` is looked up on the module namespace at runtime: a named import of an export that
-// does not exist yet would fail the typecheck of the staged index.
-const p2pReadFailedOf = (state: ReturnType<typeof parseExchangeState>): unknown => {
-  const exported = (statusModule as unknown as Record<string, unknown>).p2pReadFailed;
-
-  expect(typeof exported).toBe('function');
-
-  return (exported as (parsed: typeof state) => unknown)(state);
-};
-
-const storedWith = (walks: Record<string, Record<string, unknown>>) =>
-  parseExchangeState(JSON.stringify({ version: 1, walks }));
-
 describe('p2pReadFailed', () => {
   it('is true when the P2P walk entry holds a read-failed time', () => {
-    expect(p2pReadFailedOf(storedWith({ p2p: { cursor: NOW, readFailedAt: NOW } }))).toBe(true);
+    expect(p2pReadFailed(stateOf({ p2p: { cursor: NOW, readFailedAt: NOW } }))).toBe(true);
   });
 
   it.each([
     ['holds no read-failed time', { cursor: NOW }],
     ['holds a null read-failed time', { cursor: NOW, readFailedAt: null }],
   ])('is false when the P2P walk entry %s', (_label, entry) => {
-    expect(p2pReadFailedOf(storedWith({ p2p: entry }))).toBe(false);
+    expect(p2pReadFailed(stateOf({ p2p: entry }))).toBe(false);
   });
 
   it('is false when the state holds no P2P walk entry', () => {
-    expect(p2pReadFailedOf(storedWith({ capital: { cursor: NOW, readFailedAt: NOW } }))).toBe(
-      false,
-    );
+    expect(p2pReadFailed(stateOf({ capital: { cursor: NOW, readFailedAt: NOW } }))).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import type { HoldingRow } from '@kiko/db';
 import {
   type ExchangeStatePatch,
   exchangeStatePatched,
+  type WalkMarkPatch,
 } from '@kiko/crypto-sync/exchange/walk-state';
 import type { DatabaseSync } from 'node:sqlite';
 import type { ExchangeStateDeps } from '@kiko/crypto-sync/exchange/walk';
@@ -20,20 +21,8 @@ export type WalkName =
   | 'fiatOrders'
   | 'fiatPayments';
 
-export type WalkField =
-  | 'cursor'
-  | 'rescan'
-  | 'pending'
-  | 'pointCursor'
-  | 'rangeCursor'
-  | 'backfillCursor'
-  | 'backfillTurn'
-  | 'spanHints'
-  | 'behindRun'
-  | 'rescanTurn'
-  | 'rescanStuck'
-  | 'multiCoinSince'
-  | 'multiCoinSeen';
+/** Every mark a walk writes, read from the patch type so a new mark cannot be left out. */
+export type WalkField = WalkMarkPatch['field'];
 
 /** Any value, because a test also seeds a malformed mark to prove the walk reads it as none. */
 export type WalkMarkSeed = Partial<Record<WalkField, unknown>>;
@@ -55,18 +44,25 @@ const SPOT_ASSET = 'BTC';
 /** The marks a walk writes as one number: a cursor, a re-scan mark or a round-robin's cursor. */
 export const NUMBER_MARK_FIELDS = ['cursor', 'rescan', 'pointCursor', 'rangeCursor'] as const;
 
-const FIELDS: readonly WalkField[] = [
-  ...NUMBER_MARK_FIELDS,
-  'backfillCursor',
-  'backfillTurn',
-  'pending',
-  'spanHints',
-  'behindRun',
-  'rescanTurn',
-  'rescanStuck',
-  'multiCoinSince',
-  'multiCoinSeen',
-];
+// A Record, so a mark added to the walk's marks and left out here fails the typecheck.
+const LISTED_FIELDS: Record<WalkField, true> = {
+  cursor: true,
+  rescan: true,
+  pointCursor: true,
+  rangeCursor: true,
+  backfillCursor: true,
+  backfillTurn: true,
+  pending: true,
+  spanHints: true,
+  behindRun: true,
+  rescanTurn: true,
+  rescanStuck: true,
+  multiCoinSince: true,
+  multiCoinSeen: true,
+  readFailedAt: true,
+};
+
+const FIELDS = Object.keys(LISTED_FIELDS) as WalkField[];
 
 export const WALK_NAMES: readonly WalkName[] = [
   'capital',
@@ -207,7 +203,7 @@ const writesOfCall = (
   patches.map((patch, patchIndex) => ({
     accountId,
     walkName: patch.walkId as WalkName,
-    field: patch.field as WalkField,
+    field: patch.field,
     value: patch.value,
     order: callOrder + patchIndex / patches.length,
   }));

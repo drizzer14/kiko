@@ -154,18 +154,18 @@ type P2pOrderBody = {
   takerAmount: string;
 };
 
-// A completed taker buy of 1000 UAH, as Binance sends it, paid for with 1000 UAH.
-const uahBuyOf = (orderNumber: string, createTime: number): P2pOrderBody => ({
+// A completed taker buy of 24.5 USDT, as Binance sends it, paid for with 1000 UAH.
+const usdtBuyForUahOf = (orderNumber: string, createTime: number): P2pOrderBody => ({
   orderNumber,
   createTime,
   orderStatus: 'COMPLETED',
   tradeType: 'BUY',
   advertisementRole: 'TAKER',
-  asset: 'UAH',
+  asset: 'USDT',
   fiat: 'UAH',
-  amount: '1000',
+  amount: '24.5',
   totalPrice: '1000',
-  takerAmount: '1000',
+  takerAmount: '24.5',
 });
 
 type Seeding = {
@@ -366,13 +366,13 @@ describe('the P2P orders of a first run (headers on, 300 s between runs, empty s
     let imported: string[] = [];
 
     await simulate(1, {
-      p2pOrders: (now) => [uahBuyOf('newest', now - 2 * DAY_MS)],
+      p2pOrders: (now) => [usdtBuyForUahOf('newest', now - 2 * DAY_MS)],
       afterRun: (_run, database) => {
         imported = p2pExternalIdsOf(database);
       },
     });
 
-    expect(imported).toEqual([`${ACCOUNT_ID}:p2p:newest:UAH:funding`]);
+    expect(imported).toEqual([`${ACCOUNT_ID}:p2p:newest:USDT:funding`]);
   });
 
   // The previous calendar month is a user-visible span: whichever day the clock stands on, a
@@ -392,9 +392,9 @@ describe('the P2P orders of a first run (headers on, 300 s between runs, empty s
         clockAtStart = now;
 
         return [
-          uahBuyOf('first-day', first + 12 * 3_600_000),
-          uahBuyOf('middle', first + 14 * DAY_MS + 12 * 3_600_000),
-          uahBuyOf('last-day', next - 12 * 3_600_000),
+          usdtBuyForUahOf('first-day', first + 12 * 3_600_000),
+          usdtBuyForUahOf('middle', first + 14 * DAY_MS + 12 * 3_600_000),
+          usdtBuyForUahOf('last-day', next - 12 * 3_600_000),
         ];
       },
       afterRun: (run, database) => {
@@ -435,7 +435,7 @@ describe('the P2P orders of a first run (headers on, 300 s between runs, empty s
     let excludedIds = new Set<string>();
 
     await simulate(1, {
-      p2pOrders: (now) => [uahBuyOf('paid', now - orderAgo)],
+      p2pOrders: (now) => [usdtBuyForUahOf('paid', now - orderAgo)],
       seed: (database, now) => {
         database
           .prepare("INSERT INTO accounts (id, name, kind) VALUES ('acc-bank', 'Monobank', 'bank')")

@@ -848,22 +848,15 @@ describe('a failure of the P2P walk', () => {
   });
 });
 
-// The mark is read from the stored JSON at runtime: the field is not part of the shared seed
-// helper, and this file must typecheck before the walk writes it.
-const readFailedAtOf = async (world: ReturnType<typeof worldOf>): Promise<unknown> => {
-  const stored = JSON.parse((await world.fake.deps.readExchangeState(world.accountId)) ?? '{}') as {
-    walks?: { p2p?: Record<string, unknown> };
-  };
-
-  return stored.walks?.p2p?.readFailedAt;
-};
+const readFailedAtOf = (world: ReturnType<typeof worldOf>): unknown =>
+  world.fake.marksOf('p2p').readFailedAt;
 
 const PRIOR_FAILURE_AT = 5_000;
 
 const markedWorld = () => {
-  const world = worldOf({ readFailedAt: PRIOR_FAILURE_AT });
+  const world = worldOf();
 
-  world.fake.seed('p2p', { cursor: NOW - HOUR_MS });
+  world.fake.seed('p2p', { cursor: NOW - HOUR_MS, readFailedAt: PRIOR_FAILURE_AT });
 
   return world;
 };
@@ -882,7 +875,7 @@ describe('the read-failed mark of the P2P walk', () => {
 
     await expect(world.walk(deps)).rejects.toBe(failure);
 
-    expect(await readFailedAtOf(world)).toBe(NOW);
+    expect(readFailedAtOf(world)).toBe(NOW);
   });
 
   it('a failed mark write keeps the original error', async () => {
@@ -921,7 +914,7 @@ describe('the read-failed mark of the P2P walk', () => {
 
     await world.walk(world.depsOf({ fetchP2pOrders: p2pServerOf([p2pOrderOf()]) }));
 
-    expect(await readFailedAtOf(world)).toBeNull();
+    expect(readFailedAtOf(world)).toBeNull();
   });
 
   it('writes no mark on a run that reads and resolves when none is stored', async () => {
@@ -929,7 +922,7 @@ describe('the read-failed mark of the P2P walk', () => {
 
     await world.walk(world.depsOf({ fetchP2pOrders: p2pServerOf([p2pOrderOf()]) }));
 
-    expect(await readFailedAtOf(world)).toBeUndefined();
+    expect(readFailedAtOf(world)).toBeUndefined();
   });
 
   it('leaves a stored mark as it was on a run that ends at a 429', async () => {
@@ -942,7 +935,7 @@ describe('the read-failed mark of the P2P walk', () => {
 
     await expect(world.walk(deps)).resolves.toEqual({ imported: 0, complete: false });
 
-    expect(await readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+    expect(readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
   });
 
   it('leaves a stored mark as it was on a run the cooldown skips', async () => {
@@ -954,7 +947,7 @@ describe('the read-failed mark of the P2P walk', () => {
     await world.walk(deps);
 
     expect(deps.fetchP2pOrders).not.toHaveBeenCalled();
-    expect(await readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+    expect(readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
   });
 
   it('leaves a stored mark as it was on a run with no credentials', async () => {
@@ -963,7 +956,7 @@ describe('the read-failed mark of the P2P walk', () => {
 
     await expect(world.walk(deps)).resolves.toEqual({ imported: 0, complete: true });
 
-    expect(await readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+    expect(readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
   });
 
   it('keeps the mark set on every run while the head window cannot be read, and still reads the owed ground', async () => {
@@ -1002,12 +995,12 @@ describe('the read-failed mark of the P2P walk', () => {
     const first = await runAt(NOW);
 
     expect(first.some(({ end }) => end <= OWED_END)).toBe(true);
-    expect(await readFailedAtOf(world)).toBe(NOW);
+    expect(readFailedAtOf(world)).toBe(NOW);
 
     const second = await runAt(NOW + 1_000);
 
     expect(second.some(({ end }) => end <= OWED_END + 1_000)).toBe(true);
-    expect(await readFailedAtOf(world)).toBe(NOW + 1_000);
+    expect(readFailedAtOf(world)).toBe(NOW + 1_000);
   });
 });
 

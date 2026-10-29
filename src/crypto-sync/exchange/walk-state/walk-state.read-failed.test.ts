@@ -13,9 +13,8 @@ const parsedP2pOf = (stored: unknown) => {
   return parsed;
 };
 
-// The parsed field is looked up at runtime, so this file typechecks before the field exists.
-const readFailedAtOf = (stored: unknown): unknown =>
-  (parsedP2pOf(stored).walks.p2p as Record<string, unknown>).readFailedAt;
+const readFailedAtOf = (stored: unknown): number | undefined =>
+  parsedP2pOf(stored).walks.p2p.readFailedAt;
 
 describe('the read-failed mark of a parsed P2P walk', () => {
   it.each([

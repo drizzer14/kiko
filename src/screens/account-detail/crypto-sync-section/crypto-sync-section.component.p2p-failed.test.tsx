@@ -9,8 +9,7 @@ import CryptoSyncSection from './crypto-sync-section.component';
 
 // The section reads the account's own `sync_state` row through one live query; `mockSyncState` is
 // what that query answers. The rest of the section's wiring is tested in
-// `crypto-sync-section.component.test.tsx`. The caption key does not exist yet, so a test matches
-// the rendered text (the English sentence, and in Ukrainian the words Binance and P2P).
+// `crypto-sync-section.component.test.tsx`.
 let mockSyncState: { data: { exchangeState: string }[]; isLoading: boolean };
 
 let mockIsSyncing = false;
@@ -37,8 +36,10 @@ jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
 
-const CAPTION =
-  'Binance P2P orders could not be read on the last sync. Kiko will try again on the next sync.';
+const captionIn = (lng: 'en' | 'uk'): string =>
+  i18n.t('accountDetail.exchangeP2pReadFailed', { exchange: 'Binance', lng });
+
+const CAPTION = captionIn('en');
 
 const NOW = 1_700_000_000_000;
 
@@ -217,10 +218,11 @@ describe('CryptoSyncSection: the P2P read-failed caption in Ukrainian', () => {
     });
   });
 
-  it('renders a Ukrainian sentence naming Binance and P2P, not the English one', async () => {
+  it('renders the Ukrainian sentence of the catalogue, not the English one', async () => {
     const { getByText, queryByText } = await renderWalks({ p2p: failedP2p });
 
-    expect(getByText(/Binance.*P2P|P2P.*Binance/)).toBeTruthy();
+    expect(captionIn('uk')).not.toBe(CAPTION);
+    expect(getByText(captionIn('uk'))).toBeTruthy();
     expect(queryByText(CAPTION)).toBeNull();
   });
 });

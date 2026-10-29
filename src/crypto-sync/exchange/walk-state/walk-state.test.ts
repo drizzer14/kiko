@@ -110,6 +110,7 @@ type TableField = Exclude<
   | 'behindRun'
   | 'rescanTurn'
   | 'rescanStuck'
+  | 'readFailedAt'
 >;
 
 /** What a field reads for a stored value: `undefined` is a value that is stored but unreadable. */
