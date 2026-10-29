@@ -298,14 +298,18 @@ on every `npm ci`. Why, what, and the scope are in `docs/harness/documented-exce
 margin, and only for the stacks `PaneStackView` wraps in `FixedContentMarginContext`: the panes
 of a two-pane window whose tab bar is not at the bottom, at the top (every regular iPad window,
 small Stage Manager splits included; user ruling 2026-10-21) or at a side (the Surface Duo's
-side-bar poses; user ruling 2026-10-23).
+side-bar poses; user ruling 2026-10-23), and the single stack under a side bar (the Duo outer
+pose).
 
 The pane-only scope: the context default is 0, `ScreenStack` passes it as the `fixedContentMargin`
 prop (codegen default 0), and native does nothing for 0 (the setter returns on its first line
 for an equal value, no margin write, no change to `viewRespectsSystemMinimumLayoutMargins`), so
-an iPhone, single-pane or bottom-bar stack (the Duo's inner portrait pose) runs the stock code
-path. The value follows the native tab bar placement (`useIsTabBarNotAtBottom`), not the
-window's size; the pane content cap is a narrower test (`useIsTabBarAtTop`: only a top bar
+an iPhone, a single-pane stack under a top or a bottom bar, and a bottom-bar split (the Duo's
+inner portrait pose) run the stock code path. A single stack under a side bar (the Duo outer
+pose) does not: it takes the value too (user ruling 2026-10-29). The value is the content's
+margin (`useContentMargin`: 16 pt, 20 pt under a side bar) and follows the native tab bar
+placement (`useIsTabBarNotAtBottom` for a split, `useTabBarPlacement` for a single stack), not
+the window's size; the pane content cap is a narrower test (`useIsTabBarAtTop`: only a top bar
 lifts the cap). The placement read is stale for about 0.1 s on a split change or a large-to-large
 rotation, and on cold start until the first read, so the margin and the cap can lag the layout
 briefly.
@@ -335,9 +339,9 @@ must show the bar at the same y on the first and every later visit, and, after a
 bottom tab bar, the parent's additional top inset back at 0 and its safe top back at the
 window's 32.
 
-The 16 to 0 restore path (the margins captured when the value first went above 0 are put back)
+The 20 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
-side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 16
+side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 20
 to 0. The stale placement read above (about 0.1 s, the mounted split briefly reads a bar at the
 bottom) reaches it too; an iPad window keeps its tab bar at the top, so no resize reaches it
 there.
@@ -361,12 +365,13 @@ patch file and update the version in the pin test. Re-prove it: applying the pat
 tarball must reproduce the installed tree, and re-measure on a simulator or device: a pane's large
 title leading edge equals the content's leading edge in both panes of an iPad and in a Duo
 side-bar pose; an iPhone and a bottom-bar window are unchanged; the restore path (pane titles
-back to stock, then 16 pt) on a split change and on a large-to-large rotation, where the stale
-read can take it; idle CPU with a pane open (no continuous re-layout from the bar margin write
-in `viewDidLayoutSubviews`); the view's top and bottom `directionalLayoutMargins` staying
-constant across layout passes (log them over a few visits: no growth by the safe area inset);
-and the bar items and the back button positions (UIKit places them by the bar's
-`directionalLayoutMargins` too, so they may move by up to 16 pt: measure it, do not claim it).
+back to stock, then 16 pt, or 20 pt under a side bar) on a split change and on a large-to-large
+rotation, where the stale read can take it; idle CPU with a pane open (no continuous re-layout
+from the bar margin write in `viewDidLayoutSubviews`); the view's top and bottom
+`directionalLayoutMargins` staying constant across layout passes (log them over a few visits: no
+growth by the safe area inset); and the bar items and the back button positions (UIKit places
+them by the bar's `directionalLayoutMargins` too, so they may move by up to 16 pt: measure it, do
+not claim it).
 
 ## `.env` is public-only
 

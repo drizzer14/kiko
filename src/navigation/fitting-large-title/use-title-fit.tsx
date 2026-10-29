@@ -2,17 +2,10 @@ import { useWindowDimensions } from 'react-native';
 import { type ReactElement, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { usePaneWidth } from '@kiko/design-system/pane-context';
+import { useContentMargin } from '@kiko/design-system/components/screen';
 
 import TitleMeasurer from './title-measurer';
 import { estimatedTitleFits } from './title-fit';
-
-// The native large title is inset by the stack's margin, which UIKit derives itself unless the
-// stack is told one: an iPhone stack keeps UIKit's (not known to equal the content's padding on
-// every iPhone width), and in a pane UIKit would inset the title by the pane's distance to
-// the window's edge, so PaneStackView gives each split pane's stack under a top or a side tab bar
-// the content's margin, and a single stack only under a side bar (the Duo outer pose); a bottom
-// bar keeps UIKit's (the react-native-screens patch).
-const LARGE_TITLE_MARGIN_STEP = 4;
 
 type TitleFit = {
   fits: boolean;
@@ -34,11 +27,14 @@ export const useTitleFit = (title: string): TitleFit => {
   const { width: windowWidth } = useWindowDimensions();
   const paneWidth = usePaneWidth();
   const { theme } = useUnistyles();
+  const contentMargin = useContentMargin();
   const [measurement, setMeasurement] = useState<Measurement>();
   // A split window gives each pane its own header, so the pane's width is the line the title has;
   // the window is the line only where it is the screen. On a flat `columns` window a pane is half
-  // the window, a `rows` pane is the window's whole width, and a fold sets its own widths.
-  const availableWidth = (paneWidth ?? windowWidth) - 2 * theme.spacing(LARGE_TITLE_MARGIN_STEP);
+  // the window, a `rows` pane is the window's whole width, and a fold sets its own widths. The
+  // title is inset by the content's margin on both sides (`PaneStackView` tells the native stack
+  // that margin where UIKit's own would differ).
+  const availableWidth = (paneWidth ?? windowWidth) - 2 * contentMargin;
   const key = `${availableWidth}:${title}`;
 
   const fits =

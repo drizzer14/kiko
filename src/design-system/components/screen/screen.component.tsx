@@ -8,6 +8,7 @@ import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
 import { useTopClearance } from './use-top-clearance';
+import { useContentMargin } from './use-content-margin';
 import { useBottomClearance } from './use-bottom-clearance';
 import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
 
@@ -57,6 +58,8 @@ const Screen: FC<ScreenProps> = ({
   // below its pill. Only the plain branch uses it: the scroll and `bleedTop` branches sit under a
   // native header that already clears the bar.
   const topClearance = useTopClearance();
+  // The sides of the content, the footer and the scroll content are padded by this one margin.
+  const contentMargin = useContentMargin();
   const contentCap = useContentCap();
   const scrollIndicatorProps = useScrollIndicatorProps();
   const { plainEdges, largeTitleEdges } = usePaneScreen();
@@ -120,7 +123,10 @@ const Screen: FC<ScreenProps> = ({
           keyboardShouldPersistTaps="handled"
           // In a pane, except a pane under a top tab bar, the content is capped and centred here,
           // not on the scroll view, so the scroll view and its indicator span the whole pane.
-          contentContainerStyle={[styles.scrollContent(footer !== undefined), contentCap]}
+          contentContainerStyle={[
+            styles.scrollContent(footer !== undefined, contentMargin),
+            contentCap,
+          ]}
           {...headingScrollProps}
         >
           <LargeTitleHeading />
@@ -128,7 +134,10 @@ const Screen: FC<ScreenProps> = ({
           {fields}
         </ScrollView>
         {footer ? (
-          <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
+          <View
+            testID="screen-footer"
+            style={[styles.footer(bottomClearance, contentMargin), contentCap]}
+          >
             {footer}
           </View>
         ) : null}
@@ -161,7 +170,10 @@ const Screen: FC<ScreenProps> = ({
       <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
         {fields}
         {footer ? (
-          <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
+          <View
+            testID="screen-footer"
+            style={[styles.footer(bottomClearance, contentMargin), contentCap]}
+          >
             {footer}
           </View>
         ) : null}
@@ -187,14 +199,17 @@ const Screen: FC<ScreenProps> = ({
     >
       <View
         testID="screen-content"
-        style={styles.content(contentOwnsClearance, bottomClearance, topClearance)}
+        style={styles.content(contentOwnsClearance, bottomClearance, topClearance, contentMargin)}
       >
         {fields}
       </View>
       {footer ? (
         <View
           testID="screen-footer"
-          style={[styles.footer(bottomClearance), bleedBottom ? contentCap : undefined]}
+          style={[
+            styles.footer(bottomClearance, contentMargin),
+            bleedBottom ? contentCap : undefined,
+          ]}
         >
           {footer}
         </View>

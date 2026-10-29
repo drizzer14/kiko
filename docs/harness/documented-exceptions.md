@@ -1044,9 +1044,13 @@ verified usage, not dead weight:
   a screen that branches on one inside a pane reads another pane's answer. The Screen folder
   owns the hooks and its siblings read them (`use-top-clearance.ts`, `use-bottom-clearance.ts`,
   `use-top-bar-band.ts`, `use-pane-screen.ts`), and `pane-stack-view.component.tsx` is the one
-  consumer outside it: it reads `useIsTabBarNotAtBottom` once, above both panes, to give their
-  native large titles the content's margin (a top or a side bar), while `useContentCap` keeps
-  the narrower `useIsTabBarAtTop` for the pane's cap. A whole-folder exclude is
+  consumer outside it: it reads `useIsTabBarNotAtBottom` (a split) and `useTabBarPlacement` (the
+  single stack under a side bar) once, above both panes, to give their native large titles the
+  content's margin (a top or a side bar), while `useContentCap` keeps the narrower
+  `useIsTabBarAtTop` for the pane's cap. The margin itself comes from `useContentMargin`, which
+  the rule does not list: it returns a number, not the window's placement, so no screen can
+  branch on it (every `Screen`, `HoldingDetailScreen` and `useTitleFit` read it). A whole-folder
+  exclude is
   right for both because each holds only the hook's owner or sanctioned consumer and their
   tests; the rule still reaches every other importer.
 
@@ -1176,25 +1180,28 @@ verified usage, not dead weight:
     `contexts.tsx`, `ScreenStack.tsx` and `index.tsx` of the package's own `src`, and the
     `lib/commonjs` and `lib/typescript` copies of them, which Jest and `tsc` load): the native
     large title of a split pane whose tab bar is not at the bottom (top or side), and of a single
-    stack under a side bar (the Duo outer pose), takes the content's 16 pt margin (under a top
+    stack under a side bar (the Duo outer pose), takes the content's margin (`useContentMargin`:
+    16 pt, and 20 pt under a side bar; user ruling 2026-10-29) (under a top
     bar that content is uncapped, `useContentCap`, so it starts at the
     same margin; under a side bar the content stays capped and centred, so the margins are the
     pane's own; a pane under a bottom bar keeps UIKit's margin). UIKit insets the large title by
     the navigation bar's layout margin, which it derives from the stack's distance to the
     window's edge (20 pt for the pane at the window's leading edge, 0 for the other pane), while
-    the content pads its sides by a fixed 16 pt. The patch adds a `fixedContentMargin` prop (a
-    Float, default 0) to `RNSScreenStack`, a `FixedContentMarginContext` (default 0) that
-    `ScreenStack` reads and passes as that prop, and on iOS a `fixedContentMargin` property on
-    `RNSNavigationController`. While it is above 0 the controller stops respecting the system
-    minimum layout margins and sets the leading and trailing margins of its view and of its
-    navigation bar to that value, again after each `viewDidLayoutSubviews`.
-    Scope: only `PaneStackView` provides a value (`theme.spacing(4)`, the content's side
-    padding). In a split (`columns`/`rows`) whose native tab bar is not at the bottom
+    the content pads its sides by a fixed margin (16 pt, 20 pt under a side bar). The patch adds
+    a `fixedContentMargin` prop (a Float, default 0) to `RNSScreenStack`, a
+    `FixedContentMarginContext` (default 0) that `ScreenStack` reads and passes as that prop, and
+    on iOS a `fixedContentMargin` property on `RNSNavigationController`. While it is above 0 the
+    controller stops respecting the system minimum layout margins and sets the leading and
+    trailing margins of its view and of its navigation bar to that value, again after each
+    `viewDidLayoutSubviews`.
+    Scope: only `PaneStackView` provides a value (`useContentMargin()`, the content's side
+    padding: `theme.spacing(4)`, or `theme.spacing(5)` under a side bar). In a split
+    (`columns`/`rows`) whose native tab bar is not at the bottom
     (`useIsTabBarNotAtBottom()`: the bar at the top or at a side; user ruling 2026-10-23) it
     wraps both panes' stacks. In `single` mode it wraps the one stack only under a side bar
     (`useTabBarPlacement() === 'side'`, the Duo outer pose, 466x678, whose title otherwise
-    starts at UIKit's 20 pt while the content starts at 16 pt); under a top or a bottom bar a
-    single stack reads 0.
+    starts at UIKit's 20 pt, which the content now matches at 20 pt: ruling 2026-10-29, after
+    540b4ba3 first told the stack 16 pt); under a top or a bottom bar a single stack reads 0.
     That is every two-pane window of a regular iPad, small Stage Manager splits (for example
     1032x683 columns or 683x909 rows) included, whatever the window's size (user ruling
     2026-10-21), and every Surface Duo pose with a side bar (the outer and the inner landscape
@@ -1235,7 +1242,7 @@ verified usage, not dead weight:
     top: `MIN(0, MAX(-tab bar height, window safe top - (parent safe top - stored additional
     top)))`. It runs only while the value is above 0, the parent's view is loaded, the stack is
     in a window and has a tab bar controller (an iPhone and a Duo bottom bar have the value 0,
-    so the gate stops them; a side bar has the value 16, and stays untouched only because the
+    so the gate stops them; a side bar has the value 20, and stays untouched only because the
     parent's top there is at most the window's, so the target is 0), writes only when the target
     differs by more than 0.5 pt, and never reads the safe area back after a write as the
     inherited value, so it cannot accumulate: if UIKit ignored every write, the clamp bounds
@@ -1251,7 +1258,7 @@ verified usage, not dead weight:
     default. Going back to 0 restores the view and bar margins captured when the value first went
     above 0, and `viewRespectsSystemMinimumLayoutMargins = YES`. Without a stack view being
     recycled, that restore path is an ordinary event on a Surface Duo: rotating from a side-bar
-    pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 16 to
+    pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 20 to
     0, and the saved stored margins are put back. The stale placement read above (about 0.1 s,
     the mounted split briefly reads a bar at the bottom) reaches it too; an iPad window keeps
     its tab bar at the top, so no resize reaches it there. Only the Fabric (new
@@ -1264,14 +1271,15 @@ verified usage, not dead weight:
     the installed files carry the patch, the margins written back are the stored ones and are
     skipped when equal, the parent safe top inset (gate, formula, threshold, reset, layout pass
     only, bounded writes), and the context reads 0 outside a provider) and by
-    `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, the single stack 0).
+    `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, or `theme.spacing(5)`
+    under a side bar, the single stack 0, or `theme.spacing(5)` under a side bar).
     Re-check rule: `docs/harness/dependency-hygiene.md` ("Standing patch: react-native-screens").
     A device re-measurement is the real proof (Jest cannot see native margins), and it covers:
-    the restore path (pane titles back to stock, then 16 pt) on a split change and on a
-    large-to-large rotation, where the stale read can take it; idle CPU with a pane open (the bar
-    margin is written in `viewDidLayoutSubviews`, which must not cause continuous re-layout); and
-    the bar items and the back button, which UIKit also places by the bar's
-    `directionalLayoutMargins`, so they may move by up to 16 pt (measure it, do not claim it).
+    the restore path (pane titles back to stock, then 16 pt, or 20 pt under a side bar) on a
+    split change and on a large-to-large rotation, where the stale read can take it; idle CPU
+    with a pane open (the bar margin is written in `viewDidLayoutSubviews`, which must not cause
+    continuous re-layout); and the bar items and the back button, which UIKit also places by the
+    bar's `directionalLayoutMargins`, so they may move by up to 16 pt (measure it, do not claim it).
   - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
     `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
     `ScrollView` with `automaticallyAdjustKeyboardInsets` shifted its content offset by the

@@ -1,11 +1,14 @@
 import { type FC, useMemo } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
-import { useUnistyles } from 'react-native-unistyles';
+import {
+  useContentMargin,
+  useIsTabBarNotAtBottom,
+  useTabBarPlacement,
+} from '@kiko/design-system/components/screen';
 import { useIsFocused } from '@react-navigation/native';
 import { FixedContentMarginContext } from 'react-native-screens';
 import { NativeStackView } from '@react-navigation/native-stack';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
-import { useIsTabBarNotAtBottom, useTabBarPlacement } from '@kiko/design-system/components/screen';
 
 import { oppositePane } from '../pane-assignment';
 import { OpenInPaneContext } from '../open-in-pane';
@@ -13,9 +16,6 @@ import { PaneVisibilityContext } from '../pane-visibility';
 
 import { paneSlice, withoutDefaultRoutes } from './pane-slice';
 import type { PaneStackViewProps } from './pane-stack-view.props';
-
-// The step of the theme's spacing that a screen pads its content's sides by.
-const CONTENT_MARGIN_STEP = 4;
 
 /**
  * The view of a pane navigator: the native stack with the whole state on a narrow window, and on
@@ -30,12 +30,11 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   mode,
 }) => {
   const isTabFocused = useIsFocused();
-  const { theme } = useUnistyles();
   const isTabBarNotAtBottom = useIsTabBarNotAtBottom();
   const tabBarPlacement = useTabBarPlacement();
   const isSplit = mode !== 'single';
   const hasFixedContentMargin = isSplit ? isTabBarNotAtBottom : tabBarPlacement === 'side';
-  const contentMargin = theme.spacing(CONTENT_MARGIN_STEP);
+  const contentMargin = useContentMargin();
   const { dispatch } = navigation;
   const companion = isSplit
     ? paneSlice(state, paneConfig, 'companion', descriptors, describe, dispatch)
@@ -77,10 +76,11 @@ const PaneStackView: FC<PaneStackViewProps> = ({
     <OpenInPaneContext.Provider value={dispatch}>
       <PaneVisibilityContext.Provider value={visibility}>
         {/* UIKit insets a native large title by the stack's distance to the window's edge, so the
-            title and the content line up only if the stack is told the content's margin. A bottom
-            bar keeps UIKit's margin. Split panes are told under a top or a side bar, whatever the
-            window's size; the single stack only under a side bar (the Duo outer pose), where it
-            starts 4 pt off the content. A single stack under a top bar keeps UIKit's margin. */}
+            title and the content line up only if the stack is told the content's margin (16 pt,
+            20 pt under a side bar). A bottom bar keeps UIKit's margin. Split panes are told under a
+            top or a side bar, whatever the window's size; the single stack only under a side bar
+            (the Duo outer pose), where UIKit's title would start off the content's margin. A
+            single stack under a top bar keeps UIKit's margin. */}
         <FixedContentMarginContext.Provider value={hasFixedContentMargin ? contentMargin : 0}>
           {isSplit ? (
             <TwoPaneLayout

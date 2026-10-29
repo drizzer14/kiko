@@ -40,9 +40,15 @@ export const styles = StyleSheet.create((theme) => ({
   // whichever sibling (`footer`) or child (the `bleedBottom` list) is
   // actually adjacent to the true bottom edge, not to this container as well,
   // or the gap below the last row/action would be counted twice. Horizontal
-  // padding stays at the base spacing step regardless, and so does the top
-  // padding, plus `topClearance` below a floating top tab bar.
-  content: (ownsClearance: boolean, bottomClearance: number, topClearance: number) => ({
+  // padding is the content margin (`useContentMargin`) regardless, and the top
+  // padding stays at the base spacing step, plus `topClearance` below a
+  // floating top tab bar.
+  content: (
+    ownsClearance: boolean,
+    bottomClearance: number,
+    topClearance: number,
+    contentMargin: number,
+  ) => ({
     flex: 1,
     // A large-title `bleedTop` screen never reaches this wrapper — it renders
     // its scrollable child directly under the SafeAreaView (see
@@ -52,15 +58,16 @@ export const styles = StyleSheet.create((theme) => ({
     // it. The SafeAreaView reserves only the top inset, so a top bar's pill
     // (`topClearance`) is added here, never on the SafeAreaView.
     paddingTop: theme.spacing(4) + topClearance,
-    paddingHorizontal: theme.spacing(4),
+    paddingHorizontal: contentMargin,
     paddingBottom: ownsClearance
       ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
       : theme.spacing(4),
   }),
   // The scroll-mode content container: no `flex: 1` by default (a
   // ScrollView's content container sizes to its content, not the viewport),
-  // same base padding as the non-scroll `content` above. When a `footer` sits
-  // below it (outside the ScrollView, as a sibling — see
+  // same padding as the non-scroll `content` above (the base step, but the
+  // content margin on the sides). When a `footer` sits below it (outside the
+  // ScrollView, as a sibling — see
   // `screen.component.tsx`), this container drops its own bottom padding so
   // the footer's own `paddingTop: theme.spacing(FOOTER_GAP_STEP)` below is the
   // ONE gap above the footer button, instead of both adding
@@ -70,8 +77,9 @@ export const styles = StyleSheet.create((theme) => ({
   // box to collapse the stacked padding. With no `footer`, this container
   // legitimately owns the scroll content's own trailing edge, so it keeps the
   // base bottom padding.
-  scrollContent: (hasFooter: boolean) => ({
+  scrollContent: (hasFooter: boolean, contentMargin: number) => ({
     padding: theme.spacing(4),
+    paddingHorizontal: contentMargin,
     paddingBottom: hasFooter ? 0 : theme.spacing(4),
   }),
   // The pinned footer slot: sits outside the scrollable surface (a
@@ -88,11 +96,11 @@ export const styles = StyleSheet.create((theme) => ({
   // the exact, measured distance a footer button sits above the tab bar. Any
   // screen that manages its own bottom-clearance scrollable surface instead of
   // routing through this slot (e.g. Home's SectionList, via `bleedBottom`)
-  // should add this same step for a consistent gap. Horizontal and top padding
-  // stay at the base spacing step.
-  footer: (bottomClearance: number) => ({
+  // should add this same step for a consistent gap. Horizontal padding is the
+  // content margin (`useContentMargin`); top padding stays at the base spacing step.
+  footer: (bottomClearance: number, contentMargin: number) => ({
     paddingTop: theme.spacing(4),
-    paddingHorizontal: theme.spacing(4),
+    paddingHorizontal: contentMargin,
     paddingBottom: theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
   }),
 }));

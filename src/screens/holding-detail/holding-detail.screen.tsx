@@ -31,6 +31,7 @@ import { isRecord } from '@kiko/type-guards';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import Screen, {
+  useContentMargin,
   useBottomClearance,
   useContentCap,
   useScrollIndicatorProps,
@@ -1020,6 +1021,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // to the SafeAreaView and gives a pane that is not at the window's bottom none.
   const bottomClearance = useBottomClearance();
   const listBottomClearance = footerAction === 'none' ? bottomClearance : 0;
+  const contentMargin = useContentMargin();
   // In a pane the list keeps the whole pane and its content is capped and centred, except in a
   // pane under a top tab bar.
   const contentCap = useContentCap();
@@ -1281,7 +1283,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         contentInsetAdjustmentBehavior="automatic"
         {...scrollIndicatorProps}
         style={styles.list}
-        contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
+        contentContainerStyle={[styles.listContent(listBottomClearance, contentMargin), contentCap]}
       />
     </Screen>
   );
@@ -1303,16 +1305,16 @@ const styles = StyleSheet.create((theme) => ({
   //  - top: `spacing(4)` below the collapsed large title (matching
   //    account-detail's scroll content), living here so the FlatList itself
   //    still reaches the top edge for iOS's automatic large-title inset;
-  //  - horizontal: `spacing(4)`, the screen's side gutter;
+  //  - horizontal: the content margin (`useContentMargin`), the screen's side gutter;
   //  - bottom: a `spacing(4)` gap plus the caller's `bottomClearance` — 0 when a
   //    footer owns the floating tab-bar clearance, else `useBottomClearance`
   //    so the last row clears the bar exactly once (see the screen component).
   // The `spacing(2)` gap sits between every child — the header block and the
   // first row, and each row and the next — the same rhythm a `<Box gap={2}>`
   // around the Transactions heading and its rows would give.
-  listContent: (bottomClearance: number) => ({
+  listContent: (bottomClearance: number, contentMargin: number) => ({
     paddingTop: theme.spacing(4),
-    paddingHorizontal: theme.spacing(4),
+    paddingHorizontal: contentMargin,
     paddingBottom: theme.spacing(4) + bottomClearance,
     gap: theme.spacing(2),
   }),
