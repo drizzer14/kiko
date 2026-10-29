@@ -1,37 +1,28 @@
+import { rethrow } from 'fnts';
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  advanceWalkMarks,
+  backfillGroundOf,
   BinanceWalkStop,
-  commitSettledSpan,
-  dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
-  historyListWriterOf,
   instantAt,
   joinSettled,
   logWalkStop,
   multiCoinPatchesOf,
-  notImportedWriterOf,
-  placeWalletRows,
+  type OwedWindow,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
-  roundRobinHooksOf,
   rowMinorUnits,
-  runWalkPlan,
   settleRecords,
   settleUnreadable,
   type SpanCommit,
   type SpanRead,
-  type WalkMarkWriter,
-  type WalkMarks,
   walkMarkWriterOf,
-  walkSpans,
   type WalkPass,
-  type WalkPlan,
   type WalkResult,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
@@ -50,6 +41,12 @@ import {
   type FetchAccountOptions,
 } from './binance.client';
 import {
+  type BinanceWalkContext,
+  commitBinanceSpan,
+  runBinanceWalkPlan,
+  walletPlacerOf,
+} from './binance.walk-wiring';
+import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
   RESYNC_OVERLAP_MS,
@@ -61,12 +58,11 @@ import {
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
 } from './binance.history-client';
-import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
-import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceWallet, holdingKeyOf } from './binance.holding-keys';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceHistoryRun, COSTS, recordFailedCall } from './binance.history-budget';
 
 /** Binance rejects a Pay `startTime`/`endTime` gap of 90 days or more. */
 export const PAY_WINDOW_MS = 89 * DAY_MS;
@@ -156,7 +152,7 @@ const EARN_WALLET_TYPE = 5;
 /**
  * A receive carries no field that says which wallet took it (`walletType` and `walletTypes`
  * may describe the payer), so its time decides: Spot from this UTC midnight, Funding before.
- * Where the date comes from: kiko-architecture, the Binance Pay section.
+ * Where the date comes from: kiko-exchange-sync, the Binance Pay section.
  */
 const PAY_RECEIPTS_TO_SPOT_FROM_MS = Date.UTC(2026, 8, 29);
 
@@ -559,18 +555,7 @@ const defaultPayHistoryDeps: BinancePayHistoryDeps = {
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
 };
 
-type PayContext = {
-  deps: BinancePayHistoryDeps;
-  run: BinanceHistoryRun;
-  accountId: string;
-  apiKey: string;
-  secret: string;
-  options: FetchAccountOptions;
-  uid: string;
-  marks: WalkMarks;
-  plan: WalkPlan;
-  write: WalkMarkWriter;
-};
+type PayContext = BinanceWalkContext<BinancePayHistoryDeps> & { uid: string };
 
 /** Whether `error` is Binance's rate limit, which also puts the account on its shared cooldown. */
 const stopOnRateLimit = (
@@ -604,12 +589,9 @@ const fetchSpan = async (
 
   try {
     await run.gate.wait();
-    const page = await deps.fetchPayHistory(
-      apiKey,
-      secret,
-      { startTime: span.start, endTime: span.end },
-      options,
-    );
+    const page = await deps
+      .fetchPayHistory(apiKey, secret, { startTime: span.start, endTime: span.end }, options)
+      .catch(rethrow(() => recordFailedCall(run, 'pay')));
     run.budget.record('pay', page);
 
     return page;
@@ -690,43 +672,20 @@ const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistory
  */
 const commitSpan = (
   context: PayContext,
+  window: OwedWindow,
   span: WalkWindow,
   page: PayHistoryPage,
   pass: WalkPass,
-): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, plan, marks, write } = context;
-
-  return commitSettledSpan({
+): Promise<SpanCommit | undefined> =>
+  commitBinanceSpan({
+    context,
     pass,
     span,
+    scope: window.scope,
     settled: settledOrdersOf(context, span, page),
-    place: (planned) =>
-      placeWalletRows({
-        accountId,
-        planned,
-        config: BINANCE_WALK_CONFIG,
-        listHoldings: deps.listHoldings,
-        ensureHoldings: deps.ensureHoldings,
-        missingCode: 'pay-holding-missing',
-      }),
-    add: deps.addTransactions,
-    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
-    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
-    writeNotImported: notImportedWriterOf(deps, accountId),
-    advance: ({ owed }) =>
-      advanceWalkMarks({
-        pass,
-        span,
-        // No `seriesOf`: a window is never narrowed to some series, so a span reads all of it.
-        series: undefined,
-        owed,
-        plan,
-        marks,
-        restartMs: HISTORY_FLOOR_MS,
-        write,
-      }),
+    place: walletPlacerOf(context, 'pay-holding-missing'),
+    restartMs: HISTORY_FLOOR_MS,
   });
-};
 
 /**
  * Read one span. A full page (it may hold more than it shows) is answered with the half
@@ -807,9 +766,14 @@ const runSync = async (
   const write = walkMarkWriterOf(deps, accountId, 'pay');
   const roundRobins = await readWalkRoundRobins({ stored, write });
   const floorMs = payFloorMs(now);
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: floorMs, end: payCursor ?? floorMs },
+  const { pending, stored: converted } = await backfillGroundOf({
+    stored,
+    pending: await readPendingMark({
+      stored: stored.pending,
+      owedIfUnreadable: { start: floorMs, end: payCursor ?? floorMs },
+      write,
+    }),
+    floorMs,
     write,
   });
   const plan = planWalkPasses({
@@ -817,6 +781,7 @@ const runSync = async (
     rescanCursor,
     pointCursor: roundRobins.pointCursor,
     rangeCursor: roundRobins.rangeCursor,
+    backfillCursor: roundRobins.backfillCursor,
     pending,
     floorMs,
     endTime: now,
@@ -842,7 +807,7 @@ const runSync = async (
       rescanCursor,
       ...roundRobins,
       pending,
-      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: payCursor }),
+      multiCoinPatches: multiCoinPatchesOf({ stored: converted, planCursor: payCursor }),
     },
     plan,
     write,
@@ -855,27 +820,12 @@ const runSync = async (
 
   const context: PayContext = { ...base, uid };
 
-  return runWalkPlan({
-    plan,
-    canAfford: (keep) =>
-      run.budget.canAfford('pay', COSTS.pay, keep) && !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
-        window,
-        read: (span, keepCalls) => readSpan(context, span, keepCalls),
-        commit: (span, page) => commitSpan(context, span, page, pass),
-        keep,
-        hint,
-        onComplete: (read) =>
-          dropReadPoints({
-            pass,
-            window,
-            read,
-            marks: context.marks,
-            write,
-          }),
-      }),
-    ...roundRobinHooksOf({ marks: context.marks, write }),
+  return runBinanceWalkPlan({
+    context,
+    lane: 'pay',
+    cost: COSTS.pay,
+    read: (_window, span, keepCalls) => readSpan(context, span, keepCalls),
+    commit: (window, span, page, pass) => commitSpan(context, window, span, page, pass),
   });
 };
 

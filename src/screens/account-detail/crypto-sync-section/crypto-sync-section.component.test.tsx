@@ -198,7 +198,7 @@ const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 const PAUSED_CAPTION =
   'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to fix this. Your holdings and transactions are kept.';
 
-// The five forward cursors of the history walks, each `behindMs` behind the balance sync.
+// The forward cursor of every walk in `WALK_NAMES`, each `behindMs` behind the balance sync.
 const walkCursors = (
   behindMs: number,
   over: Partial<Record<WalkName, number>> = {},
@@ -261,27 +261,29 @@ describe('CryptoSyncSection', () => {
     setConnected({});
   });
 
-  it('shows the heading, a Wallet/Binance source picker, and the wallet field by default', async () => {
-    const { getByText, getByLabelText, queryByLabelText } = await renderSection();
+  it('shows the heading and the connect button, with no source toggle, when no provider is named', async () => {
+    const { getByText, queryByText, queryByLabelText } = await renderSection();
 
     expect(getByText('Synchronization')).toBeTruthy();
-    expect(getByText('Wallet')).toBeTruthy();
-    expect(getByText('Binance')).toBeTruthy();
-    expect(getByLabelText('wallet-field')).toBeTruthy();
+    expect(getByText('Connect an exchange or wallet')).toBeTruthy();
+    expect(queryByText('Wallet')).toBeNull();
+    expect(queryByText('Binance')).toBeNull();
+    expect(queryByLabelText('wallet-field')).toBeNull();
     expect(queryByLabelText('binance-field')).toBeNull();
   });
 
-  it('switches to the Binance field when the Binance chip is selected', async () => {
-    const { getByText, getByLabelText, queryByLabelText } = await renderSection();
+  it('shows the Binance field and no wallet field once Binance is picked in the connect sheet', async () => {
+    const { getByText, getByTestId, getByLabelText, queryByLabelText } = await renderSection();
 
-    await fireEvent.press(getByText('Binance'));
+    await fireEvent.press(getByText('Connect an exchange or wallet'));
+    await fireEvent.press(getByTestId('connect-exchange-option-binance'));
 
     expect(getByLabelText('binance-field')).toBeTruthy();
     expect(queryByLabelText('wallet-field')).toBeNull();
   });
 
   it('runs a wallet connect sync with the address when the wallet field connects', async () => {
-    const { getByLabelText } = await renderSection();
+    const { getByLabelText } = await renderSection({ bankId: 'btc_wallet' });
 
     await fireEvent.press(getByLabelText('wallet-field'));
 
@@ -295,9 +297,8 @@ describe('CryptoSyncSection', () => {
   });
 
   it('runs a Binance connect sync when the Binance field connects', async () => {
-    const { getByText, getByLabelText } = await renderSection();
+    const { getByLabelText } = await renderSection({ bankId: 'binance' });
 
-    await fireEvent.press(getByText('Binance'));
     await fireEvent.press(getByLabelText('binance-field'));
 
     await waitFor(() =>
@@ -309,9 +310,8 @@ describe('CryptoSyncSection', () => {
     'connecting Binance re-plans the reminders after the sync (sync succeeded: %s), since a synced account sends none',
     async (synced) => {
       mockSync.mockResolvedValue(synced);
-      const { getByText, getByLabelText } = await renderSection();
+      const { getByLabelText } = await renderSection({ bankId: 'binance' });
 
-      await fireEvent.press(getByText('Binance'));
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
@@ -325,7 +325,7 @@ describe('CryptoSyncSection', () => {
     'connecting a wallet re-plans the reminders after the sync (sync succeeded: %s), since a synced account sends none',
     async (synced) => {
       mockSync.mockResolvedValue(synced);
-      const { getByLabelText } = await renderSection();
+      const { getByLabelText } = await renderSection({ bankId: 'btc_wallet' });
 
       await fireEvent.press(getByLabelText('wallet-field'));
 
@@ -340,7 +340,7 @@ describe('CryptoSyncSection', () => {
     // Multi-connection: each crypto account connects independently, so
     // another account already holding a wallet does not block this one's field.
     setConnected({ btc_wallet: [account({ id: 'other', institution: 'btc_wallet' })] });
-    const { getByLabelText, queryByText } = await renderSection();
+    const { getByLabelText, queryByText } = await renderSection({ bankId: 'btc_wallet' });
 
     expect(getByLabelText('wallet-field')).toBeTruthy();
     expect(queryByText('Wallet is already connected to another account')).toBeNull();
@@ -348,9 +348,7 @@ describe('CryptoSyncSection', () => {
 
   it('still shows the Binance field when another account already holds Binance', async () => {
     setConnected({ binance: [account({ id: 'other', institution: 'binance' })] });
-    const { getByText, getByLabelText } = await renderSection();
-
-    await fireEvent.press(getByText('Binance'));
+    const { getByLabelText } = await renderSection({ bankId: 'binance' });
 
     expect(getByLabelText('binance-field')).toBeTruthy();
   });
@@ -541,27 +539,69 @@ describe('CryptoSyncSection', () => {
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
   });
 
-  it('shows no caption while the cursors are current and only a Transfer point is owed', async () => {
-    const { queryByText } = await renderBinance(
-      withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, 'transfer', {
-        pending: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
-      }),
-    );
+  it.each(WALK_NAMES)(
+    'shows no caption while the cursors are current and only a %s point is owed',
+    async (walkName) => {
+      const { queryByText } = await renderBinance(
+        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, {
+          pending: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
+        }),
+      );
 
-    expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
-  });
+      expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+    },
+  );
 
-  it.each([
-    ['a range owed in every type', { start: 5, end: 7 }],
-    ['a range owed in one type', { start: 5, end: 7, series: 'MAIN_FUNDING' }],
-  ])(
-    'shows the caption while the cursors are current and the Transfer walk owes %s',
-    async (_label, owed) => {
+  describe.each(WALK_NAMES)('while the cursors are current and the %s walk owes', (walkName) => {
+    it.each([
+      ['a range owed in every series', { start: 5, end: 7 }],
+      ['a range owed in one series', { start: 5, end: 7, series: 'MAIN_FUNDING' }],
+    ])('%s, the caption shows', async (_label, owed) => {
       const { getByText } = await renderBinance(
-        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, 'transfer', { pending: [owed] }),
+        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, { pending: [owed] }),
       );
 
       expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
+    });
+  });
+
+  describe.each(WALK_NAMES)(
+    'while the cursors are current and the %s walk owes a point',
+    (walkName) => {
+      const pointWith = (stamp: { since?: number }) => ({
+        start: 5,
+        end: 7,
+        kind: 'point',
+        series: 'MAIN_FUNDING',
+        ...stamp,
+      });
+
+      it.each([
+        ['a day and a millisecond', CONNECTED_WALLET_SYNCED_AT - DAY_MS - 1],
+        ['a week', CONNECTED_WALLET_SYNCED_AT - 7 * DAY_MS],
+      ])('owed since %s, the caption shows', async (_label, since) => {
+        const { getByText } = await renderBinance(
+          withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, {
+            pending: [pointWith({ since })],
+          }),
+        );
+
+        expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
+      });
+
+      it.each([
+        ['since a few hours', { since: CONNECTED_WALLET_SYNCED_AT - 3 * HOUR_MS }],
+        ['since exactly a day', { since: CONNECTED_WALLET_SYNCED_AT - DAY_MS }],
+        ['with no time at all', {}],
+      ])('owed %s, the caption stays hidden', async (_label, stamp) => {
+        const { queryByText } = await renderBinance(
+          withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, {
+            pending: [pointWith(stamp)],
+          }),
+        );
+
+        expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+      });
     },
   );
 
@@ -665,7 +705,7 @@ describe('CryptoSyncSection — localization', () => {
     });
   });
 
-  it('renders the heading and Source label from the Ukrainian catalog', async () => {
+  it('renders the heading and the connect button from the Ukrainian catalog', async () => {
     await act(async () => {
       await i18n.changeLanguage('uk');
     });
@@ -673,7 +713,8 @@ describe('CryptoSyncSection — localization', () => {
     const { getByText, queryByText } = await renderSection();
 
     expect(getByText('Синхронізація')).toBeTruthy();
-    expect(getByText('Джерело')).toBeTruthy();
+    expect(getByText('Підключити біржу або гаманець')).toBeTruthy();
+    expect(queryByText('Джерело')).toBeNull();
     expect(queryByText('Synchronization')).toBeNull();
   });
 

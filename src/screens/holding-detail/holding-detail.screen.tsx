@@ -1,4 +1,11 @@
 import {
+  useDataReady,
+  useLiveQuery,
+  type AccountRow,
+  type HoldingRow,
+  type TransactionRow,
+} from '@kiko/db';
+import {
   isSyncedHolding,
   isSyncedTransaction,
   isDeletableTransaction,
@@ -86,7 +93,6 @@ import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import { genericEntitySymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
-import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '@kiko/holdings/derived-entries';
@@ -106,6 +112,7 @@ import LotRowMenu, { type LotActions } from './lot-row-menu';
 import { useScheduledPreview } from './use-scheduled-preview';
 import { useBondRegisterTerms } from './use-bond-register-terms';
 import { useLinkedLoanPayments } from './use-linked-loan-payments';
+import ExchangeHistoryFooter, { notListedKeyOf } from './exchange-history-footer';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -802,6 +809,23 @@ const resolveLedgerReadyView = (
   };
 };
 
+// The ledger's last element on an exchange-synced holding. Mounted only when it has something to
+// say, because a list footer that renders nothing still takes the content container's gap, which
+// would move the end of every other holding's list; and only once the screen is ready, so it
+// never shows a sum over rows still loading.
+const exchangeHistoryFooterOf = (
+  isReady: boolean,
+  holding: HoldingRow | undefined,
+  account: AccountRow | undefined,
+  transactions: readonly TransactionRow[],
+): ReactElement | undefined => {
+  if (!isReady || holding === undefined || notListedKeyOf(holding, account) === undefined) {
+    return undefined;
+  }
+
+  return <ExchangeHistoryFooter holding={holding} account={account} transactions={transactions} />;
+};
+
 // A row of a type outside this build's list (an imported dev-build holding)
 // offers no Edit: the form dispatches on a descriptor that type does not have.
 const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
@@ -1274,6 +1298,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           </>
         }
         ListEmptyComponent={ledgerReadyView.emptyComponent}
+        ListFooterComponent={exchangeHistoryFooterOf(isReady, holding, account, transactions)}
         {...headingScrollProps}
         // The list owns the scrolling under the native large title, so it — not
         // Screen's ScrollView — must carry the automatic content-inset

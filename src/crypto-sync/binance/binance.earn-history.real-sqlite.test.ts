@@ -61,7 +61,7 @@ const openDatabase = (): DatabaseSync => {
          VALUES (?, ?, 'Binance Spot', 'crypto_asset', 'BTC', 100, ?)`,
       )
       .run(`h-spot-${account}`, account, JSON.stringify({ binanceAsset: 'BTC' }));
-    seedWalkMarks(rawDatabase, account, 'earn', { cursor: CURSOR });
+    seedWalkMarks(rawDatabase, account, 'earn', { cursor: CURSOR, multiCoinSeen: true });
   }
 
   return rawDatabase;
@@ -275,6 +275,7 @@ describe('the Earn walk on real SQLite', () => {
         end: REWARD_TIME - 5 * DAY_MS + 1,
         kind: 'point',
         series: 'flexibleRewards',
+        since: NOW,
       },
     ]);
 

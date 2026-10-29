@@ -1580,6 +1580,7 @@ describe('a capital cursor older than the re-scan window', () => {
     );
     const records = [...denseDay, ...newer];
     const state = await oldCursorState();
+    state.account.seed('capital', { multiCoinSeen: true });
 
     await runOver(state, records);
 
@@ -1787,6 +1788,7 @@ describe('the pending overlap days of the capital walk', () => {
     const readable = withdrawal({ id: 'readable', applyTime: readableDay.start + 1 });
     const inWindow = withdrawal({ id: 'in-window', applyTime: NOW - 5 * DAY_MS });
     const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay, readableDay]);
+    state.account.seed('capital', { multiCoinSeen: true });
 
     const first = await runOver(state, [stuck, readable, inWindow]);
     const second = await runOver(state, [stuck, readable, inWindow]);
@@ -1795,7 +1797,9 @@ describe('the pending overlap days of the capital walk', () => {
     expect(state.imported.has(keyOf(readable))).toBe(true);
     expect(state.imported.has(keyOf(inWindow))).toBe(true);
     const t = stuckDay.start + 3_600_000;
-    expect(state.account.pending()).toEqual([{ start: t - 1_000, end: t + 1_000, kind: 'point' }]);
+    expect(state.account.pending()).toEqual([
+      { start: t - 1_000, end: t + 1_000, kind: 'point', since: NOW },
+    ]);
     expect(second.result.complete).toBe(false);
   });
 
@@ -1898,6 +1902,7 @@ describe('the pending overlap days of the capital walk', () => {
     const late = withdrawal({ id: 'late', applyTime: cursor - 0.5 * DAY_MS });
     const newer = withdrawal({ id: 'newer', applyTime: cursor + 3_600_000 });
     const state = await stateOf(cursor);
+    state.account.seed('capital', { multiCoinSeen: true });
     await runUntilComplete(state, () => [late, newer]);
 
     const again = await runOver(state, [late, newer]);
@@ -1959,6 +1964,7 @@ describe('the pending overlap days of the capital walk', () => {
       start: time - 1_000,
       end: time + 1_000,
       kind: 'point',
+      since: NOW,
     });
     // The overlap day behind the cursor lies in the window the re-scan reads; only the ground
     // older than that window is the pending pass's.
@@ -1973,6 +1979,7 @@ describe('the pending overlap days of the capital walk', () => {
         end: BASE - (9 + index * 10) * DAY_MS,
       }));
       const state = await stateOf(NOW - 2 * DAY_MS, [...others, stuckDay, unrelatedDay]);
+      state.account.seed('capital', { multiCoinSeen: true });
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         await runOver(state, [stuckRecord(), unrelated]);
@@ -2090,6 +2097,7 @@ describe('the pending overlap days of the capital walk', () => {
 
       it('owes each stuck day at its record alone once the runs have read every day, and imports the rest of each', async () => {
         const state = await stateOf(NOW - 2 * DAY_MS, stuckDays);
+        state.account.seed('capital', { multiCoinSeen: true });
 
         // A run reads as many days as its capital calls allow: three runs read the ten.
         for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -2157,6 +2165,7 @@ describe('the pending overlap days of the capital walk', () => {
 
     it('owes the stuck range at its record alone after the first run, and reads only that point from then on', async () => {
       const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+      state.account.seed('capital', { multiCoinSeen: true });
 
       await runOver(state, [stuckRecord()]);
       const owedAfterFirst = beyondWindow(state.account.pending());
@@ -2200,7 +2209,7 @@ describe('the pending overlap days of the capital walk', () => {
       expect(state.imported).toEqual(new Set([`${ACCOUNT}:deposit:fixed-deposit`]));
       expect(beyondWindow(state.account.pending())).toEqual([
         pointAt(stuckAt),
-        { start: stuckAt + 4_999, end: stuckAt + 5_001, kind: 'point' },
+        { start: stuckAt + 4_999, end: stuckAt + 5_001, kind: 'point', since: NOW },
       ]);
     });
 
@@ -2287,7 +2296,7 @@ describe('the pending overlap days of the capital walk', () => {
 
         expect(state.imported).toEqual(new Set([depositKey]));
         expect(beyondWindow(state.account.pending())).toEqual([
-          { start: stuckAt - 1, end: stuckAt + 1, kind: 'point' },
+          { start: stuckAt - 1, end: stuckAt + 1, kind: 'point', since: NOW },
         ]);
         expect(warn.mock.calls).toEqual([
           [STOP_TAG, { name: 'BinanceWalkStop', code: UNREADABLE_CODE }],
@@ -2338,7 +2347,7 @@ describe('the pending overlap days of the capital walk', () => {
 
         expect(state.imported).toEqual(new Set([`${ACCOUNT}:deposit:later`]));
         expect(state.account.pending()).toEqual([
-          { start: unreadableAt - 1, end: unreadableAt + 1, kind: 'point' },
+          { start: unreadableAt - 1, end: unreadableAt + 1, kind: 'point', since: NOW },
         ]);
         expect(result.complete).toBe(false);
       });
@@ -2538,6 +2547,7 @@ describe('the pending overlap days of the capital walk', () => {
             : historyPage([]),
         );
       const state = await stateOf(CURSOR, [day]);
+      state.account.seed('capital', { multiCoinSeen: true });
       const requests = denseDay();
       const first = makeFirstSyncDeps(state.account, { fetchWithdrawHistory: requests });
 

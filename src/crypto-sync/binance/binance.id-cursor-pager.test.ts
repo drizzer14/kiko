@@ -1,3 +1,4 @@
+import { sweep } from '@kiko/test-support/property-sweep';
 import { IdCursorPageError, readIdCursor } from '@kiko/crypto-sync/exchange/paging';
 
 import {
@@ -535,7 +536,7 @@ const seededRandom = (seed: number): (() => number) => {
   };
 };
 
-const SEEDS = Array.from({ length: 100 }, (_unused, position) => 1 + position * 13);
+const SEEDS = sweep(Array.from({ length: 100 }, (_unused, position) => 1 + position * 13));
 
 describe('readIdCursor over random ids', () => {
   it.each(SEEDS)(

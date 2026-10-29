@@ -292,8 +292,8 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|\bH\d{1,2}\s+(?i:task|set|step|fix\sround|backlog|track)\b|\bH\d{1,2}\s+t\d+\b|\b\d{8}T\d{4}-kiko-[\w-]+|[Ss]et\s\d+/\d+|[Tt]ask\s\d+/\d+|(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b|\bQ\d{1,2}\s*=\s*[A-Z]\b|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:(?://|\*(?!/))\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for)\b)'
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|\bH\d{1,2}\s+(?i:task|set|step|fix\sround|backlog|track)\b|\bH\d{1,2}\s+t\d+\b|\b\d{8}T\d{4}-kiko-[\w-]+|[Ss]et\s\d+/\d+|[Tt]ask\s\d+/\d+|(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b|\bQ\d{1,2}\s*=\s*[A-Z]\b|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:(?://|\*(?!/))\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for)\b)(?=(?:(?!\*/)[\s\S])*?\*/)'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|S\d{1,3}-Q\d{1,3}|FQ\d{1,3}|C-NR-?[A-Z0-9]+|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|\bH\d{1,2}\s+(?i:task|set|step|fix\sround|backlog|track)\b|\bH\d{1,2}\s+t\d+\b|\b\d{8}T\d{4}-kiko-[\w-]+|[Ss]et\s\d+/\d+|[Tt]ask\s\d+/\d+|(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b|\bQ\d{1,2}\s*=\s*[A-Z]\b|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:(?://|\*(?!/))\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for)\b)'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:§\s?\d|\b((?<!(?<!\w)-)T-?\d{1,3}|(?<!(?<!\w)-)I-?\d{1,3}|(?<!(?<!\w)-)M-?\d{1,3}|(?<!(?<!\w)-)N-?\d{1,3}|(?<!(?<!\w)-)U-?\d{1,3}|(?<!(?<!\w)-)D\d{1,3}|(?<!(?<!\w)-)R-?\d{1,3}|(?<!(?<!\w)-)F-?\d{1,3}|(?<!(?<!\w)-)G-?\d{1,3}|(?<!(?<!\w)-)C-?\d{1,3}|(?<!(?<!\w)-)(?<!Display\s)P(?!-(?:256|384|521)\b)-?\d{1,3}|S\d{1,3}-Q\d{1,3}|FQ\d{1,3}|C-NR-?[A-Z0-9]+|[Bb]ug\s\d+|[Ss]pec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\s[Rr]uling\s\d+|[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)|(?:[Tt]ask|[Pp]arity)\sbrief(?:''s)?|[Pp]er\sthe\sbrief|[Tt]he\sbrief''s|[Rr]eview\s[Ff]ocus\s\d+|Minor\s\d+|[Aa]udit\s\d+|RULING\sR\d+|[Ff]ix\sround\s\d+|\bH\d{1,2}\s+(?i:task|set|step|fix\sround|backlog|track)\b|\bH\d{1,2}\s+t\d+\b|\b\d{8}T\d{4}-kiko-[\w-]+|[Ss]et\s\d+/\d+|[Tt]ask\s\d+/\d+|(?:[Ss]et|[Tt]ask)\s\d+\s+(?:review|fix\sround|step|plan|survivors?|tip|gate)\b|\bQ\d{1,2}\s*=\s*[A-Z]\b|[Rr]ound-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS|NEW)-\d+|[Dd]evice[- ]feedback|[Oo]n-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:[Ll]ater|[Ff]ollow-up|[Pp]revious|[Nn]ext)\scommit|[Pp]er\sthe\splan|[Tt]he\splan''s|[Pp]lan\sdoc|[Bb]y\sthe\splan\b|[Ii]n\sthis\splan|[Tt]his\splan\salso|[Oo]n\sthis\sbranch|[Tt]his\stask''s|Option\s[A-Z]|[Ff]or\sthis\splan|[Tt]his\splan''s|[Rr]eview,\s\d{4}-\d{2}-\d{2}|(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}|\d{4}-\d{2}-\d{2}\s[\w-]+\splan|[Uu]ser\s+(?:(?://|\*(?!/))\s*)?(?:[Rr]equest|[Ff]eedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for)\b)(?=(?:(?!\*/)[\s\S])*?\*/)'
   # ERROR: the tree holds 0 findings for this id. See kiko-linter's
   # "kiko-no-history-word-comment" section.
   - id: kiko-no-history-word-comment
@@ -302,7 +302,8 @@ rules:
     message: >
       A comment narrates a change ("it replaces", "no longer", "used to",
       "previously", "as drawn today", "kept green", "the move onto the shared",
-      "through their extraction into", "as before", a "was:" label before an old value).
+      "through their extraction into", "as before", "the key does not exist yet",
+      "before the field exists", a "was:" label before an old value).
       kiko-code-style's "Comments: WHY only, never history":
       a comment states how the code works today and why, never how it worked
       before. Drop the narrative and keep the WHY; if nothing but history
@@ -310,7 +311,7 @@ rules:
       (a stored row the app no longer knows, a token no longer valid), reword
       it so it names the state, not the change.
     metadata:
-      fix: "State how the code works today and why; drop the 'no longer'/'used to'/'previously'/'it replaces'/'as drawn today'/'kept green'/'the move onto'/'as before'/'was:' narrative, or delete the comment. A test comment says what the test pins (for example 'Pins the toggle's approved look on this screen.')."
+      fix: "State how the code works today and why; drop the 'no longer'/'used to'/'previously'/'it replaces'/'as drawn today'/'kept green'/'the move onto'/'as before'/'the key does not exist yet'/'before the field exists'/'was:' narrative, or delete the comment. A test comment says what the test pins (for example 'Pins the toggle's approved look on this screen.')."
       skill: "kiko-code-style › Comments: WHY only, never history"
     paths:
       exclude:
@@ -320,8 +321,8 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|[Kk]ept\sgreen|[Aa]s\s(?:drawn|rendered|written|built)\stoday|[Tt]he\smove\s(?:onto|into)\s(?:the|a)\sshared|[Tt]hrough\s(?:their|its|the)\sextraction\sinto)\b|\b[Ww]as:|\b[Aa]s\sbefore\b(?=\s*(?:[.,;:()]|$)|\s(?:and|but|with|when|while|so|since|because|though|only)\b))'
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|[Kk]ept\sgreen|[Aa]s\s(?:drawn|rendered|written|built)\stoday|[Tt]he\smove\s(?:onto|into)\s(?:the|a)\sshared|[Tt]hrough\s(?:their|its|the)\sextraction\sinto)\b|\b[Ww]as:|\b[Aa]s\sbefore\b(?=\s*(?:[.,;:()]|$)|\s(?:and|but|with|when|while|so|since|because|though|only)\b))(?=(?:(?!\*/)[\s\S])*?\*/)'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|[Kk]ept\sgreen|[Aa]s\s(?:drawn|rendered|written|built)\stoday|[Tt]he\smove\s(?:onto|into)\s(?:the|a)\sshared|[Tt]hrough\s(?:their|its|the)\sextraction\sinto|(?:key|field|export|helper|function)\sdoes\snot\sexist\syet|[Bb]efore\sthe\sfield\sexists)\b|\b[Ww]as:|\b[Aa]s\sbefore\b(?=\s*(?:[.,;:()]|$)|\s(?:and|but|with|when|while|so|since|because|though|only)\b))'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|[Kk]ept\sgreen|[Aa]s\s(?:drawn|rendered|written|built)\stoday|[Tt]he\smove\s(?:onto|into)\s(?:the|a)\sshared|[Tt]hrough\s(?:their|its|the)\sextraction\sinto|(?:key|field|export|helper|function)\sdoes\snot\sexist\syet|[Bb]efore\sthe\sfield\sexists)\b|\b[Ww]as:|\b[Aa]s\sbefore\b(?=\s*(?:[.,;:()]|$)|\s(?:and|but|with|when|while|so|since|because|though|only)\b))(?=(?:(?!\*/)[\s\S])*?\*/)'
   # ERROR: the tree holds 0 findings for this id (the sweep landed with the rule).
   # See kiko-linter's "kiko-no-history-date-comment" section for the members, the
   # false-positive classes that kept a bare ISO date out, and the scope.
@@ -543,7 +544,7 @@ rules:
       `undefined`, or a bare optional prop straight through.
     metadata:
       fix: "Pass a value that is always a string (e.g. the symbol's own `name`, as `SymbolIcon` does) instead of a value that can still be `undefined`."
-      skill: "kiko-design-system › Component set (SymbolIcon)"
+      skill: "kiko-design-system › Component set (continued)"
     patterns:
       - pattern-either:
           - pattern: '<SFSymbolView ... fallbackName={undefined} ...></SFSymbolView>'
@@ -613,7 +614,7 @@ rules:
       `<FieldError message={...} />` instead.
     metadata:
       fix: 'Render `<FieldError message={...} />` instead of a bespoke `Text variant="caption" tone="negative"`.'
-      skill: "kiko-design-system › Component set"
+      skill: "kiko-design-system › Component set (continued)"
     paths:
       exclude:
         - "src/design-system/components/field-error/**"
@@ -759,7 +760,7 @@ rules:
           - pattern: 'cancelLabel: "..."'
           - pattern: "fallbackLabel: '...'"
           - pattern: 'fallbackLabel: "..."'
-  # kiko-linter's "Backlog: a rule for a plain function called inside a
+  # kiko-linter's "Implemented: a rule for a plain function called inside a
   # worklet" / kiko-gestures' "Every function called inside a worklet needs
   # its own 'worklet' directive". A same-file helper (a `const` arrow or a
   # `function`) called synchronously inside a reanimated worklet-hook
@@ -1040,7 +1041,7 @@ rules:
       fix: "Remove the bare `fullWidth` / `fullWidth={true}` from the Button; it already defaults to true. Pass only `fullWidth={false}`."
       skill: "kiko-design-system › Component set (Button)"
     pattern: <Button ... fullWidth={true} ... />
-  # kiko-domain's "Exchange/Convert legs": a blank row's fallback label has ONE
+  # kiko-exchange-sync's "Exchange/Convert legs": a blank row's fallback label has ONE
   # owner, `transactionRowDescription`, which tries the exchange-leg label
   # before the holding-name default. A surface calling
   # `defaultTransactionDescription` itself skips that branch — the transaction
@@ -1059,7 +1060,7 @@ rules:
       <counterpart>" for a same-currency pair) everywhere.
     metadata:
       fix: "Call `transactionRowDescription({ transaction, holdingName, holdingNameById, holdingCurrencyById, t })` from `@kiko/transactions/row-description` instead of `defaultTransactionDescription`."
-      skill: "kiko-domain › Exchange/Convert legs: a structural marker, a resolved label"
+      skill: "kiko-exchange-sync › Exchange/Convert legs: a structural marker, a resolved label"
     paths:
       exclude:
         - "src/transactions/row-description/**"
@@ -1382,8 +1383,9 @@ rules:
       A test or suite title opens with a task id ("A1 ", "A1:"), opens with a
       ruling id ("ruling A2"), opens with a numbered device check
       ("device check 3"), ends in a task id in parentheses ("(P2)",
-      "(task C2)", "(Task C2)"), or carries an old-value label ("(was: 30)",
-      "(was 44)", "; was 62").
+      "(task C2)", "(Task C2)"), carries an old-value label ("(was: 30)",
+      "(was 44)", "; was 62"), or names a spec ruling, review-question or spec clause id
+      anywhere ("S12-Q34", "FQ9", "C-NR-E").
       kiko-code-style's "Comments: WHY only, never history": a title says what
       the test pins, and the id or the old value belongs in the commit
       message. Drop the id or the label and state the behavior.
@@ -1402,7 +1404,7 @@ rules:
           regex: "^(?:it|test|describe)\\b"
       - metavariable-regex:
           metavariable: $TITLE
-          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|[Dd]evice [Cc]heck \\d|.*\\(was: |.*\\(was \\d+\\)|.*; was \\d+\\b|.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),])"
+          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|[Dd]evice [Cc]heck \\d|.*\\(was: |.*\\(was \\d+\\)|.*; was \\d+\\b|.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),]|.*\\b(?:S\\d{1,3}-Q\\d{1,3}|FQ\\d{1,3}|C-NR-?[A-Z0-9]+))"
   # A rejection asserted with no expected error passes on any failure, including a typo that
   # throws before the code under test runs. ERROR: the tree holds 0 findings for this id. See
   # kiko-linter's "kiko-rejects-to-throw-needs-error" section. The `src/test-support/**` include
@@ -1417,7 +1419,7 @@ rules:
       call expects: its message, a pattern, or its own class.
     metadata:
       fix: "Pass the expected error to toThrow: its message (a string), a pattern (a regex) or its class."
-      skill: "kiko-code-style › A rejection names its error"
+      skill: "kiko-testing › A rejection names its error"
     paths:
       include:
         - "*.test.ts"
@@ -1552,10 +1554,10 @@ rules:
       A form has no in-form Delete, so it never imports `ConfirmSheet`. An
       entity is deleted only from its page's touch-and-hold
       `CardContextMenu`, which raises the confirm itself — see
-      kiko-design-system's "Component set (CardContextMenu)".
+      kiko-design-system's "Component set (continued)" (component-set-forms.md).
     metadata:
       fix: "Remove the `ConfirmSheet` import from the form; wrap the entity's card or row on its page in `CardContextMenu` with `onDelete` instead."
-      skill: "kiko-design-system › Component set (CardContextMenu)"
+      skill: "kiko-design-system › Component set (continued)"
     paths:
       include:
         - "src/screens/forms/**"
@@ -1923,7 +1925,7 @@ rules:
             - pattern: Date.parse(...)
             - pattern: startOfLocalDay(...)
             - pattern: endOfLocalDay(...)
-  # kiko-code-style's "Tests read a module, never a source file's text":
+  # kiko-testing's "Tests read a module, never a source file's text":
   # Stryker rewrites every mutable `.ts`/`.tsx` source in its sandbox, so a
   # test that reads that source's TEXT sees instrumented code and its parse
   # breaks the dry run. A read is flagged unless its path provably ends in a
@@ -1941,11 +1943,11 @@ rules:
       A test reads a file whose path is not provably a data fixture. If it is
       a `.ts`/`.tsx` source, Stryker's instrumented copy of that file breaks
       the test's parse. Import the module and read its structure instead, or
-      name the fixture by its non-TypeScript file name — see kiko-code-style's
+      name the fixture by its non-TypeScript file name — see kiko-testing's
       "Tests read a module, never a source file's text".
     metadata:
       fix: "Import the module and read its structure (e.g. getTableColumns(table)); for a data fixture, name the file with its own extension in the join (join(__dirname, '__fixtures__/sample.csv'))."
-      skill: "kiko-code-style › Tests read a module, never a source file's text"
+      skill: "kiko-testing › Tests read a module, never a source file's text"
     options:
       symbolic_propagation: true
     paths:
@@ -2295,7 +2297,7 @@ rules:
         - "*.test.ts"
         - "*.test.tsx"
     pattern: removeHoldingDatabaseTransaction
-  # kiko-code-style's "A jest.requireActual call takes no type argument". A regex,
+  # kiko-testing's "A jest.requireActual call takes no type argument". A regex,
   # not an AST pattern: Semgrep reads an absent type argument as matching `<$T>`, so
   # `jest.requireActual('m') as T` would match too. The `<` right after the callee is
   # the whole signal, and the regex reads across a line break. No `paths.include`:
@@ -2311,11 +2313,11 @@ rules:
       extractor, which reads only `jest.<name>(` followed by a string literal. `jest
       --findRelatedTests` (and Stryker's per-test coverage) then never relates the test to that
       module. Drop the type argument and type the result instead:
-      `jest.requireActual('m') as { ... }`, or a typed const annotation — see kiko-code-style's
+      `jest.requireActual('m') as { ... }`, or a typed const annotation — see kiko-testing's
       "A jest.requireActual call takes no type argument".
     metadata:
       fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call; the same for requireMock, createMockFromModule and genMockFromModule."
-      skill: "kiko-code-style › A jest.requireActual call takes no type argument"
+      skill: "kiko-testing › A jest.requireActual call takes no type argument"
     pattern-regex: '\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<'
   # The layout keys off the horizontal size class and the window or pane width, never the device:
   # a later device that reports a regular class must get the same layout. A word regex over
@@ -2415,7 +2417,7 @@ rules:
   # match of an object property whose value is `new Set|Map|WeakSet|WeakMap(...)` inside the
   # matcher's argument; the finding sits on the matcher call's first line. A `[...new Set(x)]`
   # spread and `new Set(x).size` are not a property value, so they stay silent. Known limit: a
-  # Set held in a variable (`{ a: seen }`) is not matched. See kiko-code-style's "A subset
+  # Set held in a variable (`{ a: seen }`) is not matched. See kiko-testing's "A subset
   # matcher never holds a Set or a Map" section.
   - id: kiko-no-set-or-map-in-subset-match
     languages: [typescript]
@@ -2426,11 +2428,11 @@ rules:
       it as an object with no keys, so any non-Set value at a present key passes (`undefined`,
       `null`, `{}`, `[2]`); a missing key or a different Set fails. `expect.objectContaining`
       checks the kind only, so a different Set or Map passes; `undefined`, `null`, `{}` and a
-      missing key fail. Take the field out and compare it with `toEqual` — see kiko-code-style's
+      missing key fail. Take the field out and compare it with `toEqual` — see kiko-testing's
       "A subset matcher never holds a Set or a Map".
     metadata:
       fix: "Take the field out of the subset and `toEqual` it: `expect(actual.field).toEqual(new Set([...]))`."
-      skill: "kiko-code-style › A subset matcher never holds a Set or a Map"
+      skill: "kiko-testing › A subset matcher never holds a Set or a Map"
     patterns:
       - pattern-either:
           - pattern: |

@@ -28,6 +28,7 @@ import {
   tradeCandidatesOf,
   tradesPatchesOf,
   touchedCoinsOf,
+  unreadSymbolsPatchesOf,
 } from './binance.trade-symbols';
 import {
   type BinanceMyTrade,
@@ -864,12 +865,15 @@ const runSync = async (
         tally,
       }),
   });
-  const patches = tradesPatchesOf({
-    candidates,
-    trades,
-    balanceTexts: spotBalanceTexts,
-    result: reads,
-  });
+  const patches = [
+    ...tradesPatchesOf({
+      candidates,
+      trades,
+      balanceTexts: spotBalanceTexts,
+      result: reads,
+    }),
+    ...unreadSymbolsPatchesOf({ candidates, trades, result: reads }),
+  ];
 
   if (patches.length > 0) {
     await deps.patchExchangeState(accountId, patches);

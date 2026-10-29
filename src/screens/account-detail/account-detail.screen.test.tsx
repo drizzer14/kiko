@@ -378,7 +378,7 @@ const renderScreen = async (screenRoute: AccountDetailProps['route'] = route) =>
 
 /**
  * Drives the disconnected picker flow up to (not including) the Connect
- * press: opens `AddBankProviderSheet` via the "Add a bank" trigger, then
+ * press: opens `ProviderSheet` via the "Add a bank" trigger, then
  * selects the Monobank row — the sheet reports the choice and closes itself,
  * leaving `MonobankConnectField` mounted for the caller to drive further.
  */
@@ -1471,7 +1471,7 @@ describe('AccountDetailScreen', () => {
   // Monobank is the sole shipped native provider, so the picker sheet lists
   // exactly one row and there is no cross-provider routing to exercise here
   // (see `bank-sync-section.component.test.tsx` and
-  // `add-bank-sheet.component.test.tsx`).
+  // `provider-sheet.component.test.tsx`).
   it('opens the add-a-bank picker sheet for a disconnected bank account, listing the shipped native provider', async () => {
     setLiveData({
       accounts: [account({ kind: 'bank', institution: null })],

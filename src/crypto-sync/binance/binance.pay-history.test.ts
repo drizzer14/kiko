@@ -1264,6 +1264,7 @@ describe('the pending overlap days of a walk', () => {
     const readable = order({ transactionId: 'readable', transactionTime: readableDay.start + 1 });
     const inWindow = order({ transactionId: 'in-window', transactionTime: NOW - 5 * DAY_MS });
     const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay, readableDay] });
+    state.fake.seed('pay', { multiCoinSeen: true });
 
     const first = await runOver(state, [stuck, readable, inWindow]);
     const second = await runOver(state, [stuck, readable, inWindow]);
@@ -1273,9 +1274,37 @@ describe('the pending overlap days of a walk', () => {
     expect(state.imported.has(keyOf(state, inWindow))).toBe(true);
     expect(state.imported.has(keyOf(state, stuck))).toBe(false);
     expect(state.pending).toEqual([
-      { start: stuck.transactionTime - 1, end: stuck.transactionTime + 1, kind: 'point' },
+      {
+        start: stuck.transactionTime - 1,
+        end: stuck.transactionTime + 1,
+        kind: 'point',
+        since: NOW,
+      },
     ]);
     expect(second.result.complete).toBe(false);
+  });
+
+  it('stamps the time of the run that first owed a stuck order on its point, and keeps it on every later run', async () => {
+    const stuckDay = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
+    const stuck = order({ transactionId: '', transactionTime: stuckDay.start + 3_600_000 });
+    const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+    state.fake.seed('pay', { multiCoinSeen: true });
+    const pointsOf = () => state.pending.filter((ground) => ground.kind === 'point');
+    const owedSince = (since: number) => ({
+      start: stuck.transactionTime - 1,
+      end: stuck.transactionTime + 1,
+      kind: 'point',
+      since,
+    });
+
+    await runOver(state, [stuck]);
+
+    expect(pointsOf()).toEqual([owedSince(NOW)]);
+
+    await runOver(state, [stuck], NOW + 3 * DAY_MS);
+    await runOver(state, [stuck], NOW + 9 * DAY_MS);
+
+    expect(pointsOf()).toEqual([owedSince(NOW)]);
   });
 
   it('asks for the owed days oldest first, after the forward pass, then the window, and reads the stuck order alone on the next run', async () => {
@@ -1444,6 +1473,7 @@ describe('the pending overlap days of a walk', () => {
       start: time - 1,
       end: time + 1,
       kind: 'point',
+      since: NOW,
     });
     // The overlap day behind the cursor lies in the window the re-scan reads; only the ground
     // older than that window is the pending pass's.
@@ -1677,6 +1707,7 @@ describe('the pending overlap days of a walk', () => {
 
       it('imports nothing on a second run over the same stuck orders', async () => {
         const state = stateWithIsolated();
+        state.fake.seed('pay', { multiCoinSeen: true });
         await runOver(state, [...stuckOrders(), fresh(), late()]);
 
         const second = await runOver(state, [...stuckOrders(), fresh(), late()]);
@@ -1689,6 +1720,7 @@ describe('the pending overlap days of a walk', () => {
 
     it('owes the stuck range at its order alone after the first run, and reads only that point from then on', async () => {
       const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+      state.fake.seed('pay', { multiCoinSeen: true });
 
       await runOver(state, [stuckOrder()]);
       const owedAfterFirst = beyondWindow(state.pending);

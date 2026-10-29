@@ -1,37 +1,29 @@
+import { rethrow } from 'fnts';
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  advanceWalkMarks,
+  backfillGroundOf,
   BinanceWalkStop,
-  commitSettledSpan,
-  dropReadPoints,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   halfOf,
-  historyListWriterOf,
   instantAt,
   joinSettled,
   multiCoinPatchesOf,
-  notImportedWriterOf,
+  type OwedWindow,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
   readWalkRoundRobins,
   resolveWalletHoldings,
-  roundRobinHooksOf,
   rowMinorUnits,
-  runWalkPlan,
   settleRecords,
   settleUnreadable,
   type SpanCommit,
   type SpanRead,
   type UnreadableRow,
-  type WalkMarkWriter,
-  type WalkMarks,
   walkMarkWriterOf,
-  walkSpans,
   type WalkPass,
-  type WalkPlan,
   type WalkResult,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
@@ -41,10 +33,16 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
 import {
+  type BinanceWalkContext,
+  commitBinanceSpan,
+  runBinanceWalkPlan,
+} from './binance.walk-wiring';
+import {
   type BinanceHistoryRun,
   type BudgetLane,
   type CallCost,
   COSTS,
+  recordFailedCall,
 } from './binance.history-budget';
 import {
   type BinanceDeposit,
@@ -310,17 +308,7 @@ const plannedWithdrawalOf = (accountId: string, record: BinanceWithdrawal): Plan
   });
 };
 
-type WindowContext = {
-  deps: BinanceTransactionSyncDeps;
-  run: BinanceHistoryRun;
-  accountId: string;
-  apiKey: string;
-  secret: string;
-  options: FetchAccountOptions;
-  marks: WalkMarks;
-  plan: WalkPlan;
-  write: WalkMarkWriter;
-};
+type WindowContext = BinanceWalkContext<BinanceTransactionSyncDeps>;
 
 /**
  * One endpoint's records for a span (`rows` that parsed, `unreadable` that did not, `untracked`
@@ -364,7 +352,9 @@ const fetchAllInWindow = async <Row>(
     }
 
     await run.gate.wait();
-    const page = await fetchPage(pageIndex * HISTORY_PAGE_LIMIT);
+    const page = await fetchPage(pageIndex * HISTORY_PAGE_LIMIT).catch(
+      rethrow(() => recordFailedCall(run, budgeted.lane)),
+    );
     run.budget.record(budgeted.lane, page);
     rows.push(...page.rows);
     unreadable.push(...page.unreadable);
@@ -570,15 +560,18 @@ const unreadableExtentOf = (kind: CapitalKind, row: UnreadableRow): WalkWindow |
  */
 const commitSpan = (
   context: WindowContext,
+  window: OwedWindow,
   span: WalkWindow,
   records: SpanRecords,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, plan, marks, write } = context;
+  const { accountId } = context;
 
-  return commitSettledSpan({
+  return commitBinanceSpan({
+    context,
     pass,
     span,
+    scope: window.scope,
     settled: joinSettled<PlannedRow>([
       settleRecords({
         span,
@@ -617,22 +610,7 @@ const commitSpan = (
       }),
     ]),
     place: (planned) => placeRows(context, planned),
-    add: deps.addTransactions,
-    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
-    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
-    writeNotImported: notImportedWriterOf(deps, accountId),
-    advance: ({ owed }) =>
-      advanceWalkMarks({
-        pass,
-        span,
-        // No `seriesOf`: a window is never narrowed to some series, so a span reads all of it.
-        series: undefined,
-        owed,
-        plan,
-        marks,
-        restartMs: HISTORY_FLOOR_MS,
-        write,
-      }),
+    restartMs: HISTORY_FLOOR_MS,
   });
 };
 
@@ -670,9 +648,14 @@ const runSync = async (
     deps.latestTransactionTime(id, [`${accountId}:deposit:`, `${accountId}:withdraw:`]),
   );
   const planCursor = cursor ?? latest ?? null;
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: planCursor ?? HISTORY_FLOOR_MS },
+  const { pending, stored: converted } = await backfillGroundOf({
+    stored,
+    pending: await readPendingMark({
+      stored: stored.pending,
+      owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: planCursor ?? HISTORY_FLOOR_MS },
+      write,
+    }),
+    floorMs: HISTORY_FLOOR_MS,
     write,
   });
   const plan = planWalkPasses({
@@ -680,6 +663,7 @@ const runSync = async (
     rescanCursor,
     pointCursor: roundRobins.pointCursor,
     rangeCursor: roundRobins.rangeCursor,
+    backfillCursor: roundRobins.backfillCursor,
     pending,
     floorMs: HISTORY_FLOOR_MS,
     endTime: now,
@@ -699,34 +683,18 @@ const runSync = async (
       rescanCursor,
       ...roundRobins,
       pending,
-      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor }),
+      multiCoinPatches: multiCoinPatchesOf({ stored: converted, planCursor }),
     },
     plan,
     write,
   };
 
-  return runWalkPlan({
-    plan,
-    canAfford: (keep) =>
-      run.budget.canAfford('capitalWithdraw', COSTS.withdraw, keep) &&
-      !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
-        window,
-        read: (span, keepCalls) => readSpan(context, span, keepCalls),
-        commit: (span, records) => commitSpan(context, span, records, pass),
-        keep,
-        hint,
-        onComplete: (read) =>
-          dropReadPoints({
-            pass,
-            window,
-            read,
-            marks: context.marks,
-            write,
-          }),
-      }),
-    ...roundRobinHooksOf({ marks: context.marks, write }),
+  return runBinanceWalkPlan({
+    context,
+    lane: 'capitalWithdraw',
+    cost: COSTS.withdraw,
+    read: (_window, span, keepCalls) => readSpan(context, span, keepCalls),
+    commit: (window, span, records, pass) => commitSpan(context, window, span, records, pass),
   });
 };
 

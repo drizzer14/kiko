@@ -17,10 +17,12 @@ import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { bankProviderIdOf, isBankProviderId, type BankProviderId } from '@kiko/bank-sync/provider';
 
+import ProviderSheet from '../provider-sheet';
 import { styles } from '../account-detail.styles';
-import AddBankProviderSheet from '../add-bank-sheet';
 import { formatLastSyncAt } from '../format-last-sync';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
+
+import visibleCatalogEntries from './visible-catalog-entries';
 
 type BankSyncSectionProps = {
   account: AccountRow;
@@ -77,7 +79,7 @@ const disconnectCopyFor = (connectedProviderId: BankProviderId): DisconnectCopy 
 
 // The bank account's Synchronization section — the counterpart of
 // `CryptoSyncSection` for a native stored-token/credential provider. Before a
-// connection: an "Add a bank" trigger opens `AddBankProviderSheet`, then the
+// connection: an "Add a bank" trigger opens `ProviderSheet`, then the
 // chosen provider's own connect field (Monobank's single token). Once
 // connected: Sync with the last-sync stamp, and a confirmed Disconnect —
 // both routed THROUGH THE REGISTRY (`bankProviderRegistry[connectedProviderId]`),
@@ -102,7 +104,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const connectedEntry = foldMap(maybe(connectedProviderId), (id) => bankProviderRegistry[id]);
 
   // Which provider's connect field the user explicitly picked THIS session
-  // (via `AddBankProviderSheet`, or cleared via "Change bank"/Disconnect
+  // (via `ProviderSheet`, or cleared via "Change bank"/Disconnect
   // below) — `undefined` means "no explicit pick yet this session", not
   // necessarily "show the generic Add-a-bank trigger". Combined with
   // `bankIdProviderId` below into `shownProviderId`, the value actually
@@ -115,9 +117,9 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // seeded once into `selectedProviderId`'s initial state: a `useState`
   // initializer only runs at MOUNT, so it would never react to the
   // account row changing after this component was already mounted. A
-  // Disconnect clears `institution` but never `bankId` (see
-  // `kiko-domain`'s "bankId is identity-only, independent of institution"),
-  // so the bank stays known while `AccountDetail`/this section stays mounted.
+  // Disconnect clears `institution` but never `bankId` (see `kiko-domain`'s "Account":
+  // `bankId` is identity-only, independent of `institution`), so the bank stays known
+  // while `AccountDetail`/this section stays mounted.
   const bankIdProviderId = isBankProviderId(account.bankId) ? account.bankId : undefined;
   // The account form's `BankTypeField` already identified this account as
   // Monobank, so re-asking through the generic "Add a bank" picker (today a
@@ -281,6 +283,12 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     monobank: <MonobankConnectField onConnect={connectMonobank} />,
   };
 
+  const providerSheetEntries = visibleCatalogEntries().map((entry) => ({
+    id: entry.id,
+    label: entry.displayName,
+    captions: [t(entry.aboutKey), t(entry.eligibilityKey)],
+  }));
+
   return (
     <Box gap={3}>
       <Text variant="heading">{t('accountDetail.synchronization')}</Text>
@@ -305,7 +313,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
               straight back to the live `bankIdProviderId` on the very next
               render, so it visibly changes nothing. The bank is set on
               create only, so there is nowhere to change it. Still shown when the user reached
-              this field by picking a provider through `AddBankProviderSheet`
+              this field by picking a provider through `ProviderSheet`
               on an account with no `bankId` (or `other`) — there it genuinely clears the
               pick and re-shows "Add a bank". */}
           {bankIdProviderId === undefined && (
@@ -327,10 +335,13 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
         </Text>
       )}
 
-      <AddBankProviderSheet
+      <ProviderSheet
         visible={providerPickerOpen}
+        title={t('accountDetail.addBankSheetTitle')}
+        entries={providerSheetEntries}
         onDismiss={() => setProviderPickerOpen(false)}
         onSelect={setSelectedProviderId}
+        testIDPrefix="add-bank"
       />
     </Box>
   );

@@ -25,6 +25,7 @@ Rules:
   mechanics, the mutation-run launch recipe, and the dedicated
   "Device-test checkout" (`~/orca/workspaces/pff-ios/device-deploy`) to
   build device installs from; do not re-derive them here.
+- Mutation gates are paused by the user since 2026-10-25 until lifted; verify + review only.
 - **The mutation gate (`check:deep`) is the COORDINATOR's own job, queued as a gate.** NEVER accept
   a dispatch to run the gate and wait for it — that check
   is the coordinator's own background job, not an ops subagent's. A

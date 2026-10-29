@@ -4,7 +4,7 @@
  * repos itself. The caller (`statement-import.screen.tsx`) resolves this list
  * from its own `useLiveQuery` reads (holdings scoped or unscoped per the
  * screen's own `accountId`) and hands it down fully formed — this component
- * stays a pure list/filter/group renderer, mirroring `AddBankProviderSheet`'s
+ * stays a pure list/filter/group renderer, mirroring `ProviderSheet`'s
  * split (that sheet also takes no repo dependency of its own).
  */
 export type TargetHoldingOption = {

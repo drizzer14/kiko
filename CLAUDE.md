@@ -71,6 +71,14 @@ Composite scripts:
   is no release-scope deep gate. Agents await only the exit code (see the
   `ops` and `kiko-linter` skills). `check:closure` and `check:permissions` are
   manual, not in `check:all`. Full rules: `docs/harness/checks.md`.
+  Mutation gates are paused by the user since 2026-10-25 until lifted; verify + review only
+  (the gate text stays).
+- `make jest-affected [BASE=<ref>]` is the default dev test command: it runs only the jest suites
+  the change since the merge-base with main can affect, plus the tree-scanning inventory suites.
+  Exit 3 (`AFFECTS EVERY SUITE`: package files, jest, babel, tsconfig, `__mocks__`, `patches`,
+  `.env.test`) means queue the verify. The full suite runs only in the queued verify; named-file
+  jest (`npx jest <files> --maxWorkers=2`) stays allowed. Detail: `docs/harness/checks.md`
+  "Makefile targets: `make jest-affected`".
 
 ## Automatic wiring
 

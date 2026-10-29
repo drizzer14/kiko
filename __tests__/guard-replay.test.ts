@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
+import { warmExecutables } from './test-support/warm-executables';
+
 // scripts/checks/guard-replay.sh replays the pre-write guard on the Stop tier
 // for every .ts/.tsx file the session changed, whatever tool wrote it (a Bash
 // or python write, or a commit of one, is what it exists to catch). Every
@@ -210,9 +212,12 @@ const runReplay = (
   options: ScriptOptions = {},
 ): Run => runScript(checkout, 'guard-replay.sh', environment, options);
 
-const crashingSemgrep = (checkout: Checkout): Record<string, string> => ({
-  KIKO_PREWRITE_SEMGREP_BIN: writeExecutable(checkout.root, 'semgrep-crash', CRASHING_SEMGREP),
-});
+const crashingSemgrep = (checkout: Checkout): Record<string, string> => {
+  const engine = writeExecutable(checkout.root, 'semgrep-crash', CRASHING_SEMGREP);
+  warmExecutables([engine]);
+
+  return { KIKO_PREWRITE_SEMGREP_BIN: engine };
+};
 
 // A replay that passes records that checkout's own mark, the way a passed
 // Stop does. The stub engine lets a finding through, so a later replay tells
@@ -220,6 +225,7 @@ const crashingSemgrep = (checkout: Checkout): Record<string, string> => ({
 // failing).
 const passReplayWithStubEngine = (checkout: Checkout, directory = checkout.main): void => {
   const engine = writeExecutable(checkout.root, 'semgrep-clean', CLEAN_SEMGREP);
+  warmExecutables([engine]);
   const run = runReplay(checkout, { KIKO_PREWRITE_SEMGREP_BIN: engine }, { directory });
 
   expect(run).toEqual({ code: 0, stderr: '' });

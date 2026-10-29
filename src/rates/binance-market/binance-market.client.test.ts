@@ -1,6 +1,10 @@
+import {
+  DEFAULT_RETRY_AFTER_MS,
+  isBinanceCoolingDown,
+  LANE_CALL_CAPS,
+} from '@kiko/crypto-sync/binance';
 import { DAY_MS } from '@kiko/dates';
 import { BINANCE_API_ENDPOINT } from '@env';
-import { DEFAULT_RETRY_AFTER_MS, isBinanceCoolingDown } from '@kiko/crypto-sync/binance';
 
 import { createBinanceMarketClient } from './binance-market.client';
 
@@ -229,6 +233,17 @@ describe('createBinanceMarketClient — currentPrice', () => {
     const { fetchImpl } = makeFetch(() => new Error('offline'));
 
     await expect(clientOf(fetchImpl).currentPrice('BTCUSDT')).resolves.toBeUndefined();
+  });
+
+  it('counts a request that failed on the network, so the lane cap ends the reads of a run', async () => {
+    const { calls, fetchImpl } = makeFetch(() => new Error('offline'));
+    const client = clientOf(fetchImpl);
+
+    for (let symbol = 0; symbol < LANE_CALL_CAPS.market + 10; symbol += 1) {
+      await client.currentPrice(`COIN${symbol}USDT`);
+    }
+
+    expect(calls).toHaveLength(LANE_CALL_CAPS.market);
   });
 
   it.each([

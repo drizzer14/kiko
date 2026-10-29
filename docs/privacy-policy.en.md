@@ -60,13 +60,22 @@ service can see your device's IP address.
 - **Monobank** (`api.monobank.ua`) — your bank account information and
   statements, using your personal token; also public currency exchange rates,
   for which no token or personal data is sent.
-- **Binance** (`api.binance.com`) — your Binance balances (spot, funding,
-  Simple Earn), your deposit and withdrawal history, your Binance Pay history,
-  your transfers between your Binance wallets (universal transfer), and your
-  Simple Earn subscriptions, redemptions and rewards, using your read-only API
-  key. Also, for any user, public market prices of a coin CoinGecko did not
-  price: Kiko sends only the market symbol (for example `BTCUSDT`) and the
-  dates of the prices it needs; no key, address, or amount is sent.
+- **Binance** (`api.binance.com`) — using your read-only API key: your balances
+  of every coin and fiat currency (spot, funding, Simple Earn); your deposit and
+  withdrawal history; your Spot trade history; your Convert history; your
+  conversions of small balances to BNB (dust); your P2P orders (the amounts and
+  fiat totals of your purchases; no data about the other party); your fiat
+  deposits and withdrawals and your card purchases and sales; your Binance Pay
+  history, with the Binance Pay name of the other party as the description;
+  your transfers between your Binance wallets (universal transfer); and your
+  Simple Earn subscriptions, redemptions and rewards. For a connected account,
+  Kiko also reads Binance's public list of markets, which needs no key. On your
+  device, in the import progress, Kiko keeps the tickers of coins it does not
+  track and, for a record it does not import yet (for example a P2P sale), only
+  the record's kind, order number or id, and time; this also travels in a
+  `.kiko` export. Also, for any user, public market prices of a coin CoinGecko
+  did not price: Kiko sends only the market symbol (for example `BTCUSDT`) and
+  the dates of the prices it needs; no key, address, or amount is sent.
 - **Blockstream** (`blockstream.info`) — the public on-chain balance of a
   Bitcoin address you add. Kiko sends that address to Blockstream to look it up.
 - **CoinGecko** (`api.coingecko.com`) — the current price and the daily price

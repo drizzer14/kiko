@@ -96,10 +96,22 @@ const HINTS = { forward: [{ start: 1, end: 2 }], pending: [], rescan: [], point:
 type StoredReads = [label: string, stored: unknown, reads: unknown];
 
 /**
- * The fields this table covers: the multi-coin marks read by their own rules, which
- * `walk-state.multi-coin.test.ts` covers.
+ * The fields this table covers: the multi-coin marks, the backfill cursor and the three turn marks
+ * read by their own rules, which `walk-state.multi-coin.test.ts`,
+ * `walk-state.backfill-cursor.test.ts`, `walk-state.backfill-turn.test.ts` and
+ * `walk-state.behind-run.test.ts` cover.
  */
-type TableField = Exclude<WalkField, 'multiCoinSince' | 'multiCoinSeen'>;
+type TableField = Exclude<
+  WalkField,
+  | 'multiCoinSince'
+  | 'multiCoinSeen'
+  | 'backfillCursor'
+  | 'backfillTurn'
+  | 'behindRun'
+  | 'rescanTurn'
+  | 'rescanStuck'
+  | 'readFailedAt'
+>;
 
 /** What a field reads for a stored value: `undefined` is a value that is stored but unreadable. */
 const READS: Record<TableField, StoredReads[]> = {
@@ -462,6 +474,57 @@ describe('parseExchangeState', () => {
       const sliver = { start: 1_000, end: 1_002 };
 
       expect(pendingOf([sliver])).toEqual([sliver]);
+    });
+
+    describe('the time a point was first owed (`since`)', () => {
+      const point = { start: 999, end: 1_001, kind: 'point' };
+
+      it.each([0, 1_700_000_000_000])('keeps a stored `since` of %s on a point', (since) => {
+        expect(pendingOf([range, { ...point, since }])).toEqual([range, { ...point, since }]);
+      });
+
+      it('round-trips `since` beside the series of a point', () => {
+        const typed = { ...point, series: 'MAIN_FUNDING', since: 1_700_000_000_000 };
+
+        expect(pendingOf([typed], 'transfer')).toEqual([typed]);
+      });
+
+      it('reads a point an older build stored, with no `since`, as a point with none', () => {
+        expect(pendingOf([point])).toEqual([point]);
+        expect(pendingOf([point])?.[0]).not.toHaveProperty('since');
+      });
+
+      it.each([
+        ['text', '1700000000000'],
+        ['a negative number', -1],
+        ['a fraction', 1.5],
+        ['null', null],
+        ['a list', [1]],
+        ['true', true],
+      ])(
+        'reads a `since` that is %s as none, and keeps the point and the list',
+        (_label, since) => {
+          const read = pendingOf([range, { ...point, since }]);
+
+          expect(read).toEqual([range, point]);
+          expect(read?.[1]).not.toHaveProperty('since');
+        },
+      );
+
+      it('reads a `since` that is not a finite number as none', () => {
+        const read = marksOfRaw(
+          '{"pending":[{"start":999,"end":1001,"kind":"point","since":1e999}]}',
+        ).pending;
+
+        expect(read).toEqual([point]);
+      });
+
+      it('never keeps a `since` on a range: only a point carries one', () => {
+        const read = pendingOf([{ ...range, since: 1_700_000_000_000 }]);
+
+        expect(read).toEqual([range]);
+        expect(read?.[0]).not.toHaveProperty('since');
+      });
     });
 
     it('is an empty list when the field is absent or the entry is not an object', () => {

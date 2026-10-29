@@ -364,6 +364,16 @@ describe('tradeOrderRowsOf', () => {
       expect(await excludedIdsOf(rows)).toEqual(idsOf(rows));
     });
 
+    it('writes no lone leg when the tracked coin of an order with an untracked coin rounds to nothing', () => {
+      const { rows, untracked } = ordersOf(
+        [fillOf({ qty: '1000', quoteQty: '0.00004', commission: '0' })],
+        { symbol: 'PEPEXRP', baseAsset: 'PEPE', quoteAsset: 'XRP' },
+      );
+
+      expect(rows).toStrictEqual([]);
+      expect(untracked).toStrictEqual(['PEPE']);
+    });
+
     it('writes nothing for two untracked coins and a commission in one of them', () => {
       const { rows, untracked } = ordersOf([fillOf({ commission: '5', commissionAsset: 'SHIB' })], {
         symbol: 'PEPESHIB',
@@ -531,6 +541,15 @@ describe('tradeOrderRowsOf', () => {
 
     it.each([['qty'], ['quoteQty'], ['commission']] as const)('stops on a negative %s', (field) => {
       const stop = stopOf(() => ordersOf([fillOf({ [field]: '-1' })]));
+
+      expect(stop).toBeInstanceOf(BinanceWalkStop);
+      expect(stop).toMatchObject({ code: 'trade-amount-invalid' });
+    });
+
+    it('stops an order when one of its two fills is negative', () => {
+      const stop = stopOf(() =>
+        ordersOf([fillOf({ id: 1, qty: '0.02' }), fillOf({ id: 2, qty: '-0.01' })]),
+      );
 
       expect(stop).toBeInstanceOf(BinanceWalkStop);
       expect(stop).toMatchObject({ code: 'trade-amount-invalid' });

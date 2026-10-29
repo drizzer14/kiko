@@ -183,9 +183,14 @@ const EXAMPLE_NAMES: readonly ExampleGroup[] = [
     names: ['T28'],
   },
   {
-    file: '.claude/skills/kiko-linter/SKILL.md',
-    reason: 'a task id and a mis-split name, quoted as input of the history-id and full-word rules',
-    names: ['T32', 'PANValue'],
+    file: '.claude/skills/kiko-linter/rules-comments.md',
+    reason: 'a task id, quoted as input of the history-id rule',
+    names: ['T32'],
+  },
+  {
+    file: '.claude/skills/kiko-linter/rules-code.md',
+    reason: 'a mis-split name, quoted as input of the full-word rule',
+    names: ['PANValue'],
   },
   {
     file: 'harness/kiko/skills/release/SKILL.md',

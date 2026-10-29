@@ -574,6 +574,11 @@ fail_on_unusable_report() {
   fi
 }
 
+# Stryker runs every seed of every property list: a dev run's 3 seeds would leave mutants alive
+# that the full list kills, and raise the survivor count. Exported here, so the rerun below
+# inherits it.
+export KIKO_PROPERTY_SWEEP=full
+
 start="$(date +%s 2>/dev/null || printf '0')"
 "$BIN" run "$mutate_arg" 2>&1 | tee "$log" \
   | harness_mutation_eta_filter "$rate" "$fit_normal" "$fit_slow" "${share%% *}" "${stryker_limits%% *}" "${stryker_limits#* }" "$history_share"

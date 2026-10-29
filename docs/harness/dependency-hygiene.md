@@ -92,6 +92,13 @@ untouched by the override now, and `npm ls --all` exits clean.
 `scripts/checks/deps.sh` runs `npm ls --all` on every pass, so a
 regression back to an unscoped override fails `check:deps` immediately.
 
+`check:deep`'s osv-scanner also flagged `zod` 4.5.4, advisory GHSA-mrhx-c7xc-m3w5 (fixed
+version and CVSS: not verified here). It is pinned with the top-level override `"zod": "4.6.6"`
+(commit `0043bb26`; the lockfile moved 4.5.4 to 4.6.6). Its one parent chain is `knip`
+(`npm ls zod`: `knip@5.88.1` -> `zod`), a `dev` lockfile entry, so it never reaches the app
+bundle. Drop the override when `knip` itself resolves a `zod` at or above 4.6.6 without it
+(re-check with `npm ls zod`).
+
 A `node_modules/node_modules` entry (a stray `ln -s` inside `node_modules`, or
 a broken nested folder) gets its own `check:deps` block before the dedup skip,
 because it loops the tree and makes `npm ls --all` report every package

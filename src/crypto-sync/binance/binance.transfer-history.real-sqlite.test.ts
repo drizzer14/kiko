@@ -54,7 +54,7 @@ const openDatabase = (): DatabaseSync => {
          VALUES (?, ?, 'Binance Spot', 'crypto_asset', 'BTC', 100, ?)`,
       )
       .run(`h-spot-${account}`, account, JSON.stringify({ binanceAsset: 'BTC' }));
-    seedWalkMarks(rawDatabase, account, 'transfer', { cursor: CURSOR });
+    seedWalkMarks(rawDatabase, account, 'transfer', { cursor: CURSOR, multiCoinSeen: true });
   }
 
   return rawDatabase;
@@ -233,7 +233,7 @@ describe('the Transfer walk on real SQLite', () => {
     expect(first.imported).toBe(0);
     expect(storedRows()).toEqual([]);
     expect(marksOf('acc-1').pending).toEqual([
-      { start: at - 1, end: at + 1, kind: 'point', series: 'MAIN_FUNDING' },
+      { start: at - 1, end: at + 1, kind: 'point', series: 'MAIN_FUNDING', since: NOW },
     ]);
 
     const second = await runWalk('acc-1', [{ ...pending, status: 'CONFIRMED' }]);

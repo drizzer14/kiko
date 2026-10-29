@@ -1,0 +1,608 @@
+// The four walks owe the coins they did not read before their first multi-coin run (the backfill,
+// from their floor to the start they recorded) and read it with BTC left out: the BTC rows of that
+// ground were written by the walks that read only BTC.
+import { DAY_MS } from '@kiko/dates';
+import {
+  BACKFILL_AT,
+  BACKFILL_WALKS,
+  type BackfillWalk,
+  backfillWorldOf,
+  coinOfRow,
+  KIND_OF,
+  mixedPaySendOf,
+  NOW,
+  recordOf,
+  ROWS_PER_RECORD,
+  type ServedRecord,
+  SINCE,
+} from '@kiko/test-support/binance-backfill-world';
+
+import { payFloorMs } from './binance.pay-history';
+import { EARN_FLOOR_MS } from './binance.earn-history';
+import { HISTORY_FLOOR_MS } from './binance.transactions';
+import { transferFloorMs } from './binance.transfer-history';
+import { BinanceHistoryParseError } from './binance.history-client';
+
+const MARKS = { cursor: SINCE, multiCoinSince: SINCE, multiCoinSeen: true };
+
+const USDT_AT = BACKFILL_AT + DAY_MS;
+
+let warn: jest.SpyInstance;
+
+beforeEach(() => {
+  warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  warn.mockRestore();
+});
+
+describe('the backfill of the other coins', () => {
+  it.each(BACKFILL_WALKS)(
+    'owes no backfill range on the %s walk when it never recorded a start',
+    async (name) => {
+      const world = backfillWorldOf({
+        records: [recordOf(KIND_OF[name], { id: 'usdt-1', coin: 'USDT', time: USDT_AT, units: 5 })],
+      });
+
+      await world.walk(name);
+
+      expect(world.owed(name)).toEqual([]);
+      expect(world.state.marksOf(name)).not.toHaveProperty('multiCoinSince');
+    },
+  );
+
+  it.each(BACKFILL_WALKS)('writes no row for a BTC record the %s backfill reads', async (name) => {
+    const world = backfillWorldOf({
+      marks: { [name]: MARKS },
+      records: [
+        recordOf(KIND_OF[name], { id: 'btc-1', coin: 'BTC', time: BACKFILL_AT, units: 1_000 }),
+        recordOf(KIND_OF[name], { id: 'usdt-1', coin: 'USDT', time: USDT_AT, units: 5 }),
+      ],
+    });
+
+    await world.walkUntilRead(name);
+
+    expect(world.owed(name)).toEqual([]);
+    expect(new Set(world.written.map(coinOfRow))).toEqual(new Set(['USDT']));
+  });
+
+  it('writes the USDT rows of a Pay send the backfill reads and skips its BTC rows', async () => {
+    const world = backfillWorldOf({
+      marks: { pay: MARKS },
+      records: [mixedPaySendOf({ id: 'mixed-1', time: BACKFILL_AT })],
+    });
+
+    await world.walkUntilRead('pay');
+
+    expect(world.owed('pay')).toEqual([]);
+    expect(world.written.map(coinOfRow)).toEqual(['USDT']);
+  });
+
+  it.each(BACKFILL_WALKS)(
+    'writes one row for a USDT record the forward pass and the %s backfill both read',
+    async (name) => {
+      const world = backfillWorldOf({
+        marks: { [name]: { ...MARKS, cursor: BACKFILL_AT - DAY_MS } },
+        records: [
+          recordOf(KIND_OF[name], { id: 'usdt-1', coin: 'USDT', time: BACKFILL_AT, units: 5 }),
+        ],
+      });
+
+      await world.walkUntilRead(name);
+
+      expect(world.stored.size).toBe(ROWS_PER_RECORD[name]);
+      expect(world.written.length).toBeGreaterThan(world.stored.size);
+      expect(
+        world.written.every((row) => world.stored.get(row.externalId)?.holdingId === row.holdingId),
+      ).toBe(true);
+    },
+  );
+
+  it.each(BACKFILL_WALKS)(
+    'reads the backfill of the %s walk once when the seen mark was lost beside a stored start',
+    async (name) => {
+      const world = backfillWorldOf({
+        marks: { [name]: { cursor: SINCE, multiCoinSince: SINCE } },
+        records: [
+          recordOf(KIND_OF[name], { id: 'usdt-1', coin: 'USDT', time: BACKFILL_AT, units: 5 }),
+        ],
+      });
+
+      await world.walk(name);
+
+      expect(world.state.marksOf(name).multiCoinSince).toBeLessThan(SINCE);
+
+      await world.walkUntilRead(name);
+      await world.walk(name);
+      await world.walk(name);
+
+      expect(world.written).toHaveLength(ROWS_PER_RECORD[name]);
+    },
+  );
+
+  it.each(BACKFILL_WALKS)(
+    'keeps a point owed again inside a backfill window of the %s walk owed to the backfill',
+    async (name) => {
+      const world = backfillWorldOf({
+        marks: { [name]: MARKS },
+        records: [
+          recordOf(KIND_OF[name], {
+            id: 'junk-1',
+            coin: 'USDT',
+            time: BACKFILL_AT,
+            units: 1,
+            amount: 'junk',
+          }),
+        ],
+      });
+
+      await world.walkUntilRead(name);
+
+      const points = (
+        (world.state.marksOf(name).pending ?? []) as { kind?: string; scope?: string }[]
+      ).filter(({ kind }) => kind === 'point');
+
+      expect(points).not.toHaveLength(0);
+      expect(points.map(({ scope }) => scope)).toEqual(points.map(() => 'backfill'));
+    },
+  );
+});
+
+// The twin of the capital walk's dense-day pin in `binance.transactions.test.ts`, in the world of a
+// 1.2 upgrade: a cursor and no seen mark, so the walk also owes the backfill of the other coins.
+// That pin keeps its bound of 6 runs for the records in a world that owes no backfill. The
+// backfill adds runs but holds no record back: the records arrive in the first run after the one
+// that reaches now, and the backfill, which skips the BTC rows, is read in the seventh.
+describe('a dense day behind the cursor of a capital walk upgraded from 1.2', () => {
+  const REACHED_AT = Date.UTC(2024, 0, 4);
+  const CURSOR = REACHED_AT - 120 * DAY_MS;
+  const RECORDS_WITHIN_RUNS = 6;
+  const BACKFILL_WITHIN_RUNS = 7;
+
+  const denseDay = Array.from({ length: 4_000 }, (_unused, index) =>
+    recordOf('withdraw', {
+      id: `dense-${index}`,
+      coin: 'BTC',
+      time: CURSOR - DAY_MS + index * 20_000,
+      units: 1,
+    }),
+  );
+  const newer = [1, 2, 3].map((hours) =>
+    recordOf('withdraw', {
+      id: `newer-${hours}`,
+      coin: 'BTC',
+      time: CURSOR + hours * 3_600_000,
+      units: 1,
+    }),
+  );
+  const records = [...denseDay, ...newer];
+
+  const runsOfUpgrade = async () => {
+    const world = backfillWorldOf({ marks: { capital: { cursor: CURSOR } }, records });
+
+    await world.walk('capital', REACHED_AT);
+
+    const firstRun = {
+      cursor: world.state.marksOf('capital').cursor,
+      newerImported: newer.every(({ body }) => world.stored.has(`acc-1:withdraw:${body.id}`)),
+    };
+    const stored: number[] = [];
+    const complete: boolean[] = [];
+
+    while (complete.at(-1) !== true && complete.length < 30) {
+      complete.push((await world.walk('capital', REACHED_AT)).complete);
+      stored.push(world.stored.size);
+    }
+
+    return { world, firstRun, stored, complete };
+  };
+
+  it('reaches now in the first run, and imports every record within 6 runs after it', async () => {
+    const { firstRun, stored } = await runsOfUpgrade();
+
+    expect(firstRun).toEqual({ cursor: REACHED_AT, newerImported: true });
+    expect(stored.slice(0, RECORDS_WITHIN_RUNS).at(-1)).toBe(records.length);
+  });
+
+  it('reads the backfill and completes within 7 runs after the first', async () => {
+    const { world, complete } = await runsOfUpgrade();
+
+    expect(complete.at(-1)).toBe(true);
+    expect(complete.length).toBeLessThanOrEqual(BACKFILL_WITHIN_RUNS);
+    expect(world.owed('capital')).toEqual([]);
+    expect(world.stored.size).toBe(records.length);
+  });
+});
+
+// The capital walk reads at most 9 withdrawal pages a run. The owed ground for every coin is read
+// before the backfill, so ground that is refused every run (a page Binance serves off its
+// contract, which the walk reads on past) could spend the whole budget of every run and the
+// backfill would never be read: the backfill keeps one window a run while it is owed.
+describe('the backfill of a capital walk whose owed ground for every coin is refused every run', () => {
+  const START = NOW - 1_200 * DAY_MS;
+  const REFUSED_WINDOWS = 10;
+  const WINDOW_MS = 89 * DAY_MS;
+  const USDT_WINDOW = 3;
+  const REFUSED_BEFORE = NOW - 300 * DAY_MS;
+
+  const refused = Array.from({ length: REFUSED_WINDOWS }, (_unused, index) => ({
+    start: REFUSED_BEFORE - index * 80 * DAY_MS,
+    end: REFUSED_BEFORE - index * 80 * DAY_MS + 10 * DAY_MS,
+  }));
+  const usdt = recordOf('withdraw', {
+    id: 'usdt-1',
+    coin: 'USDT',
+    time: HISTORY_FLOOR_MS + (USDT_WINDOW - 1) * WINDOW_MS + DAY_MS,
+    units: 5,
+  });
+  // The newest owed window of the walk, the last one a run reads: the only one that can be read.
+  const readable = { start: NOW - 250 * DAY_MS, end: NOW - 240 * DAY_MS };
+  const late = recordOf('withdraw', {
+    id: 'btc-1',
+    coin: 'BTC',
+    time: readable.start + DAY_MS,
+    units: 5,
+  });
+
+  const runsOfRefusedWorld = async (runs: number) => {
+    const world = backfillWorldOf({
+      marks: {
+        capital: {
+          cursor: NOW - DAY_MS,
+          multiCoinSince: START,
+          multiCoinSeen: true,
+          pending: [...refused, readable],
+        },
+      },
+      records: [usdt, late],
+      refusing: ({ start }) => start >= START && start <= REFUSED_BEFORE,
+    });
+    const owedFrom: (number | undefined)[] = [];
+    const arrived: boolean[] = [];
+    const lateArrived: boolean[] = [];
+
+    for (let run = 1; run <= runs; run += 1) {
+      await expect(world.walk('capital')).rejects.toBeInstanceOf(BinanceHistoryParseError);
+      owedFrom.push(world.owed('capital').at(0)?.start);
+      arrived.push(world.stored.has('acc-1:withdraw:usdt-1'));
+      lateArrived.push(world.stored.has('acc-1:withdraw:btc-1'));
+    }
+
+    return { owedFrom, arrived, lateArrived };
+  };
+
+  it('reads one window of the backfill in each run, so its ground shrinks every run', async () => {
+    const { owedFrom } = await runsOfRefusedWorld(USDT_WINDOW);
+
+    expect(owedFrom).toEqual([
+      HISTORY_FLOOR_MS + WINDOW_MS,
+      HISTORY_FLOOR_MS + 2 * WINDOW_MS,
+      HISTORY_FLOOR_MS + 3 * WINDOW_MS,
+    ]);
+  });
+
+  it('imports a USDT record of the backfill within as many runs as its window is deep', async () => {
+    const { arrived } = await runsOfRefusedWorld(USDT_WINDOW);
+
+    expect(arrived).toEqual([false, false, true]);
+  });
+
+  it('still reaches the one owed window that can be read, behind the refused ones', async () => {
+    const { lateArrived } = await runsOfRefusedWorld(2);
+
+    expect(lateArrived).toEqual([false, true]);
+  });
+});
+
+// The backfill is a round-robin of its own: a window of it that is refused every run goes behind
+// the others once it has been tried, where read first in every run it would hold back every
+// window of the backfill behind it while the owed ground for every coin spends the rest.
+describe('the backfill of a capital walk whose first window is refused every run', () => {
+  const START = NOW - 1_200 * DAY_MS;
+  const WINDOW_MS = 89 * DAY_MS;
+  const USDT_WINDOW = 3;
+  const REFUSED_BEFORE = NOW - 300 * DAY_MS;
+
+  const refusedAllCoin = Array.from({ length: 10 }, (_unused, index) => ({
+    start: REFUSED_BEFORE - index * 80 * DAY_MS,
+    end: REFUSED_BEFORE - index * 80 * DAY_MS + 10 * DAY_MS,
+  }));
+  const usdt = recordOf('withdraw', {
+    id: 'usdt-1',
+    coin: 'USDT',
+    time: HISTORY_FLOOR_MS + (USDT_WINDOW - 1) * WINDOW_MS + DAY_MS,
+    units: 5,
+  });
+
+  const runsOfRefusedFirstWindow = async (runs: number) => {
+    const world = backfillWorldOf({
+      marks: {
+        capital: {
+          cursor: NOW - DAY_MS,
+          multiCoinSince: START,
+          multiCoinSeen: true,
+          pending: refusedAllCoin,
+        },
+      },
+      records: [usdt],
+      refusing: ({ start }) =>
+        (start >= START && start <= REFUSED_BEFORE) || start === HISTORY_FLOOR_MS,
+    });
+    const arrived: boolean[] = [];
+
+    for (let run = 1; run <= runs; run += 1) {
+      await expect(world.walk('capital')).rejects.toBeInstanceOf(BinanceHistoryParseError);
+      arrived.push(world.stored.has('acc-1:withdraw:usdt-1'));
+    }
+
+    return { arrived, world };
+  };
+
+  it('imports a USDT record behind it within as many runs as its window is deep', async () => {
+    const { arrived } = await runsOfRefusedFirstWindow(USDT_WINDOW);
+
+    expect(arrived).toEqual([false, false, true]);
+  });
+});
+
+// A window owed for every coin whose read splits and pages in every run (a dense stretch, and a
+// record with no time that can never be placed in it, so the window stays owed whole) spends the
+// calls of its pass down to what the pass keeps. The backfill is read after it, on the calls it
+// kept, so the first such window keeps them too: without that hold no window of the backfill is
+// read, for as long as the dense window stays owed.
+describe('the backfill of a walk whose first window owed for every coin is dense', () => {
+  const HOUR_MS = 3_600_000;
+  const DENSE_RECORDS = 150;
+
+  type DenseWorld = {
+    kind: Parameters<typeof recordOf>[0];
+    owed: { start: number; end: number };
+    dense: number;
+    floor: number;
+    since: number;
+    windowMs: number;
+    newest: number;
+    noTime: Record<string, unknown>;
+  };
+
+  // The windows owed for every coin sit where a walk's re-scan does not read them: it reads the
+  // last 89 days of the capital and Pay walks and the last 30 of the other two. The capital
+  // walk's lane of 9 withdrawal calls a run pages 1000 records, so its dense stretch holds more.
+  const DENSE_WORLDS: Record<BackfillWalk, DenseWorld> = {
+    transfer: {
+      kind: 'transfer',
+      owed: { start: NOW - 80 * DAY_MS, end: NOW - 60 * DAY_MS },
+      dense: DENSE_RECORDS,
+      floor: transferFloorMs(NOW),
+      since: SINCE,
+      windowMs: 30 * DAY_MS,
+      newest: NOW - 40 * DAY_MS,
+      noTime: { type: 'MAIN_UMFUTURE', timestamp: undefined },
+    },
+    capital: {
+      kind: 'withdraw',
+      owed: { start: NOW - 300 * DAY_MS, end: NOW - 280 * DAY_MS },
+      dense: 1_500,
+      floor: HISTORY_FLOOR_MS,
+      since: HISTORY_FLOOR_MS + 3 * 89 * DAY_MS,
+      windowMs: 89 * DAY_MS,
+      newest: HISTORY_FLOOR_MS + 3 * 89 * DAY_MS - 5 * DAY_MS,
+      noTime: { applyTime: undefined },
+    },
+    pay: {
+      kind: 'pay',
+      owed: { start: NOW - 200 * DAY_MS, end: NOW - 180 * DAY_MS },
+      dense: DENSE_RECORDS,
+      floor: payFloorMs(NOW),
+      since: payFloorMs(NOW) + 3 * 89 * DAY_MS,
+      windowMs: 89 * DAY_MS,
+      newest: payFloorMs(NOW) + 3 * 89 * DAY_MS - 5 * DAY_MS,
+      noTime: { transactionTime: undefined },
+    },
+    earn: {
+      kind: 'earn',
+      owed: { start: NOW - 80 * DAY_MS, end: NOW - 60 * DAY_MS },
+      dense: DENSE_RECORDS,
+      floor: EARN_FLOOR_MS,
+      since: EARN_FLOOR_MS + 3 * 30 * DAY_MS,
+      windowMs: 30 * DAY_MS,
+      newest: EARN_FLOOR_MS + 3 * 30 * DAY_MS - 5 * DAY_MS,
+      noTime: { time: undefined },
+    },
+  };
+
+  /** The runs, an hour apart, after which both USDT records of the backfill have arrived. */
+  const runsOfDenseWorld = async (name: BackfillWalk, runs: number) => {
+    const { kind, owed, dense, floor, since, newest, noTime } = DENSE_WORLDS[name];
+    const at = owed.start + 10 * DAY_MS;
+    const usdt = (id: string, time: number) => recordOf(kind, { id, coin: 'USDT', time, units: 1 });
+    const timeless = usdt('timeless-1', at - 7_777_777);
+    const world = backfillWorldOf({
+      marks: {
+        [name]: {
+          cursor: NOW - HOUR_MS,
+          multiCoinSince: since,
+          multiCoinSeen: true,
+          pending: [owed],
+        },
+      },
+      records: [
+        usdt('oldest-1', floor + 5 * DAY_MS),
+        usdt('newest-1', newest),
+        { ...timeless, body: { ...timeless.body, ...noTime } },
+        ...Array.from({ length: dense }, (_unused, index) => usdt(`dense-${index}`, at + index)),
+      ],
+    });
+    const arrived = (id: string) =>
+      [...world.stored.keys()].some((key) => key.split(':').includes(id));
+
+    for (let run = 1; run <= runs; run += 1) {
+      await world.walk(name, NOW + run * HOUR_MS);
+    }
+
+    const stillOwed = (world.state.marksOf(name).pending as { scope?: string }[]).filter(
+      ({ scope }) => scope !== 'backfill',
+    );
+
+    return { oldest: arrived('oldest-1'), newest: arrived('newest-1'), stillOwed };
+  };
+
+  // Each window of the backfill is read within as many runs as there are windows (`windowsFrom`):
+  // 3 on the capital, Pay and Earn walks and 6 on Transfer. Measured with the hold: the oldest in
+  // run 1 and the newest in run 3 (run 6 on Transfer); without it neither arrives in 20 runs.
+  it.each(BACKFILL_WALKS)(
+    'imports the USDT records of the %s backfill within as many runs as it has windows',
+    async (name) => {
+      const { floor, since, windowMs } = DENSE_WORLDS[name];
+      const { oldest, newest, stillOwed } = await runsOfDenseWorld(
+        name,
+        Math.ceil((since - floor) / windowMs),
+      );
+
+      expect(stillOwed).not.toEqual([]);
+      expect({ oldest, newest }).toEqual({ oldest: true, newest: true });
+    },
+  );
+});
+
+// The Transfer walk reads 80 calls a run and a window of it costs 20: the forward window, the
+// re-scan window and the point of a FAILED transfer (1 call, owed every run) leave the pending
+// pass the calls of one window. A window owed for every coin that no read can finish (a record
+// with no time can never be placed in it) would take that one window in every run and leave the
+// backfill unread, so the pending pass gives the window to the two groups in turn.
+describe('the backfill of a Transfer walk whose pending budget fits one window', () => {
+  const HOUR_MS = 3_600_000;
+  const FAILED_AT = NOW - 10 * DAY_MS;
+  const RUNS = 20;
+  const failedPoint = {
+    start: FAILED_AT - 1,
+    end: FAILED_AT + 1,
+    kind: 'point',
+    series: 'MAIN_FUNDING',
+  };
+  const failed = recordOf('transfer', { id: 'failed-1', coin: 'USDT', time: FAILED_AT, units: 1 });
+  // The oldest and the newest ground of the backfill, which lies between the floor and SINCE.
+  const oldest = recordOf('transfer', {
+    id: 'oldest-1',
+    coin: 'USDT',
+    time: transferFloorMs(NOW) + 5 * DAY_MS,
+    units: 5,
+  });
+  const newest = recordOf('transfer', {
+    id: 'newest-1',
+    coin: 'USDT',
+    time: NOW - 40 * DAY_MS,
+    units: 5,
+  });
+
+  /** A record of the walk's 30-day windows that Binance serves without its time. */
+  const timeless = recordOf('transfer', {
+    id: 'timeless-1',
+    coin: 'USDT',
+    time: NOW - 70 * DAY_MS,
+    units: 1,
+  });
+  const readable = recordOf('transfer', {
+    id: 'every-coin-1',
+    coin: 'USDT',
+    time: NOW - 55 * DAY_MS,
+    units: 1,
+  });
+
+  /**
+   * The run (counted from 1) in which each record first arrived, none for one that never did, and
+   * the turn of the backfill the walk held after each run.
+   */
+  const runsOfTransferWorld = async (input: {
+    pending: unknown[];
+    records: ServedRecord[];
+    marks?: Record<string, unknown>;
+  }) => {
+    const world = backfillWorldOf({
+      marks: {
+        transfer: {
+          cursor: NOW - HOUR_MS,
+          multiCoinSince: SINCE,
+          multiCoinSeen: true,
+          pending: [...input.pending, failedPoint],
+          ...input.marks,
+        },
+      },
+      records: [{ ...failed, body: { ...failed.body, status: 'FAILED' } }, ...input.records],
+    });
+    const arrivedIn: Record<string, number> = {};
+    const turns: unknown[] = [];
+
+    for (let run = 1; run <= RUNS; run += 1) {
+      // An hour a run, so each run has a forward window and a re-scan window to read.
+      await world.walk('transfer', NOW + run * HOUR_MS).catch(() => undefined);
+      turns.push(world.state.marksOf('transfer').backfillTurn);
+
+      for (const { body } of input.records) {
+        const id = String(body.tranId);
+
+        if ([...world.stored.keys()].some((key) => key.includes(`:${id}:`))) {
+          arrivedIn[id] ??= run;
+        }
+      }
+    }
+
+    return { world, arrivedIn, turns };
+  };
+
+  describe('and a window owed for every coin that no read can finish', () => {
+    const pending = [{ start: NOW - 80 * DAY_MS, end: NOW - 60 * DAY_MS }];
+    const records = [
+      oldest,
+      newest,
+      { ...timeless, body: { ...timeless.body, type: 'MAIN_UMFUTURE', timestamp: undefined } },
+    ];
+
+    // One window owed for every coin and 5 of the backfill, which reads in every other run: the
+    // bound is 1 + 2 * 5 runs (`windowsFrom`); measured 2 (oldest window) and 10 (last window).
+    it('imports the USDT records of the backfill within 1 + 2 * 5 runs', async () => {
+      const { arrivedIn } = await runsOfTransferWorld({ pending, records });
+
+      expect(arrivedIn['oldest-1']).toBeLessThanOrEqual(1 + 2 * 5);
+      expect(arrivedIn['newest-1']).toBeLessThanOrEqual(1 + 2 * 5);
+    });
+
+    it('gives the turn to the backfill after a read of the window left owed, and takes it back after a read of the backfill', async () => {
+      const { turns } = await runsOfTransferWorld({ pending, records });
+
+      expect(turns.slice(0, 4)).toEqual([true, false, true, false]);
+    });
+
+    it('reads the backfill first in a run that starts on its turn', async () => {
+      const { arrivedIn } = await runsOfTransferWorld({
+        pending,
+        records,
+        marks: { backfillTurn: true },
+      });
+
+      expect(arrivedIn['oldest-1']).toBe(1);
+    });
+  });
+
+  // Ground owed for every coin that moves on keeps the read of one window, as it did: it leaves the
+  // budget once its 2 windows are read (measured: in 2 runs, the backfill in 4 and 3).
+  describe('and ground owed for every coin that reads', () => {
+    const pending = [{ start: NOW - 100 * DAY_MS, end: NOW - 50 * DAY_MS }];
+    const records = [oldest, newest, readable];
+
+    it('reads each of its 2 windows in a run of its own, beside the backfill that waits', async () => {
+      const { arrivedIn } = await runsOfTransferWorld({ pending, records });
+
+      expect(arrivedIn['every-coin-1']).toBeLessThanOrEqual(2);
+      expect(arrivedIn['oldest-1']).toBeLessThanOrEqual(2 + 5);
+      expect(arrivedIn['newest-1']).toBeLessThanOrEqual(2 + 5);
+    });
+
+    it('keeps the turn of the windows owed for every coin while a read of them finishes its window', async () => {
+      const { turns } = await runsOfTransferWorld({ pending, records });
+
+      expect(turns.slice(0, 2)).toEqual([undefined, undefined]);
+    });
+  });
+});

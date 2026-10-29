@@ -861,7 +861,7 @@ const NODE_RULES = [
     ruleId: 'kiko-no-cross-screen-import',
     extensions: ['.ts', '.tsx'],
     fix: 'move the shared module out of src/screens/ into src/design-system/components/ (a UI component) or the owning domain module (a hook/util), then import it from there — see the FieldTrigger precedent; if the module is really screen-owned, move the IMPORTER instead',
-    skill: 'kiko-design-system › Component set',
+    skill: 'kiko-design-system › Component set (continued)',
     projectCheck: 'check:screen-imports',
     run: (filePath) =>
       runSpawnedNodeChecker('screen-imports.js', filePath, parseScreenImportsCheckerOutput),

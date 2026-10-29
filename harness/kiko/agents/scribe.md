@@ -34,6 +34,8 @@ Rules:
   that changes often. Apply this whenever you write or edit a skill, and when retrospect
   flags drift (see the retrospect agent's standing verification job), fix it this way
   rather than just patching the stale value back to correct.
+- When you add a rule, grep the skill for its own counter-examples (a cited example that
+  contradicts the new rule) and fix each in the same commit.
 - Before EVERY commit that edits skill, agent, docs/ or CLAUDE.md text, run the suites that
   read that text. Run `make doc-suites`, which finds them at run time (`harness_doc_suites` in
   `scripts/checks/_lib.sh`: `readFileSync` plus a doc-root literal); a pass is recorded. The
@@ -43,12 +45,43 @@ Rules:
   skill or agent text; point at `make doc-suites` and
   `harness_doc_suites` in `scripts/checks/_lib.sh`, since a new invariant would make the
   list stale.
-- Wrap a long line; never lengthen a pinned one (pin lists only shrink). Never leave a red
+- A skill may be split into reference files (kiko-linter's "Skill reference files" says the
+  link form). Link each one from SKILL.md with a relative Markdown link, no title, no spaces;
+  an unlinked `.md` in a skill folder or a link to a missing file fails `make doc-suites`.
+- In the commit that splits a skill or moves a section, grep SKILL.md and every reference file for
+  "above", "below", "earlier", "the next section" and "in this skill"; a pointer that now crosses
+  a file names the file. A double-quoted heading beside "above" or "below" is checked inside its
+  own file (a single-quoted one is read by no check); only an unquoted pointer ("earlier",
+  "the next section", "in this skill", "gotchas above") is read by no check and fails
+  silently.
+- A move commit proves "nothing dropped" by comparing every non-blank source line, every bullet
+  form included: a diff filter `^-[^-]` hides a removed `- ` bullet (it shows as `-- `).
+- A moved heading, or a section split across two files (heading plus "(continued)"), changes
+  every citation of it, fixed in the same commit: skill to skill (grep other skills for links to
+  it), plan or doc text, scripts, src comments, and guard `message:` strings and comments in
+  `rules/*.yml` (the prose check reads those; `metadata.skill` has its own row). Grep the whole
+  repository for the old heading, plus `<skill> › <heading>` strings in `rules/*.yml` and
+  `NODE_RULES`, and name the file where the cited text now lives.
+- A split also repoints agent text: each agent that works in the moved area names the new skill
+  or routes by frontmatter description; a pointer only in the parent skill is not enough. A new
+  skill's description states its trigger, and each parent's description names where its text
+  went.
+- A dated plan or audit snapshot is not a live pointer: repoint only a step that is still open.
+- Wrap a long line; never lengthen a pinned one (pin lists only shrink; the ratchet cannot
+  see a lengthened line without a git call, so only this rule holds it). Never leave a red
   intermediate commit.
 - A skill states the RULE, never a survey of current usage: "always do X" or
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads
   as correct.
+- Describe an example in words: a backticked example with a quote before "above" or "below"
+  is read as a heading citation.
+- A sentence listing the members of a family goes stale when a sibling is added: name the
+  shared mechanism and point at the code.
+- Never write a bare filename in skill prose: give the repository-relative path. After you
+  insert a paragraph, a "the same test" or "the previous" pronoun re-resolves: name the file.
+  Name a table or constant by its defining file and symbol, and add an override's doc entry
+  in the commit that adds the override.
 - A statement that is true only until a future event (a cutover, a merge, a promotion) puts its
   status in the paragraph's first sentence and names its own removal trigger.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST

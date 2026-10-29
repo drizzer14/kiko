@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
 
+import { readSkillText } from './test-support/skill-text';
+
 // A hook that exits 0 does not feed its stderr back to the agent, so a wrapper that writes to
 // stderr and then exits 0 in the same branch shows its message to nobody. kiko-linter's "The
 // wrapper contract" lists the wrappers that do it on purpose; a new one fails here until the
@@ -73,7 +75,7 @@ const repositoryScripts = (): Record<string, string> =>
   );
 
 describe('wrappers that write to stderr and exit 0', () => {
-  const contract = exceptionParagraph(readFileSync(LINTER_SKILL, 'utf8'));
+  const contract = exceptionParagraph(readSkillText(LINTER_SKILL));
 
   it('are all named in the wrapper contract', () => {
     expect(undeclaredWrappers(repositoryScripts(), contract)).toEqual([]);

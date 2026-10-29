@@ -66,10 +66,9 @@ const syncedHolding = {
 // Every walk's cursor at the holding stamp: the history is current, so no caption shows.
 const currentWalks = (): Partial<ExchangeStateSeed> => ({
   walks: Object.fromEntries(
-    ['capital', 'pay', 'transfer', 'earn', 'convert'].map((walk) => [
-      walk,
-      { cursor: HOLDING_SYNCED_AT },
-    ]),
+    ['capital', 'pay', 'transfer', 'earn', 'convert', 'p2p', 'fiatOrders', 'fiatPayments'].map(
+      (walk) => [walk, { cursor: HOLDING_SYNCED_AT }],
+    ),
   ),
 });
 
@@ -120,6 +119,18 @@ describe('CryptoSyncSection: the not-imported line', () => {
     expect(
       getByText(
         'Not imported: P2P sales (1), Convert orders Kiko does not recognize (2), fiat operations Kiko does not recognize (1). Kiko does not import these Binance records yet.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('counts two P2P sales beside one Convert order, in the order of the kind list', async () => {
+    const { getByText } = await renderWith({
+      notImported: ['p2p-sale:s1:1', CONVERT_ENTRY, 'p2p-sale:s2:2'],
+    });
+
+    expect(
+      getByText(
+        'Not imported: P2P sales (2), Convert orders Kiko does not recognize (1). Kiko does not import these Binance records yet.',
       ),
     ).toBeTruthy();
   });

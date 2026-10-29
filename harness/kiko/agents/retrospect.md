@@ -23,13 +23,17 @@ Rules:
   file paths, symbol/function names) against the actual current code
   (grep/read the referenced files, don't trust the skill's prose) in
   BOTH `.claude/skills/` and `harness/kiko/skills/`, plus
-  `harness/kiko/agents/`. Flag any drift you find to the scribe as its
+  `harness/kiko/agents/`. A skill is its SKILL.md plus the reference
+  files it links to (kiko-linter's "Skill reference files"); verify code
+  references in every one of them. Flag any drift you find to the scribe as its
   own item, distinct from new lessons, so the scribe can fix the skill
   or, better, replace the stale copied fact with a pointer to its
   source file (see the scribe's own authoring rule for copied
   enumerable data), and flag prose that only describes current usage
   instead of prescribing a rule. Name the scribe's drift-fix commit sha
   (or "no drift found") when you hand back.
+- The two skill locations hold DISJOINT skills, not mirrors (`ls` both). Never claim a mirror
+  without `diff -rq` on a skill that exists in both; check each skill in the one place it lives.
 - Inputs: the orchestrator passes the run id. Read the current run's `events.jsonl` (under
   `${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/<runId>/`; no `summary.json` yet, `finish`
   runs after you) and the `stats` rows from

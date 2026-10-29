@@ -268,6 +268,44 @@ describe('the trade read on real SQLite', () => {
     expect(excludedIds().size).toBe(4);
   });
 
+  it('stores the cursor of the symbol in the account sync state, so the next run reads on from it', async () => {
+    server.fills.BTCUSDT = [fillOf(1, ORDER_A), fillOf(2, ORDER_B)];
+    await runRead();
+
+    const stored = mockDatabase
+      .prepare('SELECT exchange_state FROM sync_state WHERE account_id = ?')
+      .get(ACCOUNT_ID) as { exchange_state: string };
+
+    expect(JSON.parse(stored.exchange_state).trades.symbols.BTCUSDT.fromId).toBe(3);
+
+    const reads = fillReadsOf(server);
+    const askedFromIds: number[] = [];
+
+    await runRead(ACCOUNT_ID, {
+      fetchMyTrades: async (...request) => {
+        askedFromIds.push(request[3]);
+
+        return reads.fetchMyTrades(...request);
+      },
+    });
+
+    expect(askedFromIds[0]).toBe(3);
+  });
+
+  it('creates the Spot holding of a bought coin the account has none of and writes the leg on it', async () => {
+    mockDatabase.exec("DELETE FROM holdings WHERE id = 'h-ETH-acc-1'");
+    server.listing = [listed('ETHUSDT', 'ETH', 'USDT')];
+    server.fills.ETHUSDT = [fillOf(1, ORDER_A, { qty: '0.5', quoteQty: '1500' })];
+
+    const result = await runRead();
+
+    expect(result.imported).toBe(2);
+    expect(storedRows().map((row) => [row.external_id, row.holding_name])).toEqual([
+      [keyOf('ETHUSDT', ORDER_A, 'ETH'), coinHoldingName('ETH', 'spot')],
+      [keyOf('ETHUSDT', ORDER_A, 'USDT'), coinHoldingName('USDT', 'spot')],
+    ]);
+  });
+
   describe('a sold coin that Kiko does not track, with the commission in BNB', () => {
     const sold = {
       qty: '1000000',

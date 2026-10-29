@@ -217,6 +217,15 @@ describe('fetchMyTrades', () => {
     await expect(readTrades(body)).rejects.toBeInstanceOf(BinanceHistoryParseError);
   });
 
+  it.each(['qty', 'quoteQty', 'commission'] as const)(
+    'reads a whole-number text for %s',
+    async (field) => {
+      const page = await readTrades([wireTradeOf({ [field]: '12' })]);
+
+      expect(page.rows[0]?.[field]).toBe('12');
+    },
+  );
+
   it('fails the page for an unreadable row among readable ones, never skipping a fill', async () => {
     const error = await readTrades([
       wireTradeOf({ id: 1 }),

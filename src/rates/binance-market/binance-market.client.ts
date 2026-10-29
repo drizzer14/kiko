@@ -3,6 +3,7 @@ import {
   type CallCost,
   createBinanceHistoryRun,
   isBinanceCoolingDown,
+  recordFailedCall,
   retryAfterMsFromHeaders,
   setBinanceCooldownUntil,
   usedApiWeightFromHeaders,
@@ -99,6 +100,8 @@ export const createBinanceMarketClient = (
     const response = bifoldr(await either(() => fetchImpl(`${BINANCE_API_ENDPOINT}${path}`)));
 
     if (response === undefined) {
+      recordFailedCall(run, 'market');
+
       return undefined;
     }
     run.budget.record('market', {

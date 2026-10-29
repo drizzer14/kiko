@@ -5,7 +5,7 @@ import type {
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
-import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
+import type { UnreadableRow, WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   type FetchAccountOptions,
@@ -15,6 +15,7 @@ import {
   usedApiWeightFromHeaders,
   usedWeightsFromHeaders,
 } from './binance.client';
+import type { BinanceSignedPath } from './binance.endpoints';
 import { binanceTickerOf, isTrackedBinanceAsset } from './binance.tracked-coin';
 
 /**
@@ -776,7 +777,7 @@ export const EARN_REDEMPTION_SETTLED_STATUS = 'PAID';
  */
 const EARN_READS = {
   flexibleSubscription: {
-    path: `${EARN_HISTORY_ROOT}/flexible/history/subscriptionRecord`,
+    path: `${EARN_HISTORY_ROOT}/flexible/history/subscriptionRecord` as const,
     extraParams: {},
     settledStatus: EARN_SUBSCRIPTION_SETTLED_STATUS,
     readRow: recordReader({
@@ -793,7 +794,7 @@ const EARN_READS = {
     }),
   },
   flexibleRedemption: {
-    path: `${EARN_HISTORY_ROOT}/flexible/history/redemptionRecord`,
+    path: `${EARN_HISTORY_ROOT}/flexible/history/redemptionRecord` as const,
     extraParams: {},
     settledStatus: EARN_REDEMPTION_SETTLED_STATUS,
     readRow: recordReader({
@@ -807,7 +808,7 @@ const EARN_READS = {
     }),
   },
   flexibleRewards: {
-    path: `${EARN_HISTORY_ROOT}/flexible/history/rewardsRecord`,
+    path: `${EARN_HISTORY_ROOT}/flexible/history/rewardsRecord` as const,
     extraParams: { type: 'ALL' },
     settledStatus: undefined,
     readRow: recordReader({
@@ -819,7 +820,7 @@ const EARN_READS = {
     }),
   },
   lockedSubscription: {
-    path: `${EARN_HISTORY_ROOT}/locked/history/subscriptionRecord`,
+    path: `${EARN_HISTORY_ROOT}/locked/history/subscriptionRecord` as const,
     extraParams: {},
     settledStatus: EARN_SUBSCRIPTION_SETTLED_STATUS,
     readRow: recordReader({
@@ -836,7 +837,7 @@ const EARN_READS = {
     }),
   },
   lockedRedemption: {
-    path: `${EARN_HISTORY_ROOT}/locked/history/redemptionRecord`,
+    path: `${EARN_HISTORY_ROOT}/locked/history/redemptionRecord` as const,
     extraParams: {},
     settledStatus: EARN_REDEMPTION_SETTLED_STATUS,
     readRow: recordReader({
@@ -852,7 +853,7 @@ const EARN_READS = {
     }),
   },
   lockedRewards: {
-    path: `${EARN_HISTORY_ROOT}/locked/history/rewardsRecord`,
+    path: `${EARN_HISTORY_ROOT}/locked/history/rewardsRecord` as const,
     extraParams: {},
     settledStatus: undefined,
     readRow: recordReader({
@@ -1256,4 +1257,250 @@ export const fetchOrderFills = async (
       },
       options,
     ),
+  );
+
+/** Binance's cap on `rows` for the P2P order history; `page` starts at 1. */
+export const P2P_PAGE_ROWS = 100;
+
+const ORDER_SUCCESS_CODE = '000000';
+
+const nonEmptyText: Reader<string> = (value) =>
+  typeof value === 'string' && value !== '' ? value : parseFailure();
+
+/**
+ * What places an order in a window and names its row: a missing or empty `orderNumber` or a
+ * `createTime` that is no safe integer makes the order unreadable and owed (the Convert rule), with
+ * its `createTime` as the time when that is usable.
+ */
+const P2P_IDENTITY_FIELDS = {
+  orderNumber: nonEmptyText,
+  createTime: integer,
+};
+
+/**
+ * One page of an `{ code, data, total }` order endpoint (P2P, fiat orders, fiat payments). A record
+ * that cannot be placed (`identityFields`) is `unreadable`; any other record is read outside that
+ * guard, so a field of the wrong type fails the whole page and no record is skipped. The records of
+ * every coin are rows: the walk decides on the status before it asks whether the coin is tracked,
+ * so `untracked` is always empty. The envelope is an object with the success code, a numeric
+ * `total` and a `data` list; a `data` that is null or left out is an empty window only when `total`
+ * is 0, because no measured answer shows that shape beside records, and a window that has records
+ * read as empty would lose them with no message.
+ */
+const identifiedTotalPage = <Identity extends FieldReaders, Fields extends FieldReaders>(
+  identityFields: Identity,
+  fields: Fields,
+) => {
+  const readIdentity = recordReader(identityFields);
+  const readFields = recordReader(fields);
+  const readIdentified: Reader<{ item: unknown; identity: Parsed<Identity> }> = (item) => ({
+    item,
+    identity: readIdentity(item),
+  });
+
+  return ({ body, headers }: RequestPage): TotalPage<Parsed<Identity> & Parsed<Fields>> => {
+    if (!isRecord(body) || body.code !== ORDER_SUCCESS_CODE) {
+      return parseFailure();
+    }
+
+    const total = finiteNumber(body.total);
+    const readings = readingsOf(
+      body.data ?? (total === 0 ? [] : parseFailure()),
+      readIdentified,
+      timeFieldOf('createTime', epochTime),
+    );
+
+    return {
+      rows: valuesOf(readings).map(({ item, identity }) => ({ ...identity, ...readFields(item) })),
+      unreadable: unreadableOf(readings),
+      untracked: [],
+      gathered: readings.length,
+      total,
+      ...usedWeightsFromHeaders(headers),
+    };
+  };
+};
+
+/**
+ * Every field the walk decides on is read with its documented type, and left `undefined` when
+ * Binance sends none (null or left out), so an absent amount differs from an empty one. A field of
+ * another JSON type fails the page. The counterparty (`counterPartNickName`, `payMethodName`,
+ * `additionalKycVerify`, `advNo`) is never read, nor are the unit price, the rate, the fiat symbol
+ * and the `commission` the doc lists: none decides the row or its marker.
+ */
+const P2P_FIELDS = {
+  orderStatus: strictOptionalText,
+  tradeType: strictOptionalText,
+  advertisementRole: strictOptionalText,
+  asset: optional(tickerText),
+  fiat: strictOptionalText,
+  amount: strictOptionalText,
+  totalPrice: strictOptionalText,
+  takerCommission: strictOptionalText,
+  takerAmount: strictOptionalText,
+};
+
+/** One order from `/sapi/v1/c2c/orderMatch/listUserOrderHistory`, amounts as Binance's text. */
+export type BinanceP2pOrder = Parsed<typeof P2P_IDENTITY_FIELDS> & Parsed<typeof P2P_FIELDS>;
+
+const p2pPage = identifiedTotalPage(P2P_IDENTITY_FIELDS, P2P_FIELDS);
+
+/**
+ * `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory` for ONE page of ONE side in ONE window, at
+ * most 30 days wide. Signed, read-only. A body that is not the documented envelope, or an order
+ * with a field of the wrong type, throws `BinanceHistoryParseError`; a start Binance keeps no
+ * history for throws `BinanceHistoryTooOldError`, a 429 or 418 `BinanceRateLimitError`.
+ */
+export const fetchP2pOrders = async (
+  apiKey: string,
+  secret: string,
+  side: 'BUY' | 'SELL',
+  span: WalkWindow,
+  page: number,
+  options: FetchAccountOptions = {},
+): Promise<TotalPage<BinanceP2pOrder>> =>
+  p2pPage(
+    await signedRequestPage(
+      apiKey,
+      secret,
+      'GET',
+      '/sapi/v1/c2c/orderMatch/listUserOrderHistory',
+      {
+        tradeType: side,
+        startTimestamp: String(span.start),
+        endTimestamp: String(span.end),
+        page: String(page),
+        rows: String(P2P_PAGE_ROWS),
+      },
+      options,
+    ),
+  );
+
+/** Binance's cap on `rows` for the fiat deposit and withdraw history; `page` starts at 1. */
+export const FIAT_ORDER_PAGE_ROWS = 500;
+
+/** Binance's cap on `rows` for the fiat payment history (card buy and sell). */
+export const FIAT_PAYMENT_PAGE_ROWS = 100;
+
+/** The `transactionType` of a fiat read: 0 is a deposit or a buy, 1 a withdraw or a sell. */
+export type FiatTransactionType = '0' | '1';
+
+const FIAT_IDENTITY_FIELDS = {
+  orderNo: nonEmptyText,
+  createTime: integer,
+};
+
+/**
+ * Every field the walk decides on is read with its documented type and left `undefined` when
+ * Binance sends none, and the status text is kept exactly as sent: the allowlist matches it with
+ * no trim and no case fold. `fiatCurrency` is the row's own coin, so it is an upper-cased ticker.
+ * The `method` and the `updateTime` are never read.
+ */
+const FIAT_ORDER_FIELDS = {
+  fiatCurrency: optional(tickerText),
+  indicatedAmount: strictOptionalText,
+  amount: strictOptionalText,
+  totalFee: strictOptionalText,
+  status: strictOptionalText,
+};
+
+/**
+ * Every field the walk decides on, as for the orders; `cryptoCurrency` is the row's coin, so an
+ * upper-cased ticker. The payment method, the price and the fee are never read.
+ */
+const FIAT_PAYMENT_FIELDS = {
+  sourceAmount: strictOptionalText,
+  fiatCurrency: strictOptionalText,
+  obtainAmount: strictOptionalText,
+  cryptoCurrency: optional(tickerText),
+  status: strictOptionalText,
+};
+
+/** One deposit or withdraw from `/sapi/v1/fiat/orders`, amounts as Binance's text. */
+export type BinanceFiatOrder = Parsed<typeof FIAT_IDENTITY_FIELDS> &
+  Parsed<typeof FIAT_ORDER_FIELDS>;
+
+/** One card buy or sell from `/sapi/v1/fiat/payments`, amounts as Binance's text. */
+export type BinanceFiatPayment = Parsed<typeof FIAT_IDENTITY_FIELDS> &
+  Parsed<typeof FIAT_PAYMENT_FIELDS>;
+
+const fiatOrdersPage = identifiedTotalPage(FIAT_IDENTITY_FIELDS, FIAT_ORDER_FIELDS);
+
+const fiatPaymentsPage = identifiedTotalPage(FIAT_IDENTITY_FIELDS, FIAT_PAYMENT_FIELDS);
+
+const fiatRequestPage = (input: {
+  apiKey: string;
+  secret: string;
+  path: BinanceSignedPath;
+  rows: number;
+  transactionType: FiatTransactionType;
+  span: WalkWindow;
+  page: number;
+  options: FetchAccountOptions;
+}): Promise<RequestPage> =>
+  signedRequestPage(
+    input.apiKey,
+    input.secret,
+    'GET',
+    input.path,
+    {
+      transactionType: input.transactionType,
+      beginTime: String(input.span.start),
+      endTime: String(input.span.end),
+      page: String(input.page),
+      rows: String(input.rows),
+    },
+    input.options,
+  );
+
+/**
+ * `GET /sapi/v1/fiat/orders` for ONE page of ONE type (0 deposit, 1 withdraw) in ONE window, at
+ * most 2 years wide. Signed, read-only. A body that is not the documented envelope, or a record
+ * with a field of the wrong type, throws `BinanceHistoryParseError`; a start Binance keeps no
+ * history for throws `BinanceHistoryTooOldError`, a 429 or 418 `BinanceRateLimitError`.
+ */
+export const fetchFiatOrders = async (
+  apiKey: string,
+  secret: string,
+  transactionType: FiatTransactionType,
+  span: WalkWindow,
+  page: number,
+  options: FetchAccountOptions = {},
+): Promise<TotalPage<BinanceFiatOrder>> =>
+  fiatOrdersPage(
+    await fiatRequestPage({
+      apiKey,
+      secret,
+      path: '/sapi/v1/fiat/orders',
+      rows: FIAT_ORDER_PAGE_ROWS,
+      transactionType,
+      span,
+      page,
+      options,
+    }),
+  );
+
+/**
+ * `GET /sapi/v1/fiat/payments` for ONE page of ONE type (0 buy, 1 sell) in ONE window. Errors are
+ * those of `fetchFiatOrders`.
+ */
+export const fetchFiatPayments = async (
+  apiKey: string,
+  secret: string,
+  transactionType: FiatTransactionType,
+  span: WalkWindow,
+  page: number,
+  options: FetchAccountOptions = {},
+): Promise<TotalPage<BinanceFiatPayment>> =>
+  fiatPaymentsPage(
+    await fiatRequestPage({
+      apiKey,
+      secret,
+      path: '/sapi/v1/fiat/payments',
+      rows: FIAT_PAYMENT_PAGE_ROWS,
+      transactionType,
+      span,
+      page,
+      options,
+    }),
   );

@@ -4,7 +4,7 @@
 // killall reached through a pattern (xargs, $(...), a `-c` string), and a
 // process-group/broadcast kill (a negative pid, pid 0, or a bare `-1`
 // signal-as-target). See docs/harness/checks.md "Automatic wiring" and
-// `.claude/skills/kiko-linter/SKILL.md` for the check-wrapper contract this
+// `.claude/skills/kiko-linter/wrapper-contract.md` for the check-wrapper contract this
 // hook does NOT follow: it must ALWAYS exit 0, even on a crash or malformed
 // payload, so a failure of the hook process never breaks the Bash tool. An error thrown while
 // judging a command is a deny (`internalError`), not an allow: the command that crashed the guard
@@ -120,7 +120,7 @@
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
 // boundary: an exotic, obfuscated, or run-time-built form is a known limit,
 // not a bug. The one accepted-limits list lives in
-// `.claude/skills/kiko-linter/SKILL.md` (kill-guard entry, "Known limits").
+// `.claude/skills/kiko-linter/wrapper-contract.md` (kill-guard entry, "Known limits").
 
 const fs = require('node:fs');
 const os = require('node:os');

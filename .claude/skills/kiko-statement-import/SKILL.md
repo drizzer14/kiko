@@ -29,8 +29,9 @@ contract every format implements:
   a cheap, non-throwing header/content-signature sniff; `parse` throws
   `StatementParseError` on a file `detect` accepted but whose body
   doesn't actually parse.
-- `ParsedStatement = { formatId, account, transactions,
-  unresolvedRows? }` — `formatId` is a `StatementFormatId` (the
+- `ParsedStatement` (`parser.ts`; read it for the fields: `formatId`,
+  `account`, `transactions`, and the optional `unresolvedRows`,
+  `closingBalance`, `sourceTimeZone`) — `formatId` is a `StatementFormatId` (the
   registry id) or `'column-mapping'` (see below).
 - `ParsedTransaction.currency` is REQUIRED and is THIS ROW's own
   currency — a single-currency CSV format sets the same value on every
@@ -692,7 +693,7 @@ follow the same layout conventions as every other Kiko screen:
   every row is a tap target (it sets the header row), and the rows sit
   too close together for `hitSlop` to reach 44pt without overlapping
   the next row, the one documented exception to `kiko-design-system`'s
-  "hitSlop, never a bigger visual" touch-target rule — and paints the
+  "Touch targets" rule — and paints the
   tapped header row with the theme's accent BLUE
   (`theme.colors.accent`) with `onAccent` cell text — replacing the
   former neutral `surfaceHigh` tint — matching the app's standard

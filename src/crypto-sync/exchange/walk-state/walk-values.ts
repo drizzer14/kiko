@@ -9,14 +9,28 @@ import { isRecord } from '@kiko/type-guards';
  * record was read under on a point (`series`): the point is read in that series only, and leaves
  * the list only for a record of it. A range with a `series` is owed in that series alone (the
  * ground one series left unread, or skipped at the edge of its depth) and leaves the list once a
- * read of it in that series has committed; a range with none is owed in every series.
+ * read of it in that series has committed; a range with none is owed in every series. A point
+ * also carries `since`, the wall-clock time (epoch ms) of the run that first owed it, which every
+ * later run keeps: the history caption reads it to tell a point that has stayed owed for long from
+ * one that every sync reads again. A point stored without one (by a build before it) is quiet
+ * until a run owes it again and stamps it; a range never carries one. An entry with a `scope` is
+ * owed to that read alone (the backfill of the coins a walk did not read before its first
+ * multi-coin run), and the window that reads it skips the coin the walk already holds for that
+ * ground; an entry with none is owed to a read of every coin. A point found in a window of a scope
+ * carries it.
  */
 export type BinancePendingRange = {
   start: number;
   end: number;
   kind?: 'point';
   series?: string;
+  since?: number;
+  scope?: BinancePendingScope;
 };
+
+const pendingScopes = ['backfill'] as const;
+
+type BinancePendingScope = (typeof pendingScopes)[number];
 
 /**
  * What a run keeps of a POINT window it left after some spans of it committed (the other passes
@@ -25,13 +39,15 @@ export type BinancePendingRange = {
  * committed spans returned, trusted or not, and `stuck` the ground the records among them that
  * could not be trusted owe. Both are folded into the read of the window that finishes it in a
  * later run, so the window takes its point off the list once, as one read of it would have.
- * `series` is the series the window was read in: a window of other series does not take it.
+ * `series` is the series the window was read in: a window of other series does not take it. `scope`
+ * is the scope the window was read in, and a window of another scope does not take it either.
  */
 export type BinanceSpanResume = {
   from: number;
   returned: BinancePendingRange[];
   stuck: BinancePendingRange[];
   series?: string[];
+  scope?: BinancePendingScope;
 };
 
 /**
@@ -62,12 +78,25 @@ export const finiteNumberOrNull = (stored: unknown): number | null =>
 const isSeries = (value: unknown): value is string =>
   typeof value === 'string' && value.trim() !== '';
 
+const isScope = (value: unknown): value is BinancePendingScope =>
+  pendingScopes.some((scope) => scope === value);
+
+const isSince = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0;
+
+/**
+ * The time a point was first owed, when the stored one is a time. A `since` that is not one is
+ * read as none, and never as a malformed list: it only decides what the caption shows, so a bad
+ * one must not have the walk repair (and re-read) every owed range.
+ */
+const sinceOf = (since: unknown): { since?: number } => (isSince(since) ? { since } : {});
+
 const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const { start, end, kind, series } = value;
+  const { start, end, kind, series, scope, since } = value;
 
   if (!isNumber(start) || !isNumber(end) || start >= end) {
     return undefined;
@@ -77,15 +106,22 @@ const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
     return undefined;
   }
 
-  if (series === undefined) {
-    return kind === undefined ? { start, end } : { start, end, kind };
-  }
-
-  if (!isSeries(series)) {
+  if (series !== undefined && !isSeries(series)) {
     return undefined;
   }
 
-  return kind === undefined ? { start, end, series } : { start, end, kind, series };
+  if (scope !== undefined && !isScope(scope)) {
+    return undefined;
+  }
+
+  return {
+    start,
+    end,
+    ...foldMap(maybe(kind), () => ({ kind: 'point' as const })),
+    ...foldMap(maybe(series), (name) => ({ series: name })),
+    ...foldMap(maybe(kind), () => sinceOf(since)),
+    ...foldMap(maybe(scope), (name) => ({ scope: name })),
+  };
 };
 
 const asPendingRanges = (value: unknown): BinancePendingRange[] | undefined => {
@@ -141,7 +177,7 @@ const asSpanResume = (value: unknown, span: BinanceSpanHint): BinanceSpanResume 
     return undefined;
   }
 
-  const { from, returned, stuck, series } = value;
+  const { from, returned, stuck, series, scope } = value;
   const returnedRanges = asPendingRanges(returned);
   const stuckRanges = asPendingRanges(stuck);
 
@@ -150,18 +186,24 @@ const asSpanResume = (value: unknown, span: BinanceSpanHint): BinanceSpanResume 
     from < span.start ||
     from >= span.end ||
     returnedRanges === undefined ||
-    stuckRanges === undefined
+    stuckRanges === undefined ||
+    (scope !== undefined && !isScope(scope))
   ) {
     return undefined;
   }
 
+  const kept = {
+    from,
+    returned: returnedRanges,
+    stuck: stuckRanges,
+    ...foldMap(maybe(scope), (name) => ({ scope: name })),
+  };
+
   if (series === undefined) {
-    return { from, returned: returnedRanges, stuck: stuckRanges };
+    return kept;
   }
 
-  return isSeriesList(series)
-    ? { from, returned: returnedRanges, stuck: stuckRanges, series }
-    : undefined;
+  return isSeriesList(series) ? { ...kept, series } : undefined;
 };
 
 /**

@@ -6,21 +6,23 @@ import type { HoldingRow } from '@kiko/db';
 import {
   type ExchangeStatePatch,
   exchangeStatePatched,
+  type WalkMarkPatch,
 } from '@kiko/crypto-sync/exchange/walk-state';
 import type { DatabaseSync } from 'node:sqlite';
 import type { ExchangeStateDeps } from '@kiko/crypto-sync/exchange/walk';
 
-export type WalkName = 'capital' | 'pay' | 'transfer' | 'earn' | 'convert';
+export type WalkName =
+  | 'capital'
+  | 'pay'
+  | 'transfer'
+  | 'earn'
+  | 'convert'
+  | 'p2p'
+  | 'fiatOrders'
+  | 'fiatPayments';
 
-export type WalkField =
-  | 'cursor'
-  | 'rescan'
-  | 'pending'
-  | 'pointCursor'
-  | 'rangeCursor'
-  | 'spanHints'
-  | 'multiCoinSince'
-  | 'multiCoinSeen';
+/** Every mark a walk writes, read from the patch type so a new mark cannot be left out. */
+export type WalkField = WalkMarkPatch['field'];
 
 /** Any value, because a test also seeds a malformed mark to prove the walk reads it as none. */
 export type WalkMarkSeed = Partial<Record<WalkField, unknown>>;
@@ -42,15 +44,36 @@ const SPOT_ASSET = 'BTC';
 /** The marks a walk writes as one number: a cursor, a re-scan mark or a round-robin's cursor. */
 export const NUMBER_MARK_FIELDS = ['cursor', 'rescan', 'pointCursor', 'rangeCursor'] as const;
 
-const FIELDS: readonly WalkField[] = [
-  ...NUMBER_MARK_FIELDS,
-  'pending',
-  'spanHints',
-  'multiCoinSince',
-  'multiCoinSeen',
-];
+// A Record, so a mark added to the walk's marks and left out here fails the typecheck.
+const LISTED_FIELDS: Record<WalkField, true> = {
+  cursor: true,
+  rescan: true,
+  pointCursor: true,
+  rangeCursor: true,
+  backfillCursor: true,
+  backfillTurn: true,
+  pending: true,
+  spanHints: true,
+  behindRun: true,
+  rescanTurn: true,
+  rescanStuck: true,
+  multiCoinSince: true,
+  multiCoinSeen: true,
+  readFailedAt: true,
+};
 
-export const WALK_NAMES: readonly WalkName[] = ['capital', 'pay', 'transfer', 'earn', 'convert'];
+const FIELDS = Object.keys(LISTED_FIELDS) as WalkField[];
+
+export const WALK_NAMES: readonly WalkName[] = [
+  'capital',
+  'pay',
+  'transfer',
+  'earn',
+  'convert',
+  'p2p',
+  'fiatOrders',
+  'fiatPayments',
+];
 
 const isNumberField = (field: WalkField): boolean =>
   NUMBER_MARK_FIELDS.some((numberField) => numberField === field);

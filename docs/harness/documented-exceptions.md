@@ -185,7 +185,7 @@ verified usage, not dead weight:
   into a guarded tree (`WRITE_GUARDED_TREES` in the file), or a YAML
   file, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
-  `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
+  `.claude/skills/kiko-linter/wrapper-contract.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
   any TypeScript/JavaScript source, and never a package.json script Knip's
   static scan can see (unlike `scripts/ensure-env.js`, which IS a
@@ -209,7 +209,7 @@ verified usage, not dead weight:
   (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to
   rebuild an Edit/Write/MultiEdit's proposed file content and deny the
   write when it introduces a known violation (see `docs/harness/checks.md` "Automatic
-  wiring" and `.claude/skills/kiko-linter/SKILL.md`), the same reason as
+  wiring" and `.claude/skills/kiko-linter/wrapper-contract.md`), the same reason as
   `kill-guard.js` above. It is reached only from a sibling `.sh` wrapper's
   `node` invocation — never a static `import`/`require` from any
   TypeScript/JavaScript source, and never a package.json script Knip's
@@ -725,7 +725,7 @@ verified usage, not dead weight:
   longer carries a `SHOW_UNREADY_BANKS`-style flag — that release-readiness
   visibility gate was removed outright, not merely defaulted off. The "add
   a bank" sheet's `visibleCatalogEntries`
-  (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`)
+  (`src/screens/account-detail/bank-sync-section/visible-catalog-entries/visible-catalog-entries.ts`)
   now takes no flag argument: it shows every wired-registry provider in the
   catalog unconditionally, so there is nothing left for a test-env value to
   gate. See the `kiko-architecture` skill's "Guideline 2.5.19 — no hidden
@@ -908,7 +908,7 @@ verified usage, not dead weight:
     `drizzle/` and `src/` text for the literal `crypto-from-`; Stryker
     keeps the original string beside its mutant.
   - `e2e/screenshot/fixtures/generate-demo-kiko.test.ts`: reads its
-    `.kiko` fixtures by a `fileName` from the `LANGUAGES` table, which
+    `.kiko` fixtures by a `fileName` from the `DEMO_FILES` table, which
     the rule cannot resolve through the loop.
 
   The nested fixture pair proves the rule in `check:rules`;

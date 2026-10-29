@@ -222,7 +222,7 @@ const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta
 
 // The loan CREATE payload: a zero stored balance (ledgerless — its
 // value derives entirely from the schedule math / its own manual series,
-// kiko-domain) plus the `LoanMeta` above. A `'none'` schedule (an informal
+// kiko-debts) plus the `LoanMeta` above. A `'none'` schedule (an informal
 // debt) ADDITIONALLY writes a first `manual` price point on the holding's
 // own `holding:<id>` series equal to the principal, dated the start day —
 // mirroring `buildPropertyCreatePayload`'s own first-point convention —
@@ -292,7 +292,7 @@ export const loanEditInvalidatesAutoLinks = (oldMeta: LoanMeta, newMeta: LoanMet
 
 /**
  * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs
- * — the ruling in kiko-domain's "Loan form + detail": (a) a
+ * — the ruling in kiko-debts's "Loan form + detail": (a) a
  * schedule change INTO `'none'` preserves the OLD schedule's current
  * outstanding as a manual point, so the debt never silently reads as 0 the
  * instant the schedule is cleared; (b) a `'none'` loan's principal/start-date

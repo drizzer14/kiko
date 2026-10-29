@@ -254,8 +254,10 @@ dedup always runs in full.
   `check:screen-imports`, `check:feature-imports`,
   `check:blank-line-separation`. The project-wide run does not dedup when
   its test-seam source-root variable is set.
+- `check:comment-line-width`: the project-wide run dedups; the per-file mode (`fast.sh` shell,
+  YAML, githooks, scripts `.js`) never does.
 - Dedups every run (project-wide only, no per-file mode): `check:knip`,
-  `check:deps`, `check:comment-line-width` and
+  `check:deps` and
   `check:component-i18n-namespace` (neither when its test-seam
   source-root variable is set), `check:shipped-migrations`,
   `check:guard-replay`, `check:mutation` (the fingerprint includes its

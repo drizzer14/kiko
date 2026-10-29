@@ -54,11 +54,43 @@ export type WalkMarks = {
   pending?: BinancePendingRange[];
   pointCursor?: number;
   rangeCursor?: number;
+  /**
+   * The end of the window of the backfill the walk's last run started: the backfill's own
+   * round-robin, apart from `rangeCursor`, which the windows owed for every coin move.
+   */
+  backfillCursor?: number;
+  /**
+   * The walk's next pending read of one window goes to the backfill rather than to the windows
+   * owed for every coin (the two take turns while the run's budget fits one window). A disconnect
+   * drops it with the other run marks.
+   */
+  backfillTurn?: boolean;
   spanHints?: BinanceSpanHints;
+  /**
+   * The walk's last run read behind its cursor (the fiat orders walk alternates behind and
+   * forward runs), so its next run reads forward. A disconnect drops it with the other run marks.
+   */
+  behindRun?: boolean;
+  /**
+   * The walk's next behind run reads the window re-scan rather than the owed windows (it alternates
+   * them, and the forward run between two behind runs keeps this). A disconnect drops it too.
+   */
+  rescanTurn?: boolean;
+  /**
+   * The owed ranges the walk's window re-scan failed on and now reads around (the fiat orders walk
+   * isolates a stuck stretch instead of owing, or failing on, the whole window). Each is still in
+   * the list of owed ground, which clears it once a read of it passes. A disconnect drops it too.
+   */
+  rescanStuck?: BinancePendingRange[];
   /** The cursor the walk's first multi-coin run planned from: ground before it holds BTC only. */
   multiCoinSince?: number;
   /** The walk's first multi-coin run committed a window, so it never records a start again. */
   multiCoinSeen?: true;
+  /**
+   * When the walk's last run rejected (the P2P walk only), which the account's caption reads; the
+   * next run that reads and resolves writes `null`. A disconnect drops it with the other marks.
+   */
+  readFailedAt?: number | null;
 };
 
 export type CoinLists = {
@@ -93,6 +125,12 @@ export type ExchangeTrades = {
   /** The last symbol whose round-robin read returned; empty starts at the first symbol. */
   rotation: string;
   balanceSnapshot: Record<string, string>;
+  /**
+   * The candidate symbols the last run that listed the exchange had no cursor for and did not
+   * end as failed, which the history caption reads. Each such run replaces it; a list that is
+   * absent, empty or unreadable reads as none, and a disconnect drops it with the trades.
+   */
+  unreadSymbols?: string[];
 };
 
 /** The JSON stored in `sync_state.exchange_state`. */
@@ -114,8 +152,12 @@ export type ExchangeState = {
  * (the walk logs a fixed code and writes the repair of that one field), where an absent field
  * reads as its empty value. A `pending` list that is defined can still fail its walk's series
  * check (`readPendingMark`, `hasKnownSeries`), which repairs it in the walk, not here. The two
- * multi-coin marks are absent keys when the walk has none, and a malformed one is never repaired:
- * it reads as the fail-safe value (`multiCoinSinceOf`; a seen mark that is not `true` is absent).
+ * multi-coin marks are absent keys when the walk has none. A malformed start reads as the fail-safe
+ * value (`multiCoinSinceOf`) and the walk repairs it by converting it once into the range it owes
+ * to the backfill (`backfillGroundOf`), which stores the floor in its place; a seen mark that is
+ * not `true` is absent. A backfill cursor that is no finite number only orders the reads of the
+ * backfill, so it is absent too, and so is a backfill turn that is not `true`: it only orders the
+ * reads of the two groups of owed windows.
  */
 export type ParsedWalkMarks = {
   cursor: number | null;
@@ -123,9 +165,15 @@ export type ParsedWalkMarks = {
   pending: BinancePendingRange[] | undefined;
   pointCursor: number | null | undefined;
   rangeCursor: number | null | undefined;
+  backfillCursor?: number;
+  backfillTurn?: true;
   spanHints: BinanceSpanHints | undefined;
+  behindRun?: true;
+  rescanTurn?: true;
+  rescanStuck?: BinancePendingRange[];
   multiCoinSince?: number;
   multiCoinSeen?: true;
+  readFailedAt?: number;
 };
 
 /**
@@ -171,9 +219,14 @@ const stringListOrUndefined = (value: unknown): string[] | undefined =>
 const listOrUndefined = (value: unknown): unknown[] | undefined =>
   Array.isArray(value) ? value : undefined;
 
+/** A time is a non-negative whole number; any other stored value reads as absent, unrepaired. */
+const timeOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+
 /**
  * A stored range start that is no finite number reads as the entry's cursor, and as none when that
  * is null: the later start owes a range rather than none, so a malformed one never skips ground.
+ * The backfill converts it once (`backfillGroundOf`), so it does not grow the range on every run.
  */
 const multiCoinSinceOf = (entry: Metadata, cursor: number | null): number | undefined => {
   if (!('multiCoinSince' in entry)) {
@@ -186,6 +239,7 @@ const multiCoinSinceOf = (entry: Metadata, cursor: number | null): number | unde
 /** Each field parses with the one rule that decides what is readable and what a walk repairs. */
 const marksOf = (entry: Metadata): ParsedWalkMarks => {
   const cursor = finiteNumberOrNull(entry.cursor);
+  const stuck = binanceWalkPendingValueOf(entry.rescanStuck) ?? [];
 
   return {
     cursor,
@@ -193,9 +247,17 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     pending: binanceWalkPendingValueOf(entry.pending),
     pointCursor: binanceWalkRoundRobinValueOf(entry.pointCursor),
     rangeCursor: binanceWalkRoundRobinValueOf(entry.rangeCursor),
+    ...foldMap(maybe(numberOrUndefined(entry.backfillCursor)), (backfillCursor) => ({
+      backfillCursor,
+    })),
+    ...(entry.backfillTurn === true ? { backfillTurn: true as const } : {}),
     spanHints: binanceWalkSpanHintsValueOf(entry.spanHints),
+    ...(entry.behindRun === true ? { behindRun: true as const } : {}),
+    ...(entry.rescanTurn === true ? { rescanTurn: true as const } : {}),
+    ...(stuck.length > 0 ? { rescanStuck: stuck } : {}),
     ...foldMap(maybe(multiCoinSinceOf(entry, cursor)), (multiCoinSince) => ({ multiCoinSince })),
     ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
+    ...foldMap(maybe(timeOrUndefined(entry.readFailedAt)), (readFailedAt) => ({ readFailedAt })),
   };
 };
 
@@ -311,17 +373,26 @@ const tradesOf = (stored: unknown): ReadEntry<ExchangeTrades> => {
     textOrUndefined,
   );
 
+  const unreadSymbols = entryOf(
+    'trades.unreadSymbols',
+    container.value.unreadSymbols,
+    stringListOrUndefined,
+    emptyList,
+  );
+
   return {
     value: {
       symbols: symbols.value,
       rotation: rotation.value,
       balanceSnapshot: balanceSnapshot.value,
+      ...(unreadSymbols.value.length > 0 ? { unreadSymbols: unreadSymbols.value } : {}),
     },
     unreadable: [
       ...container.unreadable,
       ...symbols.unreadable,
       ...rotation.unreadable,
       ...balanceSnapshot.unreadable,
+      ...unreadSymbols.unreadable,
     ],
   };
 };

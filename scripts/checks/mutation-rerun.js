@@ -16,7 +16,7 @@
 // hold. A rerun that silently dropped nothing would reuse the Timeout results and prove nothing,
 // so a candidate it cannot find is a failure, never a skip.
 //
-// Dependency-free on purpose (see kiko-linter's "Node checkers dependency-free").
+// Dependency-free on purpose (see kiko-linter's "Node checkers").
 
 const fs = require('node:fs');
 

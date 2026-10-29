@@ -8,6 +8,8 @@ jest.mock('@kiko/crypto-sync/run-crypto-sync', () => ({
   runCryptoSync: (...args: unknown[]) => mockRunCryptoSync(...args),
 }));
 
+import { exchangeCatalog } from '@kiko/crypto-sync/exchange-catalog';
+
 import { type SyncableAccount, syncJobsFor } from './sync-jobs';
 
 const syncable = (overrides: Partial<SyncableAccount>): SyncableAccount => ({
@@ -55,6 +57,15 @@ describe('syncJobsFor', () => {
       targetAccountId: 'bin-1',
     });
   });
+
+  it.each(exchangeCatalog.filter((entry) => entry.connectable))(
+    'contributes no job for an unconnected account of any connectable exchange catalog entry ($id)',
+    ({ id }) => {
+      const account = { ...syncable({ id: 'c', name: 'Crypto', institution: null }), bankId: id };
+
+      expect(syncJobsFor(account)).toEqual([]);
+    },
+  );
 
   it('contributes no job for a manual account', () => {
     expect(syncJobsFor(syncable({ id: 'm', name: 'Cash', institution: null }))).toEqual([]);

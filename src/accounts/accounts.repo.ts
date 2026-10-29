@@ -169,9 +169,9 @@ const isAccountStored = async (
 type NewCashAccount = {
   name: string;
   currency: Currency;
-  // Converted to minor units, and currency-checked against `currency`, inside
-  // the write itself (kiko-domain "Money at the boundary") — never by the
-  // caller.
+  // Converted to minor units, and currency-checked against `currency`, inside the write
+  // itself (kiko-domain "Any table column holding an amount is an integer minor-units
+  // column") — never by the caller.
   initialBalance: Money;
   // Optional SF Symbol icon, persisted on the account row in the same
   // transaction so a cash account created with a picked icon keeps it (the

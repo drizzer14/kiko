@@ -1,4 +1,5 @@
 import { act, fireEvent, type render } from '@testing-library/react-native';
+import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 
 // Opens the AccountKindField sheet and picks the given kind — every kind
 // switch goes through this trigger-press -> option-press pair, matching
@@ -12,6 +13,16 @@ export const selectKind = async (
   await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
   // The sheet's close animation ending, which is when a swap may navigate.
   await act(async () => sheet.props.onDismiss());
+};
+
+// Opens the crypto create form's "Exchange or wallet" sheet and picks an entry: the pick that
+// mounts that entry's Connect field.
+export const selectExchange = async (
+  getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
+  exchange: ExchangeCatalogId,
+): Promise<void> => {
+  await fireEvent.press(getByTestId('account-exchange-type-field'));
+  await fireEvent.press(getByTestId(`exchange-type-option-${exchange}`));
 };
 
 // A mocked sync hook module for an account form test that never runs a sync: the hook reports

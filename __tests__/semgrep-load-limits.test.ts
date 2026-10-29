@@ -78,13 +78,15 @@ const jestListing = (jestArguments: string[]): string[] => {
 };
 
 // Runs the real verify.sh with `npm` and `npx` stubbed to record each jest call's arguments.
-const jestCallsOfVerify = (): string[][] => {
+const runVerifyWithStubs = (): { calls: string[][]; sweeps: string[] } => {
   const stubs = createTemporaryDirectory('kiko-verify-stubs-');
   const log = join(stubs, 'jest-calls.log');
+  const sweepLog = join(stubs, 'jest-sweeps.log');
   const record = [
     '#!/usr/bin/env bash',
     'if [ "$1" = jest ]; then',
     `  shift; printf '%s${ARGUMENT_SEPARATOR}' "$@" >> "${log}"; printf '\\n' >> "${log}"`,
+    `  printf '%s\\n' "$KIKO_PROPERTY_SWEEP" >> "${sweepLog}"`,
     'fi',
     'exit 0',
     '',
@@ -95,17 +97,23 @@ const jestCallsOfVerify = (): string[][] => {
     chmodSync(join(stubs, name), 0o755);
   }
   writeFileSync(log, '');
+  writeFileSync(sweepLog, '');
   spawnSync('bash', [VERIFY_SCRIPT], {
     cwd: ROOT,
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${stubs}:${process.env.PATH}` },
+    env: { ...process.env, KIKO_PROPERTY_SWEEP: undefined, PATH: `${stubs}:${process.env.PATH}` },
   });
 
-  return readTextFile(log)
-    .split('\n')
-    .filter((line) => line !== '')
-    .map((line) => line.split(ARGUMENT_SEPARATOR).filter((argument) => argument !== ''));
+  return {
+    calls: readTextFile(log)
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => line.split(ARGUMENT_SEPARATOR).filter((argument) => argument !== '')),
+    sweeps: readTextFile(sweepLog).split('\n').slice(0, -1),
+  };
 };
+
+const jestCallsOfVerify = (): string[][] => runVerifyWithStubs().calls;
 
 describe('scripts/checks/security.sh Semgrep jobs', () => {
   it('caps Semgrep at 6 jobs through a named constant', () => {
@@ -137,6 +145,10 @@ describe('scripts/checks/verify.sh stage 2', () => {
     expect(rest).toEqual([]);
     expect(first).toBeDefined();
     expect(second).toEqual(expect.arrayContaining(['--runInBand', ...listedSuites()]));
+  });
+
+  it('sets KIKO_PROPERTY_SWEEP=full for both jest stages', () => {
+    expect(runVerifyWithStubs().sweeps).toEqual(['full', 'full']);
   });
 
   it('covers every suite exactly once: 2a is all but the list, 2b is the list', () => {

@@ -53,6 +53,7 @@ import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
+import { useExchangeFundingCaption } from '@kiko/statistics/exchange-funding-match';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { isExchangeCreateDestinationType } from '@kiko/holdings/exchange-destination';
 import ModeSelectField, { type FormMode } from '@kiko/screens/forms/mode-select-field';
@@ -446,6 +447,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // task adds inside the already-budgeted `resolveLoanLinkState` helper
   // instead of this component's own cognitive-complexity count.
   const loanLinkState = resolveLoanLinkState(existing);
+  // The caption under the category that says why a bank debit that paid for an exchange purchase
+  // is left out of spending; read from the stored row, not the draft, like the statistics screen.
+  const exchangeFundingCaptionKey = useExchangeFundingCaption(existing);
   // The loan-payment picker's own eligible options, scoped to the payment's
   // holding currency (see `buildLoanOptions`'s own doc comment). Read here,
   // ahead of the field's `converting`-gated visibility below, alongside every
@@ -1572,6 +1576,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               {...loanLinkState}
               onSelectLoanPayment={selectLoanPayment}
               onUndoLoanLink={undoLoanLink}
+              exchangeFundingCaptionKey={exchangeFundingCaptionKey}
             />
 
             {/* After description AND category — the top of the form (above

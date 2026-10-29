@@ -15,10 +15,13 @@ import {
   syncBinanceDustHistory,
   syncBinanceEarnHistory,
   syncBinancePayHistory,
+  syncBinanceP2pHistory,
   syncBinanceTransactions,
   syncBinanceConvertHistory,
   syncBinanceTradeHistory,
+  syncBinanceFiatOrderHistory,
   syncBinanceTransferHistory,
+  syncBinanceFiatPaymentHistory,
 } from '../binance';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
@@ -53,6 +56,12 @@ const runBinanceHistoryWalks = async (
     return;
   }
 
+  // First, each walk in its own failure log: P2P's whole share of the minute is its own lane cap,
+  // so running it before every other walk keeps that share from being spent first, and a P2P page
+  // that cannot be read rejects its walk on every run while the walks after it still run.
+  await logOnFailure('[binance sync] p2p history failed', () =>
+    syncBinanceP2pHistory({ targetAccountId, run }),
+  );
   await logOnFailure('[binance sync] capital history failed', () =>
     syncBinanceTransactions({ targetAccountId, run }),
   );
@@ -73,6 +82,12 @@ const runBinanceHistoryWalks = async (
   );
   await logOnFailure('[binance sync] dust history failed', () =>
     syncBinanceDustHistory({ targetAccountId, run }),
+  );
+  await logOnFailure('[binance sync] fiat order history failed', () =>
+    syncBinanceFiatOrderHistory({ targetAccountId, run }),
+  );
+  await logOnFailure('[binance sync] fiat payment history failed', () =>
+    syncBinanceFiatPaymentHistory({ targetAccountId, run }),
   );
   // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too, and
   // with the Spot texts of this run's balance read, which decide the order it reads symbols in.

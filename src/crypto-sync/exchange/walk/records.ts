@@ -28,7 +28,9 @@ import type { ExchangeStateDeps } from './exchange-state-deps';
  * `oversized` names the coins of the records that stopped too large, and `untracked` the tickers of
  * the records counted but imported as no row (a coin the walk does not track); each is left out
  * when there is none. `notImported` holds the entries of the records a rule refused for good (see
- * `notImportedEntry`), also left out when there is none.
+ * `notImportedEntry`), also left out when there is none. `removed` holds the keys of the rows a
+ * record that was read as settled before has since turned into a refund, so the commit deletes
+ * them (see `commitSettledSpan`); it is left out when there is none.
  */
 export type SettledSpan<Row> = {
   rows: Row[];
@@ -38,6 +40,7 @@ export type SettledSpan<Row> = {
   oversized?: string[];
   untracked?: string[];
   notImported?: string[];
+  removed?: string[];
 };
 
 /**
@@ -100,7 +103,9 @@ export const instantAt = (time: number | undefined): WalkWindow | undefined =>
  * `start <= end`) and one more on each side, whatever the span it was read in. A request needs
  * `start < end`, and Binance may leave either end of a range out; with the extra millisecond on
  * both sides a request for the point returns the record under any of them, and a record on the
- * boundary of two spans owes one point. A record with no time, one whose extent is not finite,
+ * boundary of two spans owes one point. The ends are whole milliseconds, rounded outward: a
+ * request sends them as text, and a fraction would go out as a time the API does not define. A
+ * record with no time, one whose extent is not finite,
  * or one outside `reach` (the span, unless the read returns records beyond it) says nothing of
  * where in the span it is: it has no point.
  */
@@ -115,7 +120,7 @@ const pointOf = (reach: WalkWindow, extent: WalkWindow | undefined): WalkWindow 
     return undefined;
   }
 
-  return { start: extent.start - 1, end: extent.end + 1 };
+  return { start: Math.floor(extent.start) - 1, end: Math.ceil(extent.end) + 1 };
 };
 
 /** The point of a record with `series` (none, for a walk that reads one series). */
@@ -172,6 +177,7 @@ export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> =>
   const oversized = [...new Set(parts.flatMap((part) => part.oversized ?? []))];
   const untracked = [...new Set(parts.flatMap((part) => part.untracked ?? []))];
   const notImported = [...new Set(parts.flatMap((part) => part.notImported ?? []))];
+  const removed = [...new Set(parts.flatMap((part) => part.removed ?? []))];
 
   return {
     rows: parts.flatMap((part) => part.rows),
@@ -181,6 +187,7 @@ export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> =>
     ...(oversized.length > 0 ? { oversized } : {}),
     ...(untracked.length > 0 ? { untracked } : {}),
     ...(notImported.length > 0 ? { notImported } : {}),
+    ...(removed.length > 0 ? { removed } : {}),
   };
 };
 
@@ -315,7 +322,11 @@ const isOwedPast = (ground: OwedGround): boolean => isPoint(ground) || ground.se
  * record with no time owes the whole span, and so does a stop that is no one record's) leaves the
  * span uncommitted, as does any other code beside it. The tickers the span counted but imported as
  * no row (`untracked`) are written once its rows are, and then the not-imported entries
- * (`notImported`, through `writeNotImported`), still before the marks move.
+ * (`notImported`, through `writeNotImported`), still before the marks move. The rows of the
+ * records the span read as refunded (`removed`, through `remove`) are deleted right after the
+ * span's rows are written and before its entries and marks: a crash anywhere before the marks move
+ * has the next run read the span again, so a removed row is never left with a cursor past its
+ * refund, and a record whose row went but whose entry did not is listed by that read.
  */
 export const commitSettledSpan = async <Planned, Row>(input: {
   pass: WalkPass;
@@ -327,6 +338,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   writeOversized: (tickers: readonly string[]) => Promise<void>;
   writeUntracked: (tickers: readonly string[]) => Promise<void>;
   writeNotImported: (entries: readonly string[]) => Promise<void>;
+  remove?: (externalIds: readonly string[]) => Promise<number>;
   forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
   const {
@@ -338,6 +350,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
     writeOversized,
     writeUntracked,
     writeNotImported,
+    remove,
     forwardOwes = [],
   } = input;
   const stopsRun = (part: Pick<SettledSpan<unknown>, 'codes' | 'owed'>): boolean =>
@@ -366,6 +379,10 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   }
 
   const imported = ready.rows.length > 0 ? await add(ready.rows) : 0;
+
+  if (ready.removed !== undefined) {
+    await remove?.(ready.removed);
+  }
 
   // Once for the window, after its rows and before its marks: a crash between the two reads the
   // span again, and a ticker that is already listed changes nothing.
