@@ -274,7 +274,7 @@ const StatisticsScreen: FC = () => {
     liveOptions,
   );
 
-  // An empty account set means "all accounts"; any account ids in it narrow all three charts.
+  // An empty account set means "all accounts"; any account ids in it narrow all five charts.
   //
   // The spending pie's own category filter, in the SAME "empty means all" model
   // the account FilterMenu uses: an empty set includes every category; any
@@ -1285,7 +1285,9 @@ const StatisticsScreen: FC = () => {
             triggerIcon="tray"
           />
 
+          {/* A sibling of the account filter, whose key is the bare generation. */}
           <DateRangeField
+            key={`date-range-${sheetGeneration}`}
             dateFrom={dateFrom}
             dateTo={dateTo}
             minDate={new Date(spanStart)}
