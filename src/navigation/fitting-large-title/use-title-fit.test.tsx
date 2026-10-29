@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { Dimensions, Text } from 'react-native';
+import { Dimensions, StyleSheet, Text } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import { PaneWidthContext } from '@kiko/design-system/pane-context';
 
@@ -9,6 +9,13 @@ import { useTitleFit } from './use-title-fit';
 
 // The global manual mock reports "fits"; this file tests the real hook.
 jest.unmock('./use-title-fit');
+
+// The title's line depends on where the tab bar sits: a side bar gives the content a wider margin.
+const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
+jest.mock('@kiko/display-regions', () => ({
+  ...jest.requireActual('@kiko/display-regions'),
+  useTabBarEdge: () => mockUseTabBarEdge(),
+}));
 
 const HIDDEN = { includeHiddenElements: true };
 
@@ -40,6 +47,31 @@ describe('useTitleFit', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    mockUseTabBarEdge.mockReturnValue('none');
+  });
+
+  describe('the line the measurer lays the title out in', () => {
+    const measuredWidthAt = async (tabBarEdge: ReturnType<typeof mockUseTabBarEdge>) => {
+      mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+      jest
+        .spyOn(Dimensions, 'get')
+        .mockReturnValue({ width: 466, height: 678, scale: 3, fontScale: 1 });
+
+      const { getByTestId } = await render(<Probe title="Edit Account" />);
+
+      return StyleSheet.flatten(getByTestId('title-measurer', HIDDEN).props.style).width;
+    };
+
+    it.each(['leading', 'trailing'] as const)(
+      'is the window width minus two 20pt margins under a %s side bar',
+      async (tabBarEdge) => {
+        expect(await measuredWidthAt(tabBarEdge)).toBe(426);
+      },
+    );
+
+    it('is the window width minus two 16pt margins under a bottom bar', async () => {
+      expect(await measuredWidthAt('bottom')).toBe(434);
+    });
   });
 
   it('starts from the estimate: a short title fits on the first render', async () => {

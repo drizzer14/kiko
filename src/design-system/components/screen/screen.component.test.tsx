@@ -511,7 +511,7 @@ describe('Screen', () => {
     });
 
     it.each(['leading', 'trailing'] as const)(
-      'ignores the poisoned tab-bar height on the %s edge and leaves horizontal padding unchanged — the exact measured Duo primary-panel geometry',
+      'ignores the poisoned tab-bar height on the %s edge and keeps the horizontal padding at the side-bar content margin — the exact measured Duo primary-panel geometry',
       async (edge) => {
         mockUseBottomTabBarHeight.mockReturnValue(678);
         mockUseVerticalBarEdge.mockReturnValue(edge);
@@ -527,11 +527,11 @@ describe('Screen', () => {
         expect(footerStyle.paddingBottom).toBe(FOOTER_GAP);
         // The enclosing SafeAreaView already reserves the 84pt right inset
         // itself (`edges` includes 'right' in every branch — see
-        // `screen.component.tsx`), so the footer's OWN horizontal padding stays
-        // exactly the base spacing(4) = 16 step. Adding the inset again here
-        // would double-count it — the 100pt dead gap the real-device
-        // screenshots caught.
-        expect(footerStyle.paddingHorizontal).toBe(16);
+        // `screen.component.tsx`), so the footer's OWN horizontal padding is
+        // the side-bar content margin, spacing(5) = 20, never 20 + 84. Adding
+        // the inset again here would double-count it — the 100pt dead gap the
+        // real-device screenshots caught.
+        expect(footerStyle.paddingHorizontal).toBe(darkTheme.spacing(5));
       },
     );
 
@@ -541,6 +541,67 @@ describe('Screen', () => {
       const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
       expect(footerStyle.paddingHorizontal).toBe(16);
+    });
+  });
+
+  describe('under a side bar', () => {
+    type RenderedScreen = Awaited<ReturnType<typeof renderScreen>>;
+
+    const SIDE_BAR_MARGIN = darkTheme.spacing(5);
+    const BOTTOM_BAR_MARGIN = darkTheme.spacing(4);
+
+    const footerHorizontal = (view: RenderedScreen) =>
+      StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style).paddingHorizontal;
+
+    const scrollContentStyle = (view: RenderedScreen) =>
+      StyleSheet.flatten(view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle);
+
+    const HORIZONTAL_ROWS = [
+      [
+        'the plain content',
+        {},
+        (view: RenderedScreen) =>
+          StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style).paddingHorizontal,
+      ],
+      ['the plain footer', { footer: footerNode }, footerHorizontal],
+      [
+        'the scroll content',
+        { scroll: true },
+        (view: RenderedScreen) => {
+          const style = scrollContentStyle(view);
+
+          return style.paddingHorizontal ?? style.padding;
+        },
+      ],
+      ['the scroll footer', { scroll: true, footer: footerNode }, footerHorizontal],
+      ['the bleedTop footer', { bleedTop: true, footer: footerNode }, footerHorizontal],
+    ] as const;
+
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+    });
+
+    describe.each([
+      ['leading', SIDE_BAR_MARGIN],
+      ['trailing', SIDE_BAR_MARGIN],
+      ['bottom', BOTTOM_BAR_MARGIN],
+    ] as const)('with the tab bar edge %s', (edge, margin) => {
+      it.each(HORIZONTAL_ROWS)(
+        'pads %s horizontally by the content margin',
+        async (_name, props, horizontalPaddingOf) => {
+          mockUseTabBarEdge.mockReturnValue(edge);
+
+          expect(horizontalPaddingOf(await renderScreen(props))).toBe(margin);
+        },
+      );
+
+      it('keeps the top padding of the scroll content at 16', async () => {
+        mockUseTabBarEdge.mockReturnValue(edge);
+
+        const style = scrollContentStyle(await renderScreen({ scroll: true }));
+
+        expect(style.paddingTop ?? style.padding).toBe(darkTheme.spacing(4));
+      });
     });
   });
 

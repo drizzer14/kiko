@@ -210,6 +210,12 @@ jest.mock('@kiko/navigation/pane-stack', () => ({
   useOpenInPane: () => mockOpenInPane,
 }));
 
+const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
+jest.mock('@kiko/display-regions', () => ({
+  ...jest.requireActual('@kiko/display-regions'),
+  useTabBarEdge: () => mockUseTabBarEdge(),
+}));
+
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('@kiko/db/use-live-query', () => ({
@@ -576,6 +582,31 @@ describe('HoldingDetailScreen', () => {
     );
     expect(listContentStyle.paddingHorizontal).toBe(16);
     expect(listContentStyle.paddingTop).toBe(16);
+  });
+
+  describe('the ledger list’s side gutter', () => {
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+    });
+
+    it.each([
+      ['leading', 20],
+      ['trailing', 20],
+      ['bottom', 16],
+    ] as const)(
+      'matches the content margin under the tab bar edge %s',
+      async (tabBarEdge, margin) => {
+        mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+        seed(cashHolding);
+
+        const { getByTestId } = await renderScreen();
+
+        expect(
+          StyleSheet.flatten(getByTestId('ledger-list').props.contentContainerStyle)
+            .paddingHorizontal,
+        ).toBe(margin);
+      },
+    );
   });
 
   it('caps and centres the ledger content in a pane, and leaves the list the whole pane', async () => {

@@ -22,7 +22,7 @@ jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
 }));
 
-const mockTabBarHeight = 64;
+let mockTabBarHeight = 64;
 jest.mock('react-native-bottom-tabs', () => ({
   useBottomTabBarHeight: () => mockTabBarHeight,
 }));
@@ -132,6 +132,7 @@ describe('PaneStackView', () => {
     mockUseFoldRegion.mockReturnValue(null);
     mockUseTabBarEdge.mockReturnValue('none');
     mockUseVerticalBarEdge.mockReturnValue('none');
+    mockTabBarHeight = 64;
     mockWindow.width = 951;
     mockWindow.height = 669;
   });
@@ -331,8 +332,8 @@ describe('PaneStackView', () => {
         await renderInWindow(1376, 1032, 'columns');
 
         expect(mockFixedContentMargin.mock.calls).toEqual([
-          [darkTheme.spacing(4)],
-          [darkTheme.spacing(4)],
+          [darkTheme.spacing(5)],
+          [darkTheme.spacing(5)],
         ]);
       },
     );
@@ -349,8 +350,8 @@ describe('PaneStackView', () => {
         await renderInWindow(width, height, mode);
 
         expect(mockFixedContentMargin.mock.calls).toEqual([
-          [darkTheme.spacing(4)],
-          [darkTheme.spacing(4)],
+          [darkTheme.spacing(5)],
+          [darkTheme.spacing(5)],
         ]);
       },
     );
@@ -360,7 +361,26 @@ describe('PaneStackView', () => {
 
       await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
 
-      expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(4)]]);
+      expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(5)]]);
+    });
+
+    it('is the content’s side padding for the single native stack under a trailing side bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('trailing');
+
+      await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
+
+      expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(5)]]);
+    });
+
+    it('is the content’s side padding for the single native stack when the bar reports its whole window height', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      mockTabBarHeight = 678;
+      mockWindow.width = 466;
+      mockWindow.height = 678;
+
+      await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
+
+      expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(5)]]);
     });
 
     it.each([
