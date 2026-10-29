@@ -295,7 +295,8 @@ Stryker's `fullName`, and the patch applies exactly to the pristine files of
 `patches/react-native-screens+4.27.0.patch` is a `patch-package` patch that `postinstall` applies
 on every `npm ci`. Why, what, and the scope are in `docs/harness/documented-exceptions.md`
 ("patch-package patches"); in short: it makes a pane's native large title keep the content's side
-margin, and only for the stacks `PaneStackView` wraps in `FixedContentMarginContext`: the panes
+margin, and only for the stacks to which `PaneStackView` gives a value above 0 in
+`FixedContentMarginContext` (it wraps every stack, with 0 elsewhere): the panes
 of a two-pane window whose tab bar is not at the bottom, at the top (every regular iPad window,
 small Stage Manager splits included; user ruling 2026-10-21) or at a side (the Surface Duo's
 side-bar poses; user ruling 2026-10-23), and the single stack under a side bar (the Duo outer

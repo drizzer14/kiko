@@ -529,7 +529,7 @@ describe('Screen', () => {
         // itself (`edges` includes 'right' in every branch — see
         // `screen.component.tsx`), so the footer's OWN horizontal padding is
         // the side-bar content margin, spacing(5) = 20, never 20 + 84. Adding
-        // the inset again here would double-count it — the 100pt dead gap the
+        // the inset again here would double-count it — the dead gap the
         // real-device screenshots caught.
         expect(footerStyle.paddingHorizontal).toBe(darkTheme.spacing(5));
       },
