@@ -45,11 +45,18 @@ points (5 and 7) are bugs; they are fixed first (section F).
     the bottom) and every other window keep the 600 pt cap, centred.
 11. **Bug 7 scope (user).** Every LEADING (left) header button in the RIGHT pane is hidden: back
     buttons and the form Cancel button.
+12. **Duo side-bar content margin (user ruling A, 2026-10-29, relayed by the coordinator; FLAG 1).**
+    Verbatim: "A. On the Duo side-bar poses, align the CONTENT to the native title at 20 (JS only,
+    public API); the native look and large-title collapse stay. This changes the approved 16 pt
+    content margin for those poses only." Measured reason: on iOS 27.1 the Duo hosts its large
+    title inside the navigation bar's content view at x 20, and no bar margin or title position
+    input moves it; the iPad Pro (27.0) title follows the bar margin, so the Pro and every iPad
+    window keep 16. Design: `.superpowers/sdd/ipad-phase3/flag1-design.md`.
 
 ## Goals
 
 - The rules above on every iPad window from 320 to 1376 pt; the Duo and iPhone looks unchanged
-  except the card order (decision 9).
+  except the card order (decision 9) and the Duo side-bar content margin (decision 12).
 - No code reads the device idiom (base spec rule). Size class and window size decide.
 
 ## Non-goals
