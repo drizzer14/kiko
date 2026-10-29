@@ -129,7 +129,12 @@ every coin (P2P owes no `'backfill'` scope; the backfill group keeps today's cod
    that END BEFORE `c` (strictly), newest first, then the rest, newest first; `c` null (or
    `BEFORE_EVERY_GROUND`) is all of them newest first. This mirrors `windowsFrom` (today: start at
    or after `c` first, oldest first). Name it `newestWindowsFrom` beside `windowsFrom`.
-`runWalkPlan`, `markPendingRead`, `storeRangeCursor` and the points round-robin are NOT changed.
+`markPendingRead`, `storeRangeCursor` and the points round-robin are NOT changed. `runWalkPlan`
+takes one P2P-only option, `readOnPastUnreadableForward` (R4, orchestrator 2026-10-29; off or
+absent for every other walk, which keeps its behavior byte for byte): a forward window whose page
+cannot be read does not end the run, the owed ground behind it is still read, the cursor stays at
+the head start, and the run rejects at the end with the first error. Was: "`runWalkPlan`,
+`markPendingRead`, `storeRangeCursor` and the points round-robin are NOT changed."
 
 The failing-window rule, stated:
 - A window whose read started (it failed with an unreadable-window error, or split and ran out of
@@ -271,7 +276,9 @@ wiring; every file above green. Check: named-file jest on the list (`npx jest <f
 Persisted in the P2P walk entry of `sync_state.exchange_state`: new `WalkMarks` field
 `readFailedAt?: number | null` (`src/crypto-sync/exchange/walk-state/walk-state.ts`, parsed into
 `ParsedWalkMarks`; a value that is not a non-negative integer reads as absent, no repair write).
-Written by `syncBinanceP2pHistory`: a rejection of `runSync` (any error; a 429 already resolves)
+Written by `syncBinanceP2pHistory`: a rejection of the run AFTER the walk marks were read (R7,
+orchestrator 2026-10-29; any error of that run; a 429 already resolves; a malformed state or a
+failed credentials read rejects with no write; was: a rejection of `runSync`, any error)
 writes `readFailedAt: deps.now()` through `walkMarkWriterOf(deps, accountId, 'p2p')`, then rethrows
 the ORIGINAL error (a failed mark write must not replace it), so `logOnFailure` still logs.
 Cleared (`null`): when `runSync` resolves after it planned and started reading (not the cooldown
@@ -369,7 +376,7 @@ binance-set12/1, /2, /3 (owed-range halving cost, merged cluster worlds), binanc
 - The rest of a window cut by a run's budget waits for the rotation (step 2/4 "Known cost", the
   same as the oldest-first rotation today); a resume-first rule is open question Q4 below.
 
-## Open question Q4 (to the coordinator; the plan proceeds on the recommendation)
+## Open question Q4 (ANSWERED by R3, orchestrator 2026-10-28: option A, the strict mirror of `windowsFrom`)
 
 A P2P owed window that a run's budget cuts part way (dense, splits) ends at the range cursor, so
 under the rotation its rest is read after every older owed window (up to 14 runs in world C).
