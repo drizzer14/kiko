@@ -37,7 +37,10 @@ export type ScreenProps = {
   // its own end). A tonal `Button` (regular
   // size) inside it draws on Liquid Glass on iOS 26+ and on a solid fill below, through
   // `FloatingFooterContext`; any other button is unchanged. Touches outside the buttons reach the
-  // rows. Defaults to `false`, the pinned footer. Only meaningful with a `footer`.
+  // rows. Beside a side tab bar, in a pane that touches the window's bottom, its lowest button
+  // ends level with the bottom of the bar's platter (`SIDE_BAR_PLATTER_INSET`) rather than a
+  // home-indicator inset above the window's bottom. Defaults to `false`, the pinned footer. Only
+  // meaningful with a `footer`.
   floatingFooter?: boolean;
   // Opt out of the plain (non-scroll) branch's own bottom tab-bar clearance
   // because the screen's child is itself the scrollable surface and applies

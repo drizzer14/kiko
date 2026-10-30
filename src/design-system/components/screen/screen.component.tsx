@@ -11,15 +11,16 @@ import {
   useBottomClearance,
   useIsBottomInsetPadded,
 } from './use-bottom-clearance';
-import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
 import { useTopClearance } from './use-top-clearance';
 import { useContentMargin } from './use-content-margin';
+import { SIDE_BAR_PLATTER_INSET, styles } from './screen.styles';
 import { useFloatingFooterHeight } from './use-floating-footer-height';
 import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
 
 type FooterSlotProps = Pick<ScreenProps, 'footer' | 'floatingFooter'> & {
   bottomClearance: number;
+  sideBarInset: number | undefined;
   contentMargin: number;
   capStyle: ReturnType<typeof useContentCap>;
   onFloatingLayout: (event: LayoutChangeEvent) => void;
@@ -34,6 +35,7 @@ const FooterSlot: FC<FooterSlotProps> = ({
   footer,
   floatingFooter = false,
   bottomClearance,
+  sideBarInset,
   contentMargin,
   capStyle,
   onFloatingLayout,
@@ -47,7 +49,7 @@ const FooterSlot: FC<FooterSlotProps> = ({
       testID="screen-footer"
       pointerEvents={floatingFooter ? 'box-none' : undefined}
       onLayout={floatingFooter ? onFloatingLayout : undefined}
-      style={[styles.footer(bottomClearance, contentMargin), capStyle]}
+      style={[styles.footer(bottomClearance, contentMargin, sideBarInset), capStyle]}
     >
       {footer}
     </View>
@@ -119,8 +121,13 @@ const Screen: FC<ScreenProps> = ({
   // by the footer's measured height. The slot holds its own top gap, the buttons, the tab-bar
   // clearance and the gap below, so a content that ends where the slot begins leaves exactly the
   // slot's top padding between the last row and the first button.
-  const footerSlot = useFloatingFooterHeight(bottomClearance);
   const hasFloatingFooter = footer !== undefined && floatingFooter;
+  // Beside a side bar a floating footer ends level with the bottom of the bar's platter, in place
+  // of the gap and the clearance, in a pane that touches the window's bottom. Every other
+  // placement, and the pinned footer, keep their own bottom.
+  const sideBarInset =
+    hasFloatingFooter && isBottomInsetPadded ? SIDE_BAR_PLATTER_INSET : undefined;
+  const footerSlot = useFloatingFooterHeight(bottomClearance, sideBarInset);
   // The scroll view ends at the slot's bottom edge too, except beside a side bar, where it runs
   // to the window's bottom and UIKit adds the home-indicator inset to its content itself (the
   // switch in `bottom-clearance.ts`): the padding is the height less that inset. Under a bottom
@@ -228,6 +235,7 @@ const Screen: FC<ScreenProps> = ({
           footer={footer}
           floatingFooter={floatingFooter}
           bottomClearance={bottomClearance}
+          sideBarInset={sideBarInset}
           contentMargin={contentMargin}
           capStyle={contentCap}
           onFloatingLayout={footerSlot.onLayout}
@@ -265,6 +273,7 @@ const Screen: FC<ScreenProps> = ({
           footer={footer}
           floatingFooter={floatingFooter}
           bottomClearance={bottomClearance}
+          sideBarInset={sideBarInset}
           contentMargin={contentMargin}
           capStyle={contentCap}
           onFloatingLayout={footerSlot.onLayout}
@@ -307,6 +316,7 @@ const Screen: FC<ScreenProps> = ({
         footer={footer}
         floatingFooter={floatingFooter}
         bottomClearance={bottomClearance}
+        sideBarInset={sideBarInset}
         contentMargin={contentMargin}
         capStyle={bleedBottom ? contentCap : undefined}
         onFloatingLayout={footerSlot.onLayout}

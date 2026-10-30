@@ -13,6 +13,12 @@ import { StyleSheet } from 'react-native-unistyles';
 // above it, kept equal to the room above the button.
 export const FOOTER_GAP_STEP = 4;
 
+// Beside a side tab bar the floating footer's lowest button ends this far above the window's
+// bottom, level with the bottom of the side bar's platter. Pixel-measured on the Duo, iOS 27.2
+// (IMG_7263 and IMG_7264, 2026-10-30): the visible platter is 48 x 212 pt, and its bottom gap
+// equals its trailing gap at 24 pt in both side poses. A live read of the platter may replace it.
+export const SIDE_BAR_PLATTER_INSET = 24;
+
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
     flex: 1,
@@ -120,10 +126,13 @@ export const styles = StyleSheet.create((theme) => ({
   // routing through this slot (e.g. Home's SectionList, via `bleedBottom`)
   // should add this same step for a consistent gap. Horizontal padding is the
   // content margin (`useContentMargin`); top padding stays at the base spacing step.
-  footer: (bottomClearance: number, contentMargin: number) => ({
+  //
+  // A floating footer beside a side bar (`sideBarInset` set) ends exactly that far above the
+  // window's bottom instead, in place of the gap and the clearance (the home-indicator inset).
+  footer: (bottomClearance: number, contentMargin: number, sideBarInset: number | undefined) => ({
     paddingTop: theme.spacing(4),
     paddingHorizontal: contentMargin,
-    paddingBottom: theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
+    paddingBottom: sideBarInset ?? theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
   }),
   // A floating footer (`floatingFooter`): the zero-height anchor takes the place of the pinned
   // footer in the flex column, so it ends where the pinned footer would have ended and the

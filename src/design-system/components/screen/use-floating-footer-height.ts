@@ -16,7 +16,10 @@ type FloatingFooterHeight = {
  * with the text size). Until the first measure it is the slot of one regular button, so the common
  * single-button footer paints its first frame at the right padding with no jump.
  */
-export const useFloatingFooterHeight = (bottomClearance: number): FloatingFooterHeight => {
+export const useFloatingFooterHeight = (
+  bottomClearance: number,
+  sideBarInset: number | undefined,
+): FloatingFooterHeight => {
   const { theme } = useUnistyles();
   const [measuredHeight, setMeasuredHeight] = useState<number | undefined>(undefined);
   const onLayout = useCallback(
@@ -24,7 +27,9 @@ export const useFloatingFooterHeight = (bottomClearance: number): FloatingFooter
     [],
   );
   const estimatedHeight =
-    theme.spacing(4) + REGULAR_BUTTON_HEIGHT + theme.spacing(FOOTER_GAP_STEP) + bottomClearance;
+    theme.spacing(4) +
+    REGULAR_BUTTON_HEIGHT +
+    (sideBarInset ?? theme.spacing(FOOTER_GAP_STEP) + bottomClearance);
 
   return { height: measuredHeight ?? estimatedHeight, onLayout };
 };
