@@ -828,6 +828,12 @@ verified usage, not dead weight:
   rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
   the exclusion.
 
+- **`kiko-glass-surface-nav-layer-only` (`rules/semgrep-prewrite.yml`) excludes
+  `src/design-system/components/floating-footer-backdrop/**`.** The floating footer's backdrop is
+  part of the navigation layer: a full-width blur band (a `material` `GlassSurface`) behind the
+  footer buttons, over scrolling content, like the tab bar it sits above. The other allowlist
+  entries are listed in the rule's `paths.exclude`.
+
 - **`kiko-no-math-min-max-spread` (`rules/semgrep-prewrite.yml`) excludes
   `*.test.ts` and `*.test.tsx`.** `transaction-span.test.ts` and
   `min-max.test.ts` assert that `Math.min(...values)` throws a RangeError

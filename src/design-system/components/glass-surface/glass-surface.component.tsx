@@ -184,10 +184,8 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   ...props
 }) => {
   const { theme } = useUnistyles();
-  const sizing = [
-    { borderRadius: theme.radii[radius] },
-    padding !== undefined && { padding: theme.spacing(padding) },
-  ];
+  const borderRadius = radius === 'none' ? 0 : theme.radii[radius];
+  const sizing = [{ borderRadius }, padding !== undefined && { padding: theme.spacing(padding) }];
   // The card edge goes through the Unistyles-managed `bordered` member so it
   // lands on the first paint (see the `bordered` prop docs).
   const edge = bordered ? styles.bordered : false;
@@ -299,7 +297,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
       colorScheme="dark"
       tintColor={tint}
       animated={false}
-      style={[RNStyleSheet.absoluteFill, { borderRadius: theme.radii[radius] }]}
+      style={[RNStyleSheet.absoluteFill, { borderRadius }]}
       testID={testID && `${testID}-base`}
     />
   ) : (

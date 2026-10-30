@@ -4,6 +4,7 @@ import { FieldBlurContext } from '@kiko/design-system/field-blur';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 import { FloatingFooterContext } from '@kiko/design-system/floating-footer';
 
+import FloatingFooterBackdrop from '../floating-footer-backdrop';
 import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 
 import {
@@ -29,7 +30,9 @@ type FooterSlotProps = Pick<ScreenProps, 'footer' | 'floatingFooter'> & {
 // Floating, it is an overlay: a zero-height anchor sits in the flex column after the surface,
 // inside the SafeAreaView's padding (the safe-area insets and the side bar), and the overlay
 // grows upward from the anchor's bottom edge. `box-none` leaves every touch outside the buttons
-// to the rows beneath. The overlay's measured height is what the content pads its end by.
+// to the rows beneath. The overlay's measured height is what the content pads its end by. A blur
+// backdrop fills the overlay behind the slot, so it covers the slot's top gap and the clearance
+// under the buttons but takes no height of its own.
 const FooterSlot: FC<FooterSlotProps> = ({
   footer,
   floatingFooter = false,
@@ -60,6 +63,8 @@ const FooterSlot: FC<FooterSlotProps> = ({
   return (
     <View pointerEvents="box-none" style={styles.floatingFooterAnchor}>
       <View pointerEvents="box-none" style={styles.floatingFooter}>
+        <FloatingFooterBackdrop />
+
         <FloatingFooterContext.Provider value={true}>{slot}</FloatingFooterContext.Provider>
       </View>
     </View>

@@ -5,7 +5,6 @@ import { useIsInFloatingFooter } from '@kiko/design-system/floating-footer';
 import { ActivityIndicator, Pressable, Text as RNText, View } from 'react-native';
 
 import SymbolIcon from '../symbol';
-import FloatingTonalBacking from '../floating-tonal-backing';
 
 import { styles } from './button.styles';
 import type { ButtonProps } from './button.props';
@@ -70,17 +69,6 @@ const Button: FC<ButtonProps> = ({
     .with('small', () => styles.small)
     .exhaustive();
 
-  // A tonal fill is translucent, so in a footer that floats over scrolling rows it takes a
-  // backing (glass or solid) instead. The backing keeps the regular size's corners, not the
-  // footer capsule's, until it is removed.
-  const floatingTonalVariant = match({ variant, size, isInFloatingFooter })
-    .with(
-      { variant: 'secondaryTonal', size: 'regular', isInFloatingFooter: true },
-      { variant: 'destructiveTonal', size: 'regular', isInFloatingFooter: true },
-      ({ variant: tonalVariant }) => tonalVariant,
-    )
-    .otherwise(() => undefined);
-
   const content = (
     <>
       {icon !== undefined && (
@@ -113,14 +101,9 @@ const Button: FC<ButtonProps> = ({
         sizeStyle,
         isInFloatingFooter && styles.capsule,
         fullWidth && styles.fullWidth,
-        floatingTonalVariant !== undefined && styles.unfilled,
         disabled && styles.disabled,
       ]}
     >
-      {floatingTonalVariant !== undefined && (
-        <FloatingTonalBacking variant={floatingTonalVariant} />
-      )}
-
       {loading ? <View style={styles.hiddenContent}>{content}</View> : content}
 
       {loading && (

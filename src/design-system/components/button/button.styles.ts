@@ -79,11 +79,6 @@ export const styles = StyleSheet.create((theme) => ({
   fullWidth: {
     width: '100%',
   },
-  // Applied on top of `button` for a tonal variant that draws its own fill layers (the floating
-  // footer's `FloatingTonalBacking`), so the variant's translucent tint is not painted twice.
-  unfilled: {
-    backgroundColor: 'transparent',
-  },
   // Applied on top of `button` when `disabled` — `Pressable`'s own
   // `disabled` prop makes it non-interactive, this makes that state visible.
   // Dims to the shared token so every disabled control reads identically.

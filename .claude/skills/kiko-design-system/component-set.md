@@ -34,7 +34,10 @@ new component can land between reviews of this skill:
   passes `onFieldBlur` to Screen and no blur handler to each field;
   safe-area handling per mode (`scroll` drops the top safe-area edge
   under a large-title header), and a footer slot that clears the
-  native glass tab bar's measured height. A `bleedBottom` child that
+  native glass tab bar's measured height. A `floatingFooter` Screen lays its footer over the
+  rows as an overlay; behind the buttons it draws `FloatingFooterBackdrop` (a full-width blur
+  band over the whole slot, with a short top fade of `spacing(4)`), its buttons are capsules,
+  and its tonal buttons keep their normal tonal fill. A `bleedBottom` child that
   owns the screen's true bottom edge itself (e.g. a scrollable list)
   must take that same clearance from `useBottomClearance()`
   (`src/design-system/components/screen/use-bottom-clearance.ts`, built
@@ -304,7 +307,9 @@ new component can land between reviews of this skill:
   its header comment (`card.component.tsx`) for the HIG rationale
   (Liquid Glass is reserved for the NAVIGATION layer, not content).
 - **GlassSurface** — the shared NAV-LAYER surface only: the tab bar,
-  bottom sheets, the FAB (its edge: see "FAB edge" in SKILL.md), and
+  bottom sheets, the FAB (its edge: see "FAB edge" in SKILL.md), the
+  floating Screen footer's blur backdrop (`FloatingFooterBackdrop`: a `material`
+  surface with `radius="none"`, the one square `GlassSurface`), and
   the keyboard-done accessory (grep
   `<GlassSurface` for the current consumer list; content cards use
   `Card` above instead). Real Liquid Glass on iOS 26+, a themed flat
