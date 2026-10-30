@@ -45,7 +45,6 @@ import Screen, {
 } from '@kiko/design-system/components/screen';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { FlatList, Pressable } from 'react-native';
 import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
@@ -77,11 +76,13 @@ import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
+import { FlatList, type FlatListProps, Pressable } from 'react-native';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import ExpandToggle from '@kiko/design-system/components/expand-toggle';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
+import { useFloatingFooterEnd } from '@kiko/design-system/floating-footer';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
@@ -772,6 +773,22 @@ const holdingDetailFooterAction = (
     .exhaustive();
 };
 
+type LedgerListProps = Omit<FlatListProps<LedgerListItem>, 'contentContainerStyle'> & {
+  contentContainerStyle: (
+    floatingFooterEnd: number | undefined,
+  ) => FlatListProps<LedgerListItem>['contentContainerStyle'];
+};
+
+// The ledger FlatList, a descendant of `Screen` only so it can read the floating footer's end
+// padding, which the screen component itself, being `Screen`'s parent, cannot.
+const LedgerList: FC<LedgerListProps> = ({ contentContainerStyle, ...listProps }) => {
+  const floatingFooterEnd = useFloatingFooterEnd();
+
+  return (
+    <FlatList {...listProps} contentContainerStyle={contentContainerStyle(floatingFooterEnd)} />
+  );
+};
+
 type LedgerReadyView = {
   data: LedgerListItem[];
   headerComponent: ReactElement;
@@ -1037,9 +1054,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // The ledger FlatList is a direct child of `Screen`'s SafeAreaView under
   // `bleedTop` (no `content` wrapper — that is what lets iOS track it for the
   // large-title collapse), so this screen owns the FlatList's bottom padding
-  // itself, the `bleedBottom` contract. When there IS a footer, the Screen
-  // footer slot owns the floating tab-bar clearance and the list needs only a
-  // plain gap above it; with NO footer (a bond or synced holding), the list is
+  // itself, the `bleedBottom` contract. When there IS a footer, it floats over the list, so
+  // the list pads its end by the footer's height (`LedgerList`); with NO footer (a bond or
+  // synced holding), the list is
   // the screen's true bottom edge and must clear the tab bar itself via the ONE
   // shared hook for an `automatic` scroll view, which leaves the bottom inset to the SafeAreaView
   // (or, beside a side bar, to UIKit or to the clearance: `resolveAutomaticScrollClearance`) and
@@ -1238,6 +1255,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       // Because there is no wrapper, the FlatList owns its own horizontal and
       // bottom padding (see `styles.listContent` / `listBottomClearance`).
       bleedTop
+      floatingFooter
       // A large, full-width primary action, shown for the holdings that take
       // one — see `holdingDetailFooterAction`'s own doc comment for the
       // per-type mapping and the `!isReady` gate.
@@ -1267,7 +1285,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           warn about a nested VirtualizedList. The `spacing(2)` row gap matches
           the rhythm a `<Box gap={2}>` would give — it lands between the header
           and the first row and between rows alike. */}
-      <FlatList
+      <LedgerList
         testID="ledger-list"
         // Kept mounted while `!isReady` (never unmounted for a separate
         // loading branch) so `bleedTop` + `contentInsetAdjustmentBehavior`
@@ -1309,7 +1327,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         contentInsetAdjustmentBehavior="automatic"
         {...scrollIndicatorProps}
         style={styles.list}
-        contentContainerStyle={[styles.listContent(listBottomClearance, contentMargin), contentCap]}
+        contentContainerStyle={(floatingFooterEnd) => [
+          styles.listContent(listBottomClearance, contentMargin, floatingFooterEnd),
+          contentCap,
+        ]}
       />
     </Screen>
   );
@@ -1332,16 +1353,21 @@ const styles = StyleSheet.create((theme) => ({
   //    account-detail's scroll content), living here so the FlatList itself
   //    still reaches the top edge for iOS's automatic large-title inset;
   //  - horizontal: the content margin (`useContentMargin`), the screen's side gutter;
-  //  - bottom: a `spacing(4)` gap plus the caller's `bottomClearance` — 0 when a
-  //    footer owns the floating tab-bar clearance, else `useBottomClearance`
-  //    so the last row clears the bar exactly once (see the screen component).
+  //  - bottom: under a floating footer, its end padding (`floatingFooterEnd`), so the last row
+  //    stops at the footer's top edge; else a `spacing(4)` gap plus the caller's
+  //    `bottomClearance`, which is `useBottomClearance` so the last row clears the bar exactly
+  //    once (see the screen component).
   // The `spacing(2)` gap sits between every child — the header block and the
   // first row, and each row and the next — the same rhythm a `<Box gap={2}>`
   // around the Transactions heading and its rows would give.
-  listContent: (bottomClearance: number, contentMargin: number) => ({
+  listContent: (
+    bottomClearance: number,
+    contentMargin: number,
+    floatingFooterEnd: number | undefined,
+  ) => ({
     paddingTop: theme.spacing(4),
     paddingHorizontal: contentMargin,
-    paddingBottom: theme.spacing(4) + bottomClearance,
+    paddingBottom: floatingFooterEnd ?? theme.spacing(4) + bottomClearance,
     gap: theme.spacing(2),
   }),
   // The ledger's own empty state (`home.screen.tsx`'s

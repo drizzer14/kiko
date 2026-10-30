@@ -8,3 +8,13 @@ import { createContext, useContext } from 'react';
 export const FloatingFooterContext = createContext(false);
 
 export const useIsInFloatingFooter = (): boolean => useContext(FloatingFooterContext);
+
+/**
+ * The end padding a scroll view under a floating footer needs so its last row stops at the
+ * footer's top edge. A `Screen` pads its own `scroll` content by it; a `bleedTop` or `bleedBottom`
+ * child, which owns the scrolling and its padding, reads it here. `undefined` when the screen has
+ * no floating footer, so the child keeps its own resting padding.
+ */
+export const FloatingFooterEndContext = createContext<number | undefined>(undefined);
+
+export const useFloatingFooterEnd = (): number | undefined => useContext(FloatingFooterEndContext);

@@ -126,7 +126,7 @@ const HelpTopicScreen: FC<HelpTopicScreenProps> = ({ navigation, route }) => {
   });
 
   return (
-    <Screen scroll footer={footer}>
+    <Screen scroll floatingFooter footer={footer}>
       <Box gap={3}>
         {topic.stepKeys.map((stepKey, index) => (
           <Box key={stepKey} testID={`help-topic-step-${index + 1}`} direction="row" gap={3}>

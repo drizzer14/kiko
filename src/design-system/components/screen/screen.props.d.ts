@@ -34,7 +34,7 @@ export type ScreenProps = {
   // pinned one sits but takes no layout room, with no band behind it, so the rows scroll under
   // its buttons. The `scroll` and plain content pad their end by the footer's measured height, so
   // at full scroll the last row stops above the buttons (a `bleedTop` or `bleedBottom` child pads
-  // its own end). A tonal `Button` (regular
+  // its own end, by `useFloatingFooterEnd()`). A tonal `Button` (regular
   // size) inside it draws on Liquid Glass on iOS 26+ and on a solid fill below, through
   // `FloatingFooterContext`; any other button is unchanged. Touches outside the buttons reach the
   // rows. Beside a side tab bar, in a pane that touches the window's bottom, its lowest button

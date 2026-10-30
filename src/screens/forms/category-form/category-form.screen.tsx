@@ -300,6 +300,7 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   return (
     <Screen
       scroll
+      floatingFooter
       footer={
         isEdit ? (
           <Button

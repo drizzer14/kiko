@@ -1,1 +1,6 @@
-export { FloatingFooterContext, useIsInFloatingFooter } from './floating-footer';
+export {
+  FloatingFooterContext,
+  FloatingFooterEndContext,
+  useFloatingFooterEnd,
+  useIsInFloatingFooter,
+} from './floating-footer';

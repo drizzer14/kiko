@@ -138,6 +138,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   return (
     <Screen
       scroll
+      floatingFooter
       footer={
         <Box direction="row" gap={2}>
           <Button

@@ -1,9 +1,12 @@
 import type { FC } from 'react';
+import {
+  FloatingFooterContext,
+  FloatingFooterEndContext,
+} from '@kiko/design-system/floating-footer';
 import { useDisplayRegions } from '@kiko/display-regions';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
-import { FloatingFooterContext } from '@kiko/design-system/floating-footer';
 
 import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 
@@ -90,11 +93,6 @@ const Screen: FC<ScreenProps> = ({
   automaticallyAdjustKeyboardInsets = true,
   onFieldBlur,
 }) => {
-  // The fields' way to report a blur to the screen; every layout below renders them.
-  const fields = (
-    <FieldBlurContext.Provider value={onFieldBlur}>{children}</FieldBlurContext.Provider>
-  );
-
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
   // universally, from this one place — rather than each screen re-solving it.
@@ -149,6 +147,15 @@ const Screen: FC<ScreenProps> = ({
   // The plain branch's `content` is a View: it ends at the slot's bottom edge, UIKit adds nothing.
   // A `bleedBottom` child pads its own end.
   const floatingContentEnd = hasFloatingFooter && !bleedBottom ? footerSlot.height : undefined;
+  // The fields' way to report a blur to the screen, and the scroll end a `bleedTop` or
+  // `bleedBottom` child pads itself by (it owns its scrolling); every layout below renders them.
+  const fields = (
+    <FieldBlurContext.Provider value={onFieldBlur}>
+      <FloatingFooterEndContext.Provider value={floatingScrollEnd}>
+        {children}
+      </FloatingFooterEndContext.Provider>
+    </FieldBlurContext.Provider>
+  );
   // A floating TOP bar covers the top edge the same way, so a headerless plain screen starts
   // below its pill. Only the plain branch uses it: the scroll and `bleedTop` branches sit under a
   // native header that already clears the bar.

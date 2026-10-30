@@ -139,7 +139,8 @@ const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navig
   return (
     <Screen
       scroll
-      // The empty state carries its own Add template action, so the pinned footer would show
+      floatingFooter
+      // The empty state carries its own Add template action, so the footer would show
       // the same button twice.
       footer={
         isEmpty ? undefined : (
