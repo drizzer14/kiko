@@ -275,13 +275,77 @@ else
   fi
 fi
 
+# --- 7. Device family ---------------------------------------------------------
+# Release 1.3 ships iPhone-only (Guideline 2.5.19: no iPad layout that a reviewer cannot
+# see). Every build configuration of the app TARGET (the ones its PBXNativeTarget
+# configuration list names: Debug, Release and Release-AdHoc today) sets
+# TARGETED_DEVICE_FAMILY to exactly 1. "1,2" or 2 ships the iPad layout, and a
+# configuration added later (a Staging) that omits the key would inherit the project
+# default, so each target configuration is counted and checked, not a fixed three. The
+# project's own configurations are not required to set it, because the target overrides
+# them. Zero target configurations found fails closed, so a missing list or a failed awk
+# never passes as "all set". The iPad release (branch ipad-family) replaces this section
+# with one that requires the quoted list "1,2".
+project_relative="ios/Kiko.xcodeproj/project.pbxproj"
+family_report="$(awk '
+  function configuration_header(text) {
+    return text ~ /^[ \t]*[0-9A-Za-z]+ \/\* .* \*\/ = \{$/
+  }
+  FNR == NR {
+    if ($0 ~ /Begin XCConfigurationList section/) { lists = 1 }
+    if ($0 ~ /End XCConfigurationList section/) { lists = 0 }
+    if (lists && configuration_header($0)) { target_list = ($0 ~ /PBXNativeTarget/) }
+    if (lists && $0 ~ /buildConfigurations = \(/) { listing = target_list }
+    else if (lists && $0 ~ /^[ \t]*\);/) { listing = 0 }
+    else if (lists && listing && $1 ~ /^[0-9A-Za-z]+$/) { targets[$1] = 1 }
+    next
+  }
+  /Begin XCBuildConfiguration section/ { inside = 1 }
+  /End XCBuildConfiguration section/ { inside = 0; current = "" }
+  inside && configuration_header($0) {
+    current = ""
+    if ($1 in targets) {
+      current = $1
+      header_line = FNR
+      name = $0
+      sub(/^[^\/]*\/\* /, "", name)
+      sub(/ \*\/.*$/, "", name)
+      seen = 0
+      count++
+    }
+  }
+  inside && current != "" && /TARGETED_DEVICE_FAMILY/ {
+    seen = 1
+    found = $0
+    gsub(/^[ \t]+|[ \t]+$/, "", found)
+    if (found != "TARGETED_DEVICE_FAMILY = 1;") {
+      printf "FINDING\t%d\t%s\t%s\n", FNR, name, found
+    }
+  }
+  inside && current != "" && /^\t\t\};$/ {
+    if (!seen) { printf "FINDING\t%d\t%s\tno TARGETED_DEVICE_FAMILY\n", header_line, name }
+    current = ""
+  }
+  END { printf "TARGETS\t%d\n", count }
+' "$project_file" "$project_file" 2>/dev/null)"
+family_count="$(sed -n 's/^TARGETS'$'\t''//p' <<<"$family_report")"
+if [ "${family_count:-0}" -lt 1 ]; then
+  add_problem "no target XCBuildConfiguration found through the PBXNativeTarget configuration list of $project_relative; TARGETED_DEVICE_FAMILY cannot be checked"
+else
+  while IFS=$'\t' read -r marker family_line_number configuration_name family_found; do
+    if [ "$marker" = "FINDING" ]; then
+      add_problem "TARGETED_DEVICE_FAMILY must be 1 in every target XCBuildConfiguration (release 1.3 is iPhone-only): $project_relative line $family_line_number, configuration $configuration_name (found: $family_found)"
+    fi
+  done <<<"$family_report"
+fi
+
 if [ -n "$problems" ]; then
   print_block \
     "iOS Info.plist assertions" \
-    "The shipped Info.plist, a credential client's request headers, its localized name tables, the privacy manifest, or the iPad scene keys do not satisfy the project's invariants." \
+    "The shipped Info.plist, a credential client's request headers, its localized name tables, the privacy manifest, the iPad scene keys, or the device family do not satisfy the project's invariants." \
     "$problems" \
-    "The plist is the app's ATS, pinning, and privacy-declaration policy. An unpinned credential-bearing host can be MITM'd by any device-trusted CA (an MDM or coerced configuration profile), which reads the credential and the response; a credential (URL parameter or header) without a Cache-Control: no-store request header lets NSURLCache write it to Cache.db; a single-pin domain cannot survive a certificate rotation without an outage; NSAllowsLocalNetworking in a Release build exempts .local/loopback from ATS in the shipped binary; an empty NS*UsageDescription is an App Store review rejection trigger; a missing or unwired InfoPlist.strings shows one language's home-screen name to every user; an undeclared required-reason API draws ITMS-91053 on upload; UIRequiresFullScreen, a missing scene manifest, a missing iPad orientation, or multiple scenes breaks the resizable single-scene iPad window, and no declared launch screen draws ITMS-90870. See docs/security/README.md." \
-    "Fix ios/Kiko/Info.plist (and docs/security/README.md's host table; the iPad keys are UISupportedInterfaceOrientations~ipad, UIRequiresFullScreen, UIApplicationSceneManifest, and the launch screen key), add the Cache-Control: no-store header to the named credential client, or fix ios/Kiko/<language>.lproj/InfoPlist.strings and its project wiring, or ios/Kiko/PrivacyInfo.xcprivacy. Re-run: npm run check:plist" \
+    "The plist is the app's ATS, pinning, and privacy-declaration policy. An unpinned credential-bearing host can be MITM'd by any device-trusted CA (an MDM or coerced configuration profile), which reads the credential and the response; a credential (URL parameter or header) without a Cache-Control: no-store request header lets NSURLCache write it to Cache.db; a single-pin domain cannot survive a certificate rotation without an outage; NSAllowsLocalNetworking in a Release build exempts .local/loopback from ATS in the shipped binary; an empty NS*UsageDescription is an App Store review rejection trigger; a missing or unwired InfoPlist.strings shows one language's home-screen name to every user; an undeclared required-reason API draws ITMS-91053 on upload; UIRequiresFullScreen, a missing scene manifest, a missing iPad orientation, or multiple scenes breaks the resizable single-scene iPad window, and no declared launch screen draws ITMS-90870; a TARGETED_DEVICE_FAMILY other than 1 in any target build configuration ships the iPad layout that release 1.3 must not show a reviewer (Guideline 2.5.19). See docs/security/README.md." \
+    "Fix ios/Kiko/Info.plist (and docs/security/README.md's host table; the iPad keys are UISupportedInterfaceOrientations~ipad, UIRequiresFullScreen, UIApplicationSceneManifest, and the launch screen key), add the Cache-Control: no-store header to the named credential client, or fix ios/Kiko/<language>.lproj/InfoPlist.strings and its project wiring, or ios/Kiko/PrivacyInfo.xcprivacy, or set TARGETED_DEVICE_FAMILY = 1; in every target XCBuildConfiguration of ios/Kiko.xcodeproj/project.pbxproj. Re-run: npm run check:plist" \
     "Do not delete the assertion or add the host to an ignore list. Pin the host, or stop sending it a credential. Do not satisfy 1b with a comment, an unused constant, or no-cache; keep a required-reason entry while the dependency that links the API ships."
   exit 2
 fi

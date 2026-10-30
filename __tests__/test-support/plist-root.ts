@@ -25,11 +25,41 @@ const writeFile = (root: string, relativePath: string, body: string): void => {
   writeFileSync(absolutePath, body);
 };
 
+const TARGET_CONFIGURATION_NAMES = ['Debug', 'Release', 'Release-AdHoc'];
+
+const targetConfigurationIdentifier = (index: number): string => `0000000000000000000000B${index}`;
+
+const BUILD_CONFIGURATIONS = [
+  '/* Begin XCBuildConfiguration section */',
+  ...TARGET_CONFIGURATION_NAMES.map((name, index) =>
+    [
+      `\t\t${targetConfigurationIdentifier(index)} /* ${name} */ = {`,
+      '\t\t\tisa = XCBuildConfiguration;',
+      '\t\t\tbuildSettings = {',
+      '\t\t\t\tTARGETED_DEVICE_FAMILY = 1;',
+      '\t\t\t};',
+      '\t\t};',
+    ].join('\n'),
+  ),
+  '/* End XCBuildConfiguration section */',
+  '/* Begin XCConfigurationList section */',
+  '\t\t0000000000000000000000C0 /* Build configuration list for PBXNativeTarget "Kiko" */ = {',
+  '\t\t\tisa = XCConfigurationList;',
+  '\t\t\tbuildConfigurations = (',
+  ...TARGET_CONFIGURATION_NAMES.map(
+    (name, index) => `\t\t\t\t${targetConfigurationIdentifier(index)} /* ${name} */,`,
+  ),
+  '\t\t\t);',
+  '\t\t};',
+  '/* End XCConfigurationList section */',
+];
+
 // The PBXBuildFile line also says "in Resources", so only an entry inside the
 // Resources build phase section proves the build copies the tables.
 export const projectFile = (
   nameTables: string[],
   resourcesPhaseFiles: string[] = ['InfoPlist.strings'],
+  { withBuildConfigurations = true }: { withBuildConfigurations?: boolean } = {},
 ): string =>
   [
     'name = "Inject Debug-only ATS local networking";',
@@ -38,6 +68,7 @@ export const projectFile = (
     '/* Begin PBXResourcesBuildPhase section */',
     ...resourcesPhaseFiles.map((file) => `0000000000000000000000AA /* ${file} in Resources */,`),
     '/* End PBXResourcesBuildPhase section */',
+    ...(withBuildConfigurations ? BUILD_CONFIGURATIONS : []),
     '',
   ].join('\n');
 
