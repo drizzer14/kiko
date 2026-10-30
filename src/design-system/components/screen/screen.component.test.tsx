@@ -1,12 +1,13 @@
 import { darkTheme } from '@kiko/design-system/theme';
 import { type ComponentProps, useContext } from 'react';
-import { render, within } from '@testing-library/react-native';
 import { HeaderHeightContext } from '@react-navigation/elements';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 import '@kiko/design-system/unistyles';
+import { REGULAR_BUTTON_HEIGHT } from '@kiko/design-system/regular-button-height';
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
 
 // Imported through the folder's index (the real path a screen consumes,
@@ -602,6 +603,93 @@ describe('Screen', () => {
 
         expect(style.paddingTop ?? style.padding).toBe(darkTheme.spacing(4));
       });
+    });
+  });
+
+  // A floating footer beside a side bar ends level with the bottom of the bar's platter, 24 pt
+  // above the window's bottom, instead of a gap plus the home-indicator inset (16 + 34 = 50).
+  describe('a floating footer beside a side bar', () => {
+    const SIDE_BAR_PLATTER_INSET = 24;
+    const footerPaddingBottom = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+      StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style).paddingBottom;
+    const scrollEndOf = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+      StyleSheet.flatten(view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle)
+        .paddingBottom;
+    const FOOTER_BOX_BEFORE_MEASURE = 16 + REGULAR_BUTTON_HEIGHT + SIDE_BAR_PLATTER_INSET;
+
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+    });
+
+    it.each([
+      ['plain', { floatingFooter: true, footer: footerNode }],
+      ['scroll', { scroll: true, floatingFooter: true, footer: footerNode }],
+      ['bleedTop', { bleedTop: true, floatingFooter: true, footer: footerNode }],
+    ] as const)(
+      'ends the %s branch footer at the platter inset on each side bar edge',
+      async (_name, props) => {
+        for (const edge of ['leading', 'trailing'] as const) {
+          mockUseTabBarEdge.mockReturnValue(edge);
+
+          expect(footerPaddingBottom(await renderScreen(props))).toBe(SIDE_BAR_PLATTER_INSET);
+        }
+      },
+    );
+
+    it('keeps the pinned footer at the gap plus the home-indicator inset', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
+
+      expect(footerPaddingBottom(await renderScreen({ footer: footerNode }))).toBe(
+        FOOTER_GAP + MOCK_BOTTOM_INSET,
+      );
+    });
+
+    it('keeps the gap plus the bar clearance beside a bottom bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+
+      expect(
+        footerPaddingBottom(await renderScreen({ floatingFooter: true, footer: footerNode })),
+      ).toBe(FOOTER_GAP + BOTTOM_CLEARANCE);
+    });
+
+    it('keeps the gap and no clearance in a pane that is not at the window bottom', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
+
+      const view = await render(
+        <PaneContext.Provider value={paneContextOf('rows', 'companion')}>
+          <Screen floatingFooter footer={footerNode}>
+            <Text>content</Text>
+          </Screen>
+        </PaneContext.Provider>,
+      );
+
+      expect(footerPaddingBottom(view)).toBe(FOOTER_GAP);
+    });
+
+    it('ends the scroll content where the footer begins, less the inset UIKit adds itself', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
+
+      const view = await renderScreen({ scroll: true, floatingFooter: true, footer: footerNode });
+
+      expect(scrollEndOf(view)).toBe(FOOTER_BOX_BEFORE_MEASURE - MOCK_BOTTOM_INSET);
+
+      await act(() =>
+        fireEvent(view.getByTestId(FOOTER_TEST_ID), 'layout', {
+          nativeEvent: { layout: { height: 100 } },
+        }),
+      );
+
+      expect(scrollEndOf(view)).toBe(100 - MOCK_BOTTOM_INSET);
+    });
+
+    it('ends the plain content where the footer begins', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
+
+      const view = await renderScreen({ floatingFooter: true, footer: footerNode });
+
+      expect(StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style).paddingBottom).toBe(
+        FOOTER_BOX_BEFORE_MEASURE,
+      );
     });
   });
 
