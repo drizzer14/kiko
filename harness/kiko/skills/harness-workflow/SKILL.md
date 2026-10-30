@@ -576,12 +576,26 @@ workspace clean.
 
 An orchestrator session cannot see its own context-usage gauge (it is
 in the terminal status line). The coordinator watches it from outside
-and hands over at 20% (about 200k tokens, user 2026-10-26; an idle track over 20% writes its
-handoff file and stops): the session writes a handoff file in its
-worktree, waits until its own in-process subagents finish (closing
+and starts the handover at 16% so it ends under 20% (user 2026-10-26, 2026-10-30; see
+"Token budget"; an idle track over 20% writes its handoff file and stops): the session
+writes a handoff file in its worktree, waits until its own in-process subagents finish (closing
 the terminal kills them mid-work), then the coordinator closes the
 old terminal and starts a new claude session in the same worktree
 that reads the handoff file.
+
+## Token budget
+
+Every call re-sends the whole context, so size drives cost (user 2026-10-30).
+
+1. Orchestrators and the coordinator START their handover at 16% context so it ends under 20%.
+   A later handover is allowed when holding the current context is reasonable (a long task has
+   not ended: a running subagent, a fix round in flight); hand over at the first clean point
+   after it ends and state the reason in the next report.
+2. Every brief caps the hand-back report (default 15 lines); details go to a file the report
+   names.
+3. Handoff files hold live state only (under 20 KB); history goes to `HANDOFF-history.md`.
+4. Use a fresh developer per fix round; reuse one through SendMessage only under about 150k
+   tokens of context.
 
 ## Harness hook changes go live only after a plugin update
 
