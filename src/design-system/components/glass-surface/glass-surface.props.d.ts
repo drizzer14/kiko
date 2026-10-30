@@ -7,9 +7,7 @@ import type { ViewProps } from 'react-native';
 // and Yoga's own clamping (the flat fallback `View` path) both round it down
 // to exactly half the control's shorter dimension, a true capsule at ANY
 // height. The keyboard Done accessory pill is the first consumer.
-// `none` is a square surface (radius 0), not a theme radius token: the floating footer's
-// full-width blur band is the one consumer.
-type GlassRadius = 'none' | 'md' | 'lg' | 'full';
+type GlassRadius = 'md' | 'lg' | 'full';
 
 export type GlassSurfaceProps = ViewProps & {
   children?: ReactNode;

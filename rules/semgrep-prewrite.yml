@@ -447,7 +447,7 @@ rules:
         - "src/design-system/components/glass-surface/**"
         - "src/design-system/components/bottom-sheet/**"
         - "src/design-system/components/keyboard-done-accessory/**"
-        - "src/design-system/components/floating-footer-backdrop/**"
+        - "src/design-system/components/footer-glass-backing/**"
         - "src/screens/home/add-transaction-fab/**"
     patterns:
       - pattern-regex: "(?:import|export)\\s[^;]*from\\s*['\"][^'\"]*glass-surface(?:/[^'\"]*)?['\"]"

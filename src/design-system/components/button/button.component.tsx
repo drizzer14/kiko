@@ -5,6 +5,7 @@ import { useIsInFloatingFooter } from '@kiko/design-system/floating-footer';
 import { ActivityIndicator, Pressable, Text as RNText, View } from 'react-native';
 
 import SymbolIcon from '../symbol';
+import FooterGlassBacking, { resolveFooterGlassVariant } from '../footer-glass-backing';
 
 import { styles } from './button.styles';
 import type { ButtonProps } from './button.props';
@@ -69,6 +70,11 @@ const Button: FC<ButtonProps> = ({
     .with('small', () => styles.small)
     .exhaustive();
 
+  // In a footer that floats over scrolling rows every filled variant sits on Liquid Glass
+  // (iOS 26+), so the rows never show through a flat fill. `ghost` has no fill to put on glass.
+  // Below iOS 26 there is no glass layer and the variant keeps its normal fill.
+  const footerGlassVariant = resolveFooterGlassVariant(variant, isInFloatingFooter);
+
   const content = (
     <>
       {icon !== undefined && (
@@ -101,9 +107,12 @@ const Button: FC<ButtonProps> = ({
         sizeStyle,
         isInFloatingFooter && styles.capsule,
         fullWidth && styles.fullWidth,
+        footerGlassVariant !== undefined && styles.unfilled,
         disabled && styles.disabled,
       ]}
     >
+      {footerGlassVariant !== undefined && <FooterGlassBacking variant={footerGlassVariant} />}
+
       {loading ? <View style={styles.hiddenContent}>{content}</View> : content}
 
       {loading && (

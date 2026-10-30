@@ -829,10 +829,10 @@ verified usage, not dead weight:
   the exclusion.
 
 - **`kiko-glass-surface-nav-layer-only` (`rules/semgrep-prewrite.yml`) excludes
-  `src/design-system/components/floating-footer-backdrop/**`.** The floating footer's backdrop is
-  part of the navigation layer: a full-width blur band (a `material` `GlassSurface`) behind the
-  footer buttons, over scrolling content, like the tab bar it sits above. The other allowlist
-  entries are listed in the rule's `paths.exclude`.
+  `src/design-system/components/footer-glass-backing/**`.** A floating footer's buttons are the
+  navigation layer over scrolling content, like the Home FAB: each filled footer `Button` takes a
+  capsule glass layer (`GlassSurface`, tinted or transparent) from this folder. The other
+  allowlist entries are listed in the rule's `paths.exclude`.
 
 - **`kiko-no-math-min-max-spread` (`rules/semgrep-prewrite.yml`) excludes
   `*.test.ts` and `*.test.tsx`.** `transaction-span.test.ts` and

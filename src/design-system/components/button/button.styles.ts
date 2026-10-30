@@ -79,6 +79,11 @@ export const styles = StyleSheet.create((theme) => ({
   fullWidth: {
     width: '100%',
   },
+  // Applied on top of `button` for a variant that sits on the floating footer's glass layer
+  // (`FooterGlassBacking`), so the variant's own fill is not painted twice.
+  unfilled: {
+    backgroundColor: 'transparent',
+  },
   // Applied on top of `button` when `disabled` — `Pressable`'s own
   // `disabled` prop makes it non-interactive, this makes that state visible.
   // Dims to the shared token so every disabled control reads identically.
