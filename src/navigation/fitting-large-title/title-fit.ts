@@ -1,3 +1,5 @@
+import { isOneWordTitle } from '@kiko/design-system/one-word-title';
+
 // A wrapped title is at least two lines tall, so any height under one and a half lines is a
 // single line (a line's rounding never reaches half a line).
 const SINGLE_LINE_RATIO = 1.5;
@@ -30,6 +32,19 @@ const DEFAULT_GLYPH_EM = 0.58;
 // long when it is clearly over the line; the layout measurement settles the titles near it.
 const ESTIMATE_TOLERANCE = 1.15;
 
+// Device fact 2026-10-30 (iOS 27.2): the uk "Налаштування" (245.2 pt) broke mid-word in the native
+// large title on a 280 pt line, 0.876 of it, so the native line is narrower than the pane less
+// its margins. A word cannot wrap by word, so a one-word title stays native only up to this share
+// of the line; 0.85 keeps slack. Replace it with the measured native line.
+const ONE_WORD_NATIVE_LINE_SHARE = 0.85;
+
+/**
+ * The width a title must fit to stay the native large title: the whole line for a title that
+ * wraps by word, the safe share of it for a one-word title.
+ */
+export const nativeTitleLineWidth = (title: string, availableWidth: number): number =>
+  isOneWordTitle(title) ? availableWidth * ONE_WORD_NATIVE_LINE_SHARE : availableWidth;
+
 const glyphEm = (glyph: string): number =>
   GLYPH_CLASSES.find(({ pattern }) => pattern.test(glyph))?.em ?? DEFAULT_GLYPH_EM;
 
@@ -47,4 +62,6 @@ export const estimatedTitleFits = (
   availableWidth: number,
   fontSize: number,
 ): boolean =>
-  availableWidth <= 0 || estimateTitleWidth(title, fontSize) <= availableWidth * ESTIMATE_TOLERANCE;
+  availableWidth <= 0 ||
+  estimateTitleWidth(title, fontSize) <=
+    nativeTitleLineWidth(title, availableWidth) * ESTIMATE_TOLERANCE;

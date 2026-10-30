@@ -5,7 +5,7 @@ import { usePaneWidth } from '@kiko/design-system/pane-context';
 import { useContentMargin } from '@kiko/design-system/components/screen';
 
 import TitleMeasurer from './title-measurer';
-import { estimatedTitleFits } from './title-fit';
+import { estimatedTitleFits, nativeTitleLineWidth } from './title-fit';
 
 type TitleFit = {
   fits: boolean;
@@ -50,7 +50,9 @@ export const useTitleFit = (title: string): TitleFit => {
         <TitleMeasurer
           key={key}
           title={title}
-          availableWidth={availableWidth}
+          // A one-word title is laid out at its safe share of the line: a word wider than that
+          // breaks mid-word here, as the native title does on a line narrower than ours.
+          availableWidth={nativeTitleLineWidth(title, availableWidth)}
           onFitChange={(measuredFits) => setMeasurement({ key, fits: measuredFits })}
         />
       ) : null,
