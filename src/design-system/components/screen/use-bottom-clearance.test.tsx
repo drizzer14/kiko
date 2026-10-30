@@ -77,12 +77,12 @@ describe('useBottomClearance', () => {
     expect(result.current).toBe(0);
   });
 
-  it('is zero beside a vertical tab bar, in a pane or not', async () => {
+  it('is the home-indicator inset beside a vertical tab bar, whatever the reported height', async () => {
     mockUseVerticalBarEdge.mockReturnValue('trailing');
 
     const { result } = await renderHook(() => useBottomClearance());
 
-    expect(result.current).toBe(0);
+    expect(result.current).toBe(MOCK_BOTTOM_INSET);
   });
 
   it('is zero under a top tab bar, 64 over 20 on the Pro 13-inch', async () => {
@@ -118,7 +118,7 @@ describe('useBottomClearance', () => {
     expect(result.current).toBe(83 - 20);
   });
 
-  it('is zero when the native edge says bottom but the system reports a vertical bar (Duo inner landscape)', async () => {
+  it('is the inset alone when the native edge says bottom but the system reports a vertical bar (Duo inner landscape)', async () => {
     mockUseTabBarEdge.mockReturnValue('bottom');
     mockUseVerticalBarEdge.mockReturnValue('trailing');
     mockTabBarHeight = 83;
@@ -127,7 +127,7 @@ describe('useBottomClearance', () => {
 
     const { result } = await renderHook(() => useBottomClearance());
 
-    expect(result.current).toBe(0);
+    expect(result.current).toBe(20);
   });
 
   it('is zero in the pane above the other one even under a bottom tab bar', async () => {

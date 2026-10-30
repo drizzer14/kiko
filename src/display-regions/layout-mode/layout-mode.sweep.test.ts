@@ -6,19 +6,15 @@ const DIVIDER = 1;
 // A rule broken everywhere would otherwise collect a million strings.
 const MISMATCHES_REPORTED = 10;
 
-const expectedRegularMode = (width: number, height: number): LayoutMode => {
+const expectedRegularMode = (width: number): LayoutMode => {
   const splitLength = 2 * MINIMUM_PANE_LENGTH + DIVIDER;
 
-  if (width >= splitLength) {
-    return 'columns';
-  }
-
-  return height >= splitLength ? 'rows' : 'single';
+  return width >= splitLength ? 'columns' : 'single';
 };
 
 const mismatchesAt = (width: number, height: number): string[] => {
   const found: string[] = [];
-  const expected = expectedRegularMode(width, height);
+  const expected = expectedRegularMode(width);
 
   if (resolveLayoutMode('compact', width, height) !== 'single') {
     found.push(`compact ${width}x${height}`);

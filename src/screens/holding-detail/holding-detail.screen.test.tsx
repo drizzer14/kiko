@@ -590,8 +590,8 @@ describe('HoldingDetailScreen', () => {
     });
 
     it.each([
-      ['leading', 20],
-      ['trailing', 20],
+      ['leading', 16],
+      ['trailing', 16],
       ['bottom', 16],
     ] as const)(
       'matches the content margin under the tab bar edge %s',
@@ -600,6 +600,33 @@ describe('HoldingDetailScreen', () => {
         seed(cashHolding);
 
         const { getByTestId } = await renderScreen();
+
+        expect(
+          StyleSheet.flatten(getByTestId('ledger-list').props.contentContainerStyle)
+            .paddingHorizontal,
+        ).toBe(margin);
+      },
+    );
+
+    it.each([
+      ['leading', 20],
+      ['trailing', 20],
+      ['bottom', 16],
+    ] as const)(
+      'matches the content margin of a split pane under the tab bar edge %s',
+      async (tabBarEdge, margin) => {
+        mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+        seed(cashHolding);
+
+        const { getByTestId } = await render(
+          <PaneContext.Provider value={paneContextOf('columns', 'primary')}>
+            <HoldingDetailScreen
+              navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+              route={route}
+            />
+          </PaneContext.Provider>,
+          { wrapper: GestureRootWrapper },
+        );
 
         expect(
           StyleSheet.flatten(getByTestId('ledger-list').props.contentContainerStyle)

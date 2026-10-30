@@ -94,6 +94,9 @@ jest.mock('@kiko/display-regions', () => ({
 }));
 
 const MOCK_BOTTOM_INSET = 34;
+// At full scroll the last row ends 16 above the "+" button: the list pads its end by the button's
+// 16 lift, its 56 size and that 16 gap, on top of the tab-bar clearance.
+const FAB_END_SPACE = 16 + 56 + 16;
 // A plain arrow-returning factory can't be overridden per test, so this is a
 // mutable `jest.fn()` wrapper instead — its default return value is exactly
 // what every existing test in this file expects (a bottom-tab-bar iPhone,
@@ -2285,12 +2288,8 @@ describe('HomeScreen', () => {
     // This guards against Home passing the FULL tab-bar height as its own
     // clearance on top of the bottom inset Screen's SafeAreaView already
     // reserves (see `home.screen.tsx`), which would leave 130pt of dead space
-    // under the last row instead of the 96pt every other screen has.
-    expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET);
-
-    // Total dead space under the last row must match every other screen's 96:
-    // the SafeAreaView's 34 inset + Screen's own 16 base padding + this 46.
-    expect(MOCK_BOTTOM_INSET + 16 + listPadding).toBe(96);
+    // under the last row on top of the button's own end space.
+    expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + FAB_END_SPACE);
   });
 
   describe('in one of two panes', () => {
@@ -2311,16 +2310,16 @@ describe('HomeScreen', () => {
     const listPaddingOf = (view: Awaited<ReturnType<typeof render>>): number =>
       listContentOf(view).paddingBottom;
 
-    it('gives the list no tab-bar clearance in a pane above the other one', async () => {
-      expect(listPaddingOf(await renderInPane('rows', 'companion'))).toBe(0);
+    it('gives the list no tab-bar clearance in a pane above the other one, only the button end space', async () => {
+      expect(listPaddingOf(await renderInPane('rows', 'companion'))).toBe(FAB_END_SPACE);
     });
 
     it('clears the tab bar in the left pane too, since both panes of columns reach the bottom', async () => {
-      expect(listPaddingOf(await renderInPane('columns', 'companion'))).toBe(46);
+      expect(listPaddingOf(await renderInPane('columns', 'companion'))).toBe(46 + FAB_END_SPACE);
     });
 
     it('clears the tab bar in the pane at the bottom of the window', async () => {
-      expect(listPaddingOf(await renderInPane('rows', 'primary'))).toBe(46);
+      expect(listPaddingOf(await renderInPane('rows', 'primary'))).toBe(46 + FAB_END_SPACE);
     });
 
     // The list is its own scroll view, so it takes the whole pane and its content is capped and
@@ -2506,7 +2505,7 @@ describe('HomeScreen', () => {
       });
     });
 
-    it('ignores the poisoned tab-bar height, drops the list clearance to 0, and leaves the FAB anchor unchanged — the exact measured Duo primary-panel geometry', async () => {
+    it('ignores the poisoned tab-bar height, clears only the home-indicator inset, and leaves the FAB anchor unchanged — the exact measured Duo primary-panel geometry', async () => {
       mockUseBottomTabBarHeight.mockReturnValue(DUO_TAB_BAR_HEIGHT);
       mockUseVerticalBarEdge.mockReturnValue('trailing');
       mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
@@ -2518,8 +2517,8 @@ describe('HomeScreen', () => {
       ).paddingBottom;
 
       // Not 678 - 34 = 644 (the bug) — a vertical bar distrusts the tab-bar
-      // height entirely.
-      expect(listPadding).toBe(0);
+      // height entirely; the content runs to the window's bottom, so the inset is the clearance.
+      expect(listPadding).toBe(DUO_INSETS.bottom + FAB_END_SPACE);
 
       const fab = getByLabelText('Add transaction');
       const flattened = StyleSheet.flatten(fab.props.style);
@@ -2546,7 +2545,7 @@ describe('HomeScreen', () => {
       const listPadding = StyleSheet.flatten(
         getByTestId('home-transactions').props.contentContainerStyle,
       ).paddingBottom;
-      expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET);
+      expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + FAB_END_SPACE);
 
       const fab = getByLabelText('Add transaction');
       const flattened = StyleSheet.flatten(fab.props.style);

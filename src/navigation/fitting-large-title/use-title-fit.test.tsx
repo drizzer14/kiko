@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { Dimensions, StyleSheet, Text } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
-import { PaneWidthContext } from '@kiko/design-system/pane-context';
+import { PaneContext, PaneWidthContext, paneContextOf } from '@kiko/design-system/pane-context';
 
 import '@kiko/design-system/unistyles';
 
@@ -18,6 +18,9 @@ jest.mock('@kiko/display-regions', () => ({
 }));
 
 const HIDDEN = { includeHiddenElements: true };
+
+const TWO_WORDS_UNDER_THE_LINE = `${'a'.repeat(9)} ${'a'.repeat(10)}`;
+const TWO_WORDS_OVER_THE_LINE = `${'a'.repeat(10)} ${'a'.repeat(10)}`;
 
 const ONE_LINE = 41;
 const TWO_LINES = 82;
@@ -63,9 +66,28 @@ describe('useTitleFit', () => {
     };
 
     it.each(['leading', 'trailing'] as const)(
-      'is the window width minus two 20pt margins under a %s side bar',
+      'is the window width minus two 16pt margins under a %s side bar, in a single stack',
       async (tabBarEdge) => {
-        expect(await measuredWidthAt(tabBarEdge)).toBe(426);
+        expect(await measuredWidthAt(tabBarEdge)).toBe(434);
+      },
+    );
+
+    it.each(['leading', 'trailing'] as const)(
+      'is the pane width minus two 20pt margins in a split pane under a %s side bar',
+      async (tabBarEdge) => {
+        mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+
+        const { getByTestId } = await render(
+          <PaneContext.Provider value={paneContextOf('columns', 'primary')}>
+            <PaneWidthContext.Provider value={475}>
+              <Probe title="Edit Account" />
+            </PaneWidthContext.Provider>
+          </PaneContext.Provider>,
+        );
+
+        expect(StyleSheet.flatten(getByTestId('title-measurer', HIDDEN).props.style).width).toBe(
+          435,
+        );
       },
     );
 
@@ -88,18 +110,28 @@ describe('useTitleFit', () => {
     expect(getByTestId('fits').props.children).toBe('false');
   });
 
-  // 20 letters "a" are estimated just under the 343pt line (375pt window, two 16pt margins) and
-  // 21 just over it, so a margin of anything but 16pt moves this boundary.
+  // A two-word title of 19 letters "a" is estimated just under the 343pt line (375pt window, two
+  // 16pt margins) and one of 20 just over it, so a margin of anything but 16pt moves this boundary.
   it('gives the title the window width minus the two side margins', async () => {
-    const fitting = await render(<Probe title={'a'.repeat(20)} />);
-    const over = await render(<Probe title={'a'.repeat(21)} />);
+    const fitting = await render(<Probe title={TWO_WORDS_UNDER_THE_LINE} />);
+    const over = await render(<Probe title={TWO_WORDS_OVER_THE_LINE} />);
+
+    expect(fitting.getByTestId('fits').props.children).toBe('true');
+    expect(over.getByTestId('fits').props.children).toBe('false');
+  });
+
+  // A one-word title cannot wrap by word, so it stays native only within 0.85 of the same line:
+  // 17 letters "a" are estimated under 0.85 of it and 18 over.
+  it('gives a one-word title 0.85 of the line the window leaves', async () => {
+    const fitting = await render(<Probe title={'a'.repeat(17)} />);
+    const over = await render(<Probe title={'a'.repeat(18)} />);
 
     expect(fitting.getByTestId('fits').props.children).toBe('true');
     expect(over.getByTestId('fits').props.children).toBe('false');
   });
 
   // In columns each pane has its own header at about half the window, so a title that fits the
-  // window (20 letters, as above) can still be wider than the pane (187pt less 32pt of margins).
+  // window (19 letters, as above) can still be wider than the pane (187pt less 32pt of margins).
   describe('in a pane', () => {
     const inPane = (width: number, title: string) => (
       <PaneWidthContext.Provider value={width}>
@@ -108,20 +140,20 @@ describe('useTitleFit', () => {
     );
 
     it('gives the title the pane width, not the window width', async () => {
-      const { getByTestId } = await render(inPane(187, 'a'.repeat(20)));
+      const { getByTestId } = await render(inPane(187, TWO_WORDS_UNDER_THE_LINE));
 
       expect(getByTestId('fits').props.children).toBe('false');
     });
 
     it('still fits a title the pane holds', async () => {
-      const { getByTestId } = await render(inPane(187, 'a'.repeat(8)));
+      const { getByTestId } = await render(inPane(187, 'a'.repeat(7)));
 
       expect(getByTestId('fits').props.children).toBe('true');
     });
 
     it('gives a pane as wide as the window the same line, as in rows', async () => {
-      const fitting = await render(inPane(375, 'a'.repeat(20)));
-      const over = await render(inPane(375, 'a'.repeat(21)));
+      const fitting = await render(inPane(375, TWO_WORDS_UNDER_THE_LINE));
+      const over = await render(inPane(375, TWO_WORDS_OVER_THE_LINE));
 
       expect(fitting.getByTestId('fits').props.children).toBe('true');
       expect(over.getByTestId('fits').props.children).toBe('false');

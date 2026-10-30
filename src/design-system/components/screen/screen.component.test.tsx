@@ -512,7 +512,7 @@ describe('Screen', () => {
     });
 
     it.each(['leading', 'trailing'] as const)(
-      'ignores the poisoned tab-bar height on the %s edge and keeps the horizontal padding at the side-bar content margin — the exact measured Duo primary-panel geometry',
+      'ignores the poisoned tab-bar height on the %s edge and keeps the horizontal padding at the single-stack content margin — the exact measured Duo outer geometry',
       async (edge) => {
         mockUseBottomTabBarHeight.mockReturnValue(678);
         mockUseVerticalBarEdge.mockReturnValue(edge);
@@ -523,16 +523,17 @@ describe('Screen', () => {
         const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
         // A vertical bar distrusts the tab-bar height entirely: the footer's own
-        // padding is just the gap (16) plus 0 extra clearance, not 16 + 644 —
-        // a ~676pt footer would cover the whole screen.
-        expect(footerStyle.paddingBottom).toBe(FOOTER_GAP);
+        // padding is the gap (16) plus the home-indicator inset, because the content runs
+        // to the window's bottom there, not 16 + 644 — a ~676pt footer would cover the
+        // whole screen.
+        expect(footerStyle.paddingBottom).toBe(FOOTER_GAP + DUO_INSETS.bottom);
         // The enclosing SafeAreaView already reserves the 84pt right inset
         // itself (`edges` includes 'right' in every branch — see
         // `screen.component.tsx`), so the footer's OWN horizontal padding is
-        // the side-bar content margin, spacing(5) = 20, never 20 + 84. Adding
-        // the inset again here would double-count it — the dead gap the
-        // real-device screenshots caught.
-        expect(footerStyle.paddingHorizontal).toBe(darkTheme.spacing(5));
+        // the single-stack content margin, spacing(4) = 16 (a pane under a side bar widens it
+        // to 20), never 16 + 84. Adding the inset again here would double-count it — the
+        // dead gap the real-device screenshots caught.
+        expect(footerStyle.paddingHorizontal).toBe(darkTheme.spacing(4));
       },
     );
 
@@ -549,7 +550,7 @@ describe('Screen', () => {
     type RenderedScreen = Awaited<ReturnType<typeof renderScreen>>;
 
     const SIDE_BAR_MARGIN = darkTheme.spacing(5);
-    const BOTTOM_BAR_MARGIN = darkTheme.spacing(4);
+    const BASE_MARGIN = darkTheme.spacing(4);
 
     const footerHorizontal = (view: RenderedScreen) =>
       StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style).paddingHorizontal;
@@ -582,24 +583,36 @@ describe('Screen', () => {
       mockUseTabBarEdge.mockReturnValue('none');
     });
 
+    const renderInSplitPane = (props: ComponentProps<typeof Screen>) =>
+      render(
+        <PaneContext.Provider value={paneContextOf('columns', 'primary')}>
+          <Screen {...props}>
+            <Text>content</Text>
+          </Screen>
+        </PaneContext.Provider>,
+      );
+
     describe.each([
-      ['leading', SIDE_BAR_MARGIN],
-      ['trailing', SIDE_BAR_MARGIN],
-      ['bottom', BOTTOM_BAR_MARGIN],
-    ] as const)('with the tab bar edge %s', (edge, margin) => {
+      ['a single stack', 'leading', BASE_MARGIN, renderScreen],
+      ['a single stack', 'trailing', BASE_MARGIN, renderScreen],
+      ['a single stack', 'bottom', BASE_MARGIN, renderScreen],
+      ['a split pane', 'leading', SIDE_BAR_MARGIN, renderInSplitPane],
+      ['a split pane', 'trailing', SIDE_BAR_MARGIN, renderInSplitPane],
+      ['a split pane', 'bottom', BASE_MARGIN, renderInSplitPane],
+    ] as const)('in %s with the tab bar edge %s', (_scope, edge, margin, renderIn) => {
       it.each(HORIZONTAL_ROWS)(
         'pads %s horizontally by the content margin',
         async (_name, props, horizontalPaddingOf) => {
           mockUseTabBarEdge.mockReturnValue(edge);
 
-          expect(horizontalPaddingOf(await renderScreen(props))).toBe(margin);
+          expect(horizontalPaddingOf(await renderIn(props))).toBe(margin);
         },
       );
 
       it('keeps the top padding of the scroll content at 16', async () => {
         mockUseTabBarEdge.mockReturnValue(edge);
 
-        const style = scrollContentStyle(await renderScreen({ scroll: true }));
+        const style = scrollContentStyle(await renderIn({ scroll: true }));
 
         expect(style.paddingTop ?? style.padding).toBe(darkTheme.spacing(4));
       });

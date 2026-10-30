@@ -42,10 +42,14 @@ describe('resolveBottomClearance', () => {
   });
 
   describe('a side bar', () => {
-    it('is zero beside a side bar, whatever the reported tab-bar height', () => {
-      expect(resolveBottomClearance(678, 34, 'side')).toBe(0);
-      expect(resolveBottomClearance(80, 34, 'side')).toBe(0);
-      expect(resolveBottomClearance(0, 34, 'side')).toBe(0);
+    it('is the home-indicator inset beside a side bar, whatever the reported tab-bar height', () => {
+      expect(resolveBottomClearance(678, 34, 'side')).toBe(34);
+      expect(resolveBottomClearance(80, 34, 'side')).toBe(34);
+      expect(resolveBottomClearance(0, 34, 'side')).toBe(34);
+    });
+
+    it('is zero beside a side bar on a window with no home-indicator inset', () => {
+      expect(resolveBottomClearance(678, 0, 'side')).toBe(0);
     });
   });
 });

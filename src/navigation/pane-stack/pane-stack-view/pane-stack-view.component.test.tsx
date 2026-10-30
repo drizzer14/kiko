@@ -360,17 +360,17 @@ describe('PaneStackView', () => {
       ['a leading side bar', 'leading'],
       ['a trailing side bar', 'trailing'],
     ] as const)(
-      'is the content’s side padding for the single native stack under %s',
+      'is the base 16 pt side padding for the single native stack under %s',
       async (_name, tabBarEdge) => {
         mockUseTabBarEdge.mockReturnValue(tabBarEdge);
 
         await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
 
-        expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(5)]]);
+        expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(4)]]);
       },
     );
 
-    it('is the content’s side padding for the single native stack when the bar reports its whole window height', async () => {
+    it('is the base 16 pt side padding for the single native stack when the bar reports its whole window height', async () => {
       mockUseTabBarEdge.mockReturnValue('bottom');
       mockTabBarHeight = 678;
       mockWindow.width = 466;
@@ -378,7 +378,7 @@ describe('PaneStackView', () => {
 
       await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
 
-      expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(5)]]);
+      expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(4)]]);
     });
 
     it.each([

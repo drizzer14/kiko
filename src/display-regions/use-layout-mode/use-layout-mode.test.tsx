@@ -49,13 +49,13 @@ describe('useLayoutMode', () => {
     expect(result.current).toBe('columns');
   });
 
-  it('follows the window shape when the window turns to rows', async () => {
+  it('turns to single when the window narrows below two minimum panes', async () => {
     reportSizeClass('regular');
     await setWindow(951, 669);
     const { result } = await renderHook(() => useLayoutMode());
 
     await setWindow(669, 951);
 
-    expect(result.current).toBe('rows');
+    expect(result.current).toBe('single');
   });
 });
