@@ -427,6 +427,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      floatingFooter
       footer={renderFooter({
         t,
         showsImportStatement: canImportStatement,

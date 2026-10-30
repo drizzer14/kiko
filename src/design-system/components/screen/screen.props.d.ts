@@ -30,6 +30,13 @@ export type ScreenProps = {
   // `flex: 1` so the footer is pushed to the bottom even on a short page
   // instead of floating directly beneath the content.
   footer?: ReactNode;
+  // Float the `footer` over the content instead of pinning it below: the footer sits where the
+  // pinned one sits but takes no layout room, with no band behind it, so the rows scroll under
+  // its buttons and the content gets no extra end space for them. A tonal `Button` (regular
+  // size) inside it draws on Liquid Glass on iOS 26+ and on a solid fill below, through
+  // `FloatingFooterContext`; any other button is unchanged. Touches outside the buttons reach the
+  // rows. Defaults to `false`, the pinned footer. Only meaningful with a `footer`.
+  floatingFooter?: boolean;
   // Opt out of the plain (non-scroll) branch's own bottom tab-bar clearance
   // because the screen's child is itself the scrollable surface and applies
   // that clearance to its own content (e.g. Home's SectionList). Without this,

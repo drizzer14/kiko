@@ -112,4 +112,17 @@ export const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: contentMargin,
     paddingBottom: theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
   }),
+  // A floating footer (`floatingFooter`): the zero-height anchor takes the place of the pinned
+  // footer in the flex column, so it ends where the pinned footer would have ended and the
+  // SafeAreaView's padding is honoured on every side. Nothing is painted on either view.
+  floatingFooterAnchor: {
+    height: 0,
+  },
+  // Grows upward from the anchor's bottom edge over the scroll surface, as wide as the anchor.
+  floatingFooter: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
 }));

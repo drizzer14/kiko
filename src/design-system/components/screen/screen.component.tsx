@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
+import { FloatingFooterContext } from '@kiko/design-system/floating-footer';
 
 import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 
@@ -16,10 +17,56 @@ import { useTopClearance } from './use-top-clearance';
 import { useContentMargin } from './use-content-margin';
 import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
 
+type FooterSlotProps = Pick<ScreenProps, 'footer' | 'floatingFooter'> & {
+  bottomClearance: number;
+  contentMargin: number;
+  capStyle: ReturnType<typeof useContentCap>;
+};
+
+// The footer slot of all three branches. Pinned, it is a sibling below the scroll surface.
+// Floating, it is an overlay: a zero-height anchor sits in the flex column after the surface,
+// inside the SafeAreaView's padding (the safe-area insets and the side bar), and the overlay
+// grows upward from the anchor's bottom edge. `box-none` leaves every touch outside the buttons
+// to the rows beneath.
+const FooterSlot: FC<FooterSlotProps> = ({
+  footer,
+  floatingFooter = false,
+  bottomClearance,
+  contentMargin,
+  capStyle,
+}) => {
+  if (!footer) {
+    return null;
+  }
+
+  const slot = (
+    <View
+      testID="screen-footer"
+      pointerEvents={floatingFooter ? 'box-none' : undefined}
+      style={[styles.footer(bottomClearance, contentMargin), capStyle]}
+    >
+      {footer}
+    </View>
+  );
+
+  if (!floatingFooter) {
+    return slot;
+  }
+
+  return (
+    <View pointerEvents="box-none" style={styles.floatingFooterAnchor}>
+      <View pointerEvents="box-none" style={styles.floatingFooter}>
+        <FloatingFooterContext.Provider value={true}>{slot}</FloatingFooterContext.Provider>
+      </View>
+    </View>
+  );
+};
+
 const Screen: FC<ScreenProps> = ({
   children,
   scroll = false,
   footer,
+  floatingFooter = false,
   bleedBottom = false,
   bleedTop = false,
   scrollableRef,
@@ -79,10 +126,13 @@ const Screen: FC<ScreenProps> = ({
   // `bleedBottom` child (a scrollable list applying the clearance to its own
   // content) each own it instead — reserving it in `content` too would count
   // it twice.
-  const contentOwnsClearance = !bleedBottom && footer === undefined;
+  //
+  // A floating footer takes no layout room: the content lays out as if there were no footer.
+  const hasPinnedFooter = footer !== undefined && !floatingFooter;
+  const contentOwnsClearance = !bleedBottom && !hasPinnedFooter;
   // A `bleedBottom` child with nothing below it runs to the window's bottom beside a side bar and
   // pads the inset itself, so `content` adds no bottom padding there.
-  const isBottomEdgeBled = bleedBottom && footer === undefined && isBottomInsetPadded;
+  const isBottomEdgeBled = bleedBottom && !hasPinnedFooter && isBottomInsetPadded;
   // Only set while the screen's title is too long for the native large title and shows as a
   // heading in the content (see `LargeTitleHeading`); otherwise it adds nothing.
   const headingScrollProps = useLargeTitleScroll();
@@ -137,7 +187,7 @@ const Screen: FC<ScreenProps> = ({
           // In a pane, except a pane under a top tab bar, the content is capped and centred here,
           // not on the scroll view, so the scroll view and its indicator span the whole pane.
           contentContainerStyle={[
-            styles.scrollContent(footer !== undefined, contentMargin, scrollBottomInset),
+            styles.scrollContent(hasPinnedFooter, contentMargin, scrollBottomInset),
             contentCap,
           ]}
           {...headingScrollProps}
@@ -146,14 +196,14 @@ const Screen: FC<ScreenProps> = ({
 
           {fields}
         </ScrollView>
-        {footer ? (
-          <View
-            testID="screen-footer"
-            style={[styles.footer(bottomClearance, contentMargin), contentCap]}
-          >
-            {footer}
-          </View>
-        ) : null}
+
+        <FooterSlot
+          footer={footer}
+          floatingFooter={floatingFooter}
+          bottomClearance={bottomClearance}
+          contentMargin={contentMargin}
+          capStyle={contentCap}
+        />
       </SafeAreaView>
     );
   }
@@ -182,14 +232,14 @@ const Screen: FC<ScreenProps> = ({
     return (
       <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
         {fields}
-        {footer ? (
-          <View
-            testID="screen-footer"
-            style={[styles.footer(bottomClearance, contentMargin), contentCap]}
-          >
-            {footer}
-          </View>
-        ) : null}
+
+        <FooterSlot
+          footer={footer}
+          floatingFooter={floatingFooter}
+          bottomClearance={bottomClearance}
+          contentMargin={contentMargin}
+          capStyle={contentCap}
+        />
       </SafeAreaView>
     );
   }
@@ -222,17 +272,14 @@ const Screen: FC<ScreenProps> = ({
       >
         {fields}
       </View>
-      {footer ? (
-        <View
-          testID="screen-footer"
-          style={[
-            styles.footer(bottomClearance, contentMargin),
-            bleedBottom ? contentCap : undefined,
-          ]}
-        >
-          {footer}
-        </View>
-      ) : null}
+
+      <FooterSlot
+        footer={footer}
+        floatingFooter={floatingFooter}
+        bottomClearance={bottomClearance}
+        contentMargin={contentMargin}
+        capStyle={bleedBottom ? contentCap : undefined}
+      />
     </SafeAreaView>
   );
 };

@@ -484,6 +484,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      floatingFooter
       // The empty state carries its own Add account action, so the pinned
       // footer would show the same button twice.
       footer={

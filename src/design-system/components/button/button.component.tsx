@@ -1,9 +1,11 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { useUnistyles } from 'react-native-unistyles';
+import { useIsInFloatingFooter } from '@kiko/design-system/floating-footer';
 import { ActivityIndicator, Pressable, Text as RNText, View } from 'react-native';
 
 import SymbolIcon from '../symbol';
+import FloatingTonalBacking from '../floating-tonal-backing';
 
 import { styles } from './button.styles';
 import type { ButtonProps } from './button.props';
@@ -31,6 +33,7 @@ const Button: FC<ButtonProps> = ({
   ref,
 }) => {
   const { theme } = useUnistyles();
+  const isInFloatingFooter = useIsInFloatingFooter();
   styles.useVariants({ variant });
 
   // The props union already makes an unlabelled icon-only button a compile
@@ -67,6 +70,16 @@ const Button: FC<ButtonProps> = ({
     .with('small', () => styles.small)
     .exhaustive();
 
+  // A tonal fill is translucent, so in a footer that floats over scrolling rows it takes a
+  // backing (glass or solid) instead. The backing's corners are the regular size's.
+  const floatingTonalVariant = match({ variant, size, isInFloatingFooter })
+    .with(
+      { variant: 'secondaryTonal', size: 'regular', isInFloatingFooter: true },
+      { variant: 'destructiveTonal', size: 'regular', isInFloatingFooter: true },
+      ({ variant: tonalVariant }) => tonalVariant,
+    )
+    .otherwise(() => undefined);
+
   const content = (
     <>
       {icon !== undefined && (
@@ -94,8 +107,18 @@ const Button: FC<ButtonProps> = ({
       // hitSlop that restores the >= 44pt HIG tap target; regular and compact
       // already meet 44pt as their visible minHeight, so they take no slop.
       hitSlop={size === 'small' ? SMALL_HIT_SLOP : undefined}
-      style={[styles.button, sizeStyle, fullWidth && styles.fullWidth, disabled && styles.disabled]}
+      style={[
+        styles.button,
+        sizeStyle,
+        fullWidth && styles.fullWidth,
+        floatingTonalVariant !== undefined && styles.unfilled,
+        disabled && styles.disabled,
+      ]}
     >
+      {floatingTonalVariant !== undefined && (
+        <FloatingTonalBacking variant={floatingTonalVariant} />
+      )}
+
       {loading ? <View style={styles.hiddenContent}>{content}</View> : content}
 
       {loading && (
