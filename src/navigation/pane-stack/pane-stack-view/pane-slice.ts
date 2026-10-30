@@ -1,4 +1,5 @@
 import maybe, { foldMap } from 'fnts/maybe';
+import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
 import {
   defaultRouteKey,
@@ -9,12 +10,21 @@ import {
 } from '../pane-assignment';
 import type { PaneStackRoute, PaneStackState } from '../pane-router';
 
+import type { StandInOptions } from './stand-in-options';
 import { standInNavigation } from './stand-in-navigation';
 import type { NativeStackViewProps } from './pane-stack-view.props';
 
 type PaneSlice = {
   state: PaneStackState;
   descriptors: NativeStackViewProps['descriptors'];
+  // The key of the default the slice shows as a synthetic route, or null when it has routes.
+  standInKey: string | null;
+};
+
+// What a screen shown as a default has set on itself: what it has set, and how it sets more.
+export type StandIns = {
+  options: StandInOptions;
+  setOptions: (key: string, options: NativeStackNavigationOptions) => void;
 };
 
 // The state a native stack shows: only the routes it is given, the last one focused.
@@ -28,6 +38,7 @@ const stateOf = (state: PaneStackState, routes: PaneStackRoute[]): PaneStackStat
 /**
  * The stack of one pane: its routes in order, or, when it has none, its default as a synthetic
  * route the navigator describes without having it in its state. A pane with neither has no stack.
+ * The options the default set on itself lie over the ones it is described with, which are static.
  */
 export const paneSlice = (
   state: PaneStackState,
@@ -36,11 +47,12 @@ export const paneSlice = (
   descriptors: NativeStackViewProps['descriptors'],
   describe: NativeStackViewProps['describe'],
   dispatch: Parameters<typeof standInNavigation>[1],
+  standIns: StandIns,
 ): PaneSlice | null => {
   const routes = routesOfPane(state.routes, state.panes, config, pane);
 
   if (routes.length > 0) {
-    return { state: stateOf(state, routes), descriptors };
+    return { state: stateOf(state, routes), descriptors, standInKey: null };
   }
 
   return (
@@ -52,12 +64,20 @@ export const paneSlice = (
         isDefault: true,
       };
 
+      const described = standInNavigation(describe(standIn, true), dispatch, (options) =>
+        standIns.setOptions(standIn.key, options),
+      );
+
       return {
         state: stateOf(state, [standIn]),
         descriptors: {
           ...descriptors,
-          [standIn.key]: standInNavigation(describe(standIn, true), dispatch),
+          [standIn.key]: {
+            ...described,
+            options: { ...described.options, ...standIns.options[standIn.key] },
+          },
         },
+        standInKey: standIn.key,
       };
     }) ?? null
   );

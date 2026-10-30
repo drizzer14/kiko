@@ -7,8 +7,8 @@ import {
 import { useIsFocused } from '@react-navigation/native';
 import { type FC, useEffect, useMemo, useState } from 'react';
 import { FixedContentMarginContext } from 'react-native-screens';
-import { NativeStackView } from '@react-navigation/native-stack';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
+import { NativeStackView, type NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
 import { oppositePane } from '../pane-assignment';
 import { OpenInPaneContext } from '../open-in-pane';
@@ -16,6 +16,7 @@ import { PaneVisibilityContext } from '../pane-visibility';
 
 import { paneSlice, withoutDefaultRoutes } from './pane-slice';
 import type { PaneStackViewProps } from './pane-stack-view.props';
+import { keepStandInOptions, type StandInOptions, withStandInOptions } from './stand-in-options';
 
 /**
  * The view of a pane navigator: the native stack with the whole state on a narrow window, and on
@@ -43,12 +44,25 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   const hasFixedContentMargin = isSplit ? isTabBarNotAtBottom : tabBarPlacement === 'side';
   const contentMargin = useContentMarginFor(isSplit);
   const { dispatch } = navigation;
+  // A screen shown as a default has no route in the state, so React Navigation keeps nothing for
+  // its `setOptions`; they are kept here and lie over the static options it is described with.
+  const [standInOptions, setStandInOptions] = useState<StandInOptions>({});
+  const standIns = useMemo(
+    () => ({
+      options: standInOptions,
+      setOptions: (key: string, options: NativeStackNavigationOptions) =>
+        setStandInOptions((all) => withStandInOptions(all, key, options)),
+    }),
+    [standInOptions],
+  );
   const companion = isSplit
-    ? paneSlice(state, paneConfig, 'companion', descriptors, describe, dispatch)
+    ? paneSlice(state, paneConfig, 'companion', descriptors, describe, dispatch, standIns)
     : null;
   const primary = isSplit
-    ? paneSlice(state, paneConfig, 'primary', descriptors, describe, dispatch)
+    ? paneSlice(state, paneConfig, 'primary', descriptors, describe, dispatch, standIns)
     : null;
+  const companionStandInKey = companion?.standInKey ?? '';
+  const primaryStandInKey = primary?.standInKey ?? '';
   const companionTopKey = companion?.state.routes.at(-1)?.key ?? '';
   const primaryTopKey = primary?.state.routes.at(-1)?.key ?? '';
   // What the list marks is the page it opened, not whatever deeper step covers it.
@@ -86,6 +100,12 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   useEffect(() => {
     setIsSplitShown(isSplit);
   }, [isSplit]);
+
+  // A default shown again after a page took its pane, or after a fold, is a new screen: it sets
+  // its options afresh, from its own.
+  useEffect(() => {
+    setStandInOptions((all) => keepStandInOptions(all, [companionStandInKey, primaryStandInKey]));
+  }, [companionStandInKey, primaryStandInKey]);
 
   return (
     <OpenInPaneContext.Provider value={dispatch}>
