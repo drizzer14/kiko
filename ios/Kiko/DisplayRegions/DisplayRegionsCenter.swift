@@ -60,8 +60,8 @@ import os
   // Where the tab bar was found and its frame in window points; `frame` is nil on every miss.
   // `tabBarIsHidden` and `tabBarFrame` are the controller's own tab bar, kept for the debug log
   // only: they say why a floating or missing bar came out as it did. `rejectedFrame` is the frame
-  // `isInsideWindow` dropped when no frame was accepted; it too is for the log only, so `frame`
-  // stays nil and the snapshot reads `none`.
+  // `isInsideWindow` or the short-bar test dropped when no frame was accepted; it too is for the
+  // log only, so `frame` stays nil and the snapshot reads `none`.
   struct TabBarReading {
     var kind: String
     var frame: CGRect?
@@ -203,7 +203,7 @@ import os
   // The window's tab bar: a breadth-first walk of the view controllers from the root, through
   // `children` only (a presented controller sits over the bar and does not move it), to the first
   // tab bar controller whose view is in this window and holds a visible bar. The bar is the
-  // controller's `tabBar`, else the floating bar: the OUTERMOST visible short view below the
+  // controller's `tabBar` when that is short, else the floating bar: the OUTERMOST visible short view below the
   // controller's view, outside the selected tab's content. Not the smallest: a vertical bar's inner
   // item cells are wider than tall, so the smallest view would read a side bar as top or bottom.
   private static func readTabBar(in window: UIWindow) -> TabBarReading {
@@ -252,8 +252,12 @@ import os
     let tabBarCandidate = visibleFrame(of: tabBar, in: window)
     let ownFrame = tabBar.convert(tabBar.bounds, to: window)
 
+    // The tab bar is taken only when it is short, like a floating bar: for a moment after an unfold
+    // the UITabBar spans the whole window, which would read as `bottom`. A tall one falls through
+    // to the floating descent, which reaches the bar's own platter.
     if let tabBarFrame = tabBarCandidate,
-      isInsideWindow(frame: tabBarFrame, windowBounds: window.bounds)
+      isInsideWindow(frame: tabBarFrame, windowBounds: window.bounds),
+      isShortBar(frame: tabBarFrame, in: window)
     {
       return TabBarReading(
         kind: "tabBar", frame: tabBarFrame, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
@@ -270,8 +274,8 @@ import os
         kind: "floating", frame: floating, tabBarIsHidden: tabBar.isHidden, tabBarFrame: ownFrame)
     }
 
-    // Past both accept checks, a candidate that exists is one `isInsideWindow` dropped; the log
-    // keeps it so it can say a candidate was seen and refused.
+    // Past both accept checks, a candidate that exists is one `isInsideWindow` or, for the tab bar,
+    // the short-bar test dropped; the log keeps it so it can say a candidate was seen and refused.
     let rejectedKinds = [
       tabBarCandidate.map { _ in "tabBar" },
       floatingCandidate.map { _ in "floating" },
@@ -298,7 +302,6 @@ import os
       return nil
     }
 
-    let shortSideLimit = min(window.bounds.width, window.bounds.height) * floatingBarShortSideLimit
     var queue = root.subviews.map { (view: $0, depth: 1) }
     var visited = 0
 
@@ -317,9 +320,7 @@ import os
         continue
       }
 
-      if let frame = visibleFrame(of: view, in: window),
-        min(frame.width, frame.height) < shortSideLimit
-      {
+      if let frame = visibleFrame(of: view, in: window), isShortBar(frame: frame, in: window) {
         return frame
       }
 
@@ -329,6 +330,13 @@ import os
     }
 
     return nil
+  }
+
+  // Short next to the window: the frame's short side is under `floatingBarShortSideLimit` of the
+  // window's. Shared by the tab bar and the floating bar accept checks.
+  private static func isShortBar(frame: CGRect, in window: UIWindow) -> Bool {
+    min(frame.width, frame.height)
+      < min(window.bounds.width, window.bounds.height) * floatingBarShortSideLimit
   }
 
   // The view's frame in window points when it is effectively visible: it and every superview up to
