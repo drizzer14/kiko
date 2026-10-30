@@ -21,20 +21,15 @@ export const isLargeWindow = (
 // Only the horizontal size class and the window's size decide the mode, never the device or its
 // idiom, so a later device that reports a regular class gets the same rule. A window wide enough
 // for two minimum panes side by side is `columns`, whatever its orientation (a portrait iPad
-// included). A narrower, taller window stacks its panes (`rows`) when it is tall enough for two
-// minimum panes; any other regular window stays `single`.
+// included). Any narrower window is `single`: one page fills it, so the Duo inner portrait has no
+// stacked split. `rows` is intentionally unreached; a later iPad round may bring it back in the
+// one `single` branch below. `height` stays in the signature for that and for the existing callers.
 export const resolveLayoutMode = (
   sizeClass: HorizontalSizeClass,
   width: number,
-  height: number,
+  _height: number,
 ): LayoutMode =>
   match(sizeClass)
     .with('compact', (): LayoutMode => 'single')
-    .with('regular', (): LayoutMode => {
-      if (width >= MINIMUM_SPLIT_LENGTH) {
-        return 'columns';
-      }
-
-      return height >= MINIMUM_SPLIT_LENGTH ? 'rows' : 'single';
-    })
+    .with('regular', (): LayoutMode => (width >= MINIMUM_SPLIT_LENGTH ? 'columns' : 'single'))
     .exhaustive();
