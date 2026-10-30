@@ -361,12 +361,14 @@ describe('the choices a help step names', () => {
     ['en', enValues, /"([^"]*)"/g, en.statistics.title, en.home.title],
     ['uk', ukValues, /«([^»]*)»/g, uk.statistics.title, uk.home.title],
   ] as const)(
-    'names the Home tab beside the Statistics tab in step 1 of the viewStatistics topic in %s',
+    'names only the Statistics tab, with no iPad window or Home tab, in step 1 of the viewStatistics topic in %s',
     (_language, values, quote, statisticsTab, homeTab) => {
-      const quoted = quotedSpans(stepOf(values, 'viewStatistics', 1), quote);
+      const step = stepOf(values, 'viewStatistics', 1);
+      const quoted = quotedSpans(step, quote);
 
       expect(quoted).toContain(statisticsTab);
-      expect(quoted).toContain(homeTab);
+      expect(quoted).not.toContain(homeTab);
+      expect(step).not.toMatch(/iPad/);
     },
   );
 

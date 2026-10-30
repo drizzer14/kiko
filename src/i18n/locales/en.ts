@@ -1255,7 +1255,7 @@ export const en = {
       viewStatistics: {
         rowLabel: 'Read your statistics',
         steps: {
-          '1': 'Open the "Statistics" tab. On a large iPad window the charts are on the "Home" tab, beside your transactions. "Accounts" above the charts chooses the accounts that every chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two spending charts.',
+          '1': 'Open the "Statistics" tab. "Accounts" above the charts chooses the accounts that every chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two spending charts.',
           '2': '"Net Worth Over Time" shows your net worth across those dates. The horizontal dashed line is its value on the first day: the line is green above it and red below it. The vertical dashed line shows your net worth on one day, the last of those dates at first. Drag across the chart to move it to another day.',
           '3': '"By Type" shows what your assets are worth today by holding type, largest first. Loans and anything you owe are not part of it.',
           '4': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
