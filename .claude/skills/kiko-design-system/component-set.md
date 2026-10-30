@@ -36,9 +36,12 @@ new component can land between reviews of this skill:
   under a large-title header), and a footer slot that clears the
   native glass tab bar's measured height. A `floatingFooter` Screen lays its footer over the
   rows as an overlay with no backdrop band; its buttons are capsules, and every filled one
-  sits on Liquid Glass on iOS 26+ (`FooterGlassBacking`: primary tinted with the accent,
-  tonal on transparent glass with its own tone; `ghost` has no fill and stays bare), with
-  the normal fills on iOS 18. A `bleedBottom` child that
+  sits on Liquid Glass on iOS 26+ (`FooterGlassBacking`; `ghost` has no fill and stays bare);
+  below iOS 26 the variant per button is in
+  `src/design-system/components/footer-glass-backing/resolve-footer-glass-variant.ts`. The
+  side-bar end rule is `FloatingFooterEndContext` / `useFloatingFooterEnd` in
+  `src/design-system/floating-footer/floating-footer.ts` and the side-bar clause of
+  `src/design-system/components/screen/bottom-clearance.ts`. A `bleedBottom` child that
   owns the screen's true bottom edge itself (e.g. a scrollable list)
   must take that same clearance from `useBottomClearance()`
   (`src/design-system/components/screen/use-bottom-clearance.ts`, built
@@ -109,9 +112,7 @@ new component can land between reviews of this skill:
   always-reachable action" rule: it renders through the pinned
   `footer` slot even though it is not an action, because App Store
   Guideline 5.1.1(i) needs the in-app privacy policy link easily
-  accessible (reachable without scrolling). There is
-  no `fillHeight` prop — a screen whose content
-  is shorter than the viewport just leaves it top-anchored; nothing in
+  accessible (reachable without scrolling). A short page stays top-anchored; nothing in
   this codebase pins non-footer content to the bottom.
 - **LoadingState** (`src/design-system/components/loading-state/`) —
   the shared "this screen's own data has not loaded yet" visual: a

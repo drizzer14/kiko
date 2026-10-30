@@ -1642,7 +1642,11 @@ are built with `createPaneStackNavigator`.
   React Navigation hands such a screen one shared per-navigator placeholder navigation whose
   every helper throws; `standInNavigation` (in `pane-stack-view/`) mutates that object in place:
   `navigate`/`push` of a name of this stack becomes `PANE_OPEN` from the default, a name the
-  stack lacks goes on to the parent (a tab, say), and every other helper is a no-op. Two tests
+  stack lacks goes on to the parent (a tab, say); the stand-in keeps an options store
+  (`stand-in-options.ts`, `pane-slice.ts`), see `stand-in-navigation.ts` for the other helpers.
+  An opener that is a static default is made a real route below the opened page by
+  `realizeStaticDefault` (`src/navigation/pane-stack/pane-router/pane-router.ts`); `openFrom`'s
+  static-key branch is only the fallback. Two tests
   pin React Navigation assumptions (the two `PINS React Navigation` cases in
   `src/navigation/root-navigator/default-pane-navigation.test.tsx`); re-check them on every React
   Navigation upgrade.

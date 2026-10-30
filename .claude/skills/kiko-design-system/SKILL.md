@@ -373,7 +373,11 @@ every one of them, so scan this list rather than the reference files for what is
   `largeTitleHeadingOptions` (`src/navigation/large-title-screen-options/`): `headerLargeTitle`
   false together with `headerTransparent` true and `headerShadowVisible` true. Never switch
   `headerLargeTitle` off alone: native-stack then makes the bar opaque and lays content out
-  below it. The bar title appears once the heading scrolls under the bar.
+  below it. The bar title appears once the heading scrolls under the bar. The heading shows
+  in-row only when beside && fits && no `HeaderBackContext` (the pane's first page) && no bar
+  items (`BAR_ITEM_OPTIONS`, `fitting-large-title.component.tsx`). Latent: a stand-in default
+  sees its store options only, so `hasBarItems` may miss items a companion default sets via
+  `setOptions` (none today).
   `largeTitleRestoredOptions(screenOptions)` puts the native large title back and returns the
   screen's own `headerTransparent`, `headerShadowVisible` and `headerTitle`, read before the
   switch (`undefined` where the screen set none): the screen's own values from before the
