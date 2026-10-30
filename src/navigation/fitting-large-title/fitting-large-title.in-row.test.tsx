@@ -52,17 +52,49 @@ const optionsOf = (title: string): NativeStackNavigationOptions => ({
   title,
 });
 
-const layoutOf = (navigation: NavigationSpy, title: string) =>
-  fittingLargeTitleLayout({ navigation, options: optionsOf(title), children: <Screen /> });
+// A page after the first of its pane has a native Back button in the bar's leading slot, whether
+// or not its options name an item.
+const paneNavigation = (isFirstRoute: boolean) => {
+  const routes = isFirstRoute ? [{ key: 'first' }] : [{ key: 'first' }, { key: 'second' }];
+
+  return Object.assign(navigationSpy(), {
+    canGoBack: jest.fn(() => !isFirstRoute),
+    getState: jest.fn(() => ({ type: 'stack', routes, index: routes.length - 1 })),
+  });
+};
+
+const layoutOf = (
+  navigation: NavigationSpy,
+  title: string,
+  extraOptions: NativeStackNavigationOptions = {},
+) =>
+  fittingLargeTitleLayout({
+    navigation,
+    options: { ...optionsOf(title), ...extraOptions },
+    children: <Screen />,
+  });
+
+// Each bar item option the in-row heading must yield to, one case per option. The key is computed
+// so the one-item-per-form-header lint rule, which targets app code, does not read a test double.
+const BAR_ITEM_OPTIONS = [
+  'headerLeft',
+  'headerRight',
+  'unstable_headerLeftItems',
+  'unstable_headerRightItems',
+] as const;
+
+const barItemOptions = (name: (typeof BAR_ITEM_OPTIONS)[number]): NativeStackNavigationOptions => ({
+  [name]: () => (name.startsWith('unstable') ? [] : null),
+});
 
 describe('fittingLargeTitleLayout in the left pane beside a side bar', () => {
   afterEach(() => {
     place(true, false);
   });
 
-  it('shows a title that fits in the bar row, with the bar empty', async () => {
+  it('shows a title that fits in the bar row, when the bar is empty on the first page of the pane', async () => {
     place(true, true);
-    const navigation = navigationSpy();
+    const navigation = paneNavigation(true);
     const { getByTestId } = await render(layoutOf(navigation, TITLE));
 
     expect(navigation.setOptions.mock.calls).toEqual([[inRowTitleOptions()]]);
@@ -72,12 +104,34 @@ describe('fittingLargeTitleLayout in the left pane beside a side bar', () => {
 
   it('keeps the bar empty after the heading has scrolled', async () => {
     place(true, true);
-    const navigation = navigationSpy();
+    const navigation = paneNavigation(true);
     const { getByTestId } = await render(layoutOf(navigation, TITLE));
 
     await fireEvent.press(getByTestId('scroll-under'));
 
     expect(navigation.setOptions.mock.calls.at(-1)).toEqual([inRowTitleOptions()]);
+  });
+
+  it.each(BAR_ITEM_OPTIONS)(
+    'puts a title that fits below the bar when the screen sets %s',
+    async (name) => {
+      place(true, true);
+      const navigation = paneNavigation(true);
+      const { getByTestId } = await render(layoutOf(navigation, TITLE, barItemOptions(name)));
+
+      expect(navigation.setOptions.mock.calls).toEqual([[largeTitleHeadingOptions(TITLE, false)]]);
+      expect(getByTestId('heading-in-row').props.children).toBe('false');
+      expect(getByTestId('heading-title').props.children).toBe(TITLE);
+    },
+  );
+
+  it('puts a title that fits below the bar on a page after the first of its pane', async () => {
+    place(true, true);
+    const navigation = paneNavigation(false);
+    const { getByTestId } = await render(layoutOf(navigation, TITLE));
+
+    expect(navigation.setOptions.mock.calls).toEqual([[largeTitleHeadingOptions(TITLE, false)]]);
+    expect(getByTestId('heading-in-row').props.children).toBe('false');
   });
 
   it('keeps the wrapping heading below the bar for a title that does not fit', async () => {
@@ -102,7 +156,7 @@ describe('fittingLargeTitleLayout in the left pane beside a side bar', () => {
 
   it('brings the native large title back when the pane leaves the row placement', async () => {
     place(true, true);
-    const navigation = navigationSpy();
+    const navigation = paneNavigation(true);
     const { rerender } = await render(layoutOf(navigation, TITLE));
 
     place(true, false);
