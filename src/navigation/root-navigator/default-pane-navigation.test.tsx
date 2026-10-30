@@ -63,20 +63,29 @@ jest.mock('@react-navigation/native-stack', () => ({
 
 type Step = { name: string; params?: object };
 
-type StackCase = {
+type StackBase = {
   name: string;
   Stack: ComponentType;
-  // The route keys the stack stands in as a default, and where a screen it opens lands.
-  defaults: string[];
-  // The screen the stack stands in as its default, which becomes a real route once a step is
-  // opened from it.
-  defaultScreen?: string;
   target: string;
   // The pane every step above the list takes, defaults included.
   detailPane: 'companion' | 'primary';
   // Two steps, the second opened from the first.
   walk: [Step, Step];
 };
+
+type StackWithDefault = StackBase & {
+  // The route keys the stack stands in as a default, and where a screen it opens lands.
+  defaults: string[];
+  // The screen the stack stands in as its default, which becomes a real route once a step is
+  // opened from it.
+  defaultScreen: string;
+};
+
+type StackWithoutDefault = StackBase & { defaults: []; defaultScreen?: undefined };
+
+type StackCase = StackWithDefault | StackWithoutDefault;
+
+const hasDefault = (stack: StackCase): stack is StackWithDefault => stack.defaults.length > 0;
 
 const STACKS: StackCase[] = [
   {
@@ -506,9 +515,9 @@ describe('the Accounts stack: closing an account page', () => {
   });
 });
 
-describe.each(STACKS.filter(({ defaults }) => defaults.length > 0))(
+describe.each(STACKS.filter(hasDefault))(
   'the $name stack: the steps above its default',
-  ({ Stack, walk, defaultScreen = '' }) => {
+  ({ Stack, walk, defaultScreen }) => {
     const [first, second] = walk;
 
     beforeEach(async () => {

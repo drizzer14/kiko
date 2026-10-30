@@ -65,7 +65,7 @@ describe('pane assignment', () => {
     expect(paneDefault(HOME_TAB, 'companion')).toBe(STATISTICS_DEFAULT);
   });
 
-  it('(c) opens a transaction from the Home companion (Statistics tab) in the companion, in place of the Home default', () => {
+  it('(c) openFrom falls back to the companion pane when the opener is a static default key not in the stack', () => {
     const opened = openFrom(
       [route('statistics', 'Statistics')],
       { statistics: 'primary' },
@@ -191,7 +191,7 @@ describe('pane assignment', () => {
     });
   });
 
-  it('(j) folds the Statistics tab to [Statistics, Form], and unfolds with Form in the companion and Statistics in primary', () => {
+  it('(j) openFrom fallback from a static default key: the fold drops nothing, and unfolding puts the form in the companion and Statistics in primary', () => {
     const opened = openFrom(
       [route('statistics', 'Statistics')],
       { statistics: 'primary' },

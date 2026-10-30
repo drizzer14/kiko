@@ -204,6 +204,16 @@ describe('PaneRouter', () => {
       expect(names(second)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm', 'LotForm']);
     });
 
+    it('opens from the static default on [root, X] as [root, default, form], never two default routes', () => {
+      const first = runSettings(
+        settingsRouter.getInitialState(CONFIG),
+        PaneActions.open('pane-default:primary', 'HoldingForm'),
+      );
+      const stale = runSettings(first, PaneActions.open('pane-default:primary', 'LotForm'));
+
+      expect(names(stale)).toEqual(['Accounts', 'AccountDetail', 'LotForm']);
+    });
+
     it('is not handled when the opener is unknown', () => {
       expect(
         router.getStateForAction(initial(), PaneActions.open('missing', 'HoldingForm'), CONFIG),
