@@ -1,14 +1,8 @@
 # Kiko quality harness
 
-This project uses a Biome-adapted, LLM-guarding quality harness. Every
-check runs through a wrapper in `scripts/checks/` that prints a
-structured failure block on failure and stays silent on success. The
-stated exceptions (`security.sh` and `dup.sh` write notices and WARNINGs to
-stderr with exit 0, `security.sh`'s WARNINGs including the re-scan WARNING per timed-out pair;
-`medium.sh` writes a one-line skip note on a repeated Stop; the deep tier's
-streaming; the hook guards' JSON, which are `kill-guard.sh` and `pre-write-guard.sh`) are listed in
-kiko-linter's "The wrapper contract". `scripts/job-queue.sh` is not a checks wrapper: its
-QUEUED/WAITING/START/DONE lines are normal stdout.
+Every check runs through a wrapper in `scripts/checks/` that prints a failure block on failure
+and stays silent on success (exceptions: kiko-linter's "The wrapper contract").
+`scripts/job-queue.sh` is not a checks wrapper.
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry
@@ -17,31 +11,30 @@ below).
 
 ## Checks
 
-Full thresholds, tiers, and mechanism: **`docs/harness/checks.md`**. Each
-row is the short form; read the full row there before relying on edge cases.
+Full rows: **`docs/harness/checks.md`**; read the row before relying on an edge case.
 
 | Command | Tool | Threshold (short) | Tier |
 |---|---|---|---|
-| `npm run check:lint` | Biome | any lint/format violation fails | fast (PostToolUse) |
-| `npm run check:dup` | jscpd (`scripts/checks/dup.sh`) | >5% duplicated lines/tokens fails; a large file over jscpd's size limit is measured alone against `scripts/checks/dup-ceilings.tsv`: above its ceiling, or over 5% and unlisted, fails; at or under the ceiling it WARNs (tracked debt) | medium (Stop/SubagentStop) |
-| `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
-| `npm run check:deps` | depcheck, `npm ci --dry-run`, `deps-ranges.js`, `npm ls --all` | unused/missing dep, broken lockfile, non-exact spec, ELSPROBLEMS, or a `node_modules/node_modules` link/folder fails (fix: `rm node_modules/node_modules` for a link, `npm ci` for a folder, never `rm -r node_modules`) | medium |
-| `npm run check:security` | Semgrep | any Class A (ERROR) finding or Semgrep failure fails; Class B (WARNING) is surfaced, non-blocking; the main scan runs `--jobs 6`; a timed-out file is re-scanned once with `--jobs 1`, a pass is a WARNING per rule and file pair, more than 10 pairs or any re-scan problem fails | fast |
-| `npm run check:rules` | `scripts/checks/semgrep-rules.sh` | a rule that misses its positive fixture or matches its negative one fails | medium |
-| `npm run check:plist` | plist.sh (`plutil`) | any Info.plist / privacy-manifest security invariant violation fails | medium |
-| `npm run check:secrets` | gitleaks | any detected secret fails | fast |
-| `npm run check:overrides` | override-guard.sh | any bare `biome-ignore`, `nosemgrep`, `kiko-override:`, or `Stryker disable` (no `OVERRIDE(...)`) fails | medium |
-| `npm run check:import-order` | `scripts/checks/import-order.sh` | an import block not sorted per kiko-code-style "Import ordering" fails; run project-wide before committing | fast (per-file) + project-wide |
-| `npm run check:full-word-identifiers` | `scripts/checks/full-word-identifiers.sh` | a denylisted abbreviation as a whole identifier part fails, unless on the analyzer's `EXEMPTIONS` | fast (per-file) + project-wide |
-| `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import fails | project-wide + pre-write guard |
-| `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` | an import crossing a feature without its barrel, or a `--tree` layout finding, fails | project-wide + pre-write guard |
-| `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation fails | project-wide + pre-write guard |
-| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` | a comment line over 100 columns (`//`, `/* */`, and `#` in shell/YAML/githooks files) fails; no override, only exact-line pins in `comment-line-width.pinned` (shrink-only) | project-wide + pre-write guard (TypeScript) + fast (shell, YAML, githooks; `.js` under `scripts/`, `rules/fixtures/`, `githooks/`) |
-| `npm run check:component-i18n-namespace` | `scripts/checks/component-i18n-namespace.sh` | a component reading another component's i18n namespace fails | project-wide + pre-write guard |
-| `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` | any finding a change ADDED (a write that bypassed the pre-write guard) fails; fail-closed (on the Stop deadline failure, run `npm run check:guard-replay` by hand) | medium + project-wide |
-| `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` | a shipped migration modified, deleted, or renamed fails; a new migration whose header names a missing backticked `src/` path fails; no override | medium + project-wide |
-| `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
-| `npm run check:permissions` | `scripts/checks/permission-doctor.sh` (+ `.js`) | a permission path rule that cannot work as written (protected path, partly protected path, path form) or drift between the two user settings files fails; reads only | manual |
+| `npm run check:lint` | Biome | any violation fails | fast |
+| `npm run check:dup` | jscpd | >5% duplicated fails; `scripts/checks/dup-ceilings.tsv` | medium |
+| `npm run check:knip` | Knip | unused file/export/dependency fails | medium |
+| `npm run check:deps` | depcheck, npm | unused/missing dep, bad lockfile, non-exact spec fails (never `rm -r node_modules`) | medium |
+| `npm run check:security` | Semgrep | Class A (ERROR) fails; Class B (WARNING) surfaced | fast |
+| `npm run check:rules` | `scripts/checks/semgrep-rules.sh` | a rule missing its fixture fails | medium |
+| `npm run check:plist` | `plutil` | Info.plist / privacy-manifest violation fails | medium |
+| `npm run check:secrets` | gitleaks | any secret fails | fast |
+| `npm run check:overrides` | override-guard.sh | a bare suppression comment fails | medium |
+| `npm run check:import-order` | `scripts/checks/import-order.sh` | unsorted imports fail (kiko-code-style "Import ordering"); run project-wide before committing | fast + project-wide |
+| `npm run check:full-word-identifiers` | `scripts/checks/full-word-identifiers.sh` | a denylisted abbreviation fails (`EXEMPTIONS`) | fast + project-wide |
+| `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import fails | project-wide + pre-write |
+| `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` | crossing a feature without its barrel fails | project-wide + pre-write |
+| `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a violation fails | project-wide + pre-write |
+| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` | a comment line over 100 columns fails; only shrink-only pins | project-wide + pre-write + fast |
+| `npm run check:component-i18n-namespace` | `scripts/checks/component-i18n-namespace.sh` | reading another component's namespace fails | project-wide + pre-write |
+| `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` | a finding that bypassed the pre-write guard fails; fail-closed (on a Stop deadline failure run it by hand) | medium + project-wide |
+| `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` | a shipped migration changed fails; no override | medium + project-wide |
+| `npm run check:typecheck` | tsc | any type error fails | medium |
+| `npm run check:permissions` | `scripts/checks/permission-doctor.sh` | an unworkable permission rule or settings drift fails | manual |
 
 Composite scripts:
 
@@ -51,124 +44,58 @@ Composite scripts:
   blank-line-separation, comment-line-width, component-i18n-namespace, shipped-migrations, guard-replay, typecheck.
   `__tests__/check-all-lists.test.ts` pins this list to `package.json` and the hooks.
 - `npm run check:deep` — the heavy tier: `check:mutation` (Stryker +
-  `mutation-score.js` (change-set score, per-file floor, TIMEOUT-HEAVY file rule; thresholds
-  in `docs/harness/checks.md`; a lone TIMEOUT-HEAVY failure reruns its timed-out mutants inside
-  the gate),
-  then `bash scripts/checks/osv.sh` (any known CVE in `package-lock.json`
-  fails). Manual, wired to no hook; the gate is queued with
-  `scripts/job-queue.sh gate <worktree> <label> <base> <head>`
-  (the old `memory/refs/verify-queue.sh` is retired). **Mutation runs per SMALL change
-  set only, never on a whole project or release** (a whole-release run went
-  10 h 16 min with no result): set `KIKO_MUTATION_BASE` to the change set's
-  own base commit; more than 30 files to mutate (`MUTATION_FILE_CAP` in
-  `scripts/checks/mutation.sh`) exits 2; `KIKO_MUTATION_FULL=1` and an
-  unresolved base are refused; no env var bypasses the cap. The coordinator
-  queues the gate (`bash scripts/job-queue.sh gate <worktree> <label> <base> <head>`,
-  run_in_background) per reviewed change set before its merge into next, and logs the result per
-  harness-workflow's "Run log"; orchestrators never run it. A BATCH READY
-  names the base sha, the run id and the file count from
-  `KIKO_MUTATION_BASE=<base sha> make mutable`, never counted by hand; there
-  is no release-scope deep gate. Agents await only the exit code (see the
-  `ops` and `kiko-linter` skills). `check:closure` and `check:permissions` are
-  manual, not in `check:all`. Full rules: `docs/harness/checks.md`.
+  `mutation-score.js`), then `bash scripts/checks/osv.sh` (a known CVE in `package-lock.json`
+  fails). Manual; queue the gate with `scripts/job-queue.sh gate <worktree> <label> <base> <head>`.
+  **Mutation runs per SMALL change set only, never on a whole project or release**: set
+  `KIKO_MUTATION_BASE` to the change set's own base commit; more than 30 files to mutate
+  (`MUTATION_FILE_CAP` in `scripts/checks/mutation.sh`) exits 2; no env var bypasses the cap. The
+  coordinator queues the gate per reviewed change set before its merge into next and logs it per
+  harness-workflow's "Run log"; orchestrators never run it. Agents await only the exit code.
+  Full rules: `docs/harness/checks.md`.
   Mutation gates are paused by the user since 2026-10-25 until lifted; verify + review only
   (the gate text stays).
 - `make jest-affected [BASE=<ref>]` is the default dev test command: it runs only the jest suites
-  the change since the merge-base with main can affect, plus the tree-scanning inventory suites.
-  Exit 3 (`AFFECTS EVERY SUITE`: package files, jest, babel, tsconfig, `__mocks__`, `patches`,
-  `.env.test`) means queue the verify. The full suite runs only in the queued verify; named-file
-  jest (`npx jest <files> --maxWorkers=2`) stays allowed. Detail: `docs/harness/checks.md`
-  "Makefile targets: `make jest-affected`".
+  the change can affect. Exit 3 (`AFFECTS EVERY SUITE`) means queue the verify. The full suite
+  runs only in the queued verify; named-file jest (`npx jest <files> --maxWorkers=2`) stays
+  allowed. Detail: `docs/harness/checks.md` "Makefile targets: `make jest-affected`".
 
 ## Automatic wiring
 
-Detail for every hook: `docs/harness/checks.md` "Automatic wiring".
-Hooks live in `harness/kiko/hooks/hooks.json` (via the `kiko` plugin) and
-run `harness/kiko/hooks/dispatch.sh <script-name>`, which execs the edited
-worktree's own `scripts/checks/<script-name>`. Hook changes reach running
-sessions only after a plugin reinstall plus `/reload-plugins`. A repeated `Stop` (payload
-`stop_hook_active: true`) skips the medium tier with a one-line note; `SubagentStop` always runs.
-The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit typecheck below.
+Detail for every hook, and the full deny list: `docs/harness/checks.md` "Automatic wiring" and
+kiko-linter (section names in quotes). Hooks live in `harness/kiko/hooks/hooks.json` and run
+`harness/kiko/hooks/dispatch.sh <script-name>`, which execs the edited worktree's own
+`scripts/checks/<script-name>`. Hook changes reach running sessions only after a plugin reinstall
+plus `/reload-plugins`.
 
-- `PostToolUse` (`Edit|Write|MultiEdit`): `scripts/checks/fast.sh` (lint,
-  security, secrets, import-order, full-word-identifiers on the touched file; a shell, YAML or
-  githooks write runs `comment-line-width.sh` and `security.sh` on that file instead; a `.js`
-  write under `scripts/`, `rules/fixtures/` or `githooks/` also runs `comment-line-width.sh`).
-- `Stop`/`SubagentStop`: `scripts/checks/medium.sh` (dup, overrides, knip,
-  deps, rules, plist, typecheck, shipped-migrations, guard replay; and, when the skill, agent,
-  docs or CLAUDE.md text changed since the last recorded pass, the doc-reading jest suites: on a
-  failure run `make doc-suites`). Wrappers exit `2` and print the failure block to stderr.
-- `PreToolUse` `Edit|Write|MultiEdit`: `pre-write-guard.sh` denies a write
-  that adds a finding from `rules/semgrep-prewrite.yml` or `NODE_RULES`;
-  fail-closed, never bypass.
-- `PreToolUse` `Bash`: `scripts/checks/kill-guard.sh` denies (rationale and
-  limits in kiko-linter, section names in quotes):
-  - `pkill`, `killall`, any pattern/process-group `kill` (incl. via `xargs`,
-    `$(...)`, `sh -c`; also behind `caffeinate`, `arch`, `sandbox-exec`, `script`, `screen` or
-    `tmux`, or inside an `orca` `--text`/`--command` or an `osascript` shell script); stop only
-    a pid you started with `kill <pid>`.
-  - any `git stash`, in any directory (user-approved; binds the user's own
-    sessions too; commit a WIP or copy files instead).
-  - a heredoc with an unquoted delimiter (`<<EOF`; `<<'EOF'` passes).
+- `PostToolUse` (`Edit|Write|MultiEdit`): `scripts/checks/fast.sh`, per-file checks.
+- `Stop`/`SubagentStop`: `scripts/checks/medium.sh` (also the doc-reading jest suites when skill,
+  agent, docs or CLAUDE.md text changed: on a failure run `make doc-suites`). A repeated `Stop`
+  skips it with a note. Wrappers exit `2` and print the failure block to stderr.
+- `PreToolUse` `Edit|Write|MultiEdit`: `pre-write-guard.sh` denies a write that adds a finding
+  from `rules/semgrep-prewrite.yml` or `NODE_RULES`; fail-closed, never bypass.
+- `PreToolUse` `Bash`: `scripts/checks/kill-guard.sh` denies, in short:
+  - `pkill`, `killall`, pattern/process-group `kill`; stop only a pid you started (`kill <pid>`).
+  - any `git stash`; a heredoc with an unquoted delimiter.
   - `git apply|merge|rebase|pull|cherry-pick|revert|am` on the MAIN checkout
-    `/Users/drizzer14/Developer/Projects/pff-ios` ("MAIN-CHECKOUT deny");
-    allowed: `--abort|--quit|--skip|--continue`.
-    Merge in a separate detached worktree, then `bash scripts/ff-main.sh <sha>`
-    (a raw `merge --ff-only`/`pull --ff-only` on main is denied; the script refuses a
-    `harness/kiko` change whose `plugin.json` version is not above main's, and any commit that
-    lowers, removes, or makes unreadable that version).
-    `scripts/ff-main.sh` can exit 2 AFTER main moved (the post-move patch-package step
-    failed); a re-run only retries that step.
-    - any other git command that moves the branch `main` ("The `mainMove` kind"): a `reset`
-      to a commit in main (or in a worktree whose HEAD names main); `update-ref`,
-      `branch -f`, `checkout -B`, a fetch, pull or push into it from any worktree, also through
-      a `-c`/`--config-env` or exported `GIT_CONFIG_*` fetch refspec; `symbolic-ref HEAD`,
-      `--ignore-other-worktrees` or `worktree add -f` onto it; an unresolved `-C`/`cd` or a
-      missing cwd fails closed.
-  - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
-    `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
-    `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, `githooks/`, `.claude/skills/`,
-    `.claude/agents/`, `docs/superpowers/` (the rest of `docs/` stays writable), all of
-    `harness/kiko/` (its scripts and hooks too), or any
-    `*.yml`/`*.yaml` file of any worktree (not under `node_modules/`), or a `cp -r`/`mv` of a
-    folder onto a missing `.claude`, `harness` or `.git` ("SHELL-WRITE deny"); use
-    Edit/Write, and `git add` + `git mv` to rename; a formatter's own
-    `--write` stays allowed.
-  - a whole-repository job typed outside the queue (`make verify|gate|deep|security`,
-    `npm run check:all|check:deep|check:mutation`, `scripts/checks/verify.sh`, `mutation.sh`,
-    `security.sh` or `check:security` with no path, a Semgrep scan of the whole repository;
-    "Heavy-job and full-jest deny"; also behind `caffeinate`, `arch`, `sandbox-exec`, `script`,
-    `screen` or `tmux`, or inside an `orca` `--text`/`--command` or an `osascript` shell
-    script); queue it with `bash scripts/job-queue.sh verify|check-all|security|gate ...`; a
-    harness-repo sync is verified with
-    `bash scripts/job-queue.sh harness-verify <harness worktree> <label>`; a dry run
-    (`make -n`), `make mutable` and a scan of a file or subfolder stay allowed.
-  - a jest run that would run every suite ("Heavy-job and full-jest deny"): a runner (`jest`,
-    `npx jest`, `npm test`, `make jest`) with no test file, or an array option of jest-cli
-    (`JEST_ARRAY_OPTIONS` in `scripts/checks/kill-guard.js`) before a bare word, in the space
-    or `=` form; name the files (`npx jest <files> --maxWorkers=2`), put the option after the
-    paths, `npm test` needs `-- <files>`, and the whole suite runs only in the queued verify.
-  - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, or a `-c` /
-    `GIT_CONFIG_*` entry for `core.hooksPath` or `include.path`), `git commit-tree`, or a
-    `git config` that writes or unsets core.hooksPath (any scope) ("NO-VERIFY deny"); repair
+    `/Users/drizzer14/Developer/Projects/pff-ios`, and any command that moves `main`: merge in a
+    detached worktree, then `bash scripts/ff-main.sh <sha>` (it can exit 2 AFTER main moved; a
+    re-run retries only the patch-package step).
+  - a shell write into a guarded tree (`src/`, `__tests__/`, `rules/`, `scripts/`, `docs/superpowers/`,
+    `.claude/skills/`, `harness/kiko/`, any `*.yml`; "SHELL-WRITE deny"): use Edit/Write.
+  - a whole-repository job or full jest run typed outside the queue: queue it with
+    `bash scripts/job-queue.sh verify|check-all|security|gate ...` (harness sync:
+    `harness-verify <harness worktree> <label>`); name files for jest
+    (`npx jest <files> --maxWorkers=2`).
+  - a commit/merge/pull that skips `githooks/` (`--no-verify`, `-n`, `core.hooksPath`); repair
     with `bash scripts/ensure-git-hooks.sh` or `npm ci`.
-  - a shell write to a git config file (`.git/config`; it holds core.hooksPath), or a copy of
-    a folder's contents into a `.git` folder.
-  - a pkill/killall/pattern kill, a raw main `--ff-only`, or a move of main, inside a script
-    file a command runs, including a script a shell reads from a `< file` redirect (one
-    level; "Script-content kill scan").
-  - a command the guard cannot judge (an internal error), or the guard cannot load:
-    denied, never allowed.
-  - a `while`/`until` loop that scans the process table for make verify,
-    check:all, jest, stryker, semgrep, or xcodebuild ("WAIT-LOOP deny"); wait
-    with `bash scripts/wait-load.sh <load> <timeout>` or a background job.
+  - a `while`/`until` loop scanning the process table (use `scripts/wait-load.sh` or a background
+    job); a command the guard cannot judge.
 
 ## Pre-commit typecheck
 
-Tracked `githooks/pre-commit` and `githooks/pre-merge-commit` (`core.hooksPath=githooks`, set by
-`scripts/ensure-git-hooks.sh` from `postinstall`) run `scripts/checks/commit-typecheck.sh`:
-`tsc --noEmit` on the staged index; exit 2 aborts the commit. User ruling 2026-10-13: typecheck
-only, never the rest of `check:all`. Never pass `--no-verify`/`-n` or `-c core.hooksPath`. Detail:
+`githooks/pre-commit` and `githooks/pre-merge-commit` run `scripts/checks/commit-typecheck.sh`
+(`tsc --noEmit` on the staged index; exit 2 aborts). User ruling 2026-10-13: typecheck only,
+never the rest of `check:all`. Never pass `--no-verify`/`-n` or `-c core.hooksPath`. Detail:
 `docs/harness/checks.md` "Pre-commit typecheck".
 
 ## Override protocol
@@ -181,54 +108,43 @@ rule passes only the pre-write guard; `check:all` still fails on that line (see 
 
 ## Documented exceptions
 
-A suppression or ignore-list entry is acceptable only when it names a concrete reason a human or
-agent can verify. The full inventory lives in **`docs/harness/documented-exceptions.md`**. Read
-and UPDATE it when you add, change, or rely on an exception.
+A suppression or ignore-list entry needs a concrete, verifiable reason. Inventory:
+**`docs/harness/documented-exceptions.md`**; read and UPDATE it when you add, change, or rely on one.
 
 ## Guideline 2.5.19 — no hidden features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 
-Standing architecture rule, not a one-off cleanup: every feature ships VISIBLE to an App Store
-reviewer in a release build — no flag-gated or conditional-visibility feature, and no
-demo/seed/screenshot module in or imported from app `src/`. The full rule, the mechanized Semgrep
-checks (`kiko-no-hidden-feature-flag-or-demo-import`, and `kiko-no-test-fixture-import-in-app` for
-test scaffolding imported into app source), and their known limits live in
-**`.claude/skills/kiko-architecture/SKILL.md`** ("Guideline 2.5.19 — no hidden features"). Read that
-section before adding any build/env flag that controls what a user sees, or any dev-only demo/seed
-module.
+Every feature ships VISIBLE to an App Store reviewer in a release build: no flag-gated or
+conditional-visibility feature, no demo/seed/screenshot module in or imported from app `src/`.
+Full rule and checks: **`.claude/skills/kiko-architecture/SKILL.md`** ("Guideline 2.5.19 — no
+hidden features"); read it before adding any build/env flag that controls what a user sees.
 
 ## Dependency hygiene
 
-Exact-pinning, the `.npmrc` 7-day minimum age, the npm version requirement, the `.env` public-only
-rule, and the tracked/accepted dependency CVEs are documented IN FULL in
-**`docs/harness/dependency-hygiene.md`**. Standing rule: the CVEs listed under "Known dependency
-CVEs" there are tracked, real debt, not a suppressed finding — never silence them; re-check
-periodically and pin the moment a fix ships.
+Exact-pinning, the `.npmrc` 7-day minimum age, the `.env` public-only rule and the tracked CVEs
+are in **`docs/harness/dependency-hygiene.md`**. Its "Known dependency CVEs" are tracked, real
+debt: never silence them; pin the moment a fix ships.
 
-## Future stubs (disabled — do not enable without discussion)
-
-A pre-commit hook could run the rest of `npm run check:all` (only typecheck is enabled); a CI job could run `check:all` and `check:deep` as required checks.
+Future stubs (disabled, do not enable without discussion): a pre-commit `check:all`, a CI job.
 
 ## Harness agents
 
-The Kiko agent harness is a local Claude Code plugin at `harness/kiko/` (`kiko` in the local
-`harness/.claude-plugin/marketplace.json`): thirteen role agents, seven project skills, a vendored
-review command, the `harness/kiko/scripts/run-log.mjs` run log, and the tier hooks above. A fresh
-checkout must run `npm install` first; `semgrep` and `gitleaks` come from `PATH`.
+Local Claude Code plugin `harness/kiko/` (`kiko`, in `harness/.claude-plugin/marketplace.json`):
+thirteen role agents, project skills, a vendored review command, the
+`harness/kiko/scripts/run-log.mjs` run log, and the tier hooks above. Run `npm install` first;
+`semgrep` and `gitleaks` come from `PATH`.
 
 ### Delegation rule
 
-The coordinator delegates all work to these agents and never edits app files inline. Complex or
-parallel work is split into separate Orca worktrees. If no agent fits a task, the coordinator
-reports the gap — it does not do the task itself.
+The coordinator delegates all work to these agents and never edits app files inline; complex or
+parallel work goes into separate Orca worktrees. If no agent fits, it reports the gap.
 
 ### Skill drift rule
 
-This rule applies to every session, at all times. After every completed code iteration (a feature,
-phase, or fix that is developed and tested), the session runs `kiko:retrospect` to verify BOTH skill
-locations (`.claude/skills/` and `harness/kiko/skills/`, plus `harness/kiko/agents/`) against the
-new code. Then `kiko:scribe` fixes the drift and commits, before the next iteration or the merge.
-The completion report names the drift-fix sha (or states "no drift found"). The coordinator checks
-that sha before it merges.
+Applies to every session. After every completed code iteration (developed and tested), the
+session runs `kiko:retrospect` to verify BOTH skill locations (`.claude/skills/`,
+`harness/kiko/skills/`, plus `harness/kiko/agents/`) against the new code. Then `kiko:scribe`
+fixes the drift and commits, before the next iteration or the merge. The completion report names
+the drift-fix sha (or "no drift found"); the coordinator checks it before merging.
 
 ### The thirteen agents
 
