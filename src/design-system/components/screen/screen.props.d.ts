@@ -32,7 +32,9 @@ export type ScreenProps = {
   footer?: ReactNode;
   // Float the `footer` over the content instead of pinning it below: the footer sits where the
   // pinned one sits but takes no layout room, with no band behind it, so the rows scroll under
-  // its buttons and the content gets no extra end space for them. A tonal `Button` (regular
+  // its buttons. The `scroll` and plain content pad their end by the footer's measured height, so
+  // at full scroll the last row stops above the buttons (a `bleedTop` or `bleedBottom` child pads
+  // its own end). A tonal `Button` (regular
   // size) inside it draws on Liquid Glass on iOS 26+ and on a solid fill below, through
   // `FloatingFooterContext`; any other button is unchanged. Touches outside the buttons reach the
   // rows. Defaults to `false`, the pinned footer. Only meaningful with a `footer`.

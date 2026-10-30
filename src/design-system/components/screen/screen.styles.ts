@@ -11,7 +11,7 @@ import { StyleSheet } from 'react-native-unistyles';
 // it (button → tab bar), roughly a capital letter's height. The button still
 // always clears the bar via `bottomClearance`; this is purely the extra room
 // above it, kept equal to the room above the button.
-const FOOTER_GAP_STEP = 4;
+export const FOOTER_GAP_STEP = 4;
 
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
@@ -46,12 +46,16 @@ export const styles = StyleSheet.create((theme) => ({
   //
   // A `bleedBottom` child beside a side bar (`isBottomEdgeBled`) runs to the window's bottom, so
   // this container takes no bottom padding: the child's own content pads the gap and the inset.
+  //
+  // Above a floating footer (`floatingFooterHeight` set) the bottom padding is that measured
+  // height instead: the slot already holds the tab-bar clearance and the gap below its buttons.
   content: (
     ownsClearance: boolean,
     bottomClearance: number,
     topClearance: number,
     contentMargin: number,
     isBottomEdgeBled: boolean,
+    floatingFooterHeight: number | undefined,
   ) => {
     const unownedBottomPadding = isBottomEdgeBled ? 0 : theme.spacing(4);
 
@@ -66,9 +70,9 @@ export const styles = StyleSheet.create((theme) => ({
       // (`topClearance`) is added here, never on the SafeAreaView.
       paddingTop: theme.spacing(4) + topClearance,
       paddingHorizontal: contentMargin,
-      paddingBottom: ownsClearance
-        ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
-        : unownedBottomPadding,
+      paddingBottom:
+        floatingFooterHeight ??
+        (ownsClearance ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance : unownedBottomPadding),
     };
   },
   // The scroll-mode content container: no `flex: 1` by default (a
@@ -86,10 +90,19 @@ export const styles = StyleSheet.create((theme) => ({
   // legitimately owns the scroll content's own trailing edge, so it keeps the
   // base bottom padding, plus `bottomInset` where the scroll view reaches the window's bottom
   // beside a side bar and UIKit does not add the inset itself (`resolveAutomaticScrollClearance`).
-  scrollContent: (hasFooter: boolean, contentMargin: number, bottomInset: number) => ({
+  //
+  // Under a floating footer (`floatingFooterEnd` set) the end padding is the footer's measured
+  // height less what UIKit adds itself, so the last row stops at the footer's top edge and the
+  // footer's own top padding is the gap to its first button (see `screen.component.tsx`).
+  scrollContent: (
+    hasFooter: boolean,
+    contentMargin: number,
+    bottomInset: number,
+    floatingFooterEnd: number | undefined,
+  ) => ({
     padding: theme.spacing(4),
     paddingHorizontal: contentMargin,
-    paddingBottom: hasFooter ? 0 : theme.spacing(4) + bottomInset,
+    paddingBottom: floatingFooterEnd ?? (hasFooter ? 0 : theme.spacing(4) + bottomInset),
   }),
   // The pinned footer slot: sits outside the scrollable surface (a
   // `ScrollView` in scroll mode, a sibling `View` in plain mode — see

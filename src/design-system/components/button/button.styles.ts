@@ -1,8 +1,7 @@
 import { StyleSheet } from 'react-native-unistyles';
 import { DISABLED_OPACITY } from '@kiko/design-system/disabled-opacity';
+import { REGULAR_BUTTON_HEIGHT } from '@kiko/design-system/regular-button-height';
 
-// The shared regular Button's rendered height.
-const BUTTON_MIN_HEIGHT = 50;
 // The compact Button's minimum height — the iOS HIG 44pt minimum touch target,
 // so a compact or icon-only ghost button (the categories controls, the delete
 // action) is still tappable. Regular is taller (50); compact never goes below
@@ -46,7 +45,7 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The prominent footer/submit size: tall, generously rounded.
   regular: {
-    minHeight: BUTTON_MIN_HEIGHT,
+    minHeight: REGULAR_BUTTON_HEIGHT,
     borderRadius: theme.radii.md,
     paddingHorizontal: theme.spacing(4),
   },
