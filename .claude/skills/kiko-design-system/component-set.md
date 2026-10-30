@@ -36,7 +36,8 @@ new component can land between reviews of this skill:
   under a large-title header), and a footer slot that clears the
   native glass tab bar's measured height. A `floatingFooter` Screen lays its footer over the
   rows as an overlay; behind the buttons it draws `FloatingFooterBackdrop` (a full-width blur
-  band over the whole slot, with a short top fade of `spacing(4)`), its buttons are capsules,
+  band from the buttons' top down, with the slot's `spacing(4)` top padding above it fading in
+  to the band's tone, never painted over the glass), its buttons are capsules,
   and its tonal buttons keep their normal tonal fill. A `bleedBottom` child that
   owns the screen's true bottom edge itself (e.g. a scrollable list)
   must take that same clearance from `useBottomClearance()`
