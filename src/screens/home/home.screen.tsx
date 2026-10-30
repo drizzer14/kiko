@@ -22,7 +22,6 @@ import { settingsRepo } from '@kiko/settings';
 import Screen, {
   useBottomClearance,
   useContentCap,
-  useIsBottomInsetPadded,
   useScrollIndicatorProps,
 } from '@kiko/design-system/components/screen';
 import { useTranslation } from 'react-i18next';
@@ -137,9 +136,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // applies it because it opts out of Screen's own bottom handling with
   // `bleedBottom`. In a pane that is not at the window's bottom it is 0.
   const listBottomClearance = useBottomClearance();
-  // Beside a side bar the list runs to the window's bottom and pads the inset itself; the FAB
-  // then sits at its base gap above the window's bottom edge, the same as its gap at the side.
-  const isBottomEdgeBled = useIsBottomInsetPadded();
   // In a pane the list takes the whole pane, so its scroll indicator stays at the pane edge, and
   // only what sits in it is capped and centred (except in a pane under a top tab bar): the fixed
   // header and the list's content.
@@ -620,10 +616,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             testID="home-loading-scroll"
             {...scrollIndicatorProps}
             style={styles.list}
-            contentContainerStyle={[
-              styles.listContent(listBottomClearance, isBottomEdgeBled),
-              contentCap,
-            ]}
+            contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
             // `syncAll` fans a job out over the `accounts` query's own data
             // (`useSyncAll(accounts)` above) — pulling before that query has
             // loaded would fan out over an empty list, syncing nothing while
@@ -761,10 +754,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           stickySectionHeadersEnabled={false}
           {...scrollIndicatorProps}
           style={styles.list}
-          contentContainerStyle={[
-            styles.listContent(listBottomClearance, isBottomEdgeBled),
-            contentCap,
-          ]}
+          contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             transactionsLoading ? (
