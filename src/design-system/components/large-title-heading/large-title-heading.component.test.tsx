@@ -15,6 +15,7 @@ const headingValue = (
   overrides: Partial<LargeTitleHeadingValue> = {},
 ): LargeTitleHeadingValue => ({
   title,
+  inRow: false,
   scrolled: false,
   headingBottom: { current: 0 },
   onScrolledChange: jest.fn(),

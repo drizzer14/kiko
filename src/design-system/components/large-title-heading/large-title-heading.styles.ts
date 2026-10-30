@@ -4,9 +4,9 @@ import { StyleSheet } from 'react-native-unistyles';
 // first child by this step, so the heading's bottom edge is its height plus the padding.
 export const HOST_TOP_PADDING_STEP = 4;
 
-// Where the right pane's native in-row title sits on the Surface Duo (iOS 27.2, look-build-3:
-// `kiko-row8-4.log`, the `v=2 layout` rows at rest). The bar is 58 pt tall from window y 24, so
-// the content starts at window y 82; the title control starts at window y 27.67.
+// Where the right pane's native in-row title sits on the Surface Duo (iOS 27.2, measured at
+// rest). The bar is 58 pt tall from window y 24, so the content starts at window y 82; the title
+// control starts at window y 27.67.
 const IN_ROW_CONTENT_TOP = 82;
 const IN_ROW_TITLE_TOP = 27.67;
 

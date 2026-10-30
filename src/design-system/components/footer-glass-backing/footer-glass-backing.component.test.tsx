@@ -22,7 +22,20 @@ jest.mock('@kiko/design-system/components/glass-surface', () => {
   };
 });
 
+jest.mock('@callstack/liquid-glass', () => ({
+  LiquidGlassView: 'LiquidGlassView',
+  isLiquidGlassSupported: true,
+}));
+
+const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
+  isLiquidGlassSupported: boolean;
+};
+
 describe('FooterGlassBacking', () => {
+  afterEach(() => {
+    liquidGlass.isLiquidGlassSupported = true;
+  });
+
   it.each([
     ['primary', darkTheme.colors.accent],
     ['secondary', darkTheme.colors.surfaceHigh],
@@ -58,6 +71,27 @@ describe('FooterGlassBacking', () => {
       expect(
         typeof toneLayer === 'string' ? undefined : StyleSheet.flatten(toneLayer?.props.style),
       ).toMatchObject({ backgroundColor: tone });
+    },
+  );
+
+  it.each([
+    ['secondaryTonal', darkTheme.colors.neutralSubtle],
+    ['destructiveTonal', darkTheme.colors.negativeSubtle],
+  ] as const)(
+    'puts the %s tone View over an opaque background fill and no glass below iOS 26',
+    async (variant, tone) => {
+      liquidGlass.isLiquidGlassSupported = false;
+
+      const view = await render(<FooterGlassBacking variant={variant} />);
+      const layerChildren = view.getByTestId('footer-glass-backing').children;
+      const fills = layerChildren.map((child) =>
+        typeof child === 'string' ? undefined : StyleSheet.flatten(child.props.style),
+      );
+
+      expect(view.queryByTestId('backing-glass')).toBeNull();
+      expect(layerChildren).toHaveLength(2);
+      expect(fills[0]).toMatchObject({ backgroundColor: darkTheme.colors.background });
+      expect(fills[1]).toMatchObject({ backgroundColor: tone });
     },
   );
 

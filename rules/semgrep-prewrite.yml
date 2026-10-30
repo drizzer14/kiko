@@ -437,7 +437,7 @@ rules:
     message: >
       `GlassSurface` is reserved for the navigation layer (tab bar,
       `BottomSheet`, the keyboard "Done" accessory, the Home add-transaction
-      FAB). A content-layer module reads `Card` instead — see
+      FAB, the floating-footer button backing `FooterGlassBacking`). A content-layer module reads `Card` instead — see
       kiko-design-system's "Component set (GlassSurface)".
     metadata:
       fix: "Import `Card` (the content-layer surface) instead of `GlassSurface`."

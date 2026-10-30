@@ -72,7 +72,8 @@ const Button: FC<ButtonProps> = ({
 
   // In a footer that floats over scrolling rows every filled variant sits on Liquid Glass
   // (iOS 26+), so the rows never show through a flat fill. `ghost` has no fill to put on glass.
-  // Below iOS 26 there is no glass layer and the variant keeps its normal fill.
+  // Below iOS 26 there is no glass layer: a solid variant keeps its normal fill, a tonal one sits
+  // on an opaque base, since its own tint is translucent.
   const footerGlassVariant = resolveFooterGlassVariant(variant, isInFloatingFooter);
 
   const content = (

@@ -41,25 +41,16 @@ export const resolveBottomClearance = (
     .with('top', () => 0)
     .exhaustive();
 
-// THE switch for a scroll view that reaches the window's bottom beside a side bar. Such a scroll
-// view sets `contentInsetAdjustmentBehavior="automatic"` (the `Screen` scroll branch, the ledger
-// list of HoldingDetail), and its frame overlaps the home-indicator safe area because the
-// SafeAreaView does not cut it there. `true`: UIKit adds that inset to the scroll content itself,
-// so the JS adds nothing. `false`: UIKit adds nothing, so the JS pads the content by the inset.
-// Not measured on a device: flip it if the last row of a scroll screen sits 20 to 34 pt too high
-// (UIKit and the JS both added it) or hides under the indicator (neither did).
-const UIKIT_INSETS_SIDE_BOTTOM_OF_AUTOMATIC_SCROLL_VIEW = true;
-
 /**
- * `resolveBottomClearance` for a scroll view with `contentInsetAdjustmentBehavior="automatic"`:
- * the same under a bottom or a top bar, and beside a side bar only what UIKit does not already
- * add (see the switch above).
+ * `resolveBottomClearance` for a scroll view with `contentInsetAdjustmentBehavior="automatic"`
+ * (the `Screen` scroll branch, the ledger list of HoldingDetail): the same under a bottom or a top
+ * bar, and nothing beside a side bar. There the scroll view reaches the window's bottom, its frame
+ * overlaps the home-indicator safe area because the SafeAreaView does not cut it, and UIKit adds
+ * that inset to the scroll content itself, so the JS adding it too would count it twice.
  */
 export const resolveAutomaticScrollClearance = (
   tabBarHeight: number,
   insetBottom: number,
   placement: TabBarPlacement,
 ): number =>
-  placement === 'side' && UIKIT_INSETS_SIDE_BOTTOM_OF_AUTOMATIC_SCROLL_VIEW
-    ? 0
-    : resolveBottomClearance(tabBarHeight, insetBottom, placement);
+  placement === 'side' ? 0 : resolveBottomClearance(tabBarHeight, insetBottom, placement);

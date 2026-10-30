@@ -61,13 +61,38 @@ describe('Button in a floating footer', () => {
     },
   );
 
-  it.each(FILLED)('keeps the solid fill of a %s button below iOS 26', async (variant) => {
-    liquidGlass.isLiquidGlassSupported = false;
-    const view = await renderButton(variant, true);
+  it.each(['primary', 'secondary', 'destructive'] as const)(
+    'keeps the solid fill of a %s button below iOS 26',
+    async (variant) => {
+      liquidGlass.isLiquidGlassSupported = false;
+      const view = await renderButton(variant, true);
 
-    expect(view.queryByTestId('footer-glass-backing')).toBeNull();
-    expect(styleOf(view).backgroundColor).not.toBe('transparent');
-  });
+      expect(view.queryByTestId('footer-glass-backing')).toBeNull();
+      expect(styleOf(view).backgroundColor).not.toBe('transparent');
+    },
+  );
+
+  it.each(['secondaryTonal', 'destructiveTonal'] as const)(
+    'draws a %s button on a solid backing below iOS 26 in place of its translucent fill',
+    async (variant) => {
+      liquidGlass.isLiquidGlassSupported = false;
+      const view = await renderButton(variant, true);
+
+      expect(view.getByTestId('footer-glass-backing')).toBeTruthy();
+      expect(styleOf(view).backgroundColor).toBe('transparent');
+    },
+  );
+
+  it.each(['secondaryTonal', 'destructiveTonal'] as const)(
+    'keeps the translucent fill of a %s button outside a floating footer below iOS 26',
+    async (variant) => {
+      liquidGlass.isLiquidGlassSupported = false;
+      const view = await renderButton(variant, false);
+
+      expect(view.queryByTestId('footer-glass-backing')).toBeNull();
+      expect(styleOf(view).backgroundColor).not.toBe('transparent');
+    },
+  );
 
   it('gives a ghost button no glass backing', async () => {
     const view = await renderButton('ghost', true);

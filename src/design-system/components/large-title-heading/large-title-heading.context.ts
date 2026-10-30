@@ -5,7 +5,7 @@ export type LargeTitleHeadingValue = {
   // Whether the title fits one line and shows in the bar's row, in the left pane beside a side bar:
   // the heading is then laid over the row, takes no layout room, and nothing is ever reported
   // back or shown in the bar. A title that does not fit is never in the row.
-  inRow?: boolean;
+  inRow: boolean;
   // Whether the heading has scrolled up under the navigation bar, which then shows the title.
   scrolled: boolean;
   // Where the heading's bottom edge sits in the scroll content, in points. The heading writes it

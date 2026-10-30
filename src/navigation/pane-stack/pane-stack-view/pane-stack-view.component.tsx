@@ -97,10 +97,6 @@ const PaneStackView: FC<PaneStackViewProps> = ({
     setIsSplitShown(isSplit);
   }, [isSplit]);
 
-  useEffect(() => {
-    setIsSplitShown(isSplit);
-  }, [isSplit]);
-
   // A default shown again after a page took its pane, or after a fold, is a new screen: it sets
   // its options afresh, from its own.
   useEffect(() => {

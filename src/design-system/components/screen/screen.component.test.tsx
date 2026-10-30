@@ -1207,6 +1207,7 @@ describe('Screen with a title heading', () => {
         <LargeTitleHeadingContext.Provider
           value={{
             title: HEADING_TITLE,
+            inRow: false,
             scrolled: false,
             headingBottom: { current: headingBottom },
             onScrolledChange,

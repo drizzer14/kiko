@@ -203,9 +203,10 @@ import os
   // The window's tab bar: a breadth-first walk of the view controllers from the root, through
   // `children` only (a presented controller sits over the bar and does not move it), to the first
   // tab bar controller whose view is in this window and holds a visible bar. The bar is the
-  // controller's `tabBar` when that is short, else the floating bar: the OUTERMOST visible short view below the
-  // controller's view, outside the selected tab's content. Not the smallest: a vertical bar's inner
-  // item cells are wider than tall, so the smallest view would read a side bar as top or bottom.
+  // controller's `tabBar` when that is short, else the floating bar: the OUTERMOST visible short
+  // view below the controller's view, outside the selected tab's content. Not the smallest: a
+  // vertical bar's inner item cells are wider than tall, so the smallest view would read a side
+  // bar as top or bottom.
   private static func readTabBar(in window: UIWindow) -> TabBarReading {
     guard
       window.windowScene != nil,
