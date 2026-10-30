@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import AccountsScreen from '@kiko/screens/accounts';
 import LotFormScreen from '@kiko/screens/forms/lot-form';
 import AccountDetailScreen from '@kiko/screens/account-detail';
+import { LIST_SHARE } from '@kiko/design-system/pane-geometry';
 import HoldingDetailScreen from '@kiko/screens/holding-detail';
 import ColumnMappingScreen from '@kiko/screens/column-mapping';
 import AccountFormScreen from '@kiko/screens/forms/account-form';
@@ -31,8 +32,9 @@ const Stack = createPaneStackNavigator<AccountsStackParamList>();
 
 // The list is the root and takes the companion pane; the account page opens in the primary pane,
 // which is where the outer display shows it. The primary default is set at runtime by the list:
-// the first account, or the empty pane while there is none.
-const PANE_CONFIG = { rootPane: 'companion' } as const;
+// the first account, or the empty pane while there is none. The list takes a third of a wide
+// window, the account page the rest.
+const PANE_CONFIG = { rootPane: 'companion', companionShare: LIST_SHARE } as const;
 
 /**
  * The Accounts tab's native stack. The list and form screens use a large title,

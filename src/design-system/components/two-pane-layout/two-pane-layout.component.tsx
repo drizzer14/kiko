@@ -4,13 +4,17 @@ import {
   PaneWidthContext,
   paneContextOf,
 } from '@kiko/design-system/pane-context';
+import {
+  belowTopBand,
+  resolveCompanionShare,
+  resolvePaneGeometry,
+} from '@kiko/design-system/pane-geometry';
 import { useUnistyles } from 'react-native-unistyles';
 import { type FC, type ReactNode, useMemo } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { useFoldRegion, useLayoutMode } from '@kiko/display-regions';
 import { useTopBarBand } from '@kiko/design-system/components/screen';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { EQUAL_SHARE, belowTopBand, resolvePaneGeometry } from '@kiko/design-system/pane-geometry';
 
 import { styles } from './two-pane-layout.styles';
 import type { TwoPaneLayoutProps } from './two-pane-layout.props';
@@ -47,7 +51,12 @@ const Pane: FC<PaneProps> = ({ mode, pane, width, isBelowTopBand, children }) =>
 // so this must mount at the window origin, at the full window size. It positions the panes and
 // nothing else: each pane child fills its frame, so native bars span the pane. It tells each child
 // which pane it is in, for the screen content to cap and inset itself.
-const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({ companion, primary, mode: pinnedMode }) => {
+const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
+  companion,
+  primary,
+  mode: pinnedMode,
+  companionShare,
+}) => {
   const { theme } = useUnistyles();
   const windowMode = useLayoutMode();
   const mode = pinnedMode ?? windowMode;
@@ -59,7 +68,9 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({ companion, primary, mode: pinne
     return <>{primary}</>;
   }
 
-  const flat = resolvePaneGeometry(mode, window, foldRegion, theme.layout.hairline, EQUAL_SHARE);
+  const { hairline } = theme.layout;
+  const share = resolveCompanionShare(mode, window.width, hairline, companionShare);
+  const flat = resolvePaneGeometry(mode, window, foldRegion, hairline, share);
   const geometry = belowTopBand(flat, band);
 
   return (

@@ -6,6 +6,7 @@ import { usePaneContext, usePaneWidth } from '@kiko/design-system/pane-context';
 
 import { styles } from './screen.styles';
 import { useIsTabBarAtTop } from './use-is-tab-bar-at-top';
+import { useIsBottomInsetPadded } from './use-bottom-clearance';
 
 const ALL_EDGES: readonly Edge[] = ['top', 'right', 'bottom', 'left'];
 
@@ -73,19 +74,28 @@ export const useScrollIndicatorProps = () =>
 /**
  * The edges a screen's SafeAreaView reserves when it is one of two panes. Outside a pane they are
  * what the screen has always used: the SafeAreaView's own default edges. In a pane the screen
- * keeps a safe-area inset only on an edge the pane shares with the window.
+ * keeps a safe-area inset only on an edge the pane shares with the window. Beside a side bar the
+ * bottom edge is dropped everywhere (`useIsBottomInsetPadded`): the content runs to the window's
+ * bottom and pads the inset itself.
  */
 export const usePaneScreen = () => {
   const pane = usePaneContext();
+  const isBottomInsetPadded = useIsBottomInsetPadded();
+
+  const withoutPaddedBottom = (edges: readonly Edge[]) =>
+    isBottomInsetPadded ? edges.filter((edge) => edge !== 'bottom') : edges;
 
   if (pane === null) {
-    return { plainEdges: undefined, largeTitleEdges: LARGE_TITLE_EDGES };
+    return {
+      plainEdges: isBottomInsetPadded ? withoutPaddedBottom(ALL_EDGES) : undefined,
+      largeTitleEdges: withoutPaddedBottom(LARGE_TITLE_EDGES),
+    };
   }
 
   const touched = (edges: readonly Edge[]) => edges.filter((edge) => pane.edges[edge]);
 
   return {
-    plainEdges: touched(ALL_EDGES),
-    largeTitleEdges: touched(LARGE_TITLE_EDGES),
+    plainEdges: withoutPaddedBottom(touched(ALL_EDGES)),
+    largeTitleEdges: withoutPaddedBottom(touched(LARGE_TITLE_EDGES)),
   };
 };

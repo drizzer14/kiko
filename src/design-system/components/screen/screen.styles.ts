@@ -43,26 +43,34 @@ export const styles = StyleSheet.create((theme) => ({
   // padding is the content margin (`useContentMargin`) regardless, and the top
   // padding stays at the base spacing step, plus `topClearance` below a
   // floating top tab bar.
+  //
+  // A `bleedBottom` child beside a side bar (`isBottomEdgeBled`) runs to the window's bottom, so
+  // this container takes no bottom padding: the child's own content pads the gap and the inset.
   content: (
     ownsClearance: boolean,
     bottomClearance: number,
     topClearance: number,
     contentMargin: number,
-  ) => ({
-    flex: 1,
-    // A large-title `bleedTop` screen never reaches this wrapper — it renders
-    // its scrollable child directly under the SafeAreaView (see
-    // `screen.component.tsx`) so the child, not this padded View, is the scroll
-    // view iOS tracks for the large-title collapse. So this wrapper always keeps
-    // the base top padding for the headerless/non-scrolling screens that DO use
-    // it. The SafeAreaView reserves only the top inset, so a top bar's pill
-    // (`topClearance`) is added here, never on the SafeAreaView.
-    paddingTop: theme.spacing(4) + topClearance,
-    paddingHorizontal: contentMargin,
-    paddingBottom: ownsClearance
-      ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
-      : theme.spacing(4),
-  }),
+    isBottomEdgeBled: boolean,
+  ) => {
+    const unownedBottomPadding = isBottomEdgeBled ? 0 : theme.spacing(4);
+
+    return {
+      flex: 1,
+      // A large-title `bleedTop` screen never reaches this wrapper — it renders
+      // its scrollable child directly under the SafeAreaView (see
+      // `screen.component.tsx`) so the child, not this padded View, is the scroll
+      // view iOS tracks for the large-title collapse. So this wrapper always keeps
+      // the base top padding for the headerless/non-scrolling screens that DO use
+      // it. The SafeAreaView reserves only the top inset, so a top bar's pill
+      // (`topClearance`) is added here, never on the SafeAreaView.
+      paddingTop: theme.spacing(4) + topClearance,
+      paddingHorizontal: contentMargin,
+      paddingBottom: ownsClearance
+        ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
+        : unownedBottomPadding,
+    };
+  },
   // The scroll-mode content container: no `flex: 1` by default (a
   // ScrollView's content container sizes to its content, not the viewport),
   // same padding as the non-scroll `content` above (the base step, but the
@@ -76,11 +84,12 @@ export const styles = StyleSheet.create((theme) => ({
   // deposit-edit), since the two views are adjacent siblings with no shared
   // box to collapse the stacked padding. With no `footer`, this container
   // legitimately owns the scroll content's own trailing edge, so it keeps the
-  // base bottom padding.
-  scrollContent: (hasFooter: boolean, contentMargin: number) => ({
+  // base bottom padding, plus `bottomInset` where the scroll view reaches the window's bottom
+  // beside a side bar and UIKit does not add the inset itself (`resolveAutomaticScrollClearance`).
+  scrollContent: (hasFooter: boolean, contentMargin: number, bottomInset: number) => ({
     padding: theme.spacing(4),
     paddingHorizontal: contentMargin,
-    paddingBottom: hasFooter ? 0 : theme.spacing(4),
+    paddingBottom: hasFooter ? 0 : theme.spacing(4) + bottomInset,
   }),
   // The pinned footer slot: sits outside the scrollable surface (a
   // `ScrollView` in scroll mode, a sibling `View` in plain mode — see

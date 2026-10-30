@@ -39,7 +39,7 @@ import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import Screen, {
   useContentMargin,
-  useBottomClearance,
+  useAutomaticScrollClearance,
   useContentCap,
   useScrollIndicatorProps,
 } from '@kiko/design-system/components/screen';
@@ -1041,9 +1041,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // footer slot owns the floating tab-bar clearance and the list needs only a
   // plain gap above it; with NO footer (a bond or synced holding), the list is
   // the screen's true bottom edge and must clear the tab bar itself via the ONE
-  // shared hook (the same one Home's list uses), which leaves the bottom inset
-  // to the SafeAreaView and gives a pane that is not at the window's bottom none.
-  const bottomClearance = useBottomClearance();
+  // shared hook for an `automatic` scroll view, which leaves the bottom inset to the SafeAreaView
+  // (or, beside a side bar, to UIKit or to the clearance: `resolveAutomaticScrollClearance`) and
+  // gives a pane that is not at the window's bottom none.
+  const bottomClearance = useAutomaticScrollClearance();
   const listBottomClearance = footerAction === 'none' ? bottomClearance : 0;
   const contentMargin = useContentMargin();
   // In a pane the list keeps the whole pane and its content is capped and centred, except in a

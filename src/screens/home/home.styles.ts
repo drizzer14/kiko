@@ -60,9 +60,12 @@ export const styles = StyleSheet.create((theme) => ({
   // (design-system/components/screen/use-bottom-clearance.ts). The inset is
   // subtracted, not added: Screen's `SafeAreaView` already reserves it around
   // this content, so including it here would count it twice.
-  listContent: (bottomClearance: number) => ({
+  // Beside a side bar (`isBottomEdgeBled`) the list runs to the window's bottom: Screen's
+  // `content` takes no bottom padding and the clearance is the inset itself, so this container
+  // adds the base gap `content` would have added.
+  listContent: (bottomClearance: number, isBottomEdgeBled: boolean) => ({
     flexGrow: 1,
-    paddingBottom: bottomClearance,
+    paddingBottom: isBottomEdgeBled ? theme.spacing(4) + bottomClearance : bottomClearance,
   }),
   // Empty-state container: fills the list viewport and centers its Text.
   empty: {

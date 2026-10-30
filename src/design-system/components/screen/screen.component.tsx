@@ -5,11 +5,15 @@ import { FieldBlurContext } from '@kiko/design-system/field-blur';
 
 import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 
+import {
+  useAutomaticScrollClearance,
+  useBottomClearance,
+  useIsBottomInsetPadded,
+} from './use-bottom-clearance';
 import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
 import { useTopClearance } from './use-top-clearance';
 import { useContentMargin } from './use-content-margin';
-import { useBottomClearance } from './use-bottom-clearance';
 import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
 
 const Screen: FC<ScreenProps> = ({
@@ -54,6 +58,12 @@ const Screen: FC<ScreenProps> = ({
   // too: it also gives a pane that is not at the window's bottom no clearance,
   // since no tab bar is over it.
   const bottomClearance = useBottomClearance();
+  // Beside a side bar the SafeAreaView drops its bottom edge so the scroll views run to the
+  // window's bottom, and the inset comes back as padding. The scroll branch's ScrollView adjusts
+  // itself (`automatic`), so it asks `useAutomaticScrollClearance` what UIKit leaves to the JS.
+  const isBottomInsetPadded = useIsBottomInsetPadded();
+  const automaticScrollClearance = useAutomaticScrollClearance();
+  const scrollBottomInset = isBottomInsetPadded ? automaticScrollClearance : 0;
   // A floating TOP bar covers the top edge the same way, so a headerless plain screen starts
   // below its pill. Only the plain branch uses it: the scroll and `bleedTop` branches sit under a
   // native header that already clears the bar.
@@ -70,6 +80,9 @@ const Screen: FC<ScreenProps> = ({
   // content) each own it instead — reserving it in `content` too would count
   // it twice.
   const contentOwnsClearance = !bleedBottom && footer === undefined;
+  // A `bleedBottom` child with nothing below it runs to the window's bottom beside a side bar and
+  // pads the inset itself, so `content` adds no bottom padding there.
+  const isBottomEdgeBled = bleedBottom && footer === undefined && isBottomInsetPadded;
   // Only set while the screen's title is too long for the native large title and shows as a
   // heading in the content (see `LargeTitleHeading`); otherwise it adds nothing.
   const headingScrollProps = useLargeTitleScroll();
@@ -124,7 +137,7 @@ const Screen: FC<ScreenProps> = ({
           // In a pane, except a pane under a top tab bar, the content is capped and centred here,
           // not on the scroll view, so the scroll view and its indicator span the whole pane.
           contentContainerStyle={[
-            styles.scrollContent(footer !== undefined, contentMargin),
+            styles.scrollContent(footer !== undefined, contentMargin, scrollBottomInset),
             contentCap,
           ]}
           {...headingScrollProps}
@@ -199,7 +212,13 @@ const Screen: FC<ScreenProps> = ({
     >
       <View
         testID="screen-content"
-        style={styles.content(contentOwnsClearance, bottomClearance, topClearance, contentMargin)}
+        style={styles.content(
+          contentOwnsClearance,
+          bottomClearance,
+          topClearance,
+          contentMargin,
+          isBottomEdgeBled,
+        )}
       >
         {fields}
       </View>
