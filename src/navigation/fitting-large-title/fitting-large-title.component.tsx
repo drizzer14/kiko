@@ -1,5 +1,14 @@
+import {
+  type FC,
+  type ReactElement,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { HeaderBackContext } from '@react-navigation/elements';
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
-import { type FC, type ReactElement, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import {
   inRowTitleOptions,
@@ -11,15 +20,24 @@ import { useTitleFit } from './use-title-fit';
 import { useInRowTitle } from './use-in-row-title';
 import type { FittingLargeTitleProps } from './fitting-large-title.props';
 
+// The bar's own slots: an option that fills one puts a button in the row the in-row heading uses.
+const BAR_ITEM_OPTIONS = [
+  'headerLeft',
+  'headerRight',
+  'unstable_headerLeftItems',
+  'unstable_headerRightItems',
+] as const;
+
 /**
  * Keeps a screen's title readable in full. A title that fits one line of the native large title
  * stays the native large title. A title that does not fit hands the full title to the screen as
  * a wrapping heading (`LargeTitleHeadingContext`), which the screen renders as its first scroll
  * content; once the heading is on screen, the bar switches to the large-title look with no
  * large title. In the left pane beside a side bar (`useInRowTitle`) a title that fits takes the
- * same heading path, shown in the bar's row with the bar empty. A screen that never renders the
- * heading keeps its native bar. It wraps the
- * screen's content only: the native header and the safe areas are never wrapped.
+ * same heading path, shown in the bar's row, but only while the row is empty: on the first page of
+ * its pane (no native Back button) and with no bar items of its own. Otherwise the heading stays
+ * below the bar, clear of those buttons. A screen that never renders the heading keeps its native
+ * bar. It wraps the screen's content only: the native header and the safe areas are never wrapped.
  */
 const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, children }) => {
   const title = options.title ?? '';
@@ -38,8 +56,12 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
     title !== '' &&
     (options.headerLargeTitle === true || switched.current);
   const beside = useInRowTitle();
+  // The native stack gives its screen the Back button it draws for a page after the first of its
+  // own pane; `navigation.canGoBack()` sees the other pane's routes too, so it cannot say.
+  const hasBack = useContext(HeaderBackContext) !== undefined;
+  const hasBarItems = BAR_ITEM_OPTIONS.some((name) => options[name] !== undefined);
   // A title that does not fit keeps the wrapping heading below the bar, in the row or not.
-  const inRow = beside && fits;
+  const inRow = beside && fits && !hasBack && !hasBarItems;
   const headingMode = eligible && (!fits || beside);
   // The bar loses its title only while the heading is on screen to show it instead.
   const headingShown = headingMode && hosted;

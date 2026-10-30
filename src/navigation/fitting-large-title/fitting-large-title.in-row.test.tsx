@@ -1,5 +1,6 @@
 import { useContext } from 'react';
 import { Pressable, Text } from 'react-native';
+import { HeaderBackContext } from '@react-navigation/elements';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { navigationSpy, type NavigationSpy } from '@kiko/test-support/navigation-props';
@@ -53,26 +54,24 @@ const optionsOf = (title: string): NativeStackNavigationOptions => ({
 });
 
 // A page after the first of its pane has a native Back button in the bar's leading slot, whether
-// or not its options name an item.
-const paneNavigation = (isFirstRoute: boolean) => {
-  const routes = isFirstRoute ? [{ key: 'first' }] : [{ key: 'first' }, { key: 'second' }];
-
-  return Object.assign(navigationSpy(), {
-    canGoBack: jest.fn(() => !isFirstRoute),
-    getState: jest.fn(() => ({ type: 'stack', routes, index: routes.length - 1 })),
-  });
-};
+// or not its options name an item: the native stack tells its screen through `HeaderBackContext`,
+// which is empty on the first page of the pane.
+const BACK = { title: 'Back', href: undefined };
 
 const layoutOf = (
   navigation: NavigationSpy,
   title: string,
   extraOptions: NativeStackNavigationOptions = {},
-) =>
-  fittingLargeTitleLayout({
-    navigation,
-    options: { ...optionsOf(title), ...extraOptions },
-    children: <Screen />,
-  });
+  hasBack = false,
+) => (
+  <HeaderBackContext.Provider value={hasBack ? BACK : undefined}>
+    {fittingLargeTitleLayout({
+      navigation,
+      options: { ...optionsOf(title), ...extraOptions },
+      children: <Screen />,
+    })}
+  </HeaderBackContext.Provider>
+);
 
 // Each bar item option the in-row heading must yield to, one case per option. The key is computed
 // so the one-item-per-form-header lint rule, which targets app code, does not read a test double.
@@ -94,7 +93,7 @@ describe('fittingLargeTitleLayout in the left pane beside a side bar', () => {
 
   it('shows a title that fits in the bar row, when the bar is empty on the first page of the pane', async () => {
     place(true, true);
-    const navigation = paneNavigation(true);
+    const navigation = navigationSpy();
     const { getByTestId } = await render(layoutOf(navigation, TITLE));
 
     expect(navigation.setOptions.mock.calls).toEqual([[inRowTitleOptions()]]);
@@ -104,7 +103,7 @@ describe('fittingLargeTitleLayout in the left pane beside a side bar', () => {
 
   it('keeps the bar empty after the heading has scrolled', async () => {
     place(true, true);
-    const navigation = paneNavigation(true);
+    const navigation = navigationSpy();
     const { getByTestId } = await render(layoutOf(navigation, TITLE));
 
     await fireEvent.press(getByTestId('scroll-under'));
@@ -116,7 +115,7 @@ describe('fittingLargeTitleLayout in the left pane beside a side bar', () => {
     'puts a title that fits below the bar when the screen sets %s',
     async (name) => {
       place(true, true);
-      const navigation = paneNavigation(true);
+      const navigation = navigationSpy();
       const { getByTestId } = await render(layoutOf(navigation, TITLE, barItemOptions(name)));
 
       expect(navigation.setOptions.mock.calls).toEqual([[largeTitleHeadingOptions(TITLE, false)]]);
@@ -127,8 +126,8 @@ describe('fittingLargeTitleLayout in the left pane beside a side bar', () => {
 
   it('puts a title that fits below the bar on a page after the first of its pane', async () => {
     place(true, true);
-    const navigation = paneNavigation(false);
-    const { getByTestId } = await render(layoutOf(navigation, TITLE));
+    const navigation = navigationSpy();
+    const { getByTestId } = await render(layoutOf(navigation, TITLE, {}, true));
 
     expect(navigation.setOptions.mock.calls).toEqual([[largeTitleHeadingOptions(TITLE, false)]]);
     expect(getByTestId('heading-in-row').props.children).toBe('false');
@@ -156,7 +155,7 @@ describe('fittingLargeTitleLayout in the left pane beside a side bar', () => {
 
   it('brings the native large title back when the pane leaves the row placement', async () => {
     place(true, true);
-    const navigation = paneNavigation(true);
+    const navigation = navigationSpy();
     const { rerender } = await render(layoutOf(navigation, TITLE));
 
     place(true, false);

@@ -72,7 +72,9 @@ export const paneDefault = (config: PaneConfig, pane: Pane): PaneDefault | null 
  * in: every route above the opener is closed first, so a tap in the list replaces the detail
  * stack and a tap in the detail pane goes one step deeper in it. An opener that is a default
  * route becomes a real route (the user acted on it), unless it is a placeholder, which stays a
- * default. A static default stands in the stack right above the root.
+ * default. The router makes a static default a real route first (`realizeStaticDefault` in
+ * pane-router.ts), so the opener it hands over is that route; the branch here that puts a static
+ * default's key right above the root is only the fallback for an opener the router did not realize.
  *
  * `panes` must name the opener's pane; an opener it cannot place leaves everything as it was.
  */
