@@ -175,6 +175,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   padding,
   radius = 'md',
   tint,
+  glassTint,
   transparent = false,
   translucentStrong = false,
   material = false,
@@ -295,7 +296,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
       // under a fixed dark interface style — no scheme flip to repaint for.
       effect={glassEffect}
       colorScheme="dark"
-      tintColor={tint}
+      tintColor={tint ?? glassTint}
       animated={false}
       style={[RNStyleSheet.absoluteFill, { borderRadius }]}
       testID={testID && `${testID}-base`}

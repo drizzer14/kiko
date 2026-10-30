@@ -9,23 +9,31 @@ import { styles } from './footer-glass-backing.styles';
 import type { FooterGlassBackingProps } from './footer-glass-backing.props';
 
 // The fill of a Button in a footer that floats over scrolling rows: Liquid Glass, capsule. Used on
-// iOS 26+ only; the Button keeps its normal fill below it. An opaque variant tints the glass with
-// its own fill colour (`GlassSurface` `tint`), so the accent identity and the label contrast stay
-// as they are. A translucent variant sits on transparent glass (the Home FAB's) with its own tone
-// on top, so the grey and the red keep their identity. It is the first layer of the Button's
-// Pressable, which carries no fill of its own here.
+// iOS 26+ only; the Button keeps its normal fill below it. A solid variant tints the glass itself
+// with its own fill colour (`GlassSurface` `glassTint`, the native tint). It is not `tint`: that
+// adds an opaque base and wash, which hide the glass. A translucent variant sits on transparent
+// glass (the Home FAB's) with its own tone on top, so the grey and the red keep their identity. It
+// is the first layer of the Button's Pressable, which carries no fill of its own here.
 const FooterGlassBacking: FC<FooterGlassBackingProps> = ({ variant }) => {
   const { theme } = useUnistyles();
 
   const glass = match(variant)
     .with('primary', () => (
-      <GlassSurface radius="full" tint={theme.colors.accent} style={StyleSheet.absoluteFill} />
+      <GlassSurface radius="full" glassTint={theme.colors.accent} style={StyleSheet.absoluteFill} />
     ))
     .with('secondary', () => (
-      <GlassSurface radius="full" tint={theme.colors.surfaceHigh} style={StyleSheet.absoluteFill} />
+      <GlassSurface
+        radius="full"
+        glassTint={theme.colors.surfaceHigh}
+        style={StyleSheet.absoluteFill}
+      />
     ))
     .with('destructive', () => (
-      <GlassSurface radius="full" tint={theme.colors.negative} style={StyleSheet.absoluteFill} />
+      <GlassSurface
+        radius="full"
+        glassTint={theme.colors.negative}
+        style={StyleSheet.absoluteFill}
+      />
     ))
     .with('secondaryTonal', () => (
       <>
