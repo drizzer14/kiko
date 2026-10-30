@@ -1,9 +1,14 @@
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
 import { type FC, type ReactElement, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { largeTitleHeadingOptions, largeTitleRestoredOptions } from '../large-title-screen-options';
+import {
+  inRowTitleOptions,
+  largeTitleHeadingOptions,
+  largeTitleRestoredOptions,
+} from '../large-title-screen-options';
 
 import { useTitleFit } from './use-title-fit';
+import { useInRowTitle } from './use-in-row-title';
 import type { FittingLargeTitleProps } from './fitting-large-title.props';
 
 /**
@@ -11,7 +16,9 @@ import type { FittingLargeTitleProps } from './fitting-large-title.props';
  * stays the native large title. A title that does not fit hands the full title to the screen as
  * a wrapping heading (`LargeTitleHeadingContext`), which the screen renders as its first scroll
  * content; once the heading is on screen, the bar switches to the large-title look with no
- * large title. A screen that never renders the heading keeps its native bar. It wraps the
+ * large title. In the left pane beside a side bar (`useInRowTitle`) a title that fits takes the
+ * same heading path, shown in the bar's row with the bar empty. A screen that never renders the
+ * heading keeps its native bar. It wraps the
  * screen's content only: the native header and the safe areas are never wrapped.
  */
 const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, children }) => {
@@ -30,7 +37,10 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
     options.headerShown !== false &&
     title !== '' &&
     (options.headerLargeTitle === true || switched.current);
-  const headingMode = eligible && !fits;
+  const beside = useInRowTitle();
+  // A title that does not fit keeps the wrapping heading below the bar, in the row or not.
+  const inRow = beside && fits;
+  const headingMode = eligible && (!fits || beside);
   // The bar loses its title only while the heading is on screen to show it instead.
   const headingShown = headingMode && hosted;
 
@@ -45,7 +55,9 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
   useLayoutEffect(() => {
     if (headingShown) {
       switched.current = true;
-      navigation.setOptions(largeTitleHeadingOptions(title, scrolled));
+      navigation.setOptions(
+        inRow ? inRowTitleOptions() : largeTitleHeadingOptions(title, scrolled),
+      );
 
       return;
     }
@@ -55,20 +67,21 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
       setScrolled(false);
       navigation.setOptions(largeTitleRestoredOptions(ownOptions.current));
     }
-  }, [headingShown, title, scrolled, navigation]);
+  }, [headingShown, inRow, title, scrolled, navigation]);
 
   const heading = useMemo(
     () =>
       headingMode
         ? {
             title,
+            inRow,
             scrolled,
             headingBottom,
             onScrolledChange: setScrolled,
             onHostedChange: setHosted,
           }
         : undefined,
-    [headingMode, title, scrolled],
+    [headingMode, title, inRow, scrolled],
   );
 
   return (
