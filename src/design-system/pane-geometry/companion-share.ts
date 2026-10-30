@@ -2,11 +2,11 @@ import type { LayoutMode } from '@kiko/display-regions';
 
 export const EQUAL_SHARE = 1 / 2;
 
-// A list pane (Accounts, Settings) takes a third, the detail pane the rest.
-export const LIST_SHARE = 1 / 3;
+// A list pane (Accounts, Settings) takes 2/5, the detail pane the other 3/5.
+export const LIST_SHARE = 2 / 5;
 
 // A deliberate exception to the 360 pt minimum of every other pane: a list row (an account card)
-// still reads at 320 pt, and a pure third of a 951 pt Duo or a 834 pt portrait iPad is narrower.
+// still reads at 320 pt, and a pure 2/5 of a window narrower than 800 pt is narrower.
 const MINIMUM_LIST_PANE_LENGTH = 320;
 
 type SplitMode = Exclude<LayoutMode, 'single'>;

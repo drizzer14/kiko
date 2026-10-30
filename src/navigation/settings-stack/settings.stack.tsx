@@ -32,7 +32,7 @@ import { largeTitleScreenOptions } from '../large-title-screen-options';
 const Stack = createPaneStackNavigator<SettingsStackParamList>();
 
 // The menu is the root and takes the companion pane; what it opens takes the primary pane, which
-// shows Categories until something else opens there. The menu takes a third of a wide window.
+// shows Categories until something else opens there. The menu takes 2/5 of a wide window.
 const PANE_CONFIG = {
   rootPane: 'companion',
   companionShare: LIST_SHARE,

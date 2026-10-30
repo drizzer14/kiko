@@ -32,7 +32,7 @@ const Stack = createPaneStackNavigator<AccountsStackParamList>();
 
 // The list is the root and takes the companion pane; the account page opens in the primary pane,
 // which is where the outer display shows it. The primary default is set at runtime by the list:
-// the first account, or the empty pane while there is none. The list takes a third of a wide
+// the first account, or the empty pane while there is none. The list takes 2/5 of a wide
 // window, the account page the rest.
 const PANE_CONFIG = { rootPane: 'companion', companionShare: LIST_SHARE } as const;
 
