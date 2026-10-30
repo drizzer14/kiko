@@ -1,4 +1,3 @@
-import { type FC, useMemo } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import {
   useContentMarginFor,
@@ -6,6 +5,7 @@ import {
   useTabBarPlacement,
 } from '@kiko/design-system/components/screen';
 import { useIsFocused } from '@react-navigation/native';
+import { type FC, useEffect, useMemo, useState } from 'react';
 import { FixedContentMarginContext } from 'react-native-screens';
 import { NativeStackView } from '@react-navigation/native-stack';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
@@ -33,6 +33,13 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   const isTabBarNotAtBottom = useIsTabBarNotAtBottom();
   const tabBarPlacement = useTabBarPlacement();
   const isSplit = mode !== 'single';
+  const [isSplitShown, setIsSplitShown] = useState(isSplit);
+  // A switch between one pane and two unmounts a route's screen in one layout and mounts it in the
+  // other. React Navigation's SceneView clears a route's options, keyed by the route key, when it
+  // unmounts, and that cleanup runs after the new screen's layout effect has set its options: the
+  // screen's title and header items are lost. Mounting the new layout one commit after the old one
+  // unmounted (this one renders neither, for about a frame) lets the old cleanup run first.
+  const isSwitching = isSplitShown !== isSplit;
   const hasFixedContentMargin = isSplit ? isTabBarNotAtBottom : tabBarPlacement === 'side';
   const contentMargin = useContentMarginFor(isSplit);
   const { dispatch } = navigation;
@@ -72,6 +79,14 @@ const PaneStackView: FC<PaneStackViewProps> = ({
     [isSplit, isTabFocused, companionTopKey, primaryTopKey, detailRoute],
   );
 
+  useEffect(() => {
+    setIsSplitShown(isSplit);
+  }, [isSplit]);
+
+  useEffect(() => {
+    setIsSplitShown(isSplit);
+  }, [isSplit]);
+
   return (
     <OpenInPaneContext.Provider value={dispatch}>
       <PaneVisibilityContext.Provider value={visibility}>
@@ -82,7 +97,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
             a side bar (the Duo outer pose, told 16), where UIKit's title would start off the
             content's margin. A single stack under a top bar keeps UIKit's margin. */}
         <FixedContentMarginContext.Provider value={hasFixedContentMargin ? contentMargin : 0}>
-          {isSplit ? (
+          {!isSwitching && isSplit && (
             <TwoPaneLayout
               mode={mode}
               companionShare={paneConfig.companionShare}
@@ -107,7 +122,9 @@ const PaneStackView: FC<PaneStackViewProps> = ({
                 )
               }
             />
-          ) : (
+          )}
+
+          {!isSwitching && !isSplit && (
             <NativeStackView
               state={withoutDefaultRoutes(state)}
               navigation={navigation}
