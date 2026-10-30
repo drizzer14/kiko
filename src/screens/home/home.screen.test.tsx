@@ -81,10 +81,11 @@ jest.mock('react-native-bottom-tabs', () => ({
 // is an ordinary bottom bar, which every test here but the "Duo vertical bar"
 // cases sees.
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
   // An unknown native edge keeps today's rule, which the vertical bar cases here pin.
-  useTabBarEdge: () => 'none',
+  useTabBarEdge: () => mockUseTabBarEdge(),
   // The Home filter sheet is a BottomSheet, which reads the layout mode and the fold: a
   // single flat window, as on an iPhone.
   useLayoutMode: () => 'single',
@@ -2486,6 +2487,39 @@ describe('HomeScreen', () => {
 
     expect(getByText(/Binance/)).toBeTruthy();
     expect(getByText(/Cold storage/)).toBeTruthy();
+  });
+
+  // The footprint of the "+" button is added on every placement of the tab bar, so the last row
+  // ends above the button at full scroll whichever edge the bar is on.
+  describe('the end space of the list under each tab bar placement', () => {
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+    });
+
+    it.each([
+      ['bottom', MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET],
+      ['leading', MOCK_BOTTOM_INSET],
+      ['trailing', MOCK_BOTTOM_INSET],
+      ['top', 0],
+    ] as const)(
+      'adds the button footprint to the clearance of a %s bar',
+      async (edge, clearance) => {
+        mockUseTabBarEdge.mockReturnValue(edge);
+
+        const { getByTestId } = await render(
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />,
+          { wrapper: GestureRootWrapper },
+        );
+
+        expect(
+          StyleSheet.flatten(getByTestId('home-transactions').props.contentContainerStyle)
+            .paddingBottom,
+        ).toBe(clearance + FAB_END_SPACE);
+      },
+    );
   });
 
   describe('Duo vertical bar (the system places the tab bar on a vertical edge)', () => {

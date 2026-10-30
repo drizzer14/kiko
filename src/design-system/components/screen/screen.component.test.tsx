@@ -6,6 +6,7 @@ import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
+import { useFloatingFooterEnd, useIsInFloatingFooter } from '@kiko/design-system/floating-footer';
 import '@kiko/design-system/unistyles';
 import { REGULAR_BUTTON_HEIGHT } from '@kiko/design-system/regular-button-height';
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
@@ -35,13 +36,14 @@ jest.mock('react-native-bottom-tabs', () => ({
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
 // An unknown native edge keeps today's rule, which every case but the top-bar ones pins.
 const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
+const mockHorizontalSizeClass = jest.fn((): 'compact' | 'regular' => 'compact');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
   useTabBarEdge: () => mockUseTabBarEdge(),
   // The content cap reads the layout mode and the size class: a compact single window, as on an
   // iPhone, caps nothing.
   useLayoutMode: () => 'single',
-  useDisplayRegions: () => ({ horizontalSizeClass: 'compact' }),
+  useDisplayRegions: () => ({ horizontalSizeClass: mockHorizontalSizeClass() }),
 }));
 
 // A device with a home indicator reports a non-zero bottom safe-area inset.
@@ -703,6 +705,104 @@ describe('Screen', () => {
       expect(StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style).paddingBottom).toBe(
         FOOTER_BOX_BEFORE_MEASURE,
       );
+    });
+  });
+
+  // The user ruling: the buttons of a floating footer are at most 340 pt wide, and only in a
+  // regular-width window (the Duo inner screen, an iPad); a compact window keeps full-width
+  // buttons.
+  describe('the width of a floating footer', () => {
+    const FLOATING_FOOTER_MAX_WIDTH = 340;
+    const footerStyleOf = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+      StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style);
+
+    afterEach(() => {
+      mockHorizontalSizeClass.mockReturnValue('compact');
+    });
+
+    it.each([
+      ['plain', { floatingFooter: true, footer: footerNode }],
+      ['scroll', { scroll: true, floatingFooter: true, footer: footerNode }],
+      ['bleedTop', { bleedTop: true, floatingFooter: true, footer: footerNode }],
+    ] as const)(
+      'caps the %s branch buttons at 340 pt and centres them in a regular window',
+      async (_name, props) => {
+        mockHorizontalSizeClass.mockReturnValue('regular');
+        const flat = footerStyleOf(await renderScreen(props));
+
+        expect(Number(flat.maxWidth) - 2 * Number(flat.paddingHorizontal)).toBe(
+          FLOATING_FOOTER_MAX_WIDTH,
+        );
+        expect(flat.alignSelf).toBe('center');
+        expect(flat.width).toBe('100%');
+      },
+    );
+
+    it('keeps full-width buttons in a compact window', async () => {
+      const flat = footerStyleOf(await renderScreen({ floatingFooter: true, footer: footerNode }));
+
+      expect(flat.maxWidth).toBeUndefined();
+      expect(flat.alignSelf).toBeUndefined();
+    });
+
+    it('does not cap a pinned footer in a regular window', async () => {
+      mockHorizontalSizeClass.mockReturnValue('regular');
+      const flat = footerStyleOf(await renderScreen({ footer: footerNode }));
+
+      expect(flat.maxWidth).not.toBe(
+        FLOATING_FOOTER_MAX_WIDTH + 2 * Number(flat.paddingHorizontal),
+      );
+    });
+  });
+
+  // What the footer tells the rest of the tree: its buttons float (a Button reads that), and a
+  // scroll view under it, which a `bleedTop` child such as the Holding detail ledger owns, pads
+  // its end by the footer's height.
+  describe('what a floating footer tells the tree', () => {
+    const FooterProbe = () => (
+      <Text testID="in-floating-footer">{String(useIsInFloatingFooter())}</Text>
+    );
+    const EndProbe = () => <Text testID="floating-end">{String(useFloatingFooterEnd())}</Text>;
+    const renderProbed = (props: ComponentProps<typeof Screen>) =>
+      render(
+        <Screen {...props} footer={<FooterProbe />}>
+          <EndProbe />
+        </Screen>,
+      );
+
+    it('marks the footer as floating, and a pinned one as not', async () => {
+      const floating = await renderProbed({ floatingFooter: true });
+      expect(floating.getByTestId('in-floating-footer').props.children).toBe('true');
+
+      const pinned = await renderProbed({});
+      expect(pinned.getByTestId('in-floating-footer').props.children).toBe('false');
+    });
+
+    it('hands the content the footer height as its end, and nothing without a floating footer', async () => {
+      const floating = await renderProbed({ scroll: true, floatingFooter: true });
+      const scrollEnd = StyleSheet.flatten(
+        floating.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+      ).paddingBottom;
+
+      expect(floating.getByTestId('floating-end').props.children).toBe(String(scrollEnd));
+
+      await act(() =>
+        fireEvent(floating.getByTestId(FOOTER_TEST_ID), 'layout', {
+          nativeEvent: { layout: { height: 123 } },
+        }),
+      );
+
+      expect(floating.getByTestId('floating-end').props.children).toBe('123');
+
+      const pinned = await renderProbed({ scroll: true });
+      expect(pinned.getByTestId('floating-end').props.children).toBe('undefined');
+
+      const noFooter = await render(
+        <Screen scroll floatingFooter>
+          <EndProbe />
+        </Screen>,
+      );
+      expect(noFooter.getByTestId('floating-end').props.children).toBe('undefined');
     });
   });
 

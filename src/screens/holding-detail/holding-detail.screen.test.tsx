@@ -636,6 +636,35 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
+  // The footer floats over the ledger (user ruling: buttons do not cover the last cards), so the
+  // list that owns the scrolling pads its end by the footer's measured height.
+  it('ends the ledger where the floating footer begins', async () => {
+    seed(cardHolding);
+
+    const { getByTestId } = await renderScreen();
+    const ledgerEnd = () =>
+      StyleSheet.flatten(getByTestId('ledger-list').props.contentContainerStyle).paddingBottom;
+
+    await act(() =>
+      fireEvent(getByTestId('screen-footer'), 'layout', {
+        nativeEvent: { layout: { height: 147 } },
+      }),
+    );
+
+    expect(ledgerEnd()).toBe(147);
+  });
+
+  it('keeps the ledger resting end padding when there is no footer to float', async () => {
+    seed(bondHolding);
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('screen-footer')).toBeNull();
+    expect(
+      StyleSheet.flatten(getByTestId('ledger-list').props.contentContainerStyle).paddingBottom,
+    ).toBe(16);
+  });
+
   it('caps and centres the ledger content in a pane, and leaves the list the whole pane', async () => {
     seed(cashHolding);
 

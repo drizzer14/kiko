@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { fireEvent, render } from '@testing-library/react-native';
 
@@ -127,5 +128,62 @@ describe('LargeTitleHeading', () => {
     });
 
     expect(value.headingBottom.current).toBe(82 + darkTheme.spacing(4));
+  });
+
+  // A one-word title never breaks mid-word: it shrinks on one line down to 0.7 (the pie legend
+  // pattern); a title of several words wraps by word instead.
+  it('shrinks a one-word title on one line, down to 0.7', async () => {
+    const { getByRole } = await render(
+      <LargeTitleHeadingContext.Provider value={headingValue('Налаштування')}>
+        <LargeTitleHeading />
+      </LargeTitleHeadingContext.Provider>,
+    );
+    const title = getByRole('header');
+
+    expect(title.props.numberOfLines).toBe(1);
+    expect(title.props.adjustsFontSizeToFit).toBe(true);
+    expect(title.props.minimumFontScale).toBe(0.7);
+  });
+
+  it('lets a title of several words wrap, with no shrinking', async () => {
+    const { getByRole } = await render(
+      <LargeTitleHeadingContext.Provider value={headingValue('Transaction templates')}>
+        <LargeTitleHeading />
+      </LargeTitleHeadingContext.Provider>,
+    );
+    const title = getByRole('header');
+
+    expect(title.props.numberOfLines).toBeUndefined();
+    expect(title.props.adjustsFontSizeToFit).toBeFalsy();
+    expect(title.props.minimumFontScale).toBeUndefined();
+  });
+
+  describe('in the bar row', () => {
+    const renderHeading = (inRow: boolean) =>
+      render(
+        <LargeTitleHeadingContext.Provider value={headingValue('Statistics', { inRow })}>
+          <LargeTitleHeading />
+        </LargeTitleHeadingContext.Provider>,
+      );
+
+    it('takes no layout room and lays the title over the row, level with the right pane', async () => {
+      const { getByTestId } = await renderHeading(true);
+      const heading = StyleSheet.flatten(getByTestId('large-title-heading').props.style);
+      const slot = StyleSheet.flatten(getByTestId('large-title-heading').parent?.props.style);
+
+      expect(slot.height).toBe(0);
+      expect(heading.position).toBe('absolute');
+      expect(heading.top).toBeLessThan(0);
+      expect(heading.left).toBe(0);
+      expect(heading.right).toBe(0);
+    });
+
+    it('keeps the title in the flow of the content when it is not in the row', async () => {
+      const { getByTestId } = await renderHeading(false);
+      const heading = StyleSheet.flatten(getByTestId('large-title-heading').props.style);
+
+      expect(heading.position).toBeUndefined();
+      expect(heading.marginBottom).toBe(darkTheme.spacing(4));
+    });
   });
 });
