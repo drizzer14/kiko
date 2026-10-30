@@ -71,6 +71,11 @@ export const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.radii.sm,
     alignSelf: 'flex-start',
   },
+  // A Button inside a floating Screen footer is a capsule at every size (user ruling), laid over
+  // the size's own radius.
+  capsule: {
+    borderRadius: theme.radii.full,
+  },
   fullWidth: {
     width: '100%',
   },

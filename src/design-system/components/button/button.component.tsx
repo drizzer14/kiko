@@ -71,7 +71,8 @@ const Button: FC<ButtonProps> = ({
     .exhaustive();
 
   // A tonal fill is translucent, so in a footer that floats over scrolling rows it takes a
-  // backing (glass or solid) instead. The backing's corners are the regular size's.
+  // backing (glass or solid) instead. The backing keeps the regular size's corners, not the
+  // footer capsule's, until it is removed.
   const floatingTonalVariant = match({ variant, size, isInFloatingFooter })
     .with(
       { variant: 'secondaryTonal', size: 'regular', isInFloatingFooter: true },
@@ -110,6 +111,7 @@ const Button: FC<ButtonProps> = ({
       style={[
         styles.button,
         sizeStyle,
+        isInFloatingFooter && styles.capsule,
         fullWidth && styles.fullWidth,
         floatingTonalVariant !== undefined && styles.unfilled,
         disabled && styles.disabled,
