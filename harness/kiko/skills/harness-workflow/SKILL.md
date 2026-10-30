@@ -594,8 +594,8 @@ Every call re-sends the whole context, so size drives cost (user 2026-10-30).
 2. Every brief caps the hand-back report (default 15 lines); details go to a file the report
    names.
 3. Handoff files hold live state only (under 20 KB); history goes to `HANDOFF-history.md`.
-4. Use a fresh developer per fix round; reuse one through SendMessage only under about 150k
-   tokens of context.
+4. Use a fresh developer per fix round; SendMessage reuse is only a same-task re-review by
+   the SAME agent (the fresh-agent bullet on task naming).
 
 ## Harness hook changes go live only after a plugin update
 

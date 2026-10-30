@@ -62,7 +62,7 @@ Composite scripts:
 ## Automatic wiring
 
 Detail for every hook, and the full deny list: `docs/harness/checks.md` "Automatic wiring" and
-kiko-linter (section names in quotes). Hooks live in `harness/kiko/hooks/hooks.json` and run
+kiko-linter (section names are in checks.md). Hooks live in `harness/kiko/hooks/hooks.json` and run
 `harness/kiko/hooks/dispatch.sh <script-name>`, which execs the edited worktree's own
 `scripts/checks/<script-name>`. Hook changes reach running sessions only after a plugin reinstall
 plus `/reload-plugins`.
@@ -80,8 +80,9 @@ plus `/reload-plugins`.
     `/Users/drizzer14/Developer/Projects/pff-ios`, and any command that moves `main`: merge in a
     detached worktree, then `bash scripts/ff-main.sh <sha>` (it can exit 2 AFTER main moved; a
     re-run retries only the patch-package step).
-  - a shell write into a guarded tree (`src/`, `__tests__/`, `rules/`, `scripts/`, `docs/superpowers/`,
-    `.claude/skills/`, `harness/kiko/`, any `*.yml`; "SHELL-WRITE deny"): use Edit/Write.
+  - a shell write into a guarded tree (for example `src/`, `__tests__/`, `rules/`, `scripts/`,
+    any `*.yml`; "SHELL-WRITE deny"): use Edit/Write. Full list: `WRITE_GUARDED_TREES`,
+    `docs/harness/checks.md` "Automatic wiring".
   - a whole-repository job or full jest run typed outside the queue: queue it with
     `bash scripts/job-queue.sh verify|check-all|security|gate ...` (harness sync:
     `harness-verify <harness worktree> <label>`); name files for jest
@@ -109,14 +110,16 @@ rule passes only the pre-write guard; `check:all` still fails on that line (see 
 ## Documented exceptions
 
 A suppression or ignore-list entry needs a concrete, verifiable reason. Inventory:
-**`docs/harness/documented-exceptions.md`**; read and UPDATE it when you add, change, or rely on one.
+**`docs/harness/documented-exceptions.md`**; read and UPDATE it when you add, change, or rely
+on one.
 
 ## Guideline 2.5.19 — no hidden features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 
 Every feature ships VISIBLE to an App Store reviewer in a release build: no flag-gated or
 conditional-visibility feature, no demo/seed/screenshot module in or imported from app `src/`.
 Full rule and checks: **`.claude/skills/kiko-architecture/SKILL.md`** ("Guideline 2.5.19 — no
-hidden features"); read it before adding any build/env flag that controls what a user sees.
+hidden features"); read it before adding any build/env flag that controls what a user sees, or
+any dev-only demo/seed module.
 
 ## Dependency hygiene
 
