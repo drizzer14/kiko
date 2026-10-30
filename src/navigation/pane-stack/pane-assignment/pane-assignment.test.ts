@@ -353,17 +353,22 @@ describe('pane assignment', () => {
     expect(opened.panes).toEqual({ accounts: 'companion', account: 'primary', form2: 'primary' });
   });
 
-  it('opens from a static default as if it sat right above the root', () => {
+  it('opens from the real route a static default became, right above it and below the form', () => {
     const opened = openFrom(
-      [route('statistics'), route('transaction')],
-      { statistics: 'primary', transaction: 'companion' },
-      defaultRouteKey('companion'),
-      route('transaction2'),
+      [route('statistics'), route('home', 'Home', { isDefault: true })],
+      { statistics: 'primary', home: 'companion' },
+      'home',
+      route('transaction'),
       STATISTICS_TAB,
     );
 
-    expect(keys(opened.routes)).toEqual(['statistics', 'transaction2']);
-    expect(opened.panes.transaction2).toBe('companion');
+    expect(keys(opened.routes)).toEqual(['statistics', 'home', 'transaction']);
+    expect(opened.routes[1].isDefault).toBeUndefined();
+    expect(opened.panes).toEqual({
+      statistics: 'primary',
+      home: 'companion',
+      transaction: 'companion',
+    });
   });
 
   it('moves a route that the opened one reuses to the top instead of listing it twice', () => {
