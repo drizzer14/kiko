@@ -19,6 +19,10 @@ export const FOOTER_GAP_STEP = 4;
 // equals its trailing gap at 24 pt in both side poses. A live read of the platter may replace it.
 export const SIDE_BAR_PLATTER_INSET = 24;
 
+// The widest a floating footer's buttons grow in a regular-width window. Pixel-measured: the
+// Accounts left-pane footer button on the Duo inner screen (IMG_7263, x 20..360).
+const FLOATING_FOOTER_MAX_WIDTH = 340;
+
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
     flex: 1,
@@ -140,6 +144,13 @@ export const styles = StyleSheet.create((theme) => ({
   floatingFooterAnchor: {
     height: 0,
   },
+  // In a regular-width window the whole footer content, one button or a row of two, is capped at
+  // the buttons' max width and centred; the slot's side padding comes on top of that cap.
+  floatingFooterCap: (contentMargin: number) => ({
+    width: '100%' as const,
+    maxWidth: FLOATING_FOOTER_MAX_WIDTH + 2 * contentMargin,
+    alignSelf: 'center' as const,
+  }),
   // Grows upward from the anchor's bottom edge over the scroll surface, as wide as the anchor.
   floatingFooter: {
     position: 'absolute' as const,

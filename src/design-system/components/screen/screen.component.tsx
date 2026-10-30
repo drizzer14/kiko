@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { useDisplayRegions } from '@kiko/display-regions';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
@@ -40,16 +41,25 @@ const FooterSlot: FC<FooterSlotProps> = ({
   capStyle,
   onFloatingLayout,
 }) => {
+  // The size class, as `useContentCap` reads it: a regular window, whatever its live layout mode.
+  const { horizontalSizeClass } = useDisplayRegions();
+
   if (!footer) {
     return null;
   }
+
+  const isButtonWidthCapped = floatingFooter && horizontalSizeClass === 'regular';
 
   const slot = (
     <View
       testID="screen-footer"
       pointerEvents={floatingFooter ? 'box-none' : undefined}
       onLayout={floatingFooter ? onFloatingLayout : undefined}
-      style={[styles.footer(bottomClearance, contentMargin, sideBarInset), capStyle]}
+      style={[
+        styles.footer(bottomClearance, contentMargin, sideBarInset),
+        capStyle,
+        isButtonWidthCapped ? styles.floatingFooterCap(contentMargin) : undefined,
+      ]}
     >
       {footer}
     </View>
