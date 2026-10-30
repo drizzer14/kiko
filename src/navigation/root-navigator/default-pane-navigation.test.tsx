@@ -68,6 +68,9 @@ type StackCase = {
   Stack: ComponentType;
   // The route keys the stack stands in as a default, and where a screen it opens lands.
   defaults: string[];
+  // The screen the stack stands in as its default, which becomes a real route once a step is
+  // opened from it.
+  defaultScreen?: string;
   target: string;
   // The pane every step above the list takes, defaults included.
   detailPane: 'companion' | 'primary';
@@ -80,6 +83,7 @@ const STACKS: StackCase[] = [
     name: 'Home',
     Stack: HomeStack,
     defaults: ['pane-default:companion'],
+    defaultScreen: 'Statistics',
     target: 'TransactionForm',
     detailPane: 'companion',
     walk: [
@@ -91,6 +95,7 @@ const STACKS: StackCase[] = [
     name: 'Statistics',
     Stack: StatisticsStack,
     defaults: ['pane-default:companion'],
+    defaultScreen: 'Home',
     target: 'TransactionForm',
     detailPane: 'companion',
     walk: [
@@ -113,6 +118,7 @@ const STACKS: StackCase[] = [
     name: 'Settings',
     Stack: SettingsStack,
     defaults: ['pane-default:primary'],
+    defaultScreen: 'Categories',
     target: 'System',
     detailPane: 'primary',
     walk: [{ name: 'Help' }, { name: 'HelpTopic', params: { topicId: 'addAccount' } }],
@@ -502,14 +508,14 @@ describe('the Accounts stack: closing an account page', () => {
 
 describe.each(STACKS.filter(({ defaults }) => defaults.length > 0))(
   'the $name stack: the steps above its default',
-  ({ Stack, walk }) => {
+  ({ Stack, walk, defaultScreen = '' }) => {
     const [first, second] = walk;
 
     beforeEach(async () => {
       await renderStack(Stack);
     });
 
-    it('puts the screen the default opens, and the one opened from it, in the detail pane', async () => {
+    it('puts the default as a real route, the screen it opens, and the one opened from it, in the detail pane', async () => {
       await act(async () => {
         Object.values(defaultNavigations())[0].navigate(first.name, first.params);
       });
@@ -528,7 +534,7 @@ describe.each(STACKS.filter(({ defaults }) => defaults.length > 0))(
 
       expect(renderedPanes(rootKey)).toEqual({
         list: [stackState().routes[0].name],
-        detail: [first.name, second.name],
+        detail: [defaultScreen, first.name, second.name],
       });
     });
   },
