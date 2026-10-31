@@ -8,8 +8,9 @@ import type { PreparedRules, RewriteCandidate } from './category-rules.d';
 // reaches it by the label it shows, on the insert, the rewrite and the re-sync refresh alike, and
 // the statistics leave it out of spending by its counterpart or untracked marker, whatever
 // category it holds. A synced debit that a Convert marked with the pair id alone has neither
-// marker, so it still counts as spending: a rule may move it between category slices, and the
-// total stays. The insert-time refresh builds its SQL from this list too, typed over it, so the
+// marker: it leaves spending only as half of a same-currency equal move (the statistics pair
+// rule), and otherwise still counts, so a rule may move it between category slices with the total
+// unchanged. The insert-time refresh builds its SQL from this list too, typed over it, so the
 // two cannot name different rows.
 export const REWRITE_GUARD_FIELDS = [
   'categorySetByHand',

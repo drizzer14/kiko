@@ -45,6 +45,10 @@ import {
   descriptionExcludedTransferTransactionIds,
   mccExcludedTransferTransactionIds,
 } from '@kiko/statistics/transfer-exclusion';
+import {
+  exchangeExcludedTransactionIds,
+  sameCurrencyMoveTransactionIds,
+} from '@kiko/statistics/exchange-exclusion';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -93,7 +97,6 @@ import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
 import Screen, { usePaneContentWidth } from '@kiko/design-system/components/screen';
-import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
@@ -189,9 +192,13 @@ const NET_WORTH_CARD_GAP = 3;
  */
 const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
-  // The shared row follows the window and the width the pane's content has (the pane's, limited by
-  // the content cap), and nothing else: a filter or a date range never moves a card.
-  const isRowShared = isChartRowShared(useIsLargeWindow(), usePaneContentWidth());
+  // The card order and the shared row follow the window and the width the pane's content has (the
+  // pane's, limited by the content cap), and nothing else: a filter or a date range never moves a
+  // card. A window that is not large shows one column, every card full width (line, bar, pie,
+  // donut, trend); a large one (every full-screen iPad) has room to share a row, so the trend
+  // moves up and the donut and pie close the screen. The Help topic's steps follow the column.
+  const isLargeWindow = useIsLargeWindow();
+  const isRowShared = isChartRowShared(isLargeWindow, usePaneContentWidth());
   // A card keeps its own height, except in the shared row, where both cards take the row's and
   // each chart is centred in what is left under its title.
   const sharedCardStyle = isRowShared ? styles.sharedRowFill : undefined;
@@ -769,8 +776,9 @@ const StatisticsScreen: FC = () => {
   // legs are dropped from the category breakdown by id below; the credit legs
   // are already ignored as income. Scoped to THIS chart only — every other view
   // (net worth, by-type, account pie) still sees the full ledger. The matcher
-  // sees only unmarked rows: an exchange leg is excluded by its marker, and
-  // must never pair with (and so swallow) an unmarked Pay send.
+  // sees only unmarked rows: an exchange leg is excluded by its marker, or by the pair rule when
+  // it is an equal same-currency pair on two holdings, and must never pair with (and so swallow)
+  // an unmarked Pay send.
   const internalTransferIds = useMemo(
     () => internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
     [ledgerWithCurrency],
@@ -919,6 +927,14 @@ const StatisticsScreen: FC = () => {
     [breakdownTransactions],
   );
 
+  // The synced debit a Convert marked with the pair id only has no marker for the rule above, and
+  // the matcher never sees a row with a pair id. Over the unfiltered ledger, so a partner under an
+  // account the filter hides still pairs.
+  const sameCurrencyMoveIds = useMemo(
+    () => sameCurrencyMoveTransactionIds(ledgerWithCurrency),
+    [ledgerWithCurrency],
+  );
+
   // The account kind of each holding, so the funding matcher can tell a crypto account's own rows
   // from the bank rows that paid for them. A holding whose account is not in the list is left out
   // of the map, and the matcher counts such a holding as a bank side.
@@ -945,8 +961,8 @@ const StatisticsScreen: FC = () => {
   );
 
   // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
-  // the exchange-marker rule, the cheap secondary matched-pair matcher, the
-  // exchange-funding matcher, and the linked-loan-payment rule (its own derived
+  // the exchange-marker rule, the same-currency pair rule, the cheap secondary matched-pair
+  // matcher, the exchange-funding matcher, and the linked-loan-payment rule (its own derived
   // interest and within-tolerance fee entries, `loanInterestRows` above,
   // replace the raw row this drops). A row is dropped from the spending pie if
   // ANY rule catches it.
@@ -957,6 +973,7 @@ const StatisticsScreen: FC = () => {
         ...mccExcludedIds,
         ...descriptionExcludedIds,
         ...exchangeExcludedIds,
+        ...sameCurrencyMoveIds,
         ...exchangeFundingExcludedIds,
         ...loanPaymentExcludedIds,
       ]),
@@ -965,6 +982,7 @@ const StatisticsScreen: FC = () => {
       mccExcludedIds,
       descriptionExcludedIds,
       exchangeExcludedIds,
+      sameCurrencyMoveIds,
       exchangeFundingExcludedIds,
       loanPaymentExcludedIds,
     ],
@@ -1270,6 +1288,139 @@ const StatisticsScreen: FC = () => {
     );
   }
 
+  const netWorthCard = (
+    <Card key="statistics-block-line" testID="statistics-block-line" padding={4} radius="lg">
+      <Box gap={NET_WORTH_CARD_GAP}>
+        <Text variant="heading" style={styles.cardTitle}>
+          {t('statistics.netWorthOverTime')}
+        </Text>
+
+        <NetWorthLine
+          points={netWorth.points}
+          startReference={netWorth.startReference}
+          baseCurrency={baseCurrency}
+          loading={backfillStatus.state === 'loading'}
+          spaceAbove={NET_WORTH_CARD_GAP}
+        />
+      </Box>
+    </Card>
+  );
+
+  const byTypeCard = (
+    <Card key="statistics-block-bar" testID="statistics-block-bar" padding={4} radius="lg">
+      <Box gap={3}>
+        <Text variant="heading" style={styles.cardTitle}>
+          {t('statistics.byType')}
+        </Text>
+
+        <BarChart data={typeSlices} baseCurrency={baseCurrency} />
+      </Box>
+    </Card>
+  );
+
+  const trendCard = (
+    <Card key="statistics-block-trend" testID="statistics-block-trend" padding={4} radius="lg">
+      <Box gap={3}>
+        <Text variant="heading" style={styles.cardTitle}>
+          {t('statistics.spendingTrendByCategory')}
+        </Text>
+
+        <Box direction="row" style={styles.filterBar}>
+          <TrendFilterField
+            key={sheetGeneration}
+            testID="statistics-trend-filter"
+            filter={appliedTrendFilter}
+            categoryOptions={categoryOptions}
+            onSave={saveTrendFilter}
+          />
+        </Box>
+
+        <CategoryTrendLine
+          series={trendSeries}
+          baseCurrency={baseCurrency}
+          emptyLabel={t('statistics.noSpendingToShow')}
+        />
+      </Box>
+    </Card>
+  );
+
+  const categoryCard = (
+    <Card
+      key="statistics-block-category"
+      testID="statistics-block-category"
+      padding={4}
+      radius="lg"
+      style={sharedCardStyle}
+    >
+      <Box gap={3} style={sharedCardStyle}>
+        <Text variant="heading" style={styles.cardTitle}>
+          {t('statistics.expensesByCategory')}
+        </Text>
+
+        <Box direction="row" gap={3} style={styles.filterBar}>
+          <FilterMenu
+            key={sheetGeneration}
+            label={t('statistics.filterCategories')}
+            sheetTitle={t('statistics.filterCategoriesSheetTitle')}
+            testID="statistics-category-filter"
+            options={categoryOptions}
+            selected={visibleSelectedCategories}
+            onToggle={toggleCategory}
+            triggerIcon={genericEntitySymbol.category}
+          />
+        </Box>
+
+        <Box style={sharedChartStyle} testID="statistics-chart-body-category">
+          <PieChart
+            slices={categorySlices.map(toPieSlice)}
+            baseCurrency={baseCurrency}
+            testID="category-pie"
+            emptyLabel={t('statistics.noSpendingToShow')}
+            innerRatio={CATEGORY_DONUT_INNER_RATIO}
+            centerTotal={categoryTotal}
+            legendMinShare={CATEGORY_LEGEND_MIN_SHARE}
+          />
+        </Box>
+      </Box>
+    </Card>
+  );
+
+  const accountContributionCard = (
+    <Card
+      key="statistics-block-pie"
+      testID="statistics-block-pie"
+      padding={4}
+      radius="lg"
+      style={sharedCardStyle}
+    >
+      <Box gap={3} style={sharedCardStyle}>
+        <Text variant="heading" style={styles.cardTitle}>
+          {t('statistics.accountContribution')}
+        </Text>
+
+        <Box gap={3} style={sharedChartStyle} testID="statistics-chart-body-pie">
+          <PieChart slices={slices} baseCurrency={baseCurrency} />
+
+          {!debtTotal.isZero() && (
+            // SummaryTable is the shared "label left, value right" layout
+            // every other summary line in the app already uses, rather
+            // than a hand-built flexDirection row.
+            <SummaryTable
+              testID="statistics-debts-total"
+              rows={[
+                {
+                  key: 'debts',
+                  label: t('statistics.debtsTotal'),
+                  value: <MoneyText money={debtTotal} context="balance" />,
+                },
+              ]}
+            />
+          )}
+        </Box>
+      </Box>
+    </Card>
+  );
+
   return (
     <Screen scroll scrollableRef={scrollRef}>
       <Box gap={4} testID="statistics-blocks">
@@ -1299,141 +1450,12 @@ const StatisticsScreen: FC = () => {
 
         <StatisticsGrid
           isRowShared={isRowShared}
-          fullWidth={[
-            <Card
-              key="statistics-block-line"
-              testID="statistics-block-line"
-              padding={4}
-              radius="lg"
-            >
-              <Box gap={NET_WORTH_CARD_GAP}>
-                <Text variant="heading" style={styles.cardTitle}>
-                  {t('statistics.netWorthOverTime')}
-                </Text>
-
-                <NetWorthLine
-                  points={netWorth.points}
-                  startReference={netWorth.startReference}
-                  baseCurrency={baseCurrency}
-                  loading={backfillStatus.state === 'loading'}
-                  spaceAbove={NET_WORTH_CARD_GAP}
-                />
-              </Box>
-            </Card>,
-
-            <Card key="statistics-block-bar" testID="statistics-block-bar" padding={4} radius="lg">
-              <Box gap={3}>
-                <Text variant="heading" style={styles.cardTitle}>
-                  {t('statistics.byType')}
-                </Text>
-
-                <BarChart data={typeSlices} baseCurrency={baseCurrency} />
-              </Box>
-            </Card>,
-
-            <Card
-              key="statistics-block-trend"
-              testID="statistics-block-trend"
-              padding={4}
-              radius="lg"
-            >
-              <Box gap={3}>
-                <Text variant="heading" style={styles.cardTitle}>
-                  {t('statistics.spendingTrendByCategory')}
-                </Text>
-
-                <Box direction="row" style={styles.filterBar}>
-                  <TrendFilterField
-                    key={sheetGeneration}
-                    testID="statistics-trend-filter"
-                    filter={appliedTrendFilter}
-                    categoryOptions={categoryOptions}
-                    onSave={saveTrendFilter}
-                  />
-                </Box>
-
-                <CategoryTrendLine
-                  series={trendSeries}
-                  baseCurrency={baseCurrency}
-                  emptyLabel={t('statistics.noSpendingToShow')}
-                />
-              </Box>
-            </Card>,
-          ]}
-          shared={[
-            <Card
-              key="statistics-block-category"
-              testID="statistics-block-category"
-              padding={4}
-              radius="lg"
-              style={sharedCardStyle}
-            >
-              <Box gap={3} style={sharedCardStyle}>
-                <Text variant="heading" style={styles.cardTitle}>
-                  {t('statistics.expensesByCategory')}
-                </Text>
-
-                <Box direction="row" gap={3} style={styles.filterBar}>
-                  <FilterMenu
-                    key={sheetGeneration}
-                    label={t('statistics.filterCategories')}
-                    sheetTitle={t('statistics.filterCategoriesSheetTitle')}
-                    testID="statistics-category-filter"
-                    options={categoryOptions}
-                    selected={visibleSelectedCategories}
-                    onToggle={toggleCategory}
-                    triggerIcon={genericEntitySymbol.category}
-                  />
-                </Box>
-
-                <Box style={sharedChartStyle} testID="statistics-chart-body-category">
-                  <PieChart
-                    slices={categorySlices.map(toPieSlice)}
-                    baseCurrency={baseCurrency}
-                    testID="category-pie"
-                    emptyLabel={t('statistics.noSpendingToShow')}
-                    innerRatio={CATEGORY_DONUT_INNER_RATIO}
-                    centerTotal={categoryTotal}
-                    legendMinShare={CATEGORY_LEGEND_MIN_SHARE}
-                  />
-                </Box>
-              </Box>
-            </Card>,
-
-            <Card
-              key="statistics-block-pie"
-              testID="statistics-block-pie"
-              padding={4}
-              radius="lg"
-              style={sharedCardStyle}
-            >
-              <Box gap={3} style={sharedCardStyle}>
-                <Text variant="heading" style={styles.cardTitle}>
-                  {t('statistics.accountContribution')}
-                </Text>
-
-                <Box gap={3} style={sharedChartStyle} testID="statistics-chart-body-pie">
-                  <PieChart slices={slices} baseCurrency={baseCurrency} />
-
-                  {!debtTotal.isZero() && (
-                    // SummaryTable is the shared "label left, value right" layout
-                    // every other summary line in the app already uses, rather
-                    // than a hand-built flexDirection row.
-                    <SummaryTable
-                      testID="statistics-debts-total"
-                      rows={[
-                        {
-                          key: 'debts',
-                          label: t('statistics.debtsTotal'),
-                          value: <MoneyText money={debtTotal} context="balance" />,
-                        },
-                      ]}
-                    />
-                  )}
-                </Box>
-              </Box>
-            </Card>,
-          ]}
+          fullWidth={
+            isLargeWindow
+              ? [netWorthCard, byTypeCard, trendCard]
+              : [netWorthCard, byTypeCard, accountContributionCard, categoryCard, trendCard]
+          }
+          shared={isLargeWindow ? [categoryCard, accountContributionCard] : []}
         />
       </Box>
     </Screen>

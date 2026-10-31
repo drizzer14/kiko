@@ -690,7 +690,7 @@ describe('StatisticsScreen', () => {
     offsetSpy.mockRestore();
   });
 
-  it('renders the five blocks in order: net-worth line, by-type bar, spending trend, category donut, account pie', async () => {
+  it('renders the five blocks in one column in a window that is not large: net-worth line, by-type bar, account pie, category donut, spending trend', async () => {
     const { getByTestId } = await renderScreen();
 
     const order = getByTestId('statistics-blocks')
@@ -699,15 +699,15 @@ describe('StatisticsScreen', () => {
 
     // The net-worth line leads the screen, ahead of the by-type/category
     // charts — it is the one chart every other block on this screen relates
-    // back to (a snapshot of the same net worth it plots over time). The
-    // category donut and the account pie close the screen: on a wide pane they
-    // share one row, so they sit together at the end on every window.
+    // back to (a snapshot of the same net worth it plots over time). A window
+    // that is not large (an iPhone, a Duo) shows one column ending in the
+    // trend; the large-window order is pinned in the grid test.
     expect(order).toEqual([
       'statistics-block-line',
       'statistics-block-bar',
-      'statistics-block-trend',
-      'statistics-block-category',
       'statistics-block-pie',
+      'statistics-block-category',
+      'statistics-block-trend',
     ]);
   });
 
@@ -2385,6 +2385,64 @@ describe('StatisticsScreen', () => {
     // of an internal movement, so its wedge is gone.
     expect(queryByTestId('category-pie-arc-transport')).toBeNull();
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+  });
+
+  // A synced bank debit the form's Exchange turned into a move to an own holding: the bank-owned
+  // debit carries the pair id ONLY, the manual credit carries the pair id and the marker.
+  describe('a synced debit turned into a move by the form Exchange', () => {
+    const seedSyncedDebitMove = (credit: { holdingId: string; amountMinorUnits: number }): void =>
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, UAH_HOLDING_2],
+        rates: [USD_UAH_RATE],
+        transactions: [
+          EXPENSES[0],
+          {
+            id: 'synced-debit',
+            holdingId: 'h3',
+            time: localDaysFrom(now, -2),
+            amountMinorUnits: -250_00,
+            category: 'transport',
+            exchangePairId: 'move-1',
+          },
+          {
+            id: 'move-credit',
+            holdingId: credit.holdingId,
+            time: localDaysFrom(now, -2),
+            amountMinorUnits: credit.amountMinorUnits,
+            category: null,
+            exchangePairId: 'move-1',
+            exchangeCounterpartHoldingId: 'h3',
+          },
+        ],
+        history: HISTORY,
+        categories: CATEGORIES,
+      });
+
+    it('renders no wedge for the debit of a same-currency equal-amount move', async () => {
+      seedSyncedDebitMove({ holdingId: 'h1', amountMinorUnits: 250_00 });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('category-pie-arc-transport')).toBeNull();
+      expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    });
+
+    it('keeps the debit of a same-currency move whose amount differs in the pie', async () => {
+      seedSyncedDebitMove({ holdingId: 'h1', amountMinorUnits: 240_00 });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+    });
+
+    it('keeps the debit of a move into another currency in the pie', async () => {
+      seedSyncedDebitMove({ holdingId: 'h2', amountMinorUnits: 6_25 });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+    });
   });
 
   it('leaves income-only data with an empty spending pie', async () => {

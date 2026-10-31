@@ -381,9 +381,9 @@ describe('the choices a help step names', () => {
       [
         en.statistics.netWorthOverTime,
         en.statistics.byType,
-        en.statistics.spendingTrendByCategory,
-        en.statistics.expensesByCategory,
         en.statistics.accountContribution,
+        en.statistics.expensesByCategory,
+        en.statistics.spendingTrendByCategory,
       ],
     ],
     [
@@ -393,13 +393,13 @@ describe('the choices a help step names', () => {
       [
         uk.statistics.netWorthOverTime,
         uk.statistics.byType,
-        uk.statistics.spendingTrendByCategory,
-        uk.statistics.expensesByCategory,
         uk.statistics.accountContribution,
+        uk.statistics.expensesByCategory,
+        uk.statistics.spendingTrendByCategory,
       ],
     ],
   ] as const)(
-    'opens steps 2 to 6 of the viewStatistics topic with the card titles in card order in %s',
+    'opens steps 2 to 6 of the viewStatistics topic with the card titles in the order of the one-column layout in %s',
     (_language, values, quote, titles) => {
       const firstQuoted = [2, 3, 4, 5, 6].map(
         (step) => quotedSpans(stepOf(values, 'viewStatistics', step), quote)[0],

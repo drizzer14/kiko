@@ -1,4 +1,7 @@
-import { exchangeExcludedTransactionIds } from './exchange-exclusion';
+import {
+  exchangeExcludedTransactionIds,
+  sameCurrencyMoveTransactionIds,
+} from './exchange-exclusion';
 
 describe('exchangeExcludedTransactionIds', () => {
   it('excludes both legs of a cross-currency exchange', () => {
@@ -58,5 +61,110 @@ describe('exchangeExcludedTransactionIds', () => {
         { id: 'a', exchangeCounterpartHoldingId: null, untrackedCounterpart: null },
       ]).size,
     ).toBe(0);
+  });
+});
+
+describe('sameCurrencyMoveTransactionIds', () => {
+  const leg = (
+    overrides: Partial<Parameters<typeof sameCurrencyMoveTransactionIds>[0][number]> & {
+      id: string;
+    },
+  ): Parameters<typeof sameCurrencyMoveTransactionIds>[0][number] => ({
+    holdingId: 'bank',
+    amountMinorUnits: -500_00,
+    currency: 'UAH',
+    exchangePairId: 'pair-1',
+    exchangeCounterpartHoldingId: null,
+    untrackedCounterpart: null,
+    ...overrides,
+  });
+
+  it('excludes both legs of a pair that is equal and opposite in one currency on two holdings', () => {
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'debit' }),
+        leg({ id: 'credit', holdingId: 'cash', amountMinorUnits: 500_00 }),
+      ]),
+    ).toEqual(new Set(['debit', 'credit']));
+  });
+
+  it('keeps a pair whose amounts differ', () => {
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'debit' }),
+        leg({ id: 'credit', holdingId: 'cash', amountMinorUnits: 490_00 }),
+      ]).size,
+    ).toBe(0);
+  });
+
+  it('keeps a pair across two currencies', () => {
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'debit' }),
+        leg({ id: 'credit', holdingId: 'wallet', amountMinorUnits: 500_00, currency: 'USD' }),
+      ]).size,
+    ).toBe(0);
+  });
+
+  it('keeps a pair whose two legs sit on one holding', () => {
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'debit' }),
+        leg({ id: 'credit', amountMinorUnits: 500_00 }),
+      ]).size,
+    ).toBe(0);
+  });
+
+  it('never reaches a row of another pair or a row with no pair id', () => {
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'debit' }),
+        leg({
+          id: 'other-pair',
+          holdingId: 'cash',
+          amountMinorUnits: 500_00,
+          exchangePairId: 'pair-2',
+        }),
+        leg({ id: 'unmarked', holdingId: 'cash', amountMinorUnits: 500_00, exchangePairId: null }),
+        leg({ id: 'unmarked-debit', holdingId: 'cash', exchangePairId: null }),
+      ]).size,
+    ).toBe(0);
+  });
+
+  it('claims one credit for one debit', () => {
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'first-debit' }),
+        leg({ id: 'second-debit', holdingId: 'card' }),
+        leg({ id: 'credit', holdingId: 'cash', amountMinorUnits: 500_00 }),
+      ]),
+    ).toEqual(new Set(['first-debit', 'credit']));
+  });
+
+  it('lets only an unmarked debit claim a credit, whatever the ledger order', () => {
+    // The credit was converted again from a manual card: that later debit is marked, so it is out
+    // of spending already and must not take the credit the synced debit needs.
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'marked-debit', holdingId: 'card', exchangeCounterpartHoldingId: 'cash' }),
+        leg({ id: 'synced-debit' }),
+        leg({
+          id: 'credit',
+          holdingId: 'cash',
+          amountMinorUnits: 500_00,
+          exchangeCounterpartHoldingId: 'bank',
+        }),
+      ]),
+    ).toEqual(new Set(['synced-debit', 'credit']));
+  });
+
+  it('lets a debit with an untracked counterpart claim nothing', () => {
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'wallet-debit', holdingId: 'card', untrackedCounterpart: 'wallet:UMFUTURE' }),
+        leg({ id: 'synced-debit' }),
+        leg({ id: 'credit', holdingId: 'cash', amountMinorUnits: 500_00 }),
+      ]),
+    ).toEqual(new Set(['synced-debit', 'credit']));
   });
 });

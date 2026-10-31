@@ -35,6 +35,14 @@ points (5 and 7) are bugs; they are fixed first (section F).
    top/bottom split.
 9. **One card order everywhere (Q8 = a)**, iPhone too: Net worth, By type, Trend by category,
    Expenses by category, Account contribution.
+   *Note 2026-10-31 (user ruling: iPhone idioms keep the old order; iPad keeps design D).* The
+   ruling said "device idiom", but the guard rule `kiko-no-device-idiom` blocks an idiom read, so
+   the coordinator ruled to key the order off `useIsLargeWindow()`. A window that is not large
+   keeps the order before design D (Net worth, By type, Account contribution, Expenses by
+   category, Trend by category), every card full width; a large window keeps the order above.
+   The visible result is the same on every 1.3 device (iPhone-only family: iPhone, Duo folded and
+   unfolded, iPad compatibility window). The Help topic "viewStatistics" steps 4 and 6 follow the
+   old order.
 10. **No content cap in a pane under a top tab bar (point 5, Q9 = b; scope narrowed by the user
     2026-10-20, widened by the user 2026-10-21).** Inside a pane whose tab bar is at the top
     (`useIsTabBarAtTop()`: every regular iPad window, small Stage Manager splits included, not
