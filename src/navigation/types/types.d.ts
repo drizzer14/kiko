@@ -12,6 +12,7 @@ import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 import type { HoldingFormDraft } from '@kiko/screens/forms/holding-form';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
+import type { MatcherDraft } from '@kiko/screens/forms/category-rule-form';
 import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 import type { OwnershipEntry } from '@kiko/screens/forms/property-ownership';
 
@@ -128,6 +129,13 @@ export type AccountFormDraft = {
 export type ContributionFormDraft = { amount: string; date: number };
 
 export type PricePointFormDraft = { value: string; date: number };
+
+// The colour is the tapped one (null until a swatch is tapped), not the preview hue the picker
+// rings, which the form derives again.
+export type CategoryFormDraft = { name: string; icon: string; color: string | null };
+
+// The rows without their keys: the form makes a new key for each row it restores.
+export type CategoryRuleFormDraft = { rows: MatcherDraft[] };
 
 export type OwnershipChangeFormDraft = {
   entry: OwnershipEntry;
@@ -332,9 +340,9 @@ export type SettingsStackParamList = {
   System: undefined;
   Categories: undefined;
   // No key: a new category; a key opens that category with its rules.
-  CategoryForm: { categoryKey?: string };
+  CategoryForm: { categoryKey?: string; draft?: CategoryFormDraft };
   // No `ruleId`: a new rule for the category.
-  CategoryRuleForm: { categoryKey: string; ruleId?: string };
+  CategoryRuleForm: { categoryKey: string; ruleId?: string; draft?: CategoryRuleFormDraft };
   ExportData: undefined;
   ImportData: undefined;
   Reminders: undefined;
