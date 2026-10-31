@@ -1,0 +1,144 @@
+# Takes the 7 App Store submission screenshots for Kiko 1.3 on the simulator it runs against (the
+# iPhone 18 Pro Max, 1320x2868, or the Duo outer display, 1398x2034), once per language. NOT a
+# check: it asserts only that each screen's content is on screen before its capture.
+#
+# PRECONDITION: the demo dataset of the language is imported and the app cold-relaunched
+# (`.maestro/screenshots/duo-import-demo.yaml` with FILE=kiko-demo-en.kiko or kiko-demo-uk.kiko),
+# so the app runs in that language with the demo data. The flow never changes data: it only
+# navigates and scrolls. No flag and no launch argument (Guideline 2.5.19): the shipped UI only.
+#
+# OUT: a sub-folder NAME for the PNGs, `-e OUT=<name>`; Maestro adds the `.png` and refuses a
+# path outside the run's output folder, so run with `--test-output-dir <dir>`; the PNGs land
+# under <dir>/takeScreenshot/. LANG: `-e LANG=en` or `-e LANG=uk`, only the shot-name suffix; the
+# flow does not read the app language from it. Check each PNG's pixel size afterwards.
+#
+# NAVIGATION: every "return to a tab root" is a tab switch, never a back step: each tab stack
+# pops itself to its root on blur (src/navigation/reset-tab-stack-on-blur/).
+#
+# LANGUAGE: ids first; a regex over the en and uk names only where no id exists (the Monobank
+# account card, the Deposit holding, the Groceries category card; names from
+# e2e/screenshot/seed/demo-text.ts and the categories catalogue).
+#
+# Run (ops skill "Maestro on this host"), once per language after its import:
+#   JAVA_HOME=/opt/homebrew/opt/openjdk@21 MAESTRO_DRIVER_STARTUP_TIMEOUT=400000 \
+#     maestro --device <UDID> test -e OUT=<name> -e LANG=en \
+#     --test-output-dir <dir outside the worktree> .maestro/screenshots/submission-7.yaml
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 60000
+
+# 01 Home tab, top of screen.
+- tapOn:
+    id: "house.fill"
+- extendedWaitUntil:
+    visible:
+      id: "home-header"
+    timeout: 60000
+- takeScreenshot: ${OUT}/01-home-${LANG}
+
+# 02 Statistics tab, top (the net-worth line chart).
+- tapOn:
+    id: "chart.xyaxis.line"
+- extendedWaitUntil:
+    visible:
+      id: "statistics-block-line"
+    timeout: 60000
+- takeScreenshot: ${OUT}/02-statistics-${LANG}
+
+# 03 Accounts > the Monobank account > the deposit holding's detail. The holdings grid starts
+# below the scroll view's visible area, so the scroll brings it up before the tap on the holding.
+- tapOn:
+    id: "tray"
+- extendedWaitUntil:
+    visible:
+      id: "accounts-grid"
+    timeout: 60000
+- tapOn: "Monobank|Монобанк"
+- extendedWaitUntil:
+    visible:
+      id: "account-detail-content"
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: "holdings-grid"
+    direction: DOWN
+    visibilityPercentage: 1
+    timeout: 60000
+- tapOn: "Deposit|Депозит"
+- extendedWaitUntil:
+    visible:
+      id: "holding-value-header"
+    timeout: 60000
+- takeScreenshot: ${OUT}/03-deposit-${LANG}
+
+# 04 Accounts tab root, top (a tab switch pops the Monobank stack).
+- tapOn:
+    id: "tray"
+- extendedWaitUntil:
+    visible:
+      id: "accounts-grid"
+    timeout: 60000
+- takeScreenshot: ${OUT}/04-accounts-${LANG}
+
+# 05 Statistics, expenses-by-category card. The freeze build orders the phone-size cards as net
+# worth line, By type bar, Account contribution pie, Expenses by category donut, Spending trend,
+# all full width, so no measured swipe: the scroll runs until the card is on screen and centres
+# it. The card can be taller than the free area, hence the 90% bar rather than 100%. The shooter
+# checks this frame (the whole card on screen, no neighbour card cut across it) before accepting.
+- tapOn:
+    id: "chart.xyaxis.line"
+- extendedWaitUntil:
+    visible:
+      id: "statistics-block-line"
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: "statistics-block-category"
+    direction: DOWN
+    visibilityPercentage: 90
+    centerElement: true
+    timeout: 60000
+- assertVisible:
+    id: "statistics-block-category"
+- takeScreenshot: ${OUT}/05-expenses-by-category-${LANG}
+
+# 06 Settings > Categories > the Groceries category's rule card.
+- tapOn:
+    id: "gear"
+- extendedWaitUntil:
+    visible:
+      id: "settings-row-categories"
+    timeout: 60000
+- tapOn:
+    id: "settings-row-categories"
+- extendedWaitUntil:
+    visible:
+      id: "category-card"
+    timeout: 60000
+- tapOn: "Groceries|Продукти"
+- extendedWaitUntil:
+    visible:
+      id: "rule-card"
+    timeout: 60000
+- takeScreenshot: ${OUT}/06-category-rules-${LANG}
+
+# 07 Settings > Reminders. The reminder rows have no id of their own; each account group does
+# (`reminders-account-<account id>`), and the group holds the rows.
+- tapOn:
+    id: "gear"
+- extendedWaitUntil:
+    visible:
+      id: "settings-row-reminders"
+    timeout: 60000
+- tapOn:
+    id: "settings-row-reminders"
+- extendedWaitUntil:
+    visible:
+      id: "reminders-account-.*"
+    timeout: 60000
+- takeScreenshot: ${OUT}/07-reminders-${LANG}
