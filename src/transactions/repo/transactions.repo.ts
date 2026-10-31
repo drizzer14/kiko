@@ -1431,11 +1431,11 @@ const GUARD_FIELD_IS_UNSET: Record<RewriteGuardField, SQL> = {
 // only when the row is one a rule may rewrite (`REWRITE_GUARD_FIELDS`: not picked by hand, not a
 // balance-setting row or a split-change row; an exchange leg is rewritable, and the statistics
 // leave a leg out of spending by its counterpart or untracked marker, not by its category, while
-// a row with the pair id alone still counts as spending) AND its amount
-// changed, since the amount is what the rules judge again. The CASE reads the OLD row (SQLite
-// evaluates every SET expression against it), so such a row, or a refresh with the same amount,
-// keeps the category it has. A row no rule won never reaches this set, so the bank's category is
-// never written back.
+// a row with the pair id alone leaves spending only inside a same-currency equal move) AND its
+// amount changed, since the amount is what the rules judge again. The CASE reads the OLD row
+// (SQLite evaluates every SET expression against it), so such a row, or a refresh with the same
+// amount, keeps the category it has. A row no rule won never reaches this set, so the bank's
+// category is never written back.
 const ruleWonTransactionSet = {
   ...bankOwnedTransactionSet,
   category: sql`CASE WHEN ${sql.join(

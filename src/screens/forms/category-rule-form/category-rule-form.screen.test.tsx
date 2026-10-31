@@ -3,13 +3,19 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
+import { emptyMatcherDraft } from './rule-draft';
 import CategoryRuleFormScreen from './category-rule-form.screen';
 
 type CategoryData = { key: string; title: string; icon: string; color: string | null };
@@ -695,6 +701,155 @@ describe('CategoryRuleFormScreen — a Save that is accepted', () => {
     );
     expect(navigation.goBack).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Name').props.value).toBe('Silpo');
+  });
+});
+
+describe('CategoryRuleFormScreen — the draft kept over a remount', () => {
+  // The route the screen is opened on again after a fold: what it opened with, plus every param
+  // it saved.
+  const renderReopened = (opened: { categoryKey: string; ruleId?: string }) =>
+    render(
+      <CategoryRuleFormScreen
+        navigation={asNavigationProp<FormProps['navigation']>(navigation)}
+        route={asRouteProp<FormProps['route']>('CategoryRuleForm', paramsAfter(navigation, opened))}
+      />,
+    );
+
+  const blurName = async (screen: Screen): Promise<void> => {
+    await fireEvent(screen.getAllByLabelText('Name')[0], 'blur');
+  };
+
+  it('brings back the conditions, their types and what was typed in them', async () => {
+    const first = await renderCreate();
+    await typeName(first, 'Silpo');
+    await fireEvent.press(first.getByText('Add condition'));
+    await pickType(first, 1, 'amount');
+    await fireEvent.changeText(first.getByLabelText('Amount'), '500');
+    await blurName(first);
+    await first.unmount();
+
+    const second = await renderReopened({ categoryKey: 'food' });
+
+    expect(second.getAllByLabelText('Condition')).toHaveLength(2);
+    expect(second.getByLabelText('Name').props.value).toBe('Silpo');
+    expect(second.getByLabelText('Amount').props.value).toBe('500');
+
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(mockSaveRule).toHaveBeenCalledWith({
+        id: null,
+        category: 'food',
+        matchers: [SILPO, { type: 'amount', operator: 'eq', minorUnits: 50000, currency: 'UAH' }],
+        applyToExisting: false,
+      }),
+    );
+  });
+
+  it('keeps a removed condition removed', async () => {
+    const first = await renderCreate();
+    await typeName(first, 'Silpo');
+    await fireEvent.press(first.getByText('Add condition'));
+    await fireEvent.press(first.getAllByText('Remove')[1]);
+    await blurName(first);
+    await first.unmount();
+
+    const second = await renderReopened({ categoryKey: 'food' });
+
+    expect(second.getAllByLabelText('Condition')).toHaveLength(1);
+    expect(second.getByLabelText('Name').props.value).toBe('Silpo');
+  });
+
+  it('keeps the draft to plain rows, with no row key', async () => {
+    const screen = await renderCreate();
+    await typeName(screen, 'Silpo');
+    await blurName(screen);
+
+    expect(navigation.setParams).toHaveBeenCalledWith({
+      draft: { rows: [{ ...emptyMatcherDraft('UAH'), text: 'Silpo' }] },
+    });
+  });
+
+  it('writes the draft once per blur, never while typing', async () => {
+    const screen = await renderCreate();
+
+    await typeName(screen, 'S');
+    await typeName(screen, 'Si');
+    await typeName(screen, 'Sil');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await blurName(screen);
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing for a second blur that changed nothing', async () => {
+    const screen = await renderCreate();
+
+    await blurName(screen);
+    await blurName(screen);
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the draft of an edit win over the stored rule, and still saves that rule', async () => {
+    mockRules = [ruleOf('mine', 'food', [SILPO])];
+
+    const first = await renderEdit('mine');
+    await typeName(first, 'Atb');
+    await blurName(first);
+    await first.unmount();
+
+    const second = await renderReopened({ categoryKey: 'food', ruleId: 'mine' });
+
+    expect(second.getByLabelText('Name').props.value).toBe('Atb');
+
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(mockSaveRule).toHaveBeenCalledWith({
+        id: 'mine',
+        category: 'food',
+        matchers: [{ type: 'nameIs', text: 'Atb' }],
+        applyToExisting: false,
+      }),
+    );
+  });
+
+  it('opens an edit from the stored rule when the route carries no draft', async () => {
+    mockRules = [ruleOf('mine', 'food', [SILPO])];
+
+    const screen = await renderEdit('mine');
+
+    expect(screen.getByLabelText('Name').props.value).toBe('Silpo');
+    expect(navigation.setParams).not.toHaveBeenCalled();
+  });
+
+  it('goes back from a draft of an edit when the rule is gone', async () => {
+    mockRules = [ruleOf('mine', 'food', [SILPO])];
+
+    const first = await renderEdit('mine');
+    await typeName(first, 'Atb');
+    await blurName(first);
+    await first.unmount();
+    mockRules = [];
+
+    await renderReopened({ categoryKey: 'food', ruleId: 'mine' });
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
+  });
+
+  it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+    const screen = await renderCreate();
+    await typeName(screen, 'Silpo');
+    await blurName(screen);
+    navigation.setParams.mockClear();
+
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
+    expect(navigation.setParams).not.toHaveBeenCalled();
   });
 });
 

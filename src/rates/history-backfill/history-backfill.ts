@@ -517,7 +517,7 @@ const nextCursor = (
 
 /**
  * Per-app-run, IN-MEMORY set of newly-held currencies (no stored history
- * row) whose providers all answered for the whole span yet returned no row
+ * row) whose providers all answered for the whole span yet returned no entry
  * for them — e.g. a held coin CoinGecko never returns. Without it, such a
  * currency stays absent from `lastBackfilledDayByCurrency` forever, so
  * `resolveResumeCursor` resets to the whole span and re-fetches it on every
@@ -525,7 +525,8 @@ const nextCursor = (
  * `emptyBackwardFloorByMetal`: forgotten on app restart, so at most one
  * wasted full-span fetch per currency per app session, never persisted
  * state for a rare case. A currency whose leg REJECTED, or a coin whose OWN
- * CoinGecko request failed inside a fulfilled leg, is never recorded — a
+ * CoinGecko request failed inside a fulfilled leg, or a coin with entries but
+ * no row because the same run's USD anchor failed, is never recorded — a
  * network failure is retried, not remembered as empty.
  */
 const knownEmptyCurrenciesThisRun = new Set<Currency>();
@@ -871,18 +872,20 @@ const resolveBackfillWindow = (
 
 /**
  * Adds to `knownEmpty` every NEVER-backfilled held currency (no stored day at
- * all) this whole-span run composed no row for — only when EVERY provider leg
+ * all) the providers returned NO entry for — only when EVERY provider leg
  * answered, and never a currency in `failedCurrencies`: NBU and CoinGecko both
  * settle per currency, so one currency's 200 fulfils the leg while another's
  * own request failed. A failed request is a network failure to retry, not an
- * empty answer. A currency that already HAD some rows (merely lagging) is
+ * empty answer. A currency with entries but no composed row is no empty answer
+ * either: its anchor failed (a coin's rows need the same run's `USD`), so it is
+ * requested again next run. A currency that already HAD some rows (merely lagging) is
  * never a candidate here — it keeps retrying every run through
  * `resolveResumeCursor` instead of being permanently blacklisted.
  */
 const recordKnownEmpty = (
   legs: PromiseSettledResult<unknown>[],
   neverBackfilled: Currency[],
-  rows: NewHistoryRow[],
+  entries: readonly HistoryRateEntry[],
   failedCurrencies: readonly Currency[],
   knownEmpty: Set<Currency>,
 ): void => {
@@ -890,9 +893,12 @@ const recordKnownEmpty = (
     return;
   }
 
-  const composedOrFailed = new Set<Currency>([...rows.map((row) => row.base), ...failedCurrencies]);
+  const answeredOrFailed = new Set<Currency>([
+    ...entries.map((entry) => entry.base),
+    ...failedCurrencies,
+  ]);
 
-  for (const currency of neverBackfilled.filter((candidate) => !composedOrFailed.has(candidate))) {
+  for (const currency of neverBackfilled.filter((candidate) => !answeredOrFailed.has(candidate))) {
     knownEmpty.add(currency);
   }
 };
@@ -942,12 +948,13 @@ const composeAndClassify = (
 ): { rows: NewHistoryRow[]; failures: Currency[] } => {
   const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : NO_NBU_HISTORY;
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : NO_CRYPTO_HISTORY;
-  const rows = composeHistoryRows([...nbu.entries, ...crypto.entries], days);
+  const entries = [...nbu.entries, ...crypto.entries];
+  const rows = composeHistoryRows(entries, days);
 
   recordKnownEmpty(
     [nbuResult, cryptoResult],
     neverBackfilled,
-    rows,
+    entries,
     [...nbu.failedCurrencies, ...crypto.failedCurrencies],
     knownEmpty,
   );

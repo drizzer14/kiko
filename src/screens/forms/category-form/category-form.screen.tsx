@@ -25,11 +25,12 @@ import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
-import type { SettingsStackParamList } from '@kiko/navigation/types';
 import ColorPicker from '@kiko/design-system/components/color-picker';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -39,6 +40,7 @@ import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CategoryFormDraft, SettingsStackParamList } from '@kiko/navigation/types';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 
 import RuleCard from './rule-card';
@@ -52,6 +54,8 @@ type RuleLine = { id: string; rows?: RuleRow[]; summary: string; isReadable: boo
 // A new category starts on the generic category glyph, the one the Categories footer "Add category"
 // button leads with.
 const DEFAULT_ICON = genericEntitySymbol.category;
+
+const BLANK_DRAFT: CategoryFormDraft = { name: '', icon: DEFAULT_ICON, color: null };
 
 // Stands in for the key of a category that does not exist yet, so the colour picker has a hue to
 // ring on open. It only drives the preview: a colour the user did not tap is stored as none.
@@ -123,13 +127,16 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const clock = useTimeClock();
-  const [name, setName] = useState('');
-  const [icon, setIcon] = useState<string>(DEFAULT_ICON);
+  const { initialDraft, saveDraft } = useDraftParam<CategoryFormDraft>(navigation, route);
+  const start = initialDraft ?? BLANK_DRAFT;
+  const [name, setName] = useState(start.name);
+  const [icon, setIcon] = useState(start.icon);
   // Null until the user taps a swatch, or the stored colour of the category being edited.
-  const [color, setColor] = useState<string | null>(null);
+  const [color, setColor] = useState(start.color);
   // The name-required reason stays hidden until a failed Save press, so a fresh form shows no error
   // before the user has tried to save.
   const [attemptedSave, setAttemptedSave] = useState(false);
+  const onFieldBlur = useDraftAutosave({ name, icon, color }, saveDraft);
   // The name field's ref, so the form can focus it imperatively on mount instead of relying on the
   // native `autoFocus` prop (see HoldingIdentityField's `nameInputRef`).
   const nameInputRef = useRef<TextInputInstance | null>(null);
@@ -185,7 +192,9 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
     }
   }, [navigation, displayName]);
 
-  // Seeded once, so a later live-query emission cannot replace what the user is typing.
+  // Seeded once, so a later live-query emission cannot replace what the user is typing. A draft
+  // the route carries is what the user typed, so it wins over the fields; the stored values are
+  // still the baseline Save compares against.
   useEffect(() => {
     if (seed.current !== undefined || editingCategory === undefined) {
       return;
@@ -198,10 +207,15 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
     };
 
     seed.current = seeded;
+
+    if (initialDraft !== undefined) {
+      return;
+    }
+
     setName(seeded.name);
     setIcon(seeded.icon);
     setColor(seeded.color);
-  }, [editingCategory]);
+  }, [editingCategory, initialDraft]);
 
   // Deferred to the next frame so the keyboard accessory mounted in the same commit has registered
   // before `.focus()` runs: iOS captures `inputAccessoryView` at that moment.
@@ -301,6 +315,7 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
     <Screen
       scroll
       floatingFooter
+      onFieldBlur={onFieldBlur}
       footer={
         isEdit ? (
           <Button

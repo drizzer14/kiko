@@ -178,7 +178,10 @@ export const transactions = sqliteTable(
     // DOCUMENTED RESIDUAL: a Convert marks its EXISTING row only when that row
     // is manual or imported (`isDeletableTransaction`) — a Convert never marks a
     // bank-owned (monobank) row beyond `exchangePairId`, so a synced debit
-    // converted into another currency still counts as spending. A bank-owned row
+    // converted into another currency still counts as spending, and so does one
+    // moved to a holding of its own currency with an amount that differs; only
+    // an equal same-currency move leaves it out, by its pair id
+    // (`sameCurrencyMoveTransactionIds`). A bank-owned row
     // can still carry a marker while its manual partner lives: a marked import
     // row the reconnect sync adopts (`adoptImportTwinsDatabaseTransaction`)
     // keeps it. A delete that keeps such a row clears the marker in the SAME

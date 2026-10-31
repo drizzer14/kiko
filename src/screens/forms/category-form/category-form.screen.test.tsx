@@ -3,6 +3,12 @@ import type { ComponentProps, ReactNode } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import type { TimeClock } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
@@ -15,7 +21,6 @@ import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import { DELETE_CONFIRM_TEST_ID } from '@kiko/design-system/components/card-context-menu';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import CategoryFormScreen from './category-form.screen';
 
@@ -1059,6 +1064,150 @@ describe('CategoryFormScreen', () => {
       expect(queryByText(EMPTY_HINT)).toBeNull();
       expect(queryByText('Add rule')).toBeNull();
       expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the draft kept over a remount', () => {
+    // The route the screen is opened on again after a fold: what it opened with, plus every
+    // param it saved.
+    const renderReopened = (categoryKey?: string) =>
+      render(
+        <CategoryFormScreen
+          navigation={asNavigationProp<FormProps['navigation']>(navigation)}
+          route={asRouteProp<FormProps['route']>(
+            'CategoryForm',
+            paramsAfter(navigation, { categoryKey }),
+          )}
+        />,
+        { wrapper: GestureRootWrapper },
+      );
+
+    it('brings back the typed name, the picked icon and the picked colour', async () => {
+      const first = await renderForm();
+      await fireEvent.changeText(first.getByLabelText('Name'), 'Travel');
+      await fireEvent.press(first.getByLabelText('Change Icon'));
+      await fireEvent.press(first.getByLabelText('Choose icon basket'));
+      await fireEvent.press(first.getByLabelText('Color yellow'));
+      await fireEvent(first.getByLabelText('Name'), 'blur');
+      await first.unmount();
+
+      const second = await renderReopened();
+
+      expect(second.getByLabelText('Name').props.value).toBe('Travel');
+      expect(second.getByLabelText('Color yellow').props.accessibilityState.selected).toBe(true);
+
+      await pressSave(navigation.setOptions);
+
+      await waitFor(() =>
+        expect(mockCreate).toHaveBeenCalledWith({
+          title: 'Travel',
+          icon: 'basket',
+          color: darkTheme.colors.entityColors.yellow,
+        }),
+      );
+    });
+
+    it('keeps the draft to plain values, with the colour untouched as null', async () => {
+      const { getByLabelText } = await renderForm();
+      await fireEvent.changeText(getByLabelText('Name'), 'Travel');
+      await fireEvent(getByLabelText('Name'), 'blur');
+
+      expect(navigation.setParams).toHaveBeenCalledWith({
+        draft: { name: 'Travel', icon: genericEntitySymbol.category, color: null },
+      });
+    });
+
+    it('writes the draft once per blur, never while typing', async () => {
+      const { getByLabelText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'T');
+      await fireEvent.changeText(getByLabelText('Name'), 'Tr');
+      await fireEvent.changeText(getByLabelText('Name'), 'Tra');
+
+      expect(navigation.setParams).not.toHaveBeenCalled();
+
+      await fireEvent(getByLabelText('Name'), 'blur');
+
+      expect(navigation.setParams).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing for a blur that changed nothing', async () => {
+      const { getByLabelText } = await renderForm();
+
+      await fireEvent(getByLabelText('Name'), 'blur');
+
+      expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('opens blank when the route carries no draft', async () => {
+      const { getByLabelText } = await renderForm();
+
+      expect(getByLabelText('Name').props.value).toBe('');
+    });
+
+    it('does not show the name-required error on a restored draft', async () => {
+      const first = await renderForm();
+      await fireEvent.press(first.getByLabelText('Color yellow'));
+      await fireEvent(first.getByLabelText('Name'), 'blur');
+      await first.unmount();
+
+      const second = await renderReopened();
+
+      expect(second.queryByText('Enter a name.')).toBeNull();
+    });
+
+    it('lets the draft of an edit win over the stored category, and saves against the stored one', async () => {
+      const first = await renderForm('groceries');
+      await fireEvent.changeText(first.getByLabelText('Name'), 'Food');
+      await fireEvent(first.getByLabelText('Name'), 'blur');
+      await first.unmount();
+
+      const second = await renderReopened('groceries');
+
+      expect(second.getByDisplayValue('Food')).toBeTruthy();
+
+      await pressSave(navigation.setOptions);
+
+      await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
+      expect(mockUpdateIcon).not.toHaveBeenCalled();
+      expect(mockUpdateColor).not.toHaveBeenCalled();
+    });
+
+    it('opens an edit from the stored category when the route carries no draft', async () => {
+      const { getByDisplayValue, getByLabelText } = await renderForm('groceries');
+
+      expect(getByDisplayValue('Groceries')).toBeTruthy();
+      expect(getByLabelText('Color khaki').props.accessibilityState.selected).toBe(true);
+      expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('leaves no draft behind once a new category is saved: its own screen opens clean', async () => {
+      const { getByLabelText } = await renderForm();
+      await fireEvent.changeText(getByLabelText('Name'), 'Travel');
+      await fireEvent(getByLabelText('Name'), 'blur');
+      navigation.setParams.mockClear();
+
+      await pressSave(navigation.setOptions);
+
+      await waitFor(() =>
+        expect(navigation.replace).toHaveBeenCalledWith('CategoryForm', {
+          categoryKey: 'new-key',
+        }),
+      );
+      expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('leaves no draft behind once an edit is saved: it goes back and writes nothing more', async () => {
+      const { getByLabelText } = await renderForm('groceries');
+      await fireEvent.changeText(getByLabelText('Name'), 'Food');
+      await fireEvent(getByLabelText('Name'), 'blur');
+      navigation.setParams.mockClear();
+
+      await pressSave(navigation.setOptions);
+
+      await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(navigation.setParams).not.toHaveBeenCalled();
     });
   });
 });

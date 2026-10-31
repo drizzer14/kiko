@@ -1723,13 +1723,24 @@ are built with `createPaneStackNavigator`.
   on the RAW `useLayoutMode` change, not the settled one; never per keystroke, and never when the
   JSON text is unchanged. The save is `setParams` on the asking route: `SET_PARAMS` stays on its
   source route and changes no router state (`pane-router.test.ts`). Params hold JSON only.
-  Secrets, tokens, wallet and Binance keys never go in a draft (a lender IBAN lives only in the
-  in-memory loan draft). Not saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`,
-  `leavingKind`. The "Add holding" and "Add template" round-trip
-  auto-select (`use-select-created-option`, an exact handback id) does not survive a fold: the
-  fold unmounts the picker, which closes the handback, so the user picks the new option by hand
-  (known limit, user-accepted 2026-10-10, no fix planned). The handback id is a correlation id in
-  the `handbackId` route param, not a secret, so it may ride in params. The Add template row pushes
+  Every form route under `src/screens/forms/` keeps a draft: the account, contribution, reminder,
+  holding, ownership-change, price-point, lot, transaction, category and category-rule forms
+  (template entries of the transaction form excepted, see kiko-domain "Form drafts"). The
+  category form's draft is `{ name, icon, color }`, the colour being the tapped one (null until a
+  swatch is tapped), not the preview hue; the rule editor's is `{ rows }`, each row without its
+  React key. In both an edit's draft wins over the stored record, yet Save still compares with
+  the stored values, and the rule editor still closes for a rule deleted meanwhile. A saved or
+  cancelled form leaves no draft: it lives on the popped route, and a saved new category opens
+  its own screen on a fresh route. The first blur writes a draft once: a new rule's blank row (the
+  row appears after the settings read), and an edited category's or rule's stored values even
+  unchanged (the autosave starts from the blank first render). Secrets, tokens, wallet and
+  Binance keys never go in a draft (a lender IBAN lives only in the in-memory loan draft). Not
+  saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`, `leavingKind`. The "Add
+  holding" and "Add template" round-trip auto-select (`use-select-created-option`, an exact
+  handback id) does not survive a fold: the fold unmounts the picker, which closes the handback,
+  so the user picks the new option by hand (known limit, user-accepted 2026-10-10, no fix
+  planned). The handback id is a correlation id in the `handbackId` route param, not a secret,
+  so it may ride in params. The Add template row pushes
   `TransactionForm {newTemplate:true, handbackId}` (push, because a navigate to the form's own
   route name adds no route and would replace the unsaved form); the return
   and the selection in every stack and the split layout are pinned by
