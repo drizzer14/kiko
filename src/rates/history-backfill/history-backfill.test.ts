@@ -791,6 +791,83 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
     expect(knownEmptyCurrencies.has('ETH')).toBe(false);
     expect(requestedCoins.filter((coin) => coin === 'ethereum')).toHaveLength(2);
   });
+
+  // A coin's rows need the SAME run's USD anchor. When NBU's USD request fails, CoinGecko's
+  // answer for the coin composes nothing: that is a missing anchor to retry, not an empty answer.
+  describe('a held coin whose USD anchor failed in the same run', () => {
+    const bitcoinOnly = crypto.filter((entry) => entry.base === 'BTC');
+
+    const anchoredRunDeps = (input: {
+      knownEmptyCurrencies: Set<Currency>;
+      usdHealthy: () => boolean;
+      cryptoEntries: HistoryRateEntry[];
+      requestedCoins: string[][];
+      stored: StoredRow[];
+    }): BackfillDeps => ({
+      earliestDay: day(0),
+      lastBackfilledDay: null,
+      today: day(2),
+      fetchNbuHistory: async () =>
+        input.usdHealthy()
+          ? { entries: nbu.filter((entry) => entry.base === 'USD'), failedCurrencies: [] }
+          : { entries: [], failedCurrencies: ['USD'] },
+      fetchCryptoHistory: async (_days, coins) => {
+        input.requestedCoins.push([...coins]);
+
+        return answered(input.cryptoEntries);
+      },
+      upsertMany: async (rows: StoredRow[]) => {
+        input.stored.push(...rows);
+      },
+      historyCurrencies: async () => ({ fiatCurrencies: ['USD'], cryptoCurrencies: ['BTC'] }),
+      lastBackfilledDayByCurrency: {},
+      knownEmptyCurrencies: input.knownEmptyCurrencies,
+    });
+
+    it('requests the coin again and writes its rows once USD answers', async () => {
+      const knownEmptyCurrencies = new Set<Currency>();
+      const requestedCoins: string[][] = [];
+      const stored: StoredRow[] = [];
+      let usdHealthy = false;
+      const deps = anchoredRunDeps({
+        knownEmptyCurrencies,
+        usdHealthy: () => usdHealthy,
+        cryptoEntries: bitcoinOnly,
+        requestedCoins,
+        stored,
+      });
+
+      const first = await runBackfill(deps);
+
+      usdHealthy = true;
+
+      const second = await runBackfill(deps);
+
+      expect(first.state).toBe('failed');
+      expect(knownEmptyCurrencies.has('BTC')).toBe(false);
+      expect(requestedCoins).toEqual([['BTC'], ['BTC']]);
+      expect(second.state).toBe('complete');
+      expect(stored.filter((row) => row.base === 'BTC').length).toBeGreaterThan(0);
+    });
+
+    it('still skips a coin neither provider priced for the rest of the session', async () => {
+      const knownEmptyCurrencies = new Set<Currency>();
+      const requestedCoins: string[][] = [];
+      const deps = anchoredRunDeps({
+        knownEmptyCurrencies,
+        usdHealthy: () => true,
+        cryptoEntries: [],
+        requestedCoins,
+        stored: [],
+      });
+
+      await runBackfill(deps);
+      await runBackfill(deps);
+
+      expect(knownEmptyCurrencies.has('BTC')).toBe(true);
+      expect(requestedCoins).toEqual([['BTC']]);
+    });
+  });
 });
 
 // A currency that already has SOME stored rows (not the never-held case
