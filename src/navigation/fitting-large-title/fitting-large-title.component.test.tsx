@@ -316,8 +316,8 @@ describe('fittingLargeTitleLayout', () => {
     expect(hiddenHeader.queryByTestId('measurer')).toBeNull();
   });
 
-  // The unfolded Duo: the left pane of the columns beside the trailing side bar. Its large title
-  // stays the native bar, as the right pane's does; a heading laid over the bar's row clipped it.
+  // The unfolded Duo: the left pane of the columns beside the trailing side bar. A title that
+  // fits is the native large title there, as in the right pane, so the pane adds no heading.
   it('leaves a title that fits to the native large title in the left pane beside a side bar', async () => {
     const navigation = navigationSpy();
     const { getByTestId } = await render(

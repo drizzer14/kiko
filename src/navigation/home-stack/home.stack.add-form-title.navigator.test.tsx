@@ -83,6 +83,26 @@ jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const navigationRef = createNavigationContainerRef<ParamListBase>();
 
+type RenderedNode = {
+  type: string;
+  props: Record<string, unknown>;
+  children: (RenderedNode | string)[] | null;
+};
+
+const headerConfigs = (node: RenderedNode | string | null): Record<string, unknown>[] =>
+  node === null || typeof node === 'string'
+    ? []
+    : [
+        ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props] : []),
+        ...(node.children ?? []).flatMap(headerConfigs),
+      ];
+
+// What the native bars on screen are set to: the header configs that are not hidden.
+const visibleBars = () =>
+  headerConfigs(screen.toJSON() as unknown as RenderedNode)
+    .filter((config) => config.hidden !== true)
+    .map(({ title, largeTitle }) => ({ title, largeTitle }));
+
 const renderUnfoldedHome = async (): Promise<void> => {
   await render(
     <NavigationContainer ref={navigationRef}>
@@ -112,6 +132,7 @@ describe('HomeStack: the Add transaction title on an unfolded Duo', () => {
     await renderUnfoldedAddForm();
 
     expect(screen.queryAllByTestId('large-title-heading')).toHaveLength(0);
+    expect(visibleBars()).toContainEqual({ title: 'Add Transaction', largeTitle: true });
   });
 });
 
@@ -129,5 +150,6 @@ describe('HomeStack: the default Statistics page on an unfolded Duo', () => {
     await renderUnfoldedHome();
 
     expect(screen.queryAllByTestId('large-title-heading')).toHaveLength(0);
+    expect(visibleBars()).toContainEqual({ title: 'Statistics', largeTitle: true });
   });
 });
