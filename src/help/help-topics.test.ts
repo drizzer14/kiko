@@ -14,8 +14,9 @@ const catalogPaths = new Set(flattenCatalog(en).map(({ path }) => path));
 const stepKeysInCatalog = (topicId: string): string[] =>
   [...catalogPaths].filter((path) => path.startsWith(`help.topics.${topicId}.steps.`));
 
-// The Home FAB's glyph is a quoted literal, not a catalogue string.
-const QUOTED_LITERALS = new Set(['+']);
+// The Home FAB's glyph and Binance's own API-key permission label are quoted literals, not
+// catalogue strings: no Kiko screen shows either.
+const QUOTED_LITERALS = new Set(['+', 'Enable Reading']);
 
 const valueByPath = (catalogue: unknown): Map<string, string> =>
   new Map(flattenCatalog(catalogue).map(({ path, value }) => [path, value]));
@@ -436,6 +437,21 @@ describe('the choices a help step names', () => {
 
       expect(step).not.toMatch(exclusive);
       expect(step).toContain(interestLabel);
+    },
+  );
+});
+
+describe('the Binance key the connectCrypto help topic asks for', () => {
+  it.each([
+    ['en', valueByPath(en), 'Enable Reading', 'no trading or withdrawal permission'],
+    ['uk', valueByPath(uk), 'Enable Reading', 'без дозволів на торгівлю й виведення'],
+  ] as const)(
+    'asks in %s for a key with only reading turned on, never a trading or withdrawal one',
+    (_language, values, readingLabel, noTradingPhrase) => {
+      const step = values.get('help.topics.connectCrypto.steps.3') ?? '';
+
+      expect(step).toContain(readingLabel);
+      expect(step).toContain(noTradingPhrase);
     },
   );
 });

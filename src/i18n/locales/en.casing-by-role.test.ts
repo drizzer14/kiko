@@ -153,9 +153,18 @@ const withoutQuotedTitles = (value: string): string =>
 // The Binance product and wallet names the not-listed note
 // (`holdingDetail.exchangeNotListed.binance`) names, as whole phrases. "on Funding" and "on Spot"
 // carry the preposition because Funding and Spot are common words as a lone capital; only that
-// exact text, as the note writes it, is a wallet name.
+// exact text, as the note writes it, is a wallet name. "Enable Reading" is the label of Binance's
+// own API-key permission, which the connectCrypto help step quotes.
 const BINANCE_PRODUCT_PHRASES = new RegExp(
-  `\\b(?:${['Binance Card', 'Auto-Invest', 'Dual Investment', 'Simple Earn', 'on Funding', 'on Spot'].join('|')})\\b`,
+  `\\b(?:${[
+    'Binance Card',
+    'Auto-Invest',
+    'Dual Investment',
+    'Simple Earn',
+    'on Funding',
+    'on Spot',
+    'Enable Reading',
+  ].join('|')})\\b`,
   'g',
 );
 
@@ -239,6 +248,7 @@ describe('a sentence that names a Binance product or wallet', () => {
     'Not listed: loans; Dual Investment; mining.',
     'Not listed: distributions other than Simple Earn rewards.',
     'Kiko shows P2P orders on Funding and fiat operations on Spot.',
+    'Create a key with only "Enable Reading" turned on.',
   ])('accepts the whole product name in "%s"', (sentence) => {
     expect(sentenceCaseViolations(sentence)).toEqual([]);
   });
@@ -253,6 +263,7 @@ describe('a sentence that names a Binance product or wallet', () => {
     expect(sentenceCaseViolations('Try a Simple plan')).toEqual(['Simple']);
     expect(sentenceCaseViolations('Use the Card now')).toEqual(['Card']);
     expect(sentenceCaseViolations('Earn more with Auto mode')).toEqual(['Auto']);
+    expect(sentenceCaseViolations('Turn on Reading only')).toEqual(['Reading']);
     expect(sentenceCaseViolations('Open a Dual order')).toEqual(['Dual']);
     expect(sentenceCaseViolations('Hold an Investment now')).toEqual(['Investment']);
     expect(sentenceCaseViolations('Rewards you Earn')).toEqual(['Earn']);
