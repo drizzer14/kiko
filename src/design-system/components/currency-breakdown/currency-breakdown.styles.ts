@@ -22,4 +22,9 @@ export const styles = StyleSheet.create((theme) => ({
     justifyContent: 'space-between',
     gap: theme.spacing(1),
   },
+  // The amount's bounded box: it yields width to the code, so the amount's own text can shrink.
+  value: {
+    flexShrink: 1,
+    alignItems: 'flex-end',
+  },
 }));

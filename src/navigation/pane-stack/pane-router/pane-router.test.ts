@@ -34,6 +34,14 @@ const homeRouter = PaneRouter({
   isSplit: SPLIT,
 });
 
+const settingsRouter = PaneRouter({
+  paneConfig: {
+    rootPane: 'companion',
+    primaryDefault: { name: 'AccountDetail', params: { accountId: 'first' }, isDefault: true },
+  },
+  isSplit: SPLIT,
+});
+
 const initial = (): PaneStackState => router.getInitialState(CONFIG);
 
 const runWith =
@@ -50,6 +58,7 @@ const runWith =
 
 const run = runWith(router);
 const runHome = runWith(homeRouter);
+const runSettings = runWith(settingsRouter);
 
 const names = (state: PaneStackState) => state.routes.map((route) => route.name);
 const keyOf = (state: PaneStackState, name: string) =>
@@ -152,14 +161,57 @@ describe('PaneRouter', () => {
       expect(back.routes[1].params).toEqual({ accountId: 'first' });
     });
 
-    it('opens from a static default, which stands right above the root', () => {
+    it('opens from a static default of the companion pane, and the default is a real route below the form', () => {
       const opened = runHome(
         homeRouter.getInitialState(CONFIG),
         PaneActions.open('pane-default:companion', 'HoldingForm'),
       );
 
-      expect(names(opened)).toEqual(['Accounts', 'HoldingForm']);
+      expect(names(opened)).toEqual(['Accounts', 'Statement', 'HoldingForm']);
+      expect(opened.routes.map((route) => route.isDefault)).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
       expect(opened.panes[opened.routes[1].key]).toBe('companion');
+      expect(opened.panes[opened.routes[2].key]).toBe('companion');
+    });
+
+    it('opens from a static default of the primary pane, with its params, and Back after a fold lands on it', () => {
+      const opened = runSettings(
+        settingsRouter.getInitialState(CONFIG),
+        PaneActions.open('pane-default:primary', 'HoldingForm'),
+      );
+      const folded = runSettings(opened, PaneActions.fold());
+      const back = runSettings(folded, CommonActions.goBack());
+
+      expect(names(opened)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
+      expect(opened.routes[1].params).toEqual({ accountId: 'first' });
+      expect(opened.routes[1].isDefault).toBeUndefined();
+      expect(opened.panes[opened.routes[1].key]).toBe('primary');
+      expect(opened.panes[opened.routes[2].key]).toBe('primary');
+      expect(names(folded)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
+      expect(names(back)).toEqual(['Accounts', 'AccountDetail']);
+    });
+
+    it('opens a second form from the form opened on a static default, above the same real page', () => {
+      const first = runSettings(
+        settingsRouter.getInitialState(CONFIG),
+        PaneActions.open('pane-default:primary', 'HoldingForm'),
+      );
+      const second = runSettings(first, PaneActions.open(first.routes[2].key, 'LotForm'));
+
+      expect(names(second)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm', 'LotForm']);
+    });
+
+    it('opens from the static default on [root, X] as [root, default, form], never two default routes', () => {
+      const first = runSettings(
+        settingsRouter.getInitialState(CONFIG),
+        PaneActions.open('pane-default:primary', 'HoldingForm'),
+      );
+      const stale = runSettings(first, PaneActions.open('pane-default:primary', 'LotForm'));
+
+      expect(names(stale)).toEqual(['Accounts', 'AccountDetail', 'LotForm']);
     });
 
     it('is not handled when the opener is unknown', () => {

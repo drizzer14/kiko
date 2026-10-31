@@ -1,5 +1,6 @@
 import { match, P } from 'ts-pattern';
 import { CommonActions, StackActions } from '@react-navigation/native';
+import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
 import { PaneActions, type PaneActionType } from '../pane-router';
 
@@ -21,8 +22,8 @@ const doNothing = () => undefined;
  * without a route in the state one shared navigation object whose every helper throws, and a
  * tap in a default screen would reach it. Here a navigate or push of a route of this navigator
  * opens it in the detail pane, where the default is, one of any other name goes on to the
- * navigator unchanged so a parent can take it (a tab, say), and everything else is ignored: a
- * default has nothing to go back to.
+ * navigator unchanged so a parent can take it (a tab, say), `setOptions` goes to the given store
+ * of the default's options, and everything else is ignored: a default has nothing to go back to.
  *
  * The object is changed in place because the rendered screen already holds it. At most one
  * default is on screen at a time, since the pane that holds the root is never empty.
@@ -35,6 +36,7 @@ export const standInNavigation = <
 >(
   descriptor: Descriptor,
   dispatch: StandInDispatch,
+  setOptions: (options: NativeStackNavigationOptions) => void,
 ): Descriptor => {
   const openerKey = descriptor.route.key;
   const send = (action: OpeningAction | ((state: never) => unknown)): void => {
@@ -61,7 +63,7 @@ export const standInNavigation = <
     ]),
   );
 
-  Object.assign(descriptor.navigation, helpers, { dispatch: send, setOptions: doNothing });
+  Object.assign(descriptor.navigation, helpers, { dispatch: send, setOptions });
 
   return descriptor;
 };

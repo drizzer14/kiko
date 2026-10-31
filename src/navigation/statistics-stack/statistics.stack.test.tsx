@@ -1,4 +1,5 @@
 import { isValidElement, type ReactElement } from 'react';
+import { nonPushPresentations } from '@kiko/test-support/pane-stack-presentation';
 
 // The real Statistics screen wired into this stack pulls in db/client, which
 // opens a real op-sqlite connection at module load. op-sqlite has no Jest
@@ -15,6 +16,14 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+// The hook reads the tab navigator, so a plain call of the stack cannot run it.
+const mockLeaveStatisticsTabWhenMerged = jest.fn();
+jest.mock('@kiko/navigation/merged-home', () => ({
+  useLeaveStatisticsTabWhenMerged: () => mockLeaveStatisticsTabWhenMerged(),
+  useIsMergedHome: () => true,
+}));
+
+import HomeStack from '../home-stack';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
@@ -54,6 +63,34 @@ const optionsOf = (name: string, params: unknown): FormOptions | undefined => {
 };
 
 describe('StatisticsStack', () => {
+  beforeEach(() => {
+    mockLeaveStatisticsTabWhenMerged.mockClear();
+  });
+
+  it('leaves the Statistics tab for Home when the window merges them', () => {
+    StatisticsStack({});
+
+    expect(mockLeaveStatisticsTabWhenMerged).toHaveBeenCalledTimes(1);
+  });
+
+  // A merged window carries the Statistics stack's routes into the Home stack, and a pane open of
+  // a name the Home stack does not register is dropped.
+  it('registers on the Home stack every screen it registers itself', () => {
+    const navigator = HomeStack({}) as ReactElement<{ children: ScreenElement[] }>;
+    const homeScreenNames = [navigator.props.children]
+      .flat()
+      .filter(isValidElement)
+      .map((screen) => (screen as ScreenElement).props.name);
+
+    expect(homeScreenNames).toEqual(expect.arrayContaining(screenNames()));
+  });
+
+  // A modal presented from a pane's stack would inherit the pane's content margin through
+  // FixedContentMarginContext, so a pane-stack screen stays a push.
+  it('presents every screen as a push, never a modal', () => {
+    expect(nonPushPresentations(StatisticsStack({}))).toEqual([]);
+  });
+
   it('is rooted at the Statistics screen', () => {
     expect(screenNames()).toContain('Statistics');
   });
@@ -120,6 +157,15 @@ describe('StatisticsStack', () => {
       expect(screenOf(name)?.props.listeners).toBe(restoreDefaultAnimationOfSwappedForm);
     },
   );
+
+  it('roots Statistics in the primary pane and defaults the companion to Home', () => {
+    const navigator = StatisticsStack({}) as ReactElement<{ paneConfig: object }>;
+
+    expect(navigator.props.paneConfig).toEqual({
+      rootPane: 'primary',
+      companionDefault: { name: 'Home', isDefault: true },
+    });
+  });
 
   it('wraps every screen in the fitting large-title layout', () => {
     const navigator = StatisticsStack({}) as ReactElement<{ screenLayout: unknown }>;

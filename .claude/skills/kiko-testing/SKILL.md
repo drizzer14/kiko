@@ -79,6 +79,20 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `local-days-from.ts`, `device-zone-offset.ts`: calendar-day arithmetic and a device-zone offset
   for a test whose dates cross DST.
 - `code-from-currency.ts`: the numeric ISO code of a currency, for a Monobank feed fixture.
+- `window-size.ts`: `reportWindow` (the size class the native display-regions module reports, plus
+  the window size; call it before the first render) and `resizeWindow` (resize a mounted tree).
+- `lazy-tabs.tsx`: a tab navigator on the real `TabRouter` that mounts a tab on its first focus and
+  keeps it mounted, as the native bottom tabs do.
+- `pane-stack-presentation.ts`: `nonPushPresentations`, the pane-stack screens whose options set a
+  presentation other than a push; `test-ids-in-order.ts`: `testIdsInOrder`, every testID of a
+  rendered tree in paint order.
+- `mock-statistics-data-layer.ts`, `statistics-filter-data.ts`: the mocked data layer a real
+  Statistics screen (or Home) mounts on, and its filter fixtures (`answerFilterData`,
+  `pressFilterOption`, the filter testIDs).
+- `reset-statistics-filter-selection.ts`: `resetStatisticsFilterSelection`, an `afterEach` that
+  puts the session-long Statistics account and category picks back on "all".
+- `node-handles.ts`: `mockFindNodeHandle`, a stand-in that gives each distinct host its own handle
+  where Jest's `findNodeHandle` returns null, for a share-anchor pin.
 
 ### `__tests__/test-support/` (harness tests)
 
@@ -98,6 +112,8 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   skill sections a prose citation quotes, a spec table's Test cells).
 - `deployment-target.ts`, `sf-symbol-catalogue.ts`: the readers of the iOS target and of the
   SF Symbols availability data.
+- `plist-root.ts`: `buildPlistRoot` and `runPlistCheck`, a throwaway root with a copy of
+  `plist.sh` and the plist, project and privacy files a case overrides.
 
 ## Real SQLite versus a fake database
 

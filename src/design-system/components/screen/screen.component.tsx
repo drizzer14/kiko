@@ -1,19 +1,91 @@
 import type { FC } from 'react';
-import { ScrollView, View } from 'react-native';
+import {
+  FloatingFooterContext,
+  FloatingFooterEndContext,
+} from '@kiko/design-system/floating-footer';
+import { useDisplayRegions } from '@kiko/display-regions';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
+import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 
 import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 
-import { styles } from './screen.styles';
+import {
+  useAutomaticScrollClearance,
+  useBottomClearance,
+  useIsBottomInsetPadded,
+} from './use-bottom-clearance';
 import type { ScreenProps } from './screen.props';
-import { useBottomClearance } from './use-bottom-clearance';
+import { useTopClearance } from './use-top-clearance';
+import { useContentMargin } from './use-content-margin';
+import { SIDE_BAR_PLATTER_INSET, styles } from './screen.styles';
+import { useFloatingFooterHeight } from './use-floating-footer-height';
 import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
+
+type FooterSlotProps = Pick<ScreenProps, 'footer' | 'floatingFooter'> & {
+  bottomClearance: number;
+  sideBarInset: number | undefined;
+  contentMargin: number;
+  capStyle: ReturnType<typeof useContentCap>;
+  onFloatingLayout: (event: LayoutChangeEvent) => void;
+};
+
+// The footer slot of all three branches. Pinned, it is a sibling below the scroll surface.
+// Floating, it is an overlay: a zero-height anchor sits in the flex column after the surface,
+// inside the SafeAreaView's padding (the safe-area insets and the side bar), and the overlay
+// grows upward from the anchor's bottom edge. `box-none` leaves every touch outside the buttons
+// to the rows beneath. The overlay's measured height is what the content pads its end by.
+const FooterSlot: FC<FooterSlotProps> = ({
+  footer,
+  floatingFooter = false,
+  bottomClearance,
+  sideBarInset,
+  contentMargin,
+  capStyle,
+  onFloatingLayout,
+}) => {
+  // The size class, as `useContentCap` reads it: a regular window, whatever its live layout mode.
+  const { horizontalSizeClass } = useDisplayRegions();
+
+  if (!footer) {
+    return null;
+  }
+
+  const isButtonWidthCapped = floatingFooter && horizontalSizeClass === 'regular';
+
+  const slot = (
+    <View
+      testID="screen-footer"
+      pointerEvents={floatingFooter ? 'box-none' : undefined}
+      onLayout={floatingFooter ? onFloatingLayout : undefined}
+      style={[
+        styles.footer(bottomClearance, contentMargin, sideBarInset),
+        capStyle,
+        isButtonWidthCapped ? styles.floatingFooterCap(contentMargin) : undefined,
+      ]}
+    >
+      {footer}
+    </View>
+  );
+
+  if (!floatingFooter) {
+    return slot;
+  }
+
+  return (
+    <View pointerEvents="box-none" style={styles.floatingFooterAnchor}>
+      <View pointerEvents="box-none" style={styles.floatingFooter}>
+        <FloatingFooterContext.Provider value={true}>{slot}</FloatingFooterContext.Provider>
+      </View>
+    </View>
+  );
+};
 
 const Screen: FC<ScreenProps> = ({
   children,
   scroll = false,
   footer,
+  floatingFooter = false,
   bleedBottom = false,
   bleedTop = false,
   scrollableRef,
@@ -21,11 +93,6 @@ const Screen: FC<ScreenProps> = ({
   automaticallyAdjustKeyboardInsets = true,
   onFieldBlur,
 }) => {
-  // The fields' way to report a blur to the screen; every layout below renders them.
-  const fields = (
-    <FieldBlurContext.Provider value={onFieldBlur}>{children}</FieldBlurContext.Provider>
-  );
-
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
   // universally, from this one place — rather than each screen re-solving it.
@@ -52,6 +119,49 @@ const Screen: FC<ScreenProps> = ({
   // too: it also gives a pane that is not at the window's bottom no clearance,
   // since no tab bar is over it.
   const bottomClearance = useBottomClearance();
+  // Beside a side bar the SafeAreaView drops its bottom edge so the scroll views run to the
+  // window's bottom, and the inset comes back as padding. The scroll branch's ScrollView adjusts
+  // itself (`automatic`), so it asks `useAutomaticScrollClearance` what UIKit leaves to the JS.
+  const isBottomInsetPadded = useIsBottomInsetPadded();
+  const automaticScrollClearance = useAutomaticScrollClearance();
+  const scrollBottomInset = isBottomInsetPadded ? automaticScrollClearance : 0;
+  // A floating footer takes no layout room, so the content ends under it unless it pads its end
+  // by the footer's measured height. The slot holds its own top gap, the buttons, the tab-bar
+  // clearance and the gap below, so a content that ends where the slot begins leaves exactly the
+  // slot's top padding between the last row and the first button.
+  const hasFloatingFooter = footer !== undefined && floatingFooter;
+  // Beside a side bar a floating footer ends level with the bottom of the bar's platter, in place
+  // of the gap and the clearance, in a pane that touches the window's bottom. Every other
+  // placement, and the pinned footer, keep their own bottom.
+  const sideBarInset =
+    hasFloatingFooter && isBottomInsetPadded ? SIDE_BAR_PLATTER_INSET : undefined;
+  const footerSlot = useFloatingFooterHeight(bottomClearance, sideBarInset);
+  // The scroll view ends at the slot's bottom edge too, except beside a side bar, where it runs
+  // to the window's bottom and UIKit adds the home-indicator inset to its content itself (the
+  // switch in `bottom-clearance.ts`): the padding is the height less that inset. Under a bottom
+  // or a top bar the scroll view sits inside the SafeAreaView and UIKit adds nothing.
+  const uikitInsetBottom = isBottomInsetPadded ? bottomClearance - automaticScrollClearance : 0;
+  const floatingScrollEnd = hasFloatingFooter
+    ? Math.max(footerSlot.height - uikitInsetBottom, 0)
+    : undefined;
+  // The plain branch's `content` is a View: it ends at the slot's bottom edge, UIKit adds nothing.
+  // A `bleedBottom` child pads its own end.
+  const floatingContentEnd = hasFloatingFooter && !bleedBottom ? footerSlot.height : undefined;
+  // The fields' way to report a blur to the screen, and the scroll end a `bleedTop` or
+  // `bleedBottom` child pads itself by (it owns its scrolling); every layout below renders them.
+  const fields = (
+    <FieldBlurContext.Provider value={onFieldBlur}>
+      <FloatingFooterEndContext.Provider value={floatingScrollEnd}>
+        {children}
+      </FloatingFooterEndContext.Provider>
+    </FieldBlurContext.Provider>
+  );
+  // A floating TOP bar covers the top edge the same way, so a headerless plain screen starts
+  // below its pill. Only the plain branch uses it: the scroll and `bleedTop` branches sit under a
+  // native header that already clears the bar.
+  const topClearance = useTopClearance();
+  // The sides of the content, the footer and the scroll content are padded by this one margin.
+  const contentMargin = useContentMargin();
   const contentCap = useContentCap();
   const scrollIndicatorProps = useScrollIndicatorProps();
   const { plainEdges, largeTitleEdges } = usePaneScreen();
@@ -61,7 +171,14 @@ const Screen: FC<ScreenProps> = ({
   // `bleedBottom` child (a scrollable list applying the clearance to its own
   // content) each own it instead — reserving it in `content` too would count
   // it twice.
-  const contentOwnsClearance = !bleedBottom && footer === undefined;
+  //
+  // A floating footer takes no layout room: the content lays out as if there were no footer, and
+  // pads its end by the footer's height instead (`floatingScrollEnd`, `floatingContentEnd`).
+  const hasPinnedFooter = footer !== undefined && !floatingFooter;
+  const contentOwnsClearance = !bleedBottom && !hasPinnedFooter;
+  // A `bleedBottom` child with nothing below it runs to the window's bottom beside a side bar and
+  // pads the inset itself, so `content` adds no bottom padding there.
+  const isBottomEdgeBled = bleedBottom && !hasPinnedFooter && isBottomInsetPadded;
   // Only set while the screen's title is too long for the native large title and shows as a
   // heading in the content (see `LargeTitleHeading`); otherwise it adds nothing.
   const headingScrollProps = useLargeTitleScroll();
@@ -113,20 +230,33 @@ const Screen: FC<ScreenProps> = ({
           // tap. "handled" fires a focusable/handled child on the first tap
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
-          // In a pane the content is capped and centred here, not on the scroll
-          // view, so the scroll view and its indicator span the whole pane.
-          contentContainerStyle={[styles.scrollContent(footer !== undefined), contentCap]}
+          // In a pane, except a pane under a top tab bar, the content is capped and centred here,
+          // not on the scroll view, so the scroll view and its indicator span the whole pane.
+          contentContainerStyle={[
+            styles.scrollContent(
+              hasPinnedFooter,
+              contentMargin,
+              scrollBottomInset,
+              floatingScrollEnd,
+            ),
+            contentCap,
+          ]}
           {...headingScrollProps}
         >
           <LargeTitleHeading />
 
           {fields}
         </ScrollView>
-        {footer ? (
-          <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
-            {footer}
-          </View>
-        ) : null}
+
+        <FooterSlot
+          footer={footer}
+          floatingFooter={floatingFooter}
+          bottomClearance={bottomClearance}
+          sideBarInset={sideBarInset}
+          contentMargin={contentMargin}
+          capStyle={contentCap}
+          onFloatingLayout={footerSlot.onLayout}
+        />
       </SafeAreaView>
     );
   }
@@ -155,11 +285,16 @@ const Screen: FC<ScreenProps> = ({
     return (
       <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
         {fields}
-        {footer ? (
-          <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
-            {footer}
-          </View>
-        ) : null}
+
+        <FooterSlot
+          footer={footer}
+          floatingFooter={floatingFooter}
+          bottomClearance={bottomClearance}
+          sideBarInset={sideBarInset}
+          contentMargin={contentMargin}
+          capStyle={contentCap}
+          onFloatingLayout={footerSlot.onLayout}
+        />
       </SafeAreaView>
     );
   }
@@ -180,17 +315,29 @@ const Screen: FC<ScreenProps> = ({
       edges={plainEdges}
       style={[styles.safeArea, bleedBottom ? undefined : contentCap]}
     >
-      <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
+      <View
+        testID="screen-content"
+        style={styles.content(
+          contentOwnsClearance,
+          bottomClearance,
+          topClearance,
+          contentMargin,
+          isBottomEdgeBled,
+          floatingContentEnd,
+        )}
+      >
         {fields}
       </View>
-      {footer ? (
-        <View
-          testID="screen-footer"
-          style={[styles.footer(bottomClearance), bleedBottom ? contentCap : undefined]}
-        >
-          {footer}
-        </View>
-      ) : null}
+
+      <FooterSlot
+        footer={footer}
+        floatingFooter={floatingFooter}
+        bottomClearance={bottomClearance}
+        sideBarInset={sideBarInset}
+        contentMargin={contentMargin}
+        capStyle={bleedBottom ? contentCap : undefined}
+        onFloatingLayout={footerSlot.onLayout}
+      />
     </SafeAreaView>
   );
 };

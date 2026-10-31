@@ -1,6 +1,7 @@
 import { i18n } from '@kiko/i18n/init';
 import { HELP_TOPICS } from '@kiko/help';
 import { isValidElement, type ReactElement } from 'react';
+import { nonPushPresentations } from '@kiko/test-support/pane-stack-presentation';
 
 // The real screens wired into this stack pull in db/client, which opens a real
 // op-sqlite connection at module load. op-sqlite has no Jest binary, so stub it
@@ -85,6 +86,12 @@ const titleByScreen = (): Record<string, string | undefined> =>
   );
 
 describe('SettingsStack', () => {
+  // A modal presented from a pane's stack would inherit the pane's content margin through
+  // FixedContentMarginContext, so a pane-stack screen stays a push.
+  it('presents every screen as a push, never a modal', () => {
+    expect(nonPushPresentations(SettingsStack({}), { topicId: 'addAccount' })).toEqual([]);
+  });
+
   it('gives the Settings, System, and Categories screens a static, localized title', () => {
     const titles = titleByScreen();
     expect(titles.Settings).toBe('Settings');

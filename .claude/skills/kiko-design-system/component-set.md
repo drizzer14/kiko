@@ -34,7 +34,14 @@ new component can land between reviews of this skill:
   passes `onFieldBlur` to Screen and no blur handler to each field;
   safe-area handling per mode (`scroll` drops the top safe-area edge
   under a large-title header), and a footer slot that clears the
-  native glass tab bar's measured height. A `bleedBottom` child that
+  native glass tab bar's measured height. A `floatingFooter` Screen lays its footer over the
+  rows as an overlay with no backdrop band; its buttons are capsules, and every filled one
+  sits on Liquid Glass on iOS 26+ (`FooterGlassBacking`; `ghost` has no fill and stays bare);
+  below iOS 26 the variant per button is in
+  `src/design-system/components/footer-glass-backing/resolve-footer-glass-variant.ts`. The
+  side-bar end rule is `FloatingFooterEndContext` / `useFloatingFooterEnd` in
+  `src/design-system/floating-footer/floating-footer.ts` and the side-bar clause of
+  `src/design-system/components/screen/bottom-clearance.ts`. A `bleedBottom` child that
   owns the screen's true bottom edge itself (e.g. a scrollable list)
   must take that same clearance from `useBottomClearance()`
   (`src/design-system/components/screen/use-bottom-clearance.ts`, built
@@ -44,7 +51,12 @@ new component can land between reviews of this skill:
   The hook is pane-aware: a pane that is not at the window's bottom has
   no tab bar over it and gets 0. `resolveBottomClearance` is pane-blind,
   so nothing outside `src/design-system/components/screen/` may import
-  it (`kiko-no-pane-blind-bottom-clearance`). In a pane (a
+  it (`kiko-no-pane-blind-bottom-clearance`). `useIsTabBarNotAtBottom` and
+  `useTabBarPlacement` (both exported by the Screen barrel) and `useIsTabBarAtTop` (a
+  Screen-folder module, read by `useContentCap`) are pane-blind window reads too: only
+  `src/design-system/components/screen/` and
+  `src/navigation/pane-stack/pane-stack-view/` may import them, or `useTabBarPlacement`
+  (`kiko-tab-bar-placement-only-in-screen-and-pane-stack-view`). In a pane (a
   `PaneContext` from `TwoPaneLayout`), the `SafeAreaView` keeps only the
   window edges the pane touches (`use-pane-screen.ts`), a footer is
   capped like content (it takes the same cap as the content container,
@@ -52,7 +64,28 @@ new component can land between reviews of this skill:
   centres its content container at `theme.layout.paneMaxWidth` and the
   ScrollView keeps the whole pane; a `bleedTop` child does the same on
   its own content container with `useContentCap()`; the plain branch
-  caps its root. The vertical-bar signal it consumes is
+  caps its root. The one exception is a pane whose tab bar is at the top
+  (`useIsTabBarAtTop()`, every regular iPad window, small Stage Manager
+  splits included; user ruling 2026-10-21): `useContentCap()` returns no
+  cap there, so the content spans the pane from the content margin where
+  the native large title starts. The title margin is a wider test:
+  `PaneStackView` gives the stacks `useContentMargin()` (value in
+  `src/design-system/components/screen/use-content-margin.ts`; the Screen barrel exports it, a
+  window-wide margin not on the pane-blind rule list) on
+  `useIsTabBarNotAtBottom()` (the bar at the top OR a side; user ruling
+  D1 2026-10-23), so a pane under a side bar (every Duo pose with a side
+  bar) also starts its title at the content's margin; a single stack under a side bar (the
+  Duo outer pose, `placement === 'side'`) gets it too. On the Duo side-bar poses that margin
+  aligns the content to the native title (user ruling 2026-10-29; the reason is in
+  kiko-design-system SKILL.md "Locked decisions"). Only the top bar
+  lifts the cap: a pane with a SIDE tab bar (a Duo side-bar pose, or a
+  large window) stays capped at 600 pt, with no large-window exception
+  (user ruling 2026-10-21), and a pane whose bar is at the bottom keeps
+  the cap and, for a bottom bar, UIKit's title margin. A screen
+  that sizes itself by the room its content has (the Statistics shared
+  chart row) reads `usePaneContentWidth()` (the Screen barrel: the pane
+  width limited by that cap), never the pane or window width alone. The
+  vertical-bar signal it consumes is
   `useVerticalBarEdge` from `@kiko/display-regions`
   (`src/display-regions/`); `scroll-to-field` reads it through
   `@kiko/display-regions` too. `useScrollIndicatorProps()` (`use-pane-screen.ts`, exported by
@@ -79,9 +112,7 @@ new component can land between reviews of this skill:
   always-reachable action" rule: it renders through the pinned
   `footer` slot even though it is not an action, because App Store
   Guideline 5.1.1(i) needs the in-app privacy policy link easily
-  accessible (reachable without scrolling). There is
-  no `fillHeight` prop — a screen whose content
-  is shorter than the viewport just leaves it top-anchored; nothing in
+  accessible (reachable without scrolling). A short page stays top-anchored; nothing in
   this codebase pins non-footer content to the bottom.
 - **LoadingState** (`src/design-system/components/loading-state/`) —
   the shared "this screen's own data has not loaded yet" visual: a
@@ -278,7 +309,9 @@ new component can land between reviews of this skill:
   its header comment (`card.component.tsx`) for the HIG rationale
   (Liquid Glass is reserved for the NAVIGATION layer, not content).
 - **GlassSurface** — the shared NAV-LAYER surface only: the tab bar,
-  bottom sheets, the FAB (its edge: see "FAB edge" in SKILL.md), and
+  bottom sheets, the FAB (its edge: see "FAB edge" in SKILL.md), the
+  floating Screen footer's button backing (`FooterGlassBacking`: a capsule glass
+  layer under each filled footer `Button`), and
   the keyboard-done accessory (grep
   `<GlassSurface` for the current consumer list; content cards use
   `Card` above instead). Real Liquid Glass on iOS 26+, a themed flat

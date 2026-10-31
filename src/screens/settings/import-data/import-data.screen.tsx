@@ -195,6 +195,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   return (
     <Screen
       scroll
+      floatingFooter
       footer={
         <Box direction="row" gap={2}>
           <Button

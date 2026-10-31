@@ -1,12 +1,14 @@
 import { darkTheme } from '@kiko/design-system/theme';
 import { type ComponentProps, useContext } from 'react';
-import { render, within } from '@testing-library/react-native';
 import { HeaderHeightContext } from '@react-navigation/elements';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
+import { useFloatingFooterEnd, useIsInFloatingFooter } from '@kiko/design-system/floating-footer';
 import '@kiko/design-system/unistyles';
+import { REGULAR_BUTTON_HEIGHT } from '@kiko/design-system/regular-button-height';
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
 
 // Imported through the folder's index (the real path a screen consumes,
@@ -32,8 +34,16 @@ jest.mock('react-native-bottom-tabs', () => ({
 // The system's own vertical-bar trait, in place of any geometry guess. Every
 // test here but the "Duo vertical bar" cases sees `none`, an ordinary bottom bar.
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+// An unknown native edge keeps today's rule, which every case but the top-bar ones pins.
+const mockUseTabBarEdge = jest.fn((): 'top' | 'bottom' | 'leading' | 'trailing' | 'none' => 'none');
+const mockHorizontalSizeClass = jest.fn((): 'compact' | 'regular' => 'compact');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+  useTabBarEdge: () => mockUseTabBarEdge(),
+  // The content cap reads the layout mode and the size class: a compact single window, as on an
+  // iPhone, caps nothing.
+  useLayoutMode: () => 'single',
+  useDisplayRegions: () => ({ horizontalSizeClass: mockHorizontalSizeClass() }),
 }));
 
 // A device with a home indicator reports a non-zero bottom safe-area inset.
@@ -504,7 +514,7 @@ describe('Screen', () => {
     });
 
     it.each(['leading', 'trailing'] as const)(
-      'ignores the poisoned tab-bar height on the %s edge and leaves horizontal padding unchanged — the exact measured Duo primary-panel geometry',
+      'ignores the poisoned tab-bar height on the %s edge and keeps the horizontal padding at the single-stack content margin — the exact measured Duo outer geometry',
       async (edge) => {
         mockUseBottomTabBarHeight.mockReturnValue(678);
         mockUseVerticalBarEdge.mockReturnValue(edge);
@@ -515,16 +525,17 @@ describe('Screen', () => {
         const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
         // A vertical bar distrusts the tab-bar height entirely: the footer's own
-        // padding is just the gap (16) plus 0 extra clearance, not 16 + 644 —
-        // a ~676pt footer would cover the whole screen.
-        expect(footerStyle.paddingBottom).toBe(FOOTER_GAP);
+        // padding is the gap (16) plus the home-indicator inset, because the content runs
+        // to the window's bottom there, not 16 + 644 — a ~676pt footer would cover the
+        // whole screen.
+        expect(footerStyle.paddingBottom).toBe(FOOTER_GAP + DUO_INSETS.bottom);
         // The enclosing SafeAreaView already reserves the 84pt right inset
         // itself (`edges` includes 'right' in every branch — see
-        // `screen.component.tsx`), so the footer's OWN horizontal padding stays
-        // exactly the base spacing(4) = 16 step. Adding the inset again here
-        // would double-count it — the 100pt dead gap the real-device
-        // screenshots caught.
-        expect(footerStyle.paddingHorizontal).toBe(16);
+        // `screen.component.tsx`), so the footer's OWN horizontal padding is
+        // the single-stack content margin, spacing(4) = 16 (a pane under a side bar widens it
+        // to 20), never 16 + 84. Adding the inset again here would double-count it — the
+        // dead gap the real-device screenshots caught.
+        expect(footerStyle.paddingHorizontal).toBe(darkTheme.spacing(4));
       },
     );
 
@@ -534,6 +545,349 @@ describe('Screen', () => {
       const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
       expect(footerStyle.paddingHorizontal).toBe(16);
+    });
+  });
+
+  describe('under a side bar', () => {
+    type RenderedScreen = Awaited<ReturnType<typeof renderScreen>>;
+
+    const SIDE_BAR_MARGIN = darkTheme.spacing(5);
+    const BASE_MARGIN = darkTheme.spacing(4);
+
+    const footerHorizontal = (view: RenderedScreen) =>
+      StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style).paddingHorizontal;
+
+    const scrollContentStyle = (view: RenderedScreen) =>
+      StyleSheet.flatten(view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle);
+
+    const HORIZONTAL_ROWS = [
+      [
+        'the plain content',
+        {},
+        (view: RenderedScreen) =>
+          StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style).paddingHorizontal,
+      ],
+      ['the plain footer', { footer: footerNode }, footerHorizontal],
+      [
+        'the scroll content',
+        { scroll: true },
+        (view: RenderedScreen) => {
+          const style = scrollContentStyle(view);
+
+          return style.paddingHorizontal ?? style.padding;
+        },
+      ],
+      ['the scroll footer', { scroll: true, footer: footerNode }, footerHorizontal],
+      ['the bleedTop footer', { bleedTop: true, footer: footerNode }, footerHorizontal],
+    ] as const;
+
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+    });
+
+    const renderInSplitPane = (props: ComponentProps<typeof Screen>) =>
+      render(
+        <PaneContext.Provider value={paneContextOf('columns', 'primary')}>
+          <Screen {...props}>
+            <Text>content</Text>
+          </Screen>
+        </PaneContext.Provider>,
+      );
+
+    describe.each([
+      ['a single stack', 'leading', BASE_MARGIN, renderScreen],
+      ['a single stack', 'trailing', BASE_MARGIN, renderScreen],
+      ['a single stack', 'bottom', BASE_MARGIN, renderScreen],
+      ['a split pane', 'leading', SIDE_BAR_MARGIN, renderInSplitPane],
+      ['a split pane', 'trailing', SIDE_BAR_MARGIN, renderInSplitPane],
+      ['a split pane', 'bottom', BASE_MARGIN, renderInSplitPane],
+    ] as const)('in %s with the tab bar edge %s', (_scope, edge, margin, renderIn) => {
+      it.each(HORIZONTAL_ROWS)(
+        'pads %s horizontally by the content margin',
+        async (_name, props, horizontalPaddingOf) => {
+          mockUseTabBarEdge.mockReturnValue(edge);
+
+          expect(horizontalPaddingOf(await renderIn(props))).toBe(margin);
+        },
+      );
+
+      it('keeps the top padding of the scroll content at 16', async () => {
+        mockUseTabBarEdge.mockReturnValue(edge);
+
+        const style = scrollContentStyle(await renderIn({ scroll: true }));
+
+        expect(style.paddingTop ?? style.padding).toBe(darkTheme.spacing(4));
+      });
+    });
+  });
+
+  // A floating footer beside a side bar ends level with the bottom of the bar's platter, 24 pt
+  // above the window's bottom, instead of a gap plus the home-indicator inset (16 + 34 = 50).
+  describe('a floating footer beside a side bar', () => {
+    const SIDE_BAR_PLATTER_INSET = 24;
+    const footerPaddingBottom = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+      StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style).paddingBottom;
+    const scrollEndOf = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+      StyleSheet.flatten(view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle)
+        .paddingBottom;
+    const FOOTER_BOX_BEFORE_MEASURE = 16 + REGULAR_BUTTON_HEIGHT + SIDE_BAR_PLATTER_INSET;
+
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+    });
+
+    it.each([
+      ['plain', { floatingFooter: true, footer: footerNode }],
+      ['scroll', { scroll: true, floatingFooter: true, footer: footerNode }],
+      ['bleedTop', { bleedTop: true, floatingFooter: true, footer: footerNode }],
+    ] as const)(
+      'ends the %s branch footer at the platter inset on each side bar edge',
+      async (_name, props) => {
+        for (const edge of ['leading', 'trailing'] as const) {
+          mockUseTabBarEdge.mockReturnValue(edge);
+
+          expect(footerPaddingBottom(await renderScreen(props))).toBe(SIDE_BAR_PLATTER_INSET);
+        }
+      },
+    );
+
+    it('keeps the pinned footer at the gap plus the home-indicator inset', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
+
+      expect(footerPaddingBottom(await renderScreen({ footer: footerNode }))).toBe(
+        FOOTER_GAP + MOCK_BOTTOM_INSET,
+      );
+    });
+
+    it('keeps the gap plus the bar clearance beside a bottom bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+
+      expect(
+        footerPaddingBottom(await renderScreen({ floatingFooter: true, footer: footerNode })),
+      ).toBe(FOOTER_GAP + BOTTOM_CLEARANCE);
+    });
+
+    it('keeps the gap and no clearance in a pane that is not at the window bottom', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
+
+      const view = await render(
+        <PaneContext.Provider value={paneContextOf('rows', 'companion')}>
+          <Screen floatingFooter footer={footerNode}>
+            <Text>content</Text>
+          </Screen>
+        </PaneContext.Provider>,
+      );
+
+      expect(footerPaddingBottom(view)).toBe(FOOTER_GAP);
+    });
+
+    it('ends the scroll content where the footer begins, less the inset UIKit adds itself', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
+
+      const view = await renderScreen({ scroll: true, floatingFooter: true, footer: footerNode });
+
+      expect(scrollEndOf(view)).toBe(FOOTER_BOX_BEFORE_MEASURE - MOCK_BOTTOM_INSET);
+
+      await act(() =>
+        fireEvent(view.getByTestId(FOOTER_TEST_ID), 'layout', {
+          nativeEvent: { layout: { height: 100 } },
+        }),
+      );
+
+      expect(scrollEndOf(view)).toBe(100 - MOCK_BOTTOM_INSET);
+    });
+
+    it('ends the plain content where the footer begins', async () => {
+      mockUseTabBarEdge.mockReturnValue('leading');
+
+      const view = await renderScreen({ floatingFooter: true, footer: footerNode });
+
+      expect(StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style).paddingBottom).toBe(
+        FOOTER_BOX_BEFORE_MEASURE,
+      );
+    });
+  });
+
+  // The user ruling: the buttons of a floating footer are at most 340 pt wide, and only in a
+  // regular-width window (the Duo inner screen, an iPad); a compact window keeps full-width
+  // buttons.
+  describe('the width of a floating footer', () => {
+    const FLOATING_FOOTER_MAX_WIDTH = 340;
+    const footerStyleOf = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+      StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style);
+
+    afterEach(() => {
+      mockHorizontalSizeClass.mockReturnValue('compact');
+    });
+
+    it.each([
+      ['plain', { floatingFooter: true, footer: footerNode }],
+      ['scroll', { scroll: true, floatingFooter: true, footer: footerNode }],
+      ['bleedTop', { bleedTop: true, floatingFooter: true, footer: footerNode }],
+    ] as const)(
+      'caps the %s branch buttons at 340 pt and centres them in a regular window',
+      async (_name, props) => {
+        mockHorizontalSizeClass.mockReturnValue('regular');
+        const flat = footerStyleOf(await renderScreen(props));
+
+        expect(Number(flat.maxWidth) - 2 * Number(flat.paddingHorizontal)).toBe(
+          FLOATING_FOOTER_MAX_WIDTH,
+        );
+        expect(flat.alignSelf).toBe('center');
+        expect(flat.width).toBe('100%');
+      },
+    );
+
+    it('keeps full-width buttons in a compact window', async () => {
+      const flat = footerStyleOf(await renderScreen({ floatingFooter: true, footer: footerNode }));
+
+      expect(flat.maxWidth).toBeUndefined();
+      expect(flat.alignSelf).toBeUndefined();
+    });
+
+    it('does not cap a pinned footer in a regular window', async () => {
+      mockHorizontalSizeClass.mockReturnValue('regular');
+      const flat = footerStyleOf(await renderScreen({ footer: footerNode }));
+
+      expect(flat.maxWidth).not.toBe(
+        FLOATING_FOOTER_MAX_WIDTH + 2 * Number(flat.paddingHorizontal),
+      );
+    });
+  });
+
+  // What the footer tells the rest of the tree: its buttons float (a Button reads that), and a
+  // scroll view under it, which a `bleedTop` child such as the Holding detail ledger owns, pads
+  // its end by the footer's height.
+  describe('what a floating footer tells the tree', () => {
+    const FooterProbe = () => (
+      <Text testID="in-floating-footer">{String(useIsInFloatingFooter())}</Text>
+    );
+    const EndProbe = () => <Text testID="floating-end">{String(useFloatingFooterEnd())}</Text>;
+    const renderProbed = (props: ComponentProps<typeof Screen>) =>
+      render(
+        <Screen {...props} footer={<FooterProbe />}>
+          <EndProbe />
+        </Screen>,
+      );
+
+    it('marks the footer as floating, and a pinned one as not', async () => {
+      const floating = await renderProbed({ floatingFooter: true });
+      expect(floating.getByTestId('in-floating-footer').props.children).toBe('true');
+
+      const pinned = await renderProbed({});
+      expect(pinned.getByTestId('in-floating-footer').props.children).toBe('false');
+    });
+
+    it('hands the content the footer height as its end, and nothing without a floating footer', async () => {
+      const floating = await renderProbed({ scroll: true, floatingFooter: true });
+      const scrollEnd = StyleSheet.flatten(
+        floating.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+      ).paddingBottom;
+
+      expect(floating.getByTestId('floating-end').props.children).toBe(String(scrollEnd));
+
+      await act(() =>
+        fireEvent(floating.getByTestId(FOOTER_TEST_ID), 'layout', {
+          nativeEvent: { layout: { height: 123 } },
+        }),
+      );
+
+      expect(floating.getByTestId('floating-end').props.children).toBe('123');
+
+      const pinned = await renderProbed({ scroll: true });
+      expect(pinned.getByTestId('floating-end').props.children).toBe('undefined');
+
+      const noFooter = await render(
+        <Screen scroll floatingFooter>
+          <EndProbe />
+        </Screen>,
+      );
+      expect(noFooter.getByTestId('floating-end').props.children).toBe('undefined');
+    });
+  });
+
+  describe('under a floating top tab bar', () => {
+    const TOP_BAR_PILL = 44;
+
+    const renderInPane = (props: ComponentProps<typeof Screen>, mode: 'columns' | 'rows') =>
+      render(
+        <PaneContext.Provider value={paneContextOf(mode, 'primary')}>
+          <Screen {...props}>
+            <Text>content</Text>
+          </Screen>
+        </PaneContext.Provider>,
+      );
+
+    const contentTop = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+      StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style).paddingTop;
+
+    beforeEach(() => {
+      mockUseTabBarEdge.mockReturnValue('top');
+    });
+
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+      mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+    });
+
+    it('pads the plain content by the 44 pt pill under a top bar', async () => {
+      const view = await renderScreen();
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
+    });
+
+    it('pads the plain content 44 pt more under a top bar when bleedBottom is set (Home)', async () => {
+      const view = await renderScreen({ bleedBottom: true });
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
+    });
+
+    it.each([72, 83])('adds nothing under a %i pt bottom bar', async (barHeight) => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      mockUseBottomTabBarHeight.mockReturnValue(barHeight);
+
+      const view = await renderScreen();
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
+    });
+
+    it('adds nothing in the rows primary, which has no bar over it', async () => {
+      const view = await renderInPane({}, 'rows');
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
+    });
+
+    it('adds the pill in the columns primary, which reaches the top of the window', async () => {
+      const view = await renderInPane({}, 'columns');
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING + TOP_BAR_PILL);
+    });
+
+    it('never puts the clearance on the SafeAreaView', async () => {
+      const { getByTestId } = await renderScreen();
+
+      expect(
+        StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).parent?.props.style).paddingTop,
+      ).toBeUndefined();
+    });
+
+    it('carries no top clearance in the scroll branch', async () => {
+      const { getByTestId } = await renderScreen({ scroll: true });
+      const scrollContentStyle = StyleSheet.flatten(
+        getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+      );
+
+      expect(scrollContentStyle.paddingTop).toBeUndefined();
+      expect(scrollContentStyle.padding).toBe(CONTENT_BASE_PADDING);
+    });
+
+    it('carries no top clearance in the bleedTop branch', async () => {
+      const { getByText, queryByTestId } = await renderScreen({ bleedTop: true });
+
+      expect(queryByTestId(CONTENT_TEST_ID)).toBeNull();
+      expect(
+        StyleSheet.flatten(getByText('content').parent?.props.style).paddingTop,
+      ).toBeUndefined();
     });
   });
 
@@ -572,7 +926,12 @@ describe('Screen', () => {
       ['bleedTop', { bleedTop: true }],
     ] as const;
 
+    afterEach(() => {
+      mockUseTabBarEdge.mockReturnValue('none');
+    });
+
     it('caps and centres the plain branch at the pane max width', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
       const view = await renderInPane({}, 'columns', 'primary');
       const root = StyleSheet.flatten(rootOf(view, {})?.props.style);
 
@@ -582,6 +941,7 @@ describe('Screen', () => {
     });
 
     it('caps and centres the content of the scroll branch, and leaves the scroll view the whole pane', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
       const view = await renderInPane({ scroll: true }, 'rows', 'primary');
       const root = StyleSheet.flatten(rootOf(view, { scroll: true })?.props.style);
       const content = StyleSheet.flatten(
@@ -595,6 +955,86 @@ describe('Screen', () => {
       expect(content.alignSelf).toBe('center');
       expect(content.padding).toBe(16);
     });
+
+    it.each(BRANCHES)(
+      'leaves the %s branch uncapped and uncentred in a pane under a top tab bar',
+      async (_name, props) => {
+        mockUseTabBarEdge.mockReturnValue('top');
+        const view = await renderInPane(props, 'columns', 'primary');
+        const root = StyleSheet.flatten(rootOf(view, props)?.props.style);
+
+        expect(root.maxWidth).toBeUndefined();
+        expect(root.alignSelf).toBeUndefined();
+
+        if ('scroll' in props) {
+          const content = StyleSheet.flatten(
+            view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+          );
+
+          expect(content.maxWidth).toBeUndefined();
+          expect(content.alignSelf).toBeUndefined();
+          expect(content.padding).toBe(darkTheme.spacing(4));
+        }
+      },
+    );
+
+    it('leaves the footer of the bleedTop branch uncapped and uncentred in a pane under a top tab bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      const view = await renderInPane({ bleedTop: true, footer: footerNode }, 'columns', 'primary');
+      const footer = StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style);
+
+      expect(footer.maxWidth).toBeUndefined();
+      expect(footer.alignSelf).toBeUndefined();
+    });
+
+    it('keeps the horizontal padding of the plain branch in a pane under a top tab bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      const view = await renderInPane({}, 'columns', 'primary');
+      const content = StyleSheet.flatten(view.getByTestId(CONTENT_TEST_ID).props.style);
+
+      expect(content.paddingHorizontal).toBe(darkTheme.spacing(4));
+    });
+
+    // A small Stage Manager row split (683 x 909) is not a large window, yet its title sits at the
+    // content's margin like a large window's, so its content has to start there too.
+    it('starts the scroll content of a row split pane at the title margin under a top tab bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      const view = await renderInPane({ scroll: true }, 'rows', 'primary');
+      const content = StyleSheet.flatten(
+        view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+      );
+
+      expect(content.maxWidth).toBeUndefined();
+      expect(content.alignSelf).toBeUndefined();
+      expect(content.padding).toBe(darkTheme.spacing(4));
+    });
+
+    it.each(['rows', 'columns'] as const)(
+      'caps and centres every branch in a Duo inner pane of the %s window',
+      async (mode) => {
+        mockUseTabBarEdge.mockReturnValue('bottom');
+
+        const plain = await renderInPane({}, mode, 'primary');
+        const scroll = await renderInPane({ scroll: true }, mode, 'primary');
+        const plainRoot = StyleSheet.flatten(rootOf(plain, {})?.props.style);
+        const scrollContent = StyleSheet.flatten(
+          scroll.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+        );
+        const bleedTop = await renderInPane(
+          { bleedTop: true, footer: footerNode },
+          mode,
+          'primary',
+        );
+        const footer = StyleSheet.flatten(bleedTop.getByTestId(FOOTER_TEST_ID).props.style);
+
+        expect(plainRoot.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+        expect(plainRoot.alignSelf).toBe('center');
+        expect(scrollContent.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+        expect(scrollContent.alignSelf).toBe('center');
+        expect(footer.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+        expect(footer.alignSelf).toBe('center');
+      },
+    );
 
     it('leaves a bleedTop child the whole pane, to cap its own content', async () => {
       const view = await renderInPane({ bleedTop: true }, 'rows', 'primary');
@@ -767,6 +1207,7 @@ describe('Screen with a title heading', () => {
         <LargeTitleHeadingContext.Provider
           value={{
             title: HEADING_TITLE,
+            inRow: false,
             scrolled: false,
             headingBottom: { current: headingBottom },
             onScrolledChange,

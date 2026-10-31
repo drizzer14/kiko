@@ -150,7 +150,9 @@ The token categories, defined once in a single theme module (read
   `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
   checkmark beside caption text), never an inline literal like `18`.
 - **layout** — `paneMaxWidth` caps a pane's SCREEN CONTENT (lists,
-  forms) and never native bars; `hairline` is the flat two-pane divider
+  forms), except in a pane under a top tab bar (see the Screen entry
+  under "Component set" in component-set.md), and never native bars;
+  `hairline` is the flat two-pane divider
   width. Read `theme.ts` for the values; never restate them. Pane code
   reads `theme.layout`, never an inline width literal or
   `StyleSheet.hairlineWidth`. The divider keeps the ordinary hairline
@@ -371,7 +373,11 @@ every one of them, so scan this list rather than the reference files for what is
   `largeTitleHeadingOptions` (`src/navigation/large-title-screen-options/`): `headerLargeTitle`
   false together with `headerTransparent` true and `headerShadowVisible` true. Never switch
   `headerLargeTitle` off alone: native-stack then makes the bar opaque and lays content out
-  below it. The bar title appears once the heading scrolls under the bar.
+  below it. The bar title appears once the heading scrolls under the bar. The heading shows
+  in-row only when beside && fits && no `HeaderBackContext` (the pane's first page) && no bar
+  items (`BAR_ITEM_OPTIONS`, `fitting-large-title.component.tsx`). Latent: a stand-in default
+  sees its store options only, so `hasBarItems` may miss items a companion default sets via
+  `setOptions` (none today).
   `largeTitleRestoredOptions(screenOptions)` puts the native large title back and returns the
   screen's own `headerTransparent`, `headerShadowVisible` and `headerTitle`, read before the
   switch (`undefined` where the screen set none): the screen's own values from before the
@@ -384,6 +390,12 @@ every one of them, so scan this list rather than the reference files for what is
 - **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
   tap via `SMALL_HIT_SLOP`, not full width, never the regular 50pt. Pinned
   by `empty-state.component.test.tsx`.
+- **Duo side-bar content aligns to the native title** (2026-10-29, user ruling, FLAG 1). On the
+  Duo side-bar poses the content margin is the native title's, not the base one: on iOS 27.1
+  the bar-hosted large title ignores the bar margin and the bar's title position
+  adjustment and starts at x 20. The value lives in
+  `src/design-system/components/screen/use-content-margin.ts`;
+  see `Screen` in component-set.md, which points back here.
 
 ## UX patterns
 

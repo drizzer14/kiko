@@ -10,6 +10,7 @@ import Screen from '@kiko/design-system/components/screen';
 import Button from '@kiko/design-system/components/button';
 import { type HelpAction, helpTopicById } from '@kiko/help';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
+import { useIsMergedHome } from '@kiko/navigation/merged-home';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -37,6 +38,7 @@ const footerActionFor = (
   helpAction: HelpAction,
   t: TFunction,
   navigation: HelpTopicScreenProps['navigation'],
+  isMergedHome: boolean,
 ) =>
   match(helpAction)
     .with('addAccount', () => ({
@@ -87,7 +89,8 @@ const footerActionFor = (
     .with('openStatistics', () => ({
       label: t('help.actions.openStatistics'),
       icon: entrySymbol.statistics,
-      onPress: () => navigation.navigate('StatisticsTab'),
+      // The charts are the Home tab's companion on a merged Home, which has no Statistics tab.
+      onPress: () => navigation.navigate(isMergedHome ? 'HomeTab' : 'StatisticsTab'),
     }))
     .with('openExportData', () => ({
       label: t('help.actions.openExportData'),
@@ -109,10 +112,11 @@ const footerActionFor = (
 const HelpTopicScreen: FC<HelpTopicScreenProps> = ({ navigation, route }) => {
   const { t } = useTranslation();
   const topic = helpTopicById(route.params.topicId);
+  const isMergedHome = useIsMergedHome();
 
   // `undefined` for a topic with no action, so `Screen` draws no footer at all.
   const footer = foldMap(maybe(topic.action), (helpAction) => {
-    const action = footerActionFor(helpAction, t, navigation);
+    const action = footerActionFor(helpAction, t, navigation, isMergedHome);
 
     return (
       <Button testID="help-topic-action" icon={action.icon} onPress={action.onPress}>
@@ -122,7 +126,7 @@ const HelpTopicScreen: FC<HelpTopicScreenProps> = ({ navigation, route }) => {
   });
 
   return (
-    <Screen scroll footer={footer}>
+    <Screen scroll floatingFooter footer={footer}>
       <Box gap={3}>
         {topic.stepKeys.map((stepKey, index) => (
           <Box key={stepKey} testID={`help-topic-step-${index + 1}`} direction="row" gap={3}>

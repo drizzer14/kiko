@@ -5,6 +5,7 @@ import HelpScreen from '@kiko/screens/settings/help';
 import SystemScreen from '@kiko/screens/settings/system';
 import SettingsScreen from '@kiko/screens/settings/settings';
 import RemindersScreen from '@kiko/screens/settings/reminders';
+import { LIST_SHARE } from '@kiko/design-system/pane-geometry';
 import HelpTopicScreen from '@kiko/screens/settings/help-topic';
 import CategoriesScreen from '@kiko/screens/settings/categories';
 import AccountFormScreen from '@kiko/screens/forms/account-form';
@@ -31,9 +32,10 @@ import { largeTitleScreenOptions } from '../large-title-screen-options';
 const Stack = createPaneStackNavigator<SettingsStackParamList>();
 
 // The menu is the root and takes the companion pane; what it opens takes the primary pane, which
-// shows Categories until something else opens there.
+// shows Categories until something else opens there. The menu takes 2/5 of a wide window.
 const PANE_CONFIG = {
   rootPane: 'companion',
+  companionShare: LIST_SHARE,
   primaryDefault: { name: 'Categories', isDefault: true },
 } as const;
 

@@ -1,7 +1,7 @@
 import { StyleSheet, Text } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { render, screen } from '@testing-library/react-native';
-import type { FoldRegion, LayoutMode } from '@kiko/display-regions';
+import type { FoldRegion, HorizontalSizeClass, LayoutMode } from '@kiko/display-regions';
 
 import '@kiko/design-system/unistyles';
 
@@ -9,9 +9,13 @@ import BottomSheet from '.';
 
 const mockUseLayoutMode = jest.fn((): LayoutMode => 'single');
 const mockUseFoldRegion = jest.fn((): FoldRegion => null);
+const mockUseDisplayRegions = jest.fn((): { horizontalSizeClass: HorizontalSizeClass } => ({
+  horizontalSizeClass: 'compact',
+}));
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => mockUseLayoutMode(),
   useFoldRegion: () => mockUseFoldRegion(),
+  useDisplayRegions: () => mockUseDisplayRegions(),
 }));
 
 const mockWindow = { width: 466, height: 678, scale: 3, fontScale: 1 };
@@ -48,15 +52,25 @@ describe('BottomSheet on a two-pane display', () => {
   beforeEach(() => {
     mockUseLayoutMode.mockReturnValue('single');
     mockUseFoldRegion.mockReturnValue(null);
+    mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'compact' });
     showWindow(466, 678);
   });
 
-  it('keeps the card full width on a single window', async () => {
+  it('keeps the card full width on a single compact window', async () => {
     await renderSheet();
 
     expect(cardStyle().width).toBeUndefined();
     expect(cardStyle().marginLeft).toBeUndefined();
     expect(cardStyle().maxHeight).toBe(678 * 0.66);
+  });
+
+  it('narrows the card to the sheet width and centres it on a single regular window', async () => {
+    mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
+    showWindow(720, 500);
+    await renderSheet();
+
+    expect(cardStyle().width).toBe(darkTheme.layout.sheetMaxWidth);
+    expect(cardStyle().marginLeft).toBe((720 - darkTheme.layout.sheetMaxWidth) / 2);
   });
 
   it('narrows the card to the sheet width and centres it on the inner display', async () => {
@@ -66,6 +80,26 @@ describe('BottomSheet on a two-pane display', () => {
 
     expect(cardStyle().width).toBe(darkTheme.layout.sheetMaxWidth);
     expect(cardStyle().marginLeft).toBe((951 - darkTheme.layout.sheetMaxWidth) / 2);
+  });
+
+  it('characterization: centres the card in the 1100 x 820 window, not in a wide pane', async () => {
+    mockUseLayoutMode.mockReturnValue('columns');
+    mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
+    showWindow(1100, 820);
+    await renderSheet();
+
+    expect(cardStyle().width).toBe(darkTheme.layout.sheetMaxWidth);
+    expect(cardStyle().marginLeft).toBe((1100 - 540) / 2);
+  });
+
+  it('characterization: a folded 1100 pt window uses the fold primary for the card', async () => {
+    mockUseLayoutMode.mockReturnValue('columns');
+    mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
+    mockUseFoldRegion.mockReturnValue({ x: 400, y: 0, width: FOLD_GAP, height: 820 });
+    showWindow(1100, 820);
+    await renderSheet();
+
+    expect(cardStyle().marginLeft).toBe(400 + FOLD_GAP + (1100 - 424 - 540) / 2);
   });
 
   it('centres the card in a portrait inner display too', async () => {

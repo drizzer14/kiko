@@ -1,18 +1,20 @@
 import type { Spec } from '@kiko/native-specs/NativeDisplayRegions';
 
-import { type DisplayRegionsSnapshot, FALLBACK_SNAPSHOT } from '.';
+import { type DisplayRegionsSnapshot, FALLBACK_SNAPSHOT, type TabBarEdge } from '.';
 
 type DisplayRegionsNativeModule = typeof import('.');
 
 const duoSnapshot: DisplayRegionsSnapshot = {
   horizontalSizeClass: 'regular',
   verticalBarEdge: 'trailing',
+  tabBarEdge: 'trailing',
   foldRegion: { x: 470, y: 0, width: 11, height: 669 },
 };
 
 const flatSnapshot: DisplayRegionsSnapshot = {
   horizontalSizeClass: 'compact',
   verticalBarEdge: 'none',
+  tabBarEdge: 'none',
   foldRegion: null,
 };
 
@@ -91,6 +93,55 @@ describe('displayRegionsNative.getSnapshot', () => {
 
   it('models an older system as a compact, bar-less, unfolded window', () => {
     expect(FALLBACK_SNAPSHOT).toEqual(flatSnapshot);
+  });
+
+  it.each<TabBarEdge>(['top', 'bottom', 'leading', 'trailing', 'none'])(
+    'parses the %s tab bar edge',
+    (tabBarEdge) => {
+      const payload: DisplayRegionsSnapshot = {
+        ...flatSnapshot,
+        horizontalSizeClass: 'regular',
+        tabBarEdge,
+      };
+      nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(payload));
+
+      expect(displayRegionsNative.getSnapshot()).toEqual(payload);
+    },
+  );
+
+  it('reads a payload without tabBarEdge as none and keeps its fold (a binary built before the field)', () => {
+    const { tabBarEdge: _omitted, ...withoutTabBarEdge } = duoSnapshot;
+    nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(withoutTabBarEdge));
+
+    expect(displayRegionsNative.getSnapshot()).toEqual({ ...duoSnapshot, tabBarEdge: 'none' });
+  });
+
+  it('falls back on an unknown tab bar edge', () => {
+    nativeModule.getSnapshot.mockReturnValueOnce(
+      JSON.stringify({ ...duoSnapshot, tabBarEdge: 'diagonal' }),
+    );
+
+    expect(displayRegionsNative.getSnapshot()).toEqual(FALLBACK_SNAPSHOT);
+  });
+
+  it('an equal payload still parses to the same object', () => {
+    const { tabBarEdge: _omitted, ...withoutTabBarEdge } = duoSnapshot;
+    const payload = JSON.stringify(withoutTabBarEdge);
+    nativeModule.getSnapshot.mockReturnValue(payload);
+
+    const first = displayRegionsNative.getSnapshot();
+    const unsubscribe = displayRegionsNative.subscribe(jest.fn());
+    unsubscribe();
+
+    expect(displayRegionsNative.getSnapshot()).toBe(first);
+  });
+});
+
+describe('displayRegionsNative.requestRefresh', () => {
+  it('calls the native method once', () => {
+    displayRegionsNative.requestRefresh();
+
+    expect(nativeModule.requestRefresh).toHaveBeenCalledTimes(1);
   });
 });
 

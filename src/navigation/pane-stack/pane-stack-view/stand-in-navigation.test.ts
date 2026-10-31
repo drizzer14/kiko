@@ -26,23 +26,25 @@ const placeholderNavigation = (): Navigation & { getState: () => { routeNames: s
 
 const KEY = 'pane-default:companion';
 const dispatch = jest.fn();
+const setOptions = jest.fn();
 
 const standIn = (): Navigation => {
   const descriptor = { route: { key: KEY }, navigation: placeholderNavigation() };
 
-  return standInNavigation(descriptor, dispatch).navigation;
+  return standInNavigation(descriptor, dispatch, setOptions).navigation;
 };
 
 describe('standInNavigation', () => {
   beforeEach(() => {
     dispatch.mockClear();
+    setOptions.mockClear();
   });
 
   it('keeps the descriptor and hands back the same navigation object it was given', () => {
     const descriptor = { route: { key: KEY }, navigation: placeholderNavigation() };
     const { navigation } = descriptor;
 
-    expect(standInNavigation(descriptor, dispatch)).toBe(descriptor);
+    expect(standInNavigation(descriptor, dispatch, setOptions)).toBe(descriptor);
     expect(descriptor.navigation).toBe(navigation);
   });
 
@@ -71,7 +73,6 @@ describe('standInNavigation', () => {
     ['popTo', (navigation: Navigation) => navigation.popTo('Form')],
     ['replace', (navigation: Navigation) => navigation.replace('Form')],
     ['setParams', (navigation: Navigation) => navigation.setParams({ id: 'a' })],
-    ['setOptions', (navigation: Navigation) => navigation.setOptions({ title: 'a' })],
     [
       'a dispatched go back',
       (navigation: Navigation) => navigation.dispatch(CommonActions.goBack()),
@@ -79,6 +80,17 @@ describe('standInNavigation', () => {
     ['a dispatch of a function', (navigation: Navigation) => navigation.dispatch(() => null)],
   ])('does nothing, and does not throw, on %s', (_label, call) => {
     expect(() => call(standIn())).not.toThrow();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(setOptions).not.toHaveBeenCalled();
+  });
+
+  it("applies setOptions to the stand-in's options, and dispatches nothing", () => {
+    const options = { headerLargeTitle: false, headerTitle: '' };
+
+    standIn().setOptions(options);
+
+    expect(setOptions).toHaveBeenCalledTimes(1);
+    expect(setOptions).toHaveBeenCalledWith(options);
     expect(dispatch).not.toHaveBeenCalled();
   });
 

@@ -79,19 +79,21 @@ describe('estimatedTitleFits', () => {
   });
 
   // The estimate is a guess within about 10 percent, so a title only a little wider than the
-  // line stays native on the first frame and the measurement settles it.
+  // line stays native on the first frame and the measurement settles it. A two-word title, which
+  // is judged against the whole line.
   it('keeps a title that is just over the line native until it is measured', () => {
-    expect(estimatedTitleFits('aaaa', 20.2, 10)).toBe(true);
-    expect(estimatedTitleFits('aaaa', 20, 10)).toBe(false);
+    expect(estimatedTitleFits('aa aa', 22.5, 10)).toBe(true);
+    expect(estimatedTitleFits('aa aa', 22.4, 10)).toBe(false);
   });
 
-  // 23 narrow glyphs at 50pt are 368pt, which is exactly 320pt of line times the 1.15 tolerance
-  // (both sides are the same float), so a title that lands on the limit counts as fitting.
+  // A 10 + 28 narrow-glyph title with a space at 50pt is 621pt, which is exactly 540pt of line
+  // times the 1.15 tolerance (both sides are the same float), so a title that lands on the limit
+  // counts as fitting.
   it('fits a title whose estimate equals the tolerated line width exactly', () => {
-    const title = 'i'.repeat(23);
+    const title = `${'i'.repeat(10)} ${'i'.repeat(28)}`;
 
-    expect(estimateTitleWidth(title, 50)).toBe(368);
-    expect(estimatedTitleFits(title, 320, 50)).toBe(true);
+    expect(estimateTitleWidth(title, 50)).toBe(621);
+    expect(estimatedTitleFits(title, 540, 50)).toBe(true);
   });
 
   // A window that has no width yet (0, or a margin wider than the window) is not a line to wrap

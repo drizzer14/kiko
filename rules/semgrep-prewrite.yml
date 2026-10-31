@@ -437,7 +437,7 @@ rules:
     message: >
       `GlassSurface` is reserved for the navigation layer (tab bar,
       `BottomSheet`, the keyboard "Done" accessory, the Home add-transaction
-      FAB). A content-layer module reads `Card` instead — see
+      FAB, the floating-footer button backing `FooterGlassBacking`). A content-layer module reads `Card` instead — see
       kiko-design-system's "Component set (GlassSurface)".
     metadata:
       fix: "Import `Card` (the content-layer surface) instead of `GlassSurface`."
@@ -447,6 +447,7 @@ rules:
         - "src/design-system/components/glass-surface/**"
         - "src/design-system/components/bottom-sheet/**"
         - "src/design-system/components/keyboard-done-accessory/**"
+        - "src/design-system/components/footer-glass-backing/**"
         - "src/screens/home/add-transaction-fab/**"
     patterns:
       - pattern-regex: "(?:import|export)\\s[^;]*from\\s*['\"][^'\"]*glass-surface(?:/[^'\"]*)?['\"]"
@@ -1163,31 +1164,90 @@ rules:
     patterns:
       - pattern-regex: |-
           (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeDisplayRegions(?:\.tsx?)?['"]
-  # kiko-design-system's Screen: `resolveBottomClearance` is the pane-BLIND
-  # arithmetic behind `useBottomClearance`. A bleedBottom/bleedTop child that
-  # calls it directly puts a tab-bar clearance under the last row of a pane
-  # that is not at the bottom of the window (the top pane of rows mode). Only
-  # the Screen folder may import it; every other consumer calls the hook. Two
-  # arms: a value import or re-export that names the function, and a value
+  # kiko-design-system's Screen: `resolveBottomClearance` and `resolveTopClearance`
+  # are the pane-BLIND arithmetic behind `useBottomClearance` and `useTopClearance`.
+  # A bleedBottom/bleedTop child that calls one directly puts a tab-bar clearance
+  # under the last row of a pane that is not at the bottom of the window (the top
+  # pane of rows mode), or above the first row of a pane that is not at the top.
+  # Only the Screen folder may import them; a bottom consumer calls the hook, and the
+  # top clearance has no import outside Screen's plain branch.
+  # Two arms: a value import or re-export that names either function, and a value
   # import, re-export, require or dynamic import of a module file named
-  # `bottom-clearance`. `import type` and prose never match.
+  # `bottom-clearance` or `top-clearance`. `import type` and prose never match.
   - id: kiko-no-pane-blind-bottom-clearance
     languages: [typescript]
     severity: ERROR
     message: >
-      `resolveBottomClearance` ignores which pane a screen is in, so a list
-      that applies it sits above a tab bar that is not over its pane. Call
+      `resolveBottomClearance` and `resolveTopClearance` ignore which pane a
+      screen is in, so a list that applies one sits next to a tab bar that is
+      not over its pane. For `resolveBottomClearance`, call
       `useBottomClearance()` from `@kiko/design-system/components/screen`
-      instead; only the Screen folder imports the function.
+      instead. `resolveTopClearance` is never imported: the top clearance
+      belongs to Screen's plain branch, so render the content in `Screen`.
+      Only the Screen folder imports the functions.
     metadata:
-      fix: "Use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; never import `resolveBottomClearance` or `bottom-clearance`."
+      fix: "For `resolveBottomClearance` or `bottom-clearance`, use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; `resolveTopClearance` or `top-clearance` is never imported: render the content in `Screen`, whose plain branch owns the top clearance."
       skill: "kiko-design-system › Component set"
     paths:
       exclude:
         - "src/design-system/components/screen/**"
     pattern-either:
-      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\bresolveBottomClearance\b[^;'"]*?\bfrom\s*['"]
-      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/bottom-clearance(?:\.ts)?['"]
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\bresolve(?:Bottom|Top)Clearance\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/(?:bottom|top)-clearance(?:\.ts)?['"]
+  # kiko-design-system's Screen: `useTopBarBand` is the top clearance read as a window-level
+  # band. `TwoPaneLayout` is its one consumer: it starts each pane frame below the band, so
+  # a screen that adds the band inside a pane counts it twice. Only the Screen folder (the
+  # owner) and the two-pane-layout folder may import it. Two arms, like the clearance rule:
+  # a value import or re-export that names `useTopBarBand`, and a value import, re-export,
+  # require or dynamic import of a module file named `use-top-bar-band`. `import type` and
+  # prose never match.
+  - id: kiko-top-bar-band-only-in-two-pane-layout
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `useTopBarBand` is pane-blind band arithmetic: `TwoPaneLayout` already
+      starts each pane frame below the top tab bar band, so a screen that adds
+      the band inside a pane counts it twice. Only `TwoPaneLayout` imports it.
+    metadata:
+      fix: "Never import `useTopBarBand` or `use-top-bar-band`: render the content in `Screen` inside a pane, whose frame `TwoPaneLayout` already starts below the band."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/screen/**"
+        - "src/design-system/components/two-pane-layout/**"
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buseTopBarBand\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-top-bar-band(?:\.ts)?['"]
+  # kiko-design-system's Screen: `useTabBarPlacement`, `useIsTabBarAtTop` and
+  # `useIsTabBarNotAtBottom` read the whole window's tab bar (the native bar's real frame), not
+  # the pane's, so a screen that branches on any of them inside a pane reads another pane's
+  # answer. `Screen` and its siblings (the Screen folder) read them, and `PaneStackView` reads
+  # `useIsTabBarNotAtBottom` and `useTabBarPlacement` above both panes, to give the native large
+  # title the content's margin. The Screen barrel exports only these two (`PaneStackView` is the
+  # one consumer the rule lets in); `useIsTabBarAtTop` is read by file, so the module-path arm
+  # still matters. Same two arms as the band
+  # rule, for the three hook names and for the `use-tab-bar-placement`, `use-is-tab-bar-at-top`
+  # and `use-is-tab-bar-not-at-bottom` module files, and a third arm for a CommonJS load that
+  # names a hook (a `require(…)` destructure or property read). `import type` and prose never
+  # match.
+  - id: kiko-tab-bar-placement-only-in-screen-and-pane-stack-view
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `useTabBarPlacement`, `useIsTabBarAtTop` and `useIsTabBarNotAtBottom` are pane-blind window
+      reads: they say where the tab bar is for the whole window, whatever pane the caller is in.
+      Only the Screen folder and `PaneStackView` (which reads it above both panes) import them.
+    metadata:
+      fix: "Never import `useTabBarPlacement`, `useIsTabBarAtTop`, `useIsTabBarNotAtBottom` or their modules (`use-tab-bar-placement`, `use-is-tab-bar-at-top`, `use-is-tab-bar-not-at-bottom`): render the content in `Screen` and take clearances from `useBottomClearance()`; a value for both panes belongs in `PaneStackView`."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/screen/**"
+        - "src/navigation/pane-stack/pane-stack-view/**"
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buse(?:TabBarPlacement|IsTabBarAtTop|IsTabBarNotAtBottom)\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-(?:tab-bar-placement|is-tab-bar-at-top|is-tab-bar-not-at-bottom)(?:\.ts)?['"]
+      - pattern-regex: (?m)\b(?:const|let|var)\s*\{[^}]*\buse(?:TabBarPlacement|IsTabBarAtTop|IsTabBarNotAtBottom)\b[^}]*\}\s*=\s*require\s*\(|\brequire\s*\([^)]*\)\s*\.\s*use(?:TabBarPlacement|IsTabBarAtTop|IsTabBarNotAtBottom)\b
   # kiko-architecture's "Pane navigation": on a wide window a screen can be the default
   # of a pane (Statistics and Home as each other's companion, Categories as the Settings
   # primary), and the Accounts list sits under the default it fills the primary pane
@@ -2260,6 +2320,35 @@ rules:
       fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call; the same for requireMock, createMockFromModule and genMockFromModule."
       skill: "kiko-testing › A jest.requireActual call takes no type argument"
     pattern-regex: '\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<'
+  # The layout keys off the horizontal size class and the window or pane width, never the device:
+  # a later device that reports a regular class must get the same layout. A word regex over
+  # `generic`, not AST patterns: the four idiom words are the whole signal, so an import alias
+  # (`Platform as P`), a namespace read (`RN.Platform.isPad`), an optional chain, a bracket read,
+  # a destructure and an Objective-C read all match, and Semgrep has no Objective-C grammar. It
+  # reads comments and strings too, so a source comment cannot name the idiom either. The pre-write
+  # guard sees the TypeScript half only (it never reads `ios/`); the Swift and Objective-C half is
+  # proven project-wide by `security.sh`. `ios/Kiko` is the app's own native code, never Pods.
+  - id: kiko-no-device-idiom
+    languages: [generic]
+    severity: ERROR
+    message: >
+      The device idiom is read. A layout decision keys off the horizontal size class and the
+      window or pane width (`useDisplayRegions().horizontalSizeClass`, `useLayoutMode()`), never
+      `Platform.isPad`, `Platform.constants.interfaceIdiom`, `userInterfaceIdiom` or
+      `UI_USER_INTERFACE_IDIOM`, so a later device that reports a regular class gets the same
+      layout.
+    metadata:
+      fix: "Read the size class (`useDisplayRegions().horizontalSizeClass`) or the layout mode (`useLayoutMode()`); in native code, `traitCollection.horizontalSizeClass`."
+      skill: "kiko-architecture › Pane navigation"
+    paths:
+      include:
+        - "src/**/*.ts"
+        - "src/**/*.tsx"
+        - "ios/Kiko/**/*.swift"
+        - "ios/Kiko/**/*.m"
+        - "ios/Kiko/**/*.mm"
+        - "ios/Kiko/**/*.h"
+    pattern-regex: '\b(?:isPad|interfaceIdiom|userInterfaceIdiom|UI_USER_INTERFACE_IDIOM)\b'
   # kiko-design-system's "Component set": a test that must read a label's `variant` or `tone`
   # mocks the `Text` primitive with the shared `src/test-support/mock-text-variant-tone.tsx`,
   # never with its own factory that forwards `variant` onto the host node (one copy per file

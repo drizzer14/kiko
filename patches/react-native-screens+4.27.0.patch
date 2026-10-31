@@ -1,0 +1,395 @@
+diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.h b/node_modules/react-native-screens/ios/RNSScreenStack.h
+index 9ae11c3..f16c51b 100644
+--- a/node_modules/react-native-screens/ios/RNSScreenStack.h
++++ b/node_modules/react-native-screens/ios/RNSScreenStack.h
+@@ -18,6 +18,13 @@ NS_ASSUME_NONNULL_BEGIN
+ #endif // !TARGET_OS_TV
+                                                              >
+ 
++/**
++ * Kiko patch (docs/harness/documented-exceptions.md, "patch-package patches"): the side margin, in
++ * points, forced on this controller's view and navigation bar so a large title keeps the content's
++ * margin wherever the stack sits in the window. 0 (the default) leaves UIKit's margins alone.
++ */
++@property (nonatomic) CGFloat fixedContentMargin;
++
+ @end
+ 
+ @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
+diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
+index c233036..f02d676 100644
+--- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
++++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
+@@ -3,6 +3,7 @@
+ #import <React/RCTFabricComponentsPlugins.h>
+ #import <React/RCTFabricSurface.h>
+ #import <React/RCTMountingTransactionObserving.h>
++#import <objc/runtime.h>
+ #import <React/RCTSurfaceTouchHandler.h>
+ #import <React/RCTSurfaceView.h>
+ #import <React/UIView+React.h>
+@@ -38,7 +39,154 @@ namespace react = facebook::react;
+ 
+ @end
+ 
+-@implementation RNSNavigationController
++// A view's `directionalLayoutMargins` getter adds the safe area insets to the stored margins while
++// `insetsLayoutMarginsFromSafeArea` is YES (a controller's root view does), so writing the
++// getter's value back would add the insets again at every layout pass. This is the stored
++// margins, which is what may be written back. The left and right insets are the leading and
++// trailing ones, swapped in a right-to-left layout.
++static NSDirectionalEdgeInsets RNSStoredDirectionalLayoutMargins(UIView *view)
++{
++  NSDirectionalEdgeInsets margins = view.directionalLayoutMargins;
++
++  if (view.insetsLayoutMarginsFromSafeArea) {
++    UIEdgeInsets safeArea = view.safeAreaInsets;
++    BOOL isRightToLeft =
++        view.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
++    margins.top -= safeArea.top;
++    margins.bottom -= safeArea.bottom;
++    margins.leading -= isRightToLeft ? safeArea.right : safeArea.left;
++    margins.trailing -= isRightToLeft ? safeArea.left : safeArea.right;
++  }
++
++  return margins;
++}
++
++// Only the leading and trailing margins are forced; the write is skipped when they already hold.
++static void RNSSetHorizontalLayoutMargins(UIView *view, CGFloat margin)
++{
++  NSDirectionalEdgeInsets stored = RNSStoredDirectionalLayoutMargins(view);
++  NSDirectionalEdgeInsets forced = stored;
++  forced.leading = margin;
++  forced.trailing = margin;
++
++  if (!NSDirectionalEdgeInsetsEqualToDirectionalEdgeInsets(stored, forced)) {
++    view.directionalLayoutMargins = forced;
++  }
++}
++
++// Set on a parent view controller while `syncParentSafeAreaTopInset` has written its additional
++// top safe inset, so only this code's write is ever reset.
++static char RNSParentSafeAreaTopInsetWrittenKey;
++
++@implementation RNSNavigationController {
++  NSDirectionalEdgeInsets _viewMarginsBeforeFixedContentMargin;
++  NSDirectionalEdgeInsets _barMarginsBeforeFixedContentMargin;
++}
++
++// UIKit insets a large title by the navigation bar's layout margin, which it derives from the
++// stack's distance to the window's edge (20 pt at the window's leading edge, 0 elsewhere), so a
++// stack that is one pane of a split window would not line up with its content. With a fixed
++// margin the view stops respecting the system minimum and both the view and the bar take that
++// margin on the leading and trailing edges, whatever the stack's position. Nothing here runs
++// while `fixedContentMargin` is 0.
++- (void)setFixedContentMargin:(CGFloat)fixedContentMargin
++{
++  if (_fixedContentMargin == fixedContentMargin) {
++    return;
++  }
++
++  BOOL wasFixed = _fixedContentMargin > 0;
++  _fixedContentMargin = fixedContentMargin;
++
++  if (fixedContentMargin > 0) {
++    if (!wasFixed) {
++      _viewMarginsBeforeFixedContentMargin = RNSStoredDirectionalLayoutMargins(self.view);
++      _barMarginsBeforeFixedContentMargin = RNSStoredDirectionalLayoutMargins(self.navigationBar);
++    }
++    [self applyFixedContentMargin];
++  } else if (wasFixed) {
++    self.viewRespectsSystemMinimumLayoutMargins = YES;
++    self.view.directionalLayoutMargins = _viewMarginsBeforeFixedContentMargin;
++    self.navigationBar.directionalLayoutMargins = _barMarginsBeforeFixedContentMargin;
++    [self releaseParentSafeAreaTopInset];
++  }
++}
++
++- (void)applyFixedContentMargin
++{
++  if (_fixedContentMargin <= 0) {
++    return;
++  }
++
++  self.viewRespectsSystemMinimumLayoutMargins = NO;
++
++  RNSSetHorizontalLayoutMargins(self.view, _fixedContentMargin);
++
++  // UIKit lays the bar out and sets its margins on its own, so they are set again after each layout.
++  RNSSetHorizontalLayoutMargins(self.navigationBar, _fixedContentMargin);
++}
++
++// In a split view with a top tab bar, UIKit's safe top for the per-tab hosting controller that
++// parents this stack is 96 at every first attach, then stays 96 on a tab revisit instead of
++// relaxing to the window's 32. The stack's own safe top (the parent's, less the pane's distance to
++// the window's top) is then 20 instead of 0 and the navigation bar drops 10 pt. UIKit ignores a
++// negative `additionalSafeAreaInsets` on the stack itself and honors one on the parent, so the
++// parent's effective top is made to equal the window's safe top by a negative additional top
++// inset, at most the tab bar's height deep. Both panes of a tab share the parent and compute the
++// same absolute value. The value is derived only from the window's safe top and the parent's safe
++// top without the stored additional inset, never from a safe area read after the write, so the
++// inset cannot accumulate: if UIKit ignored every write, the clamp bounds them at
++// ceil(tab bar height / (parent top - window top)), which is two for the measured 96, 32 and 72.
++// It runs only from `viewDidLayoutSubviews`, so the parent is never changed during UIKit's own
++// safe area propagation. Nothing here runs while `fixedContentMargin` is 0 or without a tab bar controller.
++- (void)syncParentSafeAreaTopInset
++{
++  UIViewController *parent = self.parentViewController;
++  UIWindow *window = self.view.window;
++  UITabBarController *tabBarController = self.tabBarController;
++
++  if (_fixedContentMargin <= 0 || parent == nil || !parent.isViewLoaded || window == nil ||
++      tabBarController == nil) {
++    return;
++  }
++
++  UIEdgeInsets additional = parent.additionalSafeAreaInsets;
++  CGFloat inheritedTop = parent.view.safeAreaInsets.top - additional.top;
++  CGFloat tabBarHeight = tabBarController.tabBar.frame.size.height;
++  CGFloat target = MIN(0, MAX(-tabBarHeight, window.safeAreaInsets.top - inheritedTop));
++
++  if (fabs(target - additional.top) > 0.5) {
++    additional.top = target;
++    parent.additionalSafeAreaInsets = additional;
++    objc_setAssociatedObject(
++        parent, &RNSParentSafeAreaTopInsetWrittenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++  }
++}
++
++// The parent's additional top inset goes back to 0 only if this code wrote it and no other stack
++// of the same parent still has a fixed margin.
++- (void)releaseParentSafeAreaTopInset
++{
++  UIViewController *parent = self.parentViewController;
++
++  if (parent == nil ||
++      objc_getAssociatedObject(parent, &RNSParentSafeAreaTopInsetWrittenKey) == nil) {
++    return;
++  }
++
++  for (UIViewController *sibling in parent.childViewControllers) {
++    if (sibling != self && [sibling isKindOfClass:RNSNavigationController.class] &&
++        static_cast<RNSNavigationController *>(sibling).fixedContentMargin > 0) {
++      return;
++    }
++  }
++
++  UIEdgeInsets additional = parent.additionalSafeAreaInsets;
++  additional.top = 0;
++  parent.additionalSafeAreaInsets = additional;
++  objc_setAssociatedObject(
++      parent, &RNSParentSafeAreaTopInsetWrittenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++}
+ 
+ #if !TARGET_OS_TV
+ - (UIViewController *)childViewControllerForStatusBarStyle
+@@ -59,6 +207,8 @@ namespace react = facebook::react;
+ - (void)viewDidLayoutSubviews
+ {
+   [super viewDidLayoutSubviews];
++  [self applyFixedContentMargin];
++  [self syncParentSafeAreaTopInset];
+   if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
+     RNSScreen *screenController = (RNSScreen *)self.topViewController;
+     BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
+@@ -121,6 +271,9 @@ namespace react = facebook::react;
+ - (void)willMoveToParentViewController:(UIViewController *)parent
+ {
+   [super willMoveToParentViewController:parent];
++  if (parent != self.parentViewController) {
++    [self releaseParentSafeAreaTopInset];
++  }
+   if ([self.parentViewController isKindOfClass:RNSTabsScreenViewController.class]) {
+     RNSTabsScreenViewController *previousParentTabsScreenVC =
+         static_cast<RNSTabsScreenViewController *>(self.parentViewController);
+@@ -1279,6 +1432,9 @@ RNS_IGNORE_SUPER_CALL_END
+     _controller.view.backgroundColor = _nativeContainerBackgroundColor;
+   }
+ 
++  RNSNavigationController *navigationController = static_cast<RNSNavigationController *>(_controller);
++  navigationController.fixedContentMargin = newScreenProps.fixedContentMargin;
++
+   [super updateProps:props oldProps:oldProps];
+ }
+ 
+diff --git a/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js b/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js
+index 93efd74..c75f231 100644
+--- a/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js
++++ b/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js
+@@ -35,6 +35,7 @@ function ScreenStack(props) {
+   const screensRefs = _react.default.useRef(passedScreenRefs?.current ?? {});
+   const ref = _react.default.useRef(null);
+   const ScreenGestureDetector = _react.default.useContext(_contexts.GHContext);
++  const fixedContentMargin = _react.default.useContext(_contexts.FixedContentMarginContext);
+   const gestureDetectorBridge = _react.default.useRef({
+     stackUseEffectCallback: _stackRef => {
+       // this method will be overriden in GestureDetector
+@@ -55,6 +56,7 @@ function ScreenStack(props) {
+     screensRefs: screensRefs,
+     currentScreenId: currentScreenId
+   }, /*#__PURE__*/_react.default.createElement(_ScreenStackNativeComponent.default, _extends({}, rest, {
++    fixedContentMargin: fixedContentMargin,
+     nativeContainerBackgroundColor: nativeContainerStyle?.backgroundColor
+     /**
+      * This messy override is to conform NativeProps used by codegen and
+diff --git a/node_modules/react-native-screens/lib/commonjs/contexts.js b/node_modules/react-native-screens/lib/commonjs/contexts.js
+index e52ee8f..f35445d 100644
+--- a/node_modules/react-native-screens/lib/commonjs/contexts.js
++++ b/node_modules/react-native-screens/lib/commonjs/contexts.js
+@@ -3,9 +3,13 @@
+ Object.defineProperty(exports, "__esModule", {
+   value: true
+ });
+-exports.RNSScreensRefContext = exports.GHContext = void 0;
++exports.RNSScreensRefContext = exports.GHContext = exports.FixedContentMarginContext = void 0;
+ var _react = _interopRequireDefault(require("react"));
+ function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+ const GHContext = exports.GHContext = /*#__PURE__*/_react.default.createContext(props => /*#__PURE__*/_react.default.createElement(_react.default.Fragment, null, props.children));
+ const RNSScreensRefContext = exports.RNSScreensRefContext = /*#__PURE__*/_react.default.createContext(null);
++
++// Kiko patch: the side margin, in points, that every stack below keeps for its navigation bar and
++// large title wherever it sits in the window; 0 leaves UIKit's margins alone.
++const FixedContentMarginContext = exports.FixedContentMarginContext = /*#__PURE__*/_react.default.createContext(0);
+ //# sourceMappingURL=contexts.js.map
+\ No newline at end of file
+diff --git a/node_modules/react-native-screens/lib/commonjs/index.js b/node_modules/react-native-screens/lib/commonjs/index.js
+index 7f083ae..a983446 100644
+--- a/node_modules/react-native-screens/lib/commonjs/index.js
++++ b/node_modules/react-native-screens/lib/commonjs/index.js
+@@ -21,6 +21,7 @@ var _exportNames = {
+   SearchBar: true,
+   ScreenContainer: true,
+   ScreenStack: true,
++  FixedContentMarginContext: true,
+   ScreenStackItem: true,
+   FullWindowOverlay: true,
+   ScreenFooter: true,
+@@ -73,6 +74,12 @@ Object.defineProperty(exports, "ScreenFooter", {
+     return _ScreenFooter.default;
+   }
+ });
++Object.defineProperty(exports, "FixedContentMarginContext", {
++  enumerable: true,
++  get: function () {
++    return _contexts.FixedContentMarginContext;
++  }
++});
+ Object.defineProperty(exports, "ScreenStack", {
+   enumerable: true,
+   get: function () {
+@@ -194,6 +201,7 @@ var _ScreenStackHeaderConfig = require("./components/ScreenStackHeaderConfig");
+ var _SearchBar = _interopRequireDefault(require("./components/SearchBar"));
+ var _ScreenContainer = _interopRequireDefault(require("./components/ScreenContainer"));
+ var _ScreenStack = _interopRequireDefault(require("./components/ScreenStack"));
++var _contexts = require("./contexts");
+ var _ScreenStackItem = _interopRequireDefault(require("./components/ScreenStackItem"));
+ var _FullWindowOverlay = _interopRequireDefault(require("./components/FullWindowOverlay"));
+ var _ScreenFooter = _interopRequireDefault(require("./components/ScreenFooter"));
+diff --git a/node_modules/react-native-screens/lib/typescript/contexts.d.ts b/node_modules/react-native-screens/lib/typescript/contexts.d.ts
+index 6781448..ab82dd7 100644
+--- a/node_modules/react-native-screens/lib/typescript/contexts.d.ts
++++ b/node_modules/react-native-screens/lib/typescript/contexts.d.ts
+@@ -2,4 +2,5 @@ import React, { PropsWithChildren } from 'react';
+ import { GestureProviderProps, ScreensRefsHolder } from './types';
+ export declare const GHContext: React.Context<(props: PropsWithChildren<GestureProviderProps>) => React.JSX.Element>;
+ export declare const RNSScreensRefContext: React.Context<React.MutableRefObject<ScreensRefsHolder> | null>;
++export declare const FixedContentMarginContext: React.Context<number>;
+ //# sourceMappingURL=contexts.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts b/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts
+index b314d17..1382540 100644
+--- a/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts
++++ b/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts
+@@ -2,6 +2,7 @@ import type { CodegenTypes as CT, HostComponent, ViewProps, ColorValue } from 'r
+ type FinishTransitioningEvent = Readonly<{}>;
+ export interface NativeProps extends ViewProps {
+     nativeContainerBackgroundColor?: ColorValue | undefined;
++    fixedContentMargin?: CT.WithDefault<CT.Float, 0>;
+     onFinishTransitioning?: CT.DirectEventHandler<FinishTransitioningEvent> | undefined;
+ }
+ declare const _default: HostComponent<NativeProps>;
+diff --git a/node_modules/react-native-screens/lib/typescript/index.d.ts b/node_modules/react-native-screens/lib/typescript/index.d.ts
+index e9e7af6..3a6cf8c 100644
+--- a/node_modules/react-native-screens/lib/typescript/index.d.ts
++++ b/node_modules/react-native-screens/lib/typescript/index.d.ts
+@@ -12,6 +12,7 @@ export { ScreenStackHeaderConfig, ScreenStackHeaderSubview, ScreenStackHeaderLef
+ export { default as SearchBar } from './components/SearchBar';
+ export { default as ScreenContainer } from './components/ScreenContainer';
+ export { default as ScreenStack } from './components/ScreenStack';
++export { FixedContentMarginContext } from './contexts';
+ export { default as ScreenStackItem } from './components/ScreenStackItem';
+ export { default as FullWindowOverlay } from './components/FullWindowOverlay';
+ export { default as ScreenFooter } from './components/ScreenFooter';
+diff --git a/node_modules/react-native-screens/src/components/ScreenStack.tsx b/node_modules/react-native-screens/src/components/ScreenStack.tsx
+index f43254c..ed9c03c 100644
+--- a/node_modules/react-native-screens/src/components/ScreenStack.tsx
++++ b/node_modules/react-native-screens/src/components/ScreenStack.tsx
+@@ -8,7 +8,11 @@ import {
+   GoBackGesture,
+   ScreenStackProps,
+ } from '../types';
+-import { GHContext, RNSScreensRefContext } from '../contexts';
++import {
++  FixedContentMarginContext,
++  GHContext,
++  RNSScreensRefContext,
++} from '../contexts';
+ import warnOnce from 'warn-once';
+ 
+ // Native components
+@@ -64,6 +68,7 @@ function ScreenStack(props: ScreenStackProps) {
+   );
+   const ref = React.useRef(null);
+   const ScreenGestureDetector = React.useContext(GHContext);
++  const fixedContentMargin = React.useContext(FixedContentMarginContext);
+   const gestureDetectorBridge = React.useRef<GestureDetectorBridge>({
+     stackUseEffectCallback: _stackRef => {
+       // this method will be overriden in GestureDetector
+@@ -93,6 +98,7 @@ function ScreenStack(props: ScreenStackProps) {
+         currentScreenId={currentScreenId}>
+         <ScreenStackNativeComponent
+           {...rest}
++          fixedContentMargin={fixedContentMargin}
+           nativeContainerBackgroundColor={nativeContainerStyle?.backgroundColor}
+           /**
+            * This messy override is to conform NativeProps used by codegen and
+diff --git a/node_modules/react-native-screens/src/contexts.tsx b/node_modules/react-native-screens/src/contexts.tsx
+index 9dfa106..b547f61 100644
+--- a/node_modules/react-native-screens/src/contexts.tsx
++++ b/node_modules/react-native-screens/src/contexts.tsx
+@@ -7,3 +7,7 @@ export const GHContext = React.createContext(
+ 
+ export const RNSScreensRefContext =
+   React.createContext<React.MutableRefObject<ScreensRefsHolder> | null>(null);
++
++// Kiko patch: the side margin, in points, that every stack below keeps for its navigation bar and
++// large title wherever it sits in the window; 0 leaves UIKit's margins alone.
++export const FixedContentMarginContext = React.createContext(0);
+diff --git a/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts b/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts
+index a09fa8c..538d415 100644
+--- a/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts
++++ b/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts
+@@ -14,6 +14,10 @@ type FinishTransitioningEvent = Readonly<{}>;
+ export interface NativeProps extends ViewProps {
+   nativeContainerBackgroundColor?: ColorValue | undefined;
+ 
++  // Kiko patch: the side margin, in points, the navigation bar and its large title keep wherever
++  // the stack sits in the window; 0 leaves UIKit's margins alone.
++  fixedContentMargin?: CT.WithDefault<CT.Float, 0>;
++
+   onFinishTransitioning?:
+     | CT.DirectEventHandler<FinishTransitioningEvent>
+     | undefined;
+diff --git a/node_modules/react-native-screens/src/index.tsx b/node_modules/react-native-screens/src/index.tsx
+index e40cffb..732c4e0 100644
+--- a/node_modules/react-native-screens/src/index.tsx
++++ b/node_modules/react-native-screens/src/index.tsx
+@@ -39,6 +39,7 @@ export {
+ export { default as SearchBar } from './components/SearchBar';
+ export { default as ScreenContainer } from './components/ScreenContainer';
+ export { default as ScreenStack } from './components/ScreenStack';
++export { FixedContentMarginContext } from './contexts';
+ export { default as ScreenStackItem } from './components/ScreenStackItem';
+ export { default as FullWindowOverlay } from './components/FullWindowOverlay';
+ export { default as ScreenFooter } from './components/ScreenFooter';

@@ -89,11 +89,18 @@ what a change must keep.
   range = derive the default from now" pattern') lives in ONE module store read
   with `useSyncExternalStore`
   (`src/design-system/use-date-range-selection/`), never per-screen
-  `useState`. It resets when no reader is mounted, deferred one
-  `Promise.resolve().then(...)` microtask with a `listeners.size === 0`
+  `useState`. The date range store resets when no reader is mounted, deferred
+  one `Promise.resolve().then(...)` microtask with a `listeners.size === 0`
   re-check, so a same-commit swap of every reader keeps it; never
-  `queueMicrotask`. A reader publishes into the store in `useLayoutEffect`,
-  never during render. The notification-permission store resets at once on
+  `queueMicrotask`. The Statistics account and category picks
+  (`src/design-system/use-statistics-filter-selection/`) are the exception:
+  they live for the whole app session and never reset on unsubscribe (a pick
+  survives a form opened over the companion; every launch starts on 'all').
+  Tests that pick a filter reset them with
+  `afterEach(resetStatisticsFilterSelection)` from
+  `@kiko/test-support/reset-statistics-filter-selection`.
+  A reader publishes into the store in `useLayoutEffect`, never during
+  render. The notification-permission store resets at once on
   `size === 0`: the deferral applies only where a whole-tree swap must keep
   the state.
 - **Permission.** `useNotificationPermission()`

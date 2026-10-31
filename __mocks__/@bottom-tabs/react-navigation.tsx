@@ -33,7 +33,16 @@ type MockScreenProps = {
   // native `{ sfSymbol }` descriptor rather than a React node. Surfaced here so
   // a test can assert each tab wires the intended SF Symbol (see
   // root.navigator.test.tsx) without a native tab-bar renderer.
-  options?: { title?: string; tabBarIcon?: () => { sfSymbol?: string } };
+  // `tabBarButtonTestID` is a real NativeBottomTabNavigationOptions member (types.ts:112),
+  // which the real view hands to the native Tab as its accessibility identifier.
+  options?: {
+    title?: string;
+    tabBarIcon?: () => { sfSymbol?: string };
+    tabBarButtonTestID?: string;
+    // A real NativeBottomTabNavigationOptions member (types.ts:82); the real view drops the
+    // item from the bar when it is true (NativeBottomTabView.tsx:54).
+    tabBarItemHidden?: boolean;
+  };
 };
 
 // Native tab-bar appearance props the real navigator forwards to the
@@ -94,6 +103,9 @@ function Navigator({
   ) as ReactElement<MockScreenProps>[];
   const active = screens[0];
   const ActiveComponent = active?.props.component;
+  // The mock never selects a hidden tab; natively a hidden tab still shows while it is the
+  // selected page (react-native-bottom-tabs ios/TabViewProps.swift:106).
+  const shownScreens = screens.filter((screen) => screen.props.options?.tabBarItemHidden !== true);
   return (
     <>
       <TabBarView
@@ -103,14 +115,21 @@ function Navigator({
         tabBarActiveTintColor={tabBarActiveTintColor}
         tabBarInactiveTintColor={tabBarInactiveTintColor}
       >
-        {screens.map((screen) => (
+        {shownScreens.map((screen) => (
           <Text key={screen.props.name}>{screen.props.options?.title ?? screen.props.name}</Text>
         ))}
-        {screens.map((screen) => (
+        {shownScreens.map((screen) => (
           <TabIconView
             key={`icon-${screen.props.name}`}
             testID={`tab-icon-${screen.props.name}`}
             sfSymbol={screen.props.options?.tabBarIcon?.().sfSymbol}
+          />
+        ))}
+        {shownScreens.map((screen) => (
+          <View
+            key={`button-${screen.props.name}`}
+            testID={screen.props.options?.tabBarButtonTestID}
+            accessibilityLabel={`tab-button-${screen.props.name}`}
           />
         ))}
       </TabBarView>

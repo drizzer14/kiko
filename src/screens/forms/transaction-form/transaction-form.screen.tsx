@@ -1360,6 +1360,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scrollableRef={scrollableRef}
         onContentSizeChange={onContentSizeChange}
         onFieldBlur={onFieldBlur}
+        floatingFooter
         footer={foldMap(maybe(editTemplateId), (templateId) => (
           // Create transaction opens the template as it is STORED: the unsaved edits on this
           // form are neither used nor saved. Save is the nav bar's, like every other form's, so

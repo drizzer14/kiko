@@ -1,6 +1,8 @@
 import { StyleSheet } from 'react-native-unistyles';
 import type { VerticalBarEdge } from '@kiko/display-regions';
 
+import { FAB_GAP_STEP, FAB_SIZE_STEP } from './fab-footprint';
+
 // The side of the window the button sits on, nearest the tab bar: beside a vertical bar it is the
 // bar's side (in a pane that does not touch the bar, the side of the fold), with no vertical bar
 // the right.
@@ -25,9 +27,9 @@ export const styles = StyleSheet.create((theme) => ({
   fab: (bottomOffset: number, verticalBarEdge: VerticalBarEdge) => ({
     position: 'absolute' as const,
     [FAB_SIDE[verticalBarEdge]]: theme.spacing(4),
-    bottom: bottomOffset + theme.spacing(4),
-    width: theme.spacing(14),
-    height: theme.spacing(14),
+    bottom: bottomOffset + theme.spacing(FAB_GAP_STEP),
+    width: theme.spacing(FAB_SIZE_STEP),
+    height: theme.spacing(FAB_SIZE_STEP),
     borderRadius: theme.radii.full,
   }),
   // The GlassSurface fills the Pressable's exact circular footprint

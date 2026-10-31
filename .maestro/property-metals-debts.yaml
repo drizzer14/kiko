@@ -30,9 +30,10 @@
 # counterpart — unlike the statement-import flows' own committed Ukrainian
 # seed, nothing here forces one locale over the other.
 #
-# TAB BAR IDENTIFIERS: `house.fill` (Home) and `tray` (Accounts) are read
-# straight off `src/navigation/root-navigator/root.navigator.tsx`'s current
-# `tabBarIcon`/`genericEntitySymbol.account` values.
+# TAB BAR IDENTIFIERS: `tab-home` (Home) and `tab-accounts` (Accounts) are the explicit
+# `tabBarButtonTestID` values in `src/navigation/root-navigator/root.navigator.tsx`, meant to be
+# the same on iPhone and iPad (the iPad floating top bar exposes no SF Symbol ids; an iPad run,
+# task 10/14, is what proves it).
 #
 # THIS FLOW WAS AUTHORED WITHOUT A LIVE MAESTRO RUN (orchestrator ruling:
 # write + validate YAML syntax only; the run is a morning device check) —
@@ -78,7 +79,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 #    element directly below the "Net worth" caption Text.
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "house.fill"
+    id: "tab-home"
 - assertVisible:
     id: "home-content"
 - copyTextFrom:
@@ -93,7 +94,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 #     value" action (PricePointForm).
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "tray"
+    id: "tab-accounts"
 - tapOn:
     text: "Add account"
 - assertVisible:
@@ -145,7 +146,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 #     required first-lot Quantity/Total cost pair.
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "tray"
+    id: "tab-accounts"
 - tapOn:
     text: "Add account"
 - tapOn:
@@ -193,7 +194,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 #     rate/term only for a 'none' schedule, which this never reaches).
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "tray"
+    id: "tab-accounts"
 - tapOn:
     text: "Add account"
 - tapOn:
@@ -236,7 +237,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 #     moved from its P0 value.
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "tray"
+    id: "tab-accounts"
 - assertVisible:
     id: "accounts-property-grid"
 - assertVisible:
@@ -273,7 +274,7 @@ appId: com.dmytro-vasylkivskyi.kiko
     id: "accounts-property-grid"
 
 - tapOn:
-    id: "house.fill"
+    id: "tab-home"
 - assertVisible:
     id: "home-content"
 - copyTextFrom:

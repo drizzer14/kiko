@@ -1,6 +1,6 @@
 // Semgrep fixture (NEGATIVE): kiko-design-system's Component set (Screen).
-// Nothing here loads `resolveBottomClearance` or its module file at run time
-// from outside the Screen folder, so `kiko-no-pane-blind-bottom-clearance` (and
+// Nothing here loads `resolveBottomClearance`, `resolveTopClearance` or their module files at
+// run time from outside the Screen folder, so `kiko-no-pane-blind-bottom-clearance` (and
 // every other rule) MUST report zero findings.
 
 // The pane-aware hook is the sanctioned way in.
@@ -11,9 +11,11 @@ export type { resolveBottomClearance as ReExportedClearance } from '@kiko/design
 
 // Jest names the file to mock it; it never loads the real module this way.
 jest.mock('@kiko/design-system/components/screen/bottom-clearance');
+jest.mock('@kiko/design-system/components/screen/top-clearance');
 
 // Prose that names the function or the file is not an import statement.
 export const description = "see resolveBottomClearance in '../screen/bottom-clearance'";
+export const topDescription = "see resolveTopClearance in '../screen/top-clearance'";
 
 export const usedBindings: [typeof Screen, typeof useBottomClearance] = [
   Screen,

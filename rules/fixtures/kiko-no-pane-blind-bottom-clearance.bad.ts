@@ -8,7 +8,7 @@
 // EXPECT-FINDING
 import { resolveBottomClearance } from '@kiko/design-system/components/screen/bottom-clearance';
 
-export const aliasedClearance = resolveBottomClearance(80, 34, 'none', 844);
+export const aliasedClearance = resolveBottomClearance(80, 34, 'bottom');
 
 // A named import with an alias binding, from the Screen barrel. The barrel does
 // not export the function today; the rule guards a future re-export.
@@ -16,7 +16,7 @@ export const aliasedClearance = resolveBottomClearance(80, 34, 'none', 844);
 // EXPECT-FINDING
 import { resolveBottomClearance as pickClearance } from '@kiko/design-system/components/screen';
 
-export const barrelClearance = pickClearance(80, 34, 'none', 844);
+export const barrelClearance = pickClearance(80, 34, 'bottom');
 
 // A clause spread over several lines.
 // EXPECT-FINDING
@@ -24,7 +24,7 @@ import {
   resolveBottomClearance as multiLineClearance,
 } from '../../src/design-system/components/screen/bottom-clearance';
 
-export const multiLine = multiLineClearance(80, 34, 'none', 844);
+export const multiLine = multiLineClearance(80, 34, 'bottom');
 
 // A relative import of the module file, naming no function.
 // EXPECT-FINDING
@@ -47,3 +47,29 @@ export const requiredClearance = require('../../src/design-system/components/scr
 // A dynamic load of the module file.
 // EXPECT-FINDING
 export const loadClearanceLater = () => import('../../src/design-system/components/screen/bottom-clearance');
+
+// The top twin: a named import of `resolveTopClearance` from its module file, by alias.
+// EXPECT-FINDING
+import { resolveTopClearance } from '@kiko/design-system/components/screen/top-clearance';
+
+export const topClearance = resolveTopClearance('top');
+
+// The top twin's name, imported under an alias from the Screen barrel (which does not export it).
+// @ts-expect-error: the Screen barrel does not export the function
+// EXPECT-FINDING
+import { resolveTopClearance as pickTopClearance } from '@kiko/design-system/components/screen';
+
+export const barrelTopClearance = pickTopClearance('top');
+
+// The top twin's module file, loaded by namespace, naming no function.
+// EXPECT-FINDING
+import * as topClearanceModule from '../../src/design-system/components/screen/top-clearance';
+
+export const topModuleBinding = topClearanceModule;
+
+// The top twin's module file, loaded by CommonJS and by a dynamic import.
+// EXPECT-FINDING
+export const requiredTopClearance = require('../../src/design-system/components/screen/top-clearance').resolveTopClearance;
+
+// EXPECT-FINDING
+export const loadTopClearanceLater = () => import('../../src/design-system/components/screen/top-clearance');

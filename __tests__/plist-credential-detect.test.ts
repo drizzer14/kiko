@@ -1,24 +1,18 @@
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
-// scripts/checks/plist.sh computes its ROOT as scripts/checks/../.., so each
-// case runs a COPY of it inside a throwaway root whose Info.plist, .env and
-// src/ clients the test controls.
-const REPOSITORY_ROOT = join(__dirname, '..');
-const SCRIPT = join(REPOSITORY_ROOT, 'scripts/checks/plist.sh');
-const LIB = join(REPOSITORY_ROOT, 'scripts/checks/_lib.sh');
+import {
+  PRIVACY_MANIFEST,
+  PROJECT_PATH,
+  UKRAINIAN_NAME_TABLE,
+  buildPlistRoot,
+  privacyManifest,
+  projectFile,
+  runPlistCheck,
+} from './test-support/plist-root';
+import { removeTemporaryDirectories } from './test-support/temporary-directory';
 
 const QUOTES_HOST = 'quotes.example.com';
-
-const createdPaths: string[] = [];
-
-const writeFile = (root: string, relativePath: string, body: string): void => {
-  const absolutePath = join(root, relativePath);
-  mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, body);
-};
 
 const pinnedDomainEntry = (host: string, pins: string[]): string =>
   [
@@ -48,89 +42,33 @@ const infoPlist = (pinnedDomains: Record<string, string[]>): string =>
     ...Object.entries(pinnedDomains).map(([host, pins]) => pinnedDomainEntry(host, pins)),
     '</dict>',
     '</dict>',
-    '</dict>',
-    '</plist>',
-    '',
-  ].join('\n');
-
-const PROJECT_PATH = 'ios/Kiko.xcodeproj/project.pbxproj';
-const ENGLISH_NAME_TABLE = 'ios/Kiko/en.lproj/InfoPlist.strings';
-const UKRAINIAN_NAME_TABLE = 'ios/Kiko/uk.lproj/InfoPlist.strings';
-const PRIVACY_MANIFEST = 'ios/Kiko/PrivacyInfo.xcprivacy';
-
-const BOTH_DISK_SPACE_SOURCES =
-  '{ "dependencies": { "react-native-fs": "2.20.0", "@op-engineering/op-sqlite": "18.1.4" } }\n';
-
-// The PBXBuildFile line also says "in Resources", so only an entry inside the
-// Resources build phase section proves the build copies the tables.
-const projectFile = (
-  nameTables: string[],
-  resourcesPhaseFiles: string[] = ['InfoPlist.strings'],
-): string =>
-  [
-    'name = "Inject Debug-only ATS local networking";',
-    '862F59B3640A40159C5B4910 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; };',
-    ...nameTables.map((table) => `path = Kiko/${table}.lproj/InfoPlist.strings;`),
-    '/* Begin PBXResourcesBuildPhase section */',
-    ...resourcesPhaseFiles.map((file) => `0000000000000000000000AA /* ${file} in Resources */,`),
-    '/* End PBXResourcesBuildPhase section */',
-    '',
-  ].join('\n');
-
-const privacyManifest = (categories: string[]): string =>
-  [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-    '<plist version="1.0">',
-    '<dict>',
-    '<key>NSPrivacyAccessedAPITypes</key>',
+    // plist.sh requires the iPad scene keys, so every fixture that expects exit 0 carries them.
+    '<key>UIApplicationSceneManifest</key>',
+    '<dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>',
+    '<key>UILaunchStoryboardName</key>',
+    '<string>LaunchScreen</string>',
+    '<key>UISupportedInterfaceOrientations~ipad</key>',
     '<array>',
-    ...categories.map(
-      (category) =>
-        `<dict><key>NSPrivacyAccessedAPIType</key><string>${category}</string><key>NSPrivacyAccessedAPITypeReasons</key><array><string>E174.1</string></array></dict>`,
-    ),
+    '<string>UIInterfaceOrientationLandscapeLeft</string>',
+    '<string>UIInterfaceOrientationLandscapeRight</string>',
+    '<string>UIInterfaceOrientationPortrait</string>',
+    '<string>UIInterfaceOrientationPortraitUpsideDown</string>',
     '</array>',
     '</dict>',
     '</plist>',
     '',
   ].join('\n');
 
-// Every root starts valid on every assertion but the one a case breaks: an
-// override replaces a file's body, and `null` deletes the file.
 const buildRoot = (
   pinnedDomains: Record<string, string[]>,
   client: string,
   overrides: Record<string, string | null> = {},
-): string => {
-  const root = mkdtempSync(join(tmpdir(), 'kiko-plist-'));
-  createdPaths.push(root);
-  mkdirSync(join(root, 'scripts/checks'), { recursive: true });
-  copyFileSync(SCRIPT, join(root, 'scripts/checks/plist.sh'));
-  copyFileSync(LIB, join(root, 'scripts/checks/_lib.sh'));
-  writeFile(root, 'ios/Kiko/Info.plist', infoPlist(pinnedDomains));
-  writeFile(root, PROJECT_PATH, projectFile(['en', 'uk']));
-  writeFile(root, ENGLISH_NAME_TABLE, '"CFBundleDisplayName" = "Kiko";\n');
-  writeFile(root, UKRAINIAN_NAME_TABLE, '"CFBundleDisplayName" = "Кіко";\n');
-  writeFile(root, PRIVACY_MANIFEST, privacyManifest(['NSPrivacyAccessedAPICategoryDiskSpace']));
-  writeFile(root, 'package.json', BOTH_DISK_SPACE_SOURCES);
-  writeFile(root, '.env', `QUOTES_API_ENDPOINT=https://${QUOTES_HOST}/api\n`);
-  writeFile(root, 'src/quotes.client.ts', client);
-
-  for (const [relativePath, body] of Object.entries(overrides)) {
-    if (body === null) {
-      rmSync(join(root, relativePath));
-    } else {
-      writeFile(root, relativePath, body);
-    }
-  }
-
-  return root;
-};
-
-const runPlistCheck = (root: string, environment: NodeJS.ProcessEnv = process.env) =>
-  spawnSync('bash', [join(root, 'scripts/checks/plist.sh')], {
-    encoding: 'utf8',
-    env: environment,
+): string =>
+  buildPlistRoot({
+    infoPlist: infoPlist(pinnedDomains),
+    environment: `QUOTES_API_ENDPOINT=https://${QUOTES_HOST}/api\n`,
+    client,
+    overrides,
   });
 
 // A `node` that always fails, first on PATH: the check must fail closed, not
@@ -247,11 +185,7 @@ const TWO_PINS = [
   'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=',
 ];
 
-afterEach(() => {
-  createdPaths.splice(0).forEach((path) => {
-    rmSync(path, { recursive: true, force: true });
-  });
-});
+afterEach(removeTemporaryDirectories);
 
 describe('scripts/checks/plist.sh credential detection', () => {
   it("fails (exit 2) naming the host when an 'api_token' client's @env host is unpinned", () => {

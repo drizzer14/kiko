@@ -440,6 +440,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   return (
     <Screen
       scroll
+      floatingFooter
       footer={footer}
       scrollableRef={scrollableRef}
       onContentSizeChange={onContentSizeChange}

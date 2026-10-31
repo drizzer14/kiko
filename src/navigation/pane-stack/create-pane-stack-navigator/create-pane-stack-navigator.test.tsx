@@ -14,7 +14,7 @@ import { Pressable, Text, View } from 'react-native';
 import type { LayoutMode } from '@kiko/display-regions';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { resetTabStackOnBlur } from '@kiko/navigation/reset-tab-stack-on-blur';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { type ComponentType, type ReactNode, useContext, useEffect, useState } from 'react';
 
 import '@kiko/design-system/unistyles';
@@ -45,6 +45,8 @@ jest.mock('@kiko/display-regions', () => {
         () => mockModeStore.mode,
       ),
     useFoldRegion: () => null,
+    useTabBarEdge: () => 'none',
+    useVerticalBarEdge: () => 'none',
   };
 });
 
@@ -284,14 +286,19 @@ describe('createPaneStackNavigator', () => {
   });
 
   describe('folding and unfolding', () => {
+    // The mocked mode stands for the resolved mode: a regular 900x700 window is `columns`, and a
+    // resize to 700x700 resolves `single`. The detail route keeps its key through both folds, and
+    // returns to the pane it was opened in.
     it('folds once when the window settles on one pane, and unfolds once when it returns', async () => {
       await renderApp();
       await press('open-Accounts');
+      const detailKey = navigationRef.getRootState()?.routes[0]?.state?.routes[1]?.key;
 
       await emitMode('single');
       await elapse(SETTLE_DELAY_MS);
 
       expect(paneActions()).toEqual(['PANE_OPEN', 'PANE_FOLD']);
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
       expect(screen.getByTestId('screen-Detail')).toBeTruthy();
       expect(screen.queryByTestId('screen-Accounts')).toBeNull();
 
@@ -299,8 +306,14 @@ describe('createPaneStackNavigator', () => {
       await elapse(SETTLE_DELAY_MS);
 
       expect(paneActions()).toEqual(['PANE_OPEN', 'PANE_FOLD', 'PANE_UNFOLD']);
-      expect(screen.getByTestId('screen-Accounts')).toBeTruthy();
-      expect(screen.getByTestId('screen-Detail')).toBeTruthy();
+      expect(dispatched).toEqual(['PANE_OPEN', 'PANE_FOLD', 'PANE_UNFOLD']);
+      expect(navigationRef.getRootState()?.routes[0]?.state?.routes[1]?.key).toBe(detailKey);
+      expect(
+        within(screen.getByTestId('two-pane-primary')).getByTestId('screen-Detail'),
+      ).toBeTruthy();
+      expect(
+        within(screen.getByTestId('two-pane-companion')).getByTestId('screen-Accounts'),
+      ).toBeTruthy();
     });
 
     it('survives the recorded burst of an outer display: one fold, no matter the transient rows', async () => {

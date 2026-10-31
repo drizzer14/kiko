@@ -9,9 +9,14 @@ export type VerticalBarEdge = 'leading' | 'trailing' | 'none';
 // fold.
 export type FoldRegion = { x: number; y: number; width: number; height: number } | null;
 
+// Where the tab bar sits in the window, read from its real frame; `none` means the native side
+// could not tell, so JS keeps its older rule.
+export type TabBarEdge = 'top' | 'bottom' | 'leading' | 'trailing' | 'none';
+
 export type DisplayRegionsSnapshot = {
   horizontalSizeClass: HorizontalSizeClass;
   verticalBarEdge: VerticalBarEdge;
+  tabBarEdge: TabBarEdge;
   foldRegion: FoldRegion;
 };
 
@@ -20,11 +25,13 @@ export type DisplayRegionsSnapshot = {
 export const FALLBACK_SNAPSHOT: DisplayRegionsSnapshot = {
   horizontalSizeClass: 'compact',
   verticalBarEdge: 'none',
+  tabBarEdge: 'none',
   foldRegion: null,
 };
 
 const SIZE_CLASSES: readonly unknown[] = ['compact', 'regular'];
 const BAR_EDGES: readonly unknown[] = ['leading', 'trailing', 'none'];
+const TAB_BAR_EDGES: readonly unknown[] = ['top', 'bottom', 'leading', 'trailing', 'none'];
 const FOLD_REGION_KEYS = ['x', 'y', 'width', 'height'] as const;
 
 // Required on first use, not at import: `getEnforcing` throws on a binary built without the
@@ -55,8 +62,19 @@ const isSnapshot = (candidate: unknown): candidate is DisplayRegionsSnapshot => 
   return (
     SIZE_CLASSES.includes(fields.horizontalSizeClass) &&
     BAR_EDGES.includes(fields.verticalBarEdge) &&
+    TAB_BAR_EDGES.includes(fields.tabBarEdge) &&
     isFoldRegion(fields.foldRegion)
   );
+};
+
+// A binary built before the tab bar edge sends no such key; the rest of its payload is still
+// good, and dropping it would lose the fold. Only a missing key is defaulted, never a bad value.
+const withTabBarEdge = (parsed: unknown): unknown => {
+  if (typeof parsed !== 'object' || parsed === null || 'tabBarEdge' in parsed) {
+    return parsed;
+  }
+
+  return { ...parsed, tabBarEdge: 'none' };
 };
 
 // The last payload and what it parsed to, so a payload equal to the last one parses to the same
@@ -76,7 +94,7 @@ const parseSnapshot = (payload: string | undefined): DisplayRegionsSnapshot => {
     return lastParse.snapshot;
   }
 
-  const parsed = bifoldr(eitherSync<unknown, unknown>(() => JSON.parse(payload)));
+  const parsed = withTabBarEdge(bifoldr(eitherSync<unknown, unknown>(() => JSON.parse(payload))));
   const snapshot = isSnapshot(parsed) ? parsed : FALLBACK_SNAPSHOT;
 
   lastParse.payload = payload;
@@ -103,6 +121,13 @@ export const displayRegionsNative = {
     cache.snapshot ??= readNative();
 
     return cache.snapshot;
+  },
+
+  // The first snapshot is read before the tab view mounts and nothing native fires when it
+  // appears, so a hook asks for one more read. A missing module, or one built before the method,
+  // is a no-op.
+  requestRefresh: (): void => {
+    bifoldr(eitherSync<unknown, void>(() => loadNativeModule().requestRefresh()));
   },
 
   // Returns the unsubscribe. Where the module is missing there is nothing to subscribe to, so the

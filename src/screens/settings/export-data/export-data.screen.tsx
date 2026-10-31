@@ -1,6 +1,5 @@
 import { match } from 'ts-pattern';
 import { confirmOwner } from '@kiko/auth';
-import { Alert, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
 import { copySensitiveText } from '@kiko/clipboard';
@@ -12,6 +11,7 @@ import Screen from '@kiko/design-system/components/screen';
 import Switch from '@kiko/design-system/components/switch';
 import { type FC, useEffect, useRef, useState } from 'react';
 import SettingsRow from '@kiko/screens/settings/settings-row';
+import { Alert, Share, type ViewInstance } from 'react-native';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
@@ -19,6 +19,7 @@ import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { styles } from './export-data.styles';
+import { shareAnchorOf } from './share-anchor';
 
 type ExportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ExportData'>;
 
@@ -42,6 +43,8 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   const [fileUri, setFileUri] = useState<string | undefined>(undefined);
   const [copied, setCopied] = useState(false);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const exportButtonRef = useRef<ViewInstance>(null);
+  const shareFileButtonRef = useRef<ViewInstance>(null);
 
   useEffect(
     () => () => {
@@ -96,7 +99,10 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
       // the same silent-catch convention as every other picker/share cancel
       // in this app — not a failure to surface.
       try {
-        await Share.share({ url: toFileShareUrl(result.fileUri) });
+        await Share.share(
+          { url: toFileShareUrl(result.fileUri) },
+          { anchor: shareAnchorOf(exportButtonRef.current) },
+        );
       } catch {
         // Dismissed/cancelled the share sheet.
       }
@@ -122,16 +128,21 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
     if (fileUri !== undefined) {
       // The share sheet reports its own outcome to the user; the file stays exported either way.
       // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(no recovery)
-      Share.share({ url: toFileShareUrl(fileUri) });
+      Share.share(
+        { url: toFileShareUrl(fileUri) },
+        { anchor: shareAnchorOf(shareFileButtonRef.current) },
+      );
     }
   };
 
   return (
     <Screen
       scroll
+      floatingFooter
       footer={
         <Box direction="row" gap={2}>
           <Button
+            ref={exportButtonRef}
             testID="settings-button-export"
             variant="primary"
             onPress={handleExport}
@@ -202,6 +213,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
                   {copied ? t('settings.dataExport.copied') : t('settings.dataExport.copyKey')}
                 </Button>
                 <Button
+                  ref={shareFileButtonRef}
                   testID="settings-button-share-file"
                   variant="secondaryTonal"
                   onPress={handleShareFile}

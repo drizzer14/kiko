@@ -1,4 +1,4 @@
-import { Alert } from 'react-native';
+import { Alert, findNodeHandle } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 // Side-effect import: src/i18n/init/init.ts calls `i18next.init()` at module
@@ -8,6 +8,8 @@ import '@kiko/design-system/unistyles';
 // this suite asserts on — the same reason
 // src/screens/settings/settings/settings.screen.test.tsx imports it.
 import '@kiko/i18n/init';
+// Prefixed `mock*` so Jest's hoisted mock factory may reference it.
+import { mockFindNodeHandle } from '@kiko/test-support/node-handles';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 const mockExportData = jest.fn();
@@ -23,6 +25,13 @@ jest.mock('@kiko/auth/confirm-owner', () => ({
 const mockSetString = jest.fn();
 jest.mock('@react-native-clipboard/clipboard', () => ({
   setString: (...args: unknown[]) => mockSetString(...args),
+}));
+
+// Under Jest `findNodeHandle` is always null; this gives each host its own number so the anchor a
+// share call carries can be told apart (see src/test-support/node-handles.ts).
+jest.mock('react-native/Libraries/ReactNative/RendererProxy', () => ({
+  ...jest.requireActual('react-native/Libraries/ReactNative/RendererProxy'),
+  findNodeHandle: (node: unknown) => mockFindNodeHandle(node),
 }));
 
 const mockShare = jest.fn();
@@ -51,6 +60,29 @@ const renderScreen = () =>
     />,
   );
 
+const mockSuccessfulExport = () =>
+  mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+
+// Renders the screen, optionally switches the include-secrets toggle on, and presses Export:
+// the opening of nearly every test below.
+const runExportFlow = async ({ includeSecrets }: { includeSecrets: boolean }) => {
+  const screen = await renderScreen();
+
+  if (includeSecrets) {
+    await fireEvent(screen.getByTestId('settings-switch-export-secrets'), 'valueChange', true);
+  }
+
+  await fireEvent.press(screen.getByTestId('settings-button-export'));
+
+  return screen;
+};
+
+const confirmOwnerWith = (result: unknown) => {
+  mockConfirmOwner.mockResolvedValue(result);
+
+  return jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+};
+
 describe('ExportDataScreen', () => {
   beforeEach(() => {
     mockExportData.mockReset();
@@ -72,10 +104,8 @@ describe('ExportDataScreen', () => {
   });
 
   it('exports with includeSecrets:false by default, then shows the key and a Copy Key button', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
-    const { getByTestId, findByTestId } = await renderScreen();
-
-    await fireEvent.press(getByTestId('settings-button-export'));
+    mockSuccessfulExport();
+    const { findByTestId } = await runExportFlow({ includeSecrets: false });
 
     await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: false }));
     await fireEvent.press(await findByTestId('settings-button-copy-key'));
@@ -87,23 +117,46 @@ describe('ExportDataScreen', () => {
   // on the user noticing/scrolling to the key card's own Share File button —
   // so the OS share sheet now opens immediately once the file is ready.
   it('opens the share sheet immediately once a fresh export succeeds, with a file:// URL', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
-    const { getByTestId } = await renderScreen();
+    mockSuccessfulExport();
+    const { getByTestId } = await runExportFlow({ includeSecrets: false });
+
+    await waitFor(() =>
+      expect(mockShare).toHaveBeenCalledWith(
+        { url: 'file:///tmp/x.kiko' },
+        { anchor: findNodeHandle(getByTestId('settings-button-export')) },
+      ),
+    );
+  });
+
+  // Measured on iPad: with no anchor the share sheet is a small centred popover that points at
+  // nothing; a compact window ignores the anchor, so there is no JS branch on the window.
+  it('passes no anchor, and does not throw, when the Export button is gone by the time the file is ready', async () => {
+    let finishExport: (result: { fileUri: string; keyBase64: string }) => void = () => {};
+    mockExportData.mockReturnValue(
+      new Promise((resolve) => {
+        finishExport = resolve;
+      }),
+    );
+    const { getByTestId, unmount } = await renderScreen();
 
     await fireEvent.press(getByTestId('settings-button-export'));
+    await unmount();
+    await act(async () => {
+      finishExport({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    });
 
-    await waitFor(() => expect(mockShare).toHaveBeenCalledWith({ url: 'file:///tmp/x.kiko' }));
+    await waitFor(() => expect(mockShare).toHaveBeenCalledTimes(1));
+    expect(mockShare.mock.calls[0][0]).toEqual({ url: 'file:///tmp/x.kiko' });
+    expect(mockShare.mock.calls[0][1]?.anchor).toBeUndefined();
   });
 
   // A share-sheet dismiss/cancel rejects the `Share.share` promise — the
   // expected common case, not an export failure — so it must not surface
   // the export error Alert or leave the key/file state cleared.
   it('does not treat a dismissed/cancelled share sheet as an export failure', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    mockSuccessfulExport();
     mockShare.mockRejectedValueOnce(new Error('User did not share'));
-    const { getByTestId, findByText } = await renderScreen();
-
-    await fireEvent.press(getByTestId('settings-button-export'));
+    const { findByText } = await runExportFlow({ includeSecrets: false });
 
     // The key card still renders (the export itself succeeded) and no
     // error Alert copy appears.
@@ -111,31 +164,23 @@ describe('ExportDataScreen', () => {
   });
 
   it('passes includeSecrets:true once the toggle is switched on', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
-    const { getByTestId } = await renderScreen();
-
-    await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
-    await fireEvent.press(getByTestId('settings-button-export'));
+    mockSuccessfulExport();
+    await runExportFlow({ includeSecrets: true });
 
     await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: true }));
   });
 
   it('exports with includeSecrets:false without ever confirming the owner', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
-    const { getByTestId } = await renderScreen();
-
-    await fireEvent.press(getByTestId('settings-button-export'));
+    mockSuccessfulExport();
+    await runExportFlow({ includeSecrets: false });
 
     await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: false }));
     expect(mockConfirmOwner).not.toHaveBeenCalled();
   });
 
   it('confirms the owner with the export-secrets reason before exportData, in call order', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
-    const { getByTestId } = await renderScreen();
-
-    await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
-    await fireEvent.press(getByTestId('settings-button-export'));
+    mockSuccessfulExport();
+    await runExportFlow({ includeSecrets: true });
 
     await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: true }));
     expect(mockConfirmOwner).toHaveBeenCalledWith('Export your saved passwords & keys');
@@ -145,12 +190,8 @@ describe('ExportDataScreen', () => {
   });
 
   it('does not export or alert when the owner cancels the secrets prompt', async () => {
-    mockConfirmOwner.mockResolvedValue({ kind: 'cancelled' });
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    const { getByTestId, queryByTestId } = await renderScreen();
-
-    await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
-    await fireEvent.press(getByTestId('settings-button-export'));
+    const alertSpy = confirmOwnerWith({ kind: 'cancelled' });
+    const { queryByTestId } = await runExportFlow({ includeSecrets: true });
 
     await waitFor(() => expect(mockConfirmOwner).toHaveBeenCalled());
     expect(mockExportData).not.toHaveBeenCalled();
@@ -159,12 +200,8 @@ describe('ExportDataScreen', () => {
   });
 
   it('alerts and does not export when owner confirmation fails', async () => {
-    mockConfirmOwner.mockResolvedValue({ kind: 'failed', hintKey: 'auth.hint.failed' });
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    const { getByTestId } = await renderScreen();
-
-    await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
-    await fireEvent.press(getByTestId('settings-button-export'));
+    const alertSpy = confirmOwnerWith({ kind: 'failed', hintKey: 'auth.hint.failed' });
+    await runExportFlow({ includeSecrets: true });
 
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith(
@@ -180,12 +217,8 @@ describe('ExportDataScreen', () => {
   // there is no prompt at all it could show here, so the export is refused
   // instead of proceeding unauthenticated.
   it('refuses the export and alerts when the device has no passcode', async () => {
-    mockConfirmOwner.mockResolvedValue({ kind: 'noPasscode' });
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    const { getByTestId, queryByTestId } = await renderScreen();
-
-    await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
-    await fireEvent.press(getByTestId('settings-button-export'));
+    const alertSpy = confirmOwnerWith({ kind: 'noPasscode' });
+    const { queryByTestId } = await runExportFlow({ includeSecrets: true });
 
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith(
@@ -207,13 +240,9 @@ describe('ExportDataScreen', () => {
     // exportData never called with includeSecrets:true.
     'calls exportData with includeSecrets:true only when the owner result is confirmed (%s)',
     async (_label, confirmation, shouldExport) => {
-      jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-      mockConfirmOwner.mockResolvedValue(confirmation);
-      mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
-      const { getByTestId } = await renderScreen();
-
-      await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
-      await fireEvent.press(getByTestId('settings-button-export'));
+      confirmOwnerWith(confirmation);
+      mockSuccessfulExport();
+      const { getByTestId } = await runExportFlow({ includeSecrets: true });
 
       await waitFor(() => expect(mockConfirmOwner).toHaveBeenCalled());
 
@@ -230,7 +259,7 @@ describe('ExportDataScreen', () => {
   );
 
   it('collapses two presses started before confirmOwner resolves into one confirmOwner and one exportData call', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    mockSuccessfulExport();
     let resolveConfirmation: (confirmation: { kind: 'confirmed' }) => void = () => {};
     mockConfirmOwner.mockImplementation(
       () =>
@@ -254,14 +283,11 @@ describe('ExportDataScreen', () => {
   });
 
   it('exports only once when a cancelled second press follows a confirmed first press', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    mockSuccessfulExport();
     mockConfirmOwner
       .mockResolvedValueOnce({ kind: 'confirmed' })
       .mockResolvedValueOnce({ kind: 'cancelled' });
-    const { getByTestId } = await renderScreen();
-
-    await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
-    await fireEvent.press(getByTestId('settings-button-export'));
+    const { getByTestId } = await runExportFlow({ includeSecrets: true });
 
     await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: true }));
     await waitFor(() => expect(getByTestId('settings-button-export')).toBeEnabled());
@@ -273,16 +299,17 @@ describe('ExportDataScreen', () => {
   });
 
   it('shares the generated file when Share File is pressed, as a file:// URL', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
-    const { getByTestId, findByTestId } = await renderScreen();
-
-    await fireEvent.press(getByTestId('settings-button-export'));
+    mockSuccessfulExport();
+    const { getByTestId, findByTestId } = await runExportFlow({ includeSecrets: false });
     mockShare.mockClear();
     await fireEvent.press(await findByTestId('settings-button-share-file'));
 
     // `Share.share`'s `url` needs an actual URL — a bare filesystem path can
     // silently no-op on iOS instead of attaching the file.
-    expect(mockShare).toHaveBeenCalledWith({ url: 'file:///tmp/x.kiko' });
+    expect(mockShare).toHaveBeenCalledWith(
+      { url: 'file:///tmp/x.kiko' },
+      { anchor: findNodeHandle(getByTestId('settings-button-share-file')) },
+    );
   });
 
   // The primary Export button must not render as scroll
@@ -300,6 +327,13 @@ describe('ExportDataScreen', () => {
 });
 
 describe('ExportDataScreen — copy-key feedback', () => {
+  const exportAndCopyKey = async () => {
+    const screen = await runExportFlow({ includeSecrets: false });
+    await fireEvent.press(await screen.findByTestId('settings-button-copy-key'));
+
+    return screen;
+  };
+
   beforeEach(() => {
     mockExportData.mockReset();
     mockSetString.mockReset();
@@ -311,11 +345,8 @@ describe('ExportDataScreen — copy-key feedback', () => {
   });
 
   it('shows "Copied" after pressing Copy Key, then reverts to "Copy Key" after the delay', async () => {
-    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
-    const { getByTestId, findByTestId, getByText } = await renderScreen();
-
-    await fireEvent.press(getByTestId('settings-button-export'));
-    await fireEvent.press(await findByTestId('settings-button-copy-key'));
+    mockSuccessfulExport();
+    const { getByText } = await exportAndCopyKey();
 
     expect(getByText('Copied')).toBeTruthy();
 
@@ -332,10 +363,7 @@ describe('ExportDataScreen — copy-key feedback', () => {
   // actually copied.
   it('reverts a stale "Copied" label to "Copy Key" when a new export produces a new key', async () => {
     mockExportData.mockResolvedValueOnce({ fileUri: '/tmp/a.kiko', keyBase64: 'keyA==' });
-    const { getByTestId, findByTestId, getByText } = await renderScreen();
-
-    await fireEvent.press(getByTestId('settings-button-export'));
-    await fireEvent.press(await findByTestId('settings-button-copy-key'));
+    const { getByTestId, getByText } = await exportAndCopyKey();
 
     expect(getByText('Copied')).toBeTruthy();
     expect(mockSetString).toHaveBeenCalledWith('keyA==');

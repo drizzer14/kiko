@@ -899,6 +899,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   return (
     <Screen
       scroll
+      floatingFooter
       footer={footer}
       scrollableRef={scrollableRef}
       onContentSizeChange={onContentSizeChange}
