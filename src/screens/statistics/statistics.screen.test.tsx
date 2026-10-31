@@ -2387,6 +2387,64 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
   });
 
+  // A synced bank debit the form's Exchange turned into a move to an own holding: the bank-owned
+  // debit carries the pair id ONLY, the manual credit carries the pair id and the marker.
+  describe('a synced debit turned into a move by the form Exchange', () => {
+    const seedSyncedDebitMove = (credit: { holdingId: string; amountMinorUnits: number }): void =>
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, UAH_HOLDING_2],
+        rates: [USD_UAH_RATE],
+        transactions: [
+          EXPENSES[0],
+          {
+            id: 'synced-debit',
+            holdingId: 'h3',
+            time: localDaysFrom(now, -2),
+            amountMinorUnits: -250_00,
+            category: 'transport',
+            exchangePairId: 'move-1',
+          },
+          {
+            id: 'move-credit',
+            holdingId: credit.holdingId,
+            time: localDaysFrom(now, -2),
+            amountMinorUnits: credit.amountMinorUnits,
+            category: null,
+            exchangePairId: 'move-1',
+            exchangeCounterpartHoldingId: 'h3',
+          },
+        ],
+        history: HISTORY,
+        categories: CATEGORIES,
+      });
+
+    it('renders no wedge for the debit of a same-currency equal-amount move', async () => {
+      seedSyncedDebitMove({ holdingId: 'h1', amountMinorUnits: 250_00 });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('category-pie-arc-transport')).toBeNull();
+      expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    });
+
+    it('keeps the debit of a same-currency move whose amount differs in the pie', async () => {
+      seedSyncedDebitMove({ holdingId: 'h1', amountMinorUnits: 240_00 });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+    });
+
+    it('keeps the debit of a move into another currency in the pie (ruling M-1)', async () => {
+      seedSyncedDebitMove({ holdingId: 'h2', amountMinorUnits: 6_25 });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+    });
+  });
+
   it('leaves income-only data with an empty spending pie', async () => {
     // The default `seedFull` transactions are all POSITIVE (income), so no
     // category has spending and the pie shows its empty state.

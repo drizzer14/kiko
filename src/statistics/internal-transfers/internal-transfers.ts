@@ -127,8 +127,9 @@ const findMatchingCredit = (
 /**
  * The rows the 2-minute matcher may see: those with none of the three
  * exchange markers. A marked row is an exchange leg (a Convert, a Transfer
- * pair, or a move to an untracked wallet) that the structural rules already
- * exclude, and left in the ledger it could consume an unmarked same-amount
+ * pair, or a move to an untracked wallet): the marker rules and the pair rule
+ * (`sameCurrencyMoveTransactionIds`, which pairs by the pair id) exclude what
+ * they can, and left in the ledger it could consume an unmarked same-amount
  * row (a Pay send) as its "partner" and drop real spending.
  */
 export const rowsForTransferMatch = <

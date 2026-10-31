@@ -45,6 +45,10 @@ import {
   descriptionExcludedTransferTransactionIds,
   mccExcludedTransferTransactionIds,
 } from '@kiko/statistics/transfer-exclusion';
+import {
+  exchangeExcludedTransactionIds,
+  sameCurrencyMoveTransactionIds,
+} from '@kiko/statistics/exchange-exclusion';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -93,7 +97,6 @@ import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
 import Screen, { usePaneContentWidth } from '@kiko/design-system/components/screen';
-import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
@@ -769,8 +772,8 @@ const StatisticsScreen: FC = () => {
   // legs are dropped from the category breakdown by id below; the credit legs
   // are already ignored as income. Scoped to THIS chart only — every other view
   // (net worth, by-type, account pie) still sees the full ledger. The matcher
-  // sees only unmarked rows: an exchange leg is excluded by its marker, and
-  // must never pair with (and so swallow) an unmarked Pay send.
+  // sees only unmarked rows: an exchange leg is excluded by its marker or its
+  // pair id, and must never pair with (and so swallow) an unmarked Pay send.
   const internalTransferIds = useMemo(
     () => internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
     [ledgerWithCurrency],
@@ -919,6 +922,14 @@ const StatisticsScreen: FC = () => {
     [breakdownTransactions],
   );
 
+  // The synced debit a Convert marked with the pair id only has no marker for the rule above, and
+  // the matcher never sees a row with a pair id. Over the unfiltered ledger, so a partner under an
+  // account the filter hides still pairs.
+  const sameCurrencyMoveIds = useMemo(
+    () => sameCurrencyMoveTransactionIds(ledgerWithCurrency),
+    [ledgerWithCurrency],
+  );
+
   // The account kind of each holding, so the funding matcher can tell a crypto account's own rows
   // from the bank rows that paid for them. A holding whose account is not in the list is left out
   // of the map, and the matcher counts such a holding as a bank side.
@@ -957,6 +968,7 @@ const StatisticsScreen: FC = () => {
         ...mccExcludedIds,
         ...descriptionExcludedIds,
         ...exchangeExcludedIds,
+        ...sameCurrencyMoveIds,
         ...exchangeFundingExcludedIds,
         ...loanPaymentExcludedIds,
       ]),
@@ -965,6 +977,7 @@ const StatisticsScreen: FC = () => {
       mccExcludedIds,
       descriptionExcludedIds,
       exchangeExcludedIds,
+      sameCurrencyMoveIds,
       exchangeFundingExcludedIds,
       loanPaymentExcludedIds,
     ],
