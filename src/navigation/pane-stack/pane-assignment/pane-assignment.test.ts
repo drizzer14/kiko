@@ -65,7 +65,7 @@ describe('pane assignment', () => {
     expect(paneDefault(HOME_TAB, 'companion')).toBe(STATISTICS_DEFAULT);
   });
 
-  it('(c) opens a transaction from the Home companion (Statistics tab) in the companion, in place of the Home default', () => {
+  it('(c) openFrom falls back to the companion pane when the opener is a static default key not in the stack', () => {
     const opened = openFrom(
       [route('statistics', 'Statistics')],
       { statistics: 'primary' },
@@ -191,7 +191,7 @@ describe('pane assignment', () => {
     });
   });
 
-  it('(j) folds the Statistics tab to [Statistics, Form], and unfolds with Form in the companion and Statistics in primary', () => {
+  it('(j) openFrom fallback from a static default key: the fold drops nothing, and unfolding puts the form in the companion and Statistics in primary', () => {
     const opened = openFrom(
       [route('statistics', 'Statistics')],
       { statistics: 'primary' },
@@ -353,17 +353,22 @@ describe('pane assignment', () => {
     expect(opened.panes).toEqual({ accounts: 'companion', account: 'primary', form2: 'primary' });
   });
 
-  it('opens from a static default as if it sat right above the root', () => {
+  it('opens from the real route a static default became, right above it and below the form', () => {
     const opened = openFrom(
-      [route('statistics'), route('transaction')],
-      { statistics: 'primary', transaction: 'companion' },
-      defaultRouteKey('companion'),
-      route('transaction2'),
+      [route('statistics'), route('home', 'Home', { isDefault: true })],
+      { statistics: 'primary', home: 'companion' },
+      'home',
+      route('transaction'),
       STATISTICS_TAB,
     );
 
-    expect(keys(opened.routes)).toEqual(['statistics', 'transaction2']);
-    expect(opened.panes.transaction2).toBe('companion');
+    expect(keys(opened.routes)).toEqual(['statistics', 'home', 'transaction']);
+    expect(opened.routes[1].isDefault).toBeUndefined();
+    expect(opened.panes).toEqual({
+      statistics: 'primary',
+      home: 'companion',
+      transaction: 'companion',
+    });
   });
 
   it('moves a route that the opened one reuses to the top instead of listing it twice', () => {

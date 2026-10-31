@@ -1,5 +1,5 @@
 // Semgrep fixture (POSITIVE): kiko-design-system's "Component set
-// (CardContextMenu)". A form has no in-form Delete: an entity is deleted
+// (continued)". A form has no in-form Delete: an entity is deleted
 // only from its page's touch-and-hold CardContextMenu, which owns the
 // confirm. `kiko-no-confirm-sheet-in-form` MUST report a finding on every
 // pinned line below: each one brings the confirm sheet into a form.

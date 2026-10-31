@@ -3,7 +3,7 @@ import type { LayoutMode } from '@kiko/display-regions';
 
 type SplitMode = Exclude<LayoutMode, 'single'>;
 
-type PaneName = 'companion' | 'primary';
+export type PaneName = 'companion' | 'primary';
 
 // Which edges of the window a pane touches. A pane keeps a safe-area inset only on an edge it
 // shares with the window, and only a pane at the bottom edge sits above the tab bar.
@@ -24,8 +24,24 @@ const PANES: Record<SplitMode, Record<PaneName, PaneContextValue>> = {
   },
 };
 
-export const paneContextOf = (mode: SplitMode, pane: PaneName): PaneContextValue =>
-  PANES[mode][pane];
+// The same panes with the top edge dropped, for a pane whose frame starts below the top-bar band:
+// kept as shared objects so a consumer never sees a new identity.
+const PANES_BELOW_TOP_BAND: typeof PANES = {
+  columns: {
+    companion: { edges: { ...PANES.columns.companion.edges, top: false } },
+    primary: { edges: { ...PANES.columns.primary.edges, top: false } },
+  },
+  rows: {
+    companion: { edges: { ...PANES.rows.companion.edges, top: false } },
+    primary: { edges: { ...PANES.rows.primary.edges, top: false } },
+  },
+};
+
+export const paneContextOf = (
+  mode: SplitMode,
+  pane: PaneName,
+  isBelowTopBand = false,
+): PaneContextValue => (isBelowTopBand ? PANES_BELOW_TOP_BAND : PANES)[mode][pane];
 
 /**
  * The pane a screen is rendered in, for the screen content to size itself by: null outside a pane

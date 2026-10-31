@@ -4,11 +4,10 @@
     "`usePriceBook(enabled, { cached: true })`) READS it. Only a display screen's readiness query opts in — never a",
     "  parallel and price_points disables afterwards if nothing needs it. `needsPriceBook` (`src/holdings/priced-value/`)",
     "  now\"): no tips feature folder, no tip card component, no dismiss-tip or reset-tips settings function, and the Help",
-    "  an account with no capital row starts at the floor. The forward pass starts at `max(floor, cursor)`. The",
-    "- **Transfer forward stops (O1; the Earn lane does the same with `EARN_FORWARD_OWES`).** A stop tied to ONE transfer with a usable",
-    "  failure: ignored, nothing owed. Any other value (a pending status such as PURCHASING or CREATED, or an unknown one) is",
     "  empty array in it, as a no-op, not an error — `import-data.ts` still restores `payload.tables` regardless. Follow",
-    "  glyph never stands for several former accounts. It runs right after `withBankAccountsBankIdBackfilled` (a live device",
+    "  glyph never stands for several former accounts. It runs right after `withBankAccountsBankIdBackfilled` (a live device"
+  ],
+  ".claude/skills/kiko-architecture/reminders.md": [
     "  (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.",
     "  (`statement-import.screen.tsx`, `column-mapping.screen.tsx`). A per-mount `offerDecided` latch, set"
   ],
@@ -23,9 +22,7 @@
     "  imported function or a parameter is async, so review those by hand. Unwrap the result with `bifoldr`/",
     "  (Import on the statement import screen stays a footer button). It is **always enabled**, never a standing",
     "  `src/screens/forms/`; the connect fields and the import screens keep their own, for example `showTokenRequiredError`",
-    "  Bad: `import type { FieldInstance } from '../../../design-system/scroll-to-field/scroll-to-field';`",
-    "file that calls it (a test, a `__mocks__` file, a test-support helper): a typed call in a helper cuts",
-    "write time; a comment or a string that spells the typed form is flagged too (a test builds the text at runtime or keeps it under `rules/fixtures/`); its known limits are in kiko-linter's \"`kiko-no-typed-jest-require-actual`\"."
+    "  Bad: `import type { FieldInstance } from '../../../design-system/scroll-to-field/scroll-to-field';`"
   ],
   ".claude/skills/kiko-compliance/SKILL.md": [
     "for its kind, with a valid schedule — read the test for the exact checks), and `build-demo-snapshot.test.ts` fails unless every holding",
@@ -33,21 +30,24 @@
   ],
   ".claude/skills/kiko-design-system/SKILL.md": [
     "  centers the control and chevron on the label and body together, as a UIKit cell centers its accessory view; the body then",
-    "  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryForm` (edit mode: a star via `useFormHeaderItems` `extraItems`, before Save; the star is `star.fill` and disabled on the default category, a state marker; shown only once the category row is read), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see \"Section heading disclosure row\" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.",
     "  in either header item list, and `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either",
     "  shared `InfoHint` (`src/design-system/components/info-hint/`): the icon is a `SymbolIcon` at the caption icon-size token,",
+    "chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of"
+  ],
+  ".claude/skills/kiko-design-system/component-set.md": [
     "  `variant=\"secondaryTonal\"` in `src/` for the live consumers), replacing a plain `secondary` `surfaceHigh`",
     "  `surfaceTranslucent` backdrop (iOS 26+; below it the BottomSheet bypasses GlassSurface) and no wash, so the screen behind reads",
     "  DEVICE BUG fix of its own (below iOS 26 the scrim is a plain `scrimFallback` View with no rim to hide;",
     "  it shares `styles.backdropFill`'s sizing, so the overscan is harmless there, not a fix): Liquid Glass draws a native specular rim at",
-    "  `src/statement-import/column-mapping/source-time-zone.ts`), `AccountKindField`, and `ModeSelectField` all reach",
+    "  `src/statement-import/column-mapping/source-time-zone.ts`), `AccountKindField`, and `ModeSelectField` all reach"
+  ],
+  ".claude/skills/kiko-design-system/component-set-forms.md": [
     "  read as disproportionately tall) non-full-width `Button` from `action: { label, icon?, onPress }`. Strings come in as",
     "  ruling 2026-09-30 (apply repeated feedback app-wide). Without `label` it is a bare toggle whose label sits",
     "  card on the category form (the rule card under `src/screens/forms/category-form/`) is the caller. At",
     "  property is owned in part (`propertyOwnershipView`). `value` is always a caller-rendered `ReactNode`",
     "  vertical padding, not a fixed cell height, so a chip grown by Dynamic Type keeps the inset the grid's",
-    "  `Pressable`/`Box`/`Text` instead of adding one. Touch target: each segment `Pressable` is a REAL layout box with",
-    "chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of"
+    "  `Pressable`/`Box`/`Text` instead of adding one. Touch target: each segment `Pressable` is a REAL layout box with"
   ],
   ".claude/skills/kiko-domain/SKILL.md": [
     "  throws before any insert. `accountsRepo.create` throws for a property or debt kind. Read the unit and",
@@ -55,24 +55,15 @@
     "saves false (and opens no name-rule sheet); an edit never pre-selects; \"Apply\" on create passes the created row",
     "clears the keys but never reads them and never revives a row. The delete confirm states each holding's change",
     "`time > asOf` or `source = 'manual'`, never a `setsBalance` row). Example: closing 10,000 as of Oct 1 and",
-    "`recordExchange`, and `recordExchangeCounterpart` (Convert-mode). A term_deposit exchange DESTINATION still",
     "(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` does not switch `kind` for an implicit kind, it only stores `pickedImplicitKind` so the kind field shows the pick in the tap's own frame while the fields, icon and color stay put; the form passes `closesWithoutAnimation={isImplicitAccountKind}`, so that sheet closes with no fade and `onSelectClosed` (hence the `replace`) follows at once, while every other kind keeps the fade; `account-form.screen.tsx`), where `draft` is the",
     "the screen that owns the sheet's Modal. `setParams` is immediate. `replace`, never `navigate`: Back from either form",
     "lot-form eligible when that function can return `'addLot'` (read the `FooterAction` union there). `metal`",
     "  whose marker names a deleted holding is cleared. The delete keeps the pair id and moves no balance: a",
     "  `exchange` sentence already names is not named again there; with a split, the exchange sentences that say",
     "`settings.lockEnabled` is LIVE (a `.kiko` restore never changes it) — wired through `src/auth/use-app-lock.ts`",
-    "tell the two modes apart; `BondMeta.entryMode` does (below). Once saved, the holding's stored terms never depend",
-    "result `null`; an edit's own stored ISIN is exempt, above); `isinCurrencyMismatchError` in edit mode per the currency-lock rule above.",
-    "  one at a time counted a split installment's interest twice. A payment MORE THAN ONE PERIOD outside the",
-    "  `loanInterestPerPaymentMinor` share minus its within-tolerance excess) of each counted payment dated strictly",
-    "  any count, else the schedule's), so the value does not jump. Normally that point is dated TODAY. But",
-    "reached through `transactionsRepo.removeHolding`) AND `accountsRepo.remove` (every holding a deleted DEBT",
-    "`refreshMarketData` through `settleJobsBesideMarketRefresh`; `grep -rn \"refreshMarketData(\" src` lists the direct callers)); `importParsedStatement` (ONE",
-    "(`src/screens/forms/transaction-form/mode-and-actions/mode-and-actions.ts`) shows that field whenever the row already",
     "bank-owned partner is kept, never deleted, and loses its exchange marker only when the leg that marker names goes too (see \"A bank-owned (synced) partner is kept\"). `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`"
   ],
-  ".claude/skills/kiko-linter/SKILL.md": [
+  ".claude/skills/kiko-linter/wrapper-contract.md": [
     "`scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.",
     "  failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a",
     "  The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. An agent's own group or pattern kill is still denied.",
@@ -85,13 +76,19 @@
     "  (its `did not result in any files` warning) fails the run. Stryker `disable` comments turn mutants into",
     "  scorer takes the exact `--mutate` entries as arguments and grades only mutants fully inside a range,",
     "  `reports/mutation/mutation.json` (core `incremental-differ.js` lines 128-142). It exits 2 when one file is given both as a",
-    "  `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as \"nothing to do\" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The",
+    "  `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as \"nothing to do\" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The"
+  ],
+  ".claude/skills/kiko-linter/rules-comments.md": [
     "  hits are the `was:` pins in the bad fixture. A scan of the whole repo hits the 3 per-rule timeouts on",
     "finding(s)`; `approved|probed|ruled|ruling|decided|confirmed` (also the all-caps `RULED`/`RULING`) then an ISO date, with an",
     "plan id such as `(A1)`/`(P3)`, and a ruling id such as `ruling A2`/`RULING B1`). The members are the two `pattern-regex`",
-    "`check:security`, and the pre-write guard denies a NEW one. Count the findings with `semgrep --metrics off --quiet --config",
+    "`check:security`, and the pre-write guard denies a NEW one. Count the findings with `semgrep --metrics off --quiet --config"
+  ],
+  ".claude/skills/kiko-linter/rules-code.md": [
     "not an AST pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched",
-    "at the **fast tier** (`fast.sh`; read it for the tool list): the rule is purely per-file with no cross-file",
+    "at the **fast tier** (`fast.sh`; read it for the tool list): the rule is purely per-file with no cross-file"
+  ],
+  ".claude/skills/kiko-linter/SKILL.md": [
     "`check:all` (`plural-count.js`: a Jest invariant instead, see its bullet). Every checker and the shared scanner stay reachable for",
     "`__tests__/test-support/source-comment-citations.ts`; read them there) or a bare migration file name in a comment must",
     "On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, `medium.sh` exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. Read `medium.sh`'s header comment for the exact check.",
@@ -118,7 +115,6 @@
     "being trusted as exact); any other account (bank id `other`, or no recognized bank id; `isSpecificBankId` decides) is keyed by"
   ],
   ".claude/skills/kiko-translator/SKILL.md": [
-    "time (see kiko-domain 'Exchange/Convert legs'). The same rule applies to a placeholder like \"Never\" for",
     "into `TITLE_KEYS`; read the test for the current entries. Every picker sheet (`SelectField` and its wrappers,"
   ],
   "docs/harness/checks-internals.md": [
@@ -211,8 +207,7 @@
     "- No more than one component per file, except a small local, non-exported component extracted for readability or re-render reasons — see kiko-code-style's \"One component per file\" section. A mock component or fixture used by one test goes to that test's co-located test-helper file, not a new top-level component folder, unless it is reused across multiple test files.",
     "- Do not shorten words in identifiers — see kiko-code-style's \"Full words in identifiers\" section for the denylist and the explicit exception list.",
     "- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.",
-    "- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.",
-    "- A form's Save is a native nav-bar item: press it with `pressSave` from `src/test-support/form-header-items.ts` (see the kiko-design-system form Save bullet), never `getByText('Save')`."
+    "- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command."
   ],
   "harness/kiko/agents/researcher.md": [
     "- When the coordinator will build code on an API's shape, probe it with real read-only calls first and report the observed shape."
@@ -258,7 +253,6 @@
     "- \"DEFAULT, pending user\" means apply it now, not merely record the decision and leave the old behavior in place. A change that states a DEFAULT ruling must change the code in that same change — a later change should never have to circle back to actually apply a decision an earlier one only annotated.",
     "- User questions go through the coordinator. An orchestrator session never asks the user in its own terminal (no AskUserQuestion there). It sends each user question or blocker to the coordinator by SendMessage: the question, 2-4 options with a one-line consequence each, the recommended option, and the work it can do meanwhile. The coordinator asks the user and relays the answer in the user's own words.",
     "- Name a task or change set \"<track> task N/M\" (a number plus the total). Name a step inside a change set \"step N/M\". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.",
-    "- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.",
     "  - a wait (battery, load, usage limit, the user): `--gate wait --verdict pass --reason <battery|load|usage-limit|user> --minutes <N>`,",
     "`mutable files: N (cap …)`, then a `timeout share (history)` line (quote it in the BATCH READY: a high share predicts a long run),",
     "end a hung command. The one exception is not yours: `scripts/job-queue.sh` may send TERM to the process group it created for its own job, only while `pgrep -g` finds a member. Read-only roles (reviewer, auditor, explorer,",

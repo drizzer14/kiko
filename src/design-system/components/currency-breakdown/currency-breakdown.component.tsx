@@ -9,14 +9,23 @@ import { styles } from './currency-breakdown.styles';
 import type { CurrencyBreakdownProps } from './currency-breakdown.props';
 
 // A single currency+amount cell: code on the left, formatted amount on the
-// right, aligned across the column via space-between.
+// right, aligned across the column via space-between. A long amount shrinks to fit its column, as
+// the Statistics pie legend's does, instead of pushing past the column edge.
 const BreakdownCell: FC<{ money: Money }> = ({ money }) => {
   return (
     <Box style={styles.cell}>
       <Text variant="caption" tone="textSecondary">
         {money.currency}
       </Text>
-      <MoneyText money={money} context="balance" />
+      <Box style={styles.value}>
+        <MoneyText
+          money={money}
+          context="balance"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        />
+      </Box>
     </Box>
   );
 };

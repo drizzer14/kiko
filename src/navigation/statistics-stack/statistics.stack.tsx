@@ -14,6 +14,7 @@ import {
 import { createPaneStackNavigator } from '../pane-stack';
 import type { StatisticsStackParamList } from '../types';
 import { fittingLargeTitleLayout } from '../fitting-large-title';
+import { useLeaveStatisticsTabWhenMerged } from '../merged-home';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
@@ -37,6 +38,8 @@ const PANE_CONFIG = {
  */
 const StatisticsStack: FC = () => {
   const { t } = useTranslation();
+
+  useLeaveStatisticsTabWhenMerged();
 
   return (
     <Stack.Navigator

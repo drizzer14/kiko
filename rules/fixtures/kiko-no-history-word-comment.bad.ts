@@ -249,6 +249,28 @@ export const throughTheirExtractionCapital = true;
 // Through the extraction into a card the rows keep their layout.
 export const throughTheExtractionCapital = true;
 
+// The red-phase scaffolding of a test written ahead of the code: the thing under test is named
+// as absent, which is false the moment the code lands.
+// EXPECT-FINDING
+// The caption key does not exist yet, so a test matches the rendered text.
+export const keyNotYet = true;
+
+// EXPECT-FINDING
+// The helper does not exist yet and is looked up by name.
+export const helperNotYet = true;
+
+// EXPECT-FINDING
+// The parsed field is looked up at runtime, so this file typechecks before the field exists.
+export const beforeTheFieldExists = true;
+
+// EXPECT-FINDING
+/* The export does not exist yet. */
+export const exportNotYetBlock = true;
+
+// EXPECT-FINDING
+// Before the field exists, the lookup reads it by name.
+export const beforeTheFieldExistsCapital = true;
+
 // A second word on the same line is reported too (one pin covers the line, since a pin
 // names a line, not a member).
 // EXPECT-FINDING

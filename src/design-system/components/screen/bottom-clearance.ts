@@ -1,10 +1,6 @@
-import type { VerticalBarEdge } from '@kiko/display-regions';
+import { match } from 'ts-pattern';
 
-// The fraction of window height a native BOTTOM tab bar can plausibly reach. A real bottom tab bar
-// tops out well under this even at the largest Dynamic Type size and on the shortest current
-// iPhone window (~667pt, ~83pt bar = ~12%). A tab bar that reports its own FULL frame height
-// (678 of 678 on the Duo primary panel, 100%) sits far above it.
-const IMPLAUSIBLE_TAB_BAR_HEIGHT_FRACTION = 0.5;
+import type { TabBarPlacement } from './tab-bar-placement';
 
 /**
  * The clearance a view that owns the screen's true bottom edge must add ABOVE
@@ -19,16 +15,16 @@ const IMPLAUSIBLE_TAB_BAR_HEIGHT_FRACTION = 0.5;
  * computed its own clearance. This function is the ONE place that arithmetic
  * lives, shared by `Screen` and by every `bleedBottom` child.
  *
- * `verticalBarEdge` (`useVerticalBarEdge`, from the system's own trait) is
- * `leading` or `trailing` when the system places the tab bar as a vertical
- * bar (a regular-width scene, e.g. the iPhone Duo's inner window). Then there
- * is no floating bottom bar to clear at all, the reported `tabBarHeight` is
- * untrusted and ignored, and the correct extra clearance is ZERO: the
- * SafeAreaView's own bottom-inset reservation is already the full clearance.
+ * `placement` (`useTabBarPlacement`) says where the bar is. Only a `bottom`
+ * bar covers the screen's bottom edge. A `top` bar leaves it free, so the
+ * correct extra clearance is ZERO: the SafeAreaView's own bottom-inset
+ * reservation is already the full clearance.
  *
- * With `none`, a tab bar that reports an implausible fraction of the window
- * height (the same misreport) is clamped to zero too, as a guard for a
- * window where the trait and the bar disagree.
+ * Beside a `side` bar the reported `tabBarHeight` is untrusted and ignored,
+ * and the SafeAreaView does NOT reserve the bottom inset (`usePaneScreen`
+ * drops its bottom edge so the content runs to the window's bottom). The
+ * home-indicator inset is the clearance instead, so a footer or a last row
+ * ends exactly one inset above the window's bottom edge.
  *
  * Clamped at 0 in bottom-bar mode too: on a device whose bottom inset alone
  * exceeds the bar height, the SafeAreaView's reservation is already the
@@ -37,15 +33,24 @@ const IMPLAUSIBLE_TAB_BAR_HEIGHT_FRACTION = 0.5;
 export const resolveBottomClearance = (
   tabBarHeight: number,
   insetBottom: number,
-  verticalBarEdge: VerticalBarEdge,
-  windowHeight: number,
-): number => {
-  const isImplausibleTabBarHeight =
-    windowHeight > 0 && tabBarHeight / windowHeight > IMPLAUSIBLE_TAB_BAR_HEIGHT_FRACTION;
+  placement: TabBarPlacement,
+): number =>
+  match(placement)
+    .with('bottom', () => Math.max(tabBarHeight - insetBottom, 0))
+    .with('side', () => insetBottom)
+    .with('top', () => 0)
+    .exhaustive();
 
-  if (verticalBarEdge !== 'none' || isImplausibleTabBarHeight) {
-    return 0;
-  }
-
-  return Math.max(tabBarHeight - insetBottom, 0);
-};
+/**
+ * `resolveBottomClearance` for a scroll view with `contentInsetAdjustmentBehavior="automatic"`
+ * (the `Screen` scroll branch, the ledger list of HoldingDetail): the same under a bottom or a top
+ * bar, and nothing beside a side bar. There the scroll view reaches the window's bottom, its frame
+ * overlaps the home-indicator safe area because the SafeAreaView does not cut it, and UIKit adds
+ * that inset to the scroll content itself, so the JS adding it too would count it twice.
+ */
+export const resolveAutomaticScrollClearance = (
+  tabBarHeight: number,
+  insetBottom: number,
+  placement: TabBarPlacement,
+): number =>
+  placement === 'side' ? 0 : resolveBottomClearance(tabBarHeight, insetBottom, placement);

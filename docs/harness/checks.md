@@ -13,7 +13,7 @@
 | `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`, `rules/semgrep-prewrite.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking; a Semgrep error, timeout, bad exit code, or invalid JSON output also fails (see `security.sh`); Semgrep runs with `--jobs 6` (a named constant: under load 300-500 it drew 0-3 rule Timeouts against 7-12 at the default 9, in about half the wall time), and a rule Timeout gets ONE re-scan: each timed-out file is scanned alone with `--jobs 1`, the same configs and the same 5 s timer, and passes only when that scan reports no Timeout and no error, with one `WARNING` line per (file, rule) pair on stderr and exit 0; a non-Timeout error is never re-scanned, and more than 10 timed-out pairs fail with no re-scan; every argument is scanned in one call, and a dedup skip says so on stderr; 33 registry rule ids that cannot match this repo (express, cors, a DOM-only sink) are excluded (see `documented-exceptions.md`) | fast |
 | `npm run check:rules` | `scripts/checks/semgrep-rules.sh` — Semgrep (`rules/semgrep-mobile.yml` and `rules/semgrep-prewrite.yml`) against `rules/fixtures/` | for every fixture present: a rule that reports nothing on its positive fixture, misses a line pinned there by an `EXPECT-FINDING` comment, or matches its negative one fails; so does a fixture id with only one half of its pair present, and a scan that proved nothing (no fixtures, a fixture semgrep never opened, a semgrep error, or a semgrep/verifier crash). A rule with no fixture at all is not detected here — the fixture set is the input | medium |
 | (PreToolUse hook) | `scripts/checks/pre-write-guard.sh` + `.js` — Semgrep (`rules/semgrep-prewrite.yml`) plus the Node-checker rules in `pre-write-guard.js`'s own `NODE_RULES` (see that file for the closed rule set) against the proposed post-edit content of an `Edit`/`Write`/`MultiEdit` target | any NEW finding from a Semgrep rule in `rules/semgrep-prewrite.yml` or a Node rule in `pre-write-guard.js`'s `NODE_RULES` denies the write before it lands; a "could not check" failure (Semgrep/Node crash, malformed input) denies too — fail-closed, never bypass | PreToolUse (pre-write) |
-| `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails; a credential client (a credential header or the api_token parameter) without a Cache-Control: no-store request header fails; so does a localized app-name table (`ios/Kiko/*.lproj/InfoPlist.strings`) missing from the Resources build phase, or a missing DiskSpace required-reason entry in `PrivacyInfo.xcprivacy` while any dependency on check 5's linked list in `scripts/checks/plist.sh` ships (fail-closed; see `plist.sh`) | medium |
+| `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails; a credential client (a credential header or the api_token parameter) without a Cache-Control: no-store request header fails; so does a localized app-name table (`ios/Kiko/*.lproj/InfoPlist.strings`) missing from the Resources build phase, or a missing DiskSpace required-reason entry in `PrivacyInfo.xcprivacy` while any dependency on check 5's linked list in `scripts/checks/plist.sh` ships (fail-closed; see `plist.sh`); so does any app-target build configuration in `ios/Kiko.xcodeproj/project.pbxproj` (the `PBXNativeTarget` list: Debug, Release, Release-AdHoc) whose `TARGETED_DEVICE_FAMILY` is not exactly `1` or is missing (release 1.3 is iPhone-only, Guideline 2.5.19; zero target configurations found fails closed; the iPad release replaces this section 7 with `"1,2"`) | medium |
 | `npm run check:secrets` | gitleaks | any detected secret fails; `.gitleaks.toml` allowlists `memory/refs/`, which `.gitignore` (`/memory/`) keeps out of git; see `docs/harness/documented-exceptions.md` | fast |
 | `npm run check:overrides` | override-guard.sh | any bare `biome-ignore`, `nosemgrep`, `kiko-override:`, or `Stryker disable` comment (no `OVERRIDE(...)`) fails | medium |
 | `npm run check:import-order` | `scripts/checks/import-order.sh` (+ `.js` analyzer) | a leading import block not sorted per kiko-code-style's "Import ordering" (3 blank-line-separated groups, ascending by ending-line length, value-before-type tiebreak, side-effect import as a barrier) fails; two ADJACENT groups of the same kind (no side-effect import as a barrier between them) also fail and must be merged into one; two declarations of ONE module specifier in the header (value+value, type+type, value+type, or a bare side-effect import beside a VALUE import; a namespace import, and a bare side-effect import beside only `import type` declarations, are exempt) also fail — `--write` fixes what it safely can, then re-checks its own output and prints `left for hand fix: <file> <reason>` and exits non-zero for ANY violation it could not fix (a merge blocked by a later group's own prefix or interior comment, a group left untouched because a comment is glued to a non-first import, or a duplicate specifier, which `--write` never merges), for a human to fix by hand. The pre-write guard runs the same analyzer as its `kiko-import-order` Node rule. The per-file fast tier can miss a multi-file/grouping violation that the project-wide `check:import-order` catches, so run the project-wide check before committing. The per-file mode skips a file under `rules/fixtures/`, which the pre-write guard and the project-wide roots never read either | fast (per-file) + project-wide (`check:all`) |
@@ -50,6 +50,7 @@ Composite scripts:
   bypasses the cap. An unpatched `@stryker-mutator/jest-runner` (patched-runner preflight,
   marker missing) also exits 2 before Stryker starts; it runs after the 0-file exit, so a
   0-file change set exits 0 on an unpatched tree. There is no release-scope deep gate.
+  **Paused by the user since 2026-10-25 until lifted; verify + review only.**
   **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached (queued with
@@ -117,6 +118,32 @@ Composite scripts:
   for a human to watch directly. The full never-poll rule
   (agents await only the exit code) lives in the `ops` skill — see it,
   and the `kiko-linter` skill, before running this yourself.
+
+## Makefile targets: `make jest-affected`
+
+`make jest-affected [BASE=<ref>]` is THE default dev test command. It runs
+`bash scripts/checks/jest-affected.sh [<ref>] [--list]`, which runs only the jest suites a change
+can affect. The full suite runs only in the queued verify. A focused run of named files
+(`npx jest <files> --maxWorkers=2`) stays allowed.
+
+- Property seeds: a dev run and `make jest-affected` draw 3 seeds per property list;
+  `scripts/checks/verify.sh` exports `KIKO_PROPERTY_SWEEP=full` before stage 2a (both jest
+  stages) and `scripts/checks/mutation.sh` exports it for Stryker. To reproduce a verify failure
+  in a property suite, run that file with `KIKO_PROPERTY_SWEEP=full`.
+- Base: the default is `git merge-base HEAD main`; `BASE=<ref>` overrides it. An unresolvable base
+  exits 2. The changed paths are the tracked diff against the base plus untracked files.
+- How a changed path maps to suites (the buckets, the name matching, the inventory list) and the
+  known limits: read the header of `scripts/checks/jest-affected.sh`; it is the one place.
+- An every-suite path (`package.json`, `package-lock.json`, `jest.config.js`, `jest/**`,
+  `babel.config.js`, `tsconfig*.json`, `__mocks__/**`, `patches/**`, `.env.test`) prints
+  `AFFECTS EVERY SUITE: <path>`; the related run still happens, then the runner exits 3 with a
+  notice to queue the verify (`bash scripts/job-queue.sh verify <worktree> <label>`).
+- `--list` prints the plan line, the suites and `npm run check:rules` when it applies, runs
+  nothing and exits 0. A call with no change exits 0 and runs nothing.
+- Exit codes: 0 green; 1 (or the first non-zero code) from a jest call or `check:rules`; 2 a failure
+  block (bad argument, unresolvable base, missing list, git or jest listing failure), nothing ran;
+  3 an every-suite path.
+- The queued verify stays the backstop.
 
 ## Automatic wiring
 
@@ -221,9 +248,9 @@ The same hook also denies `git apply`, `merge`, `rebase`, `pull`,
 `cherry-pick`, `revert`, and `am` that target the MAIN checkout
 (`/Users/drizzer14/Developer/Projects/pff-ios`), by cwd, `cd`, `-C`,
 `--git-dir`/`--work-tree`, or `GIT_DIR=`, because every session's hooks
-run from it. Allowed there: the recovery options `--abort`, `--quit`,
-`--skip`, `--continue`, help, and a read-only `git apply`. A merge or pull whose only option is
-`--ff-only` is its own finding, `mainFastForward`: main moves only through
+run from it. Allowed there: the recovery options (`RECOVERY_OPTIONS` in
+`scripts/checks/kill-guard.js`), help, and a read-only `git apply`. A merge or pull whose only
+option is `--ff-only` is its own finding, `mainFastForward`: main moves only through
 `bash scripts/ff-main.sh <sha>`. Do the real merge in a separate detached worktree, run a queued
 `scripts/job-queue.sh verify` on the merge commit, then run `bash scripts/ff-main.sh <sha>`.
 The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines are
@@ -231,9 +258,20 @@ The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines a
 `unknown` unless the tree is clean at START and again at the end (`git --no-optional-locks
 status --porcelain --untracked-files=all`), HEAD is unchanged, and the repository is readable.
 The queue never takes the worktree's index.lock for these reads. A job that edits its own tree
-without committing records `unknown`; an edit reverted before the end is not seen, and ignored
-files (`.env`, `node_modules`) are not counted; keep the tree untouched until DONE. The LAST
-`verify` line whose head equals the full sha decides and needs exit 0;
+without committing records `unknown` plus a `NOTE <label>: the tree changed during the job:
+<path>` line; `verify` and `gate` refuse a tree with any change (untracked included) with exit 3,
+at enqueue and again at START, naming the first 3 paths (commit or copy aside, never stash;
+`check-all` and `security` still run on a dirty tree). On the real queue (`KIKO_QUEUE_DIR` unset
+or equal to `~/.claude/kiko-queue`) `verify`, `gate` and `check-all` also exit 3 for a target
+worktree of another repository (git common dir) or a script copy outside any repository
+(`harness-verify` and `security` are exempt); jest.config.js sets a temporary `KIKO_QUEUE_DIR`
+for every jest run, and a by-hand test run must do the same (see the `scripts/job-queue.sh`
+header, `refuse_foreign_repository_on_real_queue`). A verify prints no live output: its log is
+`<queue dir>/logs/verify-<label>.log` (default `~/.claude/kiko-queue`), kept for every verify and
+trimmed to the summary lines plus the last 400 lines; the end prints the summary, `log: <path>`
+and the last 40 lines (header of `scripts/job-queue.sh`). An edit reverted before the end is not
+seen, and ignored files (`.env`, `node_modules`) are not counted; keep the tree untouched until
+DONE. The LAST `verify` line whose head equals the full sha decides and needs exit 0;
 `check-all`, `gate`, `unknown`, `lost`, and old 5-field lines never count. The queue writes one
 `lost` line when a waiter prunes a dead waiter's ticket, and a lock-form `lost` line when it
 reclaims a dead lock (its job may have run fully). `$QUEUE_DIRECTORY/format` is a format stamp: an
@@ -305,7 +343,10 @@ The same hook also denies a whole-repository job typed outside the queue (`heavy
 repository; the sets are `HEAVY_MAKE_TARGETS`, `HEAVY_NPM_SCRIPTS` and `HEAVY_SCRIPT` in
 kill-guard.js, read them there) and a jest run that would run every suite (`fullJest`: a runner
 with no test file, or an array option of jest-cli before a bare word; `npm test` needs
-`-- <files>`). The way out is `bash scripts/job-queue.sh verify|check-all|security|gate ...`;
+`-- <files>`; the array options are `JEST_ARRAY_OPTIONS` in `scripts/checks/kill-guard.js`, in the
+space or `=` form). Both are also denied behind `caffeinate`, `arch`, `sandbox-exec`, `script`,
+`screen` or `tmux`, or inside an `orca` `--text`/`--command` or an `osascript` shell script. The
+way out is `bash scripts/job-queue.sh verify|check-all|security|gate ...`;
 a harness-repo sync uses
 `bash scripts/job-queue.sh harness-verify <harness worktree> <label>`.
 Only the typed command is judged. See kiko-linter's "Heavy-job and full-jest deny" for the

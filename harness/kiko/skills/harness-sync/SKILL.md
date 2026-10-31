@@ -19,20 +19,31 @@ changelog head, and `git -C <pff-ios> log --oneline -1 main`.
 
 - The source of truth is `git -C ~/Developer/Projects/harness log -1` plus the head of the
   harness CHANGELOG; the next sync source starts after the pff-ios range they record.
-- One recorded fact: the sync of 2026-10-19 started from pff-ios `e2d96c17..32f3d0c8` on
-  harness `7a9ef0c`.
+- Recorded facts: the sync of 2026-10-19 started from pff-ios `e2d96c17..32f3d0c8` on
+  harness `7a9ef0c`; sync 4 merged into harness main on 2026-10-21 (harness `18721cb`, its
+  entries under the CHANGELOG "Unreleased" head). Sync 5 is the harness branch `harness-sync-5`
+  (2026-10-26), unmerged, and stays PAUSED until the user lifts it; its items are not in main.
 - Find the range with
   `git -C <pff-ios> log --oneline <last point>..main -- harness scripts/checks scripts/wait-load.sh rules docs/harness CLAUDE.md __tests__`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
 
+A sync closeout prunes this list against the harness CHANGELOG: git-grep each item in harness
+main before striking it, and strike a bullet whole only when every sub-item is found.
+Per-mode wrapper behavior (per-file versus project-wide) lives in one place only.
+
 Pending for the next sync (landed in pff-ios 2026-10-11 on branch loan-schedule-cards, not yet
-in the harness repo):
+in the harness repo). A generic test-support reader (a helper under `__tests__/test-support/`
+that holds no Kiko name) goes on this list in the same task that adds or changes it:
 - The generic Node rule `kiko-component-i18n-namespace` (pff-ios `99a6f0bc`, fixed in
   `0fb10efc`): a `NODE_RULES` row with `overridable: false`,
   `component-i18n-namespace.js`/`.sh`, `check:component-i18n-namespace` in `check:all`, exit 2
   on a missing scan root. Portable only to a repo that uses the
   `src/design-system/components/<name>/` convention.
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+- The red-phase scaffolding phrases in the history-word comment rule (binance-p2p-fix fix round 1):
+  `<key|field|export|helper|function> does not exist yet` and `before the field exists`, with the
+  bad and good fixture lines. Portable as is; the bare `does not exist yet` stays out (it names a
+  runtime state in ordinary comments).
 - H8 generic ports (pff-ios branch harness-h8): the TIMEOUT-HEAVY rerun inside the mutation gate
   (`mutation.sh`, `mutation-score.js --rerun-candidates`, `mutation-rerun.js`); the gate start
   defer on load in `job-queue.sh` (every job class, one cap); the `ff-main.sh` rule refusing a
@@ -43,11 +54,6 @@ in the harness repo):
   and an exported or `-c` fetch refspec into main, a linked worktree put onto main); the
   `job-queue.sh` `hold` `running:` line, the `status` read order and the load-wait fix; the
   `kill-guard.sh` EXIT trap on its stderr temp file; the harness `32913f8` status change.
-- H9 generic port: the Stryker jest-runner exact-Set patch (`patches/@stryker-mutator+jest-runner+
-  8.7.1.patch`, `__tests__/stryker-jest-runner-patch.test.ts`, the `mutation.sh` patched-runner
-  preflight, and the `docs/harness/dependency-hygiene.md` "Standing patch" section). The
-  mechanism is generic (it touches only the installed runner, not Kiko code); port
-  it only to a repo that runs Stryker's jest runner at those exact pinned versions.
 - H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
   comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
   and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks
@@ -62,25 +68,6 @@ in the harness repo):
   TIMEOUT-HEAVY line before the DONE line (see the ops skill's "Load rule"); the doc
   fingerprint covering every pin-file literal form that discovery accepts; the history-id
   exemption narrowed to a hyphen with no word character before it.
-- H7 set 7, generic main-merge guard: `scripts/ff-main.sh` (moves main only to a sha with a
-  green queued `verify` line); the done.log sixth field (the tested HEAD); the kill-guard
-  `mainFastForward` kind with its scan of scripts and data bodies; the docs for these; in
-  `job-queue.sh`: `tree_is_clean` (`--no-optional-locks` and `--untracked-files=all`),
-  `confirm_tested_head`, and `read_tested_head`'s unknown rule.
-- H8 task 2, generic queue changes: the `lost` done.log lines (a pruned dead waiter's ticket; a
-  reclaimed dead lock, lock form); the queue `format` stamp (an older copy refuses, exit 2) and
-  the old-copy WARNING; `run_awaited` (`cmd & wait $!`, so a pid-only SIGINT is not lost on bash
-  3.2) with the in-flight command ended first in `stop_on_signal` (`end_in_flight`, before
-  `terminate_job_group`) and again at the top of cleanup on the EXIT path (a pid reaped during a
-  long terminate poll can be reused); the no-settle-sleep rule for queue tests (rendezvous, never
-  a clock; the poll-bound exemption holds only inside the braces of the loop holding the bound,
-  and a renamed `timers/promises` `setTimeout` import counts); the `done.log` short-line WARNING
-  (short
-  lines before the first 6-field line fold into ONE summary WARNING, later ones get their own with
-  the line number). `ff-main.sh` plugin version rule,
-  for a repo that ships a `plugin.json`: refuse (exit 2) a commit changing the plugin folder
-  (`plugin.json` excluded) unless its version is strictly above main's (numeric dotted compare;
-  an unreadable or missing version refuses).
 - H7 set 3, generic doc-suite gate: the `medium.sh` doc-reading-suites Stop step; the `_lib.sh`
   helpers `harness_doc_roots_pattern`, `harness_doc_suites`, `harness_doc_files`,
   `harness_doc_suite_fixtures`, `harness_doc_fingerprint`, and `harness_doc_suites_by_hand`;
@@ -101,6 +88,28 @@ in the harness repo):
   to the harness repo: without it, a red row's stub loop, which ends only on sandbox removal,
   hangs the afterEach.
 - The CLAUDE.md trim (docs/harness/checks.md split).
+- Skill-split track (pff-ios branch skill-split, plugin 0.4.51), generic skill-reader port: the
+  GENERIC `__tests__/test-support/skill-text.ts`, `prose-citations.ts` and
+  `orphan-reference-files.ts`; the skill-citations.test.ts reference-file and prose-citation
+  rows; the `readSkillText` switch in every suite that reads a skill; the scribe.md
+  reference-file rule; and a "Skill reference files" paragraph rewritten for the harness repo.
+  Do NOT port the Kiko skill text, the section moves or the pin-file keys. The `SKILL_ROOTS`
+  literals are per repo.
+- Skills-finish track (pff-ios branch skills-finish, plugin 0.4.52), more generic skill-check
+  readers in `skill-text.ts` and `prose-citations.ts`: `directionCitations` (a quoted heading
+  beside "above" or "below", checked inside its own document); `helperCatalogueGaps`,
+  `unnamedLockedMarks` and `indexLeadGaps` with their rows in
+  `__tests__/skill-text-checks.test.ts` (folders, skill names and the Locked list heading are per
+  repo); and the `proseCitations` changes: the forms `<skill> skill's "X"`, `` `skill`, "X" ``
+  and `` `skill` ("X") ``, an escaped `\"` inside a quote, the comments of `src/**/*.ts(x)` and
+  `rules/fixtures/**` as sources (through `sourceComments`), and a qualified `H (Q)` citation
+  that must find Q in the section of H. A source is read when its raw text names a
+  skill, so a comment that ends a line on the name and opens the quote on the next line is read;
+  `directionCitations` skips exactly the quotes `proseCitations` reads; `indexLeadGaps` and
+  `unnamedLockedMarks` read the reference files through `skillFiles`, so a link to a missing file
+  throws; `indexLeadGaps` matches a lead as a whole word; `helperCatalogueGaps` takes no
+  exemptions; and the jest-affected inventory pin also finds a suite that imports a walking
+  `__tests__/test-support` helper. Port the readers and rows, not the Kiko skill text.
 
 ## Classification
 

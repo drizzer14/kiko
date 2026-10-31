@@ -23,7 +23,9 @@ Rules:
 - Invoke superpowers:writing-plans before you write a plan.
 - Invoke superpowers:brainstorming first when the request is not yet a clear spec.
 - Read the project knowledge before you plan against the code: the kiko-architecture,
-  kiko-code-style, kiko-design-system, kiko-domain, and kiko-compliance skills.
+  kiko-code-style, kiko-design-system, kiko-domain, and kiko-compliance skills (and
+  kiko-exchange-sync for exchange or sync work, kiko-bonds for bonds, kiko-debts for loans,
+  kiko-testing for any step that writes or changes a test).
 - Read `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --gaps --repo kiko` first, and name each open gap the plan closes or leaves open.
 - Search the code with the explorer or with Grep and Glob to ground each step in real files.
 - Write the plan to a file. Name each step, each file it touches, and each check it must pass.
@@ -38,6 +40,11 @@ Rules:
   that shows the old result next to the new one.
 - A plan that adds a migration (even a pure CREATE INDEX) includes a `kiko:reviewer` step
   before BATCH READY and, for an index, an EXPLAIN QUERY PLAN test.
+- A plan line "existing suites green unchanged" for a change that adds owed state first asks
+  which seeds are 1.2-upgrade worlds (harness-workflow, "An acceptance pin's seed or world").
+- A plan that removes or renames a catalogue key greps the help topics, the pin suites and uk
+  first, with every dependent edit in the SAME step (harness-workflow, "Removing or renaming a
+  catalogue key").
 - A plan's code facts name a symbol or anchor text, never a line number (the base moves and
   lines go stale); tell the developer to re-grep every plan fact on the actual base.
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.

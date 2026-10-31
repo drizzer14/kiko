@@ -1,10 +1,16 @@
-import { match } from 'ts-pattern';
 import {
   type BalanceProviderId,
   isBalanceProviderId,
   providerDisplayName,
 } from '@kiko/crypto-sync/provider';
 import { type FC, useState } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
+import {
+  type ExchangeCatalogId,
+  exchangeCatalogIdOf,
+  exchangeLabelOf,
+  visibleExchangeEntries,
+} from '@kiko/crypto-sync/exchange-catalog';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
 import {
@@ -19,6 +25,7 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
+import Button from '@kiko/design-system/components/button';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -29,24 +36,30 @@ import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
 import { type NotImportedKind, parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
+import ProviderSheet from '../provider-sheet';
 import { styles } from '../account-detail.styles';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestBalanceSyncAt } from '../format-last-sync';
 
-import { historyOwesRange, isBinanceHistoryBehind, walkCursorsOf } from './binance-history-status';
+import {
+  historyOwesRange,
+  historyOwesTrades,
+  isBinanceHistoryBehind,
+  p2pReadFailed,
+  walkCursorsOf,
+} from './binance-history-status';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
   holdings: HoldingRow[];
 };
 
-const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string =>
-  match(providerId)
-    .with('btc_wallet', () => t('accountDetail.disconnectProviderMessage.wallet'))
-    .with('binance', () => t('accountDetail.disconnectProviderMessage.binance'))
-    .exhaustive();
+// An id the registry does not wire has no message: the confirm then shows its title alone.
+const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string | undefined =>
+  foldMap(maybe(exchangeProviderRegistry[providerId]), (entry) => t(entry.disconnectMessageKey));
 
 type CoinLinesProps = { untrackedCoins: string[]; oversizedCoins: string[] };
 
@@ -105,9 +118,86 @@ const NotImportedLine: FC<NotImportedLineProps> = ({ counts, exchange }) => {
   );
 };
 
+type ConnectExchangeProps = {
+  account: AccountRow;
+  onConnectWallet: (address: string) => Promise<boolean>;
+  onConnectBinance: () => Promise<boolean>;
+};
+
+// The bank section's "Add a bank" pattern for a crypto account: the provider's field directly when
+// the account's bank id names a wired one, else a button that opens the provider sheet. A sheet
+// pick is session-only and never written to the account's bank id. Split out of the section so its
+// own branches stay under the complexity budget.
+const ConnectExchange: FC<ConnectExchangeProps> = ({
+  account,
+  onConnectWallet,
+  onConnectBinance,
+}) => {
+  const { t } = useTranslation();
+  const [selectedId, setSelectedId] = useState<ExchangeCatalogId | undefined>(undefined);
+  const [providerPickerOpen, setProviderPickerOpen] = useState(false);
+  const entries = visibleExchangeEntries();
+  const catalogId = exchangeCatalogIdOf(account);
+  const namedId = entries.find((entry) => entry.id === catalogId)?.id;
+  const shownId = selectedId ?? namedId;
+
+  const providerSheetEntries = entries.map((entry) => ({
+    id: entry.id,
+    label: exchangeLabelOf(entry, t),
+    captions: [t(entry.captionKey)],
+  }));
+
+  return (
+    <>
+      {shownId === undefined ? (
+        <Button
+          variant="secondaryTonal"
+          size="small"
+          fullWidth={false}
+          icon="plus"
+          onPress={() => setProviderPickerOpen(true)}
+        >
+          {t('accountDetail.connectExchangeAction')}
+        </Button>
+      ) : (
+        <Box gap={2}>
+          <CryptoSyncForm
+            accountId={account.id}
+            source={shownId}
+            onConnectWallet={onConnectWallet}
+            onConnectBinance={onConnectBinance}
+          />
+
+          {/* Hidden when the bank id itself names the provider: the live bank id would put the
+              same pick straight back, so pressing it would visibly change nothing. */}
+          {namedId === undefined && (
+            <Button
+              variant="secondaryTonal"
+              size="small"
+              fullWidth={false}
+              onPress={() => setSelectedId(undefined)}
+            >
+              {t('accountDetail.changeExchangeAction')}
+            </Button>
+          )}
+        </Box>
+      )}
+
+      <ProviderSheet
+        visible={providerPickerOpen}
+        title={t('accountDetail.connectExchangeSheetTitle')}
+        entries={providerSheetEntries}
+        onDismiss={() => setProviderPickerOpen(false)}
+        onSelect={setSelectedId}
+        testIDPrefix="connect-exchange"
+      />
+    </>
+  );
+};
+
 // The crypto account's Synchronization section — the counterpart of the bank
 // account's Monobank token field + Connect/Sync/Disconnect row. Before a
-// connection: a Wallet/Binance source picker and the matching entry field
+// connection: the account's exchange or wallet field, or a button that picks one
 // (each field's Connect runs the first sync, which marks the account). Once
 // connected: Sync with the last-sync stamp, and a confirmed Disconnect.
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
@@ -203,6 +293,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
         cursors: walkCursorsOf(walkState),
         lastBalanceSyncAt,
         owesRange: historyOwesRange(walkState, lastBalanceSyncAt),
+        tradesUnread: historyOwesTrades(walkState),
       });
 
     return (
@@ -246,9 +337,21 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             </Text>
           )}
 
+          {/* A standing fact of the last run, like the coin lines, so a sync in flight keeps it; a
+              state that is malformed holds no mark, so it never doubles the paused caption. */}
+          {coinLinesShown && p2pReadFailed(walkState) && (
+            <Text variant="caption" tone="textSecondary">
+              {t('accountDetail.exchangeP2pReadFailed', {
+                exchange: providerDisplayName(connectedProvider, t),
+              })}
+            </Text>
+          )}
+
           {historyBehind && (
             <Text variant="caption" tone="textSecondary">
-              {t('accountDetail.binanceHistoryPending')}
+              {t('accountDetail.exchangeHistoryPending', {
+                exchange: providerDisplayName(connectedProvider, t),
+              })}
             </Text>
           )}
 
@@ -296,8 +399,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     <Box gap={3}>
       <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-      <CryptoSyncForm
-        accountId={account.id}
+      <ConnectExchange
+        account={account}
         onConnectWallet={connectWallet}
         onConnectBinance={connectBinance}
       />

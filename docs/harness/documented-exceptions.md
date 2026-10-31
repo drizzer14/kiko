@@ -185,7 +185,7 @@ verified usage, not dead weight:
   into a guarded tree (`WRITE_GUARDED_TREES` in the file), or a YAML
   file, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
-  `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
+  `.claude/skills/kiko-linter/wrapper-contract.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
   any TypeScript/JavaScript source, and never a package.json script Knip's
   static scan can see (unlike `scripts/ensure-env.js`, which IS a
@@ -209,7 +209,7 @@ verified usage, not dead weight:
   (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to
   rebuild an Edit/Write/MultiEdit's proposed file content and deny the
   write when it introduces a known violation (see `docs/harness/checks.md` "Automatic
-  wiring" and `.claude/skills/kiko-linter/SKILL.md`), the same reason as
+  wiring" and `.claude/skills/kiko-linter/wrapper-contract.md`), the same reason as
   `kill-guard.js` above. It is reached only from a sibling `.sh` wrapper's
   `node` invocation — never a static `import`/`require` from any
   TypeScript/JavaScript source, and never a package.json script Knip's
@@ -725,7 +725,7 @@ verified usage, not dead weight:
   longer carries a `SHOW_UNREADY_BANKS`-style flag — that release-readiness
   visibility gate was removed outright, not merely defaulted off. The "add
   a bank" sheet's `visibleCatalogEntries`
-  (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`)
+  (`src/screens/account-detail/bank-sync-section/visible-catalog-entries/visible-catalog-entries.ts`)
   now takes no flag argument: it shows every wired-registry provider in the
   catalog unconditionally, so there is nothing left for a test-env value to
   gate. See the `kiko-architecture` skill's "Guideline 2.5.19 — no hidden
@@ -828,6 +828,12 @@ verified usage, not dead weight:
   rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
   the exclusion.
 
+- **`kiko-glass-surface-nav-layer-only` (`rules/semgrep-prewrite.yml`) excludes
+  `src/design-system/components/footer-glass-backing/**`.** A floating footer's buttons are the
+  navigation layer over scrolling content, like the Home FAB: each filled footer `Button` takes a
+  capsule glass layer (`GlassSurface`, tinted or transparent) from this folder. The other
+  allowlist entries are listed in the rule's `paths.exclude`.
+
 - **`kiko-no-math-min-max-spread` (`rules/semgrep-prewrite.yml`) excludes
   `*.test.ts` and `*.test.tsx`.** `transaction-span.test.ts` and
   `min-max.test.ts` assert that `Math.min(...values)` throws a RangeError
@@ -908,7 +914,7 @@ verified usage, not dead weight:
     `drizzle/` and `src/` text for the literal `crypto-from-`; Stryker
     keeps the original string beside its mutant.
   - `e2e/screenshot/fixtures/generate-demo-kiko.test.ts`: reads its
-    `.kiko` fixtures by a `fileName` from the `LANGUAGES` table, which
+    `.kiko` fixtures by a `fileName` from the `DEMO_FILES` table, which
     the rule cannot resolve through the loop.
 
   The nested fixture pair proves the rule in `check:rules`;
@@ -1025,6 +1031,33 @@ verified usage, not dead weight:
   imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder
   exclude is right here because every file in it is part of the sink; the rule
   still reaches every consumer (Home, HoldingDetail).
+
+- **`src/design-system/components/screen/**` and
+  `src/design-system/components/two-pane-layout/**` — the two folders
+  `kiko-top-bar-band-only-in-two-pane-layout`'s `paths.exclude` lists.** The rule denies
+  importing `useTopBarBand` (or its `use-top-bar-band` module): a screen that adds the band
+  inside a pane counts it twice, because `TwoPaneLayout` already starts each pane frame below
+  it. The Screen folder owns the hook (`use-top-bar-band.ts` and its test), and
+  `two-pane-layout.component.tsx` is its one consumer. A whole-folder exclude is right for
+  both because each holds only the hook's owner or its sanctioned consumer and their tests;
+  the rule still reaches every other importer.
+
+- **`src/design-system/components/screen/**` and `src/navigation/pane-stack/pane-stack-view/**`
+  — the two folders `kiko-tab-bar-placement-only-in-screen-and-pane-stack-view`'s
+  `paths.exclude` lists.** The rule denies importing `useTabBarPlacement`, `useIsTabBarAtTop` or
+  `useIsTabBarNotAtBottom` (or their `use-tab-bar-placement`, `use-is-tab-bar-at-top` and
+  `use-is-tab-bar-not-at-bottom` modules): they are pane-blind reads of the window's tab bar, so
+  a screen that branches on one inside a pane reads another pane's answer. The Screen folder
+  owns the hooks and its siblings read them (`use-top-clearance.ts`, `use-bottom-clearance.ts`,
+  `use-top-bar-band.ts`, `use-pane-screen.ts`), and `pane-stack-view.component.tsx` is the one
+  consumer outside it: it reads `useIsTabBarNotAtBottom` (a split) and `useTabBarPlacement` (the
+  single stack under a side bar) once, above both panes, to give their native large titles the
+  content's margin (a top or a side bar), while `useContentCap` keeps the narrower
+  `useIsTabBarAtTop` for the pane's cap. The margin itself comes from `useContentMargin`, which
+  the rule does not list: it is a window-wide margin (20 under a side bar, else 16), so
+  it carries no pane-dependent answer (every `Screen`, `HoldingDetailScreen` and `useTitleFit`
+  read it). A whole-folder exclude is right for both because each holds only the hook's owner
+  or sanctioned consumer and their tests; the rule still reaches every other importer.
 
 - **`sf-symbols-typescript` — a transitive package read by path in a test,
   invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
@@ -1145,8 +1178,114 @@ verified usage, not dead weight:
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
 
-- **patch-package patches (`patches/`, applied by `postinstall`)**: four patches edit
+- **patch-package patches (`patches/`, applied by `postinstall`)**: five patches edit
   `node_modules` after `npm ci`; re-check each on upgrade of its package.
+  - `patches/react-native-screens+4.27.0.patch` (`react-native-screens@4.27.0`: the iOS
+    `RNSScreenStack` header and implementation, the codegen spec `ScreenStackNativeComponent.ts`,
+    `contexts.tsx`, `ScreenStack.tsx` and `index.tsx` of the package's own `src`, and the
+    `lib/commonjs` and `lib/typescript` copies of them, which Jest and `tsc` load): the native
+    large title of a split pane whose tab bar is not at the bottom (top or side), and of a single
+    stack under a side bar (the Duo outer pose), takes the content's margin (`useContentMargin`:
+    16 pt, and 20 pt under a side bar; user ruling 2026-10-29) (under a top
+    bar that content is uncapped, `useContentCap`, so it starts at the
+    same margin; under a side bar the content stays capped and centred, so the margins are the
+    pane's own; a pane under a bottom bar keeps UIKit's margin). UIKit insets the large title by
+    the navigation bar's layout margin, which it derives from the stack's distance to the
+    window's edge (20 pt for the pane at the window's leading edge, 0 for the other pane), while
+    the content pads its sides by a fixed margin (16 pt, 20 pt under a side bar). The patch adds
+    a `fixedContentMargin` prop (a Float, default 0) to `RNSScreenStack`, a
+    `FixedContentMarginContext` (default 0) that `ScreenStack` reads and passes as that prop, and
+    on iOS a `fixedContentMargin` property on `RNSNavigationController`. While it is above 0 the
+    controller stops respecting the system minimum layout margins and sets the leading and
+    trailing margins of its view and of its navigation bar to that value, again after each
+    `viewDidLayoutSubviews`.
+    Scope: only `PaneStackView` provides a value (`useContentMargin()`, the content's side
+    padding: `theme.spacing(4)`, or `theme.spacing(5)` under a side bar). In a split
+    (`columns`/`rows`) whose native tab bar is not at the bottom
+    (`useIsTabBarNotAtBottom()`: the bar at the top or at a side; user ruling 2026-10-23) it
+    gives both panes' stacks the value. The Provider wraps every stack, but in `single` mode
+    it gives the one stack a value above 0 only under a side bar
+    (`useTabBarPlacement() === 'side'`, the Duo outer pose, 466x678, whose title otherwise
+    starts at UIKit's 20 pt, which the content now matches at 20 pt: ruling 2026-10-29, after
+    540b4ba3 first told the stack 16 pt); under a top or a bottom bar a single stack reads 0.
+    That is every two-pane window of a regular iPad, small Stage Manager splits (for example
+    1032x683 columns or 683x909 rows) included, whatever the window's size (user ruling
+    2026-10-21), and every Surface Duo pose with a side bar (the outer and the inner landscape
+    windows), so the title starts at the content's margin there too. The content cap is the
+    narrower test and does not follow it: only a bar at the TOP lifts the cap (`useContentCap`
+    on `useIsTabBarAtTop()`), so such a top-bar pane's content is uncapped and starts at the same
+    margin as its title (user ruling 2026-10-21, which replaces the large-window-only cap of
+    2026-10-20), while a pane with a SIDE tab bar stays capped at 600 pt, with no large-window
+    exception. Every other stack (iPhone, a single stack under a top or a bottom bar, a stack
+    outside `PaneStackView`) and the
+    panes of any window whose tab bar is at the bottom (the Surface Duo inner portrait pose,
+    669x951), which keeps its look completely, read 0. The placement is the one `Screen` clears,
+    read from the bar's real frame, so the margin and the content cap can both lag for about
+    0.1 s while the placement read is stale (on a split change or a large-to-large rotation, and
+    on cold start until the first read), then settle.
+    Stored margins, not getter margins: a controller root view's `directionalLayoutMargins`
+    getter returns the stored margin plus the safe area inset while
+    `insetsLayoutMarginsFromSafeArea` is YES, so writing the getter's value back would add the
+    inset to the margin at every layout pass. The patch reads the margins through
+    `RNSStoredDirectionalLayoutMargins`, which subtracts the view's whole `safeAreaInsets` in
+    that case (top and bottom, and left and right mapped to leading and trailing by the view's
+    `effectiveUserInterfaceLayoutDirection`, so a right-to-left layout swaps them; the same
+    helper serves the navigation bar), so it returns the true stored margins. It
+    writes only the leading and trailing margins through `RNSSetHorizontalLayoutMargins`, and
+    skips the write when the margins already hold. The margins saved for the restore path are
+    the stored ones too.
+    Parent safe top inset: in a split iPad window with a top tab bar the per-tab SwiftUI
+    `TabHostingController` that parents the stack has a safe top of 96 at every first attach,
+    which relaxes to the window's 32 on a first visit and stays 96 on a revisit; the stack's safe
+    top (the parent's less the pane's window y 76) is then 20 instead of 0 and the Settings
+    navigation bar sits at window y 96 instead of 86 (user ruling: keep the first-visit
+    position). `syncParentSafeAreaTopInset`, run after `applyFixedContentMargin` in
+    `viewDidLayoutSubviews` only (not from `viewSafeAreaInsetsDidChange`, so the parent is never
+    changed during UIKit's own safe area propagation), writes a negative top
+    `additionalSafeAreaInsets` on `parentViewController` (never on the stack: UIKit ignores a
+    navigation controller's own negative additional inset and honors one on the parent;
+    measured on the iOS 27.0 simulator) so the parent's effective top equals the window's safe
+    top: `MIN(0, MAX(-tab bar height, window safe top - (parent safe top - stored additional
+    top)))`. It runs only while the value is above 0, the parent's view is loaded, the stack is
+    in a window and has a tab bar controller (an iPhone and a Duo bottom bar have the value 0,
+    so the gate stops them; a side bar has the value 20, and stays untouched only because the
+    parent's top there is at most the window's, so the target is 0), writes only when the target
+    differs by more than 0.5 pt, and never reads the safe area back after a write as the
+    inherited value, so it cannot accumulate: if UIKit ignored every write, the clamp bounds
+    them at ceil(tab bar height / (parent top - window top)), which is two for the measured
+    96, 32 and 72. A flag on the parent marks that this code wrote it; the
+    inset goes back to 0 only for a marked parent, when the stack's value goes to 0 or it leaves
+    the parent, and only if no other stack of that parent still has a value above 0. A re-derived
+    patch must keep it.
+    How the default path stays the same: with 0 `updateProps` still assigns the property, but
+    the setter returns on its first line for an equal value,
+    `applyFixedContentMargin` returns on its first line, and no margin or
+    `viewRespectsSystemMinimumLayoutMargins` is touched; the native stack gets the prop's codegen
+    default. Going back to 0 restores the view and bar margins captured when the value first went
+    above 0, and `viewRespectsSystemMinimumLayoutMargins = YES`. Without a stack view being
+    recycled, that restore path is an ordinary event on a Surface Duo: rotating from a side-bar
+    pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 20 to
+    0, and the saved stored margins are put back. The stale placement read above (about 0.1 s,
+    the mounted split briefly reads a bar at the bottom) reaches it too; an iPad window keeps
+    its tab bar at the top, so no resize reaches it there. Only the Fabric (new
+    architecture) path is patched, as the stack takes its props in `updateProps`; `lib/module` is
+    not patched (nothing here loads it). The patch was derived against the pristine tarball
+    (`npm pack react-native-screens@4.27.0`): applying it to that tarball gives the installed
+    tree.
+    Pinned by `__tests__/react-native-patch.test.ts` ("the react-native-screens fixed content
+    margin patch": the patch touches only react-native-screens, the version is exactly `4.27.0`,
+    the installed files carry the patch, the margins written back are the stored ones and are
+    skipped when equal, the parent safe top inset (gate, formula, threshold, reset, layout pass
+    only, bounded writes), and the context reads 0 outside a provider) and by
+    `pane-stack-view.component.test.tsx` (both panes get `theme.spacing(4)`, or `theme.spacing(5)`
+    under a side bar, the single stack 0, or `theme.spacing(5)` under a side bar).
+    Re-check rule: `docs/harness/dependency-hygiene.md` ("Standing patch: react-native-screens").
+    A device re-measurement is the real proof (Jest cannot see native margins), and it covers:
+    the restore path (pane titles back to stock, then 16 pt, or 20 pt under a side bar) on a
+    split change and on a large-to-large rotation, where the stale read can take it; idle CPU
+    with a pane open (the bar margin is written in `viewDidLayoutSubviews`, which must not cause
+    continuous re-layout); and the bar items and the back button, which UIKit also places by the
+    bar's `directionalLayoutMargins`, so they may move by up to 16 pt (measure it, do not claim it).
   - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
     `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
     `ScrollView` with `automaticallyAdjustKeyboardInsets` shifted its content offset by the

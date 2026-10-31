@@ -406,7 +406,8 @@ rules:
       - metavariable-regex:
           metavariable: $READ
           regex: ^(readToken|readCredentials|readDbKey)$
-  # kiko-domain "Money at the boundary" (D7b): a holding's raw
+  # kiko-domain "Any table column holding an amount is an integer minor-units
+  # column" (D7b): a holding's raw
   # `balanceMinorUnits` column is converted to `Money` in exactly one place,
   # `holdingsRepo.balanceOf`. A `.balanceMinorUnits` member read anywhere else
   # is either a repo/db/data-transfer boundary (excluded below) or a value
@@ -421,7 +422,8 @@ rules:
     message: >
       A `.balanceMinorUnits` member read outside a repository. Convert the
       raw stored balance to `Money` through `holdingsRepo.balanceOf(row)`
-      (kiko-domain "Money at the boundary") instead of reading the column
+      (kiko-domain "Any table column holding an amount is an integer
+      minor-units column") instead of reading the column
       directly. If this is genuinely inside a repository boundary the
       exclusions below don't yet cover, add an OVERRIDE noting why.
     paths:

@@ -84,6 +84,8 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-whole-price-points-read',
   'kiko-holding-delete-needs-cascade',
   'kiko-no-pane-blind-bottom-clearance',
+  'kiko-top-bar-band-only-in-two-pane-layout',
+  'kiko-tab-bar-placement-only-in-screen-and-pane-stack-view',
   'kiko-no-focus-hook-in-pane-default-screen',
   'kiko-no-change-language-in-test-body',
   'kiko-no-typed-jest-require-actual',
@@ -91,6 +93,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-rejects-to-throw-needs-error',
   'kiko-sortable-grid-lone-card-lifts',
   'kiko-kind-ternary-prefers-match',
+  'kiko-no-device-idiom',
   'kiko-type-ternary-prefers-match',
   'kiko-no-inline-text-variant-mock',
   'kiko-component-explicit-return',
@@ -131,6 +134,7 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
   'kiko-test-title-no-history': 'kiko-test-title-no-history/src/test-support/title-example',
   'kiko-rejects-to-throw-needs-error':
     'kiko-rejects-to-throw-needs-error/src/test-support/rejects-example',
+  'kiko-no-device-idiom': 'kiko-no-device-idiom/src/layout/device-idiom',
   'kiko-no-inline-text-variant-mock':
     'kiko-no-inline-text-variant-mock/src/test-support/text-mock-example',
 };
@@ -154,6 +158,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-change-language-in-test-body': 'src/test-support',
   'kiko-test-title-no-history': 'src/test-support',
   'kiko-rejects-to-throw-needs-error': 'src/test-support',
+  'kiko-no-device-idiom': 'src/layout',
   'kiko-no-inline-text-variant-mock': 'src/test-support',
 };
 
@@ -235,8 +240,15 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
   describe('kiko-no-pane-blind-bottom-clearance on an inline snippet (Semgrep only)', () => {
     const RULE_ID = 'kiko-no-pane-blind-bottom-clearance';
     const CLEARANCE_MODULE = "'@kiko/design-system/components/screen/bottom-clearance'";
+    const TOP_CLEARANCE_MODULE = "'@kiko/design-system/components/screen/top-clearance'";
+
+    type Finding = { check_id: string; extra: { message: string; metadata: { fix: string } } };
 
     function findingsFor(content: string): string[] {
+      return scanFor(content).map(({ check_id }) => check_id.split('.').pop() ?? '');
+    }
+
+    function scanFor(content: string): Finding[] {
       const directory = mkdtempSync(join(tmpdir(), 'kiko-clearance-snippet-'));
       try {
         const target = join(directory, 'snippet.ts');
@@ -254,9 +266,8 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
           ],
           { encoding: 'utf8' },
         );
-        const results: { check_id: string }[] = JSON.parse(scan.stdout).results;
 
-        return results.map(({ check_id }) => check_id.split('.').pop() ?? '');
+        return JSON.parse(scan.stdout).results;
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }
@@ -268,6 +279,31 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       ).toContain(RULE_ID);
     });
 
+    it('reports a value import of the top function, which proves the scan runs the top arm', () => {
+      expect(
+        findingsFor(`import { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\n`),
+      ).toContain(RULE_ID);
+    });
+
+    it.each([
+      ['message', (finding?: Finding) => finding?.extra.message],
+      ['fix', (finding?: Finding) => finding?.extra.metadata.fix],
+    ] as const)(
+      'the %s sends only the bottom function to the hook and never imports the top one',
+      (_field, textOf) => {
+        const text = textOf(
+          scanFor(`import { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\n`).find(
+            ({ check_id }) => check_id.endsWith(RULE_ID),
+          ),
+        );
+
+        expect(text).toMatch(/resolveBottomClearance[^.]*useBottomClearance\(\)/);
+        expect(text).not.toMatch(/resolveTopClearance[^.]*useBottomClearance/);
+        expect(text).toMatch(/resolveTopClearance[^.]*is never imported/);
+        expect(text).toMatch(/plain branch/);
+      },
+    );
+
     it.each([
       [
         'a type-only import of the function, which is erased',
@@ -276,6 +312,14 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       [
         'a path that only ends in the same words',
         "import { useBottomClearance } from '@kiko/design-system/components/screen/use-bottom-clearance';\nexport const hook = useBottomClearance;\n",
+      ],
+      [
+        'a type-only import of the top function, which is erased',
+        `import type { resolveTopClearance } from ${TOP_CLEARANCE_MODULE};\nexport type Clearance = typeof resolveTopClearance;\n`,
+      ],
+      [
+        'a top path that only ends in the same words',
+        "import { useTopClearance } from '@kiko/design-system/components/screen/use-top-clearance';\nexport const hook = useTopClearance;\n",
       ],
     ])('leaves %s alone', (_name, content) => {
       expect(findingsFor(content)).not.toContain(RULE_ID);

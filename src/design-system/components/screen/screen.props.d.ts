@@ -30,6 +30,19 @@ export type ScreenProps = {
   // `flex: 1` so the footer is pushed to the bottom even on a short page
   // instead of floating directly beneath the content.
   footer?: ReactNode;
+  // Float the `footer` over the content instead of pinning it below: the footer sits where the
+  // pinned one sits but takes no layout room, with no band behind it, so the rows scroll under
+  // its buttons. The `scroll` and plain content pad their end by the footer's measured height, so
+  // at full scroll the last row stops above the buttons (a `bleedTop` or `bleedBottom` child pads
+  // its own end, by `useFloatingFooterEnd()`). Every filled `Button` (primary, secondary,
+  // destructive, tonal) inside it is a capsule on Liquid Glass on iOS 26+; below 26 a tonal one
+  // sits on the backing's opaque base and a solid one keeps its fill; ghost is unchanged (see
+  // `resolve-footer-glass-variant.ts`). Touches outside the buttons reach the
+  // rows. Beside a side tab bar, in a pane that touches the window's bottom, its lowest button
+  // ends level with the bottom of the bar's platter (`SIDE_BAR_PLATTER_INSET`) rather than a
+  // home-indicator inset above the window's bottom. Defaults to `false`, the pinned footer. Only
+  // meaningful with a `footer`.
+  floatingFooter?: boolean;
   // Opt out of the plain (non-scroll) branch's own bottom tab-bar clearance
   // because the screen's child is itself the scrollable surface and applies
   // that clearance to its own content (e.g. Home's SectionList). Without this,
@@ -38,10 +51,10 @@ export type ScreenProps = {
   // takes the amount from `useBottomClearance()`, which gives a pane that is
   // not at the window's bottom none. Only meaningful in the plain (non-scroll)
   // branch when there is no `footer` (which already claims the bottom edge on
-  // its own); ignored in `scroll` mode. In a pane the child also caps and
-  // centres its own content with `useContentCap()` (the root is left the whole
-  // pane so the list's scroll indicator stays at the pane edge); a `footer` is
-  // capped by Screen itself.
+  // its own); ignored in `scroll` mode. In a pane, except a pane under a top tab bar, the child
+  // also caps and centres its own content with `useContentCap()` (the root is left the whole
+  // pane so the list's scroll indicator stays at the pane edge); a `footer` is capped by Screen
+  // itself.
   bleedBottom?: boolean;
   // The plain-branch counterpart of `scroll` for a large-title screen whose
   // child is ITSELF the scrollable surface (a virtualized FlatList/SectionList
@@ -58,9 +71,9 @@ export type ScreenProps = {
   // padding (for the collapse), its own horizontal padding, AND — the
   // `bleedBottom` contract — its own floating tab-bar bottom clearance via
   // `useBottomClearance()` when it has no `footer` (e.g. HoldingDetail's
-  // ledger FlatList). In a pane it also caps and centres its own content
-  // container with `useContentCap()`, so the list keeps the whole pane. A
-  // `footer` still pins below the child as a sibling with its own clearance.
+  // ledger FlatList). In a pane, except a pane under a top tab bar, it also caps and centres its
+  // own content container with `useContentCap()`, so the list keeps the whole pane. A `footer`
+  // still pins below the child as a sibling with its own clearance.
   // Only meaningful in the plain (non-scroll) branch; ignored in `scroll` mode
   // (which already drops the top edge for its own ScrollView).
   bleedTop?: boolean;

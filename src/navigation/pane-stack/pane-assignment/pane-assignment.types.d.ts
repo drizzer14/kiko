@@ -22,4 +22,6 @@ export type PaneConfig = {
   rootPane: Pane;
   companionDefault?: PaneDefault;
   primaryDefault?: PaneDefault;
+  // The share of a columns window the companion pane asks for; equal halves without it.
+  companionShare?: number;
 };

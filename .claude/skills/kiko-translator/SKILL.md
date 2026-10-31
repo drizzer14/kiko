@@ -19,8 +19,8 @@ stayed English after a language switch and went stale after a rename. The fix:
 the row stores a structural marker (`exchangeCounterpartHoldingId`,
 `untrackedCounterpart`) and `transactionRowDescription`
 (`src/transactions/row-description/`) resolves the label with `t` at render
-time (see kiko-domain 'Exchange/Convert legs'). The same rule applies to a placeholder like "Never" for
-last-sync (T-17, `src/screens/account-detail/format-last-sync.ts`): add
+time (see kiko-exchange-sync 'Exchange/Convert legs'). The same rule applies to a placeholder
+like "Never" for last-sync (T-17, `src/screens/account-detail/format-last-sync.ts`): add
 a catalogue key and thread `t` through, don't hardcode the fallback.
 
 ## A seeded default category is named by its displayed title everywhere
@@ -234,7 +234,9 @@ string:
   Kiko/Кіко, Monobank, Binance; the closed set is `PROPER_NOUNS` in
   `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
   — read them there, add a new name to the right one). A uk word
-  missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence.
+  missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence. A Binance
+  product or wallet name is a whole PHRASE in `BINANCE_PRODUCT_PHRASES` (same en file), never a
+  single word added to `PROPER_NOUNS`: "Card" or "Spot" alone would then pass in every string.
   Untracked-wallet product names (`UNTRACKED_WALLETS`,
   `src/transactions/untracked-counterpart/`) are kept out of the i18n
   catalogue: code-side proper nouns; only the 'Transfer to/from {{name}}'
@@ -266,10 +268,16 @@ rows (`help.topics.*.rowLabel`, `SettingsRow` in `help.screen.tsx` that
 also open a screen) stay sentence case ("Add an account" vs title "Add an
 Account"). It is not a rule for every row that opens a screen.
 
+Removing or renaming a catalogue key: first grep the old key and its literal across the help
+topics, the pin suites (`it(`/`describe(` titles included), the plan and spec rows, and uk, then
+make every dependent edit in the SAME step and commit. A copy ruling greps the old literal the
+same way before it lands.
+
 A string used in TWO roles otherwise (a menu item or button doubling as
 a sheet title) still needs TWO keys, one per role, not one key reused —
 `accountDetail.addBankSheetTitle` (Title Case) vs
-`accountDetail.addBankAction` (sentence case), and
+`accountDetail.addBankAction` (sentence case), `accountDetail.connectExchangeSheetTitle`
+vs `accountDetail.connectExchangeAction` (the second pair), and
 `statementImport.chooseHoldingSheetTitle` vs
 `statementImport.chooseHolding`, are the instances. An
 `Alert.alert` title (a key ending `errorTitle`) is an ERROR, not a
@@ -307,15 +315,18 @@ into `HEADING_PROPS`. A component prop that forwards a heading into a
 `ConfirmSheet` title (`CardContextMenu` `deleteTitle`) goes into both
 `HEADING_PROPS` and `FORWARDED_HEADING_SITES` of that test, and its key
 into `TITLE_KEYS`; read the test for the current entries. Every picker sheet (`SelectField` and its wrappers,
-`DateField`, `TimeField`, `CategoryField`, `BankTypeField`,
+`DateField`, `TimeField`, `CategoryField`, `BankTypeField`, `ExchangeTypeField`
+(`forms.account.exchangeTypeSheetTitle`),
 `HoldingSelectField`, `PaymentHoldingField`/`LoanPaymentField`,
 `CurrencyField`, `FilterMenu`, `ColumnSelectField`) takes a REQUIRED
 `sheetTitle` prop, never its `label` repeated: give each field-label key a
 `<labelKey>SheetTitle` twin (en Title Case, uk the label's own sentence-case
 text) and add it to `TITLE_KEYS` (sheet-title decision, 2026-09-26). A
-sheet title is a noun ("Account Kind" / "Вид рахунку"), never an imperative
-"Select a …" / "Оберіть …" — that form belongs to the field's placeholder
-only (noun-title decision, 2026-09-26). Read the FAILURE MESSAGE'S key path before
+PICKER field's sheet title is a noun ("Account Kind" / "Вид рахунку"), never an
+imperative "Select a …" / "Оберіть …" — that form belongs to the field's placeholder
+only (noun-title decision, 2026-09-26). An action sheet opened by a Button
+(`ProviderSheet`) is not a picker field: its title takes the action's imperative in Title
+Case ("Add a Bank", "Connect an Exchange or Wallet"). Read the FAILURE MESSAGE'S key path before
 assuming a new string is miscased: add a new title key to
 `title-keys.ts`, not just to the catalogue.
 

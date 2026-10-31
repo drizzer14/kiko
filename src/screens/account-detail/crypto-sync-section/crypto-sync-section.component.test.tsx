@@ -261,27 +261,29 @@ describe('CryptoSyncSection', () => {
     setConnected({});
   });
 
-  it('shows the heading, a Wallet/Binance source picker, and the wallet field by default', async () => {
-    const { getByText, getByLabelText, queryByLabelText } = await renderSection();
+  it('shows the heading and the connect button, with no source toggle, when no provider is named', async () => {
+    const { getByText, queryByText, queryByLabelText } = await renderSection();
 
     expect(getByText('Synchronization')).toBeTruthy();
-    expect(getByText('Wallet')).toBeTruthy();
-    expect(getByText('Binance')).toBeTruthy();
-    expect(getByLabelText('wallet-field')).toBeTruthy();
+    expect(getByText('Connect an exchange or wallet')).toBeTruthy();
+    expect(queryByText('Wallet')).toBeNull();
+    expect(queryByText('Binance')).toBeNull();
+    expect(queryByLabelText('wallet-field')).toBeNull();
     expect(queryByLabelText('binance-field')).toBeNull();
   });
 
-  it('switches to the Binance field when the Binance chip is selected', async () => {
-    const { getByText, getByLabelText, queryByLabelText } = await renderSection();
+  it('shows the Binance field and no wallet field once Binance is picked in the connect sheet', async () => {
+    const { getByText, getByTestId, getByLabelText, queryByLabelText } = await renderSection();
 
-    await fireEvent.press(getByText('Binance'));
+    await fireEvent.press(getByText('Connect an exchange or wallet'));
+    await fireEvent.press(getByTestId('connect-exchange-option-binance'));
 
     expect(getByLabelText('binance-field')).toBeTruthy();
     expect(queryByLabelText('wallet-field')).toBeNull();
   });
 
   it('runs a wallet connect sync with the address when the wallet field connects', async () => {
-    const { getByLabelText } = await renderSection();
+    const { getByLabelText } = await renderSection({ bankId: 'btc_wallet' });
 
     await fireEvent.press(getByLabelText('wallet-field'));
 
@@ -295,9 +297,8 @@ describe('CryptoSyncSection', () => {
   });
 
   it('runs a Binance connect sync when the Binance field connects', async () => {
-    const { getByText, getByLabelText } = await renderSection();
+    const { getByLabelText } = await renderSection({ bankId: 'binance' });
 
-    await fireEvent.press(getByText('Binance'));
     await fireEvent.press(getByLabelText('binance-field'));
 
     await waitFor(() =>
@@ -309,9 +310,8 @@ describe('CryptoSyncSection', () => {
     'connecting Binance re-plans the reminders after the sync (sync succeeded: %s), since a synced account sends none',
     async (synced) => {
       mockSync.mockResolvedValue(synced);
-      const { getByText, getByLabelText } = await renderSection();
+      const { getByLabelText } = await renderSection({ bankId: 'binance' });
 
-      await fireEvent.press(getByText('Binance'));
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
@@ -325,7 +325,7 @@ describe('CryptoSyncSection', () => {
     'connecting a wallet re-plans the reminders after the sync (sync succeeded: %s), since a synced account sends none',
     async (synced) => {
       mockSync.mockResolvedValue(synced);
-      const { getByLabelText } = await renderSection();
+      const { getByLabelText } = await renderSection({ bankId: 'btc_wallet' });
 
       await fireEvent.press(getByLabelText('wallet-field'));
 
@@ -340,7 +340,7 @@ describe('CryptoSyncSection', () => {
     // Multi-connection: each crypto account connects independently, so
     // another account already holding a wallet does not block this one's field.
     setConnected({ btc_wallet: [account({ id: 'other', institution: 'btc_wallet' })] });
-    const { getByLabelText, queryByText } = await renderSection();
+    const { getByLabelText, queryByText } = await renderSection({ bankId: 'btc_wallet' });
 
     expect(getByLabelText('wallet-field')).toBeTruthy();
     expect(queryByText('Wallet is already connected to another account')).toBeNull();
@@ -348,9 +348,7 @@ describe('CryptoSyncSection', () => {
 
   it('still shows the Binance field when another account already holds Binance', async () => {
     setConnected({ binance: [account({ id: 'other', institution: 'binance' })] });
-    const { getByText, getByLabelText } = await renderSection();
-
-    await fireEvent.press(getByText('Binance'));
+    const { getByLabelText } = await renderSection({ bankId: 'binance' });
 
     expect(getByLabelText('binance-field')).toBeTruthy();
   });
@@ -707,7 +705,7 @@ describe('CryptoSyncSection — localization', () => {
     });
   });
 
-  it('renders the heading and Source label from the Ukrainian catalog', async () => {
+  it('renders the heading and the connect button from the Ukrainian catalog', async () => {
     await act(async () => {
       await i18n.changeLanguage('uk');
     });
@@ -715,7 +713,8 @@ describe('CryptoSyncSection — localization', () => {
     const { getByText, queryByText } = await renderSection();
 
     expect(getByText('Синхронізація')).toBeTruthy();
-    expect(getByText('Джерело')).toBeTruthy();
+    expect(getByText('Підключити біржу або гаманець')).toBeTruthy();
+    expect(queryByText('Джерело')).toBeNull();
     expect(queryByText('Synchronization')).toBeNull();
   });
 

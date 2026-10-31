@@ -137,7 +137,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // `bleedBottom`. In a pane that is not at the window's bottom it is 0.
   const listBottomClearance = useBottomClearance();
   // In a pane the list takes the whole pane, so its scroll indicator stays at the pane edge, and
-  // only what sits in it is capped and centred: the fixed header and the list's content.
+  // only what sits in it is capped and centred (except in a pane under a top tab bar): the fixed
+  // header and the list's content.
   const contentCap = useContentCap();
   const scrollIndicatorProps = useScrollIndicatorProps();
 
@@ -681,7 +682,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                   {t('home.netWorth')}
                 </Text>
 
-                <MoneyText money={total} context="balance" style={styles.balance} />
+                <MoneyText
+                  money={total}
+                  context="balance"
+                  style={styles.balance}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                />
 
                 <Box style={styles.breakdown}>
                   <CurrencyBreakdown items={breakdown} />

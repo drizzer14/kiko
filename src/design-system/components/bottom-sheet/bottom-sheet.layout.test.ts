@@ -1,4 +1,4 @@
-import type { FoldRegion } from '@kiko/display-regions';
+import type { FoldRegion, HorizontalSizeClass } from '@kiko/display-regions';
 
 import { resolveSheetFrame } from './bottom-sheet.layout';
 
@@ -14,10 +14,26 @@ const frameOf = (
   mode: 'single' | 'columns' | 'rows',
   window: { width: number; height: number },
   fold: FoldRegion = null,
-) => resolveSheetFrame({ mode, window, fold, hairline: HAIRLINE, maxWidth: MAX_WIDTH });
+  sizeClass: HorizontalSizeClass = 'compact',
+) => resolveSheetFrame({ mode, sizeClass, window, fold, hairline: HAIRLINE, maxWidth: MAX_WIDTH });
 
 describe('resolveSheetFrame', () => {
-  it('leaves a single window full width, as before', () => {
+  it('caps a single regular window at the maximum width and centres it', () => {
+    expect(frameOf('single', { width: 720, height: 500 }, null, 'regular')).toEqual({
+      width: 540,
+      left: (720 - 540) / 2,
+    });
+  });
+
+  it('shrinks the card to a single regular window narrower than the maximum width', () => {
+    expect(frameOf('single', { width: 500, height: 720 }, null, 'regular')).toEqual({
+      width: 500,
+      left: 0,
+    });
+  });
+
+  it('leaves a single compact window full width, an iPhone or the Duo outer display', () => {
+    expect(frameOf('single', { width: 390, height: 844 })).toEqual({});
     expect(frameOf('single', OUTER)).toEqual({});
   });
 
@@ -43,6 +59,22 @@ describe('resolveSheetFrame', () => {
     expect(frameOf('columns', { width: 1400, height: 800 }, fold)).toEqual({
       width: 540,
       left: 324 + (1076 - 540) / 2,
+    });
+  });
+
+  it('characterization: a 1100 x 820 columns card is 540 wide, centred in the window', () => {
+    expect(frameOf('columns', { width: 1100, height: 820 }, null, 'regular')).toEqual({
+      width: 540,
+      left: (1100 - 540) / 2,
+    });
+  });
+
+  it('characterization: a folded 1100 pt window still centres the card in the fold primary', () => {
+    const fold = { x: 400, y: 0, width: FOLD_GAP, height: 820 };
+
+    expect(frameOf('columns', { width: 1100, height: 820 }, fold, 'regular')).toEqual({
+      width: 540,
+      left: 424 + (676 - 540) / 2,
     });
   });
 

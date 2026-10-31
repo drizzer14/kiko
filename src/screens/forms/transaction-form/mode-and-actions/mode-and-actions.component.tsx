@@ -1,5 +1,7 @@
 import { View } from 'react-native';
 import type { ReactElement } from 'react';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import Button from '@kiko/design-system/components/button';
 import CategoryField from '@kiko/screens/forms/category-field';
 import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
@@ -33,20 +35,30 @@ const ModeAndActions = (props: ModeAndActionsProps): ReactElement | null => {
         amount/sign. Exchange has no category: both legs' descriptions are
         fixed, auto-generated copy. */}
       {!props.isExchange && (
-        <View ref={props.categoryFieldRef}>
-          <CategoryField
-            label={props.t('forms.transaction.category')}
-            sheetTitle={props.t('forms.transaction.categorySheetTitle')}
-            testID="transaction-category-field"
-            options={props.categoryOptions}
-            selectedKey={props.selectedCategory}
-            onSelect={props.onSelectCategory}
-            // A category is required only on a fresh add (`plainFieldErrors`
-            // gates a create on it); an edit and a template leave it optional.
-            required={props.categoryRequired}
-            error={props.categoryError}
-          />
-        </View>
+        <Box gap={1}>
+          <View ref={props.categoryFieldRef}>
+            <CategoryField
+              label={props.t('forms.transaction.category')}
+              sheetTitle={props.t('forms.transaction.categorySheetTitle')}
+              testID="transaction-category-field"
+              options={props.categoryOptions}
+              selectedKey={props.selectedCategory}
+              onSelect={props.onSelectCategory}
+              // A category is required only on a fresh add (`plainFieldErrors`
+              // gates a create on it); an edit and a template leave it optional.
+              required={props.categoryRequired}
+              error={props.categoryError}
+            />
+          </View>
+
+          {/* Says why a bank debit that paid for an exchange purchase is left out of
+            spending: informational, so a bare caption like the loan field's auto-link caption. */}
+          {props.exchangeFundingCaptionKey !== undefined && (
+            <Text variant="caption" tone="textSecondary">
+              {props.t(props.exchangeFundingCaptionKey)}
+            </Text>
+          )}
+        </Box>
       )}
 
       {/* Shown for BOTH a manual and a synced row — an existing debit's own

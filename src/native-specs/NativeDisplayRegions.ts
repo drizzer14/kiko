@@ -6,6 +6,7 @@ import { type CodegenTypes, type TurboModule, TurboModuleRegistry } from 'react-
 // emits the same JSON, so JS parses one shape for both.
 export interface Spec extends TurboModule {
   getSnapshot(): string;
+  requestRefresh(): void;
   readonly onChange: CodegenTypes.EventEmitter<string>;
 }
 

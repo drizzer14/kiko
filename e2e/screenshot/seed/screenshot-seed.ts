@@ -596,7 +596,17 @@ const buildOneOffExpenses = (text: DemoText): OneOffExpense[] => [
   },
 ];
 
-const CARD_OPENING_MINOR_UNITS = 2_000_000;
+// The bank debits that fund the Binance P2P and card rows (`p2p:UAH:4150.00`, `card:UAH:2600.00`)
+// and the Wise one that funds its fiat deposit (`bank:EUR:100.00`): the totals equal the exchange
+// rows' codes, so each debit pairs with its row and the matched-funding caption is reachable in
+// the demo (Guideline 2.5.19).
+const P2P_FUNDING_MINOR_UNITS = 415_000;
+const CARD_FUNDING_MINOR_UNITS = 260_000;
+const FIAT_DEPOSIT_FUNDING_MINOR_UNITS = 10_000;
+
+// Raised by the two UAH funding debits, so the card keeps the end balance it had before them.
+const CARD_OPENING_MINOR_UNITS = 2_000_000 + P2P_FUNDING_MINOR_UNITS + CARD_FUNDING_MINOR_UNITS;
+const WISE_OPENING_MINOR_UNITS = 80_000 + FIAT_DEPOSIT_FUNDING_MINOR_UNITS;
 
 const CAR_LOAN_KEY = 'car-loan';
 const PERSONAL_DEBT_KEY = 'personal-debt';
@@ -666,6 +676,25 @@ const buildFoodDeliveryTransactions = (calendar: DemoCalendar, text: DemoText): 
     description,
   }));
 
+// A debit stays in the default category: a matched debit leaves spending, so it is no spend to
+// categorize. The P2P transfer is dated with its USDT row (day 110) and the card payment posts
+// two days after its row (day 35), both inside the matcher's window; both are older than the
+// 30-day window, so Home and the 30-day charts show neither.
+const buildExchangeFundingDebits = (calendar: DemoCalendar): SeedTransaction[] => [
+  {
+    amountMinorUnits: -P2P_FUNDING_MINOR_UNITS,
+    time: calendar.at(110),
+    category: 'other',
+    description: 'Binance P2P',
+  },
+  {
+    amountMinorUnits: -CARD_FUNDING_MINOR_UNITS,
+    time: calendar.at(33),
+    category: 'other',
+    description: 'Binance',
+  },
+];
+
 /** The main UAH card ledger: an opening deposit, then a monthly salary + spends. */
 const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] => {
   const monthlyExpenses = buildMonthlyExpenses(text);
@@ -722,6 +751,7 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
     ...list,
     ...buildCarLoanPayments(calendar, text),
     ...buildFoodDeliveryTransactions(calendar, text),
+    ...buildExchangeFundingDebits(calendar),
   ];
 };
 
@@ -896,10 +926,18 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
           color: entityColorsDark.indigo,
           transactions: [
             {
-              amountMinorUnits: 80_000,
+              amountMinorUnits: WISE_OPENING_MINOR_UNITS,
               time: calendar.at(120),
               category: null,
               description: text.accountTopUp,
+            },
+            // Two days before the EUR row it funds (`bank:EUR:100.00`, day 60), inside the
+            // matcher's five-day window for a fiat deposit; older than the 30-day window.
+            {
+              amountMinorUnits: -FIAT_DEPOSIT_FUNDING_MINOR_UNITS,
+              time: calendar.at(62),
+              category: 'other',
+              description: 'Binance',
             },
             {
               amountMinorUnits: -20_000,

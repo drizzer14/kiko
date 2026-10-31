@@ -94,7 +94,7 @@ type LoanPaymentMatch = {
 };
 
 // Rule-4's candidate filter: a debit, never already linked or already
-// rejected (a manual "None" or Undo must stick — kiko-domain), never one leg
+// rejected (a manual "None" or Undo must stick — kiko-debts), never one leg
 // of an Exchange/Convert, and never a move to an untracked Binance wallet
 // (structural markers, not a description guess — see `exchange-exclusion.ts`'s
 // identical checks).

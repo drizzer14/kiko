@@ -1580,6 +1580,7 @@ describe('a capital cursor older than the re-scan window', () => {
     );
     const records = [...denseDay, ...newer];
     const state = await oldCursorState();
+    state.account.seed('capital', { multiCoinSeen: true });
 
     await runOver(state, records);
 
@@ -1787,6 +1788,7 @@ describe('the pending overlap days of the capital walk', () => {
     const readable = withdrawal({ id: 'readable', applyTime: readableDay.start + 1 });
     const inWindow = withdrawal({ id: 'in-window', applyTime: NOW - 5 * DAY_MS });
     const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay, readableDay]);
+    state.account.seed('capital', { multiCoinSeen: true });
 
     const first = await runOver(state, [stuck, readable, inWindow]);
     const second = await runOver(state, [stuck, readable, inWindow]);
@@ -1900,6 +1902,7 @@ describe('the pending overlap days of the capital walk', () => {
     const late = withdrawal({ id: 'late', applyTime: cursor - 0.5 * DAY_MS });
     const newer = withdrawal({ id: 'newer', applyTime: cursor + 3_600_000 });
     const state = await stateOf(cursor);
+    state.account.seed('capital', { multiCoinSeen: true });
     await runUntilComplete(state, () => [late, newer]);
 
     const again = await runOver(state, [late, newer]);
@@ -1976,6 +1979,7 @@ describe('the pending overlap days of the capital walk', () => {
         end: BASE - (9 + index * 10) * DAY_MS,
       }));
       const state = await stateOf(NOW - 2 * DAY_MS, [...others, stuckDay, unrelatedDay]);
+      state.account.seed('capital', { multiCoinSeen: true });
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         await runOver(state, [stuckRecord(), unrelated]);
@@ -2093,6 +2097,7 @@ describe('the pending overlap days of the capital walk', () => {
 
       it('owes each stuck day at its record alone once the runs have read every day, and imports the rest of each', async () => {
         const state = await stateOf(NOW - 2 * DAY_MS, stuckDays);
+        state.account.seed('capital', { multiCoinSeen: true });
 
         // A run reads as many days as its capital calls allow: three runs read the ten.
         for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -2160,6 +2165,7 @@ describe('the pending overlap days of the capital walk', () => {
 
     it('owes the stuck range at its record alone after the first run, and reads only that point from then on', async () => {
       const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+      state.account.seed('capital', { multiCoinSeen: true });
 
       await runOver(state, [stuckRecord()]);
       const owedAfterFirst = beyondWindow(state.account.pending());
@@ -2541,6 +2547,7 @@ describe('the pending overlap days of the capital walk', () => {
             : historyPage([]),
         );
       const state = await stateOf(CURSOR, [day]);
+      state.account.seed('capital', { multiCoinSeen: true });
       const requests = denseDay();
       const first = makeFirstSyncDeps(state.account, { fetchWithdrawHistory: requests });
 

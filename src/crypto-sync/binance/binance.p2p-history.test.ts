@@ -5,6 +5,7 @@ import {
   walkStateFake,
 } from '@kiko/test-support/walk-marks';
 import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { createExchangeRun } from '@kiko/crypto-sync/exchange/budget';
 
 import {
@@ -20,7 +21,7 @@ import {
   p2pServerOf,
 } from './binance.p2p-test-fixtures';
 import { NOW } from './binance.pay-test-fixtures';
-import { HISTORY_FLOOR_MS } from './binance.transactions';
+import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 import { type BinanceP2pOrder, BinanceHistoryParseError } from './binance.history-client';
@@ -68,10 +69,14 @@ const wideRun = () => {
 };
 
 /** A connected account with its walk state, and the walk's deps over that one state. */
-const worldOf = () => {
+const worldOf = (storedP2p?: Record<string, unknown>) => {
   accountSequence += 1;
   const accountId = `acc-p2p-${accountSequence}`;
-  const fake = walkStateFake({ accountId, alongside: FUNDING_HOLDINGS });
+  const fake = walkStateFake({
+    accountId,
+    alongside: FUNDING_HOLDINGS,
+    ...foldMap(maybe(storedP2p), (walk) => ({ unknown: { walks: { p2p: walk } } })),
+  });
   const depsOf = (over: Partial<BinanceP2pHistoryDeps> = {}): BinanceP2pHistoryDeps => ({
     now: () => NOW,
     fetchImpl: (async () => ({})) as unknown as typeof fetch,
@@ -97,6 +102,18 @@ const recentWorld = () => {
 
   return world;
 };
+
+const HEAD_START = NOW - P2P_WINDOW_MS;
+
+// The overlap day behind the head belongs to the re-scan, so the owed ground ends a day before it.
+const OWED_END = HEAD_START - RESYNC_OVERLAP_MS;
+
+// The walk builds the owed windows from the end of the owed ground, so a window's place from the
+// top (1 is the newest) fixes its span whatever the ground below it is.
+const owedWindowOf = (rank: number): Span => ({
+  start: OWED_END - rank * P2P_WINDOW_MS,
+  end: OWED_END - (rank - 1) * P2P_WINDOW_MS,
+});
 
 const queriesOf = (deps: BinanceP2pHistoryDeps): Query[] =>
   (deps.fetchP2pOrders as jest.Mock).mock.calls.map(
@@ -193,7 +210,7 @@ describe('a run that does not start', () => {
 });
 
 describe('the P2P walk windows', () => {
-  it('reads 30-day windows forward from the history floor, oldest first, both sides of each', async () => {
+  it('reads the 30-day head window first, then the owed windows behind it newest first, both sides of each', async () => {
     const { depsOf, walk } = worldOf();
     const deps = depsOf();
 
@@ -204,34 +221,50 @@ describe('the P2P walk windows', () => {
     expect(queries.map(({ side }) => side)).toEqual(
       Array.from({ length: 10 }, () => ['BUY', 'SELL']).flat(),
     );
-
-    for (const [index, query] of queries.entries()) {
-      const window = Math.floor(index / 2);
-
-      expect(query.start).toBe(HISTORY_FLOOR_MS + window * P2P_WINDOW_MS);
-      expect(query.end - query.start).toBe(P2P_WINDOW_MS);
-      expect(query.page).toBe(1);
-    }
+    expect(queries.slice(0, 2).map(({ start, end }) => [start, end])).toEqual([
+      [HEAD_START, NOW],
+      [HEAD_START, NOW],
+    ]);
+    expect(
+      queries
+        .slice(2, 18)
+        .filter(({ side }) => side === 'BUY')
+        .map(({ start, end }) => [start, end]),
+    ).toEqual(
+      [1, 2, 3, 4, 5, 6, 7, 8].map((rank) => [owedWindowOf(rank).start, owedWindowOf(rank).end]),
+    );
+    expect(queries.slice(18).map(({ start, end }) => [start, end])).toEqual([
+      [HEAD_START - RESYNC_OVERLAP_MS, HEAD_START],
+      [HEAD_START - RESYNC_OVERLAP_MS, HEAD_START],
+    ]);
+    expect(queries.every(({ page }) => page === 1)).toBe(true);
   });
 
-  it('reads every empty window and imports an order behind eight of them', async () => {
+  it('reads every empty window behind the head and imports an order behind eight of them on the second run', async () => {
     const world = worldOf();
-    const ninth = p2pOrderOf({ createTime: HISTORY_FLOOR_MS + 8 * P2P_WINDOW_MS + 5 * DAY_MS });
-    const deps = world.depsOf({ fetchP2pOrders: p2pServerOf([ninth]) });
+    const ninth = p2pOrderOf({ createTime: owedWindowOf(9).start + 5 * DAY_MS });
+    const first = world.depsOf({ fetchP2pOrders: p2pServerOf([ninth]) });
 
-    await world.walk(deps);
+    await world.walk(first);
 
-    const windowsRead = (side: string) => [
-      ...new Set(
-        queriesOf(deps)
-          .filter((query) => query.side === side)
-          .map(({ start }) => (start - HISTORY_FLOOR_MS) / P2P_WINDOW_MS),
-      ),
-    ];
+    const windowsRead = (deps: BinanceP2pHistoryDeps, side: string) =>
+      queriesOf(deps)
+        .filter((query) => query.side === side)
+        .map(({ start }) => start);
 
-    expect(windowsRead('BUY').slice(0, 9)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(windowsRead('SELL').slice(0, 9)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(addedRows(deps)).toHaveLength(1);
+    expect(windowsRead(first, 'BUY')).toEqual(
+      expect.arrayContaining([1, 2, 3, 4, 5, 6, 7, 8].map((rank) => owedWindowOf(rank).start)),
+    );
+    expect(windowsRead(first, 'SELL')).toEqual(windowsRead(first, 'BUY'));
+    expect(windowsRead(first, 'BUY')).not.toContain(owedWindowOf(9).start);
+    expect(addedRows(first)).toHaveLength(0);
+
+    const second = world.depsOf({ fetchP2pOrders: p2pServerOf([ninth]) });
+
+    await world.walk(second);
+
+    expect(windowsRead(second, 'BUY')[0]).toBe(owedWindowOf(9).start);
+    expect(addedRows(second)).toHaveLength(1);
     expect(world.fake.notImported()).toEqual([]);
   });
 });
@@ -265,13 +298,16 @@ describe('a first walk of the shape of an account with 113 windows', () => {
     expect(Math.ceil((NOW - HISTORY_FLOOR_MS) / P2P_WINDOW_MS)).toBe(113);
   });
 
-  it('reaches the first UA-1 order by run 8 and the newest by run 12 at the lane cap', async () => {
+  // The first order sits 38 owed windows from the top; the pending pass enters at least 8 windows a
+  // run, so its run is at most the fifth. A bound, not the measured run.
+  it('imports the newest order on run 1 and the first UA-1 order by run 5 at the lane cap', async () => {
     const runs = await walkRuns(13);
     const importedAt = (orderNumber: string) =>
       runs.findIndex(({ ids }) => ids.some((id) => id.includes(`:p2p:${orderNumber}:`))) + 1;
 
-    expect(importedAt('first')).toBe(8);
-    expect(importedAt('newest')).toBe(12);
+    expect(importedAt('newest')).toBe(1);
+    expect(importedAt('first')).toBeGreaterThan(1);
+    expect(importedAt('first')).toBeLessThanOrEqual(5);
     expect(runs.every(({ deps }) => queriesOf(deps).length <= 20)).toBe(true);
   });
 
@@ -282,17 +318,35 @@ describe('a first walk of the shape of an account with 113 windows', () => {
     expect(runs.map(({ complete }) => complete)).toEqual(runs.map(() => false));
   });
 
-  it('reads each of the 113 windows on both sides, 226 calls, before it is current', async () => {
-    const runs = await walkRuns(12);
-    const reads = new Set(
-      runs.flatMap(({ deps }) =>
-        queriesOf(deps)
-          .filter(({ start }) => (start - HISTORY_FLOOR_MS) % P2P_WINDOW_MS === 0)
-          .map(({ side, start }) => `${side}:${start}`),
-      ),
-    );
+  it('reads the whole ground on both sides, newest first behind the head, before it is current', async () => {
+    const runs = await walkRuns(14);
+    const oldestStartOf = ({ deps }: (typeof runs)[number]) =>
+      Math.min(...queriesOf(deps).map(({ start }) => start));
+    const oldestStarts = runs.map(oldestStartOf);
+    const reachedFloor = oldestStarts.findIndex((start) => start <= HISTORY_FLOOR_MS);
 
-    expect(reads.size).toBe(226);
+    expect(queriesOf(runs[0].deps)[0]).toMatchObject({ start: HEAD_START, end: NOW });
+    expect(reachedFloor).toBeGreaterThan(0);
+    expect(oldestStarts.slice(0, reachedFloor + 1)).toEqual(
+      [...oldestStarts.slice(0, reachedFloor + 1)].sort((left, right) => right - left),
+    );
+    expect(new Set(oldestStarts.slice(0, reachedFloor + 1)).size).toBe(reachedFloor + 1);
+
+    for (const side of ['BUY', 'SELL']) {
+      const spans = runs
+        .flatMap(({ deps }) => queriesOf(deps))
+        .filter((query) => query.side === side)
+        .sort((left, right) => left.start - right.start);
+      let covered = HISTORY_FLOOR_MS;
+
+      for (const { start, end } of spans) {
+        if (start <= covered) {
+          covered = Math.max(covered, end);
+        }
+      }
+
+      expect(covered).toBeGreaterThanOrEqual(NOW);
+    }
   });
 });
 
@@ -635,7 +689,7 @@ describe('a start Binance refuses', () => {
     );
   };
 
-  it('narrows a start Binance refuses as too old and walks on forward', async () => {
+  it('narrows a start Binance refuses as too old and walks on, newest first behind the head', async () => {
     const world = worldOf();
     world.fake.seed('p2p', { cursor: NOW - 120 * DAY_MS });
     const deps = world.depsOf({
@@ -648,6 +702,7 @@ describe('a start Binance refuses', () => {
 
     await world.walk(deps, wideRun());
 
+    expect(queriesOf(deps)[0]).toMatchObject({ start: HEAD_START, end: NOW });
     expect(
       addedRows(deps)
         .map(({ externalId }) => externalId)
@@ -682,16 +737,15 @@ describe('a start Binance refuses', () => {
 
 describe('a window whose page cannot be read', () => {
   const CURSOR_AT = NOW - 45 * DAY_MS;
-  const SECOND_WINDOW_START = NOW - 15 * DAY_MS;
   const EARLY = p2pOrderOf({ orderNumber: 'early', createTime: NOW - 40 * DAY_MS });
   const LATE = p2pOrderOf({ orderNumber: 'late', createTime: NOW - 10 * DAY_MS });
 
-  const unreadableSecondWindow = (orders: BinanceP2pOrder[]) => {
+  const unreadableHeadWindow = (orders: BinanceP2pOrder[]) => {
     const server = p2pServerOf(orders);
 
     return jest.fn(
       async (apiKey: string, secret: string, side: 'BUY' | 'SELL', span: Span, page: number) => {
-        if (span.start >= SECOND_WINDOW_START) {
+        if (span.start >= HEAD_START) {
           throw new BinanceHistoryParseError();
         }
 
@@ -707,37 +761,37 @@ describe('a window whose page cannot be read', () => {
     return world;
   };
 
-  it('rejects the walk, moves no mark past the window and writes none of its rows when its page cannot be read', async () => {
+  it('rejects the walk, moves no mark past the head window and still writes the rows of the owed ground when its page cannot be read', async () => {
     const world = worldBehind();
-    const deps = world.depsOf({ fetchP2pOrders: unreadableSecondWindow([EARLY, LATE]) });
+    const deps = world.depsOf({ fetchP2pOrders: unreadableHeadWindow([EARLY, LATE]) });
 
     await expect(world.walk(deps)).rejects.toBeInstanceOf(BinanceHistoryParseError);
 
     expect(addedRows(deps).map(({ externalId }) => externalId)).toEqual([
       `${world.accountId}:p2p:early:USDT:funding`,
     ]);
-    expect(cursorOf(world)).toBe(SECOND_WINDOW_START);
-    expect(Math.max(...numberMarkWritesOfAnyWalk(deps))).toBe(SECOND_WINDOW_START);
+    expect(cursorOf(world)).toBe(HEAD_START);
+    expect(Math.max(...numberMarkWritesOfAnyWalk(deps))).toBe(HEAD_START);
   });
 
-  it('reads a window whose page cannot be read again on every run, never passing it', async () => {
+  it('reads a head window whose page cannot be read again on every run, never passing it', async () => {
     const world = worldBehind();
     const runs: BinanceP2pHistoryDeps[] = [];
 
     for (let run = 0; run < 3; run += 1) {
-      const deps = world.depsOf({ fetchP2pOrders: unreadableSecondWindow([EARLY, LATE]) });
+      const deps = world.depsOf({ fetchP2pOrders: unreadableHeadWindow([EARLY, LATE]) });
 
       runs.push(deps);
       await expect(world.walk(deps)).rejects.toBeInstanceOf(BinanceHistoryParseError);
     }
 
     expect(runs.map((deps) => queriesOf(deps)[0].start)).toEqual([
-      CURSOR_AT,
-      SECOND_WINDOW_START,
-      SECOND_WINDOW_START,
+      HEAD_START,
+      HEAD_START,
+      HEAD_START,
     ]);
     expect(runs.map((deps) => addedRows(deps).length)).toEqual([1, 0, 0]);
-    expect(cursorOf(world)).toBe(SECOND_WINDOW_START);
+    expect(cursorOf(world)).toBe(HEAD_START);
   });
 });
 
@@ -745,11 +799,11 @@ describe('a failure of the P2P walk', () => {
   it('writes the windows read before the limit, sets the cooldown and resolves', async () => {
     const world = worldOf();
     world.fake.seed('p2p', { cursor: NOW - 75 * DAY_MS });
-    const server = p2pServerOf([p2pOrderOf({ orderNumber: 'one', createTime: NOW - 70 * DAY_MS })]);
+    const server = p2pServerOf([p2pOrderOf({ orderNumber: 'one', createTime: NOW - 5 * DAY_MS })]);
     const deps = world.depsOf({
       fetchP2pOrders: jest.fn(
         async (apiKey: string, secret: string, side: 'BUY' | 'SELL', span: Span, page: number) => {
-          if (side === 'SELL' && span.start === NOW - 45 * DAY_MS) {
+          if (side === 'SELL' && span.start === owedWindowOf(1).start) {
             throw new BinanceRateLimitError(429, 30_000);
           }
 
@@ -761,7 +815,7 @@ describe('a failure of the P2P walk', () => {
     const result = await world.walk(deps);
 
     expect(result).toEqual({ imported: 1, complete: false });
-    expect(cursorOf(world)).toBe(NOW - 45 * DAY_MS);
+    expect(cursorOf(world)).toBe(NOW);
     expect(isBinanceCoolingDown(world.accountId, NOW + 29_000)).toBe(true);
     expect(isBinanceCoolingDown(world.accountId, NOW + 30_000)).toBe(false);
   });
@@ -791,6 +845,162 @@ describe('a failure of the P2P walk', () => {
 
     await expect(world.walk(deps, wideRun())).rejects.toThrow('403');
     expect(isBinanceCoolingDown(world.accountId, NOW)).toBe(false);
+  });
+});
+
+const readFailedAtOf = (world: ReturnType<typeof worldOf>): unknown =>
+  world.fake.marksOf('p2p').readFailedAt;
+
+const PRIOR_FAILURE_AT = 5_000;
+
+const markedWorld = () => {
+  const world = worldOf();
+
+  world.fake.seed('p2p', { cursor: NOW - HOUR_MS, readFailedAt: PRIOR_FAILURE_AT });
+
+  return world;
+};
+
+describe('the read-failed mark of the P2P walk', () => {
+  it.each([
+    ['a page the client cannot read', new BinanceHistoryParseError()],
+    ['a request that failed', new Error('Binance request failed: 403')],
+  ])('stores the time of the run and rethrows the same error on %s', async (_label, failure) => {
+    const world = recentWorld();
+    const deps = world.depsOf({
+      fetchP2pOrders: jest.fn(async () => {
+        throw failure;
+      }),
+    });
+
+    await expect(world.walk(deps)).rejects.toBe(failure);
+
+    expect(readFailedAtOf(world)).toBe(NOW);
+  });
+
+  it('a failed mark write keeps the original error', async () => {
+    const world = recentWorld();
+    const original = new BinanceHistoryParseError();
+    const writeFailure = new Error('the state row cannot be written');
+    const base = world.depsOf({
+      fetchP2pOrders: jest.fn(async () => {
+        throw original;
+      }),
+    });
+    const isMarkWrite = (patch: object): boolean =>
+      (patch as { field?: string }).field === 'readFailedAt';
+    const patchExchangeState = jest.fn(
+      async (...[accountId, patches]: Parameters<BinanceP2pHistoryDeps['patchExchangeState']>) => {
+        if (patches.some(isMarkWrite)) {
+          throw writeFailure;
+        }
+
+        await base.patchExchangeState(accountId, patches);
+      },
+    );
+    const deps = { ...base, patchExchangeState };
+
+    await expect(world.walk(deps)).rejects.toBe(original);
+
+    const markWrites = patchExchangeState.mock.calls
+      .flatMap(([, patches]) => patches)
+      .filter(isMarkWrite);
+
+    expect(markWrites).toEqual([expect.objectContaining({ walkId: 'p2p', value: NOW })]);
+  });
+
+  it('clears a stored mark when a later run reads and resolves', async () => {
+    const world = markedWorld();
+
+    await world.walk(world.depsOf({ fetchP2pOrders: p2pServerOf([p2pOrderOf()]) }));
+
+    expect(readFailedAtOf(world)).toBeNull();
+  });
+
+  it('writes no mark on a run that reads and resolves when none is stored', async () => {
+    const world = recentWorld();
+
+    await world.walk(world.depsOf({ fetchP2pOrders: p2pServerOf([p2pOrderOf()]) }));
+
+    expect(readFailedAtOf(world)).toBeUndefined();
+  });
+
+  it('leaves a stored mark as it was on a run that ends at a 429', async () => {
+    const world = markedWorld();
+    const deps = world.depsOf({
+      fetchP2pOrders: jest.fn(async () => {
+        throw new BinanceRateLimitError(429, 30_000);
+      }),
+    });
+
+    await expect(world.walk(deps)).resolves.toEqual({ imported: 0, complete: false });
+
+    expect(readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+  });
+
+  it('leaves a stored mark as it was on a run the cooldown skips', async () => {
+    const world = markedWorld();
+    const deps = world.depsOf();
+
+    setBinanceCooldownUntil(world.accountId, NOW + 60_000);
+
+    await world.walk(deps);
+
+    expect(deps.fetchP2pOrders).not.toHaveBeenCalled();
+    expect(readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+  });
+
+  it('leaves a stored mark as it was on a run with no credentials', async () => {
+    const world = markedWorld();
+    const deps = world.depsOf({ readCredentials: async () => undefined });
+
+    await expect(world.walk(deps)).resolves.toEqual({ imported: 0, complete: true });
+
+    expect(readFailedAtOf(world)).toBe(PRIOR_FAILURE_AT);
+  });
+
+  it('keeps the mark set on every run while the head window cannot be read, and still reads the owed ground', async () => {
+    const world = worldOf();
+
+    // 400 days behind is about thirteen owed windows, so a run of eight leaves older ground for
+    // the second run to read.
+    world.fake.seed('p2p', { cursor: NOW - 400 * DAY_MS });
+
+    const runAt = async (now: number) => {
+      const server = p2pServerOf([]);
+      const deps = world.depsOf({
+        now: () => now,
+        fetchP2pOrders: jest.fn(
+          async (
+            apiKey: string,
+            secret: string,
+            side: 'BUY' | 'SELL',
+            span: Span,
+            page: number,
+          ) => {
+            if (span.end === now) {
+              throw new BinanceHistoryParseError();
+            }
+
+            return server(apiKey, secret, side, span, page);
+          },
+        ),
+      });
+
+      await expect(world.walk(deps)).rejects.toBeInstanceOf(BinanceHistoryParseError);
+
+      return queriesOf(deps);
+    };
+
+    const first = await runAt(NOW);
+
+    expect(first.some(({ end }) => end <= OWED_END)).toBe(true);
+    expect(readFailedAtOf(world)).toBe(NOW);
+
+    const second = await runAt(NOW + 1_000);
+
+    expect(second.some(({ end }) => end <= OWED_END + 1_000)).toBe(true);
+    expect(readFailedAtOf(world)).toBe(NOW + 1_000);
   });
 });
 
@@ -883,5 +1093,271 @@ describe('the P2P walk and its budget', () => {
     expect(queriesOf(deps)).toHaveLength(1);
     expect(result.complete).toBe(false);
     expect(isBinanceCoolingDown(world.accountId, NOW + 1_000)).toBe(true);
+  });
+});
+
+describe('the ground behind the head window, an account whose cursor is older than 30 days', () => {
+  const OLD_WINDOWS = 20;
+  const OLD_CURSOR = HEAD_START - OLD_WINDOWS * P2P_WINDOW_MS;
+  const RUNS = 4;
+
+  const orderInWindow = (rank: number) =>
+    p2pOrderOf({
+      orderNumber: `window-${rank}`,
+      createTime: owedWindowOf(rank).start + 5 * DAY_MS,
+    });
+
+  const ranksOf = (deps: BinanceP2pHistoryDeps): number[] =>
+    addedRows(deps).map(({ externalId }) =>
+      Number(externalId.split(':p2p:window-')[1].split(':')[0]),
+    );
+
+  // A read of any span inside a failing window answers a body that is no order envelope.
+  const failingIn = (failingRanks: number[], orders: BinanceP2pOrder[]) => {
+    const server = p2pServerOf(orders);
+    const failing = failingRanks.map(owedWindowOf);
+
+    return jest.fn(
+      async (apiKey: string, secret: string, side: 'BUY' | 'SELL', span: Span, page: number) => {
+        if (failing.some(({ start, end }) => span.start >= start && span.end <= end)) {
+          throw new BinanceHistoryParseError();
+        }
+
+        return server(apiKey, secret, side, span, page);
+      },
+    );
+  };
+
+  const runsOf = async (failingRanks: number[], orderRanks: number[]) => {
+    const world = worldOf();
+
+    world.fake.seed('p2p', { cursor: OLD_CURSOR });
+
+    const orders = orderRanks.map(orderInWindow);
+    const runs: { deps: BinanceP2pHistoryDeps; rejected: boolean }[] = [];
+
+    for (let run = 0; run < RUNS; run += 1) {
+      const deps = world.depsOf({ fetchP2pOrders: failingIn(failingRanks, orders) });
+      const rejected = await world.walk(deps).then(
+        () => false,
+        (error) => {
+          expect(error).toBeInstanceOf(BinanceHistoryParseError);
+
+          return true;
+        },
+      );
+
+      runs.push({ deps, rejected });
+    }
+
+    return { world, runs };
+  };
+
+  const ranksBetween = (first: number, last: number): number[] =>
+    Array.from({ length: last - first + 1 }, (_unused, offset) => first + offset);
+
+  it('writes the owed range, the jump of the cursor and the reset of the range cursor in one write', async () => {
+    const world = worldOf();
+    world.fake.seed('p2p', { cursor: OLD_CURSOR, rangeCursor: owedWindowOf(10).end });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    const [firstWrite] = (deps.patchExchangeState as jest.Mock).mock.calls;
+    const patches = firstWrite[1] as { field: string; value: unknown }[];
+    const patchValueOf = (name: string): unknown =>
+      patches.find(({ field }) => field === name)?.value;
+
+    expect(patches.map(({ field }) => field).sort()).toEqual(['cursor', 'pending', 'rangeCursor']);
+    expect(patchValueOf('pending')).toEqual([{ start: OLD_CURSOR, end: HEAD_START }]);
+    expect(patchValueOf('cursor')).toBe(HEAD_START);
+  });
+
+  it('reads the newest owed window first, whatever range cursor an older build stored', async () => {
+    const world = worldOf();
+    world.fake.seed('p2p', { cursor: OLD_CURSOR, rangeCursor: owedWindowOf(10).end });
+    const deps = world.depsOf();
+
+    await world.walk(deps);
+
+    expect(queriesOf(deps)[0]).toMatchObject({ start: HEAD_START, end: NOW });
+    expect(queriesOf(deps)[2].start).toBe(owedWindowOf(1).start);
+  });
+
+  it('moves past one owed window that fails every run, so the windows behind it import', async () => {
+    const { world, runs } = await runsOf([1], ranksBetween(2, OLD_WINDOWS));
+
+    expect(queriesOf(runs[0].deps)[2].start).toBe(owedWindowOf(1).start);
+    expect(runs[0].rejected).toBe(true);
+    expect(ranksOf(runs[0].deps)).toContain(2);
+    expect(queriesOf(runs[1].deps)[0].start).not.toBe(owedWindowOf(1).start);
+    expect(runs[RUNS - 1].rejected).toBe(true);
+    expect(runs.flatMap(({ deps }) => ranksOf(deps)).sort((left, right) => left - right)).toEqual(
+      ranksBetween(2, OLD_WINDOWS),
+    );
+    expect(pendingOf(world)).toEqual([{ start: owedWindowOf(1).start, end: owedWindowOf(1).end }]);
+  });
+
+  it('moves past more failing windows than a run reads, so the windows behind them import', async () => {
+    const { world, runs } = await runsOf(ranksBetween(1, 9), ranksBetween(10, OLD_WINDOWS));
+
+    expect(runs.flatMap(({ deps }) => ranksOf(deps)).sort((left, right) => left - right)).toEqual(
+      ranksBetween(10, OLD_WINDOWS),
+    );
+    expect(pendingOf(world)).toEqual([{ start: owedWindowOf(9).start, end: owedWindowOf(1).end }]);
+  });
+});
+
+describe('a first run after the upgrade, a stored cursor of 2024-01-01 and one owed point', () => {
+  const STORED_CURSOR = Date.UTC(2024, 0, 1);
+  const POINT_AT = Date.UTC(2023, 5, 1);
+  const ORDERS = [
+    p2pOrderOf({ orderNumber: 'head', createTime: NOW - 3 * DAY_MS }),
+    p2pOrderOf({ orderNumber: 'middle', createTime: Date.UTC(2025, 10, 10) }),
+    p2pOrderOf({ orderNumber: 'deep', createTime: Date.UTC(2024, 5, 1) }),
+    p2pOrderOf({ orderNumber: 'point', createTime: POINT_AT }),
+  ];
+
+  it('reads the head window and the owed point on the first run, keeps the old ground in pending, then imports every order by its dedupe key', async () => {
+    const world = worldOf();
+    world.fake.seed('p2p', { cursor: STORED_CURSOR, pending: [pointOf(POINT_AT, 'BUY')] });
+    const importedKeys = new Set<string>();
+    const keyOf = (orderNumber: string): string =>
+      `${world.accountId}:p2p:${orderNumber}:USDT:funding`;
+    let emptiedOnRun = -1;
+
+    for (let run = 0; run < 8; run += 1) {
+      const deps = world.depsOf({ fetchP2pOrders: p2pServerOf(ORDERS) });
+
+      await world.walk(deps);
+
+      for (const { externalId } of addedRows(deps)) {
+        importedKeys.add(externalId);
+      }
+
+      if (run === 0) {
+        expect(queriesOf(deps)[0]).toMatchObject({ start: HEAD_START, end: NOW });
+        expect(queriesOf(deps).length).toBe(19);
+        expect(cursorOf(world)).toBe(NOW);
+        expect(pendingOf(world)).not.toContainEqual(pointOf(POINT_AT, 'BUY'));
+        expect(pendingOf(world)).toContainEqual(
+          expect.objectContaining({ start: STORED_CURSOR, end: expect.any(Number) }),
+        );
+        expect([...importedKeys]).toEqual([keyOf('head'), keyOf('point')]);
+      }
+
+      if (emptiedOnRun === -1 && pendingOf(world).length === 0) {
+        emptiedOnRun = run;
+      }
+    }
+
+    expect([...importedKeys].sort()).toEqual(
+      ORDERS.map(({ orderNumber }) => keyOf(orderNumber)).sort(),
+    );
+    expect(emptiedOnRun).toBeGreaterThan(0);
+    expect(emptiedOnRun).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('a head window that cannot be read while the clock moves between runs', () => {
+  // G owed windows behind the head, the newest 12 of them unreadable, the older 12 holding one
+  // order each. A full lane reads R = READS_A_RUN owed windows a run (the first run is shown to
+  // read that many), so the older windows must all be read within ceil(G / R) + 1 runs.
+  const OWED_WINDOWS = 24;
+  const UNREADABLE_WINDOWS = 12;
+  const READS_A_RUN = 10;
+  const RUNS_BOUND = Math.ceil(OWED_WINDOWS / READS_A_RUN) + 1;
+  const OLDEST_START = HEAD_START - OWED_WINDOWS * P2P_WINDOW_MS;
+
+  const ranksFrom = (first: number, last: number): number[] =>
+    Array.from({ length: last - first + 1 }, (_unused, offset) => first + offset);
+
+  const spanOfRank = (rank: number): Span => ({
+    ...owedWindowOf(rank),
+    start: Math.max(OLDEST_START, owedWindowOf(rank).start),
+  });
+
+  const READABLE_RANKS = ranksFrom(UNREADABLE_WINDOWS + 1, OWED_WINDOWS);
+
+  const orderNumberOf = (rank: number): string => `window-${rank}`;
+
+  const ORDERS = READABLE_RANKS.map((rank) =>
+    p2pOrderOf({
+      orderNumber: orderNumberOf(rank),
+      createTime: spanOfRank(rank).start + 3 * DAY_MS,
+    }),
+  );
+
+  const unreadableSpans = ranksFrom(1, UNREADABLE_WINDOWS).map(spanOfRank);
+
+  const fetchAt = (runNow: number) => {
+    const server = p2pServerOf(ORDERS);
+
+    return jest.fn(
+      async (apiKey: string, secret: string, side: 'BUY' | 'SELL', span: Span, page: number) => {
+        const insideUnreadable = unreadableSpans.some(
+          ({ start, end }) => span.start >= start && span.end <= end,
+        );
+
+        if (span.end === runNow || insideUnreadable) {
+          throw new BinanceHistoryParseError();
+        }
+
+        return server(apiKey, secret, side, span, page);
+      },
+    );
+  };
+
+  const runsWithGap = async (gapMs: number, runCount: number) => {
+    const world = worldOf();
+    const importedRanks: number[][] = [];
+    const owedWindowsRead: number[] = [];
+
+    world.fake.seed('p2p', { cursor: OLDEST_START });
+
+    for (let run = 0; run < runCount; run += 1) {
+      const runNow = NOW + run * gapMs;
+      const deps = world.depsOf({ now: () => runNow, fetchP2pOrders: fetchAt(runNow) });
+      const walkRun = createBinanceHistoryRun({ now: () => runNow, sleep: async () => undefined });
+
+      await expect(world.walk(deps, walkRun)).rejects.toBeInstanceOf(BinanceHistoryParseError);
+
+      importedRanks.push(
+        addedRows(deps).map(({ externalId }) =>
+          Number(externalId.split('window-')[1].split(':')[0]),
+        ),
+      );
+      owedWindowsRead.push(
+        queriesOf(deps).filter(({ side, end }) => side === 'BUY' && end <= OWED_END).length,
+      );
+    }
+
+    return { importedRanks, owedWindowsRead };
+  };
+
+  const readableRanksWithin = (importedRanks: number[][], runs: number): number[] =>
+    importedRanks
+      .slice(0, runs)
+      .flat()
+      .sort((left, right) => left - right);
+
+  it('reads the R owed windows of a full lane on the first run, with the clock still or moving', async () => {
+    const still = await runsWithGap(0, 1);
+    const moving = await runsWithGap(HOUR_MS, 1);
+
+    expect(still.owedWindowsRead).toEqual([READS_A_RUN]);
+    expect(moving.owedWindowsRead).toEqual([READS_A_RUN]);
+  });
+
+  it('imports every readable older window within ceil(G / R) + 1 runs when the clock stands still', async () => {
+    const { importedRanks } = await runsWithGap(0, RUNS_BOUND);
+
+    expect(readableRanksWithin(importedRanks, RUNS_BOUND)).toEqual(READABLE_RANKS);
+  });
+
+  it('imports every readable older window within ceil(G / R) + 1 runs when the clock moves an hour a run', async () => {
+    const { importedRanks } = await runsWithGap(HOUR_MS, RUNS_BOUND);
+
+    expect(readableRanksWithin(importedRanks, RUNS_BOUND)).toEqual(READABLE_RANKS);
   });
 });

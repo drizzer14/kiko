@@ -18,7 +18,9 @@ import {
   openFrom,
   oppositePane,
   type PaneConfig,
+  paneDefault,
   type PaneMap,
+  paneOfDefaultKey,
   retainPanes,
   routesOfPane,
   unfoldAssignment,
@@ -127,6 +129,42 @@ export const PaneRouter = ({
     return pushed === null || built === undefined ? null : { pushed, route: built };
   };
 
+  // A static default is not in the stack, so a page opened from it would stand alone in its pane
+  // with nothing to go back to. The user acted on it, so it becomes the real route below the page.
+  const realizeStaticDefault = (
+    state: PaneStackState,
+    openerKey: string,
+    config: RouterConfigOptions,
+  ): { routes: PaneStackRoute[]; panes: PaneMap; key: string } => {
+    const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
+    const unchanged = { routes: state.routes, panes, key: openerKey };
+    const pane = paneOfDefaultKey(openerKey);
+
+    if (pane === undefined) {
+      return unchanged;
+    }
+
+    const shown = paneDefault(paneConfig, pane);
+
+    if (shown === null) {
+      return unchanged;
+    }
+
+    const built = created(state, { name: shown.name, params: shown.params }, config);
+
+    if (built === null) {
+      return unchanged;
+    }
+
+    const routes = [...state.routes.slice(0, 1), built.route];
+
+    return {
+      routes,
+      panes: { ...retainPanes(panes, routes), [built.route.key]: pane },
+      key: built.route.key,
+    };
+  };
+
   const open = (
     state: PaneStackState,
     payload: { openerKey: string; route: PaneRoute },
@@ -138,13 +176,9 @@ export const PaneRouter = ({
       return null;
     }
 
-    const opened = openFrom(
-      state.routes,
-      unfoldAssignment(state.routes, state.panes, paneConfig),
-      payload.openerKey,
-      next.route,
-      paneConfig,
-    );
+    const opener = realizeStaticDefault(state, payload.openerKey, config);
+
+    const opened = openFrom(opener.routes, opener.panes, opener.key, next.route, paneConfig);
 
     // An opener that is neither a route nor a static default changed nothing.
     if (opened.routes === state.routes) {

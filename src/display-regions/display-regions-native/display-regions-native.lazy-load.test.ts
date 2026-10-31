@@ -50,8 +50,15 @@ describe('with the display-regions native module absent', () => {
     expect(displayRegionsNative.getSnapshot()).toEqual({
       horizontalSizeClass: 'compact',
       verticalBarEdge: 'none',
+      tabBarEdge: 'none',
       foldRegion: null,
     });
+  });
+
+  it('requestRefresh with no native module does not throw', () => {
+    const { displayRegionsNative } = loadDisplayRegionsWithoutNativeModule();
+
+    expect(() => displayRegionsNative.requestRefresh()).not.toThrow();
   });
 
   it('subscribes to nothing and returns an unsubscribe that does nothing', () => {

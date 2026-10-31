@@ -35,7 +35,7 @@ export type LoanSectionProps = {
   termError?: string;
   termFieldRef?: RefObject<FieldInstance | null>;
   termInputRef?: RefObject<TextInputInstance | null>;
-  // The loan-payment matcher's own optional inputs (kiko-domain) — never
+  // The loan-payment matcher's own optional inputs (kiko-debts) — never
   // validated, hidden alongside rate/term for a `'none'` schedule (the
   // matcher never links against an informal debt at all, so these would do
   // nothing there). `paymentHoldingOptions` is every OPEN, non-ledgerless

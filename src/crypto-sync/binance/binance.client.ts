@@ -7,6 +7,8 @@ import { isRecord } from '@kiko/type-guards';
 import either, { bifoldr } from 'fnts/either';
 import { signQuery } from '@kiko/crypto-sync/exchange/signing';
 
+import type { BinancePublicPath, BinanceSignedPath } from './binance.endpoints';
+
 /** One spot balance from `/api/v3/account` — decimal strings, per Binance. */
 export type BinanceBalance = { asset: string; free: string; locked: string };
 
@@ -174,7 +176,7 @@ export const signedRequestPage = async (
   apiKey: string,
   secret: string,
   method: 'GET' | 'POST',
-  path: string,
+  path: BinanceSignedPath,
   params: Record<string, string>,
   { fetchImpl = fetch, now = Date.now }: FetchAccountOptions = {},
 ): Promise<RequestPage> => {
@@ -203,7 +205,7 @@ export const signedRequestPage = async (
  * for the caller's cooldown; any other non-ok answer rejects like a signed read.
  */
 export const publicRequestPage = async (
-  path: string,
+  path: BinancePublicPath,
   params: Record<string, string>,
   { fetchImpl = fetch }: Pick<FetchAccountOptions, 'fetchImpl'> = {},
 ): Promise<RequestPage> => {
@@ -219,7 +221,7 @@ const signedRequest = async (
   apiKey: string,
   secret: string,
   method: 'GET' | 'POST',
-  path: string,
+  path: BinanceSignedPath,
   params: Record<string, string>,
   options: FetchAccountOptions = {},
 ): Promise<unknown> =>
@@ -309,7 +311,7 @@ const MAX_POSITION_PAGES = 50;
 const fetchAllPositions = async <Row>(
   apiKey: string,
   secret: string,
-  path: string,
+  path: BinanceSignedPath,
   options: FetchAccountOptions,
 ): Promise<{ rows: Row[]; total: number }> => {
   const rows: Row[] = [];

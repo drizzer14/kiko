@@ -34,6 +34,15 @@ jest.mock('@kiko/statistics/net-worth-series', () => {
   };
 });
 
+// An iPhone window: jest's default window is 750 pt wide, which lays the cards out in two columns,
+// and this suite pins the one-column screen.
+const mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockWindow,
+}));
+
 // A standalone screen render has no pane navigator; default on screen (matches every other test
 // in this file), overridden per test. Statistics is a companion default in the Home tab, which is
 // on screen and never focused, so `useIsFocused` is mocked false: only visibility may decide.
@@ -65,8 +74,11 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
+import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import StatisticsScreen from './statistics.screen';
+
+afterEach(resetStatisticsFilterSelection);
 
 const mockUseLiveQuery = jest.fn();
 
@@ -678,7 +690,7 @@ describe('StatisticsScreen', () => {
     offsetSpy.mockRestore();
   });
 
-  it('renders the five blocks in order: net-worth line, by-type bar, account pie, category pie, spending trend', async () => {
+  it('renders the five blocks in order: net-worth line, by-type bar, spending trend, category donut, account pie', async () => {
     const { getByTestId } = await renderScreen();
 
     const order = getByTestId('statistics-blocks')
@@ -688,14 +700,14 @@ describe('StatisticsScreen', () => {
     // The net-worth line leads the screen, ahead of the by-type/category
     // charts — it is the one chart every other block on this screen relates
     // back to (a snapshot of the same net worth it plots over time). The
-    // spending-trend line closes the screen, after the category donut it shares
-    // its category filter's dimension with.
+    // category donut and the account pie close the screen: on a wide pane they
+    // share one row, so they sit together at the end on every window.
     expect(order).toEqual([
       'statistics-block-line',
       'statistics-block-bar',
-      'statistics-block-pie',
-      'statistics-block-category',
       'statistics-block-trend',
+      'statistics-block-category',
+      'statistics-block-pie',
     ]);
   });
 
@@ -1853,13 +1865,20 @@ describe('StatisticsScreen', () => {
   it('renders all four empty charts without crashing when there is no data', async () => {
     setLiveData({ accounts: [CASH] });
 
-    const { getByTestId, getAllByText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     expect(getByTestId('bar-chart-empty')).toBeTruthy();
     expect(getByTestId('net-worth-line-empty')).toBeTruthy();
     expect(getByTestId('pie-chart-empty')).toBeTruthy();
     expect(getByTestId('category-pie-empty')).toBeTruthy();
-    expect(getAllByText(i18n.t('statistics.noSpendingToShow')).length).toBeGreaterThan(0);
+    expect(
+      within(getByTestId('category-pie-empty')).getByText(i18n.t('statistics.noSpendingToShow')),
+    ).toBeTruthy();
+    expect(
+      within(getByTestId('category-trend-line-empty')).getByText(
+        i18n.t('statistics.noSpendingToShow'),
+      ),
+    ).toBeTruthy();
   });
 
   describe('with no accounts', () => {
@@ -2452,6 +2471,53 @@ describe('StatisticsScreen', () => {
       await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
     expect(queryByTestId(`${CATEGORY_FILTER}-option-groceries`)).toBeNull();
+  });
+
+  it('keeps a selected category that has no category row', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: EXPENSES.map((row) => ({ ...row, category: null })),
+      history: HISTORY,
+      categories: [],
+    });
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'other');
+
+    expect(getByText('Categories · 1')).toBeTruthy();
+  });
+
+  it('filters nothing and shows no count once the only selected category is deleted', async () => {
+    seedSpending();
+
+    const { getByTestId, getByText, queryByText, queryByTestId, rerender } = await renderScreen();
+
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
+    expect(queryByTestId('category-pie-arc-transport')).toBeNull();
+    expect(getByText('Categories · 1')).toBeTruthy();
+
+    // categoriesRepo.delete reassigns the deleted category's transactions to the default key.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: EXPENSES.map((row) =>
+        row.category === 'groceries' ? { ...row, category: 'other' } : row,
+      ),
+      history: HISTORY,
+      categories: [CATEGORIES[1], OTHER_CATEGORY],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+    expect(getByTestId('category-pie-arc-other')).toBeTruthy();
+    expect(getByText('Categories')).toBeTruthy();
+    expect(queryByText(/^Categories · /)).toBeNull();
   });
 
   it('excludes an expense outside the active date range from the donut center total', async () => {
@@ -3275,4 +3341,96 @@ describe('StatisticsScreen — paused while hidden', () => {
 
     expect(mockRunBackfill.mock.calls.length).toBe(callsBefore);
   });
+});
+
+// A sheet is a native Modal: it stays presented over whatever tab the user switched to, unless the
+// screen closes it when its tab stops being shown.
+describe('StatisticsScreen — filter sheets when the screen stops being shown', () => {
+  const SHEETS = [
+    ['account filter', ACCOUNT_FILTER, `${ACCOUNT_FILTER}-option-${FILTER_ALL}`],
+    ['category filter', CATEGORY_FILTER, `${CATEGORY_FILTER}-option-${FILTER_ALL}`],
+    ['trend filter', 'statistics-trend-filter', 'statistics-trend-filter-save'],
+    ['date range', 'Date range', 'date-range-calendar'],
+  ] as const;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsScreenVisible.mockReturnValue(true);
+    seedFull();
+  });
+
+  const openSheet = async (
+    view: Awaited<ReturnType<typeof renderScreen>>,
+    trigger: string,
+  ): Promise<void> => {
+    await act(async () => {
+      await fireEvent.press(view.queryByTestId(trigger) ?? view.getByLabelText(trigger));
+    });
+  };
+
+  it.each(SHEETS)(
+    'keeps the %s sheet open across a rerender while shown',
+    async (_name, trigger, content) => {
+      const view = await renderScreen();
+
+      await openSheet(view, trigger);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).not.toBeNull();
+    },
+  );
+
+  it.each(SHEETS)(
+    'closes the %s sheet when the screen stops being shown',
+    async (_name, trigger, content) => {
+      const view = await renderScreen();
+
+      await openSheet(view, trigger);
+      expect(view.queryByTestId(content)).not.toBeNull();
+
+      mockUseIsScreenVisible.mockReturnValue(false);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).toBeNull();
+    },
+  );
+
+  it.each(SHEETS)(
+    'does not close the %s sheet when the screen becomes shown',
+    async (_name, trigger, content) => {
+      mockUseIsScreenVisible.mockReturnValue(false);
+      const view = await renderScreen();
+
+      await view.rerender(<StatisticsScreen />);
+      await openSheet(view, trigger);
+      mockUseIsScreenVisible.mockReturnValue(true);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).not.toBeNull();
+    },
+  );
+
+  it.each(SHEETS)(
+    'closes the %s sheet every time the screen stops being shown',
+    async (_name, trigger, content) => {
+      const view = await renderScreen();
+
+      await openSheet(view, trigger);
+      mockUseIsScreenVisible.mockReturnValue(false);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).toBeNull();
+
+      mockUseIsScreenVisible.mockReturnValue(true);
+      await view.rerender(<StatisticsScreen />);
+      await openSheet(view, trigger);
+
+      expect(view.queryByTestId(content)).not.toBeNull();
+
+      mockUseIsScreenVisible.mockReturnValue(false);
+      await view.rerender(<StatisticsScreen />);
+
+      expect(view.queryByTestId(content)).toBeNull();
+    },
+  );
 });

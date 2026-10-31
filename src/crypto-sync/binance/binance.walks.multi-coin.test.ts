@@ -5,11 +5,11 @@ import type { HoldingRow } from '@kiko/db';
 import type { WalkResult } from '@kiko/crypto-sync/exchange/walk';
 import { type WalkName, walkStateFake } from '@kiko/test-support/walk-marks';
 
-import { syncBinancePayHistory } from './binance.pay-history';
-import { syncBinanceEarnHistory } from './binance.earn-history';
-import { syncBinanceTransactions } from './binance.transactions';
 import { createBinanceHistoryRun } from './binance.history-budget';
-import { syncBinanceTransferHistory } from './binance.transfer-history';
+import { payFloorMs, syncBinancePayHistory } from './binance.pay-history';
+import { EARN_FLOOR_MS, syncBinanceEarnHistory } from './binance.earn-history';
+import { HISTORY_FLOOR_MS, syncBinanceTransactions } from './binance.transactions';
+import { syncBinanceTransferHistory, transferFloorMs } from './binance.transfer-history';
 
 const NOW = Date.UTC(2026, 9, 15);
 const ACCOUNT_ID = 'acc-1';
@@ -59,12 +59,14 @@ const sharedDeps = (state: StateDeps) => ({
 
 type Walk = {
   name: WalkName;
+  floorMs: number;
   run: (state: StateDeps, served: Served) => Promise<WalkResult>;
 };
 
 const WALKS: Walk[] = [
   {
     name: 'capital',
+    floorMs: HISTORY_FLOOR_MS,
     run: (state, { latest, failing }) =>
       syncBinanceTransactions(requestOf(), {
         ...sharedDeps(state),
@@ -76,6 +78,7 @@ const WALKS: Walk[] = [
   },
   {
     name: 'pay',
+    floorMs: payFloorMs(NOW),
     run: (state, { failing }) =>
       syncBinancePayHistory(requestOf(), {
         ...sharedDeps(state),
@@ -85,6 +88,7 @@ const WALKS: Walk[] = [
   },
   {
     name: 'transfer',
+    floorMs: transferFloorMs(NOW),
     run: (state, { failing }) =>
       syncBinanceTransferHistory(requestOf(), {
         ...sharedDeps(state),
@@ -93,6 +97,7 @@ const WALKS: Walk[] = [
   },
   {
     name: 'earn',
+    floorMs: EARN_FLOOR_MS,
     run: (state, { failing }) =>
       syncBinanceEarnHistory(requestOf(), {
         ...sharedDeps(state),
@@ -122,7 +127,7 @@ afterEach(() => {
   warn.mockRestore();
 });
 
-describe.each(WALKS)('the $name walk and the multi-coin marks', ({ name, run }) => {
+describe.each(WALKS)('the $name walk and the multi-coin marks', ({ name, floorMs, run }) => {
   const worldOf = (marks: Record<string, unknown>) =>
     walkStateFake({ accountId: ACCOUNT_ID, marks: { [name]: marks } });
 
@@ -198,19 +203,26 @@ describe.each(WALKS)('the $name walk and the multi-coin marks', ({ name, run }) 
     expect(fieldsPerWrite(state, name).some(namesAMarker)).toBe(false);
   });
 
-  it('keeps the earlier range start of a walk whose seen mark was lost', async () => {
+  it('keeps the earlier stored start of a walk whose seen mark was lost as the end of its backfill range', async () => {
     const world = worldOf({
       cursor: CURSOR,
       multiCoinSince: CURSOR - DAY_MS,
       multiCoinSeen: 'yes',
     });
 
-    await run(world.freshDeps(), {});
+    // A run that commits no window leaves the range as the conversion stored it, before any read.
+    await expect(run(world.freshDeps(), { failing: true })).rejects.toThrow('a read failed');
 
     expect(world.marksOf(name)).toMatchObject({
-      multiCoinSince: CURSOR - DAY_MS,
-      multiCoinSeen: true,
+      pending: expect.arrayContaining([
+        { start: floorMs, end: CURSOR - DAY_MS, scope: 'backfill' },
+      ]),
+      multiCoinSince: floorMs,
     });
+
+    await run(world.freshDeps(), {});
+
+    expect(world.marksOf(name)).toMatchObject({ multiCoinSince: floorMs, multiCoinSeen: true });
   });
 });
 

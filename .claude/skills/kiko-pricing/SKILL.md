@@ -95,6 +95,13 @@ non-currency `price_points` store.
   a legacy `X:Y` pair, or `UAH` itself as `base` — unread rather than
   corrupting the table.
 
+## Coin ids and per-currency totals
+
+`cryptoCoinGeckoId` (`src/rates/coingecko-ids/`) is the one map from a crypto currency to its
+CoinGecko id; the live and history fetches both read it. `sumByCurrency`
+(`src/rates/currency-totals/`) sums holdings into one `Money` per currency, valued net of tax;
+read both there and never rebuild either.
+
 ## Rate history
 
 `src/rates/rate-history-repo/rate-history.repo.ts` keeps
@@ -364,7 +371,7 @@ It prices one instrument (a metal, or one specific holding priced
 directly — the `metal:`/`holding:` namespaces in
 `src/prices/instrument/`) per `(instrument, day)` row:
 
-- `instrument` is a free-text key, never an FK, built by one of three
+- `instrument` is a free-text key, never an FK, built by one of two
   namespacing functions — `metal:<metal>`, `holding:<holdingId>` — so
   the two kinds can never collide in one table. `holding:<id>` is for a
   thing priced directly (e.g. a property), not through a market symbol.
@@ -393,7 +400,7 @@ every valuation input a holding row does not carry itself.
 `day` ascending. `loanPayments` groups every linked loan payment
 (`LoanLedgerPayment`: `loanHoldingId`, `transactionId`, `time`, `amountMinorUnits`, and the
 PAYER holding's `currency`) by loan id, sorted `time` ascending — the input
-a loan's outstanding reads (`loanLedgerOutstandingMinorAt`, kiko-domain's
+a loan's outstanding reads (`loanLedgerOutstandingMinorAt`, kiko-debts's
 "Debts" section), so the card, detail, totals, statistics, and every
 net-worth bucket read the same number with no new parameter.
 `buildPriceBook(points, payments = [])` builds both; a payment row whose

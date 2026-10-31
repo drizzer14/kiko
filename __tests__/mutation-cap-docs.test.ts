@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 
+import { readSkillText } from './test-support/skill-text';
+
 // The mutation cap is copied into every doc that tells an agent how to size a
 // change set for `make deep`. A cap change that misses one of them leaves that
 // doc naming a limit mutation.sh does not enforce, so every copy must match
@@ -38,8 +40,14 @@ const DOCS_ABOUT_THE_CAP = [...DOCS_STATING_THE_CAP, 'docs/harness/documented-ex
 const readRepositoryFile = (file: string): string =>
   readFileSync(join(REPOSITORY_ROOT, file), 'utf8');
 
+// A skill states the cap in its SKILL.md or in a reference file that SKILL.md links to.
+const readDocText = (file: string): string =>
+  file.endsWith('/SKILL.md')
+    ? readSkillText(join(REPOSITORY_ROOT, file))
+    : readRepositoryFile(file);
+
 const statedCaps = (file: string): number[] => {
-  const text = readRepositoryFile(file).replace(/\s+/g, ' ');
+  const text = readDocText(file).replace(/\s+/g, ' ');
 
   return CAP_STATEMENTS.flatMap((pattern) =>
     [...text.matchAll(pattern)].map((match) => Number(match[1])),

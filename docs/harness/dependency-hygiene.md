@@ -92,6 +92,13 @@ untouched by the override now, and `npm ls --all` exits clean.
 `scripts/checks/deps.sh` runs `npm ls --all` on every pass, so a
 regression back to an unscoped override fails `check:deps` immediately.
 
+`check:deep`'s osv-scanner also flagged `zod` 4.5.4, advisory GHSA-mrhx-c7xc-m3w5 (fixed
+version and CVSS: not verified here). It is pinned with the top-level override `"zod": "4.6.6"`
+(commit `0043bb26`; the lockfile moved 4.5.4 to 4.6.6). Its one parent chain is `knip`
+(`npm ls zod`: `knip@5.88.1` -> `zod`), a `dev` lockfile entry, so it never reaches the app
+bundle. Drop the override when `knip` itself resolves a `zod` at or above 4.6.6 without it
+(re-check with `npm ls zod`).
+
 A `node_modules/node_modules` entry (a stray `ln -s` inside `node_modules`, or
 a broken nested folder) gets its own `check:deps` block before the dedup skip,
 because it loops the tree and makes `npm ls --all` report every package
@@ -289,6 +296,90 @@ run `npx patch-package @stryker-mutator/jest-runner`, delete the old patch file,
 versions in the pin test and the patch file name. Re-prove it: the covering-test id still equals
 Stryker's `fullName`, and the patch applies exactly to the pristine files of
 `npm pack @stryker-mutator/jest-runner@<version>`. Only then change the expected versions.
+
+## Standing patch: `react-native-screens` 4.27.0 (a pane's fixed content margin)
+
+`patches/react-native-screens+4.27.0.patch` is a `patch-package` patch that `postinstall` applies
+on every `npm ci`. Why, what, and the scope are in `docs/harness/documented-exceptions.md`
+("patch-package patches"); in short: it makes a pane's native large title keep the content's side
+margin, and only for the stacks to which `PaneStackView` gives a value above 0 in
+`FixedContentMarginContext` (it wraps every stack, with 0 elsewhere): the panes
+of a two-pane window whose tab bar is not at the bottom, at the top (every regular iPad window,
+small Stage Manager splits included; user ruling 2026-10-21) or at a side (the Surface Duo's
+side-bar poses; user ruling 2026-10-23), and the single stack under a side bar (the Duo outer
+pose).
+
+The pane-only scope: the context default is 0, `ScreenStack` passes it as the `fixedContentMargin`
+prop (codegen default 0), and native does nothing for 0 (the setter returns on its first line
+for an equal value, no margin write, no change to `viewRespectsSystemMinimumLayoutMargins`), so
+an iPhone, a single-pane stack under a top or a bottom bar, and a bottom-bar split (the Duo's
+inner portrait pose) run the stock code path. A single stack under a side bar (the Duo outer
+pose) does not: it takes the value too (user ruling 2026-10-29). The value is the content's
+margin (`useContentMargin`: 16 pt, 20 pt under a side bar) and follows the native tab bar
+placement (`useIsTabBarNotAtBottom` for a split, `useTabBarPlacement` for a single stack), not
+the window's size; the pane content cap is a narrower test (`useIsTabBarAtTop`: only a top bar
+lifts the cap). The placement read is stale for about 0.1 s on a split change or a large-to-large
+rotation, and on cold start until the first read, so the margin and the cap can lag the layout
+briefly.
+
+Margins written back are the stored ones: a controller root view's `directionalLayoutMargins`
+getter adds the safe area inset to the stored margin (`insetsLayoutMarginsFromSafeArea`), so the
+patch reads through `RNSStoredDirectionalLayoutMargins` (subtracting the whole `safeAreaInsets`,
+left and right mapped to leading and trailing by the view's layout direction), writes only the
+leading and trailing margins, skips an equal write, and saves the stored margins for the restore
+path. Writing the getter's value back would add the inset at every layout pass.
+
+The parent safe top inset: the stack's parent is a per-tab SwiftUI `TabHostingController`, whose
+view safe top is 96 at every first attach, relaxes to the window's 32 on a first visit and stays
+96 on a tab revisit; the stack then has a safe top of 20 instead of 0 and the iPad Settings bar
+sits at window y 96 instead of 86. `syncParentSafeAreaTopInset` (run after
+`applyFixedContentMargin` in `viewDidLayoutSubviews` only, never from
+`viewSafeAreaInsetsDidChange`, so the parent is not changed during UIKit's own safe area
+propagation) writes a negative top `additionalSafeAreaInsets` on `parentViewController`, so the
+parent's effective top equals the window's safe top (clamped to the tab bar height). Measured on
+the iOS 27.0 simulator: UIKit ignores a navigation controller's own negative
+`additionalSafeAreaInsets` and honors one on the parent controller, so the write must stay on
+the parent. The target uses the parent's safe top minus the stored additional top (never a read
+after the write), is written only past a 0.5 pt change, and is reset to 0 only when this code
+wrote it and no other stack of the parent still has a value above 0. It runs only with a value
+above 0, a window and a tab bar controller. A re-derived patch must keep it, and the re-measure
+must show the bar at the same y on the first and every later visit, and, after a resize to a
+bottom tab bar, the parent's additional top inset back at 0 and its safe top back at the
+window's 32.
+
+The 20 to 0 restore path (the margins captured when the value first went above 0 are put back)
+is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
+side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 20
+to 0. The stale placement read above (about 0.1 s, the mounted split briefly reads a bar at the
+bottom) reaches it too; an iPad window keeps its tab bar at the top, so no resize reaches it
+there.
+
+How it is pinned: `__tests__/react-native-patch.test.ts` fails unless `react-native-screens` is
+exactly `4.27.0` in `package.json`, the patch touches only `node_modules/react-native-screens/`
+(the native stack among them), and the INSTALLED files carry the patch (native stack, header,
+codegen spec, context, `ScreenStack`, `index`, and the `lib/commonjs` and `lib/typescript` copies),
+so a failed or missing apply fails Jest (`patch-package` exits 0 on a failed apply locally).
+After merging or branching across this commit run `npx patch-package` before the pin test.
+
+Upgrade rule: a `react-native-screens` bump fails the pin until the patch is re-derived. Re-derive
+it: `npm pack react-native-screens@<version>` and unpack it; re-apply the same edits to the
+installed files (the files the pin test lists; the iOS side changed `RNSNavigationController`
+and `RNSScreenStackView updateProps`); check that the library still
+provides the layout (a new `RNSScreenStack.mm` that sets layout margins itself, or an upstream
+prop for a stack's content margin, makes the patch removable); diff the pristine tree against the
+patched one into `patches/react-native-screens+<version>.patch` (or `npx patch-package
+react-native-screens`, which needs the version to pass the `.npmrc` minimum age), delete the old
+patch file and update the version in the pin test. Re-prove it: applying the patch to the pristine
+tarball must reproduce the installed tree, and re-measure on a simulator or device: a pane's large
+title leading edge equals the content's leading edge in both panes of an iPad and in a Duo
+side-bar pose; an iPhone and a bottom-bar window are unchanged; the restore path (pane titles
+back to stock, then 16 pt, or 20 pt under a side bar) on a split change and on a large-to-large
+rotation, where the stale read can take it; idle CPU with a pane open (no continuous re-layout
+from the bar margin write in `viewDidLayoutSubviews`); the view's top and bottom
+`directionalLayoutMargins` staying constant across layout passes (log them over a few visits: no
+growth by the safe area inset); and the bar items and the back button positions (UIKit places
+them by the bar's `directionalLayoutMargins` too, so they may move by up to 16 pt: measure it, do
+not claim it).
 
 ## `.env` is public-only
 

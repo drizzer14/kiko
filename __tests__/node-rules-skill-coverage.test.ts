@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 
+import { readSkillText } from './test-support/skill-text';
+
 // The "Node checkers" section of kiko-linter must name every NODE_RULES rule; a
 // row with no bullet there fails this test.
 //
@@ -122,10 +124,7 @@ describe('NODE_RULES coverage in kiko-linter "Node checkers"', () => {
 
   const ruleIds = ruleIdsOf(nodeRulesText);
 
-  const section = sectionOf(
-    readFileSync(join(REPOSITORY_ROOT, SKILL_FILE), 'utf8'),
-    SECTION_HEADING,
-  );
+  const section = sectionOf(readSkillText(join(REPOSITORY_ROOT, SKILL_FILE)), SECTION_HEADING);
 
   it('reads every NODE_RULES row and the whole section, so the check is not vacuous', () => {
     expect(ruleIds.length).toBeGreaterThan(0);

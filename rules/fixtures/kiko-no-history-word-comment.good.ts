@@ -57,6 +57,12 @@ export const urlNote = 'see https://example.test // previously';
 // The rows sort as before each commit and as before-and-after pairs.
 // The result is the same as beforehand.
 
+// 5e. "does not exist yet" names a runtime state when the subject is not a key, field, export,
+// helper or function of the code under test: a row, a file or a category the user has not made.
+// Insert the cursor row for an account id if it does not exist yet.
+// A category that does not exist yet has no key to write.
+// The field exists once the form opens, and a stored key the app does not know is ignored.
+
 // 6. A multi-line block comment holding only the excluded purpose shape:
 /**
  * The cursor is used to resume the page after a failed run, so the retry

@@ -4,7 +4,11 @@ Date: 2026-10-15. Status: user-approved (73336657). On 2026-10-16 these were fol
 - the probe 2-5 facts;
 - the "Probe 4 rulings": C-P5, C-P2P-SELL-MAKER, C-P2P-fiat-asset, C-Convert-wallet, C-Weights;
 - the coordinator rulings C-NR-A ... C-NR-F and C-P2P-stop;
-- the user rulings R-Walk A and C-P2P-SELL-MAKER B (FINAL, user, 2026-10-16).
+- the user rulings R-Walk A and C-P2P-SELL-MAKER B (FINAL, user, 2026-10-16), and the user ruling
+  of 2026-10-28 for the P2P walk only: the newest 30-day window first, then newest first down to
+  the floor, a window that fails does not block the windows after it, and P2P runs first in the
+  run (R-Walk A stays for Convert and fiat; was: P2P read forward from the floor, last in the
+  walk order after dust).
 
 The dividend walk was removed by its own rule (section 5). The user approved this text for sets
 8-12 on 2026-10-16.
@@ -106,7 +110,7 @@ gap `binance-backfill-fix/2`.
 | R-Q10 | "How banks are connected today": an "Exchange or wallet" picker field in the account form (catalog bottom sheet + not-affiliated caption), the exchange's key form inline below; the same sheet from the account detail; an exchange catalog stored in `bankId` (no migration); an exchange provider registry replaces the closed lists; one Keychain entry per exchange per account | 8 |
 | R-Tech | Shared layer now with Binance first; history read account-wide; today's BTC keys byte-identical; new coins' Pay keys add the currency; migration 0044 frozen, `.kiko` restore keeps the frozen 1.0 list; LD* skipped in Spot; 2 SPKI pins per new host; walk state in a `sync_state` JSON column; one budget lane and cursor per new history read; every history read after the balance read, never failing it; exclusion only by stored markers; en + uk with translator review; privacy policy and App Privacy label per exchange. "14 change sets; sets 7-11 wait for probe 2": the coordinator split set 1 into two, so 1.3-a has 15 sets and probe 2 gates sets 8-12 | all |
 | R-Display (Q1 A) | A crypto amount displays its exact value with trailing zeros trimmed, never fewer than 2 decimals (BTC too); stored amounts stay exact; fiat display unchanged | 3, 11 (set 1) |
-| R-Walk A (user, 2026-10-16) | The Convert, P2P and fiat walks read forward from `HISTORY_FLOOR_MS` with the existing walk engine (`buildWalkWindows`); recent records arrive last, and the history caption shows meanwhile. Set 11 measured the trades lane (section 5 "Spot trades") and left the P2P lane cap alone; set 12 raised the P2P cap from 10 to 20 on the numbers of probe 10 (S12-Q7, section 5) | 5, 12 |
+| R-Walk A (user, 2026-10-16) | The Convert and fiat walks read forward from `HISTORY_FLOOR_MS` with the existing walk engine (`buildWalkWindows`); recent records arrive last, and the history caption shows meanwhile. The P2P walk is the exception (user, 2026-10-28): it reads the newest 30-day window first, then newest first down to the floor, so its recent orders arrive first (was: P2P read forward with Convert and fiat, recent records last). Set 11 measured the trades lane (section 5 "Spot trades") and left the P2P lane cap alone; set 12 raised the P2P cap from 10 to 20 on the numbers of probe 10 (S12-Q7, section 5) | 5, 12 |
 | C-P2P-SELL-MAKER B (FINAL, user, 2026-10-16) | SELL and MAKER P2P orders are listed on the not-imported line, not imported (the coordinator ruling of the same id below, confirmed by the user) | 5, 6, 7, 10 |
 
 ### Coordinator rulings (binding; `rulings.md`, "Spec NEEDS RULING")
@@ -140,12 +144,12 @@ These are the coordinator's rulings, not the user's, except C-NR2, which the use
 | C-NR-D A (2026-10-16) | The fiat orders and fiat payments walks read 2-year windows and each covers `HISTORY_FLOOR_MS` to now, read forward (R-Walk A); empty windows never stop it; a -5026 start is narrowed by `DepthGuard` (safety net) and never ends the walk. Probe 5 found no refusal to the floor (see C-NR-C for the scope of probe 5), so every window is read (section 5, "Refused window and walk direction") | 5, 7 |
 | C-NR-E A (2026-10-16) | The fiat walks ship on the documented shapes with a strict status allowlist. An unknown word is owed and visible (the not-imported list, `fiat-unrecognized`). The spec marks each fiat stream "no real row observed" | 5, 7, 12 |
 | C-NR-F A (2026-10-16) | Set 7 drops `transactions.p2pSale`: no negative `p2p:` row can be written in 1.3-a. The follow-up adds it back | 6, 10, 11 |
-| C-P2P-stop A (2026-10-16) | The P2P walk covers `HISTORY_FLOOR_MS` to now, read forward (R-Walk A); empty windows never stop it; a -5026 start is narrowed by `DepthGuard` (safety net) and never ends the walk. It replaces the stop of "6 empty or refused windows in a row" in C-P2P-depth. A test pins that an order behind 7 or more empty windows is found (P6). Probe 5 found no refusal to the floor (see C-NR-C for its scope) | 5, 7, 12 |
+| C-P2P-stop A (2026-10-16) | The P2P walk covers `HISTORY_FLOOR_MS` to now, the head window (the last 30 days) first and then newest first back to the floor (R-Walk A exception, user 2026-10-28; was: read forward from the floor); empty windows never stop it; a -5026 start is narrowed by `DepthGuard` (safety net) and never ends the walk. It replaces the stop of "6 empty or refused windows in a row" in C-P2P-depth. A test pins that an order behind 7 or more empty windows is found (P6). Probe 5 found no refusal to the floor (see C-NR-C for its scope) | 5, 7, 12 |
 | S7-Q1 A (2026-10-21) | REPLACED by user answer U3 (2026-10-21): the demo dust source is the existing XRP holding (dust pair XRP -> BNB); there is no Dogecoin holding. Seed pins stay at eight coins, 110 currency pairs | 9 |
 | S7-Q2 A (2026-10-21) | Every existing demo holding keeps its end balance (a deposit amount adjusted; a `bank:EUR:50.00` fiat withdrawal keeps EUR at 50); every set 7 demo row is dated more than 30 days before the anchor, so amounts and dates keep the default window unchanged; Home's net-worth card is unchanged | 9 |
 | S7-Q3 A (2026-10-21) | Code parse rules: the fiat is the segment as written, non-empty and free of `:`; a total exists only for a known non-crypto currency when the rest parses exactly at its scale to a value above zero; else no total and the label renders. `asset:` needs a non-empty code free of `:` (a code with `:` is unknown: default label) | 6 |
 | S7-Q4 A (2026-10-21) | `operation` is not a rewrite guard field (`REWRITE_GUARD_FIELDS`); it labels only (was: "every operation row carries another marker"; the guard list is now by-hand, balance-setting, split-change, ruling B, 2026-10-25) | 6 |
-| S7-Q5 A (2026-10-21) | The P2P cover rule keys on the `p2p:` code through `parseUntrackedCounterpart` plus the row's amount and holding currency, never on `operation`; set 7 adds nothing for it | 6 |
+| S7-Q5 A (2026-10-21; CLOSED 2026-10-26: superseded by S13-Q1, USER) | The P2P cover rule keys on the `p2p:` code through `parseUntrackedCounterpart` plus the row's amount and holding currency, never on `operation`; set 7 adds nothing for it | 6 |
 | S7-Q6 A (2026-10-21) | Parsers only in set 7; the demo seed writes literal codes; each walk set adds its own builder (with the section 5 marker-total normalization) | 6 |
 | S7-Q7 A (2026-10-21) | No export version bump: `EXPORT_VERSION` stays 5; `VERSION_DECISIONS` `{ version: 5, migrationCount: 64 }` | 7 |
 | S7-Q8 A (2026-10-21) | The `transactions.matched*` keys wait for set 13 (their consumer); set 7 adds the six row labels only | 10 |
@@ -228,14 +232,14 @@ set 10 whole-branch items there (FR-Q1, FR-Q2) belong to set 10.
 | S12-Q7 A (COORDINATOR, after probe 10) | The P2P lane cap is 20 (`LANE_CALL_CAPS.p2p`): 12 runs for a first walk, 18000 UID in a minute, and 153000 with the fiat orders lane, within `UID_WEIGHT_BUDGET_1M`; cap 40 rejected (34 s a run). A test pins the shared sum | 12 |
 | S12-Q8 A (COORDINATOR) | The measured P2P first-walk report is probe 10 (the user, 2026-10-23) plus the test of the walk itself (P7b); it is in section 5, "Measured weights" | 12 |
 | S12-Q9 A (COORDINATOR) | `p2p`, `fiatOrders` and `fiatPayments` join `CAPTION_WALKS`: the caption shows while those walks are behind | 12 |
-| S12-Q10 A (USER CONFIRMED 2026-10-23) | The P2P cover rule (user, 2026-10-21: an outgoing USDT row covered by an earlier P2P BUY of that coin is not counted in Expenses by category) is owned by set 13, with the read-time statistics rules for P2P rows and their own user questions | 12, 13 |
+| S12-Q10 A (USER CONFIRMED 2026-10-23; CLOSED 2026-10-26: superseded by the read-time matcher (S13-Q1, USER)) | The P2P cover rule (user, 2026-10-21: an outgoing USDT row covered by an earlier P2P BUY of that coin is not counted in Expenses by category) is owned by set 13, with the read-time statistics rules for P2P rows and their own user questions | 12, 13 |
 | S12-Q11 A (USER CONFIRMED 2026-10-23) | A fiat withdrawal row is `-(amount + totalFee)`, the field Binance documents (this spec wrote `fee`) | 12 |
 | S12-Q12 A (COORDINATOR) | A P2P `fiat` or fiat payment `fiatCurrency` that is not a Kiko currency still imports the crypto row; the marker keeps the total as sent after a plain-decimal check | 12 |
 | S12-Q13 A (COORDINATOR) | Fiat order words `Finished`, `Refunding`, `Refund Failed` and `Order Partial Credit Stopped` stay `fiat-unrecognized`; the allowlist matches exactly, spaces and case included | 12 |
 | S12-Q14 A (COORDINATOR) | `.superpowers/` files are written, never committed | 12 |
 | S12-Q15 A (COORDINATOR) | A P2P order with no non-empty text `orderNumber` or no safe-integer `createTime` is unreadable (owed, visible); any other wrong-typed decision field fails the page (`BinanceHistoryParseError`) and the next run retries it; a page that fails every run stays visible (log, caption) and the other walks still run; a null or absent `data` is an empty page only at `total` 0 | 12 |
 | S12-Q16 A (COORDINATOR) | Kept as built: a COMPLETED BUY TAKER order with no `asset`, `fiat` or `totalPrice` is `p2p-unrecognized`; a row amount of 0 or less is `p2p-amount`; the check order is the amount fields, the tracked coin, then the exact parse | 12 |
-| S12-Q17 (COORDINATOR, for set 13) | `exchangeExcludedTransactionIds` excludes every row with a code, so a `p2p:` row is out of statistics today; set 13 decides whether it stays out (P9) | 12, 13 |
+| S12-Q17 (COORDINATOR, for set 13; CLOSED 2026-10-26: decided by S13-Q2) | `exchangeExcludedTransactionIds` excludes every row with a code, so a `p2p:` row is out of statistics today; set 13 decided that it stays out (S13-Q2, P9) | 12, 13 |
 | S12-Q18 C (COORDINATOR) | The fiat orders walk alternates forward and behind runs (`binance.fiat-history.ts` only, no shared walk change), because a lane of 3 never had a call for the window re-scan or an owed range | 12 |
 | S12-Q19, S12-Q20 as built (COORDINATOR) | A settled fiat record missing a text it needs is one `fiat-unrecognized` entry and the cursor moves on; an untracked fiat (order) or coin (payment) is counted in `untrackedCoins.history`, with no entry and no row | 12 |
 | S12-Q21 A, N = 1 (COORDINATOR) | A forward run follows every behind run (mark `behindRun`; no migration), so a range that no read clears cannot keep the newest orders out | 12 |
@@ -264,6 +268,42 @@ set 10 whole-branch items there (FR-Q1, FR-Q2) belong to set 10.
 | S12-Q44 (COORDINATOR 2026-10-25, design approved) | A pending point carries an optional `since` (epoch ms, the wall clock of the run that first owed it) in the walk's `exchange_state` entry; every writer of the list keeps the first `since` when the point is owed again or merged, and the caption counts a point once `lastBalanceSyncAt - since` is more than a day; a fresh point (read again each sync) and a point with no `since` stay quiet. No migration: a point stored before it, or with a `since` that is no non-negative integer, reads as having none and is stamped by the first run that owes it again; a range never carries one. The `.kiko` restore copies the walk state as text, so a file with or without `since` restores unchanged and a malformed `since` reads as none, never as a broken list | 12 |
 | S12-Q46 (regression from 697421a6; COORDINATOR 2026-10-25, deviation accepted) | The fiat orders forward turn stores its own planned overlap day [C0 - RESYNC_OVERLAP_MS, C0] (series-less, C0 = the cursor of the run before) with the cursor already moved on, and only the next sync's behind turn reads it, so `historyOwesRange` showed the caption on every other sync of a quiet account. The caption (`isPlannedOverlapDay`, `OVERLAP_KEEPING_WALKS`) does not count a fiatOrders range that is owed in every series, exactly RESYNC_OVERLAP_MS wide, and ends at or before the walk's cursor; a day owed in one series, any other width, a day after the cursor or with no cursor, and every other walk's day still show it. Pins: binance-history-status.quiet-syncs.test.ts (6 syncs, 8 walks, gaps 1 h, 1 d, 3 d; red 3/24, all fiatOrders) and per-walk pins in binance-history-status.test.ts. No shape change | 12 |
 | S12-Q47 (USER 2026-10-25) | A fiat order or fiat payment is one record with one `status`, and a refund is a later status of it (`Refunding`, `Refunded`). When a re-scan (or any read) reads one as `Refunding` or `Refunded` and a row with its key (`<accountId>:fiat:<orderNo>:<wallet>` or `<accountId>:fiatpay:<orderNo>:<wallet>`) is stored, the commit deletes that row (`transactionsRepo.removeSyncedRows`, by key, found in the database and not in a draft) after the span's rows and before its not-imported entry and its marks, and lists the record as not imported (one `fiat-unrecognized` entry, a union write, so a refund read twice lists once). A row the user categorized or noted goes with it; the holding's balance is the exchange's own and is not moved; a record that never had a row is only listed; `Refund Failed` keeps its row. A crash before the marks move has the next run read the span again, so a row is never left with a cursor past its refund | 12 |
+| S13-Q1 A (USER 2026-10-26) | Matcher only (R-Q14 as specced). The S12-Q10 P2P cover rule CLOSES as superseded, so one purchase is removed once; an outgoing USDT row counts once, in its own category; no step builds a cover rule | 13 |
+| S13-Q2 A (COORDINATOR 2026-10-26) | A `p2p:` row stays out of statistics (S12-Q17); `exchangeExcludedTransactionIds` is unchanged | 13 |
+| S13-Q3 A (COORDINATOR 2026-10-26) | A negative row with an exchange marker on a bank holding (a manual Exchange) takes part on the bank side; consumed, stays excluded, no caption (the exchange form shows no category) | 13 |
+| S13-Q4 A (COORDINATOR 2026-10-26) | The caption hook reads the full ledger (same input and answer as the screen), only for a negative row on a non-crypto holding; a windowed query is backlog S13-B1 | 13 |
+| S13-Q5 A (COORDINATOR 2026-10-26) | Three demo debits (P2P, card, fiat deposit), end balances kept, older than 30 days; a change to an approved screenshot stops the step | 13 |
+| S13-Q6 A (COORDINATOR 2026-10-26) | One help sentence in topic `'7'` (en + uk, translator) naming a bank payment that funded a P2P purchase, a card purchase or an exchange deposit | 13 |
+| S13-Q7 (COORDINATOR 2026-10-26, text; USER review at release step 6) | uk `transactions.matchedP2pPurchase` = «Зіставлено з купівлею через P2P» in this spec, the uk catalogue and the tests (step 4/8 changes the section 10 row with the catalogue key); on the user's uk review list at release step 6 | 13 |
+| S13-Q8 A (COORDINATOR 2026-10-26) | The `BINANCE` priority reads the stored description, not `ruleDescriptionOf` | 13 |
+| S13-Q9 accept (USER 2026-10-26) | A hand edit or a saved (outranked) rule on a matched debit makes it a hand row that counts as spending, no caption; no change | 13 |
+| S13-Q10 B (USER 2026-10-26) | Keep the greedy pass, then an augmenting-path pass inside each (fiat, amount) bucket that only adds pairs; every greedy-matched row stays matched; pinned by M15; the G1 minors C1, C2, C3, C5 (rename) and O2 ride the fix round | 13 |
+
+Source of S13-Q1 ... S13-Q10: `rulings.md`, "SET 13 PLAN RULINGS"; the plan
+`docs/superpowers/plans/2026-10-26-crypto-exchanges-set-13.md` ("Rulings") holds each. Backlog
+S13-B1 ... S13-B3 are accepted by the coordinator (2026-10-26).
+
+| Ruling | Answer | Sets |
+|---|---|---|
+| S15-Q1 A (COORDINATOR 2026-10-27) | The backfill is a `scope: 'backfill'` entry in each walk's `pending`, converted once from `multiCoinSince`, which is rewritten to the floor in the same write | 15 |
+| S15-Q2 A | `trades.unreadSymbols` stores the run's never-read candidate symbols; the caption reads it (K6) | 15 |
+| S15-Q3 A, S15-Q4 A | Privacy revision 2 committed verbatim (the user's OK of the final text stays on the release list); set 15 sends Notes for Review delta lines to the release session | 15 |
+| S15-Q5 A | No demo change, byte-identical check (follows user S14-Q2) | 15 |
+| S15-Q6 A | "Earlier history" and the not-listed note on exchange-synced holdings only, not on a wallet | 15 |
+| S15-Q7 A, S15-Q8 A | The terms are read by `kiko:researcher` (a display ban or a bot-checked page is a STOP); the doc test reads the closed path list in `binance.endpoints.ts` | 15 |
+| S15-Q9 A | The pending pass reads the windows owed for every coin first, then the backfill windows from the budget left; an acceptance pin that says a recent record arrives is never moved to fit the backfill | 15 |
+| S15-Q10, S15-Q11 A | A stored start beside a lost seen mark is converted once, not twice; the dense-day acceptance pin keeps its bound 6 and gains an upgrade-world pin | 15 |
+| S15-Q12 A | A stored start beside a lost seen mark is kept as the END of the owed backfill range, `multiCoinSince` = the floor; supersedes STEP 10 (1) | 15 |
+| S15-Q13 B | The acceptance pins keep their original upgrade-world seed; other pins get the seen mark per pin | 15 |
+| S15-Q14 A | A symbol whose trade read ended `failed` is not listed in `trades.unreadSymbols`; the symbols a budget or rate-limit stop leaves unread are listed | 15 |
+| S15-Q15 B | While a backfill window is owed, a run keeps the calls of its first window from the windows owed for every coin (the first of those keeps none; superseded by S15-Q19 unless the budget fits one window alone) | 15 |
+| S15-Q16 A | The backfill is a round-robin of its own (`backfillCursor`); a refused window goes behind the others | 15 |
+| S15-Q17 A, S15-Q18 A | With a one-window budget the two groups take turns (`backfillTurn`): an all-coin read that finishes its window keeps the turn, one that leaves it owed gives it to the backfill, which hands it back after one window. S15-Q18 supersedes the S15-Q17 "alternate from run to run" wording | 15 |
+| S15-Q19 A | When the budget fits more than one window, every window owed for every coin holds the backfill's calls, the first included (supersedes "the first keeps none" of S15-Q15) | 15 |
+
+Source of S15-Q1 ... S15-Q19: `rulings.md`, "Set 15 plan questions"; the plan
+`docs/superpowers/plans/2026-10-27-crypto-exchanges-set-15.md` ("Rulings") holds each. Backlog
+S15-B1 (the caption file move), S15-B2 and S15-B3 are accepted by the coordinator.
 
 S12-Q45, the S12-Q42 chunk term follow-up, the properties split and the fiat fold are BACKLOG after 1.3
 (SCOPE RULE, USER 2026-10-25; `backlog-after-1.3.md`; side branch `binance-backlog-split`).
@@ -291,7 +331,7 @@ Each reversal has a "was:" column in its scenario matrix (section 7).
 | The 2-minute same-amount matcher (`internalTransferTransactionIds`) sees every row of the ledger | `statistics.screen.tsx` | it sees only rows with no `exchangePairId`, no `exchangeCounterpartHoldingId` and no `untrackedCounterpart` (section 6, S1) |
 | Every bank debit counts as spending unless another rule excludes it | statistics today | a debit matched to a P2P / card buy or a fiat deposit is excluded (R-Q14; M matrix) |
 | P2P SELL imported as `-amount`; an order with a non-zero commission owed until probe P5 | this spec, approved 73336657, section 5 "P2P" | only BUY orders as TAKER import, at `takerAmount` (C-P5). SELL and MAKER orders are listed as not imported (C-P2P-SELL-MAKER B). Matrix rows P1-P2d carry "was:" |
-| The P2P walk ends after 6 empty or refused windows in a row | this spec, C-P2P-depth | it reads forward from `HISTORY_FLOOR_MS` to now with no stop (C-P2P-stop, R-Walk A). Matrix row P6 carries "was:" |
+| The P2P walk ends after 6 empty or refused windows in a row | this spec, C-P2P-depth | it reads from `HISTORY_FLOOR_MS` to now with no stop, the head window first and then newest first back to the floor (C-P2P-stop; was: forward from the floor, R-Walk A). Matrix row P6 carries "was:" |
 | Dividends and airdrops are imported as `reward` rows (R-Q9) | R-Q9, R-Map | not in 1.3-a (C-Div). The not-listed note keeps "distributions other than Simple Earn rewards" |
 
 ### Scope
@@ -434,6 +474,8 @@ type CoinLists = {
 type WalkMarks = {
   cursor?: number | null; rescan?: number; pending?: BinancePendingRange[];
   pointCursor?: number; rangeCursor?: number; spanHints?: BinanceSpanHints; multiCoinSince?: number;
+  backfillCursor?: number;                    // the end of the backfill window the last run started (S15-Q16)
+  backfillTurn?: boolean;                     // a one-window pending budget goes to the backfill next (S15-Q18)
   multiCoinSeen?: true;                       // the walk's first multi-coin run happened (section 7)
 };
 // The closed kind list: a const tuple, the union derived from it (kiko-code-style), and one copy
@@ -513,13 +555,25 @@ byte-identical, a malformed one included. When no `sync_state` row exists, the w
 is null or more than a day behind `latestSyncedAt`, when any of the eight history walks owes a range
 (S12-Q41, S12-Q43), when any walk owes a `scope: 'backfill'` range, when the top-level state is
 malformed, or when a trade symbol in the candidate set was never read (no entry, or a null
-`fromId`; a completed read always stores a number, section 5). A fresh owed point never shows it:
+`fromId`; a completed read always stores a number, section 5; a symbol whose read failed is not
+counted, S15-Q14). A fresh owed point never shows it:
 the record it names is read again on every sync. A point owed for more than a day does (its
 `since`, the time of the run that first owed it, is more than a day before `latestSyncedAt`;
 S12-Q44). The caption names the exchange
 (`accountDetail.exchangeHistoryPending`, section 10); while the top-level state is malformed it
 shows `accountDetail.exchangeHistoryPaused` instead, which says history import is paused and that a
-disconnect and reconnect repairs it. The `convert` walk is in `CAPTION_WALKS`, so an existing user
+disconnect and reconnect repairs it. A P2P read that fails has its own caption (user, 2026-10-28:
+required, the device check for a read failure that was never seen in a log): the P2P walk entry
+holds `readFailedAt`, a non-negative integer time (anything else reads as absent, no repair
+write). `syncBinanceP2pHistory` writes `deps.now()` into it when the run rejects after the walk
+marks were read, then rethrows the ORIGINAL error (a failed mark write never replaces it); a
+cooldown skip, a missing-credentials return, a state that cannot be read and a failed credentials
+read write no mark (R7; was: any rejection of the run). The mark is cleared (`null`) when a later
+run reads and resolves; a 429 run and an empty-plan run leave it as it was; a disconnect drops it.
+The section shows `accountDetail.exchangeP2pReadFailed` (section 10) as a standing caption beside
+the coin lines, kept during a sync, only for a Binance account whose state is loaded and not
+paused, when `p2pReadFailed(state)` (`binance-history-status.ts`) holds. One generic line, no
+split by cause (R2). The `convert` walk is in `CAPTION_WALKS`, so an existing user
 sees the caption for about 6 syncs while the first Convert walk runs (S8-Q5). A `notImported` entry
 never shows the caption. It has its own
 line (section 6, "Not-imported line"), because nothing about it is pending.
@@ -854,8 +908,10 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
 
 Every stream reads account-wide (no coin filter) and runs after the balance read. Each runs in its
 own `logOnFailure`, on its own lane, with its own `WalkMarks` (R-Tech). The order in
-`runBinanceSyncAndImport` is: balance, capital, Pay, Transfer, Earn, Convert, dust, P2P, fiat
-orders, fiat payments, trades.
+`runBinanceSyncAndImport` is: balance, P2P, capital, Pay, Transfer, Earn, Convert, dust, fiat
+orders, fiat payments, trades. P2P runs first (R1, user 2026-10-28) so its share of the shared
+UID budget (20 calls x 900 = 18000) is reserved without a change to `canAfford`; was: after dust
+and before fiat, where the walks ahead of it spent the budget and P2P starved.
 
 Weight headers are read per endpoint (`X-SAPI-USED-IP-WEIGHT-1M`, `X-SAPI-USED-UID-WEIGHT-1M`).
 Probes 3 and 4 show a separate UID count for each endpoint: Convert reached 72000 in the same
@@ -875,7 +931,7 @@ and their safe defaults.
 | Simple Earn | 6 history endpoints | 30 d / 2022-01-01 | `current`, 100 | IP 150 budgeted (probe 2 measured 50 on `rewardsRecord` and on each position read; the budget stays at 150) | 30 | `walks.earn` | P11 open (no reward row) |
 | Convert | `GET /sapi/v1/convert/tradeFlow` | 30 d / `HISTORY_FLOOR_MS`; empty windows never stop the walk; probe 5: no refusal back to the floor (C-NR-C; R-Walk A) | `limit` 1000 + `moreData`: a window with `moreData` halves | UID 3000 (probes 3-5) | 20 | `walks.convert` | P4 settled |
 | Dust | `GET /sapi/v1/asset/dribblet` | last 100 records, after 2020-12-01 | none | IP 1 (probe 2) | 1 | none (every run; keys dedupe) | P7 partly settled (empty shape measured; no dust record on the account) |
-| P2P | `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory`, `tradeType` BUY and SELL (2 series) | 30 d / `HISTORY_FLOOR_MS`; empty windows never stop the walk; probe 5: no refusal back to the floor (C-P2P-stop; R-Walk A) | `page`/`rows` 100 | UID 900 (probes 3-5) | 20 (`LANE_CALL_CAPS.p2p`; S12-Q7) | `walks.p2p` | P5 settled |
+| P2P | `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory`, `tradeType` BUY and SELL (2 series) | 30 d / `HISTORY_FLOOR_MS`; empty windows never stop the walk; probe 5: no refusal back to the floor (C-P2P-stop; head window, then newest first; was: R-Walk A forward) | `page`/`rows` 100 | UID 900 (probes 3-5) | 20 (`LANE_CALL_CAPS.p2p`; S12-Q7) | `walks.p2p` | P5 settled |
 | Fiat orders (no real row observed) | `GET /sapi/v1/fiat/orders`, `transactionType` 0 deposit, 1 withdraw (2 series) | 2 years (probe 3: a 2-year span was accepted) / `HISTORY_FLOOR_MS`; probe 5: no refusal back to the floor (C-NR-D; R-Walk A) | `page`/`rows` 500 | UID 45000 (probes 2, 3, 5) | 3 | `walks.fiatOrders` | P6 partly open (C-NR-E) |
 | Fiat payments (no real row observed) | `GET /sapi/v1/fiat/payments`, `transactionType` 0 buy, 1 sell (2 series) | 2 years (probe 3: accepted) / `HISTORY_FLOOR_MS`; probe 5: no refusal back to the floor (C-NR-D; R-Walk A) | `page`/`rows` 100 | IP 1 (probe 3: 18 at most over 22 calls; probe 5) | 10 | `walks.fiatPayments` | P6 partly open (C-NR-E) |
 | Spot trades | `GET /api/v3/myTrades?symbol=&fromId=` per symbol | none (id cursor) / from id 0 (probe 3: the oldest trade, 2025-01, was served) | `fromId`, 1000 | IP 20 (`/api/*`; probe 3: 20 in 8 of 8 calls) | 100 calls | `trades.symbols[s].fromId` | P1, P2, P3 settled |
@@ -901,8 +957,24 @@ Refusal codes (settled by probe 5):
   and the fiat walks. Convert does not use it (S8-C1, below).
 
 Walk direction (R-Walk A, user, 2026-10-16):
-- Each walk reads FORWARD from `HISTORY_FLOOR_MS` toward now, as `buildWalkWindows` does, with its
-  cursor moving forward.
+- Each walk except P2P reads FORWARD from `HISTORY_FLOOR_MS` toward now, as `buildWalkWindows`
+  does, with its cursor moving forward.
+- The P2P walk (user, 2026-10-28; was: forward like the others) reads the head window first: the
+  last 30 days before now are the forward pass of the run, the cursor moves to the head start, and
+  the ground from the old cursor (or the floor) to the head start is written as owed ground, in
+  ONE write with the cursor (`headFirstGroundOf`); the range cursor is reset only when
+  `cursor === null || headStart - forwardStart > windowMs` (was: on every run), and a gap of over one
+  window between runs counts as a jump on every such run. The owed ground is
+  read newest first, a window at a time (`newestFirst` of `planWalkPasses`, P2P only), down to the
+  floor; a cursor already at or past the head start owes nothing. The rest of a window that a run's
+  budget cuts waits behind the older owed windows (R3, the mirror of the oldest-first rotation).
+  A window whose page cannot be read does not block the windows after it: its ground stays in the
+  owed list, the other windows are read and written, and the run rejects at the end with the
+  original error (R4). The bound: with G owed windows, R of them read a run, and a failing set,
+  every other window is read within `ceil(G / R) + 1` runs. Edge (R11, backlog): at a steady sync
+  cadence of over 30 days every run counts as a jump and restarts the rotation, so when the head and
+  the R - 1 newest owed windows fail on every run the older ground stays unread; the fix would be a
+  persisted once-mark.
 - Safety net (P2P and fiat; NOT Convert): a start answered -5026 would be narrowed by `DepthGuard`
   to the served depth; the ground below that depth is not owed, and the walk goes on forward. It
   never ends the walk. Probe 5 expects no such answer.
@@ -912,8 +984,9 @@ Walk direction (R-Walk A, user, 2026-10-16):
   Cost: if Binance ever adds a Convert depth, the sync fails visibly every run until an app
   update; never a silent loss.
 - Empty windows never stop a walk.
-- Recent records arrive last: a first walk reaches the newest windows only after it has read every
-  older window. The runs until recent records appear are in "The lane caps are starting values"
+- Recent records arrive last, except for P2P (was: for P2P too): a first walk reaches the newest
+  windows only after it has read every older window. The first P2P walk reads the newest 30 days
+  on run 1. The runs until recent records appear are in "The lane caps are starting values"
   below.
 
 Failures: any other 4xx is a failure, not a stop. The window and the cursor stay, and the next run
@@ -981,12 +1054,13 @@ Fiat orders and payments have no real row on the account (C-NR-E), so their lane
 
 First walks at the starting caps, over the span from `HISTORY_FLOOR_MS` (2017-07-14) to 2026-10:
 about 3380 days, so about 113 windows of 30 days per series. Probe 5 found no refusal, so every
-window is read. The walk reads forward from the floor (R-Walk A), so recent records arrive last.
-Each P2P and fiat window reads both series (`readSeriesSpan`), so it costs 2 calls.
+window is read. The walk reads forward from the floor (R-Walk A), so recent records arrive last;
+the P2P walk is the exception: it reads the head window first and then newest first (was: forward
+like the others). Each P2P and fiat window reads both series (`readSeriesSpan`), so it costs 2 calls.
 
 | Walk | Windows x series | Calls | Lane cap | Runs | Runs until the user's records appear |
 |---|---|---|---|---|---|
-| P2P (30-day windows) | 113 x 2 | 226 (x UID 900 = 203400 UID) | 20 (`LANE_CALL_CAPS.p2p`; 10 windows a run) | 12 | first order (about 2023-09; window 73 by probe 10, about 75 by probe 4): by run 8 at the latest (older orders may exist); newest (2026-10, window 113): run 12 |
+| P2P (30-day windows) | 113 x 2 | 226 (x UID 900 = 203400 UID) | 20 (`LANE_CALL_CAPS.p2p`; 10 windows a run) | 12 (newest first behind the head window, so the head's 2 calls push the floor to run 13 at the latest; the pin allows 14) | newest (2026-10): run 1; first order (about 2023-09; window 73 by probe 10, about 75 by probe 4): by run 5 at the latest (older orders may exist); was: forward from the floor, first order by run 8 at the latest, newest (window 113) run 12 |
 | Convert (30-day windows) | 113 x 1 | 113 (x UID 3000) | 20 | 6 | the 2026-01 conversion (window about 104): run 6 |
 | Fiat orders (2-year windows) | 5 x 2, then 3 owed days x 2 and 2 re-scans x 2 | 12 to reach now, 20 until complete (x UID 45000) | 3 | 6 to reach now, 10 until complete (S12-Q18, S12-Q21, S12-Q22, S12-Q23) | no fiat order on the account |
 | Fiat payments (2-year windows) | 5 x 2 | 10 (IP 1 each) | 10 | 1 | no fiat payment on the account |
@@ -1204,9 +1278,11 @@ Depth (C-P2P-depth, C-P2P-stop):
   order behind 7 or more empty windows is found (P6).
 - Probe 5: no refusal back to the floor (the 2017-07 window was served empty), so every window is
   read.
-- R-Walk A: the walk reads forward from the floor ("Refused window and walk direction" above).
-  Recent orders arrive last: 226 calls over 12 runs at the lane cap; the user's first order appears
-  by run 8 at the latest (older orders may exist) and the newest at run 12 (probe 10, S12-Q8).
+- Walk direction ("Refused window and walk direction" above): the P2P walk reads the head window
+  first and then newest first. Recent orders arrive first: the newest on run 1, the user's first
+  order by run 5 at the latest (older orders may exist), 226 calls plus the head window's 2 over
+  about 12 runs at the lane cap (probe 10, S12-Q8). Was: R-Walk A forward from the floor, recent
+  orders last: the first order by run 8 at the latest and the newest at run 12.
 - Probe 4 found rows in 31 of 38 windows back to about 2023-09, and the oldest window had rows.
 - The walk stays inside its lane (`LANE_CALL_CAPS.p2p` calls a run, `COSTS.p2p` UID each) and the
   UID budget. A run that ends mid-walk stores its cursor, and the next run goes on from there.
@@ -1623,7 +1699,7 @@ The order is:
 5. `defaultTransactionDescription`.
 
 A negative `p2p:` row cannot be written in 1.3-a (C-P2P-SELL-MAKER B); it would render "P2P
-purchase (<FIAT>)" as well. The P2P cover rule keys on the `p2p:` code through
+purchase (<FIAT>)" as well. (Superseded by S13-Q1: the cover rule was never built.) The P2P cover rule keys on the `p2p:` code through
 `parseUntrackedCounterpart` (kind, fiat, total) plus the row's amount and holding currency, never
 on `operation` (S7-Q5). Set 7 drops `transactions.p2pSale` (C-NR-F), and the follow-up adds the
 sale label back.
@@ -1701,13 +1777,16 @@ the bank row ids with the other exclusion sets; nothing is written.
 - One-to-one: candidate pairs sort by (1) transfer-like bank row first (MCC 4829 or 6012, or a
   description containing `BINANCE`, compared case-insensitively), (2) absolute time gap, (3) bank
   row id, (4) exchange row id; each row matches once. An unmatched debit counts as spending.
+  After that greedy pass, an augmenting-path pass inside each (fiat, amount) bucket only adds
+  pairs: every greedy-matched row stays matched, though its partner may change (M15; S13-Q10 = B,
+  USER).
 - Exclusion set: only the matched bank row ids whose `categorySetByHand` is false. A matched
   hand-categorized row stays exactly as the user set it (its category decides, as today) and shows
   no caption (M9, M13); a matched row another rule already excludes stays excluded.
 - Shown on the bank row: the transaction form of a matched bank row in the exclusion set (not
   hand-categorized) shows a caption under its
   category, `transactions.matchedP2pPurchase` / `matchedCardPurchase` / `matchedExchangeDeposit`
-  ("Matched to P2P purchase", section 10), from a hook in the same folder that runs the pure
+  ("Matched to P2P purchase.", section 10), from a hook in the same folder that runs the pure
   function over the same ledger query. The developer re-greps the transaction form's caption slot.
 
 ### Not-imported line (sets 8 and 12)
@@ -1795,9 +1874,10 @@ effect.
   writes either field again, so a later run after a null-cursor first run records none.
   Disconnect removes `multiCoinSince` and keeps `multiCoinSeen`: the reset cursor is the floor,
   so every coin is read from it and nothing is owed.
-  Step 10 rulings (coordinator, standing approval, 2026-10-19; `a1c51603`): a stored
-  `multiCoinSince` with a lost or malformed `multiCoinSeen` keeps the EARLIER of the stored start
-  and the plan cursor and writes seen again (`multiCoinPatchesOf`); a plan cursor at or below the
+  Step 10 rulings (coordinator, standing approval, 2026-10-19; `a1c51603`): (1) is SUPERSEDED by
+  S15-Q12 (the old text stays): a stored `multiCoinSince` with a lost or malformed `multiCoinSeen`
+  keeps the EARLIER of the stored start and the plan cursor and writes seen again
+  (`multiCoinPatchesOf`); a plan cursor at or below the
   floor is recorded as `multiCoinSince`, an empty range the set 15 backfill reads as nothing
   owed; the marks ride only the first FORWARD cursor write of a run.
   Review requirement (slice B m5, no fix in set 6): a malformed `multiCoinSince` beside
@@ -1807,13 +1887,27 @@ effect.
 - Set 15: each of capital, Pay, Transfer, Earn with a `multiCoinSince` owes one range
   `[floor, multiCoinSince)` with `scope: 'backfill'`, read in the existing round-robin of owed
   ranges. A read in a backfill range imports every coin except BTC; BTC records there are skipped
-  (not re-read into rows). A record the live pass and the backfill pass both read (the overlap
-  re-read, Pay's R22 margin) gives one row (same key, `addManyDedup`). Floors as section 5. The
-  caption shows while any backfill range is owed.
+  (not re-read into rows; `rowsOfScope` in `binance.walk-wiring.ts`, so a BTC row the user deleted
+  does not come back, while the other coins of the same record are written). A record the live
+  pass and the backfill pass both read (the overlap re-read, Pay's R22 margin) gives one row (same
+  key, `addManyDedup`). Floors as section 5. The caption shows while any backfill range is owed.
+  Conversion rule (S15-Q1, S15-Q12): the range is converted once from `multiCoinSince` in ONE
+  write that stores the floor as the new `multiCoinSince`, so a malformed start (read as the
+  cursor) is repaired once and an empty or negative range owes nothing (`backfillGroundOf`); a
+  stored start beside a lost seen mark is kept as the END of the range, and the start is never
+  raised. Scope: the `scope: 'backfill'` rides on the range, on a point found in it and on a span
+  resume; a range owed to the backfill never merges with one owed for every coin. Read order: the
+  windows owed for every coin first, then the backfill, each group a round-robin with its own
+  cursor (S15-Q9, S15-Q16), one window kept for the backfill (S15-Q15), and a one-window budget
+  taken in turns (S15-Q18); when the budget fits more than one window, every window owed for
+  every coin holds the backfill's calls, the first included (S15-Q19); the bounds are stated in the `windowsFrom` doc comment in
+  `exchange/walk/walk.ts`. A disconnect drops `backfillCursor` and `backfillTurn` (they have no
+  repair: a malformed one reads as absent).
 - New streams (Convert, dust, P2P, fiat, trades) start from their own floors with null cursors
-  (dust: no cursor); they need no backfill range. R-Walk A: Convert, P2P and fiat read forward from
+  (dust: no cursor); they need no backfill range. R-Walk A: Convert and fiat read forward from
   `HISTORY_FLOOR_MS`, so their recent records arrive last (section 5, "Refused window and walk
-  direction").
+  direction"). P2P is the exception (user, 2026-10-28; was: forward like Convert and fiat): the
+  head window first, then newest first, with its ground owed through `headFirstGroundOf`.
 
 ### Scenario matrices (each row becomes a Jest case)
 
@@ -1957,7 +2051,7 @@ given; weights and caps are the constants `COSTS`, `LANE_CALL_CAPS` and `API_IP_
 | TC2 | `fetchOrderFills` with `fromId` 0, then a later `fromId` | at 0: `symbol` + `orderId`, no `fromId`; above 0 the `fromId` is sent | same, "asks the first page by symbol and orderId, at the page limit, with no fromId", "adds the fromId from the second page on" |
 | TC3 | body not an array; a row with a field other than `id` of the wrong type (the `id` is kept as sent and judged by the id-cursor pager), or `qty`, `quoteQty`, `commission` not exact plain decimal text (empty, `1.2.3`, `1e-8`, `-1`, ` 1`) | `BinanceHistoryParseError` for the whole page, never a skipped fill | same (`binance.history-client.my-trades.test.ts`), "fails the whole page for %s", "fails the page for an unreadable row among readable ones, never skipping a fill", "leaves the id to the pager, as sent" |
 | TC4 | HTTP 429 / 418; code -1121; HTTP 500 | `BinanceRateLimitError`; `BinanceInvalidSymbolError`; a request failure | same, "throws the rate limit error for HTTP %s with its Retry-After", "throws the invalid symbol error for code -1121", "rejects as a request failure for HTTP 500" |
-| TW1 | the arm run | the walks run in order with the trade read after the dust read, all on one run object; the trade read gets the Spot balance texts of the same run's balance read, and none when that read returned none; a failing trade read is logged by name and the balance result still resolves; it runs even when the dust read failed | `src/crypto-sync/run-crypto-sync/run-crypto-sync.test.ts`: "runs the walks in order, capital, Pay, Transfer, Earn, Convert, the dust read, P2P, fiat orders, fiat payments, then the trade read, all on one run object"; "the trade read": "gets the Spot balance texts of the balance read of the same run, and the caller does not", "gets no texts when the balance read returned none", "still resolves with the balance result when it fails, logging only its name", "runs even when the dust read failed: each logs its own failure" |
+| TW1 | the arm run | the walks run in order with the trade read after the dust read, all on one run object; the trade read gets the Spot balance texts of the same run's balance read, and none when that read returned none; a failing trade read is logged by name and the balance result still resolves; it runs even when the dust read failed | `src/crypto-sync/run-crypto-sync/run-crypto-sync.test.ts`: "runs the walks in order, P2P, capital, Pay, Transfer, Earn, Convert, the dust read, fiat orders, fiat payments, then the trade read, all on one run object"; "the trade read": "gets the Spot balance texts of the balance read of the same run, and the caller does not", "gets no texts when the balance read returned none", "still resolves with the balance result when it fails, logging only its name", "runs even when the dust read failed: each logs its own failure" |
 | TW2 | cooling down; no credentials; no Spot texts; the lane refuses the symbol list; unreadable stored state | no request (the state error rejects); `{ imported: 0 }` otherwise | `binance.trade-history.test.ts`, "a run that does not start" |
 | TW3 | 429 on a page, on a re-read, on the symbol list (the plan's TW4 is the symbol-list case) | page: what was read before is written, the cooldown is set, the run resolves; re-read: the cursor stays before the page and the cooldown is set; symbol list: the cooldown is set and no trade request goes out; a symbol list that cannot be read rejects with no cooldown | same, "a rate limit": "writes what the run read before the limit, sets the cooldown and resolves", "keeps the cursor before the page and sets the cooldown when a re-read is limited", "sets the cooldown and sends no trade request when the symbol list is limited", "rejects, with no cooldown, when the symbol list cannot be read" |
 | TW5 | one symbol throws -1121, one a parse error, one an amount past the safe integer | each ends `failed`, one log line, the others read; the too-large coin is listed before any row of the run; an order the rules refuse writes nothing of its page; fills that disagree on the side fail the symbol | same, "a symbol that fails": "ends only that symbol, logs each failure once, and reads the symbols after it", "lists a coin that is too large before any row of the run is written", "logs a symbol that throws on every run once per run and still reads the others", "writes nothing of a page that holds an order the rules refuse", "fails the symbol for an order whose fills disagree on the side" |
@@ -2074,10 +2168,10 @@ round changes it.
 | P5 | BUY, `totalPrice` "4150.001" | stop `amount-precision`, owed point | none | not imported |
 | P6 | C-P2P-stop: one order in window 9, windows 1-8 empty in both series (7 or more empty windows in a row) | every empty window is read and none stops the walk; the order is imported | none | not imported; spec was: the walk ended after window 6 and never read the order |
 | P7 | safety net (probe 5 saw no refusal): a start answered -5026 | `DepthGuard` narrows to the served depth; the ground below it is not owed; the walk goes on forward (R-Walk A) | - | not imported; spec was: counted toward the 6 |
-| P7b | R-Walk A: a first P2P walk on UA-1 (113 windows x 2 series = 226 calls, lane cap `LANE_CALL_CAPS.p2p` = 20) | recent records arrive last; the first order (about 2023-09, window about 75) appears by run 8 at the latest (older orders may exist), the newest (2026-10) at run 12; was: lane cap 10, runs 15 and 23 | none | not imported; spec was: newest windows read first |
+| P7b | a first P2P walk on UA-1 (113 windows x 2 series = 226 calls, lane cap `LANE_CALL_CAPS.p2p` = 20; user 2026-10-28: head window, then newest first) | recent orders arrive first: the newest (2026-10) on run 1, the first order (about 2023-09, window about 75) by run 5 at the latest (older orders may exist); was: R-Walk A forward from the floor, the first order by run 8 at the latest and the newest at run 12 (earlier still: lane cap 10, runs 15 and 23) | none | not imported; spec was: newest windows read first |
 | P8 | a window with BUY rows and an empty SELL series | the BUY orders import; the window has no special meaning (no empty count) | none | not imported |
 | P8b | a window answered with another 4xx (any code other than -5026); probe 5 saw none | a failure: the window and cursor stay, and the next run reads it again; the walk does not end | - | not imported; spec was: unspecified |
-| P9 | UA-1, probe 3's 80 orders: 77 COMPLETED BUY TAKER, CANCELLED 2, CANCELLED_BY_SYSTEM 1 | 77 rows at `takerAmount`; no row for the 3 cancelled; `notImported` empty; line hidden | the 77 rows carry an untracked counterpart code, so statistics leave them out like any coded row (S12-Q17: set 13 decides whether a P2P row stays out) | not imported |
+| P9 | UA-1, probe 3's 80 orders: 77 COMPLETED BUY TAKER, CANCELLED 2, CANCELLED_BY_SYSTEM 1 | 77 rows at `takerAmount`; no row for the 3 cancelled; `notImported` empty; line hidden | the 77 rows carry an untracked counterpart code, so statistics leave them out like any coded row (S12-Q17, S13-Q2: the `p2p:` row stays out) | not imported |
 | P10 | the P2 SELL order is read again by the re-scan | one entry; the count stays 1 | none | not imported |
 | P11 | UA-1, 2026-01: P4 then C1 on Funding | "Binance Funding · UAH" +x by P2P, then -x by Convert; it stays at 0 (R-Q6); USDT + on Funding | P2P none; Convert excluded | not imported |
 | F1 | fiat deposit EUR 100, Successful | Spot EUR +100, `bank:EUR:100.00` | none | not imported |
@@ -2116,9 +2210,9 @@ the decision of an order is `binance.p2p-history.outcome.test.ts`, its walk
 | P4 | `binance.p2p-history.real-sqlite.test.ts`: "puts a buy of a fiat asset on the Funding fiat holding, created at zero" |
 | P4b | `binance.p2p-history.test.ts`: "counts an asset Kiko does not track, lists its ticker and writes no row" |
 | P5 | same, "stops at a total with a digit past the fiat scale and owes its point" |
-| P6 | same, "reads every empty window and imports an order behind eight of them" |
-| P7 | same, "narrows a start Binance refuses as too old and walks on forward" |
-| P7b | same, "reaches the first UA-1 order by run 8 and the newest by run 12 at the lane cap", "spends the whole lane on each of the first 11 runs and reports none of them finished", "reads each of the 113 windows on both sides, 226 calls, before it is current" |
+| P6 | same, "reads every empty window behind the head and imports an order behind eight of them on the second run" |
+| P7 | same, "narrows a start Binance refuses as too old and walks on, newest first behind the head" |
+| P7b | same, "imports the newest order on run 1 and the first UA-1 order by run 5 at the lane cap", "spends the whole lane on each of the first 11 runs and reports none of them finished", "reads the whole ground on both sides, newest first behind the head, before it is current" |
 | P8 | same, "imports the buys of a window whose sale series is empty" |
 | P8b | same, "keeps the window and the cursor on any other refusal code and reads it again next run" |
 | P9 | `binance.p2p-history.real-sqlite.test.ts`: "imports the 77 completed buys of the probe 3 orders and lists nothing" |
@@ -2161,9 +2255,13 @@ rules are in section 5, "Fiat orders ...", and the rulings S12-Q18 ... S12-Q35 i
 | PW4 | the lane room for 4 calls | 2 windows, both series each, no half window | same, "reads both sides of a window or neither" |
 | PW5 | the P2P walk over random orders (35 seeds, clock gaps 0, 1 h and 1 day, twelve categories, a thrower window and 429s on some runs) | each completed taker buy once at its exact amount and marker; each refusal exactly one entry; the untracked ticker once; no row or entry for an open order; calls within the lane; the cursor at the last clock | `binance.p2p-history.properties.test.ts`: "the P2P walk over random orders, runs %i ms apart", "imports each completed taker buy once at its exact amount, lists each refusal once, and ends current: seed %i" |
 | PW5b | an unreadable order (PC5) in a window | its point is owed; the other orders of the window import; the cursor passes the window | `binance.p2p-history.test.ts`: "owes the point of an order it cannot read and imports the rest of its window" |
-| PW6 | a window whose page throws `BinanceHistoryParseError` on every run | the walk rejects; no mark moves past the window and none of its rows is written; the earlier windows stay committed | same, "rejects the walk, moves no mark past the window and writes none of its rows when its page cannot be read" |
-| PW7 | PW6 over three runs | each run rejects the same way and reads the window again; the `p2p` cursor stays before it | same, "reads a window whose page cannot be read again on every run, never passing it" |
+| PW6 | a window whose page throws `BinanceHistoryParseError` on every run | the walk rejects at the end of the run; the P2P forward pass reads on past an unreadable head window (R4, the P2P-only option `readOnPastUnreadableForward` of `runWalkPlan`; every other walk stops at it as before), so the owed ground behind it is still read and written; the cursor stays at the head start and none of the window's rows is written; the earlier windows stay committed (was: the walk wrote none of its rows and read nothing past the window) | same, "rejects the walk, moves no mark past the head window and still writes the rows of the owed ground when its page cannot be read" |
+| PW7 | PW6 over three runs | each run rejects the same way and reads the head window again, and reads the owed ground behind it; the `p2p` cursor stays at the head start | same, "reads a head window whose page cannot be read again on every run, never passing it" |
 | PW8 | the `p2p` cursor of PW7 more than a day behind `latestSyncedAt` | the history caption shows | `src/screens/account-detail/crypto-sync-section/binance-history-status.test.ts`: "is behind while the P2P walk is held more than a day by a page it cannot read" |
+| PW9 | a P2P run rejects after the walk marks were read (a page that cannot be read; a failed request) | `readFailedAt` = the time of the run is stored in the `p2p` walk entry, and the original error is rethrown, also when the mark write itself fails; a cooldown skip, no credentials, a state that cannot be read and a failed credentials read write no mark (R7) | `src/crypto-sync/binance/binance.p2p-history.test.ts`: "a failed mark write keeps the original error", "leaves a stored mark as it was on a run the cooldown skips", "leaves a stored mark as it was on a run with no credentials" |
+| PW10 | a stored `readFailedAt` and a run that reads and resolves; a run that ends at a 429 | the mark is cleared (`null`); a 429 run leaves it as it was; with the head window still unreadable the mark is kept on every run while the owed ground is read | same, "clears a stored mark when a later run reads and resolves", "leaves a stored mark as it was on a run that ends at a 429", "keeps the mark set on every run while the head window cannot be read, and still reads the owed ground" |
+| PW11 | a disconnect of an account with a mark | the disconnect drops it and keeps the floor cursor | `src/crypto-sync/exchange/walk-state/walk-state.read-failed.test.ts`: "drops the mark and keeps the floor cursor" |
+| PW12 | a stored mark, the Binance account section | the standing caption `accountDetail.exchangeP2pReadFailed` shows beside the coin lines, naming the exchange, also during a sync; no caption for a missing mark, a mark that is no time, the mark of another walk, a state still loading, a wallet account or a state this build cannot read | `src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.p2p-failed.test.tsx`: "shows the caption for a stored mark, naming the exchange", "keeps the caption while a sync is in flight, since it states what the last read found", "shows no caption when the P2P walk holds no mark", "shows no caption for a state this build cannot read" |
 | FW1 | the fiat walks: cooling down, no credentials, unreadable state; a failure while they run | as PW1 to PW3, for both walks | `binance.fiat-history.test.ts`: "a fiat walk refused before its first read", "a failure of the $name walk" |
 | FW2 | the fiat orders and payments walks over generated worlds: six clocks, 30 seeds and the named seeds, twelve kinds of owed ground (S12-Q22, S12-Q23, S12-Q24, S12-Q30, S12-Q32, S12-Q33, S12-Q36) | every record Binance serves is imported within the bound `r x F(z)`, and `r x (F(z) + H)` in a dense world (section 1, S12-Q32, S12-Q33 and S12-Q36), each key once | `binance.fiat-history.properties.test.ts`: "the $kindName walk over generated worlds, runs $label", "with $stuck owed ground placed $place" (the case titles of a seed are built by `casesOf`) |
 | FW3 | the fiat walks over generated statuses (32 seeds, clock gaps 0, 1 h and 1 day) | each settled record once at its exact amount and marker; each refusal exactly one `fiat-unrecognized` entry; the untracked ticker once; no row for a record that is `Processing`; no owed point | same, "the $kindName walk over generated statuses, runs $gapMs ms apart", "imports each settled record once at its exact amount, lists each refusal once, and ends current: seed %i" |
@@ -2200,7 +2298,7 @@ rules are in section 5, "Fiat orders ...", and the rulings S12-Q18 ... S12-Q35 i
 | FQ31 | `readSeriesSpan` over a rejecting request: a page of a lane with no depth, the second page of a series, a rate-limited request, a series read, a probe of the narrowing and a band read; and a band that is refused (S12-Q38) | each rejected request is one recorded call (a rate limit too), the error is rethrown or handed to the caller; the refusal of a band is recorded once and the band is owed | `binance.history-paging.failed-calls.test.ts`: "counts the first page of a series as a call, and rethrows its error", "counts the page that rejects after a page that was served, each once", "counts the request of a rate limit, and hands the limit to the caller", "counts a read of a series on a lane with a depth, and rethrows its error", "counts a probe of the narrowing, and the refused read before it, each once", "counts the read of the band a series began above, and the series read before it, each once", "counts the refusal of a band once, and owes the band" |
 | FQ32 | the public price client over 160 symbols that fail on the network (S12-Q38) | the lane cap ends the reads: `LANE_CALL_CAPS.market` (150) requests | `src/rates/binance-market/binance-market.client.test.ts`: "counts a request that failed on the network, so the lane cap ends the reads of a run" |
 | FQ33 | fiat orders and fiat payments, 30 owed points that all reject, 3 runs (S12-Q38) | the requests of a run equal its recorded calls, stay within `LANE_CALL_CAPS` (3, 10) and the orders within `UID_WEIGHT_BUDGET_1M` | `binance.fiat-history.owed-ground.test.ts`: "$name: 30 owed points that cannot be read" > "counts every request of a run as a call of its lane, so the cap and the weight of the minute hold" |
-| RW1 | the arm run | the walks in spec order, P2P and fiat after dust and before trades | `src/crypto-sync/run-crypto-sync/run-crypto-sync.test.ts`: "runs the walks in order, capital, Pay, Transfer, Earn, Convert, the dust read, P2P, fiat orders, fiat payments, then the trade read, all on one run object" |
+| RW1 | the arm run | the walks in spec order, P2P first, fiat after dust and before trades (was: P2P and fiat after dust and before trades) | `src/crypto-sync/run-crypto-sync/run-crypto-sync.test.ts`: "runs the walks in order, P2P, capital, Pay, Transfer, Earn, Convert, the dust read, fiat orders, fiat payments, then the trade read, all on one run object" |
 | RW2 | the P2P walk rejects with `BinanceHistoryParseError` | logged under its own tag with name and code only; the balance result resolves | same, "still resolves with the balance result when the P2P walk fails, logging only its name" |
 | RW3 | RW2 | the fiat and trade reads still run; each logs its own failure | same, "runs the fiat walks and the trade read even when the P2P walk failed: each logs its own failure" |
 | RW4 | real SQLite, a P2P page that cannot be read and a readable Convert record, two runs | the Convert row imports once, the P2P cursor stays, the failure is logged each run, the fiat and trade reads run | `binance.run-arm.real-sqlite.test.ts`: "keeps importing the other walks while a P2P page cannot be read, and logs it on every run" |
@@ -2254,22 +2352,37 @@ Walk-state parse and writer (set 4):
 
 Matcher (set 13):
 
-| # | Exchange row | Bank debit | Result | was: |
-|---|---|---|---|---|
-| M1 | P2P buy, `p2p:UAH:4150.00` at t | -4150.00 UAH at t - 20 min | debit excluded; caption "Matched to P2P purchase" | counts |
-| M2 | same | -4150.00 UAH at t - 2 h | counts (outside window) | counts |
-| M3 | same | -4150.01 UAH | counts | counts |
-| M4 | two P2P buys of 4150.00 | one debit | one match (nearest gap) | counts |
-| M5 | card buy `card:UAH:2600.00` | -2600 UAH at t + 2 days (posting lag) | excluded | counts |
-| M6 | fiat deposit `bank:EUR:100.00` | -100 EUR at t - 3 days | excluded | counts |
-| M7 | none | -4150.00 UAH | counts | counts |
-| M8 | P2P buy | debit in USD for the UAH total | counts | counts |
-| M9 | P2P buy 4150.00 | -4150.00 UAH at t - 20 min, `categorySetByHand` true | counts; no caption | counts |
-| M10 | P2P buy 4150.00 | two debits of -4150.00 UAH: a grocery row at t - 5 min, an MCC 4829 row at t - 30 min | the 4829 row is excluded; the grocery row counts | counts |
-| M11 | P2P buy on a crypto account hidden by the account filter | -4150.00 UAH at t - 20 min | excluded | counts |
-| M12 | P2P buy 4150.00 | two debits of -4150.00 UAH: an MCC 6012 row at t - 30 min (already excluded), a grocery row at t - 5 min | the 6012 row is consumed by the match (stays excluded; caption shown); the grocery row counts | 6012 excluded; grocery counts |
-| M13 | P2P buy 4150.00 | two debits of -4150.00 UAH: a hand-categorized funding debit at t - 30 min, a grocery row at t - 5 min | the hand row is consumed and stays as the user set it (its category decides; no caption); the grocery row counts | hand row as set; grocery counts |
-| M14 | P2P buy of the fiat asset UAH on "Binance Funding · UAH", `p2p:UAH:4000.00` at t | -4000.00 UAH at t - 20 min on a bank card | debit excluded; caption "Matched to P2P purchase" | counts |
+Each row names the test file that holds it (full `src/...` path) and quotes its titles; `same`
+takes the first file of the row above.
+
+| # | Exchange row | Bank debit | Result | was: | Test |
+|---|---|---|---|---|---|
+| M1 | P2P buy, `p2p:UAH:4150.00` at t | -4150.00 UAH at t - 20 min | debit excluded; caption "Matched to P2P purchase." | counts | `src/statistics/exchange-funding-match/exchange-funding-match.test.ts`: "matches a P2P purchase to the bank debit of its exact total twenty minutes earlier"; `src/screens/forms/transaction-form/transaction-form.exchange-funding.test.tsx`: "shows Matched to P2P purchase under the category of a matched bank debit" |
+| M2 | same | -4150.00 UAH at t - 2 h | counts (outside window) | counts | same, "leaves a debit of the total two hours before a P2P purchase unmatched", "matches a $kind debit at each edge of its window and not one millisecond past it" |
+| M3 | same | -4150.01 UAH | counts | counts | same, "leaves a debit one minor unit off the total unmatched" |
+| M4 | two P2P buys of 4150.00 | one debit | one match (nearest gap) | counts | same, "matches one debit to the nearer of two P2P purchases of the same total" |
+| M5 | card buy `card:UAH:2600.00` | -2600 UAH at t + 2 days (posting lag) | excluded | counts | same, "matches a card purchase to a debit posted two days later" |
+| M6 | fiat deposit `bank:EUR:100.00` | -100 EUR at t - 3 days | excluded | counts | same, "matches a fiat deposit to a debit three days earlier" |
+| M7 | none | -4150.00 UAH | counts | counts | same, "counts a debit no exchange row funded" |
+| M8 | P2P buy | debit in USD for the UAH total | counts | counts | same, "leaves a debit in another currency than the total's fiat unmatched" |
+| M9 | P2P buy 4150.00 | -4150.00 UAH at t - 20 min, `categorySetByHand` true | counts; no caption | counts | same, "matches a hand-categorized debit but keeps it out of the excluded ids"; `src/screens/forms/transaction-form/transaction-form.exchange-funding.test.tsx`: "shows no caption on a matched debit the user categorized by hand" |
+| M10 | P2P buy 4150.00 | two debits of -4150.00 UAH: a grocery row at t - 5 min, an MCC 4829 row at t - 30 min | the 4829 row is excluded; the grocery row counts | counts | same, "prefers a transfer debit over a nearer grocery debit", "treats a debit whose description holds binance in any case as a transfer" |
+| M11 | P2P buy on a crypto account hidden by the account filter | -4150.00 UAH at t - 20 min | excluded | counts | `src/screens/statistics/statistics.screen.exchange-funding.test.tsx`: "leaves the funding debit out of spending while the account filter hides the crypto account" |
+| M12 | P2P buy 4150.00 | two debits of -4150.00 UAH: an MCC 6012 row at t - 30 min (already excluded), a grocery row at t - 5 min | the 6012 row is consumed by the match (stays excluded; caption shown); the grocery row counts | 6012 excluded; grocery counts | `src/statistics/exchange-funding-match/exchange-funding-match.test.ts`: "lets an already excluded cash-out debit take the match, so the grocery debit still counts"; `src/screens/forms/transaction-form/transaction-form.exchange-funding.test.tsx`: "shows the caption on a matched debit another rule already excludes" |
+| M13 | P2P buy 4150.00 | two debits of -4150.00 UAH: a hand-categorized funding debit at t - 30 min, a grocery row at t - 5 min | the hand row is consumed and stays as the user set it (its category decides; no caption); the grocery row counts | hand row as set; grocery counts | same, "lets a hand-categorized debit take the match, so the grocery debit still counts"; `src/screens/forms/transaction-form/transaction-form.exchange-funding.test.tsx`: "shows no caption on a hand-categorized debit that took the match" |
+| M14 | P2P buy of the fiat asset UAH on "Binance Funding · UAH", `p2p:UAH:4000.00` at t | -4000.00 UAH at t - 20 min on a bank card | debit excluded; caption "Matched to P2P purchase." | counts | same, "matches a P2P purchase of a fiat asset to its bank debit", "never takes a debit on a holding of a crypto account" |
+| M15 | two P2P buys of 4150.00, at t and at t + 90 min | -4150.00 UAH at t + 40 min and at t - 50 min | both debits excluded (the t - 50 min debit with the first buy, the t + 40 min debit with the second); the nearest-first pass alone would leave one (S13-Q10) | one debit counts | same, "matches both debits of two P2P purchases of the same total when the nearest pair would leave one unmatched" |
+| T1 (set 13) | tie on every key but one (one case per key) | - | the expected pair per key: time gap, then bank row id, then exchange row id | - | same, "breaks a tie by the time gap, then the bank row id, then the exchange row id ($key)" |
+| T2 (set 13) | one coded row per case: `p2p:UAH` (no total), `card:UAH:1300.00` with a negative amount, `asset:PEPE`, `wallet:MARGIN`, no code | -4150.00 and -1300.00 UAH at t | no match | - | same, "ignores a coded row with no total, a negative amount, or a wallet or asset code ($title)" |
+| T3 (set 13, property) | generated ledgers (`seededRandom`) | generated | each row matches at most once; the same pairs for any input order | - | same, "matches each row at most once and gives the same pairs for any input order" |
+| T4 (set 13, wiring) | as M1 | as M1 | the debit is in no bucket of the category trend | counts | `src/screens/statistics/statistics.screen.exchange-funding.test.tsx`: "keeps a matched debit out of the category trend too" |
+| T5 (set 13, wiring) | as M1 | as M3 (-4150.01 UAH) | the debit stays in the spending pie | counts | same, "still counts a debit the matcher leaves unmatched" |
+
+D1 (set 13, demo; `__tests__/spec-test-rows.test.ts` reads only `src/` paths, so this row is not in
+a Test column): `e2e/screenshot/fixtures/build-demo-snapshot.test.ts`, "shows a matched bank debit
+for each funding kind" (through `exchangeFundingMatches` over the snapshot: the three demo debits
+give three matches, each in `excludedIds`) and "dates every funding debit outside the default
+30-day window".
 
 Withdrawals (R-Q12): W1 a USDT withdrawal counts as spending in the default category (was: not
 imported; BTC: same as before). W2 a hand link keeps today's exclusion.
@@ -2283,7 +2396,7 @@ Caption (set 15):
 | K3 | Transfer owes a range | shown | shown |
 | K4 | a backfill range owed | shown | hidden |
 | K5 | only owed points | hidden | hidden |
-| K6 | a candidate trade symbol never read (no entry or null `fromId`) | shown | n/a |
+| K6 | a candidate trade symbol never read (no entry or null `fromId`; a symbol whose read failed is not counted) | shown | n/a |
 | K6b | every candidate symbol read, one read empty (`fromId` 0) | hidden | n/a |
 | K7 | top-level `exchange_state` malformed | shown, with the paused copy (`exchangeHistoryPaused`) | n/a |
 | K8 | every cursor current; only `notImported` entries | caption hidden; the not-imported line shows | n/a |
@@ -2308,7 +2421,7 @@ Caption (set 15):
   sheet is `AddBankProviderSheet` generalized into `ProviderSheet`
   (`src/screens/account-detail/provider-sheet/`), listing registry-wired catalog entries
   (`visibleCatalogEntries` over a registry), used by both the bank and the crypto sections, plus
-  "Change exchange".
+  "Change exchange or wallet".
 - Connected: unchanged UI; the display name and the disconnect copy come from the registry. Under
   the status line sit the not-tracked line, the oversized line, the not-imported line
   (`notImportedCountsOf`, C-NR-A; set 8) and the caption.
@@ -2327,8 +2440,8 @@ Caption (set 15):
 | Privacy policy, Binance data (set 15) | The Binance bullet adds: balances of every coin and fiat, trades, Convert, P2P orders (amounts and fiat totals of purchases; order numbers and times of records Kiko does not import yet; no counterparty data), fiat deposits and withdrawals, card purchases, dust conversions, and the ids and times of Convert and fiat records Kiko does not import yet. The ids and times of records not imported are kept on the device in the import progress (`exchange_state`) and travel in a `.kiko` export |
 | App Privacy label | stays "Data Not Collected" (everything stays on device); the review is recorded in `memory/refs/resubmission-kit.md` section D |
 | Stored counterparty data | Pay nickname only (D4). The P2P fields `counterPartNickName`, `advNo`, `payMethodName` and `additionalKycVerify` (probes 2-4 key list) and fiat payment method details are never read into a type. A not-imported entry stores the record id and time only |
-| API terms gate | Before set 15 merges, read and record (URL, date, clauses) Binance's Terms of Use, its API terms (the clauses on read-only third-party apps) and its market-data display terms (the clauses on showing Binance price data in a third-party app, attribution included); scribe records them in kiko-compliance. A clause that forbids the price display removes the fallback before ship. Bybit's terms (PDF in `research-bybit.md`) gate 1.3-b. **C2 note (set 5, 2026-10-18).** Terms read: Binance Terms of Use, ADGM Binance entities (NEL/NCCL/NTL), effective 21 July 2026 (the version served to this region; other regions can get other terms); PDF `https://bin.bnbstatic.com/static/cms/cg08ou2ak0tn7mcplvfg/file/bf4879710c904b991848972ec4818ba2cf9e4ce314c09adae84fa2750d3477f7.pdf`, checked 2026-10-18 (the `/en/terms` page is a pdf.js iframe). Cl. 27: IP licence non-exclusive, only as necessary to receive Binance Services, non-commercial personal or internal business use; trade marks EXCLUDED. Cl. 14.1.2(b): account access via APIs is "subject to separate API terms and our approval". Cl. 31.1(d): no IP infringement. Cl. 31.1(e) and 25.5: no use from the List of Prohibited Countries, no VPN circumvention. Cl. 33.6: third-party apps are the user's own risk, no endorsement. Cl. 33.11: market data is "for information purposes", no accuracy or availability warranty. NOT found: a clause on keyless public market data, attribution text, or an explicit redistribution or display ban. Prohibited Countries (updated 5 Jan 2026): United States (also citizens), Canada, Netherlands, Cuba, North Korea, Iran, Crimea, so-called DPR and LPR. NOT read: the separate API terms, the Prohibited Use Policy. Docs read: market-data-endpoints (no licence text); general-api-information ("please use the base endpoint https://data-api.binance.vision" for public market data; 429/418 bans of 2 minutes to 3 days with Retry-After; 403 WAF; per IP). Ruling D1: keep `api.binance.com`; `data-api.binance.vision` is a later option. **User ruling C2 (2026-10-18):** the release hold is LIFTED on two conditions: (1) no Binance logo anywhere in the app or the metadata; (2) the fallback stays fail-soft (451, 403, 418, 429 or any error is no price this sync, never a crash or a wrong value, never a retry loop). There is NO device-region check: the fallback runs for every user, also in a Prohibited Country. |
-| Demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`, `kiko-demo-uk.kiko`, built by `build-demo-snapshot.ts`) | a crypto account (`institution` null) with manual holdings in at least five curated coins incl. USDT, USDC, ETH, BNB and a non-top coin (one with a dated price history), plus UAH and EUR holdings; on that account (set 7) an Exchange pair USDT -> BTC with `operation = 'trade'` and its third-coin fee row (BNB, `operation = 'trade-fee'`, same pair id, labelled "Trading fee"), a Convert pair UAH -> USDT (`operation = 'convert'`), a dust pair XRP -> BNB on the existing XRP holding (`operation = 'dust'`; no Dogecoin holding, user answer U3), a P2P buy row with `p2p:UAH:4150.00` and `operation = 'p2p'`, a card buy row with `card:UAH:2600.00` (`operation = 'card'`), a card SALE row (Ethereum, `card:UAH:1300.00`) and a trade with an untracked side (Solana, `asset:PEPE`, `operation = 'trade'`) so every label set 7 adds is reachable (orchestrator ruling R6, Guideline 2.5.19), a fiat deposit row on the EUR holding with `bank:EUR:100.00` (`operation = 'fiat'`), a fiat withdrawal `bank:EUR:50.00` (EUR stays at 50), every set 7 row older than the 30-day window, every existing holding keeping its end balance (S7-Q2), and a matching bank debit on a bank account so the statistics matcher shows (set 13). Two connectable demo accounts, both with `institution` null so `useAutoSync` never runs: a crypto account with `bankId = 'binance'` so the reviewer reaches the Binance connect field (set 14), and one with `bankId = 'btc_wallet'` (set 14); `build-demo-snapshot.ts` maps `bankId` to null for every non-bank account today (`account.kind === 'bank' ? ... : null`), so set 14 changes that mapping. Regenerated (`KIKO_REGEN_DEMO=1`) with each snapshot-shape change: set 1 (`EXPORT_VERSION` 4; `generate-demo-kiko.test.ts` pins `envelope.version` to it), set 4 (`exchange_state` column), set 7 (rows, `operation`), set 13, set 14 |
+| API terms gate | Before set 15 merges, read and record (URL, date, clauses) Binance's Terms of Use, its API terms (the clauses on read-only third-party apps) and its market-data display terms (the clauses on showing Binance price data in a third-party app, attribution included); scribe records them in kiko-compliance. A clause that forbids the price display removes the fallback before ship. Bybit's terms (PDF in `research-bybit.md`) gate 1.3-b. **C2 note (set 5, 2026-10-18).** Terms read: Binance Terms of Use, ADGM Binance entities (NEL/NCCL/NTL), effective 21 July 2026 (the version served to this region; other regions can get other terms); PDF `https://bin.bnbstatic.com/static/cms/cg08ou2ak0tn7mcplvfg/file/bf4879710c904b991848972ec4818ba2cf9e4ce314c09adae84fa2750d3477f7.pdf`, checked 2026-10-18 (the `/en/terms` page is a pdf.js iframe). Cl. 27: IP licence non-exclusive, only as necessary to receive Binance Services, non-commercial personal or internal business use; trade marks EXCLUDED. Cl. 14.1.2(b): account access via APIs is "subject to separate API terms and our approval". Cl. 31.1(d): no IP infringement. Cl. 31.1(e) and 25.5: no use from the List of Prohibited Countries, no VPN circumvention. Cl. 33.6: third-party apps are the user's own risk, no endorsement. Cl. 33.11: market data is "for information purposes", no accuracy or availability warranty. NOT found: a clause on keyless public market data, attribution text, or an explicit redistribution or display ban. Prohibited Countries (updated 5 Jan 2026): United States (also citizens), Canada, Netherlands, Cuba, North Korea, Iran, Crimea, so-called DPR and LPR. **Terms read 2026-10-27 (set 15, coordinator ruling PASS):** "API KEYS PRODUCT TERMS", Version 2.0, effective July 9th, 2026 (`https://www.binance.com/en/about-legal/terms-binance-api`; cl. 1.3 they are the Product Terms for the API; 3.1 a personal, limited, revocable licence to use the API Key solely to integrate with Binance; 2.6 and 4(g) a key given to a third-party provider is contemplated; 4(a)(b)(f) single purpose, no unnecessary permissions, no key in a cloud venue; 3.2(b) no derivatives of the API data without written authorization) and the "Prohibited Use Policy" (last updated 5 January 2026; D no resale or transactions on behalf of others, I automated access only as permitted). No clause bans showing the user's own data or prices. The record, with the standing items (3.2(b) residual, device-only Keychain, read-only key help), is in kiko-compliance. Docs read: market-data-endpoints (no licence text); general-api-information ("please use the base endpoint https://data-api.binance.vision" for public market data; 429/418 bans of 2 minutes to 3 days with Retry-After; 403 WAF; per IP). Ruling D1: keep `api.binance.com`; `data-api.binance.vision` is a later option. **User ruling C2 (2026-10-18):** the release hold is LIFTED on two conditions: (1) no Binance logo anywhere in the app or the metadata; (2) the fallback stays fail-soft (451, 403, 418, 429 or any error is no price this sync, never a crash or a wrong value, never a retry loop). There is NO device-region check: the fallback runs for every user, also in a Prohibited Country. |
+| Demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`, `kiko-demo-uk.kiko`, built by `build-demo-snapshot.ts`) | a crypto account (`institution` null) with manual holdings in at least five curated coins incl. USDT, USDC, ETH, BNB and a non-top coin (one with a dated price history), plus UAH and EUR holdings; on that account (set 7) an Exchange pair USDT -> BTC with `operation = 'trade'` and its third-coin fee row (BNB, `operation = 'trade-fee'`, same pair id, labelled "Trading fee"), a Convert pair UAH -> USDT (`operation = 'convert'`), a dust pair XRP -> BNB on the existing XRP holding (`operation = 'dust'`; no Dogecoin holding, user answer U3), a P2P buy row with `p2p:UAH:4150.00` and `operation = 'p2p'`, a card buy row with `card:UAH:2600.00` (`operation = 'card'`), a card SALE row (Ethereum, `card:UAH:1300.00`) and a trade with an untracked side (Solana, `asset:PEPE`, `operation = 'trade'`) so every label set 7 adds is reachable (orchestrator ruling R6, Guideline 2.5.19), a fiat deposit row on the EUR holding with `bank:EUR:100.00` (`operation = 'fiat'`), a fiat withdrawal `bank:EUR:50.00` (EUR stays at 50), every set 7 row older than the 30-day window, every existing holding keeping its end balance (S7-Q2), and the three bank debits that fund the P2P, card and fiat deposit rows so the statistics matcher and its caption show (set 13; step 6/8: Monobank UAH -4150.00 and -2600.00 and Wise EUR -100.00, described "Binance P2P" or "Binance", opening balances raised so every end balance stays). Set 14 changes no demo file (S14-Q2, user ruling): the reviewer reaches the Binance and wallet fields through the picker on the create form, and the connectable-account fixtures are built inside the tests, not in the demo. Regenerated (`KIKO_REGEN_DEMO=1`) with each snapshot-shape change: set 1 (`EXPORT_VERSION` 4; `generate-demo-kiko.test.ts` pins `envelope.version` to it), set 4 (`exchange_state` column), set 7 (rows, `operation`), set 13, set 14 |
 | 3.1.5 | read-only viewer; the notes state no trading, withdrawal or transfer is possible |
 
 Set 15 list for the signed history reads (coordinator, 2026-10-23):
@@ -2357,8 +2470,9 @@ Notes for Review (en, appended to the reviewer kit in set 15):
 >   transactions.
 > - P2P and card purchases, labelled "P2P purchase (UAH)" and "Card purchase (UAH)", and a "Bank
 >   deposit (EUR)" row: same account.
-> - A bank card payment that funded a P2P purchase is not counted as spending and shows "Matched to
->   P2P purchase": the demo bank account's transaction and the Statistics tab.
+> - A bank card payment that funded a P2P purchase, a card purchase or an exchange deposit is not
+>   counted as spending and shows "Matched to P2P purchase.", "Matched to card purchase." or
+>   "Matched to exchange deposit.": the demo bank accounts' transactions and the Statistics tab.
 > - The "Exchange or wallet" picker with Binance and Bitcoin wallet address: the demo accounts
 >   marked Binance and Bitcoin wallet.
 > - With a connected Binance account only: one holding per coin and wallet filled from Binance,
@@ -2377,30 +2491,31 @@ not in 1.3-a (C-Div).
 | `forms.account.exchangeType` | Exchange or wallet | Біржа або гаманець |
 | `forms.account.exchangeTypePlaceholder` | Select an exchange or wallet | Оберіть біржу або гаманець |
 | `forms.account.exchangeTypeSheetTitle` | Exchange or Wallet | Біржа або гаманець |
-| `forms.account.exchangeDisclaimer` | Kiko is an independent app. It is not affiliated with or endorsed by any exchange or wallet provider. | Кіко — незалежний застосунок. Він не пов’язаний із жодною біржею чи гаманцем і не є їхнім партнером. |
-| `forms.account.exchangeConnectable` | Connect with a read-only API key. | Підключення з ключем API лише для читання. |
+| `forms.account.exchangeDisclaimer` | Kiko is an independent app. It is not affiliated with or endorsed by any exchange or wallet provider. | Кіко — незалежний застосунок. Він не повʼязаний із жодною біржею чи гаманцем і не є їхнім партнером. |
+| `forms.account.exchangeConnectable` | Connect with a read-only API key. | Підключення з API-ключем лише для читання. |
 | `forms.account.walletConnectable` | Connect with a public address. | Підключення за публічною адресою. |
 | `forms.account.bitcoinWallet` | Bitcoin wallet address | Адреса гаманця Bitcoin |
 | `forms.account.exchangeOther` | Other exchange or wallet | Інша біржа або гаманець |
 | `forms.account.exchangeOtherCaption` | Add holdings by hand. | Додавайте активи вручну. |
 | `accountDetail.connectExchangeAction` | Connect an exchange or wallet | Підключити біржу або гаманець |
 | `accountDetail.connectExchangeSheetTitle` | Connect an Exchange or Wallet | Підключити біржу або гаманець |
-| `accountDetail.changeExchangeAction` | Change exchange | Змінити біржу |
+| `accountDetail.changeExchangeAction` | Change exchange or wallet | Змінити біржу або гаманець |
 | `accountDetail.exchangeHistoryPending` (replaces `binanceHistoryPending`) | Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync. | Частину історії транзакцій {{exchange}} ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій. |
+| `accountDetail.exchangeP2pReadFailed` (binance-p2p-fix; standing caption while the `p2p` walk holds `readFailedAt`) | {{exchange}} P2P orders could not be read on the last sync. Kiko will try again on the next sync. | Замовлення P2P на {{exchange}} не вдалося прочитати під час останньої синхронізації. Кіко спробує ще раз під час наступної синхронізації. |
 | `accountDetail.exchangeHistoryPaused` (set 4; shown instead of the pending caption while the top-level state is malformed, X1 and K7) | {{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to fix this. Your holdings and transactions are kept. | Імпорт історії {{exchange}} призупинено: Кіко не зміг прочитати збережений стан імпорту. Щоб це виправити, відключіть і знову підключіть {{exchange}}. Ваші активи й транзакції збережуться. |
 | `accountDetail.untrackedCoins` | Not tracked: {{tickers}}. Kiko does not import a currency its Binance sync does not support. | Не відстежуються: {{tickers}}. Кіко не імпортує валюту, яку не підтримує синхронізація Binance. |
 | `accountDetail.oversizedAmount` | {{coin}}: Kiko could not import an amount exactly, so it was skipped. | {{coin}}: Кіко не зміг точно імпортувати суму, тому її пропущено. |
 | `settings.dataImport.amountTooLargeError` (set 1; a version 1-3 backup refused by the USDT safe-integer bound, U8b) | The "export file" text (`en.ts` and `uk.ts` are the source: read it there) | The "export file" text (read it in `uk.ts`) |
-| `accountDetail.disconnectProviderMessage.binance` (changed) | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | (unchanged) Акаунт буде відʼєднано, але ви можете й надалі керувати ним вручну. |
+| `accountDetail.disconnectProviderMessage.binance` (changed) | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | Акаунт буде відʼєднано, а збережений API-ключ очищено. Ваші активи й транзакції збережуться, і ви можете й надалі керувати ними вручну. |
 | `holdingDetail.earlierHistory` | Earlier history: {{amount}} | Попередня історія: {{amount}} |
-| `holdingDetail.exchangeNotListed.binance` | Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot. | Не показано: угоди з ф’ючерсами, маржею та опціонами; витрати з Binance Card і подарункових карток; Auto-Invest; позики; стейкінг ETH і SOL; майнінг; NFT; копітрейдинг; Dual Investment; субакаунти; розподіли, крім винагород Simple Earn; продажі P2P і замовлення P2P, які ви розмістили у ролі оголошувача; угоди з монетами, проданими до цієї версії, яких Кіко ніде більше не бачив; записи, старіші за ті, що зберігає Binance. Binance не вказує гаманець для операцій P2P і фіатних операцій: Кіко показує замовлення P2P на Funding, а фіатні операції — на Spot. |
+| `holdingDetail.exchangeNotListed.binance` | Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot. | Не показано: угоди з фʼючерсами, маржею та опціонами; витрати з Binance Card і подарункових карток; Auto-Invest; позики; стейкінг ETH і SOL; майнінг; NFT; копітрейдинг; Dual Investment; субакаунти; розподіли, крім винагород Simple Earn; продажі P2P і замовлення P2P, які ви розмістили у ролі оголошувача; угоди з монетами, проданими до цієї версії, яких Кіко ніде більше не бачив; записи, старіші за ті, що зберігає Binance. Binance не вказує гаманець для операцій P2P і фіатних операцій: Кіко показує замовлення P2P на Funding, а фіатні операції — на Spot. |
 | `transactions.tradingFee` | Trading fee | Торгова комісія |
 | `transactions.p2pPurchase` (no `p2pSale` in 1.3-a, C-NR-F) | P2P purchase ({{currency}}) | Купівля через P2P ({{currency}}) |
 | `transactions.cardPurchase` / `cardSale` | Card purchase ({{currency}}) / Sale to card ({{currency}}) | Купівля карткою ({{currency}}) / Продаж на картку ({{currency}}) |
 | `transactions.bankDeposit` / `bankWithdrawal` | Bank deposit ({{currency}}) / Bank withdrawal ({{currency}}) | Поповнення з банку ({{currency}}) / Виведення в банк ({{currency}}) |
-| `transactions.matchedP2pPurchase` (set 13, not set 7, S7-Q8) | Matched to P2P purchase | Зіставлено з купівлею P2P |
-| `transactions.matchedCardPurchase` | Matched to card purchase | Зіставлено з купівлею карткою |
-| `transactions.matchedExchangeDeposit` | Matched to exchange deposit | Зіставлено з поповненням біржі |
+| `transactions.matchedP2pPurchase` (set 13, not set 7, S7-Q8) | Matched to P2P purchase. | Зіставлено з купівлею через P2P. |
+| `transactions.matchedCardPurchase` | Matched to card purchase. | Зіставлено з купівлею карткою. |
+| `transactions.matchedExchangeDeposit` | Matched to exchange deposit. | Зіставлено з поповненням біржі. |
 | `accountDetail.notImported` (set 8) | Not imported: {{items}}. Kiko does not import these {{exchange}} records yet. | Не імпортовано: {{items}}. Кіко поки не імпортує ці записи {{exchange}}. |
 | `accountDetail.notImportedKind.convertUnrecognized` (set 8) | Convert orders Kiko does not recognize ({{count}}) | операції Convert, яких Кіко не розпізнає ({{count}}) |
 | `accountDetail.notImportedKind.p2pSale` (set 8) | P2P sales ({{count}}) | продажі P2P ({{count}}) |
@@ -2409,7 +2524,7 @@ not in 1.3-a (C-Div).
 | `accountDetail.notImportedKind.p2pUnrecognized` (set 8) | P2P orders Kiko does not recognize ({{count}}) | замовлення P2P, яких Кіко не розпізнає ({{count}}) |
 | `accountDetail.notImportedKind.fiatUnrecognized` (set 8) | fiat operations Kiko does not recognize ({{count}}) | фіатні операції, яких Кіко не розпізнає ({{count}}) |
 | `help.topics.connectCrypto.steps.2` (changed) | Under "Exchange or wallet", choose "Binance" or "Bitcoin wallet address". | У полі «Біржа або гаманець» оберіть «Binance» або «Адреса гаманця Bitcoin». |
-| `accountDetail.sourceLabel` and the `sourceLabels` segment labels of `CryptoSyncForm` | removed with the segmented control (set 14); the developer re-greps their uses | removed |
+| `accountDetail.sourceLabel` and the `sourceLabels` segment labels of `CryptoSyncForm` | removed in set 14 step 4, with the segmented control | removed |
 | `currencyNames.<CODE>` per new coin | the coin's name (USD Coin, First Digital USD, Dai, BNB, ...) | an authored name per coin (proper nouns kept; e.g. «Ефіріум» style) |
 
 The not-imported items are joined with ", ". In uk they are lowercase inside the sentence. In en,
@@ -2464,8 +2579,8 @@ sets 1 and 4 also change `envelope.test.ts`'s `VERSION_DECISIONS`).
 | 11/15 | trades 2/2: order aggregation, `orderId` + `fromId` re-read (P15b PASS), rows, fee rules (C-NR2, C-NR5), `/api/*` IP budget at the measured weights (20 / 5 / 5), trades lane cap measured by probe 9 (S11-Q2; the P2P lane cap moves to set 12, R-Walk A); the rulings S11-Q1 ... S11-Q13 (rowless-order set, fiat rounding) | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts`, `exchange/amounts/amounts.ts`, `exchange/walk-state/walk-state.ts` (mutable files: 12 (cap 30), 1179 changed lines, timeout share 0.7%, measured: `KIKO_MUTATION_BASE=3d0df6d4 make mutable` at a2147c92) | none | T1-T12b and T14 exact parity; TC1-TC4 and TW1-TW21 (section 7); properties at 0 / 1 h / 1 day; measured run report (section 5) | settled (P1, P3, P15, P15b) |
 | 12/15 | P2P walk: status first, then side, role and amount (C-P5, C-NR-B), BUY TAKER only, SELL and MAKER into `notImported`, fiat-asset rows on the fiat holding, floor `HISTORY_FLOOR_MS` read forward with every window read (probe 5: no refusal to the floor; C-P2P-stop; R-Walk A), UID 900. Fiat orders and payments walks (no real row observed): 2-year windows from `HISTORY_FLOOR_MS` read forward with every window read (probe 5; C-NR-D; R-Walk A), the strict status allowlist with the doc-quote rule (C-NR-E), UID 45000 lane; the P2P lane cap 20 from probe 10 (S12-Q7); the rulings S12-Q1 ... S12-Q35 (section 1). First step: quote Binance's doc text for the ignored fiat words (found none: no word is ignored, S12-Q3) | `binance.p2p-history.ts` and `binance.fiat-history.ts` (new), `binance.walk-wiring.ts` (new), client, budget, walk config, run wiring, the walk engine, the exchange walk state, the history caption, the marker builders (mutable files: 16 (cap 30), 2452 changed lines, timeout share 1.2%, measured: `KIKO_MUTATION_BASE=79094ae8 make mutable` at baf97910) | none | P1-P12 (P1b-P1h, P2b-P2d, P3b-P3d, P7b, P8b, P12b included), F1-F6; N5b; the rows of the set 12 table in section 7 (PC, FC, BL, PW, FW, FQ, RW, FR, K-P, MK); the fiat-orders budget cases (section 5); properties at 0 / 1 h / 1 day; measured P2P first-walk report (calls, runs; section 5) | P5 settled; P6 open (no real row observed), allowlist defaults |
 | 13/15 | read-time bank-debit matcher and its caption | `src/statistics/exchange-funding-match/` (new), `statistics.screen.tsx`, the transaction form caption slot, i18n, demo bank debit (~6) | none | M1-M14 (M14: fiat-asset P2P); one-to-one tie-breaks with a distinct value per sort key | no |
-| 14/15 | exchange catalog, picker field, registry wiring, shared provider sheet, `syncJobsFor` | `exchange-catalog/`, `exchange/registry/`, `exchange-type-field/` (new), `crypto-sync-form`, `account-form.screen.tsx`, `crypto-sync-section`, `add-bank-sheet` -> `provider-sheet`, `bank-sync-section`, `sync-jobs.ts`, `provider.ts`, `deletable.ts`, i18n, `build-demo-snapshot.ts` (crypto `bankId` kept) + `binance` and `btc_wallet` demo accounts (`institution` null) + demo regen (~16) | none | picker and caption render; registry skip of an unwired id; connect-first rollback; demo invariant per connectable catalog entry | no |
-| 15/15 | backfill ranges, caption, "Earlier history", the not-listed note's final text (section 10: Convert out of the wallet sentence, P2P sales and advertiser orders named), privacy policy Binance paragraph per section 9, terms check, Notes for Review per section 9 (the "Not imported" line included; no reward wording), demo regen, kiko-architecture/kiko-domain/kiko-compliance updates via scribe | `exchange/walk/` (backfill scope), the four walk files, `exchange/history-status/`, `holding-detail.screen.tsx`, i18n, `docs/privacy-policy*.md`, `e2e/screenshot/` seed (~12) | none | K1-K7 (K6b included; K7 uses the paused copy that set 4 adds); B1-B5; N1; earlier-history sum exact | no (terms gate) |
+| 14/15 | exchange catalog, picker field, registry wiring, shared provider sheet, `syncJobsFor` | `exchange-catalog/`, `exchange/registry/`, `exchange-type-field/` (new), `crypto-sync-form`, `account-form.screen.tsx`, `crypto-sync-section`, `add-bank-sheet` -> `provider-sheet`, `bank-sync-section`, `sync-jobs.ts`, `provider.ts`, `deletable.ts`, i18n, no demo change (S14-Q2; fixtures are built in the tests) (~14) | none | picker and caption render; registry skip of an unwired id; connect-first rollback | no |
+| 15/15 | backfill ranges, caption, "Earlier history", the not-listed note's final text (section 10: Convert out of the wallet sentence, P2P sales and advertiser orders named), privacy policy Binance paragraph per section 9, terms check, Notes for Review per section 9 (the "Not imported" line included; no reward wording), no demo regen (S15-Q5, user S14-Q2; byte-identical check), `binance-history-status.ts` stays where it is (S15-B1), the closed endpoint list `binance.endpoints.ts` with its doc test `binance.privacy-policy.test.ts`, kiko-architecture/kiko-domain/kiko-compliance updates via scribe | `exchange/walk/` (backfill scope), the four walk files, `exchange/history-status/`, `holding-detail.screen.tsx`, i18n, `docs/privacy-policy*.md`, `e2e/screenshot/` seed (~12) | none | K1-K7 (K6b included; K7 uses the paused copy that set 4 adds); B1-B5; N1; earlier-history sum exact | no (terms gate) |
 
 Probes 2-5 ran (2026-10-15 and 2026-10-16), so sets 8-12 have no probe gate left. The facts that
 are still open (P6, P7, P11, P16) have safe defaults (section 12). Sets 1, 4 and 7 each carry a
@@ -2495,7 +2610,7 @@ per endpoint (P2P BUY; fiat `transactionType` 0) with one 30-day floor window, n
 | P2b | `myTrades` id types | SETTLED, probe 8 (S10-Q4): `id`, `orderId`, `orderListId` JSON integers, all safe (20 of 20), ids ascending, weight 20 | trade id a safe integer; an unsafe id refused | 10, 11 |
 | P3 | `myTrades` lookback | SETTLED, probe 3: from id 0 serves the account's oldest trade (2025-01) | from id 0 | 11 |
 | P4 | Convert span, lookback, wallet | SETTLED, probes 3-5: 30 d (a 31 d span was also accepted), 24 months read with 0 failures, the `walletType` field present (FUNDING=1); no refusal to the floor (probe 5; the 2017-07 floor window is served empty) | 30 d windows; floor `HISTORY_FLOOR_MS` read forward, every window read (C-NR-C, R-Walk A); wallet from `walletType` (C-Convert-wallet) | 8 |
-| P5 | P2P paging, statuses, wallet, net or gross, `totalPrice` | SETTLED, probes 3-5: `page`/`rows` with a response total; statuses COMPLETED / CANCELLED / CANCELLED_BY_SYSTEM; no wallet field; `takerAmount = amount - takerCommission` 69/69; `totalPrice` independent of `amount x unitPrice` (2/69); BUY and TAKER only; rows back to about 2023-09; no refusal to the floor (probe 5; the 2017-07 floor window is served empty) | C-P5; C-NR-B; C-P2P-SELL-MAKER B; C-NR3 Funding; floor `HISTORY_FLOOR_MS` read forward, every window read (C-P2P-stop, R-Walk A) | 12 |
+| P5 | P2P paging, statuses, wallet, net or gross, `totalPrice` | SETTLED, probes 3-5: `page`/`rows` with a response total; statuses COMPLETED / CANCELLED / CANCELLED_BY_SYSTEM; no wallet field; `takerAmount = amount - takerCommission` 69/69; `totalPrice` independent of `amount x unitPrice` (2/69); BUY and TAKER only; rows back to about 2023-09; no refusal to the floor (probe 5; the 2017-07 floor window is served empty) | C-P5; C-NR-B; C-P2P-SELL-MAKER B; C-NR3 Funding; floor `HISTORY_FLOOR_MS`, every window read, the head window first and then newest first (C-P2P-stop; was: read forward, R-Walk A) | 12 |
 | P6 | fiat orders and payments: span, lookback, statuses, credited wallet, withdraw fee | PARTLY SETTLED: no refusal to the floor (probe 5; the 2017-07 floor window is served empty); probe 3: a 2-year span accepted; UID 45000 (orders), IP 1 (payments). OPEN: no real row observed (0 rows in 2 years), so statuses, wallet and fee are unobserved | 2-year windows from `HISTORY_FLOOR_MS` (C-NR-D); the strict status allowlist with the doc-quote rule (C-NR-E); Spot (C-NR3) | 12 |
 | P7 | dribblet beyond the last 100; `transferedAmount` net | PARTLY SETTLED. Probe 2: 0 dust records (180-day windows back to 2020-12-01 accepted). Probe 7 (S9-Q3): the empty answer is `{"userAssetDribblets":[]}`, `total` absent. The connector doc quote (binance-connector-js wallet `dustlog`) gives the documented record shape and `targetAsset` BNB. OPEN: the record shape and the `transId` type (no real record seen), non-BNB targets | newest 100; net; empty list = no dust, a missing list fails closed; `targetAsset` must be BNB (S9-Q7) | 9 |
 | P8 | `assetDividend` `enInfo` values | SETTLED, probes 2-3: 0 dividends in 3 years | walk removed (C-Div) | 9 |

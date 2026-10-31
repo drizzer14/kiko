@@ -165,6 +165,7 @@ anything there ships in plaintext) are in
 `docs/harness/dependency-hygiene.md` ("`.env` is public-only") — read
 that section. A secret belongs in the iOS Keychain
 (`react-native-keychain`); see `.claude/skills/kiko-architecture/SKILL.md`
+(and `.claude/skills/kiko-architecture/monobank-sync.md` for the token)
 for the existing Keychain-backed examples: the Monobank token, the
 SQLCipher database key in `src/db/keys/db-key.ts`, and the Binance credentials
 (`src/crypto-sync/binance/binance.credentials.ts` holds the service name; the
@@ -308,10 +309,10 @@ loads remote code, so this stays a reviewer question backed by
 Ask: does this diff add a bank/exchange logo asset, name, or wording
 that could read as an official partnership or endorsement Kiko does
 not have? Judgment only — no mechanized check. Satisfied today for the
-account form's bank and broker pickers: each shows a "not affiliated with
-or endorsed by any bank/broker" caption under its trigger
-(`forms.account.bankDisclaimer`, which also says Kiko is not a bank, and
-`brokerDisclaimer`), and neither picker draws a logo.
+account form's bank, broker and exchange pickers: each shows a "not
+affiliated with or endorsed by" caption under its trigger
+(`forms.account.bankDisclaimer`, which also says Kiko is not a bank,
+`brokerDisclaimer` and `exchangeDisclaimer`), and none draws a logo.
 
 Binance (user ruling C2, 2026-10-18): the release hold is lifted on two
 conditions. No Binance logo appears anywhere in the app or the store
@@ -320,6 +321,37 @@ metadata, and the public price fallback stays fail-soft (451, 403, 418,
 NO device-region check: the fallback runs for every user, a Prohibited
 Country included. The terms facts are in the crypto-exchanges spec's C2
 note (`docs/superpowers/specs/2026-10-15-crypto-exchanges-design.md`).
+
+Binance API terms (read 2026-10-27; verdict PASS, coordinator ruling pff-ios-8a). Two pages
+bind the signed reads: "API KEYS PRODUCT TERMS", Version 2.0, effective July 9th, 2026
+(`https://www.binance.com/en/about-legal/terms-binance-api`), and the "Prohibited Use Policy",
+last updated 5 January 2026; the ADGM Binance Global Terms of Use (effective 21 July 2026)
+send API use to those separate terms (14.1.2(b)). Clauses that matter: 1.3 (these are the
+Product Terms for the API); 3.1 (a personal, limited, revocable licence to use the API Key
+solely to integrate with Binance; the user's own read-only key in the user's own on-device app is
+that licence); 2.6 and 4(g) (a key given to a third-party provider is contemplated); 4(a), (b),
+(f) (a single purpose, no unnecessary permissions, no key in a cloud venue); 3.2(b) (no
+derivatives of the API data without written authorization). The policy's D (no resale or
+transactions on behalf of others) and I (automated access only as permitted) are not
+breached: Kiko does no resale and no trading, and the key licence is the permission. No
+clause bans showing the user's own data or prices.
+Standing items:
+- (a) Residual: 3.2(b) "derivatives of API data". Kiko's derived values are shown only to the
+  key's owner; re-read the clause when a value leaves the device.
+- (b) CHECK ITEM, device-only Keychain (4(f)): the Binance key entry must not be iCloud
+  synchronizable. `hardenedFor` (`src/crypto-sync/exchange/credentials/credentials.ts`) sets
+  `accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY`, and both Binance writers
+  use it (`saveExchangeCredentials` in that file,
+  `src/crypto-sync/binance/migrate-binance-credential.ts`). Re-check
+  that any new writer of the key goes through `hardenedFor`.
+- (c) The Connect help keeps asking for a read-only key with no trading or withdrawal
+  permission (4(b)); a change to that help text re-opens this item.
+
+The app's Binance endpoints are a closed list, `BINANCE_SIGNED_PATHS` and `BINANCE_PUBLIC_PATHS`
+(`src/crypto-sync/binance/binance.endpoints.ts`): the request helpers take only those paths, and
+the doc test `binance.privacy-policy.test.ts` (plan row D1) requires every one to be named in
+policy section 3 of the four policy files. A new path goes to that list plus its policy phrase
+in the test and all four files; read the list there, never a copy.
 
 ## No tracking/analytics SDKs
 

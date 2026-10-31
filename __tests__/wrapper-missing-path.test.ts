@@ -72,6 +72,10 @@ const NOT_PATH_WRAPPERS: [string, string][] = [
   ['deps.sh', 'reads package.json and the lockfile at the repository root'],
   ['fast.sh', 'reads a hook payload on stdin'],
   ['guard-replay.sh', 'replays the files git reports changed, with options only'],
+  [
+    'jest-affected.sh',
+    'takes a base ref and --list, the changed paths come from git; jest-affected.test.ts pins an unresolved base',
+  ],
   ['kill-guard-probe.sh', 'runs one command in a real shell, a manual probe'],
   ['kill-guard.sh', 'reads a hook payload on stdin'],
   ['knip.sh', 'reads the repository root and its config'],

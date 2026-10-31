@@ -546,20 +546,16 @@ describe('SettingsScreen — footer', () => {
     expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko/en.html');
   });
 
-  // The footer must not render as scroll CONTENT (a `flex: 1`
-  // spacer plus `Screen`'s `fillHeight`), which pushes it below the fold on a
-  // real device — the user would have to scroll to see it. It must instead render
-  // through `Screen`'s pinned `footer` slot, the same mechanism
-  // `account-detail.screen.tsx` uses for its Add-holding button, so it always
-  // stays visible just above the tab bar with no scrolling.
-  it('pins the footer to the screen footer slot, not the scrolling content', async () => {
-    const { getByTestId } = await renderScreen();
+  // The caption is the last child of the scroll content, not a pinned or floating footer: a
+  // floating footer is for buttons, and a pinned one would hold the caption over the rows.
+  it('puts the caption at the end of the scroll content, with no screen footer', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen();
 
-    const footer = getByTestId('screen-footer');
     const scrollView = getByTestId('screen-scroll-view');
 
-    expect(within(footer).getByText(`Kiko v${pkg.version}`)).toBeTruthy();
-    expect(within(scrollView).queryByText(`Kiko v${pkg.version}`)).toBeNull();
+    expect(within(scrollView).getByText(`Kiko v${pkg.version}`)).toBeTruthy();
+    expect(within(scrollView).getByText('Privacy policy')).toBeTruthy();
+    expect(queryByTestId('screen-footer')).toBeNull();
   });
 });
 

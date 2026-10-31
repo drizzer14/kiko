@@ -1,4 +1,5 @@
 import { isValidElement, type ReactElement } from 'react';
+import { nonPushPresentations } from '@kiko/test-support/pane-stack-presentation';
 
 // The real screens wired into this stack pull in db/client, which opens a real
 // op-sqlite connection at module load. op-sqlite has no Jest binary, so stub it
@@ -89,6 +90,12 @@ describe('AccountsStack', () => {
       headerBlurEffect: 'systemChromeMaterialDark',
       headerLargeStyle: { backgroundColor: 'transparent' },
     });
+  });
+
+  // A modal presented from a pane's stack would inherit the pane's content margin through
+  // FixedContentMarginContext, so a pane-stack screen stays a push.
+  it('presents every screen as a push, never a modal', () => {
+    expect(nonPushPresentations(AccountsStack({}))).toEqual([]);
   });
 
   it('wraps every screen in the fitting large-title layout', () => {

@@ -99,6 +99,11 @@ Rules:
   whole-report sanity floor. A dry run can time out under load
   ("Initial test run timed out"): re-run. A window tip must be a commit
   where the full jest suite (two stages, 2a and 2b; see `scripts/checks/verify.sh`) passes.
+  The default dev test command is `make jest-affected` (the affected suites only; exit 3 means
+  queue the verify); the full suite stays in the queued verify.
+- Status is on demand, with no long-lived PM and no `EVENT:` push (harness-workflow,
+  "Status is on demand").
+- Mutation gates are paused by the user since 2026-10-25 until lifted; verify + review only.
 - **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
   dispatch.** The coordinator queues the long, no-incremental checks
   (Stryker mutation + osv) ITSELF as a background gate and launches
@@ -209,7 +214,10 @@ actually landed.
   `xcrun simctl uninstall <udid> com.dmytro-vasylkivskyi.kiko`. `simctl install` keeps the old
   data container, and an older `kiko-encrypted.db` whose key sits in a keychain group that the
   ad-hoc re-signed build cannot see shows the "Kiko cannot read its encryption key" screen
-  (2026-10-16, sim A9850113; cause unproven, evidence deleted).
+  (2026-10-16, sim A9850113). Release 1.3 reproduced the cause: a re-signed sim build over an
+  old install keeps the old DB and a key that does not open it (`migrations-gate-error`). So
+  uninstall, run `xcrun simctl keychain <udid> reset`, install, and only then import the demo.
+  An ops brief for a screenshot sim never says "do not delete app data".
 - After the first launch, confirm the app's first screen (the user or an allowed check) before
   you report the sim as ready.
 - The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) holds what
@@ -273,6 +281,12 @@ Maestro needs `JAVA_HOME=/opt/homebrew/opt/openjdk@21`; without it the
 run fails before the flow starts (verified 2026-10-08,
 `.maestro/onboarding-fresh-install.yaml`, 17/17 steps).
 
+Maestro's screenshot command needs a relative file name plus `--test-output-dir <dir>`
+(release 1.3).
+On an unfolded Duo (iOS 27.1 sim, 2026-10-25), Maestro taps by id and by point do not land, and
+the `simctl io` display port ids change after the unfold: enumerate them again after a pose
+change.
+
 ## Commits run a typecheck
 
 A commit runs `githooks/pre-commit`, a `tsc --noEmit` of the staged index that can take up to
@@ -285,6 +299,9 @@ During a queue hold no role agent runs `check:security`, a Semgrep-spawning guar
 `check:all` or `make verify` outside the queue (kill-guard `heavyJob` denies it), and no other
 pass replaces a green queued
 verify line (harness-workflow skill, "Load rule").
+
+`wait-load.sh` takes `<load> <timeout>` (exit 64 with no arguments). In a fresh worktree run
+`npm ci` only after it exits 0.
 
 Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queue.sh`, which
 serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
@@ -320,7 +337,9 @@ timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full
-contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
+contract, including the label charset). The COORDINATOR queues (harness-workflow, "Run the FULL
+jest"); an orchestrator reports READY FOR VERIFY and ops queues only when the coordinator's
+brief says so. Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
 `scripts/job-queue.sh harness-verify <harness worktree> <label>` (runs `npm test` then
 `check:all` in a harness-repo worktree) or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
@@ -341,6 +360,12 @@ state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `-
 old H6 overlay is gone). Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a
 copy from another branch: the queue directory's `format` stamp makes an older copy refuse with
 exit 2, and a copy that differs from the target worktree's own script prints a WARNING.
+On the real queue (`KIKO_QUEUE_DIR` unset, or its physical path equal to `~/.claude/kiko-queue`)
+`verify`, `gate` and `check-all` also refuse (exit 3) a target worktree of another repository
+(git common dir) and a script copy outside any repository; `harness-verify` and `security` are
+exempt. Never run `job-queue.sh` by hand without `KIKO_QUEUE_DIR` set to a temporary folder in a
+test or scratch run. Read `refuse_foreign_repository_on_real_queue` and the header of
+`scripts/job-queue.sh`.
 Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's ticket
 writes one `lost` done.log line, and a reclaimed dead lock writes a lock-form `lost` line (its
 job may have run fully). At handover or close run `scripts/job-queue.sh status`, re-queue or
@@ -353,6 +378,16 @@ only when the tree (`tree_is_clean` in `scripts/job-queue.sh`: untracked files c
 clean at START and again at the end and HEAD is
 unchanged, else `unknown`; an edit reverted before the end is not seen, and ignored files (`.env`,
 `node_modules`) are not counted.
+
+`verify` and `gate` refuse a tree with any change (untracked included) with exit 3, at enqueue and
+again at START; the message names the first 3 paths. Commit the change (for example
+`ios/Podfile.lock` after a pod install) or copy the files aside; never stash. `check-all` and
+`security` still run on a dirty tree and record `unknown`. A tree the job itself changed records
+`unknown` plus a `NOTE <label>: the tree changed during the job: <path>` line. A verify prints no
+live output: its log is `<queue dir>/logs/verify-<label>.log` (default queue dir
+`~/.claude/kiko-queue`), kept for every verify; at the end it prints the summary lines, `log:
+<path>` and the last lines. Read the log for the failure; keep waiting only for the exit code.
+Sizes and trimming: read the `logs/` entry in the `scripts/job-queue.sh` header.
 
 done.log lines are `kind label exit start end head`. Main moves only through
 `bash scripts/ff-main.sh <sha>`, for a sha whose last `verify` line has that full head and exit 0;

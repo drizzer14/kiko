@@ -302,7 +302,8 @@ rules:
     message: >
       A comment narrates a change ("it replaces", "no longer", "used to",
       "previously", "as drawn today", "kept green", "the move onto the shared",
-      "through their extraction into", "as before", a "was:" label before an old value).
+      "through their extraction into", "as before", "the key does not exist yet",
+      "before the field exists", a "was:" label before an old value).
       kiko-code-style's "Comments: WHY only, never history":
       a comment states how the code works today and why, never how it worked
       before. Drop the narrative and keep the WHY; if nothing but history
@@ -310,7 +311,7 @@ rules:
       (a stored row the app no longer knows, a token no longer valid), reword
       it so it names the state, not the change.
     metadata:
-      fix: "State how the code works today and why; drop the 'no longer'/'used to'/'previously'/'it replaces'/'as drawn today'/'kept green'/'the move onto'/'as before'/'was:' narrative, or delete the comment. A test comment says what the test pins (for example 'Pins the toggle's approved look on this screen.')."
+      fix: "State how the code works today and why; drop the 'no longer'/'used to'/'previously'/'it replaces'/'as drawn today'/'kept green'/'the move onto'/'as before'/'the key does not exist yet'/'before the field exists'/'was:' narrative, or delete the comment. A test comment says what the test pins (for example 'Pins the toggle's approved look on this screen.')."
       skill: "kiko-code-style › Comments: WHY only, never history"
     paths:
       exclude:
@@ -320,8 +321,8 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|[Kk]ept\sgreen|[Aa]s\s(?:drawn|rendered|written|built)\stoday|[Tt]he\smove\s(?:onto|into)\s(?:the|a)\sshared|[Tt]hrough\s(?:their|its|the)\sextraction\sinto)\b|\b[Ww]as:|\b[Aa]s\sbefore\b(?=\s*(?:[.,;:()]|$)|\s(?:and|but|with|when|while|so|since|because|though|only)\b))'
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|[Kk]ept\sgreen|[Aa]s\s(?:drawn|rendered|written|built)\stoday|[Tt]he\smove\s(?:onto|into)\s(?:the|a)\sshared|[Tt]hrough\s(?:their|its|the)\sextraction\sinto)\b|\b[Ww]as:|\b[Aa]s\sbefore\b(?=\s*(?:[.,;:()]|$)|\s(?:and|but|with|when|while|so|since|because|though|only)\b))(?=(?:(?!\*/)[\s\S])*?\*/)'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|[Kk]ept\sgreen|[Aa]s\s(?:drawn|rendered|written|built)\stoday|[Tt]he\smove\s(?:onto|into)\s(?:the|a)\sshared|[Tt]hrough\s(?:their|its|the)\sextraction\sinto|(?:key|field|export|helper|function)\sdoes\snot\sexist\syet|[Bb]efore\sthe\sfield\sexists)\b|\b[Ww]as:|\b[Aa]s\sbefore\b(?=\s*(?:[.,;:()]|$)|\s(?:and|but|with|when|while|so|since|because|though|only)\b))'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|[Kk]ept\sgreen|[Aa]s\s(?:drawn|rendered|written|built)\stoday|[Tt]he\smove\s(?:onto|into)\s(?:the|a)\sshared|[Tt]hrough\s(?:their|its|the)\sextraction\sinto|(?:key|field|export|helper|function)\sdoes\snot\sexist\syet|[Bb]efore\sthe\sfield\sexists)\b|\b[Ww]as:|\b[Aa]s\sbefore\b(?=\s*(?:[.,;:()]|$)|\s(?:and|but|with|when|while|so|since|because|though|only)\b))(?=(?:(?!\*/)[\s\S])*?\*/)'
   # ERROR: the tree holds 0 findings for this id (the sweep landed with the rule).
   # See kiko-linter's "kiko-no-history-date-comment" section for the members, the
   # false-positive classes that kept a bare ISO date out, and the scope.
@@ -436,7 +437,7 @@ rules:
     message: >
       `GlassSurface` is reserved for the navigation layer (tab bar,
       `BottomSheet`, the keyboard "Done" accessory, the Home add-transaction
-      FAB). A content-layer module reads `Card` instead — see
+      FAB, the floating-footer button backing `FooterGlassBacking`). A content-layer module reads `Card` instead — see
       kiko-design-system's "Component set (GlassSurface)".
     metadata:
       fix: "Import `Card` (the content-layer surface) instead of `GlassSurface`."
@@ -446,6 +447,7 @@ rules:
         - "src/design-system/components/glass-surface/**"
         - "src/design-system/components/bottom-sheet/**"
         - "src/design-system/components/keyboard-done-accessory/**"
+        - "src/design-system/components/footer-glass-backing/**"
         - "src/screens/home/add-transaction-fab/**"
     patterns:
       - pattern-regex: "(?:import|export)\\s[^;]*from\\s*['\"][^'\"]*glass-surface(?:/[^'\"]*)?['\"]"
@@ -543,7 +545,7 @@ rules:
       `undefined`, or a bare optional prop straight through.
     metadata:
       fix: "Pass a value that is always a string (e.g. the symbol's own `name`, as `SymbolIcon` does) instead of a value that can still be `undefined`."
-      skill: "kiko-design-system › Component set (SymbolIcon)"
+      skill: "kiko-design-system › Component set (continued)"
     patterns:
       - pattern-either:
           - pattern: '<SFSymbolView ... fallbackName={undefined} ...></SFSymbolView>'
@@ -613,7 +615,7 @@ rules:
       `<FieldError message={...} />` instead.
     metadata:
       fix: 'Render `<FieldError message={...} />` instead of a bespoke `Text variant="caption" tone="negative"`.'
-      skill: "kiko-design-system › Component set"
+      skill: "kiko-design-system › Component set (continued)"
     paths:
       exclude:
         - "src/design-system/components/field-error/**"
@@ -759,7 +761,7 @@ rules:
           - pattern: 'cancelLabel: "..."'
           - pattern: "fallbackLabel: '...'"
           - pattern: 'fallbackLabel: "..."'
-  # kiko-linter's "Backlog: a rule for a plain function called inside a
+  # kiko-linter's "Implemented: a rule for a plain function called inside a
   # worklet" / kiko-gestures' "Every function called inside a worklet needs
   # its own 'worklet' directive". A same-file helper (a `const` arrow or a
   # `function`) called synchronously inside a reanimated worklet-hook
@@ -1040,7 +1042,7 @@ rules:
       fix: "Remove the bare `fullWidth` / `fullWidth={true}` from the Button; it already defaults to true. Pass only `fullWidth={false}`."
       skill: "kiko-design-system › Component set (Button)"
     pattern: <Button ... fullWidth={true} ... />
-  # kiko-domain's "Exchange/Convert legs": a blank row's fallback label has ONE
+  # kiko-exchange-sync's "Exchange/Convert legs": a blank row's fallback label has ONE
   # owner, `transactionRowDescription`, which tries the exchange-leg label
   # before the holding-name default. A surface calling
   # `defaultTransactionDescription` itself skips that branch — the transaction
@@ -1059,7 +1061,7 @@ rules:
       <counterpart>" for a same-currency pair) everywhere.
     metadata:
       fix: "Call `transactionRowDescription({ transaction, holdingName, holdingNameById, holdingCurrencyById, t })` from `@kiko/transactions/row-description` instead of `defaultTransactionDescription`."
-      skill: "kiko-domain › Exchange/Convert legs: a structural marker, a resolved label"
+      skill: "kiko-exchange-sync › Exchange/Convert legs: a structural marker, a resolved label"
     paths:
       exclude:
         - "src/transactions/row-description/**"
@@ -1162,31 +1164,90 @@ rules:
     patterns:
       - pattern-regex: |-
           (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeDisplayRegions(?:\.tsx?)?['"]
-  # kiko-design-system's Screen: `resolveBottomClearance` is the pane-BLIND
-  # arithmetic behind `useBottomClearance`. A bleedBottom/bleedTop child that
-  # calls it directly puts a tab-bar clearance under the last row of a pane
-  # that is not at the bottom of the window (the top pane of rows mode). Only
-  # the Screen folder may import it; every other consumer calls the hook. Two
-  # arms: a value import or re-export that names the function, and a value
+  # kiko-design-system's Screen: `resolveBottomClearance` and `resolveTopClearance`
+  # are the pane-BLIND arithmetic behind `useBottomClearance` and `useTopClearance`.
+  # A bleedBottom/bleedTop child that calls one directly puts a tab-bar clearance
+  # under the last row of a pane that is not at the bottom of the window (the top
+  # pane of rows mode), or above the first row of a pane that is not at the top.
+  # Only the Screen folder may import them; a bottom consumer calls the hook, and the
+  # top clearance has no import outside Screen's plain branch.
+  # Two arms: a value import or re-export that names either function, and a value
   # import, re-export, require or dynamic import of a module file named
-  # `bottom-clearance`. `import type` and prose never match.
+  # `bottom-clearance` or `top-clearance`. `import type` and prose never match.
   - id: kiko-no-pane-blind-bottom-clearance
     languages: [typescript]
     severity: ERROR
     message: >
-      `resolveBottomClearance` ignores which pane a screen is in, so a list
-      that applies it sits above a tab bar that is not over its pane. Call
+      `resolveBottomClearance` and `resolveTopClearance` ignore which pane a
+      screen is in, so a list that applies one sits next to a tab bar that is
+      not over its pane. For `resolveBottomClearance`, call
       `useBottomClearance()` from `@kiko/design-system/components/screen`
-      instead; only the Screen folder imports the function.
+      instead. `resolveTopClearance` is never imported: the top clearance
+      belongs to Screen's plain branch, so render the content in `Screen`.
+      Only the Screen folder imports the functions.
     metadata:
-      fix: "Use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; never import `resolveBottomClearance` or `bottom-clearance`."
+      fix: "For `resolveBottomClearance` or `bottom-clearance`, use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; `resolveTopClearance` or `top-clearance` is never imported: render the content in `Screen`, whose plain branch owns the top clearance."
       skill: "kiko-design-system › Component set"
     paths:
       exclude:
         - "src/design-system/components/screen/**"
     pattern-either:
-      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\bresolveBottomClearance\b[^;'"]*?\bfrom\s*['"]
-      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/bottom-clearance(?:\.ts)?['"]
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\bresolve(?:Bottom|Top)Clearance\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/(?:bottom|top)-clearance(?:\.ts)?['"]
+  # kiko-design-system's Screen: `useTopBarBand` is the top clearance read as a window-level
+  # band. `TwoPaneLayout` is its one consumer: it starts each pane frame below the band, so
+  # a screen that adds the band inside a pane counts it twice. Only the Screen folder (the
+  # owner) and the two-pane-layout folder may import it. Two arms, like the clearance rule:
+  # a value import or re-export that names `useTopBarBand`, and a value import, re-export,
+  # require or dynamic import of a module file named `use-top-bar-band`. `import type` and
+  # prose never match.
+  - id: kiko-top-bar-band-only-in-two-pane-layout
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `useTopBarBand` is pane-blind band arithmetic: `TwoPaneLayout` already
+      starts each pane frame below the top tab bar band, so a screen that adds
+      the band inside a pane counts it twice. Only `TwoPaneLayout` imports it.
+    metadata:
+      fix: "Never import `useTopBarBand` or `use-top-bar-band`: render the content in `Screen` inside a pane, whose frame `TwoPaneLayout` already starts below the band."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/screen/**"
+        - "src/design-system/components/two-pane-layout/**"
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buseTopBarBand\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-top-bar-band(?:\.ts)?['"]
+  # kiko-design-system's Screen: `useTabBarPlacement`, `useIsTabBarAtTop` and
+  # `useIsTabBarNotAtBottom` read the whole window's tab bar (the native bar's real frame), not
+  # the pane's, so a screen that branches on any of them inside a pane reads another pane's
+  # answer. `Screen` and its siblings (the Screen folder) read them, and `PaneStackView` reads
+  # `useIsTabBarNotAtBottom` and `useTabBarPlacement` above both panes, to give the native large
+  # title the content's margin. The Screen barrel exports only these two (`PaneStackView` is the
+  # one consumer the rule lets in); `useIsTabBarAtTop` is read by file, so the module-path arm
+  # still matters. Same two arms as the band
+  # rule, for the three hook names and for the `use-tab-bar-placement`, `use-is-tab-bar-at-top`
+  # and `use-is-tab-bar-not-at-bottom` module files, and a third arm for a CommonJS load that
+  # names a hook (a `require(…)` destructure or property read). `import type` and prose never
+  # match.
+  - id: kiko-tab-bar-placement-only-in-screen-and-pane-stack-view
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `useTabBarPlacement`, `useIsTabBarAtTop` and `useIsTabBarNotAtBottom` are pane-blind window
+      reads: they say where the tab bar is for the whole window, whatever pane the caller is in.
+      Only the Screen folder and `PaneStackView` (which reads it above both panes) import them.
+    metadata:
+      fix: "Never import `useTabBarPlacement`, `useIsTabBarAtTop`, `useIsTabBarNotAtBottom` or their modules (`use-tab-bar-placement`, `use-is-tab-bar-at-top`, `use-is-tab-bar-not-at-bottom`): render the content in `Screen` and take clearances from `useBottomClearance()`; a value for both panes belongs in `PaneStackView`."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/screen/**"
+        - "src/navigation/pane-stack/pane-stack-view/**"
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\buse(?:TabBarPlacement|IsTabBarAtTop|IsTabBarNotAtBottom)\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/use-(?:tab-bar-placement|is-tab-bar-at-top|is-tab-bar-not-at-bottom)(?:\.ts)?['"]
+      - pattern-regex: (?m)\b(?:const|let|var)\s*\{[^}]*\buse(?:TabBarPlacement|IsTabBarAtTop|IsTabBarNotAtBottom)\b[^}]*\}\s*=\s*require\s*\(|\brequire\s*\([^)]*\)\s*\.\s*use(?:TabBarPlacement|IsTabBarAtTop|IsTabBarNotAtBottom)\b
   # kiko-architecture's "Pane navigation": on a wide window a screen can be the default
   # of a pane (Statistics and Home as each other's companion, Categories as the Settings
   # primary), and the Accounts list sits under the default it fills the primary pane
@@ -1359,7 +1420,7 @@ rules:
       call expects: its message, a pattern, or its own class.
     metadata:
       fix: "Pass the expected error to toThrow: its message (a string), a pattern (a regex) or its class."
-      skill: "kiko-code-style › A rejection names its error"
+      skill: "kiko-testing › A rejection names its error"
     paths:
       include:
         - "*.test.ts"
@@ -1494,10 +1555,10 @@ rules:
       A form has no in-form Delete, so it never imports `ConfirmSheet`. An
       entity is deleted only from its page's touch-and-hold
       `CardContextMenu`, which raises the confirm itself — see
-      kiko-design-system's "Component set (CardContextMenu)".
+      kiko-design-system's "Component set (continued)" (component-set-forms.md).
     metadata:
       fix: "Remove the `ConfirmSheet` import from the form; wrap the entity's card or row on its page in `CardContextMenu` with `onDelete` instead."
-      skill: "kiko-design-system › Component set (CardContextMenu)"
+      skill: "kiko-design-system › Component set (continued)"
     paths:
       include:
         - "src/screens/forms/**"
@@ -1865,7 +1926,7 @@ rules:
             - pattern: Date.parse(...)
             - pattern: startOfLocalDay(...)
             - pattern: endOfLocalDay(...)
-  # kiko-code-style's "Tests read a module, never a source file's text":
+  # kiko-testing's "Tests read a module, never a source file's text":
   # Stryker rewrites every mutable `.ts`/`.tsx` source in its sandbox, so a
   # test that reads that source's TEXT sees instrumented code and its parse
   # breaks the dry run. A read is flagged unless its path provably ends in a
@@ -1883,11 +1944,11 @@ rules:
       A test reads a file whose path is not provably a data fixture. If it is
       a `.ts`/`.tsx` source, Stryker's instrumented copy of that file breaks
       the test's parse. Import the module and read its structure instead, or
-      name the fixture by its non-TypeScript file name — see kiko-code-style's
+      name the fixture by its non-TypeScript file name — see kiko-testing's
       "Tests read a module, never a source file's text".
     metadata:
       fix: "Import the module and read its structure (e.g. getTableColumns(table)); for a data fixture, name the file with its own extension in the join (join(__dirname, '__fixtures__/sample.csv'))."
-      skill: "kiko-code-style › Tests read a module, never a source file's text"
+      skill: "kiko-testing › Tests read a module, never a source file's text"
     options:
       symbolic_propagation: true
     paths:
@@ -2237,7 +2298,7 @@ rules:
         - "*.test.ts"
         - "*.test.tsx"
     pattern: removeHoldingDatabaseTransaction
-  # kiko-code-style's "A jest.requireActual call takes no type argument". A regex,
+  # kiko-testing's "A jest.requireActual call takes no type argument". A regex,
   # not an AST pattern: Semgrep reads an absent type argument as matching `<$T>`, so
   # `jest.requireActual('m') as T` would match too. The `<` right after the callee is
   # the whole signal, and the regex reads across a line break. No `paths.include`:
@@ -2253,12 +2314,41 @@ rules:
       extractor, which reads only `jest.<name>(` followed by a string literal. `jest
       --findRelatedTests` (and Stryker's per-test coverage) then never relates the test to that
       module. Drop the type argument and type the result instead:
-      `jest.requireActual('m') as { ... }`, or a typed const annotation — see kiko-code-style's
+      `jest.requireActual('m') as { ... }`, or a typed const annotation — see kiko-testing's
       "A jest.requireActual call takes no type argument".
     metadata:
       fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call; the same for requireMock, createMockFromModule and genMockFromModule."
-      skill: "kiko-code-style › A jest.requireActual call takes no type argument"
+      skill: "kiko-testing › A jest.requireActual call takes no type argument"
     pattern-regex: '\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<'
+  # The layout keys off the horizontal size class and the window or pane width, never the device:
+  # a later device that reports a regular class must get the same layout. A word regex over
+  # `generic`, not AST patterns: the four idiom words are the whole signal, so an import alias
+  # (`Platform as P`), a namespace read (`RN.Platform.isPad`), an optional chain, a bracket read,
+  # a destructure and an Objective-C read all match, and Semgrep has no Objective-C grammar. It
+  # reads comments and strings too, so a source comment cannot name the idiom either. The pre-write
+  # guard sees the TypeScript half only (it never reads `ios/`); the Swift and Objective-C half is
+  # proven project-wide by `security.sh`. `ios/Kiko` is the app's own native code, never Pods.
+  - id: kiko-no-device-idiom
+    languages: [generic]
+    severity: ERROR
+    message: >
+      The device idiom is read. A layout decision keys off the horizontal size class and the
+      window or pane width (`useDisplayRegions().horizontalSizeClass`, `useLayoutMode()`), never
+      `Platform.isPad`, `Platform.constants.interfaceIdiom`, `userInterfaceIdiom` or
+      `UI_USER_INTERFACE_IDIOM`, so a later device that reports a regular class gets the same
+      layout.
+    metadata:
+      fix: "Read the size class (`useDisplayRegions().horizontalSizeClass`) or the layout mode (`useLayoutMode()`); in native code, `traitCollection.horizontalSizeClass`."
+      skill: "kiko-architecture › Pane navigation"
+    paths:
+      include:
+        - "src/**/*.ts"
+        - "src/**/*.tsx"
+        - "ios/Kiko/**/*.swift"
+        - "ios/Kiko/**/*.m"
+        - "ios/Kiko/**/*.mm"
+        - "ios/Kiko/**/*.h"
+    pattern-regex: '\b(?:isPad|interfaceIdiom|userInterfaceIdiom|UI_USER_INTERFACE_IDIOM)\b'
   # kiko-design-system's "Component set": a test that must read a label's `variant` or `tone`
   # mocks the `Text` primitive with the shared `src/test-support/mock-text-variant-tone.tsx`,
   # never with its own factory that forwards `variant` onto the host node (one copy per file
@@ -2328,7 +2418,7 @@ rules:
   # match of an object property whose value is `new Set|Map|WeakSet|WeakMap(...)` inside the
   # matcher's argument; the finding sits on the matcher call's first line. A `[...new Set(x)]`
   # spread and `new Set(x).size` are not a property value, so they stay silent. Known limit: a
-  # Set held in a variable (`{ a: seen }`) is not matched. See kiko-code-style's "A subset
+  # Set held in a variable (`{ a: seen }`) is not matched. See kiko-testing's "A subset
   # matcher never holds a Set or a Map" section.
   - id: kiko-no-set-or-map-in-subset-match
     languages: [typescript]
@@ -2339,11 +2429,11 @@ rules:
       it as an object with no keys, so any non-Set value at a present key passes (`undefined`,
       `null`, `{}`, `[2]`); a missing key or a different Set fails. `expect.objectContaining`
       checks the kind only, so a different Set or Map passes; `undefined`, `null`, `{}` and a
-      missing key fail. Take the field out and compare it with `toEqual` — see kiko-code-style's
+      missing key fail. Take the field out and compare it with `toEqual` — see kiko-testing's
       "A subset matcher never holds a Set or a Map".
     metadata:
       fix: "Take the field out of the subset and `toEqual` it: `expect(actual.field).toEqual(new Set([...]))`."
-      skill: "kiko-code-style › A subset matcher never holds a Set or a Map"
+      skill: "kiko-testing › A subset matcher never holds a Set or a Map"
     patterns:
       - pattern-either:
           - pattern: |

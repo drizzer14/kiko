@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import {
   advanceWalkMarks,
   commitSettledSpan,
@@ -24,7 +25,8 @@ import type { HoldingRow } from '@kiko/db';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 
 import { isBinanceCoolingDown } from './binance.cooldown';
-import type { FetchAccountOptions } from './binance.client';
+import { partsOfHoldingKey } from './binance.holding-keys';
+import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
 import { BINANCE_WALK_CONFIG, isUnreadableWindowError } from './binance.walk-config';
 import type { BinanceHistoryRun, BudgetLane, CallCost } from './binance.history-budget';
 
@@ -77,11 +79,29 @@ export const walletPlacerOf =
     });
 
 /**
- * Commit one span of a Binance walk: the rows first, the marks second (see `commitSettledSpan`).
- * `series` names the series a window was narrowed to; a walk that never narrows a window leaves it
- * out, so a span reads all of it.
+ * The rows a window of `scope` writes. The backfill reads the coins a walk did not read before its
+ * first multi-coin run, so it leaves BTC out: those rows are already stored, and one the user
+ * deleted must not come back. The other coins of the same record are written.
  */
-export const commitBinanceSpan = <Planned, Row>(input: {
+const rowsOfScope = <Planned extends { wallet: string }>(
+  planned: Planned[],
+  scope: OwedWindow['scope'],
+): Planned[] =>
+  match(scope)
+    .returnType<Planned[]>()
+    .with(undefined, () => planned)
+    .with('backfill', () =>
+      planned.filter((row) => partsOfHoldingKey(row.wallet)?.code !== BINANCE_ASSET),
+    )
+    .exhaustive();
+
+/**
+ * Commit one span of a Binance walk: the rows first, the marks second (see `commitSettledSpan`).
+ * `series` names the series a window was narrowed to and `scope` the scope it was read in; a walk
+ * that never narrows a window leaves `series` out, so a span reads all of it, and a window read
+ * for every coin has no scope.
+ */
+export const commitBinanceSpan = <Planned extends { wallet: string }, Row>(input: {
   context: SpanCommitContext<Row>;
   pass: WalkPass;
   span: WalkWindow;
@@ -89,9 +109,10 @@ export const commitBinanceSpan = <Planned, Row>(input: {
   place: (planned: Planned[]) => Promise<Row[]>;
   restartMs: number;
   series?: OwedWindow['series'];
+  scope?: OwedWindow['scope'];
   forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
-  const { context, pass, span, series, restartMs } = input;
+  const { context, pass, span, series, scope, restartMs } = input;
   const { deps, accountId, plan, marks, write } = context;
 
   return commitSettledSpan({
@@ -99,7 +120,7 @@ export const commitBinanceSpan = <Planned, Row>(input: {
     span,
     settled: input.settled,
     forwardOwes: input.forwardOwes,
-    place: input.place,
+    place: (planned) => input.place(rowsOfScope(planned, scope)),
     add: deps.addTransactions,
     writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
     writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
@@ -109,6 +130,7 @@ export const commitBinanceSpan = <Planned, Row>(input: {
         pass,
         span,
         series,
+        scope,
         owed,
         plan,
         marks,
@@ -139,6 +161,7 @@ export const runBinanceWalkPlan = <Page>(input: {
   ) => Promise<SpanCommit | undefined>;
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
+  readOnPastUnreadableForward?: boolean;
 }): Promise<WalkResult> => {
   const { context, lane, cost, read, commit } = input;
   const { deps, run, accountId, plan, marks, write } = context;
@@ -147,6 +170,7 @@ export const runBinanceWalkPlan = <Page>(input: {
     plan,
     callsOf: input.callsOf,
     owedFirst: input.owedFirst,
+    readOnPastUnreadableForward: input.readOnPastUnreadableForward,
     canAfford: (keep) =>
       run.budget.canAfford(lane, cost, keep) && !isBinanceCoolingDown(accountId, deps.now()),
     runWindow: (window, pass, keep, hint) =>

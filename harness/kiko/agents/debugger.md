@@ -14,6 +14,11 @@ Rules:
 - Return the full report in your final message; you cannot write files. The caller saves it.
 - Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
 - Invoke superpowers:systematic-debugging first.
+- Load kiko-testing (`.claude/skills/kiko-testing/SKILL.md`) when the fault is a test that passes
+  in jest but not on the device, or passes on one machine only.
+- Load the project skill whose frontmatter description matches the faulty area (for example
+  kiko-exchange-sync, kiko-debts, kiko-bonds, kiko-pricing, kiko-statement-import), read from
+  `.claude/skills/*/SKILL.md`, not from a fixed list.
 - Reproduce the fault with a real command BEFORE you theorize. Do not guess.
 - Narrow to the ONE root cause. Name it with a `file:line` and the concrete evidence (the log line, the failing assertion, the actual value).
 - Report: the root cause, how you proved it, and the fix in words. Once you have proof, do not list rival theories.

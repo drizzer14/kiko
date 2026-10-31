@@ -125,6 +125,7 @@ const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      floatingFooter
       footer={
         <Box testID="add-category-footer" style={styles.addCategoryButton}>
           <Button

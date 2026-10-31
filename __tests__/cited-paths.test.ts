@@ -2,6 +2,7 @@ import {
   rmSync,
   statSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -11,6 +12,10 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { dirname, basename, join } from 'node:path';
 
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
 import {
   type Paragraph,
   lineCountBefore,
@@ -144,17 +149,16 @@ const markdownFilesUnder = (directory: string): string[] =>
     return full.endsWith('.md') ? [full] : [];
   });
 
-const citingFiles = (): string[] =>
+const citingFilesIn = (root: string): string[] =>
   [
-    ...markdownFilesUnder(join(REPOSITORY_ROOT, '.claude/skills')).filter((file) =>
-      file.endsWith('/SKILL.md'),
+    ...['.claude/skills', 'harness/kiko/skills', 'harness/kiko/agents', 'docs/harness'].flatMap(
+      (directory) => markdownFilesUnder(join(root, directory)),
     ),
-    ...['harness/kiko/skills', 'harness/kiko/agents', 'docs/harness'].flatMap((directory) =>
-      markdownFilesUnder(join(REPOSITORY_ROOT, directory)),
-    ),
-    join(REPOSITORY_ROOT, 'CLAUDE.md'),
-    join(REPOSITORY_ROOT, 'docs/security/README.md'),
-  ].map((file) => file.slice(REPOSITORY_ROOT.length + 1));
+    join(root, 'CLAUDE.md'),
+    join(root, 'docs/security/README.md'),
+  ].map((file) => file.slice(root.length + 1));
+
+const citingFiles = (): string[] => citingFilesIn(REPOSITORY_ROOT);
 
 const missingCitations = (file: string): Array<{ file: string; line: number; path: string }> =>
   citedPaths(readFileSync(join(REPOSITORY_ROOT, file), 'utf8'))
@@ -284,6 +288,26 @@ describe('citedPartialPaths', () => {
 
   it('reports a partial path no listed file or folder ends with', () => {
     expect(partialCitationResolves('design-system/gone/gone.ts')).toBe(false);
+  });
+});
+
+describe('citingFilesIn', () => {
+  afterEach(removeTemporaryDirectories);
+
+  it('lists a reference file inside a .claude skill folder (POSITIVE)', () => {
+    const root = createTemporaryDirectory('kiko-citing-files-');
+
+    ['.claude/skills/demo', 'harness/kiko/skills', 'harness/kiko/agents', 'docs/harness'].forEach(
+      (directory) => {
+        mkdirSync(join(root, directory), { recursive: true });
+      },
+    );
+    writeFileSync(join(root, '.claude/skills/demo/SKILL.md'), '# Demo\n');
+    writeFileSync(join(root, '.claude/skills/demo/reference.md'), '# Reference\n');
+
+    expect(citingFilesIn(root)).toEqual(
+      expect.arrayContaining(['.claude/skills/demo/SKILL.md', '.claude/skills/demo/reference.md']),
+    );
   });
 });
 

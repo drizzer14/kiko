@@ -502,6 +502,31 @@ describe('GlassSurface', () => {
       expect(queryByTestId('material-glass-wash')).toBeNull();
     });
 
+    // `glassTint` is the footer Button's backing: the colour goes to the native `tintColor` and
+    // nowhere else, so the glass stays translucent (no opaque backdrop, no wash over it).
+    it('feeds glassTint to the native tintColor with no backdrop and no wash', async () => {
+      const glassTint = 'rgba(10, 132, 255, 1)';
+      const { getByTestId, queryByTestId } = await render(
+        <GlassSurface testID="glass-tinted" glassTint={glassTint}>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      expect(getByTestId('glass-tinted-base').props.tintColor).toBe(glassTint);
+      expect(queryByTestId('glass-tinted-backdrop')).toBeNull();
+      expect(queryByTestId('glass-tinted-wash')).toBeNull();
+    });
+
+    it('lets a tint win over a glassTint', async () => {
+      const { getByTestId } = await render(
+        <GlassSurface testID="both-tints" tint={tint} glassTint="rgba(0, 0, 0, 1)">
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      expect(getByTestId('both-tints-base').props.tintColor).toBe(tint);
+    });
+
     // `material` is a NEUTRAL variant like `transparent`, so a `tint` (an
     // entity card, which must stay opaque) always wins over it too.
     it('keeps the opaque backdrop and tint when both tint and material are set', async () => {

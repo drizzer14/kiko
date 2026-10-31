@@ -66,8 +66,29 @@ Rules:
   owns the estimate-from-history rules. A BATCH READY's TIMES line comes
   from the run log (see "Run log"), not from hand-written text.
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
-- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
+- A fresh agent is the default for each task, and a FRESH developer takes each fix round (user
+  2026-10-26). Reuse an agent via SendMessage only for a same-task re-review by the SAME agent
+  under about 150k context (never across tasks, never for a different diff, never after a large
+  amount of work). A fresh developer after a stall re-runs every check and re-proves each red
+  test itself; it trusts no earlier green. A resumed agent's later report is read from its
+  transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents
+  cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its
+  worktree — never use it to tidy a finished agent.
 
+- `make jest-affected` is the default dev test command: it runs only the suites a change can
+  affect (base: merge-base with main; `BASE=<ref>` overrides). Exit 3 with `AFFECTS EVERY SUITE`
+  (package files, jest/babel/tsconfig, `__mocks__`, `patches`, `.env.test`) means queue the
+  verify. Named-file jest (`npx jest <files> --maxWorkers=2`) stays allowed. The queued verify
+  stays the backstop. Mapping rules and limits: the header of `scripts/checks/jest-affected.sh`;
+  usage: `docs/harness/checks.md` "Makefile targets".
+- The COORDINATOR owns the queue (user 2026-10-26). An orchestrator never queues a verify,
+  check-all, security or gate job: it reports READY FOR VERIFY naming the worktree, the label and
+  the base sha, and the coordinator queues it. Every later "queue the verify" means that report.
+- An acceptance pin's seed or world is part of the pin. An edit of a shared seed helper that
+  changes an acceptance pin's world is an edit of that pin (Binance S15-Q13): re-seed that pin
+  with its own per-pin seed line, never in the shared helper. A plan line "existing suites green
+  unchanged" for a change that adds owed state first asks which seeds are 1.2-upgrade worlds
+  (S15: 48 pins went red).
 - Run the FULL jest through the queued verify (`bash scripts/job-queue.sh verify <worktree>
   <label>`; a typed `make verify` is denied) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory
@@ -204,6 +225,23 @@ result, and lists the candidate lessons per "Memory writes".
 
 ## Mutation testing: small change sets only
 
+Status: the per-change-set gate below is paused by the user since 2026-10-25 until lifted;
+verify + review only. The gate text stays for when the user lifts the pause.
+
+Strict scope (user ruling 2026-10-25, every track): a track fixes only visible wrong data or
+UI, its own regressions, wrong texts, and release requirements. Everything else goes to a
+per-track backlog file. Classify a finding this way before asking the user about it, so the
+user sees only real decisions.
+
+Batch merge: several READY, reviewed tracks with a clean `git merge-tree` may merge together
+onto main. Merge them in one detached worktree with a real `git merge` (hooks run), run ONE
+queued verify on the result, then `bash scripts/ff-main.sh <sha>`. One verify replaces one per
+track.
+
+Status is on demand (user 2026-10-26): there is no Status session, no long-lived PM and no
+`EVENT:` push. The coordinator spawns a fresh `kiko:pm` only when the user asks for status; the
+HANDOFF.md table is the open-loop record.
+
 Mutation testing (`check:deep` / `check:mutation`) runs per SMALL change
 set, never on a whole project or a whole release — a whole-release run
 went 10 h 16 min with no result. There is no whole-release or
@@ -266,18 +304,17 @@ am, or apply in the main checkout
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
 real merge, conflicts and all, in a separate detached worktree. Verify
-it there = a queued `scripts/job-queue.sh verify` (not a bare `make verify`)
-at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
+it there = a verify the coordinator queues with `scripts/job-queue.sh verify` (not a bare
+`make verify`) at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
 the merge result). Move main only on exit 0 with the full test count. A
 clean `git merge-tree` is not proof of a green merge. A merge with 0 src
 files in it still gets the verify, because check:all and the hooks run
 from it. Then fast-forward main with `bash scripts/ff-main.sh <sha>`. It
 runs only for a sha whose LAST `verify` line in the queue's done.log is exit 0, so queue the
 verify through `scripts/job-queue.sh verify` (a bare `make verify` leaves no line), keep the
-tree untouched until DONE, and do not move HEAD after. The line's head field is the full sha
-only when the tree is clean at START and again at the end and HEAD is unchanged; a job that
-edits its own tree without committing records `unknown`. Limits: an edit reverted before the
-end is not seen, and ignored files (`.env`, `node_modules`) are not counted. The
+tree untouched until DONE, and do not move HEAD after. When the head field is the full sha or
+`unknown`, and the dirty-tree refusal: see the queue paragraph below and the
+`scripts/job-queue.sh` header. The
 kill-guard denies a raw
 `merge --ff-only` on main (kind `mainFastForward`). There is no bypass: an override goes to the
 user plus a run-log note. The script prints `git log -1 --oneline` of main on success.
@@ -319,6 +356,13 @@ a test in the fix commit.
 - A ruled route that does not exist yet is written "not built yet" with its gap id, never as if
   it exists. The change that builds it removes the phrase (grep for it). H11 task 2 is the
   example.
+- A priority ruling ("read X first") names and pins the starvation world of the demoted group
+  in the same ruling (S15-Q9 led to the Q15-Q19 chain).
+- A ruling worded as a mechanism can contradict an unchanged pin: the brief tells the developer
+  to measure the unchanged pins first.
+- Removing or renaming a catalogue key: the plan greps the help topics, the pin suites and uk
+  first, and every dependent edit lands in the SAME step. A copy ruling greps the old literal
+  across `it(`/`describe(` titles and plan/spec rows in the same commit.
 - A planner's count (files, cases, call sites) is a floor. The developer measures the real
   count and the brief says so.
 - A change that needs a port to the shared harness repository lists the port item in the
@@ -439,7 +483,8 @@ the track branch fast-forwarded.
 A fix round for an earlier change set never sits on top of a later one:
 fix it in its own worktree off that set's tip, then have ops run
 `git rebase --onto <fix tip> <old base> <branch>` for the later set, then
-run the full verify, queued (`bash scripts/job-queue.sh verify <worktree> <label>`).
+run the full verify, queued by the coordinator (`bash scripts/job-queue.sh verify <worktree>
+<label>`).
 
 ## Mutation base after a track merged next
 
@@ -531,11 +576,26 @@ workspace clean.
 
 An orchestrator session cannot see its own context-usage gauge (it is
 in the terminal status line). The coordinator watches it from outside
-and hands over at about 50%: the session writes a handoff file in its
-worktree, waits until its own in-process subagents finish (closing
+and starts the handover at 16% so it ends under 20% (user 2026-10-26, 2026-10-30; see
+"Token budget"; an idle track over 20% writes its handoff file and stops): the session
+writes a handoff file in its worktree, waits until its own in-process subagents finish (closing
 the terminal kills them mid-work), then the coordinator closes the
 old terminal and starts a new claude session in the same worktree
 that reads the handoff file.
+
+## Token budget
+
+Every call re-sends the whole context, so size drives cost (user 2026-10-30).
+
+1. Orchestrators and the coordinator START their handover at 16% context so it ends under 20%.
+   A later handover is allowed when holding the current context is reasonable (a long task has
+   not ended: a running subagent, a fix round in flight); hand over at the first clean point
+   after it ends and state the reason in the next report.
+2. Every brief caps the hand-back report (default 15 lines); details go to a file the report
+   names.
+3. Handoff files hold live state only (under 20 KB); history goes to `HANDOFF-history.md`.
+4. Use a fresh developer per fix round; SendMessage reuse is only a same-task re-review by
+   the SAME agent (the fresh-agent bullet on task naming).
 
 ## Harness hook changes go live only after a plugin update
 
@@ -637,7 +697,8 @@ Split a big review into parallel read-only reviewer slices by commit
 range, each writing its own output file. Review a mechanical sweep by
 static proof, not by sampling: resolve every import binding and
 `jest.mock`/`require` target at both commits, count cycles, and check
-each side-effect import's predecessors.
+each side-effect import's predecessors. A reviewer of a multi-thousand-line move goes past 150k
+context: split the review per new skill and re-review with a fresh reviewer.
 
 ## The Stop-hook dup check is scoped
 
@@ -650,7 +711,8 @@ same scoped command yourself before reporting done:
 this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
 which accepts file args and falls back to the whole repo with none).
 Each touched test file must also pass the check alone, not only as
-part of the whole changed-file set. A `WARNING` on exit 0 means a large
+part of the whole changed-file set. A touched test file that is already over 5% alone is step
+work: the step dedups it, never a later cleanup. A `WARNING` on exit 0 means a large
 file (or a scoped combined large-file run) is over 5% but at or under its ceiling in
 `scripts/checks/dup-ceilings.tsv`: it does not block, but do not grow a figure. Every other
 large-file finding (above the ceiling, unlisted, could not measure or list, mktemp) exits 2
@@ -683,6 +745,12 @@ red row.
 
 A date written into a doc comes from `git log -1 --format=%cs` (or `date +%F`) at write time,
 never from a session's own notes clock.
+
+## Probe an unmeasured UIKit behavior before a native fix
+
+A native fix that rests on an unmeasured UIKit behavior gets a cheap, behavior-changing probe in a
+scratch worktree BEFORE a developer starts (iPad F2, 2026-10-27). The probe's measured result goes
+into the brief; a source read is a hypothesis only.
 
 ## Probe a live API before building on its shape
 
@@ -728,6 +796,13 @@ class starts (orchestrator default D1, accepted by the user 2026-10-13); an unre
 state holds too. A load wait at the head of the queue is in the ops skill, "Load rule". A gate
 refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
 exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
+On the real queue (`KIKO_QUEUE_DIR` unset or equal to `~/.claude/kiko-queue`), `verify`, `gate`
+and `check-all` refuse (exit 3) a target worktree of another repository and a script copy
+outside any repository; `harness-verify` and `security` are exempt. A test or scratch run never
+uses `job-queue.sh` without `KIKO_QUEUE_DIR` on a temporary folder (see the `scripts/job-queue.sh`
+header, `refuse_foreign_repository_on_real_queue`).
+A queue label holds only letters, digits, `.`, `_` and `-` (`scripts/job-queue.sh` exits 2
+"invalid label" otherwise).
 Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
 (an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
 WARNING). Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's
@@ -739,8 +814,12 @@ queue directly (the queue serializes) and throttle feature tracks with a LOAD HO
 or tsc agent until RESUME; a RESUME names its limits). Keep `wait-load.sh` for a lone security
 run only. A queued check:all or verify reads the worktree until
 the job is DONE; keep that tree untouched from the queue time until DONE, and never queue one while
-a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
-START or at the end, or HEAD moved.
+a developer still edits that tree. `verify` and `gate` refuse a changed tree (untracked included)
+with exit 3, at enqueue and again at START: commit it (for example `ios/Podfile.lock`) or copy
+files aside, never stash. done.log's head field is `unknown` if the job itself changed the tree
+(a `NOTE` names the path) or HEAD moved; `check-all` and `security` still run on a dirty tree. A
+verify prints no live output: read `<queue dir>/logs/verify-<label>.log` (path printed at the
+end) for a failure, and wait only for the exit code. Detail: the `scripts/job-queue.sh` header.
 
 During a queue hold no role agent runs `check:security`, a Semgrep-spawning guard suite,
 `check:all` or `make verify` outside the queue (kill-guard denies it: `heavyJob`, `fullJest`);

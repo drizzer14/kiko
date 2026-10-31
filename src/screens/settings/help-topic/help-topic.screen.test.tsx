@@ -12,6 +12,7 @@ import {
 import { darkTheme } from '@kiko/design-system/theme';
 import { type HelpTopicId, helpTopicById } from '@kiko/help';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
+import { reportWindow } from '@kiko/test-support/window-size';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import HelpTopicScreen from './help-topic.screen';
@@ -69,7 +70,6 @@ describe('HelpTopicScreen', () => {
     ['trackProperty', 'Add property', ['HoldingForm', { implicitKind: 'property' }]],
     ['trackLoan', 'Add loan', ['HoldingForm', { implicitKind: 'debt' }]],
     ['addTransaction', 'Add transaction', ['TransactionForm', {}]],
-    ['viewStatistics', 'Open statistics', ['StatisticsTab']],
     ['useTemplates', 'Open templates', ['TransactionTemplates']],
     ['setReminder', 'Open reminders', ['Reminders']],
     ['manageCategories', 'Open categories', ['Categories']],
@@ -90,6 +90,34 @@ describe('HelpTopicScreen', () => {
       expect(navigation.navigate).toHaveBeenCalledWith(...target);
     },
   );
+
+  describe.each([
+    ['an iPhone window', 'compact', 390, 844, 'StatisticsTab'],
+    ['the Duo inner window in landscape', 'regular', 951, 669, 'StatisticsTab'],
+    ['a split-view window in landscape', 'regular', 1032, 683, 'StatisticsTab'],
+    ['an iPad mini in portrait', 'regular', 744, 1133, 'HomeTab'],
+    ['a 13-inch iPad in landscape', 'regular', 1376, 1032, 'HomeTab'],
+  ] as const)('on %s', (_name, sizeClass, width, height, tab) => {
+    beforeEach(() => {
+      reportWindow(sizeClass, width, height);
+    });
+
+    afterAll(() => {
+      reportWindow('compact', 390, 844);
+    });
+
+    it(`opens the ${tab} from the action labelled "Open statistics"`, async () => {
+      const navigation = navigationSpy();
+      const { getByTestId } = await renderScreen('viewStatistics', navigation);
+
+      expect(getByTestId('help-topic-action')).toHaveTextContent('Open statistics');
+
+      await fireEvent.press(getByTestId('help-topic-action'));
+
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+      expect(navigation.navigate).toHaveBeenCalledWith(tab);
+    });
+  });
 
   it.each([
     ['addAccount', genericEntitySymbol.account],

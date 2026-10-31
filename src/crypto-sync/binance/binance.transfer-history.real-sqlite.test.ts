@@ -54,7 +54,7 @@ const openDatabase = (): DatabaseSync => {
          VALUES (?, ?, 'Binance Spot', 'crypto_asset', 'BTC', 100, ?)`,
       )
       .run(`h-spot-${account}`, account, JSON.stringify({ binanceAsset: 'BTC' }));
-    seedWalkMarks(rawDatabase, account, 'transfer', { cursor: CURSOR });
+    seedWalkMarks(rawDatabase, account, 'transfer', { cursor: CURSOR, multiCoinSeen: true });
   }
 
   return rawDatabase;

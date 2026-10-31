@@ -1,9 +1,11 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { useUnistyles } from 'react-native-unistyles';
+import { useIsInFloatingFooter } from '@kiko/design-system/floating-footer';
 import { ActivityIndicator, Pressable, Text as RNText, View } from 'react-native';
 
 import SymbolIcon from '../symbol';
+import FooterGlassBacking, { resolveFooterGlassVariant } from '../footer-glass-backing';
 
 import { styles } from './button.styles';
 import type { ButtonProps } from './button.props';
@@ -28,8 +30,10 @@ const Button: FC<ButtonProps> = ({
   accessibilityLabel,
   textColor,
   testID,
+  ref,
 }) => {
   const { theme } = useUnistyles();
+  const isInFloatingFooter = useIsInFloatingFooter();
   styles.useVariants({ variant });
 
   // The props union already makes an unlabelled icon-only button a compile
@@ -66,6 +70,12 @@ const Button: FC<ButtonProps> = ({
     .with('small', () => styles.small)
     .exhaustive();
 
+  // In a footer that floats over scrolling rows every filled variant sits on Liquid Glass
+  // (iOS 26+), so the rows never show through a flat fill. `ghost` has no fill to put on glass.
+  // Below iOS 26 there is no glass layer: a solid variant keeps its normal fill, a tonal one sits
+  // on an opaque base, since its own tint is translucent.
+  const footerGlassVariant = resolveFooterGlassVariant(variant, isInFloatingFooter);
+
   const content = (
     <>
       {icon !== undefined && (
@@ -82,6 +92,7 @@ const Button: FC<ButtonProps> = ({
 
   return (
     <Pressable
+      ref={ref}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ busy: loading }}
@@ -92,8 +103,17 @@ const Button: FC<ButtonProps> = ({
       // hitSlop that restores the >= 44pt HIG tap target; regular and compact
       // already meet 44pt as their visible minHeight, so they take no slop.
       hitSlop={size === 'small' ? SMALL_HIT_SLOP : undefined}
-      style={[styles.button, sizeStyle, fullWidth && styles.fullWidth, disabled && styles.disabled]}
+      style={[
+        styles.button,
+        sizeStyle,
+        isInFloatingFooter && styles.capsule,
+        fullWidth && styles.fullWidth,
+        footerGlassVariant !== undefined && styles.unfilled,
+        disabled && styles.disabled,
+      ]}
     >
+      {footerGlassVariant !== undefined && <FooterGlassBacking variant={footerGlassVariant} />}
+
       {loading ? <View style={styles.hiddenContent}>{content}</View> : content}
 
       {loading && (

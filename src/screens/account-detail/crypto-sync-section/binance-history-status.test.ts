@@ -2,7 +2,13 @@ import { DAY_MS } from '@kiko/dates';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import { type WalkMarkSeed, type WalkName, withWalkMarkSeeds } from '@kiko/test-support/walk-marks';
 
-import { historyOwesRange, isBinanceHistoryBehind, walkCursorsOf } from './binance-history-status';
+import {
+  historyOwesRange,
+  historyOwesTrades,
+  isBinanceHistoryBehind,
+  p2pReadFailed,
+  walkCursorsOf,
+} from './binance-history-status';
 
 const NOW = 1_704_326_400_000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -249,6 +255,86 @@ describe('historyOwesRange', () => {
   });
 });
 
+describe('the history caption while a backfill range is owed', () => {
+  const caughtUp = NOW - HOUR_MS;
+  const backfillRange = { start: 1, end: 3, scope: 'backfill' };
+
+  const behindOwing = (walkName: WalkName, owed: unknown[]): boolean => {
+    const state = withEveryCursor(caughtUp, { [walkName]: { cursor: caughtUp, pending: owed } });
+
+    return isBinanceHistoryBehind({
+      cursors: walkCursorsOf(state),
+      lastBalanceSyncAt: NOW,
+      owesRange: historyOwesRange(state, NOW),
+    });
+  };
+
+  it.each(['capital', 'pay', 'transfer', 'earn'] as const)(
+    'is behind while the %s walk owes a backfill range, though every cursor is current',
+    (walkName) => {
+      expect(behindOwing(walkName, [backfillRange])).toBe(true);
+      expect(behindOwing(walkName, [])).toBe(false);
+    },
+  );
+});
+
+describe('the history caption over the trade symbols', () => {
+  const caughtUp = NOW - HOUR_MS;
+
+  const everyCursor = Object.fromEntries(
+    CAPTION_WALK_NAMES.map((walkName) => [walkName, { cursor: caughtUp }]),
+  );
+
+  const stateWithTrades = (trades: unknown) =>
+    parseExchangeState(JSON.stringify({ ...withWalkMarkSeeds({}, 'acc-1', everyCursor), trades }));
+
+  const behindWith = (state: ReturnType<typeof parseExchangeState>, syncedAt: number | null) =>
+    isBinanceHistoryBehind({
+      cursors: walkCursorsOf(state),
+      lastBalanceSyncAt: syncedAt,
+      tradesUnread: historyOwesTrades(state),
+    });
+
+  it('is behind while a candidate trade symbol was never read', () => {
+    const state = stateWithTrades({
+      symbols: { ETHUSDT: { fromId: 7 } },
+      unreadSymbols: ['BTCUSDT'],
+    });
+
+    expect(behindWith(state, NOW)).toBe(true);
+  });
+
+  it('is not behind once every candidate trade symbol was read, an empty read too', () => {
+    const state = stateWithTrades({
+      symbols: { BTCUSDT: { fromId: 0 }, ETHUSDT: { fromId: 7 } },
+      unreadSymbols: [],
+    });
+
+    expect(behindWith(state, NOW)).toBe(false);
+  });
+
+  it('is not behind for a state with no trades at all, or no list of unread symbols', () => {
+    expect(behindWith(stateWithTrades(undefined), NOW)).toBe(false);
+    expect(behindWith(stateWithTrades({ symbols: { ETHUSDT: { fromId: null } } }), NOW)).toBe(
+      false,
+    );
+  });
+
+  it('is not behind for a list of unread symbols that is not a list of texts', () => {
+    expect(behindWith(stateWithTrades({ unreadSymbols: [1, 'BTCUSDT'] }), NOW)).toBe(false);
+    expect(behindWith(stateWithTrades({ unreadSymbols: 'BTCUSDT' }), NOW)).toBe(false);
+  });
+
+  it('is not behind before the account has ever synced', () => {
+    expect(behindWith(stateWithTrades({ unreadSymbols: ['BTCUSDT'] }), null)).toBe(false);
+  });
+
+  it('owes no trades for a state that is not readable', () => {
+    expect(historyOwesTrades(parseExchangeState('{not json'))).toBe(false);
+    expect(historyOwesTrades(parseExchangeState(null))).toBe(false);
+  });
+});
+
 describe('walkCursorsOf', () => {
   it('reads the eight forward cursors, capital, Pay, Transfer, Earn, Convert, P2P, fiat orders and fiat payments, off the state', () => {
     const state = stateOf({
@@ -332,5 +418,22 @@ describe('the history caption over the P2P and fiat walks', () => {
   it('is behind while the P2P walk is held more than a day by a page it cannot read', () => {
     expect(behindWith('p2p', NOW - DAY_MS)).toBe(false);
     expect(behindWith('p2p', NOW - DAY_MS - 1)).toBe(true);
+  });
+});
+
+describe('p2pReadFailed', () => {
+  it('is true when the P2P walk entry holds a read-failed time', () => {
+    expect(p2pReadFailed(stateOf({ p2p: { cursor: NOW, readFailedAt: NOW } }))).toBe(true);
+  });
+
+  it.each([
+    ['holds no read-failed time', { cursor: NOW }],
+    ['holds a null read-failed time', { cursor: NOW, readFailedAt: null }],
+  ])('is false when the P2P walk entry %s', (_label, entry) => {
+    expect(p2pReadFailed(stateOf({ p2p: entry }))).toBe(false);
+  });
+
+  it('is false when the state holds no P2P walk entry', () => {
+    expect(p2pReadFailed(stateOf({ capital: { cursor: NOW, readFailedAt: NOW } }))).toBe(false);
   });
 });

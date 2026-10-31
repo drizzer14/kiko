@@ -246,10 +246,10 @@ Files: `src/i18n/locales/en.ts`, `uk.ts`, `src/help/help-topics.ts` (`stepKeys`)
   text.
 - Draft text. The developer checks every claim against §1.3 code, quotes only catalogue strings,
   and lets the user review the uk text.
-  1. en: Open the "Statistics" tab. "Accounts" at the top chooses the accounts that every chart
-     counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two
+  1. en: Open the "Statistics" tab. "Accounts" above the charts chooses the accounts that every
+     chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two
      spending charts.
-     uk: Відкрийте вкладку «Статистика». Фільтр «Рахунки» вгорі обирає рахунки для всіх
+     uk: Відкрийте вкладку «Статистика». Фільтр «Рахунки» над графіками обирає рахунки для всіх
      графіків, а календар поруч — дати для графіків «Капітал з часом» і двох графіків витрат.
   2. en: "Net Worth Over Time" shows your net worth across those dates. The dashed line is its
      value on the first day: the line is green above it and red below it.

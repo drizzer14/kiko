@@ -113,8 +113,14 @@ const ARGUMENT_STUB = [
 
 // A developer's own `export KIKO_MUTATION_BASE=...` (or FULL) must not change
 // the scope a test runs the wrapper with: the throwaway repository has no such
-// commit, so every run would be refused. A test's own `environment` still wins.
-const SCOPE_VARIABLES = new Set(['KIKO_MUTATION_BASE', 'KIKO_MUTATION_FULL']);
+// commit, so every run would be refused. A test's own `environment` still wins. The queued verify
+// exports KIKO_PROPERTY_SWEEP=full, which would make a row that pins mutation.sh's own export pass
+// without it.
+const SCOPE_VARIABLES = new Set([
+  'KIKO_MUTATION_BASE',
+  'KIKO_MUTATION_FULL',
+  'KIKO_PROPERTY_SWEEP',
+]);
 
 export const wrapperEnvironment = (environment: Record<string, string>): NodeJS.ProcessEnv => ({
   ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !SCOPE_VARIABLES.has(name))),

@@ -2,6 +2,7 @@ import { rethrow } from 'fnts';
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
+  backfillGroundOf,
   BinanceWalkStop,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
@@ -10,6 +11,7 @@ import {
   joinSettled,
   logWalkStop,
   multiCoinPatchesOf,
+  type OwedWindow,
   planWalkPasses,
   readPendingMark,
   readWalkMarks,
@@ -150,7 +152,7 @@ const EARN_WALLET_TYPE = 5;
 /**
  * A receive carries no field that says which wallet took it (`walletType` and `walletTypes`
  * may describe the payer), so its time decides: Spot from this UTC midnight, Funding before.
- * Where the date comes from: kiko-architecture, the Binance Pay section.
+ * Where the date comes from: kiko-exchange-sync, the Binance Pay section.
  */
 const PAY_RECEIPTS_TO_SPOT_FROM_MS = Date.UTC(2026, 8, 29);
 
@@ -670,6 +672,7 @@ const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistory
  */
 const commitSpan = (
   context: PayContext,
+  window: OwedWindow,
   span: WalkWindow,
   page: PayHistoryPage,
   pass: WalkPass,
@@ -678,6 +681,7 @@ const commitSpan = (
     context,
     pass,
     span,
+    scope: window.scope,
     settled: settledOrdersOf(context, span, page),
     place: walletPlacerOf(context, 'pay-holding-missing'),
     restartMs: HISTORY_FLOOR_MS,
@@ -762,9 +766,14 @@ const runSync = async (
   const write = walkMarkWriterOf(deps, accountId, 'pay');
   const roundRobins = await readWalkRoundRobins({ stored, write });
   const floorMs = payFloorMs(now);
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: floorMs, end: payCursor ?? floorMs },
+  const { pending, stored: converted } = await backfillGroundOf({
+    stored,
+    pending: await readPendingMark({
+      stored: stored.pending,
+      owedIfUnreadable: { start: floorMs, end: payCursor ?? floorMs },
+      write,
+    }),
+    floorMs,
     write,
   });
   const plan = planWalkPasses({
@@ -772,6 +781,7 @@ const runSync = async (
     rescanCursor,
     pointCursor: roundRobins.pointCursor,
     rangeCursor: roundRobins.rangeCursor,
+    backfillCursor: roundRobins.backfillCursor,
     pending,
     floorMs,
     endTime: now,
@@ -797,7 +807,7 @@ const runSync = async (
       rescanCursor,
       ...roundRobins,
       pending,
-      multiCoinPatches: multiCoinPatchesOf({ stored, planCursor: payCursor }),
+      multiCoinPatches: multiCoinPatchesOf({ stored: converted, planCursor: payCursor }),
     },
     plan,
     write,
@@ -815,7 +825,7 @@ const runSync = async (
     lane: 'pay',
     cost: COSTS.pay,
     read: (_window, span, keepCalls) => readSpan(context, span, keepCalls),
-    commit: (_window, span, page, pass) => commitSpan(context, span, page, pass),
+    commit: (window, span, page, pass) => commitSpan(context, window, span, page, pass),
   });
 };
 

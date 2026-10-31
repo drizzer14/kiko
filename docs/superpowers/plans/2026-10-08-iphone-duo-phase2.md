@@ -197,7 +197,7 @@ Per-tab config: Home `{ rootPane: 'primary', companionDefault: Statistics }`; St
   - (g) `foldAssignment` drops defaults and keeps tapped routes;
   - (h) Home tab, fold then unfold of `[Home, Form]` opened unfolded: Form back in companion (left), Home in primary (right) (ruling 4A);
   - (i) `unfoldAssignment` of `[Accounts, AccountDetail]` puts the list in companion and the detail in primary;
-  - (j) Statistics tab: the fold gives `[Statistics, Form]` with Back to Statistics (flag 11); unfold puts Form back in primary and the Home default in companion;
+  - (j) SUPERSEDED by the `pane-assignment.ts` tests and `realizeStaticDefault`; was: Statistics tab: the fold gives `[Statistics, Form]` with Back to Statistics (flag 11); unfold puts Form back in primary and the Home default in companion;
   - (k) a route pushed while folded (Home tab: the form opened on the outer display) unfolds into opposite(Home) = companion, with Home in primary;
   - (l) Accounts default first account: fold drops it, unfold shows it again in primary (no stored pane needed);
   - (m) a rehydrated state with no `panes` map unfolds by alternation from `rootPane`.

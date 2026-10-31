@@ -1,18 +1,51 @@
 import type { HorizontalSizeClass } from '../display-regions-native';
 
-import { type LayoutMode, resolveLayoutMode } from '.';
+import { isLargeWindow, type LayoutMode, resolveLayoutMode } from '.';
 
 describe('resolveLayoutMode', () => {
   it.each<[string, HorizontalSizeClass, number, number, LayoutMode]>([
     ['a compact iPhone in portrait', 'compact', 390, 844, 'single'],
-    ['the compact outer Duo window', 'compact', 466, 678, 'single'],
+    ['the compact Duo outer window, never split', 'compact', 466, 678, 'single'],
     ['a compact window in landscape', 'compact', 844, 390, 'single'],
-    ['a regular window wider than tall (Duo inner, landscape)', 'regular', 951, 669, 'columns'],
-    ['a regular window taller than wide (Duo inner, portrait)', 'regular', 669, 951, 'rows'],
-    ['a square regular window', 'regular', 700, 700, 'columns'],
-    ['a regular window one point wider', 'regular', 701, 700, 'columns'],
-    ['a regular window one point taller', 'regular', 700, 701, 'rows'],
+    ['the Duo inner window in landscape, never single', 'regular', 951, 669, 'columns'],
+    ['the Duo inner window in portrait, one page', 'regular', 669, 951, 'single'],
+    ['a square regular window', 'regular', 721, 721, 'columns'],
+    ['a regular window one point wider', 'regular', 722, 721, 'columns'],
+    ['a regular window one point taller', 'regular', 721, 722, 'columns'],
+    ['a square regular window below two minimum panes', 'regular', 700, 700, 'single'],
+    ['a narrow wide regular window below two minimum panes', 'regular', 720, 500, 'single'],
+    ['a wide regular window at two minimum panes and a divider', 'regular', 721, 500, 'columns'],
+    ['a tall regular window below two minimum panes', 'regular', 500, 720, 'single'],
+    ['a tall narrow regular window, one page whatever its height', 'regular', 400, 900, 'single'],
+    ['a regular window 1099 wide, with no width threshold', 'regular', 1099, 820, 'columns'],
+    ['a regular window 1100 wide, the mode of one point less', 'regular', 1100, 820, 'columns'],
+    ['a 13-inch-class landscape regular window', 'regular', 1366, 1024, 'columns'],
+    ['an iPad mini in portrait', 'regular', 744, 1133, 'columns'],
+    ['an 11-inch iPad in portrait', 'regular', 820, 1180, 'columns'],
+    ['a 13-inch iPad in portrait', 'regular', 1032, 1376, 'columns'],
+    ['a left or right half-screen window in portrait, one page', 'regular', 683, 909, 'single'],
+    ['a tall window at two minimum panes and a divider', 'regular', 721, 1376, 'columns'],
+    ['a tall window one point below two minimum panes, one page', 'regular', 720, 1376, 'single'],
   ])('resolves %s', (_name, sizeClass, width, height, expected) => {
     expect(resolveLayoutMode(sizeClass, width, height)).toBe(expected);
+  });
+});
+
+describe('isLargeWindow', () => {
+  it.each<[string, HorizontalSizeClass, number, number, boolean]>([
+    ['an iPad mini in portrait', 'regular', 744, 1133, true],
+    ['an iPad mini in landscape', 'regular', 1133, 744, true],
+    ['an 11-inch iPad in portrait', 'regular', 820, 1180, true],
+    ['a 13-inch iPad in portrait', 'regular', 1032, 1376, true],
+    ['a 13-inch iPad in landscape', 'regular', 1376, 1032, true],
+    ['a square regular window at the split minimum', 'regular', 721, 721, true],
+    ['the Duo inner window in landscape', 'regular', 951, 669, false],
+    ['the Duo inner window in portrait', 'regular', 669, 951, false],
+    ['a split-view window in landscape', 'regular', 1032, 683, false],
+    ['a split-view window in portrait', 'regular', 683, 909, false],
+    ['a tall regular window one point below the split minimum', 'regular', 720, 1376, false],
+    ['a compact window as large as an iPad', 'compact', 1032, 1376, false],
+  ])('classifies %s', (_name, sizeClass, width, height, expected) => {
+    expect(isLargeWindow(sizeClass, width, height)).toBe(expected);
   });
 });

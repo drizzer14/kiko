@@ -10,7 +10,8 @@ import { RESYNC_OVERLAP_MS } from '@kiko/crypto-sync/binance';
 /**
  * The walks whose forward cursor the caption compares: capital, Pay, Transfer, Earn, Convert,
  * P2P, fiat orders, fiat payments. A P2P page that cannot be read holds its cursor on every run,
- * so the caption is how that stays visible.
+ * which this caption shows once the cursor lags a day; the failure itself has its own, immediate
+ * caption (`p2pReadFailed`).
  */
 const CAPTION_WALKS: readonly WalkId[] = [
   'capital',
@@ -107,23 +108,51 @@ export const historyOwesRange = (
     .exhaustive();
 
 /**
+ * Whether the last trade read left a candidate symbol waiting for its first read
+ * (`trades.unreadSymbols`). The list only holds symbols that can still be read, so a symbol whose
+ * read fails on every run never keeps the caption up. A state that is not readable owes nothing
+ * here, as in `historyOwesRange`.
+ */
+export const historyOwesTrades = (state: ParsedExchangeState): boolean =>
+  match(state)
+    .returnType<boolean>()
+    .with({ kind: 'parsed' }, ({ trades }) => (trades.unreadSymbols ?? []).length > 0)
+    .with({ kind: 'malformed' }, () => false)
+    .exhaustive();
+
+/**
+ * Whether the P2P walk's last run rejected (`readFailedAt`, cleared by the next run that reads and
+ * resolves). A state that is not readable has no mark, as in `historyOwesRange`.
+ */
+export const p2pReadFailed = (state: ParsedExchangeState): boolean =>
+  match(state)
+    .returnType<boolean>()
+    .with({ kind: 'parsed' }, ({ walks }) => walks.p2p.readFailedAt !== undefined)
+    .with({ kind: 'malformed' }, () => false)
+    .exhaustive();
+
+/**
  * True when a Binance history walk is meaningfully behind the account's own balance sync: any
  * walk that never caught up (a `null` cursor), or lags by more than a day, or any walk owes
  * ground (`owesRange`, see `historyOwesRange`: a range its cursor has passed, or a point owed for
  * more than a day). A fresh owed point does not count: a record the walk keeps owed is read again
- * on every sync. `lastBalanceSyncAt === null` (the account has never synced) is never "behind":
- * there's nothing yet to compare the history against, so the caption would be noise before the
- * very first sync.
+ * on every sync. A candidate trade symbol still waiting for its first read (`tradesUnread`, see
+ * `historyOwesTrades`) counts too. `lastBalanceSyncAt === null` (the account has never synced) is
+ * never "behind": there's nothing yet to compare the history against, so the caption would be
+ * noise before the very first sync.
  */
 export const isBinanceHistoryBehind = (input: {
   cursors: readonly (number | null)[];
   lastBalanceSyncAt: number | null;
   owesRange?: boolean;
+  tradesUnread?: boolean;
 }): boolean => {
-  const { cursors, lastBalanceSyncAt, owesRange = false } = input;
+  const { cursors, lastBalanceSyncAt, owesRange = false, tradesUnread = false } = input;
 
   return (
     lastBalanceSyncAt !== null &&
-    (owesRange || cursors.some((cursor) => cursor === null || lastBalanceSyncAt - cursor > DAY_MS))
+    (owesRange ||
+      tradesUnread ||
+      cursors.some((cursor) => cursor === null || lastBalanceSyncAt - cursor > DAY_MS))
   );
 };

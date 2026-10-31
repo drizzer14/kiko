@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
+import type { ViewInstance } from 'react-native';
 
 // primary  — accent fill, white label: the prominent call-to-action.
 // secondary — raised surface fill, white label: a lower-emphasis action that
@@ -63,6 +64,9 @@ type ButtonBaseProps = {
   // An optional test identifier, forwarded onto the underlying pressable so a
   // test (or an analytics selector) can target this specific button.
   testID?: string;
+  // An optional ref to the underlying pressable host, for a caller that needs the native node
+  // (e.g. to anchor an iPad share popover on the control that started the share).
+  ref?: Ref<ViewInstance>;
   // An optional label + icon color that overrides the variant's default white —
   // e.g. a `ghost` "Cancel" that must read in the negative (red) tone. Kept a
   // raw color string so the call site passes a theme token (e.g.

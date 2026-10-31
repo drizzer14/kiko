@@ -19,6 +19,7 @@ const HEADING_PROPS: Record<string, readonly string[]> = {
   CardContextMenu: ['deleteTitle'],
   ConfirmSheet: ['title'],
   EntityAmountHeader: ['label'],
+  ProviderSheet: ['title'],
   SummaryTable: ['title'],
 };
 
@@ -69,6 +70,7 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
   'design-system/components/select-field/select-field.component.tsx#sheetTitle':
     'SelectField.sheetTitle',
   'design-system/components/summary-table/summary-table.component.tsx#title': 'SummaryTable.title',
+  'screens/account-detail/provider-sheet/provider-sheet.component.tsx#title': 'ProviderSheet.title',
   'screens/column-mapping/column-select-field/column-select-field.component.tsx#sheetTitle':
     'ColumnSelectField.sheetTitle',
   'screens/forms/bank-type-field/bank-type-field.component.tsx#sheetTitle':
@@ -78,6 +80,8 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
   'screens/forms/category-field/category-field.component.tsx#sheetTitle':
     'CategoryField.sheetTitle',
   'screens/forms/date-field/date-field.component.tsx#sheetTitle': 'DateField.sheetTitle',
+  'screens/forms/exchange-type-field/exchange-type-field.component.tsx#sheetTitle':
+    'ExchangeTypeField.sheetTitle',
   'screens/forms/holding-select-field/holding-select-field.component.tsx#sheetTitle':
     'HoldingSelectField.sheetTitle',
   'screens/forms/loan-payment-field/loan-payment-field.component.tsx#sheetTitle':

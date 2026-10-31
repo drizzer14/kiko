@@ -1,6 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
-import { bifoldMap } from 'fnts/either';
 import {
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
@@ -8,6 +7,7 @@ import {
   type DepthGuard,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
+  headFirstGroundOf,
   instantAt,
   joinSettled,
   type OwedWindow,
@@ -28,12 +28,17 @@ import {
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import {
+  type NotImportedKind,
+  notImportedEntry,
+  type ParsedWalkMarks,
+} from '@kiko/crypto-sync/exchange/walk-state';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import either, { bifold, bifoldMap, isLeft } from 'fnts/either';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 import { fiatTotalCode, isAssetTicker } from '@kiko/transactions/untracked-counterpart';
-import { type NotImportedKind, notImportedEntry } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
   type BinanceWalkContext,
@@ -500,6 +505,90 @@ const commitSpan = (
     series: window.series,
   });
 
+type P2pRunInput = {
+  deps: BinanceP2pHistoryDeps;
+  accountId: string;
+  run: BinanceHistoryRun;
+  credentials: BinanceCredentials;
+  stored: ParsedWalkMarks;
+};
+
+const runWalk = async (input: P2pRunInput): Promise<WalkResult> => {
+  const { deps, accountId, run, credentials, stored } = input;
+  const { cursor, rescan: rescanCursor } = stored;
+  const write = walkMarkWriterOf(deps, accountId, 'p2p');
+  const roundRobins = await readWalkRoundRobins({ stored, write });
+  const pending = await readPendingMark({
+    stored: stored.pending,
+    owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: cursor ?? HISTORY_FLOOR_MS },
+    knownSeries: P2P_SIDES,
+    write,
+  });
+  const endTime = deps.now();
+  const head = await headFirstGroundOf({
+    cursor,
+    pending,
+    floorMs: HISTORY_FLOOR_MS,
+    endTime,
+    windowMs: P2P_WINDOW_MS,
+    write,
+  });
+  const marks = { ...roundRobins, rangeCursor: head.rangeCursor ?? roundRobins.rangeCursor };
+  const plan = planWalkPasses({
+    cursor: head.cursor,
+    rescanCursor,
+    pointCursor: marks.pointCursor,
+    rangeCursor: marks.rangeCursor,
+    pending: head.pending,
+    floorMs: HISTORY_FLOOR_MS,
+    endTime,
+    windowMs: P2P_WINDOW_MS,
+    overlapMs: RESYNC_OVERLAP_MS,
+    maxWindows: P2P_MAX_WINDOWS,
+    newestFirst: true,
+  });
+
+  if (plan.forward.length === 0 && plan.rescan.length === 0) {
+    return { imported: 0, complete: false };
+  }
+
+  const context: P2pContext = {
+    deps,
+    run,
+    accountId,
+    ...credentials,
+    options: { fetchImpl: deps.fetchImpl, now: deps.now },
+    marks: { cursor: head.cursor, rescanCursor, ...marks, pending: head.pending },
+    plan,
+    write,
+    depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
+  };
+
+  const result = await runBinanceWalkPlan({
+    context,
+    lane: 'p2p',
+    cost: COSTS.p2p,
+    callsOf,
+    readOnPastUnreadableForward: true,
+    read: (window, span, keepCalls) => readSpan(context, window, span, keepCalls),
+    commit: (window, span, read, pass) => commitSpan(context, window, span, read, pass),
+  });
+
+  // A rate limit ends the run with a result and sets the cooldown, and the run may have ended
+  // before it read the ground the last failure left, so the mark stays until a run reads it.
+  if (stored.readFailedAt !== undefined && !isBinanceCoolingDown(accountId, deps.now())) {
+    await write([{ field: 'readFailedAt', value: null }]);
+  }
+
+  return completeIfPlanReached(result, plan, endTime);
+};
+
+/**
+ * A run that does not start (the cooldown, no credentials, a state no build reads) neither reads
+ * nor marks. Once the marks are read, any rejection of the run stores its time in the walk's
+ * `readFailedAt` mark, which the account's caption reads, and the original error is rethrown even
+ * when the mark cannot be written, so `logOnFailure` still logs the cause.
+ */
 const runSync = async (
   deps: BinanceP2pHistoryDeps,
   accountId: string,
@@ -516,67 +605,32 @@ const runSync = async (
   }
 
   const stored = await readWalkMarks(deps, accountId, 'p2p');
-  const { cursor, rescan: rescanCursor } = stored;
-  const write = walkMarkWriterOf(deps, accountId, 'p2p');
-  const roundRobins = await readWalkRoundRobins({ stored, write });
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: cursor ?? HISTORY_FLOOR_MS },
-    knownSeries: P2P_SIDES,
-    write,
-  });
-  const endTime = deps.now();
-  const plan = planWalkPasses({
-    cursor,
-    rescanCursor,
-    pointCursor: roundRobins.pointCursor,
-    rangeCursor: roundRobins.rangeCursor,
-    pending,
-    floorMs: HISTORY_FLOOR_MS,
-    endTime,
-    windowMs: P2P_WINDOW_MS,
-    overlapMs: RESYNC_OVERLAP_MS,
-    maxWindows: P2P_MAX_WINDOWS,
-  });
+  const attempt = await either<unknown, WalkResult>(() =>
+    runWalk({ deps, accountId, run, credentials, stored }),
+  );
 
-  if (plan.forward.length === 0 && plan.rescan.length === 0) {
-    return { imported: 0, complete: false };
+  if (isLeft(attempt)) {
+    await either(() =>
+      walkMarkWriterOf(deps, accountId, 'p2p')([{ field: 'readFailedAt', value: deps.now() }]),
+    );
+
+    throw bifold(attempt);
   }
 
-  const context: P2pContext = {
-    deps,
-    run,
-    accountId,
-    ...credentials,
-    options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor, rescanCursor, ...roundRobins, pending },
-    plan,
-    write,
-    depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
-  };
-
-  const result = await runBinanceWalkPlan({
-    context,
-    lane: 'p2p',
-    cost: COSTS.p2p,
-    callsOf,
-    read: (window, span, keepCalls) => readSpan(context, window, span, keepCalls),
-    commit: (window, span, read, pass) => commitSpan(context, window, span, read, pass),
-  });
-
-  return completeIfPlanReached(result, plan, endTime);
+  return bifold(attempt);
 };
 
 /**
  * Import the user's completed P2P buys as a taker as transactions on the Funding holding of their
  * coin, list the sales, the orders placed as an advertiser and the ones it cannot tell, and
- * commit a window's rows before advancing the mark past it. The walk reads 30-day windows forward
- * from the history floor, both sides of each, empty ones too, because Binance has no refusal to
- * the floor to stop at; a run reads as many windows as the lane's calls allow, so the first walk
- * takes several runs. `complete: false` means history, owed ground or the re-scan remains and a
- * later run resumes from the stored marks; a failure other than a rate limit rejects, so the
- * caller can log it without failing the balance sync, and the run that fails reads the same window
- * again.
+ * commit a window's rows before advancing the mark past it. The walk reads the newest 30-day
+ * window first and owes the ground behind it (`headFirstGroundOf`), which it reads newest first,
+ * a window at a time down to the history floor, both sides of each, empty ones too, because
+ * Binance has no refusal to the floor to stop at; a run reads as many windows as the lane's calls
+ * allow, so the first walk takes several runs. `complete: false` means history, owed ground or
+ * the re-scan remains and a later run resumes from the stored marks; a failure other than a rate
+ * limit rejects, so the caller can log it without failing the balance sync, and the run that
+ * fails reads the same window again.
  */
 export const syncBinanceP2pHistory = (
   request: { targetAccountId: string; run: BinanceHistoryRun },

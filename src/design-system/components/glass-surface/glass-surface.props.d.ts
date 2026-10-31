@@ -33,6 +33,12 @@ export type GlassSurfaceProps = ViewProps & {
   // darkened hue for both the glass tint and the fallback wash, not two
   // gradient stops.
   tint?: string;
+  // A color for the real Liquid Glass material ONLY: it feeds the native `tintColor` and nothing
+  // else, so the glass stays translucent and keeps sampling what is behind it — no opaque backdrop
+  // under it and no wash over it, which are what a `tint` adds and what hide the glass. The
+  // non-glass fallback ignores it, so a caller uses it where the glass is already the only path
+  // (a footer Button's backing, drawn on iOS 26+ only). A `tint` wins over it. Defaults to none.
+  glassTint?: string;
   // Renders the surface as a see-through frosted glass PANEL: the neutral
   // translucent variant. On the glass path it paints a TRANSLUCENT
   // `styles.translucentBase` backdrop UNDER the see-through material (not the

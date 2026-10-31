@@ -56,6 +56,12 @@ const runBinanceHistoryWalks = async (
     return;
   }
 
+  // First, each walk in its own failure log: P2P's whole share of the minute is its own lane cap,
+  // so running it before every other walk keeps that share from being spent first, and a P2P page
+  // that cannot be read rejects its walk on every run while the walks after it still run.
+  await logOnFailure('[binance sync] p2p history failed', () =>
+    syncBinanceP2pHistory({ targetAccountId, run }),
+  );
   await logOnFailure('[binance sync] capital history failed', () =>
     syncBinanceTransactions({ targetAccountId, run }),
   );
@@ -76,11 +82,6 @@ const runBinanceHistoryWalks = async (
   );
   await logOnFailure('[binance sync] dust history failed', () =>
     syncBinanceDustHistory({ targetAccountId, run }),
-  );
-  // After the dust read and before the trade read, each in its own failure log: a P2P page that
-  // cannot be read rejects its walk on every run, and the fiat walks and the trade read still run.
-  await logOnFailure('[binance sync] p2p history failed', () =>
-    syncBinanceP2pHistory({ targetAccountId, run }),
   );
   await logOnFailure('[binance sync] fiat order history failed', () =>
     syncBinanceFiatOrderHistory({ targetAccountId, run }),

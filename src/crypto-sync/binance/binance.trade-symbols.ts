@@ -337,3 +337,33 @@ export const tradesPatchesOf = (input: {
     },
   ];
 };
+
+/**
+ * The write of the candidate symbols still waiting for a first read, which the history caption
+ * reads: a candidate with no stored cursor whose read did not end at a short page in this run.
+ * A read that ended `failed` is not waiting: that symbol fails again on every run, so listing it
+ * would hold the caption up for good. A symbol a budget or a rate limit left unstarted, or ended
+ * short, is waiting. The list replaces the stored one, so a symbol read since leaves it; nothing
+ * is written when the list is the stored one.
+ */
+export const unreadSymbolsPatchesOf = (input: {
+  candidates: TradeCandidate[];
+  trades: ExchangeTrades;
+  result: { ended: Readonly<Record<string, TradeReadEnd>> };
+}): ExchangeStatePatch[] => {
+  const { candidates, trades, result } = input;
+  const waiting = candidates
+    .filter(
+      ({ symbol }) =>
+        !hasStoredCursor(trades, symbol) &&
+        result.ended[symbol] !== 'short-page' &&
+        result.ended[symbol] !== 'failed',
+    )
+    .map(({ symbol }) => symbol);
+  const stored = trades.unreadSymbols ?? [];
+
+  return waiting.length === stored.length &&
+    waiting.every((symbol, index) => symbol === stored[index])
+    ? []
+    : [{ kind: 'tradesUnreadSymbols', value: waiting }];
+};

@@ -15,6 +15,7 @@ import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
 import { bankCatalog, isBankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
 import { parseUntrackedCounterpart } from '@kiko/transactions/untracked-counterpart';
@@ -627,6 +628,69 @@ describe('buildDemoSnapshot', () => {
       expect(received?.amountMinorUnits).toBe(110_000);
       expect(swept?.exchangeCounterpartHoldingId).toBe(received?.holdingId);
       expect(received?.exchangeCounterpartHoldingId).toBe(swept?.holdingId);
+    });
+  });
+
+  // The matched-funding caption is reachable by the reviewer only through these debits (Guideline
+  // 2.5.19).
+  describe('bank debits that fund the exchange rows', () => {
+    const holdingById = new Map(snapshot.holdings.map((holding) => [holding.id, holding]));
+    const accountKindById = new Map(snapshot.accounts.map((account) => [account.id, account.kind]));
+    const accountKindByHoldingId = new Map(
+      snapshot.holdings.flatMap(
+        (holding) =>
+          foldMap(maybe(accountKindById.get(holding.accountId)), (kind) => [
+            [holding.id, kind] as const,
+          ]) ?? [],
+      ),
+    );
+    const ledger = snapshot.transactions.flatMap(
+      (transaction) =>
+        foldMap(maybe(holdingById.get(transaction.holdingId)), (holding) => [
+          { ...transaction, currency: holding.currency },
+        ]) ?? [],
+    );
+    const { matches, excludedIds } = exchangeFundingMatches(ledger, accountKindByHoldingId);
+
+    it('shows a matched bank debit for each funding kind', () => {
+      expect([...matches.values()].map(({ kind }) => kind).sort()).toEqual(['bank', 'card', 'p2p']);
+
+      for (const bankId of matches.keys()) {
+        expect(excludedIds.has(bankId)).toBe(true);
+      }
+    });
+
+    it('matches debits on bank holdings, never on the crypto account', () => {
+      expect(matches.size).toBe(3);
+
+      for (const bankId of matches.keys()) {
+        const holdingId = snapshot.transactions.find(({ id }) => id === bankId)?.holdingId ?? '';
+
+        expect(accountKindByHoldingId.get(holdingId)).toBe('bank');
+      }
+    });
+
+    it('dates every funding debit outside the default 30-day window', () => {
+      const { from } = defaultDateRange(ANCHOR);
+
+      expect(matches.size).toBe(3);
+
+      for (const bankId of matches.keys()) {
+        const debit = snapshot.transactions.find(({ id }) => id === bankId);
+
+        expect(debit?.time).toBeLessThan(from.getTime());
+      }
+    });
+
+    it("keeps each funded bank holding's end balance", () => {
+      const balanceByName = new Map(
+        snapshot.holdings
+          .filter((holding) => holding.type === 'card')
+          .map((holding) => [`${holding.name}:${holding.currency}`, holding.balanceMinorUnits]),
+      );
+
+      expect(balanceByName.get('Монобанк:UAH')).toBe(1_333_500);
+      expect(balanceByName.get('Wise:EUR')).toBe(60_000);
     });
   });
 });

@@ -3,6 +3,7 @@ import { bankProviderRegistry } from '@kiko/bank-sync/registry';
 import { isBalanceProviderId } from '@kiko/crypto-sync/provider';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { runCryptoSync } from '@kiko/crypto-sync/run-crypto-sync';
+import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
 import { type BankProviderId, bankProviderIdOf, isBankProviderId } from '@kiko/bank-sync/provider';
 
 /**
@@ -55,7 +56,9 @@ export const syncJobsFor = (account: SyncableAccount): SyncJob[] => {
     return [{ name: account.name, run: () => entry.runSync({ targetAccountId: account.id }) }];
   }
 
-  if (isBalanceProviderId(institution)) {
+  // A crypto id the registry does not wire contributes no job, the same bank rule above,
+  // so one unwired provider never breaks the fan-out for other accounts.
+  if (isBalanceProviderId(institution) && exchangeProviderRegistry[institution] !== undefined) {
     return [
       { name: account.name, run: () => runCryptoSync(resyncRequest(institution, account.id)) },
     ];

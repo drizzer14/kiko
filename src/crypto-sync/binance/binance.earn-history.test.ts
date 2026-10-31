@@ -813,7 +813,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
 });
 
 describe('a record the walk cannot trust', () => {
-  const caughtUp = { cursor: agoMs(5) };
+  const caughtUp = { cursor: agoMs(5), multiCoinSeen: true };
   const stuckAt = agoMs(10);
   const other = entryOf(
     'lockedRedemption',
@@ -1384,7 +1384,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
       const runs = [AT + 300, AT + 300 + 10 * MINUTE_MS + gapMs];
 
       it('moves the cursor to now, owes the one point and never the span, and imports a later record', async () => {
-        const world = worldOf({ cursor: AT - 10 * DAY_MS });
+        const world = worldOf({ cursor: AT - 10 * DAY_MS, multiCoinSeen: true });
 
         for (const now of runs) {
           await walkOnce({ world, entries: [stuck, later], precision: 'second', now });
@@ -1400,7 +1400,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
       it('does the same when the cursor sits on a halving boundary in the second of the record', async () => {
         const start = AT - DAY_MS;
         const first = start + 2 * (DAY_MS + 300);
-        const world = worldOf({ cursor: start });
+        const world = worldOf({ cursor: start, multiCoinSeen: true });
         const halved = entryOf(
           'flexibleSubscription',
           flexibleSubscriptionOf({ time: AT + 12 * HOUR_MS, purchaseId: 'p-later' }),
@@ -1428,7 +1428,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
       });
 
       it('imports a record it can trust once, and owes nothing for it', async () => {
-        const world = worldOf({ cursor: AT - 10 * DAY_MS });
+        const world = worldOf({ cursor: AT - 10 * DAY_MS, multiCoinSeen: true });
         const trusted = entryOf(
           'flexibleSubscription',
           flexibleSubscriptionOf({ time: AT, purchaseId: 'p-ok' }),
@@ -1496,6 +1496,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
       const base = AT + 60 * DAY_MS;
       const world = worldOf({
         cursor: base,
+        multiCoinSeen: true,
         rescan: base - 1,
         pending: [pointOf(AT, 'flexibleSubscription')],
       });

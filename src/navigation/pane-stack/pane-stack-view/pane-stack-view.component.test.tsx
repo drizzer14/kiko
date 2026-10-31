@@ -1,5 +1,7 @@
+import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 import { render, screen } from '@testing-library/react-native';
-import type { FoldRegion, LayoutMode } from '@kiko/display-regions';
+import type { FoldRegion, LayoutMode, TabBarEdge, VerticalBarEdge } from '@kiko/display-regions';
 
 import '@kiko/design-system/unistyles';
 
@@ -11,9 +13,18 @@ import type { NativeStackViewProps } from './pane-stack-view.props';
 
 // The window reports one pane; the view is given the mode it shows, which wins.
 const mockUseFoldRegion = jest.fn((): FoldRegion => null);
+const mockUseTabBarEdge = jest.fn((): TabBarEdge => 'none');
+const mockUseVerticalBarEdge = jest.fn((): VerticalBarEdge => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => 'single',
   useFoldRegion: () => mockUseFoldRegion(),
+  useTabBarEdge: () => mockUseTabBarEdge(),
+  useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+}));
+
+let mockTabBarHeight = 64;
+jest.mock('react-native-bottom-tabs', () => ({
+  useBottomTabBarHeight: () => mockTabBarHeight,
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -21,18 +32,42 @@ jest.mock('@react-navigation/native', () => ({
   useIsFocused: () => true,
 }));
 
+const HAIRLINE = darkTheme.layout.hairline;
+
+const mockWindow = { width: 951, height: 669, scale: 3, fontScale: 1 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockWindow,
+}));
+
+const mockDetailMounted = jest.fn();
 const mockNativeStackView = jest.fn();
+const mockFixedContentMargin = jest.fn();
 jest.mock('@react-navigation/native-stack', () => {
-  const { useContext } = require('react');
+  const { useContext, useEffect } = require('react');
   const { View } = require('react-native');
+  const { FixedContentMarginContext } = require('react-native-screens');
   const { OpenInPaneContext } = require('../open-in-pane');
   const { PaneVisibilityContext } = require('../pane-visibility');
 
-  return {
-    NativeStackView: (props: { state: { routes: { key: string }[] } }) => {
-      mockNativeStackView(props, useContext(PaneVisibilityContext), useContext(OpenInPaneContext));
+  const DetailScreen = () => {
+    useEffect(() => {
+      mockDetailMounted();
+    }, []);
 
-      return <View testID={`stack-${props.state.routes.map((route) => route.key).join('+')}`} />;
+    return <View testID="detail-screen" />;
+  };
+
+  return {
+    NativeStackView: (props: { state: { routes: { key: string; name: string }[] } }) => {
+      mockNativeStackView(props, useContext(PaneVisibilityContext), useContext(OpenInPaneContext));
+      mockFixedContentMargin(useContext(FixedContentMarginContext));
+
+      return (
+        <View testID={`stack-${props.state.routes.map((route) => route.key).join('+')}`}>
+          {props.state.routes.some((route) => route.name === 'WideDetail') && <DetailScreen />}
+        </View>
+      );
     },
   };
 });
@@ -62,6 +97,7 @@ const HOME: PaneConfig = {
   companionDefault: { name: 'Statistics', isDefault: true },
 };
 const ACCOUNTS: PaneConfig = { rootPane: 'companion' };
+const HOME_ROOT: PaneConfig = { rootPane: 'primary' };
 
 const navigation = { dispatch: jest.fn() } as never as NativeStackViewProps['navigation'];
 const descriptors = { shared: true } as never as NativeStackViewProps['descriptors'];
@@ -92,7 +128,67 @@ const renderedProps = () =>
 describe('PaneStackView', () => {
   beforeEach(() => {
     mockNativeStackView.mockClear();
+    mockDetailMounted.mockClear();
     mockUseFoldRegion.mockReturnValue(null);
+    mockUseTabBarEdge.mockReturnValue('none');
+    mockUseVerticalBarEdge.mockReturnValue('none');
+    mockTabBarHeight = 64;
+    mockWindow.width = 951;
+    mockWindow.height = 669;
+  });
+
+  describe('a large window rotating between landscape and portrait', () => {
+    const state = stackState([route('home', 'Home'), route('detail', 'WideDetail')], {
+      home: 'primary',
+      detail: 'companion',
+    });
+
+    const renderAt = (width: number, height: number) => {
+      mockWindow.width = width;
+      mockWindow.height = height;
+
+      return (
+        <PaneStackView
+          mode="columns"
+          state={state}
+          navigation={navigation}
+          descriptors={descriptors}
+          describe={describeRoute}
+          paneConfig={HOME_ROOT}
+        />
+      );
+    };
+
+    const companionWidth = () =>
+      StyleSheet.flatten(screen.getByTestId('two-pane-companion').props.style).width;
+
+    it('splits the window in equal halves and keeps the slice route keys and one mounted detail screen from 1376 x 1032 to 1032 x 1376 and back', async () => {
+      const view = await render(renderAt(1376, 1032));
+
+      expect(companionWidth()).toBe((1376 - HAIRLINE) / 2);
+
+      await view.rerender(renderAt(1032, 1376));
+
+      expect(companionWidth()).toBe((1032 - HAIRLINE) / 2);
+      expect(StyleSheet.flatten(screen.getByTestId('two-pane-primary').props.style).left).toBe(
+        (1032 - HAIRLINE) / 2 + HAIRLINE,
+      );
+
+      await view.rerender(renderAt(1376, 1032));
+
+      expect(companionWidth()).toBe((1376 - HAIRLINE) / 2);
+      expect(screen.getByTestId('stack-detail')).toBeTruthy();
+      expect(screen.getByTestId('stack-home')).toBeTruthy();
+      expect(screen.getAllByTestId('detail-screen')).toHaveLength(1);
+      expect(mockDetailMounted).toHaveBeenCalledTimes(1);
+
+      const lastTwo = renderedProps().slice(-2);
+
+      expect(lastTwo.map((props) => props.state.routes.map((entry) => entry.key))).toEqual([
+        ['detail'],
+        ['home'],
+      ]);
+    });
   });
 
   it('renders one native stack with the whole state in single mode', async () => {
@@ -173,6 +269,131 @@ describe('PaneStackView', () => {
 
     expect(renderedProps()).toHaveLength(1);
     expect(screen.getByTestId('two-pane-primary').children).toHaveLength(0);
+  });
+
+  // A pane's native large title takes its leading inset from the pane's distance to the window's
+  // edge, so each pane's stack asks the native side for the content's fixed margin instead,
+  // unless the native tab bar is at the bottom, which keeps UIKit's margin.
+  describe('the fixed content margin of a pane’s native stack', () => {
+    const state = stackState([route('accounts'), route('account')], {
+      accounts: 'companion',
+      account: 'primary',
+    });
+
+    const renderInWindow = async (width: number, height: number, mode: LayoutMode) => {
+      mockWindow.width = width;
+      mockWindow.height = height;
+
+      await renderView(state, ACCOUNTS, mode);
+    };
+
+    it.each([
+      ['a 13-inch iPad in landscape', 1376, 1032, 'columns'],
+      ['a 13-inch iPad in portrait', 1032, 1376, 'columns'],
+      ['a small Stage Manager column split', 1032, 683, 'columns'],
+      ['a small Stage Manager row split', 683, 909, 'rows'],
+    ] as const)(
+      'is the content’s side padding in both panes of %s when the tab bar is at the top',
+      async (_name, width, height, mode) => {
+        mockUseTabBarEdge.mockReturnValue('top');
+
+        await renderInWindow(width, height, mode);
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([
+          [darkTheme.spacing(4)],
+          [darkTheme.spacing(4)],
+        ]);
+      },
+    );
+
+    it.each([
+      ['the Duo inner window in landscape, bar at the bottom', 951, 669, 'columns', 'bottom'],
+      ['the Duo inner window in portrait, bar at the bottom', 669, 951, 'rows', 'bottom'],
+      ['the Duo inner window in landscape, no bar found', 951, 669, 'columns', 'none'],
+      ['the Duo inner window in portrait, no bar found', 669, 951, 'rows', 'none'],
+    ] as const)('is 0 in both panes of %s', async (_name, width, height, mode, tabBarEdge) => {
+      mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+
+      await renderInWindow(width, height, mode);
+
+      expect(mockFixedContentMargin.mock.calls).toEqual([[0], [0]]);
+    });
+
+    it.each([
+      ['a leading side bar', 'leading', 'none'],
+      ['a trailing side bar', 'trailing', 'none'],
+      ['a vertical bar trait with no native bar found', 'none', 'leading'],
+    ] as const)(
+      'is the content’s side padding in both panes with %s',
+      async (_name, tabBarEdge, verticalBarEdge) => {
+        mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+        mockUseVerticalBarEdge.mockReturnValue(verticalBarEdge);
+
+        await renderInWindow(1376, 1032, 'columns');
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([
+          [darkTheme.spacing(5)],
+          [darkTheme.spacing(5)],
+        ]);
+      },
+    );
+
+    it.each([
+      ['the Duo outer window in landscape', 1350, 900, 'columns'],
+      ['the Duo inner window in landscape', 951, 669, 'columns'],
+    ] as const)(
+      'is the content’s side padding in both panes of %s, whose side bar is not at the bottom',
+      async (_name, width, height, mode) => {
+        mockUseTabBarEdge.mockReturnValue('bottom');
+        mockUseVerticalBarEdge.mockReturnValue('leading');
+
+        await renderInWindow(width, height, mode);
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([
+          [darkTheme.spacing(5)],
+          [darkTheme.spacing(5)],
+        ]);
+      },
+    );
+
+    it.each([
+      ['a leading side bar', 'leading'],
+      ['a trailing side bar', 'trailing'],
+    ] as const)(
+      'is the base 16 pt side padding for the single native stack under %s',
+      async (_name, tabBarEdge) => {
+        mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+
+        await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(4)]]);
+      },
+    );
+
+    it('is the base 16 pt side padding for the single native stack when the bar reports its whole window height', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      mockTabBarHeight = 678;
+      mockWindow.width = 466;
+      mockWindow.height = 678;
+
+      await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
+
+      expect(mockFixedContentMargin.mock.calls).toEqual([[darkTheme.spacing(4)]]);
+    });
+
+    it.each([
+      ['a top bar', 'top'],
+      ['a bottom bar', 'bottom'],
+    ] as const)(
+      'is 0, which leaves UIKit’s margins alone, for the single native stack under %s',
+      async (_name, tabBarEdge) => {
+        mockUseTabBarEdge.mockReturnValue(tabBarEdge);
+
+        await renderView(stackState([route('accounts'), route('account')]), ACCOUNTS, 'single');
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([[0]]);
+      },
+    );
   });
 
   describe('context for the screens', () => {

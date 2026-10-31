@@ -124,6 +124,12 @@ const ALLOWED_RUNS: string[] = [
   'npx jest --testNamePattern name src/a.test.ts',
   'npx jest --findRelatedTests src/a.ts',
   'npx jest --findRelatedTests src/a.ts src/b.ts',
+  'npx jest --listTests --findRelatedTests src/a.ts',
+  // The affected-tests runner names its suites itself, so typing it is no full-suite run.
+  'make jest-affected',
+  'make jest-affected BASE=origin/main',
+  'bash scripts/checks/jest-affected.sh',
+  'bash scripts/checks/jest-affected.sh origin/main --list',
   // These run no test, whatever else the command holds.
   'npx jest --listTests',
   'npx jest --help',

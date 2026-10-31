@@ -7,13 +7,20 @@ import {
   readFailureOf,
   walkRuns,
 } from '@kiko/test-support/walk-disturbances';
+import { sweep } from '@kiko/test-support/property-sweep';
 import { walkStateFake } from '@kiko/test-support/walk-marks';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
+import {
+  BinanceHistoryParseError,
+  type BinanceP2pOrder,
+  P2P_PAGE_ROWS,
+} from './binance.history-client';
 import { NOW } from './binance.pay-test-fixtures';
-import { p2pOrderOf, p2pPageOf } from './binance.p2p-test-fixtures';
-import { type BinanceP2pOrder, P2P_PAGE_ROWS } from './binance.history-client';
-import { P2P_OPEN_STATUSES, syncBinanceP2pHistory } from './binance.p2p-history';
+import { RESYNC_OVERLAP_MS } from './binance.transactions';
+import { createBinanceHistoryRun } from './binance.history-budget';
+import { p2pOrderOf, p2pPageOf, p2pServerOf } from './binance.p2p-test-fixtures';
+import { P2P_OPEN_STATUSES, P2P_WINDOW_MS, syncBinanceP2pHistory } from './binance.p2p-history';
 
 /**
  * The P2P walk driven over random sets of orders through `syncBinanceP2pHistory` itself, in
@@ -29,7 +36,7 @@ const HOUR_MS = 3_600_000;
 const RUN_GAPS = [0, HOUR_MS, DAY_MS];
 const NOISY_RUNS = 14;
 const RUNS = 40;
-const SEEDS = Array.from({ length: 35 }, (_unused, position) => 31 + position * 7);
+const SEEDS = sweep(Array.from({ length: 35 }, (_unused, position) => 31 + position * 7));
 const FIRST_RUN_AT = NOW;
 const HISTORY_DAYS = 400;
 const START_CURSOR = FIRST_RUN_AT - HISTORY_DAYS * DAY_MS;
@@ -381,3 +388,188 @@ describe.each(RUN_GAPS)('the P2P walk over random orders, runs %i ms apart', (ga
     },
   );
 });
+
+const FAILING_SEEDS = sweep(Array.from({ length: 30 }, (_unused, position) => 101 + position * 13));
+const WINDOW_COUNTS = { fewest: 2, most: 20 };
+const LANE_CALLS = 20;
+// The calls a run keeps for the head window and for the re-scan, two sides each.
+const KEPT_CALLS = 4;
+const CALLS_PER_WINDOW = 2;
+const SEED_SPREAD = 1_000_003;
+
+type FailingWorld = {
+  accountId: string;
+  windows: number;
+  windowsPerRun: number;
+  failing: number[];
+  orders: BinanceP2pOrder[];
+};
+
+const OWED_END = NOW - P2P_WINDOW_MS - RESYNC_OVERLAP_MS;
+const oldestStartOf = (windows: number): number => NOW - P2P_WINDOW_MS - windows * P2P_WINDOW_MS;
+
+// The walk builds the owed windows from the end of the owed ground, the oldest cut at its start.
+const spanOfRank = (rank: number, windows: number): { start: number; end: number } => ({
+  start: Math.max(oldestStartOf(windows), OWED_END - rank * P2P_WINDOW_MS),
+  end: OWED_END - (rank - 1) * P2P_WINDOW_MS,
+});
+
+/**
+ * `newestUnreadable` makes the newest windows fail too, one more than a run reads (all but one
+ * window at most), so a run that starts again from the top reads nothing else.
+ */
+const failingWorldOf = (seed: number, gapMs: number, newestUnreadable = false): FailingWorld => {
+  // The first draw of the generator on a seed this small is near zero, so every plain seed makes a
+  // world of two windows; the spread seed draws worlds of every size, past one run of windows.
+  const random = seededRandom(seed * SEED_SPREAD);
+  const windows =
+    WINDOW_COUNTS.fewest + Math.floor(random() * (WINDOW_COUNTS.most - WINDOW_COUNTS.fewest + 1));
+  const windowsPerRun = 1 + Math.floor(random() * 8);
+  const ranks = Array.from({ length: windows }, (_unused, index) => index + 1);
+  const newestCount = newestUnreadable ? Math.min(windows - 1, windowsPerRun + 1) : 0;
+  const failing = ranks.filter((rank) => rank <= newestCount || random() < 0.4);
+  const accountId = `acc-p2p-failing-${gapMs}-${seed}`;
+  const orders = ranks.map((rank) =>
+    p2pOrderOf({
+      orderNumber: `window-${rank}`,
+      createTime: spanOfRank(rank, windows).start + 3 * DAY_MS,
+    }),
+  );
+
+  return { accountId, windows, windowsPerRun, failing, orders };
+};
+
+const mergedGroundOf = (ranks: number[], windows: number): { start: number; end: number }[] =>
+  ranks
+    .map((rank) => spanOfRank(rank, windows))
+    .sort((left, right) => left.start - right.start)
+    .reduce<{ start: number; end: number }[]>((merged, span) => {
+      const last = merged.at(-1);
+
+      if (last !== undefined && span.start <= last.end) {
+        last.end = Math.max(last.end, span.end);
+      } else {
+        merged.push({ ...span });
+      }
+
+      return merged;
+    }, []);
+
+/**
+ * The runs of a failing-window world, a clock gap apart, each with its lane spent down to room for
+ * `windowsPerRun` owed windows; the head window cannot be read in every run when `headUnreadable`.
+ */
+const runFailingWorld = async (world: FailingWorld, gapMs: number, headUnreadable: boolean) => {
+  const failingSpans = world.failing.map((rank) => spanOfRank(rank, world.windows));
+  const server = p2pServerOf(world.orders);
+  const fake = walkStateFake({ accountId: world.accountId, alongside: HOLDINGS });
+  const imported = new Map<string, number>();
+  const runs = Math.ceil(world.windows / world.windowsPerRun) + 1;
+  // Two calls a window, so the lane has room for exactly `windowsPerRun` owed windows.
+  const spent = LANE_CALLS - KEPT_CALLS - CALLS_PER_WINDOW * world.windowsPerRun;
+
+  fake.seed('p2p', { cursor: oldestStartOf(world.windows) });
+
+  for (let run = 0; run < runs; run += 1) {
+    const runNow = NOW + run * gapMs;
+    const walkRun = createBinanceHistoryRun({ now: () => runNow, sleep: async () => undefined });
+
+    for (let call = 0; call < spent; call += 1) {
+      walkRun.budget.record('p2p', { usedUidWeight1m: undefined, usedIpWeight1m: undefined });
+    }
+
+    await syncBinanceP2pHistory(
+      { targetAccountId: world.accountId, run: walkRun },
+      {
+        now: () => runNow,
+        readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+        fetchP2pOrders: async (apiKey, secret, side, span, page) => {
+          const isHead = headUnreadable && span.end === runNow;
+
+          if (
+            isHead ||
+            failingSpans.some(({ start, end }) => span.start >= start && span.end <= end)
+          ) {
+            throw new BinanceHistoryParseError();
+          }
+
+          return server(apiKey, secret, side, span, page);
+        },
+        ensureHoldings: async () => undefined,
+        addTransactions: async (rows) => {
+          for (const { externalId } of rows) {
+            imported.set(externalId, (imported.get(externalId) ?? 0) + 1);
+          }
+
+          return rows.length;
+        },
+        ...fake.freshDeps(),
+        listHoldings: fake.listHoldings,
+      },
+    ).catch((error) => {
+      expect(error).toBeInstanceOf(BinanceHistoryParseError);
+    });
+  }
+
+  return { imported, fake };
+};
+
+describe.each(RUN_GAPS)(
+  'the P2P walk behind the head over random failing windows, runs %i ms apart',
+  (gapMs) => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it.each(FAILING_SEEDS)(
+      'imports every order outside the failing windows once within ceil(windows / reads) + 1 runs and keeps exactly the failing ground owed: seed %i',
+      async (seed) => {
+        const world = failingWorldOf(seed, gapMs);
+        const { imported, fake } = await runFailingWorld(world, gapMs, false);
+        const outside = world.orders.filter((_order, index) => !world.failing.includes(index + 1));
+
+        expect(Object.fromEntries(imported)).toEqual(
+          Object.fromEntries(
+            outside.map(({ orderNumber }) => [
+              `${world.accountId}:p2p:${orderNumber}:USDT:funding`,
+              1,
+            ]),
+          ),
+        );
+        expect(fake.marksOf('p2p').pending).toEqual(mergedGroundOf(world.failing, world.windows));
+      },
+    );
+
+    // The head window is held by a page that cannot be read, so with a moving clock each run owes
+    // the gap between the old head start and the new one. The owed windows of the world are still
+    // read newest first and a failing one is passed, so every order outside the failing windows is
+    // imported within the same bound. The ground of the gap itself is not part of the bound.
+    it.each(FAILING_SEEDS)(
+      'with the head window unreadable, imports every order outside the failing windows within ceil(windows / reads) + 1 runs and keeps the failing ground owed: seed %i',
+      async (seed) => {
+        const world = failingWorldOf(seed, gapMs, true);
+        const { imported, fake } = await runFailingWorld(world, gapMs, true);
+        const outside = world.orders.filter((_order, index) => !world.failing.includes(index + 1));
+        const owed = (fake.marksOf('p2p').pending ?? []) as { start: number; end: number }[];
+
+        expect([...imported.keys()].sort()).toEqual(
+          outside
+            .map(({ orderNumber }) => `${world.accountId}:p2p:${orderNumber}:USDT:funding`)
+            .sort(),
+        );
+
+        for (const ground of mergedGroundOf(world.failing, world.windows)) {
+          expect(owed.some(({ start, end }) => start <= ground.start && end >= ground.end)).toBe(
+            true,
+          );
+        }
+      },
+    );
+  },
+);

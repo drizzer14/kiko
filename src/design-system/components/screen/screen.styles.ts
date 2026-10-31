@@ -11,14 +11,25 @@ import { StyleSheet } from 'react-native-unistyles';
 // it (button → tab bar), roughly a capital letter's height. The button still
 // always clears the bar via `bottomClearance`; this is purely the extra room
 // above it, kept equal to the room above the button.
-const FOOTER_GAP_STEP = 4;
+export const FOOTER_GAP_STEP = 4;
+
+// Beside a side tab bar the floating footer's lowest button ends this far above the window's
+// bottom, level with the bottom of the side bar's platter. Pixel-measured on the Duo, iOS 27.2
+// (IMG_7263 and IMG_7264, 2026-10-30): the visible platter is 48 x 212 pt, and its bottom gap
+// equals its trailing gap at 24 pt in both side poses. A live read of the platter may replace it.
+export const SIDE_BAR_PLATTER_INSET = 24;
+
+// The widest a floating footer's buttons grow in a regular-width window. Pixel-measured: the
+// Accounts left-pane footer button on the Duo inner screen (IMG_7263, x 20..360).
+const FLOATING_FOOTER_MAX_WIDTH = 340;
 
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  // A screen in one of two panes: centred in the pane, never wider than the pane max width.
+  // A screen in one of two panes, except a pane under a top tab bar: centred in the pane, never
+  // wider than the pane max width.
   paneCap: {
     width: '100%',
     maxWidth: theme.layout.paneMaxWidth,
@@ -39,25 +50,46 @@ export const styles = StyleSheet.create((theme) => ({
   // whichever sibling (`footer`) or child (the `bleedBottom` list) is
   // actually adjacent to the true bottom edge, not to this container as well,
   // or the gap below the last row/action would be counted twice. Horizontal
-  // and top padding stay at the base spacing step regardless.
-  content: (ownsClearance: boolean, bottomClearance: number) => ({
-    flex: 1,
-    // A large-title `bleedTop` screen never reaches this wrapper — it renders
-    // its scrollable child directly under the SafeAreaView (see
-    // `screen.component.tsx`) so the child, not this padded View, is the scroll
-    // view iOS tracks for the large-title collapse. So this wrapper always keeps
-    // the base top padding for the headerless/non-scrolling screens that DO use
-    // it.
-    paddingTop: theme.spacing(4),
-    paddingHorizontal: theme.spacing(4),
-    paddingBottom: ownsClearance
-      ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
-      : theme.spacing(4),
-  }),
+  // padding is the content margin (`useContentMargin`) regardless, and the top
+  // padding stays at the base spacing step, plus `topClearance` below a
+  // floating top tab bar.
+  //
+  // A `bleedBottom` child beside a side bar (`isBottomEdgeBled`) runs to the window's bottom, so
+  // this container takes no bottom padding: the child's own content pads the gap and the inset.
+  //
+  // Above a floating footer (`floatingFooterHeight` set) the bottom padding is that measured
+  // height instead: the slot already holds the tab-bar clearance and the gap below its buttons.
+  content: (
+    ownsClearance: boolean,
+    bottomClearance: number,
+    topClearance: number,
+    contentMargin: number,
+    isBottomEdgeBled: boolean,
+    floatingFooterHeight: number | undefined,
+  ) => {
+    const unownedBottomPadding = isBottomEdgeBled ? 0 : theme.spacing(4);
+
+    return {
+      flex: 1,
+      // A large-title `bleedTop` screen never reaches this wrapper — it renders
+      // its scrollable child directly under the SafeAreaView (see
+      // `screen.component.tsx`) so the child, not this padded View, is the scroll
+      // view iOS tracks for the large-title collapse. So this wrapper always keeps
+      // the base top padding for the headerless/non-scrolling screens that DO use
+      // it. The SafeAreaView reserves only the top inset, so a top bar's pill
+      // (`topClearance`) is added here, never on the SafeAreaView.
+      paddingTop: theme.spacing(4) + topClearance,
+      paddingHorizontal: contentMargin,
+      paddingBottom:
+        floatingFooterHeight ??
+        (ownsClearance ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance : unownedBottomPadding),
+    };
+  },
   // The scroll-mode content container: no `flex: 1` by default (a
   // ScrollView's content container sizes to its content, not the viewport),
-  // same base padding as the non-scroll `content` above. When a `footer` sits
-  // below it (outside the ScrollView, as a sibling — see
+  // same padding as the non-scroll `content` above (the base step, but the
+  // content margin on the sides). When a `footer` sits below it (outside the
+  // ScrollView, as a sibling — see
   // `screen.component.tsx`), this container drops its own bottom padding so
   // the footer's own `paddingTop: theme.spacing(FOOTER_GAP_STEP)` below is the
   // ONE gap above the footer button, instead of both adding
@@ -66,10 +98,21 @@ export const styles = StyleSheet.create((theme) => ({
   // deposit-edit), since the two views are adjacent siblings with no shared
   // box to collapse the stacked padding. With no `footer`, this container
   // legitimately owns the scroll content's own trailing edge, so it keeps the
-  // base bottom padding.
-  scrollContent: (hasFooter: boolean) => ({
+  // base bottom padding, plus `bottomInset` where the scroll view reaches the window's bottom
+  // beside a side bar and UIKit does not add the inset itself (`resolveAutomaticScrollClearance`).
+  //
+  // Under a floating footer (`floatingFooterEnd` set) the end padding is the footer's measured
+  // height less what UIKit adds itself, so the last row stops at the footer's top edge and the
+  // footer's own top padding is the gap to its first button (see `screen.component.tsx`).
+  scrollContent: (
+    hasFooter: boolean,
+    contentMargin: number,
+    bottomInset: number,
+    floatingFooterEnd: number | undefined,
+  ) => ({
     padding: theme.spacing(4),
-    paddingBottom: hasFooter ? 0 : theme.spacing(4),
+    paddingHorizontal: contentMargin,
+    paddingBottom: floatingFooterEnd ?? (hasFooter ? 0 : theme.spacing(4) + bottomInset),
   }),
   // The pinned footer slot: sits outside the scrollable surface (a
   // `ScrollView` in scroll mode, a sibling `View` in plain mode — see
@@ -85,11 +128,34 @@ export const styles = StyleSheet.create((theme) => ({
   // the exact, measured distance a footer button sits above the tab bar. Any
   // screen that manages its own bottom-clearance scrollable surface instead of
   // routing through this slot (e.g. Home's SectionList, via `bleedBottom`)
-  // should add this same step for a consistent gap. Horizontal and top padding
-  // stay at the base spacing step.
-  footer: (bottomClearance: number) => ({
+  // should add this same step for a consistent gap. Horizontal padding is the
+  // content margin (`useContentMargin`); top padding stays at the base spacing step.
+  //
+  // A floating footer beside a side bar (`sideBarInset` set) ends exactly that far above the
+  // window's bottom instead, in place of the gap and the clearance (the home-indicator inset).
+  footer: (bottomClearance: number, contentMargin: number, sideBarInset: number | undefined) => ({
     paddingTop: theme.spacing(4),
-    paddingHorizontal: theme.spacing(4),
-    paddingBottom: theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
+    paddingHorizontal: contentMargin,
+    paddingBottom: sideBarInset ?? theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
   }),
+  // A floating footer (`floatingFooter`): the zero-height anchor takes the place of the pinned
+  // footer in the flex column, so it ends where the pinned footer would have ended and the
+  // SafeAreaView's padding is honoured on every side. Nothing is painted on either view.
+  floatingFooterAnchor: {
+    height: 0,
+  },
+  // In a regular-width window the whole footer content, one button or a row of two, is capped at
+  // the buttons' max width and centred; the slot's side padding comes on top of that cap.
+  floatingFooterCap: (contentMargin: number) => ({
+    width: '100%' as const,
+    maxWidth: FLOATING_FOOTER_MAX_WIDTH + 2 * contentMargin,
+    alignSelf: 'center' as const,
+  }),
+  // Grows upward from the anchor's bottom edge over the scroll surface, as wide as the anchor.
+  floatingFooter: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
 }));

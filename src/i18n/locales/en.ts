@@ -338,6 +338,7 @@ export const en = {
       bankType: 'Bank type',
       bankTypePlaceholder: 'Select a bank',
       bankTypeSheetTitle: 'Bank Type',
+      bitcoinWallet: 'Bitcoin wallet address',
       broker: 'Broker',
       brokerDisclaimer:
         'Kiko is an independent app. It is not affiliated with or endorsed by any broker.',
@@ -352,6 +353,14 @@ export const en = {
         'The account card shows its total in this currency. Holdings keep their own currencies.',
       debt: 'Debt',
       editTitle: 'Edit Account',
+      exchangeConnectable: 'Connect with a read-only API key.',
+      exchangeDisclaimer:
+        'Kiko is an independent app. It is not affiliated with or endorsed by any exchange or wallet provider.',
+      exchangeOther: 'Other exchange or wallet',
+      exchangeOtherCaption: 'Add holdings by hand.',
+      exchangeType: 'Exchange or wallet',
+      exchangeTypePlaceholder: 'Select an exchange or wallet',
+      exchangeTypeSheetTitle: 'Exchange or Wallet',
       importOnlyBankHint: 'You can import a statement for this bank after saving.',
       initialValue: 'Initial value',
       initialValueNegativeError: 'Initial value must be 0 or greater.',
@@ -380,6 +389,7 @@ export const en = {
       otherBank: 'Other bank',
       otherBroker: 'Other broker',
       property: 'Property',
+      walletConnectable: 'Connect with a public address.',
     },
     contribution: {
       addTitle: 'Add Contribution',
@@ -742,7 +752,7 @@ export const en = {
   },
   accountDetail: {
     addBankAction: 'Add a bank',
-    // The `AddBankProviderSheet` header — a sheet title, Title Case — kept
+    // The bank `ProviderSheet` header — a sheet title, Title Case — kept
     // separate from `addBankAction` above (the Button that opens it, sentence
     // case): the same string reads correctly in only one of the two roles.
     addBankSheetTitle: 'Add a Bank',
@@ -757,8 +767,6 @@ export const en = {
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
     binanceFundingResponseNotArray: 'Binance funding response was not an array',
-    binanceHistoryPending:
-      'Some Binance transaction history is not imported yet. Kiko will keep importing on each sync.',
     binanceKeychainDisclosure:
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
     binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
@@ -767,6 +775,7 @@ export const en = {
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
+    changeExchangeAction: 'Change exchange or wallet',
     checking: 'Checking…',
     closeHoldingAction: 'Close holding',
     closeHoldingErrorTitle: 'Could not close holding',
@@ -780,6 +789,10 @@ export const en = {
     closeLoanTitle: 'Close Loan "{{name}}"',
     connectBinance: 'Connect Binance',
     connectedAs: 'Connected as {{name}}',
+    connectExchangeAction: 'Connect an exchange or wallet',
+    // The crypto `ProviderSheet` header — a sheet title, Title Case — kept separate from
+    // `connectExchangeAction` above (the Button that opens it, sentence case).
+    connectExchangeSheetTitle: 'Connect an Exchange or Wallet',
     connectMonobank: 'Connect Monobank',
     connectWallet: 'Connect wallet',
     couldNotConnectBinance: 'Could not connect Binance',
@@ -794,7 +807,7 @@ export const en = {
     disconnectProvider: 'Disconnect {{provider}}',
     disconnectProviderMessage: {
       binance:
-        'This clears the connection and the stored API key. Your BTC holding stays as a manual snapshot.',
+        'This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot.',
       wallet: 'This clears the connection. Your BTC holding stays as a manual snapshot.',
     },
     emptyHoldings: {
@@ -803,6 +816,10 @@ export const en = {
     },
     exchangeHistoryPaused:
       '{{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to fix this. Your holdings and transactions are kept.',
+    exchangeHistoryPending:
+      'Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync.',
+    exchangeP2pReadFailed:
+      '{{exchange}} P2P orders could not be read on the last sync. Kiko will try again on the next sync.',
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',
@@ -838,7 +855,6 @@ export const en = {
     pasteApiSecret: 'Paste API secret from clipboard',
     pasteFromClipboard: 'Paste from clipboard',
     secretRequiredError: 'Enter the secret key.',
-    sourceLabel: 'Source',
     synchronization: 'Synchronization',
     syncing: 'Syncing…',
     syncNow: 'Sync',
@@ -866,6 +882,9 @@ export const en = {
     computed: 'Computed',
     coupon: 'Coupon',
     cost: 'Cost',
+    // The line under an exchange holding's ledger: the balance less the sum of its rows, the part
+    // of the balance the imported history does not explain.
+    earlierHistory: 'Earlier history: {{amount}}',
     // The loan detail's list while it holds no row at all, neither a linked payment nor a
     // scheduled one: the shared EmptyState under the Transactions heading.
     emptyLoanPayments: {
@@ -876,6 +895,13 @@ export const en = {
     // pattern `home.emptyTransactions` uses, replacing a bare
     // "Transactions" heading with nothing below it.
     emptyTransactions: 'No transactions',
+    // The note under an exchange holding's ledger, by provider: what its sync never lists. The
+    // wallet sentence names the wallets the code uses for records that name none (P2P on
+    // Funding, fiat on Spot), so it changes together with that code.
+    exchangeNotListed: {
+      binance:
+        'Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot.',
+    },
     expectedProfit: 'Expected profit',
     // A priced type's (property, metal) breakdown gain row: gross value minus
     // cost basis. Reads green for a gain, red for a loss (MoneyText's own
@@ -1113,7 +1139,7 @@ export const en = {
         rowLabel: 'Connect Binance or a Bitcoin wallet',
         steps: {
           '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Crypto".',
-          '2': 'Under "Source", choose "Binance" or "Wallet".',
+          '2': 'Under "Exchange or wallet", choose "Binance" or "Bitcoin wallet address".',
           '3': 'For Binance, tap "Open Binance API management" and create an API key there. Paste the "API key" and "API secret", then tap "Connect Binance".',
           '4': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
           '5': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
@@ -1229,13 +1255,13 @@ export const en = {
       viewStatistics: {
         rowLabel: 'Read your statistics',
         steps: {
-          '1': 'Open the "Statistics" tab. "Accounts" at the top chooses the accounts that every chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two spending charts.',
+          '1': 'Open the "Statistics" tab. "Accounts" above the charts chooses the accounts that every chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two spending charts.',
           '2': '"Net Worth Over Time" shows your net worth across those dates. The horizontal dashed line is its value on the first day: the line is green above it and red below it. The vertical dashed line shows your net worth on one day, the last of those dates at first. Drag across the chart to move it to another day.',
           '3': '"By Type" shows what your assets are worth today by holding type, largest first. Loans and anything you owe are not part of it.',
-          '4': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
+          '4': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
           '5': '"Expenses by Category" shows your spending over the chosen dates, with the total in the middle. "Categories" chooses which categories it counts. The list under the chart shows categories of 5% or more, and "Show all" shows the rest.',
-          '6': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
-          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category.',
+          '6': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
+          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category.',
           '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
         },
         title: 'Read Your Statistics',
@@ -1357,6 +1383,11 @@ export const en = {
     // not an exchange. Also names a wallet Kiko does not track.
     transferFrom: 'Transfer from {{name}}',
     transferTo: 'Transfer to {{name}}',
+    // The caption under the category of a bank debit that paid for an exchange purchase: it is
+    // left out of spending, and this says why.
+    matchedP2pPurchase: 'Matched to P2P purchase.',
+    matchedCardPurchase: 'Matched to card purchase.',
+    matchedExchangeDeposit: 'Matched to exchange deposit.',
   },
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.

@@ -358,6 +358,57 @@ describe('the choices a help step names', () => {
   });
 
   it.each([
+    ['en', enValues, /"([^"]*)"/g, en.statistics.title, en.home.title],
+    ['uk', ukValues, /«([^»]*)»/g, uk.statistics.title, uk.home.title],
+  ] as const)(
+    'names only the Statistics tab, with no iPad window or Home tab, in step 1 of the viewStatistics topic in %s',
+    (_language, values, quote, statisticsTab, homeTab) => {
+      const step = stepOf(values, 'viewStatistics', 1);
+      const quoted = quotedSpans(step, quote);
+
+      expect(quoted).toContain(statisticsTab);
+      expect(quoted).not.toContain(homeTab);
+      expect(step).not.toMatch(/iPad/);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      enValues,
+      /"([^"]*)"/g,
+      [
+        en.statistics.netWorthOverTime,
+        en.statistics.byType,
+        en.statistics.spendingTrendByCategory,
+        en.statistics.expensesByCategory,
+        en.statistics.accountContribution,
+      ],
+    ],
+    [
+      'uk',
+      ukValues,
+      /«([^»]*)»/g,
+      [
+        uk.statistics.netWorthOverTime,
+        uk.statistics.byType,
+        uk.statistics.spendingTrendByCategory,
+        uk.statistics.expensesByCategory,
+        uk.statistics.accountContribution,
+      ],
+    ],
+  ] as const)(
+    'opens steps 2 to 6 of the viewStatistics topic with the card titles in card order in %s',
+    (_language, values, quote, titles) => {
+      const firstQuoted = [2, 3, 4, 5, 6].map(
+        (step) => quotedSpans(stepOf(values, 'viewStatistics', step), quote)[0],
+      );
+
+      expect(firstQuoted).toEqual(titles);
+    },
+  );
+
+  it.each([
     [
       'en',
       enValues,

@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
+import { sweep } from '@kiko/test-support/property-sweep';
 import { type Currency, currencyScale } from '@kiko/currency/currency';
 import { coinListPatchesOf, walkStateFake, type WalkName } from '@kiko/test-support/walk-marks';
 
@@ -25,7 +26,7 @@ const ACCOUNT_ID = 'acc-1';
 const OWN_UID = 1001;
 const OTHER_UID = 2002;
 const ROUNDS = 5;
-const SEEDS = Array.from({ length: 40 }, (_unused, position) => 3 + position * 8);
+const SEEDS = sweep(Array.from({ length: 40 }, (_unused, position) => 3 + position * 8));
 const CLOCK_GAPS = [0, HOUR_MS, DAY_MS];
 const HISTORY_DAYS = 24;
 const FORWARD_START_MS = NOW - 6 * DAY_MS;

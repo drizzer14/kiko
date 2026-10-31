@@ -2,12 +2,10 @@ import { useWindowDimensions } from 'react-native';
 import { type ReactElement, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { usePaneWidth } from '@kiko/design-system/pane-context';
+import { useContentMargin } from '@kiko/design-system/components/screen';
 
 import TitleMeasurer from './title-measurer';
-import { estimatedTitleFits } from './title-fit';
-
-// The native large title sits inside the same side margin as the screen's content.
-const LARGE_TITLE_MARGIN_STEP = 4;
+import { estimatedTitleFits, nativeTitleLineWidth } from './title-fit';
 
 type TitleFit = {
   fits: boolean;
@@ -29,10 +27,14 @@ export const useTitleFit = (title: string): TitleFit => {
   const { width: windowWidth } = useWindowDimensions();
   const paneWidth = usePaneWidth();
   const { theme } = useUnistyles();
+  const contentMargin = useContentMargin();
   const [measurement, setMeasurement] = useState<Measurement>();
-  // A split window gives each pane its own header, about half the window wide, so the pane's width
-  // is the line the title has; the window is the line only where it is the screen.
-  const availableWidth = (paneWidth ?? windowWidth) - 2 * theme.spacing(LARGE_TITLE_MARGIN_STEP);
+  // A split window gives each pane its own header, so the pane's width is the line the title has;
+  // the window is the line only where it is the screen. On a flat `columns` window a pane is half
+  // the window, a `rows` pane is the window's whole width, and a fold sets its own widths. The
+  // title is inset by the content's margin on both sides (`PaneStackView` tells the native stack
+  // that margin where UIKit's own would differ).
+  const availableWidth = (paneWidth ?? windowWidth) - 2 * contentMargin;
   const key = `${availableWidth}:${title}`;
 
   const fits =
@@ -48,7 +50,9 @@ export const useTitleFit = (title: string): TitleFit => {
         <TitleMeasurer
           key={key}
           title={title}
-          availableWidth={availableWidth}
+          // A one-word title is laid out at its safe share of the line: a word wider than that
+          // breaks mid-word here, as the native title does on a line narrower than ours.
+          availableWidth={nativeTitleLineWidth(title, availableWidth)}
           onFitChange={(measuredFits) => setMeasurement({ key, fits: measuredFits })}
         />
       ) : null,
