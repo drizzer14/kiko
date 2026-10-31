@@ -217,12 +217,13 @@ const FULL_WIDTH_BLOCKS = [
 // The two cards that share one row where the pane is wide enough, and stack otherwise.
 const SHARED_BLOCKS = ['statistics-block-category', 'statistics-block-pie'];
 
-// A large window (every full-screen iPad) keeps design D's order.
+// A large window (every full-screen iPad) has room to share a row: the trend moves up and the
+// category donut and the account pie close the screen.
 const BLOCKS = [...FULL_WIDTH_BLOCKS, ...SHARED_BLOCKS];
 
 // A window that is not large (an iPhone, a Duo folded or unfolded, an iPad compatibility window)
-// keeps the order the app had before design D: the account pie, then the category donut, with the
-// trend last, every card full width.
+// shows one column, every card full width: the account pie, then the category donut, with the
+// trend last.
 const SMALL_WINDOW_BLOCKS = [
   'statistics-block-line',
   'statistics-block-bar',
@@ -362,7 +363,7 @@ describe('StatisticsScreen grid', () => {
       'a Duo inner-window pane (669) in portrait',
       { windowWidth: 669, windowHeight: 951, sizeClass: 'regular', paneWidth: 669 },
     ],
-  ])('stacks every chart full width in the old order in %s', async (_name, placement) => {
+  ])('stacks every card full width, the trend last, in %s', async (_name, placement) => {
     const view = await renderAt(placement);
 
     expect(countOf(view, 'statistics-grid-row')).toBe(0);

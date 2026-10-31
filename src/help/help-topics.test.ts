@@ -398,7 +398,7 @@ describe('the choices a help step names', () => {
       ],
     ],
   ] as const)(
-    'opens steps 2 to 6 of the viewStatistics topic with the card titles in the order of a window that is not large in %s',
+    'opens steps 2 to 6 of the viewStatistics topic with the card titles in the order of the one-column layout in %s',
     (_language, values, quote, titles) => {
       const firstQuoted = [2, 3, 4, 5, 6].map(
         (step) => quotedSpans(stepOf(values, 'viewStatistics', step), quote)[0],

@@ -194,8 +194,9 @@ const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
   // The card order and the shared row follow the window and the width the pane's content has (the
   // pane's, limited by the content cap), and nothing else: a filter or a date range never moves a
-  // card. A window that is not large keeps the order the app had before design D, every card full
-  // width; a large one (every full-screen iPad) keeps design D's.
+  // card. A window that is not large shows one column, every card full width (line, bar, pie,
+  // donut, trend); a large one (every full-screen iPad) has room to share a row, so the trend
+  // moves up and the donut and pie close the screen. The Help topic's steps follow the column.
   const isLargeWindow = useIsLargeWindow();
   const isRowShared = isChartRowShared(isLargeWindow, usePaneContentWidth());
   // A card keeps its own height, except in the shared row, where both cards take the row's and
