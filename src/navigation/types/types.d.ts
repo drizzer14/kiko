@@ -130,8 +130,8 @@ export type ContributionFormDraft = { amount: string; date: number };
 
 export type PricePointFormDraft = { value: string; date: number };
 
-// The colour is the tapped one (null until a swatch is tapped), not the preview hue the picker
-// rings, which the form derives again.
+// The colour is the tapped one (null on a new category until a swatch is tapped; the stored one on
+// an edit), not the preview hue the picker rings, which the form derives again.
 export type CategoryFormDraft = { name: string; icon: string; color: string | null };
 
 // The rows without their keys: the form makes a new key for each row it restores.
