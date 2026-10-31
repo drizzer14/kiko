@@ -11,8 +11,9 @@ import { id, useDataReady, useLiveQuery } from '@kiko/db';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import FieldError from '@kiko/design-system/components/field-error';
-import type { SettingsStackParamList } from '@kiko/navigation/types';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
@@ -23,6 +24,7 @@ import { categoryKeyOf, prepareRules } from '@kiko/categories/category-rules';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CategoryRuleFormDraft, SettingsStackParamList } from '@kiko/navigation/types';
 
 import {
   type MatcherDraft,
@@ -96,13 +98,15 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
   const isReady = useDataReady(rulesLoading, settingsLoading);
   const baseCurrency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const currencyGroups = useCurrencyPickerGroups({ kind: 'any' });
-  const [rows, setRows] = useState<DraftRow[]>([]);
+  const { initialDraft, saveDraft } = useDraftParam<CategoryRuleFormDraft>(navigation, route);
+  const [rows, setRows] = useState<DraftRow[]>(() => (initialDraft?.rows ?? []).map(keyedRow));
   const [hydrated, setHydrated] = useState(false);
   const rowViews = useRef<(FieldInstance | null)[]>([]);
   const ruleErrorView = useRef<FieldInstance | null>(null);
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const categoryTitles = useMemo(() => buildCategoryDisplayMap(categories), [categories]);
   const drafts = useMemo(() => rows.map((row) => row.draft), [rows]);
+  const onFieldBlur = useDraftAutosave({ rows: drafts }, saveDraft);
 
   const bringIntoView = (target: RefusalTarget): void =>
     scrollTo(
@@ -129,15 +133,23 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
   }, [isEdit, navigation, t]);
 
   // Seeded once, so a later live-query emission cannot replace what the user is typing. A rule
-  // deleted elsewhere leaves nothing to edit.
+  // deleted elsewhere leaves nothing to edit. A draft the route carries is what the user typed, so
+  // it wins over the seed; an edit's draft still waits for the stored rule to exist.
   useEffect(() => {
     if (hydrated || !isReady) {
       return;
     }
 
-    if (!isEdit) {
-      setRows([keyedRow(emptyMatcherDraft(baseCurrency))]);
+    const seedRows = (seed: MatcherDraft[]): void => {
+      if (initialDraft === undefined) {
+        setRows(seed.map(keyedRow));
+      }
+
       setHydrated(true);
+    };
+
+    if (!isEdit) {
+      seedRows([emptyMatcherDraft(baseCurrency)]);
 
       return;
     }
@@ -150,9 +162,8 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
       return;
     }
 
-    setRows(toMatcherDrafts(stored.displayMatchers, baseCurrency).map(keyedRow));
-    setHydrated(true);
-  }, [hydrated, isReady, isEdit, rules, ruleId, baseCurrency, navigation]);
+    seedRows(toMatcherDrafts(stored.displayMatchers, baseCurrency));
+  }, [hydrated, isReady, isEdit, rules, ruleId, baseCurrency, navigation, initialDraft]);
 
   const isLoaded = isReady && hydrated;
 
@@ -190,7 +201,12 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
 
   return (
     <>
-      <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
+      <Screen
+        scroll
+        scrollableRef={scrollableRef}
+        onContentSizeChange={onContentSizeChange}
+        onFieldBlur={onFieldBlur}
+      >
         <Box gap={4}>
           <Text variant="caption" tone="textSecondary">
             {t('ruleForm.allMustMatch')}

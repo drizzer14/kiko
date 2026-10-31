@@ -1,6 +1,8 @@
 export type {
   AccountFormDraft,
   AccountsStackParamList,
+  CategoryFormDraft,
+  CategoryRuleFormDraft,
   ContributionFormDraft,
   FormDraft,
   HomeStackParamList,
