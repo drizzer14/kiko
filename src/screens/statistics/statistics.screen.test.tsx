@@ -690,7 +690,7 @@ describe('StatisticsScreen', () => {
     offsetSpy.mockRestore();
   });
 
-  it('renders the five blocks in order: net-worth line, by-type bar, spending trend, category donut, account pie', async () => {
+  it('renders the five blocks in the old order in a window that is not large: net-worth line, by-type bar, account pie, category donut, spending trend', async () => {
     const { getByTestId } = await renderScreen();
 
     const order = getByTestId('statistics-blocks')
@@ -699,15 +699,15 @@ describe('StatisticsScreen', () => {
 
     // The net-worth line leads the screen, ahead of the by-type/category
     // charts — it is the one chart every other block on this screen relates
-    // back to (a snapshot of the same net worth it plots over time). The
-    // category donut and the account pie close the screen: on a wide pane they
-    // share one row, so they sit together at the end on every window.
+    // back to (a snapshot of the same net worth it plots over time). A window
+    // that is not large (an iPhone, a Duo) keeps the order the app had before
+    // design D; the large-window order is pinned in the grid test.
     expect(order).toEqual([
       'statistics-block-line',
       'statistics-block-bar',
-      'statistics-block-trend',
-      'statistics-block-category',
       'statistics-block-pie',
+      'statistics-block-category',
+      'statistics-block-trend',
     ]);
   });
 

@@ -217,7 +217,19 @@ const FULL_WIDTH_BLOCKS = [
 // The two cards that share one row where the pane is wide enough, and stack otherwise.
 const SHARED_BLOCKS = ['statistics-block-category', 'statistics-block-pie'];
 
+// A large window (every full-screen iPad) keeps design D's order.
 const BLOCKS = [...FULL_WIDTH_BLOCKS, ...SHARED_BLOCKS];
+
+// A window that is not large (an iPhone, a Duo folded or unfolded, an iPad compatibility window)
+// keeps the order the app had before design D: the account pie, then the category donut, with the
+// trend last, every card full width.
+const SMALL_WINDOW_BLOCKS = [
+  'statistics-block-line',
+  'statistics-block-bar',
+  'statistics-block-pie',
+  'statistics-block-category',
+  'statistics-block-trend',
+];
 
 // The wrapper around the chart of each shared card, the box that centres it vertically.
 const CHART_BODIES = ['statistics-chart-body-category', 'statistics-chart-body-pie'];
@@ -350,11 +362,11 @@ describe('StatisticsScreen grid', () => {
       'a Duo inner-window pane (669) in portrait',
       { windowWidth: 669, windowHeight: 951, sizeClass: 'regular', paneWidth: 669 },
     ],
-  ])('stacks every chart full width in %s', async (_name, placement) => {
+  ])('stacks every chart full width in the old order in %s', async (_name, placement) => {
     const view = await renderAt(placement);
 
     expect(countOf(view, 'statistics-grid-row')).toBe(0);
-    expect(blocksOf(view)).toEqual(BLOCKS);
+    expect(blocksOf(view)).toEqual(SMALL_WINDOW_BLOCKS);
   });
 
   it('keeps the pane max-width cap on a Duo pane', async () => {
@@ -371,36 +383,43 @@ describe('StatisticsScreen grid', () => {
   // Outside a pane the settled mode lags the live one by a settle delay: during an unfold the
   // screen is still the full-window one, with no pane width, in a window the live mode already
   // splits. It keeps its one capped stack until it is in a pane, as `useContentCap` does.
-  it.each<[string, Placement]>([
+  it.each<[string, Placement, string[]]>([
     [
       'the Duo inner window, landscape (951x669)',
       { windowWidth: 951, windowHeight: 669, sizeClass: 'regular' },
+      SMALL_WINDOW_BLOCKS,
     ],
     [
       'the Duo inner window, portrait (669x951)',
       { windowWidth: 669, windowHeight: 951, sizeClass: 'regular' },
+      SMALL_WINDOW_BLOCKS,
     ],
     [
       'a 13-inch iPad landscape window (1366x1024)',
       { windowWidth: 1366, windowHeight: 1024, sizeClass: 'regular' },
+      BLOCKS,
     ],
     [
       'a 13-inch iPad portrait window (1024x1366)',
       { windowWidth: 1024, windowHeight: 1366, sizeClass: 'regular' },
+      BLOCKS,
     ],
-  ])('keeps the capped stack in %s while it is still outside a pane', async (_name, placement) => {
-    const view = await renderAt(placement);
+  ])(
+    'keeps the capped stack in %s while it is still outside a pane',
+    async (_name, placement, expectedBlocks) => {
+      const view = await renderAt(placement);
 
-    expect(countOf(view, 'statistics-grid-row')).toBe(0);
-    expect(blocksOf(view)).toEqual(BLOCKS);
-    expect(contentStyle(view).maxWidth).toBe(darkTheme.layout.paneMaxWidth);
-  });
+      expect(countOf(view, 'statistics-grid-row')).toBe(0);
+      expect(blocksOf(view)).toEqual(expectedBlocks);
+      expect(contentStyle(view).maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+    },
+  );
 
   it('stacks every card, capped, in a regular window too narrow to split (710x500)', async () => {
     const view = await renderAt({ windowWidth: 710, windowHeight: 500, sizeClass: 'regular' });
 
     expect(countOf(view, 'statistics-grid-row')).toBe(0);
-    expect(blocksOf(view)).toEqual(BLOCKS);
+    expect(blocksOf(view)).toEqual(SMALL_WINDOW_BLOCKS);
     expect(contentStyle(view).maxWidth).toBe(darkTheme.layout.paneMaxWidth);
   });
 
@@ -415,7 +434,7 @@ describe('StatisticsScreen grid', () => {
     });
 
     expect(countOf(view, 'statistics-grid-row')).toBe(0);
-    expect(blocksOf(view)).toEqual(BLOCKS);
+    expect(blocksOf(view)).toEqual(SMALL_WINDOW_BLOCKS);
   });
 
   it('leaves an iPhone window with no cap', async () => {
@@ -485,7 +504,7 @@ describe('StatisticsScreen grid', () => {
     const view = await renderAt({ windowWidth: 390, sizeClass: 'compact' });
 
     // The one `statistics-blocks` host: the filter bar carries no testID of its own.
-    expect(childIdsOf(view, 'statistics-blocks')).toEqual([[undefined, ...BLOCKS]]);
+    expect(childIdsOf(view, 'statistics-blocks')).toEqual([[undefined, ...SMALL_WINDOW_BLOCKS]]);
   });
 
   it('puts the filter bar, the three full-width cards, then the one shared row in the card stack', async () => {
