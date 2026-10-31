@@ -74,6 +74,8 @@ describe('sameCurrencyMoveTransactionIds', () => {
     amountMinorUnits: -500_00,
     currency: 'UAH',
     exchangePairId: 'pair-1',
+    exchangeCounterpartHoldingId: null,
+    untrackedCounterpart: null,
     ...overrides,
   });
 
@@ -137,5 +139,32 @@ describe('sameCurrencyMoveTransactionIds', () => {
         leg({ id: 'credit', holdingId: 'cash', amountMinorUnits: 500_00 }),
       ]),
     ).toEqual(new Set(['first-debit', 'credit']));
+  });
+
+  it('lets only an unmarked debit claim a credit, whatever the ledger order', () => {
+    // The credit was converted again from a manual card: that later debit is marked, so it is out
+    // of spending already and must not take the credit the synced debit needs.
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'marked-debit', holdingId: 'card', exchangeCounterpartHoldingId: 'cash' }),
+        leg({ id: 'synced-debit' }),
+        leg({
+          id: 'credit',
+          holdingId: 'cash',
+          amountMinorUnits: 500_00,
+          exchangeCounterpartHoldingId: 'bank',
+        }),
+      ]),
+    ).toEqual(new Set(['synced-debit', 'credit']));
+  });
+
+  it('lets a debit with an untracked counterpart claim nothing', () => {
+    expect(
+      sameCurrencyMoveTransactionIds([
+        leg({ id: 'wallet-debit', holdingId: 'card', untrackedCounterpart: 'wallet:UMFUTURE' }),
+        leg({ id: 'synced-debit' }),
+        leg({ id: 'credit', holdingId: 'cash', amountMinorUnits: 500_00 }),
+      ]),
+    ).toEqual(new Set(['synced-debit', 'credit']));
   });
 });

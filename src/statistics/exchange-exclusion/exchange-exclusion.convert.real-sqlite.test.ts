@@ -171,7 +171,7 @@ describe('a synced bank debit turned into a move by the form Exchange', () => {
     });
   });
 
-  it('still counts a debit converted into another currency (ruling M-1)', async () => {
+  it('still counts a debit converted into another currency', async () => {
     await convertDebit({ toHoldingId: 'dollars', amountMinorUnits: 1250 });
 
     expect(spendingOf(readLedger())).toEqual({

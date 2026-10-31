@@ -772,8 +772,9 @@ const StatisticsScreen: FC = () => {
   // legs are dropped from the category breakdown by id below; the credit legs
   // are already ignored as income. Scoped to THIS chart only — every other view
   // (net worth, by-type, account pie) still sees the full ledger. The matcher
-  // sees only unmarked rows: an exchange leg is excluded by its marker or its
-  // pair id, and must never pair with (and so swallow) an unmarked Pay send.
+  // sees only unmarked rows: an exchange leg is excluded by its marker, or by the pair rule when
+  // it is an equal same-currency pair on two holdings, and must never pair with (and so swallow)
+  // an unmarked Pay send.
   const internalTransferIds = useMemo(
     () => internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
     [ledgerWithCurrency],
@@ -956,8 +957,8 @@ const StatisticsScreen: FC = () => {
   );
 
   // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
-  // the exchange-marker rule, the cheap secondary matched-pair matcher, the
-  // exchange-funding matcher, and the linked-loan-payment rule (its own derived
+  // the exchange-marker rule, the same-currency pair rule, the cheap secondary matched-pair
+  // matcher, the exchange-funding matcher, and the linked-loan-payment rule (its own derived
   // interest and within-tolerance fee entries, `loanInterestRows` above,
   // replace the raw row this drops). A row is dropped from the spending pie if
   // ANY rule catches it.

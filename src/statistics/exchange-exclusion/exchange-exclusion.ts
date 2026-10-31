@@ -46,6 +46,8 @@ type MoveLeg = {
   amountMinorUnits: number;
   currency: Currency;
   exchangePairId: string | null;
+  exchangeCounterpartHoldingId: string | null;
+  untrackedCounterpart: string | null;
 };
 
 /**
@@ -78,7 +80,16 @@ export const sameCurrencyMoveTransactionIds = (transactions: readonly MoveLeg[])
   const ids = new Set<string>();
 
   for (const legs of legsByPairId.values()) {
-    for (const debit of legs.filter((leg) => leg.amountMinorUnits < 0)) {
+    // A marked debit is out of spending already; were it to claim the credit first, the unmarked
+    // debit that needs it would count whenever the marked one comes earlier in the ledger.
+    const unmarkedDebits = legs.filter(
+      (leg) =>
+        leg.amountMinorUnits < 0 &&
+        leg.exchangeCounterpartHoldingId === null &&
+        leg.untrackedCounterpart === null,
+    );
+
+    for (const debit of unmarkedDebits) {
       const credit = legs.find(
         (candidate) =>
           !ids.has(candidate.id) &&

@@ -2436,7 +2436,7 @@ describe('StatisticsScreen', () => {
       expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
     });
 
-    it('keeps the debit of a move into another currency in the pie (ruling M-1)', async () => {
+    it('keeps the debit of a move into another currency in the pie', async () => {
       seedSyncedDebitMove({ holdingId: 'h2', amountMinorUnits: 6_25 });
 
       const { getByTestId } = await renderScreen();
