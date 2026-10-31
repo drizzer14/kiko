@@ -100,7 +100,8 @@ appId: com.dmytro-vasylkivskyi.kiko
 # floating tab bar, but centring it overshoots under the nav bar. So the scroll stops when the
 # card's last element (the "show all" toggle) is on screen, which leaves it under the tab bar, and
 # one swipe of a tenth of the screen height (relative) lifts the card clear. The Duo outer has a
-# side tab rail instead of a bottom bar (its "house.fill" sits above the toggle) and its card
+# side tab rail instead of a bottom bar (its "house.fill" tab sits above "tab-accounts", where on
+# the bottom bar both share a row, so the test does not depend on the scroll position) and its card
 # fills three quarters of the screen, so the same scroll overshoots: there a slow swipe down of
 # 17% of the height brings the card top back under the nav bar (a slow drag has no fling, so it
 # repeats exactly). The shooter checks this frame (the whole card on screen, no neighbour card
@@ -122,7 +123,7 @@ appId: com.dmytro-vasylkivskyi.kiko
       notVisible:
         id: "house.fill"
         above:
-          id: "category-pie-legend-toggle"
+          id: "tab-accounts"
     commands:
       - swipe:
           start: 50%, 70%
@@ -132,7 +133,7 @@ appId: com.dmytro-vasylkivskyi.kiko
       visible:
         id: "house.fill"
         above:
-          id: "category-pie-legend-toggle"
+          id: "tab-accounts"
     commands:
       - swipe:
           start: 50%, 40%
