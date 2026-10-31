@@ -33,7 +33,7 @@ points (5 and 7) are bugs; they are fixed first (section F).
    its inner poses.
 8. **Narrow tall window (Q7 = a).** A regular, tall window narrower than 721 pt keeps the
    top/bottom split.
-9. **One card order everywhere (Q8 = a)**, iPhone too: Net worth, By type, Trend by category,
+9. **One card order everywhere (Q8 = a)**, iPhone too (see the 2026-10-31 note at item 9): Net worth, By type, Trend by category,
    Expenses by category, Account contribution.
    *Note 2026-10-31 (user ruling: iPhone idioms keep the old order; iPad keeps design D).* The
    ruling said "device idiom", but the guard rule `kiko-no-device-idiom` blocks an idiom read, so
@@ -72,7 +72,7 @@ points (5 and 7) are bugs; they are fixed first (section F).
 ## Goals
 
 - The rules above on every iPad window from 320 to 1376 pt; the Duo and iPhone looks unchanged
-  except the card order (decision 9), the Duo inner landscape content margin and the
+  except the card order (decision 9; see the 2026-10-31 note at item 9), the Duo inner landscape content margin and the
   shrink-to-fit Home money (decision 12).
 - No code reads the device idiom (base spec rule). Size class and window size decide.
 
@@ -86,7 +86,7 @@ points (5 and 7) are bugs; they are fixed first (section F).
 - A layout jump while the user works: the split or the chart rows change only on a window or pane
   width change, never on a tap.
 - An empty band in a card under a short chart (point 3).
-- Any change to the Duo inner poses beyond decision 9 (the card order).
+- Any change to the Duo inner poses beyond decision 9 (the card order; see the 2026-10-31 note at item 9).
 
 ## Design
 
@@ -133,7 +133,7 @@ The merged Home (C) and the chart rows (D) apply only on a large window that spl
 ### D. Charts (decisions 3, 9)
 
 - One card order everywhere: filter bar; Net worth over time; By type; Spending trend by category;
-  Expenses by category; Account contribution.
+  Expenses by category; Account contribution (see the 2026-10-31 note at item 9).
 - The column grid (`resolveGridColumns`, 700/1000 pt) goes away everywhere. Every card is full
   width, one per row, except: on a large window, when the cards pane is at least **480 pt** wide,
   Expenses by category and Account contribution share one row (two columns). **Orchestrator
@@ -142,7 +142,7 @@ The merged Home (C) and the chart rows (D) apply only on a large window that spl
   landscape, shared row).
 - A full-width card is as tall as its content (no stretch, no empty band). In the shared row both
   cards take the row height and each chart is centred vertically in its card.
-- iPhone, the Duo and non-large windows: one card per row, full width, the new order.
+- iPhone, the Duo and non-large windows: one card per row, full width, the new order (see the 2026-10-31 note at item 9).
 
 ### E. Content width in a pane (decision 10)
 
