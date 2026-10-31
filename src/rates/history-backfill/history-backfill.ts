@@ -517,7 +517,7 @@ const nextCursor = (
 
 /**
  * Per-app-run, IN-MEMORY set of newly-held currencies (no stored history
- * row) whose providers all answered for the whole span yet returned no row
+ * row) whose providers all answered for the whole span yet returned no entry
  * for them — e.g. a held coin CoinGecko never returns. Without it, such a
  * currency stays absent from `lastBackfilledDayByCurrency` forever, so
  * `resolveResumeCursor` resets to the whole span and re-fetches it on every
@@ -525,7 +525,8 @@ const nextCursor = (
  * `emptyBackwardFloorByMetal`: forgotten on app restart, so at most one
  * wasted full-span fetch per currency per app session, never persisted
  * state for a rare case. A currency whose leg REJECTED, or a coin whose OWN
- * CoinGecko request failed inside a fulfilled leg, is never recorded — a
+ * CoinGecko request failed inside a fulfilled leg, or a coin with entries but
+ * no row because the same run's USD anchor failed, is never recorded — a
  * network failure is retried, not remembered as empty.
  */
 const knownEmptyCurrenciesThisRun = new Set<Currency>();

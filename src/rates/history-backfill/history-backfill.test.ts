@@ -847,7 +847,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
       expect(knownEmptyCurrencies.has('BTC')).toBe(false);
       expect(requestedCoins).toEqual([['BTC'], ['BTC']]);
       expect(second.state).toBe('complete');
-      expect(stored.filter((row) => row.base === 'BTC').length).toBeGreaterThan(0);
+      expect(stored.filter((row) => row.base === 'BTC')).toHaveLength(3);
     });
 
     it('still skips a coin neither provider priced for the rest of the session', async () => {
