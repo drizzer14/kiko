@@ -12,6 +12,10 @@
 //     тицьнути or клацнути, in any string value.
 // (d) a long press is asked for with «утримувати» only, never притиснути, затиснути or a
 //     "довге натискання" / "тривале натискання" phrasing, in any string value.
+// (e) rule (a) holds for the Ukrainian privacy policy and its built page, line by line.
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+
 import { uk } from './uk';
 import { flattenCatalog } from './flatten-catalog';
 
@@ -76,5 +80,39 @@ describe('uk.ts catalogue rules', () => {
 
   it('lets the verb "утримувати" through', () => {
     expect(OTHER_LONG_PRESS_VERB.test('Утримуйте рядок, щоб відкрити меню')).toBe(false);
+  });
+});
+
+const ROOT = path.join(__dirname, '../../..');
+
+const UK_POLICY_FILES: readonly (readonly [string, string])[] = [
+  ['docs/privacy-policy.md', readFileSync(path.join(ROOT, 'docs/privacy-policy.md'), 'utf-8')],
+  [
+    'docs/privacy-site/index.html',
+    readFileSync(path.join(ROOT, 'docs/privacy-site/index.html'), 'utf-8'),
+  ],
+];
+
+const wrongApostropheLines = (text: string): number[] =>
+  text
+    .split('\n')
+    .flatMap((line, index) =>
+      ASCII_APOSTROPHE_IN_CYRILLIC_WORD.test(line) || RIGHT_QUOTE_IN_CYRILLIC_WORD.test(line)
+        ? [index + 1]
+        : [],
+    );
+
+describe('the Ukrainian privacy policy and its built page', () => {
+  it.each(UK_POLICY_FILES)(
+    'never puts a wrong apostrophe inside a Cyrillic word in %s',
+    (_file, text) => {
+      expect(wrongApostropheLines(text)).toEqual([]);
+    },
+  );
+
+  it('finds the line of an ASCII or a U+2019 apostrophe and lets U+02BC through', () => {
+    expect(wrongApostropheLines("один\nім'я\nтри")).toEqual([2]);
+    expect(wrongApostropheLines('один\nім’я\nтри')).toEqual([2]);
+    expect(wrongApostropheLines('один\nімʼя\nтри')).toEqual([]);
   });
 });
