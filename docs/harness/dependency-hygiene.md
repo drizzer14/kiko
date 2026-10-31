@@ -450,12 +450,47 @@ mutation file cap before osv-scanner runs) and upgrade
 re-check reads the whole `osv.sh` output and triages every id it
 prints, not only the tracked ones.
 
-`check:deep` also flags `decode-uri-component` 0.2.2, advisory
-GHSA-vcc3-ghjq-m6fr (CVSS 6.6), pulled transitively via
+`check:deep` also flags `decode-uri-component` 0.2.2, advisories
+GHSA-vcc3-ghjq-m6fr (CVSS 6.6) and GHSA-qr28-fpjm-wq7f (CVSS 8.2; fixed in 0.5.1, published
+2026-10-23), pulled transitively via
 `@react-navigation/native` -> `@react-navigation/core` ->
-`query-string` -> `decode-uri-component`. The fixed release (0.5.0)
-is ESM-only and breaks `query-string@7.1.3` (CommonJS) and Jest, so
-it cannot be pinned via `overrides` today. Accepted as tracked debt,
+`query-string` -> `decode-uri-component`. The lockfile entry has no `dev` flag, so it is a
+production dependency. The fixed releases (0.5.0, 0.5.1)
+are ESM-only (`"type": "module"`) and break `query-string@7.1.3` (CommonJS) and Jest, so
+they cannot be pinned via `overrides` today. Accepted as tracked debt,
 same class as the `image-size` CVEs above — do not suppress it;
-re-check periodically and pin once `query-string` ships an
+re-check periodically (next 2026-11-04) and pin once `query-string` ships an
 ESM-compatible or patched line.
+
+`bash scripts/checks/osv.sh` also flags `joi` 17.13.8, advisory GHSA-4528-x5fx-h6hg (CVSS 7.5),
+fixed in 17.13.9 (published 2026-10-28T10:04Z, which passes the `.npmrc` 7-day minimum age from
+2026-11-04T10:04Z). Its parent chain is `@react-native-community/cli` 20.2.0 ->
+`cli-config` and `cli-types` (both `^17.2.1`, which accept 17.13.9). It is dev-only (a
+`devOptional` lockfile entry; osv labels it dev), Node-side CLI tooling that never reaches the
+app bundle. Tracked debt, not a suppressed finding: as its own change set on or after
+2026-11-04, change the top-level `overrides` entry `joi` from `17.13.8` to `17.13.9` and move
+this entry into "osv-scanner CVE remediation". Re-check date: 2026-11-04.
+
+`bash scripts/checks/osv.sh` also flags `glob` 9.3.5 (GHSA-3g3m-2fjr-6pw4, affected
+`>=9.0.0 <=14.0.1`) and `minimatch` on four majors (GHSA-g3hv-75wg-m249, affected `<11.0.1`):
+3.1.5, 7.4.9, 8.0.7 and 9.0.9. All are dev-only (`dev` lockfile entries). Parent chains:
+`glob` 9.3.5 and `minimatch` 8.0.7 come through `babel-plugin-module-resolver` 5.0.3;
+`minimatch` 7.4.9 through `depcheck` 1.4.7; `minimatch` 3.1.5 through `glob` 7.2.3 (`jest`,
+`babel-jest` -> `test-exclude` 6.0.0) and `depcheck` -> `multimatch` 5.0.0; `minimatch` 9.0.9
+through `@stryker-mutator/core`. No fixed version exists inside any installed major, checked
+with `npm view <package> versions --json` and the advisory ranges: `glob` 9.x ends at 9.3.5
+(2023-04-09) and the first fixed `glob` is 14.0.2 (published 2026-10-27T22:07Z); `minimatch`
+3.x ends at 3.1.5 (2026-02-25), 7.x at 7.4.9 (2026-02-25), 8.x at 8.0.7 (2026-02-25), 9.x at
+9.0.9 (2026-02-26), and the first fixed `minimatch` is 11.0.1 (published 2026-10-27T22:26Z). A
+fix therefore needs a major bump of these dev-only packages (`glob` 9 to 14, `minimatch` to
+11), which the parents' own ranges do not accept: that is backlog, not pinned now (an override
+across majors would risk breaking the parents' API use). Tracked debt, do not suppress it;
+re-check date: 2026-11-04, for parents that move to the fixed lines.
+
+`bash scripts/checks/osv.sh` also flags `deepmerge` 4.3.1, advisory GHSA-gcqx-w48m-w2h4
+(CVSS 5.3, affected `>=4.2.0 <=4.3.1`). There is no fix: 4.3.1 (2023-03-16) is the newest
+`deepmerge` release and the advisory names no fixed version (`npm view deepmerge versions
+--json` ends at 4.3.1). Its parent chains are `@react-native-community/cli` 20.2.0 ->
+`cli-config` and `cli-doctor`, and `jest` -> `@jest/core` -> `jest-config`. It is a
+`devOptional` lockfile entry (osv labels it dev), so it never reaches the app bundle. Tracked
+debt, not a suppressed finding; re-check date: 2026-11-04, and pin the moment a fix ships.
