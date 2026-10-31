@@ -18,6 +18,9 @@
 # LANGUAGE: ids first; a regex over the en and uk names only where no id exists (the Monobank
 # account card, the Deposit holding, the Groceries category card; names from
 # e2e/screenshot/seed/demo-text.ts and the categories catalogue).
+# Maestro matches a regex against the WHOLE accessibility label, so each regex wraps the name in
+# `.*`; the account and holding labels read "<name> icon, <name>, <type>, <amount>", and the `, `
+# after the name skips the inner icon element, whose label has none.
 #
 # Run (ops skill "Maestro on this host"), once per language after its import:
 #   JAVA_HOME=/opt/homebrew/opt/openjdk@21 MAESTRO_DRIVER_STARTUP_TIMEOUT=400000 \
@@ -58,7 +61,7 @@ appId: com.dmytro-vasylkivskyi.kiko
     visible:
       id: "accounts-grid"
     timeout: 60000
-- tapOn: "Monobank|Монобанк"
+- tapOn: ".*(Monobank|Монобанк), .*"
 - extendedWaitUntil:
     visible:
       id: "account-detail-content"
@@ -69,7 +72,13 @@ appId: com.dmytro-vasylkivskyi.kiko
     direction: DOWN
     visibilityPercentage: 1
     timeout: 60000
-- tapOn: "Deposit|Депозит"
+- scrollUntilVisible:
+    element: ".*(Deposit|Депозит), .*"
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+    timeout: 60000
+- tapOn: ".*(Deposit|Депозит), .*"
 - extendedWaitUntil:
     visible:
       id: "holding-value-header"
@@ -120,7 +129,7 @@ appId: com.dmytro-vasylkivskyi.kiko
     visible:
       id: "category-card"
     timeout: 60000
-- tapOn: "Groceries|Продукти"
+- tapOn: ".*(Groceries|Продукти).*"
 - extendedWaitUntil:
     visible:
       id: "rule-card"
