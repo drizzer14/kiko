@@ -119,7 +119,6 @@ const statisticsBar = () =>
     .filter((config) => config.hidden !== true)
     .map(({ title, largeTitle }) => ({ title, largeTitle }));
 
-const IN_ROW = [{ title: '', largeTitle: false }];
 const LARGE_TITLE = [{ title: 'Statistics', largeTitle: true }];
 
 const headingCount = () => screen.queryAllByTestId('large-title-heading').length;
@@ -135,11 +134,11 @@ describe('Statistics standing in the left pane beside a side bar', () => {
     jest.useRealTimers();
   });
 
-  it('shows its title once, in the bar row: the native large title is off', async () => {
+  it('keeps the native large title, with no heading of its own in the content', async () => {
     await render(<App />);
 
-    expect(headingCount()).toBe(1);
-    expect(statisticsBar()).toEqual(IN_ROW);
+    expect(headingCount()).toBe(0);
+    expect(statisticsBar()).toEqual(LARGE_TITLE);
   });
 
   it('keeps the native large title where no side bar stands beside the pane', async () => {
@@ -151,16 +150,13 @@ describe('Statistics standing in the left pane beside a side bar', () => {
     expect(statisticsBar()).toEqual(LARGE_TITLE);
   });
 
-  it('takes the in-row title again when it returns after a page opened in its pane', async () => {
+  it('keeps the native large title when it returns after a page opened in its pane', async () => {
     await render(<App />);
     await fireEvent.press(screen.getByTestId('open'));
-
-    expect(headingCount()).toBe(0);
-
     await fireEvent.press(screen.getByTestId('close'));
 
-    expect(headingCount()).toBe(1);
-    expect(statisticsBar()).toEqual(IN_ROW);
+    expect(headingCount()).toBe(0);
+    expect(statisticsBar()).toEqual(LARGE_TITLE);
   });
 
   it('starts from its own options when it returns after a page opened in its pane', async () => {
@@ -183,12 +179,12 @@ describe('Statistics standing in the left pane beside a side bar', () => {
     expect(statisticsBar()).toEqual(LARGE_TITLE);
   });
 
-  it('shows its title once, in the bar row, after a fold and an unfold', async () => {
+  it('keeps the native large title after a fold and an unfold', async () => {
     await render(<App />);
     await changeWindow({ mode: 'single' });
     await changeWindow({ mode: 'columns' });
 
-    expect(headingCount()).toBe(1);
-    expect(statisticsBar()).toEqual(IN_ROW);
+    expect(headingCount()).toBe(0);
+    expect(statisticsBar()).toEqual(LARGE_TITLE);
   });
 });

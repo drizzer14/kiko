@@ -1,6 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
 import { type ReactElement, useContext, useState } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { navigationSpy, type NavigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -18,6 +19,11 @@ import {
 
 import { fittingLargeTitleLayout } from '.';
 import { useTitleFit } from './use-title-fit';
+
+jest.mock('@kiko/display-regions', () => ({
+  ...jest.requireActual('@kiko/display-regions'),
+  useVerticalBarEdge: () => 'trailing',
+}));
 
 const TITLE = 'A title that is much too long for one line';
 
@@ -308,5 +314,19 @@ describe('fittingLargeTitleLayout', () => {
 
     expect(measured.queryByTestId('measurer')).toBeTruthy();
     expect(hiddenHeader.queryByTestId('measurer')).toBeNull();
+  });
+
+  // The unfolded Duo: the left pane of the columns beside the trailing side bar. Its large title
+  // stays the native bar, as the right pane's does; a heading laid over the bar's row clipped it.
+  it('leaves a title that fits to the native large title in the left pane beside a side bar', async () => {
+    const navigation = navigationSpy();
+    const { getByTestId } = await render(
+      <PaneContext.Provider value={paneContextOf('columns', 'companion')}>
+        {layoutOf(navigation, { ...largeTitleScreenOptions, title: 'Statistics' })}
+      </PaneContext.Provider>,
+    );
+
+    expect(navigation.setOptions).not.toHaveBeenCalled();
+    expect(getByTestId('heading-title').props.children).toBe('native large title');
   });
 });
