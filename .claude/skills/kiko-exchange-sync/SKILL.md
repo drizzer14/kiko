@@ -947,12 +947,16 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
 - The marker is what the spending view excludes on, in the
   exchange-exclusion module (`src/statistics/`): no other rule can see these
   rows — a null `mcc`, an empty description, and a cross-currency pair
-  the matched-pair matcher rejects. The exclusion reads ONLY
+  the matched-pair matcher rejects. The marker rule (`exchangeExcludedTransactionIds`) reads ONLY
   `exchangeCounterpartHoldingId` and `untrackedCounterpart` (`exchange-exclusion.ts`). A
   category rule can re-categorize a leg (user ruling B, 2026-10-25); spending still excludes it
-  by its marker. A row with only `exchangePairId` (a synced bank debit a Convert marked) still
-  counts as spending, and a rule may move it between slices with the total unchanged (user
-  ruling M-1 = A, 2026-10-25).
+  by its marker. A row with only `exchangePairId` (a synced bank debit a Convert marked) has no
+  marker, and the pair rule beside it (`sameCurrencyMoveTransactionIds`, same file, run over the
+  unfiltered ledger) takes it out of spending only when it and a row of its own pair id are equal
+  and opposite in one currency on two holdings (user ruling 2026-10-31 Q1 = A; it restores the
+  1.2.0 result). A synced debit a Convert sent into ANOTHER currency still counts as spending
+  (user ruling M-1 = A, 2026-10-25), and so does a same-currency move whose amount differs; a
+  rule may move either between slices with the total unchanged.
 - A P2P / card / fiat-deposit purchase row carries no `exchangeCounterpartHoldingId`; its
   `untrackedCounterpart` code is its marker, so this rule leaves the row itself out. Its
   funding BANK debit is a separate row and leaves spending through the funding matcher
@@ -989,9 +993,11 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
   `rowsForTransferMatch` (`src/statistics/internal-transfers/internal-transfers.ts`)
   drops every row that carries `exchangePairId`, `exchangeCounterpartHoldingId` or
   `untrackedCounterpart` before `internalTransferTransactionIds` runs
-  (`statistics.screen.tsx`). A marked row is an exchange leg the structural rules already
-  exclude; left in the ledger it could be matched as the partner of an unmarked
-  same-amount row (a Pay send) and drop real spending.
+  (`statistics.screen.tsx`). A row with any of the three is an exchange leg that the marker
+  rule or the pair rule excludes (a cross-currency or unequal pair-id-only debit, which neither
+  rule takes, counts as spending by the rulings above); left in the matcher's ledger it could be
+  matched as the partner of an unmarked same-amount row (a Pay send) and drop real spending. The
+  pair rule pairs only rows of one pair id, never by time, so it cannot consume an unmarked row.
 - **`transactionRowDescription` is the ONE owner of a blank row's label.**
   Every surface that shows it calls it: both lists, `ExampleTransaction`,
   and the transaction form. On an edit, the form pre-fills a blank
