@@ -99,9 +99,12 @@ appId: com.dmytro-vasylkivskyi.kiko
 # all full width. The card is shorter than the free area between the translucent nav bar and the
 # floating tab bar, but centring it overshoots under the nav bar. So the scroll stops when the
 # card's last element (the "show all" toggle) is on screen, which leaves it under the tab bar, and
-# one swipe of a tenth of the screen height (relative, so it holds on both displays) lifts the
-# card clear. The shooter checks this frame (the whole card on screen, no neighbour card cut
-# across it) before accepting.
+# one swipe of a tenth of the screen height (relative) lifts the card clear. The Duo outer has a
+# side tab rail instead of a bottom bar (its "house.fill" sits above the toggle) and its card
+# fills three quarters of the screen, so the same scroll overshoots: there a slow swipe down of
+# 17% of the height brings the card top back under the nav bar (a slow drag has no fling, so it
+# repeats exactly). The shooter checks this frame (the whole card on screen, no neighbour card
+# cut across it) before accepting.
 - tapOn:
     id: "chart.xyaxis.line"
 - extendedWaitUntil:
@@ -114,9 +117,27 @@ appId: com.dmytro-vasylkivskyi.kiko
     direction: DOWN
     visibilityPercentage: 100
     timeout: 60000
-- swipe:
-    start: 50%, 70%
-    end: 50%, 60%
+- runFlow:
+    when:
+      notVisible:
+        id: "house.fill"
+        above:
+          id: "category-pie-legend-toggle"
+    commands:
+      - swipe:
+          start: 50%, 70%
+          end: 50%, 60%
+- runFlow:
+    when:
+      visible:
+        id: "house.fill"
+        above:
+          id: "category-pie-legend-toggle"
+    commands:
+      - swipe:
+          start: 50%, 40%
+          end: 50%, 57%
+          duration: 900
 - assertVisible:
     id: "statistics-block-category"
 - takeScreenshot: ${OUT}/05-expenses-by-category-${LANG}
