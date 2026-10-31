@@ -47,26 +47,10 @@ export const largeTitleHeadingOptions = (
 });
 
 /**
- * The options of a screen that shows its own title in the bar's row, where the native bar would
- * otherwise stack a large title below the row (the left pane beside a side bar, see
- * `useInRowTitle`). The bar is the plain one-row bar over the same translucent look as
- * `largeTitleHeadingOptions`, and its title stays empty at rest and after a scroll: the in-row
- * heading scrolls out under the bar, as the right pane's native in-row title does, and nothing
- * takes its place. Restored with `largeTitleRestoredOptions`.
- */
-export const inRowTitleOptions = (): NativeStackNavigationOptions => ({
-  headerLargeTitle: false,
-  headerTransparent: true,
-  headerShadowVisible: true,
-  headerTitle: '',
-});
-
-/**
- * Puts a screen back on the native large title after `largeTitleHeadingOptions` or
- * `inRowTitleOptions`. Each key the heading look overrides gets the screen's own value from
- * before the switch back, or `undefined` when the screen set none. A key the screen changes during
- * heading mode gets the older value, because `setOptions` cannot remove the heading look's
- * override.
+ * Puts a screen back on the native large title after `largeTitleHeadingOptions`. Each key the
+ * heading look overrides gets the screen's own value from before the switch back, or `undefined`
+ * when the screen set none. A key the screen changes during heading mode gets the older value,
+ * because `setOptions` cannot remove the heading look's override.
  */
 export const largeTitleRestoredOptions = ({
   headerTransparent,

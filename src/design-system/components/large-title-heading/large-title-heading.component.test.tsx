@@ -15,7 +15,6 @@ const headingValue = (
   overrides: Partial<LargeTitleHeadingValue> = {},
 ): LargeTitleHeadingValue => ({
   title,
-  inRow: false,
   scrolled: false,
   headingBottom: { current: 0 },
   onScrolledChange: jest.fn(),
@@ -159,32 +158,15 @@ describe('LargeTitleHeading', () => {
     expect(title.props.minimumFontScale).toBeUndefined();
   });
 
-  describe('in the bar row', () => {
-    const renderHeading = (inRow: boolean) =>
-      render(
-        <LargeTitleHeadingContext.Provider value={headingValue('Statistics', { inRow })}>
-          <LargeTitleHeading />
-        </LargeTitleHeadingContext.Provider>,
-      );
+  it('keeps the title in the flow of the content', async () => {
+    const { getByTestId } = await render(
+      <LargeTitleHeadingContext.Provider value={headingValue('Statistics')}>
+        <LargeTitleHeading />
+      </LargeTitleHeadingContext.Provider>,
+    );
+    const heading = StyleSheet.flatten(getByTestId('large-title-heading').props.style);
 
-    it('takes no layout room and lays the title over the row, level with the right pane', async () => {
-      const { getByTestId } = await renderHeading(true);
-      const heading = StyleSheet.flatten(getByTestId('large-title-heading').props.style);
-      const slot = StyleSheet.flatten(getByTestId('large-title-heading').parent?.props.style);
-
-      expect(slot.height).toBe(0);
-      expect(heading.position).toBe('absolute');
-      expect(heading.top).toBeLessThan(0);
-      expect(heading.left).toBe(0);
-      expect(heading.right).toBe(0);
-    });
-
-    it('keeps the title in the flow of the content when it is not in the row', async () => {
-      const { getByTestId } = await renderHeading(false);
-      const heading = StyleSheet.flatten(getByTestId('large-title-heading').props.style);
-
-      expect(heading.position).toBeUndefined();
-      expect(heading.marginBottom).toBe(darkTheme.spacing(4));
-    });
+    expect(heading.position).toBeUndefined();
+    expect(heading.marginBottom).toBe(darkTheme.spacing(4));
   });
 });

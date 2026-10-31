@@ -12,17 +12,12 @@ const scrollEvent = (offsetY: number) =>
   ({ nativeEvent: { contentOffset: { x: 0, y: offsetY } } }) as never;
 
 const withHeading =
-  (
-    onScrolledChange: jest.Mock,
-    headingBottom: number,
-    inRow = false,
-  ): FC<{ children: ReactNode }> =>
+  (onScrolledChange: jest.Mock, headingBottom: number): FC<{ children: ReactNode }> =>
   ({ children }) => (
     <HeaderHeightContext.Provider value={HEADER_HEIGHT}>
       <LargeTitleHeadingContext.Provider
         value={{
           title: 'A long title',
-          inRow,
           scrolled: false,
           headingBottom: { current: headingBottom },
           onScrolledChange,
@@ -96,14 +91,5 @@ describe('useLargeTitleScroll', () => {
     result.current.onScroll?.(scrollEvent(-HEADER_HEIGHT));
 
     expect(onScrolledChange.mock.calls).toEqual([[true], [false]]);
-  });
-
-  // The in-row heading scrolls out under an empty bar, so there is nothing to tell the layout.
-  it('adds no scroll handling for the in-row heading', async () => {
-    const { result } = await renderHook(() => useLargeTitleScroll(), {
-      wrapper: withHeading(jest.fn(), HEADING_BOTTOM, true),
-    });
-
-    expect(result.current).toEqual({ onScroll: undefined, scrollEventThrottle: undefined });
   });
 });

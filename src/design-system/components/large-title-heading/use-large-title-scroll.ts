@@ -39,22 +39,17 @@ export const useLargeTitleScroll = (): ScrollProps => {
 
   return useMemo(
     () =>
-      foldMap(maybe(heading), (value) =>
-        // The in-row heading scrolls out under the bar, which stays empty: nothing to report.
-        value.inRow
-          ? NO_HEADING_SCROLL
-          : {
-              onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) =>
-                value.onScrolledChange(
-                  scrolledPastHeading(
-                    event.nativeEvent.contentOffset.y,
-                    headerHeight,
-                    value.headingBottom.current,
-                  ),
-                ),
-              scrollEventThrottle: SCROLL_EVENT_THROTTLE_MS,
-            },
-      ) ?? NO_HEADING_SCROLL,
+      foldMap(maybe(heading), (value) => ({
+        onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) =>
+          value.onScrolledChange(
+            scrolledPastHeading(
+              event.nativeEvent.contentOffset.y,
+              headerHeight,
+              value.headingBottom.current,
+            ),
+          ),
+        scrollEventThrottle: SCROLL_EVENT_THROTTLE_MS,
+      })) ?? NO_HEADING_SCROLL,
     [heading, headerHeight],
   );
 };
