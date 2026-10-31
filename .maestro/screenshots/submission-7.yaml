@@ -96,9 +96,12 @@ appId: com.dmytro-vasylkivskyi.kiko
 
 # 05 Statistics, expenses-by-category card. The freeze build orders the phone-size cards as net
 # worth line, By type bar, Account contribution pie, Expenses by category donut, Spending trend,
-# all full width, so no measured swipe: the scroll runs until the card is on screen and centres
-# it. The card can be taller than the free area, hence the 90% bar rather than 100%. The shooter
-# checks this frame (the whole card on screen, no neighbour card cut across it) before accepting.
+# all full width. The card is shorter than the free area between the translucent nav bar and the
+# floating tab bar, but centring it overshoots under the nav bar. So the scroll stops when the
+# card's last element (the "show all" toggle) is on screen, which leaves it under the tab bar, and
+# one swipe of a tenth of the screen height (relative, so it holds on both displays) lifts the
+# card clear. The shooter checks this frame (the whole card on screen, no neighbour card cut
+# across it) before accepting.
 - tapOn:
     id: "chart.xyaxis.line"
 - extendedWaitUntil:
@@ -107,11 +110,13 @@ appId: com.dmytro-vasylkivskyi.kiko
     timeout: 60000
 - scrollUntilVisible:
     element:
-      id: "statistics-block-category"
+      id: "category-pie-legend-toggle"
     direction: DOWN
-    visibilityPercentage: 90
-    centerElement: true
+    visibilityPercentage: 100
     timeout: 60000
+- swipe:
+    start: 50%, 70%
+    end: 50%, 60%
 - assertVisible:
     id: "statistics-block-category"
 - takeScreenshot: ${OUT}/05-expenses-by-category-${LANG}
