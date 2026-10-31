@@ -1873,6 +1873,9 @@ what an edit reads from the stored row and does not edit (a metal's lots, a prop
 changes) is read again from the database, so a draft cannot save an old copy over a newer one.
 What the form edits but a draft holds as its own copy (deposit contribution rows) can be stale.
 Never put a secret in a draft (see kiko-architecture "Fold and unfold").
+The category form and the category-rule editor keep drafts too (`CategoryFormDraft`,
+`CategoryRuleFormDraft` in `src/navigation/types/types.d.ts`; read the types, not a copy); see
+kiko-architecture "Fold and unfold".
 
 The transaction form's draft is `TransactionFormDraft` (`src/navigation/types/types.d.ts`; read
 the type, not a copy of its fields). It also keeps the entry state main added (the save-as-template

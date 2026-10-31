@@ -345,7 +345,12 @@ Standing items:
   `src/crypto-sync/binance/migrate-binance-credential.ts`). Re-check
   that any new writer of the key goes through `hardenedFor`.
 - (c) The Connect help keeps asking for a read-only key with no trading or withdrawal
-  permission (4(b)); a change to that help text re-opens this item.
+  permission (4(b)); a change to that help text re-opens this item. Pinned by
+  `src/help/help-topics.test.ts` describe "the Binance key the connectCrypto help topic asks for"
+  (step 3 names "Enable Reading" and "no trading or withdrawal permission" / "без дозволів на
+  торгівлю й виведення"). The Ukrainian policy and its page keep the uk apostrophe rule in
+  describe "the Ukrainian privacy policy and its built page" in
+  `src/i18n/locales/uk.catalog-rules.test.ts`.
 
 The app's Binance endpoints are a closed list, `BINANCE_SIGNED_PATHS` and `BINANCE_PUBLIC_PATHS`
 (`src/crypto-sync/binance/binance.endpoints.ts`): the request helpers take only those paths, and

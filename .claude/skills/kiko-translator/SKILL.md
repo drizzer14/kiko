@@ -237,6 +237,8 @@ string:
   missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence. A Binance
   product or wallet name is a whole PHRASE in `BINANCE_PRODUCT_PHRASES` (same en file), never a
   single word added to `PROPER_NOUNS`: "Card" or "Spot" alone would then pass in every string.
+  "Enable Reading" (Binance's own API-key permission label, quoted by the connectCrypto help
+  step) is also in `BINANCE_PRODUCT_PHRASES` (`src/i18n/locales/en.casing-by-role.test.ts`).
   Untracked-wallet product names (`UNTRACKED_WALLETS`,
   `src/transactions/untracked-counterpart/`) are kept out of the i18n
   catalogue: code-side proper nouns; only the 'Transfer to/from {{name}}'
@@ -366,9 +368,10 @@ varies per topic, read `en.ts` `help.topics.*`) because i18next
 Every "…" (en) / «…» (uk) quote in a help step must be a real catalogue
 string outside `help.topics.*` that some screen shows as visible text,
 pinned in `src/help/help-topics.test.ts` (a label only an accessibility
-prop renders does not count; the Home FAB "+" is the one literal
-exception). The pin proves existence and visibility somewhere, NOT that
-the label shows on that screen in that state (edit-only labels, other
+prop renders does not count; the Home FAB "+" and the Binance
+permission label "Enable Reading" are the two literals,
+`QUOTED_LITERALS` in `src/help/help-topics.test.ts`). The pin proves existence and
+visibility somewhere, NOT that the label shows on that screen in that state (edit-only labels, other
 screens): the writer checks each claim against the rendering code and the
 reviewer checks each label at its screen and state. Casing allowance:
 `src/i18n/locales/en.casing-by-role.test.ts` accepts a "…" span only when
