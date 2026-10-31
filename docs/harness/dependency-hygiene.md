@@ -245,6 +245,36 @@ later on its own:
 }
 ```
 
+`bash scripts/checks/osv.sh` also flagged `body-parser` 2.3.0, advisory
+GHSA-27r3-jxmh-p828 (CVSS 7.5), fixed in 2.4.0 (published 2026-10-22, which passes the
+`.npmrc` 7-day minimum age from 2026-10-29). Its one parent chain is `react-native` ->
+`@react-native/community-cli-plugin` -> `@react-native-community/cli` 20.2.0 ->
+`cli-server-api` (the Metro dev server, a `devOptional` lockfile entry; osv labels it dev), so
+it never reaches the app bundle. Remediated on 2026-10-31 with a top-level override. Drop the
+override once `cli-server-api` resolves `body-parser` 2.4.0 or later on its own:
+
+```json
+"overrides": {
+  "body-parser": "2.4.0"
+}
+```
+
+`bash scripts/checks/osv.sh` also flagged `fast-uri` 3.1.8, four advisories (GHSA-333x-w4r6-6crp,
+GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h), fixed in 3.1.9 (published
+2026-10-19T23:05Z, which passes the `.npmrc` 7-day minimum age from 2026-10-26T23:05Z). It is
+dev-only: it comes through the overridden `ajv` (parents `ajv` and `@stryker-mutator/core`).
+Remediated on 2026-10-31 by moving the nested `ajv.fast-uri` override from `3.1.8` to `3.1.9`
+(coordinator ruling 2026-10-25):
+
+```json
+"overrides": {
+  "ajv": {
+    ".": "8.18.0",
+    "fast-uri": "3.1.9"
+  }
+}
+```
+
 ## Standing patch: `@stryker-mutator/jest-runner` 8.7.1 (exact covering-test selection)
 
 `patches/@stryker-mutator+jest-runner+8.7.1.patch` is a standing `patch-package` patch (user
@@ -429,21 +459,3 @@ it cannot be pinned via `overrides` today. Accepted as tracked debt,
 same class as the `image-size` CVEs above — do not suppress it;
 re-check periodically and pin once `query-string` ships an
 ESM-compatible or patched line.
-
-`bash scripts/checks/osv.sh` also flags `body-parser` 2.3.0, advisory
-GHSA-27r3-jxmh-p828 (CVSS 7.5), fixed in 2.4.0 (published 2026-10-22). It waits until
-2026-10-29 (user ruling 2026-10-25): until then 2.4.0 is younger than the `.npmrc` 7-day minimum
-age, so npm refuses it. Its one parent chain is `react-native` ->
-`@react-native/community-cli-plugin` -> `@react-native-community/cli` 20.2.0 ->
-`cli-server-api` (the Metro dev server, a `devOptional` lockfile entry; osv labels it dev), so
-it never reaches the app bundle. Not a suppressed finding: on or after 2026-10-29 pin
-`"body-parser": "2.4.0"` with a top-level override (the form used for `compression` above) and
-move this entry into "osv-scanner CVE remediation".
-
-`bash scripts/checks/osv.sh` also flags `fast-uri` 3.1.8, four advisories (GHSA-333x-w4r6-6crp,
-GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h), fixed in 3.1.9 (published
-2026-10-19T23:05Z). It is dev-only: it comes through the overridden `ajv` (parents `ajv` and
-`@stryker-mutator/core`). Until 2026-10-26T23:05Z, 3.1.9 is younger than the `.npmrc` 7-day
-minimum age, so npm refuses it. Not a suppressed finding: as its own change set on or after
-2026-10-27 (coordinator ruling 2026-10-25), change the `overrides` entry `ajv.fast-uri` from
-`3.1.8` to `3.1.9` and move this entry into "osv-scanner CVE remediation".
