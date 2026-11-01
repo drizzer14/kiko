@@ -4151,7 +4151,6 @@ describe('HoldingDetailScreen with a title that does not fit the native large ti
         <LargeTitleHeadingContext.Provider
           value={{
             title: 'A holding with a very long name',
-            inRow: false,
             scrolled: false,
             headingBottom: { current: 150 },
             onScrolledChange,

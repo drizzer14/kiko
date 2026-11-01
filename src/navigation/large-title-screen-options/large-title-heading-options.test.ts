@@ -1,8 +1,4 @@
-import {
-  inRowTitleOptions,
-  largeTitleHeadingOptions,
-  largeTitleRestoredOptions,
-} from './large-title-screen-options';
+import { largeTitleHeadingOptions, largeTitleRestoredOptions } from './large-title-screen-options';
 
 // The heading look changes only what the large title is: it is the large-title look with the
 // title moved into the content. The bar stays translucent, so the content lays out under it
@@ -31,27 +27,6 @@ describe('largeTitleHeadingOptions', () => {
       headerShadowVisible: true,
       headerTitle: 'A long title',
     });
-  });
-});
-
-// The in-row look is the same translucent bar with the title left empty at rest AND after a
-// scroll: the heading scrolls out and nothing takes its place in the bar.
-describe('inRowTitleOptions', () => {
-  it('is the translucent one-row bar with no title, strictly', () => {
-    expect(inRowTitleOptions()).toStrictEqual({
-      headerLargeTitle: false,
-      headerTransparent: true,
-      headerShadowVisible: true,
-      headerTitle: '',
-    });
-  });
-
-  it('is undone by the restore, key for key', () => {
-    const restored = largeTitleRestoredOptions({}) as Record<string, unknown>;
-
-    for (const key of Object.keys(inRowTitleOptions())) {
-      expect(restored).toHaveProperty(key);
-    }
   });
 });
 

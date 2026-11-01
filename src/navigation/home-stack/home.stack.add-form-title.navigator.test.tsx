@@ -3,9 +3,7 @@ import {
   NavigationContainer,
   type ParamListBase,
 } from '@react-navigation/native';
-import { i18n } from '@kiko/i18n/init';
-import { StyleSheet } from 'react-native';
-import { act, render, screen, within } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { transactionFormDataLayer as mockDataLayer } from '@kiko/test-support/transaction-form-data-layer';
 
@@ -18,10 +16,9 @@ import HomeStack from './home.stack';
 /**
  * The Add transaction form opens in the left pane of the Duo, unfolded and beside the trailing
  * side bar, with its Cancel and Save in the bar's row. This suite renders the REAL Home stack with
- * the REAL form and reads where the form's own title heading sits: in the bar's row it would run
- * under those buttons, so it must sit below the bar. Statistics, the pane's default, shows its
- * heading as the real screen does, so the same window also proves the default's heading stays in
- * the bar's row while it is the pane's first page.
+ * the REAL form and proves its title is the native large title below those buttons, with no
+ * heading of its own in the content. Statistics, the pane's default, renders the heading as the
+ * real screen does, so the same window also proves the default keeps the native large title.
  */
 
 jest.mock('@kiko/display-regions', () => ({
@@ -86,19 +83,25 @@ jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const navigationRef = createNavigationContainerRef<ParamListBase>();
 
-const headingWithText = (text: string) =>
-  screen
-    .getAllByTestId('large-title-heading')
-    .find((heading) => within(heading).queryByText(text) !== null);
-
-// The in-row heading is laid over the bar's row; the below-bar heading is in the content flow.
-const isInBarRow = (text: string): boolean => {
-  const heading = headingWithText(text);
-
-  expect(heading).toBeDefined();
-
-  return StyleSheet.flatten(heading?.props.style).position === 'absolute';
+type RenderedNode = {
+  type: string;
+  props: Record<string, unknown>;
+  children: (RenderedNode | string)[] | null;
 };
+
+const headerConfigs = (node: RenderedNode | string | null): Record<string, unknown>[] =>
+  node === null || typeof node === 'string'
+    ? []
+    : [
+        ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props] : []),
+        ...(node.children ?? []).flatMap(headerConfigs),
+      ];
+
+// What the native bars on screen are set to: the header configs that are not hidden.
+const visibleBars = () =>
+  headerConfigs(screen.toJSON() as unknown as RenderedNode)
+    .filter((config) => config.hidden !== true)
+    .map(({ title, largeTitle }) => ({ title, largeTitle }));
 
 const renderUnfoldedHome = async (): Promise<void> => {
   await render(
@@ -115,25 +118,21 @@ const renderUnfoldedAddForm = async (): Promise<void> => {
   await act(async () => navigationRef.navigate('TransactionForm', {}));
 };
 
-describe.each([
-  ['en', 'Add Transaction'],
-  ['uk', 'Додати транзакцію'],
-])('HomeStack: the Add transaction title on an unfolded Duo, in %s', (language, title) => {
-  beforeEach(async () => {
+describe('HomeStack: the Add transaction title on an unfolded Duo', () => {
+  beforeEach(() => {
     jest.useFakeTimers();
-    await act(async () => i18n.changeLanguage(language));
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     resetLayoutMode();
     jest.useRealTimers();
-    await act(async () => i18n.changeLanguage('en'));
   });
 
-  it('puts the title below the bar, clear of Cancel and Save', async () => {
+  it('keeps the native large title below Cancel and Save, with no heading in the content', async () => {
     await renderUnfoldedAddForm();
 
-    expect(isInBarRow(title)).toBe(false);
+    expect(screen.queryAllByTestId('large-title-heading')).toHaveLength(0);
+    expect(visibleBars()).toContainEqual({ title: 'Add Transaction', largeTitle: true });
   });
 });
 
@@ -147,9 +146,10 @@ describe('HomeStack: the default Statistics page on an unfolded Duo', () => {
     jest.useRealTimers();
   });
 
-  it('keeps its heading in the bar row as the first page of the companion pane', async () => {
+  it('keeps the native large title on the first page of the companion pane', async () => {
     await renderUnfoldedHome();
 
-    expect(isInBarRow('Statistics')).toBe(true);
+    expect(screen.queryAllByTestId('large-title-heading')).toHaveLength(0);
+    expect(visibleBars()).toContainEqual({ title: 'Statistics', largeTitle: true });
   });
 });

@@ -5,8 +5,12 @@ import { isOneWordTitle } from '@kiko/design-system/one-word-title';
 
 import Text from '../text';
 
+import { styles } from './large-title-heading.styles';
 import { LargeTitleHeadingContext } from './large-title-heading.context';
-import { HOST_TOP_PADDING_STEP, styles } from './large-title-heading.styles';
+
+// Both scrollables that host the heading (`Screen`'s scroll mode and a bleed-top list) pad their
+// first child by this step, so the heading's bottom edge is its height plus the padding.
+const HOST_TOP_PADDING_STEP = 4;
 
 // The same floor as the pie chart legend's shrink-to-fit text.
 const ONE_WORD_MINIMUM_FONT_SCALE = 0.7;
@@ -39,13 +43,13 @@ const LargeTitleHeading: FC = () => {
 
   const oneWord = isOneWordTitle(heading.title);
 
-  const title = (
+  return (
     <View
       testID="large-title-heading"
       // The bar shows the title once this has scrolled under it; VoiceOver reads it once.
       accessibilityElementsHidden={heading.scrolled}
       importantForAccessibility={heading.scrolled ? 'no-hide-descendants' : 'auto'}
-      style={heading.inRow ? styles.inRowHeading : styles.heading}
+      style={styles.heading}
       onLayout={(event) => {
         heading.headingBottom.current =
           event.nativeEvent.layout.height + theme.spacing(HOST_TOP_PADDING_STEP);
@@ -63,8 +67,6 @@ const LargeTitleHeading: FC = () => {
       </Text>
     </View>
   );
-
-  return heading.inRow ? <View style={styles.inRowSlot}>{title}</View> : title;
 };
 
 export default LargeTitleHeading;
