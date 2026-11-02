@@ -26,12 +26,14 @@ Everything you do in Kiko happens on your own device.
 
 The information you enter or sync is stored only on your device:
 
-- Your accounts, holdings, transactions, balances, prices, categories, and
-  settings.
+- Your accounts, holdings, transactions, balances, prices, categories,
+  transaction templates, category rules, and settings.
 - The API credentials you choose to add (for example a Monobank token or a
   Binance API key and secret).
 - The reminders you set up. iOS shows them as local notifications on your
   device; their text never names an account or an amount.
+- Import progress from a connected service (read positions, times, and market
+  symbols), so that a sync continues where it stopped.
 
 This data is kept in an on-device database encrypted with AES-256 (SQLCipher).
 Your API credentials are stored in the iOS Keychain, the system's secure
