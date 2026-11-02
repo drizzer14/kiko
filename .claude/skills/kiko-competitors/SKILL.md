@@ -8,7 +8,7 @@ description: Invoke whenever you do a competitor comparison, a gap review, or an
 Facts live in the data file; read the level of a row before you rely on it.
 
 - [competitor-facts.md](competitor-facts.md) — "Evidence levels (sections A to D)"; "A. Feature
-  facts (check date 2026-11-02 for every row)": 38 rows with levels per app; "B. Gaps and
+  facts (check date 2026-11-02 for every row)": rows with levels per app; "B. Gaps and
   negative findings (2026-11-02)"; "C. Weak demand notes ("Most requested by users")";
   "D. Pages that failed, and what was not read"; "E. Exchanges (checked 2026-10-15, not
   2026-11-02)": own check date and own wording; "F. Last gap review (2026-11-02)": the
@@ -22,10 +22,13 @@ Facts live in the data file; read the level of a row before you rely on it.
 2. The coordinator compares the two lists.
 3. Re-verify every "absent from Kiko" with a grep of the code before it goes in a report. A
    claim that Kiko lacks a feature is not accepted from the inventory alone.
-4. Researcher rows carry a source URL, a check date and an evidence level: READ (read on the
-   fetched page), SEARCH (search summary only, not a quote), UNVERIFIED (from memory, no source).
+4. Researcher rows carry a source URL, a check date and an evidence level: READ, SEARCH or
+   UNVERIFIED, defined under "Evidence levels" in
+   `.claude/skills/kiko-competitors/competitor-facts.md`.
 
 ## Fit filter (check each candidate)
+
+A candidate that fails a line is a poor fit. Only the user changes a rule.
 
 - No Kiko server.
 - Data stays on the device.
@@ -33,7 +36,8 @@ Facts live in the data file; read the level of a row before you rely on it.
   hidden features".
 - Users are Ukrainian and displaced.
 - Standing rulings: shares cut 2026-10-02 (broker accounts and bonds stay; a return needs a new
-  design). Bybit is in 1.4 (the newer ruling; the spec text still says 1.3-b). OKX and later
+  design). Bybit is in 1.4 (the coordinator's task brief of 2026-11-02; spec R-Scope and the older
+  plan text say 1.3-b). OKX and later
   exchanges need a key: ship only exchanges verified on device with a real key. The exact words
   are R-Scope at docs/superpowers/specs/2026-10-15-crypto-exchanges-design.md:85.
 

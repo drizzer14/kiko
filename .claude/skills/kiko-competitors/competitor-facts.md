@@ -1,8 +1,8 @@
 # Competitor facts
 
-Data file of the kiko-competitors skill. Sections A to D and F hold the research of 2026-11-02;
-section E holds the exchange research of 2026-10-15. Every table row is one fact set; wide rows
-are exempt from the prose-width rule, prose lines wrap at 100 columns.
+Data file of the kiko-competitors skill. Sections A to D and F1 hold the research of 2026-11-02;
+section E holds the exchange research of 2026-10-15. F2 was read from code and F3 was not
+researched. Every table row is one fact set; prose lines wrap at 100 columns.
 
 ## Evidence levels (sections A to D)
 
@@ -10,13 +10,14 @@ are exempt from the prose-width rule, prose lines wrap at 100 columns.
 - SEARCH: a search-result summary only, not a quote.
 - UNVERIFIED: from memory, no source.
 
-The level belongs to each app inside a row where the input gives per-app levels. A level is
-promoted only by a new read of the page with a new check date.
+The level belongs to each app inside a row where the input gives per-app levels. The promotion
+rule is in the skill's "Update rules".
 
 ## A. Feature facts (check date 2026-11-02 for every row)
 
-Column note: "Works with no server?" is the researcher's judgement from how the feature works,
-not from the source. "Unknown" means the researcher could not judge it.
+Added note (by the author of this file, not from the source): the column "Works with no
+server?" is the researcher's judgement from how the feature works, not a page quote. "Unknown"
+means the researcher could not judge it.
 
 | # | Feature | Apps and evidence level | Works with no server? | Source URL(s) | Checked |
 |---|---|---|---|---|---|
@@ -40,7 +41,7 @@ not from the source. "Unknown" means the researcher could not judge it.
 | 18 | CSV import, Google Sheets import, app links that pre-fill a transaction, biometric lock | Cashew (READ) | Yes | https://github.com/jameskokoska/Cashew | 2026-11-02 |
 | 19 | Loan payoff calculator showing interest and time saved | YNAB (READ) | Yes | https://www.ynab.com/features | 2026-11-02 |
 | 20 | Goal tracking, category templates, customizable views, mobile widgets, offline use with cross-device sync | YNAB (READ) | Sync: no | https://www.ynab.com/features | 2026-11-02 |
-| 21 | Share one subscription with up to six people | YNAB (READ); Copilot households is "coming soon", not shipped (READ) | No | https://www.ynab.com/features ; https://www.copilot.money/ | 2026-11-02 |
+| 21 | Share one subscription with up to six people | YNAB (READ); Copilot households is "coming soon" (READ) | No | https://www.ynab.com/features ; https://www.copilot.money/ | 2026-11-02 |
 | 22 | AI assistant that cleans up transactions, with 6 personalities | Copilot (READ) | No | https://www.copilot.money/ | 2026-11-02 |
 | 23 | Subscription and recurring-charge view; alerts for low balance and large expenses | Copilot (READ) | Partly: alerts need a feed | https://www.copilot.money/ | 2026-11-02 |
 | 24 | Investments tracked against the S&P 500 (stocks, crypto, retirement) | Copilot (READ) | No | https://www.copilot.money/ | 2026-11-02 |
@@ -59,15 +60,22 @@ not from the source. "Unknown" means the researcher could not judge it.
 | 37 | Auto-import of trades from 200+ brokers; dividends, DRPs and splits update automatically; tax reports; diversity report; cash and property | getquin (READ) | No | https://www.getquin.com/en | 2026-11-02 |
 | 38 | Portfolio widgets, alerts, and an Apple Watch app; crypto, stocks, forex | Delta by eToro (SEARCH, App Store snippet) | Unknown | https://apps.apple.com/app/delta-crypto-ico-portfolio/id1288676542 | 2026-11-02 |
 
+Added note (by the author of this file): the "Yes" in row 2 applies to the direct API call with
+a user token; a webhook needs a server to receive it (section F1, Poor fit).
+
 ## B. Gaps and negative findings (2026-11-02)
 
 "Not found" means the research did not find it. It does not mean the app does not have it.
 
+Added definitions (by the author of this file, in the words the source supports): "not read" =
+the page was not read; "mixed" = the cell gives a level per claim; "no level given" = the
+source gives no level for that claim.
+
 | Topic | Finding | Level | Source URL |
 |---|---|---|---|
-| Live Activities | Not found for any app researched, including Delta (the search hit was the airline app) | SEARCH | none given |
+| Live Activities | Not found for any app researched, including Delta (the search hit was the airline app) | no level given (search hit named for Delta only) | none given |
 | Shortcuts, App Intents, Siri | Not found for any budgeting app | not read | none given |
-| Apple Watch | Only Delta has one (SEARCH). YNAB lists watchOS in its page metadata only (READ). Copilot's own page does not mention a Watch app or widgets (READ) | mixed, as stated | none given |
+| Apple Watch | Found only for Delta (SEARCH). YNAB lists watchOS in its page metadata only (READ). Copilot's own page does not mention a Watch app or widgets (READ) | mixed, as stated | none given |
 | Sharesight | Features page 404, so nothing is verified. Multi-currency and tax reports came from a search, not the page | SEARCH | none given |
 | Monarch multi-currency | Only third-party sources, which say USD/CAD with a locked base currency. Monarch advises against mixing currencies because totals add raw numbers. Not checked against Monarch's own docs | SEARCH, unverified against Monarch docs | https://sacra.com/chat/h/c1c03e02-e948-4b2d-8be0-4438aa173d71/ |
 | Wallet and Monobank | No evidence found that Wallet supports Monobank | SEARCH | none given |
@@ -97,9 +105,11 @@ Failed pages (check date 2026-11-02):
 - lunchmoney.app/features: 403
 - Cashew web page: certificate error
 
-Not fetched or not read: Privat24, PocketGuard, MoneyCoach, Money Manager Ex, Spendee detail,
-and Siri or Shortcuts or Watch for any budgeting app. A claim on those comes from a search
-summary or is UNVERIFIED.
+Not read: PocketGuard, Privat24, Spendee detail, and Siri or Shortcuts or Watch for any
+budgeting app.
+
+Not fetched: Privat24, PocketGuard, MoneyCoach, Money Manager Ex, Lunch Money and Firefly III
+pages. Any claim on their features comes from search summaries or is UNVERIFIED.
 
 ## E. Exchanges (checked 2026-10-15, not 2026-11-02)
 
@@ -120,8 +130,8 @@ Ukrainian-founded, no share data.
 ### Suggested ranking (the researcher's suggestion, not a ruling)
 
 1 Binance, 2 Bybit, 3 OKX, 4 WhiteBIT, 5 KuCoin, 6 MEXC, 7 Kraken, 8 Coinbase, 9 Bitget/Gate.
-The researcher's 1.3 suggestion: Binance (multi-coin), Bybit, OKX; later WhiteBIT, Kraken and
-Coinbase for the diaspora. The user rulings differ: see the kiko-competitors skill.
+The researcher's 1.3 suggestion: Binance (multi-coin), Bybit, OKX; later WhiteBIT, Kraken/Coinbase
+for the diaspora. The user rulings differ: see the kiko-competitors skill.
 
 ### Key API facts (VERIFIED unless marked)
 
@@ -164,8 +174,10 @@ read-only scope; WhiteBIT history; KuCoin, Coinbase, Bitget, Gate and MEXC need 
 
 JUDGMENT by the coordinator, with NO user ruling. Fit, size, risk and recommendation are
 opinions, not plan estimates. The user comes back to each later. Base main d7cd40fa1. The Kiko
-inventory is from code and help text; the app was not run. Web check date 2026-11-02. Evidence
-levels of the competitor claims are in section A.
+inventory is from code and help text; the app was not run. Web check date of F1: 2026-11-02.
+Evidence levels are in section A where a row exists; a claim with no row has no level. No row
+backs Actual or YNAB for per-category budgets, custom periods and history, or YNAB for income
+against expense.
 
 ### F1. Feature gaps
 
