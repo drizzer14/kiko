@@ -26,7 +26,7 @@ const EN_NOTE =
   'Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot.';
 
 const UK_NOTE =
-  'Не показано: угоди з фʼючерсами, маржею та опціонами; витрати з Binance Card і подарункових карток; Auto-Invest; позики; стейкінг ETH і SOL; майнінг; NFT; копітрейдинг; Dual Investment; субакаунти; розподіли, крім винагород Simple Earn; продажі P2P і замовлення P2P, які ви розмістили у ролі оголошувача; угоди з монетами, проданими до цієї версії, яких Кіко ніде більше не бачив; записи, старіші за ті, що зберігає Binance. Binance не вказує гаманець для операцій P2P і фіатних операцій: Кіко показує замовлення P2P на Funding, а фіатні операції — на Spot.';
+  'Не показано: угоди з фʼючерсами, маржею та опціонами; витрати з Binance Card і подарункових карток; Auto-Invest; позики; стейкінг ETH і SOL; майнінг; NFT; копітрейдинг; Dual Investment; субакаунти; розподіли, крім винагород Simple Earn; продажі P2P і замовлення P2P, які ви розмістили у ролі рекламодавця; угоди з монетами, які ви продали до цієї версії і які Кіко більше ніде не бачив; записи, старіші за ті, що зберігає Binance. Binance не вказує гаманець для операцій P2P і фіатних операцій: Кіко показує замовлення P2P на Funding, а фіатні операції — на Spot.';
 
 describe('ExchangeHistoryFooter', () => {
   it.each([
