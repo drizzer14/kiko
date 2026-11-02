@@ -16,11 +16,13 @@ Preconditions:
 - A queued check-all or verify line for the release sha is green (typed `npm run check:all`
   is denied).
 
-Merging into `main` (coordinator ruling): never apply, merge, rebase,
-pull, cherry-pick, revert, or am in the main checkout (what passes:
+Merging into `main` (coordinator ruling): never commit, apply, merge, rebase,
+pull, cherry-pick, revert, or am in the main checkout (what passes for apply, merge, rebase,
+pull, cherry-pick, revert and am:
 `-h`/`--help`, the recovery options such as `--abort`/`--continue`,
 and `git apply --check`/`--stat`; see `RECOVERY_OPTIONS` there; the closed set is
-`MAIN_CHECKOUT_SUBCOMMANDS` in `scripts/checks/kill-guard.js`)
+`MAIN_CHECKOUT_SUBCOMMANDS` in `scripts/checks/kill-guard.js`, and `commit` is not in it: a
+commit is the `mainMove` kind, where only help passes and `--abort`/`--continue` are denied)
 (`/Users/drizzer14/Developer/Projects/pff-ios`); every session's hooks
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies it (see kiko-linter's "MAIN-CHECKOUT deny"). Do the

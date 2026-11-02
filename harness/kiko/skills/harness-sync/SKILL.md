@@ -293,6 +293,11 @@ Every count and exit code is the orchestrator's own measured result.
     `SCRIPT_GIT_KINDS` and `EXPANDED_KINDS`, not in `DATA_KINDS`) with the fail-closed rule for
     an unresolved `-C`/`cd` target or a missing cwd. `MAIN_CHECKOUT_PATH` and the folder list are
     repo-specific: set them to the target repository's own.
+  - the `commit` case of `moveScopes` in `kill-guard-main-moves.js` (a `git commit`, also
+    `--amend` and `--dry-run`, denied in the main checkout and in a worktree whose HEAD names
+    main) with `asksForHelp` in `kill-guard.js` (help only as the first argument after
+    `commit`) and the rows in `__tests__/kill-guard-main-moves.test.ts`. The main checkout path
+    is repo-specific.
   - the missing-destination rule (a `cp -r`/`mv` of one folder onto a missing tree parent or
     `.git` folder denies, `-T` included) and the `.git` contents/config copy rules
     (`namesGitFolder`, `namesWorktreeGitFolder`, `gitConfigsIn`).
