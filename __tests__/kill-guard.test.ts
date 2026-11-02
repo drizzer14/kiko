@@ -668,8 +668,9 @@ const CONFIG_REWRITE_COMMANDS: string[] = [
   "cat > f.md <<'EOF'\n- `git config --unset core.hooksPath` denies\nEOF",
 ];
 
-// The one-action commits the coordinator runs in the main checkout, and git spellings that only
-// look like a bypass: `-n` is a message, a log limit, or merge's --no-stat.
+// Commits that run in a worktree, and git spellings that only look like a bypass: `-n` is a
+// message, a log limit, or merge's --no-stat. A commit in the main checkout is denied, so the
+// commit rows run from a worktree and the other rows from the main checkout.
 const ALLOWED_COMMIT_COMMANDS: string[] = [
   'git commit -m "-n"',
   'git commit -m "use --no-verify never"',
@@ -689,8 +690,6 @@ const ALLOWED_COMMIT_COMMANDS: string[] = [
   'git commit -m x # -n',
   'echo git commit -n',
   'git -C /tmp/scratch log -n 3',
-  `git -C ${MAIN_CHECKOUT} commit -m "docs: x"`,
-  `git -C ${MAIN_CHECKOUT} commit -- HANDOFF.md -m "x"`,
   `git -C ${MAIN_CHECKOUT} log -n 3`,
   `git -C ${WORKTREE} commit -m "feat: x"`,
   'git commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)"',
@@ -719,6 +718,17 @@ const ALLOWED_COMMIT_COMMANDS: string[] = [
   'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git status',
   'GIT_CONFIG_PARAMETERS="\'core.pager=cat\'" git commit -m x',
 ];
+
+// A commit aimed at the main checkout, by name or by cwd, is denied on any branch.
+const DENIED_MAIN_COMMIT_COMMANDS: string[] = [
+  `git -C ${MAIN_CHECKOUT} commit -m "docs: x"`,
+  `git -C ${MAIN_CHECKOUT} commit -- HANDOFF.md -m "x"`,
+  `git -C ${MAIN_CHECKOUT} commit --amend --no-edit`,
+  `cd ${MAIN_CHECKOUT} && git commit -m x`,
+];
+
+const isCommit = (command: string): boolean =>
+  /\bcommit\b/.test(command) && !command.startsWith('echo');
 
 // `git pull` and a non-fast-forward `git merge` run the merge hooks too, but outside the main
 // checkout (where both are denied for another reason) these spellings are not a bypass: their
@@ -853,12 +863,47 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
     expect(result.stdout.trim()).toBe('');
   });
 
-  it.each(ALLOWED_COMMIT_COMMANDS)('allows in the main checkout: %s', (command) => {
-    const result = run(payloadIn(MAIN_CHECKOUT, command));
+  it.each(ALLOWED_COMMIT_COMMANDS.filter((command) => !isCommit(command)))(
+    'allows in the main checkout: %s',
+    (command) => {
+      const result = run(payloadIn(MAIN_CHECKOUT, command));
 
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('');
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    },
+  );
+
+  it.each(ALLOWED_COMMIT_COMMANDS.filter(isCommit))(
+    'allows from a linked worktree: %s',
+    (command) => {
+      const result = run(payloadIn(WORKTREE, command));
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    },
+  );
+
+  it.each(DENIED_MAIN_COMMIT_COMMANDS)('denies a commit on the main checkout: %s', (command) => {
+    for (const directory of [MAIN_CHECKOUT, WORKTREE]) {
+      const reason = denyReasonFor(command, payloadIn(directory, command));
+
+      expectStandardBlock(reason);
+      expect(reason).toContain('git commit');
+      expect(reason).toContain('bash scripts/job-queue.sh verify');
+      expect(reason).toContain('bash scripts/ff-main.sh <sha>');
+    }
   });
+
+  it.each(ALLOWED_COMMIT_COMMANDS.filter(isCommit))(
+    'judges the commit spelling by the folder it runs in: %s',
+    (command) => {
+      const result = run(payloadIn(MAIN_CHECKOUT, command));
+      const runsInWorktree = command.includes(`-C ${WORKTREE}`);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim() === '').toBe(runsInWorktree);
+    },
+  );
 
   it('allows git merge when the payload names no cwd', () => {
     const result = run(payloadFor('git merge feat/x'));
