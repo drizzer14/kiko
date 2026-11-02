@@ -114,6 +114,14 @@ Monobank token and Binance keys, after the app is deleted. To remove them, first
 disconnect each connected account (open the account and tap Disconnect), then
 delete the app.
 
+**Deleted statement rows.** When you delete a transaction that came from an
+imported statement, Kiko keeps a key of that row and the time you deleted it,
+on your device and in a `.kiko` export, so that a new import of the same
+statement recognizes the row. The key holds the row's id from the statement or,
+if it has no id, the row's time, amount, and description. Kiko removes the key
+when the row is imported again, when the holding gets a new balance, or when
+the holding is deleted.
+
 ## 7. Children
 
 Kiko is not directed to children under 13 and does not knowingly collect data

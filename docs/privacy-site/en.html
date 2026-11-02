@@ -93,6 +93,8 @@
 
   <p>Your data lives only on your device. You can delete accounts, holdings, and transactions inside the app at any time. Deleting the app removes its database from your device, but iOS can keep items saved in the Keychain, such as your Monobank token and Binance keys, after the app is deleted. To remove them, first disconnect each connected account (open the account and tap Disconnect), then delete the app.</p>
 
+  <p><strong>Deleted statement rows.</strong> When you delete a transaction that came from an imported statement, Kiko keeps a key of that row and the time you deleted it, on your device and in a <code>.kiko</code> export, so that a new import of the same statement recognizes the row. The key holds the row's id from the statement or, if it has no id, the row's time, amount, and description. Kiko removes the key when the row is imported again, when the holding gets a new balance, or when the holding is deleted.</p>
+
   <h2>7. Children</h2>
 
   <p>Kiko is not directed to children under 13 and does not knowingly collect data from them.</p>
