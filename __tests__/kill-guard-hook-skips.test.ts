@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
+import { optionsOutsideMain, payloadOutsideMain } from './test-support/kill-guard-decide';
+
 // The hook-skip denies of scripts/checks/kill-guard.js that are not an option of the git command
 // itself: an `export` or bare assignment that sets core.hooksPath through GIT_CONFIG_*, an
 // `include.path` entry, and `git commit-tree`, which makes a commit no hook sees.
@@ -17,13 +19,21 @@ const DECIDE_SCRIPT = [
 ].join('\n');
 
 const decide = (command: string, options: Record<string, unknown> = {}): string =>
-  spawnSync('node', ['-e', DECIDE_SCRIPT, GUARD, command, JSON.stringify(options)], {
-    encoding: 'utf8',
-  }).stdout;
+  spawnSync(
+    'node',
+    [
+      '-e',
+      DECIDE_SCRIPT,
+      GUARD,
+      command,
+      JSON.stringify({ ...optionsOutsideMain(command), ...options }),
+    ],
+    { encoding: 'utf8' },
+  ).stdout;
 
 const run = (command: string): SpawnSyncReturns<string> =>
   spawnSync('bash', [SCRIPT], {
-    input: JSON.stringify({ tool_input: { command } }),
+    input: payloadOutsideMain(command),
     encoding: 'utf8',
   });
 

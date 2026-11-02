@@ -32,9 +32,10 @@
 // and help stay allowed. A fast-forward-only update (`merge --ff-only`, `pull --ff-only`) is its
 // own finding, `mainFastForward`: main moves only through `bash scripts/ff-main.sh <sha>`, which
 // runs after a queued verify of that commit. Any other git command that moves the branch `main`
-// is the finding `mainMove`; the forms, and which of them count from any worktree of this
+// is the finding `mainMove`, a `git commit` (also `--amend`) in the main checkout or in a worktree
+// whose HEAD names `main` among them; the forms, and which of them count from any worktree of this
 // repository, are in the header of `kill-guard-main-moves.js`, which holds the rules. A place the
-// text cannot name (an unresolved `-C` or `cd`) fails closed.
+// text cannot name (an unresolved `-C` or `cd`, or a payload with no cwd) fails closed.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`,
 // `githooks/`, `.claude/skills/`, `.claude/agents/`, `docs/superpowers/` (plans, specs), or
@@ -97,8 +98,8 @@
 // their own reason: leave core.hooksPath as scripts/ensure-git-hooks.sh sets it. A
 // GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file is not judged: the key sits in the local scope, which
 // outranks both and what they include. `git commit-tree` is denied in every form: it writes a
-// commit no hook runs for (`git update-ref` is no hook skip; it is judged as `mainMove` when it
-// moves `main`).
+// commit no hook runs for (`git update-ref` and `git commit` are no hook skip; each is judged as
+// `mainMove` when it moves `main`).
 // A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
@@ -180,19 +181,22 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
 ];
 
 const MAIN_MOVE_REASON_LINES = [
-  'WHAT FAILED:    kill-guard denied a git command that moves the branch main (a reset to a ' +
-    'commit in the main checkout, or in a worktree whose HEAD names main; update-ref, checkout ' +
+  'WHAT FAILED:    kill-guard denied a git command that moves the branch main (git commit, also ' +
+    '--amend, in the main checkout on any branch, or in a worktree whose HEAD names main; a ' +
+    'reset onto another commit there; update-ref, checkout ' +
     '-B, switch -C, branch -m|-f|-d, a fetch, pull or push into main, also through a -c, ' +
     '--config-env or exported GIT_CONFIG_* fetch refspec; symbolic-ref onto main, checkout or ' +
     'switch --ignore-other-worktrees main, worktree add -B or -f naming it).',
   `WHY IT MATTERS: main (${MAIN_CHECKOUT_PATH}) must move only to a commit a queued verify passed ` +
     'on, and its hooks run for every session; every worktree shares the ref, so a move from ' +
     'any of them reaches the main checkout.',
-  'HOW TO FIX:     do the work in a separate detached worktree, queue `bash scripts/job-queue.sh ' +
+  'HOW TO FIX:     commit in a separate detached worktree, queue `bash scripts/job-queue.sh ' +
     'verify <worktree at the sha> <label>`, wait for exit 0, then run `bash scripts/ff-main.sh ' +
-    '<sha>`. Moving main back, or any other move of it, needs the user. A reset without a ' +
-    'commit (`git reset --hard`), `git reset -- <path>`, a branch other than main, and help ' +
-    'stay allowed.',
+    '<sha>`. When the detail says the command runs in a folder it does not name, write the ' +
+    'folder as literal text in the command, not as a variable such as $PWD. Moving main back, ' +
+    'or any other move of it, needs the user. A reset without a ' +
+    'target commit (`git reset --hard`), `git reset -- <path>`, a commit in a worktree on its ' +
+    'own branch, a branch other than main, and help stay allowed.',
   'DO NOT:         move main through a script file, an alias, or a variable, or look for another ' +
     'spelling of the move, to get past this guard.',
 ];
@@ -2038,9 +2042,18 @@ function headFileNamesMain(root) {
   }
 }
 
+// `git commit -m -h` commits with that message and the guard does not parse option values, so only
+// a first argument counts as help for a commit; a later `-h` is denied, the safe side, though git
+// also reads `git commit -a -h` as help. The other subcommands read help anywhere.
+function asksForHelp({ subcommand, arguments: parameters }) {
+  if (subcommand === 'commit') return HELP_OPTIONS.has(parameters[0]);
+
+  return parameters.some((parameter) => HELP_OPTIONS.has(parameter));
+}
+
 // A command that moves the branch `main` (see kill-guard-main-moves.js).
 function mainMoveFinding(segment, invocations, rules) {
-  if (invocations[0].arguments.some((parameter) => HELP_OPTIONS.has(parameter))) return null;
+  if (asksForHelp(invocations[0])) return null;
   const target = mainMoveTarget(invocations, {
     isMainCheckout: (directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath),
     isInRepository: (directory) => isInsideProjectWorktree(directory, rules),

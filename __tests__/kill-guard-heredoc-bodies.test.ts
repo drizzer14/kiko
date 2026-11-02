@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+import { optionsOutsideMain } from './test-support/kill-guard-decide';
+
 // A heredoc body is judged by what reads it. A quoted body that no shell runs (`cat > f <<'EOF'`,
 // `git commit -F - <<'EOF'`, a commit message through `$(cat <<'EOF' ...)`) is text, judged for a
 // kill, a git stash, a main-checkout merge or fast-forward, a hook skip by option,
@@ -15,12 +17,11 @@ const MAIN_CHECKOUT = '/Users/drizzer14/Developer/Projects/pff-ios';
 
 const DECIDE_MANY_SCRIPT = [
   'const { decide } = require(process.argv[1]);',
-  'const options = JSON.parse(process.argv[2]);',
-  'const finding = (text) => {',
+  'const finding = ([text, options]) => {',
   '  const found = decide(text, options);',
   '  return found === null ? "allow" : found.kind;',
   '};',
-  'process.stdout.write(JSON.stringify(JSON.parse(process.argv[3]).map(finding)));',
+  'process.stdout.write(JSON.stringify(JSON.parse(process.argv[2]).map(finding)));',
 ].join('\n');
 
 // One node process judges a whole list, so a long table costs one start-up.
@@ -32,8 +33,12 @@ const decideMany = (commands: string[]): string[] =>
         '-e',
         DECIDE_MANY_SCRIPT,
         GUARD,
-        JSON.stringify({ mainCheckoutPath: MAIN_CHECKOUT }),
-        JSON.stringify(commands),
+        JSON.stringify(
+          commands.map((command) => [
+            command,
+            { mainCheckoutPath: MAIN_CHECKOUT, ...optionsOutsideMain(command) },
+          ]),
+        ),
       ],
       { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
     ).stdout,

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
-import { stepsFor } from './test-support/kill-guard-decide';
+import { optionsOutsideMain, stepsFor } from './test-support/kill-guard-decide';
 
 // The wait-loop deny of scripts/checks/kill-guard.js: a `while` or `until`
 // loop that scans the process table (`ps`, `pgrep -f`) for make verify,
@@ -16,12 +16,16 @@ const GUARD = join(__dirname, '../scripts/checks/kill-guard.js');
 
 const DECIDE_SCRIPT = [
   'const { decide } = require(process.argv[1]);',
-  'const finding = decide(process.argv[2], {});',
+  'const finding = decide(process.argv[2], JSON.parse(process.argv[3]));',
   'process.stdout.write(finding === null ? "allow" : finding.kind);',
 ].join('\n');
 
 const decide = (command: string): string =>
-  spawnSync('node', ['-e', DECIDE_SCRIPT, GUARD, command], { encoding: 'utf8' }).stdout;
+  spawnSync(
+    'node',
+    ['-e', DECIDE_SCRIPT, GUARD, command, JSON.stringify(optionsOutsideMain(command))],
+    { encoding: 'utf8' },
+  ).stdout;
 
 const run = (command: string): SpawnSyncReturns<string> =>
   spawnSync('bash', [SCRIPT], {

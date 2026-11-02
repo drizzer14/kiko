@@ -76,10 +76,10 @@ plus `/reload-plugins`.
 - `PreToolUse` `Bash`: `scripts/checks/kill-guard.sh` denies, in short:
   - `pkill`, `killall`, pattern/process-group `kill`; stop only a pid you started (`kill <pid>`).
   - any `git stash`; a heredoc with an unquoted delimiter.
-  - `git apply|merge|rebase|pull|cherry-pick|revert|am` on the MAIN checkout
-    `/Users/drizzer14/Developer/Projects/pff-ios`, and any command that moves `main`: merge in a
-    detached worktree, then `bash scripts/ff-main.sh <sha>` (it can exit 2 AFTER main moved; a
-    re-run retries only the patch-package step).
+  - `git commit` (also `--amend`), `git apply|merge|rebase|pull|cherry-pick|revert|am` on the MAIN
+    checkout `/Users/drizzer14/Developer/Projects/pff-ios`, and any command that moves `main`:
+    commit or merge in a detached worktree, then `bash scripts/ff-main.sh <sha>` (it can exit 2
+    AFTER main moved; a re-run retries only the patch-package step).
   - a shell write into a guarded tree (for example `src/`, `__tests__/`, `rules/`, `scripts/`,
     any `*.yml`; "SHELL-WRITE deny"): use Edit/Write. Full list: `WRITE_GUARDED_TREES`,
     `docs/harness/checks.md` "Automatic wiring".
