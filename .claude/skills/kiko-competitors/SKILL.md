@@ -28,7 +28,7 @@ Facts live in the data file; read the level of a row before you rely on it.
 
 ## Fit filter (check each candidate)
 
-A candidate that fails a line is a poor fit. Only the user changes a rule.
+Report the line that a candidate fails. Only the user rules on it or changes a rule.
 
 - No Kiko server.
 - Data stays on the device.

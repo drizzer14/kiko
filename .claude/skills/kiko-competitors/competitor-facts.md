@@ -2,7 +2,7 @@
 
 Data file of the kiko-competitors skill. Sections A to D and F1 hold the research of 2026-11-02;
 section E holds the exchange research of 2026-10-15. F2 was read from code and F3 was not
-researched. Every table row is one fact set; prose lines wrap at 100 columns.
+researched. Every table row is one fact set.
 
 ## Evidence levels (sections A to D)
 
@@ -15,8 +15,8 @@ rule is in the skill's "Update rules".
 
 ## A. Feature facts (check date 2026-11-02 for every row)
 
-Added note (by the author of this file, not from the source): the column "Works with no
-server?" is the researcher's judgement from how the feature works, not a page quote. "Unknown"
+Note on the column "Works with no server?": the researcher states it is their own judgement
+from how the feature works, not from the source. Added by the author of this file: "Unknown"
 means the researcher could not judge it.
 
 | # | Feature | Apps and evidence level | Works with no server? | Source URL(s) | Checked |
@@ -67,9 +67,9 @@ a user token; a webhook needs a server to receive it (section F1, Poor fit).
 
 "Not found" means the research did not find it. It does not mean the app does not have it.
 
-Added definitions (by the author of this file, in the words the source supports): "not read" =
-the page was not read; "mixed" = the cell gives a level per claim; "no level given" = the
-source gives no level for that claim.
+Added definitions (by the author of this file): "not read" = the page was not read; "mixed" and
+"no level given" are this file's own labels. "mixed" = the cell gives a level per claim; "no
+level given" = the source gives no level for that claim.
 
 | Topic | Finding | Level | Source URL |
 |---|---|---|---|
