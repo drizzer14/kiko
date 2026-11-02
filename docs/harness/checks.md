@@ -298,14 +298,19 @@ failed patch exits 2 AFTER main moved ("main DID move"); a re-run only retries t
 runs it.
 
 The same hook also denies any other git command that moves the branch `main` (finding
-`mainMove`): in the main checkout a `reset`, `symbolic-ref HEAD <ref>` or `update-ref HEAD` (it
-moves the branch of its work tree; `git reset --soft HEAD~1` there is denied, user ruling "any
-reset that moves HEAD of main"), and from ANY worktree of this repository a command that writes
-the ref by name (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`, `fetch`/`push`
-into it, `symbolic-ref refs/heads/main`, `worktree add -B`), since the worktrees share the refs. A
-`-C`/`cd` target or git folder
-the text cannot name, or a missing cwd, fails closed; an unrelated repository or a plain folder
-is no target. The way out is `bash scripts/ff-main.sh <sha>`. Source:
+`mainMove`): in the main checkout (on any branch) a `commit` (also `--amend` and `--dry-run`), a
+`reset`, `symbolic-ref HEAD <ref>` or `update-ref HEAD` (it
+moves the branch of its work tree; a `commit` in a linked worktree whose HEAD names `main` is
+denied too, one on its own branch is allowed; commit in a worktree, queue the verify, then
+`bash scripts/ff-main.sh <sha>`; a dirty, tracked root `HANDOFF.md` makes `ff-main.sh` refuse
+only a commit that changes it (the way out is in kiko-linter's wrapper-contract, "The `mainMove`
+kind"); `git reset --soft HEAD~1`
+there is denied, user ruling "any reset that moves HEAD of main"), and from ANY worktree of this
+repository a command that writes the ref by name (`update-ref`, `checkout -B`, `switch -C`,
+`branch -m|-f|-d`, `fetch`/`push` into it, `symbolic-ref refs/heads/main`, `worktree add -B`),
+since the worktrees share the refs. A `-C`/`cd` target or git folder the text cannot name, or
+a missing cwd, fails closed; an unrelated repository or a plain folder is no target.
+The way out is `bash scripts/ff-main.sh <sha>`. Source:
 `scripts/checks/kill-guard-main-moves.js`; kiko-linter's "MAIN-CHECKOUT deny" has the rule and
 the known limits.
 

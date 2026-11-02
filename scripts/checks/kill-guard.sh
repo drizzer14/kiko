@@ -5,7 +5,8 @@
 # killall, a kill/pkill/killall reached through a pattern, or a
 # process-group/broadcast kill), any `git stash` subcommand, a heredoc
 # whose delimiter is not quoted, a git history change on the main checkout,
-# any git command that moves the branch main (from any worktree of this repository),
+# any git command that moves the branch main (from any worktree of this repository; a git commit
+# counts in the main checkout and in a worktree whose HEAD names main),
 # or a shell write (sed -i, perl -i, a redirect, tee, a python or node
 # one-liner) into a guarded tree (WRITE_GUARDED_TREES in kill-guard.js) of a worktree of this
 # repository, or a while/until wait loop that scans ps or pgrep -f for a heavy

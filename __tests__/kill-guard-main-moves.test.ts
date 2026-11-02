@@ -39,6 +39,10 @@ for (const folder of [
   'main/.git/worktrees/linked',
   'main/.git/worktrees/on-main',
   'main/.git/worktrees/detached',
+  'main/.git/worktrees/nested',
+  'main/.claude/worktrees/nested',
+  'branched/.git',
+  'branched/src',
   'main/src',
   'linked/src',
   'on-main/src',
@@ -60,6 +64,14 @@ const linkWorktree = (worktree: string, name: string, head: string): void => {
 linkWorktree(LINKED, 'linked', 'ref: refs/heads/feat');
 linkWorktree(ON_MAIN, 'on-main', 'ref: refs/heads/main');
 linkWorktree(DETACHED, 'detached', '1a2b3c4d5e6f1a2b3c4d5e6f1a2b3c4d5e6f1a2b');
+
+// A worktree nested under the main checkout, on its own branch.
+const NESTED = join(MAIN, '.claude/worktrees/nested');
+linkWorktree(NESTED, 'nested', 'ref: refs/heads/feat');
+
+// A checkout the guard treats as the main checkout while its own HEAD names another branch.
+const BRANCHED = join(SCRATCH, 'branched');
+writeFileSync(join(BRANCHED, '.git/HEAD'), 'ref: refs/heads/feat\n');
 
 const optionsIn = (directory: string): Record<string, unknown> => ({
   cwd: directory,
@@ -206,8 +218,8 @@ const STAYING_SUBCOMMANDS: string[] = [
   `worktree add ../z ${COMMIT}`,
   `worktree add -B feat ../z ${COMMIT}`,
   'worktree list',
-  'commit -m x',
-  'commit --amend --no-edit',
+  'commit -h',
+  'commit --help',
   'log --oneline -3',
   'status',
   'diff',
@@ -256,8 +268,11 @@ const MAIN_CONTEXTS: Context[] = [
 ];
 
 // `reset <operand>` moves main only when the operand is a commit; an existing path in the work tree
-// is a pathspec, so the verdict depends on the work tree and these run where it is known.
-const PATH_OPERAND_CONTEXTS: Context[] = [MAIN_CONTEXTS[0], MAIN_CONTEXTS[3], MAIN_CONTEXTS[13]];
+// is a pathspec, so the verdict depends on the work tree and these run where it is known. The
+// heredoc-message commit rows use the same three contexts, one each for the cwd, `-C` and `cd`.
+const PATH_OPERAND_CONTEXTS: Context[] = MAIN_CONTEXTS.filter(([label]) =>
+  ['cwd is the main checkout', '-C names it from a plain folder', 'cd main &&'].includes(label),
+);
 
 describe('kill-guard: a move of main the verify gate never saw (parser only)', () => {
   it.each(MAIN_CONTEXTS)('denies every moving form: %s', (_label, directory, wrap) => {
@@ -881,13 +896,14 @@ const BODY_LINES: string[] = [
   `git -C ${MAIN} update-ref refs/heads/main ${COMMIT}`,
   `cd ${MAIN} && git checkout -B main ${COMMIT}`,
   `git -C ${MAIN} switch -C main ${COMMIT}`,
+  `git -C ${MAIN} commit -m x`,
 ];
 
 const STAYING_BODY_LINES: string[] = [
   `git -C ${MAIN} reset --hard`,
   `git -C ${MAIN} update-ref refs/heads/x ${COMMIT}`,
   `cd ${MAIN} && git checkout -B feat ${COMMIT}`,
-  `git -C ${MAIN} commit -m x`,
+  `git -C ${MAIN} commit -h`,
 ];
 
 // A heredoc body that a shell runs is shell text, judged in full.
@@ -934,9 +950,29 @@ describe('kill-guard: a move of main written in a heredoc body (parser only)', (
     'allows a move written in a body no shell runs (template %i)',
     (_index, wrap) => {
       expect(bodyKinds(wrap, BODY_LINES, PLAIN)).toEqual(BODY_LINES.map(() => 'allow'));
+    },
+  );
+
+  // A template that is itself a `git commit` is judged for that commit, so only a template that
+  // commits nothing stays allowed in the main checkout.
+  it.each(
+    DATA_BODY_TEMPLATES.map((wrap, index) => [index, wrap] as const).filter(
+      ([, wrap]) => !wrap('x').startsWith('git commit'),
+    ),
+  )(
+    'allows a move written in a body no shell runs, in the main checkout (template %i)',
+    (_i, wrap) => {
       expect(bodyKinds(wrap, BODY_LINES, MAIN)).toEqual(BODY_LINES.map(() => 'allow'));
     },
   );
+
+  it.each(
+    DATA_BODY_TEMPLATES.map((wrap, index) => [index, wrap] as const).filter(([, wrap]) =>
+      wrap('x').startsWith('git commit'),
+    ),
+  )('denies the commit that carries a body, in the main checkout (template %i)', (_i, wrap) => {
+    expect(bodyKinds(wrap, ['fix: x'], MAIN)).toEqual(['mainMove']);
+  });
 });
 
 const scriptWith = (name: string, body: string, mode = 0o644): string => {
@@ -1015,6 +1051,142 @@ describe('kill-guard script scan: a move of main (parser only)', () => {
   );
 });
 
+// The git subcommand text (after `git `) of a commit, in every spelling that is not help.
+const COMMITTING_SUBCOMMANDS: string[] = [
+  'commit -m x',
+  'commit -amn',
+  'commit --amend --no-edit',
+  'commit -F -',
+  'commit -- HANDOFF.md -m x',
+  '-c user.name=x commit -m y',
+  'commit --dry-run',
+  'commit -m -h',
+  'commit -m "--help"',
+];
+
+const HEREDOC_MESSAGE_COMMIT = 'commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)"';
+const HELP_SUBCOMMANDS: string[] = ['commit -h', 'commit --help'];
+
+const optionsAt = (checkout: string, directory: string): Record<string, unknown> => ({
+  cwd: directory,
+  mainCheckoutPath: checkout,
+  projectRoot: checkout,
+});
+
+const NESTED_CONTEXTS: Context[] = [
+  ['cwd is a nested worktree', NESTED, (s) => `git ${s}`],
+  ['cwd is a nested worktree with a trailing slash', `${NESTED}/`, (s) => `git ${s}`],
+  ['-C names a nested worktree', MAIN, (s) => `git -C ${NESTED} ${s}`],
+  ['cd into a nested worktree', MAIN, (s) => `cd ${NESTED} && git ${s}`],
+];
+
+const LINKED_FROM_MAIN_CONTEXTS: Context[] = [
+  ['-C names a linked worktree from the main checkout', MAIN, (s) => `git -C ${LINKED} ${s}`],
+  ['cd into a linked worktree from the main checkout', MAIN, (s) => `cd ${LINKED} && git ${s}`],
+  [
+    '-C names a linked worktree from a folder in main',
+    `${MAIN}/src`,
+    (s) => `git -C ${LINKED} ${s}`,
+  ],
+];
+
+const notJudgedAs = (
+  kind: 'mainMove' | 'allow',
+  subcommands: string[],
+  options: Record<string, unknown>,
+  wrap: (subcommand: string) => string,
+): string[] => {
+  const kinds = decideAll(subcommands.map((s) => [wrap(s), options]));
+
+  return subcommands.filter((_s, index) => kinds[index] !== kind);
+};
+
+describe('kill-guard: a commit in the main checkout, or in a worktree on main', () => {
+  it.each(MAIN_CONTEXTS)('denies every commit: %s', (_label, directory, wrap) => {
+    expect(notJudgedAs('mainMove', COMMITTING_SUBCOMMANDS, optionsIn(directory), wrap)).toEqual([]);
+  });
+
+  it.each(PATH_OPERAND_CONTEXTS)(
+    'denies a commit whose message is a heredoc: %s',
+    (_label, directory, wrap) => {
+      expect(notJudgedAs('mainMove', [HEREDOC_MESSAGE_COMMIT], optionsIn(directory), wrap)).toEqual(
+        [],
+      );
+    },
+  );
+
+  it.each(ON_MAIN_PLACEMENTS)(
+    'denies every commit in a worktree whose HEAD names main: %s',
+    (_label, options, wrap) => {
+      expect(notJudgedAs('mainMove', COMMITTING_SUBCOMMANDS, options, wrap)).toEqual([]);
+    },
+  );
+
+  it.each(UNRESOLVED_PLACEMENTS)(
+    'denies every commit in a folder the text cannot name: %s',
+    (_label, options, wrap) => {
+      expect(notJudgedAs('mainMove', COMMITTING_SUBCOMMANDS, options, wrap)).toEqual([]);
+    },
+  );
+
+  it.each([
+    ['cwd is the checkout', (s: string) => `git ${s}`, optionsAt(BRANCHED, BRANCHED)],
+    ['cwd is a folder in it', (s: string) => `git ${s}`, optionsAt(BRANCHED, `${BRANCHED}/src`)],
+    ['-C names it', (s: string) => `git -C ${BRANCHED} ${s}`, optionsAt(BRANCHED, PLAIN)],
+  ])('denies a commit in the main checkout on another branch: %s', (_label, wrap, options) => {
+    expect(notJudgedAs('mainMove', COMMITTING_SUBCOMMANDS, options, wrap)).toEqual([]);
+  });
+
+  it.each(MAIN_CONTEXTS)('allows help for commit: %s', (_label, directory, wrap) => {
+    expect(notJudgedAs('allow', HELP_SUBCOMMANDS, optionsIn(directory), wrap)).toEqual([]);
+  });
+
+  it.each([...ON_MAIN_PLACEMENTS, ...UNRESOLVED_PLACEMENTS])(
+    'allows help for commit: %s',
+    (_label, options, wrap) => {
+      expect(notJudgedAs('allow', HELP_SUBCOMMANDS, options, wrap)).toEqual([]);
+    },
+  );
+
+  it.each(
+    [...NAMED_PLACEMENTS, ...OWN_BRANCH_PLACEMENTS].filter(
+      ([label]) => label !== 'cwd is a folder in the main checkout',
+    ),
+  )('allows a commit in a worktree on its own branch: %s', (_label, options, wrap) => {
+    expect(notJudgedAs('allow', COMMITTING_SUBCOMMANDS, options, wrap)).toEqual([]);
+  });
+
+  it.each([...LINKED_FROM_MAIN_CONTEXTS, ...NESTED_CONTEXTS])(
+    'allows a commit in a worktree named from the main checkout: %s',
+    (_label, directory, wrap) => {
+      expect(notJudgedAs('allow', COMMITTING_SUBCOMMANDS, optionsIn(directory), wrap)).toEqual([]);
+    },
+  );
+
+  it.each(FOREIGN_PLACEMENTS.filter(([label]) => !label.startsWith('no cwd')))(
+    'allows a commit in a repository that shares nothing: %s',
+    (_label, options, wrap) => {
+      expect(notJudgedAs('allow', COMMITTING_SUBCOMMANDS, options, wrap)).toEqual([]);
+    },
+  );
+
+  it('allows a commit in a scratch repository outside the project, named from main', () => {
+    const scratch = join(createTemporaryDirectory('guard-commit-scratch-'), 'repository');
+    mkdirSync(join(scratch, '.git'), { recursive: true });
+
+    expect(decide(`git -C ${scratch} commit -m x`, optionsIn(MAIN))).toBe('allow');
+  });
+
+  it('allows a commit text that is only an argument of another command', () => {
+    expect(decide('echo git commit -n', optionsIn(MAIN))).toBe('allow');
+    expect(decide('echo git commit -m x', optionsIn(MAIN))).toBe('allow');
+  });
+
+  it.each([MAIN, LINKED, ON_MAIN])('keeps git commit-tree a hook skip, in %s', (directory) => {
+    expect(decide('git commit-tree HEAD^{tree} -m x', optionsIn(directory))).toBe('noVerify');
+  });
+});
+
 const hookResult = (command: string, directory: string): string =>
   spawnSync('bash', [GUARD_HOOK], {
     input: JSON.stringify({ cwd: directory, tool_input: { command } }),
@@ -1041,6 +1213,37 @@ describe('kill-guard: the block for a move of main', () => {
   });
 
   it.each([
+    [REAL_MAIN_CHECKOUT, 'git commit -m x'],
+    [REAL_MAIN_CHECKOUT, 'git commit --amend --no-edit'],
+    [__dirname, `git -C ${REAL_MAIN_CHECKOUT} commit -m x`],
+  ])('names the worktree commit and ff-main.sh for a commit: in %s, %s', (directory, command) => {
+    const reason: string = JSON.parse(hookResult(command, directory)).hookSpecificOutput
+      .permissionDecisionReason;
+
+    expect(reason).toContain(`${command} (runs in ${REAL_MAIN_CHECKOUT})`);
+    expect(reason).toContain('git commit');
+    expect(reason).toMatch(/commit in (a|the) [a-z ]*worktree/);
+    expect(reason).toContain('bash scripts/job-queue.sh verify');
+    expect(reason).toContain('bash scripts/ff-main.sh <sha>');
+  });
+
+  it.each([
+    [__dirname, 'cd "$S" && git commit -m x'],
+    [__dirname, 'git -C "$PWD" commit -m x'],
+  ])(
+    'tells an agent in a worktree to write the folder as literal text: in %s, %s',
+    (directory, command) => {
+      const reason: string = JSON.parse(hookResult(command, directory)).hookSpecificOutput
+        .permissionDecisionReason;
+
+      expect(reason).toContain('(runs in a folder the command does not name)');
+      expect(reason).toContain('write the folder as literal text in the command');
+    },
+  );
+
+  it.each([
+    [REAL_MAIN_CHECKOUT, 'git commit -h'],
+    [REAL_MAIN_CHECKOUT, 'git commit --help'],
     [REAL_MAIN_CHECKOUT, 'git reset --hard'],
     [REAL_MAIN_CHECKOUT, 'git reset -- HANDOFF.md'],
     [REAL_MAIN_CHECKOUT, 'git update-ref refs/heads/x HEAD'],

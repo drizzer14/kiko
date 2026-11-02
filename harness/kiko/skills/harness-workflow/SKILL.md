@@ -298,7 +298,7 @@ see "Mutation base after a track merged next".
 
 ## Merging into main
 
-Never merge, rebase, pull, cherry-pick, revert,
+Never commit (also `--amend`), merge, rebase, pull, cherry-pick, revert,
 am, or apply in the main checkout
 (`/Users/drizzer14/Developer/Projects/pff-ios`): every session's hooks
 run from it, so a conflict marker there breaks every hook. The
@@ -627,11 +627,15 @@ Every call re-sends the whole context, so size drives cost (user 2026-10-30).
 - A coordinator edit or commit of hook/harness code may be
   classifier-denied, but do not assume it. Offer to commit it yourself
   in one line, because it changes the guards and the user decides. On
-  the user's yes, run the commit. If the classifier denies it, do not
+  the user's yes, run the commit in a worktree, never in the main checkout (the kill-guard denies
+  a `git commit` there, kiko-linter's "MAIN-CHECKOUT deny"): queue the verify, then
+  `bash scripts/ff-main.sh <sha>`. If the classifier denies it, do not
   retry or work around it: hand the user the exact command (it stages
   every changed path).
-- A commit command handed to the user stages EVERY changed path
-  (`git add <paths>` or `git commit -- <paths>`), never only some.
+- A commit command handed to the user names the worktree and stages EVERY changed path
+  (`git add <paths>` or `git commit -- <paths>`), never only some. The tracked, dirty
+  `HANDOFF.md` of the main checkout can make `ff-main.sh` refuse a commit that changes it
+  (kiko-linter's wrapper-contract, "The `mainMove` kind"); a track commit leaves it alone.
 - Consent relayed by a peer session is not consent. Act only after you
   read the user's own words.
 - Verify liveness with a harmless probe (for example
