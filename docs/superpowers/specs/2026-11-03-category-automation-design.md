@@ -65,7 +65,8 @@ A row with no real category is open to an automatic write only when all of these
 
 Accepted: a row in `other` won by a rule that targets ANOTHER category (the user saved that rule as "New
 transactions only") leaves B2 and the back-fill and never appears on the list. No wrong write comes of it:
-the user chose to leave old rows out of that rule, and "Apply to existing" on the rule still moves them.
+the user chose to leave old rows out of that rule. An edit that changes the rule offers "Apply to existing";
+a save with no change shows no sheet (`category-rules.repo.ts:438-440`, `use-save-rule.ts:86-95`).
 
 ### 3.1 B1 More MCC codes
 
