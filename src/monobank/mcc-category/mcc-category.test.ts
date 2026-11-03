@@ -1,17 +1,11 @@
-import maybe, { foldMap } from 'fnts/maybe';
+import { SEEDED_CATEGORIES, TRAVEL_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { ALWAYS_EXCLUDED_MCCS, OWN_ACCOUNT_TRANSFER_MCC, categoryForMcc } from './mcc-category';
-
-// Read at run time: the export and the seeded Travel fixture do not exist yet.
-const { ADDED_MCC_CODES: addedMccCodes } = jest.requireActual('./mcc-category') as {
-  ADDED_MCC_CODES?: readonly number[];
-};
-const { SEEDED_CATEGORIES, TRAVEL_CATEGORY: travelCategory } = jest.requireActual(
-  '@kiko/db/__fixtures__/seeded-categories',
-) as {
-  SEEDED_CATEGORIES: readonly { key: string }[];
-  TRAVEL_CATEGORY?: { key: string };
-};
+import {
+  ADDED_MCC_CODES,
+  ALWAYS_EXCLUDED_MCCS,
+  OWN_ACCOUNT_TRANSFER_MCC,
+  categoryForMcc,
+} from './mcc-category';
 
 // Literal tables, copied from the design and never derived from the module under test.
 const ORIGINAL_CODES: Record<string, readonly number[]> = {
@@ -146,7 +140,7 @@ describe('the original and the added codes', () => {
   });
 
   it('lists 976 distinct added codes, none original and none excluded from spending', () => {
-    const added = addedMccCodes ?? [];
+    const added = ADDED_MCC_CODES;
     const original = new Set(tableWithCategory(ORIGINAL_CODES).map(([code]) => code));
     const excluded = new Set<number>([...ALWAYS_EXCLUDED_MCCS, OWN_ACCOUNT_TRANSFER_MCC]);
 
@@ -161,17 +155,14 @@ describe('the original and the added codes', () => {
   });
 
   it('targets only seeded keys and never cash or transfers', () => {
-    const seededKeys = new Set([
-      ...SEEDED_CATEGORIES.map(({ key }) => key),
-      ...(foldMap(maybe(travelCategory), ({ key }) => [key]) ?? []),
-    ]);
+    const seededKeys = new Set([...SEEDED_CATEGORIES.map(({ key }) => key), TRAVEL_CATEGORY.key]);
     const addedTargets = new Set(
       [...ADDED_SINGLES_WITH_CATEGORY, ...ADDED_RANGES_WITH_CATEGORY].map(([code]) =>
         categoryForMcc(code),
       ),
     );
 
-    expect(travelCategory?.key).toBe('travel');
+    expect(TRAVEL_CATEGORY.key).toBe('travel');
     expect([...addedTargets].filter((key) => !seededKeys.has(key))).toEqual([]);
     expect([...addedTargets].filter((key) => ['cash', 'transfers', 'other'].includes(key))).toEqual(
       [],

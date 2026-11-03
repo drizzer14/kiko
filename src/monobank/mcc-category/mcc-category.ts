@@ -60,9 +60,56 @@ const MCC_CATEGORIES: Record<string, readonly number[]> = {
   transfers: [OWN_ACCOUNT_TRANSFER_MCC, ...CARD_TOPUP_MCCS],
 };
 
+const rangeOf = (first: number, last: number): number[] =>
+  Array.from({ length: last - first + 1 }, (_unused, offset) => first + offset);
+
+// Codes added after the lists above shipped. Kept apart because the one-time back-fill reads
+// exactly these codes (`ADDED_MCC_CODES`): a code of the original map never produced `other`,
+// so a stored row holding one was moved there by something and is left alone. Each range is
+// mapped whole, though the source lists only some of its codes: 3000-3299 airline brands,
+// 3351-3441 car rental brands, 3501-3999 lodging brands. 4511 and 4582 (airline, airport) and
+// 7011 (lodging) belong to `travel` beside them; car rental 7512 and rail 4112 stay in
+// `transport`. Never add 6010 or 6051 (cash and quasi-cash): a code in `cash` or `transfers`
+// that is not in `ALWAYS_EXCLUDED_MCCS` would still count as spending.
+const ADDED_MCC_CATEGORIES: Record<string, readonly number[]> = {
+  groceries: [5300, 5441, 5921],
+  dining: [5811],
+  transport: [
+    4112,
+    4789,
+    5532,
+    5533,
+    5983,
+    7512,
+    7531,
+    7534,
+    7535,
+    7538,
+    7542,
+    7549,
+    ...rangeOf(3351, 3441),
+  ],
+  travel: [4511, 4582, 4722, 7011, ...rangeOf(3000, 3299), ...rangeOf(3501, 3999)],
+  shopping: [
+    4812, 5200, 5211, 5231, 5251, 5261, 5310, 5311, 5331, 5399, 5621, 5631, 5641, 5655, 5661, 5699,
+    5712, 5713, 5714, 5719, 5722, 5733, 5734, 5735, 5931, 5940, 5942, 5943, 5947, 5948, 5949, 5964,
+    5965, 5969, 5992, 5995, 5999,
+  ],
+  utilities: [4816],
+  entertainment: [
+    5815, 5816, 5817, 5818, 7829, 7841, 7911, 7929, 7932, 7933, 7941, 7991, 7992, 7993, 7994, 7998,
+    7999,
+  ],
+  health: [4119, 5975, 5976, 7298, 8031, 8041, 8043, 8049, 8050, 8071, 8099],
+};
+
+export const ADDED_MCC_CODES: readonly number[] = Object.values(ADDED_MCC_CATEGORIES).flat();
+
 const MCC_TO_CATEGORY: ReadonlyMap<number, string> = new Map(
-  Object.entries(MCC_CATEGORIES).flatMap(([category, mccs]) =>
-    mccs.map((mcc) => [mcc, category] as const),
+  [MCC_CATEGORIES, ADDED_MCC_CATEGORIES].flatMap((categories) =>
+    Object.entries(categories).flatMap(([category, mccs]) =>
+      mccs.map((mcc) => [mcc, category] as const),
+    ),
   ),
 );
 
