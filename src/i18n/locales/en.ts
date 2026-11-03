@@ -338,7 +338,7 @@ export const en = {
       bankType: 'Bank type',
       bankTypePlaceholder: 'Select a bank',
       bankTypeSheetTitle: 'Bank Type',
-      bitcoinWallet: 'Bitcoin wallet address',
+      bitcoinWallet: 'Bitcoin wallet',
       broker: 'Broker',
       brokerDisclaimer:
         'Kiko is an independent app. It is not affiliated with or endorsed by any broker.',
@@ -1139,7 +1139,7 @@ export const en = {
         rowLabel: 'Connect Binance or a Bitcoin wallet',
         steps: {
           '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Crypto".',
-          '2': 'Under "Exchange or wallet", choose "Binance" or "Bitcoin wallet address".',
+          '2': 'Under "Exchange or wallet", choose "Binance" or "Bitcoin wallet".',
           '3': 'For Binance, tap "Open Binance API management" and create an API key there with only "Enable Reading" turned on (no trading or withdrawal permission). Paste the "API key" and "API secret", then tap "Connect Binance".',
           '4': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
           '5': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
