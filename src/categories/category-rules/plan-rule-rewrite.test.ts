@@ -8,7 +8,18 @@ import {
 } from './plan-rule-rewrite';
 import { prepareRules } from './prepare-rules';
 import { ruleRow } from './__fixtures__/rule-row';
-import type { CategoryRuleMatcher, RewriteCandidate } from './category-rules.d';
+import type { CategoryRuleMatcher, PreparedRules, RewriteCandidate } from './category-rules.d';
+
+// Read at run time: neither function exists yet.
+type MccBackfillRow = RewriteCandidate & { mcc: number | null };
+const { hasNoRealCategory, planMccBackfill } = jest.requireActual('./plan-rule-rewrite') as {
+  hasNoRealCategory: (row: { category: string | null }, knownKeys: ReadonlySet<string>) => boolean;
+  planMccBackfill: (
+    prepared: PreparedRules,
+    rows: readonly MccBackfillRow[],
+    knownKeys: ReadonlySet<string>,
+  ) => { id: string; category: string }[];
+};
 
 const nameIs = (text: string): CategoryRuleMatcher => ({ type: 'nameIs', text });
 
@@ -213,5 +224,154 @@ describe('planRuleRewrite', () => {
     ]);
 
     expect(plan).toEqual(['usd']);
+  });
+});
+
+describe('hasNoRealCategory', () => {
+  const knownKeys = new Set(['groceries', 'other', 'travel', 'user-key']);
+
+  it.each([
+    ['null', null],
+    ['empty', ''],
+    ['other', 'other'],
+    ['OTHER', 'OTHER'],
+    ['an orphan key', 'ghost'],
+  ])('is true for %s', (_label, category) => {
+    expect(hasNoRealCategory({ category }, knownKeys)).toBe(true);
+  });
+
+  it.each([
+    ['a seeded key', 'groceries'],
+    ['a seeded key in another case', 'GROCERIES'],
+    ['a user key in the known set', 'user-key'],
+  ])('is false for %s', (_label, category) => {
+    expect(hasNoRealCategory({ category }, knownKeys)).toBe(false);
+  });
+});
+
+describe('planMccBackfill', () => {
+  const knownKeys = new Set(['groceries', 'other', 'travel', 'shopping', 'food']);
+
+  const backfillRow = (overrides: Partial<MccBackfillRow> = {}): MccBackfillRow => ({
+    ...candidate({ id: 'row-1', category: 'other' }),
+    mcc: 5300,
+    ...overrides,
+  });
+
+  const planFor = (
+    rows: readonly MccBackfillRow[],
+    rules: Parameters<typeof prepareRules>[0] = [],
+    known: ReadonlySet<string> = knownKeys,
+  ) => planMccBackfill(prepareRules(rules), rows, known);
+
+  const unrelated = backfillRow({ id: 'unrelated', description: 'ATB' });
+  const unrelatedPlan = { id: 'unrelated', category: 'groceries' };
+
+  it('plans an added code in other to its mapped category', () => {
+    expect(planFor([backfillRow()])).toEqual([{ id: 'row-1', category: 'groceries' }]);
+  });
+
+  it('plans a NULL, an empty and an orphan category', () => {
+    const plan = planFor([
+      backfillRow({ id: 'null-category', category: null }),
+      backfillRow({ id: 'empty-category', category: '' }),
+      backfillRow({ id: 'orphan-category', category: 'ghost' }),
+    ]);
+
+    expect(plan).toEqual([
+      { id: 'null-category', category: 'groceries' },
+      { id: 'empty-category', category: 'groceries' },
+      { id: 'orphan-category', category: 'groceries' },
+    ]);
+  });
+
+  it('plans an exchange leg', () => {
+    const exchangeLeg = {
+      ...backfillRow({ id: 'leg' }),
+      exchangeCounterpartHoldingId: 'holding-2',
+      untrackedCounterpart: null,
+    };
+
+    expect(planFor([exchangeLeg])).toEqual([{ id: 'leg', category: 'groceries' }]);
+  });
+
+  it('leaves a code of the original map', () => {
+    expect(planFor([backfillRow({ id: 'original', mcc: 5411 }), unrelated])).toEqual([
+      unrelatedPlan,
+    ]);
+  });
+
+  it('leaves an unmapped code and a null code', () => {
+    const plan = planFor([
+      backfillRow({ id: 'unmapped', mcc: 6300 }),
+      backfillRow({ id: 'no-code', mcc: null }),
+      unrelated,
+    ]);
+
+    expect(plan).toEqual([unrelatedPlan]);
+  });
+
+  it('leaves a hand-set row', () => {
+    expect(planFor([backfillRow({ id: 'hand', categorySetByHand: true }), unrelated])).toEqual([
+      unrelatedPlan,
+    ]);
+  });
+
+  it('leaves a balance-setting row', () => {
+    expect(planFor([backfillRow({ id: 'balance', setsBalance: true }), unrelated])).toEqual([
+      unrelatedPlan,
+    ]);
+  });
+
+  it('leaves a split-change row', () => {
+    expect(planFor([backfillRow({ id: 'split', changeGroupId: 'group-1' }), unrelated])).toEqual([
+      unrelatedPlan,
+    ]);
+  });
+
+  it('leaves a row a rule targeting other wins', () => {
+    const keepsOther = ruleRow({
+      id: 'keeps-other',
+      category: 'other',
+      matchers: [nameIs('silpo')],
+    });
+
+    expect(planFor([backfillRow(), unrelated], [keepsOther])).toEqual([unrelatedPlan]);
+  });
+
+  it('leaves a row a rule targeting another category wins', () => {
+    expect(planFor([backfillRow(), unrelated], [savedFood])).toEqual([unrelatedPlan]);
+  });
+
+  it('leaves a row whose target category was deleted', () => {
+    const withoutGroceries = new Set(['other', 'travel', 'shopping']);
+
+    expect(planFor([backfillRow()], [], withoutGroceries)).toEqual([]);
+  });
+
+  it('plans a hotel code to travel', () => {
+    expect(planFor([backfillRow({ mcc: 7011 })])).toEqual([{ id: 'row-1', category: 'travel' }]);
+  });
+
+  it('leaves a hotel code when travel was deleted', () => {
+    const withoutTravel = new Set(['groceries', 'other', 'shopping']);
+
+    expect(planFor([backfillRow({ mcc: 7011 }), unrelated], [], withoutTravel)).toEqual([
+      unrelatedPlan,
+    ]);
+  });
+
+  it('leaves a row in a real category', () => {
+    expect(planFor([backfillRow({ id: 'real', category: 'shopping' }), unrelated])).toEqual([
+      unrelatedPlan,
+    ]);
+  });
+
+  it('ignores a rule that cannot be read', () => {
+    const unreadable = { ...savedFood, matchers: 'not json' };
+
+    expect(planFor([backfillRow()], [unreadable])).toEqual([
+      { id: 'row-1', category: 'groceries' },
+    ]);
   });
 });
