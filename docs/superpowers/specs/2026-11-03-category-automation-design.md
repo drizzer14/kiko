@@ -174,7 +174,8 @@ and `uk.ts`. `1.4-light-scheme`: the new UI uses theme tokens and shared compone
 #### 3.2.2 Query and grouping
 
 Two live reads, `['transactions', 'category_rules', 'categories']`, `paused` while the screen is not
-focused, never `cached` (they lead to a write, kiko-architecture):
+visible (`useIsScreenVisible`, `statistics.screen.tsx:218-226`), never `cached` (they lead to a write,
+kiko-architecture):
 1. `reviewCandidateRowsQuery`: `candidateColumns` for rows with a stored non-blank description and
    `category IS NULL OR lower(category) = 'other' OR orphan`. SQL only narrows; the pure function
    decides, as the rewrite queries do (`category-rules.repo.ts:60-63`).
@@ -211,15 +212,20 @@ its own migration with an EXPLAIN QUERY PLAN test and a `kiko:reviewer` step, no
 
 The line's control opens the category options; picking one is the tap.
 1. Calls `categoryRulesRepo.previewNameRule({ text, kind, category })`, which returns
-   `{ count, names }` from `rowIdsRewrittenBy`, the function the write uses.
-2. If `count === group.rowCount`, writes at once.
+   `{ count, names }` from a private `rowsRewrittenBy`. `rowIdsRewrittenBy` returns ids only
+   (`category-rules.repo.ts:294-298`), so it becomes a map over `rowsRewrittenBy`, and the preview and
+   the write share one function.
+2. If `count` equals the group's rows that this pick moves, writes at once. A pick of the category the
+   rows already hold moves none of them (`plan-rule-rewrite.ts:44-46`), so "Keep in Other" compares
+   against `movingRowCount`, not `rowCount`, and never opens "Move 0".
 3. Otherwise opens a confirm sheet: "Move N transactions" with up to five names plus "and M more".
 
 Step 3 exists because `planRuleRewrite` moves every eligible row the rule wins, not only rows in
 `other` (`plan-rule-rewrite.ts:41-48`). Examples: a prefix "ATB" also wins "ATB Market" and "ATBANK"
 (`nameStartsWith` is a plain `startsWith`, `prepare-rules.ts:173`); a name with 12 rows in `other` and 3
 rows MCC-sorted into `groceries` moves 15. A silent 15 under a promise of 12 would break the binding
-constraint. A pin holds `listed rows ⊆ planned rows`, and `planned = listed` when no such row exists.
+constraint. A pin holds `listed rows that move ⊆ planned rows`, and `planned = listed rows that move`
+when no such row exists. For a pick of a category other than the listed rows' own, every listed row moves.
 
 Write: `categoryRulesRepo.applyNameRule({ name: text, kind, category, sourceTransactionId: null })`,
 extended with `kind` (section 3.3). Not `saveRule`, which refuses an existing matcher as a duplicate.
@@ -342,8 +348,10 @@ checksum check: fixture and restored values fail it, and a typo gives a count of
 Priority: unchanged, more DISTINCT matchers first, then `updatedAt`, `createdAt`, `id`
 (`prepare-rules.ts:30-32`). Each new condition counts 1. No special rank for a kind.
 
-Performance: rules without `nameIs` sit in `withoutName` and run per row. The pinned fixture
-(50,000 rows, 200 rules) gains the new kinds and keeps its bound.
+Performance: rules without `nameIs` sit in `withoutName` and run per row. The fixture
+(50,000 rows, 200 rules) is not edited, because a shape pin holds its rule counts
+(`category-rules.performance.test.ts`). Each new pin gives its own rule list with the new kinds. The
+bounds are counted work, never wall clock (`transactions.repo.category-rules.performance.test.ts`).
 
 Rule form: `MatcherRow` gains the four inputs; `MatcherDraft` gains `mccText`, `accountId`, `ibanText`
 (`nameContains` reuses `text`). A draft keeps every field, so switching type loses nothing. Rule card:
@@ -409,8 +417,10 @@ nothing, not even its known conditions. New rows that rule would have sorted kee
 No wrong write.
 
 (b) **Export from 1.3, restore into 1.4:** the rule's JSON comes back byte for byte and reads again; it
-works on rows from then on. No restore runs a rewrite, so rows 1.3 added in between keep the category
-they got, until the user applies. If the user deleted the card in 1.3, it is gone, by their action.
+works on rows from then on. Restore runs no rule rewrite, so rows 1.3 added in between keep the category
+they got, until the user applies. One exception is the B1 back-fill: a 1.3 file has no mark, so
+`importData` runs it once, and rows with an added code that have no real category move (section 3.1.4).
+If the user deleted the card in 1.3, it is gone, by their action.
 Same result for an in-place update from 1.3.
 
 **Result: an older build cannot damage data; no fix is needed.** `EXPORT_VERSION` stays 5 for B4. A bump
@@ -656,9 +666,10 @@ component changes); the coordinator's queued verify; the coordinator's merge.
 Only decisions that change what gets built.
 
 **Q1. Do old rows with an added code move by themselves?**
-- A. Once, at the next app open, with no prompt. Fewer rows to review; past months' slices shift
-  silently; a pick of `other` made before version 1.2 on such a row, or a since-deleted rule's result,
-  moves too and cannot be told apart.
+- A. Once per data set, at the next app open, with no prompt. Fewer rows to review; past months' slices
+  shift silently; a pick of `other` made before version 1.2 on such a row, or a since-deleted rule's
+  result, moves too and cannot be told apart. A restore of a backup made before 1.4 repeats this move on
+  that file's rows.
 - B. Not by themselves: the review list offers them with the bank code's category as a suggestion, one
   tap each. Nothing moves unseen; more tapping; no migration, since the mark is not needed.
 - C. New rows only. Old rows stay in `other` until the user reviews them by name.
