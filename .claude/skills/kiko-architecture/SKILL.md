@@ -631,8 +631,10 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   `NetWorthLine`) — the backfill tracks a later, non-blocking network
   fetch that only starts once the screen's OWN base queries have
   already loaded; do not fold the two into one flag. That backfill
-  effect must ALSO gate on its own upstream query's `isLoading`
-  (`historyLoading`) in its dependency guard, not just on
+  effect (`src/statistics/use-rate-history-backfill/`) must ALSO gate on its own upstream
+  query's `isLoading` (`historyLoading`, from
+  `src/statistics/statistics-sources/use-statistics-sources.ts`) in its dependency guard, not
+  just on
   `transactions.length` — an empty `historyRows` reads identically to
   "nothing backfilled yet" for as long as `currency_rate_history`'s
   own query is still on its first load, and re-fetching/re-writing the

@@ -74,7 +74,7 @@ describe('ExchangeTypeField', () => {
       'Binance. Connect with a read-only API key.',
     );
     expect(getByTestId('exchange-type-option-btc_wallet').props.accessibilityLabel).toBe(
-      'Bitcoin wallet address. Connect with a public address.',
+      'Bitcoin wallet. Connect with a public address.',
     );
     expect(getByTestId('exchange-type-option-other').props.accessibilityLabel).toBe(
       'Other exchange or wallet. Add holdings by hand.',
@@ -103,7 +103,7 @@ describe('ExchangeTypeField', () => {
     const wallet = await renderField('btc_wallet');
 
     expect(binance.getByTestId('exchange-type-field')).toHaveTextContent('Binance');
-    expect(wallet.getByTestId('exchange-type-field')).toHaveTextContent('Bitcoin wallet address');
+    expect(wallet.getByTestId('exchange-type-field')).toHaveTextContent(/^Bitcoin wallet$/);
   });
 
   it('reports the picked id and closes the sheet', async () => {

@@ -65,72 +65,75 @@ const bondRecognitionsFor = (
   );
 };
 
+export type HoldingValuesInput = {
+  holdings: SeriesHolding[];
+  transactionsByHolding: Map<string, SeriesTransaction[]>;
+  historyRows: HistoryRow[];
+  baseCurrency: Currency;
+  instants: number[];
+  liveRateTable?: RateTable;
+  today?: number;
+  book?: PriceBook;
+};
+
+/** Each holding's value at one instant, in base MINOR units; a holding with no rate is absent. */
+export type HoldingValuesAt = { t: number; byHolding: Map<string, number> };
+
 /**
- * Build the single converted net-worth line over `range`. For each day bucket
- * `t`, every holding is valued at `t` (via `createHoldingValuer`, so past
- * deposit interest / bond coupons are correct) and converted to the base
- * currency at that day's rate table. Each point's `amount` is the absolute
- * total in base MAJOR units.
+ * Value every holding at each of `instants`, converted to the base currency at that instant's
+ * rate table. Each holding is valued at `t` (via `createHoldingValuer`, so past deposit interest
+ * / bond coupons are correct). `buildNetWorthSeries` is the sum of these values, so a table of
+ * per-holding values and the line cannot disagree.
  *
  * `holdings` must include CLOSED holdings too, not just currently-open ones —
  * the caller applies its own account/name filter, but never a `closedAt`
  * filter, before calling this. A closed holding's value is zeroed only for
- * buckets at or after the exact instant it closed (see the
- * `holdingsWithValuer` build below); every earlier bucket still reconstructs
+ * instants at or after the exact instant it closed (see the
+ * `holdingsWithValuer` build below); every earlier instant still reconstructs
  * its real historical value.
  *
- * The rate table for a bucket is resolved so the line reconciles end-to-end:
- * - lookups are keyed by the bucket's LOCAL calendar day (`dayKeyOf`): history
+ * The rate table for an instant is resolved so the line reconciles end-to-end:
+ * - lookups are keyed by the instant's LOCAL calendar day (`dayKeyOf`): history
  *   `day` is the UTC-midnight stand-in for a calendar date, the same shape
- *   `dayKeyOf` returns, so the two compare as plain day keys. A bucket is the
+ *   `dayKeyOf` returns, so the two compare as plain day keys. An instant is the
  *   END of its local day (the valuer reads it so), and a UTC-day floor would
- *   send every Kyiv bucket at 00:00-03:00 local to the PREVIOUS day's row;
+ *   send every Kyiv instant at 00:00-03:00 local to the PREVIOUS day's row;
  * - the nearest row AT OR BEFORE that day is used (`rateTableAt`, carrying
  *   weekends/holidays forward), backstopped by each pair's EARLIEST stored row
- *   (`earliestRateTable`) so buckets before a pair's first history day still
+ *   (`earliestRateTable`) so instants before a pair's first history day still
  *   value foreign holdings instead of silently dropping them, which is in turn
  *   backstopped by the live `rateTable` (a currency with NO history row at all,
  *   such as a crypto holding, is valued flat at today's rate in every past
- *   bucket, so the line has no step at its right edge) and then by the bundled
+ *   instant, so the line has no step at its right edge) and then by the bundled
  *   static `FIAT_RATE_SEED_TABLE` so a fiat currency with no history row and
  *   no live rate yet (the backfill only fetches the currencies actually used)
- *   never drops a holding out of a past bucket — precedence, weakest first:
+ *   never drops a holding out of a past instant — precedence, weakest first:
  *   seed < live < earliest < at-or-before, then live on top for today;
- * - the CURRENT-day bucket(s) are valued at the live `rateTable` when supplied,
+ * - the CURRENT-day instant(s) are valued at the live `rateTable` when supplied,
  *   so the line's rightmost "now" point matches the headline / bar / pie, which
  *   use the same live (monobank BUY) rates rather than the day's NBU official one.
  *
  * Known limits: a currency missing from history AND the live table
  * (a failed all-or-nothing crypto fetch, or a closed crypto holding with no
- * stored rate) drops out of every bucket, today's included, so the line agrees
- * with the headline; a past bucket of a currency with no history moves when its
+ * stored rate) drops out of every instant, today's included, so the line agrees
+ * with the headline; a past instant of a currency with no history moves when its
  * live rate moves.
  *
  * Holdings with no rate for their currency at `t` are skipped (guarded), never
  * crashing the sum.
  *
  * With no history stored yet, only a base-currency-only user (no holding
- * ever needs a cross-rate) still gets points; any other holder returns an
- * empty series rather than a partial line missing its foreign holdings.
+ * ever needs a cross-rate) still gets values; any other holder returns an
+ * empty list rather than a partial one missing its foreign holdings. So does a
+ * world with no holdings at all.
  */
-export const buildNetWorthSeries = (input: {
-  holdings: SeriesHolding[];
-  transactionsByHolding: Map<string, SeriesTransaction[]>;
-  historyRows: HistoryRow[];
-  baseCurrency: Currency;
-  range: { from: number; to: number };
-  bucketDays?: number;
-  liveRateTable?: RateTable;
-  today?: number;
-  book?: PriceBook;
-}): NetWorthSeries => {
+export const buildHoldingValues = (input: HoldingValuesInput): HoldingValuesAt[] => {
   const {
     holdings,
     transactionsByHolding,
     historyRows,
     baseCurrency,
-    range,
-    bucketDays = 1,
+    instants,
     liveRateTable,
     today,
     book = EMPTY_PRICE_BOOK,
@@ -138,12 +141,12 @@ export const buildNetWorthSeries = (input: {
 
   // Empty with no holdings (nothing to plot), or with no history rows yet
   // while some holding is foreign (a misleading partial line otherwise); a
-  // base-currency-only user still gets points with no history rows.
+  // base-currency-only user still gets values with no history rows.
   if (
     holdings.length === 0 ||
     (historyRows.length === 0 && holdings.some((holding) => holding.currency !== baseCurrency))
   ) {
-    return { points: [], startReference: 0 };
+    return [];
   }
 
   // This is a pure valuation shift on a THROWAWAY copy: it rewrites only
@@ -151,7 +154,7 @@ export const buildNetWorthSeries = (input: {
   // maturity, and the redemption ledger read the REAL holding's untouched
   // `purchaseDate` elsewhere — the series never derives them from this copy. The
   // pairing needs cross-holding transactions, which only this builder holds, so it
-  // happens once here before the bucket loop rather than inside `bondBreakdown`.
+  // happens once here before the instant loop rather than inside `bondBreakdown`.
   // See `bondRecognitionsFor` above for the claim/order rules.
   const bondRecognitions = bondRecognitionsFor(holdings, transactionsByHolding);
 
@@ -172,12 +175,12 @@ export const buildNetWorthSeries = (input: {
     };
   });
 
-  // Built ONCE per holding, not once per (holding, bucket) — see
-  // `createHoldingValuer`'s own doc comment for why a per-bucket reduce/filter
+  // Built ONCE per holding, not once per (holding, instant) — see
+  // `createHoldingValuer`'s own doc comment for why a per-instant reduce/filter
   // would be loop-invariant work repeated at every point. A closed
-  // holding's value is zeroed for every bucket AT OR AFTER its own
+  // holding's value is zeroed for every instant AT OR AFTER its own
   // `closedAt` instant — a raw instant compare, not a local-day one, keeps
-  // the rightmost "now" bucket consistent with the screen's other
+  // the rightmost "now" instant consistent with the screen's other
   // now-snapshots (open holdings only) even when the holding closed earlier
   // the SAME day. `holdings` carries every holding regardless of `closedAt`
   // (kiko-pricing: the history chart needs a closed holding's own past
@@ -205,10 +208,10 @@ export const buildNetWorthSeries = (input: {
     const dayKey = dayKeyOf(t);
     // Precedence, weakest first: the bundled static seed (covers every fiat
     // currency, so one with no history row yet never drops a holding out of
-    // a past bucket), then the live table (prices a currency with no stored
+    // a past instant), then the live table (prices a currency with no stored
     // history at all — a crypto holding, or a fiat the seed only roughly
     // knows — flat at today's rate instead of dropping it from every past
-    // bucket and stepping up at today), then each pair's earliest stored row
+    // instant and stepping up at today), then each pair's earliest stored row
     // (backfills before its own first history day), then the day's own
     // nearest-at-or-before row — a real historical rate always wins over both
     // the flat seed and the live rate.
@@ -218,25 +221,66 @@ export const buildNetWorthSeries = (input: {
       ...earliest,
       ...rateTableAt(historyRows, dayKey),
     };
-    // Every bucket on today's local day (or later) reconciles with the live app
+    // Every instant on today's local day (or later) reconciles with the live app
     // rates, whatever the time of day.
     return liveRateTable !== undefined && dayKey >= todayKey
       ? { ...historical, ...liveRateTable }
       : historical;
   };
 
-  const points = bucketTimes(range.from, range.to, bucketDays).map((t) => {
+  return instants.map((t) => {
     const table = tableAt(t);
-    const total = holdingsWithValuer
-      .filter(({ holding }) => canConvert(holding.currency, baseCurrency, table))
-      .reduce(
-        (sum, { holding, valueAt }) =>
-          sum.add(convert(Money.of(holding.currency, valueAt(t)), baseCurrency, table)),
-        Money.of(baseCurrency, 0),
-      );
+    const byHolding = new Map<string, number>();
 
-    return { t, amount: toMajor(total.minorUnits, baseCurrency) };
+    for (const { holding, valueAt } of holdingsWithValuer) {
+      if (canConvert(holding.currency, baseCurrency, table)) {
+        byHolding.set(
+          holding.id,
+          convert(Money.of(holding.currency, valueAt(t)), baseCurrency, table).minorUnits,
+        );
+      }
+    }
+
+    return { t, byHolding };
   });
+};
+
+/**
+ * Build the single converted net-worth line over `range`: for each day bucket `t`, the sum of
+ * `buildHoldingValues` at `t`. Each point's `amount` is the absolute total in base MAJOR units.
+ * The holdings, rate and history rules are the ones `buildHoldingValues` documents.
+ *
+ * With no history stored yet, only a base-currency-only user (no holding
+ * ever needs a cross-rate) still gets points; any other holder returns an
+ * empty series rather than a partial line missing its foreign holdings.
+ */
+export const buildNetWorthSeries = (input: {
+  holdings: SeriesHolding[];
+  transactionsByHolding: Map<string, SeriesTransaction[]>;
+  historyRows: HistoryRow[];
+  baseCurrency: Currency;
+  range: { from: number; to: number };
+  bucketDays?: number;
+  liveRateTable?: RateTable;
+  today?: number;
+  book?: PriceBook;
+}): NetWorthSeries => {
+  const { range, bucketDays = 1, baseCurrency, ...rest } = input;
+
+  const values = buildHoldingValues({
+    ...rest,
+    baseCurrency,
+    instants: bucketTimes(range.from, range.to, bucketDays),
+  });
+
+  // `bucketTimes` always closes on `to`, so the values are empty only under the empty guard.
+  const points = values.map(({ t, byHolding }) => ({
+    t,
+    amount: toMajor(
+      [...byHolding.values()].reduce((sum, minorUnits) => sum + minorUnits, 0),
+      baseCurrency,
+    ),
+  }));
 
   return { points, startReference: points[0]?.amount ?? 0 };
 };
