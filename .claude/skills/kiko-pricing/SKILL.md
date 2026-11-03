@@ -252,10 +252,12 @@ Crypto history rules (`src/rates/coingecko-history/coingecko-history.ts`,
   asked of CoinGecko once per 7 days and of Binance every run.
 
 The Statistics screen drives an incremental, non-blocking backfill of
-`currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
+`currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`), through the hook in
+`src/statistics/use-rate-history-backfill/use-rate-history-backfill.ts` (the screen only calls it):
 `planBackfillRun` decides whether a mount/focus needs a run for the
 current span — from the earliest transaction OR the earliest priced-lot day
-(`earliestLotDay` in `src/screens/statistics/statistics.screen.tsx`,
+(`earliestLotDay` in `src/statistics/statistics-sources/use-statistics-sources.ts`, and
+`src/prices/metal-refresh/metal-refresh.ts`,
 converted with `localMidnightOfDayKey`), whichever is older, to now; it
 runs when transactions OR holdings exist — `missingDays` lists the still-uncovered UTC
 days, and `runBackfill` fetches, composes and upserts them, returning
@@ -317,8 +319,10 @@ normally.
 `planBackfillRun` takes a fourth argument, `currenciesChanged`, so a
 NEW currency held mid-session (a GBP holding added while Statistics
 stays mounted) re-runs the backfill WITHOUT a restart, even though
-`spanStart` itself never moved: `statistics.screen.tsx` derives a
-sorted `historyCurrencyKey` from every held holding's currency plus
+`spanStart` itself never moved: `use-rate-history-backfill.ts`
+(`src/statistics/use-rate-history-backfill/`) derives a
+sorted `historyCurrencyKey` from every held holding's currency
+plus
 the base, tracked in its own ref (`backfillRanForCurrencyKeyRef`)
 alongside the existing span ref — set the same way, and RESTORED the
 same way on a failed settle, so a retry after a rejected run still
