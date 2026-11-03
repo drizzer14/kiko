@@ -129,6 +129,19 @@ new component can land between reviews of this skill:
   quickly (the common case, off the local op-sqlite worker) never
   flashes a spinner at all — readiness (`useDataReady`) itself is
   never delayed, only the visual spinner.
+- **DataTable** (`src/design-system/components/data-table/`) — a grid of money amounts: props
+  `{ columns, rows, caption, initialColumnIndex?, testID? }`, strings and display flags only (the
+  caller formats every amount). A fixed first column (at most 40% of the table's measured width, a
+  long label wraps in full), a header row above the body's vertical `ScrollView` that follows the
+  body's horizontal offset through reanimated's `useScrollOffset`, and a horizontal scroll that
+  turns on only when the columns overflow. Every width and row height comes from `onLayout`
+  (a hidden measuring layer for text widths; a row is `minHeight` of the taller part, at least
+  44pt), never the window or the device type, so Dynamic Type is followed. Cell text is a plain RN
+  `Text` for `fontVariant: ['tabular-nums']`. One VoiceOver element per cell (label, FULL value;
+  role `button` and hint only with `onPress`); header cells are hidden; the caption is the
+  `summary`. `SummaryTable` does not fit: it is a label/value stack with no columns, header, fixed
+  column or scroll. The caller gives it a bounded height (Screen not scrolling). The sticky header
+  is unproven on a device (task 2 probe owed).
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
