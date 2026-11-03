@@ -1022,9 +1022,9 @@ purchase row with its funding bank debit)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
-Which rows each step reads (`src/screens/statistics/statistics.screen.tsx`):
-the spending charts always draw every row of the holdings under the KEPT
-accounts, open or closed (`transactionsWithCurrency`, filtered from
+Which rows each step reads (`src/statistics/spending-ledger/`, one hook and one pure builder
+that the Statistics screen calls): the spending charts always draw every row of the holdings
+under the KEPT accounts, open or closed (`shownRows`, filtered from
 `filtered.netWorthHoldings`), so a closed card keeps its past spending.
 The internal-transfer matcher runs over `ledgerWithCurrency` (every
 holding, whatever the account filter or `closedAt`). The funding matcher

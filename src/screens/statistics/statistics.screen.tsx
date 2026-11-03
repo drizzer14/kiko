@@ -15,40 +15,17 @@ import {
   type TrendFilter,
 } from '@kiko/statistics/trend-filter';
 import {
-  loanInterestEntries,
-  loanPaymentExcludedTransactionIds,
-} from '@kiko/statistics/loan-payments';
-import {
-  buildCategoryMeasures,
-  buildCategoryTrend,
-  type TrendTransaction,
-} from '@kiko/statistics/category-trend';
-import {
   accountDisplayName,
   accountsForFilter,
   hasNoAccounts,
 } from '@kiko/holdings/implicit-account';
-import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
 import {
-  type BreakdownTransaction,
   buildCategoryBreakdown,
   type CategorySlice,
   resolveCategoryColor,
 } from '@kiko/statistics/category-breakdown';
-import {
-  internalTransferTransactionIds,
-  rowsForTransferMatch,
-} from '@kiko/statistics/internal-transfers';
-import {
-  descriptionExcludedTransferTransactionIds,
-  mccExcludedTransferTransactionIds,
-} from '@kiko/statistics/transfer-exclusion';
-import {
-  exchangeExcludedTransactionIds,
-  sameCurrencyMoveTransactionIds,
-} from '@kiko/statistics/exchange-exclusion';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -66,7 +43,6 @@ import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import { useIsLargeWindow } from '@kiko/display-regions';
-import { ibanOf } from '@kiko/holdings/holding-metadata';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import type { TabParamList } from '@kiko/navigation/types';
@@ -95,12 +71,13 @@ import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
-import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
 import Screen, { usePaneContentWidth } from '@kiko/design-system/components/screen';
+import { spendingRowsIn, useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
+import { buildCategoryMeasures, buildCategoryTrend } from '@kiko/statistics/category-trend';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
@@ -733,259 +710,26 @@ const StatisticsScreen: FC = () => {
     [categories, i18n.language],
   );
 
-  // Join each transaction to its holding for the currency its amount is in — a
-  // transaction row has no currency of its own. BOTH signs are kept so the
-  // internal-transfer matcher below can see the credit legs.
-  //
-  // Every holding counts here, whatever its account filter or `closedAt`: the
-  // other leg of a transfer can sit under a filtered-out account or in a jar a
-  // sync has since closed, and losing it turns the debit leg into spending.
-  //
-  // Deliberately NOT range-filtered: every exclusion rule below (the matched-
-  // pair internal-transfer matcher especially) must see BOTH legs of a
-  // transfer even when only one falls inside the active range, or a pair that
-  // straddles `rangeFrom`/`rangeTo` gets only half-excluded and its in-range
-  // leg wrongly counts as spending. The range is applied further down, only
-  // to the rows that actually feed the breakdown (see
-  // `rangeFilteredBreakdownTransactions`) — exclusion is by id, so an
-  // out-of-range leg excluded here never reaches the breakdown anyway.
-  const ledgerWithCurrency = useMemo(() => {
-    const currencyByHolding = new Map(holdings.map((holding) => [holding.id, holding.currency]));
-
-    return transactions.flatMap((transaction) => {
-      const currency = currencyByHolding.get(transaction.holdingId);
-
-      if (currency === undefined) {
-        return [];
-      }
-
-      return [{ ...transaction, currency }];
-    });
-  }, [transactions, holdings]);
-
-  // The rows the spending charts draw: the account filter applies, but not
-  // `closedAt`, so a closed card keeps its past spending.
-  const transactionsWithCurrency = useMemo(() => {
-    const shownHoldingIds = new Set(filtered.netWorthHoldings.map((holding) => holding.id));
-
-    return ledgerWithCurrency.filter((transaction) => shownHoldingIds.has(transaction.holdingId));
-  }, [ledgerWithCurrency, filtered]);
-
   // INTERNAL TRANSFERS (a matched -X / +X pair across two of the user's own
   // holdings, same currency, near-simultaneous) are not spending. Their debit
-  // legs are dropped from the category breakdown by id below; the credit legs
-  // are already ignored as income. Scoped to THIS chart only — every other view
-  // (net worth, by-type, account pie) still sees the full ledger. The matcher
-  // sees only unmarked rows: an exchange leg is excluded by its marker, or by the pair rule when
-  // it is an equal same-currency pair on two holdings, and must never pair with (and so swallow)
-  // an unmarked Pay send.
-  const internalTransferIds = useMemo(
-    () => internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
-    [ledgerWithCurrency],
-  );
+  // legs are dropped from the category breakdown by id; the credit legs are
+  // already ignored as income. Scoped to THIS chart only — every other view
+  // (net worth, by-type, account pie) still sees the full ledger.
+  const spendingLedger = useSpendingLedger({
+    transactions,
+    holdings,
+    accounts,
+    shownHoldings: filtered.netWorthHoldings,
+  });
+  const { trendTransactions, excludedTransactionIds } = spendingLedger;
 
-  // Every DEBT-side holding in the raw, unfiltered ledger (only `loan` today):
-  // a payment's linked loan can live under an account filtered out of the
-  // other charts, and a closed/paid-off loan still EXISTS (only a delete
-  // clears its links), so neither should change whether its payment's
-  // interest counts.
-  const loanHoldings = useMemo(
-    () => holdings.filter((holding) => holdingDescriptorOrUndefined(holding.type)?.side === 'debt'),
-    [holdings],
-  );
-
-  // A linked payment never counts its PRINCIPAL as spending, only its
-  // interest and any within-tolerance fee (`loanInterestEntries`, via
-  // `loanInterestRows` below, which replaces each excluded row with its own
-  // derived entries) — computed over the account-filtered rows,
-  // because a payment and its interest entry belong to the payment's own
-  // holding; only `loanHoldings` above reads every holding.
-  const loanPaymentExcludedIds = useMemo(
-    () => loanPaymentExcludedTransactionIds(transactionsWithCurrency, loanHoldings),
-    [transactionsWithCurrency, loanHoldings],
-  );
-
-  const loanInterestRows = useMemo(
-    () => loanInterestEntries({ transactions: transactionsWithCurrency, loanHoldings }),
-    [transactionsWithCurrency, loanHoldings],
-  );
-
-  const breakdownTransactions = useMemo<BreakdownTransaction[]>(
-    () =>
-      transactionsWithCurrency.map((transaction) => ({
-        id: transaction.id,
-        category: transaction.category,
-        amountMinorUnits: transaction.amountMinorUnits,
-        mcc: transaction.mcc,
-        counterIban: transaction.counterIban,
-        description: transaction.description,
-        exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
-        untrackedCounterpart: transaction.untrackedCounterpart,
-        changeGroupId: transaction.changeGroupId,
-        currency: transaction.currency,
-      })),
-    [transactionsWithCurrency],
-  );
-
-  // The active-range slice of `transactionsWithCurrency`: this is what
-  // actually feeds the breakdown drawn on screen (both the filter menu's
-  // option list and the pie itself — see `allCategorySlices`/`categorySlices`
-  // below), so the donut and its center total agree with the range field
-  // rendered above them. The exclusion sets above are not range-filtered
-  // (see `ledgerWithCurrency`'s comment); only the rows actually SHOWN are
-  // scoped to the range here. `loanInterestRows`
-  // is range-filtered the SAME way as the real rows — each derived
-  // entry replaces the raw row `loanPaymentExcludedIds` drops above, so it
-  // must obey the same window that row would have.
-  const rangeFilteredBreakdownTransactions = useMemo<BreakdownTransaction[]>(
-    () => [
-      ...transactionsWithCurrency
-        .filter((transaction) => transaction.time >= rangeFrom && transaction.time <= rangeTo)
-        .map((transaction) => ({
-          id: transaction.id,
-          category: transaction.category,
-          amountMinorUnits: transaction.amountMinorUnits,
-          mcc: transaction.mcc,
-          counterIban: transaction.counterIban,
-          description: transaction.description,
-          exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
-          untrackedCounterpart: transaction.untrackedCounterpart,
-          changeGroupId: transaction.changeGroupId,
-          currency: transaction.currency,
-        })),
-      ...loanInterestRows.filter((entry) => entry.time >= rangeFrom && entry.time <= rangeTo),
-    ],
-    [transactionsWithCurrency, rangeFrom, rangeTo, loanInterestRows],
-  );
-
-  // The spending-trend builder needs everything the breakdown does PLUS each
-  // row's `time`, so it can bucket the expense into the active
-  // rangeFrom/rangeTo window the same way the net-worth line does. Built
-  // separately from `breakdownTransactions` (which carries no time) so neither
-  // memo has to change shape for the other. `loanInterestRows` is
-  // appended UNFILTERED, same as the real rows here — `buildCategoryTrend`/
-  // `buildCategoryMeasures` do their own range bucketing internally.
-  const trendTransactions = useMemo<TrendTransaction[]>(
-    () => [
-      ...transactionsWithCurrency.map((transaction) => ({
-        id: transaction.id,
-        category: transaction.category,
-        amountMinorUnits: transaction.amountMinorUnits,
-        mcc: transaction.mcc,
-        counterIban: transaction.counterIban,
-        description: transaction.description,
-        exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
-        untrackedCounterpart: transaction.untrackedCounterpart,
-        changeGroupId: transaction.changeGroupId,
-        currency: transaction.currency,
-        time: transaction.time,
-      })),
-      ...loanInterestRows,
-    ],
-    [transactionsWithCurrency, loanInterestRows],
-  );
-
-  // The user's OWN card IBANs, read from each holding's stored metadata. A 4829
-  // bank transfer to one of these is an own-account transfer (excluded from the
-  // spending pie); a 4829 to any other IBAN is a genuine P2P payment (kept).
-  const ownIbans = useMemo(() => {
-    const ibans = new Set<string>();
-
-    for (const holding of holdings) {
-      const iban = ibanOf(holding.metadata);
-
-      if (iban !== undefined) {
-        ibans.add(iban);
-      }
-    }
-
-    return ibans;
-  }, [holdings]);
-
-  // Cash-outs and OWN-account transfers, classified by mcc (+ counterIban for
-  // the ambiguous 4829). This catches the single-legged movements the matched-
-  // pair matcher structurally cannot (a cash-out has no synced credit leg).
-  const mccExcludedIds = useMemo(
-    () => mccExcludedTransferTransactionIds(breakdownTransactions, ownIbans),
-    [breakdownTransactions, ownIbans],
-  );
-
-  // Internal transfers that carry a plain description instead of a transfer MCC
-  // (e.g. "Поповнення депозиту", "На чорну картку", the FOP top-up). The mcc
-  // rule structurally cannot see these; the description rule catches them.
-  const descriptionExcludedIds = useMemo(
-    () => descriptionExcludedTransferTransactionIds(breakdownTransactions),
-    [breakdownTransactions],
-  );
-
-  // Exchange/Convert legs: an internal movement between the user's own
-  // holdings, structurally marked by `exchangeCounterpartHoldingId`. No other
-  // rule can see them — null mcc, empty description, and a cross-currency
-  // pair the matched-pair matcher rejects.
-  const exchangeExcludedIds = useMemo(
-    () => exchangeExcludedTransactionIds(breakdownTransactions),
-    [breakdownTransactions],
-  );
-
-  // The synced debit a Convert marked with the pair id only has no marker for the rule above, and
-  // the matcher never sees a row with a pair id. Over the unfiltered ledger, so a partner under an
-  // account the filter hides still pairs.
-  const sameCurrencyMoveIds = useMemo(
-    () => sameCurrencyMoveTransactionIds(ledgerWithCurrency),
-    [ledgerWithCurrency],
-  );
-
-  // The account kind of each holding, so the funding matcher can tell a crypto account's own rows
-  // from the bank rows that paid for them. A holding whose account is not in the list is left out
-  // of the map, and the matcher counts such a holding as a bank side.
-  const accountKindByHoldingId = useMemo(() => {
-    const kindByAccountId = new Map(accounts.map((account) => [account.id, account.kind]));
-
-    return new Map(
-      holdings.flatMap(
-        (holding) =>
-          foldMap(maybe(kindByAccountId.get(holding.accountId)), (kind) => [
-            [holding.id, kind] as const,
-          ]) ?? [],
-      ),
-    );
-  }, [accounts, holdings]);
-
-  // The bank debits that paid for an exchange purchase (a P2P buy, a card buy or a fiat deposit)
-  // are not spending: the purchase is not the money leaving. Over the unfiltered ledger, never the
-  // account-filtered rows, because the exchange row sits under a crypto account the filter may
-  // hide, and the debit would then count again.
-  const exchangeFundingExcludedIds = useMemo(
-    () => exchangeFundingMatches(ledgerWithCurrency, accountKindByHoldingId).excludedIds,
-    [ledgerWithCurrency, accountKindByHoldingId],
-  );
-
-  // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
-  // the exchange-marker rule, the same-currency pair rule, the cheap secondary matched-pair
-  // matcher, the exchange-funding matcher, and the linked-loan-payment rule (its own derived
-  // interest and within-tolerance fee entries, `loanInterestRows` above,
-  // replace the raw row this drops). A row is dropped from the spending pie if
-  // ANY rule catches it.
-  const excludedTransactionIds = useMemo(
-    () =>
-      new Set([
-        ...internalTransferIds,
-        ...mccExcludedIds,
-        ...descriptionExcludedIds,
-        ...exchangeExcludedIds,
-        ...sameCurrencyMoveIds,
-        ...exchangeFundingExcludedIds,
-        ...loanPaymentExcludedIds,
-      ]),
-    [
-      internalTransferIds,
-      mccExcludedIds,
-      descriptionExcludedIds,
-      exchangeExcludedIds,
-      sameCurrencyMoveIds,
-      exchangeFundingExcludedIds,
-      loanPaymentExcludedIds,
-    ],
+  // The active-range slice of the shown rows: this is what actually feeds the breakdown drawn on
+  // screen (both the filter menu's option list and the pie itself — see
+  // `allCategorySlices`/`categorySlices` below), so the donut and its center total agree with the
+  // range field rendered above them.
+  const rangeFilteredBreakdownTransactions = useMemo(
+    () => spendingRowsIn(spendingLedger, rangeFrom, rangeTo),
+    [spendingLedger, rangeFrom, rangeTo],
   );
 
   // The active-range breakdown of every spending category (category-filter-
