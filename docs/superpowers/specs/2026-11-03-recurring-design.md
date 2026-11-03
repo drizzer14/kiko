@@ -5,10 +5,10 @@ file:line cites come from c9896e1f9. Read from code; the app was not run. Every 
 re-grep the named symbol on the actual base before building on it. Counts of files, cases and call sites are floors; the
 developer measures.
 
-Status: APPROVED by the user on 2026-11-03 ("Approve as planned"), with Q5 answered. One design question stays open, Q6
-(section 16). It binds task 4/4 only, and sections 8 to 15 are written on its recommendation. Revised after a review of
-3dab56c68; section 5.4 shows what changed. Revised again after a review of 35861c22b, and again for Q5; section 8.2 shows what
-changed. Section 10.2 holds the measurement; section 12 is re-read on the merged demo seed.
+Status: APPROVED by the user on 2026-11-03 ("Approve as planned"), with Q5 and Q6 answered. No design question stays open.
+Revised after a review of 3dab56c68; section 5.4 shows what changed. Revised again after a review of 35861c22b, for Q5, and after
+a review of 41be4a687 with Q6's answer; section 8.2 shows what changed. Section 10.2 holds the measurement; section 12 is re-read
+on the merged demo seed.
 
 Product purpose: Kiko answers "how much money do I have now". This view states what already repeated in
 the user's own rows. It predicts nothing and plans nothing.
@@ -30,6 +30,11 @@ Answers of 2026-11-03, relayed by the coordinator; words in quotes are the user'
 - Q4, A: the demo seed changes so that five bills show: Netflix, Kyivstar, Kyivteploenergo, YASNO, Kyivvodokanal (section 12).
 - Q5: "Name + amount chain": 100, 120, 144 stay together, and the store gains an amount. The user saw the consequence: one rise
   over 25 percent drops later charges and shows a false "No charge since". That is the user's accepted behavior (section 8.2).
+  **A second consequence, found by the planner and told to the user through the coordinator:** two subscriptions under one name
+  within 25 percent of each other, or at one price, sit in one chain. m(10, 5, 99) + m(10, 20, 119), detected monthly x10 twice: a
+  mark at 99 joins them (119/99 = 1.20) into one x20, "Marked: monthly", no pair fits, and both detected series leave. A mark at 119
+  selects the same piece and only sets its period, so the two can never separate. The same holds at equal price.
+- Q6: "One per chain", relayed by the coordinator: a key holds a list of marks, each its own chain (section 8.2).
 - Approval: "Approve as planned". The mark offers weekly, monthly, every 3 months, every 6 months and yearly.
 
 ## 1. Claim check
@@ -337,7 +342,8 @@ last charge is the last of its chain, so a purchase or a new price outside the c
 | Every 6 months (a mark only) | 6 calendar months + 14 days back |
 | Yearly | 12 calendar months + 14 days back |
 
-Text: "No charge since 03.08.2026". A fact about the rows, never about the merchant.
+Text: "No charge since 03.08.2026". It reads the series' own rows, never the merchant. On a marked series, before a re-mark, it can
+read false while the subscription goes on at a price outside the chain: the user's accepted behavior (section 8.2).
 
 **A stale source is told apart, by the rows themselves.** A disconnected bank, a failed sync or an old statement
 also stops rows. The ledger read already holds every row, so a series is **quiet** when it has stopped and the newest
@@ -373,32 +379,38 @@ re-runs nothing.
 ### 8.1 Hide
 
 **Hide**, on the series screen: "Not a recurring charge". It hides that **merchant key**, every
-series under the name, because a false match is about the name ("ATB is no subscription"), and amount or day keys
+detected series under the name, because a false match is about the name ("ATB is no subscription"), and amount or day keys
 drift with each new row. It writes nothing on a transaction.
 
 It is visible and reversible: the list ends with a "Hidden" section naming each hidden merchant with "Show again",
 even when it has no rows now. No confirm is needed: no row changes and the undo is on the screen it returns to. **A hide stays per
-key.** On a key that holds marks (a detected series beside a marked one, section 8.2), it replaces them all, by the same last-action
-rule as section 8.2's "Mark and hide together"; "Show again" then gives the detected series, and a mark is set again from the form.
+key and never touches a mark.** It affects detected series only: on a key that holds marks (a detected series beside a marked one,
+section 8.2), every marked chain stays, and "Show again" clears only the hide, so nothing the user marked is lost.
 
 **Store: one nullable JSON column on `settings`**, `recurringMerchantChoices: Record<key, Choice>`, where `Choice` is
-`{ kind: 'hidden', name }` or, from task 4/4, `{ kind: 'marked', name, marks }`, and each of `marks` is
-`{ currency, amountMinorUnits, period }`. One entry per key, which holds a hide or marks, never both, as
-`reminderOfferDismissals` already is a JSON map (`schema.ts:560`; read-modify-write inside one `write()`, as
-`recordReminderOfferDismissal`, `src/settings/settings.repo.ts:25`). Task 3/4 carries the one migration; task 4/4 adds a kind and
-its parser arm, and no migration or column.
+`{ name, hidden: true }` and, from task 4/4, `{ name, hidden?: true, marks?: RecurringMark[] }`, and each mark is
+`{ currency, amountMinorUnits, period }`. One entry per key holds both: a hide flag for the detected series under that key, and
+`marks`. Each is read and cleared on its own, and an entry with neither drops. `name` is the last write's spelling. It is a JSON map
+as `reminderOfferDismissals` already is (`schema.ts:560`; read-modify-write inside one `write()`, as
+`recordReminderOfferDismissal`, `src/settings/settings.repo.ts:25`). Task 3/4 carries the one migration; task 4/4 adds the `marks`
+field and its parser arm, and no migration or column.
+
+**Task 3/4 holds no marks text or type, and its parser need not keep a `marks` value.** It reads `name` and `hidden` and drops the
+rest. No `marks` value can reach it: the column is new, only task 4/4 writes the field, and no build ships before all four sets
+(section 15). Its readers test `choice.hidden === true`, never `map.has(key)`, so task 4/4's marks-only entry reads as not hidden
+with no edit there.
 
 **Keys are user text, so readers use a `Map`.** `reminderOfferDismissals` is keyed by `accounts.id`. This map is keyed by a merchant
 name, and `normalizeTransactionName` only lowercases, so `constructor` and `__proto__` are real keys. On a plain object
 `choices['constructor']` is a function, and assigning `__proto__` loses the entry. So nothing reads or assigns the plain object:
 the one parser, `recurringMerchantChoicesOf`, returns a `ReadonlyMap<string, Choice>` from `Object.entries` of the stored value, and
 a write stores `Object.fromEntries(map)`, which defines an own key where an assignment would not. A `Map` over `Object.hasOwn`: one
-missed `hasOwn` is a silent wrong read, and a `Map` has no such read to miss. Worlds in section 8.2.
+missed `hasOwn` is a silent wrong read, and a `Map` has no such read to miss. Worlds: the plan's "Marked flows".
 
 | Option | Weighed | Result |
 |---|---|---|
-| Nullable settings column, one map | One migration; a restore carries it by column; one row, no chunking; a key can hold only one kind of choice | **Chosen** |
-| Two settings columns, hidden and marked | Two migrations or one wider one, and a key could be in both, so every reader needs a precedence rule | Rejected |
+| Nullable settings column, one map | One migration; a restore carries it by column; one row, no chunking; one entry per key holds a hide flag and marks, each read and cleared on its own | **Chosen** |
+| Two settings columns, hidden and marked | Two migrations or one wider one, for the two fields one entry holds, with the name stored twice | Rejected |
 | New table | Same older-build result as a column (optional key, as 0054), and adds a `DataSnapshot` key, a read, a delete and an insert in the restore | No gain |
 | Reuse `settings.dismissedTips` (no migration; shipped builds already carry it) | Holds retired tip ids on real devices, so a role would be read from a prefix; a column named for tips would hold merchants; no shown name | Rejected: the role would be derived from shape |
 
@@ -417,80 +429,29 @@ It writes nothing on a transaction, and it predicts nothing.
 | Point | Answer | The code fact it rests on |
 |---|---|---|
 | What a mark covers | **The user's answer to Q5.** The merchant key of the row's stored description, the holding's currency, and section 5.3 step 3's amount chain holding the stored amount. No day test. Past and later charges in the chain join by themselves; a charge outside it does not. Section 6's fit test, the last charge and section 7's stopped read only the chain | The series group is `[key, currency]` (section 4), and `merchantNameOf` cuts only a trailing number (spec of `1.4-category-automation`, section 4), so a name holding the month gives one row per key and a mark links that row alone |
-| Which chain a stored amount selects | Inside one `[key, currency]` group: take the magnitudes of the group's charges after the twin fold, add every stored amount of that key and currency as one more amount, sort, and cut where the next exceeds the previous by more than 1.25, with step 3's own function. **Each piece holding a stored amount is a marked chain.** Its charges are the series. So there is no nearest and no tie: one amount is in exactly one piece, and pieces share no row. While a charge at the stored amount exists, this is simply the chain holding that charge. The stored amount never joins what its own row did not join. A stored amount alone in its piece selects nothing: "Marked, No Charges". The cut reads a multiset, so no output depends on row order, and a new row between two others re-forms the chain by the data alone: 100, 115, 130 is one chain, and removing the 115 splits it again | Step 3 sorts and cuts, and adds nothing else (section 5.3), so one function serves both. A stored amount stays in the cut when its row goes, since a mark stores no row id and the row a user taps is often a `hold`, whose amount the settled re-fetch can change (section 4): a marked hold at 835 that settles at 838 keeps its chain. An exact-only match would turn that series into "Marked, No Charges" |
+| Which chain a stored amount selects | Inside one `[key, currency]` group: take the magnitudes of the group's charges after the twin fold, add every stored amount of that key and currency as one more amount, sort, and cut where the next exceeds the previous by more than 1.25, with step 3's own function. **Each piece holding a stored amount is a marked chain.** Its charges are the series. So there is no nearest and no tie: one amount is in exactly one piece, and pieces share no row. While a charge at the stored amount exists, this is simply the chain holding that charge. A stored amount sits in the cut like a charge, with or without its row, so it can bridge. A stored amount alone in its piece selects nothing: "Marked, No Charges". The cut reads a multiset, so no output depends on row order, and a new row between two others re-forms the chain by the data alone: 100, 115, 130 is one chain, and removing an unmarked 115 splits it again. Where the 115 is the marked row, its stored amount stays: 99 and 130 with a stored 115 whose row was deleted stay one series until the mark is removed, and 80, 120, 500 with a stored 100 whose row was edited to 500 read one x2 over 80 and 120 | Step 3 sorts and cuts, and adds nothing else (section 5.3), so one function serves both. A stored amount stays in the cut when its row goes, since a mark stores no row id and the row a user taps is often a `hold`, whose amount the settled re-fetch can change (section 4): a marked hold at 835 that settles at 838 keeps its chain. An exact-only match would turn that series into "Marked, No Charges" |
 | The marked row edited or deleted | Nothing is written and the mark does not follow the row. The stored amount stays in the cut: its chain stands if other charges reach it; a row edited out of reach leaves the chain; with none in reach, "Marked, No Charges" | A mark writes nothing on a transaction, and a transaction's write touches no setting |
 | Currency | **A mark covers one currency.** It stores the code of the marked row's holding beside the amount, from the holding, and reads only the group of that key and currency. So 400 UAH and 400 USD never compare, and a USD charge under a name marked in UAH stays as detection finds it. A holding moved to another currency leaves the mark's group: "Marked, No Charges" | Minor units have no meaning without a currency (kiko-domain, "Currencies"; `currencyScale`). A row has no currency of its own, it comes from its holding (section 4). The JSON holds an integer and a code, never a `Money` |
 | Amount and sign | The absolute minor units of the debit, the stored row's, never the draft's. A mark is offered only on a debit, and section 4's charges are debits only, so a credit or refund is neither stored nor in a chain, whatever its amount, and it cancels nothing | Section 4, "Refunds"; `isRecurringCandidate` |
-| The other chains under a marked name | Detection still runs on the whole group and its input does not change. **A detected series stands beside a marked one unless it shares a row with it; one that does leaves whole.** So Apple 399 stays detected beside a marked Apple 99. A detected x8 over 100 and 130, with 100 marked, leaves whole, and the 130 rows sit in no series: no second detection runs on what is left, and that is the accepted behavior below. **No row is in two shown series**: pieces share no row, and overlap removes the detected series (a property pin) | `seriesOfGroups` and its memo stay as they are (section 9.5), so a mark runs no detection |
+| The other chains under a marked name | Detection still runs on the whole group and its input does not change. **A detected series stands beside a marked one unless it shares a row with it; one that does leaves whole.** So Apple 399 stays detected beside a marked Apple 99. A detected x8 over 100 and 130, with 100 marked, leaves whole, and the 130 rows sit in no series: no second detection runs on what is left, and that is the accepted behavior below. Two detected series inside one chain join: m(10, 5, 99) + m(10, 20, 119), a mark at 99 gives one x20, "Marked: monthly", both detected leave, and a mark at 119 only sets the period, so they can never separate; the same at equal price (the head of this spec). **No row is in two shown series**: pieces share no row, and overlap removes the detected series (a property pin) | `seriesOfGroups` and its memo stay as they are (section 9.5), so a mark runs no detection |
 | Period | A picker: weekly, monthly, every 3 months, every 6 months, yearly, as the user approved. The last two are a mark's own and detection never returns them | Section 5.1 names both as false misses. They touch only the stopped cutoff (section 7) and the text (section 6). `addMonths` (`interest.ts:41`) already steps any count of months |
-| A mark on a merchant detection also finds | On its chain the mark wins: the user's period, on that chain's charges. Removing the last mark leaves no entry, so the series return as detection finds them. A hide the mark replaced does not come back: hidden, then marked, then removed shows the detected series with no "Hidden" line, and the user hides it again | One map, one entry per key (section 8). Detection stores nothing (section 11), so nothing is lost |
-| One mark per chain (**Q6, open; this is its recommendation**) | A key holds a list of marks, each its own chain. A pick adds a mark at the row's amount and replaces every stored mark in that row's chain. Marks on other chains stay. Two stored amounts that a later row bridges land in one piece: one series, with the period of the lowest stored amount, order-free; removing that series removes every mark in the piece | The code does not settle this. One mark per key would drop Apple 99's mark on marking Apple 399, with nothing shown (section 16) |
+| A mark on a merchant detection also finds | On its chain the mark wins: the user's period, on that chain's charges. Removing a mark clears only that mark, so the series return as detection finds them, unless the key is hidden: the hide stays until "Show again" | One map, one entry per key, which holds a hide flag and marks (section 8). Detection stores nothing (section 11), so nothing is lost |
+| One mark per chain (**the user's answer to Q6: "One per chain"**) | A key holds a list of marks, each its own chain. A pick on a row inside a marked chain rewrites that chain's period in place, on every mark of its piece, and moves no stored amount. A pick on a row of another piece adds that chain's mark at the row's amount, and marks on other chains stay; so a re-mark at a new price adds a chain. A stored amount whose chain the row left stays, as stated above. Two stored amounts that a later row bridges land in one piece: one series, with the period of the lowest stored amount, a tie going to the earlier period in the picker's order, order-free; removing that series removes every mark in the piece | The user's answer. One mark per key would have dropped Apple 99's mark on marking Apple 399, with nothing shown |
 | The form on a row of another chain | The field reads "Not marked". The value is the period of the marked chain whose amounts span the row's stored amount, so a folded twin reads as its kept row. A pick adds that chain's own mark; "Not marked" there writes nothing | Reading it takes the group's charges: section 9.6 |
 | Text | Section 6, "A marked series". Stopped and quiet as any series, on section 7's table, on the chain. "Marked" shows only where the charges do not fit the period, the table gives no slot, or the period has no table row. The stored amount is never shown: a line shows an amount only as the last real charge's | `recurrenceLine` is a pure `.exhaustive()` match (plan), so `Recurrence` gains one kind |
-| Mark and hide together | One map, one entry per key, so last action wins by construction. Marking a hidden merchant replaces the hide, and the "Hidden" line leaves. A hide on a key with marks replaces them all (section 8.1). A marked series offers "Remove mark" in place of "Not a recurring charge"; a detected series, also one beside a marked series, offers hide | Section 8's store. `recordReminderOfferDismissal` shows the read-modify-write inside one `write()` |
-| Reversal | "Remove mark" on the series screen, on the "Marked, No Charges" row, and "Not marked" in the form's picker, each for that chain's marks: `removeRecurringMarks(key, marks)`, which compares inside its `write()`, writes nothing on a hidden or absent entry, and drops the entry with its last mark. "Show again" is `showRecurringMerchantAgain(key)`, which clears only a hide. So "Not marked" on a hidden key, whose field reads "Not marked", keeps the hide. A removed mark goes nowhere, and a new mark on any row restores it | As `selectLoanPayment`, where picking "None" on the field is the removal (`transaction-form.screen.tsx:966`). `SelectField` fires `onSelect` on the row already selected (`handleSelect`, `select-field.component.tsx:57-62,120`), so that tap does reach the handler |
+| Mark and hide together | One map, one entry per key, which holds both, and neither touches the other. A hide affects detected series only: a marked chain stays when its key is hidden (section 8.1). Marking a hidden merchant keeps the hide, and the "Hidden" line stays until "Show again". A marked series offers "Remove mark" in place of "Not a recurring charge"; a detected series, also one beside a marked series, offers hide | Section 8's store. `recordReminderOfferDismissal` shows the read-modify-write inside one `write()` |
+| Reversal | "Remove mark" on the series screen, on the "Marked, No Charges" row, and "Not marked" in the form's picker, each for that chain's marks: `removeRecurringMarks(key, marks)`, which compares inside its `write()`, clears only those marks, writes nothing on an entry holding none of them, and drops an entry left with neither marks nor a hide. "Show again" is `showRecurringMerchantAgain(key)`, which clears only the hide, by the same drop. So "Not marked" on a hidden key, whose field reads "Not marked", keeps the hide. A removed mark goes nowhere, and a new mark on any row restores it | As `selectLoanPayment`, where picking "None" on the field is the removal (`transaction-form.screen.tsx:966`). `SelectField` fires `onSelect` on the row already selected (`handleSelect`, `select-field.component.tsx:57-62,120`), so that tap does reach the handler |
 | Which rows offer it | A row passes `isRecurringCandidate` plus the per-row matchers, and has no funding caption: an existing, debit, non-blank key, bank or cash account, not archived, not a later local day, no `setsBalance`, `changeGroupId`, exchange marker or `loanHoldingId`, not an MCC or wording transfer. A matched own transfer is the one rule the form cannot see, so **a mark never overrides an exclusion either**: the marked series is built from section 4's charges, and a mark with no such charge in its chain shows under "Marked, No Charges" with a text that fits every reason. **Accepted:** until the form's ledger read lands, a funded debit has no caption yet, so the field shows and then goes. A tap in that gap is safe: the mark overrides nothing, so the funded row stays out. With no other charge in reach, it shows under "Marked, No Charges" and is removed there; with other charges in the chain, it is a marked series of those rows, removed on its screen | `useExchangeFundingCaption` returns only the caption key and drops the ledger read's `isLoading`, so it has no settled state. Gating would change its return type, its suite and its caller, not one line. `isMccExcludedTransfer` (`transfer-exclusion.ts:31`) and `isDescriptionExcludedTransfer` (`:85`) read one row. `internalTransferTransactionIds` (`internal-transfers.ts:168`) pairs across the ledger. `useExchangeFundingCaption` already answers the funded case for this row, by section 4's own `excludedIds`, so a hand-category debit has no caption and is offered, as section 4 counts it |
 | A bank-owned row | The field works there and is never `disabled` for that (section 9.6 has its one wait) | `isReadOnly` keys off `existing.source` (`transaction-form.screen.tsx:429`), and only bank-owned fields lock. The category, the loan link and Convert stay live on a synced row (`mode-and-actions.component.tsx`). `selectLoanPayment` writes at once with no source gate |
 | The two form paths | One answer: both pass `transactionId`, so both are the same edit state. Home, Holding Detail and a series link differ in no flag. No non-test code under `src/screens/statistics` opens the form: the Statistics stack registers it for the form a transaction tapped in its Home opens, so that stack reaches it through Home | `readRouteEntry` (`transaction-form.screen.tsx:267`) gives `editingId`, and `existing` is the edit concept only (`:285`). The form is one component in four stacks (`home.stack.tsx:58`, `accounts.stack.tsx:96`, `statistics.stack.tsx:60`, `settings.stack.tsx:121`). Create, duplicate and template entries have `existing === undefined`, so they never show it. A series link returns to a screen whose series may have changed: section 9.3 |
 | Unsaved edits | The mark reads the stored description and amount, never the draft, and writes at once. It does not touch Save or the draft | `selectLoanPayment` does the same, with `existing.id`; the funding caption reads "the stored row, not the draft" (`transaction-form.screen.tsx:450-452`) |
-| Store | Section 8: one column, one migration in task 3/4, whose JSON shape needs no column for a mark. Task 4/4 adds only the parser arm. `amountMinorUnits`, `currency` and `period` are required on each mark, since nothing has shipped: a mark with a missing, non-integer, zero or negative amount, or an unknown code or period, is dropped alone, and an entry left with no mark is dropped. Section 11's table has the new rows. `EXPORT_VERSION` stays 5 | `envelope.ts:13`; `settingsRowsToInsert` (`restore-snapshot.ts:978`) carries a column as it is; `currencyOptions` (`src/currency/currency/currency.ts`) is the closed set |
+| Store | Section 8: one column, one migration in task 3/4, whose JSON shape needs no column for a mark. Task 4/4 adds only the `marks` field and its parser arm. `amountMinorUnits`, `currency` and `period` are required on each mark, since nothing has shipped: a mark with a missing, non-integer, zero or negative amount, or an unknown code or period, is dropped alone, and an entry left with neither a good mark nor a hide is dropped. The parser keeps one mark per currency and amount, and reads `marks` sorted by amount, then period in the picker's order, then currency, so a stored order changes nothing. Section 11's table has the new rows. `EXPORT_VERSION` stays 5 | `envelope.ts:13`; `settingsRowsToInsert` (`restore-snapshot.ts:978`) carries a column as it is; `currencyOptions` (`src/currency/currency/currency.ts`) is the closed set |
 | Surface | A field, not a button or a new sheet: `RecurringMarkField` in `transaction-form/recurring-mark-field/`, one element in the screen between `ModeAndActions` and `CommentRow` (section 9.6) | `SelectField` is the shared control; `LoanPaymentField` is the same kind of immediate per-row choice. `CategoryOverrideSheet` is on this base at `:1604`, and `1.4-category-automation task 2/6` edits that sheet, its hook and their wiring, not the field list. Its tip 71de98891 has not started that set |
 | Detection's input | **Unchanged.** The marked pass runs after the rule on the same charges | Section 9.5; so section 10.2's reference needs no re-run |
 
-**The user's accepted behavior, Q5.** One rise over 25 percent cuts the chain. The charges after it are not in the marked series, so that series shows "No charge since" while the subscription goes on. The user saw this and chose it. It is intended, and no tolerance, chain merge or added rule covers it: 100 marked, then 130, reads "No charge since" and the 130 rows are not linked there. The user's own recovery is to mark a charge at the new price. Under Q6's recommendation, that adds a second series at the new price, active, and the old chain stays with its history and its true last charge, stopped, until the user removes its mark.
+**The user's accepted behavior, Q5.** One rise over 25 percent cuts the chain. The charges after it are not in the marked series, so that series shows "No charge since" while the subscription goes on. The user saw this and chose it. It is intended, and no tolerance, chain merge or added rule covers it: 100 marked, then 130, reads "No charge since" and the 130 rows are not linked there. The user's own recovery is to mark a charge at the new price. Under Q6's answer, that adds a second series at the new price, active, and the old chain stays with its history and its true last charge, stopped, until the user removes its mark.
 
-Worlds. `was` is the result before these answers, when a mark was out: the result with no entry, or with the hide alone in the two hidden rows, and "not reachable" where the path needs a mark.
-
-| World | was | now |
-|---|---|---|
-| Quarterly, 4 charges, marked every 3 months | none | one series x4, "Marked: every 3 months" |
-| Half-yearly, 3 charges, marked every 6 months | none | one series x3, "Marked: every 6 months" |
-| One charge, marked monthly | none | one series x1, "Marked: monthly", last charge its date |
-| Two charges, marked monthly | none | one series x2, "Marked: monthly" |
-| Three charges on day 15, marked monthly | monthly, "on day 15" | the same text, marked |
-| Two charges on 12 Mar, marked yearly | yearly, "on 12.03" | the same text, marked |
-| One charge, marked yearly | none | one series x1, "Marked: yearly" |
-| Daily shop, marked monthly | none | one series of all its rows, "Marked: monthly" |
-| Chain 100, 120, 144 on day 15, marked at 100 | monthly x3, "on day 15" | one series x3, "on day 15", marked |
-| 100 x5 then 130 x3 on day 7, marked at 100 | monthly x8, "on day 7" | one series x5, "on day 7", stopped, not quiet, "No charge since 07.07.2026"; the 130 rows in no series (accepted) |
-| The same, marked at 130 | monthly x8, "on day 7" | one series x3, "on day 7", active; the 100 rows in no series |
-| The same, re-marked: at 100 and at 130 | monthly x8, "on day 7" | two series: x5 stopped with its history, x3 active |
-| The same, plus 7 Feb at 115, marked at 100 | monthly x9, "on day 7" | one series x9: the row bridges the chain |
-| That world, marked at 100 monthly and at 130 every 3 months | monthly x9, "on day 7" | one series x9, monthly, the lowest stored amount's period; without the 115, two series |
-| Apple 99 and 399, both detected, 99 marked monthly | two monthly | marked x10 and the detected 399 x10; remove the mark and two monthly return |
-| Apple 99 and 399, both marked | two monthly | two marked series x10, no detected one |
-| Apple monthly 99 and yearly 999, 999 marked yearly | monthly x24, yearly x2 | marked yearly x2 and the detected monthly x24 |
-| 400 UAH and 400 USD, one charge each, UAH marked | none | one series x1 in UAH; the USD row in none |
-| 10 USD and 400 UAH, x6 each, UAH marked | two monthly | marked x6 in UAH and the detected USD x6, never summed |
-| Marked at 100, the row deleted; 120, 144 left | none | one series x2, "Marked: monthly" |
-| Marked at 100, the row edited to 500; 120, 144 left | monthly x3, "on day 15" | one series x2, "Marked: monthly"; the 500 row in no series |
-| Marked hold at 835, settled at 838, beside 800 | none | one series x2, "Marked: monthly" |
-| Marked at 400, rows m(6, 3, 700) | monthly x6 | "Marked, No Charges", and the detected x6 stands |
-| Detected monthly, marked yearly | monthly | one yearly series, "Marked: yearly", stopped by the yearly cutoff |
-| Quarterly, 12 Jan, Apr, Jul, marked monthly | none | one series x3, "Marked: monthly", stopped and quiet |
-| 20 Dec 2025 and 15 Jan 2026, marked yearly | none | one series x2, "Marked: yearly" |
-| Monthly with one skipped month, marked monthly | monthly, "on day 15" | one series x3, "on day 15", marked |
-| Monthly fit with no honest day, 1 Aug, 5 Sep, 9 Oct, marked monthly | monthly, "Charged monthly" | one series x3, "Marked: monthly": the charges fit and the table gives no slot (section 6) |
-| Four Mondays, marked weekly | none | one series x4, "Marked: weekly": section 5.1's weekly minimum is 5 |
-| Five Mondays, marked weekly | weekly, "on Mondays" | one series x5, "on Mondays", marked |
-| One key in UAH and USD, each currency's row marked | none | two series, never summed |
-| Name holding a month, one row marked | none | one series x1 for that one name; next month's name is its own key |
-| Marked, then its twin imported | none | the twin folds, each charge counted once |
-| Marked, with a future-dated manual row | none | left out; no output day after today |
-| Marked, last charge 30 months ago, the holding's only row | none | one series, stopped and quiet, and it stays |
-| Marked, stale holding | monthly x4, stopped and quiet | stopped and quiet, as section 7 |
-| Marked, 3 Sep and 3 Jun of six monthly rows linked to a loan | none: the four left give `4 / 6` | those rows are left out, the others link |
-| Marked, its only row a matched own transfer | none | "Marked, No Charges" |
-| Marked, each alone: rows only on an archived account, on a missing holding, only a future row, only credits | none | "Marked, No Charges" |
-| Marked, all rows deleted | none | "Marked, No Charges" |
-| Hidden, then marked | hidden | marked; no "Hidden" line |
-| Marked, then removed, then hidden | hidden | hidden; one entry at every point |
-| Marked 99 beside a detected 399, then hide on the 399 | not reachable | hidden, the mark gone; "Show again" gives two detected series |
-| Series screen open by link, its whole series marked in the form, Back | not reachable | the marked series holding the route's `seriesId` |
-| Series screen open by link to a detected x8, a 130 row marked in the form, Back | not reachable | the neutral text: the detected series left, and its `seriesId` is not in the chain |
-| Series screen open by link to a marked series, mark removed in the form, Back | not reachable | the one detected series under the same key, currency and period; else the neutral text |
-| A merchant named `constructor`, with no choice | monthly | monthly: no choice is read, and the field reads "Not marked" |
-| A merchant named `__proto__`, one charge, marked, then reloaded | none | one marked series; the entry survives the write and the read |
+Worlds: the plan's "The marked matrix" holds each one with its rows and its result with no entry, and its "Marked flows" table holds the hide, link and user-text-key flows, each with its `was`. This section does not copy them.
 
 Results the review of 35861c22b changed. `was` is that draft.
 
@@ -500,10 +461,8 @@ Results the review of 35861c22b changed. `was` is that draft.
 | 20 Dec 2025 and 15 Jan 2026, marked yearly | "Charged yearly, on 15.01" | "Marked: yearly" |
 | Twelve monthly charges, marked yearly | no line pinned, so "Charged yearly, on 03.10" | "Marked: yearly" |
 | Hidden, then "Not marked" tapped in the form | the hide dropped, no notice | still hidden, nothing written |
-| Hidden, then marked, then removed | "the detected series back unchanged", read as the hide returning | no entry: the detected series show, no "Hidden" line |
-| Apple 99 marked monthly beside detected 399, opened by link on the marked series, removed in the form, Back | whichever detected series holds the earliest charge | the neutral text: two monthly series, never a guess |
-| Marked yearly over a detected monthly, opened by link, removed in the form, Back | the monthly series, ignoring the period | the neutral text: no yearly series |
-| Marked monthly over one detected monthly, opened by link, removed in the form, Back | that series | that series, by the fallback |
+| Apple 99 marked monthly beside detected 399, opened by link on the marked series, removed in the form, Back | whichever detected series holds the earliest charge | the neutral text |
+| Marked yearly over a detected monthly, opened by link, removed in the form, Back | the monthly series, ignoring the period | the neutral text |
 | Marked, last charge 30 months ago, the holding's only row | stopped, not quiet | stopped and quiet since that row |
 
 Results the user's answer to Q5 changed. `was` is the draft written on assumed answer A, every charge under the name.
@@ -518,6 +477,20 @@ Results the user's answer to Q5 changed. `was` is the draft written on assumed a
 | 100 x5 then 130 x3, marked | one x8, active | one x5, stopped: the user's accepted behavior |
 | Monthly at 100, 300, 900, marked at 900 | one x3, "on day 15" | one x1, "Marked: monthly" |
 | One key in UAH and USD, one row marked | two series | one series, in that row's currency |
+
+Results the review of 41be4a687 changed, with Q6's answer. `was` is that draft.
+
+| World | was | now |
+|---|---|---|
+| Hidden, then marked | marked; the "Hidden" line leaves | the marked series, and the "Hidden" line stays until "Show again" |
+| Hidden, then marked, then removed | no entry: the detected series show, no "Hidden" line | the hide stays: the "Hidden" line and no series; "Show again" gives the detected series |
+| Marked 99 beside a detected 399, then hide on the 399 | hidden, the mark gone; "Show again" gives two detected series | the marked 99 stays, the 399 leaves, a "Hidden" line; "Show again" gives the 399 beside the marked 99 |
+| A row of 144 with 100 stored, a pick | one mark at 144, the 100 replaced | the 100's period rewritten; the store still holds 100 |
+| Marked monthly over one detected monthly, opened by link, removed in the form, Back | that series, by the fallback | the neutral text: a marked route has no detected fallback |
+| Marked 99 x2 beside a detected 399 x10, opened by link, "Not marked" in the form, Back | the detected 399, by the fallback | the neutral text, not 399 |
+| 99 x10, one 119, a detected 399 x10, marked at 99, opened by link, a yearly pick on the 119 row, Back | the store moved to 119, the route's 99 missed, the detected 399 by the fallback | the marked x11, yearly: the store still holds 99, and the route's amount lies in the piece's span |
+| 99 and 130, a stored 115 whose row was deleted | "the stored amount never joins what its own row did not join": no world pinned | one x2 until the mark is removed |
+| 80, 120, 500, a stored 100 whose row was edited to 500 | the same | one x2 over 80 and 120 |
 
 ## 9. Screens, entry and links
 
@@ -557,8 +530,9 @@ availability"). No condition on the row, no count on it.
 (kiko-design-system, custom list screen). Sections: active, "No recent charge", "Marked, No Charges", "Hidden". Order inside a
 section: newest last charge, then key, then series id; the last two have no charge, so key order, and "Marked, No Charges" then
 currency, then lowest stored amount, which is never shown. Never by amount otherwise: a section can mix currencies. A marked series
-with charges sits in active or "No recent charge" like any other. A hidden key lists only its "Hidden" line. A marked key lists its
-marked series, its "Marked, No Charges" rows, and each detected series sharing no row with a marked series (section 8.2). A "Marked,
+with charges sits in active or "No recent charge" like any other. A hidden key lists its "Hidden" line and no detected series. A key
+with marks lists its marked series, its "Marked, No Charges" rows, and, unless hidden, each detected series sharing no row with a
+marked series (section 8.2). A "Marked,
 No Charges" row shows the name and the "Marked:" line of its period, with no amount, since no real charge stands behind one.
 
 A row (shared `Card`, `Text`, `MoneyText`): the name; the recurrence line; "Last charge 15.10.2026", or the stopped or
@@ -593,13 +567,14 @@ The lookup reads the series before the hide filter, so between the hide write an
 and never flashes that state (section 8; a pin).
 
 **With marks (task 4/4), the route gains an optional `markedAmountMinorUnits`, absent on a route opened on a detected series. It is
-the series' lowest stored amount, a lookup key never shown, and the lookup order is:** on a route that holds it, the marked series
-of the route's key and currency whose marks hold that amount; on a route without it, the marked series of the route's key and
-currency whose charges hold `seriesId`, then `seriesId` among the detected series left beside the marked ones; then, on either, the
-fallback above among those detected series; then the neutral text. A key can hold several marked series, so the key and currency no
-longer pick one. The `seriesId` step is skipped on a route opened on a marked series, since that id is the earliest charge of the
-chain: it lands on whichever detected series holds that charge, ignoring the period, which would be a guess. Remove mark on this
-screen holds the last resolved series until `goBack`, since that write takes the marked series away; a pin, as the hide's.
+the series' lowest stored amount, a lookup key never shown.** A route that holds it finds the marked series of the route's key and
+currency whose span, from the lowest to the highest of its charges and stored amounts, holds that amount. Pieces are disjoint, so at
+most one span does. On a miss it shows the neutral text and never a detected series: that route's `seriesId` is the chain's earliest
+charge and its period may be the user's, so either step would be a guess. A route without it finds the marked series of the route's
+key and currency whose charges hold `seriesId`, then `seriesId` among the detected series left beside the marked ones, then the
+fallback above among those detected series, then the neutral text. A key can hold several marked series, so the key and currency no
+longer pick one. Remove mark on this screen holds the last resolved series until `goBack`, since that write takes the marked series
+away; a pin, as the hide's.
 
 **The button by kind:** a detected series offers "Not a recurring charge", a marked one "Remove mark". Both close back to the list.
 
@@ -630,8 +605,8 @@ them after detection, so a hide runs no detection, and the hook hands the series
 Marks keep that: task 4/4 splits `detectRecurringSeries` into `chargeGroupsOf` and `seriesOfGroups`, with the same input, output
 and rule, and the first memo keeps the groups. A second memo, on groups, the detected series, the marked entries and the local day, runs
 `markedSeriesOf`, a walk of the marked keys' groups only, and drops each detected series sharing a row with a marked one. A mark,
-like a hide, fires `settings` alone, so it runs no detection and no ledger read. Those two are the pins; the walk's reach over the
-marked keys alone has none.
+like a hide, fires `settings` alone, so on the list and series screens it runs no detection and no new ledger read; the form has its
+own read (section 9.6). Those two are the pins; the walk's reach over the marked keys alone has none.
 
 ### 9.6 The mark field on the transaction form
 
@@ -642,20 +617,34 @@ component, theme tokens only, so no `kiko:designer` step. The device check confi
 
 It is one element in `transaction-form.screen.tsx`, between `ModeAndActions` and `CommentRow` (`:1562-1586`), so the screen's
 cognitive budget and `ModeAndActions`' props do not grow, and `converting` gates it at the call site. The child holds its own
-read, `settingsRepo.recurringMerchantChoicesQuery()` on `['settings']`, enabled only for a row it offers on. The form's existing
+read, `settingsRepo.recurringMerchantChoicesQuery()` on `['settings']`, enabled only for a row it offers on. The screen passes its
+own `holdings` and `accounts` as props: they are section 9.5's two whole-table reads (`holdingsRepo.allQuery()`,
+`accountsRepo.listQuery()`), so the field adds no read of either. The row's currency is that of the stored row's holding,
+`existing.holdingId` in `holdings`, never the screen's `currency`: that one follows the draft's holding and falls back to `'UAH'`
+(`holding?.currency ?? 'UAH'`). While either read loads the holding or account is not found, so the row is not offered and the field
+is absent. The form's existing
 whole-ledger read is `useExchangeFundingCaption`'s (`:452`, `use-exchange-funding-caption.ts:87`), and its caption key is passed in;
 that hook returns only the key, so its rows cannot be reused. The form reads no settings today, and
 `transaction-form.screen.test.tsx` mocks each repo it uses (`jest.mock` block from `@kiko/transactions/repo`) with a fallback of `[]`
 per table (`:271`), so the suites that open a stored debit need one added repo mock (the plan's list; the developer measures).
 
 **Which chain a row is in needs the group's charges.** A key is computed, so no SQL narrows to it, and step 3's cut reads every
-charge of the group. So `useRowMark` adds `recurringLedgerQuery`, holdings and accounts, `enabled` (`use-live-query.ts`, the third
-argument) **only when the entry holds a mark in the row's currency**. With none, the field reads "Not marked" and a pick adds a mark,
-with no ledger read, so a row under an unmarked name costs what it did. With one, a second whole-ledger read runs while the form
-shows, and `chargeGroupsOf` once on its result, with no rule: `SelectField`'s `disabled` holds until that read settles, because a pick
-must know which stored marks it replaces. That is the only `disabled` here, and it is not about a bank-owned row. Its cost is in
-section 10.3's device check. was: no second ledger read on the form, ever. now: none under an unmarked name, and one under a name
-marked in that currency. The matched-transfer row is still offered and left out rather than read for.
+charge of the group. So `useRowMark` adds `recurringLedgerQuery`, `enabled` (`use-live-query.ts`, the third argument) **only when the
+entry holds a mark in the row's currency**. With none, the field reads "Not marked" and a pick adds a mark, with no ledger read, so a
+row under an unmarked name costs what it did. With one, a second whole-ledger read runs while the form shows, and `chargeGroupsOf`
+once on its result, with no rule, because a pick must know whether it rewrites a chain or adds one. Its cost is in section 10.3's
+device check. was: no second ledger read on the form, ever. now: none under an unmarked name, and one under a name marked in that
+currency. The matched-transfer row is still offered and left out rather than read for.
+
+**The field's one wait.** `useRowMark` is ready when the settings read neither loads nor holds an `error` and, while the ledger read
+is enabled, the same of that read. Until then, and through a pick's write (`isSubmitting` of `useSubmitOnce`), the field states no
+value (`selected` null, an empty `placeholder`) and stays `disabled`, so no false "Not marked" shows: not on the first settings read,
+and not right after a first pick under a name, when the landed entry enables the ledger read and its rows are still `[]`. A rejected
+first read settles with `data` `[]` and `isLoading` false (`applySettled`, `use-live-query.ts`), so `isLoading` alone would read "Not
+marked" and enabled. The `error` holds the field in the same state, with no failure text, since the live query already logs it; the
+next good fire releases it. It counts only on an enabled read, since a read turned off keeps its last `error`. After a write resolves
+and until its settings re-read lands, the field shows the last read's value, as any live read does; no pin. That is the only
+`disabled` here, and it is not about a bank-owned row.
 
 **Merge with `1.4-category-automation`:** its task 2/6 edits `use-category-override.ts`, the sheet, and their props in the screen
 at `CategoryOverrideSheet`. This set adds one import and one element above `CommentRow`, and its keys in the catalogues. No shared
@@ -723,8 +712,8 @@ step 5 of the plan reports what the real detection finds on `rules-performance-f
 first reading of such rows with names, not a proof about these extras.
 
 **Marks do not change this measurement.** The reference reads the same input through the same rule (section 9.5), and the amount
-chain changes neither, so it is not re-run. The marked pass is outside it; its pin, in task 4/4, is section 9.5's: a mark runs no
-detection and no ledger read.
+chain changes neither, so it is not re-run. The marked pass is outside it; its pin, in task 4/4, is section 9.5's: on the list and
+series screens, a mark runs no detection and no new ledger read.
 
 **Cost, plainly.** Reference detection at 100,000 rows is 1823.5 to 2113.3 ms on a Mac under this load, in node with JIT.
 In the app it runs in a `useMemo` on the JS thread (section 9.5), on Hermes, which has no JIT, with the exclusion matchers on
@@ -789,9 +778,9 @@ column `recurring_hidden_merchants`; no build holds it.
 **`EXPORT_VERSION` stays 5.** A bump would make 1.3 refuse every 1.4 file over a map that is safely inert. The amount is inside the
 JSON, so the note, the column and the version do not change for it. The note goes in `VERSION_DECISIONS`
 (`src/data-transfer/crypto/envelope.test.ts:99`) with `migrationCount` plus one. The `settings` shape check reads no column, so a
-malformed value in a file is read defensively: a non-object reads as no choice; an entry with an unknown kind or a non-string name
-is dropped alone; a mark with a missing or bad amount, an unknown currency or an unknown period is dropped alone, and an entry left
-with no mark is dropped (pin).
+malformed value in a file is read defensively: a non-object reads as no choice; an entry with a non-string name is dropped alone; a
+`hidden` other than `true` reads as no hide; a mark with a missing or bad amount, an unknown currency or an unknown period is dropped
+alone, and an entry left with neither a hide nor a mark is dropped (pin).
 
 No owed state: NULL means no choice and no one-time step runs. Suites whose database stops below the new migration
 still fail by `no such column` when read through today's schema; the plan lists them.
@@ -891,7 +880,7 @@ What's New draft, per the release skill's format: "Recurring charges: see what r
 | One name definition | Import from `@kiko/transactions/merchant-name`; review. No local normalizing |
 | One eligibility definition | `recurringExcludedIds` only calls the existing functions; one world per rule |
 | Never sums across currencies | The group key holds the currency; no sum exists anywhere |
-| Detection writes nothing | Pure function and a read-only query; only `hideRecurringMerchant`, `showRecurringMerchantAgain`, `markRecurringCharge` and `removeRecurringMarks` write, and only to `settings` |
+| Detection writes nothing | Pure function and a read-only query; only `hideRecurringMerchant`, `showRecurringMerchantAgain`, `markRecurringCharge`, `setRecurringChainPeriod` and `removeRecurringMarks` write, and only to `settings` |
 | A mark overrides no exclusion | `markedSeriesOf` reads the same charge groups as detection; a world per kind |
 | A mark predicts nothing | The marked series has the output type of any series: past dates and the period's text; the property pin covers marked worlds. The stored amount is on no line: a shown amount is the last real charge's |
 | A stored amount never compares across currencies | A mark holds its currency and reads only that `[key, currency]` group; a world with the same digits in two currencies |
@@ -902,12 +891,13 @@ What's New draft, per the release skill's format: "Recurring charges: see what r
 | Purpose | No balance, net worth, category or statistic reads this; it changes none of them |
 
 Sets, each merging into `next` alone, on the coordinator's call. Counts are floors, tests included. Q5 moves task 4/4 only: tasks 1/4
-and 2/4 are unchanged, and task 3/4 keeps its files with one repo function renamed.
+and 2/4 are unchanged, and task 3/4 keeps its files with one repo function renamed. The review of 41be4a687 adds one file to task 1/4,
+moves task 3/4's stored shape but not its files, and adds no file to task 4/4.
 
-1. **1.4-recurring task 1/4: detection and the list.** Goal: the Settings row, the list, the empty state, the recurrence text and stopped section, and a reviewer's demo file that shows the real bills as series and no shop. Rows do not open yet. Needs `1.4-category-automation task 2/6`. Floor 46 files.
+1. **1.4-recurring task 1/4: detection and the list.** Goal: the Settings row, the list, the empty state, the recurrence text and stopped section, and a reviewer's demo file that shows the real bills as series and no shop. Rows do not open yet. Needs `1.4-category-automation task 2/6`. Floor 47 files (was 46).
 2. **1.4-recurring task 2/4: the series screen and its links.** Goal: every past charge, each opening its form, on phone and two panes. Needs task 1/4. Floor 18 files.
-3. **1.4-recurring task 3/4: hide a false match.** Goal: the control, "Hidden", the choice column and its restore paths. Needs task 2/4. The one migration of this track. Its JSON column needs nothing from Q5 or Q6. Floor 34 files plus the generated `.sql` and snapshot.
-4. **1.4-recurring task 4/4: mark as recurring.** Goal: the field on the transaction form, the marked series on their amount chains, "Remove mark", "Marked, No Charges". Needs task 3/4, for its store and the series screen's button, and the answer to Q6. No migration. Floor 41 files, 12 of them mutable (was 38 and 11).
+3. **1.4-recurring task 3/4: hide a false match.** Goal: the control, "Hidden", the choice column and its restore paths. Needs task 2/4. The one migration of this track. Its JSON entry holds a name and a hide flag, and task 4/4 adds `marks` beside them with no migration. Floor 34 files plus the generated `.sql` and snapshot.
+4. **1.4-recurring task 4/4: mark as recurring.** Goal: the field on the transaction form, the marked series on their amount chains, "Remove mark", "Marked, No Charges". Needs task 3/4, for its store and the series screen's button. No migration. Floor 41 files, 12 of them mutable (was 38 and 11).
 
 **One release.** The four sets merge into `next` one at a time and `next` tolerates each middle state: every visible text ships with what it names (section 14), and no middle state writes anything but its own column. A release holds all four or none: tasks 1/4 and 2/4 alone have no hide, the remedy for the accepted yearly false match, and the user asked for the mark with the rest.
 
@@ -917,22 +907,19 @@ Conflict surface: `settings.screen.tsx` and its group-card pins (one row and div
 
 ## 16. User questions
 
-Only decisions that change what gets built. Q1 to Q5 are answered: their answers head this spec. Q6 is open. The misses Q2's choice
+Only decisions that change what gets built. Q1 to Q6 are answered: their answers head this spec. None is open. The misses Q2's choice
 named stay misses of the rule, and a mark closes them all but the name holding a month, for the charges in its amount chain: a
 quarterly or half-yearly charge; a monthly charge before its third payment; two subscriptions under one name at the same price on
 the same day; a subscription under a name with many other purchases, when it has fewer than 6 charges, when its price changed, or
 when most of those purchases cost exactly what it costs; a monthly charge that doubled on the same day in several months; a statement
 row dated two or more days from its bank row. A price rise over 25 percent cuts the chain: section 8.2's accepted behavior.
 
-**Q6. What happens when the user marks a second chain under one name?** Q5 makes a mark one chain, and the store's one entry per key does not say. It comes up on the user's own recovery after a rise over 25 percent, on two real subscriptions under one name, and on one name in two currencies. The code does not settle it, since nothing has shipped and the column is JSON. It is answered before task 4/4 starts, and tasks 1/4 to 3/4 do not wait.
-- 1. One mark per key. A pick on another chain moves the mark. After a rise, the new price is marked and the old chain leaves, with its history no longer linked on that screen, so the list is short and shows no stopped row. Apple 99 and Apple 399 cannot both be marked: marking one drops the other, with nothing shown. Nor can one name in UAH and in USD.
-- 2. One mark per chain, a list under the key. A pick adds a series; the others stay. After a rise, the new price is active and the old chain stays with its history and a true last charge, stopped, until "Remove mark". Nothing the user marked is lost. The stopped row stays in the list until removed, and a row that later bridges two marks makes one series, with the lowest stored amount's period.
-- 3. One mark per currency. UAH and USD both hold, and within a currency it is option 1: a re-mark moves, and Apple 99 and 399 cannot both stay.
+**Q6's answer, "One per chain", in full.** A pick on another piece adds a series and the others stay. After a rise, the new price is active and the old chain stays with its history and its last real charge, stopped, until "Remove mark". That stopped line can read false before the re-mark, the accepted cost of Q5. Nothing the user marked is lost by a hide or by another mark. A row that later bridges two marks makes one series, with the lowest stored amount's period.
 
-Recommendation: **2**. It is the only one where a mark the user set never goes by itself, and its one cost, a stopped row, is a true fact the user removes with one tap. The docs are written on it. Options 1 and 3 are the same list with at most one item per key or per currency, so the store, the field and the matrix change little (the plan's "If the user answers differently").
+**Planner's calls, recorded, not questions.** None of these is a user ruling; the rulings are quoted at the top. Reasons in the sections named: every 3 and every 6 months only in the mark (8.2); a mark wins on its chain (8.2); a stored amount takes part in the cut, so a mark outlives its row (8.2); a detected series sharing a row with a marked one leaves whole, with no second detection (8.2); a mark's ledger read on the form only for a name marked in that currency (9.6); "Marked" text only where the charges do not fit the period, the table gives no slot, or the period has no table row (6); a marked series never leaves the list (7); one choice map for hides and marks (8); a field rather than a button, between `ModeAndActions` and `CommentRow` (9.6); the matched-transfer row is offered and left out, rather than a second ledger read on the form (8.2); the Settings row is last in its group (9.1); the three periods and their minimums (5.1); yearly from two charges, with an accepted false match (5.1, 5.4); a series crosses holdings, not currencies (4); pending and manual rows count, refunds neither count nor cancel (4); loan links out by marker (4); crypto and other non-cash accounts out by kind (4); two of the last three decides a moved day (6); numeric dates as everywhere in the app (6); the stale source read from rows, not `syncState` (7); stopped sinks and leaves at 24 months (7); no midnight timer (7); hide is per merchant key (8); a settings column rather than a table or `dismissedTips` (8); the last charge's amount shows beside its date (9.2); not `cached` (9.5); `EXPORT_VERSION` stays 5 (11).
 
-**Planner's calls, recorded, not questions.** None of these is a user ruling; the rulings are quoted at the top. Reasons in the sections named: every 3 and every 6 months only in the mark (8.2); a mark wins on its chain (8.2); a stored amount takes part in the cut, so a mark outlives its row (8.2); a detected series sharing a row with a marked one leaves whole, with no second detection (8.2); a hide on a key with marks replaces them (8.1); a mark's ledger read on the form only for a name marked in that currency (9.6); "Marked" text only where the charges do not fit the period, the table gives no slot, or the period has no table row (6); a marked series never leaves the list (7); one choice map for hides and marks (8); a field rather than a button, between `ModeAndActions` and `CommentRow` (9.6); the matched-transfer row is offered and left out, rather than a second ledger read on the form (8.2); the Settings row is last in its group (9.1); the three periods and their minimums (5.1); yearly from two charges, with an accepted false match (5.1, 5.4); a series crosses holdings, not currencies (4); pending and manual rows count, refunds neither count nor cancel (4); loan links out by marker (4); crypto and other non-cash accounts out by kind (4); two of the last three decides a moved day (6); numeric dates as everywhere in the app (6); the stale source read from rows, not `syncState` (7); stopped sinks and leaves at 24 months (7); no midnight timer (7); hide is per merchant key (8); a settings column rather than a table or `dismissedTips` (8); the last charge's amount shows beside its date (9.2); not `cached` (9.5); `EXPORT_VERSION` stays 5 (11).
+**The orchestrator's calls after the spec review, recorded the same way, not user rulings:** a row is compared to today by local day, and a later local day is left out (4); the fold keeps the largest count of one source, and reaches one local day (4); a funded debit with a hand category stays in, as an accepted false match (4); quiet uses the stopped cutoff and dates from the holding's newest row (7); the quiet line names the holding (7); a stopped row shows its amount (9.2); the memo keys on the local day (9.5); on a detected route, a missed `seriesId` falls back to one matching series, else a neutral text (9.3); all four sets ship in one release (15); the uk past frame, which `kiko-translator` rules decide (13).
 
-**The orchestrator's calls after the spec review, recorded the same way, not user rulings:** a row is compared to today by local day, and a later local day is left out (4); the fold keeps the largest count of one source, and reaches one local day (4); a funded debit with a hand category stays in, as an accepted false match (4); quiet uses the stopped cutoff and dates from the holding's newest row (7); the quiet line names the holding (7); a stopped row shows its amount (9.2); the memo keys on the local day (9.5); a missed `seriesId` falls back to one matching series, else a neutral text (9.3); all four sets ship in one release (15); the uk past frame, which `kiko-translator` rules decide (13).
+**The orchestrator's calls after the review of 41be4a687, recorded the same way, not user rulings; each changes the design:** a marked route finds the piece spanning its amount, else the neutral text, with no detected fallback (9.3); a pick inside a chain rewrites its period and moves no stored amount, and a re-mark at a new price adds a chain (8.2); one entry holds a hide flag and marks, a hide affects detected series only, and each reversal clears only its own part (8.1, 8.2); a stored amount can bridge what its row did not join (8.2); the parser dedupes marks and sorts them, with a period tie-break (8.2); the settings read also gates the field, and a rejected read holds it disabled with no value (9.6); the field takes the screen's holdings and accounts as props, and its currency from the stored row's holding (9.6). The consequence for two subscriptions inside one chain is the planner's, stated at the head of this spec and told to the user through the coordinator.
 
 **Where the measured reference moved a call:** step 2's condition was called as "every pair fits". On that form a seasonal bill with one moved day went back to the reported fault (two stopped rows or one short stopped row, in 7 of 9 placements of the moved day). So it reads "passes as monthly, no two charges in a slot": all 9 give one series, and the sweep below 5.3 shows no new false match. Step 6 runs when nothing stands, not only when nothing was found. The fold, coverage exception and exact-cut calls hold as called.
