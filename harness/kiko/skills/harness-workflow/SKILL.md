@@ -169,9 +169,10 @@ allows it.
 ## Orchestrator handover
 
 An orchestrator session cannot see its own context-usage gauge (it is
-in the terminal status line). The coordinator watches it from outside
-and starts the handover at 16% so it ends under 20% (user 2026-10-26, 2026-10-30; see
-"Token budget"; an idle track over 20% writes its handoff file and stops): the session
+in the terminal status line). The coordinator watches it from outside.
+An orchestrator STARTS its handover at 20% context; the coordinator starts its own at 16%
+(user 2026-11-03; see "Token budget"; an idle track over 20% writes its handoff file and
+stops): the session
 writes a handoff file in its worktree, waits until its own in-process subagents finish (closing
 the terminal kills them mid-work), then the coordinator closes the
 old terminal and starts a new claude session in the same worktree
@@ -181,10 +182,10 @@ that reads the handoff file.
 
 Every call re-sends the whole context, so size drives cost (user 2026-10-30).
 
-1. Orchestrators and the coordinator START their handover at 16% context so it ends under 20%.
-   A later handover is allowed when holding the current context is reasonable (a long task has
-   not ended: a running subagent, a fix round in flight); hand over at the first clean point
-   after it ends and state the reason in the next report.
+1. Orchestrators START their handover at 20% context; the coordinator STARTS its own at 16%
+   (user 2026-11-03). A later handover is allowed when holding the current context is reasonable
+   (a long task has not ended: a running subagent, a fix round in flight); hand over at the
+   first clean point after it ends and state the reason in the next report.
 2. Every brief caps the hand-back report (default 15 lines); details go to a file the report
    names.
 3. Handoff files hold live state only (under 20 KB); history goes to `HANDOFF-history.md`.
