@@ -75,6 +75,7 @@ const EARLIER_BUILD_SETTINGS_COLUMNS = [
   'quoteQuota',
   'lotsRecosted',
   'importTimesRezoned',
+  'mccCategoriesBackfilled',
 ];
 
 // A statement-import row an earlier build stored with the bank's wall clock
