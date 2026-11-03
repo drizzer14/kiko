@@ -39,6 +39,9 @@ Every line number below is a measurement on 57130e23c for reconciling with the r
 | C12 | Palette `iconTile.glyph`: dark glyph reached by an unmapped hex | The out-of-set rule also clears 3.4 to white, so on light the dark-glyph branch is unreachable | Keep the token so the branch is never pale; no extra test beyond D3's property |
 | C13 | Palette `glass.colorSchemeProp`: dark or light per scheme | N1 and N2 measured `colorScheme="system"` (`bc2682882` glass and sheet) | D5: `"system"` |
 
+The orchestrator corrected the palette notes of C4 and C13 in `palette.json` on 2026-11-03. No color value changed, and
+`check-dark.mjs` still exits 0. The first set that needs `scratch-flip.patch` (section 7) writes it; no file exists yet.
+
 ## 3. Decisions
 
 ### D1. Storage: reuse `settings.appearance`. No migration
@@ -283,7 +286,7 @@ afterwards that no branch contains that commit, removes the worktree, and redepl
 
 | Item | Closes in | By | Evidence |
 |---|---|---|---|
-| N2-R: U-C, no native-stack patch, token hex navigation colors, rows T-uc, P6B-uc, H-uc on iOS 26.5 and 27.0 | Set 5 step 3, scratch build | kiko:ops, simulators | Contact sheets and `measure.tsv`, every shot viewed by the coordinator |
+| N2-R: U-C, no native-stack patch, token hex navigation colors, rows T-uc, P6B-uc, H-uc on iOS 26.5 and 27.0 | Set 5 step 3, scratch build | kiko:ops, simulators | Contact sheets and `measure.tsv`, every shot viewed by the orchestrator |
 | N16 full device matrix: iPhone and iPad, iOS 26 and 27, both schemes, live switch on a tab root, a pushed screen, an open sheet and the keyboard | Set 6, before merge; set 7 adds the icon row | kiko:qa drives simulator rows; the user on the device through the coordinator's deploy | Matrix in `.superpowers/sdd/1.4-light-scheme-build/n16/`, the user's verdict per row. "Everything or nothing": one failing row blocks the merge |
 | Reduce Transparency, bottom-tabs #433 | Set 6, N16 row | The user on a device; simulators showed no proven effect | Device screenshots, both schemes, on and off, tab bar and glass. A failure is a user question |
 | rn-screens #4081, scroll-edge blur on inactive tabs after a switch | Set 6, N16 row, demo `.kiko` imported through the real Import UI so tabs scroll under the bar | kiko:qa, then the user | Before and after scroll, each tab, both directions |

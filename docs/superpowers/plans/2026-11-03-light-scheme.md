@@ -30,7 +30,8 @@ Rules for every set:
 - The plist key `UIUserInterfaceStyle=Dark` stays until set 6. No tip before set 6 has `adaptiveThemes` on, an `Appearance.setColorScheme` call, or a reader of `settings.appearance`.
 - No flag, no demo module in `src/` (Guideline 2.5.19). A light look before set 6 uses only the scratch build of spec section 7, which is never merged.
 - Dev tests: `make jest-affected BASE=<set base>` or `npx jest <files> --maxWorkers=2`. Exit 3 means the verify covers it.
-- End of every set: BATCH READY; `kiko:reviewer`; the coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-ls-build-<N>`, once, rerun until green. Agents never run `make verify`. `kiko:retrospect` then `kiko:scribe` for drift before the merge.
+- End of every set, in this order: `kiko:reviewer`; READY FOR VERIFY, and the coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-ls-build-<N>`; a failed verify gets a fresh developer and a new verify; `kiko:retrospect`, then `kiko:scribe` for drift; BATCH READY. Agents never run `make verify`.
+- `.superpowers/sdd/1.4-light-scheme/palette/` is gitignored and exists only in the worktree `/Users/drizzer14/orca/workspaces/pff-ios/1.4-light-scheme`. A build set in another worktree reads it by that absolute path.
 - Mutation: paused by the user. When lifted, the gate runs per set with `KIKO_MUTATION_BASE` set to that set's base; never one whole-track run (`MUTATION_FILE_CAP`).
 - No migration in this plan (D1). If Q1 option B is ruled, set 6 gains the migration and a `kiko:reviewer` step before BATCH READY.
 - A UI step honors `kiko-design-system` locked decisions. Nothing locked changes in dark.
@@ -56,7 +57,7 @@ Rules for every set:
 - [ ] **step 1/5: Age and spec check.** `npm view react-native-unistyles@3.6.0 time --json`; expected 2026-10-21T15:00:25Z, past `.npmrc` `min-release-age=7`. Exact pin only: `"react-native-unistyles": "3.6.0"` (`save-exact=true`, `check:deps` allowlist).
 - [ ] **step 2/5: Upgrade.** `npm install react-native-unistyles@3.6.0` in the worktree. Lock diff must match `git show bc2682882 -- package-lock.json` in kind: the package, its RN peer range, its nested `@babel/types`. Any other change stops the set. kiko:ops runs `make pods`; commit the `ios/Podfile.lock` change.
 - [ ] **step 3/5: Run jest.** `make jest-affected BASE=<set base>`. Expected: exit 3 (`AFFECTS EVERY SUITE`); the queued verify covers it. A failure from the 3.5.1 jest mock change is fixed in the mock's caller, never by loosening an assertion.
-- [ ] **step 4/5: Prove the dark look.** kiko:ops builds Release-AdHoc of the set base and the tip for iOS 26.5 and 27.0 simulators. Uninstall and `simctl keychain <udid> reset` before each install. Import `e2e/screenshot/fixtures/kiko-demo-en.kiko` through the real Import UI. Same status bar override. Run `.maestro/screenshots` flows plus: a sheet with the keyboard open (the `sheetAnimatedStyle` worklet), a form, Statistics, a pushed large-title screen. Passing: each pair differs by nothing but known moving content, the region numbers are kept, the coordinator views every shot, and no `WORKLET_ACCESS_ERROR` appears. Evidence: `.superpowers/sdd/1.4-light-scheme-build/set1/`.
+- [ ] **step 4/5: Prove the dark look.** kiko:ops builds Release-AdHoc of the set base and the tip for iOS 26.5 and 27.0 simulators. Uninstall and `simctl keychain <udid> reset` before each install. Import `e2e/screenshot/fixtures/kiko-demo-en.kiko` through the real Import UI. Same status bar override. Run `.maestro/screenshots` flows plus: a sheet with the keyboard open (the `sheetAnimatedStyle` worklet), a form, Statistics, a pushed large-title screen. Passing: each pair differs by nothing but known moving content, the region numbers are kept, the orchestrator views every shot, and no `WORKLET_ACCESS_ERROR` appears. Evidence: `.superpowers/sdd/1.4-light-scheme-build/set1/`.
 - [ ] **step 5/5: Device and commit.** Commit `build(deps): pin react-native-unistyles 3.6.0`. The native rebuild reaches the user's device only through the coordinator's deploy; the user looks at the dark app. Jest does not count as this proof. `kiko:scribe` updates the `(^3.3.0)` line in `kiko-design-system`.
 
 ---
@@ -196,7 +197,7 @@ it('dark area opacities stay 0.3 and 0.5', ...);
 
 - [ ] **step 1/8: Navigation theme.** Test: `useNavigationTheme` under each world; `navigationDarkTheme` deep-equals its base value; `dark` flag follows. Implement; `App.tsx` passes `theme={useNavigationTheme()}`.
 - [ ] **step 2/8: Native props.** `colorScheme="system"` in `GlassSurface` and `BottomSheet`; `keyboardAppearance` returns `undefined`, type narrows, the two readers keep passing it; `headerBlurEffect: 'systemChromeMaterial'`. Change the pins in `glass-surface.component.test.tsx`, `bottom-sheet` tests, `use-keyboard-done-accessory.test.tsx`, `large-title-screen-options.test.ts` and each stack test. Comments lose "dark-only". The tab bar props and their B1 pin stay.
-- [ ] **step 3/8: Measure N2-R before the set goes further.** Scratch build of spec section 7 from this work, without any native-stack patch. kiko:ops runs rows T-uc, P6B-uc and H-uc on iOS 26.5 and 27.0. Passing: every header element new by `4s`, `4s` equals `after-scroll`. The coordinator views every shot. A header lag stops the set: `patches/@react-navigation+native-stack+7.18.9.patch` returns with its `documented-exceptions` entry and pin test, the row re-runs, and a second failure goes to the user (spec D5).
+- [ ] **step 3/8: Measure N2-R before the set goes further.** Write `.superpowers/sdd/1.4-light-scheme/scratch-flip.patch` (spec section 7) if no earlier set wrote it. Scratch build of spec section 7 from this work, without any native-stack patch. kiko:ops runs rows T-uc, P6B-uc and H-uc on iOS 26.5 and 27.0. Passing: every header element new by `4s`, `4s` equals `after-scroll`. The orchestrator views every shot. A header lag stops the set: `patches/@react-navigation+native-stack+7.18.9.patch` returns with its `documented-exceptions` entry and pin test, the row re-runs, and a second failure goes to the user (spec D5).
 - [ ] **step 4/8: Calendar.** `key={theme.colorScheme}` on `Calendar` in `KikoCalendar`. Test: `it('remounts the library calendar on a scheme change', ...)`, since `react-native-calendars` caches `styleConstructor(theme)` in a ref. Controlled `current` keeps the month.
 - [ ] **step 5/8: Unlinked third-party views.** Grep `style={styles` on non-RN components with a themed color. Each moves its color to a re-rendered prop or a wrapping RN `View`. Count in the report as a floor.
 - [ ] **step 6/8: Guards.** Add three rules, severity ERROR, per `kiko-linter` "Adding a pre-write guard rule":
@@ -264,7 +265,7 @@ Also a September-row world: `it('a stored light row applies at first launch', ..
 - [ ] **step 5/9: Strings.** `kiko-translator` review: `settings.appearance`, `appearance.system|light|dark` in en and uk, casing per role, parity test. Help: one new step in the `systemSettings` topic, with `title` and `rowLabel` values updated; grep the help suites and uk in this step for the old values. No key is removed. The uk text goes to the user before any deploy that ships it.
 - [ ] **step 6/9: Control.** `AppearanceSwitch` as `LanguageSwitch`, through `ChipRow` (`satisfies Record<AppearanceMode, string>`). In `system.screen.tsx`, a `Card testID="settings-card-appearance"` with `SettingsRow testID="settings-row-appearance" icon="circle.lefthalf.filled"` after the language card; selected from `settings?.appearance` behind the existing `isReady`; `onSelect` calls `settingsRepo.setAppearance`. Update the screen's "Order:" comment. Test: `it('selecting Light writes the row and nothing else', ...)`, no direct `Appearance` call. `__tests__/symbol-deployment-target.test.tsx` covers the symbol.
 - [ ] **step 7/9: Flip.** Remove `UIUserInterfaceStyle` from `ios/Kiko/Info.plist`. `info-plist.test.ts`: `it('has no UIUserInterfaceStyle key, so the app can follow a scheme', ...)`; the `UIStatusBarStyle` assertion stays; `__tests__/launch-screen.test.ts` unchanged. `SceneDelegate.swift`: comment names `useSyncAppearanceWithSettings` and `applyLaunchAppearance`; code unchanged. `npm run check:plist`.
-- [ ] **step 8/9: Device acceptance.** The coordinator queues the verify; then N16 per spec section 8, evidence in `.superpowers/sdd/1.4-light-scheme-build/n16/`. kiko:qa drives simulator rows on iOS 26.5, 27.0 and the iPad and Duo sims, with proof each popup is open; the coordinator views every shot. The user runs device rows through the coordinator's deploy, including Reduce Transparency on and off and #4081 with the demo `.kiko` imported. One failing row blocks the merge.
+- [ ] **step 8/9: Device acceptance.** The coordinator queues the verify; then N16 per spec section 8, evidence in `.superpowers/sdd/1.4-light-scheme-build/n16/`. kiko:qa drives simulator rows on iOS 26.5, 27.0 and the iPad and Duo sims, with proof each popup is open; the orchestrator views every shot. The user runs device rows through the coordinator's deploy, including Reduce Transparency on and off and #4081 with the demo `.kiko` imported. One failing row blocks the merge.
 - [ ] **step 9/9: Docs.** `kiko:scribe`: rewrite "Dark-only theme" and "Styling layer" in `kiko-design-system`, add `AppearanceSwitch` to the component set, `kiko-architecture` language section, `kiko-domain` dark-only lines, and a palette pointer in `harness/kiko/skills/design-system/SKILL.md` with the plugin bump from 0.4.57. Grep `Dark-only theme` for citations before the rename, in the same commit. Commit `feat(settings): System, Light and Dark appearance with a live switch`.
 
 ---
@@ -299,21 +300,21 @@ it('lists no tinted image', ...);
 - ActionSheet: task 6/7 step 8/9, developer re-greps `ActionSheetIOS`; 0 closes it.
 - Open-Alert exception: accepted under C0; no action.
 
-## Estimate inputs
+## Estimates (per `kiko:estimator`, written by the orchestrator 2026-11-03)
 
-Durations come from `kiko:estimator`; the planner states none. The rows to read (`stats --repo kiko --format md`, `Work` column, and `memory/refs/duration-log.md`):
+Each range is dispatch to BATCH READY of agent time. It excludes queue waits, battery waits and the user's own device time. Re-check the log at each dispatch.
 
-| Set | Source row |
-|---|---|
-| 1 | No similar run-log row. Nearest: duration-log "iPad Q11 control run (kiko:ops, sim)", for the before/after builds |
-| 2 | No similar row |
-| 3 | `20261019T1351-kiko-account-currency` (a value threaded through forms and repos) |
-| 4 | Same row as set 3 |
-| 5 | duration-log "implicit device fix 1 (header account icon)"; `20261102T1840-kiko-guard-commit-main` steps 2 and 4 for the guards; duration-log "iPad step 2 sim slot" for N2-R |
-| 6 | `20261019T1351-kiko-account-currency`; duration-log "iPad ops 2nd pass" per simulator pass. N16 on a device: no similar row |
-| 7 | No similar row |
+| Set | Estimate | Source (`stats --repo kiko --format md` `Work` column, and `memory/refs/duration-log.md`) |
+|---|---|---|
+| 1 | 1.5-3 h | Duration log: "implicit device fix 1" 39 min (small set); "iPad Q11 control run" 44 min (5 Release sim builds), "iPad step 2 sim slot" 56 min; queued full verify 22-26 min |
+| 2 | 1-3 h | No similar row: wide range. Nearest anchors: the 39 min small set, plus the 22-26 min verify |
+| 3 | 2.5-5 h | `20261019T1351-kiko-account-currency` (a value threaded through forms and repositories): `Work` 147 min, start to finish 173 min. This set has a larger caller floor (34 files) |
+| 4 | 2-4 h | Same row as set 3, with fewer callers |
+| 5 | 2.5-5 h | "implicit device fix 1" 39 min; `20261102T1840-kiko-guard-commit-main` steps 2 and 4, `Work` 27 and 21 min, for the guards; "iPad step 2 sim slot" 56 min for N2-R; verify 22-26 min |
+| 6 | 4-8 h, plus the user's device time | `20261019T1351-kiko-account-currency` 173 min; "iPad ops 2nd pass" 21 min per simulator pass. N16 on a device: no similar row, so the range is wide and excludes it |
+| 7 | 30-60 min | No similar row. Nearest anchor: the 39 min small set |
 
-The total in findings section 5 is an agent's guess: a data point, not an estimate.
+Sum: about 14-29 h of agent time. The total in findings section 5 ("8-12 developer-days") is an agent's guess: a data point, not an estimate.
 
 ## Self-review
 
