@@ -55,11 +55,12 @@ pattern. It stays small and plain for that reason.
 | Table | Rule | Same as | Effect |
 |---|---|---|---|
 | C1, C2 | Today's rate for every month (`category-breakdown.ts:204`, `category-trend.ts:168`, `rateTable = buildRateTable(rates)` at S:312) | Donut, trend | A past month's foreign-currency cell moves when today's rate moves. |
-| C3 | The rate of the column's day (`net-worth-series.ts:215-225`, nearest history row at or before the day, `rate-history.repo.ts:55`); the current month uses live rates | Net worth line | Past cells are stable, unless a currency has no history: then today's rate (`net-worth-series.ts:92-107`). |
+| C3 | The rate of the column's day (`net-worth-series.ts:215-225`, nearest history row at or before the day, `rate-history.repo.ts:55`); a month before a pair's first stored row uses that pair's earliest row (`net-worth-series.ts:215-220`); the current month uses live rates | Net worth line | Past cells are stable once history covers them. A backfill that adds earlier rows moves a month that used the earliest row. A currency with no history uses today's rate (`net-worth-series.ts:92-107`). |
 
 Consequences, stated in the caption of each table:
 - C1, C2 caption: the amounts are in the base currency at today's rate.
-- C3 caption: at the rate of each month's end; with no rate history, at today's rate.
+- C3 caption: at the rate of each month's end, or the earliest stored rate for a month before a currency's history starts;
+  with no rate history, at today's rate.
 - C2 net does not equal the C3 change, for two reasons: FX and revaluation. This is correct, and
   the help text says so. A transaction-date rate for C1 and C2 would break the match with the
   charts, which the brief binds. Changing the charts too is out of scope for this track.
@@ -77,7 +78,9 @@ Design:
 1. Extract `src/statistics/spending-ledger/`: a pure builder plus one hook. Input: the same reads
    as S. Output: `excludedTransactionIds` and the breakdown rows with the `loan-interest:` and
    `loan-excess:` rows. S moves onto it with no change in behavior. The existing Statistics
-   suites are the proof, unchanged.
+   suites are the proof, unchanged. The hook and the builder both call one shared union function
+   (`excludedIdsOf`), so an exclusion set cannot land in only one of them; a test pins that the hook's
+   output equals the builder's.
 2. C1 calls `buildCategoryBreakdown` once per month, with that month's rows
    (`category-breakdown.ts:152`). So a cell IS the donut of that month, by construction. It works
    in minor units, as the donut does. The trend builder is not used: it has no month grain and
@@ -104,23 +107,28 @@ Proof rows (each is a test):
 Ruled (Decision 1): an own screen, "Tables", `src/screens/tables/`, pushed from a button in Statistics. The
 charts view does not change, apart from the button. Orchestrator's call: the button is an in-page row under the
 filter bar, not a header item, because Statistics also shows as the Home companion pane, and one in-page path is
-visible in every pane (Guideline 2.5.19). The designer sets its look. The route registers in BOTH the Statistics and
+visible in every pane (Guideline 2.5.19). One untagged `Box` holds the filter bar and the button, so the pinned children of `statistics-blocks` stay as they are. The designer sets its look. The route registers in BOTH the Statistics and
 the Home stacks: on a wide window Statistics is Home's companion, and a name the stack does not register is unhandled
 (`statistics.stack.tsx` comment). `check:screen-imports` forbids a cross-screen import, so all shared code moves out of S:
 
 - Reads: the screen's `useLiveQuery` reads move to one hook in `src/statistics/`, used by S and Tables, with the same
   `{cached: true, paused: !isVisible}` (S:226). The whole `price_points` read moves with its documented override
   (`docs/harness/documented-exceptions.md`, "kiko-no-whole-price-points-read"); that entry is updated in the same commit.
+  The values derived from those reads move with them: `isReady`, `baseCurrency`, `defaultCategoryKey`, `rateTable`,
+  `categoryByKey` with its override, `filtered`, `earliestTime`, `earliestLotDay` and `spanStart`.
 - Backfill: the effect S:527-638 moves to one hook, used by S. This is a pure move. Tables also needs it: S's reads pause
   under a pushed screen, so S alone would not start a pending run while Tables shows. Two mounted hooks must not run twice,
   so the run gets a single flight and a shared status (section 7).
-- Filter options: the category options memo moves out of S as a pure builder (`buildCategoryOptions`).
+- Filter options and picks: pure builders move out of S, so Tables copies no archive or prune rule: `buildCategoryOptions`,
+  `buildAccountOptions`, `visibleCategorySelection`, `excludedCategoryKeysOf`.
 
 A `SegmentedControl` at the top of Tables switches the tables, with three parts: Categories, Cash flow, Net worth (tabs-vs-chips
 rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. Selection and
-period are local state of the screen: a push opens on Categories and the default period. `resetTabStackOnBlur` pops the screen on
-a tab change, as for any pushed screen. The uk labels ("Категорії", "Рух коштів", "Капітал") must fit: `labelVariant: 'caption'`
-is the first step. Measure at large sizes; if they do not fit, the builder reports it. Do not shrink the text silently.
+period are route params of the screen (`setParams`), so a fold or a resize across the columns width, which remounts the screen
+(`pane-stack-view`, "A switch between one pane and two"), keeps them; a new push still opens on Categories and the default period.
+`resetTabStackOnBlur` pops the screen on a tab change, as for any pushed screen. The uk labels ("Категорії", "Рух коштів", "Капітал")
+must fit: `labelVariant: 'caption'` is the first step. Measure at large sizes; if they do not fit, the builder reports it. Do not shrink
+the text silently.
 
 Period, ruled (Decision 2): the screen has its own date filter, separate from the shared date filter, which it neither reads nor
 changes. Whole calendar months. Default "Last 12 months", plus each calendar year that has data. Reason: the shared filter defaults
@@ -158,6 +166,10 @@ applied to credits gives these wrong income values on the user's own data. None 
     description is out of income: correct for a returned deposit, wrong for an interest or coupon payout.
   - The MCC rule is sign-blind too (`transfer-exclusion.ts:41`). So a credit with MCC 6011, 6012 or 6540 is out of income.
   - Loan proceeds that arrive as a plain credit count as income, while the loan itself shows as debt in C3.
+  - A bank credit from a Binance fiat withdrawal or a P2P sale counts as income. Funding matches only positive exchange rows
+    (`exchange-funding-match.ts`, `fundingOf`), the marked Spot debit of a withdrawal never pairs (`rowsForTransferMatch`), and a
+    P2P sale is refused, so it has no row (`binance.p2p-history.ts`, `'p2p-sale'`). The user's ruling did not list this value, so the
+    coordinator tells the user before the device read.
   - Term-deposit accruals are derived values, not rows (`term-deposit.descriptor.ts:124-140`). So they are not income.
     They show in C3.
 
@@ -167,7 +179,9 @@ wants the mark, it is a per-row "not income" or "income" mark on the transaction
 Pre-existing finding (Decision 7): `setsBalance` is read nowhere in `src/statistics` or S. So a
 NEGATIVE opening or balance-set row (`holdings.repo.ts:575-585`, `accounts.repo.ts:458`) counts as
 spending in the donut today, on the day it is set. Ruled: an addition to the shared id set removes it from charts and tables
-together, as its own commit in change set 1. It changes today's charts for such rows.
+together, as its own commit in change set 1. It changes today's charts for such rows. The same commit filters marked rows in
+`loanInterestEntries`: a marked negative row linked to a loan through the form (`setLoanPayment` has no mark check) would otherwise
+still emit its derived `loan-interest:` and `loan-excess:` rows, which carry other ids.
 
 ## 7. C3 definitions
 
@@ -180,9 +194,15 @@ together, as its own commit in change set 1. It changes today's charts for such 
 - Closed holdings are zero at or after `closedAt` (`net-worth-series.ts:197`). Archived accounts are out
   entirely (S:354-372), as in the line. Exclusions do not apply: balances use none (S:774-778).
 - The backfill already covers the table's period: `runBackfill` takes `spanStart`, the earliest data (S:401, S:552), and never
-  reads the date filter. Task 5 pins this. The hook of section 5 mounts in S and Tables, with one run at a time and one status for
-  both (a module store; a second caller joins the running run). While it loads, show the same loading state the line uses; a failed backfill shows the fallback the
-  caption states.
+  reads the date filter. Task 5 pins this.
+- The hook of section 5 mounts in S and Tables over one module store. The store owns the covered span, the covered currency key,
+  the restore on failure and the run status. A caller joins a run only on the same (span, currency key). A wider span or another
+  currency key starts a new run, and the older run's settle is dropped, as `statistics.screen.test.tsx` pins today. A mount after a
+  settled run starts no run. The store resets when no reader is left, deferred one `Promise.resolve().then(...)` with a
+  `listeners.size === 0` re-check (kiko-architecture, "Shared UI state across screens"), and that reset also drops a late settle.
+- While a run loads and the table has no values, Tables shows the design-system `LoadingState`, the same rule as the line, which
+  shows its message only with no points. With values, the table shows them, as the line does. A failed backfill shows the fallback
+  the caption states.
 
 ## 8. Tap on a cell (Decision 5)
 
@@ -194,7 +214,9 @@ Ruled: a tap on a C1 cell, or on a C2 income or expense cell, opens a read-only 
 behind the number, from the shared ledger, in native and base amounts, with a total equal to the cell. A
 loan interest row shows its derived amount, and names the payment it came from. C2 net and rate cells and
 all C3 cells do not open (no rows sum to them). This also answers the HIG line on truncation and gives the
-exact value behind a rounded cell.
+exact value behind a rounded cell. With a held category pick, the All cell of C1 lists only the picked categories, so its
+total equals the cell; C2's expense cell ignores the pick, as the C2 column does.
+
 ## 9. The table component (kiko:designer owns it)
 
 `src/design-system/components/data-table/`. It takes only strings and display flags as props: column
@@ -262,14 +284,17 @@ Note: `1.4-small` also edits that file, in other lines; the coordinator merges i
 - Share path: reuse `Share.share` with `shareAnchorOf` and `toFileShareUrl` (a private const today; the task exports it); `useSubmitOnce`; `alertOnCatch`. No new
   dependency, permission or `NS*` key. `react-native-fs` is already linked, and the manifest already declares the
   needed reasons (not verified in native code).
-- Temp file: write to `RNFS.TemporaryDirectoryPath`; delete when the share resolves; delete leftover CSVs when the
-  screen opens. So the "re-share" button of the `.kiko` screen does not carry over. Precedent:
+- Temp file: write to `RNFS.TemporaryDirectoryPath`; delete when the share settles, even if the screen has unmounted since;
+  delete leftover CSVs at app launch (`AppRoot` in `App.tsx`), which covers the app dying with the sheet open when the screen is
+  never reopened; and when the screen opens, only with no share in flight, because a Duo fold remounts the screen while the sheet still
+  shares the file. So the "re-share" button of the `.kiko` screen does not carry over. Precedent:
   `read-statement-file.ts:173-178`. Device check owed: `Share.share` resolves on dismissal per a code comment only.
   `.kiko` leaves its file behind today (`export-data.ts:54`): ciphertext, so this goes to the backlog.
 - Warning and gate (Decision 8), ruled: the screen states that the file is not encrypted, and what it holds.
   The Share button then calls `confirmOwner` (Face ID or passcode), as `.kiko` does for secrets
   (`export-data.screen.tsx:57-81`). `noPasscode` proceeds with the warning, unlike `.kiko`, which refuses secrets there: with no passcode, the phone itself shows the same
-data to anyone, and the secrets are the reason for that refusal.
+data to anyone, and the secrets are the reason for that refusal. The orchestrator made this `noPasscode` call; it is not in the ruling,
+and task 7 waits for the user's answer through the coordinator.
 
 ### Privacy effect (the brief's question): the policy text MUST change
 
@@ -279,6 +304,7 @@ data to anyone, and the secrets are the reason for that refusal.
 | `docs/privacy-policy.en.md:47` | "Keep the file and its key safe." | Incomplete: no key for a CSV. |
 | `docs/privacy-policy.md:47-52` (uk) | Same statement | Same edit. |
 | `docs/privacy-site/en.html:63`, `index.html:63` | Same | Regenerate with `npm run privacy:site -- build`. |
+| `docs/security/README.md:255` | "Every export is an AES-256-GCM envelope" | Wrong: that holds for the `.kiko` export only. Name the `.kiko` file and state that the CSV is plain text. |
 | `src/i18n/locales/en.ts:85`, `uk.ts:68` | `dataExport.description` "to an encrypted file" | Stays true for `.kiko`; the CSV screen has its own copy. |
 
 Also true after D1: `:10` and `:27` ("stored only on your device"), since Kiko uploads nothing and the user chooses
@@ -292,14 +318,22 @@ The compliance skill has no rule on plain-text export: the scribe adds one.
 
 ## 11. Common rules
 
-- i18n: every string in en and uk (`kiko-translator`). `statistics` namespace at the screen level. New `calendar.monthShort`
+- i18n: every string in en and uk (`kiko-translator`). A new `tables` namespace at the screen level; the button in S stays under
+  `statistics`. New `calendar.monthShort`
   keys, 3 letters (uk "вер", "лис"), with the year in the first column and in January. No `Intl`: dates are hand-assembled on
   purpose (`dates/format.ts:1-4`). The uk forms get a translator review.
 - Help: `viewStatistics` (pinned step count 8, `help-topics.test.ts:165`) and `backupData` change; the same step greps the
   catalogue keys and pins. Help states the rate rule, C2's limits and that CSV is not a backup.
 - Guideline 2.5.19: no flag. All of it shows in a release build. Demo `.kiko` files have transactions, so a reviewer sees data.
-- Performance: Tables reads the same queries as S, through the shared hook. Compute only the selected table, inside a memo. S's reads pause
-  under the pushed screen; on a wide window S can stay visible beside Tables, so both compute: measure it. Unknown: cell count and per-account memory. Measure on the device with the real data.
+- Performance: Tables reads the same queries as S, through the shared hook. Compute only the selected table, inside a memo. What S does
+  while Tables shows depends on the window:
+  - One pane: S stays mounted under Tables, paused, and keeps its rows.
+  - Statistics tab, `columns` window that is not large: S stays visible beside Tables, so both compute.
+  - Home tab with two panes: S is the companion's default until the press, which makes the default a real route under Tables
+    (`realizeStaticDefault` in `pane-router.ts`, a new key in `pane-slice.ts`). So S unmounts and remounts covered: its mount reads
+    run even while paused (kiko-architecture, "`paused` vs `enabled`"), and all its memos run on top of Tables'. Back returns S at the top
+    of its scroll.
+  Measure these on the device. Unknown: cell count and per-account memory. Measure on the device with the real data.
 - Tests: `kiko-testing`; acceptance pins in section 4; AX and long uk labels in the component's render tests; device check per the
   ops checklist for phone, Duo and iPad, at the largest AX size.
 - Mutation gates are paused (user 2026-10-25): verify + review only.
@@ -327,7 +361,7 @@ The sticky header technique; the exact token for the sum-column tint if `sheetBa
 
 Named "1.4-tables task N/7". The numbers below are the plan's.
 
-1. Shared ledger, reads hook and backfill hook moved out of S; month helper; net worth core split. Decision 7's commit. No visible change except 7.
+1. Shared ledger, reads hook, filter builders and backfill hook moved out of S; month helper; net worth core split. Decision 7's commit. No visible change except 7.
 2. `DataTable` component (kiko:designer), with render tests and the sticky header probe.
 3. Tables screen, route in both stacks, button in Statistics, C1, period, caption, help, en and uk.
 4. C2: income, net, rate, the control's first two parts, help.
