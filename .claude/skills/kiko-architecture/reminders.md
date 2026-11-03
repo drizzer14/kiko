@@ -172,9 +172,9 @@ The Home AND Settings stacks register `TransactionForm`, `AccountForm` and `Hold
   on the account card) beside its name, so `listWithAccountQuery`
   reads the account's `kind`, `icon`, and `color` too. It uses the
   same `ReminderRow` and has no Add (reminders are created from an account's
-  page). It opens from its own Settings card directly below System
-  (`settings-row-reminders`). Transaction templates and Categories share one group card
-  (`settings-card-templates-and-categories`). The account page is reached from a
+  page). It opens from the Reminders row (`settings-row-reminders`) in the Settings
+  group card (order: Categories, Reminders, Transaction templates;
+  `src/screens/settings/settings/settings.screen.tsx`). The account page is reached from a
   native `bell` bar item in `AccountDetail`'s
   `unstable_headerRightItems`, left of Edit in its own glass capsule
   (see kiko-design-system's "Header bar items"), shown on every account
