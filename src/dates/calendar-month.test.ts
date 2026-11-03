@@ -1,7 +1,10 @@
-import { calendarMonthOf, calendarMonthsBetween } from './index';
+import { type CalendarMonth, calendarMonthOf, calendarMonthsBetween } from './index';
 
 const at = (year: number, monthIndex: number, day: number, hour = 12): number =>
   new Date(year, monthIndex, day, hour).getTime();
+
+const startMonths = (months: CalendarMonth[]): number[] =>
+  months.map((month) => new Date(month.start).getMonth());
 
 describe('calendarMonthOf', () => {
   it.each([
@@ -85,7 +88,7 @@ describe('calendarMonthsBetween', () => {
   it('gives whole months, oldest first, with no gap and no overlap', () => {
     const months = calendarMonthsBetween(at(2026, 0, 20), at(2026, 3, 2));
 
-    expect(months.map((month) => new Date(month.start).getMonth())).toEqual([0, 1, 2, 3]);
+    expect(startMonths(months)).toEqual([0, 1, 2, 3]);
     months.slice(1).forEach((month, index) => {
       expect(month.start).toBe(months[index].end + 1);
     });
@@ -94,7 +97,7 @@ describe('calendarMonthsBetween', () => {
   it('crosses a year edge', () => {
     const months = calendarMonthsBetween(at(2025, 10, 5), at(2026, 1, 5));
 
-    expect(months.map((month) => new Date(month.start).getMonth())).toEqual([10, 11, 0, 1]);
+    expect(startMonths(months)).toEqual([10, 11, 0, 1]);
     expect(months.map((month) => new Date(month.start).getFullYear())).toEqual([
       2025, 2025, 2026, 2026,
     ]);
@@ -106,9 +109,7 @@ describe('calendarMonthsBetween', () => {
     const months = calendarMonthsBetween(at(2026, 2, 1), at(2026, 10, 1));
 
     expect(months).toHaveLength(9);
-    expect(months.map((month) => new Date(month.start).getMonth())).toEqual([
-      2, 3, 4, 5, 6, 7, 8, 9, 10,
-    ]);
+    expect(startMonths(months)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   it('runs twelve months for a year', () => {

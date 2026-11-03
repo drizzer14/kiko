@@ -10,6 +10,7 @@ import {
   buildCategoryOptions,
   buildFilterScope,
   excludedCategoryKeysOf,
+  type FilterScope,
   visibleCategorySelection,
 } from '.';
 
@@ -63,7 +64,7 @@ const HOLDINGS = [CARD, CLOSED_JAR, SAVINGS_CARD, ARCHIVED_CARD];
 const scopeOf = (
   selectedAccounts: string[],
   overrides: { accounts?: AccountRow[]; holdings?: HoldingRow[] } = {},
-): ReturnType<typeof buildFilterScope> =>
+): FilterScope =>
   buildFilterScope({
     accounts: overrides.accounts ?? ACCOUNTS,
     holdings: overrides.holdings ?? HOLDINGS,

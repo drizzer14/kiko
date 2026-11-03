@@ -10,7 +10,7 @@ import {
   worldInput,
   WORLD_TRANSACTIONS,
 } from './__fixtures__/spending-ledger-world';
-import { buildSpendingLedger, useSpendingLedger } from '.';
+import { buildSpendingLedger, type SpendingLedgerInput, useSpendingLedger } from '.';
 
 jest.mock('@kiko/statistics/internal-transfers', () => {
   const actual: typeof import('@kiko/statistics/internal-transfers') = jest.requireActual(
@@ -70,7 +70,7 @@ describe('useSpendingLedger', () => {
   it('does not rerun a ledger-wide matcher when only the shown holdings change', async () => {
     const input = worldInput();
     const { result, rerender } = await renderHook(
-      (props: ReturnType<typeof worldInput>) => useSpendingLedger(props),
+      (props: SpendingLedgerInput) => useSpendingLedger(props),
       { initialProps: input },
     );
     const firstLedger = result.current.ledgerWithCurrency;
@@ -91,7 +91,7 @@ describe('useSpendingLedger', () => {
   it('reruns the ledger-wide matchers when a transaction arrives', async () => {
     const input = worldInput();
     const { rerender } = await renderHook(
-      (props: ReturnType<typeof worldInput>) => useSpendingLedger(props),
+      (props: SpendingLedgerInput) => useSpendingLedger(props),
       { initialProps: input },
     );
     const before = jest.mocked(internalTransferTransactionIds).mock.calls.length;

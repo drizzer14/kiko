@@ -2,6 +2,14 @@ import { buildCategoryTrend } from '../category-trend';
 import { buildCategoryBreakdown } from '../category-breakdown';
 
 import {
+  buildSpendingLedger,
+  excludedIdsOf,
+  type ExclusionParts,
+  type LedgerRow,
+  spendingRowsIn,
+  type SpendingLedger,
+} from '.';
+import {
   BANK,
   BASE_TIME,
   CARD,
@@ -15,7 +23,6 @@ import {
   worldInput,
   WORLD_TRANSACTIONS,
 } from './__fixtures__/spending-ledger-world';
-import { buildSpendingLedger, excludedIdsOf, spendingRowsIn } from '.';
 
 const idsOf = (rows: readonly { id: string }[]): string[] => rows.map((row) => row.id);
 
@@ -34,7 +41,7 @@ describe('buildSpendingLedger', () => {
     expect(idsOf(ledger.shownRows)).toEqual(
       WORLD_TRANSACTIONS.filter((row) => row.holdingId === 'card').map((row) => row.id),
     );
-    expect(ledger.ledgerWithCurrency.map((row) => row.currency)).toContain('USDT');
+    expect(ledger.ledgerWithCurrency.map((row: LedgerRow) => row.currency)).toContain('USDT');
   });
 
   it('drops a row whose holding is not in the list', () => {
@@ -94,7 +101,7 @@ describe('buildSpendingLedger', () => {
 
 describe('excludedIdsOf', () => {
   it('unions every rule set it is given', () => {
-    const union = excludedIdsOf({
+    const parts: ExclusionParts = {
       internalTransferIds: new Set(['internal']),
       mccExcludedIds: new Set(['mcc']),
       descriptionExcludedIds: new Set(['description']),
@@ -103,7 +110,8 @@ describe('excludedIdsOf', () => {
       exchangeFundingExcludedIds: new Set(['funding']),
       loanPaymentExcludedIds: new Set(['loan']),
       balanceSetIds: new Set(['balance-set']),
-    });
+    };
+    const union = excludedIdsOf(parts);
 
     expect([...union].sort()).toEqual([
       'balance-set',
@@ -149,7 +157,7 @@ describe('a row that sets a balance', () => {
   ]);
   const range = { from: BASE_TIME, to: BASE_TIME + 200 * MINUTE };
 
-  const donutOf = (ledger: ReturnType<typeof buildSpendingLedger>) =>
+  const donutOf = (ledger: SpendingLedger) =>
     buildCategoryBreakdown({
       transactions: spendingRowsIn(ledger, range.from, range.to),
       categoryDisplay,
@@ -158,7 +166,7 @@ describe('a row that sets a balance', () => {
       defaultCategoryKey: 'other',
       excludedTransactionIds: ledger.excludedTransactionIds,
     });
-  const trendOf = (ledger: ReturnType<typeof buildSpendingLedger>) =>
+  const trendOf = (ledger: SpendingLedger) =>
     buildCategoryTrend({
       transactions: ledger.trendTransactions,
       categoryDisplay,

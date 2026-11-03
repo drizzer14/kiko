@@ -6,7 +6,12 @@ import type { CurrencyRateHistoryRow, HoldingRow } from '@kiko/db';
 
 import type { SeriesHolding } from '../holding-value-at';
 
-import { buildHoldingValues, buildNetWorthSeries } from '.';
+import {
+  buildHoldingValues,
+  buildNetWorthSeries,
+  type HoldingValuesAt,
+  type HoldingValuesInput,
+} from '.';
 
 const HOUR = 3_600_000;
 const D0 = Date.UTC(2026, 0, 1);
@@ -86,7 +91,7 @@ const BOOK = buildPriceBook([
 
 const HISTORY = [usdRow(D0, '30'), usdRow(D1, '31'), usdRow(D2, '32')];
 
-const world = {
+const world: Omit<HoldingValuesInput, 'instants'> = {
   holdings: HOLDINGS,
   transactionsByHolding: TRANSACTIONS,
   historyRows: HISTORY,
@@ -94,15 +99,12 @@ const world = {
   liveRateTable: { USD: 41 },
   today: D3,
   book: BOOK,
-} as const;
+};
 
-const valuesOf = (): ReturnType<typeof buildHoldingValues> =>
+const valuesOf = (): HoldingValuesAt[] =>
   buildHoldingValues({ ...world, holdings: [...HOLDINGS], instants: INSTANTS });
 
-const byHoldingAt = (
-  values: ReturnType<typeof buildHoldingValues>,
-  t: number,
-): Map<string, number> => {
+const byHoldingAt = (values: HoldingValuesAt[], t: number): Map<string, number> => {
   const found = values.find((entry) => entry.t === t);
 
   if (found === undefined) {

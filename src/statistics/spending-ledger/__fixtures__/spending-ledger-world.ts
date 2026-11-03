@@ -34,7 +34,7 @@ export const transactionRow = (
   ...overrides,
 });
 
-export const holdingRow = (
+const holdingRow = (
   overrides: Partial<HoldingRow> & Pick<HoldingRow, 'id' | 'accountId'>,
 ): HoldingRow => ({
   name: overrides.id,
@@ -53,7 +53,7 @@ export const holdingRow = (
   ...overrides,
 });
 
-export const accountRow = (
+const accountRow = (
   overrides: Partial<AccountRow> & Pick<AccountRow, 'id' | 'kind'>,
 ): AccountRow => ({
   name: overrides.id,
@@ -73,13 +73,13 @@ export const CRYPTO = accountRow({ id: 'crypto', kind: 'crypto' });
 
 export const CARD = holdingRow({ id: 'card', accountId: 'bank' });
 export const CASH = holdingRow({ id: 'cash', accountId: 'bank', type: 'cash' });
-export const COIN = holdingRow({
+const COIN = holdingRow({
   id: 'coin',
   accountId: 'crypto',
   type: 'crypto_asset',
   currency: 'USDT',
 });
-export const LOAN = holdingRow({
+const LOAN = holdingRow({
   id: 'loan',
   accountId: 'bank',
   type: 'loan',
@@ -101,61 +101,61 @@ export const COUNTED = transactionRow({
   category: 'groceries',
   time: BASE_TIME + 10 * MINUTE,
 });
-export const TRANSFER_OUT = transactionRow({
+const TRANSFER_OUT = transactionRow({
   id: 'transfer-out',
   holdingId: 'card',
   amountMinorUnits: -5_000,
   time: BASE_TIME + 30 * MINUTE,
 });
-export const TRANSFER_IN = transactionRow({
+const TRANSFER_IN = transactionRow({
   id: 'transfer-in',
   holdingId: 'cash',
   amountMinorUnits: 5_000,
   time: BASE_TIME + 30 * MINUTE + 1_000,
 });
-export const CASH_OUT = transactionRow({
+const CASH_OUT = transactionRow({
   id: 'cash-out',
   holdingId: 'card',
   amountMinorUnits: -2_000,
   mcc: 6011,
   time: BASE_TIME + 40 * MINUTE,
 });
-export const DEPOSIT_TOP_UP = transactionRow({
+const DEPOSIT_TOP_UP = transactionRow({
   id: 'deposit-top-up',
   holdingId: 'card',
   amountMinorUnits: -3_000,
   description: 'Поповнення депозиту',
   time: BASE_TIME + 50 * MINUTE,
 });
-export const CONVERT_LEG = transactionRow({
+const CONVERT_LEG = transactionRow({
   id: 'convert-leg',
   holdingId: 'card',
   amountMinorUnits: -4_000,
   exchangeCounterpartHoldingId: 'coin',
   time: BASE_TIME + 60 * MINUTE,
 });
-export const MOVE_OUT = transactionRow({
+const MOVE_OUT = transactionRow({
   id: 'move-out',
   holdingId: 'card',
   amountMinorUnits: -7_000,
   exchangePairId: 'pair-1',
   time: BASE_TIME + 70 * MINUTE,
 });
-export const MOVE_IN = transactionRow({
+const MOVE_IN = transactionRow({
   id: 'move-in',
   holdingId: 'cash',
   amountMinorUnits: 7_000,
   exchangePairId: 'pair-1',
   time: BASE_TIME + 70 * MINUTE,
 });
-export const COIN_PURCHASE = transactionRow({
+const COIN_PURCHASE = transactionRow({
   id: 'coin-purchase',
   holdingId: 'coin',
   amountMinorUnits: 9_990_000_000,
   untrackedCounterpart: 'p2p:UAH:4150.00',
   time: BASE_TIME + 120 * MINUTE,
 });
-export const FUNDING_DEBIT = transactionRow({
+const FUNDING_DEBIT = transactionRow({
   id: 'funding-debit',
   holdingId: 'card',
   amountMinorUnits: -415_000,
@@ -197,7 +197,7 @@ export const WORLD_TRANSACTIONS = [
   LOAN_PAYMENT,
 ];
 
-export const WORLD_HOLDINGS = [CARD, CASH, COIN, LOAN];
+const WORLD_HOLDINGS = [CARD, CASH, COIN, LOAN];
 
 export const worldInput = (overrides: Partial<SpendingLedgerInput> = {}): SpendingLedgerInput => ({
   transactions: WORLD_TRANSACTIONS,
