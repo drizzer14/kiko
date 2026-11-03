@@ -109,8 +109,8 @@ the entries it holds (each `##` heading and each bold lead).
 - [references/run-log.md](references/run-log.md) — read when you start, log or finish a run.
   Holds Run log (start, event, finish, gap, start and finish rule, stats).
 - [references/mutation-testing.md](references/mutation-testing.md) — read when you size, queue
-  or read a mutation gate. Holds Mutation testing: small change sets only, and Mutation base
-  after a track merged next.
+  or read a mutation gate. Holds Mutation testing: small change sets only, Mutation base
+  after a track merged next, and Status is on demand.
 - [references/merging.md](references/merging.md) — read when you merge into main or stack
   merges. Holds Merging into main, Merge pattern: one conditional, gated on the conflict test,
   and Stacked merge points for gated tracks.

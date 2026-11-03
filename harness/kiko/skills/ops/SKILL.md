@@ -102,8 +102,8 @@ Rules:
   where the full jest suite (two stages, 2a and 2b; see `scripts/checks/verify.sh`) passes.
   The default dev test command is `make jest-affected` (the affected suites only; exit 3 means
   queue the verify); the full suite stays in the queued verify.
-- Status is on demand, with no long-lived PM and no `EVENT:` push (harness-workflow,
-  "Status is on demand").
+- Status is on demand, with no long-lived PM and no `EVENT:` push (harness-workflow
+  references/mutation-testing.md, "Status is on demand").
 - Mutation gates are paused by the user since 2026-10-25 until lifted; verify + review only.
 - **The mutation gate (`check:deep`) is the COORDINATOR's own job, not an ops
   dispatch.** The coordinator queues the long, no-incremental checks
