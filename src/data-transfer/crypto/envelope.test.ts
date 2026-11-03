@@ -157,7 +157,11 @@ describe('the export version against the migration journal', () => {
     // (`operation`), a label only: an older build restoring a file that carries it drops the key,
     // its rows keep their markers, and this build restores an older file without it as null, so
     // it needed no bump.
-    migrationCount: 64,
+    // Through the Travel seed, a row in `categories` and no new shape: an older build restoring a
+    // file that carries it keeps the row as a category of its own, and this build adds the row to
+    // an older file (told by the absent settings mark key, never by the row alone), so it needed
+    // no bump.
+    migrationCount: 65,
   };
 
   it('has a version decision for every migration', () => {

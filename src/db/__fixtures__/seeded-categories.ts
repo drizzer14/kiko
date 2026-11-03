@@ -36,3 +36,12 @@ export const LOAN_INTEREST_CATEGORY: SeededCategory = {
   title: 'Loan interest',
   icon: 'percent',
 };
+
+// The TWELFTH default category (hotels, agencies, airlines, airports), seeded by its OWN later
+// migration, so it is a SEPARATE export for the same reason `LOAN_INTEREST_CATEGORY` above is:
+// every `SEEDED_CATEGORIES` consumer pins EXACTLY 0002's original ten rows.
+export const TRAVEL_CATEGORY: SeededCategory = {
+  key: 'travel',
+  title: 'Travel',
+  icon: 'airplane',
+};
