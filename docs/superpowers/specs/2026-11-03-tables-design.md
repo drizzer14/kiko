@@ -133,8 +133,8 @@ the text silently.
 Period, ruled (Decision 2): the screen has its own date filter, separate from the shared date filter, which it neither reads nor
 changes. Whole calendar months. Default "Last 12 months", plus each calendar year that has data. Reason: the shared filter defaults
 to the last 30 days (`default-range.ts:13`), which gives 2 columns, and a day-grain range cuts months in two. A month column equals
-the donut when the shared date filter is set to the same whole month. The ruling's words are "Own date filter with your default";
-this spec reads "own" as the option the user saw (whole months, last 12 months or a calendar year), not a free range picker.
+the donut when the shared date filter is set to the same whole month. Ruled: whole months, the last 12 months or a calendar year,
+with no free range picker.
 
 Filters on Tables: accounts for all three tables, and categories for C1 only, both from the shared store
 (`use-statistics-filter-selection.ts`), so a pick in Statistics holds on Tables. C2 and C3 hide the category filter. A category
@@ -150,7 +150,8 @@ selected accounts, when that month is in the period. An empty month inside that 
 - Income: rows with `amountMinorUnits > 0` that are in none of the excluded ids, are not change
   returns (`changeGroupId`, already netted from expenses, `category-breakdown.ts:106-133`) and are
   not `setsBalance` rows, converted at today's rate. Reward rows (Binance Earn,
-  `binance.earn-history.ts:143`) count as income.
+  `binance.earn-history.ts:143`) count as income. A real credit whose only partner is a `setsBalance`
+  row is income (Decision 10).
 - Net = income - expenses. Savings rate = net / income, null at zero income (shown as a dash, never 0
   or infinity); it can be negative, and shows as a negative percent.
 - The total column's rate is total net / total income; the average column's is the same over complete
@@ -182,6 +183,17 @@ spending in the donut today, on the day it is set. Ruled: an addition to the sha
 together, as its own commit in change set 1. It changes today's charts for such rows. The same commit filters marked rows in
 `loanInterestEntries`: a marked negative row linked to a loan through the form (`setLoanPayment` has no mark check) would otherwise
 still emit its derived `loan-interest:` and `loan-excess:` rows, which carry other ids.
+
+Ruled (Decision 10): a `setsBalance` row also leaves the matchers that pair rows for spending and income:
+`rowsForTransferMatch` (so `internalTransferTransactionIds`), `exchangeFundingMatches` and `sameCurrencyMoveTransactionIds`.
+Each filter lives in the matcher's own function, so charts, tables and the funding caption on the transaction form all follow
+one path. It changes today's charts, as its own commit, the first of change set 4:
+  - A real debit that a balance-set credit cancelled counts as spending again: the donut goes up.
+  - A real debit that lost its credit, or its funding match, to a balance-set debit now pairs: the donut goes down.
+  - A real credit that a balance-set debit cancelled counts as income.
+  - A balance-set debit loses its funding caption, and a real debit of the same amount can take it.
+The net worth line's `reconcileBondFunding` reads no spending or income and stays as it is. So does the change-return netting
+(`sumReturnsByGroup`): it reads a stored group id, and no writer gives a balance-set row one.
 
 ## 7. C3 definitions
 
@@ -293,8 +305,7 @@ Note: `1.4-small` also edits that file, in other lines; the coordinator merges i
 - Warning and gate (Decision 8), ruled: the screen states that the file is not encrypted, and what it holds.
   The Share button then calls `confirmOwner` (Face ID or passcode), as `.kiko` does for secrets
   (`export-data.screen.tsx:57-81`). `noPasscode` proceeds with the warning, unlike `.kiko`, which refuses secrets there: with no passcode, the phone itself shows the same
-data to anyone, and the secrets are the reason for that refusal. The orchestrator made this `noPasscode` call; it is not in the ruling,
-and task 7 waits for the user's answer through the coordinator.
+data to anyone, and the secrets are the reason for that refusal.
 
 ### Privacy effect (the brief's question): the policy text MUST change
 
@@ -343,14 +354,15 @@ The compliance skill has no rule on plain-text export: the scribe adds one.
 | # | Decision | Ruling |
 |---|---|---|
 | 1 | Where the tables live | Own screen |
-| 2 | Which months | Own date filter, default last 12 months |
+| 2 | Which months | Own date filter, default last 12 months; whole months, the last 12 months or a calendar year, with no free range picker |
 | 3 | Column order | Oldest to newest |
 | 4 | Amounts in cells | Whole units, currency in the caption |
 | 5 | Tap on a cell | Opens the rows behind the number, in Categories and Cash flow |
 | 6 | CSV delimiter and decimal | Follows the app language |
 | 7 | Negative balance-set rows count as spending today | Remove from charts and tables together |
-| 8 | CSV gate | A warning, then Face ID or passcode |
+| 8 | CSV gate | A warning, then Face ID or passcode; on a device with no passcode, a warning, then allow |
 | 9 | What counts as income (section 6) | Every credit that no exclusion rule catches; the user reads C2 on a device, then decides on a mark |
+| 10 | Balance-set rows (`setsBalance`) in the matchers (section 6) | They leave the matchers too, in task 4 or earlier, one pin per pairing |
 
 ## 13. Left to the builder
 
@@ -364,7 +376,7 @@ Named "1.4-tables task N/7". The numbers below are the plan's.
 1. Shared ledger, reads hook, filter builders and backfill hook moved out of S; month helper; net worth core split. Decision 7's commit. No visible change except 7.
 2. `DataTable` component (kiko:designer), with render tests and the sticky header probe.
 3. Tables screen, route in both stacks, button in Statistics, C1, period, caption, help, en and uk.
-4. C2: income, net, rate, the control's first two parts, help.
+4. Decision 10's commit first (step 1/6: balance-set rows leave the matchers, a chart change). Then C2: income, net, rate, the control's first two parts, help.
 5. C3: per-account values, the control's third part, backfill single flight, help.
 6. Tap on a cell (Decision 5).
 7. D1: CSV writer, screen, share, cleanup, privacy text, compliance rule. Its own change set, and it does not depend on 1-6.
