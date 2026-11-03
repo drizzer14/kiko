@@ -1,5 +1,4 @@
 import { match } from 'ts-pattern';
-import { minOf } from '@kiko/numbers';
 import {
   type BackfillStatus,
   deriveBinanceOnlyCurrencies,
@@ -14,19 +13,7 @@ import {
   selectTopCategories,
   type TrendFilter,
 } from '@kiko/statistics/trend-filter';
-import {
-  accountDisplayName,
-  accountsForFilter,
-  hasNoAccounts,
-} from '@kiko/holdings/implicit-account';
-import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
-import {
-  buildCategoryBreakdown,
-  type CategorySlice,
-  resolveCategoryColor,
-} from '@kiko/statistics/category-breakdown';
-import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import {
@@ -34,51 +21,45 @@ import {
   buildAccountContribution,
   buildDebtTotal,
 } from '@kiko/statistics/account-contribution';
-import { holdingsRepo } from '@kiko/holdings/repo';
+import {
+  buildAccountOptions,
+  buildCategoryOptions,
+  excludedCategoryKeysOf,
+  visibleCategorySelection,
+} from '@kiko/statistics/statistics-filter-scope';
 import either, { bifold, isLeft } from 'fnts/either';
 import Box from '@kiko/design-system/components/box';
-import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
-import type { Currency } from '@kiko/currency/currency';
 import { useIsLargeWindow } from '@kiko/display-regions';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { usePriceBook } from '@kiko/prices/use-price-book';
 import type { TabParamList } from '@kiko/navigation/types';
-import { buildRateTable } from '@kiko/rates/net-worth-view';
-import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
-import { localMidnightOfDayKey } from '@kiko/prices/price-book';
-import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import MoneyText from '@kiko/design-system/components/money-text';
-import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
+import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
-import { transactionSpan } from '@kiko/transactions/transaction-span';
-import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import SummaryTable from '@kiko/design-system/components/summary-table';
-import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
-import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
+import { accountDisplayName, hasNoAccounts } from '@kiko/holdings/implicit-account';
 import Screen, { usePaneContentWidth } from '@kiko/design-system/components/screen';
 import { spendingRowsIn, useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
-import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
 import { buildCategoryMeasures, buildCategoryTrend } from '@kiko/statistics/category-trend';
-import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
+import { buildCategoryBreakdown, type CategorySlice } from '@kiko/statistics/category-breakdown';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
 import BarChart from './bar-chart';
@@ -118,21 +99,6 @@ const groupByHolding = (
   return byHolding;
 };
 
-// A share, metal, or property records its purchases as lots, never as ledger
-// rows, so its earliest lot bounds the span the rate history must cover too.
-// The span is made of instants, so a lot's day key becomes its local midnight.
-const earliestLotDay = (
-  holdings: readonly Pick<HoldingRow, 'type' | 'metadata'>[],
-): number | null => {
-  const days = holdings.flatMap((holding) =>
-    (holdingDescriptorOrUndefined(holding.type)?.priced?.lots(holding.metadata) ?? []).map((lot) =>
-      localMidnightOfDayKey(lot.day),
-    ),
-  );
-
-  return days.length > 0 ? minOf(days) : null;
-};
-
 // The category-spending donut's ring is thinner than the default (a higher
 // hole-radius-to-outer-radius ratio) than PieChart's own default, opening
 // enough center room for its total figure — see `centerTotal` below. The
@@ -168,7 +134,7 @@ const NET_WORTH_CARD_GAP = 3;
  * repository rows, holds the filter state, and drives the backfill.
  */
 const StatisticsScreen: FC = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   // The card order and the shared row follow the window and the width the pane's content has (the
   // pane's, limited by the content cap), and nothing else: a filter or a date range never moves a
   // card. A window that is not large shows one column, every card full width (line, bar, pie,
@@ -192,15 +158,9 @@ const StatisticsScreen: FC = () => {
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
-  // Deliberately `paused` (not `enabled`) while another tab shows: the
-  // subscription stays and a write elsewhere only marks each query dirty, so
-  // hiding this tab causes no read, no state change, and no memo recompute —
-  // `enabled: false` would instead unsubscribe and drop every chart to empty
-  // (see kiko-architecture's `useLiveQuery` pattern section for the design).
   // Visibility, not focus: as the Home tab's companion default this screen is on screen and
   // never the focused route.
   const isVisible = useIsScreenVisible();
-  const liveOptions = { cached: true, paused: !isVisible } as const;
 
   // A filter sheet is a native Modal: it stays presented over whatever tab the user switched to.
   // Both controls keep their open state to themselves, so they are mounted afresh, closed, each
@@ -211,52 +171,6 @@ const StatisticsScreen: FC = () => {
       setSheetGeneration((generation) => generation + 1);
     }
   }, [isVisible]);
-
-  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
-    accountsRepo.listQuery(),
-    ['accounts'],
-    true,
-    liveOptions,
-  );
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
-    holdingsRepo.allQuery(),
-    ['holdings'],
-    true,
-    liveOptions,
-  );
-  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
-    ratesRepo.allQuery(),
-    ['currency_rates'],
-    true,
-    liveOptions,
-  );
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
-    settingsRepo.getQuery(),
-    ['settings'],
-    true,
-    liveOptions,
-  );
-  const {
-    data: transactions,
-    isLoading: transactionsLoading,
-    isFresh: transactionsFresh,
-  } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions'], true, liveOptions);
-  const {
-    data: historyRows,
-    isLoading: historyLoading,
-    isFresh: historyFresh,
-  } = useLiveQuery(
-    rateHistoryRepo.historyRowsQuery(),
-    ['currency_rate_history'],
-    true,
-    liveOptions,
-  );
-  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
-    categoriesRepo.allQuery(),
-    ['categories'],
-    true,
-    liveOptions,
-  );
 
   // An empty account set means "all accounts"; any account ids in it narrow all five charts.
   //
@@ -281,101 +195,29 @@ const StatisticsScreen: FC = () => {
 
   const { dateFrom, dateTo, applyDateRange, clearDateRange } = useDateRangeSelection(now);
 
-  const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
-  // The configurable catch-all: a null/empty category folds into this category's
-  // slice. Read from settings (seeded to `other`), passed into the breakdown.
-  const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
-
-  const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  // kiko-architecture: skip the price_points read while nothing rendered on
-  // this screen ever reads it — a holding whose type carries no priced spec
-  // and is not a loan (`needsPriceBook`) never touches `price_points`. It
-  // stays enabled while holdings are still on their first load, so the two
-  // reads run in parallel instead of price_points waiting on holdings. Only a
-  // loan reads the linked-payments half of the book.
-  // The net-worth line values every past day, so it reads every stored close.
-  // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(history valuation)
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
-    holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
-    liveOptions,
-    holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
-  );
-  // Every chart (bar/pie/trend) must never render an empty state while any of
-  // this screen's own queries is still on its first load (kiko-architecture's
-  // useLiveQuery consumer rule) — gated below, right at the return. This is
-  // SEPARATE from the net-worth line's own `loading` prop below, which tracks
-  // the incremental rate-history backfill (a later, non-blocking concern once
-  // this base data has already loaded).
-  const isReady = useDataReady(
-    accountsLoading,
-    holdingsLoading,
-    ratesLoading,
-    settingsLoading,
-    transactionsLoading,
-    historyLoading,
-    categoriesLoading,
-    priceBookLoading,
-  );
-
-  // Only non-archived accounts are ever shown; the account filter narrows within
-  // those. `visibleHoldings` (open AND under a surviving account) feeds every
-  // "now" snapshot (the by-type bar, the account pie, the Debts total).
-  // `netWorthHoldings` feeds the net-worth LINE instead: the same account
-  // filter, but WITHOUT the `closedAt` filter — a closed holding still needs
-  // its real value on every bucket before it closed (`buildNetWorthSeries`
-  // zeros it only at/after the exact instant it closed), and kiko-pricing's
-  // history chart needs a closed holding's own past prices the same way it
-  // needs its own past lots. Memoized so all four builders below key off a
-  // stable collection instead of a fresh array on every render.
-  const filtered = useMemo(() => {
-    const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
-    // The stored selection can name an account archived or deleted since, with no
-    // checked row left to clear it, so it is pruned against the filter's OPTIONS
-    // and an empty result is "All". The options leave out an implicit account
-    // with no holding left: it holds nothing, so "All" totals are unchanged,
-    // while `visibleAccounts` and everything computed from it stay as they were.
-    const optionAccounts = accountsForFilter(accounts, holdings);
-    const visibleSelectedAccounts = visibleSelection(
-      selectedAccounts,
-      optionAccounts.map((account) => account.id),
-    );
-    const filteredAccounts = visibleAccounts.filter((account) => {
-      return visibleSelectedAccounts.size === 0 || visibleSelectedAccounts.has(account.id);
-    });
-    const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
-    const netWorthHoldings = holdings.filter((holding) =>
-      filteredAccountIds.has(holding.accountId),
-    );
-    const visibleHoldings = netWorthHoldings.filter((holding) => holding.closedAt == null);
-
-    return {
-      optionAccounts,
-      visibleSelectedAccounts,
-      filteredAccounts,
-      visibleHoldings,
-      netWorthHoldings,
-    };
-  }, [accounts, holdings, selectedAccounts]);
-
-  // The full transaction and lot span drives the date field's default display,
-  // the line's default window, and the backfill's earliest day. With neither the
-  // start falls back to now.
-  // Earliest transaction time in ONE O(n) pass (see `transactionSpan`);
-  // `Math.min(...times)` spread the whole array and overflowed the stack on a
-  // long history. Memoized on `transactions` alone; the empty-list fallback to
-  // `now` is applied outside so a per-render `now` never invalidates the memo.
-  const earliestTime = useMemo(
-    () =>
-      transactions.length > 0
-        ? transactionSpan(
-            transactions.map((transaction) => transaction.time),
-            0,
-          ).start
-        : null,
-    [transactions],
-  );
-  const lotStart = useMemo(() => earliestLotDay(holdings), [holdings]);
-  const spanStart = Math.min(earliestTime ?? now, lotStart ?? now);
+  // The full transaction and lot span (`spanStart`) drives the date field's default display, the
+  // line's default window, and the backfill's earliest day. `isReady` gates every chart below:
+  // none renders an empty state while one of these queries is on its first load. That is
+  // SEPARATE from the net-worth line's own `loading` prop, which tracks the incremental
+  // rate-history backfill (a later, non-blocking concern once this base data has loaded).
+  const {
+    accounts,
+    holdings,
+    settingsRows,
+    transactions,
+    transactionsFresh,
+    historyRows,
+    historyFresh,
+    categories,
+    priceBook,
+    isReady,
+    baseCurrency,
+    defaultCategoryKey,
+    rateTable,
+    categoryByKey,
+    filtered,
+    spanStart,
+  } = useStatisticsSources({ isVisible, now, selectedAccounts });
 
   // The line's effective window: the picked range when set, otherwise the full
   // transaction span (earliest transaction to now). A PICKED bound is TRUE
@@ -696,20 +538,8 @@ const StatisticsScreen: FC = () => {
 
   // The spending pie sums EXPENSE transactions (negative amounts) by category, in
   // the base currency. A transaction has no currency of its own — its amount is
-  // in its holding's currency — so join each transaction to its (account-scoped,
+  // in its holding's currency — so the ledger joins each transaction to its (account-scoped,
   // open) holding for the currency, dropping any whose holding is filtered out.
-  // The category display map is built here so a rename flows straight through.
-  // buildCategoryDisplayMap resolves each un-renamed default category's title through
-  // resolveDefaultCategoryTitle, which reads the active language off the global i18next singleton
-  // (see category-display.ts) rather than off anything in this closure — the callback body never
-  // references `i18n.language` directly, but the memo must still invalidate on it, or a live
-  // language switch would keep serving the stale titles built for the earlier language.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(language-dependent resolver)
-  const categoryByKey = useMemo(
-    () => buildCategoryDisplayMap(categories),
-    [categories, i18n.language],
-  );
-
   // INTERNAL TRANSFERS (a matched -X / +X pair across two of the user's own
   // holdings, same currency, near-simultaneous) are not spending. Their debit
   // legs are dropped from the category breakdown by id; the credit legs are
@@ -769,103 +599,34 @@ const StatisticsScreen: FC = () => {
     return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
   }, [settingsRows, categories]);
 
-  // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by
-  // the resolved display title: the title is language-dependent (a default
-  // category's title changes under a live language switch — see
-  // resolveDefaultCategoryTitle), so keying selection on it would silently
-  // desync the moment the app language changes, leaving a stale Set of
-  // now-nonexistent title strings (the same bug the Home screen's category
-  // filter had — see category-display.ts's resolveCategoryKey). The menu's
-  // options are one per distinct slice KEY, each carrying the slice's own icon +
-  // color and its current localized title as the row's `label`; a selection is
-  // translated back into the set of KEYS to EXCLUDE from the pie: an empty
-  // selection excludes nothing (all included), otherwise every category whose
-  // KEY is not selected is excluded. De-duplicated by key, first-seen-wins.
-  const categoryOptions = useMemo(() => {
-    const byKey = new Map<string, FilterOption>();
-
-    for (const slice of allCategorySlices) {
-      if (byKey.has(slice.key)) {
-        continue;
-      }
-      byKey.set(slice.key, {
-        value: slice.key,
-        label: slice.title,
-        icon: slice.icon,
-        color: slice.color,
-      });
-    }
-
-    // A category the user already SELECTED (or already SAVED as a manual trend
-    // key — the trend Filters sheet reuses this same list, `TrendFilterField`'s
-    // own `categoryOptions` prop) can drop out of the range-scoped slices
-    // above (e.g. the range moves to a week with no spending in it) — union it
-    // back in from `categoryByKey` so both menus still list it, checked,
-    // rather than silently hiding a selection the user can then never find and
-    // uncheck (a hidden selection stays visible).
-    const manualTrendKeys = appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : [];
-
-    for (const key of new Set([...selectedCategories, ...manualTrendKeys])) {
-      if (byKey.has(key)) {
-        continue;
-      }
-
-      const display = categoryByKey.get(key);
-
-      if (display === undefined) {
-        continue;
-      }
-
-      byKey.set(key, {
-        value: key,
-        label: display.title,
-        icon: display.icon,
-        color: resolveCategoryColor(display.color, key),
-      });
-    }
-
-    // Present the options in the user's CUSTOM category order — the live
-    // `categories` query is already sorted `asc(sortOrder), asc(key)` (see
-    // categories.repo's allQuery) — not in the spending-magnitude order the
-    // breakdown happens to emit. Ranked by the STABLE lowercased slug (never
-    // the localized title — see the block comment above about language
-    // desync), so the ordering holds across a live language switch. An option
-    // whose key has no matching category row (the synthetic default /
-    // uncategorized catch-all keyed by DEFAULT_CATEGORY_KEY) sorts LAST.
-    // Equal-rank options keep their first-seen (Map insertion) order, which
-    // Array.prototype.sort preserves — it is a stable sort (ES2019+).
-    const orderByKey = new Map<string, number>();
-    categories.forEach((category, index) => {
-      orderByKey.set(category.key.toLowerCase(), index);
-    });
-    const rank = (key: string): number => orderByKey.get(key.toLowerCase()) ?? categories.length;
-
-    return Array.from(byKey.values()).sort((a, b) => rank(a.value) - rank(b.value));
-  }, [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter]);
-
-  // The stored selection can name a category deleted since, with no checked row left to clear it,
-  // so it is pruned against the KNOWN keys (the category rows and the slices, which carry the
-  // synthetic default). A key that merely fell out of the range is still known and stays selected.
-  const visibleSelectedCategories = useMemo(
+  // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by the resolved
+  // display title (the same bug the Home screen's category filter had — see category-display.ts's
+  // resolveCategoryKey). A selection is translated back into the set of KEYS to EXCLUDE from the
+  // pie. The trend Filters sheet reuses this same option list (`TrendFilterField`'s own
+  // `categoryOptions` prop), so a manual trend key is kept in it as well as a selected category.
+  const categoryOptions = useMemo(
     () =>
-      visibleSelection(selectedCategories, [
-        ...categoryByKey.keys(),
-        ...allCategorySlices.map((slice) => slice.key),
-      ]),
+      buildCategoryOptions({
+        slices: allCategorySlices,
+        categories,
+        categoryByKey,
+        keptKeys: [
+          ...selectedCategories,
+          ...(appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : []),
+        ],
+      }),
+    [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter],
+  );
+
+  const visibleSelectedCategories = useMemo(
+    () => visibleCategorySelection(selectedCategories, categoryByKey, allCategorySlices),
     [selectedCategories, categoryByKey, allCategorySlices],
   );
 
-  const excludedCategoryKeys = useMemo(() => {
-    if (visibleSelectedCategories.size === 0) {
-      return new Set<string>();
-    }
-
-    return new Set(
-      allCategorySlices
-        .filter((slice) => !visibleSelectedCategories.has(slice.key))
-        .map((slice) => slice.key),
-    );
-  }, [allCategorySlices, visibleSelectedCategories]);
+  const excludedCategoryKeys = useMemo(
+    () => excludedCategoryKeysOf(allCategorySlices, visibleSelectedCategories),
+    [allCategorySlices, visibleSelectedCategories],
+  );
 
   const categorySlices = useMemo(
     () =>
@@ -991,18 +752,7 @@ const StatisticsScreen: FC = () => {
     [categorySlices, baseCurrency],
   );
 
-  // One option per visible account (an implicit account with no holding left
-  // excepted, see `accountsForFilter`), each carrying the account's own identity
-  // icon + color for the menu row; matching keys on `option.value` (the account
-  // id, compared to `account.id` in the `filtered` memo above, so a selection
-  // survives a rename and a language switch, and same-named accounts stay
-  // separate options); the `label` is the display name, which an implicit
-  // account localizes.
-  const accountOptions: FilterOption[] = filtered.optionAccounts.map((account) => ({
-    value: account.id,
-    label: accountDisplayName(account, t),
-    ...accountIdentity(account),
-  }));
+  const accountOptions = buildAccountOptions(filtered.optionAccounts, t);
 
   if (!isReady) {
     return (
