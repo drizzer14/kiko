@@ -92,6 +92,15 @@ jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
   recostStoredLots: () => mockRecostStoredLots(),
 }));
 
+// useMccBackfill (wired into AppRoot) runs the one-time MCC back-fill; spied so a test can tell
+// when the app root starts it.
+const mockBackfillMccCategories = jest.fn().mockResolvedValue(undefined);
+jest.mock(
+  '@kiko/categories/category-rules-repo/backfill-mcc-categories',
+  () => ({ backfillMccCategories: () => mockBackfillMccCategories() }),
+  { virtual: true },
+);
+
 // The Home screen is data-driven (accounts/holdings/rates/settings via
 // useLiveQuery). This boot smoke test only asserts the screen mounts, so stub
 // the hook to return empty data rather than opening a real op-sqlite reactive
@@ -133,6 +142,21 @@ describe('App', () => {
     });
 
     await waitFor(() => expect(mockRecostStoredLots).toHaveBeenCalledTimes(1));
+  });
+
+  it('starts the one-time MCC back-fill from the app root, never while locked', async () => {
+    mockBackfillMccCategories.mockClear();
+    mockLock.startsLocked = true;
+
+    await render(<App />);
+
+    expect(mockBackfillMccCategories).not.toHaveBeenCalled();
+
+    await act(async () => {
+      mockLock.unlock();
+    });
+
+    await waitFor(() => expect(mockBackfillMccCategories).toHaveBeenCalledTimes(1));
   });
 
   it('reads no notification tap and has no navigator to route to until the app is unlocked', async () => {
