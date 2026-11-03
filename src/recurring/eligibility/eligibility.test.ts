@@ -1,5 +1,7 @@
 import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
 
+import * as eligibility from './eligibility';
+
 type LedgerRow = Pick<
   TransactionRow,
   | 'id'
@@ -31,23 +33,6 @@ type WorldChange = {
   extraAccounts?: Account[];
   withoutHolding?: boolean;
 };
-
-type Eligibility = {
-  recurringExcludedIds: (
-    rows: readonly LedgerRow[],
-    holdings: readonly Holding[],
-    accounts: readonly Account[],
-  ) => ReadonlySet<string>;
-  isRecurringCandidate: (
-    row: LedgerRow,
-    holding: Holding | undefined,
-    account: Account | undefined,
-  ) => boolean;
-};
-
-// Read at run time: the module does not exist yet, and a static import would fail the staged
-// typecheck of this commit.
-const eligibility = jest.requireActual('./eligibility') as Eligibility;
 
 const MONTH_COUNT = 12;
 const CHARGE_IDS = Array.from({ length: MONTH_COUNT }, (_, month) => `charge-${month}`);
