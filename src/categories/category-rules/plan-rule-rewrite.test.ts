@@ -3,23 +3,14 @@ import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclus
 import {
   REWRITE_GUARD_FIELDS,
   type RewriteGuardField,
+  hasNoRealCategory,
   isRewriteEligible,
+  planMccBackfill,
   planRuleRewrite,
 } from './plan-rule-rewrite';
 import { prepareRules } from './prepare-rules';
 import { ruleRow } from './__fixtures__/rule-row';
-import type { CategoryRuleMatcher, PreparedRules, RewriteCandidate } from './category-rules.d';
-
-// Read at run time: neither function exists yet.
-type MccBackfillRow = RewriteCandidate & { mcc: number | null };
-const { hasNoRealCategory, planMccBackfill } = jest.requireActual('./plan-rule-rewrite') as {
-  hasNoRealCategory: (row: { category: string | null }, knownKeys: ReadonlySet<string>) => boolean;
-  planMccBackfill: (
-    prepared: PreparedRules,
-    rows: readonly MccBackfillRow[],
-    knownKeys: ReadonlySet<string>,
-  ) => { id: string; category: string }[];
-};
+import type { CategoryRuleMatcher, MccBackfillRow, RewriteCandidate } from './category-rules.d';
 
 const nameIs = (text: string): CategoryRuleMatcher => ({ type: 'nameIs', text });
 
