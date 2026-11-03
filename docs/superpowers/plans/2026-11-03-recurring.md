@@ -10,13 +10,21 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-03-recurring-design.md`. Refer to it by section; this plan does not copy it, except the world matrix, whose rows are the contract ("The matrix" below). Every count here is a floor: the developer measures. Every code fact names a symbol, not a line: re-grep each fact on the actual base before building on it.
 
+## User ruling and the fundamentals point
+
+Relayed by the coordinator on 2026-11-03, for all 1.4 tracks: "For each feature, build the fundamentals first, then we can iterate fast on visuals and whatnot". The coordinator defines fundamentals as: the feature works end to end with correct data. Visual finish comes after, in fast rounds with the user on a device. Checks, verify, review and data correctness do not change. A feature still ships complete in the release, with nothing hidden.
+
+**Fundamentals done: the tip of task 4/4 (step 14/14), the next device call for this feature.** Detection, the reversible hide and the mark are all in the user's Q2 answer, and a false match has no removal before task 3/4 (spec 15). No set is visual-only: every step of tasks 1/4 to 4/4 holds behavior, correct data or text the feature needs, so no step moved and the floors stand. Each set's device items wait for that call; its review and Ready do not. Visual finish follows in fast rounds, each with the same checks.
+
+**A look before the point, not the point:** at task 2/4's tip, a release build on the user's real ledger shows detection on their history and gives spec 10.3's numbers before tasks 3/4 and 4/4 build on that read (a stall's fix, spec 10.4, changes it).
+
 ## User answers
 
 Relayed by the coordinator on 2026-11-03; the spec's head quotes them. Q1: "Charged monthly, on day 15" + "Last charge 15.10.2026". Q2: "1 + mark as recurring on transaction itself" (task 4/4). Q3: "Settings row, in the same group as categories" (task 1/4 steps 9 and 10). Q4: the demo seed changes so that five bills show (S14).
 
 **Still assumed, NOT approved:** Q5 = A, a mark covers every charge with that merchant name (spec 16). See "If the user answers differently" at the end. Q5 must be answered before task 3/4 starts: C settles that set's column shape, and A or B leave tasks 1/4 to 3/4 as written.
 
-**Measurement:** spec section 10.2 holds it. It comes from node with JIT and sqlite3 with no encryption, so no device figure exists: the device checks of tasks 1/4 and 2/4 record one. The K of the counted pin is set from its own first run. Marks do not change detection's input or rule, so the reference is not re-run. Base of this plan's facts: 5256bf465 for Settings, the demo seed and task 4/4; c9896e1f9 for the rest.
+**Measurement:** spec section 10.2 holds it. It comes from node with JIT and sqlite3 with no encryption, so no device figure exists: the look at task 2/4's tip records one, or else the call at the fundamentals point. The K of the counted pin is set from its own first run. Marks do not change detection's input or rule, so the reference is not re-run. Base of this plan's facts: 5256bf465 for Settings, the demo seed and task 4/4; c9896e1f9 for the rest.
 
 **One release:** the four sets merge into `next` one at a time and `next` tolerates each middle state, but a release holds all four or none: hide is the remedy for the accepted yearly false match, and the user asked for the mark with the rest (spec 15).
 
@@ -145,7 +153,7 @@ markRecurringMerchant: (key: string, name: string, period: RecurringPeriod) => P
 - **Review:** `kiko:reviewer` on the task's diff from its base. The diff of test files is checked for edited pins.
 - **Drift:** `kiko:retrospect` checks `.claude/skills/`, `harness/kiko/skills/`, `harness/kiko/agents/` against the task's code.
 - **Scribe:** `kiko:scribe` fixes the drift and commits; the report names the sha or "no drift found".
-- **Device:** the coordinator gets the user's device confirm on the items the task lists (UI needs it; a queued build goes through the coordinator).
+- **Device:** the coordinator gets the user's device confirm on the items the task lists, at the fundamentals point (UI needs it; a queued build goes through the coordinator).
 - **Ready:** READY FOR VERIFY to the coordinator: worktree, label `1.4-recurring-task-N`, base sha, head sha, mutable file count (`make mutable`), named-file runs and their output path. The coordinator queues the verify, reruns until green, and merges.
 
 ---
@@ -212,7 +220,7 @@ markRecurringMerchant: (key: string, name: string, period: RecurringPeriod) => P
 
 ## The marked matrix (the contract of task 4/4 step 1)
 
-The same conventions; each row adds a stored entry for the world's name. The `was` of spec 8.2 is the result with no entry; these worlds also run with no entry, and that result must hold. Line is the recurrence line.
+The same conventions; each row adds a stored entry for the world's name. The `was` of spec 8.2 is the result with no entry; these worlds also run with no entry, and that result must hold. Spec 8.2's two hidden rows and two link rows are flows with no row here: their `was` is the hide alone, or a path that needs a mark. Line is the recurrence line.
 
 | World | Rows | Mark | Expected |
 |---|---|---|---|
@@ -243,7 +251,7 @@ The same conventions; each row adds a stored entry for the world's name. The `wa
 | Twin | m(2, 2, 250), and again as `import` | monthly | one x2 |
 | Future-dated manual | 15 Oct, 15 Nov 2026 as `manual` | monthly | one x1; no output day after today |
 | Past the leave bound | 3 May 2024 at 300 | monthly | one x1, stopped, quiet since 3 May 2024 (the holding's only row, S5), still listed |
-| Some rows excluded | m(6, 3, 700), two of them with `loanHoldingId` | monthly | one x4 |
+| Some rows excluded | m(6, 3, 700), 3 Sep and 3 Jun with `loanHoldingId` | monthly | one x4, line "Marked: monthly" (`4 / 6` is under 0.75); with no entry, none |
 | Only row a matched pair | One debit with its credit | monthly | no series; in `withoutCharges` |
 | Each rule, all rows excluded | One merchant per kind: exchange pair, balance set, change group, linked loan, crypto holding, cash-out MCC, own IBAN, deposit wording, funded debit, archived account, missing holding | monthly | no series; in `withoutCharges` |
 | Only a future row | 15 Nov 2026 as `manual` | monthly | no series; in `withoutCharges` |
@@ -279,7 +287,7 @@ The same conventions; each row adds a stored entry for the world's name. The `wa
 - [ ] **step 12/15 (kiko:developer): demo seed.** S14. A sentence in `e2e/screenshot/fixtures/README.md` says which merchants stay steady and why the others move. Regenerate the two `.kiko` files the way the fixtures README states (`KIKO_REGEN_DEMO=1` on `generate-demo-kiko.test.ts`), not the frozen `kiko-demo-en-1.1.kiko`. Run `build-demo-snapshot` tests, `generate-demo-kiko.test.ts`, `screenshot-seed.test.ts`, step 11's file. The seed's net-worth, spread, "12 newest rows" and "3 newest" pins stay as they are; a failure there is reported, not edited. Commit `feat(demo): shops move within their month, bills stay steady`.
 - [ ] **step 13/15 Review (kiko:reviewer).** Top question: can any code path produce a future date or a total? Second: does anything but `merchantNameOf` decide a merchant?
 - [ ] **step 14/15 Drift and Scribe (kiko:retrospect, kiko:scribe).** Check kiko-domain ("Spending-exclusion pipeline" gains: a new exclusion rule also goes in `recurringExcludedIds`; a new section for the detection rule points at `src/recurring/`), kiko-architecture (the new whole-ledger live read; route list). Report the sha or "no drift found".
-- [ ] **step 15/15 Device and Ready.** Device confirm by the user: a clean install shows the row and the empty text (uk too); on a release build on the user's real ledger, the report records that ledger's row count and the time from opening the list to the list showing, and the user names any stall (spec 10.3, fix path 10.4; the app shows no row count, so the coordinator settles with the user how to read it before this check); no false match the user objects to, listed by name for the coordinator; the demo file imported shows the five bills and no shop; iPad two panes and Duo fold. Label `1.4-recurring-task-1`.
+- [ ] **step 15/15 Ready, device items held.** No device call here. Held for task 4/4 step 14/14, the real-ledger items for the look at task 2/4's tip if it is taken: a clean install shows the row and the empty text (uk too); on a release build on the user's real ledger, the report records that ledger's row count and the time from opening the list to the list showing, and the user names any stall (spec 10.3, fix path 10.4; the app shows no row count, so the coordinator settles with the user how to read it before this check); no false match the user objects to, listed by name for the coordinator; the demo file imported shows the five bills and no shop; iPad two panes and Duo fold. Label `1.4-recurring-task-1`.
 
 ---
 
@@ -300,7 +308,7 @@ The same conventions; each row adds a stored entry for the world's name. The `wa
 - [ ] **step 5/8 (kiko:qa): navigator pins.** `recurring-series.navigator.test.tsx` with `navigator-stack-probe`: single mode: list to series to form, back twice; split mode: all three in the detail pane, Settings stays in the list pane, the menu row stays marked; a fold keeps the route and its params; the form opened this way for a manual row saves and returns (the path the Settings stack did not have). Green at once is acceptable when the pane rule already holds: show the run, and prove one pin by a temporary wrong route name. Commit `test(navigation): series links in the Settings stack`.
 - [ ] **step 6/8 Review (kiko:reviewer).** Top question: can a link open the wrong transaction after a live refresh?
 - [ ] **step 7/8 Drift and Scribe (kiko:retrospect, kiko:scribe).** Check kiko-architecture "Pane navigation" only if a rule changed; route lists. Report the sha or "no drift found".
-- [ ] **step 8/8 Device and Ready.** Device confirm by the user: a tap on a charge opens the right transaction, synced read-only, manual editable; back order on phone, iPad, unfolded and folded Duo; the two-pane look; on a release build on the real ledger, the report records its row count and the time from opening a series (a second whole-ledger read plus detection, spec 10.3) to the series showing, and the user names any stall there or on Back (fix path spec 10.4). Label `1.4-recurring-task-2`.
+- [ ] **step 8/8 Ready, device items held.** No required device call here (the look at this tip is the head's). Held for task 4/4 step 14/14, the real-ledger items for that look if it is taken: a tap on a charge opens the right transaction, synced read-only, manual editable; back order on phone, iPad, unfolded and folded Duo; the two-pane look; on a release build on the real ledger, the report records its row count and the time from opening a series (a second whole-ledger read plus detection, spec 10.3) to the series showing, and the user names any stall there or on Back (fix path spec 10.4). Label `1.4-recurring-task-2`.
 
 ---
 
@@ -333,7 +341,7 @@ After those, other suites stay green unchanged. A failure elsewhere is reported,
 - [ ] **step 7/10 Migration review (kiko:reviewer).** Required before BATCH READY, on the migration, schema, restore pins and `VERSION_DECISIONS` note. Top question: can any older-build path lose or change a row? Also read `git show release-1.3:src/data-transfer/import-data.ts` and the restore on that ref to confirm the key is dropped. No index, so no index EXPLAIN test.
 - [ ] **step 8/10 Review (kiko:reviewer).** The whole diff. Top question: does anything other than the settings row change on hide?
 - [ ] **step 9/10 Drift and Scribe (kiko:retrospect, kiko:scribe).** Check kiko-architecture's data-transfer section, kiko-domain. Add to `docs/harness` only if a check moved. Report the sha or "no drift found".
-- [ ] **step 10/10 Device and Ready.** Device confirm by the user: hide, the row goes, "Hidden" names it, show brings it back; export then restore keeps the list; both languages. Note the renumber need in the report if another migration reached `next` first (S12). Label `1.4-recurring-task-3`.
+- [ ] **step 10/10 Ready, device items held.** No device call here. Held for task 4/4 step 14/14: hide, the row goes, "Hidden" names it, show brings it back; export then restore keeps the list; both languages. Note the renumber need in the report if another migration reached `next` first (S12). Label `1.4-recurring-task-3`.
 
 ---
 
@@ -363,7 +371,7 @@ After those, other suites stay green unchanged. A failure elsewhere is reported,
 - [ ] **step 11/14 (kiko:qa): navigator pins.** `recurring-series.navigator.test.tsx`: list to detected series to form, set a mark, Back shows that key's marked series; list to marked series to form, "Not marked", Back shows spec 9.3's result, for one detected series and for merged Apple 99 and 399; single and split mode; a fold keeps the route. Home to form: the field reads the same state. Prove one by a temporary wrong key, if green at once. Commit `test(navigation): a mark set through a link`.
 - [ ] **step 12/14 Review (kiko:reviewer).** Top question: can a mark make any row count, or any date show, that section 4 and the ruling leave out? Second: do the two form paths differ anywhere? No migration in this set.
 - [ ] **step 13/14 Drift and Scribe (kiko:retrospect, kiko:scribe).** Check kiko-domain's recurring section (a mark, its periods, one choice map), kiko-architecture's data-transfer section. Report the sha or "no drift found".
-- [ ] **step 14/14 Device and Ready.** Device confirm by the user, both languages: the field's look and place on a synced and a manual row; mark a missed charge, the list shows it with the expected line; change the period; remove it from the form and from the series; hide then mark and the "Hidden" line leaves; export then restore keeps a mark; the same field through a series link; iPad two panes and Duo fold. Label `1.4-recurring-task-4`.
+- [ ] **step 14/14 Device and Ready: fundamentals done.** The next device call for this feature. Device confirm by the user, both languages: the items held from tasks 1/4 to 3/4 (real-ledger items already read at task 2/4's tip are not repeated), and the field's look and place on a synced and a manual row; mark a missed charge, the list shows it with the expected line; change the period; remove it from the form and from the series; hide then mark and the "Hidden" line leaves; export then restore keeps a mark; the same field through a series link; iPad two panes and Duo fold. Label `1.4-recurring-task-4`.
 
 ---
 

@@ -15,6 +15,10 @@ the user's own rows. It predicts nothing and plans nothing.
 **User rulings.**
 - Ruling 2026-11-03, binding on everything here: "A2 shows no upcoming charges, only the recurrence date + already occured
   transactions via links".
+- Ruling relayed by the coordinator on 2026-11-03, for all 1.4 tracks: "For each feature, build the fundamentals first, then we
+  can iterate fast on visuals and whatnot". The coordinator defines fundamentals as: the feature works end to end with correct
+  data. Visual finish comes after, in fast rounds with the user on a device. Checks, verify, review and data correctness do not
+  change. A feature still ships complete in the release, with nothing hidden. Section 15 names the point.
 
 Answers of 2026-11-03, relayed by the coordinator; words in quotes are the user's:
 - Q1, A: "Charged monthly, on day 15" + "Last charge 15.10.2026" (section 6).
@@ -417,7 +421,7 @@ It writes nothing on a transaction, and it predicts nothing.
 | Surface | A field, not a button or a new sheet: `RecurringMarkField` in `transaction-form/recurring-mark-field/`, one element in the screen between `ModeAndActions` and `CommentRow` (section 9.6) | `SelectField` is the shared control; `LoanPaymentField` is the same kind of immediate per-row choice. `CategoryOverrideSheet` is on this base at `:1604`, and `1.4-category-automation task 2/6` edits that sheet, its hook and their wiring, not the field list. Its tip 71de98891 has not started that set |
 | Detection's input | **Unchanged.** The marked pass runs after the rule on the same charges | Section 9.5; so section 10.2's reference needs no re-run |
 
-Worlds. `was` is the result before these answers, when a mark was out: a miss with no remedy.
+Worlds. `was` is the result before these answers, when a mark was out: the result with no entry, or with the hide alone in the two hidden rows, and "not reachable" where the path needs a mark.
 
 | World | was | now |
 |---|---|---|
@@ -442,8 +446,8 @@ Worlds. `was` is the result before these answers, when a mark was out: a miss wi
 | Marked, then its twin imported | none | the twin folds, each charge counted once |
 | Marked, with a future-dated manual row | none | left out; no output day after today |
 | Marked, last charge 30 months ago, the holding's only row | none | one series, stopped and quiet, and it stays |
-| Marked, stale holding | none | stopped and quiet, as section 7 |
-| Marked, some rows linked to a loan | none | those rows are left out, the others link |
+| Marked, stale holding | monthly x4, stopped and quiet | stopped and quiet, as section 7 |
+| Marked, 3 Sep and 3 Jun of six monthly rows linked to a loan | none: the four left give `4 / 6` | those rows are left out, the others link |
 | Marked, its only row a matched own transfer | none | "Marked, No Charges" |
 | Marked, each alone: rows only on an archived account, on a missing holding, only a future row, only credits | none | "Marked, No Charges" |
 | Marked, all rows deleted | none | "Marked, No Charges" |
@@ -452,7 +456,7 @@ Worlds. `was` is the result before these answers, when a mark was out: a miss wi
 | Series screen open by link, mark set in the form, Back | not reachable | that key's marked series |
 | Series screen open by link to a marked series, mark removed in the form, Back | not reachable | the one detected series under the same key, currency and period; else the neutral text |
 | A merchant named `constructor`, with no choice | monthly | monthly: no choice is read, and the field reads "Not marked" |
-| A merchant named `__proto__`, marked, then reloaded | none | one marked series; the entry survives the write and the read |
+| A merchant named `__proto__`, one charge, marked, then reloaded | none | one marked series; the entry survives the write and the read |
 
 Results the review of 35861c22b changed. `was` is that draft.
 
@@ -838,6 +842,8 @@ Sets, each merging into `next` alone. Counts are floors, tests included.
 4. **1.4-recurring task 4/4: mark as recurring.** Goal: the field on the transaction form, the marked series, "Remove mark", "Marked, No Charges". Needs task 3/4, for its store and the series screen's button. No migration. Floor 37 files, 11 of them mutable.
 
 **One release.** The four sets merge into `next` one at a time and `next` tolerates each middle state: every visible text ships with what it names (section 14), and no middle state writes anything but its own column. A release holds all four or none: tasks 1/4 and 2/4 alone have no hide, the remedy for the accepted yearly false match, and the user asked for the mark with the rest.
+
+**Fundamentals done: the tip of task 4/4.** It is the next device call for this feature, under the ruling at the top. Detection, the reversible hide and the mark are all in the user's Q2 answer, and a false match has no removal before task 3/4. No set is visual-only: every step holds behavior, correct data or text the feature needs, so none moved. The device items of tasks 1/4 to 3/4 wait for that call, and visual finish follows it in fast rounds. **A look before the point, not the point:** at task 2/4's tip, a release build on the user's real ledger shows detection on their history and gives section 10.3's numbers before tasks 3/4 and 4/4 build on that read.
 
 Conflict surface: `settings.screen.tsx` and its group-card pins (one row and divider in the card `1.4-small` made), `transaction-form.screen.tsx` (task 4/4, one element; section 9.6), `e2e/screenshot/seed/screenshot-seed.ts`, `e2e/screenshot/fixtures/README.md` and the demo `.kiko` files (`1.4-category-automation task 2/6` edits them too, and adds rows under merchants this track's pin reads), `settings.stack.tsx` and `types.d.ts` (one added route each with `1.4-category-automation`), `en.ts`, `uk.ts`, `title-keys.ts`, `help-topics.ts` (added lines), `schema.ts`, the migration files, `envelope.test.ts`, `settings-columns.test.ts` (task 3/4, by merge order). `1.4-light-scheme`: theme tokens and shared components only, so it applies by itself. `1.4-tables`: Statistics is not touched here. `1.4-bybit`: section 4, no edit.
 
