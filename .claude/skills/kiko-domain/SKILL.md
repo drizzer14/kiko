@@ -451,9 +451,10 @@ set the balance (an opening balance, a cash opening, a hand edit) carries
 `transactions.setsBalance` (migration 0047) for good, whatever its date,
 description or category has become. The mark no longer decides a balance move:
 its edit (by the difference of the amounts) and its delete move the balance
-like any row's. It only keeps a closing import from counting the row a second
+like any row's. It keeps a closing import from counting the row a second
 time: `postClosingRowsWhere` never counts it in the post-closing sum, because a
-closing balance replaces the balance the row set. `holdings.balanceSetRowId`
+closing balance replaces the balance the row set. It also keeps the row out of
+spending (kiko-domain "Spending-exclusion pipeline", Decision 7). `holdings.balanceSetRowId`
 (same migration) points at the current set's row (`holdingsRepo.create`,
 `accountsRepo.createCashAccount`, `holdingsRepo.updateWithBalanceDelta`) and
 `importRows`'s closing write sets it to NULL; no balance rule reads it now, and
@@ -1022,13 +1023,15 @@ purchase row with its funding bank debit)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
-Which rows each step reads (`src/screens/statistics/statistics.screen.tsx`):
-the spending charts always draw every row of the holdings under the KEPT
-accounts, open or closed (`transactionsWithCurrency`, filtered from
-`filtered.netWorthHoldings`), so a closed card keeps its past spending.
-The internal-transfer matcher runs over `ledgerWithCurrency` (every
+Which rows each step reads (`src/statistics/spending-ledger/`, one hook and one pure builder
+that the Statistics screen calls; `useStatisticsSources` in
+`src/statistics/statistics-sources/` supplies the reads, and the account filter's scope is in
+`src/statistics/statistics-filter-scope/`; read the hook and the builder there for the row
+names): the spending charts always draw every row of the holdings
+under the KEPT accounts, open or closed, so a closed card keeps its past spending.
+The internal-transfer matcher runs over the unfiltered ledger (every
 holding, whatever the account filter or `closedAt`). The funding matcher
-(`exchangeFundingMatches`) reads the same unfiltered `ledgerWithCurrency` plus an
+(`exchangeFundingMatches`) reads the same unfiltered ledger plus an
 account-kind-by-holding map (a holding with no account counts as a bank side), so the
 account filter never brings a funding debit back. The nearest-first pass alone can strand an
 exchange row, so the matcher adds an augmenting-path pass (`addAugmentingPairs` in
@@ -1069,11 +1072,27 @@ local day and capping at the payment's own amount; an installment paid
 in parts counts its interest once, on the earliest parts
 (`loanInterestPerPaymentMinor`, `src/holdings/loan-schedule/`, allocated
 per loan over all of that loan's linked payments).
-`statistics.screen.tsx` feeds these derived entries into BOTH
+The spending ledger (`src/statistics/spending-ledger/`) builds these derived entries
+over the account-filtered rows, and the Statistics screen feeds them into BOTH
 `buildCategoryBreakdown` and the category trend, alongside every real
 row — not into the exclusion-RULE inputs themselves (a synthetic
 entry carries no mcc/description/IBAN signal, so it plays no part in
 detecting a transfer).
+
+Decision 7: a negative balance-set row (`setsBalance`) leaves spending, because its amount states
+a balance, not money spent. `balanceSetIdsOf` in
+`src/statistics/spending-ledger/spending-ledger.ts` is the eighth exclusion key, built over every
+holding's rows whatever the account filter. `loanInterestEntries`
+(`src/statistics/loan-payments/loan-payments.ts`) also drops a marked row before it splits, so a
+marked row linked to a loan emits no entry and the loan's other payments split as if it did not
+exist. A positive marked row is in the set but was never in the donut.
+
+Where the Statistics code lives (read each folder, not a name list here):
+`src/statistics/spending-ledger/` (the ledger hook and pure builder),
+`src/statistics/statistics-sources/` (the screen's reads),
+`src/statistics/statistics-filter-scope/` (the account and category filter scope, including the
+kept selection unioned back in), and `src/statistics/use-rate-history-backfill/` (the rate-history
+backfill the screen only calls).
 
 ## Deleting a movement takes its other parts
 
@@ -1179,6 +1198,7 @@ rather than assuming only these two.
 
 ## Dates
 
+`src/dates/calendar-month.ts` holds the local calendar-month helpers (read its exports there).
 `DAY_MS` from `@kiko/dates` is the one day-length source, in app code
 AND tests. Never declare a local day-length constant; only `src/dates/`
 may. Semgrep `kiko-no-local-day-length-constant`
