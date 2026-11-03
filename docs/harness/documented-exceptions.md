@@ -995,15 +995,27 @@ verified usage, not dead weight:
   `category_rules` table inside `write()`, with no `where` and no cap.**
   Callers inside a write: `saveRule` and `applyNameRule` (once each) and
   `withCategoryRules` in `src/transactions/repo/transactions.repo.ts` (once per
-  insert batch). `kiko-no-full-table-select-in-write`
+  insert batch), and `backfillIn`
+  (`src/categories/category-rules-repo/backfill-mcc-categories.ts`, once; own
+  entry below). `kiko-no-full-table-select-in-write`
   (`rules/semgrep-prewrite.yml`) matches only a literal `write(...)` callback
   body, so the helper is invisible to it and there is no inline `nosemgrep`;
   this entry is the record. Safe because the table is user-authored (one row
   per rule) and small, and every reader needs every rule: a `where` or a cap
   would silently drop a rule, a category not applied (spec decision 10, no
   known limit for data correctness). Bounded: read once per write
-  (`stageDraft`) and once per insert batch, never per row; transaction rows
-  are paged. Any new whole-table reader inside a write needs its own entry.
+  (`stageDraft`) and once per insert batch, never per row; the transaction
+  writes of those callers page their rows (`backfillIn` does not, see its
+  entry). Any new whole-table reader inside a write needs its own entry.
+
+- **`backfillIn`
+  (`src/categories/category-rules-repo/backfill-mcc-categories.ts`) makes an
+  unpaged many-row read inside one `write()`.** It reads the whole
+  `categories` table, all rules, the holdings labels and
+  `mccBackfillRowsQuery` in one callback. Safe because it is one-time (a
+  `settings` mark), bounded by the rows with an added MCC code and no real
+  category, and atomic with the mark: a split read would let the mark commit
+  over a partial plan. A new unpaged read needs its own entry.
 
 - **`src/native-specs/Native*.ts` (`NativeKikoReminders.ts`,
   `NativeDisplayRegions.ts`) — the only PascalCase `.ts` file names in
