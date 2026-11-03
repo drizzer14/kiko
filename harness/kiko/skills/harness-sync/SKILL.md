@@ -249,6 +249,11 @@ Every count and exit code is the orchestrator's own measured result.
 
 ## Carried follow-ups
 
+- Port items of the harness-workflow split and the handover rule (2026-11-03): the split of
+  `harness/kiko/skills/harness-workflow/SKILL.md` into a core plus `references/*.md`, and the
+  20% orchestrator handover (coordinator 16%), are generic. The figma plugin lines (the
+  `.claude/settings.json` entry, the designer agent and design-system skill text) and the
+  kiko-competitors fit-filter line (budgets and goals out) are Kiko-only: do not port them.
 - `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`); the
   byte-identical rule is in `harness-workflow`'s "Run log" (`references/run-log.md`).
 - The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
