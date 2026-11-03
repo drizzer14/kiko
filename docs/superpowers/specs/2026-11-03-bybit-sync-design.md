@@ -3,7 +3,7 @@
 Status: SPEC READY for the user's approval. No app code before it. Base 57130e23c.
 Plan: `docs/superpowers/plans/2026-11-03-bybit-sync.md`.
 
-Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O28, binding), `research-bybit-docs.md`,
+Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O36, binding), `research-bybit-docs.md`,
 `research-bybit-legal.md`, `seam-map.md` (same folder), the brief `memory/refs/brief-1.4-bybit.md`
 and `memory/refs/bybit-okx-second-check-2026-11-03.md` (main checkout), the skills
 kiko-exchange-sync, kiko-compliance, kiko-architecture, kiko-domain, kiko-translator, kiko-testing.
@@ -50,7 +50,7 @@ Anti-goals, each with its guard:
 
 | Anti-goal | Guard |
 |---|---|
-| A wrong balance | Strict UNIFIED read; a failed wallet keeps its last balance; a coin with a borrow is refused alone; Earn is added only after the double-count probe P3; a paged Earn answer fails the wallet read; Earn sums only an allowlisted `status` (O18); connect refuses a key that cannot read a shipped kind (O13) |
+| A wrong balance | Strict UNIFIED read; a failed wallet keeps its last balance; a coin with a borrow is refused alone; Earn is added only after the double-count probe P3; a paged Earn answer fails the wallet read; an Earn row with a `status` adds only if the allowlist holds that status, and FlexibleSaving does not ship if a redeemed row has no `status` and a non-zero `amount` (O18, O31); connect refuses a key that cannot read a shipped kind (O13) |
 | A key leak | Keychain through `hardenedFor`, pins and `no-store` from the first client commit, the `check:plist` regex fix before that commit, no key in a log, state or `.kiko` without the toggle |
 | A hidden feature | No flag; the catalog entry and registry wiring land last, after the device check (O9); every kind not read is stated |
 
@@ -83,16 +83,16 @@ A shared rule is never assumed. Verdict: HOLDS, CHANGES, N/A.
 | 10 | Curated coins on the exchange | CHANGES | Of 23 curated coins (floor), ZEC, DAI, FDUSD have no Bybit spot row. They stay tracked: the rule is the app's, not the market's | MEASURED 2026-11-03 |
 | 11 | `exchangeMinorUnits`, balances round | HOLDS | Balance use rounds, logged by gap `/2` | CODE |
 | 12 | Rows are exact at `baseAssetPrecision` scale | HOLDS, with its effect | A row with more decimals than the scale on a non-`reducedScale` coin stops `amount-precision`: that record stays owed at its point, its other rows import, the balance stays right, and the caption shows once the point is a day old. Public `basePrecision` is at or under the stored scale for every curated coin on spot, but it bounds orders, not deposits, so it proves nothing for a row | CODE; MEASURED 2026-11-03; UNPROBED(P4, P6, P7) for row decimals |
-| 13 | Settled deposit | CHANGES | Settled: 3, 70012. Failed, nothing owed: 4. Owed point: 0, 1, 2, 7, 70013, 10011, 10012, any unknown. 10012 stays owed until P4 shows what it means | SUMMARY (D5/enum); UNPROBED(P4) |
+| 13 | Settled deposit | CHANGES | Settled: 3, 70012. Failed, nothing owed: 4. Owed point: 0, 1, 2, 7, 70013, 10011, 10012, any unknown; a row of these with no time owes its span as a range instead (rule 47, O32). 10012 stays owed until P4 shows what it means | SUMMARY (D5/enum); UNPROBED(P4) |
 | 14 | Removal of a settled row | CHANGES | 70011 on a read record removes its row through `SettledSpan.removed` (`removeSyncedRows`, by key, no balance move), the fiat precedent. A rollback seen only inside the re-scan or a point: one older than the 29-day re-scan leaves a stale ledger row, while the balance read stays right. Put to the user: Q3 | SUMMARY; CODE |
 | 15 | Settled withdrawal | CHANGES | Settled: `success`. Final, nothing owed: `CancelByUser`, `Reject`, `Fail`. Owed point: `SecurityCheck`, `Pending`, `MoreInformationRequired`, `Unknown`, any other, and `BlockchainConfirmed`. The doc does not say how `BlockchainConfirmed` relates to `success`: P6 reads one real withdrawal over time, and only then may it change | SUMMARY; UNPROBED(P6) |
 | 16 | Settled internal deposit | CHANGES | 2 settled, 3 final failure, 1 owed | SUMMARY; UNPROBED(P5) |
 | 17 | Settled transfer | CHANGES | `SUCCESS` settled, `FAILED` final, `PENDING` and other owed | SUMMARY; UNPROBED(P7) |
 | 18 | Second-level reads, `reach` | CHANGES | R36 was Earn only. QUOTE: deposit "the query logic is actually effective based on **second** level"; transfer second-level (SUMMARY). All four Bybit series pass a `reach` with the start floored to the second, harmless if a route reads at the millisecond; a stuck record there owes its own point | QUOTE; UNPROBED(P13) |
-| 19 | Oldest to newest within a window | CHANGES | Page order is undocumented for these routes (execution list: descending, equal times unstable, SUMMARY). A span commits as one unit after all its pages, sorted by time then key before `settleRecords`, so page order has no effect on what commits | CODE; UNPROBED(P13) |
+| 19 | Oldest to newest within a window | CHANGES | Page order is undocumented for these routes (execution list: descending, equal times unstable, SUMMARY). A span commits as one unit after all its pages, sorted by time then key before `settleRecords`, so page order has no effect on what commits. The sort leaves a row with no time out; that row still reaches `settleRecords`, where it owes the span (rule 47, O32) | CODE; UNPROBED(P13), UNPROBED(P4) for a row with no time |
 | 20 | Per-record commits, rows before marks | HOLDS | `commitSettledSpan`, unchanged | CODE |
 | 21 | Cursor marks, `patchExchangeState` | HOLDS | Already takes `exchangeId` (`exchangeStateDepsOf('bybit')`). Bybit's opaque `nextPageCursor` is never stored: it lives inside one span read | CODE; PLANNER CALL 6 |
-| 22 | Offset paging, drift, `fetchAllByTotal` | N/A | No `total`. The drift rule becomes: a repeated `nextPageCursor`, or a row outside `reach`, is `bybit-page-drift`, owed in that series. A row with no settle time is not drift: rule 47 (O16) | QUOTE for the cursor; UNPROBED(P13) |
+| 22 | Offset paging, drift, `fetchAllByTotal` | N/A | No `total`. The drift rule becomes: a repeated `nextPageCursor`, or a row outside `reach`, is `bybit-page-drift`, owed in that series. A pending row with no time is never `bybit-page-drift`: rule 47 (O32) | QUOTE for the cursor; UNPROBED(P13) |
 | 23 | Pending, re-scan and points passes | HOLDS | `planWalkPasses`, `runWalkPlan`, as is | CODE |
 | 24 | `MAX_PENDING_RANGES` 12, merged ranges | HOLDS, costlier | A merged gap costs gap/window windows; 7-day windows pay 4 times what 29-day windows pay. Inherited gaps stay open | CODE; COMPUTED |
 | 25 | Floors | CHANGES | One rolling floor: `now - 729 days` for every stage B series, the Transfer precedent (`transferFloorMs`, never ask at the documented edge). The log has QUOTE "up to 2 years"; the other three have no stated retention. P12 can move a floor only by a refusal (O20): an empty answer with `retCode` 0 proves nothing and keeps the 729-day floor. A floor that P12 refuses is cut to the oldest window it accepts, never narrowed at run time: `walk/depth.ts` stays out (offset tied) | QUOTE; UNVERIFIED for three; UNPROBED(P12) |
@@ -106,7 +106,7 @@ A shared rule is never assumed. Verdict: HOLDS, CHANGES, N/A.
 | 33 | One pacing gate per run | HOLDS | `createExchangeRun`, interval from the slowest route read (section 5) | CODE; QUOTE (limits) |
 | 34 | `isUnreadableWindowError` | HOLDS | `BybitHistoryParseError` alone; rate limit, refused key, clock skew and network stop the run | CODE |
 | 35 | A walk failure never fails the balance sync | HOLDS | `logOnFailure` per walk | CODE |
-| 36 | Caption: behind | CHANGES | `CAPTION_WALKS` per provider. Reusing the 8 would keep "behind" up forever (`null` cursor). Stage A: none. Stage B: `capital`, `transfer` | CODE; seam 4 |
+| 36 | Caption: behind | CHANGES | `CAPTION_WALKS` per provider, with a required parameter and no default to Binance (O30). Reusing the 8 would keep "behind" up forever (`null` cursor). Stage A: none. Stage B: `capital`, `transfer` | CODE; seam 4 |
 | 37 | Caption: paused, coin lines, not imported | CHANGES | The `connectedProvider === 'binance'` gates become "an exchange with a walk state". Tracked predicate per provider | CODE; seam 3 |
 | 38 | Caption: P2P read failed | N/A | No P2P walk (O5); the gate stays Binance only | O5 |
 | 39 | Trades, dust, fiat, Pay walks | N/A | Stage C reads the log instead; no such routes | Rulings |
@@ -116,8 +116,8 @@ A shared rule is never assumed. Verdict: HOLDS, CHANGES, N/A.
 | 43 | Funding matcher | HOLDS | Bybit writes no `p2p`, `card` or `bank` code, so `fundingOf` skips its rows. `EXCHANGE_NAME` stays | CODE |
 | 44 | Thrown errors are named classes | HOLDS | `BybitHistoryParseError`, `BybitRateLimitError`, `BybitRefusalError` with a fixed message and a `code` | CODE (`kiko-no-literal-sync-error`) |
 | 45 | A series knows its wallet (`walletHoldingOf`) | CHANGES | Bybit deposit and withdrawal rows name no wallet (O14). No research line ties `depositType` to a wallet. Outcome (a): P4 and P6 show a field that tells the wallet of every row: the row goes on that holding, and a value the probe did not show owes `bybit-wallet-unknown`. Outcome (b): the API cannot tell: every such row goes on the FUND holding, and the UI states that limit (clause W1, section 8). The balance does not change in any outcome: it comes from the wallet read, and the row is one ledger line | SUMMARY for the field list; UNPROBED(P4) for `depositType`; UNPROBED(P6) for the source wallet |
-| 46 | Earn positions add to the Earn wallet | CHANGES | Earn sums an allowlist of `status` values (O18), confirmed by P3; default `Active`. Any other status leaves the position out, counted, and the account shows `bybitEarnLeftOut`. A redeemed FlexibleSaving row never adds. The research names `Processing` and `Active` for OnChain only, and a digest says redeemed FlexibleSaving rows still appear: if P3 shows a FlexibleSaving row with no `status`, this row is edited before Earn code starts (section 10) | SUMMARY; UNPROBED(P3) |
-| 47 | A record has a settle time | CHANGES | A row with no settle time is one owed point in its span, never a series hold through `bybit-page-drift` (O16). P4 also runs while K1 is pending, to show that shape. The fixture test waits for the shape | SUMMARY; UNPROBED(P4) |
+| 46 | Earn positions add to the Earn wallet | CHANGES | One rule, no guess left (O18, O31). A row with a `status`: the allowlist applies, default `Active`, confirmed by P3; any other status leaves the position out, counted, and the account shows `bybitEarnLeftOut`. A row with no `status`: its `amount` adds. R4 redeems Flexible Savings and runs P3, for every Q1 (section 10). If that run shows a redeemed row with no `status` and a non-zero `amount`, FlexibleSaving does not ship, and clause E4 says so (section 8). A redeemed FlexibleSaving row never adds. The research names `Processing` and `Active` for OnChain only, and a digest says redeemed FlexibleSaving rows still appear | SUMMARY; UNPROBED(P3) |
+| 47 | A record has a settle time | CHANGES | The walker stays as it is (section 6.5, reused): `pointOf` gives a record with no time no point, so `owedBy` owes the whole span as a range (O32). So a pending row with no time owes its span, not one point. The history caption shows while the deposit is pending, and this is true: `historyOwesRange` counts a range. The re-read of that span costs pages inside the lane cap on each run while it stays pending. The parser treats an empty, 0 or absent time the same. A pending row never gives `bybit-page-drift`, and the sort of rule 19 leaves it out. P4 also runs while K1 is pending, to show the form. If the user misses that window, the fixture covers all three forms, and this row stays UNPROBED(P4) | CODE for `pointOf`, `owedBy`, `historyOwesRange`; SUMMARY for the field; UNPROBED(P4) for the form |
 | 48 | Connect checks no permission (Binance, section 6.8) | CHANGES | Connect refuses a key that cannot read a shipped kind: `readOnly` not 1, `isMaster` not true, or a missing permission box, before any Keychain write, with a text per reason (O13). A later 10005 on one wallet shows `bybitWalletRefused` with the wallet name, and the last balance stays | SUMMARY for the fields; UNPROBED(P1, P11) |
 
 ## 3. Data per stage
@@ -132,12 +132,14 @@ later step replaces "field" guesses with what the probe printed.
 | Key info | GET `/v5/user/query-api`, none | none | none | `expiredAt`, `deadlineDay` on a sync; also `readOnly`, `isMaster`, `permissions` at connect only, never stored (O13); every other field is dropped at the parse, `userID`, `kycRegion`, `note` never reach state | none | none | QUOTE "Any permission can access"; fields SUMMARY | UNPROBED(P1) |
 | UNIFIED | GET `/v5/account/wallet-balance`, `accountType=UNIFIED` | none | none listed | `coin`, `walletBalance`, `spotBorrow`, `borrowAmount`; `equity` and `usdValue` never | `<COIN>:unified` | UNIFIED | QUOTE for the param; fields SUMMARY. `locked` inside `walletBalance`, `bonus`: UNVERIFIED | UNPROBED(P2) |
 | FUND | GET `/v5/asset/transfer/query-account-coins-balance`, `accountType=FUND`, no `coin`, `withBonus` left out | none | none | `coin`, `walletBalance`; `transferBalance` never | `<COIN>:fund` | FUND | SUMMARY | UNPROBED(P2) |
-| Earn, flexible | GET `/v5/earn/position`, `category=FlexibleSaving` | none | none listed; a non-empty `nextPageCursor` fails the wallet read | `coin`, `amount`, `status`; only an allowlisted `status` adds (rule 46, O18) | `<COIN>:earn`, the two reads summed | Earn | QUOTE permission "Earn"; fields SUMMARY; double count UNVERIFIED | UNPROBED(P3) |
+| Earn, flexible | GET `/v5/earn/position`, `category=FlexibleSaving` | none | none listed; a non-empty `nextPageCursor` fails the wallet read | `coin`, `amount`, `status`; a row with a `status` adds only if the allowlist holds it, and a row with none adds its `amount` (rule 46, O18, O31) | `<COIN>:earn`, the two reads summed | Earn | QUOTE permission "Earn"; fields SUMMARY; double count UNVERIFIED | UNPROBED(P3) |
 | Earn, on-chain | GET `/v5/earn/position`, `category=OnChain` | none | same | same | same | Earn | same | UNPROBED(P3) |
 
 Earn ships as designed only if P3 shows staked coins leave UNIFIED and FUND. If they stay, no Earn
 holding is written and the copy says so (clause E3, section 8); the money is then already counted. With no
-on-chain position to test, on-chain Earn is not read, and the copy says so (clause E2). UNPROBED(P3).
+on-chain position to test, on-chain Earn is not read, and the copy says so (clause E2). If the R4 redeem shows a
+redeemed row with no `status` and a non-zero `amount`, FlexibleSaving is not read, and the copy says so (clause E4,
+O31). UNPROBED(P3).
 
 ### Stage B: moves
 
@@ -410,17 +412,22 @@ O7's silent seams, each with a test that fails first:
 |---|---|---|---|
 | 1 | `ensureExchangeHoldings` gate `!== 'binance'` | `isWalletHoldingInstitution`: `binance`, `bybit` | a Bybit row needing a new holding creates it, real SQLite |
 | 2 | `records.ts` `source: 'binance'` | `source` on `ExchangeWalkConfig`, typed `BalanceProviderId` | placed rows carry the config's source; Binance unchanged |
-| 3 | Section gates `=== 'binance'` | `hasExchangeHistory(provider)`; tracked predicate per provider | with a test double provider id (O17): an exchange that has history renders paused, coin lines and behind captions. Plan set 3 step 6/6 adds `bybit: true`, and the real id's test lands there. Every `balanceProviderIds` member has a gate decision (A42) |
-| 4 | `CAPTION_WALKS` | `captionWalksOf(provider)` | with the test double id: a provider with an empty caption list never shows behind. The real `bybit` entry, set 3 step 6/6 |
+| 3 | Section gates `=== 'binance'` | `hasExchangeHistory(provider)`, a table typed `Record<BalanceProviderId, boolean>`, so a new id does not compile with no decision; tracked predicate per provider. Plan set 3 step 6/6, the step that adds the id (O30) | with the real `bybit` id: an exchange that has history renders paused, coin lines and behind captions, and the coin lines use the Bybit predicate. Every `balanceProviderIds` member has a gate decision (A42) |
+| 4 | `CAPTION_WALKS` | `captionWalksOf(provider)` with a required parameter on `walkCursorsOf` and `historyOwesRange`, no default to Binance; Binance's 8 stay the same. Plan set 3 step 6/6 (O30) | with the real `bybit` id: a provider with an empty caption list never shows behind |
 | 5 | `read-secrets.ts` institution filter | Bybit entry in all five files | an export holds the Bybit pair; a restore writes it |
 | 6 | `clearKeychainItems` | a third clear | deleting a Bybit account clears its item |
 | 7 | `plist.sh` credential regex | adds `X-BAPI-API-KEY` | `plist-credential-detect.test.ts`: a client with that header and no pin fails |
 | 8 | Funding matcher `EXCHANGE_NAME` | none | CONFLICT 1: a Bybit row carries no funding code, so `fundingOf` skips it; shown load-bearing with a scratch mutant, not a parent red |
-| 9 | `untrackedCoins` text says Binance | `{{exchange}}`, en and uk; output for Binance byte-identical | with the test double id: the line names that exchange; a Binance pin stays |
+| 9 | `untrackedCoins` text says Binance | `{{exchange}}`, en and uk; output for Binance byte-identical. Plan set 3 step 6/6 (O30) | with the real `bybit` id: the line names Bybit; a Binance pin stays |
 
 Also from O7: the log tags in `walk.ts` become `[exchange sync]` (5 sites). Re-pins name O7 in the
 commit: 27 literal lines in 10 test files, one a fixture (O28; MEASURED 2026-11-03 at ef21601bd, `git grep -c`
 on the 5 tags, a floor): PLANNER CALL 12.
+
+Also from O30: seam 4 changes every use of `CAPTION_WALKS`: 1 declaration and 3 use lines in
+`binance-history-status.ts`, 2 call lines in `crypto-sync-section.component.tsx`, and 25 call lines in 2 test files,
+which gain the argument with the same expected results (MEASURED 2026-11-03 at cba12d6f4, `git grep`, a floor; the plan
+lists them in set 3 step 6/6).
 
 ### 6.6 `.kiko` (O10)
 
@@ -429,7 +436,7 @@ fields through `FIELD_CHECKS`, `restoreExportSecrets` reads two named lists, so 
 the new list and writes no such key. An unknown `institution` reads as unsynced there, so the holdings
 are a manual snapshot at the last balance, which is correct money. A bump would make every older build
 refuse every new file, Binance users included (the envelope test's own note). The seam map read this
-but did not run it; set 2 step 1/5 RUNS it: at the pre-id tip, a fixture file with a Bybit account,
+but did not run it; set 2 step 1/4 RUNS it: at the pre-id tip, a fixture file with a Bybit account,
 holdings, `source: 'bybit'` rows, walk state and `bybitCredentials` restores on that build (the shape
 of a 1.3 build). The output goes in that commit body. If it throws, the decision flips to a bump and the
 orchestrator reports it. The permanent test on the new build is a round trip of the entry, plus the
@@ -500,7 +507,7 @@ kiko-translator reviews this table before any commit that adds it. Plain-text na
 icon, existing `forms.account.exchangeDisclaimer`. New keys under `accountDetail` unless named. UI text
 uses Кіко in uk, ʼ for the apostrophe. Stage A+B wording with clauses E1 and M1 shown; set 7 picks by Q1 and by
 the probe outcome, from the clause table below. A row changed or added by a ruling states its level in the key
-cell. A row that carries a level other than QUOTE or MEASURED is copy that set 1 step 6/7 re-checks against the
+cell. A row that carries a level other than QUOTE or MEASURED is copy that set 1 step 7/7 re-checks against the
 probe output.
 
 | Key | en | uk |
@@ -545,13 +552,16 @@ probe output.
 
 Clauses per predicted outcome (O15). Only one kind set ships, so `bybitKinds`, the footer, the help step and
 the policy (section 9) each hold one combination; the other clauses never reach the catalogue. A mixed P3 result
-(one Earn category separate, one not) uses E2's shape with the matching words, and set 1 step 6/7 writes it here.
+(one Earn category separate, one not) uses E2's shape with the matching words, and set 1 step 7/7 writes it here.
+E3 wins over E2 and E4: when no Earn money is separate, that money is already in the balance.
 
 | Clause | Outcome | Replaces | en | uk |
 |---|---|---|---|---|
 | E1 | P3: Earn money is separate; both categories tested. UNPROBED(P3) | none, the default | Balances: Unified, Funding, Flexible Savings, On-Chain Earn | Баланси: Unified, Funding, Flexible Savings, On-Chain Earn |
 | E2 | No on-chain position to test. UNPROBED(P3) | In `bybitKinds`, the list loses On-Chain Earn, and this follows. In the footer, "Earn products other than Flexible Savings", and this follows | On-Chain Earn is not read, so money there is not in your balance. | Він не читає On-Chain Earn, тож кошти там не входять до вашого балансу. |
 | E3 | P3: no separate Earn money. UNPROBED(P3) | In `bybitKinds`, the list becomes Unified, Funding, and this follows. In the footer, the Earn products clause goes, and this follows | Money in Earn already counts inside those balances, so Earn has no holding of its own. | Кошти в Earn уже входять до цих балансів, тож окремого активу Earn немає. |
+| E4 | R4: a redeemed row has no `status` and a non-zero `amount`, so FlexibleSaving does not ship (O31). UNPROBED(P3) | In `bybitKinds`, the list loses Flexible Savings, and this follows. In the footer, "Earn products other than On-Chain", and this follows | Flexible Savings is not read, so money there is not in your balance. | Він не читає Flexible Savings, тож кошти там не входять до вашого балансу. |
+| E2 and E4 | Both outcomes hold, so no Earn category is read. UNPROBED(P3) | In `bybitKinds`, the list becomes Unified, Funding, and this follows. In the footer, the Earn products clause goes, and this follows | Earn is not read, so money there is not in your balance. | Він не читає Earn, тож кошти там не входять до вашого балансу. |
 | M1 | No internal sender: the kind is not read. UNPROBED(P5) | none, the default | deposits sent by another Bybit user (named as not read) | поповнення від іншого користувача Bybit (названо як те, що не читається) |
 | M2 | P5 passed with a real sender | In `bybitKinds`, "deposits" gains this, and the not-read item goes. In the footer, the first item goes | deposits, including those sent by another Bybit user | поповнення, зокрема від іншого користувача Bybit |
 | W1 | Rule 45 outcome (b): the API cannot tell the wallet. UNPROBED(P4, P6) | Added to the footer and to the end of `bybitKinds` | Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your balances are not affected. | Записи Bybit про поповнення й виведення не вказують, який гаманець використано, тож Кіко показує їх усі на Funding. Це не впливає на ваші баланси. |
@@ -590,26 +600,26 @@ the credentials toggle.
 hold no personal data; they are read at connect and never stored (O13).
 
 **Privacy policy.** Section 3 of `docs/privacy-policy.en.md` and `docs/privacy-policy.md` gets the two blocks
-below (E1 and M1 wording; O24, O13, O15).
+below (E1 and M1 wording; O24, O13, O15, O34).
 
 > en: **Bybit** (`api.bybit.com`): using your read-only API key: details of the key itself (whether it is
 > read-only, whether it belongs to your main account, what it may read, and when it ends); your balances of
 > every coin and fiat currency (Unified, Funding, Flexible Savings, On-Chain Earn); your deposit and withdrawal
 > history; and your transfers between your Bybit wallets. Bybit's answers can include the sender's or
-> recipient's address, email or phone number. They reach only your device, and Kiko does not keep those
-> details. Kiko keeps on your device the tickers of coins it does not track or could not read, the wallets and
+> recipient's address. It reaches only your device, and Kiko does not keep it. Kiko keeps on your device the tickers of coins it does not track or could not read, the wallets and
 > the number of Earn positions it left out, and the date your key ends; this also travels in a `.kiko` export.
 
 > uk: **Bybit** (`api.bybit.com`): за допомогою вашого API-ключа лише для читання: дані самого ключа (чи він
 > лише для читання, чи належить вашому основному акаунту, що може читати й коли завершується його дія); ваші
 > баланси всіх монет і фіатних валют (Unified, Funding, Flexible Savings, On-Chain Earn); історія ваших поповнень
-> і виведень; перекази між гаманцями Bybit. Відповіді Bybit можуть містити адресу, email чи номер телефону
-> відправника або отримувача. Вони надходять лише на ваш пристрій, і Кіко цих даних не зберігає. Кіко зберігає на
+> і виведень; перекази між гаманцями Bybit. Відповіді Bybit можуть містити адресу відправника або отримувача.
+> Вона надходить лише на ваш пристрій, і Кіко її не зберігає. Кіко зберігає на
 > вашому пристрої тікери монет, які не відстежує або не зміг прочитати, гаманці й кількість позицій Earn, які він
 > не врахував, і дату завершення дії ключа; це також переноситься в експорт `.kiko`.
 
 The counterparty text says "does not keep", because the response reaches the device and the parser drops it
-(O24). The level of the sentence "can include": SUMMARY for the field lists; O6 for `address`.
+(O24). The level of the sentence "can include": SUMMARY for the field lists of the deposit and withdrawal rows (M1,
+address only, O34); O6 for the email and phone number of an internal deposit (M2).
 
 Policy variants per kind set (O15; level UNPROBED(P3, P5), and a variant is true only when its outcome is
 measured):
@@ -617,23 +627,29 @@ measured):
 | Outcome | en | uk |
 |---|---|---|
 | E2 | the balance list reads "(Unified, Funding, Flexible Savings)" | список балансів: «(Unified, Funding, Flexible Savings)» |
-| E3 | the balance list reads "(Unified, Funding)" | список балансів: «(Unified, Funding)» |
-| M2 | "your deposit history, including deposits sent by another Bybit user, your withdrawal history" | «історія ваших поповнень, зокрема від іншого користувача Bybit, історія виведень» |
+| E3 (O34) | the balance list reads "(Unified, Funding)", and the kept-data sentence reads "the wallets it left out", with no count of Earn positions | список балансів: «(Unified, Funding)»; у реченні про збережені дані: «гаманці, які він не врахував», без кількості позицій Earn |
+| E4 (O31) | the balance list reads "(Unified, Funding, On-Chain Earn)" | список балансів: «(Unified, Funding, On-Chain Earn)» |
+| E2 and E4 | the same as E3 | так само, як E3 |
+| M2 (O34) | "your deposit history, including deposits sent by another Bybit user, your withdrawal history"; and the counterparty text reads "Bybit's answers can include the sender's or recipient's address, email or phone number. They reach only your device, and Kiko does not keep those details." | «історія ваших поповнень, зокрема від іншого користувача Bybit, історія виведень»; і речення про іншу сторону: «Відповіді Bybit можуть містити адресу, email чи номер телефону відправника або отримувача. Вони надходять лише на ваш пристрій, і Кіко цих даних не зберігає.» |
 | Q1 = A | the deposit, withdrawal and transfer items and the counterparty sentences go | пункти про поповнення, виведення й перекази та речення про іншу сторону вилучено |
 
 Section 3's intro names Bybit too (O24). In en, "Binance account data, Blockstream" becomes "Binance account
 data, Bybit account data, Blockstream". In uk, "дані облікового запису Binance, Blockstream" becomes "дані
 облікового запису Binance, дані облікового запису Bybit, Blockstream".
 
-Section 5's Keychain sentence is "such as", so it holds. Site pages rebuild (`docs/privacy-site/`), and
-`npm run privacy:site check` passes at each tip. New `BYBIT_SIGNED_PATHS` and `bybit.privacy-policy.test.ts`, one
+Section 5's Keychain sentence is "such as", so it holds. Site pages rebuild (`docs/privacy-site/`). New
+`BYBIT_SIGNED_PATHS` in `bybit.endpoints.ts` from set 3, and `bybit.privacy-policy.test.ts` in the policy step, one
 phrase per path in the four files, as `binance.privacy-policy.test.ts` does.
 
-The policy text lands in the first set that names the host (O21; plan set 3 step 1/6), because
-`scripts/privacy-site.js` compares the hosts of `.env.example` with the md (CODE). It stays out of `next` until
-the batch merge, so it reaches users with the feature. `www.bybit.com` joins `NON_REQUEST_HOSTS` in the step that
-adds `BYBIT_API_MANAGEMENT_URL` (plan set 7 step 1/6). Plan set 7 step 4/6 makes the text name the exact shipped
-kinds. Effective date: the coordinator's publish step.
+The policy step is plan set 7 step 4/6, in the batch that ships Bybit (O29): the text in the md and the site pages,
+with the variant that fits the shipped kinds. `npm run privacy:site -- check` compares the LIVE page, and no check, hook
+or suite runs it (CODE: `scripts/privacy-site.js` `check`; `git grep`: only `package.json`), so no held tip runs it.
+Set 7 compares `npm run privacy:site -- hosts` with the md. The live check runs at publish only. `www.bybit.com` joins
+`NON_REQUEST_HOSTS` in the step that adds `BYBIT_API_MANAGEMENT_URL` (plan set 7 step 1/6). Effective date, per
+`harness/kiko/skills/release/SKILL.md` "Privacy policy check": QUOTE "Never edit the markdown without bumping its
+effective date, and re-date it to the PUBLISH day when gh-pages goes out later than the edit". So the policy step bumps
+the date, the publish re-dates it if it goes out later, and `check` exits 0 before the upload. The same section asks
+that the user approve the regenerated pages and that the user gets the gh-pages publish commands.
 
 **App Privacy.** Answers stay "Data Not Collected": calls go from the device straight to Bybit under the
 user's own key; no data reaches Kiko or a partner. Privacy manifest: no change, no new required-reason API.
@@ -669,9 +685,10 @@ No read-only clause, no personal-use clause, no name clause exists in it.
 
 Also noted: 7.7 (Kiko does not mask its identity), 6.6 (no monitoring use; the probe is one user's account
 check), 7.6 (audit on request), 10.1 (suspension is a refused key, which the text fits). The table is the
-planner's reading only. The verdict (O23): the last step of set 1 (plan step 7/7), before any code that needs
-Bybit. A `kiko:reviewer` reads the user's browser sentences and this table, and rules on clauses 6.5 and 6.9 by
-name. Stop rule: a clause that forbids this use stops the track, and the coordinator takes it to the user.
+planner's reading only. The verdict (O23, O36): plan set 1 step 5/7, at once on the user's pasted sentences, before R1
+and before any of the user's money. A `kiko:reviewer` reads those sentences and this table, and rules on clauses 6.5 and
+6.9 by name. It needs no probe output. Stop rule: a clause that forbids this use stops the track, and the coordinator
+takes it to the user.
 
 **Pages that could not be read.** `https://www.bybit.com/en/terms-service` and
 `https://www.bybit.eu/en-EU/terms-service/` are client-rendered shells to curl. The user's browser step has two
@@ -679,18 +696,28 @@ parts (PLANNER CALL 18):
 
 - Part 1, the user's first step, before the key moment: open both pages, find any clause on API use, third-party
   apps, and which entity serves a Ukrainian resident or a Ukrainian living in the EU, and paste those sentences.
-  That these pages open with no account is UNVERIFIED; if one asks for a login, that page waits for R1. The
-  sentences go at once to a `kiko:reviewer`, so that a forbidding clause stops the track before any account, key or
-  money.
+  That these pages open with no account is UNVERIFIED; if one asks for a login, that page waits for R1, which holds no
+  money, and its sentences go to the same reviewer before R2. The sentences go at once to a `kiko:reviewer` for the
+  verdict, so that a forbidding clause stops the track before any account, key or money.
 - Part 2, at R1, signed in: confirm the API management URL for `BYBIT_API_MANAGEMENT_URL`, which no research
   line gives.
 
 ## 10. The user's probe plan
 
-The order of the user's first steps (O23, was: the browser step inside R1): the user approves this spec, set 1's
-script is reviewed, the user does part 1 of the browser step (section 9), a `kiko:reviewer` reads those sentences,
-and only then comes the key moment, R1. Nothing before that needs a key; no code that needs a shape comes before
-its probe; and no code that needs Bybit comes before the terms verdict.
+The order of the user's steps (O23, O31, O36; was: the browser step inside R1, the verdict after R1 and R2, the redeem
+at R6):
+
+1. The user approves this spec, and set 1's script is reviewed.
+2. The user does part 1 of the browser step (section 9) and pastes the sentences.
+3. A `kiko:reviewer` gives the terms verdict at once on those sentences. A forbidding clause stops the track here.
+4. THE KEY MOMENT, R1: the first step that needs an account or a key. It holds no money.
+5. R2: the first of the user's money. R3, then R4, with the Flexible Savings redeem and its P3 run, for every Q1.
+6. The planner writes the results. The commit after the last step that writes results is the set 1 tip, and set 2 bases
+   on it (O36).
+7. After Q1, R5 and R6, if those stages ship. On the date `expiredAt` prints, R7. Set 7's device check is on device.
+
+Nothing before step 4 needs a key; no code that needs a shape comes before its probe; and no code that needs Bybit
+comes before the terms verdict.
 
 Script (plan set 1): `memory/refs/bybit-probe.sh`, main checkout, on the eodhd-verify and
 binance-operations-probe pattern: hidden prompts, key and URL to `curl -q -K -` on stdin, secret to perl HMAC
@@ -706,11 +733,11 @@ account plus a few USD in fees; it can be withdrawn after.
 | Run | When | The user does first | Parts | Proves |
 |---|---|---|---|---|
 | R1 | Day 0, no money | Global account at bybit.com, KYC as Bybit asks; one key: System-generated, read-only, every read box offered, no IP restriction. Part 2 of the browser step (section 9). Which boxes a read-only key can tick and whether it works with no IP restriction are UNPROBED(P1) | P1, P11, P12, P13 (empty), P14, P15, P16 | Host for Ukraine (O1), key shape, boxes, `isMaster`, expiry date, per-route permissions, no-P2P. On this empty account P12 shows only a refusal (O20); an empty 0 proves no retention |
-| R2 | After money lands | K1: on-chain USDT deposit. K2: FUND to UNIFIED and back, part of it left in UNIFIED. K3: a far-off unfilled spot limit order | P4 while K1 is pending (O16); then, after it lands, P2, P4, P7, P13 (rows), P18 | The shape of a row with no settle time, balance shapes, `locked` inside `walletBalance`, deposit wallet and status, transfer path and rows, page behaviour, decimals. Stage A UNIFIED and FUND code may start |
-| R3 | Same day | K4: subscribe Flexible Savings. K5: on-chain Earn if its minimum is affordable. Cancel K3 | P2, P3 | The double count: Earn code may start |
-| R4 | At least a day after K4 | K6: on-chain withdrawal to the user's own Binance from FUND, and one from UNIFIED if Bybit allows it (O14); the output names each source wallet. K7, optional: an internal deposit from another Bybit user. K8, optional: off-chain withdrawal | P3, P5, P6 (run thrice as it settles), P10 (yield seen) | `success` vs `BlockchainConfirmed`, amount vs fee, internal rows, whether a row tells its wallet (rule 45). Stage B code may start |
+| R2 | After money lands | K1: on-chain USDT deposit. K2: FUND to UNIFIED and back, part of it left in UNIFIED. K3: a far-off unfilled spot limit order | P4 while K1 is pending (O16, O32); then, after it lands, P2, P4, P7, P13 (rows), P18 | The form of a row with no time, balance shapes, `locked` inside `walletBalance`, deposit wallet and status, transfer path and rows, page behaviour, decimals. If the user misses the pending window, rule 47 stays UNPROBED(P4) (O32) |
+| R3 | Same day | K4: subscribe Flexible Savings. K5: on-chain Earn if its minimum is affordable. Cancel K3 | P2, P3 | The double count. The Earn status rule still waits for R4 (rule 46) |
+| R4 | At least a day after K4; for every Q1 (O31) | K6: on-chain withdrawal to the user's own Binance from FUND, and one from UNIFIED if Bybit allows it (O14); the output names each source wallet. K7, optional: an internal deposit from another Bybit user. K8, optional: off-chain withdrawal. Last, after P10: K11, redeem all of Flexible Savings, then wait until it lands | P3, P5, P6 (run thrice as it settles), P10 (yield seen); P3 again after K11 | `success` vs `BlockchainConfirmed`, amount vs fee, internal rows, whether a row tells its wallet (rule 45), the redeemed row (rule 46). When its results are written, the set 1 tip exists and code may start (O36) |
 | R5 | After Q1, if C ships | K9: one spot buy. K10: one convert in FUND and one in UNIFIED, from web or app | P8, P9, P18 | Log rows per fill, the `type` allowlist, convert double read |
-| R6 | After Q1, if D ships | K11: redeem Flexible | P10 | Order rows |
+| R6 | After Q1, if D ships | Nothing new while the K11 order of R4 is in reach (PLANNER CALL 22); if P10 does not show it, K4 and K11 again | P10 | Order rows |
 | R7 | On the date `expiredAt` prints | Nothing; do not renew first | P17 | The error after expiry, then renewal keeps the key |
 
 Everything in research "STILL NEEDS THE KEY":
@@ -719,7 +746,7 @@ Everything in research "STILL NEEDS THE KEY":
 |---|---|---|
 | 1 | Permission and read-only per endpoint | P11 |
 | 2 | Real balance bodies; `equity` vs `walletBalance`; `locked` | P2 |
-| 3 | Earn in UNIFIED or FUND | P3 |
+| 3 | Earn in UNIFIED or FUND; a redeemed FlexibleSaving row (O31) | P3 |
 | 4 | Wallet receiving a deposit | P4 |
 | 5 | Retention, by a refusal only (O20); `createdTime`, `successAt` units | P12, P4, P5 |
 | 6 | The real transfer path | P7 |
@@ -739,8 +766,8 @@ Parts, what each must print and which code it unlocks:
 |---|---|---|
 | P1 | query-api names, types, `readOnly`, `expiredAt` and `deadlineDay` shape, days left, `uta`, `isMaster` as booleans, the group and box names inside `permissions` (allowlisted words, no personal data) | Set 3 client, set 4 expiry, set 7 connect refusals (O13) |
 | P2 | Wallet bodies per coin: names, types, zero listed or not, `walletBalance` vs `equity` equal or not, `locked`, `spotBorrow`, `bonus` non-zero or not | Set 3 balances |
-| P3 | Sum per coin in UNIFIED, FUND and position, before and after, as equal or changed, never amounts; `status`; `claimableYield` inside or not; `nextPageCursor` | Set 3 Earn |
-| P4, P5, P6, P7 | Row names and types, status words, unit class of times, id present, FUND vs UNIFIED drop as equal or changed, amount vs fee. P4 and P6 also print `depositType` values and any field that could tell the wallet, against the wallet the coin moved in (rule 45). P4 with K1 pending prints whether a settle time is present (rule 47) | Sets 5, 6 |
+| P3 | Sum per coin in UNIFIED, FUND and position, before and after, as equal or changed, never amounts; `status`; per row, whether a `status` is present and whether `amount` is zero or non-zero, after K11 too (rule 46, O31); `claimableYield` inside or not; `nextPageCursor` | Set 3 Earn |
+| P4, P5, P6, P7 | Row names and types, status words, unit class of times, id present, FUND vs UNIFIED drop as equal or changed, amount vs fee. P4 and P6 also print `depositType` values and any field that could tell the wallet, against the wallet the coin moved in (rule 45). P4 with K1 pending prints whether the time is empty, 0, absent or present (rule 47) | Sets 5, 6 |
 | P8, P9, P10 | The same for each stage | Sets 8, 9 |
 | P11 | One call per endpoint: `retCode` | Sets 3, 5 |
 | P12 | Rows and `retCode` for a window starting 2 years back, and 18, 12, 6 months, per series. Only a refusal moves a floor; an empty 0 keeps 729 days (O20) | Set 5 floors |
@@ -755,7 +782,8 @@ A public-only part ran on 2026-11-03 with no key: `market/time`, `query-api` wit
 `instruments-info`, and the TLS chain.
 
 If a probe fails its row: a shape that differs edits this spec and the plan first. A kind that cannot pass
-stays unread, and the UI text says so.
+stays unread, and the UI text says so. A row keeps its UNPROBED mark until its own probe runs (O35), so P5 rows with no
+sender and P17 rows before R7 stay marked at the set 1 tip.
 
 ## 11. Tests
 
@@ -801,18 +829,22 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A32 | `permissions` lacks a needed box, or does not parse (O13) | `bybit-credentials-field.component.test.tsx`: "a key with a missing box is refused before any Keychain write and the text names the box" |
 | A33 | `isMaster` false or absent (O13) | same, "a key not shown as a main key is refused before any Keychain write" |
 | A34 | 10005 on FUND on a later sync (O13) | `bybit.provider.test.ts`: "a refused wallet keeps its last balance and records its name for the visible line"; `crypto-sync-section` test: "the refused wallet line names the wallet" |
-| A35 | Deposit row with no settle time (O16); fixture from P4 | `bybit.capital-history.test.ts`: "a row with no settle time owes one point and holds no series" |
+| A35 | Pending deposit row, time empty, 0 or absent (O32); fixture from P4, or the three forms if the window is missed | `bybit.capital-history.test.ts`: "a pending row with no time owes its span as a range and gives no page drift"; `binance-history-status.test.ts` (edit): "the Bybit caption shows while that range is owed" |
 | A36 | Earn row with a status outside the allowlist (O18) | `bybit.provider.test.ts`: "an Earn position outside the status allowlist adds nothing and counts in the left-out line" |
 | A37 | Redeemed FlexibleSaving row (O18); fixture from P3 | same, "a redeemed FlexibleSaving row never adds" |
 | A38 | An app fiat code outside the five, with a balance (O19) | `bybit.tracked-coin.test.ts`: "a fiat code outside the list lists as not tracked with no amount" |
 | A39 | Rule 45, both outcomes (O14) | `bybit.capital-history.test.ts`: "a row goes on the wallet the outcome names and moves no balance". The outcome the probes do not show leaves the test with its code |
 | A40 | Each shipped kind set (O15) | `bybit.shipped-copy.test.ts`: "each surface names each shipped kind and each unread kind, in en and uk". Its table has one row per kind set of section 8, picked by a literal in the test, not by an app flag |
 | A41 | P12 refusal and empty 0 (O20) | `bybit.capital-history.test.ts`: "the floor is 729 days back unless the config sets a refused depth" |
-| A42 | Every `balanceProviderIds` member (O17) | `exchange-history-gate.test.ts`: "every balance provider has a gate decision" |
+| A42 | Every `balanceProviderIds` member (O17, O30) | `exchange-history-gate.test.ts`, beside `binance-history-status.ts`: "every balance provider has a gate decision" |
 | A43 | Every `balanceProviderIds` member, set 7 (O21) | `exchange-catalog.test.ts` (edit): "every balance provider has a catalog entry and a registry entry" |
 | A44 | Policy intro and counterparty text (O24) | `bybit.privacy-policy.test.ts`: "the section 3 intro names Bybit and the counterparty text says does not keep, in the four files" |
 | A45 | Expiry text (O26) | `bybit.shipped-copy.test.ts`: "the ended and refused texts give both the renewal and the new-key route, in en and uk" |
 | A46 | Coin with a borrow on a first connect (O27) | `bybit.provider.test.ts`: "a borrowed coin on a first connect creates no holding and lists itself"; `bybit.shipped-copy.test.ts`: "the borrowed line does not say a last balance exists" |
+| A47 | Earn row with no `status`, `amount` non-zero (O31); fixture from P3 | `bybit.provider.test.ts`: "an Earn row with no status adds its amount" |
+| A48 | FUND fails while UNIFIED reads, each with stored notes (O33) | `bybit.provider.test.ts`: "a wallet that read replaces its notes and a wallet that failed keeps them" |
+| A49 | Each provider's calls to the caption helpers (O30) | `binance-history-status.test.ts` (edit): "Binance compares its 8 walks and Bybit compares only its own" |
+| A50 | The hosts of the code and the md, set 7 (O29) | Plan set 7 step 4/6, by hand: each line of `npm run privacy:site -- hosts` is named in both md files |
 
 ### Property suites
 
@@ -830,10 +862,12 @@ Through `sweep`, added to the `__tests__/property-sweep-sites.test.ts` list.
 
 ### Red-first seam tests
 
-The nine rows of section 6.5, in set 2 where the seam changes, shown red on the parent; seam 8 by mutant
-(CONFLICT 1). Seams 3, 4 and 9 use a test double provider id (O17), so each red exists with no Bybit id. Set 2
-keeps Binance's suites green, unchanged except the log tag re-pins (O28): this adds no owed state to any Binance
-account, so no 1.2-upgrade seed moves. A Bybit account has no 1.2-upgrade world at all.
+The nine rows of section 6.5, each in the plan step where the seam changes, shown red on the parent; seam 8 by mutant
+(CONFLICT 1). Seams 3, 4 and 9 change in set 3 step 6/6, the step that adds the `bybit` id, red first with the real id;
+set 2 does not touch them (O30). Set 2 keeps Binance's suites green, unchanged except the log tag re-pins (O28). Set 3
+step 6/6 also changes Binance's status suites: their calls gain the required provider argument, with the same expected
+results (A49). Neither adds owed state to any Binance account, so no 1.2-upgrade seed moves. A Bybit account has no
+1.2-upgrade world at all.
 
 No migration in any set: `source`, `institution`, metadata and `exchange_state` have no SQL constraint (seam
 map section 2). So no EXPLAIN test and no migration review step.
@@ -841,7 +875,8 @@ map section 2). So no EXPLAIN test and no migration review step.
 Pins that move, in the step that moves them (floor, developer greps): `provider.test.ts`,
 `exchange-catalog.test.ts`, `registry.test.ts`, `help-topics.test.ts` (step count 5 to 6; the Binance step
 stays 3, so "Enable Reading" holds; uk title), `en.uk.parity.test.ts`, `en.casing-by-role.test.ts`,
-`uk.catalog-rules.test.ts`, `plist-credential-detect.test.ts`, the secrets shape suites of seam map section 10.
+`uk.catalog-rules.test.ts`, `plist-credential-detect.test.ts`, the secrets shape suites of seam map section 10,
+`binance-history-status.test.ts`, `binance-history-status.quiet-syncs.test.ts`.
 
 ## 12. Planner calls and conflicts
 
@@ -863,11 +898,14 @@ stays 3, so "Enable Reading" holds; uk title), `en.uk.parity.test.ts`, `en.casin
 | PLANNER CALL 14 (changed by O15) | Internal deposits ship only with a real sender; with none, the copy states that limit | "Only tested data kinds"; the user may have no second Bybit user |
 | PLANNER CALL 15 (changed by O21) | The device check builds the set 7 branch before any merge of sets 3 to 7 | O9 asks for catalog last and after the check; a device needs a way in |
 | PLANNER CALL 16 | Keep the 7-day and 29-day windows, no adaptive width | The cursor reader follows pages; no measured need for narrower |
-| PLANNER CALL 17 (new) | One new patch kind `balanceNotes` holds the refused wallets, borrowed coins and Earn left-out count, replaced by each balance read | O13, O18 and rule 6 each need a visible line that reads persisted state; the section reads only that (section 5, "Caption false"). It holds no secret, and `exchangeStateReset` drops it |
+| PLANNER CALL 17 (changed by O33) | One new patch kind `balanceNotes` holds the refused wallets, borrowed coins and Earn left-out count, per wallet: a wallet that this run read replaces its notes, and a wallet that failed keeps them, plus its refused mark when the failure is a 10005 | O13, O18 and rule 6 each need a visible line that reads persisted state; the section reads only that (section 5, "Caption false"). Precedent: `oversizedBalance` and `complete` in `exchange-state-patch.ts` (CODE). It holds no secret, and `exchangeStateReset` drops it |
 | PLANNER CALL 18 (new) | The browser step splits: the terms sentences come first, before the key moment; the URL check stays at R1 | O23 moves the verdict before code; a forbidding clause found first costs the user no account or money, and the URL check may need a login |
-| PLANNER CALL 19 (new) | The gate decision is a table typed `Record<BalanceProviderId, boolean>`; a section test gives the test double id its entries with `jest.mock` of that table's module | O17 needs a red with no Bybit id, and app code holds no double |
+| PLANNER CALL 19 (withdrawn by O30) | None; the id stays retired | See the O30 row of the next table |
+| PLANNER CALL 20 (new) | `hasExchangeHistory`, `captionWalksOf` and the tracked predicate table live in the existing `src/screens/account-detail/crypto-sync-section/binance-history-status.ts` | O30 asks for a named source module. An existing module lets a red call a missing export with no import of a missing module, and the helpers it serves are there; O7 keeps the file name |
+| PLANNER CALL 21 (new) | The Bybit tracked predicate is a named part of plan set 3 step 6/6, not a step of its own; `isTrackedBybitAsset` itself is written at step 4/6 | O30 asks for a named step and for seam 3 in the step that adds the id. A table typed by `BalanceProviderId` does not compile with the id and no entry, and each step has a green commit that passes the typecheck |
+| PLANNER CALL 22 (new) | K11 moves from R6 to R4; R6 reads that order. Before set 7's device check, the user subscribes Flexible Savings again if it ships | O31 puts the redeem at R4 for every Q1, and a position redeemed in full leaves nothing to redeem at R6 or to check on device |
 
-Changed by the rulings of the builder check (was: and now, per ruling that reverses a row):
+Changed by the rulings of the builder check and the re-check (was: and now, per ruling that reverses a row):
 
 | Ruling | Topic | was: | now |
 |---|---|---|---|
@@ -875,19 +913,30 @@ Changed by the rulings of the builder check (was: and now, per ruling that rever
 | O13 | 10005 on a wallet | logged by code | a visible line names the wallet |
 | O14 | Row wallet | FUND assumed; `depositType` stops the row | rule 45, one rule per probe outcome |
 | O15 | Copy | E1 wording only | a clause per predicted outcome, one copy test |
-| O16 | Row with no settle time | not stated, could read as drift | one owed point |
-| O17 | Reds of seams 3, 4, 9 | a Bybit account | a test double id |
-| O18 | Earn sum | every row in the two categories | an allowlist of `status` |
+| O18 | Earn sum | every row in the two categories | an allowlist of `status`, with O31 |
 | O20 | P12 | an answer could set a floor | only a refusal moves a floor |
 | O21 | Merge | set by set, each "shippable alone" | set 2 alone, sets 3 to 7 as one batch after the device pass |
-| O21 | Policy | set 7 | set 3 step 1/6, final kinds at set 7 |
-| O23 | Terms verdict | set 7 reviewer checks | set 1 last step; the browser step comes first |
+| O23 | Terms verdict | set 7 reviewer checks | set 1; the browser step comes first; its timing, the O36 row |
 | O24 | Counterparty text | "does not read" | "does not keep" |
 | O25 | Read-only with no IP restriction | a known fact | UNPROBED(P1) |
 | O25 | `bybitKeyRejected` and regional lines | "is not accepted", "cannot connect", "do not work" | "may not" |
 | O26 | Text after the date | renew, the key stays | renew, or a new key if Bybit offers no renewal |
 | O27 | `bybitCoinBorrowed` | "keeps its last balance" | a text with no last balance claim |
 | O28 | Log tag re-pins | floor 6 in 2 suites | 27 lines in 10 test files |
+| O29 (reverses the policy sentence of O21) | Policy step | set 3 step 1/6, because `privacy:site check` was read as a check at each tip | set 7 step 4/6, in the batch; set 7 compares `privacy:site hosts` with the md; the live check runs at publish only |
+| O30 (replaces O17's double and PLANNER CALL 19) | Seams 3, 4, 9 and their reds | set 2, with a test double provider id | set 3 step 6/6, the step that adds the id, red first with the real id |
+| O30 | Caption walks | `captionWalksOf` with no stated rule for a missing argument | a required parameter, no default to Binance |
+| O30 | Binance's suites | "unchanged except the log tag" | so at set 2; at set 3 the status suites' calls gain the argument, same results |
+| O31 | Earn row with no `status` | this rule edited after P3 | its `amount` adds; a redeemed row with no `status` and a non-zero `amount` stops FlexibleSaving, clause E4 |
+| O31 | Redeem | R6, only if D ships | R4, for every Q1, with a P3 run |
+| O32 (corrects O16's words) | Pending row with no time | "one owed point", A35 the same | the span owed as a range, the caption shows and is true; A35 a range; empty, 0, absent the same; out of the sort |
+| O33 | `balanceNotes` | replaced by each balance read | per wallet: a read wallet replaces, a failed wallet keeps |
+| O34 | Policy counterparty text | address, email, phone in every variant | M1 address only; M2 adds email and phone |
+| O34 | Policy under E3 | the count of Earn positions kept | no count |
+| O35 | Check on `UNPROBED` after the probes | falls to the stage C and D rows | also P5 and P17 rows; a row keeps its mark until its own probe runs |
+| O36 | Terms verdict timing | when R1 and R2 are written | at once on the pasted sentences, before R1 |
+| O36 | Set 2 base | "set 1 tip", not defined | the commit after the last step that writes results |
+| O36 | Merge row | "A+B+C or all" as one row | A+B+C builds set 8; all builds sets 8 and 9 |
 
 | Id | Conflict | Kept |
 |---|---|---|
