@@ -38,6 +38,8 @@ conditions: name contains, MCC, account, counterparty IBAN. B5 suggestions from 
 Out, not to be added: the built-in merchant list, the day-of-month condition, on-device AI, anything
 about budgets or planning.
 
+Not built, could be added later: "Keep in Other" on a review line.
+
 Open run-log gaps: none covers this work; this track closes none and leaves all open, the nearest being
 `20261015T1035-kiko-release-1-2/3` (the rule-form barrel export for a demo test).
 
@@ -60,6 +62,10 @@ something else: a row moved there by a category delete cannot be told from a row
 A row with no real category is open to an automatic write only when all of these hold too:
 - `isRewriteEligible(row)` (not hand-set, not balance-setting, not a split change), and
 - no rule wins it (`winningRule` is undefined): a rule that targets `other` is a deliberate result.
+
+Accepted: a row in `other` won by a rule that targets ANOTHER category (the user saved that rule as "New
+transactions only") leaves B2 and the back-fill and never appears on the list. No wrong write comes of it:
+the user chose to leave old rows out of that rule, and "Apply to existing" on the rule still moves them.
 
 ### 3.1 B1 More MCC codes
 
@@ -287,7 +293,8 @@ default as any deleted category does, and appears in B2.
 files read as 1.4 files and the reviewer sees the tile. Regenerate `kiko-demo-en.kiko` and `kiko-demo-uk.kiko`
 in the same commit as the migration (`e2e/screenshot/fixtures/README.md`, "Regenerating"). Demo rows hold
 `mcc: null` and no row moves to Travel. `kiko-demo-en-1.1.kiko` stays frozen and gains Travel when restored.
-Screenshots that show the Categories grid pick up the twelfth tile at the next refresh.
+Screenshots that show the Categories grid pick up the twelfth tile at the next refresh. The rows B3 and B5
+need are in section 3.2.5.
 
 **Suites that pin the seeded list.**
 
@@ -312,9 +319,10 @@ opens a new `CategoryReview` route in `src/navigation/settings-stack/settings.st
 shown, with or without data.
 
 Why here: `1.4-small` is rewriting `settings.screen.tsx` (its diff does not touch the categories
-screen), and `1.4-tables` adds to Statistics, which this does not touch. Merge conflict surface: one
-added route each in `settings.stack.tsx` and `src/navigation/types/types.d.ts`; added keys in `en.ts`
-and `uk.ts`. `1.4-light-scheme`: the new UI uses theme tokens and shared components only.
+screen). `1.4-tables` adds its own Tables screen, not a Statistics view; the overlap is additive:
+`src/navigation/types/types.d.ts`, `title-keys.ts`, `help-topics.ts`, `en.ts` and `uk.ts`. Merge conflict
+surface: one added route each in `settings.stack.tsx` and `types.d.ts`; added keys in `en.ts` and
+`uk.ts`. `1.4-light-scheme`: the new UI uses theme tokens and shared components only.
 
 #### 3.2.2 Query and grouping
 
@@ -332,8 +340,12 @@ kiko-architecture):
 - Groups by `merchantNameOf(description).key` (section 4). Language-dependent blank labels are out of
   the list because blank rows are out.
 - `ReviewGroup`: `key`, the distinct names, `rowCount`, the rule the group offers.
-- Rule offered: one distinct name gives `nameIs`; two or more give `nameStartsWith` on the group's
-  `prefix`. The line says which ("Starts with ATB · 3 names").
+- Rule offered: one distinct name gives `nameIs` on the FULL name; two or more give `nameStartsWith` on
+  the group's `prefix`. The line says which ("Starts with ATB · 3 names").
+- Spelling: one pick everywhere, the smallest tidied spelling by code unit. Names shown (the line and the
+  confirm) and a `nameIs` text use the full tidied name, per normalized name: rows `ATB 0212`, `ATB 0340`
+  list as those two, under `nameStartsWith "ATB"`; a group of only `ATB 0212` gets `nameIs "ATB 0212"`. A
+  `nameIs "ATB"` there would move 0 rows. The cut prefix is `nameStartsWith` text and nothing else.
 - Order: `rowCount` descending, then newest `time`, then `key`. Deterministic. Not by total: a group
   can mix currencies, and a sum across currencies would be a wrong number.
 
@@ -360,17 +372,16 @@ The line's control opens the category options; picking one is the tap.
    `{ count, names }` from a private `rowsRewrittenBy`. `rowIdsRewrittenBy` returns ids only
    (`category-rules.repo.ts:294-298`), so it becomes a map over `rowsRewrittenBy`, and the preview and
    the write share one function.
-2. If `count` equals the group's rows that this pick moves, writes at once. A pick of the category the
-   rows already hold moves none of them (`plan-rule-rewrite.ts:44-46`), so "Keep in Other" compares
-   against `movingRowCount`, not `rowCount`, and never opens "Move 0".
+2. If `count` equals `rowCount`, writes at once. Every listed row moves: the plan skips only a row already
+   in the target (`plan-rule-rewrite.ts:44-46`), the options leave `other` out, and an orphan key cannot
+   be picked.
 3. Otherwise opens a confirm sheet: "Move N transactions" with up to five names plus "and M more".
 
 Step 3 exists because `planRuleRewrite` moves every eligible row the rule wins, not only rows in
 `other` (`plan-rule-rewrite.ts:41-48`). Examples: a prefix "ATB" also wins "ATB Market" and "ATBANK"
 (`nameStartsWith` is a plain `startsWith`, `prepare-rules.ts:173`); a name with 12 rows in `other` and 3
 rows MCC-sorted into `groceries` moves 15. A silent 15 under a promise of 12 would break the binding
-constraint. A pin holds `listed rows that move ⊆ planned rows`, and `planned = listed rows that move`
-when no such row exists. For a pick of a category other than the listed rows' own, every listed row moves.
+constraint. A pin holds `listed rows ⊆ planned rows`, and `planned = listed rows` when no such row exists.
 
 Write: `categoryRulesRepo.applyNameRule({ name: text, kind, category, sourceTransactionId: null })`,
 extended with `kind` (section 3.3). Not `saveRule`, which refuses an existing matcher as a duplicate.
@@ -381,9 +392,9 @@ A hand-set row: not counted, not listed, not written (`isRewriteEligible` and th
 `category-rules.repo.ts:336`). This path sets no flag. A wrong tap: editing the rule offers "Apply to
 existing", which moves those rows again. No undo control is added.
 
-**"Keep in Other"** on the line: `applyNameRule` with category `other`, same preview. It writes a
-visible, editable rule, so the line leaves the list and the choice survives `.kiko` with no new table.
-Hidden when `other` is not in the table.
+**A name that should stay in `other`:** the existing rule form can target `other`, and that rule removes
+the line through `winningRule`. A line left alone stays on the list; accepted, with no badge or count that
+nags.
 
 #### 3.2.5 Live behaviour, empty state, Guideline 2.5.19
 
@@ -395,6 +406,14 @@ Guideline 2.5.19: no flag, no condition on the entry card. With no data, or noth
 ("Nothing to review", and what would appear here), so a reviewer on a clean install sees the card,
 opens the screen and reads what it does. The Help topic `categoryRules` gains a step
 (`en.ts:1127-1137`), and the Notes for Review describe the feature.
+
+The demo files must show what the reviewer cannot make alone. Measured on both committed files at this base:
+no name holds a store number, so the B3 button never appears, and 19 review groups hold no evidence, so the
+B5 chip never appears. Task 2 adds store-number rows in `other` to `screenshot-seed.ts`; task 6 adds a merchant
+with real-category rows and one `other` row. The rule demo's merchants stay separate. Both tasks regenerate
+`kiko-demo-en.kiko` and `kiko-demo-uk.kiko` in the same commit, after task 1's regeneration. A track that
+regenerates merges main first and regenerates on the merged builder. Another track, `1.4-tables` for one,
+may also touch the demo; a conflict is resolved by regeneration, never by a hand-merge of a binary.
 
 ### 3.3 B3 Better "Apply"
 
@@ -534,7 +553,9 @@ and debt accounts; a file that holds an `account` matcher post-dates migration 0
 restoring such a file keeps the id. If an id ever does not resolve: never matches, reads "Deleted
 account". Never a wider match.
 
-**The current parser, read on this base:**
+**The current parser, read on this base.** `release-1.3`'s `parse-rule-matchers.ts` was read with `git show`
+at 918683db3 and equals the base, as its `default-category-title.ts` does (section 3.1.6). No frozen copy of
+either goes into the tests: the round trip runs on raw JSON.
 - Unknown `type`: `parseMatcher` `.otherwise(() => null)` (`parse-rule-matchers.ts:64`).
 - Mix of known and unknown: `matchers.every(isMatcher) ? matchers : null` (`:81`): the **whole rule** is
   unreadable. The known conditions do NOT run, so no wider match. Pinned by the comment at `:70-71`.
@@ -585,14 +606,12 @@ non-blank description, `setsBalance` false, `changeGroupId` null and no exchange
 vote for its category key:
 - Hand-set, rule-set and MCC-set rows all vote. An MCC-set row stands unchallenged, and it is what links
   a PrivatBank row with no code to the same merchant's Monobank rows. No provenance is computed.
-- A `hasNoRealCategory` row has no vote, EXCEPT a row deliberately in `other` (hand-set, or a rule wins
-  it), which votes `other` and so holds a suggestion back.
+- Only a real category votes: a `hasNoRealCategory` row has no vote, however it got there. A suggestion is
+  still only a suggestion, and the user confirms it.
 
-Read: an aggregate `GROUP BY description, lower(category), flag` for real-category rows, plus the
-deliberate-`other` rows from the candidate read and `winningRule`.
+Read: an aggregate `GROUP BY description, lower(category)` for real-category rows.
 
-**Thresholds, in `plan-review-groups.ts`:** suggest when the top category is a known key, is not `other`,
-and holds both:
+**Thresholds, in `plan-review-groups.ts`:** suggest when the top category holds both:
 - `SUGGESTION_MIN_AGREEING_ROWS = 2`: one row can be a "Just for this one" pick, the opposite of a pattern.
 - `SUGGESTION_MIN_SHARE = 0.75`: at two or three votes any dissent stops it; from four, one stray row passes.
 
@@ -601,9 +620,8 @@ and holds both:
 **Shown:** a chip on the line with the category's icon, title and "5 of 6". Nothing changes until the user
 taps it; the tap runs the same preview and write as B2 (section 3.2.4).
 
-**Dismissal needs no mark, table or `.kiko` change:** another pick resolves the line by a rule; "Keep in
-Other" resolves it by a visible rule that `.kiko` already carries; ignoring it changes nothing. A hidden
-"not this" list would be a second place deciding what a line shows, with a migration and a restore path.
+**Dismissal needs no mark, table or `.kiko` change:** ignoring a chip changes nothing; another pick resolves
+the line by a rule. A hidden "not this" list would be a second place deciding what a line shows, with a migration and a restore path.
 
 ## 4. Name grouping
 
@@ -729,8 +747,13 @@ money do I have now" do not change. Travel changes none of these readers: it is 
 (section 3.1.6).
 
 Trap, `enteredByUser`: a manual row going from NULL to a category would count as an entry. Balance rows are
-`setsBalance`, so ineligible, and a manual row has no `mcc`. B2 could reach only a manual, non-balance,
-NULL-category row with a description; the plan measures whether such a row exists and pins the result.
+`setsBalance`, so ineligible, and a manual row has no `mcc`. B2 can reach only a manual, non-balance,
+NULL-category row with a description. No live writer is known to make one; the plan measures that and pins
+the result. The en and uk demo files hold 24 such rows: Salary 6, Crypto purchase 6, Account top-up 4, Jar
+top-up 3, BTC purchase 2, ATM cash withdrawal 1, Freelance project 1, Brokerage account top-up 1. A B2 tap on
+one feeds `enteredByUser`. Accepted: the row was entered by the user, so counting it is truthful. The only
+reader is `manualEntryDaysQuery`, which feeds the offer of a reminder (`useReminderOffer`, two entries in its
+window), never a fired reminder. The demo rows share one `createdAt`, so they are one entry per account.
 
 ## 6. Binding constraints and what enforces them
 
@@ -769,8 +792,8 @@ NULL-category row with a description; the plan measures whether such a row exist
 The uk text is a draft and holds no apostrophe; kiko-translator decides. New keys, floors, beyond this table
 and section 3.4.4:
 - `categoryReview.*`: route title, entry card label, group line ("Starts with {{name}}", names plural,
-  transactions plural), suggestion text, "Keep in Other" with the live title of `other`, empty title and
-  message, confirm heading, confirm message, "and {{count}} more"
+  transactions plural), suggestion text, empty title and message, confirm heading, confirm message, "and
+  {{count}} more"
 - `forms.transaction.applyToAllStartingWith`, its confirm
 - `help.topics.categoryRules`: the new condition list in step 2, a review step, the prefix option
 
@@ -797,23 +820,26 @@ mirror and the two-path test. `crypto/envelope.test.ts` gains two `VERSION_DECIS
 ## 8. Order and split
 
 Each set merges into `next` alone. A shared function ships with its first caller, or Knip fails.
-Mutation gates are paused by the user; verify and review apply. File counts are floors.
+Mutation gates are paused by the user; verify and review apply. Counts are mutable files, as
+`mutable_source_files` in `scripts/checks/mutation.sh` filters each task's file list, and are floors.
 
 1. **1.4-category-automation task 1/6: more MCC codes, Travel and the back-fill.** Goal: old and new rows with
    an added code leave `other`, hotels and flights into a new seeded Travel. Needs nothing. Includes
-   `hasNoRealCategory`, both migrations and the restore mirror. About 14 files beside the generated ones.
-2. **1.4-category-automation task 2/6: prefix offer in Apply.** Goal: B3 with its confirm. Needs nothing.
-   Includes `merchantNameOf`, `previewNameRule`, `applyNameRule` `kind`. About 12 files.
+   `hasNoRealCategory`, both migrations and the restore mirror. 10 mutable.
+2. **1.4-category-automation task 2/6: prefix offer in Apply.** Goal: B3 with its confirm, and store-number
+   rows in the demo. Needs nothing. Includes `merchantNameOf`, `previewNameRule`, `applyNameRule` `kind`.
+   7 mutable.
 3. **1.4-category-automation task 3/6: name-contains and MCC conditions.** Goal: two B4 kinds in the parser,
-   matching, feeds, form, card, help. Needs nothing. About 22 files.
+   matching, feeds, form, card, help. Needs task 1: it edits `backfill-mcc-categories.ts` and `MccBackfillRow`.
+   15 mutable.
 4. **1.4-category-automation task 4/6: account and IBAN conditions.** Goal: the other two B4 kinds, the
-   deleted-account state, the two-path older-build restore test. Needs task 3. About 18 files.
-5. **1.4-category-automation task 5/6: review list.** Goal: B2 screen, entry card, one tap, Keep in Other,
-   empty state, help step. Needs tasks 1 and 2. About 16 files.
-6. **1.4-category-automation task 6/6: suggestions.** Goal: B5 chip on the review line. Needs task 5.
-   About 6 files.
+   deleted-account state, the two-path older-build restore test. Needs task 3. 18 mutable.
+5. **1.4-category-automation task 5/6: review list.** Goal: B2 screen, entry card, one tap, empty state, help
+   step. Needs tasks 1 and 2. 9 mutable.
+6. **1.4-category-automation task 6/6: suggestions.** Goal: B5 chip on the review line, and a merchant in the
+   demo that shows it. Needs task 5. 4 mutable.
 
-Tasks 1-4 stand alone in any order given their needs. Help text naming a condition or the review list
+Tasks 1 and 2 stand alone; tasks 3 and 4 follow their needs. Help text naming a condition or the review list
 ships in the set that adds it, never before. Each set: `kiko:retrospect` and `kiko:scribe` for skill
 drift (kiko-domain's rule text, kiko-architecture's one-time steps, kiko-design-system if a shared
 component changes); the coordinator's queued verify; the coordinator's merge.
@@ -837,6 +863,6 @@ and other land transport stay in `transport`. None of the 38 original codes chan
 **Planner's calls, recorded, not questions** (reasons in the sections named): entry point on the Categories
 screen (3.2.1); no index, a pin decides (3.2.3); no device count (3.1.5); sort by count, not total (3.2.2);
 `EXPORT_VERSION` stays 5 (3.4.5, 3.1.6); a mapped hotel range wider than the source lists (3.1.1); Travel's
-icon, color and sort order (3.1.6); dismissal is a visible rule (3.5); evidence includes MCC-set rows (3.5);
+icon, color and sort order (3.1.6); dismissal needs no mark (3.5); evidence includes MCC-set rows (3.5);
 the thresholds (3.5, 4); Cyrillic and Latin are two merchants (4); a deleted account's rule stays (3.4.5);
 no undo control, since editing the rule moves the rows back (3.2.4).

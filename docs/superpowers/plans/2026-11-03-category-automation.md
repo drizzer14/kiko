@@ -36,26 +36,25 @@ Run-log gaps: this track closes none and leaves all open. Nearest, left open: `2
 
 ## Review Focus
 
-1. A pick of `other` (Keep in Other) on a group already in `other`: the plan moves 0 rows, so a naive `count === rowCount` opens "Move 0". Expected: no confirm, the rule is written, the line leaves. Pinned in task 5.
-2. A confirm sheet asked to open while the options sheet is still closing: an iOS Modal drops it. Expected: the confirm always shows. Pinned in task 5 (`onClosed`), device check in its closing report.
-3. Editing an `account` rule before the accounts read has landed: the seed would clear a live id and Save would ask for a pick. Expected: the id stays. Pinned in task 4.
-4. A prefix preview with 0 rows to move (every same-prefix row is hand-set): expected a plain sentence, no "0 transactions:" and no empty name list. Pinned in task 2.
-5. A name with a Unicode trap (`İ`, final sigma, NFD, non-breaking space) under the store-number cut: the guarantee `normalize(name).startsWith(key)` must still hold, or a group's rule misses its own rows. Pinned in task 2.
-
-6. A file this build wrote after the user deleted Travel, restored: it must stay deleted, while a file from before 1.4 gains it. A key of `false` counts as present. Pinned in task 1, steps 10 and 12.
+1. A confirm sheet asked to open while the options sheet is still closing: an iOS Modal drops it. Expected: the confirm always shows. Pinned in task 5 (`onClosed`), device check in its closing report.
+2. Editing an `account` rule before the accounts read has landed: the seed would clear a live id and Save would ask for a pick. Expected: the id stays. Pinned in task 4.
+3. A prefix preview with 0 rows to move (every same-prefix row is hand-set): expected a plain sentence, no "0 transactions:" and no empty name list. Pinned in task 2.
+4. A name with a Unicode trap (`İ`, final sigma, NFD, non-breaking space) under the store-number cut: the guarantee `normalize(name).startsWith(key)` must still hold, or a group's rule misses its own rows. Pinned in task 2.
+5. A file this build wrote after the user deleted Travel, restored: it must stay deleted, while a file from before 1.4 gains it. A key of `false` counts as present. Pinned in task 1, steps 10 and 12.
+6. A store-number name in a shown list or a one-name rule: `names` and `nameIs` text hold the full name, never the cut prefix, or the confirm reads "ATB, ATB" and `nameIs "ATB"` previews 0 rows. Pinned in tasks 2 and 5.
 
 ## Details settled by this plan (the spec leaves them implicit)
 
 | # | Decision | Reason |
 |---|---|---|
-| S1 | A group's shown text: among its members' spellings (`prefix` when cut, else the tidied name) the one with the most rows; a tie takes the smaller by code-unit order. | Deterministic and independent of row order; the most-used spelling is the one the user recognizes. |
+| S1 | One deterministic pick everywhere: the smallest tidied spelling by code unit (`smallestSpelling`, `<`, never `localeCompare`). Per normalized name it picks the FULL tidied name; `ReviewGroup.names`, S8's `names` and a `nameIs` rule's text use that. `rule.text` per kind: `nameIs` = the one name's full tidied spelling; `nameStartsWith` = the smallest `merchantSpellingOf` (the prefix when cut, else the tidied name) among the members. The prefix spelling is used for nothing else. | Independent of row order. A prefix in a name list hides the store numbers ("ATB, ATB"), and `nameIs "ATB"` on `ATB 0212` matches 0 rows. |
 | S2 | "One distinct name" compares `normalizeTransactionName`: `ATB 0212` and `atb  0212` are one name and get `nameIs`. | The matcher compares normalized text, so they are one name to the rule. |
 | S3 | `ADDED_MCC_CATEGORIES: Record<string, readonly number[]>` beside `MCC_CATEGORIES`, a range expanded by `rangeOf(first, last)` into plain numbers; `MCC_TO_CATEGORY` builds from both; `export const ADDED_MCC_CODES = Object.values(ADDED_MCC_CATEGORIES).flat()`. | One lookup path; the list and the map cannot differ; a range is no second concept. |
 | S4 | The back-fill read binds `inArray(transactions.mcc, [...ADDED_MCC_CODES])` once, unchunked (976 codes). Measured 2026-11-03: `node:sqlite` 3.50.4 accepts 32,766 bound variables and refuses 32,767 ("too many SQL variables"); op-sqlite's `cpp/sqlcipher/sqlite3.c` defines `SQLITE_MAX_VARIABLE_NUMBER 32766` and the podspec does not override it; `IN_CLAUSE_CHUNK_SIZE` is 32,000. 976 is far inside. A test pins `.toSQL().params.length <= IN_CLAUSE_CHUNK_SIZE`. | No chunking machinery for a list known at build time; the pin fails first if the list ever grows near the limit. |
-| S5 | "No real category" in SQL is one shared fragment `noRealCategorySql`: `category IS NULL OR lower(category) = 'other' OR lower(category) NOT IN (SELECT lower(key) FROM categories)`. `''` passes through the `NOT IN` arm. SQL only narrows; `hasNoRealCategory` decides. | A key list as a bound parameter would make the review's live query depend on another live read. `lower()` is ASCII-only, so a Cyrillic key in another case is a superset the pure function rejects: the safe direction. |
+| S5 | "No real category" in SQL is one shared fragment `noRealCategorySql`: `category IS NULL OR lower(category) = 'other' OR lower(category) NOT IN (SELECT lower(key) FROM categories)`. `''` passes through the `NOT IN` arm. SQL only narrows; `hasNoRealCategory` decides. The fragment carries its own outer parentheses: `and()` and `not()` do not wrap a raw fragment (drizzle-orm `sql/expressions/conditions.js`), so without them `NOT a OR b OR c` and `ne(description, '') AND a OR ...` go wrong. Pinned with `toSQL()` in tasks 1 and 6. | A key list as a bound parameter would make the review's live query depend on another live read. `lower()` is ASCII-only, so a Cyrillic key in another case is a superset the pure function rejects: the safe direction. |
 | S6 | The two migrations sit at the journal tail + 1 (the seed) and + 2 (the mark) of the task's base (tail on this base: `0063_add_transaction_operation`). The first branch to reach `next` keeps the numbers; a later one renumbers at its merge. The mark: delete its four artifacts, merge `next`, re-run `npx drizzle-kit generate` (never a hand-edited `prevId`). The seed is hand-authored with no snapshot, as `0039_seed_loan_interest_category` is: rename its `.sql`, and move its `_journal.json` entry and its `migrations.js` lines, with a `when` above the entry before it and below the mark's. Renumber list: the `.sql` of each, the mark's `meta/NNNN_snapshot.json`, `_journal.json`, `migrations.js`, both migration tests (file name, SQL file name, "through" tag), `real-sqlite.ts` (`firstStatementOf` tag), `migrationCount`. No number anywhere else: not in a test title, a comment or a skill. Allowed only before a build ships; a shipped migration is never renamed. | Precedent: `docs/superpowers/plans/2026-09-28-reminders.md`, `2026-10-11-category-rules.md`. `1.4-small`, `1.4-light-scheme`, `1.4-tables` add no migration on their current tips. |
-| S7 | Confirm rule for B2 and B5: write at once when `previewCount === movingRowCount(group, category)`, where `movingRowCount` is `rowCount` minus the rows already stored as that category (`heldOtherCount` when the target is `other`, else 0). | `planRuleRewrite` skips a row already in the target, so `listed ⊆ planned` holds only for a target other than `other` (spec 3.2.4 did not cover Keep in Other). |
-| S8 | `previewNameRule` returns `{ count, names }` where `names` is every distinct normalized name, spelled by S1, ordered by row count descending then normalized text. The UI shows the first 5 and "and M more", M counting names. | `rowIdsRewrittenBy` returns ids only; a private `rowsRewrittenBy` returning `{ id, name }` feeds both so the count and the write stay one function. |
+| S7 | Confirm rule for B2 and B5: write at once when `previewCount === group.rowCount`, else the confirm. The options sheet leaves `other` out. | `planRuleRewrite` skips only a row already in the target. A picked category is never `other`, and an orphan key cannot be picked, so every listed row moves. |
+| S8 | `previewNameRule` returns `{ count, names }` where `names` is every distinct normalized name in its FULL tidied spelling (S1), ordered by row count descending then normalized text. The UI shows the first 5 and "and M more", M counting names. | `rowIdsRewrittenBy` returns ids only; a private `rowsRewrittenBy` returning `{ id, name }` feeds both so the count and the write stay one function. |
 | S9 | The B3 confirm is a content swap inside the one `CategoryOverrideSheet`; the B2 and B5 confirm is a `ConfirmSheet` opened from the options sheet's `onClosed`. | One Modal at a time on iOS. |
 | S10 | The review screen is a `FlatList` with `LargeTitleHeading` and `useLargeTitleScroll` (kiko-design-system, custom list screen; `HoldingDetail` is the model), not `Screen scroll` with a map. | The spec's own measure has thousands of groups. |
 | S11 | `paused: !useIsScreenVisible()`, not focus. | The Statistics screen documents it: in a split window a screen can show without being the focused route. Spec 3.2.2 says "focused"; visibility is the code's rule. |
@@ -64,11 +63,12 @@ Run-log gaps: this track closes none and leaves all open. Nearest, left open: `2
 | S14 | The performance fixture is not edited for new kinds: its "has the documented shape" pin holds 200 rules and 80 without a name. Each new pin builds `[...fixture.rules, ...ownRules]` on its own line. New row fields derive from the row index, with no draw from the seeded generator. | An edit of a shared seed is an edit of every pin on it (harness-workflow); one extra draw would change every row. |
 | S15 | `applyNameRule`'s `kind` is optional, default `'nameIs'`. | The Apply path and its suites keep their meaning. |
 | S16 | Task bases: the six tasks stack in this worktree in order; each base is the previous task's tip. "Needs" states the logical dependency, which is what the coordinator may reorder on. | Tasks 1-3 share `plan-rule-rewrite.ts`, `category-rules.repo.ts`, `en.ts`, `uk.ts`; stacking keeps one editor and one merge order. |
-| S17 | Evidence `GROUP BY description, lower(category)`, without the flag the spec lists. | Every real-category row votes alike, so the flag only multiplies groups. |
-| S18 | "Deliberately in `other`" = `categoryKeyOf(category) === 'other'` and (`categorySetByHand` or the winning rule's category is `other`), and no structural field or exchange marker. | Spec 3.5 in testable form. |
+| S17 | Evidence `GROUP BY description, lower(category)`, no flag. | Every real-category row votes alike, so a flag only multiplies groups. |
+| S18 | Only a real category votes: an evidence row with `hasNoRealCategory` true has no vote, whatever put it there. | A suggestion is only a suggestion, and the user confirms it. |
 | S19 | The account picker offers non-archived accounts plus the rule's own selected account; "Deleted account" shows only when the id is in no row. | `accountsRepo.listQuery` returns archived accounts too; an archived account's holdings still match. |
 | S20 | A 1.4 file is told from an older one by the presence of `mccCategoriesBackfilled` in the file's settings row (`Object.hasOwn`), read from `snapshot.settings`. A file with no settings row gets no Travel. | Spec 3.1.6 has the proof and the table. The empty-settings branch is the precedent of `withLegacyDedupKeysUpgraded` and leaves `restore-snapshot.test.ts`'s `settings: []` pins unchanged. |
-| S21 | Travel stays in task 1, as numbered steps; no split. | Mutable floor 12, under the 20 line and the cap of 30. The seed comes first so that the map's target exists from its first commit. |
+| S21 | Travel stays in task 1, as numbered steps; no split. | Mutable floor 10, under the 20 line and the cap of 30. The seed comes first so that the map's target exists from its first commit. |
+| S22 | The demo stays reviewable (Guideline 2.5.19). Task 2 adds store-number rows so the B3 button can appear; task 6 adds a merchant with real-category rows and one `other` row so the B5 chip can appear. Measured on both committed files at this base: 0 names with a prefix, 19 review groups, 0 with evidence. The rule demo's merchants (`Wolt`, `Bolt Food`) stay separate and its pinned count stays. Regeneration order: task 1, then task 2, then task 6, each on the builder of its own tip. A track that merges first merges main first and regenerates on the merged builder (harness-workflow). `1.4-tables` or another track may also touch the demo: a `.kiko` conflict is never hand-merged, it is resolved by merging the builder sources and regenerating (`KIKO_REGEN_DEMO=1` on `generate-demo-kiko.test.ts`, then that test plain). `kiko-demo-en-1.1.kiko` and the kit's fake Monobank statement are not touched. | The reviewer reaches a feature only through this file. |
 
 ## Upgrade worlds (task 1 adds owed state)
 
@@ -100,11 +100,11 @@ Acceptance pins that re-seed by their own line, never in a shared helper: every 
 | Task | Shared files | Other tracks |
 |---|---|---|
 | 1 | `schema.ts`, `_journal.json`, `migrations.js`, `App.tsx`, `import-data.ts`, `restore-snapshot.ts`, `default-category-title.ts`, `en.ts`, `uk.ts`, `envelope.test.ts` | Another migration on `next`: S6, both of these renumber |
-| 2 | `en.ts`, `uk.ts`, `title-keys.ts` (added keys) | `1.4-small` edits both catalogues; added lines only |
+| 2 | `en.ts`, `uk.ts`, `title-keys.ts` (added keys); `screenshot-seed.ts`, `demo-text.ts`, both demo `.kiko` files | `1.4-small` edits both catalogues; added lines only. A demo conflict: S22, regenerate |
 | 3 | `en.ts`, `uk.ts` (added keys, help step 2) | same |
 | 4 | `en.ts`, `uk.ts` (added keys, help step 2) | same |
-| 5 | `settings.stack.tsx`, `src/navigation/types/types.d.ts`, `en.ts`, `uk.ts`, `title-keys.ts`, `help-topics.ts`, `categories.screen.tsx` | One added route each. `1.4-small` rewrites `settings.screen.tsx`, which this does not touch; `1.4-tables` adds a Statistics view, untouched here |
-| 6 | `en.ts`, `uk.ts` | same |
+| 5 | `settings.stack.tsx`, `src/navigation/types/types.d.ts`, `en.ts`, `uk.ts`, `title-keys.ts`, `help-topics.ts`, `categories.screen.tsx` | One added route each. `1.4-small` rewrites `settings.screen.tsx`, which this does not touch. `1.4-tables` adds its own Tables screen, not a Statistics view; the overlap is additive: `types.d.ts`, `title-keys.ts`, `help-topics.ts`, `en.ts`, `uk.ts` |
+| 6 | `en.ts`, `uk.ts`; `screenshot-seed.ts`, `demo-text.ts`, both demo `.kiko` files | same; a demo conflict: S22, regenerate |
 | All UI | theme tokens | `1.4-light-scheme`: no hex or raw value, so no conflict |
 
 ## Closing steps (every task, same order)
@@ -122,12 +122,12 @@ Each task's last four steps are these, named by number in the task:
 
 **Needs:** nothing. **Base:** `c1cea32e0` or its successor on the track.
 
-**Files (floor; measure with `make mutable`). Mutable: 12, was 10 before ruling Q2; `mutation.sh` leaves out `e2e/`, so its count can read 11.**
+**Files (floor; measure with `make mutable`). Mutable: 10, by `mutable_source_files` in `mutation.sh`, which leaves out `e2e/`, barrels, `.d.ts`, `.styles.ts`, catalogues and `title-keys.ts`.**
 - Modify: `src/monobank/mcc-category/mcc-category.ts`, `src/categories/category-rules/plan-rule-rewrite.ts`, `src/categories/category-rules-repo/category-rules.repo.ts` (export `candidateColumns`, `readHoldingLabels`, `withVisibleDescription`), `src/categories/category-rules-repo/index.ts`, `src/db/schema.ts`, `App.tsx`, `src/data-transfer/import-data.ts`, `src/data-transfer/snapshot/restore-snapshot.ts`, `src/i18n/default-category-title/default-category-title.ts`, `e2e/screenshot/fixtures/build-demo-snapshot.ts`
 - Create: `src/categories/category-rules-repo/backfill-mcc-categories.ts`, `src/categories/category-rules-repo/use-mcc-backfill.ts`
 - Catalogue (outside the mutable filter): `src/i18n/locales/en.ts`, `uk.ts`
 - Generated or hand-authored: `drizzle/migrations/NNNN_seed_travel_category.sql` (no snapshot), `drizzle/migrations/NNNN_add_mcc_categories_backfilled.sql`, `meta/NNNN_snapshot.json`, `meta/_journal.json`, `migrations.js`
-- Test-only: see "Upgrade worlds", plus `src/db/__fixtures__/seeded-categories.ts`, `src/i18n/default-category-title/__fixtures__/release-1-3-default-category-title.ts`, `src/test-support/real-sqlite.ts` and `.test.ts`, `src/db/settings-columns.test.ts`, `src/data-transfer/crypto/envelope.test.ts`, regenerated demo `.kiko` files
+- Test-only: see "Upgrade worlds", plus `src/db/__fixtures__/seeded-categories.ts`, `src/test-support/real-sqlite.ts` and `.test.ts`, `src/db/settings-columns.test.ts`, `src/data-transfer/crypto/envelope.test.ts`, regenerated demo `.kiko` files
 
 **Interfaces. Produces:**
 ```ts
@@ -172,7 +172,7 @@ const withTravelReseeded: (categories: CategoryRow[], settings: SettingsRow[]) =
   - `changes no other category, transaction or rule`: full dumps before and after, minus the new row.
   - `runs twice to one row`; `starts at sort order 0 on an empty table`.
   Also: `default-category-title.test.ts`: `translates the travel seeded category` under `uk` to `Подорожі`, and `shows a renamed travel row verbatim`. `icon-picker-modal.component.test.tsx`: `includes airplane, the travel default icon`. `categories.repo.test.ts`: `seeds travel in its own, later, idempotent migration`, shape of the 0039 case.
-  Red: `npx jest drizzle/migrations/NNNN-seed-travel-category.test.ts src/i18n/default-category-title src/categories/repo/categories.repo.test.ts --maxWorkers=2`; the SQL file is missing, so show that output. The pool case passes already: `airplane` is in `KIKO_CATEGORIES_ICONS` and under `symbol-deployment-target.test.tsx`. Commit `test(db): pins for the Travel seed`.
+  Red: `npx jest drizzle/migrations/NNNN-seed-travel-category.test.ts src/i18n/default-category-title src/categories/repo/categories.repo.test.ts --maxWorkers=2`; the SQL file is missing, so show that output. Two are pins, green at once, not red; say so: the pool case (`airplane` is in `KIKO_CATEGORIES_ICONS` and under `symbol-deployment-target.test.tsx`) and `shows a renamed travel row verbatim` (`resolveDefaultCategoryTitle` already returns the stored title for a key outside `DEFAULT_CATEGORY_SEED_TITLES`). Commit `test(db): pins for the Travel seed`.
 
 - [ ] **step 2/17 (kiko:developer): the seed.** Hand-author `NNNN_seed_travel_category.sql` as spec 3.1.6, header after 0039's; journal entry at the tail with a `when` above it, `migrations.js` lines, no snapshot (S6). `TRAVEL_CATEGORY` in `seeded-categories.ts` as its own export, its comment after `LOAN_INTEREST_CATEGORY`'s. `travel: 'Travel'` in `DEFAULT_CATEGORY_SEED_TITLES`; `categories.travel` in `en.ts` (`Travel`) and `uk.ts` (`Подорожі`) in this step. `envelope.test.ts`: `migrationCount` 65, `version` stays 5, the seed note of spec 3.1.6. `npm run check:shipped-migrations`. Exit 3 from `make jest-affected` is expected. Run: step 1's command plus `src/i18n/locales src/help src/design-system/components/icon-picker-modal src/data-transfer/crypto/envelope.test.ts`. Commit `feat(db): seed the Travel category`.
 
@@ -219,6 +219,7 @@ const withTravelReseeded: (categories: CategoryRow[], settings: SettingsRow[]) =
   - `reads only the mark on a later open`: statement spy, exactly one `select` on `settings`, no `transactions` read.
   - `re-reads the mark inside the write`: mark flipped between the outer read and the write; nothing moves.
   - `binds the added codes within the variable limit`: `mccBackfillRowsQuery(...).toSQL().params.length <= IN_CLAUSE_CHUNK_SIZE`, and it executes on the real engine.
+  - `noRealCategorySql keeps its own parentheses inside and()`: `mccBackfillRowsQuery(...).toSQL().sql` holds the three arms inside one `( ... )`, and a row with an unlisted code in `other` stays out of the real read.
   - `leaves balances untouched`: `holdings.balance_minor_units` equal before and after, on a holding with moved rows.
   Red: `npx jest src/categories/category-rules-repo/backfill-mcc-categories.test.ts --maxWorkers=2`. Commit `test(rules): pins for the MCC back-fill write`.
 
@@ -249,9 +250,9 @@ const withTravelReseeded: (categories: CategoryRow[], settings: SettingsRow[]) =
   - Code: `useMccBackfill` (shape of `useLotRecost`, its `biome-ignore` with `OVERRIDE(total function)`); `App.tsx` after `useLotRecost()`, one sentence added to the `AppRoot` comment; `import-data.ts`: `await backfillMccCategories();` right after `await recostStoredLots();`, one comment line; barrel `export *` of both new files.
   Run: `npx jest src/categories/category-rules-repo src/data-transfer/import-data.mcc-backfill.test.ts src/data-transfer/import-data.travel-category.test.ts src/data-transfer/import-data.test.ts src/data-transfer/import-data.back-compat.test.ts __tests__/App.test.tsx --maxWorkers=2`. Commit `feat(app): run the MCC back-fill at open and after a restore`.
 
-- [ ] **step 13/17 (kiko:qa): the older-build two-path test.** Fixture `src/i18n/default-category-title/__fixtures__/release-1-3-default-category-title.ts`: the verbatim output of `git show 918683db3:src/i18n/default-category-title/default-category-title.ts`, only its relative import adjusted. Run `npm run check:dup`; if the copy trips jscpd, report it, do not widen an ignore without an entry in `docs/harness/documented-exceptions.md`. Create `src/data-transfer/snapshot/restore-travel-category.two-path.test.ts`, real SQLite:
-  - Path 1, a 1.4 file into 1.3. The file comes from the real `readDataSnapshot` on `applyAllMigrations`, with a row in `travel`. `applyMigrationsThrough('0063_add_transaction_operation')` is 1.3's schema (journal tail checked at 918683db3):
-    `release 1.3's tables take the Travel row and its transactions with no refusal` (raw insert of the file's rows); `the Travel row holds only columns release 1.3 has` (row keys against `pragma_table_info`); `the only settings key release 1.3 drops is the mark`; `release 1.3 shows the stored English title on a uk device` and `translates its own defaults beside it` (the fixture, positive twin); `release 1.3 shows a renamed Travel as written`.
+- [ ] **step 13/17 (kiko:qa): the older-build two-path test.** Create `src/data-transfer/snapshot/restore-travel-category.two-path.test.ts`, real SQLite. No copy of a 1.3 source file goes in; spec 3.1.6 records what 1.3 shows, read with `git show`.
+  - Path 1, a 1.4 file into 1.3's schema. The file comes from the real `readDataSnapshot` on `applyAllMigrations`, with a row in `travel`, through a raw JSON round trip. `applyMigrationsThrough('0063_add_transaction_operation')` is 1.3's schema (journal tail checked at 918683db3):
+    `release 1.3's tables take the Travel row and its transactions with no refusal` (raw insert of the file's rows); `the Travel row holds only columns release 1.3 has` (row keys against `pragma_table_info`); `the only settings key release 1.3 drops is the mark`.
   - Path 2, a 1.3 export into 1.4. Read from that world with a hotel row in `other` and the Travel row added there (`addMccCategoriesBackfilledColumn`, `readDataSnapshot`, the key deleted from the JSON); `importData` with the real back-fill:
     `keeps the file's Travel row and shows it translated in uk`; `moves the hotel row to Travel and sets the mark`; `a row hand-set in release 1.3 stays`; `a file with no Travel row gains it` (the accepted case of spec 3.1.6).
   Named-file run; red proof: in a scratch copy make the mirror add no row and show path 2's last case red. Commit `test(restore): Travel through release 1.3 and back`.
@@ -267,10 +268,10 @@ const withTravelReseeded: (categories: CategoryRow[], settings: SettingsRow[]) =
 
 **Needs:** nothing. **Base:** task 1 tip.
 
-**Files (floor). Mutable: 13.**
+**Files (floor). Mutable: 7.**
 - Create: `src/transactions/merchant-name/merchant-name.ts`, `index.ts`; `src/categories/rule-preview-text/rule-preview-text.ts`, `index.ts`
 - Modify: `src/categories/category-rules/category-rules.d.ts`, `src/categories/category-rules-repo/category-rules.repo.ts`, `src/screens/forms/transaction-form/category-rule/category-rule.ts` (`PendingCategoryView` gains `title`), `src/screens/forms/transaction-form/use-category-override/use-category-override.ts`, `category-override-sheet/category-override-sheet.component.tsx`, `category-override-sheet.props.d.ts`, `transaction-form.screen.tsx`, `src/i18n/locales/en.ts`, `uk.ts`
-- Test-only or data: `src/i18n/locales/title-keys.ts`
+- Test-only or data: `src/i18n/locales/title-keys.ts`; `e2e/screenshot/seed/screenshot-seed.ts`, `demo-text.ts`, `e2e/screenshot/fixtures/README.md`, `build-demo-snapshot.test.ts`, regenerated demo `.kiko` files
 
 **Interfaces. Produces:**
 ```ts
@@ -278,8 +279,9 @@ const withTravelReseeded: (categories: CategoryRow[], settings: SettingsRow[]) =
 export type MerchantName = { key: string; prefix: string | null };
 export const MERCHANT_PREFIX_MIN_LETTERS = 3;
 export const merchantNameOf: (name: string) => MerchantName;
-export const merchantSpellingOf: (name: string) => string; // prefix, else the tidied name
-export const mostUsedSpelling: (rowsBySpelling: ReadonlyMap<string, number>) => string; // S1
+export const tidiedNameOf: (name: string) => string; // spec section 4 `tidy`: the full name, case kept
+export const merchantSpellingOf: (name: string) => string; // prefix, else the tidied name: `nameStartsWith` text only
+export const smallestSpelling: (spellings: Iterable<string>) => string; // S1
 // @kiko/categories/category-rules
 export type NameRuleKind = 'nameIs' | 'nameStartsWith';
 // categoryRulesRepo
@@ -302,19 +304,23 @@ export const ruleMoveMessage: (preview: { count: number; names: readonly string[
 | `categoryRulePreview.noRowsMessage` | `No existing transactions move. New ones will go to "{{category}}".` | `Наявні транзакції не перейдуть. Нові потраплятимуть до категорії «{{category}}».` |
 | help step `5` (edit) | add: `If the name ends in a store number, you can also apply to all names that start the same way.` | `Якщо назва закінчується номером магазину, можна застосувати й до всіх назв із таким самим початком.` |
 
-- [ ] **step 1/11 (kiko:qa): name table and property.** Create `src/transactions/merchant-name/merchant-name.test.ts`:
+**Agents for steps 1-7.** One `kiko:qa` run writes steps 1, 3 and 6, each with its commit (a missing export read by a runtime lookup, Global Constraints). Then one `kiko:developer` run does steps 2, 4, 5 and 7 in order, with no stop between them. If it must hand over midway, the orchestrator resumes the same agent by SendMessage while its context is under about 150k, else starts a fresh one with the finished steps in its brief. **Warning:** Knip reports the new exports until steps 4 and 7 add their callers, and `medium.sh` keeps blocking on `SubagentStop` (only a repeated `Stop` skips). A failure there is that unfinished work, not a finding and not a sign the agent finished; no export is deleted to pass it.
+
+- [ ] **step 1/12 (kiko:qa): name table and property.** Create `src/transactions/merchant-name/merchant-name.test.ts`:
   - `it.each` over every row of the spec section 4 table: exact `{ key, prefix }`. Name: `reads %s as key %s and prefix %s`.
   - `describe('the guarantee')`, using `sweep` from `@kiko/test-support/property-sweep` (add the site to `__tests__/property-sweep-sites.test.ts`) and `seededRandom` with the spread constant: `normalizeTransactionName(name).startsWith(key)`, and when `prefix !== null`, `normalizeTransactionName(prefix) === key`. The generator draws tokens from Latin, Cyrillic, digits of 1-8 lengths, `#`, `№`, `-`, `,`, `.`, double spaces, NBSP, NFD `й`, `İ`, final sigma `ΣΑΣ`; assert the drawn worlds include at least one cut and one kept name.
   - `is the same for a name in another case and spacing`: `key` of `ATB  0212` equals `atb 0212`.
-  - `mostUsedSpelling takes the most rows, then the smaller text`: `{ATB:3, atb:1}` -> `ATB`; `{atb:2, ATB:2}` -> `ATB`; order of the input map reversed gives the same.
+  - `smallestSpelling takes the smallest by code unit`: `[atb, ATB]` -> `ATB`; the input reversed gives the same.
+  - `tidiedNameOf keeps the full name` (`ATB  0212` -> `ATB 0212`); `merchantSpellingOf gives the prefix when cut, else the tidied name` (`ATB 0212` -> `ATB`, `ATB Market` -> `ATB Market`).
   Red: `npx jest src/transactions/merchant-name --maxWorkers=2`. Commit `test(names): merchant name table and property pins`.
 
-- [ ] **step 2/11 (kiko:developer): the function.** `merchant-name.ts`, spec section 4 rules in order. `\p{L}` with the `u` flag has precedent on Hermes (`title-fit.ts`, `format.ts`). Calls `normalizeTransactionName`, changes it nowhere. Knip reports the exports until step 4 and step 7 add their callers: one developer run covers steps 2, 4, 5 and 7, and a Stop-hook Knip failure in between is that unfinished work. Green: same command. Commit `feat(names): merchantNameOf`.
+- [ ] **step 2/12 (kiko:developer): the function.** `merchant-name.ts`, spec section 4 rules in order. `\p{L}` with the `u` flag has precedent on Hermes (`title-fit.ts`, `format.ts`). Calls `normalizeTransactionName`, changes it nowhere. Green: same command. Commit `feat(names): merchantNameOf`.
 
-- [ ] **step 3/11 (kiko:qa): preview and kind pins.** In `src/categories/category-rules-repo/category-rules.repo.test.ts`, real SQLite:
+- [ ] **step 3/12 (kiko:qa): preview and kind pins.** In `src/categories/category-rules-repo/category-rules.repo.test.ts`, real SQLite:
   - `previewNameRule counts exactly the rows applyNameRule then changes`: fixture with `ATB 0212`, `ATB 0340`, `ATB Market`, `ATBANK`, a hand-set `ATB 1`, a balance row; preview; apply `kind: 'nameStartsWith'`; the changed id set has `count` members and every name in `names`.
   - `previewNameRule writes nothing and adds no rule`.
-  - `previewNameRule lists each normalized name once, most rows first`, with the spelling of S1.
+  - `previewNameRule lists each normalized name once in full, most rows first` (S1, S8): by `toEqual` on the fixture above, `['ATB 0212', 'ATB 0340', 'ATB Market', 'ATBANK']` with `ATB 0212` holding the most rows, and a row `atb  0212` adds no name.
+  - `previewNameRule of a one-name store-number rule counts its own rows`: `kind: 'nameIs'`, text `ATB 0212` gives its rows, never 0.
   - `previewNameRule of a blank text is zero with no names`.
   - `previewNameRule includes a blank row's label as a name`.
   - `applyNameRule with no kind still writes nameIs` and `stores nameStartsWith with the trimmed text as typed`.
@@ -324,29 +330,30 @@ export const ruleMoveMessage: (preview: { count: number; names: readonly string[
   Create `src/categories/rule-preview-text/rule-preview-text.test.ts`: `shows at most five names and the count of the rest`; `quotes each name through common.listedName in uk`; `uses the plural of the count` for 1, 2, 5, 21 in uk; `says no rows move for a count of 0`.
   Red, named files. Commit `test(rules): pins for the name rule preview`.
 
-- [ ] **step 4/11 (kiko:developer): repo.** `NameRuleKind` in `category-rules.d.ts`. Private `stageNameRule(rows, { text, kind, category })` shared by both entry points. Private `rowsRewrittenBy` returning `{ id, name }[]` (`name` is the visible description, S8); `rowIdsRewrittenBy` maps it, so `countRuleRewrite`, `saveRule` and the performance pin's statement counts do not change. `applyNameRule`'s `matchers`: `[{ type: kind ?? 'nameIs', text: input.name.trim() }]`. Green; also `npx jest src/transactions/repo/transactions.repo.category-rules.performance.test.ts --maxWorkers=2` unchanged. Commit `feat(rules): previewNameRule and a kind on applyNameRule`.
+- [ ] **step 4/12 (kiko:developer): repo.** `NameRuleKind` in `category-rules.d.ts`. Private `stageNameRule(rows, { text, kind, category })` shared by both entry points. Private `rowsRewrittenBy` returning `{ id, name }[]` (`name` is the visible description, S8); `rowIdsRewrittenBy` maps it, so `countRuleRewrite`, `saveRule` and the performance pin's statement counts do not change. `previewNameRule` spells `names` with `tidiedNameOf` and `smallestSpelling`, never `merchantSpellingOf`. `applyNameRule`'s `matchers`: `[{ type: kind ?? 'nameIs', text: input.name.trim() }]`. Green; also `npx jest src/transactions/repo/transactions.repo.category-rules.performance.test.ts --maxWorkers=2` unchanged. Commit `feat(rules): previewNameRule and a kind on applyNameRule`.
 
-- [ ] **step 5/11 (kiko:developer): preview text and catalogue.** `rule-preview-text.ts`; keys in `en.ts` and `uk.ts` in this step, with `title-keys.ts`. `names` go through `common.listedName`, joined by `, ` (never `Intl.ListFormat`); `moreNames` appended. Run: `npx jest src/categories/rule-preview-text src/i18n/locales src/help --maxWorkers=2`. Commit `feat(i18n): copy for the name rule preview`.
+- [ ] **step 5/12 (kiko:developer): preview text and catalogue.** `rule-preview-text.ts`; keys in `en.ts` and `uk.ts` in this step, with `title-keys.ts`. `names` go through `common.listedName`, joined by `, ` (never `Intl.ListFormat`); `moreNames` appended. Run: `npx jest src/categories/rule-preview-text src/i18n/locales src/help --maxWorkers=2`. Commit `feat(i18n): copy for the name rule preview`.
 
-- [ ] **step 6/11 (kiko:qa): flow pins.** In `use-category-override.test.ts`: `offers no prefix for a name with no store number`; `offers the prefix for a name that ends in one`; `previews without writing on the first tap`; `writes with kind nameStartsWith and the source row only on confirm`; `returning from the confirm leaves the first step and writes nothing`; `cancel leaves what the form saved and writes no rule`; `shows the save alert when the preview fails`; `blocks a second confirm while the write runs`. Create `category-override-sheet.component.test.tsx`: `keeps Apply first and Just for this one for a name with no prefix` (today's sheet, whose text is read through `i18n.t`); `shows the prefix button as secondary below Apply`; `swaps to the confirm content in the same sheet`, with a positive twin for each absence assertion. Commit `test(forms): pins for the prefix offer`.
+- [ ] **step 6/12 (kiko:qa): flow pins.** In `use-category-override.test.ts`: `offers no prefix for a name with no store number`; `offers the prefix for a name that ends in one`; `previews without writing on the first tap`; `writes with kind nameStartsWith and the source row only on confirm`; `returning from the confirm leaves the first step and writes nothing`; `cancel leaves what the form saved and writes no rule`; `shows the save alert when the preview fails`; `blocks a second confirm while the write runs`. Create `category-override-sheet.component.test.tsx`: `keeps Apply first and Just for this one for a name with no prefix` (today's sheet, whose text is read through `i18n.t`); `shows the prefix button as secondary below Apply`; `swaps to the confirm content in the same sheet`, with a positive twin for each absence assertion. Commit `test(forms): pins for the prefix offer`.
 
-- [ ] **step 7/11 (kiko:developer): flow.** S9. Hook gains `prefixOffer: string | null`, `prefixPreview: { count; names } | null`, `onOfferPrefix`, `onBackFromPrefix`, `onApplyPrefix`, each with its own `useSubmitOnce`; `isOverrideWriting` includes them. Sheet props gain `prefix`, `onOfferPrefix`, `isOfferingPrefix`, `prefixConfirm: { message: string; onConfirm; onBack; isApplying } | null`; when set the sheet body is the message, `Button` "Move", ghost back. Screen wires props. `resolvePendingCategory` also returns `title`, for `ruleMoveMessage`. `resolveCategoryOverrideRequest`, `offersCategoryNameRule` stay as they are. Run: `npx jest src/screens/forms/transaction-form --maxWorkers=2`. Commit `feat(forms): offer a prefix rule in Apply`.
+- [ ] **step 7/12 (kiko:developer): flow.** S9. Hook gains `prefixOffer: string | null`, `prefixPreview: { count; names } | null`, `onOfferPrefix`, `onBackFromPrefix`, `onApplyPrefix`, each with its own `useSubmitOnce`; `isOverrideWriting` includes them. Sheet props gain `prefix`, `onOfferPrefix`, `isOfferingPrefix`, `prefixConfirm: { message: string; onConfirm; onBack; isApplying } | null`; when set the sheet body is the message, `Button` "Move", ghost back. Screen wires props. `resolvePendingCategory` also returns `title`, for `ruleMoveMessage`. `resolveCategoryOverrideRequest`, `offersCategoryNameRule` stay as they are. Run: `npx jest src/screens/forms/transaction-form --maxWorkers=2`. Commit `feat(forms): offer a prefix rule in Apply`.
 
-- [ ] **step 8/11 Review (kiko:reviewer).** Brief's top question: can any path write before the confirm?
-- [ ] **step 9/11 Drift (kiko:retrospect).** Check: kiko-domain's rule text (Apply now has a prefix option), kiko-design-system only if the sheet entry names its buttons.
-- [ ] **step 10/11 Scribe (kiko:scribe).** Fix the drift and commit; the report names the sha or "no drift found".
-- [ ] **step 11/11 Ready.** Label `1.4-category-automation-task-2`.
+- [ ] **step 8/12 (kiko:developer): store-number rows in the demo.** S22. `buildStoreNumberTransactions` beside `buildFoodDeliveryTransactions` in `screenshot-seed.ts`, and its key in both languages of `demo-text.ts` (draft: en `Fora`, uk `Фора`; not `Wolt`, `Bolt Food`, `Glovo`, and not a name in the kit's fake statement or a name a stored demo rule matches). Rows on the same card: `<store> 0212` twice, `<store> 0340` once, all `other`, inside the default 30-day window but not the newest rows, so a Home screenshot's first rows do not change. Re-measure the "19 rows" sentence in `e2e/screenshot/fixtures/README.md` and in the seed's comment, and correct it. Pin in `build-demo-snapshot.test.ts`, over en and uk: `holds a store-number name for the Apply prefix offer`: `merchantNameOf(description).prefix` over the file's distinct names equals, by `toEqual`, the one store name. Regenerate both `.kiko` files on this tip (S22; task 1's regeneration is already in it), same commit. Run: `npx jest e2e/screenshot --maxWorkers=2`, output in a file. A failing existing pin that measures a demo total is reported with its seed before any edit. Commit `test(demo): store-number rows for the prefix offer`.
+- [ ] **step 9/12 Review (kiko:reviewer).** Brief's top question: can any path write before the confirm?
+- [ ] **step 10/12 Drift (kiko:retrospect).** Check: kiko-domain's rule text (Apply now has a prefix option), kiko-design-system only if the sheet entry names its buttons.
+- [ ] **step 11/12 Scribe (kiko:scribe).** Fix the drift and commit; the report names the sha or "no drift found".
+- [ ] **step 12/12 Ready.** Label `1.4-category-automation-task-2`.
 
 ---
 
 ## 1.4-category-automation task 3/6: name-contains and MCC conditions
 
-**Needs:** nothing. **Base:** task 2 tip.
+**Needs:** task 1 (it edits `backfill-mcc-categories.ts` and `MccBackfillRow`). **Base:** task 2 tip.
 
-**Files (floor). Mutable: 17.**
+**Files (floor). Mutable: 15.**
 - Modify in `src/categories/category-rules/`: `category-rules.d.ts`, `matcher-key.ts`, `matcher-options.ts`, `parse-rule-matchers.ts`, `prepare-rules.ts`, `rule-subject.ts`, `validate-rule.ts`, `plan-rule-rewrite.ts` (`MccBackfillRow` becomes `RewriteCandidate`)
 - Modify: `src/categories/category-rules-repo/category-rules.repo.ts`, `backfill-mcc-categories.ts`, `src/transactions/repo/transactions.repo.ts`, `src/screens/forms/category-rule-form/rule-draft/rule-draft.ts`, `rule-draft.types.d.ts`, `matcher-row/matcher-row.component.tsx`, `category-rule-form.screen.tsx`, `src/screens/forms/category-form/rule-summary/rule-summary.ts`, `src/screens/forms/transaction-form/category-rule/category-rule.ts` (via `subjectOfDraft`)
-- Catalogue: `en.ts`, `uk.ts` (counted as 2 more if `make mutable` lists them)
+- Catalogue: `en.ts`, `uk.ts` (never in `make mutable`)
 - Test data: `__fixtures__/rules-performance-fixture.ts` gains `mcc: index % 4 === 0 ? 5411 : null` with no draw from the generator (S14)
 
 **Interfaces. Produces:**
@@ -357,17 +364,19 @@ export const ruleMoveMessage: (preview: { count: number; names: readonly string[
 ```
 `mcc` in `candidateColumns`, so the back-fill's own spread goes. `subjectOfDraft` gives `mcc: null`.
 
+**Agents for steps 1-5.** The tree does not compile between steps 2 and 5, and `medium.sh` runs the typecheck at every `SubagentStop` and keeps blocking there (only a repeated `Stop` skips). So no agent hands over inside that stretch. One `kiko:qa` run writes step 1 and the test half of step 4 first: each new literal goes through one test-local `(raw: unknown) => raw as CategoryRuleMatcher` (a draft field the same way), so its tree compiles, red at runtime, and it commits them. Then one `kiko:developer` run does steps 2, 3, the code of 4, and 5, with no stop, and step 5's commit tidies the literals to typed ones. If it must hand over midway, the orchestrator resumes the same agent by SendMessage while its context is under about 150k, else starts a fresh one with the finished steps in its brief. **Warning:** a typecheck failure at that stop is that unfinished work, not a finding and not a sign the agent finished; never fix it with a stub or a loosened type.
+
 - [ ] **step 1/10 (kiko:qa): parser and match pins.**
   - `parse-rule-matchers.test.ts`: `reads a nameContains matcher`; `refuses a blank nameContains`; `reads an mcc matcher at 0 and at 9999`; `refuses an mcc of 10000, -1, 1.5 and "5411"`; `drops an unknown field and keeps the known ones of a new type`; `makes the whole rule unreadable when one new matcher is bad`.
   - `prepare-rules.matrix.test.ts`: `nameContains matches inside a normalized name`; `nameContains matches across case and spacing`; `a blank name matches no nameContains`; `mcc matches its own code`; `mcc on a null value does not match`; `mcc does not match another code`.
   - `prepare-rules.priority.test.ts`: `a new condition counts one and two conditions beat one`; `a matcher written twice counts once`.
   - `validate-rule.test.ts`: `two mcc codes can never match` (conflict `other`); `one code written twice can match`; `an exact name without the contained text can never match`; `an exact name holding the contained text can match`; `a prefix with a contained text can match`.
   - `rule-subject.test.ts`: `a stored row carries its mcc` and `a draft carries none`.
-  Red, named files; quote the output. No commit: the literals need the new type, and the staged typecheck refuses them. These tests commit with step 5.
+  Red, named files; quote the output. Commit with the test half of step 4: `test(rules): pins for name-contains and merchant-code conditions`.
 
-- [ ] **step 2/10 (kiko:developer): types, parser, match, validate.** Parser: `nameContains` beside `parseNameMatcher` (widen its union); `mcc`: `Number.isInteger(code) && code >= 0 && code <= 9999`. `withNormalizedText`, `keyOfMatcher`, `MATCHER_MATCHES` (`subject.mcc === code`; a null never equals a number, and the test above pins it), `MATCHER_TYPES`. `namesCanMatch`: the one exact name must contain every contained text. `mccsCanMatch`: distinct codes at most one. The compile errors list the rest (`draftOf`, `outcomeOf`, `describeMatcher`, `typeLabels`), which are steps 3-5. Steps 1-5 are one commit, at step 5.
+- [ ] **step 2/10 (kiko:developer): types, parser, match, validate.** Parser: `nameContains` beside `parseNameMatcher` (widen its union); `mcc`: `Number.isInteger(code) && code >= 0 && code <= 9999`. `withNormalizedText`, `keyOfMatcher`, `MATCHER_MATCHES` (`subject.mcc === code`; a null never equals a number, and the test above pins it), `MATCHER_TYPES`. `namesCanMatch`: the one exact name must contain every contained text. `mccsCanMatch`: distinct codes at most one. The compile errors list the rest (`draftOf`, `outcomeOf`, `describeMatcher`, `typeLabels`), which are steps 3-5. Steps 2-5 are one commit, at step 5.
 
-- [ ] **step 3/10 (kiko:developer): feeds.** `isNameMatcher` adds `nameContains`; `rowIdsForNamedRule`'s name-only subject gains `mcc: null`; `candidateColumns` adds `mcc`; `giveSourceRowCategory`'s select adds `mcc`; `withCategoryRules`'s subject takes `input.mcc ?? null`; fixture line of S14; every test literal of `RuleSubject` or `RewriteCandidate` (5 suites at the floor: `git grep -l 'RuleSubject\|RewriteCandidate\|subjectOfStoredRow' -- src`). Pins in `category-rules.repo.test.ts`: `an mcc rule rewrites by the id-keyset page path`; `a nameContains rule uses the description narrowing`; `the source row is judged with its mcc`. In `transactions.repo` suite: `an mcc rule wins a new synced row`; `an mcc rule wins through the adoption path`; `a row with no code is left for the MCC fallback`. Run: `npx jest src/categories src/transactions/repo --maxWorkers=2`.
+- [ ] **step 3/10 (kiko:developer): feeds.** `isNameMatcher` adds `nameContains`; `rowIdsForNamedRule`'s name-only subject gains `mcc: null`; `candidateColumns` adds `mcc`; `giveSourceRowCategory`'s select adds `mcc`; `withCategoryRules`'s subject takes `input.mcc ?? null`; fixture line of S14; every test literal of `RuleSubject` or `RewriteCandidate` (5 suites at the floor: `git grep -l 'RuleSubject\|RewriteCandidate\|subjectOfStoredRow' -- src`). Pins in `category-rules.repo.test.ts`: `an mcc rule rewrites by the id-keyset page path`; `a nameContains rule uses the description narrowing`; `the source row is judged with its mcc`. In `src/transactions/repo/transactions.repo.category-rules.test.ts`: `an mcc rule wins a new synced row`; `a row with no code is left for the MCC fallback`. In `src/transactions/repo/transactions.repo.sync-adoption.test.ts`: `an mcc rule wins through the adoption path`. Run: `npx jest src/categories src/transactions/repo --maxWorkers=2`.
 
 - [ ] **step 4/10 (kiko:qa then kiko:developer): form.** `rule-draft.test.ts`: `a four-digit code becomes a number`; `0042 stores as 42 and shows as 0042`; `three digits, five digits and letters give errorMcc`; `a contained text is trimmed and a blank one gives errorName`; `switching type keeps mccText`. `matcher-row.component.test.tsx`: `an mcc row shows a number-pad field limited to four digits`; `a nameContains row shows the name field`; `the type picker lists both new conditions`. Code: `MatcherDraft.mccText`; `emptyMatcherDraft`; `draftOf`; `outcomeOf`; `MatcherDraftError` gains `errorMcc`; `rowErrorMessage`; `typeLabels`. Run: `npx jest src/screens/forms/category-rule-form --maxWorkers=2`.
 
@@ -386,12 +395,11 @@ export const ruleMoveMessage: (preview: { count: number; names: readonly string[
 
 **Needs:** task 3. **Base:** task 3 tip.
 
-**Files (floor). Mutable: 22 (+2 catalogues).**
+**Files (floor). Mutable: 18.**
 - Create: `src/transactions/iban/iban.ts`, `index.ts`
 - Modify in `src/categories/category-rules/`: `category-rules.d.ts`, `matcher-key.ts`, `matcher-options.ts`, `parse-rule-matchers.ts`, `prepare-rules.ts`, `rule-subject.ts`, `validate-rule.ts`
 - Modify: `category-rules.repo.ts`, `transactions.repo.ts`, `src/statement-import/column-mapping/apply-column-mapping.ts`, `rule-draft.ts`, `rule-draft.types.d.ts`, `matcher-row.component.tsx`, `matcher-row.props.d.ts`, `category-rule-form.screen.tsx`, `rule-summary.ts`, `category-form.screen.tsx`, `category-rule.ts`, `use-category-pick.ts`, `transaction-form.screen.tsx` (hands the picked holding's account to the hook)
 - Catalogue: `en.ts`, `uk.ts`. Fixture: `counterIban` and `accountId` derived from the index, no draw.
-- Test fixture: `src/categories/category-rules/__fixtures__/release-1-3-parse-rule-matchers.ts`, the verbatim output of `git show 918683db3:src/categories/category-rules/parse-rule-matchers.ts` with only its relative imports adjusted (at the time of writing the file at that tip equals the base's, before task 3). Run `npm run check:dup`; if the copy trips jscpd, report it, do not widen an ignore without an entry in `docs/harness/documented-exceptions.md`.
 
 **Interfaces. Produces:**
 ```ts
@@ -406,25 +414,26 @@ export const ibanKeyOf: (iban: string) => string; // no spaces, uppercase
 // toMatcherDrafts gains: liveAccountIds: ReadonlySet<string>
 ```
 
-- [ ] **step 1/11 (kiko:qa): parser, match, validate pins.** Parser: `reads an account matcher`; `refuses an empty account id`; `reads an IBAN typed with spaces in lower case`; `refuses a malformed IBAN`; `a fixture IBAN with a bad checksum still reads`. Matrix: `account matches its own id`; `account on a row with no holding does not match`; `counterIban matches across case and spacing`; `counterIban on a null value does not match`; `every new kind on a missing value does not match` as one `it.each` over all four (blank name, null `mcc`, null account, null IBAN). Priority: `each new condition counts one`. Validate: `two accounts can never match`, `two IBANs can never match`, `one IBAN in two spellings can match`, `matcherSetKey treats two spellings of one IBAN as one`. Iban: `src/transactions/iban/iban.test.ts`. Red, named files; quote the output. No commit: as in task 3, steps 1-5 are one commit, at step 5.
+**Agents for steps 1-5.** As in task 3, with the same warning: one `kiko:qa` run writes steps 1 and 4 and commits them with the cast literals; one `kiko:developer` run does steps 2, 3 and 5 with no stop, and step 5's commit tidies the literals.
+
+- [ ] **step 1/11 (kiko:qa): parser, match, validate pins.** Parser: `reads an account matcher`; `refuses an empty account id`; `reads an IBAN typed with spaces in lower case`; `refuses a malformed IBAN`; `a fixture IBAN with a bad checksum still reads`. Matrix: `account matches its own id`; `account on a row with no holding does not match`; `counterIban matches across case and spacing`; `counterIban on a null value does not match`; `every new kind on a missing value does not match` as one `it.each` over all four (blank name, null `mcc`, null account, null IBAN). Priority: `each new condition counts one`. Validate: `two accounts can never match`, `two IBANs can never match`, `one IBAN in two spellings can match`, `matcherSetKey treats two spellings of one IBAN as one`. Iban: `src/transactions/iban/iban.test.ts`, reading the missing module by a runtime lookup. Red, named files; quote the output. Commit with step 4: `test(rules): pins for account and counterparty IBAN conditions`.
 
 - [ ] **step 2/11 (kiko:developer): types through validate.** Move `IBAN_PATTERN` out of `apply-column-mapping.ts`, which imports it. Same exhaustive sweep as task 3 step 2.
 
-- [ ] **step 3/11 (kiko:developer): feeds, with pins.** `candidateColumns` adds `counterIban` and `accountId: holdings.accountId`; `giveSourceRowCategory`'s select the same; `withCategoryRules`'s holdings read adds `accountId` (`accountIdById`), subject takes `input.counterIban ?? null`, `accountIdById.get(input.holdingId) ?? null`; `rowIdsForNamedRule`'s subject adds nulls; `subjectOfStoredRow` applies `ibanKeyOf` to a non-null value; `subjectOfDraft` gives `counterIban: null` and the draft's `accountId`; `CategoryDraft.accountId` from the picked holding, passed by `use-category-pick.ts`. Pins: `an account rule pre-selects a draft on its holding's account`; `an IBAN rule never pre-selects a draft`; repo suite `an account rule wins through a real join`; `an IBAN rule wins a synced transfer`; `a deleted holding's row matches no account rule`; transactions suite `an account rule wins through the adoption path`; `the source row is judged with its account and IBAN`.
+- [ ] **step 3/11 (kiko:developer): feeds, with pins.** `candidateColumns` adds `counterIban` and `accountId: holdings.accountId`; `giveSourceRowCategory`'s select the same; `withCategoryRules`'s holdings read adds `accountId` (`accountIdById`), subject takes `input.counterIban ?? null`, `accountIdById.get(input.holdingId) ?? null`; `rowIdsForNamedRule`'s subject adds nulls; `subjectOfStoredRow` applies `ibanKeyOf` to a non-null value; `subjectOfDraft` gives `counterIban: null` and the draft's `accountId`; `CategoryDraft.accountId` from the picked holding, passed by `use-category-pick.ts`. Pins: `an account rule pre-selects a draft on its holding's account`; `an IBAN rule never pre-selects a draft`; `src/categories/category-rules-repo/category-rules.repo.test.ts`: `an account rule wins through a real join`; `an IBAN rule wins a synced transfer`; `a deleted holding's row matches no account rule`; `the source row is judged with its account and IBAN`; `src/transactions/repo/transactions.repo.sync-adoption.test.ts`: `an account rule wins through the adoption path`.
 
-- [ ] **step 4/11 (kiko:qa): form and card pins.** `rule-draft.test.ts`: `no account picked gives errorAccount`; `an id no longer listed seeds as none`; `a live id seeds as itself`; `a typed IBAN is stored normalized`; `a bad IBAN gives errorIban`. Screen test: `keeps a live account id when the accounts read lands after the rules read` (Review Focus 3: delete the `useDataReady` input and show it red); `a rule on a deleted account asks for a pick on Save`. `matcher-row` test: `lists the accounts by accountDisplayName, the implicit ones translated`; `leaves an archived account out unless it is the row's own`. `rule-summary.test`: `shows the live account name`; `shows Deleted account for an id in no row`; `shows the IBAN in full`.
+- [ ] **step 4/11 (kiko:qa): form and card pins.** `rule-draft.test.ts`: `no account picked gives errorAccount`; `an id no longer listed seeds as none`; `a live id seeds as itself`; `a typed IBAN is stored normalized`; `a bad IBAN gives errorIban`. Screen test: `keeps a live account id when the accounts read lands after the rules read` (Review Focus 2; at step 5 the developer deletes the `useDataReady` input and shows it red); `a rule on a deleted account asks for a pick on Save`. `matcher-row` test: `lists the accounts by accountDisplayName, the implicit ones translated`; `leaves an archived account out unless it is the row's own`. `rule-summary.test`: `shows the live account name`; `shows Deleted account for an id in no row`; `shows the IBAN in full`.
 
 - [ ] **step 5/11 (kiko:developer): form and card.** `MatcherDraft` gains `accountId: string | null`, `ibanText`; `MatcherRowProps` gains `accounts: readonly { id: string; label: string }[]`. S19. `SelectField<string>` for the account, with `labels`. IBAN `TextField` `autoCapitalize="characters"`. The screen reads `accountsRepo.listQuery()` uncached and adds it to `useDataReady` before the seed runs. `category-form.screen.tsx` reads accounts for `ruleLinesOf`'s `accountNameOf`. Keys of spec 3.4.4 for these kinds, in both catalogues in this step: `ruleForm.account`, `ruleForm.counterIban`, `ruleForm.errorAccount`, `ruleForm.errorIban`, `categoryPage.deletedAccount`, and the sheet title and placeholder the picker needs. Help step 2 in both: en `...the name, the amount, the time, the merchant code, the account or the counterparty IBAN...`, uk `...за назвою, сумою, часом, кодом продавця, рахунком чи IBAN контрагента...`. Run: `npx jest src/categories src/transactions src/statement-import/column-mapping src/screens/forms/category-rule-form src/screens/forms/category-form src/screens/forms/transaction-form src/i18n/locales src/help --maxWorkers=2`. Commit `feat(rules): account and counterparty IBAN conditions`.
 
-- [ ] **step 6/11 (kiko:qa): account gone and restore.** `accounts.repo` suite: `removing an account leaves its rule, and the rule matches nothing`; disconnect suite: `a disconnect keeps the rule matching, and a reconnect re-adopts it`. `src/data-transfer/snapshot/restore-account-matcher.test.ts`: `restoring a file keeps an account matcher's id and it matches`; `withImplicitAccountsMerged keeps the id of a rule on a property account in a current file`; `a rule on an id in no row reads as Deleted account and never matches`. Commit `test(rules): a rule on a deleted or restored account`.
+- [ ] **step 6/11 (kiko:qa): account gone and restore.** `src/accounts/accounts.repo.test.ts`: `removing an account leaves its rule, and the rule matches nothing`; `src/monobank/disconnect/disconnect.test.ts`: `a disconnect keeps the rule matching, and a reconnect re-adopts it`. `src/data-transfer/snapshot/restore-account-matcher.test.ts`: `restoring a file keeps an account matcher's id and it matches`; `withImplicitAccountsMerged keeps the id of a rule on a property account in a current file`; `a rule on an id in no row reads as Deleted account and never matches`. Commit `test(rules): a rule on a deleted or restored account`.
 
-- [ ] **step 7/11 (kiko:qa): the two-path older-build restore, on raw JSON.** Raw JSON literals, one for each of `nameContains`, `mcc`, `account`, `counterIban`, plus one mix `[{ nameIs "ATB" }, { mcc 5411 }]`, in a shared test constant:
-  - `src/categories/category-rules/older-build-rules.test.ts`: `jest.mock('./parse-rule-matchers', ...)` to the 1.3 fixture so the REAL `prepareRules` runs on 1.3's parser. `it.each`: `release 1.3 reads a %s rule as unreadable`: `prepared.unreadable` holds it, `ordered`, `byName`, `withoutName` do not. Mix: `release 1.3 reads a mix as unreadable whole and its known condition runs on no row`: `winningRule` for a subject named `ATB` is undefined, and with a plain `nameIs ATB` rule beside it, that rule wins.
+- [ ] **step 7/11 (kiko:qa): the two-path older-build restore, on raw JSON.** Raw JSON literals, one for each of `nameContains`, `mcc`, `account`, `counterIban`, plus one mix `[{ nameIs "ATB" }, { mcc 5411 }]`, at the top of the test file. No copy of a 1.3 source file goes in; spec 3.4.5 records what 1.3's parser does, read with `git show`.
   - `src/data-transfer/snapshot/restore-new-matchers.two-path.test.ts`, real SQLite, real `readDataSnapshot`, `restoreDataSnapshot`:
-    Path 1, a 1.4 file into 1.3 (`EXPORT_VERSION` 5): `restores a %s rule's JSON byte for byte`; `restores every row with its category and rewrites none`; `the 1.3 parser finds it unreadable` (fixture imported directly).
+    Path 1, the raw JSON round trip (`EXPORT_VERSION` 5): `restores a %s rule's JSON byte for byte`; `restores every row with its category and rewrites none`.
     Path 2, a 1.3 export back into 1.4: `the same bytes read again in this build`; `the rule wins a new row after the restore`; `a mix reads again whole`; `a row the rule would win keeps its category until the user applies`.
   - `src/data-transfer/crypto/envelope.test.ts` unchanged by this task: `version` 5. State it in the commit.
-  Run: named files. Red proof: in a scratch copy of the fixture change `matchers.every(isMatcher) ? matchers : null` into a filter of the readable matchers and show the mix case red. Commit `test(restore): new matchers survive a round trip through release 1.3`.
+  Run: named files. Red proof: in a scratch edit of the parser change `matchers.every(isMatcher) ? matchers : null` into a filter of the readable matchers and show task 3's `makes the whole rule unreadable when one new matcher is bad` red. Commit `test(restore): new matchers survive a round trip through release 1.3`.
 
 - [ ] **step 8/11 Review (kiko:reviewer).** Top question: can a rule on a missing account or a null IBAN ever match, and does any path drop a condition?
 - [ ] **step 9/11 Drift (kiko:retrospect).** Check: kiko-domain's matcher kinds and the deleted-account state; kiko-architecture's restore section if it lists rule shapes.
@@ -437,26 +446,24 @@ export const ibanKeyOf: (iban: string) => string; // no spaces, uppercase
 
 **Needs:** tasks 1 and 2. **Base:** task 4 tip.
 
-**Files (floor). Mutable: 20.**
+**Files (floor). Mutable: 9.**
 - Create: `src/categories/category-rules/plan-review-groups.ts`; `src/screens/settings/category-review/category-review.screen.tsx`, `category-review.styles.ts`, `index.ts`; `review-line/review-line.component.tsx`, `review-line.props.d.ts`, `index.ts`; `category-options-sheet/category-options-sheet.component.tsx`, `category-options-sheet.props.d.ts`, `index.ts` (one component per file); `use-review-actions/use-review-actions.ts`, `index.ts`
 - Modify: `src/categories/category-rules/index.ts`, `category-rules.repo.ts`, `src/screens/settings/categories/categories.screen.tsx`, `src/navigation/settings-stack/settings.stack.tsx`, `src/navigation/types/types.d.ts`, `src/help/help-topics.ts`, `en.ts`, `uk.ts`
-- Data: `title-keys.ts`
+- Data: `title-keys.ts`. Test-only: `e2e/screenshot/fixtures/build-demo-snapshot.test.ts`
 
-**Interfaces. Consumes:** `hasNoRealCategory`, `noRealCategorySql`, `merchantNameOf`, `merchantSpellingOf`, `mostUsedSpelling`, `NameRuleKind`, `previewNameRule`, `applyNameRule`, `ruleMoveMessage`.
+**Interfaces. Consumes:** `hasNoRealCategory`, `noRealCategorySql`, `merchantNameOf`, `merchantSpellingOf`, `tidiedNameOf`, `smallestSpelling`, `NameRuleKind`, `previewNameRule`, `applyNameRule`, `ruleMoveMessage`.
 
 **Produces:**
 ```ts
 // @kiko/categories/category-rules
 export type ReviewGroup = {
   key: string;
-  names: readonly string[]; // one per normalized name, most rows first
+  names: readonly string[]; // one per normalized name, full tidied spelling, most rows first (S1)
   rowCount: number;
-  heldOtherCount: number; // rows stored as other: a rule to other moves none of them
   newestTime: number;
-  rule: { kind: NameRuleKind; text: string };
+  rule: { kind: NameRuleKind; text: string }; // text per kind: S1
 };
 export const planReviewGroups: (prepared: PreparedRules, rows: readonly RewriteCandidate[], knownCategoryKeys: ReadonlySet<string>) => ReviewGroup[];
-export const movingRowCount: (group: ReviewGroup, category: string) => number; // S7
 // categoryRulesRepo
 reviewCandidateRowsQuery: () => /* Drizzle builder */;
 // SettingsStackParamList
@@ -474,19 +481,18 @@ CategoryReview: undefined;
 | `categoryReview.rowCount_*` | `{{count}} transactions` | `{{count}} транзакція / транзакції / транзакцій` |
 | `categoryReview.choose` | `Choose category` | `Вибрати категорію` |
 | `categoryReview.optionsTitle` (title key) | `Choose Category` | `Вибір категорії` |
-| `categoryReview.keepIn` | `Keep in {{category}}` | `Залишити в «{{category}}»` |
 | `categoryReview.emptyTitle` | `Nothing to sort` | `Немає що розподіляти` |
 | `categoryReview.emptyMessage` | `Transactions without a category appear here, grouped by name. Pick a category once, and Kiko adds a rule for it.` | `Тут зʼявляться транзакції без категорії, згруповані за назвою. Виберіть категорію один раз, і Кіко додасть для неї правило.` |
 | `help.topics.categoryRules.steps.6` | `To sort what has no category yet, open "Categories", tap "Sort transactions without a category" and pick a category for a name.` | `Щоб розподілити транзакції без категорії, відкрийте «Категорії», натисніть «Розподілити транзакції без категорії» й виберіть категорію для назви.` |
 
-The confirm reuses `categoryRulePreview.*` from task 2. The live title of `other` through `resolveDefaultCategoryTitle`.
+The confirm reuses `categoryRulePreview.*` from task 2.
 
 - [ ] **step 1/13 (kiko:qa): group pins.** Create `plan-review-groups.test.ts`:
-  - Keeps and drops: `keeps NULL, empty, other and orphan rows`; `drops a hand-set row`; `drops a balance-setting and a split-change row`; `drops a row a rule wins`; `drops an exchange leg by either marker`; `drops a blank description` (`''` and spaces); `drops a real category`.
-  - Grouping: `groups ATB, ATB 0212 and atb 0340 under one key`; `keeps АТБ and ATB apart`; `offers nameIs for one distinct name`; `treats ATB 0212 and atb  0212 as one name` (S2); `offers nameStartsWith on the most-used spelling for two or more` (S1); `breaks a spelling tie the same way whatever the row order`.
+  - Keeps and drops: `keeps NULL, empty, other and orphan rows`; `drops a hand-set row`; `drops a balance-setting and a split-change row`; `drops a row a rule wins`; `drops a row in other won by a rule that targets another category` (a rule saved as "New transactions only", spec 3.0: accepted, it never appears and nothing writes it); `drops an exchange leg by either marker`; `drops a blank description` (`''` and spaces); `drops a real category`.
+  - Grouping: `groups ATB, ATB 0212 and atb 0340 under one key`; `keeps АТБ and ATB apart`; `treats ATB 0212 and atb  0212 as one name` (S2).
+  - Names and rule text (S1), each by `toEqual` on `names` and `rule`: `offers nameIs on the full name for one distinct name`: `ATB 0212`, `atb  0212` -> `['ATB 0212']`, `{ kind: 'nameIs', text: 'ATB 0212' }`; `offers nameStartsWith on the prefix and lists the names in full`: `ATB 0212`, `ATB 0340` -> `['ATB 0212', 'ATB 0340']`, `{ kind: 'nameStartsWith', text: 'ATB' }`; `spells the same whatever the row order`: `atb 0340` and `ATB 0340` in both orders.
   - Order: `sorts by row count, then newest time, then key`; `is the same for shuffled rows` (three shuffles).
   - `every listed row matches its group's own rule`: property via `sweep` on rows built from spec section 4 samples and generated names: `matchesRule` on a rule built from `group.rule` is true for every row in the group (add the site to `property-sweep-sites.test.ts`).
-  - `movingRowCount` `it.each`: target `groceries` -> `rowCount`; target `other` or `OTHER` -> `rowCount - heldOtherCount`.
   Commit `test(rules): pins for planReviewGroups`.
 
 - [ ] **step 2/13 (kiko:developer): the plan.** `plan-review-groups.ts`. Memoize `merchantNameOf` per distinct description in a local `Map` (fixture: 2,000 descriptions over 50,000 rows). Order the cheap field checks before `winningRule`. Green: `npx jest src/categories/category-rules/plan-review-groups.test.ts --maxWorkers=2`. Commit `feat(rules): planReviewGroups`.
@@ -494,15 +500,17 @@ The confirm reuses `categoryRulePreview.*` from task 2. The live title of `other
 - [ ] **step 3/13 (kiko:qa): count against rows, on one fixture.** Create `src/categories/category-rules-repo/category-review.repo.test.ts`, real SQLite, one seeded world: 12 rows `ATB 0212` in `other`; 3 rows `ATB 0212` MCC-sorted into `groceries`; `ATB Market`, `ATBANK` in `shopping`; one hand-set `ATB 0340`; one balance row; `Silpo 12` x4 in `other` and nothing else with that prefix.
   - `listed rows are a subset of planned rows`: ids from `planReviewGroups` over `reviewCandidateRowsQuery`, ids changed by `applyNameRule`; the world above.
   - `the preview count equals the rows the write changes`: compare the before and after category per id on one fixture, for `nameIs` and for `nameStartsWith`.
-  - `planned equals listed when no other row carries the name`: `Silpo`, so `movingRowCount === count`.
-  - `a listed count below the preview means a confirm`: `count > movingRowCount`.
-  - `Keep in Other on rows all in other moves none, writes the rule and the group leaves`: count 0, `movingRowCount` 0, then `planReviewGroups` omits it (Review Focus 1).
-  - `Keep in Other on NULL rows moves them`.
+  - `planned equals listed when no other row carries the name`: `Silpo`, so `rowCount === count`.
+  - `a listed count below the preview means a confirm`: `count > rowCount`.
+  - `every listed row moves whatever it holds`: NULL, `''`, `other` and an orphan key, picked to `groceries`: `count === rowCount`.
+  - `a one-name store-number group previews its own rows`: `group.rule` of a group of only `ATB 0212` previews a count equal to its `rowCount`, not 0.
   - `a hand-set row is not listed, not counted and not written`.
   - `the plan is redone inside the write`: a row added between the preview and the write gets the category, and `applyNameRule` returns the new count.
   - Reminder trap (spec 5.3), `src/reminders/repo/reminders.repo.test.ts`: `a manual row with a name and no category becomes an entry only inside its created-at window when a tap gives it a category`: seed the row; `manualEntryDaysQuery` before; `applyNameRule`; after, for a `since` before and after the row's `createdAt`.
-    Measure and quote in the report: `git grep -n "source: 'manual'"` (writers at the time of writing: `recordManualTransaction`, whose form path requires a category for income and expense; exchange and change rows carry a marker; `holdings.repo`, `accounts.repo` balance rows are `setsBalance` with `''`). If a live writer of a manual, named, unmarked NULL row is found, stop and report it.
+    Measure and quote in the report: `git grep -n "source: 'manual'" -- src` (writers at the time of writing: `recordManualTransaction`, whose form path requires a category for income and expense; exchange and change rows carry a marker; `holdings.repo`, `accounts.repo` balance rows are `setsBalance` with `''`). If a live writer under `src/` of a manual, named, unmarked NULL row is found, stop and report it. The demo is no such writer and does not stop this: its 24 rows (Salary 6, Crypto purchase 6, Account top-up 4, Jar top-up 3, BTC purchase 2, ATM cash withdrawal 1, Freelance project 1, Brokerage account top-up 1) are the accepted case of spec 5.3.
   - Performance, S13, in `transactions.repo.category-rules.performance.test.ts`, on the 50,000-row fixture: `plans the review list from one candidate read`; `planReviewGroups keeps only what the brute-force filter keeps`; `calls merchantNameOf once per distinct description` (wrapped via `jest.mock` with a `jest.requireActual` call with no type argument); `reviewCandidateRowsQuery scans the table with no temp B-tree`: `EXPLAIN QUERY PLAN` from the repo's builder, asserted. A pin that fails its bound leads to a partial index in its own migration, its `EXPLAIN` test and a `kiko:reviewer` step, never a weaker bound (spec 3.2.3): report before building that.
+  - `reviewCandidateRowsQuery keeps a blank name out through the parentheses of noRealCategorySql`: `toSQL().sql` holds the arms in one `( ... )`, and a NULL-category row with description `''` is not returned.
+  - Demo, S22, in `e2e/screenshot/fixtures/build-demo-snapshot.test.ts`, over en and uk: `the review list offers a starts-with line on the store-number rows`: `planReviewGroups` over the snapshot's rows (the row mapping of `build-demo-snapshot.rule-demo.test.ts`), the group's `names` and `rule` by `toEqual`; `leaves the rule demo's merchants in their own lines`.
   Commit `test(rules): review list count, write and cost pins`.
 
 - [ ] **step 4/13 (kiko:developer): the read.** `reviewCandidateRowsQuery`: `candidateColumns`, `inner join holdings`, `ne(description, '') AND noRealCategorySql`. Green: named files. Hand-time it on the fixture and quote it for the report. Commit `feat(rules): review candidate read`.
@@ -511,10 +519,11 @@ The confirm reuses `categoryRulePreview.*` from task 2. The live title of `other
   - `shows the loading state while any read is on its first load` and `never the empty state then`.
   - `shows the empty state with no data` (2.5.19), its title and message from `i18n.t`, positive twin; `shows the empty state when nothing is left`.
   - `shows one line per group with its counts`; `reads Starts with for a prefix group`.
-  - `writes at once when the preview equals the moving count`, `applyNameRule` called with `{ name, kind, category, sourceTransactionId: null }`.
+  - `writes at once when the preview equals the row count`, `applyNameRule` called with `{ name, kind, category, sourceTransactionId: null }`.
   - `opens the confirm with the names when the preview is larger`, and `writes only on its confirm`; `cancel writes nothing`; `shows five names and and M more`.
-  - `opens the confirm only after the options sheet has closed` (Review Focus 2): fires `onClosed`.
-  - `Keep in Other writes the rule with no confirm on rows all in other`; `reads the live title of other`; `is hidden when other is not in the table`, positive twin.
+  - `opens the confirm only after the options sheet has closed` (Review Focus 1): fires `onClosed`.
+  - `leaves other out of the options`, positive twin `lists the other categories of the live table`.
+  - `a line left alone stays, with no badge or count about it`.
   - `reads the title of a seeded category through resolveDefaultCategoryTitle`.
   - `pauses its reads while it is not visible`: the options object holds `paused: true`, never `cached`.
   - `blocks a second tap while a write runs`; `shows an alert and leaves the line when the write fails`.
@@ -524,10 +533,10 @@ The confirm reuses `categoryRulePreview.*` from task 2. The live title of `other
 
 - [ ] **step 7/13 (kiko:developer): route and entry.** `CategoryReview: undefined` in `SettingsStackParamList`; a `Stack.Screen` with `options={{ title: t('categoryReview.title') }}` next to `Categories`. `categories.screen.tsx`: above `Sortable.Grid`, one `SettingsRow` (`@kiko/screens/settings/settings-row`, same screen folder) in a `Card`, `icon` from an existing symbol checked in `sf-symbol` availability, `onPress` navigates, spaced by `Box gap`. No condition on it. Commit `feat(settings): review entry on the Categories screen`.
 
-- [ ] **step 8/13 (kiko:developer): screen.** S10, S11, S12. Reads, all `paused: !useIsScreenVisible()`, never `cached`: `reviewCandidateRowsQuery` on `['transactions', 'category_rules', 'categories']`, `categoryRulesRepo.allQuery()`, `categoriesRepo.allQuery()`. Gate: `useDataReady`. `useMemo` over `prepareRules` and `planReviewGroups`. `useReviewActions` holds `pickFor: ReviewGroup | null`, `pendingConfirm`, and one `useSubmitOnce`: `pick(group, category)` closes the sheet; the sheet's `onClosed` runs `previewNameRule`; `previewCount === movingRowCount(group, category)` writes, else `ConfirmSheet` with `ruleMoveMessage`; write failure shows `common` save alert (the transaction form's `showSaveErrorAlert` shape). `ReviewLine`: `Card`, `Text variant="body"` for the name or `startsWith`, `Text variant="caption" tone="textSecondary"` for `nameCount · rowCount`, `Button variant="secondary" size="small" fullWidth={false}` choose, `Button variant="ghost" size="small" fullWidth={false}` keep. Styles via `StyleSheet.create((theme) => ...)` with tokens only; screen and sheet comply with kiko-design-system's "Sheet" and large-title rules. Green: `npx jest src/screens/settings src/navigation/settings-stack --maxWorkers=2`. Commit `feat(settings): review list screen`.
+- [ ] **step 8/13 (kiko:developer): screen.** S10, S11, S12. Reads, all `paused: !useIsScreenVisible()`, never `cached`: `reviewCandidateRowsQuery` on `['transactions', 'category_rules', 'categories']`, `categoryRulesRepo.allQuery()`, `categoriesRepo.allQuery()`. Gate: `useDataReady`. `useMemo` over `prepareRules` and `planReviewGroups`. `useReviewActions` holds `pickFor: ReviewGroup | null`, `pendingConfirm`, and one `useSubmitOnce`: `pick(group, category)` closes the sheet; the sheet's `onClosed` runs `previewNameRule`; `previewCount === group.rowCount` writes, else `ConfirmSheet` with `ruleMoveMessage`; write failure shows `common` save alert (the transaction form's `showSaveErrorAlert` shape). `ReviewLine`: `Card`, `Text variant="body"` for the name or `startsWith`, `Text variant="caption" tone="textSecondary"` for `nameCount · rowCount`, `Button variant="secondary" size="small" fullWidth={false}` choose. The options sheet lists the live categories without `other` (S7). Styles via `StyleSheet.create((theme) => ...)` with tokens only; screen and sheet comply with kiko-design-system's "Sheet" and large-title rules. Green: `npx jest src/screens/settings src/navigation/settings-stack --maxWorkers=2`. Commit `feat(settings): review list screen`.
 
 - [ ] **step 9/13 (kiko:developer): help.** Rerun `npx jest src/help src/i18n/locales --maxWorkers=2`; project-wide `npm run check:screen-imports`, `check:import-order`, `check:component-i18n-namespace`.
-- [ ] **step 10/13 Review (kiko:reviewer).** Top question: can the UI promise a count the write does not honor? UI changes need the user's device confirm: list what to look at (the entry row above the grid with a drag; the options sheet then the confirm; a split window; VoiceOver on a line's two buttons).
+- [ ] **step 10/13 Review (kiko:reviewer).** Top question: can the UI promise a count the write does not honor? UI changes need the user's device confirm: list what to look at (the entry row above the grid with a drag; the options sheet then the confirm; a split window; VoiceOver on a line's button).
 - [ ] **step 11/13 Drift (kiko:retrospect).** Check: kiko-design-system (no shared component changed, confirm), kiko-domain (review list), kiko-compliance (the Notes for Review text duty, spec section 7).
 - [ ] **step 12/13 Scribe (kiko:scribe).** Fix the drift and commit; the report names the sha or "no drift found".
 - [ ] **step 13/13 Ready.** Label `1.4-category-automation-task-5`.
@@ -538,7 +547,7 @@ The confirm reuses `categoryRulePreview.*` from task 2. The live title of `other
 
 **Needs:** task 5. **Base:** task 5 tip.
 
-**Files (floor). Mutable: 6.** `src/categories/category-rules/plan-review-groups.ts`, `category-rules.repo.ts`, `category-review.screen.tsx`, `review-line.component.tsx`, `en.ts`, `uk.ts`; types `review-line.props.d.ts`.
+**Files (floor). Mutable: 4.** `src/categories/category-rules/plan-review-groups.ts`, `category-rules.repo.ts`, `category-review.screen.tsx`, `review-line.component.tsx`. Not mutable: `en.ts`, `uk.ts`; types `review-line.props.d.ts`; `e2e/screenshot/seed/screenshot-seed.ts`, `demo-text.ts`, `e2e/screenshot/fixtures/build-demo-snapshot.test.ts`, regenerated demo `.kiko` files.
 
 **Interfaces. Produces:**
 ```ts
@@ -554,42 +563,42 @@ reviewEvidenceQuery: () => /* Drizzle builder */;
 
 **Copy (draft):** `categoryReview.suggestion`: en `{{category}}, {{agreeing}} of {{total}}`, uk `{{category}}, {{agreeing}} із {{total}}`. The `{{agreeing}}` is no plural, so it is not named `count`.
 
-- [ ] **step 1/9 (kiko:qa): vote pins.** In `plan-review-groups.test.ts`, `describe('suggestions')`:
+- [ ] **step 1/10 (kiko:qa): vote pins.** In `plan-review-groups.test.ts`, `describe('suggestions')`:
   - Thresholds, `it.each`, on the limit: 1 of 1 none; 2 of 2 yes; 2 of 3 none; 3 of 4 yes (exactly 0.75, asserted first); 4 of 5 yes; 3 of 5 none.
   - `a hand-set, a rule-set and an MCC-set row each vote one`.
-  - `a row with no real category has no vote`.
-  - `a row deliberately in other votes other and holds a suggestion back` for hand-set, and for a rule that targets `other` (S18).
+  - `a row with no real category has no vote`, also a hand-set row in `other` and a row a rule targeting `other` wins (S18).
   - `never suggests other`; `never suggests a key not in the table`; `a structural or exchange row has no vote`.
   - `a PrivatBank row with no code gets the suggestion from the same merchant's Monobank rows`: names `ATB 0212` and `ATB`.
   - `counts votes under the merchant key, so another store number agrees`.
   - `is the same for shuffled rows and shuffled evidence`.
   - `keeps the line's order whatever the suggestions`.
-  Real SQLite in `category-review.repo.test.ts`: `reviewEvidenceQuery reads real categories grouped by description and key`; `reads no balance, split, exchange or blank row`; `accepting a suggestion writes through applyNameRule and the count matches`. Performance file: `reviewEvidenceQuery scans with a temp B-tree for the group, and returns one row per pair`, via `EXPLAIN QUERY PLAN` from the builder. Commit `test(rules): pins for the suggestion vote`.
+  Real SQLite in `category-review.repo.test.ts`: `reviewEvidenceQuery reads real categories grouped by description and key`; `reads no balance, split, exchange or blank row`; `NOT noRealCategorySql negates the whole fragment` (`toSQL().sql` holds `not (` around the three arms; a row in `other`, a NULL row and an orphan row stay out, a real row comes back); `accepting a suggestion writes through applyNameRule and the count matches`. Performance file: `reviewEvidenceQuery scans with a temp B-tree for the group, and returns one row per pair`, via `EXPLAIN QUERY PLAN` from the builder. Commit `test(rules): pins for the suggestion vote`.
 
-- [ ] **step 2/9 (kiko:developer): the vote.** S17, S18. `reviewEvidenceQuery`: `description`, `lower(category)`, `count(*)`; `ne(description, '') AND category IS NOT NULL AND NOT noRealCategorySql`, `setsBalance` false, `changeGroupId IS NULL`, both exchange markers `IS NULL`; group by the first two. The deliberate-`other` votes come from the candidate rows and `winningRule`, already in hand. `merchantNameOf` memo shared with the grouping. A share is compared as `agreeing / total >= SUGGESTION_MIN_SHARE`. Pure, no clock. Green: named files. Commit `feat(rules): suggestions from the user's history`.
+- [ ] **step 2/10 (kiko:developer): the vote.** S17, S18. `reviewEvidenceQuery`: `description`, `lower(category)`, `count(*)`; `ne(description, '') AND category IS NOT NULL AND NOT noRealCategorySql` (S5: the fragment's own parentheses), `setsBalance` false, `changeGroupId IS NULL`, both exchange markers `IS NULL`; group by the first two. `merchantNameOf` memo shared with the grouping. A share is compared as `agreeing / total >= SUGGESTION_MIN_SHARE`. Pure, no clock. Green: named files. Commit `feat(rules): suggestions from the user's history`.
 
-- [ ] **step 3/9 (kiko:qa): chip pins.** Screen test: `shows the chip with the category's title and count`; `shows no chip when there is no suggestion`, positive twin; `nothing changes until the chip is tapped`; `a tap runs the same preview and write as a pick`; `a tap with a larger preview opens the confirm`; `picking another category resolves the line by a rule`; `the evidence read is paused and uncached with the others`. Commit `test(settings): pins for the suggestion chip`.
+- [ ] **step 3/10 (kiko:qa): chip pins.** Screen test: `shows the chip with the category's title and count`; `shows no chip when there is no suggestion`, positive twin; `nothing changes until the chip is tapped`; `a tap runs the same preview and write as a pick`; `a tap with a larger preview opens the confirm`; `picking another category resolves the line by a rule`; `the evidence read is paused and uncached with the others`. Commit `test(settings): pins for the suggestion chip`.
 
-- [ ] **step 4/9 (kiko:developer): chip and copy.** S12: `Button variant="secondaryTonal" size="small" fullWidth={false}` with the category's `icon` as an existing symbol; the seeded title through `resolveDefaultCategoryTitle`. Key in both catalogues in this step. `useLiveQuery(reviewEvidenceQuery(), ['transactions', 'category_rules', 'categories'], true, { paused })`, added to `useDataReady`. Green: `npx jest src/screens/settings src/categories src/i18n/locales --maxWorkers=2`. Commit `feat(settings): suggestion chip on a review line`.
+- [ ] **step 4/10 (kiko:developer): chip and copy.** S12: `Button variant="secondaryTonal" size="small" fullWidth={false}` with the category's `icon` as an existing symbol; the seeded title through `resolveDefaultCategoryTitle`. Key in both catalogues in this step. `useLiveQuery(reviewEvidenceQuery(), ['transactions', 'category_rules', 'categories'], true, { paused })`, added to `useDataReady`. Green: `npx jest src/screens/settings src/categories src/i18n/locales --maxWorkers=2`. Commit `feat(settings): suggestion chip on a review line`.
 
-- [ ] **step 5/9 (kiko:developer): check of the whole track's copy.** `npx jest src/i18n/locales src/help --maxWorkers=2`; the en and uk parity suite is the pin; quote its result.
-- [ ] **step 6/9 Review (kiko:reviewer).** Top question: is a suggestion ever written without a tap, and is the vote deterministic?
-- [ ] **step 7/9 Drift (kiko:retrospect).** Check: kiko-domain (suggestion rule and thresholds).
-- [ ] **step 8/9 Scribe (kiko:scribe).** Fix the drift and commit; the report names the sha or "no drift found".
-- [ ] **step 9/9 Ready.** Label `1.4-category-automation-task-6`.
+- [ ] **step 5/10 (kiko:developer): a suggestion in the demo.** S22. `buildSuggestionTransactions` beside `buildStoreNumberTransactions` in `screenshot-seed.ts`, and its key in both languages of `demo-text.ts` (draft: en `Aroma Kava`, uk `Арома Кава`; a merchant in no stored demo rule, not the rule demo's, not in the kit's fake statement): 3 rows in `dining`, 1 row in `other`, same name, inside the default 30-day window but not the newest rows. Re-measure the "rows" sentence of step 8 in task 2. Pin in `build-demo-snapshot.test.ts`, over en and uk: `the review list shows a suggestion on a line`: `planReviewGroups` over the snapshot's rows and evidence: that group's `suggestion` by `toEqual` `{ category: 'dining', agreeing: 3, total: 3 }`, and the store-number group's `suggestion` is null. Regenerate both `.kiko` files on this tip (S22), same commit. Run: `npx jest e2e/screenshot --maxWorkers=2`, output in a file. Commit `test(demo): a merchant the suggestion chip can name`.
+- [ ] **step 6/10 (kiko:developer): check of the whole track's copy.** `npx jest src/i18n/locales src/help --maxWorkers=2`; the en and uk parity suite is the pin; quote its result.
+- [ ] **step 7/10 Review (kiko:reviewer).** Top question: is a suggestion ever written without a tap, and is the vote deterministic?
+- [ ] **step 8/10 Drift (kiko:retrospect).** Check: kiko-domain (suggestion rule and thresholds).
+- [ ] **step 9/10 Scribe (kiko:scribe).** Fix the drift and commit; the report names the sha or "no drift found".
+- [ ] **step 10/10 Ready.** Label `1.4-category-automation-task-6`.
 
 ---
 
-## Mutable file counts (floors; `make mutable` measures; the cap is 30)
+## Mutable file counts (floors, each task's file list through `mutable_source_files`; `make mutable` measures; the cap is 30)
 
 | Task | Mutable | Steps |
 |---|---|---|
-| 1/6 | 12 + generated | 17 |
-| 2/6 | 13 | 11 |
-| 3/6 | 17 (+2 catalogues) | 10 |
-| 4/6 | 22 (+2 catalogues) | 11 |
-| 5/6 | 20 | 13 |
-| 6/6 | 6 | 9 |
+| 1/6 | 10 | 17 |
+| 2/6 | 7 | 12 |
+| 3/6 | 15 | 10 |
+| 4/6 | 18 | 11 |
+| 5/6 | 9 | 13 |
+| 6/6 | 4 | 10 |
 
 ## Not in the tasks
 
