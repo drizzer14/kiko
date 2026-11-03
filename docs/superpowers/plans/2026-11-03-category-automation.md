@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fewer rows sit in `other`: more MCC codes with a one-time back-fill (B1), a review list (B2), a prefix offer in Apply (B3), four new rule conditions (B4), suggestions from history (B5).
+**Goal:** Fewer rows sit in `other`: more MCC codes, a new seeded Travel category and a one-time back-fill (B1), a review list (B2), a prefix offer in Apply (B3), four new rule conditions (B4), suggestions from history (B5).
 
 **Architecture:** One pure planning layer in `src/categories/category-rules/` (`hasNoRealCategory`, `planMccBackfill`, `planReviewGroups`) and one pure name function (`merchantNameOf`). Every write goes through `applyNameRule` or `backfillMccCategories`, each planning inside one `write()`. The UI uses shared components and theme tokens only.
 
@@ -10,17 +10,21 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-03-category-automation-design.md`. Refer to it by section; this plan does not copy it. Every count here is a floor: the developer measures. Every code fact names a symbol, not a line: re-grep each fact on the actual base before building on it.
 
-## Assumed user answers (NOT yet approved)
+## User rulings, 2026-11-03
 
-Q1 = A (once at next open, no prompt). Q2 = A (hotels and travel agencies stay in `other`). See "If the user answers differently" at the end.
+Relayed by the coordinator; spec section 9.
+
+- **Q1 = A.** Old rows with a newly mapped code move once per data set, at the next app open, no prompt. Hand-set rows never move. "Once" holds per device and per file: `importData` also runs the back-fill for a file without the mark.
+- **Q2 = B.** A new seeded Travel category. Hotels 7011 and 3501-3999, travel agencies 4722, airlines 3000-3299 and 4511, airports 4582 map to `travel`. Two migrations in the track. A duplicate beside a user's own travel category is accepted. Car rental (3351-3441, 7512), rail and other land transport stay in `transport`. No original code changes (checked against `MCC_CATEGORIES`).
 
 ## Global Constraints
 
 - A hand-set row never changes; an automatic write touches only a row with no real category (spec 3.0, 6). A category never reaches a balance or net worth (spec 5.3).
 - New condition = new `type` string, never a new field on an existing type (spec 3.4.1). A missing value never matches.
-- No index and no migration beyond `settings.mcc_categories_backfilled`. `EXPORT_VERSION` stays 5.
+- Two migrations, both in task 1: the Travel seed and `settings.mcc_categories_backfilled`. No index and no other migration. `EXPORT_VERSION` stays 5 (spec 3.1.6).
+- The Travel seed never overwrites, retitles or recolors an existing row; a Travel the user deleted stays deleted in that user's 1.4 file (spec 3.1.6).
 - Out of scope, do not add: built-in merchant list, day-of-month condition, on-device AI, budgets or planning. No extras beyond B1-B5.
-- UI: shared components and theme tokens only (no hex, no raw spacing); `1.4-light-scheme` then applies by itself. No import across screen folders: `src/screens/settings/**` must not import `src/screens/forms/**` (`check:screen-imports`).
+- UI: shared components and theme tokens only (no hex, no raw spacing; Travel's stored seed color is data, as every seeded row's is, spec 3.1.6); `1.4-light-scheme` then applies by itself. No import across screen folders: `src/screens/settings/**` must not import `src/screens/forms/**` (`check:screen-imports`).
 - Guideline 2.5.19: no flag, no condition on the entry row; the screen explains itself with no data.
 - A catalogue key added or a copy line changed: same step in `en.ts` and `uk.ts`; kiko-translator casing and full-stop rules; plurals `_one/_few/_many/_other` in both; uk apostrophe is U+02BC; uk says «Кіко», «натиснути»; a sheet or nav title key goes in `title-keys.ts`; a name list goes through `common.listedName`.
 - Never log a name or an IBAN: a failure log is fixed text.
@@ -38,6 +42,8 @@ Run-log gaps: this track closes none and leaves all open. Nearest, left open: `2
 4. A prefix preview with 0 rows to move (every same-prefix row is hand-set): expected a plain sentence, no "0 transactions:" and no empty name list. Pinned in task 2.
 5. A name with a Unicode trap (`İ`, final sigma, NFD, non-breaking space) under the store-number cut: the guarantee `normalize(name).startsWith(key)` must still hold, or a group's rule misses its own rows. Pinned in task 2.
 
+6. A file this build wrote after the user deleted Travel, restored: it must stay deleted, while a file from before 1.4 gains it. A key of `false` counts as present. Pinned in task 1, steps 10 and 12.
+
 ## Details settled by this plan (the spec leaves them implicit)
 
 | # | Decision | Reason |
@@ -45,9 +51,9 @@ Run-log gaps: this track closes none and leaves all open. Nearest, left open: `2
 | S1 | A group's shown text: among its members' spellings (`prefix` when cut, else the tidied name) the one with the most rows; a tie takes the smaller by code-unit order. | Deterministic and independent of row order; the most-used spelling is the one the user recognizes. |
 | S2 | "One distinct name" compares `normalizeTransactionName`: `ATB 0212` and `atb  0212` are one name and get `nameIs`. | The matcher compares normalized text, so they are one name to the rule. |
 | S3 | `ADDED_MCC_CATEGORIES: Record<string, readonly number[]>` beside `MCC_CATEGORIES`, a range expanded by `rangeOf(first, last)` into plain numbers; `MCC_TO_CATEGORY` builds from both; `export const ADDED_MCC_CODES = Object.values(ADDED_MCC_CATEGORIES).flat()`. | One lookup path; the list and the map cannot differ; a range is no second concept. |
-| S4 | The back-fill read binds `inArray(transactions.mcc, [...ADDED_MCC_CODES])` once, unchunked. Measured 2026-11-03: `node:sqlite` 3.50.4 accepts 32,766 bound variables and refuses 32,767 ("too many SQL variables"); op-sqlite's `cpp/sqlcipher/sqlite3.c` defines `SQLITE_MAX_VARIABLE_NUMBER 32766` and the podspec does not override it; `IN_CLAUSE_CHUNK_SIZE` is 32,000. 475 is far inside. A test pins `.toSQL().params.length <= IN_CLAUSE_CHUNK_SIZE`. | No chunking machinery for a list known at build time; the pin fails first if the list ever grows near the limit. |
+| S4 | The back-fill read binds `inArray(transactions.mcc, [...ADDED_MCC_CODES])` once, unchunked (976 codes). Measured 2026-11-03: `node:sqlite` 3.50.4 accepts 32,766 bound variables and refuses 32,767 ("too many SQL variables"); op-sqlite's `cpp/sqlcipher/sqlite3.c` defines `SQLITE_MAX_VARIABLE_NUMBER 32766` and the podspec does not override it; `IN_CLAUSE_CHUNK_SIZE` is 32,000. 976 is far inside. A test pins `.toSQL().params.length <= IN_CLAUSE_CHUNK_SIZE`. | No chunking machinery for a list known at build time; the pin fails first if the list ever grows near the limit. |
 | S5 | "No real category" in SQL is one shared fragment `noRealCategorySql`: `category IS NULL OR lower(category) = 'other' OR lower(category) NOT IN (SELECT lower(key) FROM categories)`. `''` passes through the `NOT IN` arm. SQL only narrows; `hasNoRealCategory` decides. | A key list as a bound parameter would make the review's live query depend on another live read. `lower()` is ASCII-only, so a Cyrillic key in another case is a superset the pure function rejects: the safe direction. |
-| S6 | The migration is generated at the journal tail + 1 of the task's base (tail on this base: `0063_add_transaction_operation`). The first branch to reach `next` keeps the number; a later one renumbers at its merge by deleting its four artifacts, merging `next` and re-running `npx drizzle-kit generate` (never a hand-edited `prevId`). Renumber list: the `.sql`, `meta/NNNN_snapshot.json`, `_journal.json`, `migrations.js`, the migration test (file name, SQL file name, "through" tag), `real-sqlite.ts` (`firstStatementOf` tag), `migrationCount`. No number anywhere else: not in a test title, a comment or a skill. Allowed only before a build ships; a shipped migration is never renamed. | Precedent: `docs/superpowers/plans/2026-09-28-reminders.md`, `2026-10-11-category-rules.md`. `1.4-small`, `1.4-light-scheme`, `1.4-tables` add no migration on their current tips. |
+| S6 | The two migrations sit at the journal tail + 1 (the seed) and + 2 (the mark) of the task's base (tail on this base: `0063_add_transaction_operation`). The first branch to reach `next` keeps the numbers; a later one renumbers at its merge. The mark: delete its four artifacts, merge `next`, re-run `npx drizzle-kit generate` (never a hand-edited `prevId`). The seed is hand-authored with no snapshot, as `0039_seed_loan_interest_category` is: rename its `.sql`, and move its `_journal.json` entry and its `migrations.js` lines, with a `when` above the entry before it and below the mark's. Renumber list: the `.sql` of each, the mark's `meta/NNNN_snapshot.json`, `_journal.json`, `migrations.js`, both migration tests (file name, SQL file name, "through" tag), `real-sqlite.ts` (`firstStatementOf` tag), `migrationCount`. No number anywhere else: not in a test title, a comment or a skill. Allowed only before a build ships; a shipped migration is never renamed. | Precedent: `docs/superpowers/plans/2026-09-28-reminders.md`, `2026-10-11-category-rules.md`. `1.4-small`, `1.4-light-scheme`, `1.4-tables` add no migration on their current tips. |
 | S7 | Confirm rule for B2 and B5: write at once when `previewCount === movingRowCount(group, category)`, where `movingRowCount` is `rowCount` minus the rows already stored as that category (`heldOtherCount` when the target is `other`, else 0). | `planRuleRewrite` skips a row already in the target, so `listed ⊆ planned` holds only for a target other than `other` (spec 3.2.4 did not cover Keep in Other). |
 | S8 | `previewNameRule` returns `{ count, names }` where `names` is every distinct normalized name, spelled by S1, ordered by row count descending then normalized text. The UI shows the first 5 and "and M more", M counting names. | `rowIdsRewrittenBy` returns ids only; a private `rowsRewrittenBy` returning `{ id, name }` feeds both so the count and the write stay one function. |
 | S9 | The B3 confirm is a content swap inside the one `CategoryOverrideSheet`; the B2 and B5 confirm is a `ConfirmSheet` opened from the options sheet's `onClosed`. | One Modal at a time on iOS. |
@@ -61,19 +67,26 @@ Run-log gaps: this track closes none and leaves all open. Nearest, left open: `2
 | S17 | Evidence `GROUP BY description, lower(category)`, without the flag the spec lists. | Every real-category row votes alike, so the flag only multiplies groups. |
 | S18 | "Deliberately in `other`" = `categoryKeyOf(category) === 'other'` and (`categorySetByHand` or the winning rule's category is `other`), and no structural field or exchange marker. | Spec 3.5 in testable form. |
 | S19 | The account picker offers non-archived accounts plus the rule's own selected account; "Deleted account" shows only when the id is in no row. | `accountsRepo.listQuery` returns archived accounts too; an archived account's holdings still match. |
+| S20 | A 1.4 file is told from an older one by the presence of `mccCategoriesBackfilled` in the file's settings row (`Object.hasOwn`), read from `snapshot.settings`. A file with no settings row gets no Travel. | Spec 3.1.6 has the proof and the table. The empty-settings branch is the precedent of `withLegacyDedupKeysUpgraded` and leaves `restore-snapshot.test.ts`'s `settings: []` pins unchanged. |
+| S21 | Travel stays in task 1, as numbered steps; no split. | Mutable floor 12, under the 20 line and the cap of 30. The seed comes first so that the map's target exists from its first commit. |
 
 ## Upgrade worlds (task 1 adds owed state)
 
-Owed state: `settings.mcc_categories_backfilled = false` on every database and every file without the key. Only two callers pay it: `useMccBackfill` and `importData`. Answer to "which seeds are 1.2 or 1.3 upgrade worlds":
+Owed state: `settings.mcc_categories_backfilled = false` on every database and every file without the key, and a `travel` row on every database and every older file. Two callers pay the mark: `useMccBackfill` and `importData`. The migration and `withTravelReseeded` pay the row. Answer to "which seeds are 1.2 or 1.3 upgrade worlds":
 
 | Seed | World | Effect | Re-seed, by its own line |
 |---|---|---|---|
 | `restore-account-currency`, `restore-category-rules`, `restore-implicit-accounts`, `restore-usdt-rescale`, `restore-walk-state` `.two-path.test.ts` | Database below the new migration read through today's schema | `no such column` on `settings` | `addMccCategoriesBackfilledColumn(source)` beside each `addTransactionOperationColumn` line |
-| Every other `applyMigrationsThrough` file (29 files is the floor, 9 in `data-transfer`; `restore-bank-other`, `restore-crypto-cash`, `restore-exchange-pair` use `columnsWithout`) | Same, if it reads `settings` | Measure: run them all in task 1, step 5 | Own line per failing file; never inside `applyMigrationsThrough` or `applyAllMigrations` |
+| Every other `applyMigrationsThrough` file (29 files is the floor, 9 in `data-transfer`; `restore-bank-other`, `restore-crypto-cash`, `restore-exchange-pair` use `columnsWithout`) | Same, if it reads `settings` | Measure: run them all in task 1, step 7 | Own line per failing file; never inside `applyMigrationsThrough` or `applyAllMigrations` |
 | `import-data.back-compat.test.ts` | Older-build file through `importData` | The list of columns an earlier build lacked | `'mccCategoriesBackfilled'` in `EARLIER_BUILD_SETTINGS_COLUMNS`; a `jest.mock` of the back-fill beside the `lot-recost` mock |
 | `import-data.test.ts`, `restore-category-rules.two-path.test.ts`, `__tests__/App.test.tsx` | Mock `recostStoredLots` | The real back-fill would run | A sibling mock of `backfill-mcc-categories` on its own line in each file |
-| `e2e/screenshot/fixtures/build-demo-snapshot.ts` | Current demo | Rows hold `mcc: null`, nothing owed | `mccCategoriesBackfilled: true` on its own line, then regenerate `kiko-demo-en.kiko`, `kiko-demo-uk.kiko` |
-| `kiko-demo-en-1.1.kiko` | 1.1 file, no key | No test reads it (README only); restoring it runs the back-fill | Unchanged; the developer measures whether it holds an added code and reports it |
+| Data migration: every `applyAllMigrations` database (95 files is the floor) | Now holds a twelfth category row | Grep measured: no test seed counts the rows of `categories` with SQL, no real-SQLite pin holds a next `sortOrder`. `categories.repo.test.ts` reads migration text | None. A failure is reported |
+| Data migration: every `applyMigrationsThrough` world at or below the tail | No `travel` row, as a device there has none | `categories` columns do not change, so a read through today's schema still works. A back-fill test on such a world finds the target unknown | None: back-fill pins use `applyAllMigrations` |
+| Two-path files built by `readDataSnapshot` on a lower world plus `addMccCategoriesBackfilledColumn` | **Not a faithful older file:** the helper makes the reader write the mark key, so the restore treats it as a 1.4 file | Those suites hold `categories: []` or do not read categories, so nothing they pin changes | None for them. A Travel pin of an older file deletes the key from the JSON after the read |
+| `restore-*.test.ts` with a settings row, no key and `categories: []` | Older file through `restoreDataSnapshot` | A real insert now adds `loan_interest` and `travel`; none of them reads the rows (grep measured) | None |
+| `restore-snapshot.test.ts` `insertedRows.categories` by `toEqual` | `emptySnapshot` with `settings: []` | S20: no Travel, so both pins hold | None |
+| `e2e/screenshot/fixtures/build-demo-snapshot.ts` | Current demo | Rows hold `mcc: null`, nothing owed; a file with the key and no row would have no Travel | `TRAVEL_CATEGORY` at `sortOrder` 11 and `mccCategoriesBackfilled: true`, each on its own line, then regenerate `kiko-demo-en.kiko`, `kiko-demo-uk.kiko` |
+| `kiko-demo-en-1.1.kiko` | 1.1 file, no key, no `travel` row | Restoring it adds Travel and runs the back-fill. The README names `import-data.back-compat.test.ts` as its reader; the developer confirms it | File unchanged; a new pin reads it in step 12. The developer measures whether it holds an added code and reports it |
 | `lot-money.matrix.test.ts` | Older settings without a flag | Calls `restoreDataSnapshot` directly, not `importData`: no back-fill | None |
 | `transactions.repo.sync-adoption.test.ts` | `mcc: 5311` (now added) with an explicit `category: 'shopping'` | The seed passes its own category | None |
 | `uabean-monobank-sample.csv` | Holds 5817 (now added) | Its format test asserts `mcc`, not the category | None; a mapper suite that asserts `other` for it is a stop-and-report |
@@ -86,7 +99,7 @@ Acceptance pins that re-seed by their own line, never in a shared helper: every 
 
 | Task | Shared files | Other tracks |
 |---|---|---|
-| 1 | `schema.ts`, `_journal.json`, `migrations.js`, `App.tsx`, `import-data.ts`, `envelope.test.ts` | A second migration on `next`: S6 |
+| 1 | `schema.ts`, `_journal.json`, `migrations.js`, `App.tsx`, `import-data.ts`, `restore-snapshot.ts`, `default-category-title.ts`, `en.ts`, `uk.ts`, `envelope.test.ts` | Another migration on `next`: S6, both of these renumber |
 | 2 | `en.ts`, `uk.ts`, `title-keys.ts` (added keys) | `1.4-small` edits both catalogues; added lines only |
 | 3 | `en.ts`, `uk.ts` (added keys, help step 2) | same |
 | 4 | `en.ts`, `uk.ts` (added keys, help step 2) | same |
@@ -105,15 +118,16 @@ Each task's last four steps are these, named by number in the task:
 
 ---
 
-## 1.4-category-automation task 1/6: more MCC codes and the back-fill
+## 1.4-category-automation task 1/6: more MCC codes, Travel and the back-fill
 
 **Needs:** nothing. **Base:** `c1cea32e0` or its successor on the track.
 
-**Files (floor; measure with `make mutable`). Mutable: 10.**
-- Modify: `src/monobank/mcc-category/mcc-category.ts`, `src/categories/category-rules/plan-rule-rewrite.ts`, `src/categories/category-rules-repo/category-rules.repo.ts` (export `candidateColumns`, `readHoldingLabels`, `withVisibleDescription`), `src/categories/category-rules-repo/index.ts`, `src/db/schema.ts`, `App.tsx`, `src/data-transfer/import-data.ts`, `e2e/screenshot/fixtures/build-demo-snapshot.ts`
+**Files (floor; measure with `make mutable`). Mutable: 12, was 10 before ruling Q2; `mutation.sh` leaves out `e2e/`, so its count can read 11.**
+- Modify: `src/monobank/mcc-category/mcc-category.ts`, `src/categories/category-rules/plan-rule-rewrite.ts`, `src/categories/category-rules-repo/category-rules.repo.ts` (export `candidateColumns`, `readHoldingLabels`, `withVisibleDescription`), `src/categories/category-rules-repo/index.ts`, `src/db/schema.ts`, `App.tsx`, `src/data-transfer/import-data.ts`, `src/data-transfer/snapshot/restore-snapshot.ts`, `src/i18n/default-category-title/default-category-title.ts`, `e2e/screenshot/fixtures/build-demo-snapshot.ts`
 - Create: `src/categories/category-rules-repo/backfill-mcc-categories.ts`, `src/categories/category-rules-repo/use-mcc-backfill.ts`
-- Generated: `drizzle/migrations/NNNN_add_mcc_categories_backfilled.sql`, `meta/NNNN_snapshot.json`, `meta/_journal.json`, `migrations.js`
-- Test-only: see "Upgrade worlds", plus `src/test-support/real-sqlite.ts` and `.test.ts`, `src/db/settings-columns.test.ts`, `src/data-transfer/crypto/envelope.test.ts`, regenerated demo `.kiko` files
+- Catalogue (outside the mutable filter): `src/i18n/locales/en.ts`, `uk.ts`
+- Generated or hand-authored: `drizzle/migrations/NNNN_seed_travel_category.sql` (no snapshot), `drizzle/migrations/NNNN_add_mcc_categories_backfilled.sql`, `meta/NNNN_snapshot.json`, `meta/_journal.json`, `migrations.js`
+- Test-only: see "Upgrade worlds", plus `src/db/__fixtures__/seeded-categories.ts`, `src/i18n/default-category-title/__fixtures__/release-1-3-default-category-title.ts`, `src/test-support/real-sqlite.ts` and `.test.ts`, `src/db/settings-columns.test.ts`, `src/data-transfer/crypto/envelope.test.ts`, regenerated demo `.kiko` files
 
 **Interfaces. Produces:**
 ```ts
@@ -127,6 +141,10 @@ export const planMccBackfill: (prepared: PreparedRules, rows: readonly MccBackfi
 export const noRealCategorySql: SQL;
 export const backfillMccCategories: () => Promise<void>; // never rejects
 export const useMccBackfill: () => void;
+// @kiko/db/__fixtures__/seeded-categories
+export const TRAVEL_CATEGORY: SeededCategory; // { key: 'travel', title: 'Travel', icon: 'airplane' }
+// src/data-transfer/snapshot/restore-snapshot.ts, private
+const withTravelReseeded: (categories: CategoryRow[], settings: SettingsRow[]) => CategoryRow[];
 ```
 `knownCategoryKeys` always holds `categoryKeyOf(key)` for every row of `categories`.
 
@@ -136,44 +154,63 @@ export const useMccBackfill: () => void;
 |---|---|---|---|---|
 | Added code, sync or import | `other` | mapped | `other` | mapped, once |
 | Original 38 codes | mapped | mapped | as stored | as stored |
-| Unmapped (7011, 6300, null) | `other` / NULL | `other` / NULL | as stored | as stored |
+| Hotel or agency (7011, 3501-3999, 4722) | `other` | `travel` | `other` | `travel`, once |
+| Airline or airport (3000-3299, 4511, 4582); the earlier draft had `transport` | `other` | `travel` | `other` | `travel`, once |
+| Car rental, rail (3351-3441, 7512, 4112) | `other` | `transport` | `other` | `transport`, once |
+| Unmapped (6300, null) | `other` / NULL | `other` / NULL | as stored | as stored |
 | Added code, hand-set, balance or split-change | n/a | n/a | as stored | as stored |
 | Added code, a rule wins (any target) | rule | rule | as stored | as stored |
-| Added code, target category deleted | n/a | `other` shows by fold | `other` | `other`, left for B2 |
+| Added code, target category deleted (Travel included) | n/a | `other` shows by fold | `other` | `other`, left for B2 |
 | Added code, exchange leg | `other` | mapped | `other` | mapped (spec 3.1.3 ruling) |
-| Added code, `other` by a pre-0056 pick or a deleted rule | n/a | n/a | `other` | mapped: the accepted residual, Q1 |
+| Added code, `other` by a pre-0056 pick or a deleted rule | n/a | n/a | `other` | mapped: the residual ruling Q1 accepts |
 
-- [ ] **step 1/12 (kiko:qa): MCC map pins.** In `src/monobank/mcc-category/mcc-category.test.ts` add, with literal tables copied from spec 3.1.2 and the current `MCC_CATEGORIES`, never derived from the module:
+- [ ] **step 1/17 (kiko:qa): seed pins.** Create `drizzle/migrations/NNNN-seed-travel-category.test.ts`, real `node:sqlite`, shape of the 0063 test, through `0063_add_transaction_operation`:
+  - `seeds travel with its title, icon, color and the next sort order`: `('travel', 'Travel', 'airplane', '#40C8E0', 11)` on a default grid.
+  - `appends after the highest order of a reordered grid and changes no other order`: other rows reordered, one user row at 40; Travel at 41; every other `sort_order` as stored.
+  - `leaves a row already holding the key untouched`: a `travel` row with its own title, icon, color and order, as a 1.3 database that restored a 1.4 file holds; every column equal after.
+  - `leaves a user category titled Travel as its own row`: a UUID key titled `Travel`; both rows after, the user's unchanged.
+  - `changes no other category, transaction or rule`: full dumps before and after, minus the new row.
+  - `runs twice to one row`; `starts at sort order 0 on an empty table`.
+  Also: `default-category-title.test.ts`: `translates the travel seeded category` under `uk` to `Подорожі`, and `shows a renamed travel row verbatim`. `icon-picker-modal.component.test.tsx`: `includes airplane, the travel default icon`. `categories.repo.test.ts`: `seeds travel in its own, later, idempotent migration`, shape of the 0039 case.
+  Red: `npx jest drizzle/migrations/NNNN-seed-travel-category.test.ts src/i18n/default-category-title src/categories/repo/categories.repo.test.ts --maxWorkers=2`; the SQL file is missing, so show that output. The pool case passes already: `airplane` is in `KIKO_CATEGORIES_ICONS` and under `symbol-deployment-target.test.tsx`. Commit `test(db): pins for the Travel seed`.
+
+- [ ] **step 2/17 (kiko:developer): the seed.** Hand-author `NNNN_seed_travel_category.sql` as spec 3.1.6, header after 0039's; journal entry at the tail with a `when` above it, `migrations.js` lines, no snapshot (S6). `TRAVEL_CATEGORY` in `seeded-categories.ts` as its own export, its comment after `LOAN_INTEREST_CATEGORY`'s. `travel: 'Travel'` in `DEFAULT_CATEGORY_SEED_TITLES`; `categories.travel` in `en.ts` (`Travel`) and `uk.ts` (`Подорожі`) in this step. `envelope.test.ts`: `migrationCount` 65, `version` stays 5, the seed note of spec 3.1.6. `npm run check:shipped-migrations`. Exit 3 from `make jest-affected` is expected. Run: step 1's command plus `src/i18n/locales src/help src/design-system/components/icon-picker-modal src/data-transfer/crypto/envelope.test.ts`. Commit `feat(db): seed the Travel category`.
+
+- [ ] **step 3/17 (kiko:qa): MCC map pins.** In `src/monobank/mcc-category/mcc-category.test.ts` add, with literal tables copied from spec 3.1.2 and the current `MCC_CATEGORIES`, never derived from the module:
   - `keeps every one of the 38 original codes in its original category`: `categoryForMcc(code)` equals the literal for each of the 38 (5912 is `shopping`).
-  - `maps each of the 84 added single codes to its table category`.
-  - `maps both ends of each brand range and refuses the codes next to them`: 3000, 3299 `transport`; 3351, 3441 `transport`; 2999, 3300, 3350, 3442 `other`.
-  - `leaves the codes with no honest home in other`: 7011, 3501, 3999, 4722, 6300, 8211, 8220, 8299, 8398, 9311, 9399, 7311, 7399, 4215, 7230, 7211, 7216, 5511, 5571, 7995, 5993, 6010, 6051.
-  - `lists 475 distinct added codes, none original and none excluded from spending`: length 475, `new Set` size 475, disjoint from the 38, from `ALWAYS_EXCLUDED_MCCS` and `OWN_ACCOUNT_TRANSFER_MCC`.
-  - `targets only seeded keys and never cash or transfers`: against `SEEDED_CATEGORIES`.
-  Red: `npx jest src/monobank/mcc-category --maxWorkers=2`. The source file `mcc_codes.csv` was checked 2026-11-03: 981 rows, all 84 singles present, 3000-3299 = 300 rows, 3351-3441 = 91 rows, no overlap with the 38; the developer re-checks each code per spec 3.1.1. Commit `test(mcc): pins for the original and added codes`.
+  - `maps each of the 86 added single codes to its table category`.
+  - `maps both ends of each brand range and refuses the codes next to them`: 3000, 3299, 3501, 3999 `travel`; 3351, 3441 `transport`; 2999, 3300, 3350, 3442, 3500, 4000 `other`.
+  - `sends hotels, agencies, airlines and airports to travel`: 7011, 4722, 4511, 4582.
+  - `keeps car rental, rail and other land transport in transport`: 7512, 3351, 4112, 4789.
+  - `leaves the codes outside the tables in other`: 6300, 8211, 8220, 8299, 8398, 9311, 9399, 7311, 7399, 4215, 7230, 7211, 7216, 5511, 5571, 7995, 5993, 6010, 6051.
+  - `lists 976 distinct added codes, none original and none excluded from spending`: length 976, `new Set` size 976, disjoint from the 38, from `ALWAYS_EXCLUDED_MCCS` and `OWN_ACCOUNT_TRANSFER_MCC`.
+  - `targets only seeded keys and never cash or transfers`: against `SEEDED_CATEGORIES` and `TRAVEL_CATEGORY`.
+  Red: `npx jest src/monobank/mcc-category --maxWorkers=2`. The source file `mcc_codes.csv` was checked 2026-11-03: 981 rows, all 86 singles present, 3000-3299 = 300 rows, 3351-3441 = 91 rows, 3501-3999 = 292 rows of 499 codes (mapped whole by ruling Q2, spec 3.1.1), no overlap with the 38; the developer re-checks each code per spec 3.1.1. Commit `test(mcc): pins for the original and added codes`.
 
-- [ ] **step 2/12 (kiko:developer): the map.** S3. Keep `MCC_CATEGORIES` byte-identical. Green: same command. Commit `feat(mcc): add 84 codes and two brand ranges`.
+- [ ] **step 4/17 (kiko:developer): the map.** S3; `travel` is one more key of `ADDED_MCC_CATEGORIES`. Keep `MCC_CATEGORIES` byte-identical. Green: same command. Commit `feat(mcc): add 86 codes and three brand ranges`.
 
-- [ ] **step 3/12 (kiko:qa): plan pins.** In `src/categories/category-rules/plan-rule-rewrite.test.ts` add:
+- [ ] **step 5/17 (kiko:qa): plan pins.** In `src/categories/category-rules/plan-rule-rewrite.test.ts` add:
   - `describe('hasNoRealCategory')` table: `null`, `''`, `'other'`, `'OTHER'`, `'ghost'` true; `'groceries'`, `'GROCERIES'`, a user key true in the known set false.
   - `describe('planMccBackfill')`, each row a one-line variation of one base row with `mcc: 5300`, `category: 'other'`:
-    `plans an added code in other to its mapped category`; `plans a NULL, an empty and an orphan category`; `plans an exchange leg`; `leaves a code of the original map`; `leaves an unmapped code and a null code`; `leaves a hand-set row`; `leaves a balance-setting row`; `leaves a split-change row`; `leaves a row a rule targeting other wins`; `leaves a row a rule targeting another category wins`; `leaves a row whose target category was deleted`; `leaves a row in a real category`; `ignores a rule that cannot be read`.
+    `plans an added code in other to its mapped category`; `plans a NULL, an empty and an orphan category`; `plans an exchange leg`; `leaves a code of the original map`; `leaves an unmapped code and a null code`; `leaves a hand-set row`; `leaves a balance-setting row`; `leaves a split-change row`; `leaves a row a rule targeting other wins`; `leaves a row a rule targeting another category wins`; `leaves a row whose target category was deleted`; `plans a hotel code to travel`; `leaves a hotel code when travel was deleted`; `leaves a row in a real category`; `ignores a rule that cannot be read`.
   Each asserts the exact `{ id, category }[]` by `toEqual`. Red: `npx jest src/categories/category-rules/plan-rule-rewrite.test.ts --maxWorkers=2`. Commit `test(rules): pins for hasNoRealCategory and planMccBackfill`.
 
-- [ ] **step 4/12 (kiko:developer): the plan.** Both functions in `plan-rule-rewrite.ts`, beside `isRewriteEligible`. `planMccBackfill` builds its `Set` of `ADDED_MCC_CODES` once at module load. Order the cheap checks before `winningRule`. Green: same command. Commit `feat(rules): plan the MCC back-fill`.
+- [ ] **step 6/17 (kiko:developer): the plan.** Both functions in `plan-rule-rewrite.ts`, beside `isRewriteEligible`. `planMccBackfill` builds its `Set` of `ADDED_MCC_CODES` once at module load. Order the cheap checks before `winningRule`. Green: same command. Commit `feat(rules): plan the MCC back-fill`.
 
-- [ ] **step 5/12 (kiko:developer): migration and worlds.**
+- [ ] **step 7/17 (kiko:developer): the mark migration and worlds.**
   - `schema.ts`: `mccCategoriesBackfilled: integer('mcc_categories_backfilled', { mode: 'boolean' }).notNull().default(false)`.
   - `npx drizzle-kit generate --name add_mcc_categories_backfilled`, then re-check `migrations.js` (keep only inserted lines), `./node_modules/.bin/biome check --write` on the artifacts, `npm run check:shipped-migrations` (S6). Add a header in the `.sql` after the shape of 0063's: additive, crash-safe, restore mirror is the default; name only `src/` paths that exist.
   - Test `drizzle/migrations/NNNN-add-mcc-categories-backfilled.test.ts`, shape of the 0063 test: `adds a NOT NULL integer column defaulting to false`; `keeps the settings row with the mark false`; `adds no index`.
   - `src/db/settings-columns.test.ts`: `'mccCategoriesBackfilled'` in the list and `adds mcc_categories_backfilled, defaulting to false`, shape of the `lots_recosted` case.
-  - `envelope.test.ts`: `migrationCount` plus one (65 on this base), `version` stays 5, one `VERSION_DECISIONS` comment: a column inside the settings row; an older build drops the key and its later upgrade runs the idempotent back-fill; this build restores an older file with the default `false`, so the back-fill runs on it.
+  - `envelope.test.ts`: `migrationCount` 66, `version` stays 5, the mark note of spec 3.1.6.
   - `real-sqlite.ts`: `addMccCategoriesBackfilledColumn` after the shape of `addTransactionOperationColumn`, with its `real-sqlite.test.ts` case.
-  - Apply the "Upgrade worlds" table. `build-demo-snapshot.ts`: the key `true`; regenerate the demo `.kiko` files by `e2e/screenshot/fixtures/README.md`.
-  Run: every file of `git grep -l applyMigrationsThrough -- src drizzle` plus `src/db/settings-columns.test.ts src/data-transfer/crypto/envelope.test.ts`, `--maxWorkers=2`, output in a file. Commit `feat(db): settings mark for the MCC back-fill`.
+  - Apply the "Upgrade worlds" table. `build-demo-snapshot.ts`: `TRAVEL_CATEGORY` with `entityColorsDark.teal` at `sortOrder` 11, and the key `true`; `build-demo-snapshot.test.ts`: `TRAVEL_CATEGORY.key` on its own line in the list pin, and `colors Travel the way its own migration does`; regenerate the demo `.kiko` files by `e2e/screenshot/fixtures/README.md`, same commit.
+  Run: every file of `git grep -l applyMigrationsThrough -- src drizzle` plus `src/db/settings-columns.test.ts src/data-transfer/crypto/envelope.test.ts e2e/screenshot/fixtures`, `--maxWorkers=2`, output in a file. Commit `feat(db): settings mark for the MCC back-fill`.
 
-- [ ] **step 6/12 (kiko:qa): back-fill pins on real SQLite.** Create `src/categories/category-rules-repo/backfill-mcc-categories.test.ts` (`executingClient`, `applyAllMigrations`, shape of `lot-recost.test.ts`). Cases:
-  - `moves every planned row to its own mapped category and sets the mark`: rows in three categories; assert the stored category per id and the mark.
+- [ ] **step 8/17 (kiko:qa): back-fill pins on real SQLite.** Create `src/categories/category-rules-repo/backfill-mcc-categories.test.ts` (`executingClient`, `applyAllMigrations`, shape of `lot-recost.test.ts`). Cases:
+  - `moves every planned row to its own mapped category and sets the mark`: rows to `groceries`, `transport` and `travel`; assert the stored category per id and the mark.
+  - `leaves a hotel row for review when Travel was deleted`: `categoriesRepo.delete('travel')` first; the row stays, the mark is set.
+  - `leaves a row in a user category titled Travel`: the UUID key is a real category.
   - `leaves hand-set, structural, rule-won, original-map and deleted-target rows as stored`: one seeded row of each; compare all columns before and after.
   - `sets no hand flag on a moved row`.
   - `rolls every row back and leaves the mark unset when the mark cannot be written`: a test-local `CREATE TRIGGER ... BEFORE UPDATE OF mcc_categories_backfilled ON settings ... RAISE(ABORT, 'refused')`. The rows are unchanged, the mark false; the trigger dropped, a second call moves them.
@@ -185,19 +222,44 @@ export const useMccBackfill: () => void;
   - `leaves balances untouched`: `holdings.balance_minor_units` equal before and after, on a holding with moved rows.
   Red: `npx jest src/categories/category-rules-repo/backfill-mcc-categories.test.ts --maxWorkers=2`. Commit `test(rules): pins for the MCC back-fill write`.
 
-- [ ] **step 7/12 (kiko:developer): the write.** `backfill-mcc-categories.ts`, shape of `recostStoredLots`: `isBackfillDone` (`rows.at(0)?.mccCategoriesBackfilled !== false`); outer read, then one `write()`: read the mark again; read `categories`, rules; read `{ ...candidateColumns, mcc: transactions.mcc }` with `inner join holdings` `WHERE inArray(mcc, ADDED) AND noRealCategorySql` (S4, S5) as exported `mccBackfillRowsQuery`; `withVisibleDescription` (a blank row's label is its name); plan; group by category; update each group in `chunkRows(ids, IN_CLAUSE_CHUNK_SIZE)` with `.set({ category })` and `eq(categorySetByHand, false)` in the WHERE, never touching the flag; set the mark; commit. Wrapped in `logOnFailure('[mcc-backfill] back-fill failed', ...)`. Export `noRealCategorySql` from `category-rules.repo.ts`. Green: same command. Commit `feat(rules): one-time MCC back-fill`.
+- [ ] **step 9/17 (kiko:developer): the write.** `backfill-mcc-categories.ts`, shape of `recostStoredLots`: `isBackfillDone` (`rows.at(0)?.mccCategoriesBackfilled !== false`); outer read, then one `write()`: read the mark again; read `categories`, rules; read `{ ...candidateColumns, mcc: transactions.mcc }` with `inner join holdings` `WHERE inArray(mcc, ADDED) AND noRealCategorySql` (S4, S5) as exported `mccBackfillRowsQuery`; `withVisibleDescription` (a blank row's label is its name); plan; group by category; update each group in `chunkRows(ids, IN_CLAUSE_CHUNK_SIZE)` with `.set({ category })` and `eq(categorySetByHand, false)` in the WHERE, never touching the flag; set the mark; commit. Wrapped in `logOnFailure('[mcc-backfill] back-fill failed', ...)`. Export `noRealCategorySql` from `category-rules.repo.ts`. Green: same command. Commit `feat(rules): one-time MCC back-fill`.
 
-- [ ] **step 8/12 (kiko:qa then kiko:developer): wiring.**
+- [ ] **step 10/17 (kiko:qa): restore pins for both files.** S20. In `src/data-transfer/snapshot/restore-snapshot.test.ts`, `describe('Travel category reseed')`:
+  - `adds Travel at one past every category for a file from before 1.4`: settings row without the key; exact row with `#40C8E0`.
+  - `does not bring Travel back in a 1.4 file where the user deleted it`: `it.each` over the key `true` and `false`; `insertedRows.categories` holds no `travel`.
+  - `keeps a file's own Travel row verbatim`: `it.each` over the key absent and present; renamed, recolored, moved; `toEqual`.
+  - `adds loan interest, then Travel, to a file with neither`: `sortOrder` 1 and 2 after one category.
+  - `leaves a user category titled Travel alone beside the added row`.
+  - `adds no Travel for a file with no settings row`.
+  - `reads the key by presence: a key of false is a 1.4 file`.
+  Create `src/data-transfer/import-data.travel-category.test.ts`, real SQLite through `importData` with a real encrypted envelope, shape of `restore-category-rules.two-path.test.ts`, `recostStoredLots` mocked:
+  - `a file this build wrote after Travel was deleted restores without it`: the real writer: `applyAllMigrations`, `categoriesRepo.delete('travel')`, `readDataSnapshot`, JSON round trip; asserts the file's settings hold the key.
+  - `a file this build wrote with Travel restores the same row`.
+  - `a file from before 1.4 gains Travel`: `applyMigrationsThrough('0063_add_transaction_operation')`, `addMccCategoriesBackfilledColumn`, `readDataSnapshot`, then the key deleted from the JSON (see "Upgrade worlds").
+  Red, named files; show it. Commit `test(restore): pins for Travel in both kinds of file`.
+
+- [ ] **step 11/17 (kiko:developer): the restore mirror.** `withTravelReseeded` beside `withLoanInterestReseeded`, chained after it at the `categories` insert; constants duplicated with a comment as 0039's are; `entityColorsDark.teal`. Its doc comment states why it differs from loan interest: presence of the mark key, never the row alone. Green: named files plus `src/data-transfer/snapshot/restore-snapshot.test.ts`. Red proof: delete the `hasOwn` check and show the deleted-Travel cases red. Commit `feat(restore): Travel for an older file, never back into a newer one`.
+
+- [ ] **step 12/17 (kiko:qa then kiko:developer): wiring.**
   - Create `src/categories/category-rules-repo/use-mcc-backfill.test.ts` (shape of `use-lot-recost.test.ts`), `__tests__/App.test.tsx` case `starts the one-time MCC back-fill from the app root`.
   - Create `src/data-transfer/import-data.mcc-backfill.test.ts`, real SQLite through `importData` with a real encrypted envelope (shape of `restore-category-rules.two-path.test.ts`), `recostStoredLots` mocked, the back-fill real:
     `moves an added-code row and sets the mark for a file with no key`; `leaves an added-code row in other for a file with the mark`; `keeps the mark through a round trip`; `restores an older file's hand-set and rule-won rows as stored`.
+  - Same file, the order: `moves a hotel row of an older file to Travel, restored first`; `leaves a hotel row of a 1.4 file without Travel in other, mark false`; `leaves it, mark true`. Red proof: run the back-fill before the mirror in a scratch copy of the order and show the first case red.
+  - `import-data.back-compat.test.ts`: `a real 1.1 file gains Travel and restores its own rows`, reading `kiko-demo-en-1.1.kiko` with its real key.
   - Code: `useMccBackfill` (shape of `useLotRecost`, its `biome-ignore` with `OVERRIDE(total function)`); `App.tsx` after `useLotRecost()`, one sentence added to the `AppRoot` comment; `import-data.ts`: `await backfillMccCategories();` right after `await recostStoredLots();`, one comment line; barrel `export *` of both new files.
-  Run: `npx jest src/categories/category-rules-repo src/data-transfer/import-data.mcc-backfill.test.ts src/data-transfer/import-data.test.ts src/data-transfer/import-data.back-compat.test.ts __tests__/App.test.tsx --maxWorkers=2`. Commit `feat(app): run the MCC back-fill at open and after a restore`.
+  Run: `npx jest src/categories/category-rules-repo src/data-transfer/import-data.mcc-backfill.test.ts src/data-transfer/import-data.travel-category.test.ts src/data-transfer/import-data.test.ts src/data-transfer/import-data.back-compat.test.ts __tests__/App.test.tsx --maxWorkers=2`. Commit `feat(app): run the MCC back-fill at open and after a restore`.
 
-- [ ] **step 9/12 Review (kiko:reviewer).** The migration goes to the reviewer before BATCH READY; the brief names its number and asks: is the SQL one additive `ALTER`; which existing queries touch `settings` (`settingsRepo`, `readDataSnapshot`, `restoreDataSnapshot`, the older-column worlds) and what each does at the previous index or with a file lacking the key; no index, so no `EXPLAIN` test, confirm; is the journal index free on `next` and is the S6 list right; does the back-fill read touch any index it should not (`EXPLAIN QUERY PLAN`: `SCAN transactions`, measured by the reviewer).
-- [ ] **step 10/12 Drift (kiko:retrospect).** Check: kiko-architecture's launch-step list (`useMccBackfill` beside `useLotRecost`), kiko-domain's category rule text and `categoryForMcc` scope, `real-sqlite.ts` helper list in kiko-testing.
-- [ ] **step 11/12 Scribe (kiko:scribe).** Fix the drift and commit; the report names the sha or "no drift found".
-- [ ] **step 12/12 Ready (orchestrator).** READY FOR VERIFY, label `1.4-category-automation-task-1`.
+- [ ] **step 13/17 (kiko:qa): the older-build two-path test.** Fixture `src/i18n/default-category-title/__fixtures__/release-1-3-default-category-title.ts`: the verbatim output of `git show 918683db3:src/i18n/default-category-title/default-category-title.ts`, only its relative import adjusted. Run `npm run check:dup`; if the copy trips jscpd, report it, do not widen an ignore without an entry in `docs/harness/documented-exceptions.md`. Create `src/data-transfer/snapshot/restore-travel-category.two-path.test.ts`, real SQLite:
+  - Path 1, a 1.4 file into 1.3. The file comes from the real `readDataSnapshot` on `applyAllMigrations`, with a row in `travel`. `applyMigrationsThrough('0063_add_transaction_operation')` is 1.3's schema (journal tail checked at 918683db3):
+    `release 1.3's tables take the Travel row and its transactions with no refusal` (raw insert of the file's rows); `the Travel row holds only columns release 1.3 has` (row keys against `pragma_table_info`); `the only settings key release 1.3 drops is the mark`; `release 1.3 shows the stored English title on a uk device` and `translates its own defaults beside it` (the fixture, positive twin); `release 1.3 shows a renamed Travel as written`.
+  - Path 2, a 1.3 export into 1.4. Read from that world with a hotel row in `other` and the Travel row added there (`addMccCategoriesBackfilledColumn`, `readDataSnapshot`, the key deleted from the JSON); `importData` with the real back-fill:
+    `keeps the file's Travel row and shows it translated in uk`; `moves the hotel row to Travel and sets the mark`; `a row hand-set in release 1.3 stays`; `a file with no Travel row gains it` (the accepted case of spec 3.1.6).
+  Named-file run; red proof: in a scratch copy make the mirror add no row and show path 2's last case red. Commit `test(restore): Travel through release 1.3 and back`.
+
+- [ ] **step 14/17 Review (kiko:reviewer).** Both migrations go to the reviewer before BATCH READY; the brief names their numbers. Mark: is the SQL one additive `ALTER`; which existing queries touch `settings` (`settingsRepo`, `readDataSnapshot`, `restoreDataSnapshot`, the older-column worlds) and what each does at the previous index or with a file lacking the key; is the journal index free on `next` and is the S6 list right; does the back-fill read touch any index it should not (`EXPLAIN QUERY PLAN`: `SCAN transactions`, measured by the reviewer). Seed: is it one `INSERT OR IGNORE` and can it change any existing row; which queries read `categories`; is the `when` order right with no snapshot. Neither adds an index, so no `EXPLAIN` test, confirm. Top question: can a restore bring a deleted Travel back in a file this build wrote, or overwrite a row? UI: a new seeded entity is a visible default, so the closing report lists for the user's device: the Travel tile, its airplane icon and teal color in the grid, a pie slice, the uk title `Подорожі`.
+- [ ] **step 15/17 Drift (kiko:retrospect).** Check: kiko-architecture's launch-step list (`useMccBackfill` beside `useLotRecost`) and its re-seed and two-path text (a seed whose reseed is gated on a mark key), kiko-domain's category rule text, `categoryForMcc` scope and seeded list, kiko-design-system if it names the seeded colors, `real-sqlite.ts` helper list in kiko-testing.
+- [ ] **step 16/17 Scribe (kiko:scribe).** Fix the drift and commit; the report names the sha or "no drift found".
+- [ ] **step 17/17 Ready (orchestrator).** READY FOR VERIFY, label `1.4-category-automation-task-1`.
 
 ---
 
@@ -522,7 +584,7 @@ reviewEvidenceQuery: () => /* Drizzle builder */;
 
 | Task | Mutable | Steps |
 |---|---|---|
-| 1/6 | 10 + generated | 12 |
+| 1/6 | 12 + generated | 17 |
 | 2/6 | 13 | 11 |
 | 3/6 | 17 (+2 catalogues) | 10 |
 | 4/6 | 22 (+2 catalogues) | 11 |
@@ -532,21 +594,5 @@ reviewEvidenceQuery: () => /* Drizzle builder */;
 ## Not in the tasks
 
 - What's New line and Notes for Review text (spec 3.1.4, 7): release-time copy through the `release` skill and kiko-translator. The coordinator carries them.
-- Mutation gate: paused by the user. Device check: the user's, listed in task 5's review report.
-
-## If the user answers differently
-
-**Q1 = B (no back-fill; the review list offers the bank code's category as a suggestion).**
-- Task 1: steps 3-8 fall away except `hasNoRealCategory`, which moves to task 5 (its first caller, or Knip fails). No migration, so no worlds table, no `envelope.test.ts` edit, no `real-sqlite.ts` helper, no demo regenerate. The map (steps 1-2) stays.
-- Task 5: `candidateColumns` already has `mcc` from task 3; a group keeps the added code's category per row.
-- Task 6: `ReviewGroup.suggestion` gains a source: every listed row with an added code votes its `categoryForMcc`, only if the target is in the table. New pins: `an added code suggests its mapped category`; `a deleted target suggests nothing`; `history against the code follows the same thresholds`. The confirm rule is unchanged. Task 6 then needs tasks 1 and 5.
-
-**Q1 = C (new rows only).** Same removal in task 1. No gain in tasks 5 and 6. Old rows reach a category only by name.
-
-**Q2 = B (a seeded Travel category).**
-- Task 1 gains a step before step 1: a data migration seeding `travel` (title, icon, color, sort), its test, `src/db/__fixtures__/seeded-categories.ts`, en and uk titles through `resolveDefaultCategoryTitle`, its restore mirror for an older file. `migrationCount` plus two. S6 applies to both.
-- Step 1 tables change: 7011, 3501-3999, 4722 and airlines and airports (3000-3299, 4511, 4582) go to `travel`; the 475 count changes and is measured; the "no honest home" case loses them. The 38 originals stay. A "was:" row is added for each code moved out of `transport` relative to spec 3.1.2.
-- `planMccBackfill` is unchanged; a device that deleted `travel` keeps rows for B2.
-- Tasks 2-6 do not change. The suite pinning the count of seeded categories changes by its own line.
-
-**Note for the coordinator, on Q1 = A's wording.** "Once" holds per device and per file: `importData` also runs the back-fill for a file without the mark (spec 3.1.4, 7). A user who restores a pre-1.4 backup sees the same silent move again, on that file's rows. The question as written does not say so.
+- Mutation gate: paused by the user. Device check: the user's, listed in task 1's report (the Travel tile) and task 5's review report.
+- App Store screenshots of the Categories grid pick up the twelfth tile at the next refresh.

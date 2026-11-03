@@ -31,7 +31,7 @@ Claims of `memory/refs/category-automation-ideas-2026-11-02.md`, read at d7cd40f
 
 ## 2. Scope
 
-In: B1 more MCC codes. B2 review list of names in `other`; one tap assigns a category and adds the
+In: B1 more MCC codes and a seeded Travel category (ruling Q2, section 3.1.6). B2 review list of names in `other`; one tap assigns a category and adds the
 rule. B3 better "Apply": offer "starts with ATB" when the name ends in a store number. B4 new rule
 conditions: name contains, MCC, account, counterparty IBAN. B5 suggestions from the user's history.
 
@@ -71,30 +71,44 @@ Each description below was read from that file.
 Not verified: ISO 18245, the Visa Merchant Data Standards Manual and the Mastercard Quick Reference
 Booklet (not read); which codes Monobank really sends (no sample beyond the fixtures); how an acquirer
 assigned a code to a given merchant. The file does not list 6536-6538 or 7833, so they are not added.
-The developer re-checks each code against the file.
+The developer re-checks each code against the file. One exception, by ruling Q2: the hotel range
+3501-3999 is mapped whole, though the file lists 292 of its 499 codes (207 are unlisted, mostly
+3791-3999). All 292 listed rows name a lodging brand or carry the IRS text "Hotels/Motels/Inns/Resorts".
 
 #### 3.1.2 Codes
 
 Additive only: none of the 38 changes its category (5912 pharmacy stays in `shopping`). A pin holds
-all 38 as they are. All targets are existing seeded keys (`src/db/__fixtures__/seeded-categories.ts`).
+all 38 as they are. Measured against `MCC_CATEGORIES`: no original code is an airline, airport, hotel
+or travel agency code, so ruling Q2 does not touch the pin. Every target is a seeded key: the existing
+ones (`src/db/__fixtures__/seeded-categories.ts`) and the new `travel` (section 3.1.6).
 
 | Category | Added codes |
 |---|---|
 | groceries | 5300, 5441, 5921 |
 | dining | 5811 |
-| transport | 4112, 4511, 4582, 4789, 5532, 5533, 5983, 7512, 7531, 7534, 7535, 7538, 7542, 7549; ranges 3000-3299 (airline brands, 300 rows in the source), 3351-3441 (car rental brands, 91 rows) |
+| transport | 4112, 4789, 5532, 5533, 5983, 7512, 7531, 7534, 7535, 7538, 7542, 7549; range 3351-3441 (car rental brands, 91 rows in the source) |
+| travel | 4511, 4582, 4722, 7011; ranges 3000-3299 (airline brands, 300 rows), 3501-3999 (hotel brands, 499 codes, 292 rows) |
 | shopping | 4812, 5200, 5211, 5231, 5251, 5261, 5310, 5311, 5331, 5399, 5621, 5631, 5641, 5655, 5661, 5699, 5712, 5713, 5714, 5719, 5722, 5733, 5734, 5735, 5931, 5940, 5942, 5943, 5947, 5948, 5949, 5964, 5965, 5969, 5992, 5995, 5999 |
 | utilities | 4816 |
 | entertainment | 5815, 5816, 5817, 5818, 7829, 7841, 7911, 7929, 7932, 7933, 7941, 7991, 7992, 7993, 7994, 7998, 7999 |
 | health | 4119, 5975, 5976, 7298, 8031, 8041, 8043, 8049, 8050, 8071, 8099 |
 
-That is 84 single codes plus 391 in ranges.
+That is 86 single codes plus 890 in ranges: 976 distinct added codes, 769 of them listed in the source.
+Measured on `mcc_codes.csv`: all 86 singles present, no overlap with the 38, none in
+`ALWAYS_EXCLUDED_MCCS` or `OWN_ACCOUNT_TRANSFER_MCC`.
 
-Stay in `other`, no honest existing home; B2 clears them:
-- hotels 7011 and 3501-3999, travel agencies 4722 (see User question 2)
+| Code | was: earlier draft of this table | Now, ruling Q2 |
+|---|---|---|
+| 7011, 3501-3999 hotels; 4722 travel agencies | `other` | `travel` |
+| 3000-3299, 4511 airlines; 4582 airports | `transport` | `travel` |
+| 3351-3441, 7512 car rental; 4112, 4789 rail and other land transport | `transport` | `transport` |
+
+Left in `other`; B2 clears them:
 - insurance 6300, education 8211, 8220, 8299, charity 8398, government 9311, 9399
 - advertising and business 7311, 7399; couriers 4215; beauty and laundry 7230, 7211, 7216
 - car dealers 5511, 5571; betting 7995; tobacco 5993
+- cruise lines 4411, truck and motor home rental 7513, 7519: named in no ruling
+- 3300-3350 and 3442-3500: outside the ruled ranges and not in the source file
 
 Never mapped here: 6010 and 6051 (cash and quasi-cash). A code placed in `cash` or `transfers` without
 joining `ALWAYS_EXCLUDED_MCCS` would still count as spending (`transfer-exclusion.ts:41`). What counts
@@ -111,8 +125,8 @@ The raw code is on the row (`schema.ts:149`); a re-sync refreshes it, never `cat
    flag (`categories.repo.ts:109-112`): cannot be told apart in general.
 
 A code in the OLD map never produced `other`, so such a row was moved there by something. The back-fill
-therefore reads the **added codes only**. Residual: a row with an added code under case 3 or 4 moves to
-the new category (User question 1).
+therefore reads the **added codes only**. Residual, accepted by ruling Q1: a row with an added code
+under case 3 or 4 moves to the new category.
 
 Structural rows, left out by `isRewriteEligible`: `categorySetByHand`, `setsBalance`, `changeGroupId`. An
 exchange leg is NOT structural, by the existing ruling (`plan-rule-rewrite.ts:6-14`): statistics exclude a
@@ -139,6 +153,10 @@ Write path: `backfillMccCategories()` in `src/categories/category-rules-repo/`, 
   overwrite a row that later became `other` by a deleted rule or a category delete.
 - Wired as `useMccBackfill()` in `App.tsx` beside `useLotRecost` (`App.tsx:39`), and in `importData`
   right after `recostStoredLots` (`import-data.ts:235`): an older file restores with the mark unset.
+- **Order on a restore:** Travel first, back-fill second. The back-fill plans a row only when its target
+  is a known key, and `restoreDataSnapshot` (`import-data.ts:226`) commits the file's categories, Travel
+  included (section 3.1.6), before `import-data.ts:235`. On a live device the migrations run before the
+  first render, so `useMccBackfill` also finds it.
 - Never rejects: `logOnFailure` with a fixed text, no name or IBAN in the log.
 - The row keeps no hand flag and gets none: a hand flag also changes exchange-funding exclusion
   (`exchange-funding-match.ts:280`).
@@ -150,13 +168,140 @@ by itself.
 Upgrade-world note for the plan: this adds owed state, so before a line "existing suites green
 unchanged" the planner asks which seeds are 1.2-upgrade worlds (harness-workflow).
 
-UI: none, no text beyond a What's New line.
+UI of the back-fill: none, no text beyond a What's New line. The Travel tile is visible UI: section 3.1.6.
 
 #### 3.1.5 Does a count from the iPhone change the design?
 
 No, so it is not asked. The back-fill touches only rows with an added code, whatever their share; B2
 shows what is left. The question it once decided (item 1 against the merchant list) is closed by the
 ruling. A per-code count could only add codes later, one safe additive edit.
+
+#### 3.1.6 The seeded Travel category (ruling Q2)
+
+**Precedent.** Yes: `drizzle/migrations/0039_seed_loan_interest_category.sql:8` added the eleventh
+default after launch. It is a data-only migration with no `meta/NNNN_snapshot.json`
+(`meta/` holds `0038_snapshot.json`, none for 0039), a journal entry and a `migrations.js` line. Travel
+is the twelfth default and copies it.
+
+How a seeded row is defined:
+- Row: `categories` (`key`, `title`, `icon`, `color`, `sort_order`), the English seed text as `title`.
+- Title: `resolveDefaultCategoryTitle` (`default-category-title.ts:45-46`) translates only a row whose
+  stored title equals the seed text for its key in `DEFAULT_CATEGORY_SEED_TITLES` (`:8`). A renamed row
+  shows verbatim. Travel adds `travel: 'Travel'` there and `categories.travel` in both catalogues.
+- Icon: a system symbol name stored on the row. Every default is in `KIKO_CATEGORIES_ICONS`
+  (`icon-pools.ts`, comment above the pool), so a user can pick it back.
+- Color: seeded rows store a **literal dark-palette hex** in the column, not a token name (`0017` and
+  `0039:8`; the restore mirror reads the token, `restore-snapshot.ts:355`). A stored hex passes through
+  unchanged in both palettes: on the `1.4-light-scheme` tip `entityColorsDark` stays and
+  `entity-tint.test.ts` pins "passes an unknown/custom stored hex through unchanged". So Travel stores
+  one too. This is the one literal hex of the track; no UI code holds one.
+
+```sql
+INSERT OR IGNORE INTO `categories` (`key`, `title`, `icon`, `color`, `sort_order`) VALUES ('travel', 'Travel', 'airplane', '#40C8E0', (SELECT COALESCE(MAX(`sort_order`), -1) + 1 FROM `categories`));
+```
+
+| Field | Value | Why |
+|---|---|---|
+| Icon | `airplane` | In `sf-symbols-typescript`, in the pool at `icon-pools.ts`, so `__tests__/symbol-deployment-target.test.tsx` already proves it at the iOS 18.2 target; also in 1.3's pool. Not an iOS 27 symbol (memory rule `sf-symbols-ios27-availability`) |
+| Color | `#40C8E0`, `entityColorsDark.teal` (`palette.ts:18`) | Free among the seeded hues: green, orange, blue, pink, red, khaki, white, gray, indigo are stored; `utilities` hashes to orange and `entertainment` to blue (`categoryColor`). `blue` is `transport`, so teal keeps them apart |
+| Title | en `Travel`, uk `Подорожі` | Section 7 |
+
+**Sort order.** `other` is not last today, so there is no such rule to keep: a fresh install holds
+`other` at 9 and `loan_interest` at 10 (0002, 0039; `build-demo-snapshot.ts` mirrors it). Travel takes
+`MAX + 1`: 11 on a default grid, after Loan interest. A device with a reordered grid gets it at the end
+of the user's own order, and no other row's `sort_order` changes. The user drags it where they want it.
+
+**Key collision.** A user's own category cannot hold `travel`: `categoriesRepo.create` writes `key = id()`
+(`categories.repo.ts:49`), a v4 UUID (`src/db/id.ts:11`), as v1.1.0 did, and `updateTitle` never changes a
+key. Only a hand-built file could hold it. If a row with that key exists, `INSERT OR IGNORE` leaves it
+whole, and the restore mirror below returns the file's rows untouched: never overwritten, retitled or
+recolored. A user's own category titled "Travel" keeps its UUID key and shows as a second tile with its own
+rows; ruling Q2 accepts this duplicate. `resolveDefaultCategoryTitle` reads key and title together, so it
+never translates that row.
+
+**The restore trap.** `restoreDataSnapshot` replaces the whole table (`restore-snapshot.ts:862`), and
+`withLoanInterestReseeded` (`:341`) adds its row whenever the file lacks it. Copied as is, that would bring
+Travel back in a file where the user deleted it. What tells the files apart:
+
+- `settings.mccCategoriesBackfilled` is `NOT NULL`, so every database of this build holds it, as `true` or
+  `false`. `readDataSnapshot` selects the whole row (`read-snapshot.ts:46`), so every file of this build
+  carries the key. A build before 1.4 has no such column in its schema, so its file cannot.
+- Presence, never value, with `Object.hasOwn`: the precedent is `withLegacyDedupKeysUpgraded`
+  (`restore-snapshot.ts:418`). No second column is needed: the two migrations ship together.
+- Read from `snapshot.settings`, the file's own row, since the file decides this column
+  (`TAKEN_FROM_FILE_ON_RESTORE`, `settings-columns.test.ts`; not in `KEPT_FROM_LIVE_ON_RESTORE`).
+- Rejected: a migration count (the payload holds none: `exportedAt`, `appVersion`, `tables`, `secrets`,
+  `payload.d.ts`); `appVersion` (a string compare inside a restore that today takes only `tables` and the
+  version, `import-data.ts:226`, for no better answer).
+
+`withTravelReseeded(categories, settings)`, in `restore-snapshot.ts` beside `withLoanInterestReseeded`,
+chained after it at `:941` so an old file gets loan interest at max + 1 and Travel at max + 2, the order a
+live device runs them. It adds the row only when the file holds a settings row, without the key, and no
+`travel` row. Color through `entityColorsDark.teal`.
+
+| File | Mark key in settings | `travel` row in file | Categories after restore | Back-fill after restore |
+|---|---|---|---|---|
+| Before 1.4 (1.3, 1.2, 1.1) | absent | absent | **Travel added** at max + 1 | Mark defaults false: runs. Hotel rows move to `travel` |
+| 1.4, Travel kept | present | present | The file's row verbatim, edits kept | By the file's mark |
+| 1.4, user deleted Travel | present | absent | **Stays deleted** | Mark true: none. Mark false: runs; `travel` is unknown, so the rows stay for B2 |
+| 1.3 export of a restored 1.4 file, row kept | absent | present | The file's row verbatim, edits kept | Runs (1.3 dropped the mark) |
+| 1.3 export of a restored 1.4 file, Travel deleted in 1.4 or 1.3 | absent | absent | Travel added. It cannot be told from a pre-1.4 file; accepted: one empty tile, no row moves onto it unless it has an added code and no real category | Runs |
+| Hand-built, no settings row | none | absent | Not added, as `withLegacyDedupKeysUpgraded` leaves such a file alone. A real export always holds the row | Runs; `travel` is unknown, so the rows stay for B2 |
+
+`loan_interest` keeps its own unconditional reseed; this track does not change it.
+
+**`EXPORT_VERSION` stays 5, decided again with this trap in view.** A bump would tell a 1.3 file from a 1.4
+file too, but 1.3 would then refuse every 1.4 file, and the key already tells them apart. A bump is for a
+file an older build would misread (0059, 0062). A `travel` row is not that: to 1.3 it is one more category
+(next paragraph). `VERSION_DECISIONS` gains two notes and `migrationCount` plus two, `version` 5:
+- The seed: a row in `categories`, no new shape. An older build restores it as a category of its own, and
+  this build adds the row to an older file, told by the absent mark key. No bump.
+- The mark: a column inside the settings row. An older build drops the key and its later upgrade runs the
+  back-fill; this build restores an older file with the default `false`, so it runs on it. No bump.
+
+**Older build, read on `release-1.3` tip 918683db3, journal tail `0063_add_transaction_operation`.**
+
+(a) A 1.4 file into 1.3. Nothing refuses: version 5 is readable (`envelope.ts:13,19`), `isExportPayload`
+(`import-data.ts:115`) checks table shape only, `categories` has no check, and no column references it, so
+`transactions.category = 'travel'` is plain text. The settings key is dropped, as every earlier added column
+was. `travel` is not in 1.3's `DEFAULT_CATEGORY_SEED_TITLES` (`:8-24`), so `resolveDefaultCategoryTitle`
+returns the stored title (`:50`): **the English "Travel", on a uk device too**, with its own defaults still
+translated beside it. A renamed row shows its name. Icon `airplane` draws, it is in 1.3's pool
+(`icon-pools.ts:100`), and the stored teal shows. Rows and rules on `travel` work as on a custom category.
+New 1.3 rows with a hotel code get `other`, as 1.3's map says. The user can delete the tile; the delete folds
+its rows as usual.
+
+(b) Export from 1.3, restore into 1.4. The file has no mark key. Its `travel` row comes back verbatim and,
+if still titled "Travel", shows as `Подорожі` on a uk device. If the row is gone, Travel is added (table
+above). The back-fill runs and moves 1.3's rows with an added code that have no real category. An in-place
+update from such a 1.3 database gives the same: `INSERT OR IGNORE` leaves the restored row.
+
+Nothing here reverses a ruling. No older build is harmed.
+
+**Readers.** Section 5.3, B2 and B5 need no code change: Travel is one more row of the live `categories`
+read, so one more pie slice, trend line, filter chip, option in the B2 sheet and possible B5 suggestion.
+`hasNoRealCategory` calls it real while it exists; after a delete a `travel` row is an orphan, folds to the
+default as any deleted category does, and appears in B2.
+
+**Demo data.** `build-demo-snapshot.ts` carries Travel at `sortOrder` 11 and the mark `true`, so the demo
+files read as 1.4 files and the reviewer sees the tile. Regenerate `kiko-demo-en.kiko` and `kiko-demo-uk.kiko`
+in the same commit as the migration (`e2e/screenshot/fixtures/README.md`, "Regenerating"). Demo rows hold
+`mcc: null` and no row moves to Travel. `kiko-demo-en-1.1.kiko` stays frozen and gains Travel when restored.
+Screenshots that show the Categories grid pick up the twelfth tile at the next refresh.
+
+**Suites that pin the seeded list.**
+
+| Suite | Pins | Effect |
+|---|---|---|
+| `e2e/screenshot/fixtures/build-demo-snapshot.test.ts` | exact key list, loan interest color and order | Own new line and a sibling case |
+| `e2e/screenshot/fixtures/generate-demo-kiko.test.ts` | GUARD diff of the files | Regenerate |
+| `src/categories/repo/categories.repo.test.ts` | 0002's ten; 0039 | Unchanged; a sibling case for the seed |
+| `src/i18n/default-category-title/default-category-title.test.ts` | each translated default | New case |
+| `src/design-system/components/icon-picker-modal/icon-picker-modal.component.test.tsx` | each default's icon in the pool | New case |
+| `src/data-transfer/snapshot/restore-snapshot.test.ts` | `insertedRows.categories` by `toEqual` | Unchanged: its `emptySnapshot` holds `settings: []`, so no Travel; new cases |
+| `src/db/schema.category-overrides.test.ts`, `src/statistics/category-breakdown/category-breakdown.test.ts`, `src/screens/settings/categories/categories.screen.test.tsx`, `src/screens/home/home.screen.test.tsx` | `SEEDED_CATEGORIES`, 0002's ten | Unchanged: `TRAVEL_CATEGORY` is its own export, as `LOAN_INTEREST_CATEGORY` is |
+
+A new seeded entity is a visible default: **the user confirms the tile, icon and color on the device.**
 
 ### 3.2 B2 Review list
 
@@ -197,7 +342,7 @@ A group needs one rule to cover all of it. Its names share a normalized prefix b
 
 #### 3.2.3 Cost
 
-No index and no migration. No category index exists (`schema.ts:309-320`), so both reads scan the
+B2 adds no index and no migration. No category index exists (`schema.ts:309-320`), so both reads scan the
 table. Measured on a Mac with the `sqlite3` CLI 3.51 on a synthetic narrow table of 100,000 rows:
 candidates `SCAN transactions`, 20,000 rows returned, 0.027 s; evidence `SCAN` plus `TEMP B-TREE FOR
 GROUP BY`, 4,000 groups, 0.068 s. Not measured: an iPhone, or the encrypted real file with its wider
@@ -419,8 +564,8 @@ No wrong write.
 (b) **Export from 1.3, restore into 1.4:** the rule's JSON comes back byte for byte and reads again; it
 works on rows from then on. Restore runs no rule rewrite, so rows 1.3 added in between keep the category
 they got, until the user applies. One exception is the B1 back-fill: a 1.3 file has no mark, so
-`importData` runs it once, and rows with an added code that have no real category move (section 3.1.4).
-If the user deleted the card in 1.3, it is gone, by their action.
+`importData` runs it once, and rows with an added code that have no real category move (section 3.1.4);
+the same file gains or keeps Travel by the table in section 3.1.6. If the user deleted the card in 1.3, it is gone, by their action.
 Same result for an in-place update from 1.3.
 
 **Result: an older build cannot damage data; no fix is needed.** `EXPORT_VERSION` stays 5 for B4. A bump
@@ -545,7 +690,7 @@ means one more line, never a wrong write.
 | Sync refresh | `ruleWonTransactionSet` `:1439-1448` | SQL built from `REWRITE_GUARD_FIELDS` | typed over the same list |
 | Sync adoption | `adoptedValuesOf` `:1658`: `twin.category ?? input.category` | No | the import row's own value stays |
 | Balance rows | `holdings.repo.ts:582,882`: `category: null` | No | structural |
-| Restore | `restoreDataSnapshot`, verbatim | No | no rewrite by design (`import-data.ts:123-126`) |
+| Restore | `restoreDataSnapshot`, verbatim | No | no rewrite by design (`import-data.ts:123-126`). Travel's mirror adds a `categories` row and writes no transaction |
 | Category delete | `categories.repo.ts:109-112` | No | never-orphan fold; clears the flag, documented |
 | **New: B1 back-fill** | `backfillMccCategories` | **Yes**: `planMccBackfill` on `isRewriteEligible`, `winningRule`, `hasNoRealCategory` | no user present, so the narrowest filter |
 | **New: B2 one tap** | `applyNameRule` | **Yes**, `planRuleRewrite` | |
@@ -580,7 +725,8 @@ Not read by category: spending exclusion keys on `mcc` and IBAN (`transfer-exclu
 exclusion on markers; exchange funding on the hand flag (`exchange-funding-match.ts:280`), which these paths
 do not set; no statistic names `'transfers'` or `'cash'` (grep of `src/statistics`, `src/screens/statistics`,
 `src/screens/home`); balances and net worth do not read `category`. So the spending total and "how much
-money do I have now" do not change.
+money do I have now" do not change. Travel changes none of these readers: it is one more live category row
+(section 3.1.6).
 
 Trap, `enteredByUser`: a manual row going from NULL to a category would count as an entry. Balance rows are
 `setsBalance`, so ineligible, and a manual row has no `mcc`. B2 could reach only a manual, non-balance,
@@ -592,10 +738,11 @@ NULL-category row with a description; the plan measures whether such a row exist
 |---|---|
 | A hand-set row never changes | `isRewriteEligible` on `categorySetByHand` in every plan; SQL guard on the update (`category-rules.repo.ts:336`); `planMccBackfill` adds `categorySetByHand = 0` to its update. Known exceptions, unchanged: the row the user is editing under Apply, and a category delete |
 | An automatic guess never overwrites a category without confirmation, unless the row has no real category | Only the B1 back-fill writes with no tap, and only under `hasNoRealCategory` (section 3.0), an added code and no winning rule. B2, B3, B5 write only after a tap; a count beyond the list, and every B3 prefix, goes through a confirm with names |
+| The Travel seed never touches a user's row; a deleted Travel stays deleted | `INSERT OR IGNORE` at `MAX + 1`; the restore mirror adds only when the file lacks both the mark key and the row (section 3.1.6) |
 | "No real category", exactly | `hasNoRealCategory`: NULL or empty, `other`, or an orphan key; and no hand flag, no structural field, no winning rule |
 | A wrong prefix guess changes no row unconfirmed | B3's button opens a confirm from `previewNameRule`; only the confirm writes |
 | A new condition never widens a rule | New `type` strings only; null subject means no match; all-or-nothing parser |
-| An older build damages nothing | Section 3.4.5, with a two-path restore test on the raw JSON |
+| An older build damages nothing | Sections 3.4.5 and 3.1.6, each with a two-path restore test |
 | Product purpose | Section 5.3: no balance or net worth reads; no budget or planning item in scope |
 
 ## 7. Compliance, i18n, migrations
@@ -605,46 +752,56 @@ NULL-category row with a description; the plan measures whether such a row exist
   list; nothing fetches it at runtime. App Privacy stays "Data Not Collected"; the policy is unchanged.
 - An IBAN typed into a rule is a local value in `category_rules`, in the encrypted database and the
   encrypted `.kiko`. Never logged: failure logs use fixed text.
-- 2.5.19: no flag; the feature shows in a release build with no data (section 3.2.5). No demo or seed
-  import from `src/`. The Notes for Review describe it specifically (2.3.1(a)); What's New per its format.
+- 2.5.19: no flag; the feature shows in a release build with no data (section 3.2.5); the Travel tile shows
+  on every install. No demo or seed import from `src/`. The Notes for Review describe it specifically (2.3.1(a)); What's New per its format.
 - Trademarks: no merchant name in the catalogue or placeholders; "ATB" here is only an example. The app
   shows only the user's own names.
 
 **i18n (kiko-translator).** Both catalogues together; the parity test holds. Plurals carry
 `_one/_few/_many/_other` in both. A count goes through `count`. A list of names goes through
 `common.listedName`. uk apostrophe is U+02BC. Seeded category titles through
-`resolveDefaultCategoryTitle`. New keys, floors, beyond section 3.4.4:
+`resolveDefaultCategoryTitle`.
+
+| Key | en | uk |
+|---|---|---|
+| `categories.travel` | Travel | Подорожі |
+
+The uk text is a draft and holds no apostrophe; kiko-translator decides. New keys, floors, beyond this table
+and section 3.4.4:
 - `categoryReview.*`: route title, entry card label, group line ("Starts with {{name}}", names plural,
   transactions plural), suggestion text, "Keep in Other" with the live title of `other`, empty title and
   message, confirm heading, confirm message, "and {{count}} more"
 - `forms.transaction.applyToAllStartingWith`, its confirm
 - `help.topics.categoryRules`: the new condition list in step 2, a review step, the prefix option
 
-Removed or renamed keys: none. Theme: tokens only, so `1.4-light-scheme` applies by itself.
+Removed or renamed keys: none. Theme: tokens only in UI code, so `1.4-light-scheme` applies by itself; the
+one stored hex is Travel's seeded color (section 3.1.6).
 
-**Migrations.** The number is not assigned; merge order decides. Never rename a shipped one.
+**Migrations.** Two in this track, both in task 1. The numbers are not assigned; merge order decides. Never
+rename a shipped one.
 
 | Item | Migration | Why |
 |---|---|---|
-| B1 | One: `settings.mcc_categories_backfilled` integer NOT NULL DEFAULT false | the once-only mark |
+| B1 | `seed_travel_category`: data only, no snapshot, one `INSERT OR IGNORE` | ruling Q2, section 3.1.6 |
+| B1 | `add_mcc_categories_backfilled`: `settings.mcc_categories_backfilled` integer NOT NULL DEFAULT false | the once-only mark, and what tells a 1.4 file from an older one |
 | B2 | None | no index; a pin decides (section 3.2.3) |
 | B3 | None | rule JSON |
 | B4 | None | rule JSON, already a text column read through a guard |
 | B5 | None | no dismissal table |
 
-For the B1 migration the plan includes `kiko:reviewer` before BATCH READY, its test file,
-`settings-columns.test.ts`, restore pins beside `restore-dismissed-tips.test.ts`, and the `VERSION_DECISIONS`
-note in `crypto/envelope.test.ts` with `migrationCount` plus one and **no bump**: a column inside the settings
-row. An older build drops the key and its later upgrade runs the idempotent back-fill; this build restores an
-older file with the default `false`, so it runs once more.
+For both migrations the plan includes `kiko:reviewer` before BATCH READY and a test file each. The mark adds
+`settings-columns.test.ts` and restore pins beside `restore-dismissed-tips.test.ts`. The seed adds its restore
+mirror and the two-path test. `crypto/envelope.test.ts` gains two `VERSION_DECISIONS` notes (section 3.1.6) with
+`migrationCount` plus two and **no bump**.
 
 ## 8. Order and split
 
 Each set merges into `next` alone. A shared function ships with its first caller, or Knip fails.
 Mutation gates are paused by the user; verify and review apply. File counts are floors.
 
-1. **1.4-category-automation task 1/6: more MCC codes and the back-fill.** Goal: old and new rows with an
-   added code leave `other`. Needs nothing. Includes `hasNoRealCategory` and the migration. About 12 files.
+1. **1.4-category-automation task 1/6: more MCC codes, Travel and the back-fill.** Goal: old and new rows with
+   an added code leave `other`, hotels and flights into a new seeded Travel. Needs nothing. Includes
+   `hasNoRealCategory`, both migrations and the restore mirror. About 14 files beside the generated ones.
 2. **1.4-category-automation task 2/6: prefix offer in Apply.** Goal: B3 with its confirm. Needs nothing.
    Includes `merchantNameOf`, `previewNameRule`, `applyNameRule` `kind`. About 12 files.
 3. **1.4-category-automation task 3/6: name-contains and MCC conditions.** Goal: two B4 kinds in the parser,
@@ -661,32 +818,25 @@ ships in the set that adds it, never before. Each set: `kiko:retrospect` and `ki
 drift (kiko-domain's rule text, kiko-architecture's one-time steps, kiko-design-system if a shared
 component changes); the coordinator's queued verify; the coordinator's merge.
 
-## 9. User questions
+## 9. User rulings, 2026-11-03
 
-Only decisions that change what gets built.
+Relayed by the coordinator.
 
-**Q1. Do old rows with an added code move by themselves?**
-- A. Once per data set, at the next app open, with no prompt. Fewer rows to review; past months' slices
-  shift silently; a pick of `other` made before version 1.2 on such a row, or a since-deleted rule's
-  result, moves too and cannot be told apart. A restore of a backup made before 1.4 repeats this move on
-  that file's rows.
-- B. Not by themselves: the review list offers them with the bank code's category as a suggestion, one
-  tap each. Nothing moves unseen; more tapping; no migration, since the mark is not needed.
-- C. New rows only. Old rows stay in `other` until the user reviews them by name.
+**Q1 = A. Old rows with a newly mapped code move once per data set, at the next app open, with no prompt.**
+Hand-set rows never move. Past months' slices shift silently. A pick of `other` made before version 1.2 on
+such a row, or a since-deleted rule's result, moves too and cannot be told apart. "Once" holds per device and
+per file: `importData` also runs the back-fill for a file without the mark, so restoring a backup made before
+1.4 repeats the move on that file's rows.
 
-Recommendation: **A**. Your rule allows a write when a row has no real category, a code from the old
-fallback is that case, and the residual needs a by-hand `other` on such a merchant from before 1.2.
-
-**Q2. Hotels and travel agencies have no category. Where do they go?**
-- A. They stay in `other`; the review list clears them by name. No new category; strict scope.
-- B. Add a seeded "Travel" category (a migration, en and uk title, icon, color) and map hotels, travel
-  agencies and, moved from `transport`, airlines and airports. Adds an eleventh visible default that a
-  user with their own travel category would see as a duplicate.
-
-Recommendation: **A**.
+**Q2 = B, against the planner's recommendation. A new seeded "Travel" category.** Hotels 7011 and 3501-3999,
+travel agencies 4722, airlines 3000-3299 and 4511, airports 4582 map to `travel`. One more migration, so two in
+the track. A user with their own travel category sees a duplicate; accepted. Car rental (3351-3441, 7512), rail
+and other land transport stay in `transport`. None of the 38 original codes changes: checked against
+`MCC_CATEGORIES`, none is one of these. Section 3.1.6.
 
 **Planner's calls, recorded, not questions** (reasons in the sections named): entry point on the Categories
 screen (3.2.1); no index, a pin decides (3.2.3); no device count (3.1.5); sort by count, not total (3.2.2);
-`EXPORT_VERSION` stays 5 (3.4.5); dismissal is a visible rule (3.5); evidence includes MCC-set rows (3.5);
+`EXPORT_VERSION` stays 5 (3.4.5, 3.1.6); a mapped hotel range wider than the source lists (3.1.1); Travel's
+icon, color and sort order (3.1.6); dismissal is a visible rule (3.5); evidence includes MCC-set rows (3.5);
 the thresholds (3.5, 4); Cyrillic and Latin are two merchants (4); a deleted account's rule stays (3.4.5);
 no undo control, since editing the rule moves the rows back (3.2.4).
