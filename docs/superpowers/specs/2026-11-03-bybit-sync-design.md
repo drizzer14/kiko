@@ -1,12 +1,13 @@
 # Bybit sync design (track 1.4-bybit)
 
-Status: SPEC READY for the user's approval. Q1 to Q4 are answered (section 13). No app code before the
-approval. Base 57130e23c.
+Status: SPEC READY for the user's approval. Q1 to Q4 are answered (section 13). The terms verdict is in section 9: PASS
+WITH CONDITIONS for global accounts. The user accepted the 5.2.2 and 6.5 doubts (O42). No app code and no R1 before the
+approval (O41). Base 57130e23c.
 Plan: `docs/superpowers/plans/2026-11-03-bybit-sync.md`.
 
-Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O38, binding), `research-bybit-docs.md`,
-`research-bybit-legal.md`, `seam-map.md` (same folder), the brief `memory/refs/brief-1.4-bybit.md`
-and `memory/refs/bybit-okx-second-check-2026-11-03.md` (main checkout), the skills
+Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O42, binding), `terms-verdict.md`, `research-bybit-docs.md`,
+`research-bybit-legal.md`, `seam-map.md` (same folder), the brief `memory/refs/brief-1.4-bybit.md`,
+`memory/refs/bybit-okx-second-check-2026-11-03.md` and `memory/refs/bybit-terms-2026-11-03/` (main checkout), the skills
 kiko-exchange-sync, kiko-compliance, kiko-architecture, kiko-domain, kiko-translator, kiko-testing.
 
 Evidence levels, per line:
@@ -46,7 +47,8 @@ Goals:
 Non-goals: OKX (USER); the Unified log, converts, Earn orders and yield (deferred, O37, Backlog); a
 region field or host list (O1); any P2P call (O5); Earn products other
 than FlexibleSaving and OnChain; derivatives P&L; loans; sub-account reads; renames of `Binance*`
-name-only lines (O7); a device-region check (Binance precedent C2).
+name-only lines (O7); Bybit EU accounts (EU 7.4, section 9); a device-region check (Binance precedent C2; terms verdict
+line 9).
 
 Anti-goals, each with its guard:
 
@@ -297,20 +299,33 @@ final rows and marks as an uninterrupted run, at any cut point.
 ### 6.1 Host for a Ukrainian account
 
 `api.bybit.com` (O1). The docs list hosts for Turkey, Kazakhstan, Georgia, UAE, EEA, Indonesia,
-Japan, Hong Kong, and name Brazil and Argentina on the global host; Ukraine is on no line, so global
-is an INFERENCE. Bybit's restricted list names only Crimea and the non-government controlled areas of
-Donetsk, Luhansk, Kherson and Zaporizhzhia (read 2026-11-03). P1 proves it for the user's account.
-Cost if wrong: such an account cannot connect, the UI says so, and a host is one list.
+Japan, Hong Kong, and name Brazil and Argentina on the global host; Ukraine is on no line. The terms verdict agrees
+(line 9): Global 3.4 excludes only the Crimea region and the non-government controlled areas of Donetsk, Luhansk, Kherson
+and Zaporizhzhia, and EU 4.3.5 bars a resident of Ukraine, because it asks for habitual residency in the EEA. No sentence
+positively names Ukraine as served, so global stays an INFERENCE. P1 proves it for the user's account. Cost if wrong: such
+an account cannot connect, the UI says so, and a host is one list.
 
 ### 6.2 EU and regional accounts
 
-Before entry the connect screen states that only global accounts work and names the EU (USER, O2).
-Connect validates with `/v5/user/query-api`. A `10003` shows one text that fits every reason it can
-have. `10003` for an EU key is UNVERIFIED: no EU key exists to test. Docs (SUMMARY): the EU API serves
-only "Connect to Third-Party Applications" for broker users; `81007` is "Bybit Europe is not supported
-create API Key". Whether a Ukrainian living in the EU is served by Bybit EU: UNVERIFIED; the text does
-not depend on it. Reachability says nothing of region: `api.bybit.eu` answers public calls (MEASURED
-2026-11-03). A key is never sent to a second domain.
+Kiko does not support Bybit EU accounts. EU 7.4 forbids this use: QUOTE "You shall not access the Platform through any
+non-official or unauthorised third-parties, applications, websites or interfaces." EU 7.1, 9.1.2 and 9.2.2 each reach it
+too, and the EU terms have no API sentence, so they hold no API carve-out (verdict line 6). The user must ask Bybit EU only
+if EU accounts come into scope; this track does not need that.
+
+Before entry the connect screen states that only global accounts work and names the EU (USER, O2). For Bybit EU the copy
+says plainly that Kiko does not support these accounts; `may not` stays for other regional sites, whose terms are unread
+(C1, O39). No text gives a workaround. Connect validates with `/v5/user/query-api`. A `10003` shows one text that fits every
+reason it can have: a wrong key, a Bybit EU key, or a key of another regional site. `10003` for an EU key is UNVERIFIED: no
+EU key exists to test, so the text states the reasons and does not say which one applies. Docs (SUMMARY): the EU API serves
+only "Connect to Third-Party Applications" for broker users; `81007` is "Bybit Europe is not supported create API Key".
+Reachability says nothing of region: `api.bybit.eu` answers public calls (MEASURED 2026-11-03). A key is never sent to a
+second domain, so it never goes to `api.bybit.eu` (C1, A52).
+
+Displaced users (verdict line 9). Whether a Ukrainian living in the EU is served by Bybit EU stays UNVERIFIED, but it
+narrows: EU 4.2 and 4.3.5 admit an EEA resident on a passport or permit, unless the 4.3.7 list (a "HERE" link, unread) names
+Ukraine. The Global Terms name no EEA rule, but 3.4 "not authorized" could reach EEA residents, and they name France and the
+UK. Displaced users are affected. Kiko cannot judge this, so there is no region check, and no text tells a user which entity
+serves them. The copy does not depend on it.
 
 ### 6.3 The 90-day expiry
 
@@ -486,9 +501,9 @@ probe output.
 | `openBybitLink` | Open Bybit API management | Відкрити керування API Bybit |
 | `noBybitCredentials` | No Bybit credentials stored; connect Bybit before syncing. | Облікові дані Bybit не збережено; підключіть Bybit перед синхронізацією. |
 | `bybitKeychainDisclosure` | Your Bybit API key is stored only in your device's Keychain, used only to fetch your own data directly from Bybit, and is never sent to Kiko or any server. | Ваш API-ключ Bybit зберігається лише в Keychain вашого пристрою, використовується лише для отримання ваших власних даних безпосередньо з Bybit і ніколи не надсилається до Кіко чи на будь-який сервер. |
-| `bybitConnectLimits` (O2, O13, O25. Level: O1 for "only global"; UNVERIFIED for a regional key; UNPROBED(P1) for read-only with no IP restriction and for the main account; QUOTE for 90 days and renewal before the date) | Kiko works only with global Bybit accounts (bybit.com), so an account of Bybit EU, Turkey, Kazakhstan or another regional site may not work here. On your main account, create a read-only key with no IP restriction. Bybit ends such a key after 90 days; you renew it on Bybit, and the key and secret stay the same. | Кіко працює лише з глобальними акаунтами Bybit (bybit.com), тож акаунт Bybit EU, Туреччини, Казахстану чи іншого регіонального сайту тут може не спрацювати. В основному акаунті створіть ключ лише для читання без обмеження за IP. Bybit припиняє дію такого ключа через 90 днів; ви подовжуєте її на Bybit, а ключ і секрет лишаються ті самі. |
+| `bybitConnectLimits` (O2, O13, O25, O39 C1. Level: O1 for "only global"; QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not"; UNPROBED(P1) for read-only with no IP restriction and for the main account; QUOTE for 90 days and renewal before the date) | Kiko works only with global Bybit accounts (bybit.com). It does not support Bybit EU accounts, and an account of another regional Bybit site (Turkey, Kazakhstan and others) may not work here. On your main account, create a read-only key with no IP restriction. Bybit ends such a key after 90 days; you renew it on Bybit, and the key and secret stay the same. | Кіко працює лише з глобальними акаунтами Bybit (bybit.com). Він не підтримує акаунти Bybit EU, а акаунт іншого регіонального сайту Bybit (Туреччина, Казахстан тощо) тут може не спрацювати. В основному акаунті створіть ключ лише для читання без обмеження за IP. Bybit припиняє дію такого ключа через 90 днів; ви подовжуєте її на Bybit, а ключ і секрет лишаються ті самі. |
 | `bybitKinds` (E1 and M1. Level: UNPROBED(P3, P5)) | Kiko reads your balances (Unified, Funding, Flexible Savings, On-Chain Earn), deposits, withdrawals and transfers between Funding and Unified. It does not read deposits sent by another Bybit user, trades, converts, P2P orders, other Earn products, derivatives or loans. | Кіко читає ваші баланси (Unified, Funding, Flexible Savings, On-Chain Earn), поповнення, виведення та перекази між Funding і Unified. Він не читає поповнення від іншого користувача Bybit, угоди, конвертації, замовлення P2P, інші продукти Earn, деривативи й позики. |
-| `bybitKeyRejected` (O25. Level: UNVERIFIED for a regional key, so "may not") | Bybit did not accept this key. Check the key and the secret. Kiko works only with global Bybit accounts, so a key from Bybit EU or another regional site may not be accepted here. | Bybit не прийняв цей ключ. Перевірте ключ і секрет. Кіко працює лише з глобальними акаунтами Bybit, тож ключ із Bybit EU чи іншого регіонального сайту тут може не підійти. |
+| `bybitKeyRejected` (O25, O39 C1: fits a wrong key and a key of Bybit EU or another regional site. Level: QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not") | Bybit did not accept this key. Check the key and the secret. Kiko works only with global Bybit accounts: it does not support Bybit EU accounts, and a key from another regional site may not be accepted here. | Bybit не прийняв цей ключ. Перевірте ключ і секрет. Кіко працює лише з глобальними акаунтами Bybit: він не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту тут може не підійти. |
 | `bybitKeyNotReadOnly` | This key can do more than read. Create a read-only key on Bybit and connect with that one. | Цей ключ дозволяє більше, ніж читання. Створіть на Bybit ключ лише для читання й підключіться з ним. |
 | `bybitKeyNotMain` (new, O13. Level: UNPROBED(P1)) | Bybit does not show this key as a main account key. Create a read-only key on your main Bybit account and connect with that one. | Bybit не показує цей ключ як ключ основного акаунта. Створіть ключ лише для читання в основному акаунті Bybit і підключіться з ним. |
 | `bybitKeyMissingPermission` (new, O13. Level: UNPROBED(P1, P11)) | This key cannot read everything Kiko needs. Turn on {{permissions}} for this key on Bybit, or create a new read-only key with them, then connect again. | Цей ключ не може прочитати все, що потрібно Кіко. Увімкніть для нього {{permissions}} на Bybit або створіть новий ключ лише для читання з цими дозволами, потім підключіться знову. |
@@ -508,10 +523,10 @@ probe output.
 | `bybitCoinBorrowed` (O27: fits a first connect, with no last balance. Level: SUMMARY for the borrow fields; UNPROBED(P2)) | {{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. | {{coin}}: Bybit показує позику під цю монету, тож Кіко не читає її баланс. Баланс, показаний тут, узято з попередньої синхронізації. |
 | `disconnectProviderMessage.bybit` | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | Акаунт буде відʼєднано, а збережений API-ключ очищено. Ваші активи й транзакції збережуться, і ви можете й надалі керувати ними вручну. |
 | `untrackedCoins` (changed) | Not tracked: {{tickers}}. Kiko does not import a currency its {{exchange}} sync does not support. | The existing uk line with Binance replaced by `{{exchange}}`; the output for Binance stays byte-identical |
-| `holdingDetail.exchangeNotListed.bybit` (E1 and M1; O15, O25. Level: UNPROBED(P3, P5); UNVERIFIED for a regional key, so "may not") | Not listed: deposits sent by another Bybit user; trades, converts, interest and other Unified log entries; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than Bybit keeps. A key from Bybit EU or another regional site may not be accepted. | Не показано: поповнення від іншого користувача Bybit; угоди, конвертації, відсотки й інші записи журналу Unified; замовлення й дохід Earn; замовлення P2P, бо API Bybit відкритий для них лише рекламодавцям; продукти Earn, крім Flexible Savings і On-Chain; прибуток і збитки деривативів; позики; субакаунти; записи, старіші за ті, що зберігає Bybit. Ключ із Bybit EU чи іншого регіонального сайту може не підійти. |
+| `holdingDetail.exchangeNotListed.bybit` (E1 and M1; O15, O25, O39 C1. Level: UNPROBED(P3, P5); QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not") | Not listed: deposits sent by another Bybit user; trades, converts, interest and other Unified log entries; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than Bybit keeps. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted. | Не показано: поповнення від іншого користувача Bybit; угоди, конвертації, відсотки й інші записи журналу Unified; замовлення й дохід Earn; замовлення P2P, бо API Bybit відкритий для них лише рекламодавцям; продукти Earn, крім Flexible Savings і On-Chain; прибуток і збитки деривативів; позики; субакаунти; записи, старіші за ті, що зберігає Bybit. Кіко не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти. |
 | `help.topics.connectCrypto.title`, `rowLabel` | Connect Binance, Bybit or a Bitcoin Wallet; Connect Binance, Bybit or a Bitcoin wallet | Підключення Binance, Bybit або гаманця Bitcoin (обидва) |
 | `help.topics.connectCrypto.steps.2` | Under "Exchange or wallet", choose "Binance", "Bybit" or "Bitcoin wallet address". | У полі «Біржа або гаманець» оберіть «Binance», «Bybit» або «Адреса гаманця Bitcoin». |
-| `help.topics.connectCrypto.steps.4` (new; the old 4 and 5 become 5 and 6; O15, O25. Level: UNPROBED(P1) for read-only with no IP restriction and for the main account; UNVERIFIED for a regional key, so "may not"; QUOTE for 90 days and renewal before the date) | For Bybit, use a global account (bybit.com; a key from Bybit EU or another regional site may not be accepted). Tap "Open Bybit API management" and, on your main account, create a read-only key with no IP restriction. Paste the "API key" and "API secret", then tap "Connect Bybit". Bybit ends the key after 90 days; renew it there before that date, and the key stays the same. The shipped `bybitKinds` text follows here, word for word. | Для Bybit скористайтеся глобальним акаунтом (bybit.com; ключ із Bybit EU чи іншого регіонального сайту може не підійти). Натисніть «Відкрити керування API Bybit» і в основному акаунті створіть ключ лише для читання без обмеження за IP. Вставте «API ключ» і «API секрет», потім натисніть «Підключити Bybit». Bybit припиняє дію ключа через 90 днів; подовжте її там до цієї дати, і ключ лишиться той самий. Далі йде текст `bybitKinds` слово в слово. |
+| `help.topics.connectCrypto.steps.4` (new; the old 4 and 5 become 5 and 6; O15, O25, O39 C1. Level: UNPROBED(P1) for read-only with no IP restriction and for the main account; QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not"; QUOTE for 90 days and renewal before the date) | For Bybit: Kiko works only with global accounts (bybit.com). It does not support Bybit EU accounts, and a key from another regional site may not be accepted. Tap "Open Bybit API management" and, on your main account, create a read-only key with no IP restriction. Paste the "API key" and "API secret", then tap "Connect Bybit". Bybit ends the key after 90 days; renew it there before that date, and the key stays the same. The shipped `bybitKinds` text follows here, word for word. | Для Bybit: Кіко працює лише з глобальними акаунтами (bybit.com). Він не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти. Натисніть «Відкрити керування API Bybit» і в основному акаунті створіть ключ лише для читання без обмеження за IP. Вставте «API ключ» і «API секрет», потім натисніть «Підключити Bybit». Bybit припиняє дію ключа через 90 днів; подовжте її там до цієї дати, і ключ лишиться той самий. Далі йде текст `bybitKinds` слово в слово. |
 
 Clauses per predicted outcome (O15). Only one kind set ships, so `bybitKinds`, the footer, the help step and
 the policy (section 9) each hold one combination; the other clauses never reach the catalogue. A mixed P3 result
@@ -631,53 +646,90 @@ that the app then shows `bybitForbidden`. Per kiko-compliance ("is still a judgm
 show it?"), the step states whether the demo `.kiko` shows Bybit, with its reason. Kit section D gains the Bybit
 line of App Privacy.
 
-**Trademark.** Plain text `Bybit`, no logo, generic icon, the existing not-affiliated caption. No Bybit brand
-rule was found (research L, UNVERIFIED). Add `Bybit` to the `en.casing-by-role.test.ts` allowlist.
+**Trademark.** Plain text `Bybit`, no logo, generic icon, the existing not-affiliated caption. Global 40.4(e) is a brand
+clause: QUOTE "make any commercial use of the Site or Platform or Bybit's logo, trademark or brand name in any way". It limits
+commercial use only. On the verdict's reading, plain text in a free app is not commercial use; the store listing is the closest
+point to it (C4). The EU terms have no rule on brand use. Add `Bybit` to the `en.casing-by-role.test.ts` allowlist.
 
-**API terms.** Read 2026-11-03, the undated PDF "API Terms & Conditions" (research-bybit-legal section 1).
-No read-only clause, no personal-use clause, no name clause exists in it.
+**Terms verdict, 2026-11-03 (O39).** A `kiko:reviewer` read the terms: PASS WITH CONDITIONS for global bybit.com accounts. The
+reviewer's words: "This is a reading of terms, not legal advice." No clause of the API Terms or the Global Terms forbids a
+third-party read-only app, a key held by that app on the user's device, or the name in plain text. For a Bybit EU account the
+use is FORBIDDEN by EU 7.4. The stop rule (O23) does not fire, because the track does not need EU accounts. Full text and
+quotes: `.superpowers/sdd/1.4-bybit/terms-verdict.md`.
 
-| Clause | Text, in short | Reading for Kiko (free app, key only on the device) |
+Sources:
+
+| Document | Date | Text |
 |---|---|---|
-| 2.4 | An API Client the user authorises sends instructions on their behalf; keep it secure | Kiko is that client; it sends reads only; Keychain, App Lock and pins are the security asked for |
-| 2.5 | Giving a key to a third-party provider is like giving login credentials; use caution | A warning, no ban. No third party receives the key: it never leaves the device, and the disclosure line says so |
-| 6.5 | No replicating Bybit's products, or attempting to compete with or replace their user experience | Broadest clause. Kiko shows a total across banks and exchanges; no trading, no order UI. Residual: re-read if any trading feature lands |
-| 6.7 | No repackaging or reselling services, API or Service Data | Nothing is resold; the user's data is shown to that user on their device only |
-| 6.9 | No commercially exploiting the APIs | Kiko is free today, which is the reading. Residual: a paid tier re-opens this clause |
+| API Terms & Conditions, PDF | undated | `research-bybit-legal.md` section 1. It has no read-only clause, no personal-use clause and no name clause. Sections 1 and 2.1 are not in the file (C7) |
+| Global: "BVAPO Platform Terms and Conditions", `https://www.bybit.com/en/legal/terms-of-service/terms-of-service` | page last updated 2026-10-16 | `memory/refs/bybit-terms-2026-11-03/global-terms-full.txt`, main checkout |
+| EU: `https://www.bybit.eu/en-EU/legal/terms-and-conditions/terms-of-service` | page last updated 2026-07-20; the PDF is dated 12 June 2026 | `memory/refs/bybit-terms-2026-11-03/eu-terms-full.txt`, main checkout |
+| How the pages were read | 2026-11-03 | `memory/refs/bybit-terms-2026-11-03/SOURCE.md`, main checkout |
 
-Also noted: 7.7 (Kiko does not mask its identity), 6.6 (no monitoring use; the probe is one user's account
-check), 7.6 (audit on request), 10.1 (suspension is a refused key, which the text fits). The table is the
-planner's reading only. The verdict (O23, O36, O38): plan set 1 step 2/7, at once on the user's pasted sentences,
-before R1 and before any of the user's money. It does not wait for the script. A `kiko:reviewer` reads those sentences
-and this table, and rules on clauses 6.5 and 6.9 by name. It needs no probe output. Stop rule: a clause that forbids this
-use stops the track, and the coordinator takes it to the user.
+Which document governs: the API Terms are the specific document for API use, and their 7.1 adds the API Documentation. The
+Global Terms bind in parallel and never name the API Terms. No clause sets a precedence between them (8.3 prevails only over
+the Documentation), so the stricter applies. The entity of the API Terms is unread; their URL path says BYBIT, and the Global
+Terms name BVAPO.
 
-**Pages that could not be read.** `https://www.bybit.com/en/terms-service` and
-`https://www.bybit.eu/en-EU/terms-service/` are client-rendered shells to curl. The user's browser step has two
-parts (PLANNER CALL 18):
+| Clause | Text, in short | The verdict's reading (free app, key only on the device) |
+|---|---|---|
+| API 2.4 | An API Client that uses the user's key can give user instructions; keep it secure | Not forbidden. API 2.4, 3.1 and 9.1(d) contemplate client applications. Kiko sends reads only; Keychain, App Lock and pins are the security asked for |
+| API 2.5 | Giving a key to a third-party provider is like giving login credentials; use caution | A warning, not a ban. The key never leaves the device, and the disclosure line says so (C5) |
+| API 6.5 | No replicating products or services, including functions or clients on platforms, or attempting to compete with or replace their user experience | NOT FORBIDDEN, BUT REAL DOUBT. "Replicate ... functions" literally reaches a balance and history view, because Global 7.6 lists that view as a Bybit function. The reading: an anti-clone clause, and Kiko replaces no Bybit product. But API 7.6 ("we deem, in our sole discretion") and 10.1 let Bybit decide otherwise. The doubt stays open, and the user accepted it (O42, below). Any trading feature re-opens it (C2) |
+| API 6.7 | No repackaging or reselling services, API or Service Data | Not forbidden, for "repackage" and for "resell". Each user reads only their own data with their own key, so nothing is offered to others |
+| API 6.9 | No commercially exploiting the APIs | Not forbidden while Kiko earns nothing from the API. "Commercially exploit" has no definition. A price, an ad, an IAP, a tip, a sponsor or an affiliate code re-opens it (C3) |
+| Global 6.2 | No providing access to a third party; no service bureau | Not forbidden. The maker gets no access and has no server |
+| Global "Authorized Individual" | A person a User authorizes to access on the User's behalf | Not reached. The maker never accesses |
+| Global 6.3(k) | No robot or device that reproduces or circumvents the Platform's structure or presentation | Not forbidden. The object is the structure or presentation, and the API is the sanctioned route |
+| Global 40.4(a) | No reproducing data or content provided through the Platform | Not applied to the user's own data: a literal reading would forbid every API read. The doubt stays stated |
+| Global 40.4(d) | No editing or filtering information on Bybit's Sites | Covers "Bybit's Sites", not API output |
+| Global 40.4(e) | No commercial use of the Site, the Platform, or Bybit's logo, trademark or brand name | Not forbidden; see "Trademark" above and C4 |
+| EU 7.4, 7.1, 9.1.2, 9.2.2 | No access through non-official or unauthorised applications; no third-party access; no automated access | FORBIDDEN for a Bybit EU account (section 6.2, C1) |
 
-- Part 1, the user's first step, before the script is ready and before the key moment (O38): open both pages, find any
-  clause on API use, third-party apps, and which entity serves a Ukrainian resident or a Ukrainian living in the EU, and
-  paste those sentences. The sentences go at once to a `kiko:reviewer` for the verdict, so that a forbidding clause stops
-  the track before any account, key or money. That these pages open with no account is UNVERIFIED. If a page needs a
-  login, the user creates no account: the verdict is reported as blocked on that page, and the coordinator takes it to the
-  user. No account step starts until the user rules on it.
+Also noted: API 7.7 (Kiko does not mask its identity), API 6.6 (no monitoring use: section 10), API 7.6 (audit on request),
+API 10.1 (Bybit can end any key for any reason, whatever this reading says; a refused key is a case the text fits).
+
+Who is bound: each Kiko user is "you" in the API Terms and a "User" in the Global Terms. A breach falls on that user's key
+(API 10.1), and API 4.2, 7.3 and 9 put liability on that user. A maker with no account is not a party to the API Terms and not a
+defined "User". The Global preamble still claims to bind anyone "VISITING" the site, and the reviewer cannot say if that holds.
+Trademark law applies with or without a contract. For the user who opens the R1 account: section 10.
+
+Stated doubts: "replicate" and "commercially exploit" have no definition. No one compared the extracted text with the pages by
+eye. Clause numbers in Global 3, 6, 11 and EU 9 are the reviewer's reconstruction, because the PDF extraction detaches them. EU
+1.3 says German prevails, and the reviewer read English.
+
+Conditions of the verdict. C6 is a human action, so it is a user line in section 10, not a row here.
+
+| Id | Condition | Set and step | Test or check |
+|---|---|---|---|
+| C1 copy | For Bybit EU, the copy says plainly that Kiko does not support these accounts; `may not` stays for other regional sites. No workaround text. The key never goes to `api.bybit.eu` | Plan set 3 step 2/6 (host); set 7 steps 1/6, 2/6, 3/6 (copy) | Pinned: A13, A51, A52 |
+| C2 limit | A closed list of GET endpoints, no order, no write path. Any trading feature re-opens API 6.5 | Plan set 3 step 2/6; each later step that adds a route | Mechanizable: A53 |
+| C3 free | No price, ad, IAP, tip, sponsor, or affiliate code on `BYBIT_API_MANAGEMENT_URL`. Any of these re-opens API 6.9 and Global 40.4(e) | URL: plan set 7 step 1/6. Business state: the standing item of set 8 step 2/2 | Pinned for the URL: A54. The business state has no test: a reviewer's judgment |
+| C4 name | Text only, no logo, no Bybit look, the not-affiliated caption stays. No Bybit in the store title, subtitle or keywords. No line that offers Kiko in place of the Bybit app (API 6.5, Global 40.4(c)) | Plan set 7 step 2/6 (caption), step 5/6 (store metadata), set 7's reviewer (wording) | Pinned for the caption: A55. The wording has no test: a reviewer's judgment |
+| C5 key | The key stays on the device through `hardenedFor`; no server copy, no shared key in the build. A key that leaves the device re-opens API 2.5, Global 6.2 and "Authorized Individual" | Plan set 3 step 3/6 | Pinned: A56 |
+| C7 re-read | Re-read API Terms sections 1 and 2.1, the API Documentation (API 7.1) and the EU 4.3.7 list at each release that changes Bybit, because the API Terms have no date. A dated Bybit block in kiko-compliance, like the Binance one | Plan set 8 step 2/2 | Not mechanizable: a legal reading |
+| Guideline 5.2.2 and the API 6.5 doubt | Both doubts stay OPEN and are ACCEPTED BY THE USER, 2026-11-03 (O42): keep Bybit, global accounts only, no letter to Bybit. The user's words, relayed by the coordinator: "The user in EU can't obtain API key, hence adding bybit to kiko is pointless. Continue."; then, asked which reading, the user picked "Keep Bybit, global only". The guideline text was not re-read: the reviewer cited it from memory as asking for specific permission under the service's terms, with authorization on request. kiko-compliance has no 5.2.2 item. The closest permission here is API 2.4, 3.1 and 5.1, which is general and does not name Kiko. A written yes from Bybit would close this gap and the API 6.5 doubt; the user chose not to ask for one | The kiko-compliance item: plan set 8 step 2/2 | Not mechanizable: a judgment |
+
+**The browser step (PLANNER CALL 18).** `https://www.bybit.com/en/terms-service` and
+`https://www.bybit.eu/en-EU/terms-service/` are client-rendered shells to curl. The step has two parts:
+
+- Part 1: DONE 2026-11-03. The coordinator read both pages in the Orca browser, at the user's word ("You can read both pages in
+  the Orca browser"). No login was needed, no account exists, and no paste came. The verdict above rests on that text (O39).
 - Part 2, at R1, signed in: confirm the API management URL for `BYBIT_API_MANAGEMENT_URL`, which no research
   line gives.
 
 ## 10. The user's probe plan
 
-The order of the user's steps (O23, O31, O36, O38; was: the browser step inside R1, the verdict after R1 and R2, the
-redeem at R6, the script and the approval before the browser step):
+The order of the user's steps (O23, O31, O36, O38, O39, O41; was: the browser step inside R1, the verdict after R1 and R2,
+the redeem at R6, the script and the approval before the browser step):
 
-1. The user does part 1 of the browser step (section 9) and pastes the sentences. This does not wait for the script
-   (O38).
-2. A `kiko:reviewer` gives the terms verdict at once on those sentences. A forbidding clause stops the track here. A page
-   that needs a login: the user creates no account, the verdict is blocked on that page, and the coordinator takes it to
-   the user (O38).
+1. DONE 2026-11-03: part 1 of the browser step (section 9).
+2. DONE 2026-11-03: a `kiko:reviewer` gave the terms verdict, PASS WITH CONDITIONS for global accounts (section 9). The stop
+   rule did not fire.
 3. Meanwhile set 1's script is written and reviewed, so a pass loses no time (O38). The user gets it only after a pass.
-4. The user approves this spec, with the verdict in it (PLANNER CALL 23).
-5. THE KEY MOMENT, R1: the first step that needs an account or a key. It holds no money.
+4. The user approves this spec, with the verdict in it (PLANNER CALL 23, O41). The coordinator's message gave answers and asked
+   for the script review; it did not state approval of the spec. So R1 waits for this approval.
+5. THE KEY MOMENT, R1: the first step that needs an account or a key. It holds no money. The user gets the C6 line below first.
 6. R2: the first of the user's money. R3, then R4, with the Flexible Savings redeem and its P3 run.
 7. The planner writes the results. The commit after the last step that writes results is the set 1 tip, and set 2 bases
    on it (O36).
@@ -695,17 +747,30 @@ on stdin, masked URLs, one part per argument, GET only. It prints only field nam
 counts, decimal counts per coin, time-unit class, the box names of a key's `permissions`, `retCode`, HTTP status and `X-Bapi-Limit*`. An allowlist
 decides any value; everything else is a name and a type. No email, phone, address, name, id or txID is ever
 printed. A fake-curl test runs before handover, and the orchestrator reads the whole file. Output goes to
-`memory/refs/bybit-probe-output-<date>.txt`.
+`memory/refs/bybit-probe-output-<date>.txt`. The script prints no elapsed time and repeats no call to measure uptime or
+latency (API 6.6).
+
+The user line before R1 (C6; a human action, not mechanizable):
+
+- Use a network that shows your true location, for KYC and for every probe.
+- The facts: Global 3.4 lists the Chinese Mainland as an Excluded Jurisdiction, and Global 3.5 allows termination of an account
+  for false representations of location or residence. A mainland China IP reading was seen: the bybit.com home page showed a
+  banner that the IP address locates the browser in mainland China (`SOURCE.md`, section 9). That banner says nothing about your
+  account country. Bybit also returns 403 for those IPs (research, SUMMARY; section 9).
+- Keep the probes one bounded run: only the parts of the table below, at the runs it names, with no uptime or latency measure
+  (API 6.6).
+- Who is bound: the user who opens the account is "you" in the API Terms. API 9.1(d) (indemnity for a claim from a third party's
+  use of "your API Client(s)") and API 7.6 (audit) then bind that user directly, and so does Global 40.4(e).
 
 What the account holds, in order. Money figure is a GUESS: 30 to 50 USD of the user's own money stays in the
 account plus a few USD in fees; it can be withdrawn after.
 
 | Run | When | The user does first | Parts | Proves |
 |---|---|---|---|---|
-| R1 | Day 0, no money | Global account at bybit.com, KYC as Bybit asks; one key: System-generated, read-only, every read box offered, no IP restriction. Part 2 of the browser step (section 9). Which boxes a read-only key can tick and whether it works with no IP restriction are UNPROBED(P1) | P1, P11, P12, P13 (empty), P14, P15, P16 | Host for Ukraine (O1), key shape, boxes, `isMaster`, expiry date, per-route permissions, no-P2P. On this empty account P12 shows only a refusal (O20); an empty 0 proves no retention |
+| R1 | After the user's spec approval (O41), no money | Read the C6 line above. Global account at bybit.com, KYC as Bybit asks; one key: System-generated, read-only, every read box offered, no IP restriction. Part 2 of the browser step (section 9). Which boxes a read-only key can tick and whether it works with no IP restriction are UNPROBED(P1) | P1, P11, P12, P13 (empty), P14, P15, P16 | Host for Ukraine (O1), key shape, boxes, `isMaster`, expiry date, per-route permissions, no-P2P. On this empty account P12 shows only a refusal (O20); an empty 0 proves no retention |
 | R2 | After money lands | K1: on-chain USDT deposit. K2: FUND to UNIFIED and back, part of it left in UNIFIED. K3: a far-off unfilled spot limit order | P4 while K1 is pending (O16, O32); then, after it lands, P2, P4, P7, P13 (rows), P18 | The form of a row with no time, balance shapes, `locked` inside `walletBalance`, deposit wallet and status, transfer path and rows, page behaviour, decimals. If the user misses the pending window, rule 47 stays UNPROBED(P4) (O32) |
 | R3 | Same day | K4: subscribe Flexible Savings. K5: on-chain Earn if its minimum is affordable. Cancel K3 | P2, P3 | The double count. The Earn status rule still waits for R4 (rule 46) |
-| R4 | At least a day after K4 (O31, PLANNER CALL 24) | K6: on-chain withdrawal to the user's own Binance from FUND, and one from UNIFIED if Bybit allows it (O14); the output names each source wallet. K7, optional: an internal deposit from another Bybit user. K8, optional: off-chain withdrawal. Last: K11, redeem all of Flexible Savings, then wait until it lands | P3, P5, P6 (run thrice as it settles); P3 again after K11 | `success` vs `BlockchainConfirmed`, amount vs fee, internal rows, whether a row tells its wallet (rule 45), the redeemed row (rule 46). When its results are written, the set 1 tip exists and code may start (O36) |
+| R4 | After the R3 run of P3 shows the position; no fixed day (O31, O40) | K6: on-chain withdrawal to the user's own Binance from FUND, and one from UNIFIED if Bybit allows it (O14); the output names each source wallet. K7, optional: an internal deposit from another Bybit user. K8, optional: off-chain withdrawal. Last: K11, redeem all of Flexible Savings, then wait until it lands | P3, P5, P6 (run thrice as it settles); P3 again after K11 | `success` vs `BlockchainConfirmed`, amount vs fee, internal rows, whether a row tells its wallet (rule 45), the redeemed row (rule 46). When its results are written, the set 1 tip exists and code may start (O36) |
 | R7 | On the date `expiredAt` prints; an open check after the ship (Q4) | Nothing; do not renew first | P17 | The error after expiry, then renewal keeps the key. Until it runs, the renewal row stays UNPROBED(P17), with the copy of O26 |
 
 Everything in research "STILL NEEDS THE KEY". Items 7 and 8, and the order and yield parts of item 12, are under Backlog,
@@ -725,7 +790,7 @@ because only the deferred stages need them:
 | 12 | Earn position shape and limits, limit headers | P3, P16 |
 | 13 | Maximum recv window | P15 |
 | 14 | HTTP status for every call | P16, printed on each |
-| 15 | API terms and brand | Done by curl for the PDF; the browser step for the rest; no brand page found |
+| 15 | API terms and brand | Done 2026-11-03: the API Terms PDF by curl, the Global and EU Terms in the browser, the brand clause is Global 40.4(e) (section 9). C7's re-read stays |
 
 Parts, what each must print and which code it unlocks:
 
@@ -773,7 +838,7 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A10 | HTTP 403 | same, "a 403 sets a ten minute cooldown and shows the text that fits both reasons" |
 | A11 | Cooldown active | `bybit.provider.test.ts`: "a cooling account makes no call and returns no balances" |
 | A12 | `readOnly` 0 at connect | `src/design-system/components/bybit-credentials-field/bybit-credentials-field.component.test.tsx`: "a read-write key is refused before any Keychain write" |
-| A13 | `10003` at connect | same, "a rejected key shows the text that says a regional key may not be accepted" |
+| A13 | `10003` at connect (O39 C1) | same, "a rejected key shows the text that names a wrong key, Bybit EU as not supported, and another regional key as may not" |
 | A14 | `far`, `near`, `expired`, `unknown` | `bybit.key-expiry.test.ts`: "reads each expiry state from the stored date" |
 | A15 | 33004, -2015, unknown after `expiredAt` | `bybit.client.test.ts`: "every refusal past the stored date is the expired class" |
 | A16 | Renewal: new `expiredAt`, same pair | `bybit.provider.test.ts`: "a renewed key moves the stored date and writes no Keychain item" |
@@ -811,6 +876,12 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A48 | FUND fails while UNIFIED reads, each with stored notes (O33) | `bybit.provider.test.ts`: "a wallet that read replaces its notes and a wallet that failed keeps them" |
 | A49 | Each provider's calls to the caption helpers (O30) | `binance-history-status.test.ts` (edit): "Binance compares its 8 walks and Bybit compares only its own" |
 | A50 | The hosts of the code and the md, set 7 (O29) | Plan set 7 step 4/6, by hand: each line of `npm run privacy:site -- hosts` is named in both md files |
+| A51 | The EU copy, four surfaces (C1) | `bybit.shipped-copy.test.ts`: "connect, rejected key, footer and help each say Kiko does not support Bybit EU accounts and keep may not for other regional sites, in en and uk" |
+| A52 | The host of a key (C1) | `bybit.endpoints.test.ts`: "the one signed host is api.bybit.com, and no env file, plist entry or client module names api.bybit.eu" |
+| A53 | The closed list of routes (C2) | `bybit.endpoints.test.ts`: "the signed paths equal the literal list of reads, and the client sends only GET"; a step that adds a route adds its literal |
+| A54 | The API management URL (C3) | `bybit-credentials-field.component.test.tsx`: "the API management link is the exact URL of part 2, with no query string" |
+| A55 | The not-affiliated caption (C4) | `exchange-type-field.component.test.tsx` (edit): "the not-affiliated caption shows with Bybit in the sheet, and its en and uk text says so" |
+| A56 | The Bybit key writer (C5) | `bybit.credentials.test.ts`: "the pair is written through hardenedFor at WHEN_UNLOCKED_THIS_DEVICE_ONLY" |
 
 ### Property suites
 
@@ -865,13 +936,13 @@ stays 3, so "Enable Reading" holds; uk title), `en.uk.parity.test.ts`, `en.casin
 | PLANNER CALL 15 (changed by O21) | The device check builds the set 7 branch before any merge of sets 3 to 7 | O9 asks for catalog last and after the check; a device needs a way in |
 | PLANNER CALL 16 | Keep the 7-day and 29-day windows, no adaptive width | The cursor reader follows pages; no measured need for narrower |
 | PLANNER CALL 17 (changed by O33) | One new patch kind `balanceNotes` holds the refused wallets, borrowed coins and Earn left-out count, per wallet: a wallet that this run read replaces its notes, and a wallet that failed keeps them, plus its refused mark when the failure is a 10005 | O13, O18 and rule 6 each need a visible line that reads persisted state; the section reads only that (section 5, "Caption false"). Precedent: `oversizedBalance` and `complete` in `exchange-state-patch.ts` (CODE). It holds no secret, and `exchangeStateReset` drops it |
-| PLANNER CALL 18 (new) | The browser step splits: the terms sentences come first, before the key moment; the URL check stays at R1 | O23 moves the verdict before code; a forbidding clause found first costs the user no account or money, and the URL check may need a login |
+| PLANNER CALL 18 (part 1 done 2026-11-03, O39) | The browser step splits: the terms come first, before the key moment; the URL check stays at R1 | O23 moves the verdict before code; a forbidding clause found first costs the user no account or money, and the URL check may need a login |
 | PLANNER CALL 19 (withdrawn by O30) | None; the id stays retired | See the O30 row of the next table |
 | PLANNER CALL 20 (new) | `hasExchangeHistory`, `captionWalksOf` and the tracked predicate table live in the existing `src/screens/account-detail/crypto-sync-section/binance-history-status.ts` | O30 asks for a named source module. An existing module lets a red call a missing export with no import of a missing module, and the helpers it serves are there; O7 keeps the file name |
 | PLANNER CALL 21 (new) | The Bybit tracked predicate is a named part of plan set 3 step 6/6, not a step of its own; `isTrackedBybitAsset` itself is written at step 4/6 | O30 asks for a named step and for seam 3 in the step that adds the id. A table typed by `BalanceProviderId` does not compile with the id and no entry, and each step has a green commit that passes the typecheck |
 | PLANNER CALL 22 (changed by O37) | K11 moves from R6 to R4. Before set 7's device check, the user subscribes Flexible Savings again if it ships | O31 puts the redeem at R4, and a position redeemed in full leaves nothing to check on device |
-| PLANNER CALL 23 (new) | The user's approval of the spec moves after the terms verdict, before R1. Set 1's script does not wait for it | O38 puts the paste and the verdict first and names no place for the approval. The approval then covers the verdict, and the script is reviewed meanwhile |
-| PLANNER CALL 24 (new) | R4 stays at least a day after K4, though P10 left it | P10's position older than a day was the reason given. The wait costs no money, and with it P3 reads `claimableYield` on a position that has earned |
+| PLANNER CALL 23 (accepted by O41) | The user's approval of the spec moves after the terms verdict, before R1. Set 1's script does not wait for it | O38 puts the paste and the verdict first and names no place for the approval. The approval then covers the verdict, and the script is reviewed meanwhile |
+| PLANNER CALL 24 (reversed by O40) | R4 comes after the R3 run of P3 shows the position, with no fixed day | P10's position older than a day was the only reason for a wait, and P10 left. Cost if wrong: R4 is repeated, at no money |
 
 Changed by the rulings of the builder check, the re-check and the user's answers (was: and now, per ruling that
 reverses a row):
@@ -920,6 +991,21 @@ reverses a row):
 | O38 | Order of the first steps | the approval and the reviewed script came before the browser step | the browser step and the verdict come first; the script is written and reviewed meanwhile |
 | O38 | A terms page that needs a login | it waits for R1, and the reviewer reads it before R2 | no account; the verdict is blocked on that page, and the coordinator takes it to the user |
 | O38 | Plan set 1 step numbers | script 1/7, test 2/7, read 3/7, browser 4/7, verdict 5/7 | browser 1/7, verdict 2/7, script 3/7, test 4/7, read and hand-over 5/7 |
+| O39 | Terms verdict | the planner's reading; the verdict to come on the user's pasted sentences | PASS WITH CONDITIONS for global accounts, FORBIDDEN for Bybit EU (EU 7.4); conditions C1 to C5 and C7 in section 9, C6 in section 10 |
+| O39 | Browser step, part 1 | the user pastes sentences; a page that needs a login blocks the verdict (O38) | done 2026-11-03: the coordinator read the pages in the Orca browser at the user's word, no login was needed; the login case goes |
+| O39 | Bybit EU in the copy (reverses O25 for Bybit EU) | `bybitConnectLimits`, `bybitKeyRejected`, the footer and the help step: "may not" for Bybit EU too | Kiko does not support Bybit EU accounts; "may not" only for other regional sites; A51 |
+| O39 | Help step opening | "use a global account" | "Kiko works only with global accounts": no workaround text |
+| O39 | A13 | "a regional key may not be accepted" | a wrong key, Bybit EU as not supported, another regional key as may not |
+| O39 | Clause 6.5 | broadest clause, answered with "no trading" | not forbidden, but real doubt; Global 7.6, API 7.6 and 10.1 stated |
+| O39 | Clause 6.7 | "nothing is resold" | "repackage" answered too: each user reads only their own data with their own key |
+| O39 | Clause 6.9 | a paid tier re-opens it | not forbidden while Kiko earns nothing from the API; a price, ad, IAP, tip, sponsor or affiliate code re-opens it (C3) |
+| O39 | Brand | "No Bybit brand rule was found"; "no name clause" stated with no limit; "no brand page found" | Global 40.4(e) is a brand clause; "no name clause" holds for the API Terms PDF only (C4) |
+| O39 | Ukraine and displaced users | the restricted list of a help article; a Ukrainian in the EU UNVERIFIED, with no narrowing | Global 3.4 and EU 4.3.5 read; INFERENCE and UNVERIFIED stay; the EU row narrows by EU 4.2, 4.3.5, 4.3.7; no region check |
+| O39 | Acceptance rows | A1 to A50 | also A51 to A56 (C1 to C5) |
+| O39 | Plan set 8 | "kiko-compliance (the terms verdict, pins)" | a dated Bybit block like the Binance one, with C7's re-read and a 5.2.2 item |
+| O40 (reverses PLANNER CALL 24) | R4's condition | at least a day after K4 | after the R3 run of P3 shows the position; no fixed day |
+| O41 (accepts PLANNER CALL 23) | R1 and the spec approval | a planner call, not yet ruled | the user's approval comes after the verdict, before R1; R1 waits for it |
+| O42 (replaces the "Open" sentence of O39) | Guideline 5.2.2 and the API 6.5 doubt | an open question, with the coordinator for the user; a letter to Bybit as an option | no question: both doubts stay open and are accepted by the user; keep Bybit, global accounts only, no letter to Bybit |
 
 | Id | Conflict | Kept |
 |---|---|---|
@@ -933,6 +1019,7 @@ reverses a row):
 | Q2: how the user learns of the 90-day expiry | "Q2 detail line + failure text only." | Section 7. No notification |
 | Q3: two ledger gaps with no effect on any balance | "Q3 accept the two gaps." | Accepted limits for 1.4, reopened only on a measured case. (a) A deposit rolled back after the 29-day re-scan keeps its row; a longer re-scan would cost 3 more calls per extra window on every run. (b) A day with more rows than a run's calls (1,000 transfers or 1,500 of one capital series) holds its walk, with the caption up; a higher cap would load a pool shared with other accounts |
 | Q4 (F2): may 1.4 ship before R7 proves renewal after an expiry (about day 90 of the first key) | "Q4 ship before a real expiry proves renewal, with text that fits both outcomes." | 1.4 ships with the copy of O26. R7 and P17 stay an open check after the ship. Renewal after the date stays UNPROBED(P17) until R7 runs |
+| Guideline 5.2.2 and the API 6.5 doubt (section 9) | "The user in EU can't obtain API key, hence adding bybit to kiko is pointless. Continue."; then, asked which reading, the user picked "Keep Bybit, global only" | Keep Bybit, global accounts only, no letter to Bybit. Both doubts stay open and accepted (O42). No question is left open |
 
 The user's words on the order, the same date: "Spend no money and ask for no account step before the terms verdict."
 (O38, section 10.)

@@ -1,4 +1,4 @@
-# 1.4-bybit task 1/1: Bybit sync implementation plan
+# 1.4-bybit: Bybit sync implementation plan, sets 1/8 to 8/8
 
 > For agentic workers: use superpowers:subagent-driven-development. Steps use `- [ ]` tracking.
 
@@ -11,7 +11,9 @@ the catalog entry goes last.
 **Spec:** `docs/superpowers/specs/2026-11-03-bybit-sync-design.md`. Section numbers below are the spec's. Plan
 text never overrides it; a difference found is reported.
 
-**Status:** No app code until the coordinator relays the user's approval. The user answered Q1 to Q4 (spec section 13):
+**Status:** No app code and no R1 until the coordinator relays the user's approval of the spec (O41). The terms verdict is in
+spec section 9: PASS WITH CONDITIONS for global accounts. The user accepted the 5.2.2 and 6.5 doubts: keep Bybit, global
+accounts only, no letter to Bybit (O42). The user answered Q1 to Q4 (spec section 13):
 stages A and B ship, and stages C and D are deferred under Backlog (O37); no notification; the two gaps are accepted limits;
 1.4 ships before R7, with the copy of O26. Mutation gates are paused by the user since 2026-10-25: verify and review only;
 the gate text stays below for when it is lifted.
@@ -59,36 +61,36 @@ the gate text stays below for when it is lifted.
 
 ## 1.4-bybit set 1/8: the terms verdict, the probe script and the user's probe run
 
-Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 wait for nothing; the spec approval comes before step 6/7 (PLANNER CALL
-23). Size: 1 script of about 600 to 900 lines, 1 test, no app file. Not mutable.
+Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). The user's spec approval comes after the
+verdict and before step 6/7 (PLANNER CALL 23, O41). Size: 1 script of about 600 to 900 lines, 1 test, no app file. Not mutable.
 Reviewer checks: the whole script for any leak path; every part against spec section 10; no write verb. "Set 1 tip" is
 the commit after the last step that writes results: the second run of step 7/7, for R3 and R4 (O36). Set 2 bases on it.
 
-The user's order (O23, O31, O36, O38): part 1 of the browser step (step 1/7), the terms verdict at once (step 2/7), THE
-KEY MOMENT R1 (step 6/7), R2, R3, R4 with the redeem, and R7 on its date, an open check after the ship (Q4). Steps 3/7 to
-5/7 run meanwhile, so a pass loses no time (O38).
+The user's order (O23, O31, O36, O38, O39, O41): part 1 of the browser step (step 1/7, done), the terms verdict (step 2/7,
+done), the user's spec approval, THE KEY MOMENT R1 (step 6/7), R2, R3, R4 with the redeem, and R7 on its date, an open check
+after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O38).
 
-- [ ] **step 1/7: the user's first step: part 1 of the browser step** (O23, O38; PLANNER CALL 18): no account, no key, no
-  money, and no wait for the script. The coordinator sends the user the part 1 text of spec section 9. The sentences go to
-  `memory/refs/bybit-terms-sentences-<date>.txt` and at once to step 2/7.
-- [ ] **step 2/7: the API terms verdict (O23, O36, O38).** At once on the pasted sentences, before R1 and before any of
-  the user's money. A `kiko:reviewer` reads the step 1/7 sentences and the terms table of spec section 9, and rules on
-  clauses 6.5 and 6.9 by name. It needs no probe output. Stop rule: a clause that forbids this use stops the track here, and
-  the coordinator takes it to the user. The verdict goes into spec section 9. `make doc-suites`. A page that needs a login:
-  the user creates no account, the verdict is reported as blocked on that page, and the coordinator takes it to the user;
-  no account step starts until the user rules on it (O38).
+- [x] **step 1/7: part 1 of the browser step, DONE 2026-11-03** (O39; PLANNER CALL 18). The coordinator read both pages in the
+  Orca browser at the user's word. No login was needed. The text is in `memory/refs/bybit-terms-2026-11-03/`.
+- [x] **step 2/7: the terms verdict, DONE 2026-11-03** (O23, O39). PASS WITH CONDITIONS for global accounts, by a
+  `kiko:reviewer`; `.superpowers/sdd/1.4-bybit/terms-verdict.md`. The stop rule did not fire. It went into spec section 9
+  with `make doc-suites`. C1 to C5 and C7 are spec section 9 rows, and each step that holds one names it below. C6 is the user
+  line of spec section 10.
 - [ ] **step 3/7: write `memory/refs/bybit-probe.sh`** (main checkout, untracked, like its templates; `kiko:ops` or
   the coordinator names the writer). Pattern: `binance-transfer-depth-probe.sh`, `eodhd-verify.sh`: hidden prompts,
   `curl -q -K -` with URL and key on stdin, perl HMAC with the secret on stdin, alnum-checked key, masked URLs. Parts
   P1 to P7 and P11 to P18, no others (O37), and the allowlist-only printer of spec section 10; `set -u`; a Ctrl-C prints
-  what was read.
+  what was read. No elapsed time is printed, and no call repeats to measure uptime or latency (C6, API 6.6).
 - [ ] **step 4/7: fake-curl test.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
-  values for every part. Check: no sentinel appears on stdout or stderr, and the key is in no argv.
-- [ ] **step 5/7: read the whole file** (orchestrator). The reviewer passes it. Only after a pass verdict of step 2/7 does
-  the coordinator hand it over, with the R1 account list and part 2 of the browser step (spec section 9).
+  values for every part. Check: no sentinel appears on stdout or stderr, the key is in no argv, and each part makes a fixed
+  number of calls (C6).
+- [ ] **step 5/7: read the whole file** (orchestrator). The reviewer passes it. After that pass and the user's spec approval
+  (O41), the coordinator hands it over, with the R1 account list, the C6 user line of spec section 10 and part 2 of the
+  browser step (spec section 9).
 - [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
-  part 2 of the browser step at R1, P4 also while K1 is pending (O16, O32), K6 from each wallet that Bybit allows (O14),
-  and last at R4 K11, the redeem of Flexible Savings, with a P3 run after it (O31). Outputs go to
+  the C6 line before R1, part 2 of the browser step at R1, P4 also while K1 is pending (O16, O32), K6 from each wallet that
+  Bybit allows (O14), R4 after the R3 run of P3 shows the position, with no fixed day (O40), and last at R4 K11, the redeem of
+  Flexible Savings, with a P3 run after it (O31). Outputs go to
   `memory/refs/bybit-probe-output-<date>.txt`. The date of `expiredAt` goes into the track HANDOFF and the run log as an
   open gap until R7 runs. R7 on that date, an open check after the ship (Q4): it holds neither set 7 nor the merge, and its
   row stays UNPROBED(P17), with the copy of O26.
@@ -136,12 +138,13 @@ no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the p
 
 Base: set 2 tip. Needs step 2/7 of set 1 and P1, P2, P11, P15, P16; step 5/6 needs P3, with the run after the redeem. Size:
 about 1,270 code lines in 25 to 29 files (under the cap of 30; `make mutable` measures, and a count over the cap is a
-report to the orchestrator), about 2,250 test lines (was 1,200, 21 to 25, 2,050: O30 moves seams 3, 4 and 9 here; O31, O33
-add rows; O29 moves the policy, its site pages and `bybit.privacy-policy.test.ts` to set 7). Tip: `bybit` in
+report to the orchestrator), about 2,350 test lines (was 1,200, 21 to 25, 2,050: O30 moves seams 3, 4 and 9 here; O31, O33
+add rows; O29 moves the policy, its site pages and `bybit.privacy-policy.test.ts` to set 7; O39 adds A52, A53, A56). Tip: `bybit` in
 `balanceProviderIds`, every arm present, no catalog row and no registry entry, so no way in (`syncJobsFor` skips an
 unwired id; pinned by the unwired-provider guides). Stays out of `next` (O21). Reviewer checks: compliance items (pins,
-no-store, `hardenedFor`, no personal field parsed); retCode before status; each refusal class; balance anti-goals; fixtures
-from the probe output, never real values; every Binance caption result the same after the re-pins.
+no-store, `hardenedFor`, no personal field parsed); C2 and C5 (no write path, no server copy, no shared key in the build);
+retCode before status; each refusal class; balance anti-goals; fixtures from the probe output, never real values; every
+Binance caption result the same after the re-pins.
 
 - [ ] **step 1/6: host and pins.** `ios/Kiko/Info.plist` pin block (spec section 9), `.env.example`, `.env.test`,
   local `.env`, `src/env.d.ts` (`BYBIT_API_ENDPOINT`), `docs/security/README.md` table and host loop. Re-run the runbook's
@@ -149,12 +152,13 @@ from the probe output, never real values; every Binance caption result the same 
 - [ ] **step 2/6: client.** `bybit.endpoints.ts`, `bybit.client.ts`: `signedBybitGet` with the four headers and
   `no-store`, `fetchKeyInfo` (with `readOnly`, `isMaster`, `permissions` for set 7), `fetchUnifiedBalance`,
   `fetchFundBalance`, the refusal table of spec section 4, `BybitRateLimitError`, `BybitRefusalError`. `bybit.cooldown.ts`.
-  `BYBIT_SIGNED_PATHS` in `bybit.endpoints.ts`, a path added in each later step that adds a route. Check: rows
-  A9, A10, A15; `npm run check:plist` now sees the client; `check:dup`.
+  `BYBIT_SIGNED_PATHS` in `bybit.endpoints.ts`, a path added in each later step that adds a route, with its literal in
+  `bybit.endpoints.test.ts` (C2). Check: rows A9, A10, A15, A52 (C1: the host), A53 (C2: GET only, a closed list);
+  `npm run check:plist` now sees the client; `check:dup`.
 - [ ] **step 3/6: Keychain.** `exchange/credentials`: `createWriteSerial`; `bybit.credentials.ts`: service
   `kiko.bybit.credentials`, username `bybit`, save, read, clear, clear-if-written. `accounts.repo.ts`
   `clearKeychainItems` (seam 6). `src/holdings/holding-metadata`: member `bybitAsset`. `ExchangeMetadataField` follows.
-  Check: writer goes through `hardenedFor`; delete clears (seam 6 red); no secret in a log.
+  Check: A56 (C5: writer goes through `hardenedFor`); delete clears (seam 6 red); no secret in a log.
 - [ ] **step 4/6: coins and keys.** `bybit.tracked-coin.ts` with `BYBIT_FIAT_CODES` re-read from the public
   `instruments-info` (spec rule 9), the list stays the 5 codes (O19), `bybit.holding-keys.ts`. The tracked predicate
   `isTrackedBybitAsset` is written here; step 6/6 wires it to the section. Check: A8, A38, property Q2 start.
@@ -248,25 +252,30 @@ measured numbers.
 ## 1.4-bybit set 7/8: the way in, shipped stage A+B (catalog last, O9)
 
 Base: set 6 tip. Needs P1, P11 (boxes), part 2 of the browser step (URL). Size:
-about 450 code lines in 16 to 20 files, about 900 test lines (was 450, same, 850: O29 moves `bybit.privacy-policy.test.ts`
-here), plus the policy and site pages (O29). Tip: Bybit visible and complete. Merge: the batch of "Merge order", only after
-the device check on this branch (PLANNER CALL 15). Reviewer checks: compliance section whole, each surface's copy against
-spec section 8, help pins, the policy text against spec section 9; kiko:translator on every new key.
+about 450 code lines in 16 to 20 files, about 950 test lines (was 450, same, 850: O29 moves `bybit.privacy-policy.test.ts`
+here; O39 adds A51, A54, A55), plus the policy and site pages (O29). Tip: Bybit visible and complete. Merge: the batch of
+"Merge order", only after the device check on this branch (PLANNER CALL 15). Reviewer checks: compliance section whole, each
+surface's copy against spec section 8, help pins, the policy text against spec section 9; C4's wording (no Bybit look, no line
+that offers Kiko in place of the Bybit app) and C3 (no price, ad, IAP, tip or sponsor), both by judgment; kiko:translator on
+every new key.
 
 - [ ] **step 1/6: credentials field.** Extract `ExchangeKeyForm` from `binance-credentials-field`, Binance's suite unchanged;
   new `bybit-credentials-field` over it, verifying through `fetchKeyInfo`; refusals in the order of spec section 6.8 with the
   boxes per kind from set 1 step 7/7 (O13), all before any Keychain write; `bybitConnectLimits` and `bybitKinds` before the
   inputs; `BYBIT_API_MANAGEMENT_URL` in the env files, and `www.bybit.com` in `scripts/privacy-site.js` `NON_REQUEST_HOSTS`
-  in this same step. Rows A12, A13, A32, A33. Check: `npm run privacy:site -- hosts` does not list `www.bybit.com`.
+  in this same step. Rows A12, A13, A32, A33, A54 (C3: the exact URL). `bybitConnectLimits` and `bybitKeyRejected` carry the C1
+  text. Check: `npm run privacy:site -- hosts` does not list `www.bybit.com`.
 - [ ] **step 2/6: wiring.** `exchange-catalog.ts` id and row before `other`, `exchange/registry/registry.ts` entry with
   `notListedKey`, `crypto-sync-form.component.tsx` arm, `crypto-sync-section.component.tsx` connect callback,
   `account-form.screen.tsx` and `use-connect-reminder.ts` per-provider props, `clearPairIfRowMissing` for Bybit. Re-pin
   `exchange-catalog.test.ts`, `registry.test.ts`, `crypto-sync-section.component.connect.test.tsx`, naming O9. Row A43,
-  red on the parent, where `bybit` has neither entry (O21).
+  red on the parent, where `bybit` has neither entry (O21). Row A55 (C4: the caption). The footer of `notListedKey` carries the
+  C1 text.
 - [ ] **step 3/6: help and shipped copy.** Grep the help pins, `en.casing-by-role`, and uk first; in ONE step edit
   `help-topics.ts` (a sixth step key), en, uk, `help-topics.test.ts` (count 6, step 3 still Binance). The keys of steps 4 and
   5 move: per harness-workflow "Removing or renaming a catalogue key", every dependent edit stays in this step. The step text
-  ends with the shipped `bybitKinds` text. `bybit.shipped-copy.test.ts`, one row per kind set (O15). Row A40.
+  ends with the shipped `bybitKinds` text, and it carries the C1 text. `bybit.shipped-copy.test.ts`, one row per kind set (O15).
+  Rows A40, A51 (C1: the four surfaces, en and uk).
 - [ ] **step 4/6: the policy (O29, O24, O15, O34).** The block and the section 3 intro of spec section 9, with the variant
   that fits the shipped kind set, in `docs/privacy-policy.en.md`, `docs/privacy-policy.md`, site rebuilt under
   `docs/privacy-site/` (`npm run privacy:site -- build`); only the shipped paths in `BYBIT_SIGNED_PATHS` (O15);
@@ -277,8 +286,9 @@ spec section 8, help pins, the policy text against spec section 9; kiko:translat
   (`memory/refs/resubmission-kit.md`) is outside the repository; the coordinator runs it. Per kiko-compliance's "reviewer
   notes must supply it or say how to get it": the notes name Bybit, what it reads, the user's own key and how to get one,
   and the HTTP 403 on a US IP with `bybitForbidden`. Per its "does the dataset show it?": state whether the demo `.kiko` shows
-  Bybit, with the reason. Kit section D gains the App Privacy line. Check: the coordinator reads both texts against spec
-  section 9; no app file changes.
+  Bybit, with the reason. Kit section D gains the App Privacy line. C4: no Bybit in the store title, subtitle or keywords, and
+  no Bybit logo in the store metadata. Check: the coordinator reads both texts and the store metadata against spec section 9; no
+  app file changes.
 - [ ] **step 6/6: device check, user on device.** Build from this branch. If Flexible Savings ships, the user subscribes
   again first, because K11 redeemed it (PLANNER CALL 22). Each kind against the small account, each surface
   in section 6.4; expiry line; a wrong key; a read-write key; a key not on the main account; a key with a missing box;
@@ -292,8 +302,15 @@ Base: set 7 tip. Size: skill and agent text only. Reviewer: `make doc-suites`.
 
 - [ ] **step 1/2:** `kiko:retrospect` verifies `.claude/skills/`, `harness/kiko/skills/`, `harness/kiko/agents/` against the
   code.
-- [ ] **step 2/2:** `kiko:scribe` adds a "Bybit" section to `kiko-exchange-sync`, updates kiko-compliance (the terms verdict,
-  pins), kiko-domain (registry) and kiko-architecture (`.kiko` secrets), and commits. The report names the sha.
+- [ ] **step 2/2:** `kiko:scribe` adds a "Bybit" section to `kiko-exchange-sync`, updates kiko-compliance, kiko-domain (registry)
+  and kiko-architecture (`.kiko` secrets), and commits. The report names the sha. In kiko-compliance, "Third-party trademarks":
+  - A dated Bybit block like the Binance one (C7): the verdict of 2026-11-03 with its documents and dates, the clauses that
+    matter (API 6.5, 6.7, 6.9, Global 40.4(e), EU 7.4), the pins, and standing items for C1 to C5, each with its test.
+  - C7's re-read: API Terms sections 1 and 2.1, the API Documentation (API 7.1) and the EU 4.3.7 list, at each release that
+    changes Bybit. 1.4 is the first. A `kiko:reviewer` does it before the block goes in. A page it cannot read is named as unread
+    in the block. A clause that forbids this use goes to the coordinator for the user before the upload (the stop rule, O23).
+  - A 5.2.2 item, from the compliance finding: the 5.2.2 and 6.5 doubts stay open and are accepted by the user, 2026-11-03, with
+    no letter to Bybit (O42, spec section 9). A change to the scope of Bybit re-opens the item.
 
 ## Merge order
 
@@ -312,11 +329,11 @@ verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 
 |---|---|---|---|
 | 1 | script 600-900 | 1 | 1 fake-curl test |
 | 2 | 210 | 9-12 | 450 |
-| 3 | 1,270 | 25-29 | 2,250 |
+| 3 | 1,270 | 25-29 | 2,350 |
 | 4 | 550 | 13-15 | 1,050 |
 | 5 | 950 | 7-9 | 1,750 |
 | 6 | 500 | 5-6 | 1,200 |
-| 7 | 450, plus copy, the policy and site pages | 16-20 | 900 |
+| 7 | 450, plus copy, the policy and site pages | 16-20 | 950 |
 | 8 | docs | | |
 
 A duration for any of these comes from `kiko:estimator`.
@@ -333,12 +350,16 @@ Q4; O27 set 3 step 5, set 4 step 2; O28 set 2 step 3. O29 to O36: O29 global, se
 set 3 steps 4, 6; O31 set 1 step 6, set 3 step 5, set 7 step 6, spec sections 8, 9, 10; O32 set 1 steps 6, 7, set 5 steps 2, 3,
 4; O33 set 3 step 5; O34 set 7 step 4, spec section 9; O35 set 1 step 7; O36 set 1 header, step 2. O37 (replaces O36's merge row and set 7 stop line): the set list, set 1 steps 3, 6, 7,
 "Merge order", Backlog below, spec sections 3, 5, 6.4, 8, 9, 10, 12, 13, Backlog. O38 set 1 header, steps 1, 2, 5, spec sections 9,
-10. Q1 to Q4: spec sections 6.3, 7, 13, set 1 step 6.
+10. O39 set 1 steps 1 to 6, set 3 steps 2, 3, set 7 header, steps 1, 2, 3, 5, set 8 step 2, spec sections 1, 6.1, 6.2, 8, 9, 10,
+11, 12, 13. O40 set 1 step 6, spec sections 10, 12. O41 status, set 1 header, step 5, spec sections 10, 12. C1 set 3 step 2, set 7
+steps 1, 2, 3; C2 set 3 step 2; C3 set 7 header, step 1, set 8 step 2; C4 set 7 header, steps 2, 5; C5 set 3 header, step 3; C6 set
+1 steps 3, 4, 5, 6, spec section 10; C7 set 8 step 2. O42 status, set 8 step 2, spec sections 9, 12, 13. Q1 to Q4: spec sections 6.3, 7, 13, set 1 step 6.
 
 Acceptance rows: A1 to A7, A11, A31, A36, A37, A47, A48 set 3 step 5; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
 step 1, set 6 step 1; A28 set 4 step 4; A29 set 4 step 3; A12, A13, A32, A33 set 7 step 1; A34, A46 set 3 step 5, set 4 step 2;
-A40 set 7 step 3; A42, A49 set 3 step 6; A43 set 7 step 2; A44, A50 set 7 step 4; A45 set 4 step 2.
+A40, A51 set 7 step 3; A42, A49 set 3 step 6; A43, A55 set 7 step 2; A44, A50 set 7 step 4; A45 set 4 step 2; A52, A53 set 3
+step 2; A54 set 7 step 1; A56 set 3 step 3.
 
 ## Backlog
 
