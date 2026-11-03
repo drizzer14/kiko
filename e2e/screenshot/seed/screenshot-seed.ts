@@ -407,8 +407,7 @@ type OneOffExpense = {
 
 // Categories reference the 10 seeded slugs (src/db/__fixtures__/seeded-categories.ts).
 // A Latin brand name stays a literal in both languages; the others come from the demo text. Each
-// category's bases and drifts add up to what its single merchant spent before the split, so the
-// monthly spend, the net-worth line and the card balance are unchanged.
+// category's merchants split that category's monthly spend between them.
 const buildMonthlyExpenses = (text: DemoText): MonthlyExpense[] => {
   // category, merchant, base, monthly drift, day of the month, and for a health row, the months
   // between two charges.

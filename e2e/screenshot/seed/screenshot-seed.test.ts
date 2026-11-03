@@ -464,7 +464,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
 
     // A realistic, DOWN-TO-EARTH multi-currency cash ledger: over ₴120k, under
     // ₴180k. The deterministic dataset totals ₴165,330 (₴13,335 UAH card after
-    // two ₴10,400 car-loan payments and ₴3,115 of net KFC spending + ₴6,000 jar
+    // two ₴10,400 car-loan payments and ₴3,115 of net spending on the rule demo rows + ₴6,000 jar
     // + ₴5,500 cash + €1,220≈₴54,290 PrivatBank + €600≈₴26,700 Wise + €500≈₴22,250 broker
     // + Binance: 0.012 BTC≈₴31,980, 50 USDT≈₴2,050, ₴1,000 and €50≈₴2,225); the bracket is
     // tight enough to catch a scale regression, loose enough to survive a single amount tweak.
