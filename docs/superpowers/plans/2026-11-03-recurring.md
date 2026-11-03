@@ -12,7 +12,7 @@
 
 ## Assumed user answers (NOT yet approved)
 
-Q1 = A (pattern plus last charge). Q2 = A (detected only, plus hide). Q3 = A (a Settings row). See "If the user answers differently" at the end.
+Q1 = A (pattern plus last charge). Q2 = A (detected only, plus hide). Q3 = A (a Settings row). Q4 = A (the demo seed changes, S14). See "If the user answers differently" at the end.
 
 **Measurement:** spec section 10.2 holds it. It comes from node with JIT and sqlite3 with no encryption, so no device figure exists: the device checks of tasks 1/3 and 2/3 record one. The K of the counted pin is set from its own first run. Base of this plan's facts: c9896e1f9.
 
@@ -296,4 +296,5 @@ A forecast, a reminder, a total, a period beyond the three, a user mark, an edit
 - **Q1 = C:** `Recurrence` gains `{ kind: 'dayRange'; from; to }` over the last 3 charges in place of `onDay` and `aroundDay`.
 - **Q2 = B:** a new set after 3/3, with its own spec section: a second stored list, a period choice, a control in the transaction form, which meets `CategoryOverrideSheet`'s neighbours. Tasks 1/3 to 3/3 stay.
 - **Q3 = B:** the two routes register in the Home and Statistics stacks and both param lists; the entry goes in `statistics.screen.tsx` below the grid, with `useOpenInPane` from a possible stand-in, and a Settings row still ships for the clean install. The conflict surface moves to `1.4-tables`. Task 1/3 grows by the stack tests.
+- **Q4 = B:** drop S14, the seed edit and the `.kiko` regeneration from task 1/3. The demo pin of step 11 holds that the real function finds the named series on the unchanged seed, with no exact set. The file floor falls by those files.
 - **If `1.4-category-automation` loses B3:** spec 3: its steps for `merchant-name.ts` move into task 1/3 as first caller. Never a copy.
