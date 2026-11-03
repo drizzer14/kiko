@@ -250,7 +250,7 @@ Every count and exit code is the orchestrator's own measured result.
 ## Carried follow-ups
 
 - `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`); the
-  byte-identical rule is in `harness-workflow`'s "Run log".
+  byte-identical rule is in `harness-workflow`'s "Run log" (`references/run-log.md`).
 - The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
   first verdict; fix in the harness repo.
 - Carried from H7: the mutation ETA split by changed-line weights; the whole history-date

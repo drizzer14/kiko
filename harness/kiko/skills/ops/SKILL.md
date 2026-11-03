@@ -64,7 +64,8 @@ Rules:
   proof table is the fallback for a real timeout only, not for regex cost (the patch removed it).
   Ops reports the failure block as is, never starts its own rerun, and never raises the timeout.
 - The coordinator who queues the gate logs the result per harness-workflow's "Run log"
-  (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
+  (`references/run-log.md`; `--gate deep --verdict pass|fail|timeout` on the run id the
+  BATCH READY names).
 - Run check:deep / check:mutation only through the queued gate
   (`bash scripts/job-queue.sh gate <worktree> <label> <base> <head>`), which runs the wrapper;
   it is single-flighted and tears its own workers down. Never run

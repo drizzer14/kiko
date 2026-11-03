@@ -56,7 +56,7 @@ Composite scripts:
   deep`, detached (queued with
   `scripts/job-queue.sh gate <worktree> <label> <base> <head>`), for each reviewed change set (<= 30 source files)
   before its merge into next (and logs the result per harness-workflow's
-  "Run log"). Orchestrators never run it; a BATCH READY
+  "Run log", `references/run-log.md`). Orchestrators never run it; a BATCH READY
   names the change-set base sha, the run id, and the file count, counted
   with the gate's own filter, never by hand: `KIKO_MUTATION_BASE=<base sha>
   make mutable` (it runs `mutation.sh --list`) prints each file's changed-line ranges,
