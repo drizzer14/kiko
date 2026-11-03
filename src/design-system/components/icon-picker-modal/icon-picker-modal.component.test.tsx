@@ -54,6 +54,10 @@ describe('icon pools', () => {
     expect(KIKO_CATEGORIES_ICONS).toContain('percent');
   });
 
+  it('includes airplane, the travel default icon', () => {
+    expect(KIKO_CATEGORIES_ICONS).toContain('airplane');
+  });
+
   it('keeps the two pools distinct: an entities-only symbol is not a categories one, and vice versa', () => {
     // `dollarsign` lives only in the entities pool; `basket` only in categories.
     // The split must not leak a symbol from one pool into the other.

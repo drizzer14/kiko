@@ -1,3 +1,5 @@
+import { act } from '@testing-library/react-native';
+
 import { i18n } from '../init';
 
 import { resolveDefaultCategoryTitle } from './default-category-title';
@@ -33,5 +35,21 @@ describe('resolveDefaultCategoryTitle', () => {
     expect(resolveDefaultCategoryTitle('loan_interest', 'Loan interest')).toBe(
       'Відсотки за кредитом',
     );
+  });
+
+  describe('under the uk language', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    it('translates the travel seeded category', () => {
+      expect(resolveDefaultCategoryTitle('travel', 'Travel')).toBe('Подорожі');
+    });
+
+    it('shows a renamed travel row verbatim', () => {
+      expect(resolveDefaultCategoryTitle('travel', 'Trips')).toBe('Trips');
+    });
   });
 });
