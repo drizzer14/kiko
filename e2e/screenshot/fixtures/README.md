@@ -44,13 +44,13 @@ Every date in the dataset (transactions, loan schedules, bond coupons, price
 points, rate history, reminders, `createdAt`, `exportedAt`) is measured from one
 **anchor**: 09:00 UTC on the day the files were regenerated. The app opens its
 Home list and charts on the last 30 days before the **device date**
-(`src/dates/default-range.ts`), and the newest demo row sits two days before the
-anchor. So the files fill Home and the charts from the anchor day onward, but
-they thin out as the device date moves past it: the default 30-day window
-holds 42 rows on the anchor day, fewer each week, and none after
-about four weeks (see `seed/screenshot-seed.ts`). The data thins from about
-the second week, so about four weeks is an upper bound, not a safe age: a file anchored on a past day imports fine but shows a sparse,
-then empty, Home list and spending charts.
+(`src/dates/default-range.ts`), and the newest demo row sits four days before the
+anchor (Silpo, then Uklon on day 5, then the two day 6 rows). So the files fill Home and the
+charts from the anchor day onward, but they thin out as the device date moves past it: the
+default 30-day window holds 42 rows on the anchor day, 34 a week later, 23 after two weeks,
+9 after three, and none from the 27th day on. The data thins from about the second week, so
+about four weeks is an upper bound, not a safe age: a file anchored on a past day imports fine
+but shows a sparse, then empty, Home list and spending charts.
 
 There is no date shifting at import time (Guideline 2.5.19): the app imports the
 file as written. Keep the files fresh instead: regenerate the files and refresh
@@ -107,7 +107,7 @@ regeneration day.
 
 ## The live rule demo
 
-Six Monobank card rows (`KFC` four times, `KFC: refund` and `Sushi Master`, 3 to 24 days before
+Six Monobank card rows (`KFC` four times, `KFC: refund` and `Sushi Master`, 7 to 24 days before
 the anchor) sit in the default category with no rule over them, so a rule typed live in the app has
 rows to move. Open the Settings tab, then Categories, then Dining, then Add rule, and enter three
 conditions: Name starts with `KFC`; Amount, Less than, `800` (hryvnias); Type, Expense. Save asks

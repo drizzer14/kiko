@@ -42,7 +42,7 @@ const RULE_DEMO_ROWS: RuleDemoRow[] = [
   {
     description: { uk: 'KFC', en: 'KFC' },
     amountMinorUnits: -48_000,
-    daysAgo: 3,
+    daysAgo: 7,
     fails: [],
   },
   {

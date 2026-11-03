@@ -107,6 +107,25 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(inWindow.length).toBeGreaterThanOrEqual(10);
   });
 
+  it.each(['uk', 'en'] as const)(
+    'opens Home on categorized rows: the 3 newest of the %s window hold a real category',
+    (language) => {
+      const dataset = buildScreenshotDataset(language, Date.UTC(2026, 10, 3, 9));
+      const { from, to } = defaultDateRange(dataset.anchor);
+      // Home reads the time index backwards, so a same-time tie lists the later-stored row first.
+      const newestCategories = transactionsOf(dataset)
+        .map(({ time, category }, position) => ({ time, category, position }))
+        .filter(({ time }) => time >= from.getTime() && time <= to.getTime())
+        .sort((a, b) => b.time - a.time || b.position - a.position)
+        .slice(0, 3)
+        .map(({ category }) => category);
+
+      expect(newestCategories).toHaveLength(3);
+      expect(newestCategories).not.toContain(null);
+      expect(newestCategories).not.toContain('other');
+    },
+  );
+
   it('gives the English dataset no Cyrillic letter in any name or description', () => {
     expect(JSON.stringify(buildScreenshotDataset('en', ANCHOR))).not.toMatch(CYRILLIC);
   });

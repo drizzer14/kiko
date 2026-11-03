@@ -438,7 +438,7 @@ const buildMonthlyExpenses = (text: DemoText): MonthlyExpense[] => {
     ['health', text.podorozhnyk, 30_000, 0, 12, 2],
     ['health', text.apteka911, 20_000, 0, 18, 2],
     ['other', text.courier, 30_000, 1_000, 25],
-    ['other', text.ukrposhta, 18_000, 0, 6],
+    ['other', text.ukrposhta, 18_000, 0, 28],
   ];
 
   return rows.map(
@@ -574,7 +574,7 @@ const buildCarLoanPayments = (calendar: DemoCalendar, text: DemoText): SeedTrans
 // statement does not add rows the live rule would move.
 const buildFoodDeliveryTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] =>
   [
-    { amountMinorUnits: -48_000, daysAgo: 3, description: 'KFC' },
+    { amountMinorUnits: -48_000, daysAgo: 7, description: 'KFC' },
     { amountMinorUnits: 35_000, daysAgo: 10, description: text.kfcRefund },
     { amountMinorUnits: -62_000, daysAgo: 14, description: 'KFC' },
     { amountMinorUnits: -39_500, daysAgo: 18, description: 'KFC' },
@@ -624,9 +624,11 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
   for (let month = 0; month < LEDGER_MONTHS; month += 1) {
     const monthStart = month * MONTH_DAYS;
 
+    // Day 6, not nearer the anchor: Home lists newest first and shows a row with no category as
+    // "Other", so the newest rows must be categorized spending, not the salary.
     list.push({
       amountMinorUnits: MONTHLY_INCOME_MINOR_UNITS[month],
-      time: calendar.at(monthStart + 2),
+      time: calendar.at(monthStart + 6),
       category: null,
       description: text.salary,
     });
