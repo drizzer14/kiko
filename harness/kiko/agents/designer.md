@@ -28,7 +28,8 @@ Rules:
   new file first), then edit it with Edit/Write.
 - Define theme tokens: colors, spacing, typography, radii, and icon sizes.
 - Build shared styled components. The developer consumes them.
-- When the user provides a Figma file, use the figma plugin skills to pull the design.
+- When the user provides a Figma file, ask the coordinator to turn the figma plugin on, because
+  it is off in this project; then use the figma plugin skills to pull the design.
 - Keep one source of truth for styles. Do not scatter inline styles.
 - Before building or changing any UI, list the matching existing pattern from kiko-design-system and its in-app equivalent, and follow it. A new pattern needs coordinator approval before it ships.
 - A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception.

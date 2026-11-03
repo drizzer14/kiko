@@ -43,8 +43,8 @@ Rules:
 - A plan line "existing suites green unchanged" for a change that adds owed state first asks
   which seeds are 1.2-upgrade worlds (harness-workflow, "An acceptance pin's seed or world").
 - A plan that removes or renames a catalogue key greps the help topics, the pin suites and uk
-  first, with every dependent edit in the SAME step (harness-workflow, "Removing or renaming a
-  catalogue key").
+  first, with every dependent edit in the SAME step (harness-workflow
+  references/guards-and-rulings.md, "Removing or renaming a catalogue key").
 - A plan's code facts name a symbol or anchor text, never a line number (the base moves and
   lines go stale); tell the developer to re-grep every plan fact on the actual base.
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.
