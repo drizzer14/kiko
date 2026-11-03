@@ -122,9 +122,9 @@ Store screenshot or description promises? App Store Connect metadata
 itself is not tracked in this repo; the drafted reviewer notes and App
 Privacy labels live in the coordinator's `memory/refs/resubmission-kit.md`
 (sections A/B) — flag when a diff would make that draft stale. The
-manual marketing screenshot procedure (there is no automated capture
-any more) is documented in `docs/harness/screenshots-check.md`; flag
-when a diff changes a screen one of the 10 shipped shots depicts.
+screenshot procedure (external Maestro flows in `.maestro/screenshots/`; the app has no capture
+flag) is documented in `docs/harness/screenshots-check.md`; flag
+when a diff changes a screen a shipped shot depicts (the flow files list them).
 
 Always write a demo invariant over the domain predicate
 (`isLedgerlessHoldingType`), never a pinned count. When a feature needs a

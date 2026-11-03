@@ -5,13 +5,10 @@ in `../seed/screenshot-seed.ts` and used by two consumers, through the app's
 **real Import UI** — there is no boot-time seed, no build flag, no launch
 argument (Guideline 2.5.19):
 
-- **`kiko-demo-uk.kiko`** — the user's own manual marketing screenshots.
+- **`kiko-demo-uk.kiko`** — imported by `.maestro/screenshots/duo-import-demo.yaml` (`FILE=`)
+  or by hand, and used for the screenshots.
   Ukrainian names (Монобанк, Сільпо, Брокер, ...) and `language: 'uk'`, so it
-  imports with the UI in Ukrainian. It matched the shipped
-  `screenshots/appstore/**/uk/` deliverables until the live rule demo rows
-  (below) were added: Home and Statistics now also show those six rows, and the
-  Monobank card balance and the net worth are ₴3,115 lower by their net sum, so a
-  reshoot differs from the shipped images.
+  imports with the UI in Ukrainian.
 - **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. English
   names for every user-visible text the file carries (Broker, US dollars,
   Government bonds (OVDP), Real estate, Owed to Andrii, ...) and

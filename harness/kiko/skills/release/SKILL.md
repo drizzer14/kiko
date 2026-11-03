@@ -106,8 +106,10 @@ kiko-demo-en.kiko to the reviewer kit before the build bump.
 Freshness: the demo dates derive from an anchor set at regen time, so the
 files thin out within weeks and go empty. Regenerate both files on the
 upload day and again on EVERY resubmission, then refresh the kit
-(memory/refs/reviewer-kit/kiko-demo.kiko = the en file), and do the same
-before a screenshot session. Read "The anchor" in
+(the reviewer-kit folder is per release: point at the new hand-off folder's reviewer-kit when the
+kit is built; kiko-demo.kiko in it = the en file), and do the same
+before a screenshot session. The kit's HOW-TO-IMPORT.txt gets the same claim check as the Notes
+(a copied text once carried two false claims). Read "The anchor" in
 e2e/screenshot/fixtures/README.md for the mechanism and numbers.
 
 The fake bank statement for the reviewer kit is generated, in the main
@@ -138,14 +140,22 @@ e2e/screenshot/fixtures/README.md).
    - The Info.plist key DTXcodeBuild names a non-beta Xcode build (betas are 27A5xxx-style;
      see memory `appstore-no-beta-xcode-and-bump-build`).
    - `main.jsbundle` holds no string of a feature the build lacks (grep a distinctive identifier
-     with `strings -a | grep -c -F`; plain `grep -c` can print nothing on the 7 MB bundle).
+     with `strings -a | grep -c -F`; plain `grep -c` can print nothing on the 7 MB bundle). This
+     string check for an iPad-only feature applies only when the release has an unmerged iPad
+     track with `src/` changes to search for; otherwise report it "not applicable" with that
+     reason. `UIDeviceFamily` stays the check for iPhone-only.
+   - The Xcode SDK carries the iOS version that the `canImport(UIKit, _version: ...)` line in
+     `ios/Kiko/DisplayRegions/DisplayRegionsCenter.swift` needs (read DTSDKName from the
+     archive); an older SDK silently drops the Duo fold handling.
 8. Hand off. First confirm the demo .kiko files and the reviewer kit copies were
    regenerated today, the kit's demo file equals the fresh en file and the kit's key file opens
    every .kiko in it (see the Freshness note above). The kit's HOW-TO-IMPORT.txt carries the
    archive's version and build: update its version line and its "new in X.Y" list each submission
    (plain text). All App Store Connect texts are plain .txt files in the kit, one per field and
    language, no markdown (the fields are plain textareas). Then run the Privacy
-   policy check below; hand off only when it exits 0. The skill stops here. The user uploads the archive and
+   policy check below; hand off only when it exits 0. App Privacy has one answer, "Data Not
+   Collected", and the submission info states that one answer. The skill stops here. The user
+   uploads the archive and
    the screenshots through the Xcode Organizer. State plainly that
    this skill does not upload to the App Store.
 

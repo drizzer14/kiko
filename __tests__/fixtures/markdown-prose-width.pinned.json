@@ -266,7 +266,6 @@
     "when the coordinator says so. When verify timeouts come from load, the queue (not raised thresholds or a skipped wait) is the fix."
   ],
   "harness/kiko/skills/release/SKILL.md": [
-    "   policy check below; hand off only when it exits 0. The skill stops here. The user uploads the archive and",
     "login, demo account information and the back end turned on; App Store Connect Help ties App Review information to"
   ],
   "harness/kiko/skills/retrospect/SKILL.md": [

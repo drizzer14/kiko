@@ -33,14 +33,20 @@ The App Store deliverable images this doc's procedure produces
 (`screenshots/appstore/**`, 20 PNGs) are **kept** — they are shipped
 metadata, not a regression baseline.
 
-## Manual marketing screenshot procedure
+## Screenshot procedure
 
-There is no script and no automated capture any more. The user shoots the
-App Store screenshots by hand, following this checklist.
+The shots are captured with Maestro flows in `.maestro/screenshots/`:
+`duo-import-demo.yaml` imports a demo file (`FILE=`), `submission-7.yaml` takes the shots (phone
+and Duo outer display, once per language, en and uk), `duo-outer.yaml` drives the outer set. The
+header of `.maestro/screenshots/submission-7.yaml` is the source for the shot list, the display
+sizes and the arguments. The Duo inner set is not Maestro (its taps do not land there): it uses
+Device Hub clicks (`harness/kiko/skills/ops/SKILL.md`, the Maestro notes). The steps below that
+are about the clock, the data and the navigation still hold; the numbered shot list is the
+1.0-1.2 manual history.
 
-1. **Device.** Pinned simulator "iPhone 17 Pro Max" — 6.9-inch, 1320x2868,
-   portrait-only. Shoot a second pass on a 6.5-inch simulator for the
-   second required App Store display size (`screenshots/appstore/6.5-inch/`).
+1. **Device.** The simulator and size come from the header of
+   `.maestro/screenshots/submission-7.yaml`; the 1.0-1.2 manual shots used "iPhone 17 Pro Max"
+   (6.9-inch, 1320x2868) plus a 6.5-inch pass (`screenshots/appstore/6.5-inch/`).
 2. **Clock.** Leave the simulator's clock on the real date and regenerate
    the demo files first (`e2e/screenshot/fixtures/README.md`, "Regenerating").
    The dataset is anchored on the day it was regenerated and spans roughly
@@ -56,9 +62,8 @@ App Store screenshots by hand, following this checklist.
    replace-everything warning, then **cold-relaunch** (kill the app fully,
    reopen) so the imported Ukrainian language setting takes effect on the
    next launch.
-4. **Shots — 10 deliverables, in order** (names match the files already
-   committed under `screenshots/appstore/6.9-inch/uk/`, which this
-   procedure reproduces):
+4. **Shots — the 1.0-1.2 manual list, history** (names match the files committed under
+   `screenshots/appstore/6.9-inch/uk/`):
    1. `01-home-networth` — Home tab, top of screen.
    2. `02-home-transactions-scrolled` — Home tab, scrolled to the
       transaction list mid-content.
