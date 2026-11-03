@@ -129,22 +129,23 @@ describe('buildDemoSnapshot', () => {
     }
   });
 
-  it('holds UAH, EUR and at least five curated coins in the crypto account, one of them outside the top 30 with a dated price history', () => {
+  it('holds exactly BTC, USDT, UAH and EUR in the crypto account, each coin with a dated price history', () => {
     const cryptoAccount = snapshot.accounts.find((account) => account.kind === 'crypto');
     const cryptoHoldings = snapshot.holdings.filter(
       (holding) => holding.accountId === cryptoAccount?.id,
     );
     const codes = cryptoHoldings.map((holding) => holding.currency);
-    const outsideTopThirtyDays = snapshot.currencyRateHistory
-      .filter((row) => row.base === 'CGPT')
-      .map((row) => row.day);
+    const historyDaysOf = (coin: string) =>
+      new Set(
+        snapshot.currencyRateHistory.filter((row) => row.base === coin).map((row) => row.day),
+      );
 
-    expect(new Set(codes.filter(isCrypto)).size).toBeGreaterThanOrEqual(5);
-    expect(codes).toEqual(
-      expect.arrayContaining(['UAH', 'EUR', 'USDC', 'ETH', 'BNB', 'USDT', 'CGPT']),
-    );
+    expect(codes).toEqual(['BTC', 'USDT', 'UAH', 'EUR']);
     expect(cryptoHoldings.every((holding) => holding.type === 'crypto_asset')).toBe(true);
-    expect(new Set(outsideTopThirtyDays).size).toBeGreaterThan(1);
+
+    for (const coin of codes.filter(isCrypto)) {
+      expect(historyDaysOf(coin).size).toBeGreaterThan(1);
+    }
   });
 
   it('prices and charts every coin it holds, so none drops out of the net worth', () => {
@@ -608,7 +609,7 @@ describe('buildDemoSnapshot', () => {
       }
     });
 
-    it("keeps each existing Binance holding's end balance", () => {
+    it("keeps each Binance holding's end balance", () => {
       const balanceByCurrency = Object.fromEntries(
         cryptoHoldings.map((holding) => [holding.currency, holding.balanceMinorUnits]),
       );
@@ -617,21 +618,15 @@ describe('buildDemoSnapshot', () => {
       expect(new Set(cryptoHoldings.map((holding) => holding.currency)).size).toBe(
         cryptoHoldings.length,
       );
-      expect(balanceByCurrency).toMatchObject({
+      expect(balanceByCurrency).toEqual({
         BTC: 1_200_000,
-        ETH: 3_000_000,
         USDT: 5_000_000_000,
-        USDC: 3_000_000_000,
-        BNB: 500_000,
-        SOL: 500_000,
-        CGPT: 500_000_000,
-        XRP: 600_000,
         UAH: 100_000,
         EUR: 5_000,
       });
     });
 
-    it('sweeps XRP dust into BNB on the two existing holdings', () => {
+    it('sweeps USDT dust into BTC on the two holdings', () => {
       const dustRows = rows.filter((row) => row.operation === 'dust');
       const currencyOf = (holdingId: string) =>
         cryptoHoldings.find((holding) => holding.id === holdingId)?.currency;
@@ -639,9 +634,9 @@ describe('buildDemoSnapshot', () => {
       const received = dustRows.find((row) => row.amountMinorUnits > 0);
 
       expect(dustRows).toHaveLength(2);
-      expect(currencyOf(swept?.holdingId ?? '')).toBe('XRP');
-      expect(currencyOf(received?.holdingId ?? '')).toBe('BNB');
-      expect(received?.amountMinorUnits).toBe(110_000);
+      expect(currencyOf(swept?.holdingId ?? '')).toBe('USDT');
+      expect(currencyOf(received?.holdingId ?? '')).toBe('BTC');
+      expect(received?.amountMinorUnits).toBe(1_000);
       expect(swept?.exchangeCounterpartHoldingId).toBe(received?.holdingId);
       expect(received?.exchangeCounterpartHoldingId).toBe(swept?.holdingId);
     });

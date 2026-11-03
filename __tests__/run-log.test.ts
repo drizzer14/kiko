@@ -1711,7 +1711,8 @@ describe('gap', () => {
   });
 });
 
-const WORKFLOW_SKILL = 'harness/kiko/skills/harness-workflow/SKILL.md';
+// The "## Run log" section lives in the workflow skill's reference file, not in its SKILL.md.
+const WORKFLOW_SKILL = 'harness/kiko/skills/harness-workflow/references/run-log.md';
 const RUN_LOG_TEXT_FILES = [
   WORKFLOW_SKILL,
   'harness/kiko/skills/estimator/SKILL.md',
