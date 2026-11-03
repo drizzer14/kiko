@@ -14,6 +14,7 @@ import { internalTransferTransactionIds, rowsForTransferMatch } from '../interna
 
 import {
   accountKindByHoldingIdOf,
+  balanceSetIdsOf,
   breakdownRowsOf,
   excludedIdsOf,
   ledgerRowsOf,
@@ -122,6 +123,8 @@ export const useSpendingLedger = (input: SpendingLedgerInput): SpendingLedger =>
     [ledgerWithCurrency, accountKindByHoldingId],
   );
 
+  const balanceSetIds = useMemo(() => balanceSetIdsOf(ledgerWithCurrency), [ledgerWithCurrency]);
+
   const excludedTransactionIds = useMemo(
     () =>
       excludedIdsOf({
@@ -132,6 +135,7 @@ export const useSpendingLedger = (input: SpendingLedgerInput): SpendingLedger =>
         sameCurrencyMoveIds,
         exchangeFundingExcludedIds,
         loanPaymentExcludedIds,
+        balanceSetIds,
       }),
     [
       internalTransferIds,
@@ -141,6 +145,7 @@ export const useSpendingLedger = (input: SpendingLedgerInput): SpendingLedger =>
       sameCurrencyMoveIds,
       exchangeFundingExcludedIds,
       loanPaymentExcludedIds,
+      balanceSetIds,
     ],
   );
 

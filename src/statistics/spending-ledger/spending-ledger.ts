@@ -53,14 +53,15 @@ export type ExclusionParts = {
   sameCurrencyMoveIds: ReadonlySet<string>;
   exchangeFundingExcludedIds: ReadonlySet<string>;
   loanPaymentExcludedIds: ReadonlySet<string>;
+  balanceSetIds: ReadonlySet<string>;
 };
 
 /**
  * The union of every exclusion rule: the mcc/IBAN rule, the description rule, the exchange-marker
  * rule, the same-currency pair rule, the cheap secondary matched-pair matcher, the
- * exchange-funding matcher, and the linked-loan-payment rule (its own derived interest and
- * within-tolerance fee entries replace the raw row this drops). A row is dropped from the
- * spending pie if ANY rule catches it.
+ * exchange-funding matcher, the linked-loan-payment rule (its own derived interest and
+ * within-tolerance fee entries replace the raw row this drops) and the balance-set mark. A row is
+ * dropped from the spending pie if ANY rule catches it.
  */
 export const excludedIdsOf = (parts: ExclusionParts): ReadonlySet<string> =>
   new Set([
@@ -71,7 +72,18 @@ export const excludedIdsOf = (parts: ExclusionParts): ReadonlySet<string> =>
     ...parts.sameCurrencyMoveIds,
     ...parts.exchangeFundingExcludedIds,
     ...parts.loanPaymentExcludedIds,
+    ...parts.balanceSetIds,
   ]);
+
+/**
+ * The rows whose amount set a balance (an opening balance, a cash opening, a hand edit). The
+ * amount is the balance being stated, not money spent, so it never counts. The mark is stored
+ * for good, so a row later given a category or a description stays out, and the rows an old
+ * migration or a `.kiko` restore marked are caught the same way. A row of any holding counts,
+ * whatever the account filter.
+ */
+export const balanceSetIdsOf = (ledger: readonly LedgerRow[]): Set<string> =>
+  new Set(ledger.filter((transaction) => transaction.setsBalance).map(({ id }) => id));
 
 /**
  * Join each transaction to its holding for the currency its amount is in — a transaction row has
@@ -248,6 +260,7 @@ export const buildSpendingLedger = (input: SpendingLedgerInput): SpendingLedger 
         accountKindByHoldingIdOf(accounts, holdings),
       ).excludedIds,
       loanPaymentExcludedIds: loanPaymentExcludedTransactionIds(shownRows, loanHoldings),
+      balanceSetIds: balanceSetIdsOf(ledgerWithCurrency),
     }),
   };
 };

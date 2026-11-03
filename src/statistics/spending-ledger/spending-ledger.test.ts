@@ -1,3 +1,6 @@
+import { buildCategoryTrend } from '../category-trend';
+import { buildCategoryBreakdown } from '../category-breakdown';
+
 import {
   BANK,
   BASE_TIME,
@@ -99,9 +102,11 @@ describe('excludedIdsOf', () => {
       sameCurrencyMoveIds: new Set(['same-currency']),
       exchangeFundingExcludedIds: new Set(['funding']),
       loanPaymentExcludedIds: new Set(['loan']),
+      balanceSetIds: new Set(['balance-set']),
     });
 
     expect([...union].sort()).toEqual([
+      'balance-set',
       'description',
       'exchange',
       'funding',
@@ -110,6 +115,97 @@ describe('excludedIdsOf', () => {
       'mcc',
       'same-currency',
     ]);
+  });
+});
+
+describe('a row that sets a balance', () => {
+  const BALANCE_SET = transactionRow({
+    id: 'balance-set',
+    holdingId: 'card',
+    amountMinorUnits: -50_000,
+    category: 'opening',
+    setsBalance: true,
+    time: BASE_TIME + 5 * MINUTE,
+  });
+  const UNMARKED_TWIN = transactionRow({
+    id: 'unmarked-twin',
+    holdingId: 'card',
+    amountMinorUnits: -50_000,
+    category: 'opening',
+    time: BASE_TIME + 6 * MINUTE,
+  });
+  const POSITIVE_BALANCE_SET = transactionRow({
+    id: 'positive-balance-set',
+    holdingId: 'card',
+    amountMinorUnits: 50_000,
+    category: 'opening',
+    setsBalance: true,
+    time: BASE_TIME + 7 * MINUTE,
+  });
+  const categoryDisplay = new Map([
+    ['opening', { title: 'Opening', icon: 'tray', color: null }],
+    ['groceries', { title: 'Groceries', icon: 'cart', color: null }],
+    ['other', { title: 'Other', icon: 'ellipsis', color: null }],
+  ]);
+  const range = { from: BASE_TIME, to: BASE_TIME + 200 * MINUTE };
+
+  const donutOf = (ledger: ReturnType<typeof buildSpendingLedger>) =>
+    buildCategoryBreakdown({
+      transactions: spendingRowsIn(ledger, range.from, range.to),
+      categoryDisplay,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+      excludedTransactionIds: ledger.excludedTransactionIds,
+    });
+  const trendOf = (ledger: ReturnType<typeof buildSpendingLedger>) =>
+    buildCategoryTrend({
+      transactions: ledger.trendTransactions,
+      categoryDisplay,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+      range,
+      bucketDays: 1,
+      excludedTransactionIds: ledger.excludedTransactionIds,
+    });
+  const worldWith = (...rows: ReturnType<typeof transactionRow>[]) =>
+    buildSpendingLedger(worldInput({ transactions: [...WORLD_TRANSACTIONS, ...rows] }));
+
+  it('is excluded from spending when negative', () => {
+    expect(worldWith(BALANCE_SET).excludedTransactionIds.has('balance-set')).toBe(true);
+  });
+
+  it('is out of the donut and the trend', () => {
+    const ledger = worldWith(BALANCE_SET);
+
+    expect(donutOf(ledger).map((slice) => slice.key)).not.toContain('opening');
+    expect(trendOf(ledger).map((series) => series.key)).not.toContain('opening');
+  });
+
+  it('leaves an unmarked row of the same amount counted', () => {
+    const ledger = worldWith(BALANCE_SET, UNMARKED_TWIN);
+
+    expect(ledger.excludedTransactionIds.has('unmarked-twin')).toBe(false);
+    expect(donutOf(ledger).find((slice) => slice.key === 'opening')?.amount).toBe(50_000);
+    expect(trendOf(ledger).find((series) => series.key === 'opening')).toBeDefined();
+  });
+
+  it('adds nothing to spending when it is positive', () => {
+    const ledger = worldWith(POSITIVE_BALANCE_SET);
+
+    expect(donutOf(ledger).map((slice) => slice.key)).not.toContain('opening');
+  });
+
+  it('stays out of spending when the account filter hides its holding', () => {
+    const ledger = buildSpendingLedger(
+      worldInput({
+        transactions: [...WORLD_TRANSACTIONS, { ...BALANCE_SET, holdingId: 'cash' }],
+        shownHoldings: [CARD],
+      }),
+    );
+
+    expect(ledger.excludedTransactionIds.has('balance-set')).toBe(true);
   });
 });
 

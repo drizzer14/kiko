@@ -22,6 +22,8 @@ export type LoanPaymentTransaction = {
   amountMinorUnits: number;
   currency: Currency;
   category: TransactionRow['category'];
+  /** The row's amount set a balance: it is no payment, whatever its loan link says. */
+  setsBalance?: boolean;
 };
 
 /**
@@ -121,7 +123,11 @@ export const loanInterestEntries = (input: {
   transactions: readonly LoanPaymentTransaction[];
   loanHoldings: readonly LoanHolding[];
 }): TrendTransaction[] => {
-  const { transactions, loanHoldings } = input;
+  const { loanHoldings } = input;
+  // A row that sets a balance is no payment even when the form linked it to a loan: it yields no
+  // entry, and filtered before the split the loan's other payments split as if it did not exist
+  // (a row counted first would take an installment's interest from the payment that paid it).
+  const transactions = input.transactions.filter((transaction) => !transaction.setsBalance);
   const holdingById = new Map(loanHoldings.map((holding) => [holding.id, holding] as const));
   const splits = splitsByTransactionId(transactions, holdingById);
 

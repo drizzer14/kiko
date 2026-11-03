@@ -3,8 +3,14 @@ import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match'
 import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
 import { sameCurrencyMoveTransactionIds } from '@kiko/statistics/exchange-exclusion';
 
+import {
+  CARD,
+  CASH,
+  transactionRow,
+  worldInput,
+  WORLD_TRANSACTIONS,
+} from './__fixtures__/spending-ledger-world';
 import { buildSpendingLedger, useSpendingLedger } from '.';
-import { CARD, CASH, worldInput, transactionRow } from './__fixtures__/spending-ledger-world';
 
 jest.mock('@kiko/statistics/internal-transfers', () => {
   const actual: typeof import('@kiko/statistics/internal-transfers') = jest.requireActual(
@@ -34,9 +40,16 @@ jest.mock('@kiko/statistics/exchange-funding-match', () => {
   return { ...actual, exchangeFundingMatches: jest.fn(actual.exchangeFundingMatches) };
 });
 
+const BALANCE_SET = transactionRow({
+  id: 'balance-set',
+  holdingId: 'card',
+  amountMinorUnits: -50_000,
+  setsBalance: true,
+});
+
 describe('useSpendingLedger', () => {
   it('gives every field the builder gives, on the same world', async () => {
-    const input = worldInput();
+    const input = worldInput({ transactions: [...WORLD_TRANSACTIONS, BALANCE_SET] });
     const { result } = await renderHook(() => useSpendingLedger(input));
     const built = buildSpendingLedger(input);
 
