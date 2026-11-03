@@ -39,7 +39,9 @@ const HIDDEN_FROM_ACCESSIBILITY = {
  * Every width comes from measured text, never from the window or the device type, so an amount
  * is never cut, shrunk or wrapped, and the table follows Dynamic Type. A row is as tall as the
  * taller of its fixed label and its scrolled cells, set as `minHeight` on both. The header sits
- * above the body's vertical scroll and follows the body's horizontal offset on the UI thread.
+ * inside the vertical scroll after the caption and sticks while the caption scrolls away, so a
+ * large type size cannot take the body's room; it follows the body's horizontal offset on the UI
+ * thread.
  */
 const DataTable: FC<DataTableProps> = ({
   columns,
@@ -59,7 +61,7 @@ const DataTable: FC<DataTableProps> = ({
   const trackStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -bodyOffset.value }] }));
 
   const padding = theme.spacing(CELL_PADDING_UNITS * 2);
-  const fixedWidth = resolveFixedWidth(labelWidth, containerWidth, padding);
+  const fixedWidth = resolveFixedWidth(labelWidth, containerWidth, padding, theme.layout.hairline);
   const columnWidths = resolveColumnWidths(columns, columnTextWidths, padding);
   const rowHeights = useMemo(
     () => resolveRowHeights(rows, columns, textHeights, padding),
@@ -74,25 +76,38 @@ const DataTable: FC<DataTableProps> = ({
     columns.every((column) => columnTextWidths[column.key] !== undefined);
 
   useEffect(() => {
-    if (initialColumnIndex === undefined || !isMeasured) {
+    if (!isMeasured) {
       return;
     }
 
-    if (scrolledToIndex.current === initialColumnIndex) {
-      return;
+    const furthestOffset = Math.max(contentWidth - availableWidth, 0);
+    const currentOffset = bodyOffset.value;
+    const isNewIndex =
+      initialColumnIndex !== undefined && scrolledToIndex.current !== initialColumnIndex;
+    // A change of index moves to its column even when that is the start; the first mount at the
+    // start has nothing to move.
+    const isIndexChange = isNewIndex && scrolledToIndex.current !== undefined;
+    // UIKit does not clamp an offset the content has shrunk away from, so the reset is explicit.
+    const targetOffset = isNewIndex
+      ? resolveInitialOffset(columnWidths, initialColumnIndex, furthestOffset)
+      : Math.min(currentOffset, furthestOffset);
+
+    if (isNewIndex) {
+      scrolledToIndex.current = initialColumnIndex;
     }
 
-    scrolledToIndex.current = initialColumnIndex;
-    const offset = resolveInitialOffset(
-      columnWidths,
-      initialColumnIndex,
-      contentWidth - availableWidth,
-    );
-
-    if (offset > 0) {
-      bodyRef.current?.scrollTo({ x: offset, y: 0, animated: false });
+    if (isIndexChange || targetOffset !== currentOffset) {
+      bodyRef.current?.scrollTo({ x: targetOffset, y: 0, animated: false });
     }
-  }, [initialColumnIndex, isMeasured, columnWidths, contentWidth, availableWidth, bodyRef]);
+  }, [
+    initialColumnIndex,
+    isMeasured,
+    columnWidths,
+    contentWidth,
+    availableWidth,
+    bodyRef,
+    bodyOffset,
+  ]);
 
   const recordHeight = (key: string) => (event: LayoutChangeEvent) => {
     const { height } = event.nativeEvent.layout;
@@ -116,37 +131,40 @@ const DataTable: FC<DataTableProps> = ({
       onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
       testID={testID}
     >
-      <RNText style={styles.caption} accessibilityRole="summary">
-        {caption}
-      </RNText>
+      <ScrollView testID={`${testID}-vertical-scroll`} stickyHeaderIndices={[1]}>
+        <RNText style={styles.caption} accessibilityRole="summary" testID={`${testID}-caption`}>
+          {caption}
+        </RNText>
 
-      <View style={styles.headerRow}>
-        <View style={[styles.headerCorner, { width: fixedWidth }]} />
+        <View style={styles.headerRow} testID={`${testID}-header-row`}>
+          <View style={[styles.headerCorner, { width: fixedWidth }]} />
 
-        <View style={styles.headerClip}>
-          <Animated.View style={[styles.headerTrack, trackStyle]} testID={`${testID}-header-track`}>
-            {columns.map((column, columnIndex) => (
-              <View
-                key={column.key}
-                style={[
-                  styles.headerCell,
-                  column.isSum && styles.sumColumn,
-                  { width: columnWidths[columnIndex] },
-                ]}
-                testID={`${testID}-header-${column.key}`}
-                {...HIDDEN_FROM_ACCESSIBILITY}
-              >
-                <RNText style={styles.headerText} testID={`${testID}-header-text-${column.key}`}>
-                  {column.header}
-                </RNText>
-              </View>
-            ))}
-          </Animated.View>
+          <View style={styles.headerClip}>
+            <Animated.View
+              style={[styles.headerTrack, trackStyle]}
+              testID={`${testID}-header-track`}
+            >
+              {columns.map((column, columnIndex) => (
+                <View
+                  key={column.key}
+                  style={[
+                    styles.headerCell,
+                    column.isSum && styles.sumColumn,
+                    { width: columnWidths[columnIndex] },
+                  ]}
+                  testID={`${testID}-header-${column.key}`}
+                  {...HIDDEN_FROM_ACCESSIBILITY}
+                >
+                  <RNText style={styles.headerText} testID={`${testID}-header-text-${column.key}`}>
+                    {column.header}
+                  </RNText>
+                </View>
+              ))}
+            </Animated.View>
+          </View>
         </View>
-      </View>
 
-      <ScrollView testID={`${testID}-vertical-scroll`}>
-        <View style={styles.bodyRow}>
+        <View style={styles.bodyRow} testID={`${testID}-body-row`}>
           <View
             style={[styles.fixedColumn, { width: fixedWidth }]}
             testID={`${testID}-fixed-column`}
@@ -195,7 +213,6 @@ const DataTable: FC<DataTableProps> = ({
                         accessibilityHint={
                           cell.onPress === undefined ? undefined : cell.accessibilityHint
                         }
-                        disabled={cell.onPress === undefined}
                         onPress={cell.onPress}
                         style={[
                           styles.cell,

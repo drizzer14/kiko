@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { CELL_PADDING_UNITS } from './data-table.layout';
 
 export const styles = StyleSheet.create((theme) => ({
-  // The table fills the height its caller gives it: the body owns the vertical scroll.
+  // The table fills the height its caller gives it: one vertical scroll holds caption and body.
   container: {
     flex: 1,
   },
@@ -12,8 +12,10 @@ export const styles = StyleSheet.create((theme) => ({
     color: theme.colors.textSecondary,
     paddingBottom: theme.spacing(2),
   },
+  // Opaque, because the row sticks above the body rows scrolling under it.
   headerRow: {
     flexDirection: 'row',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: theme.layout.hairline,
     borderBottomColor: theme.colors.border,
   },

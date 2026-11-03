@@ -27,7 +27,8 @@ export type DataTableRow = {
 export type DataTableProps = {
   columns: DataTableColumn[];
   rows: DataTableRow[];
-  // Drawn above the header, and the table's summary for VoiceOver.
+  // Drawn above the header inside the vertical scroll, so it scrolls away while the header stays,
+  // and the table's summary for VoiceOver.
   caption: string;
   // The column whose left edge sits at the fixed column on opening; none means scrolled to the
   // start.

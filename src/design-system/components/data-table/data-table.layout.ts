@@ -14,8 +14,14 @@ export const labelHeightKey = (rowKey: string) => `label:${rowKey}`;
 
 export const cellHeightKey = (rowKey: string, columnKey: string) => `cell:${rowKey}:${columnKey}`;
 
-export const resolveFixedWidth = (labelWidth: number, containerWidth: number, padding: number) => {
-  const natural = labelWidth + padding;
+// The column's right border is part of its width, so the widest label still fits on one line.
+export const resolveFixedWidth = (
+  labelWidth: number,
+  containerWidth: number,
+  padding: number,
+  border: number,
+) => {
+  const natural = labelWidth + padding + border;
 
   return containerWidth > 0 ? Math.min(natural, containerWidth * FIXED_COLUMN_SHARE) : natural;
 };

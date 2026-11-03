@@ -131,7 +131,7 @@ describe('DataTable', () => {
       await measureAllColumns(rendered, 100);
 
       expect(flat(rendered.getByTestId(`${PREFIX}-fixed-column`)).width).toBe(
-        60 + HORIZONTAL_PADDING,
+        60 + HORIZONTAL_PADDING + darkTheme.layout.hairline,
       );
     });
 
@@ -287,9 +287,26 @@ describe('DataTable', () => {
       return rendered;
     };
 
-    it('scrolls so the chosen column sits at the fixed column, from measured widths', async () => {
-      await settle(1);
+    const HAIRLINE = darkTheme.layout.hairline;
+    const offsetBox = { value: 0 };
+    const rerenderTable = async (rendered: Rendered, props: Partial<DataTableProps>) => {
+      await rendered.rerender(<DataTable {...baseProps} {...props} />);
+    };
 
+    beforeEach(() => {
+      offsetBox.value = 0;
+      jest.spyOn(reanimated, 'useScrollOffset').mockReturnValue(offsetBox as never);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('scrolls so the chosen column sits at the fixed column, from measured widths', async () => {
+      const rendered = await settle(1);
+      await rerenderTable(rendered, { initialColumnIndex: 1 });
+
+      expect(scrollTo()).toHaveBeenCalledTimes(1);
       expect(scrollTo()).toHaveBeenCalledWith({
         x: 80 + HORIZONTAL_PADDING,
         y: 0,
@@ -300,8 +317,9 @@ describe('DataTable', () => {
     it('does not scroll further than the content allows', async () => {
       await settle(2);
 
-      // Widths 96 + 116 + 156 = 368 in 300 - 76 = 224 of room, so the furthest offset is 144.
-      expect(scrollTo()).toHaveBeenCalledWith({ x: 144, y: 0, animated: false });
+      // Widths 96 + 116 + 156 = 368 in 300 - (76 + hairline) of room, so the furthest offset is
+      // 144 + hairline.
+      expect(scrollTo()).toHaveBeenCalledWith({ x: 144 + HAIRLINE, y: 0, animated: false });
     });
 
     it('stays at the start when no initial column is given', async () => {
@@ -309,21 +327,97 @@ describe('DataTable', () => {
 
       expect(scrollTo()).not.toHaveBeenCalled();
     });
+
+    it('does not scroll on first mount when the column resolves to offset 0', async () => {
+      await settle(0);
+
+      expect(scrollTo()).not.toHaveBeenCalled();
+    });
+
+    it('scrolls to 0 when the initial column changes to one that resolves to offset 0', async () => {
+      const rendered = await settle(1);
+      await rerenderTable(rendered, { initialColumnIndex: 0 });
+
+      expect(scrollTo()).toHaveBeenLastCalledWith({ x: 0, y: 0, animated: false });
+    });
+
+    it('never moves the scroll on a re-render with the same index and new data', async () => {
+      const rendered = await settle(1);
+      offsetBox.value = 90;
+      scrollTo().mockClear();
+      await rerenderTable(rendered, {
+        initialColumnIndex: 1,
+        rows: [{ key: 'rent', label: 'Rent', cells: makeCells(['9', '8', '7']) }],
+      });
+
+      expect(scrollTo()).not.toHaveBeenCalled();
+    });
+
+    it('scrolls to the furthest valid offset, unanimated, when the columns shrink', async () => {
+      const rendered = await settle(undefined);
+      offsetBox.value = 200;
+      await measureColumn(rendered, 'jan', 80);
+      await measureColumn(rendered, 'feb', 80);
+      await measureColumn(rendered, 'total', 80);
+
+      // Widths 3 x 96 = 288 in 300 - (76 + hairline) of room: the furthest offset is 64 + hairline.
+      expect(scrollTo()).toHaveBeenLastCalledWith({ x: 64 + HAIRLINE, y: 0, animated: false });
+    });
+
+    it('scrolls to 0 when the columns shrink until they all fit, with scrolling off', async () => {
+      const rendered = await settle(undefined);
+      offsetBox.value = 100;
+      await measureColumn(rendered, 'jan', 30);
+      await measureColumn(rendered, 'feb', 30);
+      await measureColumn(rendered, 'total', 30);
+
+      expect(rendered.getByTestId(`${PREFIX}-body-scroll`).props.scrollEnabled).toBe(false);
+      expect(scrollTo()).toHaveBeenLastCalledWith({ x: 0, y: 0, animated: false });
+    });
   });
 
   describe('sticky header', () => {
-    it('keeps the header outside the vertical scroll', async () => {
+    it('puts the caption, the header and the body in the vertical scroll, in that order', async () => {
+      const rendered = await renderTable();
+      const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
+      const parts = within(vertical).getAllByTestId(/^table-(caption|header-row|body-row)$/, {
+        includeHiddenElements: true,
+      });
+
+      expect(vertical.props.horizontal).toBeFalsy();
+      expect(parts.map((part) => part.props.testID)).toEqual([
+        `${PREFIX}-caption`,
+        `${PREFIX}-header-row`,
+        `${PREFIX}-body-row`,
+      ]);
+      expect(
+        within(vertical).getByTestId(`${PREFIX}-header-jan`, { includeHiddenElements: true }),
+      ).toBeTruthy();
+      expect(within(vertical).getByTestId(`${PREFIX}-cell-groceries-jan`)).toBeTruthy();
+    });
+
+    it('makes only the header row sticky, so the caption scrolls away', async () => {
+      const rendered = await renderTable();
+
+      expect(rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices).toEqual([
+        1,
+      ]);
+    });
+
+    it('gives the sticky header row an opaque surface ground', async () => {
+      const rendered = await renderTable();
+      const row = rendered.getByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true });
+
+      expect(flat(row).backgroundColor).toBe(darkTheme.colors.surface);
+    });
+
+    it('keeps the measuring layer outside the vertical scroll', async () => {
       const rendered = await renderTable();
       const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
 
-      expect(vertical.props.horizontal).toBeFalsy();
       expect(
-        within(vertical).queryByTestId(`${PREFIX}-header-jan`, { includeHiddenElements: true }),
+        within(vertical).queryByTestId(`${PREFIX}-measure-layer`, { includeHiddenElements: true }),
       ).toBeNull();
-      expect(within(vertical).getByTestId(`${PREFIX}-cell-groceries-jan`)).toBeTruthy();
-      expect(
-        rendered.getByTestId(`${PREFIX}-header-jan`, { includeHiddenElements: true }),
-      ).toBeTruthy();
     });
 
     it('moves the header by the negative live offset of the body', async () => {
@@ -390,11 +484,38 @@ describe('DataTable', () => {
     });
 
     it('gives a cell without onPress neither the button role nor a hint', async () => {
-      const rendered = await renderTable();
-      const cell = rendered.getByLabelText('Groceries, 120');
+      const rendered = await renderTable({
+        rows: [
+          {
+            key: 'row',
+            label: 'Row',
+            cells: makeCells(['1', '2', '3'], { accessibilityHint: 'Opens the rows' }),
+          },
+        ],
+      });
+      const cell = rendered.getByLabelText('Groceries, 1');
 
       expect(cell.props.accessibilityRole).toBeUndefined();
       expect(cell.props.accessibilityHint).toBeUndefined();
+    });
+
+    it('does not mark a cell without onPress as disabled, which VoiceOver reads as dimmed', async () => {
+      const rendered = await renderTable();
+      const cell = rendered.getByLabelText('Groceries, 120');
+
+      expect(cell.props.accessibilityState?.disabled).not.toBe(true);
+    });
+
+    it('still fires onPress on a pressable cell that carries no disabled state', async () => {
+      const onPress = jest.fn();
+      const rendered = await renderTable({
+        rows: [{ key: 'row', label: 'Row', cells: makeCells(['1', '2', '3'], { onPress }) }],
+      });
+      const cell = rendered.getByLabelText('Groceries, 1');
+      await fireEvent.press(cell);
+
+      expect(cell.props.accessibilityState?.disabled).not.toBe(true);
+      expect(onPress).toHaveBeenCalledTimes(1);
     });
 
     it('hides every header cell from VoiceOver', async () => {
