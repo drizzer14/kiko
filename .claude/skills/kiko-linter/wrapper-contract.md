@@ -295,9 +295,22 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   The `mainMove` kind (user ruling: any command that moves the branch `main` goes through
   `scripts/ff-main.sh`). Source: `scripts/checks/kill-guard-main-moves.js` (`mainMoveTarget`;
   `mainMoveFinding` in `kill-guard.js` calls it), rows in `__tests__/kill-guard-main-moves.test.ts`.
-  Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
-  move the branch of the work tree they run in, so they count against the main checkout and
-  against a linked worktree whose HEAD names `main` (`headNamesMain`);
+  Two scopes. A `commit` (also `--amend` and `--dry-run`), a `reset`, `symbolic-ref HEAD <ref>`
+  and `update-ref HEAD` (without `--no-deref`)
+  move the branch of the work tree they run in, so they count against the main checkout, on any
+  branch, and against a linked worktree whose HEAD names `main` (`headNamesMain`). A commit in a
+  worktree on its own branch, a nested worktree under the main checkout and `commit-tree` (its
+  own `noVerify` finding) are not this kind. For `commit`, help is only the first argument after
+  it (`asksForHelp` in `kill-guard.js`): `git commit -m -h` is denied, and `git commit -a -h` is
+  denied too although git shows help (safe side). The way out for a commit is a worktree, a
+  queued verify, then `bash scripts/ff-main.sh <sha>`; on battery the queue starts no job, so
+  the verify and the move wait for AC (the commit itself does not). The root `HANDOFF.md`
+  rule: while the tracked file of the main checkout is dirty, `ff-main.sh` refuses only a
+  commit that changes it (git: "Your local changes ... would be overwritten"), with main
+  unmoved; a commit that leaves it alone moves fine (measured with `git merge --ff-only`). A
+  track commit leaves the root `HANDOFF.md` alone. A commit that must change it: the
+  coordinator or the user copies the file aside and restores the tracked file in the main
+  checkout before `scripts/ff-main.sh`.
   `git reset --soft HEAD~1` there is denied (user ruling: "any reset that moves HEAD of
   main"), while `--hard` with no commit (or `HEAD`/`@`) and a `-- <path>` reset stay allowed.
   A command that
@@ -314,7 +327,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   In both scopes a place the text
   cannot name (a `-C` or `cd` target held in a variable, a relative one with no payload `cwd`,
   or a plain command with no `-C` and no `cwd`) fails closed, even when the command assigns the
-  variable (the "an assignment can only ADD a deny" invariant below). An unrelated repository
+  variable (the "an assignment can only ADD a deny" invariant below). A commit whose folder is
+  held in a variable (`cd "$S" && git commit`, `git -C "$PWD" commit`) is denied from a
+  worktree too; the fix is the folder as literal text. An unrelated repository
   or a plain folder is no target, so a reset there is allowed; a no-cwd move with an absolute
   `--git-dir` of an unrelated repository is allowed. With cwd in main and `--git-dir=<other>`, a
   reset, `symbolic-ref HEAD` and `update-ref HEAD` stay denied, while a ref-name command is
@@ -592,7 +607,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   reads, once more with the values filled in (`expandedReading`); the second reading reports
   only the kinds in `EXPANDED_KINDS` (read the set in `kill-guard.js`), so an assignment can
   only ADD a deny, never remove one. A git folder the text cannot name (a `-C`/`cd` target in
-  a variable) fails closed for `mainMove` even when the command assigns the variable.
+  a variable, or a payload with no cwd) fails closed for `mainMove` (a `commit` included) even
+  when the command assigns the variable.
   A kill target and a command word are never expanded: `pid=-1; kill -9 $pid` is judged as
   written (an unknown `$pid` is the agent's own) and is not denied. A value that is itself an
   expansion (`$!`, `$(...)`, `$other`) stays unknown; a value over 4 KiB
@@ -775,6 +791,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   Stopping rule: an exotic, obfuscated, or run-time-built form is a
   known limit to list here, not a bug to fix. Re-verify each item in
   `kill-guard.js`, `kill-guard-probe.sh`, and their tests.
+  - `mainMove` recovery, NOT denied: `merge|rebase|revert|cherry-pick|am --continue` on the main
+    checkout stays allowed as recovery (`RECOVERY_OPTIONS`), and such a recovery can commit.
+  - A command the user runs by hand outside Claude Code does not go through the hook.
   - Commit-hook bypass, NOT denied: `git rebase`, `cherry-pick`, and `am` replay commits
     without running pre-commit.
   - NOT denied: a kill or stash through an alias, a function, a script
@@ -804,7 +823,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     gap 20261021T0832-kiko-harness-h10/1), `--git-dir=~/x` (the guard reads `~` as the home
     folder, `HOME_PREFIX` in `resolveDirectory`; the shell leaves `~` as is after `--git-dir=`
     and git reads `<cwd>/~/x`), `git config remote.<n>.fetch <refspec into main>` (not
-    judged), a key held in a variable (`GIT_CONFIG_KEY_0=$K`), `git -c "$X" fetch -u`, a value
+    judged), a commit through a wrapper or alias the guard does not unwrap (`rtk git commit`,
+    `rtk proxy git commit`, `git -c alias.x=commit x`, `xcrun git`, the GNU
+    timeout wrapper; measured by `decide`: allow), and from a worktree cwd a commit aimed at
+    main by `env -C <main> git commit` or `export GIT_DIR=<main>/.git; git commit` (a gap, not
+    permission), a key held in
+    a variable (`GIT_CONFIG_KEY_0=$K`), `git -c "$X" fetch -u`, a value
     option before `--ignore-other-worktrees`, and a linked worktree whose HEAD file cannot be
     read (allowed). Script scan: `cat f | bash`, a script path in a
     variable. Over-denied: `isInsideProjectWorktree` matches any prefix folder that is a

@@ -2,9 +2,12 @@
 // through `bash scripts/ff-main.sh <sha>`, after a queued verify passed on the commit; anything
 // else that moves the ref is the finding `mainMove`.
 //
-// Two scopes. A `reset`, `symbolic-ref HEAD <ref>` and `update-ref HEAD` (without `--no-deref`)
-// move the branch of the work tree they run in, so they count against the main checkout and a
-// linked worktree whose HEAD file already names `main`. A command that writes the ref by name
+// Two scopes. A `commit` (also `--amend` and `--dry-run`), a `reset`, `symbolic-ref HEAD <ref>`
+// and `update-ref HEAD` (without `--no-deref`) move the branch of the work tree they run in, so
+// they count against the main checkout, on any branch, and a linked worktree whose HEAD file
+// already names `main`. Only a first argument `-h` or `--help` makes a `commit` help, as `-m -h`
+// commits with that message and option values are not parsed, so a later `-h` is denied, the safe
+// side (kill-guard.js reads the help). A command that writes the ref by name
 // (`update-ref`, `checkout -B`, `switch -C`, `branch -m|-f|-d`, `fetch`/`pull`/`push` into it,
 // `symbolic-ref refs/heads/main`, `worktree add -B`) moves it from any worktree of this
 // repository, since every worktree shares the refs, so it counts against the whole repository.
@@ -291,6 +294,7 @@ function worktreeAddForcesMain(parameters) {
 function moveScopes(git, pathExists) {
   const { subcommand, arguments: parameters } = git;
   if (subcommand === 'reset') return resetMovesBranch(git, pathExists) ? ['mainCheckout'] : [];
+  if (subcommand === 'commit') return ['mainCheckout'];
   if (subcommand === 'symbolic-ref') return symbolicRefScopes(parameters);
   if (subcommand === 'update-ref') return updateRefScopes(parameters);
   const namesMain = {

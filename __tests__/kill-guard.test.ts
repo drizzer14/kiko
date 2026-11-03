@@ -3,6 +3,12 @@ import { tmpdir } from 'node:os';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
+import {
+  COMMIT_WORD,
+  PLAIN_FOLDER_OUTSIDE_MAIN,
+  payloadOutsideMain,
+} from './test-support/kill-guard-decide';
+
 // scripts/checks/kill-guard.sh is the PreToolUse hook wired in
 // harness/kiko/hooks/hooks.json under the Bash tool. It reads the hook's
 // tool_input JSON payload from stdin, tokenizes the command line (dropping
@@ -425,7 +431,6 @@ const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
 // cherry-pick/revert/am aimed at it is denied, except the recovery options and help; the same
 // commands anywhere else pass.
 const MAIN_CHECKOUT = '/Users/drizzer14/Developer/Projects/pff-ios';
-const WORKTREE = '/Users/drizzer14/orca/workspaces/pff-ios/shares-assets-research';
 
 // [payload cwd, command]
 const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
@@ -443,42 +448,45 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, 'git revert HEAD'],
   [MAIN_CHECKOUT, 'git am x.patch'],
   [MAIN_CHECKOUT, 'git apply --stat --apply x.patch'],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --no-ff`],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT} cherry-pick 1a2b3c4`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git -C ${MAIN_CHECKOUT} pull --no-ff`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git -C ${MAIN_CHECKOUT} cherry-pick 1a2b3c4`],
   // A body that no shell runs is read for a main-checkout change.
-  [WORKTREE, `cat > f.md <<'EOF'\n- \`git -C ${MAIN_CHECKOUT} merge x\` denies\nEOF`],
+  [
+    PLAIN_FOLDER_OUTSIDE_MAIN,
+    `cat > f.md <<'EOF'\n- \`git -C ${MAIN_CHECKOUT} merge x\` denies\nEOF`,
+  ],
   // A directory the command assigns is read into `-C`.
-  [WORKTREE, `d=${MAIN_CHECKOUT}; git -C $d merge feat/x`],
-  [WORKTREE, `export d=${MAIN_CHECKOUT} && git -C "\${d}" pull --no-ff`],
-  [WORKTREE, 'cd ~/Developer/Projects/pff-ios && git merge feat/x'],
-  [WORKTREE, 'cd $HOME/Developer/Projects/pff-ios && git merge feat/x'],
-  [WORKTREE, `cd "\${HOME}/Developer/Projects/pff-ios" && git rebase main`],
-  [WORKTREE, 'cd && cd Developer/Projects/pff-ios && git merge feat/x'],
-  [WORKTREE, 'git -C ~/Developer/Projects/pff-ios merge feat/x'],
-  [WORKTREE, 'git --git-dir=$HOME/Developer/Projects/pff-ios/.git rebase main'],
-  [WORKTREE, 'git --work-tree ~/Developer/Projects/pff-ios apply x.patch'],
-  [WORKTREE, 'git -C /users/drizzer14/developer/projects/PFF-IOS merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `d=${MAIN_CHECKOUT}; git -C $d merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `export d=${MAIN_CHECKOUT} && git -C "\${d}" pull --no-ff`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'cd ~/Developer/Projects/pff-ios && git merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'cd $HOME/Developer/Projects/pff-ios && git merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd "\${HOME}/Developer/Projects/pff-ios" && git rebase main`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'cd && cd Developer/Projects/pff-ios && git merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git -C ~/Developer/Projects/pff-ios merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git --git-dir=$HOME/Developer/Projects/pff-ios/.git rebase main'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git --work-tree ~/Developer/Projects/pff-ios apply x.patch'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git -C /users/drizzer14/developer/projects/PFF-IOS merge feat/x'],
   ['/USERS/drizzer14/Developer/Projects/pff-ios', 'git merge feat/x'],
-  [WORKTREE, `GIT_DIR=${MAIN_CHECKOUT}/.git git merge feat/x`],
-  [WORKTREE, `GIT_WORK_TREE=${MAIN_CHECKOUT} git apply x.patch`],
-  [WORKTREE, `env GIT_DIR=${MAIN_CHECKOUT}/.git git rebase main`],
-  [WORKTREE, 'GIT_DIR=~/Developer/Projects/pff-ios/.git git merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `GIT_DIR=${MAIN_CHECKOUT}/.git git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `GIT_WORK_TREE=${MAIN_CHECKOUT} git apply x.patch`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `env GIT_DIR=${MAIN_CHECKOUT}/.git git rebase main`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'GIT_DIR=~/Developer/Projects/pff-ios/.git git merge feat/x'],
   [`${MAIN_CHECKOUT}/`, 'git merge feat/x'],
   [`${MAIN_CHECKOUT}/src/screens`, 'git apply -3 x.patch'],
   [`${MAIN_CHECKOUT}/src`, 'git -C .. merge feat/x'],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT} merge feat/x`],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT}/ merge feat/x`],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT}/src rebase main`],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT} -c core.pager=cat merge feat/x`],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} && git apply x.patch`],
-  [WORKTREE, `cd ${MAIN_CHECKOUT}; git status; git rebase main`],
-  [WORKTREE, `(cd ${MAIN_CHECKOUT} && git merge feat/x)`],
-  [WORKTREE, 'cd ../../../../Developer/Projects/pff-ios && git merge feat/x'],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} && echo "$(git merge feat/x)"`],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} && bash -c 'git merge feat/x'`],
-  [WORKTREE, `git --git-dir=${MAIN_CHECKOUT}/.git rebase main`],
-  [WORKTREE, `git --git-dir ${MAIN_CHECKOUT}/.git merge feat/x`],
-  [WORKTREE, `git --work-tree=${MAIN_CHECKOUT} apply x.patch`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git -C ${MAIN_CHECKOUT} merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git -C ${MAIN_CHECKOUT}/ merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git -C ${MAIN_CHECKOUT}/src rebase main`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git -C ${MAIN_CHECKOUT} -c core.pager=cat merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} && git apply x.patch`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT}; git status; git rebase main`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `(cd ${MAIN_CHECKOUT} && git merge feat/x)`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'cd ../../../../Developer/Projects/pff-ios && git merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} && echo "$(git merge feat/x)"`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} && bash -c 'git merge feat/x'`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git --git-dir=${MAIN_CHECKOUT}/.git rebase main`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git --git-dir ${MAIN_CHECKOUT}/.git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git --work-tree=${MAIN_CHECKOUT} apply x.patch`],
   [MAIN_CHECKOUT, '(cd /tmp); git merge feat/x'],
   [MAIN_CHECKOUT, 'sudo git merge feat/x'],
   [MAIN_CHECKOUT, 'sh -c "git rebase main"'],
@@ -486,46 +494,46 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, 'cd /tmp & git merge feat/x'],
   [MAIN_CHECKOUT, 'cd /tmp | git merge feat/x'],
   [MAIN_CHECKOUT, 'pushd /tmp; pushd; git merge feat/x'],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} || true; git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} || true; git merge feat/x`],
   [`${MAIN_CHECKOUT}/.claude/worktrees`, 'git merge feat/x'],
   [`${MAIN_CHECKOUT}/.claude`, 'git merge feat/x'],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} >/dev/null 2>&1 && git merge feat/x`],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} &>/dev/null && git merge feat/x`],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} 2>&1; git rebase main`],
-  [WORKTREE, `pushd ${MAIN_CHECKOUT} >&- && git pull origin main`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} >/dev/null 2>&1 && git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} &>/dev/null && git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} 2>&1; git rebase main`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `pushd ${MAIN_CHECKOUT} >&- && git pull origin main`],
   [MAIN_CHECKOUT, 'false && cd /tmp; git merge feat/x'],
   [MAIN_CHECKOUT, 'false || cd /tmp; git merge feat/x'],
   [MAIN_CHECKOUT, 'true | cd /tmp; git merge feat/x'],
   [MAIN_CHECKOUT, 'pushd /tmp; popd; git merge feat/x'],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} || exit 1; git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} || exit 1; git merge feat/x`],
   [MAIN_CHECKOUT, '>/dev/null git merge feat/x'],
-  [WORKTREE, `cd ${MAIN_CHECKOUT}>/dev/null && git merge feat/x`],
-  [WORKTREE, `cd > /dev/null ${MAIN_CHECKOUT} && git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT}>/dev/null && git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd > /dev/null ${MAIN_CHECKOUT} && git merge feat/x`],
   [MAIN_CHECKOUT, 'git fetch && cd /tmp/a && make && cd /tmp/b; git merge feat/x'],
   [MAIN_CHECKOUT, 'false &&\ncd /tmp; git merge feat/x'],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} >|/dev/null && git merge feat/x`],
-  [WORKTREE, `cd ${MAIN_CHECKOUT} 2>|/dev/null && git merge feat/x`],
-  [WORKTREE, `pushd ${MAIN_CHECKOUT} >|/dev/null; git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} >|/dev/null && git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `cd ${MAIN_CHECKOUT} 2>|/dev/null && git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `pushd ${MAIN_CHECKOUT} >|/dev/null; git merge feat/x`],
   [MAIN_CHECKOUT, '>|/dev/null git merge feat/x'],
   [MAIN_CHECKOUT, '(2>/dev/null git merge feat/x)'],
   [MAIN_CHECKOUT, '>! /dev/null git merge feat/x'],
   [MAIN_CHECKOUT, '$(true)git merge feat/x'],
   [MAIN_CHECKOUT, 'git 10>/dev/null merge feat/x'],
-  [WORKTREE, `$(true)cd ${MAIN_CHECKOUT} && git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `$(true)cd ${MAIN_CHECKOUT} && git merge feat/x`],
   // No `.git` there: not a worktree, so git would run in the main checkout.
   [`${MAIN_CHECKOUT}/.claude/worktrees/agent-1`, 'git merge feat/x'],
   [MAIN_CHECKOUT, `cd ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 && git rebase main`],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, `git -C ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 merge feat/x`],
 ];
 
 const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
-  [WORKTREE, 'git merge feat/x'],
-  [WORKTREE, 'git apply x.patch'],
-  [WORKTREE, 'git rebase main'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git apply x.patch'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git rebase main'],
   [`${MAIN_CHECKOUT}-other`, 'git merge feat/x'],
-  [MAIN_CHECKOUT, `git -C ${WORKTREE} merge feat/x`],
-  [MAIN_CHECKOUT, `cd ${WORKTREE} && git merge feat/x`],
-  [MAIN_CHECKOUT, `(cd ${WORKTREE} && git rebase main)`],
+  [MAIN_CHECKOUT, `git -C ${PLAIN_FOLDER_OUTSIDE_MAIN} merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${PLAIN_FOLDER_OUTSIDE_MAIN} && git merge feat/x`],
+  [MAIN_CHECKOUT, `(cd ${PLAIN_FOLDER_OUTSIDE_MAIN} && git rebase main)`],
   [MAIN_CHECKOUT, 'git status'],
   [MAIN_CHECKOUT, 'git log --oneline --merges'],
   [MAIN_CHECKOUT, 'git diff main..feat/x'],
@@ -537,26 +545,32 @@ const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
   [MAIN_CHECKOUT, 'grep -rn "git rebase" docs/'],
   [MAIN_CHECKOUT, 'git apply --check x.patch'],
   [MAIN_CHECKOUT, 'git apply --stat x.patch'],
-  [WORKTREE, 'cd ~/orca/workspaces/pff-ios/shares-assets-research && git merge feat/x'],
+  [
+    PLAIN_FOLDER_OUTSIDE_MAIN,
+    'cd ~/orca/workspaces/pff-ios/shares-assets-research && git merge feat/x',
+  ],
   [MAIN_CHECKOUT, 'git -C ~/orca/workspaces/pff-ios/shares-assets-research merge feat/x'],
-  [WORKTREE, 'GIT_DIR=/tmp/scratch/.git git merge feat/x'],
-  [WORKTREE, 'git pull'],
-  [WORKTREE, 'git cherry-pick 1a2b3c4'],
-  [WORKTREE, 'git revert HEAD'],
-  [WORKTREE, 'git am x.patch'],
-  [MAIN_CHECKOUT, `cd ${WORKTREE}; git merge feat/x`],
-  [MAIN_CHECKOUT, `cd ${WORKTREE}\ngit merge feat/x`],
-  [MAIN_CHECKOUT, `pushd ${WORKTREE} && git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'GIT_DIR=/tmp/scratch/.git git merge feat/x'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git pull'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git cherry-pick 1a2b3c4'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git revert HEAD'],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'git am x.patch'],
+  [MAIN_CHECKOUT, `cd ${PLAIN_FOLDER_OUTSIDE_MAIN}; git merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${PLAIN_FOLDER_OUTSIDE_MAIN}\ngit merge feat/x`],
+  [MAIN_CHECKOUT, `pushd ${PLAIN_FOLDER_OUTSIDE_MAIN} && git merge feat/x`],
   [MAIN_CHECKOUT, 'git am --resolved'],
   [MAIN_CHECKOUT, 'git rebase --edit-todo'],
   [MAIN_CHECKOUT, 'git rebase --show-current-patch'],
   [MAIN_CHECKOUT, 'git am --show-current-patch'],
-  [MAIN_CHECKOUT, `cd ${WORKTREE} >/dev/null 2>&1 && git merge feat/x`],
-  [MAIN_CHECKOUT, `cd ${WORKTREE} || exit 1; git merge feat/x`],
-  [MAIN_CHECKOUT, `cd ${WORKTREE} || return; git merge feat/x`],
-  [WORKTREE, 'pushd /tmp && popd && git merge feat/x'],
-  [MAIN_CHECKOUT, `echo a && cd ${WORKTREE} &&\ngit merge feat/x`],
-  [MAIN_CHECKOUT, `git fetch && cd ${WORKTREE} && npm run check:lint &&\ngit merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${PLAIN_FOLDER_OUTSIDE_MAIN} >/dev/null 2>&1 && git merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${PLAIN_FOLDER_OUTSIDE_MAIN} || exit 1; git merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${PLAIN_FOLDER_OUTSIDE_MAIN} || return; git merge feat/x`],
+  [PLAIN_FOLDER_OUTSIDE_MAIN, 'pushd /tmp && popd && git merge feat/x'],
+  [MAIN_CHECKOUT, `echo a && cd ${PLAIN_FOLDER_OUTSIDE_MAIN} &&\ngit merge feat/x`],
+  [
+    MAIN_CHECKOUT,
+    `git fetch && cd ${PLAIN_FOLDER_OUTSIDE_MAIN} && npm run check:lint &&\ngit merge feat/x`,
+  ],
 ];
 
 // Recovery from a stuck operation stays allowed in the main checkout.
@@ -586,8 +600,8 @@ const NO_VERIFY_COMMANDS: string[] = [
   'git commit --no-v -m x',
   'git commit -m x -n',
   'git commit --message x --no-verify',
-  `git -C ${WORKTREE} commit --no-verify`,
-  `git -C ${WORKTREE} commit -m x -n`,
+  `git -C ${PLAIN_FOLDER_OUTSIDE_MAIN} commit --no-verify`,
+  `git -C ${PLAIN_FOLDER_OUTSIDE_MAIN} commit -m x -n`,
   `git -C ${MAIN_CHECKOUT} commit --no-verify -m x`,
   'git merge --no-verify',
   'git merge --no-ff --no-verify feature',
@@ -622,7 +636,7 @@ const CONFIG_REWRITE_COMMANDS: string[] = [
   'git -c user.name=x -c core.hooksPath=/dev/null commit',
   'git --config-env=core.hooksPath=HOOKS commit -m x',
   'git --config-env core.hooksPath=HOOKS commit',
-  `git -C ${WORKTREE} -c core.hooksPath=/dev/null commit -m x`,
+  `git -C ${PLAIN_FOLDER_OUTSIDE_MAIN} -c core.hooksPath=/dev/null commit -m x`,
   "bash -lc 'git -c core.hooksPath=/dev/null commit'",
   'git -c core.hooksPath=/dev/null pull',
   'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
@@ -642,7 +656,7 @@ const CONFIG_REWRITE_COMMANDS: string[] = [
   'git config set core.hooksPath /dev/null',
   'git config unset core.hooksPath',
   'git config -f .git/config core.hooksPath /dev/null',
-  `git -C ${WORKTREE} config core.hooksPath ""`,
+  `git -C ${PLAIN_FOLDER_OUTSIDE_MAIN} config core.hooksPath ""`,
   'sh -c "git config --unset core.hooksPath"',
   'git add -A && git config core.hooksPath /dev/null',
   'git config --unset-a core.hooksPath',
@@ -650,7 +664,7 @@ const CONFIG_REWRITE_COMMANDS: string[] = [
   'git config --global --unset-a CORE.HOOKSPATH',
   'git config --repl core.hooksPath x',
   'git config --ad core.hooksPath x',
-  `git -C ${WORKTREE} config --unset-a core.hooksPath`,
+  `git -C ${PLAIN_FOLDER_OUTSIDE_MAIN} config --unset-a core.hooksPath`,
   'git config --fil .git/config --unset-a core.hooksPath',
   'git config -f .git/config --unset-a core.hooksPath',
   'git config --rem core',
@@ -668,8 +682,9 @@ const CONFIG_REWRITE_COMMANDS: string[] = [
   "cat > f.md <<'EOF'\n- `git config --unset core.hooksPath` denies\nEOF",
 ];
 
-// The one-action commits the coordinator runs in the main checkout, and git spellings that only
-// look like a bypass: `-n` is a message, a log limit, or merge's --no-stat.
+// Commits that run in a folder outside the main checkout, and git spellings that only look like a
+// bypass: `-n` is a message, a log limit, or merge's --no-stat. A commit in the main checkout is
+// denied, so the commit rows run from that folder and the other rows from the main checkout.
 const ALLOWED_COMMIT_COMMANDS: string[] = [
   'git commit -m "-n"',
   'git commit -m "use --no-verify never"',
@@ -682,17 +697,15 @@ const ALLOWED_COMMIT_COMMANDS: string[] = [
   'git commit --amend --no-edit',
   'git log -n 3',
   'git log -n3',
-  `git -C ${WORKTREE} merge -n feature`,
+  `git -C ${PLAIN_FOLDER_OUTSIDE_MAIN} merge -n feature`,
   'git -c user.name=x commit -m y',
   'git -c core.pager=cat log',
   'git -c core.hooksPath=/dev/null status',
   'git commit -m x # -n',
   'echo git commit -n',
   'git -C /tmp/scratch log -n 3',
-  `git -C ${MAIN_CHECKOUT} commit -m "docs: x"`,
-  `git -C ${MAIN_CHECKOUT} commit -- HANDOFF.md -m "x"`,
   `git -C ${MAIN_CHECKOUT} log -n 3`,
-  `git -C ${WORKTREE} commit -m "feat: x"`,
+  `git -C ${PLAIN_FOLDER_OUTSIDE_MAIN} commit -m "feat: x"`,
   'git commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)"',
   'git config core.hooksPath',
   'git config --get core.hooksPath',
@@ -719,6 +732,22 @@ const ALLOWED_COMMIT_COMMANDS: string[] = [
   'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git status',
   'GIT_CONFIG_PARAMETERS="\'core.pager=cat\'" git commit -m x',
 ];
+
+// A commit aimed at the main checkout, by name or by cwd, is denied on any branch.
+const DENIED_MAIN_COMMIT_COMMANDS: string[] = [
+  `git -C ${MAIN_CHECKOUT} commit -m "docs: x"`,
+  `git -C ${MAIN_CHECKOUT} commit -- HANDOFF.md -m "x"`,
+  `git -C ${MAIN_CHECKOUT} commit --amend --no-edit`,
+  `cd ${MAIN_CHECKOUT} && git commit -m x`,
+];
+
+const isCommit = (command: string): boolean =>
+  COMMIT_WORD.test(command) && !command.startsWith('echo');
+
+// The commits that name no folder of their own, so the payload's cwd decides them.
+const COMMITS_WITHOUT_FOLDER = ALLOWED_COMMIT_COMMANDS.filter(
+  (command) => isCommit(command) && !command.includes(PLAIN_FOLDER_OUTSIDE_MAIN),
+);
 
 // `git pull` and a non-fast-forward `git merge` run the merge hooks too, but outside the main
 // checkout (where both are denied for another reason) these spellings are not a bypass: their
@@ -760,11 +789,11 @@ const expectStandardBlock = (reason: string): void => {
 
 describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
   it.each(BLOCKED_COMMANDS)('denies: %s', (command) => {
-    expect(denyReasonFor(command)).toContain('kill <pid>');
+    expect(denyReasonFor(command, payloadOutsideMain(command))).toContain('kill <pid>');
   });
 
   it.each(STASH_COMMANDS)('denies git stash: %s', (command) => {
-    const reason = denyReasonFor(command);
+    const reason = denyReasonFor(command, payloadOutsideMain(command));
 
     expectStandardBlock(reason);
     expect(reason).toContain('git stash');
@@ -772,7 +801,7 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
   });
 
   it.each(HEREDOC_COMMANDS)('denies an unquoted heredoc delimiter: %s', (command) => {
-    const reason = denyReasonFor(command);
+    const reason = denyReasonFor(command, payloadOutsideMain(command));
 
     expectStandardBlock(reason);
     expect(reason).toContain('unquoted heredoc');
@@ -782,7 +811,7 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
   it.each([...ALLOWED_COMMANDS, ...ALLOWED_GIT_AND_HEREDOC_COMMANDS, ...HEREDOC_DATA_COMMANDS])(
     'allows: %s',
     (command) => {
-      const result = run(payloadFor(command));
+      const result = run(payloadOutsideMain(command));
 
       expect(result.status).toBe(0);
       expect(result.stdout.trim()).toBe('');
@@ -847,18 +876,63 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
   });
 
   it.each(ALLOWED_COMMIT_COMMANDS)('allows: %s', (command) => {
-    const result = run(payloadFor(command));
+    const result = run(payloadOutsideMain(command));
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('');
   });
 
-  it.each(ALLOWED_COMMIT_COMMANDS)('allows in the main checkout: %s', (command) => {
-    const result = run(payloadIn(MAIN_CHECKOUT, command));
+  it.each(COMMITS_WITHOUT_FOLDER)(
+    'denies a commit when the payload names no cwd: %s',
+    (command) => {
+      const reason = denyReasonFor(command, payloadFor(command));
 
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('');
+      expectStandardBlock(reason);
+      expect(reason).toContain('git commit');
+    },
+  );
+
+  it.each(ALLOWED_COMMIT_COMMANDS.filter((command) => !isCommit(command)))(
+    'allows in the main checkout: %s',
+    (command) => {
+      const result = run(payloadIn(MAIN_CHECKOUT, command));
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    },
+  );
+
+  it.each(ALLOWED_COMMIT_COMMANDS.filter(isCommit))(
+    'allows from a plain folder outside the main checkout: %s',
+    (command) => {
+      const result = run(payloadIn(PLAIN_FOLDER_OUTSIDE_MAIN, command));
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    },
+  );
+
+  it.each(DENIED_MAIN_COMMIT_COMMANDS)('denies a commit on the main checkout: %s', (command) => {
+    for (const directory of [MAIN_CHECKOUT, PLAIN_FOLDER_OUTSIDE_MAIN]) {
+      const reason = denyReasonFor(command, payloadIn(directory, command));
+
+      expectStandardBlock(reason);
+      expect(reason).toContain('git commit');
+      expect(reason).toContain('bash scripts/job-queue.sh verify');
+      expect(reason).toContain('bash scripts/ff-main.sh <sha>');
+    }
   });
+
+  it.each(ALLOWED_COMMIT_COMMANDS.filter(isCommit))(
+    'judges the commit spelling by the folder it runs in: %s',
+    (command) => {
+      const result = run(payloadIn(MAIN_CHECKOUT, command));
+      const runsInWorktree = command.includes(`-C ${PLAIN_FOLDER_OUTSIDE_MAIN}`);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim() === '').toBe(runsInWorktree);
+    },
+  );
 
   it('allows git merge when the payload names no cwd', () => {
     const result = run(payloadFor('git merge feat/x'));
