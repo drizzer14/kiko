@@ -122,7 +122,7 @@ The kit folder's own file list is the inventory (never copy its names here); the
 
 A demo row set that a live rule demo relies on never shares a merchant name with the kit
 statement, or the live "Apply to existing" count depends on the import order (the kit statement
-has Glovo rows, so the demo uses Wolt; see "The live rule demo" in
+has Glovo rows, so the demo uses KFC; see "The live rule demo" in
 e2e/screenshot/fixtures/README.md).
 
 6. `kiko:ops` archives the `Release` configuration (signed with the
