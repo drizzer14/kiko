@@ -1,11 +1,12 @@
 # Recurring charges design (1.4)
 
-Track: 1.4-recurring. Base: 57130e23c. Read from code; the app was not run. Every file:line below holds
-on this base only: re-grep the named symbol on the actual base before building on it. Counts of files,
-cases and call sites are floors; the developer measures.
+Track: 1.4-recurring. Base: c9896e1f9, a merge of `next` 052798862 into 859b4c596 that changed no `src/` path. Read from
+code; the app was not run. Every file:line below holds on this base only: re-grep the named symbol on the actual base
+before building on it. Counts of files, cases and call sites are floors; the developer measures.
 
 Status: DRAFT, waits for the user's answers (section 16). The plan is written on the recommendations. Revised after a
-review of 3dab56c68; section 5.4 shows what changed.
+review of 3dab56c68; section 5.4 shows what changed. Section 10.2 holds the measurement; section 12 is re-read on the merged
+demo seed.
 
 Product purpose: Kiko answers "how much money do I have now". This view states what already repeated in
 the user's own rows. It predicts nothing and plans nothing.
@@ -50,10 +51,10 @@ Open run-log gaps: none covers this work. This track closes none and leaves all 
 defined by `1.4-category-automation` (its spec, section 4). This track imports it and never writes a second
 definition, a copy or a wrapper with other rules. `key` is the group identity; a blank key never groups.
 
-**Which set.** Checked in its plan at branch tip 67a0d1b1e, which moved past the cfc105301, f8ef8f8f4 and 486659692 read
-earlier; the set numbering did not change: `1.4-category-automation task 2/6: prefix offer in Apply` creates
-`merchant-name.ts`, with `merchantNameOf`, `merchantSpellingOf`, `tidiedNameOf` and `smallestSpelling`. On that tip
-that track is building its task 1/6 and the file does not exist in any tree yet.
+**Which set.** Checked in its plan at branch tip 2034e8d9f (the plan's text last changed at c2ec70313); the set numbering
+did not change: `1.4-category-automation task 2/6: prefix offer in Apply` creates `merchant-name.ts`, with
+`merchantNameOf`, `merchantSpellingOf`, `tidiedNameOf` and `smallestSpelling`. On that tip that track holds code commits of
+its task 1/6 only; `src/transactions/merchant-name/` does not exist in its tree or at its commit.
 
 **This track also uses** `merchantSpellingOf` and `smallestSpelling` for the shown name: one spelling per series,
 order-free, "ATB" for `ATB 0212` and `ATB 0340`. Those two names are in that plan's interface, not in its spec
@@ -437,29 +438,78 @@ column set. Statistics already reads every row and every column on a live query 
 
 ### 10.2 Measurement
 
-RESULT PENDING. A one-off measurement run by `kiko:ops`, outside this track: it is no contract and never enters the tree
-(the contract is the plan's matrix). It takes the column list and the indexes from `src/db/schema.ts`, uses the seed, word
-list and 25-rows-per-description ratio of `rules-performance-fixture`, plants 30 series, and at 10,000, 50,000 and 100,000
-rows prints: EXPLAIN QUERY PLAN and median time for each candidate read (narrow, narrow ordered, every column, debit-only, by
-id); wall time and counted work of a reference detection (rows read, name calls, sort comparisons, fit evaluations); the
-second-read path of opening a series (a second narrow read plus detection); a false-match sweep over merchants with no real
-recurrence.
+A one-off measurement run by `kiko:ops`, outside this track: it is no contract and never enters the tree (the contract is the
+plan's matrix). It takes the column list and the indexes from `src/db/schema.ts`, uses the seed, word list and
+25-rows-per-description ratio of `rules-performance-fixture`, plants 30 series, and at 10,000, 50,000 and 100,000 rows prints:
+EXPLAIN QUERY PLAN and median time for each candidate read; wall time and counted work of a reference detection; the
+second-read path of opening a series; the false-match sweeps. Two full runs, 5 runs per figure, median ms.
 
-| Rows | Narrow read | Reference detection | Second-read path | Name calls | Fit evaluations |
+**What these figures are.** Node v22.20.0 with JIT, and the sqlite3 CLI 3.51.0 with no encryption, on a Mac. No exclusion
+matchers. Load (1-minute average at each run's start): 29.98 for run 1 and 20.56 for run 2, falling from over 100 (15-minute
+143.66 and 110.44). No queued job ran: the queue's status listed none at the start or the end of either run. So every wall time
+is an upper reading for this Mac, and it says nothing about an iPhone. Counted work was the same in both runs.
+
+Wall times, run 1 / run 2:
+
+| Rows | Narrow read | Reference detection | Second-read path (includes starting the sqlite3 process) |
+|---|---|---|---|
+| 10,000 | 16.0 / 15.0 | 198.1 / 160.0 | 232.9 / 221.9 |
+| 50,000 | 68.0 / 68.0 | 920.5 / 881.6 | 1246.5 / 1175.6 |
+| 100,000 | 148.0 / 133.0 | 2113.3 / 1823.5 | 2697.1 / 2466.8 |
+
+Counted work, the same in both runs:
+
+| Rows | Name calls | Groups | Sort comparisons | Fit evaluations | Series found (30 planted) |
 |---|---|---|---|---|---|
-| 10,000 | RESULT PENDING | RESULT PENDING | RESULT PENDING | RESULT PENDING | RESULT PENDING |
-| 50,000 | RESULT PENDING | RESULT PENDING | RESULT PENDING | RESULT PENDING | RESULT PENDING |
-| 100,000 | RESULT PENDING | RESULT PENDING | RESULT PENDING | RESULT PENDING | RESULT PENDING |
+| 10,000 | 1157 | 957 | 47281 | 65143 | 30 |
+| 50,000 | 5684 | 3884 | 465912 | 364516 | 37 |
+| 100,000 | 11358 | 7558 | 1059513 | 739964 | 39 |
 
-False-match sweep: RESULT PENDING.
+The other reads, at 100,000 rows, run 1 / run 2, with their plans at every size:
+
+| Read | Plan | Median ms |
+|---|---|---|
+| Narrow, no order (the choice) | `SCAN transactions` | 148.0 / 133.0 |
+| Narrow, time desc | `SCAN transactions USING INDEX transactions_time` | 268.0 / 262.0 |
+| Every column, time desc (today's `listAllQuery`) | `SCAN transactions USING INDEX transactions_time` | 376.0 / 357.0 |
+| Debit, non-blank only (the matcher could not run) | `SCAN transactions` | 115.0 / 113.0 |
+| One series by id, 36 rows | `SEARCH transactions USING INDEX sqlite_autoindex_transactions_1 (id=?)`, `USE TEMP B-TREE FOR ORDER BY` | 1.0 / 0.0 |
+
+**Series found: 37 of 30 planted at 50,000 rows, and 39 at 100,000.** Not proven what the extra series are, so they are not
+called accepted. The script prints only the count, and its ledgers are deleted at its end. What the script does prove by
+reading: each planted name is its own key, at one amount and one day, charged every month, so step 1 of section 5.3 makes it
+one series and it can add no second one; so the extras (7 and 9; 0 at 10,000) come from the random rows, which hold no planted
+recurrence. Which rule let them through, and whether they are yearly by chance from a low visit rate as the sweep below
+suggests, is not proven. The candidates differ: a thin name of about two debits in three years, or a merged name, since
+`merchantNameOf` cuts a trailing number of two or more digits and folds "Silpo 10" to "Silpo 100" into one busy key. Task 1/3
+step 5 of the plan reports what the real detection finds on `rules-performance-fixture`, the same word list and ratio; that is a
+first reading of such rows with names, not a proof about these extras.
+
+**Cost, plainly.** Reference detection at 100,000 rows is 1823.5 to 2113.3 ms on a Mac under this load, in node with JIT.
+In the app it runs in a `useMemo` on the JS thread (section 9.5), on Hermes, which has no JIT, with the exclusion matchers on
+top. No device figure exists, and no multiplier from this Mac to an iPhone is claimed. How large a real ledger is, is unknown:
+the repo holds no measured real figure, only the 50,000 rows the category-rules spec budgets for. So this measurement does not
+show that the list opens without a stall on a real ledger. The device check in the plan records that, and the fix path in 10.4
+stands.
+
+**False-match sweeps, the same in both runs.** One visit a month on a random day, one price: 1 of 2,000 (0.05%). Merchants with
+no real recurrence, 3 years of random rows, visit rates 0.1 to 30 a month: worst 12 of 2,000 (0.60%, 0.1 visits a month,
+log-normal amounts), then 10 and 6 of 2,000 in the same rate's other shapes, 1 of 2,000 at 0.25 visits a month at one price, 0
+elsewhere. A price list over the same rates: 1 of 2,000 at 5 prices at each of one and two visits a month, 0 elsewhere. A daily
+shop with look-alike big baskets: 0 of 300. Recall, a real monthly among 15 to 60 purchases on one name: exactly the subscription
+1,934 of 2,000, any series 2,000, more than one series 12. Reference world matrix: 0 of 50 failed.
 
 ### 10.3 Not measured
 
 An iPhone; Hermes (no JIT); the encrypted file; op-sqlite row marshalling; the exclusion matchers on top of the reference
-(they run in Statistics today and hold their own counted pins). The device check in the plan covers these by eye on the
-user's real ledger, and it names one path: **opening a series** is a second uncached whole-ledger read plus detection, while
-the list's own read is paused beneath it. Returning with Back reads nothing new on an unchanged ledger and, keyed on the
-local day, detects nothing.
+(they run in Statistics today and hold their own counted pins); the size of a real ledger. The device check in the plan covers
+these on the user's real ledger, and it names one path: **opening a series** is a second uncached whole-ledger read plus
+detection, while the list's own read is paused beneath it. Returning with Back reads nothing new on an unchanged ledger and,
+keyed on the local day, detects nothing.
+
+**The device check records three numbers, on a release build on the user's ledger:** that ledger's row count; the time from
+opening the list to the list showing; the time from opening a series to the series showing. No pass line is set here, since no
+device figure exists to set one from. The numbers go in the coordinator's report with the user's own read of whether it stalls.
 
 ### 10.4 Pins, and the fix if one fails
 
@@ -469,8 +519,8 @@ Counted work, never wall clock (`transactions.repo.category-rules.performance.te
   sets K from the first measured run, and it is never raised after.
 - One statement per ledger fire; EXPLAIN QUERY PLAN of the narrow read is `SCAN transactions` with no temp b-tree.
 
-If a count pin fails, the fix is in the algorithm (a memo, no second sort), never a weaker bound. If the device check shows a
-stall on the real ledger: read a time window on the existing `transactions_time` index with its own EXPLAIN QUERY PLAN pin, no
+If a count pin fails, the fix is in the algorithm (a memo, no second sort), never a weaker bound. If the device check's numbers
+show a stall on the real ledger: read a time window on the existing `transactions_time` index with its own EXPLAIN QUERY PLAN pin, no
 migration. That changes which old links show, so it comes back to the user first. A new index, if it ever comes to that, gets
 its own migration, an EXPLAIN QUERY PLAN test and a `kiko:reviewer` step.
 
@@ -507,12 +557,18 @@ still fail by `no such column` when read through today's schema; the plan lists 
 - Guideline 2.5.19: no flag, no condition on the entry; a clean install shows the row and an empty state that says what the
   screen does. No demo or seed import from `src/`. Notes for Review name the feature and that it needs repeated rows, so a
   reviewer without data knows what the empty state means (2.3.1(a)).
-- The reviewer's demo file reaches the feature (kiko-compliance, "the demo dataset must reach every feature"). A reference run
-  on `buildScreenshotDataset` at 2026-11-03 finds 7 monthly series in both languages. All come from the seed's one row a month
-  at a fixed day, the groceries store among them: a reviewer would read groceries as a subscription. So the seed's grocery store
-  takes uneven visits within each month, at the same month total, so balances and charts keep their months. A reference run on
-  one such table finds none for it. Six series stay, the utility bill named by a pin. The series shown depend on the file's anchor:
-  an unrefreshed file reads them all as stopped, which the upload-day refresh already prevents.
+- The reviewer's demo file reaches the feature (kiko-compliance, "the demo dataset must reach every feature"). `next` rebuilt the
+  demo set. A reference run on the merged `buildScreenshotDataset`, anchor 2026-11-03 09:00 UTC, finds 24 monthly x6 series in both
+  languages (was 7 on the old seed): Silpo, ATB, Fora, Novus, Puzata Hata, Lviv Croissants, Aroma Kava, Salateira, Uklon, Bolt, Kyiv
+  Metro, OKKO, Kyivteploenergo, YASNO, Kyivvodokanal, Kyivstar, Planeta Kino, Netflix, Multiplex, Rozetka, Epicentr, Avrora, Nova
+  Poshta, Ukrposhta. All come from `buildMonthlyExpenses`, one row every 30 days at a fixed offset; its three every-second-month
+  health rows do not show. So a reviewer would read shops, taxis and a cinema as subscriptions, and moving only the grocery store
+  leaves 23, ATB and Fora among them. So each monthly merchant but the five real bills moves: in months 1, 3 and 5 its one row sits
+  10 days nearer the middle of its 30-day month, at the same amount, and month 0 stays. Month totals and the default 30-day window
+  do not change. A reference run with that edit applied in memory finds exactly Netflix, Kyivstar, Kyivteploenergo, YASNO and
+  Kyivvodokanal, none stopped, on all 731 daily anchors from 2026-11-03 (en, shifts of 6 to 12 days); as merged it finds 24 on all of
+  them. That reference has no exclusion matchers; the plan's pin runs the real detection. The series shown depend on the file's
+  anchor: an unrefreshed file reads them all as stopped, which the upload-day refresh already prevents.
 - Trademarks: no merchant name in a catalogue string; the app shows only the user's own text.
 - Not a promise: no output date has a local day later than today (a property pin), and the Help topic says so.
 
@@ -579,13 +635,13 @@ What's New draft, per the release skill's format: "Recurring charges: see what r
 
 Sets, each merging into `next` alone. Counts are floors, tests included.
 
-1. **1.4-recurring task 1/3: detection and the list.** Goal: the Settings row, the list, the empty state, the recurrence text and stopped section, and a reviewer's demo file that shows a real series and no groceries. Rows do not open yet. Needs `1.4-category-automation task 2/6`. Floor 31 files.
+1. **1.4-recurring task 1/3: detection and the list.** Goal: the Settings row, the list, the empty state, the recurrence text and stopped section, and a reviewer's demo file that shows the real bills as series and no shop. Rows do not open yet. Needs `1.4-category-automation task 2/6`. Floor 32 files.
 2. **1.4-recurring task 2/3: the series screen and its links.** Goal: every past charge, each opening its form, on phone and two panes. Needs task 1/3. Floor 12 files.
 3. **1.4-recurring task 3/3: hide a false match.** Goal: the control, "Hidden", the column and its restore paths. Needs task 2/3. One migration. Floor 18 files plus generated ones.
 
 **One release.** The three sets merge into `next` one at a time and `next` tolerates each middle state: every visible text ships with what it names (section 14), and no middle state writes anything but its own column. A release holds all three or none: tasks 1/3 and 2/3 alone have no hide, the remedy for the accepted yearly false match.
 
-Conflict surface: `settings.screen.tsx` and both its exact-order pins (one `Card`; `1.4-small` regroups around it), `e2e/screenshot/seed/screenshot-seed.ts` and the demo `.kiko` files (`1.4-category-automation task 2/6` edits them too), `settings.stack.tsx` and `types.d.ts` (one added route each with `1.4-category-automation`), `en.ts`, `uk.ts`, `title-keys.ts`, `help-topics.ts` (added lines), `schema.ts`, the migration files, `envelope.test.ts`, `settings-columns.test.ts` (task 3/3, by merge order). `1.4-light-scheme`: theme tokens and shared components only, so it applies by itself. `1.4-tables`: Statistics is not touched here. `1.4-bybit`: section 4, no edit.
+Conflict surface: `settings.screen.tsx` and both its exact-order pins (one `Card`; `1.4-small` regroups around it), `e2e/screenshot/seed/screenshot-seed.ts`, `e2e/screenshot/fixtures/README.md` and the demo `.kiko` files (`1.4-category-automation task 2/6` edits them too, and adds rows under merchants this track's pin reads), `settings.stack.tsx` and `types.d.ts` (one added route each with `1.4-category-automation`), `en.ts`, `uk.ts`, `title-keys.ts`, `help-topics.ts` (added lines), `schema.ts`, the migration files, `envelope.test.ts`, `settings-columns.test.ts` (task 3/3, by merge order). `1.4-light-scheme`: theme tokens and shared components only, so it applies by itself. `1.4-tables`: Statistics is not touched here. `1.4-bybit`: section 4, no edit.
 
 ## 16. User questions
 
@@ -612,6 +668,8 @@ Recommendation: **A**.
 
 **Planner's calls, recorded, not questions.** None of these is a user ruling; the only user ruling here is the one quoted at the top. Reasons in the sections named: the three periods and their minimums (5.1); yearly from two charges, with an accepted false match (5.1, 5.4); a series crosses holdings, not currencies (4); pending and manual rows count, refunds neither count nor cancel (4); loan links out by marker (4); crypto and other non-cash accounts out by kind (4); two of the last three decides a moved day (6); numeric dates as everywhere in the app (6); the stale source read from rows, not `syncState` (7); stopped sinks and leaves at 24 months (7); no midnight timer (7); hide is per merchant key (8); a settings column rather than a table or `dismissedTips` (8); the last charge's amount shows beside its date (9.2); not `cached` (9.5); `EXPORT_VERSION` stays 5 (11).
 
-**The orchestrator's calls after the spec review, recorded the same way, not user rulings:** a row is compared to today by local day, and a later local day is left out (4); the fold keeps the largest count of one source, and reaches one local day (4); a funded debit with a hand category stays in, as an accepted false match (4); quiet uses the stopped cutoff and dates from the holding's newest row (7); the quiet line names the holding (7); a stopped row shows its amount (9.2); the row sits above Help (9.1); the memo keys on the local day (9.5); a missed `seriesId` falls back to one matching series, else a neutral text (9.3); the demo seed's grocery store changes (12); all three sets ship in one release (15); the uk past frame, which `kiko-translator` rules decide (13).
+**The orchestrator's calls after the spec review, recorded the same way, not user rulings:** a row is compared to today by local day, and a later local day is left out (4); the fold keeps the largest count of one source, and reaches one local day (4); a funded debit with a hand category stays in, as an accepted false match (4); quiet uses the stopped cutoff and dates from the holding's newest row (7); the quiet line names the holding (7); a stopped row shows its amount (9.2); the row sits above Help (9.1); the memo keys on the local day (9.5); a missed `seriesId` falls back to one matching series, else a neutral text (9.3); the demo seed's grocery store changes (12, widened below); all three sets ship in one release (15); the uk past frame, which `kiko-translator` rules decide (13).
 
 **Where the measured reference moved a call:** step 2's condition was called as "every pair fits". On that form a seasonal bill with one moved day went back to the reported fault (two stopped rows or one short stopped row, in 7 of 9 placements of the moved day). So it reads "passes as monthly, no two charges in a slot": all 9 give one series, and the sweep below 5.3 shows no new false match. Step 6 runs when nothing stands, not only when nothing was found. The fold, coverage exception and exact-cut calls hold as called.
+
+**The planner's call after the merge of `next`, recorded the same way, not a user ruling:** the merged demo seed reads 24 series, so the seed edit covers each monthly merchant but five bills, as one row moved within its month, not the grocery store's several visits (12). Nothing here has been decided by the user; Q1 to Q3 are still open.
