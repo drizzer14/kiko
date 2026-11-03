@@ -1,11 +1,10 @@
 # Table views and CSV export (1.4-tables)
 
-Status: DRAFT, waits for the user's rulings (section 12). Base: 57130e23c. Date: 2026-11-03.
+Status: user rulings landed 2026-11-03 (section 12). Base: 57130e23c. Date: 2026-11-03.
 Mock: https://claude.ai/artifact/Gdf4q6yqRGBq2mfwHCmznL (browser mock, example data only).
 
 Line numbers are at the base commit. A builder re-greps them. "S" is
-`src/screens/statistics/statistics.screen.tsx`. "Recommended" marks an open user ruling; the
-spec is written as if the user takes each recommendation.
+`src/screens/statistics/statistics.screen.tsx`. "Ruled" marks the user's ruling of section 12.
 
 ## 1. Intent
 
@@ -102,31 +101,36 @@ Proof rows (each is a test):
 
 ## 5. Where the tables live, and the period
 
-Recommended (mock, Decision 1): in the Statistics screen. One `SegmentedControl` at the top with
-four parts: Charts, Categories, Cash flow, Net worth. This follows the "tabs-vs-chips" rule
-(`component-set-forms.md`): the selection changes the appearance. Charts stays the default. The
-selection lasts for the session in the store of `use-statistics-filter-selection.ts`, so that Home's
-companion pane and the Statistics tab agree.
+Ruled (Decision 1): an own screen, "Tables", `src/screens/tables/`, pushed from a button in Statistics. The
+charts view does not change, apart from the button. Orchestrator's call: the button is an in-page row under the
+filter bar, not a header item, because Statistics also shows as the Home companion pane, and one in-page path is
+visible in every pane (Guideline 2.5.19). The designer sets its look. The route registers in BOTH the Statistics and
+the Home stacks: on a wide window Statistics is Home's companion, and a name the stack does not register is unhandled
+(`statistics.stack.tsx` comment). `check:screen-imports` forbids a cross-screen import, so all shared code moves out of S:
 
-Why Statistics: it reuses the filter bar, and the rate backfill effect has one caller, at S:583. A
-table on its own screen would need that effect moved.
+- Reads: the screen's `useLiveQuery` reads move to one hook in `src/statistics/`, used by S and Tables, with the same
+  `{cached: true, paused: !isVisible}` (S:226). The whole `price_points` read moves with its documented override
+  (`docs/harness/documented-exceptions.md`, "kiko-no-whole-price-points-read"); that entry is updated in the same commit.
+- Backfill: the effect S:527-638 moves to one hook, used by S. This is a pure move. Tables also needs it: S's reads pause
+  under a pushed screen, so S alone would not start a pending run while Tables shows. Two mounted hooks must not run twice,
+  so the run gets a single flight and a shared status (section 7).
+- Filter options: the category options memo moves out of S as a pure builder (`buildCategoryOptions`).
 
-Alternative: a pushed Tables screen. It leaves the charts view untouched, needs one more tap, and
-needs the backfill extracted. On iPad it is a push inside a pane.
+A `SegmentedControl` at the top of Tables switches the tables, with three parts: Categories, Cash flow, Net worth (tabs-vs-chips
+rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. Selection and
+period are local state of the screen: a push opens on Categories and the default period. `resetTabStackOnBlur` pops the screen on
+a tab change, as for any pushed screen. The uk labels ("Категорії", "Рух коштів", "Капітал") must fit: `labelVariant: 'caption'`
+is the first step. Measure at large sizes; if they do not fit, the builder reports it. Do not shrink the text silently.
 
-The four uk labels must fit: "Графіки", "Категорії", "Рух коштів", "Капітал". `labelVariant:
-'caption'` is the first step. Measure at large sizes; if they do not fit, the control wraps or the
-builder reports it. Do not shrink the text silently.
+Period, ruled (Decision 2): the screen has its own date filter, separate from the shared date filter, which it neither reads nor
+changes. Whole calendar months. Default "Last 12 months", plus each calendar year that has data. Reason: the shared filter defaults
+to the last 30 days (`default-range.ts:13`), which gives 2 columns, and a day-grain range cuts months in two. A month column equals
+the donut when the shared date filter is set to the same whole month. The ruling's words are "Own date filter with your default";
+this spec reads "own" as the option the user saw (whole months, last 12 months or a calendar year), not a free range picker.
 
-Period (Decision 2), recommended: whole calendar months. Default "Last 12 months", plus each calendar
-year that has data. The date filter hides in table mode. Reason: the shared filter defaults to the
-last 30 days (`default-range.ts:13`), which gives 2 columns, and a day-grain range cuts months in two.
-A month column then equals the donut when the date filter is set to the same whole month. Alternative:
-use the shared filter; partial first and last columns, and the exact range match, at the cost of a
-poor first view.
-
-Filters in table mode: accounts for all three tables (the same store); categories for C1 only (the
-shared selection, as the donut). C2 and C3 hide the category filter. No currency filter exists.
+Filters on Tables: accounts for all three tables, and categories for C1 only, both from the shared store
+(`use-statistics-filter-selection.ts`), so a pick in Statistics holds on Tables. C2 and C3 hide the category filter. A category
+pick never changes C2 or C3. No currency filter exists.
 
 The current month is a partial column, marked in the caption. Average = total of complete months /
 count of complete months. The first complete month is the month after the first transaction of the
@@ -144,7 +148,7 @@ selected accounts, when that month is in the period. An empty month inside that 
 - The total column's rate is total net / total income; the average column's is the same over complete
   months.
 
-Open data question for the user (Decision 9). The exclusion rules were written for spending, and the same id set
+Ruled (Decision 9): ship this rule; the user reads C2 on real data on the device, and then decides on a per-row mark. The exclusion rules were written for spending, and the same id set
 applied to credits gives these wrong income values on the user's own data. None of them changes a chart:
   - A refund has no model. A plain credit counts as income, while the charts keep the gross expense. Income and
     expenses are both too high; net stays right.
@@ -157,18 +161,13 @@ applied to credits gives these wrong income values on the user's own data. None 
   - Term-deposit accruals are derived values, not rows (`term-deposit.descriptor.ts:124-140`). So they are not income.
     They show in C3.
 
-Options:
-- A (recommended): ship the rule above. The help text states what income means. On the device build, the user reads C2 on
-  their real data and decides on B with evidence. This is one more user look, no more code now.
-- B: A plus a per-row mark "not income" or "income" on the transaction form. It corrects any row by hand, for all the cases
-  above. It needs a migration, a form field and one more change set.
-- C: keep expenses and net only out of C2 until income has a better rule. It narrows the user's ruling on C2.
+The help text states what income means and which values can be wrong. Task 4's device check is the user's read. If the user then
+wants the mark, it is a per-row "not income" or "income" mark on the transaction form: a migration, a form field and one more change set.
 
-Finding for the user (Decision 7): `setsBalance` is read nowhere in `src/statistics` or S. So a
+Pre-existing finding (Decision 7): `setsBalance` is read nowhere in `src/statistics` or S. So a
 NEGATIVE opening or balance-set row (`holdings.repo.ts:575-585`, `accounts.repo.ts:458`) counts as
-spending in the donut today, on the day it is set. C2 must match the charts, so it would show it too.
-A one-line addition to the shared id set removes it from charts and tables together. Recommended: yes,
-as its own commit in change set 1, because it fixes a visible wrong number. It changes today's charts.
+spending in the donut today, on the day it is set. Ruled: an addition to the shared id set removes it from charts and tables
+together, as its own commit in change set 1. It changes today's charts for such rows.
 
 ## 7. C3 definitions
 
@@ -181,7 +180,8 @@ as its own commit in change set 1, because it fixes a visible wrong number. It c
 - Closed holdings are zero at or after `closedAt` (`net-worth-series.ts:197`). Archived accounts are out
   entirely (S:354-372), as in the line. Exclusions do not apply: balances use none (S:774-778).
 - The backfill already covers the table's period: `runBackfill` takes `spanStart`, the earliest data (S:401, S:552), and never
-  reads the date filter. Task 5 pins this. While it loads, show the same loading state the line uses; a failed backfill shows the fallback the
+  reads the date filter. Task 5 pins this. The hook of section 5 mounts in S and Tables, with one run at a time and one status for
+  both (a module store; a second caller joins the running run). While it loads, show the same loading state the line uses; a failed backfill shows the fallback the
   caption states.
 
 ## 8. Tap on a cell (Decision 5)
@@ -190,16 +190,11 @@ No path exists today: Statistics has no tap into rows; `Home` takes no params an
 local state (`home.screen.tsx:300-301`); Home applies no exclusions and has no spending-only rule. So Home
 cannot show rows that add up to a cell.
 
-Recommended: a tap on a C1 cell, or on a C2 income or expense cell, opens a read-only list of the rows
+Ruled: a tap on a C1 cell, or on a C2 income or expense cell, opens a read-only list of the rows
 behind the number, from the shared ledger, in native and base amounts, with a total equal to the cell. A
 loan interest row shows its derived amount, and names the payment it came from. C2 net and rate cells and
 all C3 cells do not open (no rows sum to them). This also answers the HIG line on truncation and gives the
 exact value behind a rounded cell.
-
-Alternative: no tap in this release. The change set drops. If Decision 4 stays "whole units", a sighted user then has no way to
-read the exact value, and a table of rounded numbers cannot be checked against a statement. VoiceOver still reads it. In that
-case a tap shows the exact amount only, in a small sheet: one step in task 3.
-
 ## 9. The table component (kiko:designer owns it)
 
 `src/design-system/components/data-table/`. It takes only strings and display flags as props: column
@@ -219,19 +214,19 @@ one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed
   Use `minHeight`, not `height`.
 - Digits: `fontVariant: ['tabular-nums']`, a new path, because no code uses it today; `MoneyText`'s `style`
   Pick excludes it (`money-text.props.d.ts:37`). The designer adds it to the table's cell text.
-- Column order (Decision 3), recommended: oldest to newest, as the charts read, with Total and Average (or
+- Column order (Decision 3), ruled: oldest to newest, as the charts read, with Total and Average (or
   Change) on the right. Opens scrolled so that the last 3 months show on a phone, with a part of the next
   column visible as the scroll hint. Sum columns have a `sheetBackground` tint. The last row ("All") is bold.
 - The header row stays visible on vertical scroll. RN has no sticky support in a horizontal list, so this is
-  the first probe of the change set: `stickyHeaderIndices` on the outer page scroll or an own vertical scroll.
-  Measure before you build. Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
+  the first probe of the change set. Tables is its own screen, so the table owns its vertical scroll, and the header
+  row sits above it and follows the horizontal offset. Measure before you build. Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
   actions (`kiko-gestures`). Check the iPad split and the edge swipe on a device.
 - VoiceOver: one element per cell, label "<row>, <month>", value = the FULL amount, never rounded; role `button`
   and a hint only where a tap opens rows. Header cells are hidden from it, as the HIG says for chart axes,
   since each cell's label carries the context. The table has a summary caption. Device check owed: RN has no
   grid role.
 
-Amounts in cells (Decision 4), recommended: whole major units, no currency symbol, base currency named in the
+Amounts in cells (Decision 4), ruled: whole major units, no currency symbol, base currency named in the
 caption. Reason: 2-3 month columns fit on a phone only that way. A shown total can differ by 1 from the sum of
 shown cells. Never K/M suffixes: they are hardcoded in `compact.ts:13-18` and hide the amount. Formatting uses
 the shared money path with the digits option the builder adds, not a new formatter. For a base currency with
@@ -242,7 +237,7 @@ the shared money path with the digits option the builder adds, not a new formatt
 Confirmed: no CSV export exists. New Settings row and screen, beside the `.kiko` row (`settings.screen.tsx:199-206`).
 Note: `1.4-small` also edits that file, in other lines; the coordinator merges in either order.
 
-- Scope (recommended): all transactions of all non-archived accounts, one file. Not a backup: the copy says so.
+- Scope (orchestrator's call): all transactions of all non-archived accounts, one file. Not a backup: the copy says so.
   Transactions excluded from Statistics stay in the file, with a `type` column. No date filter in this release.
   Holdings, balances and prices are out. Reason: narrowest reading of "own data" that a spreadsheet can use.
 - Columns: `date`, `account`, `holding`, `amount`, `currency`, `category`, `description`, `comment`, `type`,
@@ -256,7 +251,7 @@ Note: `1.4-small` also edits that file, in other lines; the coordinator merges i
   returns a float (`1e-8`). No base-currency column: it would need a rate choice and would age.
 - Dates: `YYYY-MM-DD HH:MM:SS` in device-local time, as the app shows it. Builder's call: no time-zone column.
 - Encoding: UTF-8 with BOM, CRLF, RFC 4180 quotes. Papa strips the BOM on our own import (`papaparse.js:158`).
-- Delimiter and decimal (Decision 6), recommended: follow the app language: uk `;` and `,`; en `,` and `.`. Excel
+- Delimiter and decimal (Decision 6), ruled: follow the app language: uk `;` and `,`; en `,` and `.`. Excel
   behavior is from memory, not verified. A device or desktop check is owed in the change set.
 - Formula safety: one pure cell function adds `'` before a text cell that starts with `=`, `+`, `-`, `@`, tab or
   CR. Never on `amount`: the prefix gives NaN in `parseAmountCell` (`amount.ts:67-82`). A matrix test pins it. Bank
@@ -271,10 +266,10 @@ Note: `1.4-small` also edits that file, in other lines; the coordinator merges i
   screen opens. So the "re-share" button of the `.kiko` screen does not carry over. Precedent:
   `read-statement-file.ts:173-178`. Device check owed: `Share.share` resolves on dismissal per a code comment only.
   `.kiko` leaves its file behind today (`export-data.ts:54`): ciphertext, so this goes to the backlog.
-- Warning and gate (Decision 8), recommended: the screen states that the file is not encrypted, and what it holds.
+- Warning and gate (Decision 8), ruled: the screen states that the file is not encrypted, and what it holds.
   The Share button then calls `confirmOwner` (Face ID or passcode), as `.kiko` does for secrets
   (`export-data.screen.tsx:57-81`). `noPasscode` proceeds with the warning, unlike `.kiko`, which refuses secrets there: with no passcode, the phone itself shows the same
-data to anyone, and the secrets are the reason for that refusal. Alternative: warning only, one step fewer.
+data to anyone, and the secrets are the reason for that refusal.
 
 ### Privacy effect (the brief's question): the policy text MUST change
 
@@ -303,25 +298,25 @@ The compliance skill has no rule on plain-text export: the scribe adds one.
 - Help: `viewStatistics` (pinned step count 8, `help-topics.test.ts:165`) and `backupData` change; the same step greps the
   catalogue keys and pins. Help states the rate rule, C2's limits and that CSV is not a backup.
 - Guideline 2.5.19: no flag. All of it shows in a release build. Demo `.kiko` files have transactions, so a reviewer sees data.
-- Performance: reads already exist in S (`useLiveQuery`, full table). Compute only the selected table, inside a memo; charts do not
-  mount in table mode. Unknown: cell count and per-account memory. Measure on the device with the real data.
+- Performance: Tables reads the same queries as S, through the shared hook. Compute only the selected table, inside a memo. S's reads pause
+  under the pushed screen; on a wide window S can stay visible beside Tables, so both compute: measure it. Unknown: cell count and per-account memory. Measure on the device with the real data.
 - Tests: `kiko-testing`; acceptance pins in section 4; AX and long uk labels in the component's render tests; device check per the
   ops checklist for phone, Duo and iPad, at the largest AX size.
 - Mutation gates are paused (user 2026-10-25): verify + review only.
 
-## 12. User rulings needed
+## 12. User rulings (2026-11-03, relayed by the coordinator)
 
-| # | Decision | Recommended |
+| # | Decision | Ruling |
 |---|---|---|
-| 1 | Where the tables live | In Statistics, one control with four parts |
-| 2 | Which months | Own whole-month period, default last 12 months |
-| 3 | Column order | Oldest to newest, opens on the last 3 months, totals on the right |
+| 1 | Where the tables live | Own screen |
+| 2 | Which months | Own date filter, default last 12 months |
+| 3 | Column order | Oldest to newest |
 | 4 | Amounts in cells | Whole units, currency in the caption |
-| 5 | Tap on a cell | Opens rows in C1 and C2 income and expenses; own change set |
-| 6 | CSV delimiter and decimal | Follow the app language |
+| 5 | Tap on a cell | Opens the rows behind the number, in Categories and Cash flow |
+| 6 | CSV delimiter and decimal | Follows the app language |
 | 7 | Negative balance-set rows count as spending today | Remove from charts and tables together |
-| 8 | CSV gate | Warning plus Face ID or passcode |
-| 9 | What counts as income, and the wrong values it can show (section 6) | Ship the plain rule, read C2 on real data on the device, then decide on a per-row mark |
+| 8 | CSV gate | A warning, then Face ID or passcode |
+| 9 | What counts as income (section 6) | Every credit that no exclusion rule catches; the user reads C2 on a device, then decides on a mark |
 
 ## 13. Left to the builder
 
@@ -330,13 +325,13 @@ The sticky header technique; the exact token for the sum-column tint if `sheetBa
 
 ## 14. Change sets
 
-Named "1.4-tables task N/M" (M = 7 with Decision 5; else 6). The numbers below are the plan's.
+Named "1.4-tables task N/7". The numbers below are the plan's.
 
-1. Shared ledger extraction, month helper, net worth core split. Decision 7's commit. No visible change except 7.
+1. Shared ledger, reads hook and backfill hook moved out of S; month helper; net worth core split. Decision 7's commit. No visible change except 7.
 2. `DataTable` component (kiko:designer), with render tests and the sticky header probe.
-3. C1 in Statistics: control, period, caption, help, en and uk.
-4. C2: income, net, rate, help.
-5. C3: per-account values, backfill span, help.
+3. Tables screen, route in both stacks, button in Statistics, C1, period, caption, help, en and uk.
+4. C2: income, net, rate, the control's first two parts, help.
+5. C3: per-account values, the control's third part, backfill single flight, help.
 6. Tap on a cell (Decision 5).
 7. D1: CSV writer, screen, share, cleanup, privacy text, compliance rule. Its own change set, and it does not depend on 1-6.
 
