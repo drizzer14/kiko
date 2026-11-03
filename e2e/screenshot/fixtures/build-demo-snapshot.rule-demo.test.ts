@@ -18,13 +18,13 @@ import { buildDemoSnapshot } from './build-demo-snapshot';
 
 const ANCHOR = Date.UTC(2026, 8, 10, 9, 0, 0);
 
-// The rule typed live into the Dining category's rule editor: "Name starts with" Wolt, "Amount"
+// The rule typed live into the Dining category's rule editor: "Name starts with" KFC, "Amount"
 // "Less than" 800 in hryvnias, and "Type" Expense. The editor turns the typed 800 into minor
 // units through parseAmount and Money.fromMajor, which the 80 000 below is pinned against in
 // the test that reads 800.
 const RULE_CATEGORY = 'dining';
 const RULE_MATCHERS: CategoryRuleMatcher[] = [
-  { type: 'nameStartsWith', text: 'Wolt' },
+  { type: 'nameStartsWith', text: 'KFC' },
   { type: 'amount', operator: 'lt', minorUnits: 80_000, currency: 'UAH' },
   { type: 'direction', direction: 'expense' },
 ];
@@ -37,41 +37,42 @@ type RuleDemoRow = {
   fails: CategoryRuleMatcher['type'][];
 };
 
+// A description repeats (KFC), so a row is told apart by its description AND its amount.
 const RULE_DEMO_ROWS: RuleDemoRow[] = [
   {
-    description: { uk: 'Wolt: піца', en: 'Wolt: pizza' },
+    description: { uk: 'KFC', en: 'KFC' },
     amountMinorUnits: -48_000,
-    daysAgo: 3,
+    daysAgo: 7,
     fails: [],
   },
   {
-    description: { uk: 'Wolt: повернення коштів', en: 'Wolt: refund' },
+    description: { uk: 'KFC: повернення коштів', en: 'KFC: refund' },
     amountMinorUnits: 35_000,
-    daysAgo: 5,
+    daysAgo: 10,
     fails: ['direction'],
   },
   {
-    description: { uk: 'Wolt: суші', en: 'Wolt: sushi' },
+    description: { uk: 'KFC', en: 'KFC' },
     amountMinorUnits: -62_000,
-    daysAgo: 6,
+    daysAgo: 14,
     fails: [],
   },
   {
-    description: { uk: 'Wolt: бургери', en: 'Wolt: burgers' },
+    description: { uk: 'KFC', en: 'KFC' },
     amountMinorUnits: -39_500,
-    daysAgo: 8,
+    daysAgo: 18,
     fails: [],
   },
   {
-    description: { uk: 'Bolt Food: шаурма', en: 'Bolt Food: shawarma' },
+    description: { uk: 'Sushi Master', en: 'Sushi Master' },
     amountMinorUnits: -52_000,
-    daysAgo: 10,
+    daysAgo: 12,
     fails: ['nameStartsWith'],
   },
   {
-    description: { uk: 'Wolt: замовлення на компанію', en: 'Wolt: group order' },
+    description: { uk: 'KFC', en: 'KFC' },
     amountMinorUnits: -145_000,
-    daysAgo: 12,
+    daysAgo: 24,
     fails: ['amount'],
   },
 ];
@@ -82,12 +83,13 @@ const SAVED_AT = ANCHOR + DAY_MS;
 describe.each(['uk', 'en'] as const)('the live rule demo rows of the %s demo file', (language) => {
   const snapshot = buildDemoSnapshot(buildScreenshotDataset(language, ANCHOR));
   const holdingById = new Map(snapshot.holdings.map((holding) => [holding.id, holding]));
-  const demoRows = RULE_DEMO_ROWS.map((row) => ({
-    ...row,
-    stored: snapshot.transactions.find(
-      (transaction) => transaction.description === row.description[language],
-    ),
-  }));
+  const storedRowsOf = (row: RuleDemoRow) =>
+    snapshot.transactions.filter(
+      (transaction) =>
+        transaction.description === row.description[language] &&
+        transaction.amountMinorUnits === row.amountMinorUnits,
+    );
+  const demoRows = RULE_DEMO_ROWS.map((row) => ({ ...row, stored: storedRowsOf(row)[0] }));
   const candidates: RewriteCandidate[] = snapshot.transactions.map((transaction) => ({
     ...transaction,
     currency: holdingById.get(transaction.holdingId)?.currency ?? null,
@@ -110,7 +112,7 @@ describe.each(['uk', 'en'] as const)('the live rule demo rows of the %s demo fil
     const card = holdingById.get(demoRows[0].stored?.holdingId ?? '');
     const account = snapshot.accounts.find((candidate) => candidate.id === card?.accountId);
 
-    expect(demoRows.every((row) => row.stored !== undefined)).toBe(true);
+    expect(RULE_DEMO_ROWS.map((row) => storedRowsOf(row).length)).toEqual([1, 1, 1, 1, 1, 1]);
     expect(new Set(demoRows.map((row) => row.stored?.id)).size).toBe(RULE_DEMO_ROWS.length);
     expect(demoRows.every((row) => row.stored?.holdingId === card?.id)).toBe(true);
     expect(card?.currency).toBe('UAH');
@@ -145,7 +147,7 @@ describe.each(['uk', 'en'] as const)('the live rule demo rows of the %s demo fil
     );
   });
 
-  it('moves exactly the three Wolt expenses under 800 to Dining, and the confirm sheet counts 3', () => {
+  it('moves exactly the three KFC expenses under 800 to Dining, and the confirm sheet counts 3', () => {
     const plan = planRuleRewrite(prepared, savedRule.id, candidates);
     const movers = demoRows.filter((row) => row.fails.length === 0);
 

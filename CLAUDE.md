@@ -50,7 +50,7 @@ Composite scripts:
   `KIKO_MUTATION_BASE` to the change set's own base commit; more than 30 files to mutate
   (`MUTATION_FILE_CAP` in `scripts/checks/mutation.sh`) exits 2; no env var bypasses the cap. The
   coordinator queues the gate per reviewed change set before its merge into next and logs it per
-  harness-workflow's "Run log"; orchestrators never run it. Agents await only the exit code.
+  harness-workflow's "Run log" (`references/run-log.md`); orchestrators never run it. Agents await only the exit code.
   Full rules: `docs/harness/checks.md`.
   Mutation gates are paused by the user since 2026-10-25 until lifted; verify + review only
   (the gate text stays).
