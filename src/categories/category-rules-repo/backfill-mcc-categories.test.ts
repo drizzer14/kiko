@@ -12,16 +12,7 @@ import { ADDED_MCC_CODES } from '@kiko/monobank/mcc-category';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { IN_CLAUSE_CHUNK_SIZE, database, settings } from '@kiko/db';
 
-type RowsQuery = PromiseLike<{ id: string }[]> & {
-  toSQL: () => { sql: string; params: unknown[] };
-};
-
-// Read at run time: the module does not exist yet.
-const backfill = () =>
-  jest.requireActual('./backfill-mcc-categories') as {
-    backfillMccCategories: () => Promise<void>;
-    mccBackfillRowsQuery: (databaseTransaction: typeof database) => RowsQuery;
-  };
+import { backfillMccCategories, mccBackfillRowsQuery } from './backfill-mcc-categories';
 
 const FAILURE_TAG = '[mcc-backfill] back-fill failed';
 const SECRET_NAME = 'Secret Shop';
@@ -108,7 +99,7 @@ describe('backfillMccCategories', () => {
     insertRow({ id: 'hotel', mcc: 7011, category: 'other' });
     insertRow({ id: 'unmapped', mcc: 6300, category: 'other' });
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(categoryOf('grocery')).toBe('groceries');
     expect(categoryOf('rail')).toBe('transport');
@@ -122,7 +113,7 @@ describe('backfillMccCategories', () => {
     insertRow({ id: 'hotel', mcc: 7011, category: 'other' });
     insertRow({ id: 'grocery', mcc: 5300, category: 'other' });
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(categoryOf('grocery')).toBe('groceries');
     expect(categoryOf('hotel')).toBe('other');
@@ -137,7 +128,7 @@ describe('backfillMccCategories', () => {
     insertRow({ id: 'own', mcc: 7011, category: '0b9f2f7a-user-travel' });
     insertRow({ id: 'hotel', mcc: 7011, category: 'other' });
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(categoryOf('own')).toBe('0b9f2f7a-user-travel');
     expect(categoryOf('hotel')).toBe('travel');
@@ -169,7 +160,7 @@ describe('backfillMccCategories', () => {
     ];
     const before = rowsOf(...kept);
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(rowsOf(...kept)).toEqual(before);
     expect(categoryOf('mover')).toBe('groceries');
@@ -178,7 +169,7 @@ describe('backfillMccCategories', () => {
   it('sets no hand flag on a moved row', async () => {
     insertRow({ id: 'grocery', mcc: 5300, category: 'other' });
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(categoryOf('grocery')).toBe('groceries');
     expect(
@@ -196,13 +187,13 @@ describe('backfillMccCategories', () => {
     const before = rowsOf('grocery', 'hotel');
     refuseMarkWrite();
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(rowsOf('grocery', 'hotel')).toEqual(before);
     expect(await markOf()).toBe(false);
 
     mockDatabase.exec('DROP TRIGGER refuse_mark');
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(categoryOf('grocery')).toBe('groceries');
     expect(categoryOf('hotel')).toBe('travel');
@@ -213,7 +204,7 @@ describe('backfillMccCategories', () => {
     insertRow({ id: 'grocery', mcc: 5300, category: 'other', description: SECRET_NAME });
     refuseMarkWrite();
 
-    await expect(backfill().backfillMccCategories()).resolves.toBeUndefined();
+    await expect(backfillMccCategories()).resolves.toBeUndefined();
 
     expect(warn).toHaveBeenCalledWith(FAILURE_TAG, expect.anything());
 
@@ -225,11 +216,11 @@ describe('backfillMccCategories', () => {
 
   it('runs once: a row that became other after the first run stays other', async () => {
     insertRow({ id: 'grocery', mcc: 5300, category: 'other' });
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
     mockDatabase.exec("UPDATE transactions SET category = 'other' WHERE id = 'grocery'");
     insertRow({ id: 'late', mcc: 5300, category: 'other' });
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(categoryOf('grocery')).toBe('other');
     expect(categoryOf('late')).toBe('other');
@@ -237,7 +228,7 @@ describe('backfillMccCategories', () => {
 
   it('reads only the mark on a later open', async () => {
     insertRow({ id: 'grocery', mcc: 5300, category: 'other' });
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
     const prepared: string[] = [];
     const prepare = mockDatabase.prepare.bind(mockDatabase);
     jest.spyOn(mockDatabase, 'prepare').mockImplementation((sql: string) => {
@@ -246,7 +237,7 @@ describe('backfillMccCategories', () => {
       return prepare(sql);
     });
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(prepared).toHaveLength(1);
     expect(prepared[0]).toMatch(/^select .* from "settings"/);
@@ -263,7 +254,7 @@ describe('backfillMccCategories', () => {
       return exec(sql);
     });
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(categoryOf('grocery')).toBe('other');
   });
@@ -273,7 +264,7 @@ describe('backfillMccCategories', () => {
     insertRow({ id: 'hotel', mcc: 7011, category: 'other' });
     const balanceBefore = mockDatabase.prepare('SELECT * FROM holdings').all();
 
-    await backfill().backfillMccCategories();
+    await backfillMccCategories();
 
     expect(categoryOf('hotel')).toBe('travel');
     expect(mockDatabase.prepare('SELECT * FROM holdings').all()).toEqual(balanceBefore);
@@ -293,7 +284,7 @@ describe('mccBackfillRowsQuery', () => {
   it('binds the added codes within the variable limit', async () => {
     insertRow({ id: 'grocery', mcc: 5300, category: 'other' });
 
-    const query = backfill().mccBackfillRowsQuery(database);
+    const query = mccBackfillRowsQuery(database);
     const { params } = query.toSQL();
 
     expect(params.length).toBeGreaterThanOrEqual(ADDED_MCC_CODES.length);
@@ -309,7 +300,7 @@ describe('mccBackfillRowsQuery', () => {
     insertRow({ id: 'unlisted-other', mcc: 6300, category: 'other' });
     insertRow({ id: 'original-other', mcc: 5411, category: 'other' });
 
-    const query = backfill().mccBackfillRowsQuery(database);
+    const query = mccBackfillRowsQuery(database);
     const sql = query.toSQL().sql.toLowerCase();
     const arms = sql.indexOf(' is null');
     const open = sql.lastIndexOf('(', arms);
