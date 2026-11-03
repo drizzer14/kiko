@@ -29,6 +29,8 @@ Rules for every set:
 - No color value appears in this plan. Light values come only from `docs/design/light-palette/palette.json`, the tracked copy made in set 2. A shape mismatch is a stop-and-ask.
 - The plist key `UIUserInterfaceStyle=Dark` stays until set 6. No tip before set 6 has `adaptiveThemes` on, an `Appearance.setColorScheme` call, or a reader of `settings.appearance`.
 - No flag, no demo module in `src/` (Guideline 2.5.19). A light look before set 6 uses only the scratch build of spec section 7, which is never merged.
+- No release cut from a tip that has sets 2-5 and no set 6. Owner: the release track. Merging into `next` does not break this, since `next` is not a release; a cut from `main` is not affected (spec section 7, point 3).
+- `src/db/settings-columns.test.ts` searches non-test `src/` for each column as an exact, whole word: in sets 1-5, a lower-case `appearance` in a non-test `src/` file, comments included, fails it.
 - Dev tests: `make jest-affected BASE=<set base>` or `npx jest <files> --maxWorkers=2`. Exit 3 means the verify covers it.
 - End of every set, in this order: `kiko:reviewer`; READY FOR VERIFY, and the coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-ls-build-<N>`; a failed verify gets a fresh developer and a new verify; `kiko:retrospect`, then `kiko:scribe` for drift; BATCH READY. Agents never run `make verify`.
 - `.superpowers/sdd/1.4-light-scheme/palette/` is gitignored and exists only in the worktree `/Users/drizzer14/orca/workspaces/pff-ios/1.4-light-scheme`. A build set in another worktree reads it by that absolute path.
@@ -41,8 +43,9 @@ Rules for every set:
 1. A display hex reaching a write: a form opened in light saves the canonical dark hex. Test in task 3/7, step 3/7.
 2. An unloaded settings row: a saved Light is not reset to System while the live query loads. Test in task 6/7, step 3/9.
 3. A lower-case stored swatch (`#ff9f0a`): light maps it, dark returns it verbatim. Test in task 3/7, step 1/7.
-4. A calendar open during an OS switch repaints. Test in task 5/7, step 4/8; device row in N16.
+4. A calendar open during an OS switch repaints and returns to its start month. Test in task 5/7, step 4/8; device row in N16.
 5. A device restored from backup (UserDefaults back, database not): the row wins and the mirror is rewritten. Test in task 6/7, step 3/9.
+6. A stored `appearance` outside the enum: the hook and the control read `parseAppearanceMode(row.appearance)`, and the value reads as System. Test in task 6/7, step 3/9.
 
 ---
 
@@ -68,13 +71,13 @@ Starts only after the coordinator relays the user's palette approval.
 
 **Files:**
 - Create: `docs/design/light-palette/palette.json`, `__tests__/light-palette-source.test.ts`, `src/design-system/palette/palette.contrast.test.ts`
-- Modify: `src/design-system/palette/palette.ts`, `palette.test.ts`, `src/design-system/theme/theme.ts`, `theme.test.ts`, `src/design-system/unistyles/unistyles.ts`, `unistyles.test.ts`, `__tests__/property-sweep-sites.test.ts` if a sweep is added here
+- Modify: `src/design-system/palette/palette.ts`, `palette.test.ts`, `src/design-system/theme/theme.ts`, `theme.test.ts`, `src/design-system/unistyles/unistyles.ts`, `unistyles.test.ts`, `__tests__/property-sweep-sites.test.ts` if a sweep is added here, `harness/kiko/skills/release/SKILL.md`, `harness/kiko/.claude-plugin/plugin.json`
 
 **Interfaces:**
 - Produces, `palette.ts`: `type SwatchName = keyof typeof entityColorsDark`; `type ColorScheme = 'dark' | 'light'`; `entityColorsLight`, `categoryColorsLight: Record<SwatchName, string>`; `chartSeriesLight`.
 - Produces, `theme.ts`: `lightTheme` with every key of `darkTheme`; new on both: `colorScheme: ColorScheme`, `colors.categoryColors`, `colors.glyphOnLightTile`.
 
-- [ ] **step 1/7: Copy the palette.** Copy `.superpowers/sdd/1.4-light-scheme/palette/palette.json` as approved to `docs/design/light-palette/palette.json`, formatted by biome. Run `node .superpowers/sdd/1.4-light-scheme/palette/check-dark.mjs` from the worktree; expected exit 0. Re-read `decisions.*.chosen` against the user's approval.
+- [ ] **step 1/7: Copy the palette.** Copy `.superpowers/sdd/1.4-light-scheme/palette/palette.json` as approved to `docs/design/light-palette/palette.json`, formatted by biome. Run `node /Users/drizzer14/orca/workspaces/pff-ios/1.4-light-scheme/.superpowers/sdd/1.4-light-scheme/palette/check-dark.mjs <build worktree>`; the file exists only at that path, and with no argument it checks the planning worktree. Expected exit 0. Re-read `decisions.*.chosen` against the user's approval.
 - [ ] **step 2/7: Write the failing pin.**
 ```ts
 it('every light and dark token equals the approved palette file', () => {
@@ -98,13 +101,13 @@ expect(config.settings?.initialTheme).toBe('dark');
 - [ ] **step 5/7: Property test, no invisible tile.** `palette.contrast.test.ts`, for each `SwatchName`, each set (dark entity, light entity, light category):
 ```ts
 it.each(cases)('%s tile holds 3:1 against page and card', ...);   // wcagContrastRatio(swatch, background|surface) >= 3
-it.each(cases)('%s glyph holds 3:1 on its tile', ...);            // glyph from isLightEntityColor rule
+it.each(cases)('%s glyph holds 3:1 on its tile', ...);            // glyph from isLightEntityColor rule, against the base hue, never a gradient stop
 it('chartSeriesLight is a subset of categoryColorsLight', ...);
 it('chartSeriesDark mapped by key equals chartSeriesLight', ...);
 ```
-A dark set case that fails is measured and reported; the floor never drops. A light failure returns to the designer.
+Palette `knownFailures` notes dark "glyph vs tile top" under 3:1; that stop is not this test's input. A dark set case that fails is measured and reported; the floor never drops. A light failure returns to the designer.
 - [ ] **step 6/7: Run.** `npx jest src/design-system __tests__/light-palette-source.test.ts --maxWorkers=2`, then `make jest-affected BASE=<set base>`, `npm run check:typecheck`, `npm run check:knip`. Every new export has a consumer at this tip.
-- [ ] **step 7/7: Scratch look and commit.** Commit `feat(theme): light palette and theme, registered and unreachable`. The app stays dark: proof by the set 1 pair run on a smaller screen list. Optional scratch build for the palette look (spec section 7).
+- [ ] **step 7/7: Scratch look and commit.** Commit `feat(theme): light palette and theme, registered and unreachable`. The app stays dark: proof by the set 1 pair run on a smaller screen list. Optional scratch build for the palette look (spec section 7). `kiko:scribe`, with this set because it first registers `light`: `harness/kiko/skills/release/SKILL.md` gains one stop step directly above step 6 (the archive), unnumbered, so the skill's "step 6" references hold: if `src/design-system/unistyles/unistyles.ts` registers a `light` theme and `ios/Kiko/Info.plist` still has `UIUserInterfaceStyle`, stop the release. Bump `plugin.json` above main's version per harness-workflow; the coordinator runs `claude plugin update kiko@kiko-marketplace` and `/reload-plugins`. Harness-sync classification: Kiko-only (it names Kiko's theme file and plist key). Check: `make doc-suites`.
 
 ---
 
@@ -112,7 +115,7 @@ A dark set case that fails is measured and reported; the floor never drops. A li
 
 **Files:**
 - Create: `src/design-system/active-color-scheme/` (hook, index, test), `src/test-support/light-theme-registered.ts` (`registerLightThemeFirst(): void`, `restoreThemeOrder(): void`; the jest mock reads `Object.values(themes).at(0)`)
-- Modify: `src/design-system/entity-tint/entity-tint.ts`, `entity-tint.test.ts`, `src/holdings/account-identity/`, `src/holdings/holding-identity/`, `src/statistics/account-contribution/account-contribution.ts`, `src/screens/statistics/bar-chart/bar-chart.component.tsx`, `src/design-system/components/color-picker/`, `src/design-system/components/entity-icon-tile/`, `src/screens/forms/account-form/`, `src/screens/forms/holding-form/`, `src/screens/forms/holding-select-option/`, and each compile error's caller (floor: `accounts.screen`, `implicit-account-heading`, `reminders.screen`, `home.screen`, `statistics.screen`, `account-detail.screen`, `holding-detail.screen`, `holding-card`, `use-target-holding-options`)
+- Modify: `src/design-system/entity-tint/entity-tint.ts`, `entity-tint.test.ts`, `src/holdings/account-identity/`, `src/holdings/holding-identity/`, `src/statistics/account-contribution/account-contribution.ts`, `src/screens/statistics/bar-chart/bar-chart.component.tsx`, `src/design-system/components/color-picker/`, `src/design-system/components/entity-icon-tile/`, `src/screens/forms/account-form/`, `src/screens/forms/holding-form/`, `src/screens/forms/holding-select-option/`, `src/screens/statistics/bar-chart/bar-chart.component.test.tsx`, and each compile error's caller (floor: `accounts.screen`, `implicit-account-heading`, `reminders.screen`, `home.screen`, `statistics.screen`, `account-detail.screen`, `holding-detail.screen`, `holding-card`, `use-target-holding-options`)
 
 **Interfaces:**
 - Consumes: `ColorScheme`, `entityColorsLight`, `theme.colorScheme`, `theme.colors.glyphOnLightTile`.
@@ -126,6 +129,8 @@ buildAccountContribution({ ..., scheme })
 // ColorPicker props: swatchSet: 'entity' | 'category'; value and onSelect stay canonical dark hex
 ```
 `resolveEntityColor(stored, typeDefault)` stays canonical; forms keep it for `ColorPicker value`.
+
+`registerLightThemeFirst()` after the imports changes only `useUnistyles().theme`: the mock's `StyleSheet.create` resolves once, at module evaluation. A light-world test of a stylesheet color calls it before the import, inside `jest.isolateModules` (spec D7).
 
 - [ ] **step 1/7: Write the failing map tests.**
 ```ts
@@ -149,7 +154,7 @@ it('paints the light value and reports the dark hex', () => {
 it('rings the swatch whose dark hex equals value', ...);
 ```
 Forms test: `it('a form opened in light saves the canonical dark hex', ...)` on `account-form` and `holding-form`, asserting the repo argument.
-- [ ] **step 4/7: Thread `scheme`.** Change producers; `npm run check:typecheck` lists callers; fix each with `useActiveColorScheme()`, adding `scheme` to `useMemo` deps. Forms: `iconColor={entityDisplayColor(effectiveColor, scheme)}`, `<ColorPicker value={effectiveColor} swatchSet="entity" .../>`. `BarChart`: `entityDisplayColor(defaultHoldingColor[type], scheme)`.
+- [ ] **step 4/7: Thread `scheme`.** Change producers; `npm run check:typecheck` lists callers; fix each with `useActiveColorScheme()`, adding `scheme` to `useMemo` deps. Forms: `iconColor={entityDisplayColor(effectiveColor, scheme)}`, `<ColorPicker value={effectiveColor} swatchSet="entity" .../>`. `BarChart`: `entityDisplayColor(defaultHoldingColor[type], scheme)`. The compiler does not list these three sites (spec D3, exception), so each gets a light-world test: `it('a light account form paints the tile through the entity map', ...)` in `account-form.screen.test.tsx`, `it('a light holding form paints the tile through the entity map', ...)` in `holding-form.screen.test.tsx`, `it('a light bar chart paints each slice through the entity map', ...)` in `bar-chart.component.test.tsx`.
 - [ ] **step 5/7: Glyph.** `EntityIconTile` reads `theme.colors.glyphOnLightTile` instead of `theme.colors.background`. Test: light world, tile with a light hex gets the token, not the page color. Existing dark assertions stay.
 - [ ] **step 6/7: Dark pins hold.** Existing `account-identity`, `holding-identity`, `entity-colors`, `holding-card`, `accounts.screen` tests gain `'dark'` where the signature needs it; no expected value changes. `make jest-affected BASE=<set base>`.
 - [ ] **step 7/7: Commit.** `feat(colors): accounts and holdings display through the light map`. App stays dark: `theme.colorScheme` is always `dark` at this tip.
@@ -181,7 +186,7 @@ it('an uncolored category hashes to a dark hue, then maps', () => {
 it('dark area opacities stay 0.3 and 0.5', ...);
 ```
 - [ ] **step 2/5: Implement the map** with the shared internal of step 2/7 of task 3/7, taking `categoryColorsLight`. `categoryColor(key)` stays on `chartSeriesDark`.
-- [ ] **step 3/5: Thread `scheme`.** As in task 3/7. `category-form`: picker `swatchSet="category"`, `value={resolveCanonicalCategoryColor(...)}`, preview through the display path; form test: light form saves the dark hex.
+- [ ] **step 3/5: Thread `scheme`.** As in task 3/7. `category-form`: picker `swatchSet="category"`, `value={resolveCanonicalCategoryColor(...)}`, preview through the display path; form test: light form saves the dark hex. The compiler does not list the preview site (spec D3, exception): `it('a light category form paints the preview through the category map', ...)` in `category-form.screen.test.tsx`.
 - [ ] **step 4/5: Charts.** `net-worth-line` reads `theme.chartFill` for the two stop opacities; the sign-colored stroke (locked) stays. Light pie and trend tests: wedges and strokes use the category set, legend swatch equals its wedge.
 - [ ] **step 5/5: Commit.** `make jest-affected BASE=<set base>`; commit `feat(colors): categories and charts display through the light map`. `kiko:scribe`: `kiko-charts` opacity section and "Reuse the entity-color system for fills".
 
@@ -191,14 +196,14 @@ it('dark area opacities stay 0.3 and 0.5', ...);
 
 **Files:**
 - Create: `src/navigation/navigation-theme/` (replaces `src/navigation/dark-theme/`), `rules/fixtures/kiko-no-unistyles-set-theme.{bad,good}.ts`, `rules/fixtures/kiko-no-hard-coded-native-scheme.{bad,good}.tsx`, `rules/fixtures/kiko-no-nested-text.{bad,good}.tsx`
-- Modify: `App.tsx`, `src/navigation/root-navigator/root.navigator.tsx` (comment), `src/navigation/large-title-screen-options/`, `src/design-system/components/glass-surface/`, `src/design-system/components/bottom-sheet/`, `src/design-system/components/keyboard-done-accessory/`, `src/calendar/kiko-calendar/kiko-calendar.component.tsx`, `rules/semgrep-prewrite.yml`, `__tests__/pre-write-guard-rules.test.ts`, `docs/harness/review-to-biome-inventory.md`, stack tests pinning the blur string
+- Modify: `App.tsx`, `src/navigation/root-navigator/root.navigator.tsx` (comment), `root.navigator.test.tsx` and `__tests__/symbol-deployment-target.test.tsx` (each imports `dark-theme/`), `docs/harness/documented-exceptions.md` (names `@kiko/navigation/dark-theme`), `src/navigation/large-title-screen-options/`, `src/design-system/components/glass-surface/`, `src/design-system/components/bottom-sheet/`, `src/design-system/components/keyboard-done-accessory/`, `src/design-system/components/text-field/text-field.component.tsx`, `src/design-system/components/holding-identity-field/holding-identity-field.component.tsx`, `src/calendar/kiko-calendar/kiko-calendar.component.tsx`, `rules/semgrep-prewrite.yml`, `__tests__/pre-write-guard-rules.test.ts`, `docs/harness/review-to-biome-inventory.md`, stack tests pinning the blur string. Floor: re-grep `dark-theme` and `keyboardAppearance` on the base.
 
 **Interfaces:** Produces `navigationDarkTheme` (object unchanged), `navigationLightTheme` (from `DefaultTheme` and palette `navigation`), `useNavigationTheme(): Theme`.
 
-- [ ] **step 1/8: Navigation theme.** Test: `useNavigationTheme` under each world; `navigationDarkTheme` deep-equals its base value; `dark` flag follows. Implement; `App.tsx` passes `theme={useNavigationTheme()}`.
-- [ ] **step 2/8: Native props.** `colorScheme="system"` in `GlassSurface` and `BottomSheet`; `keyboardAppearance` returns `undefined`, type narrows, the two readers keep passing it; `headerBlurEffect: 'systemChromeMaterial'`. Change the pins in `glass-surface.component.test.tsx`, `bottom-sheet` tests, `use-keyboard-done-accessory.test.tsx`, `large-title-screen-options.test.ts` and each stack test. Comments lose "dark-only". The tab bar props and their B1 pin stay.
-- [ ] **step 3/8: Measure N2-R before the set goes further.** Write `.superpowers/sdd/1.4-light-scheme/scratch-flip.patch` (spec section 7) if no earlier set wrote it. Scratch build of spec section 7 from this work, without any native-stack patch. kiko:ops runs rows T-uc, P6B-uc and H-uc on iOS 26.5 and 27.0. Passing: every header element new by `4s`, `4s` equals `after-scroll`. The orchestrator views every shot. A header lag stops the set: `patches/@react-navigation+native-stack+7.18.9.patch` returns with its `documented-exceptions` entry and pin test, the row re-runs, and a second failure goes to the user (spec D5).
-- [ ] **step 4/8: Calendar.** `key={theme.colorScheme}` on `Calendar` in `KikoCalendar`. Test: `it('remounts the library calendar on a scheme change', ...)`, since `react-native-calendars` caches `styleConstructor(theme)` in a ref. Controlled `current` keeps the month.
+- [ ] **step 1/8: Navigation theme.** Test: `useNavigationTheme` under each world; `navigationDarkTheme` deep-equals its base value; `dark` flag follows. Implement; `App.tsx` passes `theme={useNavigationTheme()}`. Move the imports in `root.navigator.test.tsx` and `__tests__/symbol-deployment-target.test.tsx`, and the path in `documented-exceptions.md`, in this step. `kiko:scribe` updates `kiko-design-system`, which names `navigationDarkTheme` and `dark-theme.ts`.
+- [ ] **step 2/8: Native props.** `colorScheme="system"` in `GlassSurface` and `BottomSheet`; delete the `keyboardAppearance` field from `useKeyboardDoneAccessory` and the pass-through in `TextField` and `HoldingIdentityField`; `headerBlurEffect: 'systemChromeMaterial'`. Change the pins in `glass-surface.component.test.tsx`, `bottom-sheet` tests, `large-title-screen-options.test.ts` and each stack test. In `use-keyboard-done-accessory.test.tsx`, the probe stops reading the field and `it("gives the linked input the accessory's own dark keyboardAppearance", ...)` becomes `it('sets no keyboardAppearance on the linked input, so the keyboard follows the window', ...)`. Comments lose "dark-only". The tab bar props and their B1 pin stay.
+- [ ] **step 3/8: Measure N2-R before the set goes further.** Write `/Users/drizzer14/orca/workspaces/pff-ios/1.4-light-scheme/.superpowers/sdd/1.4-light-scheme/scratch-flip.patch` (spec section 7) if no earlier set wrote it: it removes the plist key, swaps `initialTheme` for `adaptiveThemes: true`, and adds the scratch-only control that calls `Appearance.setColorScheme` with `light`, `dark` and `auto`. Scratch build of spec section 7 from this work, without any native-stack patch. kiko:ops runs on iOS 26.5 and 27.0, both directions: T-uc by a tap on `probe-light` and `probe-dark` on `system-settings`; H-uc by the same tap on a pushed screen, then the back step and each inactive tab; P6B-uc by a tap on `probe-delay-light` or `probe-delay-dark`, then opening the element, with proof it is open. An OS-only run (`simctl ui appearance`) does not close this row: `probe-results.md` at `c676f7dbd`, "on a tap switch only". Passing: every header element and the tab bar new by `4s`, `4s` equals `after-scroll`; the Alert card in P6B-uc keeps the old scheme, the accepted exception. The orchestrator views every shot. A tab bar miss is not an N8 case: it stops the set and goes to the user. A header lag stops the set: `patches/@react-navigation+native-stack+7.18.9.patch` returns with its `documented-exceptions` entry and pin test, the row re-runs, and a second failure goes to the user (spec D5).
+- [ ] **step 4/8: Calendar.** `key={theme.colorScheme}` on `Calendar` in `KikoCalendar`. Test: `it('remounts the library calendar on a scheme change', ...)`, since `react-native-calendars` caches `styleConstructor(theme)` in a ref. `KikoCalendar` passes `initialDate` and no `current`, so the remount returns to the start month. Accepted under strict scope (spec D5); the N16 calendar row records it.
 - [ ] **step 5/8: Unlinked third-party views.** Grep `style={styles` on non-RN components with a themed color. Each moves its color to a re-rendered prop or a wrapping RN `View`. Count in the report as a floor.
 - [ ] **step 6/8: Guards.** Add three rules, severity ERROR, per `kiko-linter` "Adding a pre-write guard rule":
 ```
@@ -206,7 +211,7 @@ kiko-no-unistyles-set-theme        UnistylesRuntime.setTheme(...), UnistylesRunt
 kiko-no-hard-coded-native-scheme   colorScheme="dark|light"; keyboardAppearance 'dark|light'; headerBlurEffect '*Dark|*Light'
 kiko-no-nested-text                <Text|MoneyText> inside <Text>
 ```
-Each: fixture pair with `// EXPECT-FINDING`, `RULE_IDS_WITH_FIXTURES` entry, inventory row, `metadata.skill: "kiko-design-system › Native chrome follows the window"`. `kiko:scribe` adds that heading in this commit, or `__tests__/skill-citations.test.ts` fails. Run `npm run check:rules`, `npx jest __tests__/pre-write-guard-rules.test.ts --maxWorkers=2`. `check:security` must report 0 for each id.
+Each: fixture pair with `// EXPECT-FINDING`, `RULE_IDS_WITH_FIXTURES` entry, inventory row, `metadata.skill: "kiko-design-system › Native chrome follows the window"`. `kiko:scribe` adds that heading in this commit, or `__tests__/skill-citations.test.ts` fails. One heading serves all three rules, so its body states all three (`kiko-linter`: a rule's claim is checked against the cited section's own text). Run `npm run check:rules`, `npx jest __tests__/pre-write-guard-rules.test.ts --maxWorkers=2`. `check:security` must report 0 for each id.
 - [ ] **step 7/8: Prove dark unchanged.** The set 1 pair run plus: keyboard over a form, a sheet, the Done pill, the iOS 18 tier (blur at rest and scrolled; locked decision "iOS < 26 fallback look"). Device look through the coordinator's deploy.
 - [ ] **step 8/8: Commit.** `feat(native): chrome inherits the window trait; guards against a pinned scheme`.
 
@@ -218,7 +223,7 @@ Starts after `1.4-small` is merged into `next`. Re-check `git log next..1.4-smal
 
 **Files:**
 - Create: `src/appearance/appearance-mode/`, `src/appearance/appearance-mirror/`, `src/appearance/apply-launch-appearance/`, `src/appearance/use-sync-appearance-with-settings/`, `src/design-system/components/appearance-switch/`, `src/data-transfer/snapshot/restore-appearance.test.ts`
-- Modify: `src/design-system/unistyles/unistyles.ts`, `unistyles.test.ts`, `App.tsx`, `src/settings/settings.repo.ts`, `src/screens/settings/system/system.screen.tsx`, its test, `src/db/schema.ts` (comment), `src/db/settings-columns.test.ts`, `src/db/kept-from-live-on-restore.ts`, `src/data-transfer/snapshot/restore-snapshot.ts`, `src/i18n/locales/en.ts`, `uk.ts`, `ios/Kiko/Info.plist`, `__tests__/info-plist.test.ts`, `ios/Kiko/SceneDelegate.swift` (comment)
+- Modify: `src/design-system/unistyles/unistyles.ts`, `unistyles.test.ts`, `App.tsx`, `src/settings/settings.repo.ts`, `src/screens/settings/system/system.screen.tsx`, its test, `src/db/schema.ts` (comment), `src/db/settings-columns.test.ts`, `src/db/kept-from-live-on-restore.ts`, `src/data-transfer/snapshot/restore-snapshot.ts`, `src/data-transfer/snapshot/restore-snapshot.test.ts`, `src/i18n/locales/en.ts`, `uk.ts`, `src/help/help-topics.ts`, `src/help/help-topics.test.ts`, `ios/Kiko/Info.plist`, `__tests__/info-plist.test.ts`, `ios/Kiko/SceneDelegate.swift` (comment), `docs/security/README.md`, `harness/kiko/skills/release/SKILL.md`, `harness/kiko/.claude-plugin/plugin.json`. Floor: re-grep `KEPT_FROM_LIVE_ON_RESTORE`, `NO_LIVE_DEVICE_SETTINGS` and `systemSettings` on the base.
 
 **Interfaces:**
 ```ts
@@ -246,14 +251,15 @@ it('configures adaptive themes and no initialTheme', () => {
 it('never calls setTheme', ...);
 ```
 `unistyles.ts`: `applyLaunchAppearance();` as a statement before `StyleSheet.configure`. Keep dark first in `themes`.
-- [ ] **step 3/9: Sync hook.** Mirrors `useSyncLanguageWithSettings`; mount beside it in `AppRoot`. Tests:
+- [ ] **step 3/9: Sync hook.** Mirrors `useSyncLanguageWithSettings`; mount beside it in `AppRoot`. It reads `parseAppearanceMode(row.appearance)`, never the raw column (spec D1). Tests:
 ```ts
 it('does nothing while the row is unloaded', ...);        // no mirror write, no Appearance call
 it('row wins over a stale mirror on mount', ...);         // mirror light, row system: write system, 'auto'
 it('writes the mirror, then applies, on a change', ...);  // order pinned
 it('does not re-apply when another settings column changes', ...);
+it('a stored value outside the enum reads as system', ...);   // appearance: 'LIGHT': write system, 'auto'
 ```
-- [ ] **step 4/9: Repo and restore.** `settingsRepo.setAppearance` through `write(...)`, as `setLanguage`. Add `'appearance'` to `KEPT_FROM_LIVE_ON_RESTORE`, `appearance: 'system'` to `NO_LIVE_DEVICE_SETTINGS`; remove it from `DOCUMENTED_READERLESS_COLUMNS` and `TAKEN_FROM_FILE_ON_RESTORE`; rewrite the column comment. `restore-appearance.test.ts`, on real SQLite, in the shape of `restore-lock-enabled.test.ts`:
+- [ ] **step 4/9: Repo and restore.** `settingsRepo.setAppearance` through `write(...)`, as `setLanguage`. Add `'appearance'` to `KEPT_FROM_LIVE_ON_RESTORE`, `appearance: 'system'` to `NO_LIVE_DEVICE_SETTINGS` and to its copy in `restore-snapshot.test.ts`, which the settings-row assertions spread; remove it from `DOCUMENTED_READERLESS_COLUMNS` and `TAKEN_FROM_FILE_ON_RESTORE`; rewrite the column comment. `restore-appearance.test.ts`, on real SQLite, in the shape of `restore-lock-enabled.test.ts`:
 ```ts
 it('a file with light keeps the live dark', ...);
 it('an old file with system keeps the live dark', ...);
@@ -262,11 +268,11 @@ it('a restore with no live row gives system', ...);
 it('an export carries the column', ...);
 ```
 Also a September-row world: `it('a stored light row applies at first launch', ...)`.
-- [ ] **step 5/9: Strings.** `kiko-translator` review: `settings.appearance`, `appearance.system|light|dark` in en and uk, casing per role, parity test. Help: one new step in the `systemSettings` topic, with `title` and `rowLabel` values updated; grep the help suites and uk in this step for the old values. No key is removed. The uk text goes to the user before any deploy that ships it.
-- [ ] **step 6/9: Control.** `AppearanceSwitch` as `LanguageSwitch`, through `ChipRow` (`satisfies Record<AppearanceMode, string>`). In `system.screen.tsx`, a `Card testID="settings-card-appearance"` with `SettingsRow testID="settings-row-appearance" icon="circle.lefthalf.filled"` after the language card; selected from `settings?.appearance` behind the existing `isReady`; `onSelect` calls `settingsRepo.setAppearance`. Update the screen's "Order:" comment. Test: `it('selecting Light writes the row and nothing else', ...)`, no direct `Appearance` call. `__tests__/symbol-deployment-target.test.tsx` covers the symbol.
+- [ ] **step 5/9: Strings.** `kiko-translator` review: `settings.appearance`, `appearance.system|light|dark` in en and uk, casing per role, parity test. Help: one new step in the `systemSettings` topic, with `title` and `rowLabel` values updated; `help-topics.ts` `stepKeys` gains `help.topics.systemSettings.steps.5`; `help-topics.test.ts` changes its `['systemSettings', 4]` step count and its uk title pin. Grep the help suites and uk in this step for the old values. No key is removed. The uk text goes to the user before any deploy that ships it.
+- [ ] **step 6/9: Control.** `AppearanceSwitch` as `LanguageSwitch`, through `ChipRow` (`satisfies Record<AppearanceMode, string>`). In `system.screen.tsx`, a `Card testID="settings-card-appearance"` with `SettingsRow testID="settings-row-appearance" icon="circle.lefthalf.filled"` after the language card; selected from `parseAppearanceMode(settings?.appearance)` behind the existing `isReady`; `onSelect` calls `settingsRepo.setAppearance`. Update the screen's "Order:" comment. Test: `it('selecting Light writes the row and nothing else', ...)`, no direct `Appearance` call. `__tests__/symbol-deployment-target.test.tsx` covers the symbol.
 - [ ] **step 7/9: Flip.** Remove `UIUserInterfaceStyle` from `ios/Kiko/Info.plist`. `info-plist.test.ts`: `it('has no UIUserInterfaceStyle key, so the app can follow a scheme', ...)`; the `UIStatusBarStyle` assertion stays; `__tests__/launch-screen.test.ts` unchanged. `SceneDelegate.swift`: comment names `useSyncAppearanceWithSettings` and `applyLaunchAppearance`; code unchanged. `npm run check:plist`.
 - [ ] **step 8/9: Device acceptance.** The coordinator queues the verify; then N16 per spec section 8, evidence in `.superpowers/sdd/1.4-light-scheme-build/n16/`. kiko:qa drives simulator rows on iOS 26.5, 27.0 and the iPad and Duo sims, with proof each popup is open; the orchestrator views every shot. The user runs device rows through the coordinator's deploy, including Reduce Transparency on and off and #4081 with the demo `.kiko` imported. One failing row blocks the merge.
-- [ ] **step 9/9: Docs.** `kiko:scribe`: rewrite "Dark-only theme" and "Styling layer" in `kiko-design-system`, add `AppearanceSwitch` to the component set, `kiko-architecture` language section, `kiko-domain` dark-only lines, and a palette pointer in `harness/kiko/skills/design-system/SKILL.md` with the plugin bump from 0.4.57. Grep `Dark-only theme` for citations before the rename, in the same commit. Commit `feat(settings): System, Light and Dark appearance with a live switch`.
+- [ ] **step 9/9: Docs.** `kiko:scribe`: rewrite "Dark-only theme" and "Styling layer" in `kiko-design-system`, add `AppearanceSwitch` to the component set, `kiko-architecture` language section, `kiko-domain` dark-only lines, a palette pointer in `harness/kiko/skills/design-system/SKILL.md`, the removal of the release stop step from `harness/kiko/skills/release/SKILL.md` (the plist key is gone, so the step is always true; task 2/7 step 7/7 added it), and the plugin bump above main's version. `docs/security/README.md`: the restore paragraph naming `KEPT_FROM_LIVE_ON_RESTORE` lists only lock and notifications; it gains the appearance mode and its UserDefaults mirror. Grep `Dark-only theme` for citations before the rename, in the same commit. Commit `feat(settings): System, Light and Dark appearance with a live switch`.
 
 ---
 
@@ -290,15 +296,16 @@ it('lists no tinted image', ...);
 
 ## Owed items, one line each
 
-- N2-R: task 5/7 step 3/8, kiko:ops, sims, contact sheets.
+- N2-R: task 5/7 step 3/8, kiko:ops, sims, contact sheets, switched from the scratch control; an OS-only run does not close it.
 - N16 device matrix: task 6/7 step 8/9, kiko:qa and the user, matrix folder and a verdict per row; task 7/7 step 3/3 adds the icon.
 - Reduce Transparency, #433: task 6/7 step 8/9, the user on a device, screenshots on and off.
 - rn-screens #4081: task 6/7 step 8/9, kiko:qa then the user, demo `.kiko`, before and after scroll per tab.
 - Unistyles #1329: closed by source (not in 3.6.0, 0 sites); task 5/7 step 6/8 guard, developer, fixtures.
 - `sheetAnimatedStyle`: closed by source; task 1/7 step 4/5, kiko:ops, no `WORKLET_ACCESS_ERROR`.
-- Form sheet, keyboard and date picker open during a switch on U-C, SF Symbol recolor, system menus, row L with the constants read: task 6/7 step 8/9, kiko:qa.
+- Form sheet, keyboard and date picker open during a switch on U-C, SF Symbol recolor, system menus, row L with the constants read (cold launch, lock on and off): task 6/7 step 8/9, kiko:qa.
 - ActionSheet: task 6/7 step 8/9, developer re-greps `ActionSheetIOS`; 0 closes it.
 - Open-Alert exception: accepted under C0; no action.
+- Release rule for a set 2-5 tip: task 2/7 step 7/7 adds the stop step, task 6/7 step 9/9 removes it; owner the release track.
 
 ## Estimates (per `kiko:estimator`, written by the orchestrator 2026-11-03)
 
@@ -320,5 +327,6 @@ Sum: about 14-29 h of agent time. The total in findings section 5 ("8-12 develop
 
 - Spec coverage: D1 task 6/7; D2 task 6/7; D3 tasks 3/7, 4/7; D4 tasks 3/7, 4/7; D5 task 5/7; D6 task 5/7; D7 task 2/7; icons task 7/7; every owed row above.
 - Types: `ColorScheme`, `SwatchName`, `AppearanceMode`, `entityDisplayColor`, `categoryDisplayColor`, `useActiveColorScheme` match across tasks.
-- Tips: each new export has a consumer at its own tip. `categoryDisplayColor` lands with its callers in task 4/7; the mirror and hook land with the control in task 6/7.
+- Tips: each new export has a consumer at its own tip. `categoryDisplayColor` lands with its callers in task 4/7; the mirror and hook land with the control in task 6/7. A tip with sets 2-5 and no set 6 is safe to merge into `next` and cannot be released (Global Constraints).
+- Compiler reach: `scheme` lists producer callers only; the canonical-reader sites of spec D3's exception have named tests in task 3/7 step 4/7 and task 4/7 step 3/5.
 - Proportion: signatures, test names and assertions; no function bodies.

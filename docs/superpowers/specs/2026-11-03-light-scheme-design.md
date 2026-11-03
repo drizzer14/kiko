@@ -31,7 +31,7 @@ Every line number below is a measurement on 57130e23c for reconciling with the r
 | C4 | Palette `storedHexMap.legacyLightEraHex` note and findings problem 10: the old build stored the dark hex | The old `ColorPicker` (`9d69a77e^:src/screens/forms/color-picker/color-picker.component.tsx`) iterated `theme.colors.entityColors` and reported that hex. So a color picked under the old light theme stored a LIGHT hex, which is why `resolveStoredHexForScheme` mapped both ways | D3: the picker now writes the dark hex; a September-window light hex takes the out-of-set rule |
 | C5 | Findings N5: one reverse map | The palette has two sets (`entitySwatches`, `categorySwatches`) and the same dark hex maps differently per set. `EntityIconTile` draws both, so a sink cannot know the set | D3: the producer maps, with a required `scheme` argument |
 | C6 | "about 65 test files pin dark" | Floor measured: 91 test files name a dark symbol; 124 with any literal hex. The Unistyles jest mock reads `Object.values(themes).at(0)`, so with `themes = { dark, light }` most stay green unchanged. The probe's `{ light, dark }` order would flip all of them | D7 |
-| C7 | Brief: `1.4-small` has no commits | It has 2 (`e9eb66250`, `d58a98247`). It touches `settings.screen.tsx`, its test and `kiko-architecture/reminders.md`, not `system.screen.tsx` | Merge order stays; re-check at set 6 |
+| C7 | Brief: `1.4-small` has no commits | Floor, it still moves: 3 (`e9eb66250`, `d58a98247`, `8b2726960`). It touches `settings.screen.tsx`, its test, `kiko-architecture/reminders.md`, `en.ts`, `uk.ts` and 3 more tests, not `system.screen.tsx` | Merge order stays; re-check at set 6 |
 | C8 | "Dark-only theme" lives in two skill copies | One copy: `.claude/skills/kiko-design-system/SKILL.md`. `harness/kiko/skills/design-system/SKILL.md` is a wrapper with no such text. `kiko-architecture` and `kiko-domain` also say dark-only | Scribe list in the plan |
 | C9 | Findings 10 step 5: `'unspecified'` for System | N2 ran `'auto'` (`probe-values.ts`). `RCTConvert.mm` maps both to `UIUserInterfaceStyleUnspecified` | Use `'auto'`, the measured one |
 | C10 | Findings 10 step 8: 6 `Alert.alert` calls | Floor: 8. `ActionSheetIOS` and native item menus: 0 in non-test `src/` | ActionSheet and UIMenu rows narrow to system-owned menus (section 8) |
@@ -63,8 +63,13 @@ at flip. It is a valid choice, visible in the control, and one tap changes it.
 | New file into 1.4, file `light`, live `dark` | Live `dark` stays | File value written, no reader |
 | Old file with `appearance: 'system'`, live `dark` | Live `dark` stays | File value written, no reader |
 | Old file with no such key | Live value stays | Column default `system` |
-| Restore with no live row | `system` (`NO_LIVE_DEVICE_SETTINGS`) | Column default |
+| Restore with no live row | `system` (`NO_LIVE_DEVICE_SETTINGS`) | With no file row, column default; with a file row, the file value (`settingsRowsToInsert`) |
 | 1.4 file into an older app | Column present, no reader, nothing changes | Same |
+
+The enum is TypeScript-only: `0018_add_appearance.sql` has no CHECK, and `import-data.ts` checks table shape only, so a
+hand-built row can hold `appearance: 'LIGHT'`. The hook and the control therefore read `parseAppearanceMode(row.appearance)`,
+never the raw column, and a value outside the enum reads as System. Under Q2 option A a restore does not write the file's
+value, so this guards Q2 option B and any other writer. The "no migration" decision stays.
 
 No migration in this track, so `check:shipped-migrations` is untouched and no migration reviewer step applies. If Q1
 option B is taken, a migration enters and set 6 gains a `kiko:reviewer` step before BATCH READY.
@@ -85,9 +90,15 @@ Verified by source at RN 0.87.1, with no new native code:
 
 Launch order, explicit in `src/design-system/unistyles/unistyles.ts`, not left to import order: read the mirror; if `light`
 or `dark`, call `Appearance.setColorScheme`; then `StyleSheet.configure`. Reason: Unistyles 3.6.0 reads
-`RCTKeyWindow()?.traitCollection` synchronously on main (`NativePlatform+ios.swift`), and the RN method runs on the main
-queue, so FIFO order holds. In `system` no call is made. Row L measured this order with a native getter
-(`probe-scheme.ts`); the constants read is not measured yet, so N16 re-runs row L.
+`self.interfaceStyle ?? (RCTKeyWindow()?.traitCollection ?? UIScreen.main.traitCollection)` synchronously on main
+(`NativePlatform+ios.swift`), and the RN method runs on the main queue, so FIFO order holds. Before the first
+`RCTUserInterfaceStyleDidChangeNotification` the read is the key window, then `UIScreen.main`; after it the cached
+`interfaceStyle` wins and the window is not read. In `system` no call is made.
+
+Two limits. A window that does not exist yet at the call gets no override (`RCTAppearance.mm` sets it on the windows of the
+connected scenes at call time). With no key window at the first read, Unistyles takes the OS scheme even if a non-key window
+has the override. Row L measured a passing first frame in this order with a native getter (`probe-scheme.ts`); the constants
+read is not measured yet and no run proves every launch path, so N16 re-runs row L on a cold launch with the lock on and off.
 
 Equality and mismatch. The row is the only source of truth, and the control writes only the row.
 `useSyncAppearanceWithSettings`, beside `useSyncLanguageWithSettings` in `AppRoot`, reads the row by live query. When the
@@ -142,7 +153,14 @@ Direct dark imports, measured (a floor, re-measure): non-test `src/` has 11 file
 files. All stay: under D3 they name canonical values. Only display goes through the map.
 
 Producers take a REQUIRED `scheme` argument so the compiler lists every caller: 34 non-test files and 19 test files use a
-producer today (floor). This is old problem 11 again, on purpose: a missed site is a compile error, not a white tile.
+producer today (floor). This is old problem 11 again, on purpose: a missed caller of a producer is a compile error, not a white
+tile.
+
+Exception: the canonical readers stay outside the compiler's list. `resolveEntityColor`, `defaultAccountColor`,
+`defaultHoldingColor`, `categoryColor` and `resolveCanonicalCategoryColor` take no `scheme` and return the dark hex, so a sink that
+paints their result compiles unchanged: `iconColor={effectiveColor}` in `account-form.screen.tsx` and `holding-form.screen.tsx`,
+`holdingDefaults[slice.type]` in `bar-chart.component.tsx`. Light-world tile tests on both forms, on `BarChart` and on the category
+form preview pin these sites (plan tasks 3/7 and 4/7). The list is a floor; re-grep each name.
 
 ### D4. Tile and chart parameters
 
@@ -153,9 +171,11 @@ and 0.5. Gradient percentages and the 3:1 rule stay (palette `iconTile`). The ne
 ### D5. Native-stack patch N8 and the dark-only native code
 
 N8 is not shipped, on the condition below. The stated reason (N2 passed without it) is wrong (C1). The evidence that exists:
-N1 P5 (no patch, U-C not involved) showed no difference from the patched build, and N2 C1 on BUILD-A with U-A (the header
-sends `light`/`dark`, which is the unpatched behavior) had no failed element on both iOS versions. Evidence still owed: row
-N2-R, U-C with no patch and token hex navigation colors, set 5 step 3.
+N1 P5 (no patch, U-C not involved) showed no difference from the patched build on an OS switch; on its tap rows JS views stayed
+dark, so they say nothing about the app's real result. N2 C1 on BUILD-A with U-A (the header sends `light`/`dark`, which is the
+unpatched behavior) had no failed element on both iOS versions. Neither is U-C with no patch on the override path, and the
+override path is what the Light and Dark modes use: a tap calls `Appearance.setColorScheme` on the window. That is what N2-R
+owes: U-C with no patch and token hex navigation colors, on a tap, set 5 step 3. An OS switch does not stand in for it (section 7).
 
 What brings N8 back: a header element in N2-R that lags until scroll. Then `patches/@react-navigation+native-stack+7.18.9.patch`
 returns with a `documented-exceptions` entry and a pin test, and N2-R re-runs. If N2-R still fails with the patch, the next
@@ -163,14 +183,14 @@ candidate is the probe's `PlatformColor` navigation colors, which need a user lo
 
 | Item (measured on base) | Decision | Dark tip effect, plist still Dark | Evidence |
 |---|---|---|---|
-| Tab bar `tabBarStyle.backgroundColor`, `tabBarActiveTintColor`, `tabBarInactiveTintColor`, read from `useUnistyles` (`root.navigator.tsx`) | Keep as props; the bug B1 pin stays. Comment loses "dark-only" | None | P3; bottom-tabs 1.4.0 re-applies on a color prop change |
+| Tab bar `tabBarStyle.backgroundColor`, `tabBarActiveTintColor`, `tabBarInactiveTintColor`, read from `useUnistyles` (`root.navigator.tsx`) | Keep as props; the bug B1 pin stays. Comment loses "dark-only" | None | P3 (OS switch); bottom-tabs 1.4.0 re-applies on a color prop change. The tap case on iOS 26.5 is owed by N2-R |
 | `colorScheme="dark"`: `glass-surface.component.tsx:298`, `bottom-sheet.component.tsx:355` | `colorScheme="system"` | Inherits Dark | P4 both iOS; BUILD-B |
-| `keyboardAppearance: 'dark'` (`use-keyboard-done-accessory.tsx`, return value) | `undefined`; type narrows; 2 readers keep passing it | Inherits Dark | P6 and A-uc; BUILD-B |
+| `keyboardAppearance: 'dark'` (`use-keyboard-done-accessory.tsx`, return value) | Delete the field and the pass-through in both readers (`TextField`, `HoldingIdentityField`). No literal returns: D6 keeps the guard | Inherits Dark | P6 and A-uc; BUILD-B |
 | `headerBlurEffect: 'systemChromeMaterialDark'` (`large-title-screen-options.ts`, iOS below 26 only) | `'systemChromeMaterial'` | Same material under a dark trait; the iOS 18 look is locked, so it gets its own before/after row | BUILD-B; iOS 18 not measured |
 | RefreshControl (`home.screen.tsx`, 2 sites, no tint) | No change | None | Follows the window |
 | Date picker (`time-field.component.tsx`, no `themeVariant`) | No change | None | P6 date rows |
 | `SceneDelegate.swift` privacy overlay comment names `applyAppearance` in `src/appearance/appearance.ts` | Rewrite to the real function, set 6. Code unchanged: it already resolves `systemBackground` from the window trait | None | Comment only |
-| Calendar (C11) | `key={theme.colorScheme}` on `Calendar` in `KikoCalendar` | None | N16 row |
+| Calendar (C11) | `key={theme.colorScheme}` on `Calendar` in `KikoCalendar`. It passes `initialDate` and no `current`, so a user who navigated months and switches the OS scheme with the sheet open returns to the start month. Accepted under strict scope | None | N16 row |
 | `navigationDarkTheme` (`App.tsx`) | One theme per scheme from tokens; `dark` flag follows the theme; dark object unchanged | None | N2-R |
 
 Two more facts that are safe on this base. `keyboard-done-accessory.styles.ts` imports `darkTheme` for `spacing` only, no color.
@@ -189,12 +209,16 @@ All three in `rules/semgrep-prewrite.yml`, each with its fixture pair, its `RULE
   developer reports that and a `NODE_RULES` checker is the fallback. It never just drops.
 
 `metadata.skill` must name a heading that exists at the rule's commit and survives the set 6 rewrite. Set 5 adds the heading
-"Native chrome follows the window" to `kiko-design-system`; `__tests__/skill-citations.test.ts` checks it.
+"Native chrome follows the window" to `kiko-design-system`; `__tests__/skill-citations.test.ts` checks it. All three rules cite
+that one heading, so its body states all three (`kiko-linter`, "Adding a pre-write guard rule": a rule's claim is checked against
+the cited section's own text).
 
 ### D7. Theme registration order
 
 `themes = { dark: darkTheme, light: lightTheme }`. Dark first keeps the jest mock on dark (C6). A pin in `unistyles.test.ts`
-says why. A light-world test re-registers `{ light, dark }` through a helper in `src/test-support/`.
+says why. A light-world test re-registers `{ light, dark }` through a helper in `src/test-support/`. The mock's `StyleSheet.create`
+resolves its function once, at module evaluation, so a helper call after the imports changes only `useUnistyles().theme`. A
+light-world test of a stylesheet color registers before the import, inside `jest.isolateModules`.
 
 The theme carries `colorScheme: 'dark' | 'light'`, read through `useUnistyles().theme`. Never compare a theme object by
 reference: `useUnistyles` hands out a proxy, and the mock has no `rt.themeName` to rely on.
@@ -237,11 +261,13 @@ reference: `useUnistyles` hands out a proxy, and the mock has no `rt.themeName` 
   reads shared values `keyboardHeight`, `translateY`, and numbers `windowHeight`, `tightenedMaxHeight`, `sheetBasePadding` (a
   number computed in render from `theme.spacing`), `insets.bottom`. It reads no StyleSheet style. Closed; the sheet with keyboard
   is in the before/after run because a miss throws.
-- 3.6.0, "views with no unistyle are no longer linked" (`hasUnistyles`, `createUnistylesElement.native.tsx`): a view whose `style`
-  holds no `unistyles_` key renders as plain RN. Kiko effect: an inline `{ backgroundColor: theme.colors.x }` from `useUnistyles`
+- 3.6.0, "views with no unistyle are no longer linked" (`hasUnistyles`, defined in `src/core/hasUnistyles.ts` of the package and
+  called by `createUnistylesElement.native.tsx:17`): a view whose `style` holds no `unistyles_` key renders as plain RN. Kiko effect: an inline `{ backgroundColor: theme.colors.x }` from `useUnistyles`
   already re-renders; a style array with one unistyle still links. No dark change expected; the before/after run proves it.
-- #1329: not fixed in 3.6.0 (C2). AST scan of `src/` for `Text`, `MoneyText`, `RNText`, `NativeText` nested in a text element, any line
-  span: 0 sites; `<Trans`: 0. Floor: a `Text` given a JSX value through a variable or prop is not seen. Guard in D6.
+- #1329: not fixed in 3.6.0 (C2; the `includeUnpromoted` count is 0 in 3.6.0 and 3.7.0, 2 in 3.8.0). AST scan of `src/` for `Text`,
+  `MoneyText`, `RNText`, `NativeText` nested in a text element, any line span: 0 sites; `<Trans`: 0. Floor: a `Text` given a JSX value
+  through a variable or prop is not seen, and the measured size of that blind spot is 227 Text-like elements with an unresolved
+  child in 113 files, most of them strings. Guard in D6.
 - Third-party views with a `StyleSheet` color from Unistyles are not linked by the Babel plugin (`root: 'src'` rewrites only RN
   primitives) and repaint only on re-render. N16 covers them. Set 5 greps them.
 
@@ -268,25 +294,59 @@ The order holds with these exact exceptions:
 
 1. A light `Appearance` apply before the flip would be a half-light UI: native chrome light, JS dark. So mirror, hook and control
    land only in set 6, together with adaptive on and the plist key off. Nothing can be split out; a setter alone fails knip.
-2. Adaptive on with the plist still Dark looks safe but is not proved: Unistyles falls back to `UIScreen.main.traitCollection`
-   when there is no key window, which is the OS scheme. So no merged tip has adaptive on before the flip.
+2. Adaptive on with the plist still Dark looks safe but is not proved: Unistyles reads
+   `self.interfaceStyle ?? (RCTKeyWindow()?.traitCollection ?? UIScreen.main.traitCollection)`, so with no cached value and no key
+   window it takes `UIScreen.main`, which is the OS scheme (D2, two limits). So no merged tip has adaptive on before the flip.
 3. Sets 2 to 5 carry unreachable light values and code in the bundle. No flag, no demo module, no input reaches them, so the
-   mechanized 2.5.19 checks pass. `kiko-compliance` reads 2.5.19 as banning "ANY hidden, dormant or undocumented feature", so a
-   release cut from such a tip is the one place this is not clean. See Q3.
+   mechanized 2.5.19 checks pass. Rule: no release is cut from a tip that has sets 2 to 5 and no set 6. Such a bundle breaks
+   `kiko-architecture/SKILL.md:45-47`: "A not-ready feature is REMOVED from the build (its code paths gone), never flag-hidden".
+   `kiko-compliance` also reads 2.5.19 as banning "ANY hidden, dormant or undocumented feature". Owner: the release track. A stop
+   step in the release skill, added in set 2 and removed in set 6, mechanizes it. Merging into `next` does not break the rule:
+   `next` is not a release. A cut from `main` is not affected: `main` has none of these sets until a release merge brings them, and
+   the stop step reads the tip, whichever branch it is. See Q3.
 4. A light icon before the flip would show a light icon on a dark app, hence set 7 last.
 5. Set 6 itself: a September `light` row takes effect at first launch (D1).
 
-Light on a device before the flip: a scratch build, never merged. In a detached scratch worktree (`git worktree add --detach`) at
-the set's tip, run `npm ci` (never share `node_modules`), apply `.superpowers/sdd/1.4-light-scheme/scratch-flip.patch` (removes
-the plist key, swaps `initialTheme` for `adaptiveThemes: true`, nothing else), and commit it there. Ops builds it, and a device
-install goes through the coordinator. The scheme follows the OS only, since there is no control yet. The coordinator confirms
-afterwards that no branch contains that commit, removes the worktree, and redeploys the real tip.
+Light before the flip, on a simulator or a device: a scratch build, never merged. In a detached scratch worktree
+(`git worktree add --detach`) at the set's tip, run `npm ci` (never share `node_modules`), apply
+`/Users/drizzer14/orca/workspaces/pff-ios/1.4-light-scheme/.superpowers/sdd/1.4-light-scheme/scratch-flip.patch`, and commit it
+there. The path is absolute because the file is gitignored and exists only in that worktree. Ops builds it, and a device install
+goes through the coordinator. The coordinator confirms afterwards that no branch contains that commit, removes the worktree, and
+redeploys the real tip.
+
+The patch does three things and adds no native code:
+
+- It removes the plist key.
+- It swaps `initialTheme` for `adaptiveThemes: true`.
+- It adds a scratch-only control above the navigator, on every screen, that calls `Appearance.setColorScheme` with `light`, `dark`
+  and `auto`. Its shape is `bc2682882:src/navigation/light-probe/probe-overlay/probe-overlay.component.tsx`: `probe-light`,
+  `probe-dark`, `probe-auto`, `probe-delay-light`, `probe-delay-dark` (the same call, 8 s after the tap), and a readout of the RN
+  scheme and the Unistyles theme name.
+
+With no tap the scheme follows the OS. A tap overrides the window until `probe-auto` or the next launch.
+
+Trigger per N2-R row (`c676f7dbd:.superpowers/sdd/light-scheme-research/probe-brief-n2.md`):
+
+| Row | What it does | Trigger |
+|---|---|---|
+| T-uc | Switch on `system-settings` | Tap on `probe-light`, `probe-dark` |
+| H-uc | Switch on a pushed screen, then the back step and each inactive tab | Tap on the same buttons, which the overlay keeps on the pushed screen |
+| P6B-uc | Alert, BottomSheet, context result and Switch open during the switch | Tap on `probe-delay-light` or `probe-delay-dark`, then open the element. A direct tap cannot reach a control under an Alert or a sheet |
+
+N2 ran P6B-uc on the Darwin trigger (`notifyutil -p kiko.probe.light|dark|system`). It is not carried: it needs a native module in
+the patch, N2 row T showed the same verdicts for a tap and for the trigger, and the delay buttons were the probe's own fallback.
+The app has no path that switches under an open Alert or sheet (section 5), so P6B-uc measures the override path behind it, not a user
+path. The Alert card keeps the old scheme, as in N2: the accepted Open-Alert exception (section 8), not a failed row.
+
+An OS-only run does not close N2-R. N1 P1 already passed an OS switch, and the difference between the iOS versions is on the override
+path only (`c676f7dbd:.superpowers/sdd/light-scheme-research/probe-results.md:75`): "on a tap switch only: on iOS 27.0 the back button
+and tab bar follow `Appearance.setColorScheme`, on iOS 26.5 they do not". On U-C, N2 passed that case only with the `'unspecified'` patch (C1).
 
 ## 8. Owed items
 
 | Item | Closes in | By | Evidence |
 |---|---|---|---|
-| N2-R: U-C, no native-stack patch, token hex navigation colors, rows T-uc, P6B-uc, H-uc on iOS 26.5 and 27.0 | Set 5 step 3, scratch build | kiko:ops, simulators | Contact sheets and `measure.tsv`, every shot viewed by the orchestrator |
+| N2-R: U-C, no native-stack patch, token hex navigation colors, rows T-uc, P6B-uc, H-uc on iOS 26.5 and 27.0, each switched by `Appearance.setColorScheme` from the scratch control (trigger per row in section 7). An OS-only run does not close it (section 7) | Set 5 step 3, scratch build | kiko:ops, simulators | Contact sheets and `measure.tsv`, every shot viewed by the orchestrator |
 | N16 full device matrix: iPhone and iPad, iOS 26 and 27, both schemes, live switch on a tab root, a pushed screen, an open sheet and the keyboard | Set 6, before merge; set 7 adds the icon row | kiko:qa drives simulator rows; the user on the device through the coordinator's deploy | Matrix in `.superpowers/sdd/1.4-light-scheme-build/n16/`, the user's verdict per row. "Everything or nothing": one failing row blocks the merge |
 | Reduce Transparency, bottom-tabs #433 | Set 6, N16 row | The user on a device; simulators showed no proven effect | Device screenshots, both schemes, on and off, tab bar and glass. A failure is a user question |
 | rn-screens #4081, scroll-edge blur on inactive tabs after a switch | Set 6, N16 row, demo `.kiko` imported through the real Import UI so tabs scroll under the bar | kiko:qa, then the user | Before and after scroll, each tab, both directions |
@@ -296,23 +356,25 @@ afterwards that no branch contains that commit, removes the worktree, and redepl
 | N2 limit: ActionSheet open during a switch | N/A for app code: 0 `ActionSheetIOS` (re-grep at set 6). Otherwise an N16 row | Developer grep | Grep result |
 | N2 limit: SF Symbol recolor | Set 6, N16: a `textPrimary` symbol on a real screen, not the blue probe symbol | kiko:qa | Pixel region plus eye |
 | N2 limit: native UIMenu | Set 6, N16: only system menus exist (long-press back, overflow). Open during an OS switch | kiko:qa | Sheets |
-| Row L with the constants read | Set 6, N16 | kiko:qa | Frame sheets, saved Light on OS dark, saved Dark on OS light, lock on |
+| Row L with the constants read | Set 6, N16 | kiko:qa | Frame sheets, saved Light on OS dark, saved Dark on OS light, each on a cold launch with the lock on and with the lock off |
 | Open-Alert exception | Accepted under C0; not re-measured | n/a | Row Y |
 | HIG advice "Avoid offering an app-specific appearance setting" | Ruled by the user. Not a guideline requirement (findings section 2) | n/a | The Notes for Review line below |
 
 N16 also has: iOS 18 tier (solid sheet, blur); Duo unfolded (two panes switch together); uk chips at 360 pt; a switch during a heavy
-sync; calendar open during an OS switch; app-switcher privacy overlay in Light.
+sync; calendar open during an OS switch (it repaints and returns to its start month, D5); app-switcher privacy overlay in Light.
 
 ## 9. Tests
 
 - Jest cannot prove a repaint. The device matrix is the acceptance test.
 - Property test: all 14 swatches of both light sets and the dark set, each with its background and `surface`, tile contrast and glyph
-  contrast at 3:1. A failing light value goes back to the designer; the floor never drops.
+  contrast at 3:1. Glyph contrast is measured against the swatch's base hue, the input of the glyph rule, not a gradient stop: palette
+  `knownFailures` already notes the dark "glyph vs tile top" under 3:1. A failing light value goes back to the designer; the floor never drops.
 - Property test: any valid hex in dark returns verbatim; any valid hex in light returns a set member or clears 3.4. Seeds through
   `sweep`, spread per `kiko-testing`, with a new `__tests__/property-sweep-sites.test.ts` entry.
 - Test files that must change (floor): `unistyles.test.ts`, `info-plist.test.ts`, `theme.test.ts`, `palette.test.ts`, `entity-tint.test.ts`,
   `settings-columns.test.ts`, `glass-surface.component.test.tsx`, `bottom-sheet` tests, `use-keyboard-done-accessory.test.tsx`,
-  `large-title-screen-options.test.ts`, stack tests that pin the blur string, `color-picker.component.test.tsx`, every producer test. Others stay
+  `large-title-screen-options.test.ts`, stack tests that pin the blur string, `color-picker.component.test.tsx`, every producer test,
+  `root.navigator.test.tsx`, `__tests__/symbol-deployment-target.test.tsx`, `help-topics.test.ts`, `restore-snapshot.test.ts`. Others stay
   green by D7. Each set changes its pins with its code.
 - Owed state: this feature adds none (no walk, no marker), so no 1.2-upgrade world applies to the "green unchanged" suites. Set 6 adds a
   September-row world (`appearance: 'light'` before first launch).
@@ -321,25 +383,27 @@ sync; calendar open during an OS switch; app-switcher privacy overlay in Light.
 
 - Only set 6 adds user-visible text, so no held-copy case exists: no earlier set names the feature. `settings.appearance` plus an `appearance`
   namespace (`system`, `light`, `dark`), the `language` precedent. One help step in the `systemSettings` help topic (it now says Language and App
-  Lock), `kiko-translator` casing, uk reviewed by the user before a deploy that ships it. No key is removed or renamed; the changed help values take
+  Lock; `help-topics.ts` `stepKeys` gains it, and `help-topics.test.ts` pins the step count and the uk title), `kiko-translator` casing, uk reviewed by the user before a deploy that ships it. No key is removed or renamed; the changed help values take
   the "catalogue" grep in the same step. The old uk row label was "Тема" (`9d69a77e^`); the translator decides.
 - Notes for Review, release skill, 2.3.1(a) duty: the 1.4 note must name the appearance control. Owed by the release track.
 - Docs: `kiko-design-system` "Dark-only theme" rewritten at set 6; `kiko-architecture` language section and `kiko-domain` dark-only lines; `kiko-charts`
-  opacity at set 4; a palette pointer line in `harness/kiko/skills/design-system/SKILL.md` and a plugin bump. Through `kiko:scribe` under the skill drift rule.
+  opacity at set 4; a palette pointer line in `harness/kiko/skills/design-system/SKILL.md` and a plugin bump. `docs/security/README.md` at set 6: the
+  restore paragraph lists only lock and notifications, so it gains the appearance mode and its UserDefaults mirror. `harness/kiko/skills/release/SKILL.md`
+  gains the stop step at set 2 and loses it at set 6 (section 7, point 3). Through `kiko:scribe` under the skill drift rule.
 - Run-log gaps: none of the open gaps touches this work (grep for unistyles, theme, glass, color, palette, dark, native-stack: 0). This plan closes none and leaves all open.
 
 ## 11. User questions
 
 **Q1. An existing install on an OS in light mode, first launch of 1.4.** The row holds `system`.
 - A (recommended): it opens light. Same rule for everyone, no migration. Consequence: someone who never asked sees a light app; the control is one tap away.
-- B: a data migration sets existing installs to `dark`, new installs stay `system`. Consequence: nothing changes unasked, but the control shows Dark for someone who chose nothing; a migration with its review.
+- B: a data migration with `WHERE appearance = 'system'` sets existing installs to `dark`. New installs stay `system`, because `settings.repo.ts:72` creates the row at runtime and no migration inserts it. Consequence: on a light OS, the first launch of 1.4 paints MigrationsGate and LockGate light until the hook applies dark, for one launch. After that the app stays dark. The control shows Dark for someone who chose nothing. The migration needs its review.
 
 **Q2. A `.kiko` restore and the mode.**
-- A (recommended): the device keeps its mode (`KEPT_FROM_LIVE_ON_RESTORE`). Consequence: restoring an old file cannot reset Dark to System, and a new phone sets it once. The mirror needs no restore path.
-- B: the file decides, like `language`. Consequence: every pre-1.4 file resets the mode to System, and the restore must re-sync the mirror.
+- A (recommended): the device keeps its mode (`KEPT_FROM_LIVE_ON_RESTORE`). Consequence: restoring an old file cannot reset Dark to System, and a new phone sets it once.
+- B: the file decides, like `language`. Consequence: every pre-1.4 file resets the mode to System.
 
 **Q3. Sets 2 to 5 in `next` before the flip (section 7, point 3).**
-- A (recommended): merge each set into `next` when reviewed; the 1.4 release is cut only from a tip with set 6. Consequence: small reviews and no long-lived branch; the cost is a release dependency, and an urgent 1.4 cut would have to drop sets 2 to 5.
+- A (recommended): merge each set into `next` when reviewed; the 1.4 release is cut only from a tip with set 6. A tip with sets 2 to 5 and no set 6 cannot be released. The owner of this rule is the release track, and a stop step in the release skill enforces it. Consequence: small reviews and no long-lived branch; the cost is a release dependency, and an urgent 1.4 cut would have to drop sets 2 to 5. A cut from `main` is not affected.
 - B: hold sets 2 to 5 on stacked merge points and merge them with set 6. Consequence: `next` is clean at every moment; other 1.4 tracks diverge from the theme and producer changes, with a larger merge.
 
 Palette choices (page background, segmented thumb) are in the designer's file and go with the palette approval.
