@@ -11,8 +11,9 @@ the catalog entry goes last.
 **Spec:** `docs/superpowers/specs/2026-11-03-bybit-sync-design.md`. Section numbers below are the spec's. Plan
 text never overrides it; a difference found is reported.
 
-**Status:** No app code until the coordinator relays the user's approval. Q1 default A+B, Q2 default no
-notification, Q3 default accept, Q4 default ship with the copy of O26 (spec section 13). Mutation gates are paused by the user since 2026-10-25: verify and review only;
+**Status:** No app code until the coordinator relays the user's approval. The user answered Q1 to Q4 (spec section 13):
+stages A and B ship, and stages C and D are deferred under Backlog (O37); no notification; the two gaps are accepted limits;
+1.4 ships before R7, with the copy of O26. Mutation gates are paused by the user since 2026-10-25: verify and review only;
 the gate text stays below for when it is lifted.
 
 ## Global constraints
@@ -20,7 +21,7 @@ the gate text stays below for when it is lifted.
 - Base 57130e23c at this writing; each set's base is the tip of the set before it. Every code fact is a symbol or
   anchor text: re-grep it on the actual base. Every count is a FLOOR measured at 57130e23c; the developer measures.
 - Commit granularity: per step, one `kiko:qa` RED commit showing the failing output on the parent, then one
-  `kiko:developer` GREEN commit. A message names `1.4-bybit set N/10 step n/m`. A re-pin names the ruling that forces
+  `kiko:developer` GREEN commit. A message names `1.4-bybit set N/8 step n/m`. A re-pin names the ruling that forces
   it and lists old title to new title in the commit body. No red commit may import a module that does not exist yet.
 - Tests by an agent: `npx jest <files> --maxWorkers=2` and `make jest-affected`. Never full jest, `make verify` or
   `check:all`. Exit 3 from `make jest-affected`: tell the coordinator.
@@ -33,7 +34,7 @@ the gate text stays below for when it is lifted.
   it runs at publish only (O29). UI uses theme tokens only: `tone=`, `theme.iconSizes`, no colour literal (O12).
 - No migration in any set, so no migration review and no EXPLAIN test. No `BinanceX` rename (O7).
 - Every set: a `kiko:reviewer` pass on its diff before merge; after it, the session's skill-drift rule (retrospect
-  verifies, scribe fixes) unless the orchestrator folds it into set 10; the report names the drift sha or "no drift".
+  verifies, scribe fixes) unless the orchestrator folds it into set 8; the report names the drift sha or "no drift".
 - A new test file stays under 1000 lines; split by concern (memory new-test-file-over-1000-lines-dup-regression).
 
 ## File map
@@ -56,47 +57,53 @@ the gate text stays below for when it is lifted.
 | `src/crypto-sync/bybit/bybit.transfer-history.ts` | transfer walk | 6 |
 | `src/design-system/components/bybit-credentials-field/` | connect field | 7 |
 
-## 1.4-bybit set 1/10: the probe script, the terms verdict and the user's probe run
+## 1.4-bybit set 1/8: the terms verdict, the probe script and the user's probe run
 
-Base: 57130e23c, plus the approved spec. Size: 1 script of about 600 to 900 lines, 1 test, no app file. Not mutable.
+Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 wait for nothing; the spec approval comes before step 6/7 (PLANNER CALL
+23). Size: 1 script of about 600 to 900 lines, 1 test, no app file. Not mutable.
 Reviewer checks: the whole script for any leak path; every part against spec section 10; no write verb. "Set 1 tip" is
 the commit after the last step that writes results: the second run of step 7/7, for R3 and R4 (O36). Set 2 bases on it.
 
-The user's order (O23, O31, O36): part 1 of the browser step (step 4/7), the terms verdict at once (step 5/7), THE KEY
-MOMENT R1 (step 6/7), R2, R3, R4 with the redeem, then after Q1 R5 and R6, and R7 on its date.
+The user's order (O23, O31, O36, O38): part 1 of the browser step (step 1/7), the terms verdict at once (step 2/7), THE
+KEY MOMENT R1 (step 6/7), R2, R3, R4 with the redeem, and R7 on its date, an open check after the ship (Q4). Steps 3/7 to
+5/7 run meanwhile, so a pass loses no time (O38).
 
-- [ ] **step 1/7: write `memory/refs/bybit-probe.sh`** (main checkout, untracked, like its templates; `kiko:ops` or
+- [ ] **step 1/7: the user's first step: part 1 of the browser step** (O23, O38; PLANNER CALL 18): no account, no key, no
+  money, and no wait for the script. The coordinator sends the user the part 1 text of spec section 9. The sentences go to
+  `memory/refs/bybit-terms-sentences-<date>.txt` and at once to step 2/7.
+- [ ] **step 2/7: the API terms verdict (O23, O36, O38).** At once on the pasted sentences, before R1 and before any of
+  the user's money. A `kiko:reviewer` reads the step 1/7 sentences and the terms table of spec section 9, and rules on
+  clauses 6.5 and 6.9 by name. It needs no probe output. Stop rule: a clause that forbids this use stops the track here, and
+  the coordinator takes it to the user. The verdict goes into spec section 9. `make doc-suites`. A page that needs a login:
+  the user creates no account, the verdict is reported as blocked on that page, and the coordinator takes it to the user;
+  no account step starts until the user rules on it (O38).
+- [ ] **step 3/7: write `memory/refs/bybit-probe.sh`** (main checkout, untracked, like its templates; `kiko:ops` or
   the coordinator names the writer). Pattern: `binance-transfer-depth-probe.sh`, `eodhd-verify.sh`: hidden prompts,
   `curl -q -K -` with URL and key on stdin, perl HMAC with the secret on stdin, alnum-checked key, masked URLs. Parts
-  P1 to P18 and the allowlist-only printer of spec section 10; `set -u`; a Ctrl-C prints what was read.
-- [ ] **step 2/7: fake-curl test.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
+  P1 to P7 and P11 to P18, no others (O37), and the allowlist-only printer of spec section 10; `set -u`; a Ctrl-C prints
+  what was read.
+- [ ] **step 4/7: fake-curl test.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
   values for every part. Check: no sentinel appears on stdout or stderr, and the key is in no argv.
-- [ ] **step 3/7: read the whole file** (orchestrator) and hand it over through the coordinator with part 1 of the
-  browser step first, then the R1 account list and part 2 (spec section 9).
-- [ ] **step 4/7: the user's first step: part 1 of the browser step** (O23; PLANNER CALL 18): no account, no key, no
-  money. The sentences go to `memory/refs/bybit-terms-sentences-<date>.txt` and at once to step 5/7.
-- [ ] **step 5/7: the API terms verdict (O23, O36).** At once on the pasted sentences, before R1 and before any of the
-  user's money. A `kiko:reviewer` reads the step 4/7 sentences and the terms table of spec section 9, and rules on clauses
-  6.5 and 6.9 by name. It needs no probe output. Stop rule: a clause that forbids this use stops the track here, and the
-  coordinator takes it to the user. The verdict goes into spec section 9. `make doc-suites`. A page that needs a login
-  waits for R1, which holds no money; the same reviewer reads its sentences before R2.
+- [ ] **step 5/7: read the whole file** (orchestrator). The reviewer passes it. Only after a pass verdict of step 2/7 does
+  the coordinator hand it over, with the R1 account list and part 2 of the browser step (spec section 9).
 - [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
   part 2 of the browser step at R1, P4 also while K1 is pending (O16, O32), K6 from each wallet that Bybit allows (O14),
-  and last at R4, for every Q1, K11, the redeem of Flexible Savings, with a P3 run after it (O31). Outputs go to
+  and last at R4 K11, the redeem of Flexible Savings, with a P3 run after it (O31). Outputs go to
   `memory/refs/bybit-probe-output-<date>.txt`. The date of `expiredAt` goes into the track HANDOFF and the run log as an
-  open gap until R7 runs. R5, R6 only after Q1. R7 on that date.
+  open gap until R7 runs. R7 on that date, an open check after the ship (Q4): it holds neither set 7 nor the merge, and its
+  row stays UNPROBED(P17), with the copy of O26.
 - [ ] **step 7/7: write results into the spec.** `kiko:planner` turns each UNPROBED row into MEASURED or edits it; the
   same pass edits this plan, picks the outcome of rules 45, 46 and 47 and the section 8 clauses, and states the needed
   boxes of each kind (O13). A P12 refusal moves a floor; an empty 0 keeps 729 days (O20). Check: `git grep -c UNPROBED`
-  on the spec falls to the stage C and D rows, the rows of P5 and P17, and rule 47 if the user missed the pending window
-  (O32, O35). A row keeps its mark until its own probe runs. A kind that failed goes to its text in section 8. A shape
+  on the spec falls to the rows of P5 and P17, rule 47 if the user missed the pending window, and the deferred rows under
+  Backlog (O32, O35, O37). A row keeps its mark until its own probe runs. A kind that failed goes to its text in section 8. A shape
   change that reverses a row adds a was column. `make doc-suites`. This step runs once for R1 and R2 and again for R3 and
   R4; the second run's commit is the set 1 tip.
 
-Gate per stage: every code set bases on the set 1 tip or later, so P1 to P7, P11, P12, P13, P15, P16 and step 5/7 hold at
+Gate per stage: every code set bases on the set 1 tip or later, so P1 to P7, P11, P12, P13, P15, P16 and step 2/7 hold at
 each of them, with each row's mark per step 7/7. Set 3's Earn step uses the P3 run after the redeem (O31).
 
-## 1.4-bybit set 2/10: neutral seams, Binance unchanged
+## 1.4-bybit set 2/8: neutral seams, Binance unchanged
 
 Base: set 1 tip. Order: first code set. Size: about 210 code lines in 9 to 12 files, about 450 test lines (was 280, 13
 to 16, 650: O30 moves seams 3, 4 and 9 to set 3). Tip: no Bybit id, no visible change. Merges alone (O21). At this set,
@@ -125,9 +132,9 @@ no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the p
   move to `exchange/walk/`, with `binance.walk-wiring.ts` their thin caller (consumer at this tip); `createWriteSerial`
   waits for its consumer in set 3. Check: Binance's walk suites unchanged; `npm run check:plist`; `npm run check:dup`.
 
-## 1.4-bybit set 3/10: provider id, client, keys and balances (stage A core)
+## 1.4-bybit set 3/8: provider id, client, keys and balances (stage A core)
 
-Base: set 2 tip. Needs step 5/7 of set 1 and P1, P2, P11, P15, P16; step 5/6 needs P3, with the run after the redeem. Size:
+Base: set 2 tip. Needs step 2/7 of set 1 and P1, P2, P11, P15, P16; step 5/6 needs P3, with the run after the redeem. Size:
 about 1,270 code lines in 25 to 29 files (under the cap of 30; `make mutable` measures, and a count over the cap is a
 report to the orchestrator), about 2,250 test lines (was 1,200, 21 to 25, 2,050: O30 moves seams 3, 4 and 9 here; O31, O33
 add rows; O29 moves the policy, its site pages and `bybit.privacy-policy.test.ts` to set 7). Tip: `bybit` in
@@ -182,7 +189,7 @@ from the probe output, never real values; every Binance caption result the same 
     it). `CoinLines` gets the name through `providerDisplayName`.
   - Check: `make jest-affected`; tsc; `npx jest` on the section suites, Binance's caption results the same.
 
-## 1.4-bybit set 4/10: expiry, `.kiko`, switch gate, account detail
+## 1.4-bybit set 4/8: expiry, `.kiko`, switch gate, account detail
 
 Base: set 3 tip. Size: about 550 code lines in 13 to 15 files, about 1,050 test lines (was 450, 12 to 14, 900: O13, O18,
 O26, O27 lines). Tip: text keys exist and render only for a connected `bybit` account, which no path can create yet.
@@ -201,10 +208,9 @@ cannot strand a Binance user; translator review of this set's keys.
 - [ ] **step 4/4: switch gate (O11).** `conflictingExchangeHoldings`, `ConnectExchange`, `exchangeSwitchRefused`. Check:
   A28, Binance to wallet unchanged.
 
-## 1.4-bybit set 5/10: cursor reader, budget and capital walk (stage B)
+## 1.4-bybit set 5/8: cursor reader, budget and capital walk (stage B)
 
-Base: set 4 tip. Needs P4, P5, P6, P11, P12, P13. Dropped if Q1 = A. Size: about 950 code lines in 7 to 9 files, about
-1,750 test lines, split (was 900, same, 1,600: O14, O32, O20). Tip: the run arm reads deposits and withdrawals; still no
+Base: set 4 tip. Needs P4, P5, P6, P11, P12, P13. Size: about 950 code lines in 7 to 9 files, about 1,750 test lines, split (was 900, same, 1,600: O14, O32, O20). Tip: the run arm reads deposits and withdrawals; still no
 way in. Stays out of `next` (O21). Reviewer checks: each early return of spec section 5; settled matrix; no stored cursor;
 `withdrawType=2`; O6 sentinel; the floor stays 729 days unless a P12 refusal moved it (O20); rule 45 and 47 outcomes.
 
@@ -225,9 +231,9 @@ way in. Stays out of `next` (O21). Reviewer checks: each early return of spec se
   tests all four lists. Arm: `capital` in `logOnFailure`, `captionWalksOf('bybit')` gains `capital`. Rows A17
   to A22, A27, A30, A35, A39, A41.
 
-## 1.4-bybit set 6/10: transfer walk and convergence proof (stage B)
+## 1.4-bybit set 6/8: transfer walk and convergence proof (stage B)
 
-Base: set 5 tip. Needs P7, P13. Dropped if Q1 = A. Size: about 500 code lines in 5 to 6 files, about 1,200 test lines.
+Base: set 5 tip. Needs P7, P13. Size: about 500 code lines in 5 to 6 files, about 1,200 test lines.
 Stays out of `next` (O21). Reviewer checks: pair id has one coin; wallet words closed; section 5 tables replaced with
 measured numbers.
 
@@ -239,9 +245,9 @@ measured numbers.
 - [ ] **step 3/3: measured numbers.** Scribe writes the convergence table's MEASURED column into spec section 5. A cap that
   fails a seed's bound is a report to the orchestrator, never a loosened bound.
 
-## 1.4-bybit set 7/10: the way in, shipped stage A+B (catalog last, O9)
+## 1.4-bybit set 7/8: the way in, shipped stage A+B (catalog last, O9)
 
-Base: set 6 tip (set 4 tip if Q1 = A, and the A-only copy). Needs P1, P11 (boxes), part 2 of the browser step (URL). Size:
+Base: set 6 tip. Needs P1, P11 (boxes), part 2 of the browser step (URL). Size:
 about 450 code lines in 16 to 20 files, about 900 test lines (was 450, same, 850: O29 moves `bybit.privacy-policy.test.ts`
 here), plus the policy and site pages (O29). Tip: Bybit visible and complete. Merge: the batch of "Merge order", only after
 the device check on this branch (PLANNER CALL 15). Reviewer checks: compliance section whole, each surface's copy against
@@ -262,7 +268,7 @@ spec section 8, help pins, the policy text against spec section 9; kiko:translat
   5 move: per harness-workflow "Removing or renaming a catalogue key", every dependent edit stays in this step. The step text
   ends with the shipped `bybitKinds` text. `bybit.shipped-copy.test.ts`, one row per kind set (O15). Row A40.
 - [ ] **step 4/6: the policy (O29, O24, O15, O34).** The block and the section 3 intro of spec section 9, with the variant
-  that fits the shipped kind set and Q1, in `docs/privacy-policy.en.md`, `docs/privacy-policy.md`, site rebuilt under
+  that fits the shipped kind set, in `docs/privacy-policy.en.md`, `docs/privacy-policy.md`, site rebuilt under
   `docs/privacy-site/` (`npm run privacy:site -- build`); only the shipped paths in `BYBIT_SIGNED_PATHS` (O15);
   `bybit.privacy-policy.test.ts` on those paths. Effective date: bump it in this edit; the publish re-dates it to the
   publish day if gh-pages goes out later (release skill, "Privacy policy check"). Check: A44, A50, uk apostrophe suite. The
@@ -280,22 +286,9 @@ spec section 8, help pins, the policy text against spec section 9; kiko:translat
   `docs/security/README.md`. The coordinator owns device builds. Pass: the batch merge. A stop here: sets 3 to 7 stay out of
   `next`, and no removal row is needed.
 
-Stop here if Q1 = A or A+B: sets 8 and 9 are not built in 1.4. Q1 = A+B+C builds set 8; Q1 = all builds sets 8 and 9 (O36).
+## 1.4-bybit set 8/8: skill drift
 
-## 1.4-bybit set 8/10: stage C, log and convert (outline; detail after the user's Q1)
-
-Needs P8, P9 (R5). Expected: new `WALK_IDS` member `log` with its fan-out (`walk-state.test.ts` and siblings), not-imported
-kind, allowlist of seen `type` values, `convert` walk or read, double-read rule. Size floor: 800 code lines, under 15 files.
-Copy edits in the same set. Reviewer: nothing parsed outside the allowlist; a trade never counted twice.
-
-## 1.4-bybit set 9/10: stage D, Earn orders and yield (outline; detail after the user's Q1)
-
-Needs P10 (R4, R6; the order of K11 at R4, PLANNER CALL 22). Expected: `earn` walk id, flexible orders, yield per category, floor `now - 90 days`, own lane under the
-gate. Size floor: 500 code lines, under 10 files. Reviewer: what the 3-month floor drops, stated in copy.
-
-## 1.4-bybit set 10/10: skill drift
-
-Base: the last built set. Size: skill and agent text only. Reviewer: `make doc-suites`.
+Base: set 7 tip. Size: skill and agent text only. Reviewer: `make doc-suites`.
 
 - [ ] **step 1/2:** `kiko:retrospect` verifies `.claude/skills/`, `harness/kiko/skills/`, `harness/kiko/agents/` against the
   code.
@@ -308,12 +301,7 @@ A recommendation to the coordinator, who owns the merge (O21). Sets 3 to 7 stay 
 then merge as one batch, so no dormant reader reaches `next`. If set 7 stops, no removal row is needed; set 2 holds no Bybit
 id and may stay. The cost is one larger merge.
 
-| Q1 | Order into `next` |
-|---|---|
-| A+B (default) | 2 alone; then the batch 3, 4, 5, 6, 7 after the device pass; then 10 |
-| A | 2 alone; then the batch 3, 4, 7 after the device pass; then 10 |
-| A+B+C | as A+B; then 8 after the batch, with its own device check, before 10; 9 is not built |
-| all | as A+B; then 8 and 9, each after the batch, each with its own device check, before 10 |
+Order into `next`: 2 alone; then the batch 3, 4, 5, 6, 7 after the device pass; then 8.
 
 Set 1 merges nothing but its spec edit. Each set tip has its queued verify, and the merged tip of each merge has a queued
 verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 unaffected.
@@ -329,9 +317,7 @@ verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 
 | 5 | 950 | 7-9 | 1,750 |
 | 6 | 500 | 5-6 | 1,200 |
 | 7 | 450, plus copy, the policy and site pages | 16-20 | 900 |
-| 8 | outline, 800 | under 15 | outline |
-| 9 | outline, 500 | under 10 | outline |
-| 10 | docs | | |
+| 8 | docs | | |
 
 A duration for any of these comes from `kiko:estimator`.
 
@@ -342,12 +328,29 @@ O4 set 3 step 4; O5, O6 set 5 step 3 and set 7 copy; O7 set 2; O8 set 5 step 2; 
 O11 set 4 step 4; O12 global. O13 to O28: O13 set 3 steps 2, 5, set 4 step 2, set 7 step 1; O14 set 1 step 6, set 5 step 4;
 O15 set 3 step 5, set 7 steps 3, 4; O16 set 1 step 6 (words corrected by O32); O17 set 3 step 6 (double replaced by O30); O18
 set 3 step 5; O19 set 3 step 4, spec backlog; O20 set 1 step 7, set 5; O21 global, set 7 step 2, "Merge order" (policy sentence
-reversed by O29); O22 set 7 step 5; O23 set 1 steps 4, 5; O24 set 7 step 4; O25 spec section 8, set 7 step 3; O26 set 4 step 2,
+reversed by O29); O22 set 7 step 5; O23 set 1 steps 1, 2; O24 set 7 step 4; O25 spec section 8, set 7 step 3; O26 set 4 step 2,
 Q4; O27 set 3 step 5, set 4 step 2; O28 set 2 step 3. O29 to O36: O29 global, set 3 step 1, set 7 steps 1, 4; O30 set 2 header,
 set 3 steps 4, 6; O31 set 1 step 6, set 3 step 5, set 7 step 6, spec sections 8, 9, 10; O32 set 1 steps 6, 7, set 5 steps 2, 3,
-4; O33 set 3 step 5; O34 set 7 step 4, spec section 9; O35 set 1 step 7; O36 set 1 header, step 5, "Merge order", set 7 stop line.
+4; O33 set 3 step 5; O34 set 7 step 4, spec section 9; O35 set 1 step 7; O36 set 1 header, step 2. O37 (replaces O36's merge row and set 7 stop line): the set list, set 1 steps 3, 6, 7,
+"Merge order", Backlog below, spec sections 3, 5, 6.4, 8, 9, 10, 12, 13, Backlog. O38 set 1 header, steps 1, 2, 5, spec sections 9,
+10. Q1 to Q4: spec sections 6.3, 7, 13, set 1 step 6.
 
 Acceptance rows: A1 to A7, A11, A31, A36, A37, A47, A48 set 3 step 5; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
 step 1, set 6 step 1; A28 set 4 step 4; A29 set 4 step 3; A12, A13, A32, A33 set 7 step 1; A34, A46 set 3 step 5, set 4 step 2;
 A40 set 7 step 3; A42, A49 set 3 step 6; A43 set 7 step 2; A44, A50 set 7 step 4; A45 set 4 step 2.
+
+## Backlog
+
+### Deferred: stages C and D (O37)
+
+Not in the numbered list, and not built in 1.4. A later track gives each its own sets and detail. The tables, R5, R6,
+the parts P8, P9, P10, the call counts and the copy edits are in the spec's Backlog.
+
+- Stage C, log and convert. Needs P8, P9, P18 (R5). Expected: new `WALK_IDS` member `log` with its fan-out
+  (`walk-state.test.ts` and siblings), not-imported kind, allowlist of seen `type` values, `convert` walk or read, double-read
+  rule. Size floor: 800 code lines, under 15 files. Copy edits in the same set. Reviewer: nothing parsed outside the
+  allowlist; a trade never counted twice.
+- Stage D, Earn orders and yield. Needs P10 (R6). Expected: `earn` walk id, flexible orders, yield per category, floor
+  `now - 90 days`, own lane under the gate. Size floor: 500 code lines, under 10 files. Copy edits in the same set.
+  Reviewer: what the 3-month floor drops, stated in copy.
