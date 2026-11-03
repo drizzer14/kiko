@@ -196,6 +196,10 @@ Good fit:
 | 7 | Alerts for a large expense or low balance | Copilot | Local notifications, only when a sync runs; background sync frequency not checked | S-M |
 | 8 | Quick add by Shortcuts or a pre-filling app link | Cashew (app links) | No budgeting app found with Shortcuts or Siri (thin research) | S-M |
 
+User ruling 2026-11-03 (after the judgment above): rows 1 and 3 (budgets, savings goals) fail the
+fit filter in `.claude/skills/kiko-competitors/SKILL.md`, because Kiko answers how much money do
+I have now and future planning is out of scope.
+
 Possible, lower value: net worth in BTC, stablecoins as cash, what-if scenarios (Kubera); OFX
 import (Wallet); income against expense report (Actual, YNAB; `BarChart` use in
 src/screens/statistics/statistics.screen.tsx not checked); CSV export of own data (help

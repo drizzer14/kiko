@@ -993,7 +993,8 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
   `rowsForTransferMatch` (`src/statistics/internal-transfers/internal-transfers.ts`)
   drops every row that carries `exchangePairId`, `exchangeCounterpartHoldingId` or
   `untrackedCounterpart` before `internalTransferTransactionIds` runs
-  (`statistics.screen.tsx`). A row with any of the three is an exchange leg that the marker
+  (called in `src/statistics/spending-ledger/spending-ledger.ts`). A row with any of the three
+  is an exchange leg that the marker
   rule or the pair rule excludes (a cross-currency or unequal pair-id-only debit, which neither
   rule takes, counts as spending by the rulings above); left in the matcher's ledger it could be
   matched as the partner of an unmarked same-amount row (a Pay send) and drop real spending. The

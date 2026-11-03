@@ -161,18 +161,8 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
           />
         </Card>
 
-        <Card testID="settings-card-reminders" padding={3} selected={isShown('Reminders')}>
-          <SettingsRow
-            testID="settings-row-reminders"
-            icon={entrySymbol.reminders}
-            label={t('reminders.rowLabel')}
-            onPress={() => openInPane('Reminders')}
-            selected={isShown('Reminders')}
-          />
-        </Card>
-
         {/* Import and Export share one card as a single "data transfer" group,
-            near the top, below System and Reminders. Import first (the more
+            near the top, below System. Import first (the more
             common entry point — bringing existing data in) then Export.
             Each row carries its own explicit vertical padding
             (`groupedRowStyle`, matching the Card's own padding=3 the
@@ -229,24 +219,35 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
         </Card>
 
         {/* Same grouped-card treatment as Import/Export above. */}
-        <Card testID="settings-card-templates-and-categories" padding={0}>
-          <SettingsRow
-            testID="settings-row-transaction-templates"
-            icon={genericEntitySymbol.template}
-            label={t('settings.transactionTemplates')}
-            onPress={() => openInPane('TransactionTemplates')}
-            selected={isShown('TransactionTemplates')}
-            style={groupedRowStyle}
-          />
-
-          <Divider testID="settings-divider-templates-and-categories" style={groupedDividerStyle} />
-
+        <Card testID="settings-card-categories-reminders-templates" padding={0}>
           <SettingsRow
             testID="settings-row-categories"
             icon={genericEntitySymbol.category}
             label={t('settings.categories')}
             onPress={() => openInPane('Categories')}
             selected={isShown('Categories')}
+            style={groupedRowStyle}
+          />
+
+          <Divider testID="settings-divider-categories-reminders" style={groupedDividerStyle} />
+
+          <SettingsRow
+            testID="settings-row-reminders"
+            icon={entrySymbol.reminders}
+            label={t('reminders.rowLabel')}
+            onPress={() => openInPane('Reminders')}
+            selected={isShown('Reminders')}
+            style={groupedRowStyle}
+          />
+
+          <Divider testID="settings-divider-reminders-templates" style={groupedDividerStyle} />
+
+          <SettingsRow
+            testID="settings-row-transaction-templates"
+            icon={genericEntitySymbol.template}
+            label={t('settings.transactionTemplates')}
+            onPress={() => openInPane('TransactionTemplates')}
+            selected={isShown('TransactionTemplates')}
             style={groupedRowStyle}
           />
         </Card>

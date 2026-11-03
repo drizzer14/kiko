@@ -1,55 +1,10 @@
 import { match } from 'ts-pattern';
-import { minOf } from '@kiko/numbers';
-import {
-  type BackfillStatus,
-  deriveBinanceOnlyCurrencies,
-  deriveLastBackfilledDay,
-  deriveFirstBackfilledDayByCurrency,
-  deriveLastBackfilledDayByCurrency,
-  planBackfillRun,
-  runBackfill,
-} from '@kiko/rates/history-backfill';
 import {
   resolveTrendFilter,
   selectTopCategories,
   type TrendFilter,
 } from '@kiko/statistics/trend-filter';
-import {
-  loanInterestEntries,
-  loanPaymentExcludedTransactionIds,
-} from '@kiko/statistics/loan-payments';
-import {
-  buildCategoryMeasures,
-  buildCategoryTrend,
-  type TrendTransaction,
-} from '@kiko/statistics/category-trend';
-import {
-  accountDisplayName,
-  accountsForFilter,
-  hasNoAccounts,
-} from '@kiko/holdings/implicit-account';
-import maybe, { foldMap } from 'fnts/maybe';
-import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
-import {
-  type BreakdownTransaction,
-  buildCategoryBreakdown,
-  type CategorySlice,
-  resolveCategoryColor,
-} from '@kiko/statistics/category-breakdown';
-import {
-  internalTransferTransactionIds,
-  rowsForTransferMatch,
-} from '@kiko/statistics/internal-transfers';
-import {
-  descriptionExcludedTransferTransactionIds,
-  mccExcludedTransferTransactionIds,
-} from '@kiko/statistics/transfer-exclusion';
-import {
-  exchangeExcludedTransactionIds,
-  sameCurrencyMoveTransactionIds,
-} from '@kiko/statistics/exchange-exclusion';
-import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import {
@@ -57,51 +12,45 @@ import {
   buildAccountContribution,
   buildDebtTotal,
 } from '@kiko/statistics/account-contribution';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import either, { bifold, isLeft } from 'fnts/either';
+import {
+  buildAccountOptions,
+  buildCategoryOptions,
+  excludedCategoryKeysOf,
+  visibleCategorySelection,
+} from '@kiko/statistics/statistics-filter-scope';
 import Box from '@kiko/design-system/components/box';
-import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
-import type { Currency } from '@kiko/currency/currency';
 import { useIsLargeWindow } from '@kiko/display-regions';
-import { ibanOf } from '@kiko/holdings/holding-metadata';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { usePriceBook } from '@kiko/prices/use-price-book';
 import type { TabParamList } from '@kiko/navigation/types';
-import { buildRateTable } from '@kiko/rates/net-worth-view';
-import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
-import { localMidnightOfDayKey } from '@kiko/prices/price-book';
-import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import { type FC, useEffect, useMemo, useState } from 'react';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import MoneyText from '@kiko/design-system/components/money-text';
-import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
+import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
-import { type FC, useEffect, useMemo, useRef, useState } from 'react';
-import { transactionSpan } from '@kiko/transactions/transaction-span';
-import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import SummaryTable from '@kiko/design-system/components/summary-table';
-import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
-import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
-import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
+import { accountDisplayName, hasNoAccounts } from '@kiko/holdings/implicit-account';
 import Screen, { usePaneContentWidth } from '@kiko/design-system/components/screen';
+import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
+import { spendingRowsIn, useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
-import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
-import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
+import { buildCategoryMeasures, buildCategoryTrend } from '@kiko/statistics/category-trend';
+import { buildCategoryBreakdown, type CategorySlice } from '@kiko/statistics/category-breakdown';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
 import BarChart from './bar-chart';
@@ -141,21 +90,6 @@ const groupByHolding = (
   return byHolding;
 };
 
-// A share, metal, or property records its purchases as lots, never as ledger
-// rows, so its earliest lot bounds the span the rate history must cover too.
-// The span is made of instants, so a lot's day key becomes its local midnight.
-const earliestLotDay = (
-  holdings: readonly Pick<HoldingRow, 'type' | 'metadata'>[],
-): number | null => {
-  const days = holdings.flatMap((holding) =>
-    (holdingDescriptorOrUndefined(holding.type)?.priced?.lots(holding.metadata) ?? []).map((lot) =>
-      localMidnightOfDayKey(lot.day),
-    ),
-  );
-
-  return days.length > 0 ? minOf(days) : null;
-};
-
 // The category-spending donut's ring is thinner than the default (a higher
 // hole-radius-to-outer-radius ratio) than PieChart's own default, opening
 // enough center room for its total figure — see `centerTotal` below. The
@@ -191,7 +125,7 @@ const NET_WORTH_CARD_GAP = 3;
  * repository rows, holds the filter state, and drives the backfill.
  */
 const StatisticsScreen: FC = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   // The card order and the shared row follow the window and the width the pane's content has (the
   // pane's, limited by the content cap), and nothing else: a filter or a date range never moves a
   // card. A window that is not large shows one column, every card full width (line, bar, pie,
@@ -215,15 +149,9 @@ const StatisticsScreen: FC = () => {
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
-  // Deliberately `paused` (not `enabled`) while another tab shows: the
-  // subscription stays and a write elsewhere only marks each query dirty, so
-  // hiding this tab causes no read, no state change, and no memo recompute —
-  // `enabled: false` would instead unsubscribe and drop every chart to empty
-  // (see kiko-architecture's `useLiveQuery` pattern section for the design).
   // Visibility, not focus: as the Home tab's companion default this screen is on screen and
   // never the focused route.
   const isVisible = useIsScreenVisible();
-  const liveOptions = { cached: true, paused: !isVisible } as const;
 
   // A filter sheet is a native Modal: it stays presented over whatever tab the user switched to.
   // Both controls keep their open state to themselves, so they are mounted afresh, closed, each
@@ -234,52 +162,6 @@ const StatisticsScreen: FC = () => {
       setSheetGeneration((generation) => generation + 1);
     }
   }, [isVisible]);
-
-  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
-    accountsRepo.listQuery(),
-    ['accounts'],
-    true,
-    liveOptions,
-  );
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
-    holdingsRepo.allQuery(),
-    ['holdings'],
-    true,
-    liveOptions,
-  );
-  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
-    ratesRepo.allQuery(),
-    ['currency_rates'],
-    true,
-    liveOptions,
-  );
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
-    settingsRepo.getQuery(),
-    ['settings'],
-    true,
-    liveOptions,
-  );
-  const {
-    data: transactions,
-    isLoading: transactionsLoading,
-    isFresh: transactionsFresh,
-  } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions'], true, liveOptions);
-  const {
-    data: historyRows,
-    isLoading: historyLoading,
-    isFresh: historyFresh,
-  } = useLiveQuery(
-    rateHistoryRepo.historyRowsQuery(),
-    ['currency_rate_history'],
-    true,
-    liveOptions,
-  );
-  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
-    categoriesRepo.allQuery(),
-    ['categories'],
-    true,
-    liveOptions,
-  );
 
   // An empty account set means "all accounts"; any account ids in it narrow all five charts.
   //
@@ -304,101 +186,29 @@ const StatisticsScreen: FC = () => {
 
   const { dateFrom, dateTo, applyDateRange, clearDateRange } = useDateRangeSelection(now);
 
-  const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
-  // The configurable catch-all: a null/empty category folds into this category's
-  // slice. Read from settings (seeded to `other`), passed into the breakdown.
-  const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
-
-  const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  // kiko-architecture: skip the price_points read while nothing rendered on
-  // this screen ever reads it — a holding whose type carries no priced spec
-  // and is not a loan (`needsPriceBook`) never touches `price_points`. It
-  // stays enabled while holdings are still on their first load, so the two
-  // reads run in parallel instead of price_points waiting on holdings. Only a
-  // loan reads the linked-payments half of the book.
-  // The net-worth line values every past day, so it reads every stored close.
-  // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(history valuation)
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
-    holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
-    liveOptions,
-    holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
-  );
-  // Every chart (bar/pie/trend) must never render an empty state while any of
-  // this screen's own queries is still on its first load (kiko-architecture's
-  // useLiveQuery consumer rule) — gated below, right at the return. This is
-  // SEPARATE from the net-worth line's own `loading` prop below, which tracks
-  // the incremental rate-history backfill (a later, non-blocking concern once
-  // this base data has already loaded).
-  const isReady = useDataReady(
-    accountsLoading,
-    holdingsLoading,
-    ratesLoading,
-    settingsLoading,
-    transactionsLoading,
-    historyLoading,
-    categoriesLoading,
-    priceBookLoading,
-  );
-
-  // Only non-archived accounts are ever shown; the account filter narrows within
-  // those. `visibleHoldings` (open AND under a surviving account) feeds every
-  // "now" snapshot (the by-type bar, the account pie, the Debts total).
-  // `netWorthHoldings` feeds the net-worth LINE instead: the same account
-  // filter, but WITHOUT the `closedAt` filter — a closed holding still needs
-  // its real value on every bucket before it closed (`buildNetWorthSeries`
-  // zeros it only at/after the exact instant it closed), and kiko-pricing's
-  // history chart needs a closed holding's own past prices the same way it
-  // needs its own past lots. Memoized so all four builders below key off a
-  // stable collection instead of a fresh array on every render.
-  const filtered = useMemo(() => {
-    const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
-    // The stored selection can name an account archived or deleted since, with no
-    // checked row left to clear it, so it is pruned against the filter's OPTIONS
-    // and an empty result is "All". The options leave out an implicit account
-    // with no holding left: it holds nothing, so "All" totals are unchanged,
-    // while `visibleAccounts` and everything computed from it stay as they were.
-    const optionAccounts = accountsForFilter(accounts, holdings);
-    const visibleSelectedAccounts = visibleSelection(
-      selectedAccounts,
-      optionAccounts.map((account) => account.id),
-    );
-    const filteredAccounts = visibleAccounts.filter((account) => {
-      return visibleSelectedAccounts.size === 0 || visibleSelectedAccounts.has(account.id);
-    });
-    const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
-    const netWorthHoldings = holdings.filter((holding) =>
-      filteredAccountIds.has(holding.accountId),
-    );
-    const visibleHoldings = netWorthHoldings.filter((holding) => holding.closedAt == null);
-
-    return {
-      optionAccounts,
-      visibleSelectedAccounts,
-      filteredAccounts,
-      visibleHoldings,
-      netWorthHoldings,
-    };
-  }, [accounts, holdings, selectedAccounts]);
-
-  // The full transaction and lot span drives the date field's default display,
-  // the line's default window, and the backfill's earliest day. With neither the
-  // start falls back to now.
-  // Earliest transaction time in ONE O(n) pass (see `transactionSpan`);
-  // `Math.min(...times)` spread the whole array and overflowed the stack on a
-  // long history. Memoized on `transactions` alone; the empty-list fallback to
-  // `now` is applied outside so a per-render `now` never invalidates the memo.
-  const earliestTime = useMemo(
-    () =>
-      transactions.length > 0
-        ? transactionSpan(
-            transactions.map((transaction) => transaction.time),
-            0,
-          ).start
-        : null,
-    [transactions],
-  );
-  const lotStart = useMemo(() => earliestLotDay(holdings), [holdings]);
-  const spanStart = Math.min(earliestTime ?? now, lotStart ?? now);
+  // The full transaction and lot span (`spanStart`) drives the date field's default display, the
+  // line's default window, and the backfill's earliest day. `isReady` gates every chart below:
+  // none renders an empty state while one of these queries is on its first load. That is
+  // SEPARATE from the net-worth line's own `loading` prop, which tracks the incremental
+  // rate-history backfill (a later, non-blocking concern once this base data has loaded).
+  const {
+    accounts,
+    holdings,
+    settingsRows,
+    transactions,
+    transactionsFresh,
+    historyRows,
+    historyFresh,
+    categories,
+    priceBook,
+    isReady,
+    baseCurrency,
+    defaultCategoryKey,
+    rateTable,
+    categoryByKey,
+    filtered,
+    spanStart,
+  } = useStatisticsSources({ isVisible, now, selectedAccounts });
 
   // The line's effective window: the picked range when set, otherwise the full
   // transaction span (earliest transaction to now). A PICKED bound is TRUE
@@ -420,222 +230,18 @@ const StatisticsScreen: FC = () => {
   const rangeFrom = dateFrom !== null ? startOfLocalDay(dateFrom.getTime()) : spanStart;
   const rangeTo = dateTo !== null ? endOfLocalDay(dateTo.getTime()) : now;
 
-  // The resume point for the backfill: the newest day already stored, derived
-  // from the history table itself (no extra persistence). Null when empty.
-  const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
-  // Every currency's OWN last-backfilled day — `runBackfill`'s per-currency
-  // resume cursor (a single global max(day) let one currency whose own leg
-  // kept failing, or one held for the first time, hide behind another
-  // currency's success and never re-fetch its own gap), derived from this
-  // SAME already-loaded `historyRows` read, no new query.
-  const lastBackfilledDayByCurrency = useMemo(
-    () => deriveLastBackfilledDayByCurrency(historyRows),
-    [historyRows],
-  );
-  // A run's own upsert — including a run that resolves 'failed' overall but
-  // still persisted the currencies that DID compose — changes `historyRows`,
-  // and with it these two values on the VERY NEXT render. Neither is an
-  // effect dependency below: the backfill effect reads them through these
-  // "latest" refs instead, so that self-triggered re-render cannot re-enter the effect on its own
-  // — only a dependency that genuinely changed for an unrelated reason (`now` advancing on a real
-  // focus, `spanStart` moving) does. Without this, a
-  // failed run whose span ref was just cleared (below, to allow a LATER
-  // retry) would see its own write's echo immediately, at the SAME instant,
-  // and restart — a permanent request loop for a currency whose provider
-  // never answers, for as long as Statistics stays mounted.
-  const lastBackfilledDayRef = useRef(lastBackfilledDay);
-  lastBackfilledDayRef.current = lastBackfilledDay;
-  const lastBackfilledDayByCurrencyRef = useRef(lastBackfilledDayByCurrency);
-  lastBackfilledDayByCurrencyRef.current = lastBackfilledDayByCurrency;
-  // The first stored day of each currency: with the last, it tells the backfill which coin lacks
-  // the days at the start of a span that moved earlier.
-  const firstBackfilledDayByCurrency = useMemo(
-    () => deriveFirstBackfilledDayByCurrency(historyRows),
-    [historyRows],
-  );
-  const firstBackfilledDayByCurrencyRef = useRef(firstBackfilledDayByCurrency);
-  firstBackfilledDayByCurrencyRef.current = firstBackfilledDayByCurrency;
-  // The coins whose rows are all Binance's: an unexpired empty CoinGecko mark still holds for
-  // them, so the backfill does not repeat the whole span on every run.
-  const binanceOnlyCurrencies = useMemo(
-    () => deriveBinanceOnlyCurrencies(historyRows),
-    [historyRows],
-  );
-  const binanceOnlyCurrenciesRef = useRef(binanceOnlyCurrencies);
-  binanceOnlyCurrenciesRef.current = binanceOnlyCurrencies;
-
-  // The distinct set of currencies the backfill's own history must now cover:
-  // every held holding's currency plus the base, sorted so the key stays
-  // stable regardless of holdings-array order (a drag reorder must never look
-  // like a currency change). Recomputed on every holdings/base change, so a
-  // holding added or removed mid-session (a new GBP holding, say) changes this
-  // key even though `spanStart` itself did not move.
-  const historyCurrencyKey = useMemo(
-    () =>
-      [...new Set([...holdings.map((holding) => holding.currency), baseCurrency])].sort().join(','),
-    [holdings, baseCurrency],
-  );
-
-  // Drive the incremental, non-blocking backfill and surface its status to the
-  // line. It runs when there is a bounded span (transactions or holdings exist) with days
-  // still to fill, when an older-dated transaction extends the span EARLIER
-  // mid-session, OR when the held currency set changes mid-session (a new
-  // holding's currency the last run never covered) — `planBackfillRun` decides
-  // all three, resuming from null only on an earlier extension so `missingDays`
-  // recomputes the whole span — the forward resume cursor cannot see a gap
-  // that opens below the newest stored day; a currency-set change instead
-  // resumes from the ordinary incremental cursor, since `runBackfill`'s own
-  // per-currency window already widens for the new currency on its own.
-  // See `resolveBackfillWindow` (`history-backfill.ts`) for why `runBackfill`
-  // must honor an explicit null as an override of its own per-currency
-  // minimum. Both refs hold what the last run covered, so the re-render the
-  // backfill's own writes trigger (which advance `lastBackfilledDay`) does not
-  // re-enter for the same span/currency set. The bar and pie never wait on
-  // this.
-  const backfillRanForSpanRef = useRef<number | null>(null);
-  const backfillRanForCurrencyKeyRef = useRef<string | null>(null);
-  const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>({
-    state: 'idle',
-    lastDay: null,
-  });
-
-  // Guards the backfill effect's own async settle against a REAL unmount
-  // only. A re-render whose deps changed (a refocus advancing `now`, for
-  // example) fires the SAME cleanup lifecycle event as an unmount, so a
-  // per-effect `cancelled` flag set in that effect's own returned cleanup
-  // cannot tell the two apart — it would drop a still-pending run's eventual
-  // settle on every refocus, leaving the line stuck on "loading" forever.
-  // This ref only ever flips inside its own unmount-only effect (`[]` deps).
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  // Guards a settle against a SUPERSEDED run, not just a real unmount: a span
-  // extension while still mounted (an older transaction arriving mid-session)
-  // can start run B before run A's own settle arrives. Bumped only when this
-  // effect actually starts a run (never on a plain refocus, which the
-  // `backfillRanForSpanRef` check below already turns into a no-op), so a
-  // stale run's `.then` can compare its captured token against the current
-  // one and drop its settle instead of overwriting run B's state or ref.
-  const runTokenRef = useRef(0);
-
-  useEffect(() => {
-    // `historyFresh` guards against the exact same "empty reads as no data
-    // yet" trap kiko-architecture's useLiveQuery consumer rule covers for a
-    // rendered empty state: `historyRows` is `[]` — indistinguishable from
-    // "genuinely nothing backfilled yet" — for as long as its OWN query is
-    // still on its first load, even after `transactions` has already
-    // settled. Without this guard the effect re-fetches and re-writes the
-    // whole span on first open, adding to the app-open DB-read burst, then
-    // runs a SECOND time once history's real (possibly non-empty) rows land.
-    // Both guards also wait out the cached rows of a cached mount: a run
-    // marks its span covered for the rest of the mount, so a run planned from
-    // a cached, one-read-old resume point would stop the fresh read's own run
-    // from ever starting (kiko-architecture).
-    if (
-      (transactions.length === 0 && holdings.length === 0) ||
-      !transactionsFresh ||
-      !historyFresh
-    ) {
-      return;
-    }
-
-    const currenciesChanged =
-      backfillRanForCurrencyKeyRef.current !== null &&
-      backfillRanForCurrencyKeyRef.current !== historyCurrencyKey;
-    const { run, resumeFrom } = planBackfillRun(
-      spanStart,
-      backfillRanForSpanRef.current,
-      lastBackfilledDayRef.current,
-      currenciesChanged,
-    );
-
-    if (!run) {
-      return;
-    }
-
-    // Captured so a failed settle below can RESTORE both, not just clear them
-    // to null — see that restore's own comment for why the distinction
-    // matters.
-    const spanCoveredBeforeThisRun = backfillRanForSpanRef.current;
-    const currencyKeyCoveredBeforeThisRun = backfillRanForCurrencyKeyRef.current;
-    // Mark this span AND currency set covered BEFORE the async run so the
-    // write's own re-render (which advances lastBackfilledDay) does not
-    // re-enter for the same span/currency set.
-    backfillRanForSpanRef.current = spanStart;
-    backfillRanForCurrencyKeyRef.current = historyCurrencyKey;
-    runTokenRef.current += 1;
-    const token = runTokenRef.current;
-
-    // No local "nothing missing" shortcut here any more: `runBackfill` itself
-    // owns that decision now, since it also has to check a newly-held or
-    // lagging currency against `lastBackfilledDayByCurrency` — a check this
-    // screen cannot replicate without `openCurrencies`'s own async read.
-    setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDayRef.current });
-    // either() captures every rejection as a Left, and the .then handler only sets state.
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
-    either<unknown, BackfillStatus>(() =>
-      runBackfill({
-        earliestDay: spanStart,
-        lastBackfilledDay: resumeFrom,
-        today: now,
-        lastBackfilledDayByCurrency: lastBackfilledDayByCurrencyRef.current,
-        firstBackfilledDayByCurrency: firstBackfilledDayByCurrencyRef.current,
-        binanceOnlyCurrencies: binanceOnlyCurrenciesRef.current,
-      }),
-    ).then((result) => {
-      if (!isMountedRef.current || token !== runTokenRef.current) {
-        return;
-      }
-
-      if (isLeft(result)) {
-        // A rejected run must retry on the next focus refresh instead of
-        // being reported as done: RESTORE both refs to what they covered
-        // BEFORE this run, not null — see the restore below for why.
-        backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
-        backfillRanForCurrencyKeyRef.current = currencyKeyCoveredBeforeThisRun;
-        setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDayRef.current });
-
-        return;
-      }
-
-      // `runBackfill` itself resolves a Right `'failed'` status (rather than
-      // rejecting) when every provider failed for the span — treated
-      // identically to the `isLeft` arm above: retry on the next focus.
-      const settled: BackfillStatus = bifold(result);
-
-      if (settled.state === 'failed') {
-        // Restore, don't clear to null: a FIRST-ever run's pre-run value was
-        // already null, so this still reads as never-run next time. But an
-        // EARLIER-EXTENSION run's pre-run value was the OLD (later) spanStart
-        // — clearing to null instead would make the next planBackfillRun call
-        // take its "never run" branch, which resumes from the CURRENT
-        // lastBackfilledDay (already advanced by an earlier successful run)
-        // rather than recomputing the whole span — silently losing the
-        // newly-opened earlier gap forever. Restoring the old spanStart keeps
-        // `spanStart < ranForSpanStart` true, so the SAME earlier-extension
-        // branch (resumeFrom: null) fires again on the next retry. The
-        // currency key must restore the same way, or a currency-set change
-        // that failed reads as already covered and never retries.
-        backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
-        backfillRanForCurrencyKeyRef.current = currencyKeyCoveredBeforeThisRun;
-      }
-      setBackfillStatus(settled);
-    });
-  }, [
-    transactions.length,
-    holdings.length,
+  // The bar and pie never wait on this: the backfill runs on its own and only the net-worth
+  // line shows its status.
+  const backfillStatus = useRateHistoryBackfill({
+    transactions,
+    holdings,
+    historyRows,
     transactionsFresh,
     historyFresh,
+    baseCurrency,
     spanStart,
     now,
-    historyCurrencyKey,
-  ]);
+  });
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no
@@ -719,273 +325,28 @@ const StatisticsScreen: FC = () => {
 
   // The spending pie sums EXPENSE transactions (negative amounts) by category, in
   // the base currency. A transaction has no currency of its own — its amount is
-  // in its holding's currency — so join each transaction to its (account-scoped,
+  // in its holding's currency — so the ledger joins each transaction to its (account-scoped,
   // open) holding for the currency, dropping any whose holding is filtered out.
-  // The category display map is built here so a rename flows straight through.
-  // buildCategoryDisplayMap resolves each un-renamed default category's title through
-  // resolveDefaultCategoryTitle, which reads the active language off the global i18next singleton
-  // (see category-display.ts) rather than off anything in this closure — the callback body never
-  // references `i18n.language` directly, but the memo must still invalidate on it, or a live
-  // language switch would keep serving the stale titles built for the earlier language.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(language-dependent resolver)
-  const categoryByKey = useMemo(
-    () => buildCategoryDisplayMap(categories),
-    [categories, i18n.language],
-  );
-
-  // Join each transaction to its holding for the currency its amount is in — a
-  // transaction row has no currency of its own. BOTH signs are kept so the
-  // internal-transfer matcher below can see the credit legs.
-  //
-  // Every holding counts here, whatever its account filter or `closedAt`: the
-  // other leg of a transfer can sit under a filtered-out account or in a jar a
-  // sync has since closed, and losing it turns the debit leg into spending.
-  //
-  // Deliberately NOT range-filtered: every exclusion rule below (the matched-
-  // pair internal-transfer matcher especially) must see BOTH legs of a
-  // transfer even when only one falls inside the active range, or a pair that
-  // straddles `rangeFrom`/`rangeTo` gets only half-excluded and its in-range
-  // leg wrongly counts as spending. The range is applied further down, only
-  // to the rows that actually feed the breakdown (see
-  // `rangeFilteredBreakdownTransactions`) — exclusion is by id, so an
-  // out-of-range leg excluded here never reaches the breakdown anyway.
-  const ledgerWithCurrency = useMemo(() => {
-    const currencyByHolding = new Map(holdings.map((holding) => [holding.id, holding.currency]));
-
-    return transactions.flatMap((transaction) => {
-      const currency = currencyByHolding.get(transaction.holdingId);
-
-      if (currency === undefined) {
-        return [];
-      }
-
-      return [{ ...transaction, currency }];
-    });
-  }, [transactions, holdings]);
-
-  // The rows the spending charts draw: the account filter applies, but not
-  // `closedAt`, so a closed card keeps its past spending.
-  const transactionsWithCurrency = useMemo(() => {
-    const shownHoldingIds = new Set(filtered.netWorthHoldings.map((holding) => holding.id));
-
-    return ledgerWithCurrency.filter((transaction) => shownHoldingIds.has(transaction.holdingId));
-  }, [ledgerWithCurrency, filtered]);
-
   // INTERNAL TRANSFERS (a matched -X / +X pair across two of the user's own
   // holdings, same currency, near-simultaneous) are not spending. Their debit
-  // legs are dropped from the category breakdown by id below; the credit legs
-  // are already ignored as income. Scoped to THIS chart only — every other view
-  // (net worth, by-type, account pie) still sees the full ledger. The matcher
-  // sees only unmarked rows: an exchange leg is excluded by its marker, or by the pair rule when
-  // it is an equal same-currency pair on two holdings, and must never pair with (and so swallow)
-  // an unmarked Pay send.
-  const internalTransferIds = useMemo(
-    () => internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
-    [ledgerWithCurrency],
-  );
+  // legs are dropped from the category breakdown by id; the credit legs are
+  // already ignored as income. Scoped to THIS chart only — every other view
+  // (net worth, by-type, account pie) still sees the full ledger.
+  const spendingLedger = useSpendingLedger({
+    transactions,
+    holdings,
+    accounts,
+    shownHoldings: filtered.netWorthHoldings,
+  });
+  const { trendTransactions, excludedTransactionIds } = spendingLedger;
 
-  // Every DEBT-side holding in the raw, unfiltered ledger (only `loan` today):
-  // a payment's linked loan can live under an account filtered out of the
-  // other charts, and a closed/paid-off loan still EXISTS (only a delete
-  // clears its links), so neither should change whether its payment's
-  // interest counts.
-  const loanHoldings = useMemo(
-    () => holdings.filter((holding) => holdingDescriptorOrUndefined(holding.type)?.side === 'debt'),
-    [holdings],
-  );
-
-  // A linked payment never counts its PRINCIPAL as spending, only its
-  // interest and any within-tolerance fee (`loanInterestEntries`, via
-  // `loanInterestRows` below, which replaces each excluded row with its own
-  // derived entries) — computed over the account-filtered rows,
-  // because a payment and its interest entry belong to the payment's own
-  // holding; only `loanHoldings` above reads every holding.
-  const loanPaymentExcludedIds = useMemo(
-    () => loanPaymentExcludedTransactionIds(transactionsWithCurrency, loanHoldings),
-    [transactionsWithCurrency, loanHoldings],
-  );
-
-  const loanInterestRows = useMemo(
-    () => loanInterestEntries({ transactions: transactionsWithCurrency, loanHoldings }),
-    [transactionsWithCurrency, loanHoldings],
-  );
-
-  const breakdownTransactions = useMemo<BreakdownTransaction[]>(
-    () =>
-      transactionsWithCurrency.map((transaction) => ({
-        id: transaction.id,
-        category: transaction.category,
-        amountMinorUnits: transaction.amountMinorUnits,
-        mcc: transaction.mcc,
-        counterIban: transaction.counterIban,
-        description: transaction.description,
-        exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
-        untrackedCounterpart: transaction.untrackedCounterpart,
-        changeGroupId: transaction.changeGroupId,
-        currency: transaction.currency,
-      })),
-    [transactionsWithCurrency],
-  );
-
-  // The active-range slice of `transactionsWithCurrency`: this is what
-  // actually feeds the breakdown drawn on screen (both the filter menu's
-  // option list and the pie itself — see `allCategorySlices`/`categorySlices`
-  // below), so the donut and its center total agree with the range field
-  // rendered above them. The exclusion sets above are not range-filtered
-  // (see `ledgerWithCurrency`'s comment); only the rows actually SHOWN are
-  // scoped to the range here. `loanInterestRows`
-  // is range-filtered the SAME way as the real rows — each derived
-  // entry replaces the raw row `loanPaymentExcludedIds` drops above, so it
-  // must obey the same window that row would have.
-  const rangeFilteredBreakdownTransactions = useMemo<BreakdownTransaction[]>(
-    () => [
-      ...transactionsWithCurrency
-        .filter((transaction) => transaction.time >= rangeFrom && transaction.time <= rangeTo)
-        .map((transaction) => ({
-          id: transaction.id,
-          category: transaction.category,
-          amountMinorUnits: transaction.amountMinorUnits,
-          mcc: transaction.mcc,
-          counterIban: transaction.counterIban,
-          description: transaction.description,
-          exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
-          untrackedCounterpart: transaction.untrackedCounterpart,
-          changeGroupId: transaction.changeGroupId,
-          currency: transaction.currency,
-        })),
-      ...loanInterestRows.filter((entry) => entry.time >= rangeFrom && entry.time <= rangeTo),
-    ],
-    [transactionsWithCurrency, rangeFrom, rangeTo, loanInterestRows],
-  );
-
-  // The spending-trend builder needs everything the breakdown does PLUS each
-  // row's `time`, so it can bucket the expense into the active
-  // rangeFrom/rangeTo window the same way the net-worth line does. Built
-  // separately from `breakdownTransactions` (which carries no time) so neither
-  // memo has to change shape for the other. `loanInterestRows` is
-  // appended UNFILTERED, same as the real rows here — `buildCategoryTrend`/
-  // `buildCategoryMeasures` do their own range bucketing internally.
-  const trendTransactions = useMemo<TrendTransaction[]>(
-    () => [
-      ...transactionsWithCurrency.map((transaction) => ({
-        id: transaction.id,
-        category: transaction.category,
-        amountMinorUnits: transaction.amountMinorUnits,
-        mcc: transaction.mcc,
-        counterIban: transaction.counterIban,
-        description: transaction.description,
-        exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
-        untrackedCounterpart: transaction.untrackedCounterpart,
-        changeGroupId: transaction.changeGroupId,
-        currency: transaction.currency,
-        time: transaction.time,
-      })),
-      ...loanInterestRows,
-    ],
-    [transactionsWithCurrency, loanInterestRows],
-  );
-
-  // The user's OWN card IBANs, read from each holding's stored metadata. A 4829
-  // bank transfer to one of these is an own-account transfer (excluded from the
-  // spending pie); a 4829 to any other IBAN is a genuine P2P payment (kept).
-  const ownIbans = useMemo(() => {
-    const ibans = new Set<string>();
-
-    for (const holding of holdings) {
-      const iban = ibanOf(holding.metadata);
-
-      if (iban !== undefined) {
-        ibans.add(iban);
-      }
-    }
-
-    return ibans;
-  }, [holdings]);
-
-  // Cash-outs and OWN-account transfers, classified by mcc (+ counterIban for
-  // the ambiguous 4829). This catches the single-legged movements the matched-
-  // pair matcher structurally cannot (a cash-out has no synced credit leg).
-  const mccExcludedIds = useMemo(
-    () => mccExcludedTransferTransactionIds(breakdownTransactions, ownIbans),
-    [breakdownTransactions, ownIbans],
-  );
-
-  // Internal transfers that carry a plain description instead of a transfer MCC
-  // (e.g. "Поповнення депозиту", "На чорну картку", the FOP top-up). The mcc
-  // rule structurally cannot see these; the description rule catches them.
-  const descriptionExcludedIds = useMemo(
-    () => descriptionExcludedTransferTransactionIds(breakdownTransactions),
-    [breakdownTransactions],
-  );
-
-  // Exchange/Convert legs: an internal movement between the user's own
-  // holdings, structurally marked by `exchangeCounterpartHoldingId`. No other
-  // rule can see them — null mcc, empty description, and a cross-currency
-  // pair the matched-pair matcher rejects.
-  const exchangeExcludedIds = useMemo(
-    () => exchangeExcludedTransactionIds(breakdownTransactions),
-    [breakdownTransactions],
-  );
-
-  // The synced debit a Convert marked with the pair id only has no marker for the rule above, and
-  // the matcher never sees a row with a pair id. Over the unfiltered ledger, so a partner under an
-  // account the filter hides still pairs.
-  const sameCurrencyMoveIds = useMemo(
-    () => sameCurrencyMoveTransactionIds(ledgerWithCurrency),
-    [ledgerWithCurrency],
-  );
-
-  // The account kind of each holding, so the funding matcher can tell a crypto account's own rows
-  // from the bank rows that paid for them. A holding whose account is not in the list is left out
-  // of the map, and the matcher counts such a holding as a bank side.
-  const accountKindByHoldingId = useMemo(() => {
-    const kindByAccountId = new Map(accounts.map((account) => [account.id, account.kind]));
-
-    return new Map(
-      holdings.flatMap(
-        (holding) =>
-          foldMap(maybe(kindByAccountId.get(holding.accountId)), (kind) => [
-            [holding.id, kind] as const,
-          ]) ?? [],
-      ),
-    );
-  }, [accounts, holdings]);
-
-  // The bank debits that paid for an exchange purchase (a P2P buy, a card buy or a fiat deposit)
-  // are not spending: the purchase is not the money leaving. Over the unfiltered ledger, never the
-  // account-filtered rows, because the exchange row sits under a crypto account the filter may
-  // hide, and the debit would then count again.
-  const exchangeFundingExcludedIds = useMemo(
-    () => exchangeFundingMatches(ledgerWithCurrency, accountKindByHoldingId).excludedIds,
-    [ledgerWithCurrency, accountKindByHoldingId],
-  );
-
-  // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
-  // the exchange-marker rule, the same-currency pair rule, the cheap secondary matched-pair
-  // matcher, the exchange-funding matcher, and the linked-loan-payment rule (its own derived
-  // interest and within-tolerance fee entries, `loanInterestRows` above,
-  // replace the raw row this drops). A row is dropped from the spending pie if
-  // ANY rule catches it.
-  const excludedTransactionIds = useMemo(
-    () =>
-      new Set([
-        ...internalTransferIds,
-        ...mccExcludedIds,
-        ...descriptionExcludedIds,
-        ...exchangeExcludedIds,
-        ...sameCurrencyMoveIds,
-        ...exchangeFundingExcludedIds,
-        ...loanPaymentExcludedIds,
-      ]),
-    [
-      internalTransferIds,
-      mccExcludedIds,
-      descriptionExcludedIds,
-      exchangeExcludedIds,
-      sameCurrencyMoveIds,
-      exchangeFundingExcludedIds,
-      loanPaymentExcludedIds,
-    ],
+  // The active-range slice of the shown rows: this is what actually feeds the breakdown drawn on
+  // screen (both the filter menu's option list and the pie itself — see
+  // `allCategorySlices`/`categorySlices` below), so the donut and its center total agree with the
+  // range field rendered above them.
+  const rangeFilteredBreakdownTransactions = useMemo(
+    () => spendingRowsIn(spendingLedger, rangeFrom, rangeTo),
+    [spendingLedger, rangeFrom, rangeTo],
   );
 
   // The active-range breakdown of every spending category (category-filter-
@@ -1025,103 +386,34 @@ const StatisticsScreen: FC = () => {
     return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
   }, [settingsRows, categories]);
 
-  // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by
-  // the resolved display title: the title is language-dependent (a default
-  // category's title changes under a live language switch — see
-  // resolveDefaultCategoryTitle), so keying selection on it would silently
-  // desync the moment the app language changes, leaving a stale Set of
-  // now-nonexistent title strings (the same bug the Home screen's category
-  // filter had — see category-display.ts's resolveCategoryKey). The menu's
-  // options are one per distinct slice KEY, each carrying the slice's own icon +
-  // color and its current localized title as the row's `label`; a selection is
-  // translated back into the set of KEYS to EXCLUDE from the pie: an empty
-  // selection excludes nothing (all included), otherwise every category whose
-  // KEY is not selected is excluded. De-duplicated by key, first-seen-wins.
-  const categoryOptions = useMemo(() => {
-    const byKey = new Map<string, FilterOption>();
-
-    for (const slice of allCategorySlices) {
-      if (byKey.has(slice.key)) {
-        continue;
-      }
-      byKey.set(slice.key, {
-        value: slice.key,
-        label: slice.title,
-        icon: slice.icon,
-        color: slice.color,
-      });
-    }
-
-    // A category the user already SELECTED (or already SAVED as a manual trend
-    // key — the trend Filters sheet reuses this same list, `TrendFilterField`'s
-    // own `categoryOptions` prop) can drop out of the range-scoped slices
-    // above (e.g. the range moves to a week with no spending in it) — union it
-    // back in from `categoryByKey` so both menus still list it, checked,
-    // rather than silently hiding a selection the user can then never find and
-    // uncheck (a hidden selection stays visible).
-    const manualTrendKeys = appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : [];
-
-    for (const key of new Set([...selectedCategories, ...manualTrendKeys])) {
-      if (byKey.has(key)) {
-        continue;
-      }
-
-      const display = categoryByKey.get(key);
-
-      if (display === undefined) {
-        continue;
-      }
-
-      byKey.set(key, {
-        value: key,
-        label: display.title,
-        icon: display.icon,
-        color: resolveCategoryColor(display.color, key),
-      });
-    }
-
-    // Present the options in the user's CUSTOM category order — the live
-    // `categories` query is already sorted `asc(sortOrder), asc(key)` (see
-    // categories.repo's allQuery) — not in the spending-magnitude order the
-    // breakdown happens to emit. Ranked by the STABLE lowercased slug (never
-    // the localized title — see the block comment above about language
-    // desync), so the ordering holds across a live language switch. An option
-    // whose key has no matching category row (the synthetic default /
-    // uncategorized catch-all keyed by DEFAULT_CATEGORY_KEY) sorts LAST.
-    // Equal-rank options keep their first-seen (Map insertion) order, which
-    // Array.prototype.sort preserves — it is a stable sort (ES2019+).
-    const orderByKey = new Map<string, number>();
-    categories.forEach((category, index) => {
-      orderByKey.set(category.key.toLowerCase(), index);
-    });
-    const rank = (key: string): number => orderByKey.get(key.toLowerCase()) ?? categories.length;
-
-    return Array.from(byKey.values()).sort((a, b) => rank(a.value) - rank(b.value));
-  }, [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter]);
-
-  // The stored selection can name a category deleted since, with no checked row left to clear it,
-  // so it is pruned against the KNOWN keys (the category rows and the slices, which carry the
-  // synthetic default). A key that merely fell out of the range is still known and stays selected.
-  const visibleSelectedCategories = useMemo(
+  // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by the resolved
+  // display title (the same bug the Home screen's category filter had — see category-display.ts's
+  // resolveCategoryKey). A selection is translated back into the set of KEYS to EXCLUDE from the
+  // pie. The trend Filters sheet reuses this same option list (`TrendFilterField`'s own
+  // `categoryOptions` prop), so a manual trend key is kept in it as well as a selected category.
+  const categoryOptions = useMemo(
     () =>
-      visibleSelection(selectedCategories, [
-        ...categoryByKey.keys(),
-        ...allCategorySlices.map((slice) => slice.key),
-      ]),
+      buildCategoryOptions({
+        slices: allCategorySlices,
+        categories,
+        categoryByKey,
+        keptKeys: [
+          ...selectedCategories,
+          ...(appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : []),
+        ],
+      }),
+    [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter],
+  );
+
+  const visibleSelectedCategories = useMemo(
+    () => visibleCategorySelection(selectedCategories, categoryByKey, allCategorySlices),
     [selectedCategories, categoryByKey, allCategorySlices],
   );
 
-  const excludedCategoryKeys = useMemo(() => {
-    if (visibleSelectedCategories.size === 0) {
-      return new Set<string>();
-    }
-
-    return new Set(
-      allCategorySlices
-        .filter((slice) => !visibleSelectedCategories.has(slice.key))
-        .map((slice) => slice.key),
-    );
-  }, [allCategorySlices, visibleSelectedCategories]);
+  const excludedCategoryKeys = useMemo(
+    () => excludedCategoryKeysOf(allCategorySlices, visibleSelectedCategories),
+    [allCategorySlices, visibleSelectedCategories],
+  );
 
   const categorySlices = useMemo(
     () =>
@@ -1247,18 +539,7 @@ const StatisticsScreen: FC = () => {
     [categorySlices, baseCurrency],
   );
 
-  // One option per visible account (an implicit account with no holding left
-  // excepted, see `accountsForFilter`), each carrying the account's own identity
-  // icon + color for the menu row; matching keys on `option.value` (the account
-  // id, compared to `account.id` in the `filtered` memo above, so a selection
-  // survives a rename and a language switch, and same-named accounts stay
-  // separate options); the `label` is the display name, which an implicit
-  // account localizes.
-  const accountOptions: FilterOption[] = filtered.optionAccounts.map((account) => ({
-    value: account.id,
-    label: accountDisplayName(account, t),
-    ...accountIdentity(account),
-  }));
+  const accountOptions = buildAccountOptions(filtered.optionAccounts, t);
 
   if (!isReady) {
     return (

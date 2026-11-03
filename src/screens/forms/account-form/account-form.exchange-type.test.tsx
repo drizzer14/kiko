@@ -157,7 +157,7 @@ describe('the exchange or wallet picker on the crypto create form', () => {
     expect(queryByLabelText('wallet-field')).toBeNull();
   });
 
-  it('shows the wallet address field once Bitcoin wallet address is picked', async () => {
+  it('shows the wallet address field once Bitcoin wallet is picked', async () => {
     const { getByTestId, getByLabelText, queryByLabelText } = await renderCryptoForm();
 
     await selectExchange(getByTestId, 'btc_wallet');
@@ -302,9 +302,7 @@ describe('the exchange or wallet picker on the crypto create form', () => {
     it('opens on the exchange it holds, with that exchange field mounted', async () => {
       const { getByTestId, getByLabelText } = await renderForm({ draft: draftOf('btc_wallet') });
 
-      expect(getByTestId('account-exchange-type-field')).toHaveTextContent(
-        'Bitcoin wallet address',
-      );
+      expect(getByTestId('account-exchange-type-field')).toHaveTextContent(/^Bitcoin wallet$/);
       expect(getByLabelText('wallet-field')).toBeTruthy();
     });
 
