@@ -624,8 +624,8 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
   for (let month = 0; month < LEDGER_MONTHS; month += 1) {
     const monthStart = month * MONTH_DAYS;
 
-    // Day 6, not nearer the anchor: Home lists newest first and shows a row with no category as
-    // "Other", so the newest rows must be categorized spending, not the salary.
+    // The salary sits at day 6 so that the 3 newest rows hold a named category (a null category
+    // reads "Other" on Home).
     list.push({
       amountMinorUnits: MONTHLY_INCOME_MINOR_UNITS[month],
       time: calendar.at(monthStart + 6),

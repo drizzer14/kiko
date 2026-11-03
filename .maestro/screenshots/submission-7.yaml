@@ -99,16 +99,20 @@ appId: com.dmytro-vasylkivskyi.kiko
 # worth line, By type bar, Account contribution pie, Expenses by category donut, Spending trend,
 # all full width. The card is shorter than the free area between the translucent nav bar and the
 # floating tab bar, but centring it overshoots under the nav bar. So the scroll stops when the
-# card's last element (the "show all" toggle) is on screen, which leaves it under the tab bar.
+# card's last element (the "show all" toggle) is on screen.
 # The bottom bar branch is tuned on the iPhone 18 Pro with a six-row legend: after that scroll the
 # card top sits about 14% of the screen height too high (its title under the nav bar, the donut
-# top cut) and its bottom has room to spare, so a slow drag down of 16% of the height moves the
-# card down into the free area (a slow drag has no fling, so it repeats exactly). The Duo outer
+# top cut) and its bottom ends well above the tab bar, so a slow drag down of 16% of the height
+# moves the card down into the free area. The Duo outer
 # has a side tab rail instead of a bottom bar (its "house.fill" tab sits above "tab-accounts",
 # where on the bottom bar both share a row, so the test does not depend on the scroll position)
 # and its card fills three quarters of the screen, so the same scroll overshoots: there a slow
-# drag down of 17% of the height brings the card top back under the nav bar. The shooter checks
-# this frame (the whole card on screen, no neighbour card cut across it) before accepting.
+# drag down of 17% of the height is meant to bring the card top back under the nav bar.
+# This frame is NOT repeatable: the same flow on the Duo side rail gave three different frames
+# (title at y=305, 325 and 720 of 2000). The drag cannot explain a gap that size; likely
+# `scrollUntilVisible` stops at different places. The assert passes on a bad frame, so the
+# shooter views this frame (the whole card on screen, no neighbour card cut across it) and runs
+# the flow again if the card is cut.
 - tapOn:
     id: "chart.xyaxis.line"
 - extendedWaitUntil:
