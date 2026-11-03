@@ -22,10 +22,16 @@ Quoted rulings:
 - "Dark look stays exactly as it is (approved visuals are locked)."
 - "Mutation gates are paused by the user: verify + review only. Strict scope applies (visible wrong data, own regressions, wrong texts, release requirements; everything else goes to a backlog section)."
 
+Rulings of 2026-11-03, full text in spec sections 1 and 11:
+
+- P0: palette approved. P1: A, gray page and white cards. P2: A, native white segment thumb; the 3 FAIL rows `segment thumb vs track` are accepted by the user, and no test asserts the light thumb at 3:1.
+- Q1: A, opens light, no migration. Q2: A, the device keeps its mode. Q3: A, each set merges into `next` when reviewed.
+- The coordinator: "Set 1 (Unistyles 3.6.0) is released."
+
 Rules for every set:
 
-- Integration branch is `next`, never main. Each set records `next` at its start as its own base. Merge order: tasks 1, 2, 3, 4, 5, then track `1.4-small`, then tasks 6, 7.
-- Re-grep every plan fact on the actual base. Facts name a symbol or anchor; any count is a floor, and the developer measures.
+- Integration branch is `next`, never main. Each set records `next` at its start as its own base. Merge order: tasks 1, 2, 3, 4, 5, 6, 7. Track `1.4-small` is already in `next`.
+- Plan facts were re-checked on next 6be32bfcb. Re-grep every plan fact on the actual base. Facts name a symbol or anchor; any count is a floor, and the developer measures.
 - No color value appears in this plan. Light values come only from `docs/design/light-palette/palette.json`, the tracked copy made in set 2. A shape mismatch is a stop-and-ask.
 - The plist key `UIUserInterfaceStyle=Dark` stays until set 6. No tip before set 6 has `adaptiveThemes` on, an `Appearance.setColorScheme` call, or a reader of `settings.appearance`.
 - No flag, no demo module in `src/` (Guideline 2.5.19). A light look before set 6 uses only the scratch build of spec section 7, which is never merged.
@@ -35,7 +41,7 @@ Rules for every set:
 - End of every set, in this order: `kiko:reviewer`; READY FOR VERIFY, and the coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-ls-build-<N>`; a failed verify gets a fresh developer and a new verify; `kiko:retrospect`, then `kiko:scribe` for drift; BATCH READY. Agents never run `make verify`.
 - `.superpowers/sdd/1.4-light-scheme/palette/` is gitignored and exists only in the worktree `/Users/drizzer14/orca/workspaces/pff-ios/1.4-light-scheme`. A build set in another worktree reads it by that absolute path.
 - Mutation: paused by the user. When lifted, the gate runs per set with `KIKO_MUTATION_BASE` set to that set's base; never one whole-track run (`MUTATION_FILE_CAP`).
-- No migration in this plan (D1). If Q1 option B is ruled, set 6 gains the migration and a `kiko:reviewer` step before BATCH READY.
+- No migration in this plan (D1, Q1 ruled A).
 - A UI step honors `kiko-design-system` locked decisions. Nothing locked changes in dark.
 
 ## Review Focus
@@ -67,8 +73,6 @@ Rules for every set:
 
 ### 1.4-light-scheme-build task 2/7: Palette copy, light values, theme registered
 
-Starts only after the coordinator relays the user's palette approval.
-
 **Files:**
 - Create: `docs/design/light-palette/palette.json`, `__tests__/light-palette-source.test.ts`, `src/design-system/palette/palette.contrast.test.ts`
 - Modify: `src/design-system/palette/palette.ts`, `palette.test.ts`, `src/design-system/theme/theme.ts`, `theme.test.ts`, `src/design-system/unistyles/unistyles.ts`, `unistyles.test.ts`, `__tests__/property-sweep-sites.test.ts` if a sweep is added here, `harness/kiko/skills/release/SKILL.md`, `harness/kiko/.claude-plugin/plugin.json`
@@ -77,7 +81,7 @@ Starts only after the coordinator relays the user's palette approval.
 - Produces, `palette.ts`: `type SwatchName = keyof typeof entityColorsDark`; `type ColorScheme = 'dark' | 'light'`; `entityColorsLight`, `categoryColorsLight: Record<SwatchName, string>`; `chartSeriesLight`.
 - Produces, `theme.ts`: `lightTheme` with every key of `darkTheme`; new on both: `colorScheme: ColorScheme`, `colors.categoryColors`, `colors.glyphOnLightTile`.
 
-- [ ] **step 1/7: Copy the palette.** Copy `.superpowers/sdd/1.4-light-scheme/palette/palette.json` as approved to `docs/design/light-palette/palette.json`, formatted by biome. Run `node /Users/drizzer14/orca/workspaces/pff-ios/1.4-light-scheme/.superpowers/sdd/1.4-light-scheme/palette/check-dark.mjs <build worktree>`; the file exists only at that path, and with no argument it checks the planning worktree. Expected exit 0. Re-read `decisions.*.chosen` against the user's approval.
+- [ ] **step 1/7: Copy the palette.** Copy `.superpowers/sdd/1.4-light-scheme/palette/palette.json` as approved to `docs/design/light-palette/palette.json`, formatted by biome. Run `node /Users/drizzer14/orca/workspaces/pff-ios/1.4-light-scheme/.superpowers/sdd/1.4-light-scheme/palette/check-dark.mjs <build worktree>`; the file exists only at that path, and with no argument it checks the planning worktree. Expected exit 0. `decisions.pageBackground.chosen` and `decisions.segmentedThumb.chosen` both read `A` (P1, P2); anything else is a stop-and-ask.
 - [ ] **step 2/7: Write the failing pin.**
 ```ts
 it('every light and dark token equals the approved palette file', () => {
@@ -105,9 +109,9 @@ it.each(cases)('%s glyph holds 3:1 on its tile', ...);            // glyph from 
 it('chartSeriesLight is a subset of categoryColorsLight', ...);
 it('chartSeriesDark mapped by key equals chartSeriesLight', ...);
 ```
-Palette `knownFailures` notes dark "glyph vs tile top" under 3:1; that stop is not this test's input. A dark set case that fails is measured and reported; the floor never drops. A light failure returns to the designer.
+Palette `knownFailures` notes dark "glyph vs tile top" under 3:1; that stop is not this test's input. A dark set case that fails is measured and reported; the floor never drops. A light failure returns to the designer. The floor covers tiles and glyphs, not the segment thumb: under P2 no light twin of `gives the thumb >= 3:1 contrast against the track on black and on surface` is written, and that dark test in `segmented-control.component.test.tsx` stays as it is.
 - [ ] **step 6/7: Run.** `npx jest src/design-system __tests__/light-palette-source.test.ts --maxWorkers=2`, then `make jest-affected BASE=<set base>`, `npm run check:typecheck`, `npm run check:knip`. Every new export has a consumer at this tip.
-- [ ] **step 7/7: Scratch look and commit.** Commit `feat(theme): light palette and theme, registered and unreachable`. The app stays dark: proof by the set 1 pair run on a smaller screen list. Optional scratch build for the palette look (spec section 7). `kiko:scribe`, with this set because it first registers `light`: `harness/kiko/skills/release/SKILL.md` gains one stop step directly above step 6 (the archive), unnumbered, so the skill's "step 6" references hold: if `src/design-system/unistyles/unistyles.ts` registers a `light` theme and `ios/Kiko/Info.plist` still has `UIUserInterfaceStyle`, stop the release. Bump `plugin.json` above main's version per harness-workflow; the coordinator runs `claude plugin update kiko@kiko-marketplace` and `/reload-plugins`. Harness-sync classification: Kiko-only (it names Kiko's theme file and plist key). Check: `make doc-suites`.
+- [ ] **step 7/7: Scratch look and commit.** Commit `feat(theme): light palette and theme, registered and unreachable`. The app stays dark: proof by the set 1 pair run on a smaller screen list. Optional scratch build for the palette look (spec section 7). `kiko:scribe`, with this set because it first registers `light`: `harness/kiko/skills/release/SKILL.md` gains one stop step directly above step 6 (the archive), unnumbered, so the skill's "step 6" references hold: if `src/design-system/unistyles/unistyles.ts` registers a `light` theme and `ios/Kiko/Info.plist` still has `UIUserInterfaceStyle`, stop the release. Bump `plugin.json` above main's version per harness-workflow (`references/plugin-and-hooks.md`); the coordinator runs `claude plugin update kiko@kiko-marketplace` and `/reload-plugins`. Harness-sync classification: Kiko-only (it names Kiko's theme file and plist key). Check: `make doc-suites`.
 
 ---
 
@@ -115,7 +119,7 @@ Palette `knownFailures` notes dark "glyph vs tile top" under 3:1; that stop is n
 
 **Files:**
 - Create: `src/design-system/active-color-scheme/` (hook, index, test), `src/test-support/light-theme-registered.ts` (`registerLightThemeFirst(): void`, `restoreThemeOrder(): void`; the jest mock reads `Object.values(themes).at(0)`)
-- Modify: `src/design-system/entity-tint/entity-tint.ts`, `entity-tint.test.ts`, `src/holdings/account-identity/`, `src/holdings/holding-identity/`, `src/statistics/account-contribution/account-contribution.ts`, `src/screens/statistics/bar-chart/bar-chart.component.tsx`, `src/design-system/components/color-picker/`, `src/design-system/components/entity-icon-tile/`, `src/screens/forms/account-form/`, `src/screens/forms/holding-form/`, `src/screens/forms/holding-select-option/`, `src/screens/statistics/bar-chart/bar-chart.component.test.tsx`, and each compile error's caller (floor: `accounts.screen`, `implicit-account-heading`, `reminders.screen`, `home.screen`, `statistics.screen`, `account-detail.screen`, `holding-detail.screen`, `holding-card`, `use-target-holding-options`)
+- Modify: `src/design-system/entity-tint/entity-tint.ts`, `entity-tint.test.ts`, `src/holdings/account-identity/`, `src/holdings/holding-identity/`, `src/statistics/account-contribution/account-contribution.ts`, `src/screens/statistics/bar-chart/bar-chart.component.tsx`, `src/design-system/components/color-picker/`, `src/design-system/components/entity-icon-tile/`, `src/screens/forms/account-form/`, `src/screens/forms/holding-form/`, `src/screens/forms/holding-select-option/`, `src/screens/statistics/bar-chart/bar-chart.component.test.tsx`, `src/statistics/statistics-filter-scope/statistics-filter-scope.ts`, its test, and each compile error's caller (floor: `accounts.screen`, `implicit-account-heading`, `reminders.screen`, `home.screen`, `statistics.screen`, `account-detail.screen`, `holding-detail.screen`, `holding-card`, `use-target-holding-options`)
 
 **Interfaces:**
 - Consumes: `ColorScheme`, `entityColorsLight`, `theme.colorScheme`, `theme.colors.glyphOnLightTile`.
@@ -126,6 +130,7 @@ useActiveColorScheme(): ColorScheme            // useUnistyles().theme.colorSche
 accountIdentity(account, scheme: ColorScheme)  // required, no default
 holdingIdentity(holding, scheme: ColorScheme)
 buildAccountContribution({ ..., scheme })
+buildAccountOptions(optionAccounts, t, scheme: ColorScheme)  // spreads accountIdentity
 // ColorPicker props: swatchSet: 'entity' | 'category'; value and onSelect stay canonical dark hex
 ```
 `resolveEntityColor(stored, typeDefault)` stays canonical; forms keep it for `ColorPicker value`.
@@ -154,9 +159,9 @@ it('paints the light value and reports the dark hex', () => {
 it('rings the swatch whose dark hex equals value', ...);
 ```
 Forms test: `it('a form opened in light saves the canonical dark hex', ...)` on `account-form` and `holding-form`, asserting the repo argument.
-- [ ] **step 4/7: Thread `scheme`.** Change producers; `npm run check:typecheck` lists callers; fix each with `useActiveColorScheme()`, adding `scheme` to `useMemo` deps. Forms: `iconColor={entityDisplayColor(effectiveColor, scheme)}`, `<ColorPicker value={effectiveColor} swatchSet="entity" .../>`. `BarChart`: `entityDisplayColor(defaultHoldingColor[type], scheme)`. The compiler does not list these three sites (spec D3, exception), so each gets a light-world test: `it('a light account form paints the tile through the entity map', ...)` in `account-form.screen.test.tsx`, `it('a light holding form paints the tile through the entity map', ...)` in `holding-form.screen.test.tsx`, `it('a light bar chart paints each slice through the entity map', ...)` in `bar-chart.component.test.tsx`.
+- [ ] **step 4/7: Thread `scheme`.** Change producers; `npm run check:typecheck` lists callers; fix each with `useActiveColorScheme()`, adding `scheme` to `useMemo` deps. `statistics.screen`: the `slices` memo (`buildAccountContribution`) and the `buildAccountOptions` call; `use-statistics-sources`, `use-spending-ledger` and `use-rate-history-backfill` hold no color and stay. Forms: `iconColor={entityDisplayColor(effectiveColor, scheme)}`, `<ColorPicker value={effectiveColor} swatchSet="entity" .../>`. `BarChart`: `entityDisplayColor(defaultHoldingColor[type], scheme)`. The compiler does not list these three sites (spec D3, exception), so each gets a light-world test: `it('a light account form paints the tile through the entity map', ...)` in `account-form.screen.test.tsx`, `it('a light holding form paints the tile through the entity map', ...)` in `holding-form.screen.test.tsx`, `it('a light bar chart paints each slice through the entity map', ...)` in `bar-chart.component.test.tsx`.
 - [ ] **step 5/7: Glyph.** `EntityIconTile` reads `theme.colors.glyphOnLightTile` instead of `theme.colors.background`. Test: light world, tile with a light hex gets the token, not the page color. Existing dark assertions stay.
-- [ ] **step 6/7: Dark pins hold.** Existing `account-identity`, `holding-identity`, `entity-colors`, `holding-card`, `accounts.screen` tests gain `'dark'` where the signature needs it; no expected value changes. `make jest-affected BASE=<set base>`.
+- [ ] **step 6/7: Dark pins hold.** Existing `account-identity`, `holding-identity`, `account-contribution`, `statistics-filter-scope`, `entity-colors`, `holding-card`, `accounts.screen` tests (floor) gain `'dark'` where the signature needs it; no expected value changes. `make jest-affected BASE=<set base>`.
 - [ ] **step 7/7: Commit.** `feat(colors): accounts and holdings display through the light map`. App stays dark: `theme.colorScheme` is always `dark` at this tip.
 
 ---
@@ -164,7 +169,7 @@ Forms test: `it('a form opened in light saves the canonical dark hex', ...)` on 
 ### 1.4-light-scheme-build task 4/7: Category map and charts
 
 **Files:**
-- Modify: `src/design-system/entity-tint/entity-tint.ts`, `src/statistics/category-breakdown/category-breakdown.ts`, `src/statistics/category-trend/category-trend.ts`, `src/screens/statistics/net-worth-line/net-worth-line.component.tsx`, `src/design-system/theme/theme.ts`, `src/screens/forms/category-form/`, and each caller (floor: `statistics.screen`, `categories.screen`, `transaction-templates.screen`, `transaction-row`, `home.screen`, `holding-detail.screen`, `transaction-form.screen`, `example-transaction`)
+- Modify: `src/design-system/entity-tint/entity-tint.ts`, `src/statistics/category-breakdown/category-breakdown.ts`, `src/statistics/category-trend/category-trend.ts`, `src/screens/statistics/net-worth-line/net-worth-line.component.tsx`, `src/design-system/theme/theme.ts`, `src/screens/forms/category-form/`, `src/statistics/statistics-filter-scope/statistics-filter-scope.ts`, its test, and each caller (floor: `statistics.screen`, `categories.screen`, `transaction-templates.screen`, `transaction-row`, `home.screen`, `holding-detail.screen`, `transaction-form.screen`, `example-transaction`), and each test that calls a changed producer (floor: `category-breakdown.test.ts`, `category-trend.test.ts`, `spending-ledger.test.ts`, `exchange-exclusion.convert.real-sqlite.test.ts`, `binance.convert-history.category-rules.real-sqlite.test.ts`, `money-path.test.ts`, `schema.category-overrides.test.ts`, `home.screen.test.tsx`, `category-form.screen.test.tsx`)
 
 **Interfaces:**
 - Produces:
@@ -173,6 +178,7 @@ categoryDisplayColor(canonicalHex: string, scheme: ColorScheme): string
 resolveCategoryColor(stored, key, scheme: ColorScheme): string   // required; returns display
 resolveCanonicalCategoryColor(stored, key): string               // for ColorPicker value
 buildCategoryBreakdown({ ..., scheme }), buildCategoryTrend({ ..., scheme })
+buildCategoryOptions({ ..., scheme })   // its keptKeys path calls resolveCategoryColor
 theme.chartFill: { areaOpacity: number; negativeAreaOpacity: number }
 ```
 
@@ -186,7 +192,7 @@ it('an uncolored category hashes to a dark hue, then maps', () => {
 it('dark area opacities stay 0.3 and 0.5', ...);
 ```
 - [ ] **step 2/5: Implement the map** with the shared internal of step 2/7 of task 3/7, taking `categoryColorsLight`. `categoryColor(key)` stays on `chartSeriesDark`.
-- [ ] **step 3/5: Thread `scheme`.** As in task 3/7. `category-form`: picker `swatchSet="category"`, `value={resolveCanonicalCategoryColor(...)}`, preview through the display path; form test: light form saves the dark hex. The compiler does not list the preview site (spec D3, exception): `it('a light category form paints the preview through the category map', ...)` in `category-form.screen.test.tsx`.
+- [ ] **step 3/5: Thread `scheme`.** As in task 3/7. `statistics.screen`: the memos `allCategorySlices` and `categorySlices` (`buildCategoryBreakdown`), `trendSeries` (`buildCategoryTrend`) and `categoryOptions` (`buildCategoryOptions`). `statistics-filter-scope.test.ts`: `it('a kept category option maps through the category set, like a slice', ...)`. `category-form`: picker `swatchSet="category"`, `value={resolveCanonicalCategoryColor(...)}`, preview through the display path; form test: light form saves the dark hex. The compiler does not list the preview site (spec D3, exception): `it('a light category form paints the preview through the category map', ...)` in `category-form.screen.test.tsx`.
 - [ ] **step 4/5: Charts.** `net-worth-line` reads `theme.chartFill` for the two stop opacities; the sign-colored stroke (locked) stays. Light pie and trend tests: wedges and strokes use the category set, legend swatch equals its wedge.
 - [ ] **step 5/5: Commit.** `make jest-affected BASE=<set base>`; commit `feat(colors): categories and charts display through the light map`. `kiko:scribe`: `kiko-charts` opacity section and "Reuse the entity-color system for fills".
 
@@ -219,7 +225,7 @@ Each: fixture pair with `// EXPECT-FINDING`, `RULE_IDS_WITH_FIXTURES` entry, inv
 
 ### 1.4-light-scheme-build task 6/7: The flip
 
-Starts after `1.4-small` is merged into `next`. Re-check `git log next..1.4-small` and that its diff does not touch `system.screen.tsx`. Needs rulings Q1 and Q2 (spec section 11); steps below assume the recommended options.
+`1.4-small` is in `next` and its diff does not touch `system.screen.tsx` (spec C7), so nothing waits for it. The steps below build rulings Q1 A and Q2 A (spec section 11).
 
 **Files:**
 - Create: `src/appearance/appearance-mode/`, `src/appearance/appearance-mirror/`, `src/appearance/apply-launch-appearance/`, `src/appearance/use-sync-appearance-with-settings/`, `src/design-system/components/appearance-switch/`, `src/data-transfer/snapshot/restore-appearance.test.ts`
@@ -272,7 +278,7 @@ Also a September-row world: `it('a stored light row applies at first launch', ..
 - [ ] **step 6/9: Control.** `AppearanceSwitch` as `LanguageSwitch`, through `ChipRow` (`satisfies Record<AppearanceMode, string>`). In `system.screen.tsx`, a `Card testID="settings-card-appearance"` with `SettingsRow testID="settings-row-appearance" icon="circle.lefthalf.filled"` after the language card; selected from `parseAppearanceMode(settings?.appearance)` behind the existing `isReady`; `onSelect` calls `settingsRepo.setAppearance`. Update the screen's "Order:" comment. Test: `it('selecting Light writes the row and nothing else', ...)`, no direct `Appearance` call. `__tests__/symbol-deployment-target.test.tsx` covers the symbol.
 - [ ] **step 7/9: Flip.** Remove `UIUserInterfaceStyle` from `ios/Kiko/Info.plist`. `info-plist.test.ts`: `it('has no UIUserInterfaceStyle key, so the app can follow a scheme', ...)`; the `UIStatusBarStyle` assertion stays; `__tests__/launch-screen.test.ts` unchanged. `SceneDelegate.swift`: comment names `useSyncAppearanceWithSettings` and `applyLaunchAppearance`; code unchanged. `npm run check:plist`.
 - [ ] **step 8/9: Device acceptance.** The coordinator queues the verify; then N16 per spec section 8, evidence in `.superpowers/sdd/1.4-light-scheme-build/n16/`. kiko:qa drives simulator rows on iOS 26.5, 27.0 and the iPad and Duo sims, with proof each popup is open; the orchestrator views every shot. The user runs device rows through the coordinator's deploy, including Reduce Transparency on and off and #4081 with the demo `.kiko` imported. One failing row blocks the merge.
-- [ ] **step 9/9: Docs.** `kiko:scribe`: rewrite "Dark-only theme" and "Styling layer" in `kiko-design-system`, add `AppearanceSwitch` to the component set, `kiko-architecture` language section, `kiko-domain` dark-only lines, a palette pointer in `harness/kiko/skills/design-system/SKILL.md`, the removal of the release stop step from `harness/kiko/skills/release/SKILL.md` (the plist key is gone, so the step is always true; task 2/7 step 7/7 added it), and the plugin bump above main's version. `docs/security/README.md`: the restore paragraph naming `KEPT_FROM_LIVE_ON_RESTORE` lists only lock and notifications; it gains the appearance mode and its UserDefaults mirror. Grep `Dark-only theme` for citations before the rename, in the same commit. Commit `feat(settings): System, Light and Dark appearance with a live switch`.
+- [ ] **step 9/9: Docs.** `kiko:scribe`: rewrite "Dark-only theme" and "Styling layer" in `kiko-design-system`, add `AppearanceSwitch` to the component set, in the `SegmentedControl` entry of `component-set-forms.md` scope its "3:1 non-text contrast" sentence to dark and name the light thumb as the user's accepted exception (P2), `kiko-architecture` language section, `kiko-domain` dark-only lines, a palette pointer in `harness/kiko/skills/design-system/SKILL.md`, the removal of the release stop step from `harness/kiko/skills/release/SKILL.md` (the plist key is gone, so the step is always true; task 2/7 step 7/7 added it), and the plugin bump above main's version. `docs/security/README.md`: the restore paragraph naming `KEPT_FROM_LIVE_ON_RESTORE` lists only lock and notifications; it gains the appearance mode and its UserDefaults mirror. Grep `Dark-only theme` for citations before the rename, in the same commit. Commit `feat(settings): System, Light and Dark appearance with a live switch`.
 
 ---
 
@@ -329,4 +335,6 @@ Sum: about 14-29 h of agent time. The total in findings section 5 ("8-12 develop
 - Types: `ColorScheme`, `SwatchName`, `AppearanceMode`, `entityDisplayColor`, `categoryDisplayColor`, `useActiveColorScheme` match across tasks.
 - Tips: each new export has a consumer at its own tip. `categoryDisplayColor` lands with its callers in task 4/7; the mirror and hook land with the control in task 6/7. A tip with sets 2-5 and no set 6 is safe to merge into `next` and cannot be released (Global Constraints).
 - Compiler reach: `scheme` lists producer callers only; the canonical-reader sites of spec D3's exception have named tests in task 3/7 step 4/7 and task 4/7 step 3/5.
+- Rulings: P0 to P2 and Q1 to Q3 are recorded in spec sections 1 and 11, and no step depends on an option not taken. No light color value appears in this plan.
+- Merged base: the producer callers of tasks 3/7 and 4/7 are re-grepped on next 6be32bfcb; the lists stay a floor. The release anchor of task 2/7 step 7/7 holds.
 - Proportion: signatures, test names and assertions; no function bodies.

@@ -1,12 +1,18 @@
 # Light color scheme for Kiko: design
 
-Track: 1.4-light-scheme task 1/1. Base: next 57130e23c. Build sets are named "1.4-light-scheme-build task N/7".
+Track: 1.4-light-scheme task 1/1. Base: next 6be32bfcb (written on next 57130e23c, re-checked after the merge). Build sets are named "1.4-light-scheme-build task N/7".
 Plan: `docs/superpowers/plans/2026-11-03-light-scheme.md`.
 Sources: `c676f7dbd:.superpowers/sdd/light-scheme-research/findings.md` and `probe-results.md`, the backlog section
 "LIGHT SCHEME", the old build (`9d69a77e^`, icons `1702e7085^`), Unistyles 3.6.0 read from the packed tarball, RN 0.87.1
 and the other libraries read in this worktree's `node_modules`, and the designer's
 `.superpowers/sdd/1.4-light-scheme/palette/palette.json` (gitignored; structure read, values not restated here).
-Every line number below is a measurement on 57130e23c for reconciling with the research. Code must re-grep it.
+Every line number below is a measurement for reconciling with the research. Code must re-grep it.
+Re-measured on next 6be32bfcb: `schema.ts` (`appearance`), `settings.repo.ts:72`, `glass-surface.component.tsx:298`,
+`bottom-sheet.component.tsx:355`, `sheetAnimatedStyle` line 255, `kiko-architecture/SKILL.md:45-47`, the producer callers,
+the direct dark import files, the hex paths of D3.
+Not re-measured, still from 57130e23c: the counts of C6 and C10, the 240 test files of D2, the per-file use counts of D3, the
+AST scans of section 6, the row of D5's table other than the two lines above, the "must change" test list of section 9.
+Fixed sources do not move: a line in a sha-pinned file (`c676f7dbd`, `bc2682882`) or in the 3.6.0 package.
 
 ## 1. User rulings (binding)
 
@@ -21,17 +27,29 @@ Every line number below is a measurement on 57130e23c for reconciling with the r
 - Mutation gates are paused by the user: verify + review only. Strict scope applies (visible wrong data, own
   regressions, wrong texts, release requirements; everything else goes to a backlog section).
 
+Rulings relayed by the coordinator from the user, 2026-11-03 (options in section 11):
+
+- P0: the palette is approved.
+- P1: A, the grouped gray page with white cards (values: palette `decisions.pageBackground.options.A`).
+- P2: A, the native white segment thumb, against the recommendation. The 3 FAIL rows it adds (`segment thumb vs track` on page,
+  card and sheet, palette `contrast.tsv`) are accepted by the user.
+- Q1: A, an existing install on a light OS opens light. No migration.
+- Q2: A, the device keeps its mode. An old file cannot reset Dark; a new phone sets it once.
+- Q3: A, sets 2 to 5 merge into `next` when reviewed.
+
+The coordinator, the same day: "Set 1 (Unistyles 3.6.0) is released."
+
 ## 2. Where this base contradicts the research
 
 | # | Research or brief said | Measured | Consequence |
 |---|---|---|---|
 | C1 | "N2 U-C passed without" the native-stack patch N8 | `bc2682882:patches/@react-navigation+native-stack+7.18.9.patch` is in BUILD-B: `experimental_userInterfaceStyle: globalThis.__probeNativeStack?.barStyle?.(dark) ?? 'unspecified'`. C0 has no `barStyle` entry, so every C0 row on BUILD-B ran WITH `'unspecified'`. BUILD-B's navigation colors are also `PlatformColor`, not tokens (`probe-theme.ts`). U-C with the unpatched header and token hex colors was never run | D5 and the re-measure row N2-R |
 | C2 | Findings 9: #1329 "needs a check" | The fix is NOT in 3.6.0. The issue is reported ON 3.6.0. Fix PR #1353 merged 2026-10-29, after v3.7.0 (2026-10-28) and before v3.8.0 (2026-11-02). Source: `includeUnpromoted` count in 3.6.0 `cxx/hybridObjects/HybridShadowRegistry.cpp` is 0 | Nested `Text` keeps its old color on 3.6.0 under a Reanimated view. Kiko has 0 sites today (section 6); a guard keeps it so |
-| C3 | Findings 10 step 4: a new `color_scheme` column and a migration | `settings.appearance` exists (`schema.ts:455`) with the right enum and default | D1: no migration |
+| C3 | Findings 10 step 4: a new `color_scheme` column and a migration | `settings.appearance` exists (`schema.ts:456`) with the right enum and default | D1: no migration |
 | C4 | Palette `storedHexMap.legacyLightEraHex` note and findings problem 10: the old build stored the dark hex | The old `ColorPicker` (`9d69a77e^:src/screens/forms/color-picker/color-picker.component.tsx`) iterated `theme.colors.entityColors` and reported that hex. So a color picked under the old light theme stored a LIGHT hex, which is why `resolveStoredHexForScheme` mapped both ways | D3: the picker now writes the dark hex; a September-window light hex takes the out-of-set rule |
 | C5 | Findings N5: one reverse map | The palette has two sets (`entitySwatches`, `categorySwatches`) and the same dark hex maps differently per set. `EntityIconTile` draws both, so a sink cannot know the set | D3: the producer maps, with a required `scheme` argument |
 | C6 | "about 65 test files pin dark" | Floor measured: 91 test files name a dark symbol; 124 with any literal hex. The Unistyles jest mock reads `Object.values(themes).at(0)`, so with `themes = { dark, light }` most stay green unchanged. The probe's `{ light, dark }` order would flip all of them | D7 |
-| C7 | Brief: `1.4-small` has no commits | Floor, it still moves: 3 (`e9eb66250`, `d58a98247`, `8b2726960`). It touches `settings.screen.tsx`, its test, `kiko-architecture/reminders.md`, `en.ts`, `uk.ts` and 3 more tests, not `system.screen.tsx` | Merge order stays; re-check at set 6 |
+| C7 | Brief: `1.4-small` has no commits | It had 3 (`e9eb66250`, `d58a98247`, `8b2726960`) and is now in `next`: 6be32bfcb contains its tip `cad58232e`, and `git log 6be32bfcb..1.4-small` is empty. It touched `settings.screen.tsx`, its test, `kiko-architecture/reminders.md`, `en.ts`, `uk.ts` and 3 more tests, not `system.screen.tsx` | No set waits for it (section 7) |
 | C8 | "Dark-only theme" lives in two skill copies | One copy: `.claude/skills/kiko-design-system/SKILL.md`. `harness/kiko/skills/design-system/SKILL.md` is a wrapper with no such text. `kiko-architecture` and `kiko-domain` also say dark-only | Scribe list in the plan |
 | C9 | Findings 10 step 5: `'unspecified'` for System | N2 ran `'auto'` (`probe-values.ts`). `RCTConvert.mm` maps both to `UIUserInterfaceStyleUnspecified` | Use `'auto'`, the measured one |
 | C10 | Findings 10 step 8: 6 `Alert.alert` calls | Floor: 8. `ActionSheetIOS` and native item menus: 0 in non-test `src/` | ActionSheet and UIMenu rows narrow to system-owned menus (section 8) |
@@ -46,7 +64,7 @@ The orchestrator corrected the palette notes of C4 and C13 in `palette.json` on 
 
 ### D1. Storage: reuse `settings.appearance`. No migration
 
-Verified reason: the column exists (`schema.ts:455`), `NOT NULL DEFAULT 'system'`, enum `system|light|dark`, in every
+Verified reason: the column exists (`schema.ts:456`), `NOT NULL DEFAULT 'system'`, enum `system|light|dark`, in every
 installed database and in every `.kiko` written since it was added. It is pinned readerless in
 `DOCUMENTED_READERLESS_COLUMNS` (`src/db/settings-columns.test.ts`), whose comment says re-wiring means removing it there.
 A second column would leave one dead column beside a live twin and add a migration, its reviewer step and a back-compat
@@ -57,7 +75,7 @@ at flip. It is a valid choice, visible in the control, and one tap changes it.
 
 `.kiko`, both ways, reading `restore-snapshot.ts` and `export-data.ts`:
 
-| Direction | Result under Q2 option A (recommended) | was (column in `TAKEN_FROM_FILE_ON_RESTORE`) |
+| Direction | Result (Q2 ruled A) | was (column in `TAKEN_FROM_FILE_ON_RESTORE`) |
 |---|---|---|
 | Export from 1.4 | Row carries `appearance` | Same, always `system` in practice |
 | New file into 1.4, file `light`, live `dark` | Live `dark` stays | File value written, no reader |
@@ -68,11 +86,11 @@ at flip. It is a valid choice, visible in the control, and one tap changes it.
 
 The enum is TypeScript-only: `0018_add_appearance.sql` has no CHECK, and `import-data.ts` checks table shape only, so a
 hand-built row can hold `appearance: 'LIGHT'`. The hook and the control therefore read `parseAppearanceMode(row.appearance)`,
-never the raw column, and a value outside the enum reads as System. Under Q2 option A a restore does not write the file's
-value, so this guards Q2 option B and any other writer. The "no migration" decision stays.
+never the raw column, and a value outside the enum reads as System. A restore on 1.4 does not write the file's value (Q2 ruled
+A), so this guards a row that a pre-1.4 build restored from a file (that build still takes the column from the file), and any
+other writer. The "no migration" decision stays.
 
-No migration in this track, so `check:shipped-migrations` is untouched and no migration reviewer step applies. If Q1
-option B is taken, a migration enters and set 6 gains a `kiko:reviewer` step before BATCH READY.
+No migration in this track (Q1 ruled A), so `check:shipped-migrations` is untouched and no migration reviewer step applies.
 
 ### D2. First frame: a UserDefaults mirror read through RN's settings constants. The row wins
 
@@ -134,7 +152,7 @@ Verified paths that write or hold a hex (floor):
 | September-window row or file | An old light hex (C4) | No |
 | Provider or bank color | None exists (grep; palette `defaults.providerColors` agrees) | n/a |
 | `categoryColor(key)` from `chartSeriesDark` | Hash into 8 hues | Yes: `palette.test.ts` pins the subset |
-| `e2e/screenshot/seed`, `build-demo-snapshot` | `entityColorsDark.*` | Yes; stays |
+| `e2e/screenshot/seed`, `build-demo-snapshot` | `entityColorsDark.*` (12 of the 14 names, no literal hex), and category colors from `0017` through `readSeedCategoryColors`, null otherwise | Yes; stays |
 
 Result table (scheme is the theme's own field, see section 4):
 
@@ -147,14 +165,18 @@ Result table (scheme is the theme's own field, see section 4):
 The palette's `legacyLightEraHex` table is not built: its input is a two-day window on one user's data, and the rule above
 already gives a readable, deterministic result. The picker rings nothing for such a value, as it does in dark today.
 
-Direct dark imports, measured (a floor, re-measure): non-test `src/` has 11 files and 21 uses, in `category-breakdown.ts`
+Direct dark imports, measured (a floor, re-measure; the files re-measured on 6be32bfcb, the use counts not): non-test `src/` has 11 files and 21 uses, in `category-breakdown.ts`
 (1), `metal`, `loan`, `bond`, `term-deposit`, `property-item` descriptors (1 each), `balance.descriptors.ts` (4),
 `entity-colors.ts` (7), `theme.ts` (2), `entity-tint.ts` (1), `restore-snapshot.ts` (1). `e2e/` has 2 more files. 9 test
 files. All stay: under D3 they name canonical values. Only display goes through the map.
 
-Producers take a REQUIRED `scheme` argument so the compiler lists every caller: 34 non-test files and 19 test files use a
-producer today (floor). This is old problem 11 again, on purpose: a missed caller of a producer is a compile error, not a white
-tile.
+Producers take a REQUIRED `scheme` argument so the compiler lists every caller: 34 non-test files and 19 test files used a
+producer on 57130e23c (floor; that name list is not recorded). On 6be32bfcb the six names the plan threads (`accountIdentity`,
+`holdingIdentity`, `buildAccountContribution`, `buildCategoryBreakdown`, `buildCategoryTrend`, `resolveCategoryColor`) are in 31
+non-test and 13 test files, comment mentions included (floor). The merge added `statistics-filter-scope.ts`, its test and
+`spending-ledger.test.ts`. `buildAccountOptions` and `buildCategoryOptions` in `statistics-filter-scope.ts` call a producer, so
+they take `scheme` too. `use-statistics-sources`, `use-spending-ledger` and `use-rate-history-backfill` hold no color. This is
+old problem 11 again, on purpose: a missed caller of a producer is a compile error, not a white tile.
 
 Exception: the canonical readers stay outside the compiler's list. `resolveEntityColor`, `defaultAccountColor`,
 `defaultHoldingColor`, `categoryColor` and `resolveCanonicalCategoryColor` take no `scheme` and return the dark hex, so a sink that
@@ -283,12 +305,11 @@ reference: `useUnistyles` hands out a proxy, and the mock has no `rt.themeName` 
 | 6 | Flip: storage, mirror, hook, control, strings, adaptive on, plist key off | Yes, complete | The feature |
 | 7 | Light and dark icons | Yes | Home screen icon follows the OS |
 
-Merge order: 1, 2, 3, 4, 5, then `1.4-small`, then 6, then 7. Each set takes `next` at its start as its own base.
+Merge order: 1, 2, 3, 4, 5, 6, 7, each into `next` when reviewed (Q3 ruled A). Each set takes `next` at its start as its own base.
 
-Set 2 waits for the coordinator's relay of the user's palette approval. Set 1 does not. Set 6 waits for `1.4-small` in `next`.
-`1.4-small` changes the group order in `src/screens/settings/settings/settings.screen.tsx`; the control is in
-`src/screens/settings/system/system.screen.tsx`. There is no text conflict today (C7), but it is not finished, so re-check with
-`git log next..1.4-small` and its diff at the start of set 6.
+No set waits on a ruling or on `1.4-small`. `1.4-small` is in `next` (C7): it changed the group order in
+`src/screens/settings/settings/settings.screen.tsx`, and its diff does not touch the control's file,
+`src/screens/settings/system/system.screen.tsx`.
 
 The order holds with these exact exceptions:
 
@@ -303,7 +324,7 @@ The order holds with these exact exceptions:
    `kiko-compliance` also reads 2.5.19 as banning "ANY hidden, dormant or undocumented feature". Owner: the release track. A stop
    step in the release skill, added in set 2 and removed in set 6, mechanizes it. Merging into `next` does not break the rule:
    `next` is not a release. A cut from `main` is not affected: `main` has none of these sets until a release merge brings them, and
-   the stop step reads the tip, whichever branch it is. See Q3.
+   the stop step reads the tip, whichever branch it is. Q3 ruled A.
 4. A light icon before the flip would show a light icon on a dark app, hence set 7 last.
 5. Set 6 itself: a September `light` row takes effect at first launch (D1).
 
@@ -369,6 +390,9 @@ sync; calendar open during an OS switch (it repaints and returns to its start mo
 - Property test: all 14 swatches of both light sets and the dark set, each with its background and `surface`, tile contrast and glyph
   contrast at 3:1. Glyph contrast is measured against the swatch's base hue, the input of the glyph rule, not a gradient stop: palette
   `knownFailures` already notes the dark "glyph vs tile top" under 3:1. A failing light value goes back to the designer; the floor never drops.
+- Segment thumb (P2): no light test asserts 3:1 against the track. `segmented-control.component.test.tsx`, `gives the thumb >= 3:1
+  contrast against the track on black and on surface`, reads `darkTheme` only and stays. Palette `knownFailures`, `^segment thumb
+  vs track`, records the acceptance; the tracked `palette.json` of set 2 carries the value and `light-palette-source.test.ts` pins it.
 - Property test: any valid hex in dark returns verbatim; any valid hex in light returns a set member or clears 3.4. Seeds through
   `sweep`, spread per `kiko-testing`, with a new `__tests__/property-sweep-sites.test.ts` entry.
 - Test files that must change (floor): `unistyles.test.ts`, `info-plist.test.ts`, `theme.test.ts`, `palette.test.ts`, `entity-tint.test.ts`,
@@ -392,21 +416,23 @@ sync; calendar open during an OS switch (it repaints and returns to its start mo
   gains the stop step at set 2 and loses it at set 6 (section 7, point 3). Through `kiko:scribe` under the skill drift rule.
 - Run-log gaps: none of the open gaps touches this work (grep for unistyles, theme, glass, color, palette, dark, native-stack: 0). This plan closes none and leaves all open.
 
-## 11. User questions
+## 11. User questions (all ruled; the options stay as a record)
 
-**Q1. An existing install on an OS in light mode, first launch of 1.4.** The row holds `system`.
-- A (recommended): it opens light. Same rule for everyone, no migration. Consequence: someone who never asked sees a light app; the control is one tap away.
-- B: a data migration with `WHERE appearance = 'system'` sets existing installs to `dark`. New installs stay `system`, because `settings.repo.ts:72` creates the row at runtime and no migration inserts it. Consequence: on a light OS, the first launch of 1.4 paints MigrationsGate and LockGate light until the hook applies dark, for one launch. After that the app stays dark. The control shows Dark for someone who chose nothing. The migration needs its review.
+**Q1. An existing install on an OS in light mode, first launch of 1.4.** The row holds `system`. RULED A, 2026-11-03.
+- A (ruled): it opens light. Same rule for everyone, no migration. Consequence: someone who never asked sees a light app; the control is one tap away.
+- B (not taken): a data migration with `WHERE appearance = 'system'` sets existing installs to `dark`. New installs stay `system`, because `settings.repo.ts:72` creates the row at runtime and no migration inserts it. Consequence: on a light OS, the first launch of 1.4 paints MigrationsGate and LockGate light until the hook applies dark, for one launch. After that the app stays dark. The control shows Dark for someone who chose nothing. The migration needs its review.
 
-**Q2. A `.kiko` restore and the mode.**
-- A (recommended): the device keeps its mode (`KEPT_FROM_LIVE_ON_RESTORE`). Consequence: restoring an old file cannot reset Dark to System, and a new phone sets it once.
-- B: the file decides, like `language`. Consequence: every pre-1.4 file resets the mode to System.
+**Q2. A `.kiko` restore and the mode.** RULED A, 2026-11-03.
+- A (ruled): the device keeps its mode (`KEPT_FROM_LIVE_ON_RESTORE`). Consequence: restoring an old file cannot reset Dark to System, and a new phone sets it once.
+- B (not taken): the file decides, like `language`. Consequence: every pre-1.4 file resets the mode to System.
 
-**Q3. Sets 2 to 5 in `next` before the flip (section 7, point 3).**
-- A (recommended): merge each set into `next` when reviewed; the 1.4 release is cut only from a tip with set 6. A tip with sets 2 to 5 and no set 6 cannot be released. The owner of this rule is the release track, and a stop step in the release skill enforces it. Consequence: small reviews and no long-lived branch; the cost is a release dependency, and an urgent 1.4 cut would have to drop sets 2 to 5. A cut from `main` is not affected.
-- B: hold sets 2 to 5 on stacked merge points and merge them with set 6. Consequence: `next` is clean at every moment; other 1.4 tracks diverge from the theme and producer changes, with a larger merge.
+**Q3. Sets 2 to 5 in `next` before the flip (section 7, point 3).** RULED A, 2026-11-03.
+- A (ruled): merge each set into `next` when reviewed; the 1.4 release is cut only from a tip with set 6. A tip with sets 2 to 5 and no set 6 cannot be released. The owner of this rule is the release track, and a stop step in the release skill enforces it. Consequence: small reviews and no long-lived branch; the cost is a release dependency, and an urgent 1.4 cut would have to drop sets 2 to 5. A cut from `main` is not affected.
+- B (not taken): hold sets 2 to 5 on stacked merge points and merge them with set 6. Consequence: `next` is clean at every moment; other 1.4 tracks diverge from the theme and producer changes, with a larger merge.
 
-Palette choices (page background, segmented thumb) are in the designer's file and go with the palette approval.
+Palette choices, in the designer's file, RULED 2026-11-03 with the palette approval (P0):
+- Page background (P1), `decisions.pageBackground`: A (ruled), grouped gray page, white cards. B (not taken), white page, light-gray cards.
+- Segmented thumb (P2), `decisions.segmentedThumb`: A (ruled), native white thumb, its 3 FAIL rows accepted by the user. B (not taken), mid-gray thumb that clears 3:1.
 
 ## 12. Backlog (strict scope)
 
