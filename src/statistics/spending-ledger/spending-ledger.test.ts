@@ -4,7 +4,6 @@ import { buildCategoryBreakdown } from '../category-breakdown';
 import {
   buildSpendingLedger,
   excludedIdsOf,
-  type ExclusionParts,
   type LedgerRow,
   spendingRowsIn,
   type SpendingLedger,
@@ -101,7 +100,7 @@ describe('buildSpendingLedger', () => {
 
 describe('excludedIdsOf', () => {
   it('unions every rule set it is given', () => {
-    const parts: ExclusionParts = {
+    const union = excludedIdsOf({
       internalTransferIds: new Set(['internal']),
       mccExcludedIds: new Set(['mcc']),
       descriptionExcludedIds: new Set(['description']),
@@ -110,8 +109,7 @@ describe('excludedIdsOf', () => {
       exchangeFundingExcludedIds: new Set(['funding']),
       loanPaymentExcludedIds: new Set(['loan']),
       balanceSetIds: new Set(['balance-set']),
-    };
-    const union = excludedIdsOf(parts);
+    });
 
     expect([...union].sort()).toEqual([
       'balance-set',
@@ -191,6 +189,23 @@ describe('a row that sets a balance', () => {
     expect(trendOf(ledger).map((series) => series.key)).not.toContain('opening');
   });
 
+  it('derives no loan entry for a marked row linked to a loan', () => {
+    const linked = transactionRow({
+      ...LOAN_PAYMENT,
+      id: 'marked-loan-payment',
+      setsBalance: true,
+      time: BASE_TIME + 8 * MINUTE,
+    });
+    const ledger = worldWith(linked);
+    const trendIds = idsOf(ledger.trendTransactions);
+    const rangeIds = idsOf(spendingRowsIn(ledger, range.from, range.to));
+
+    expect(trendIds.filter((id) => id.endsWith(':marked-loan-payment'))).toEqual([]);
+    expect(rangeIds.filter((id) => id.endsWith(':marked-loan-payment'))).toEqual([]);
+    expect(trendIds).toContain('loan-interest:loan-payment');
+    expect(rangeIds).toContain('loan-interest:loan-payment');
+  });
+
   it('leaves an unmarked row of the same amount counted', () => {
     const ledger = worldWith(BALANCE_SET, UNMARKED_TWIN);
 
@@ -236,27 +251,6 @@ describe('spendingRowsIn', () => {
     const rows = spendingRowsIn(ledger, BASE_TIME, BASE_TIME + 200 * MINUTE);
 
     expect(idsOf(rows)).toEqual([...idsOf(WORLD_TRANSACTIONS), 'loan-interest:loan-payment']);
-  });
-
-  it('keeps the shape of the rows the breakdown reads: a real row has no time, a loan entry has one', () => {
-    const rows = spendingRowsIn(ledger, BASE_TIME, BASE_TIME + 200 * MINUTE);
-
-    expect(rows[0]).toEqual({
-      id: 'counted',
-      category: 'groceries',
-      amountMinorUnits: -1_500,
-      mcc: null,
-      counterIban: null,
-      description: '',
-      exchangeCounterpartHoldingId: null,
-      untrackedCounterpart: null,
-      changeGroupId: null,
-      currency: 'UAH',
-    });
-    expect(rows.at(-1)).toMatchObject({
-      id: 'loan-interest:loan-payment',
-      time: LOAN_PAYMENT.time,
-    });
   });
 
   it('range-filters a loan entry the way it filters the payment row it replaces', () => {

@@ -36,8 +36,6 @@ export type SpendingLedger = {
   breakdownTransactions: BreakdownTransaction[];
   /** The shown rows plus the derived loan entries, each with its time. */
   trendTransactions: TrendTransaction[];
-  /** The derived `loan-interest:` and `loan-excess:` entries that replace a linked payment. */
-  loanInterestRows: TrendTransaction[];
   excludedTransactionIds: ReadonlySet<string>;
 };
 
@@ -45,7 +43,7 @@ export type SpendingLedger = {
  * Every exclusion rule's ids. A key is required for each rule, so a rule added here is a compile
  * error in every caller that builds the parts, never a set only one of them knows about.
  */
-export type ExclusionParts = {
+type ExclusionParts = {
   internalTransferIds: ReadonlySet<string>;
   mccExcludedIds: ReadonlySet<string>;
   descriptionExcludedIds: ReadonlySet<string>;
@@ -217,18 +215,15 @@ export const trendRowsOf = (
  * agree with the range field above them. The exclusion sets are not range-filtered; only the
  * rows actually SHOWN are scoped to the range here. The loan entries are range-filtered the SAME
  * way as the real rows: each derived entry replaces the raw row the loan-payment rule drops, so
- * it must obey the same window that row would have.
+ * it must obey the same window that row would have. The rows keep their `time`, which the
+ * breakdown ignores.
  */
 export const spendingRowsIn = (
   ledger: SpendingLedger,
   from: number,
   to: number,
-): BreakdownTransaction[] => [
-  ...ledger.shownRows
-    .filter((transaction) => transaction.time >= from && transaction.time <= to)
-    .map(toBreakdownRow),
-  ...ledger.loanInterestRows.filter((entry) => entry.time >= from && entry.time <= to),
-];
+): BreakdownTransaction[] =>
+  ledger.trendTransactions.filter((entry) => entry.time >= from && entry.time <= to);
 
 /**
  * The pure twin of `useSpendingLedger`: the same part functions in the same order, so a table
@@ -248,7 +243,6 @@ export const buildSpendingLedger = (input: SpendingLedgerInput): SpendingLedger 
     shownRows,
     breakdownTransactions,
     trendTransactions: trendRowsOf(shownRows, loanInterestRows),
-    loanInterestRows,
     excludedTransactionIds: excludedIdsOf({
       internalTransferIds: internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
       mccExcludedIds: mccExcludedTransferTransactionIds(breakdownTransactions, ownIbans),
