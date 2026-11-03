@@ -95,11 +95,9 @@ jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
 // useMccBackfill (wired into AppRoot) runs the one-time MCC back-fill; spied so a test can tell
 // when the app root starts it.
 const mockBackfillMccCategories = jest.fn().mockResolvedValue(undefined);
-jest.mock(
-  '@kiko/categories/category-rules-repo/backfill-mcc-categories',
-  () => ({ backfillMccCategories: () => mockBackfillMccCategories() }),
-  { virtual: true },
-);
+jest.mock('@kiko/categories/category-rules-repo/backfill-mcc-categories', () => ({
+  backfillMccCategories: () => mockBackfillMccCategories(),
+}));
 
 // The Home screen is data-driven (accounts/holdings/rates/settings via
 // useLiveQuery). This boot smoke test only asserts the screen mounts, so stub

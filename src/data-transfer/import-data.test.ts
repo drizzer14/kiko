@@ -40,11 +40,9 @@ jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
 }));
 
 // The restore runs the one-time MCC back-fill after the recost; the real one needs a real engine.
-jest.mock(
-  '@kiko/categories/category-rules-repo/backfill-mcc-categories',
-  () => ({ backfillMccCategories: jest.fn().mockResolvedValue(undefined) }),
-  { virtual: true },
-);
+jest.mock('@kiko/categories/category-rules-repo/backfill-mcc-categories', () => ({
+  backfillMccCategories: jest.fn().mockResolvedValue(undefined),
+}));
 
 // The restore re-plans the reminders the moment its data commits, so the plan
 // is never left to the steps after it.

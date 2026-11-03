@@ -1,17 +1,11 @@
 import { renderHook } from '@testing-library/react-native';
 
 const mockBackfillMccCategories = jest.fn().mockResolvedValue(undefined);
-jest.mock(
-  './backfill-mcc-categories',
-  () => ({
-    backfillMccCategories: () => mockBackfillMccCategories(),
-  }),
-  { virtual: true },
-);
+jest.mock('./backfill-mcc-categories', () => ({
+  backfillMccCategories: () => mockBackfillMccCategories(),
+}));
 
-// Read at run time: the hook does not exist yet.
-const useMccBackfill = (): void =>
-  (jest.requireActual('./use-mcc-backfill') as { useMccBackfill: () => void }).useMccBackfill();
+import { useMccBackfill } from './use-mcc-backfill';
 
 describe('useMccBackfill', () => {
   it('runs the back-fill once, after the first render, and not on a re-render', async () => {

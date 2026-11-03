@@ -25,11 +25,9 @@ jest.mock('@kiko/loans/use-loan-auto-link', () => ({
 jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
   recostStoredLots: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock(
-  '@kiko/categories/category-rules-repo/backfill-mcc-categories',
-  () => ({ backfillMccCategories: jest.fn().mockResolvedValue(undefined) }),
-  { virtual: true },
-);
+jest.mock('@kiko/categories/category-rules-repo/backfill-mcc-categories', () => ({
+  backfillMccCategories: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
   replanRestoredReminders: jest.fn().mockResolvedValue(undefined),
 }));

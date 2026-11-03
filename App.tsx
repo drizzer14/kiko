@@ -17,6 +17,7 @@ import { navigationRef } from '@kiko/navigation/navigation-ref';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useMccBackfill } from '@kiko/categories/category-rules-repo';
 import { useReminderScheduler } from '@kiko/reminders/use-reminder-scheduler';
 import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-settings';
 
@@ -28,6 +29,7 @@ import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-s
  * background sync of the connected account without blocking this first
  * render. `useReminderScheduler` re-plans the pending reminder notifications.
  * `useLotRecost` costs every stored sale again once, in the one lot order.
+ * `useMccBackfill` files the rows a newly mapped MCC code leaves in `other`, once.
  */
 const AppRoot: FC = () => {
   useSyncLanguageWithSettings();
@@ -37,6 +39,8 @@ const AppRoot: FC = () => {
   useReminderScheduler();
 
   useLotRecost();
+
+  useMccBackfill();
 
   return (
     <NavigationContainer ref={navigationRef} theme={navigationDarkTheme}>
