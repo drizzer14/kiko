@@ -358,6 +358,48 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
   ];
 };
 
+// The seed of `drizzle/migrations/*_seed_travel_category.sql`, duplicated for the reason above.
+const TRAVEL_CATEGORY_KEY = 'travel';
+
+/**
+ * Travel for a file from before the MCC back-fill, at one past every other category. Unlike
+ * `withLoanInterestReseeded`, the absent row alone does not decide: a user may have deleted
+ * Travel, and a file this build wrote after that has no row either, so adding it would bring a
+ * deleted category back. The file's settings row tells the two apart: every database of this
+ * build holds `mccCategoriesBackfilled` (true or false) and `readDataSnapshot` exports the whole
+ * row, so the key's PRESENCE (never its value) marks a file from this build, and an older build
+ * has no such column. A file with no settings row is left alone, as `withLegacyDedupKeysUpgraded`
+ * leaves one; a row the file already holds is never touched.
+ */
+const withTravelReseeded = (
+  snapshotCategories: CategoryRow[],
+  snapshotSettings: SettingsRow[],
+): CategoryRow[] => {
+  const [settingsRow] = snapshotSettings;
+
+  if (
+    settingsRow === undefined ||
+    Object.hasOwn(settingsRow, 'mccCategoriesBackfilled') ||
+    snapshotCategories.some((category) => category.key === TRAVEL_CATEGORY_KEY)
+  ) {
+    return snapshotCategories;
+  }
+
+  const sortOrder =
+    Math.max(-1, maxOf(snapshotCategories.map((category) => category.sortOrder))) + 1;
+
+  return [
+    ...snapshotCategories,
+    {
+      key: TRAVEL_CATEGORY_KEY,
+      title: 'Travel',
+      icon: 'airplane',
+      color: entityColorsDark.teal,
+      sortOrder,
+    },
+  ];
+};
+
 const MONOBANK_BANK_ID = 'monobank' satisfies BankId;
 
 /**
@@ -938,7 +980,12 @@ export const restoreDataSnapshot = (
         await databaseTransaction.insert(holdings).values(part);
       }
 
-      for (const part of chunkForTable(categories, withLoanInterestReseeded(snapshot.categories))) {
+      const categoriesToInsert = withTravelReseeded(
+        withLoanInterestReseeded(snapshot.categories),
+        snapshot.settings,
+      );
+
+      for (const part of chunkForTable(categories, categoriesToInsert)) {
         await databaseTransaction.insert(categories).values(part);
       }
     };
