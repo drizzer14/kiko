@@ -1,5 +1,6 @@
 # Takes the 7 App Store submission screenshots for Kiko 1.3 on the simulator it runs against (the
-# iPhone 18 Pro Max, 1320x2868, or the Duo outer display, 1398x2034), once per language. NOT a
+# iPhone 18 Pro Max, 1320x2868, the iPhone 18 Pro, 1206x2622, or the Duo outer display,
+# 1398x2034), once per language. NOT a
 # check: it asserts only that each screen's content is on screen before its capture.
 #
 # PRECONDITION: the demo dataset of the language is imported and the app cold-relaunched
@@ -98,14 +99,20 @@ appId: com.dmytro-vasylkivskyi.kiko
 # worth line, By type bar, Account contribution pie, Expenses by category donut, Spending trend,
 # all full width. The card is shorter than the free area between the translucent nav bar and the
 # floating tab bar, but centring it overshoots under the nav bar. So the scroll stops when the
-# card's last element (the "show all" toggle) is on screen, which leaves it under the tab bar, and
-# one swipe of a tenth of the screen height (relative) lifts the card clear. The Duo outer has a
-# side tab rail instead of a bottom bar (its "house.fill" tab sits above "tab-accounts", where on
-# the bottom bar both share a row, so the test does not depend on the scroll position) and its card
-# fills three quarters of the screen, so the same scroll overshoots: there a slow swipe down of
-# 17% of the height brings the card top back under the nav bar (a slow drag has no fling, so it
-# repeats exactly). The shooter checks this frame (the whole card on screen, no neighbour card
-# cut across it) before accepting.
+# card's last element (the "show all" toggle) is on screen.
+# The bottom bar branch is tuned on the iPhone 18 Pro with a six-row legend: after that scroll the
+# card top sits about 14% of the screen height too high (its title under the nav bar, the donut
+# top cut) and its bottom ends well above the tab bar, so a slow drag down of 16% of the height
+# moves the card down into the free area. The Duo outer
+# has a side tab rail instead of a bottom bar (its "house.fill" tab sits above "tab-accounts",
+# where on the bottom bar both share a row, so the test does not depend on the scroll position)
+# and its card fills three quarters of the screen, so the same scroll overshoots: there a slow
+# drag down of 17% of the height is meant to bring the card top back under the nav bar.
+# This frame is NOT repeatable: the same flow on the Duo side rail gave three different frames
+# (title at y=305, 325 and 720 of 2000). The drag cannot explain a gap that size; likely
+# `scrollUntilVisible` stops at different places. The assert passes on a bad frame, so the
+# shooter views this frame (the whole card on screen, no neighbour card cut across it) and runs
+# the flow again if the card is cut.
 - tapOn:
     id: "chart.xyaxis.line"
 - extendedWaitUntil:
@@ -126,8 +133,9 @@ appId: com.dmytro-vasylkivskyi.kiko
           id: "tab-accounts"
     commands:
       - swipe:
-          start: 50%, 70%
-          end: 50%, 60%
+          start: 50%, 40%
+          end: 50%, 56%
+          duration: 900
 - runFlow:
     when:
       visible:

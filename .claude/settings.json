@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
-    "kiko@kiko-marketplace": true
+    "kiko@kiko-marketplace": true,
+    "figma@claude-plugins-official": false
   },
   "autoMemoryDirectory": "/Users/drizzer14/.claude/projects/-Users-drizzer14-Developer-Projects-pff-ios/memory",
   "permissions": {

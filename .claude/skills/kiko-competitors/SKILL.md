@@ -35,6 +35,8 @@ Report the line that a candidate fails. Only the user rules on it or changes a r
 - Guideline 2.5.19: see `.claude/skills/kiko-architecture/SKILL.md`, "Guideline 2.5.19 — no
   hidden features".
 - Users are Ukrainian and displaced.
+- Kiko answers how much money do I have now: budgets, savings goals and other future planning
+  fail this line (user ruling 2026-11-03).
 - Standing rulings: shares cut 2026-10-02 (broker accounts and bonds stay; a return needs a new
   design). Bybit is in 1.4 (the coordinator's task brief of 2026-11-02; spec R-Scope and the older
   plan text say 1.3-b). OKX and later
