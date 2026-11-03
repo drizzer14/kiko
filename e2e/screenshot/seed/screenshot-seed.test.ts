@@ -3,10 +3,12 @@ import { validateIsin } from '@kiko/bonds/isin';
 import { DAY_MS, defaultDateRange } from '@kiko/dates';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
+import { accountCurrencyOf } from '@kiko/holdings/account-currency';
 import { templateNameKey } from '@kiko/transaction-templates/template-name';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import { EMPTY_DRAFT, isTemplateDraft, TEMPLATE_MODES } from '@kiko/transaction-templates/draft';
 
+import { demoText } from './demo-text';
 import { buildScreenshotDataset } from './screenshot-seed';
 
 // NOTE ON THE TEST HARNESS: the Jest harness has NO op-sqlite backend (the repo
@@ -147,16 +149,10 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       'PrivatBank',
       'Wise',
       'Binance',
-      'Ethereum',
       'USDT',
-      'USD Coin',
-      'BNB',
-      'Solana',
-      'ChainGPT',
-      'XRP',
       'Hryvnia',
       'Euro',
-      'US dollars',
+      'Euro',
       'Government bonds (OVDP)',
       'Apartment',
       'Car',
@@ -177,16 +173,94 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     );
   });
 
-  it('seeds nine plain manual accounts spread across UAH/USD/EUR and eight coins', () => {
-    const { accounts } = buildScreenshotDataset('uk', ANCHOR);
-    const currencies = accounts.flatMap((account) =>
-      account.holdings.map((holding) => holding.currency),
-    );
+  it('seeds nine plain manual accounts', () => {
+    expect(buildScreenshotDataset('uk', ANCHOR).accounts).toHaveLength(9);
+  });
 
-    expect(accounts).toHaveLength(9);
-    expect(new Set(currencies)).toEqual(
-      new Set(['UAH', 'USD', 'EUR', 'BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP', 'USDC', 'CGPT']),
-    );
+  describe.each(['uk', 'en'] as const)('the %s currencies', (language) => {
+    const { accounts, baseCurrency } = buildScreenshotDataset(language, ANCHOR);
+    const DEMO_CURRENCIES = new Set(['UAH', 'EUR', 'BTC', 'USDT']);
+
+    it('holds two fiats and two coins in its holdings, and no other currency', () => {
+      const holdingCurrencies = accounts.flatMap((account) =>
+        account.holdings.map((holding) => holding.currency),
+      );
+
+      expect(new Set(holdingCurrencies)).toEqual(DEMO_CURRENCIES);
+    });
+
+    it('gives every account a currency of those four', () => {
+      for (const account of accounts) {
+        const openHoldings = account.holdings.map(({ currency }) => ({ currency, closedAt: null }));
+
+        expect(DEMO_CURRENCIES.has(accountCurrencyOf(openHoldings, baseCurrency))).toBe(true);
+      }
+    });
+  });
+
+  describe.each(['uk', 'en'] as const)('the %s categories of money movements', (language) => {
+    const text = demoText[language];
+    const rows = transactionsOf(buildScreenshotDataset(language, ANCHOR));
+    const categoriesOf = (description: string) =>
+      new Set(
+        rows
+          .filter((transaction) => transaction.description === description)
+          .map((transaction) => transaction.category),
+      );
+
+    it('files every top-up and every purchase of a coin under transfers', () => {
+      const labels = [
+        text.accountTopUp,
+        text.jarTopUp,
+        text.brokerageTopUp,
+        text.bitcoinPurchase,
+        text.cryptoPurchase,
+      ];
+
+      for (const label of labels) {
+        expect(categoriesOf(label)).toEqual(new Set(['transfers']));
+      }
+    });
+
+    it('files the cash withdrawal under cash, and leaves income without a category', () => {
+      expect(categoriesOf(text.cashWithdrawal)).toEqual(new Set(['cash']));
+      expect(categoriesOf(text.salary)).toEqual(new Set([null]));
+      expect(categoriesOf(text.freelanceProject)).toEqual(new Set([null]));
+    });
+
+    it('holds only income in transfers, so no spending chart counts one of those rows', () => {
+      const inTransfers = rows.filter((transaction) => transaction.category === 'transfers');
+
+      expect(inTransfers.length).toBeGreaterThan(0);
+      expect(inTransfers.every((transaction) => transaction.amountMinorUnits > 0)).toBe(true);
+    });
+  });
+
+  describe.each(['uk', 'en'] as const)('the %s names', (language) => {
+    it('never mention Wolt, which the demo audience does not use', () => {
+      expect(JSON.stringify(buildScreenshotDataset(language, ANCHOR))).not.toMatch(/wolt/i);
+    });
+
+    it('never repeat a description more than twice among the 12 newest rows of the default window', () => {
+      const { from, to } = defaultDateRange(ANCHOR);
+      const newestFirst = transactionsOf(buildScreenshotDataset(language, ANCHOR))
+        .filter(
+          (transaction) => transaction.time >= from.getTime() && transaction.time <= to.getTime(),
+        )
+        .sort((first, second) => second.time - first.time);
+      // Rows sharing the twelfth row's time are all newest, so the pin does not depend on the
+      // order a tie falls in.
+      const twelfthTime = newestFirst[11].time;
+      const newest = newestFirst.filter((transaction) => transaction.time >= twelfthTime);
+      const countByDescription = new Map<string, number>();
+
+      for (const { description } of newest) {
+        countByDescription.set(description, (countByDescription.get(description) ?? 0) + 1);
+      }
+
+      expect(newest.length).toBeGreaterThanOrEqual(12);
+      expect(Math.max(...countByDescription.values())).toBeLessThanOrEqual(2);
+    });
   });
 
   it('spreads transactions across every one of the 10 seeded categories that it uses', () => {
@@ -238,12 +312,12 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(rebuilt).toEqual(times);
   });
 
-  it('pins every ordered currency pair (110) at one fixed fetchedAt', () => {
+  it('pins every ordered currency pair (12) at one fixed fetchedAt', () => {
     const { rates } = buildScreenshotDataset('uk', ANCHOR);
     const fetchedAts = new Set(rates.map((rate) => rate.fetchedAt));
-    const requiredPairs = ['BTC:UAH', 'USD:UAH', 'EUR:UAH', 'BTC:USD', 'UAH:BTC', 'USD:BTC'];
+    const requiredPairs = ['BTC:UAH', 'USDT:UAH', 'EUR:UAH', 'BTC:EUR', 'UAH:BTC', 'EUR:BTC'];
 
-    expect(rates).toHaveLength(110);
+    expect(rates).toHaveLength(12);
     expect(fetchedAts.size).toBe(1);
 
     for (const pair of requiredPairs) {
@@ -255,22 +329,9 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     const { history } = buildScreenshotDataset('uk', ANCHOR);
     const pairs = new Set(history.map((row) => `${row.base}:${row.quote}`));
 
-    expect(pairs).toEqual(
-      new Set([
-        'USD:UAH',
-        'EUR:UAH',
-        'BTC:UAH',
-        'ETH:UAH',
-        'USDT:UAH',
-        'BNB:UAH',
-        'SOL:UAH',
-        'XRP:UAH',
-        'USDC:UAH',
-        'CGPT:UAH',
-      ]),
-    );
+    expect(pairs).toEqual(new Set(['EUR:UAH', 'BTC:UAH', 'USDT:UAH']));
     // 27 weekly points (weeks 0..26) per pair.
-    expect(history).toHaveLength(10 * 27);
+    expect(history).toHaveLength(3 * 27);
   });
 
   it('keeps the invented-ISIN bond its coupons once a register refresh drops the ISIN', () => {
@@ -402,11 +463,11 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     }
 
     // A realistic, DOWN-TO-EARTH multi-currency cash ledger: over ₴120k, under
-    // ₴180k. The deterministic dataset totals ₴133,535 (₴13,335 UAH card after
-    // two ₴10,400 car-loan payments and ₴3,115 of net food-delivery spending + ₴6,000 jar
-    // + ₴5,500 cash + $1,220≈₴50,020
-    // + €600≈₴26,700 + 0.012 BTC≈₴31,980); the bracket is tight enough to catch
-    // a scale regression, loose enough to survive a single amount tweak.
+    // ₴180k. The deterministic dataset totals ₴165,330 (₴13,335 UAH card after
+    // two ₴10,400 car-loan payments and ₴3,115 of net KFC spending + ₴6,000 jar
+    // + ₴5,500 cash + €1,220≈₴54,290 PrivatBank + €600≈₴26,700 Wise + €500≈₴22,250 broker
+    // + Binance: 0.012 BTC≈₴31,980, 50 USDT≈₴2,050, ₴1,000 and €50≈₴2,225); the bracket is
+    // tight enough to catch a scale regression, loose enough to survive a single amount tweak.
     expect(total.minorUnits).toBeGreaterThan(Money.of('UAH', 12_000_000).minorUnits);
     expect(total.minorUnits).toBeLessThan(Money.of('UAH', 18_000_000).minorUnits);
   });

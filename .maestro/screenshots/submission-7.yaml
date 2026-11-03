@@ -1,5 +1,6 @@
 # Takes the 7 App Store submission screenshots for Kiko 1.3 on the simulator it runs against (the
-# iPhone 18 Pro Max, 1320x2868, or the Duo outer display, 1398x2034), once per language. NOT a
+# iPhone 18 Pro Max, 1320x2868, the iPhone 18 Pro, 1206x2622, or the Duo outer display,
+# 1398x2034), once per language. NOT a
 # check: it asserts only that each screen's content is on screen before its capture.
 #
 # PRECONDITION: the demo dataset of the language is imported and the app cold-relaunched

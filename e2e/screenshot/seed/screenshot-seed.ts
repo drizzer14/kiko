@@ -159,56 +159,20 @@ export type ScreenshotDataset = {
 // for every one would add nothing to the fixtures). A local subset type keeps
 // this map exhaustive over exactly what the seed uses, so it never has to grow
 // when a new currency is added to `currencyOptions`.
-type SeededCurrency =
-  | 'UAH'
-  | 'USD'
-  | 'EUR'
-  | 'GBP'
-  | 'CHF'
-  | 'BTC'
-  | 'ETH'
-  | 'USDT'
-  | 'BNB'
-  | 'SOL'
-  | 'XRP'
-  | 'USDC'
-  | 'CGPT';
+type SeededCurrency = 'UAH' | 'EUR' | 'BTC' | 'USDT';
 
 /** Value of one major unit of each seeded currency in UAH at the anchor. */
 const PRICE_IN_UAH: Record<SeededCurrency, number> = {
   UAH: 1,
-  USD: 41,
   EUR: 44.5,
-  GBP: 52,
-  CHF: 46,
   BTC: 2_665_000,
-  ETH: 100_000,
   USDT: 41,
-  BNB: 30_000,
-  SOL: 4_300,
-  XRP: 55,
-  USDC: 41,
-  CGPT: 1,
 };
 
-const CURRENCIES: SeededCurrency[] = [
-  'UAH',
-  'USD',
-  'EUR',
-  'BTC',
-  'ETH',
-  'USDT',
-  'BNB',
-  'SOL',
-  'XRP',
-  'USDC',
-  'CGPT',
-];
+const CURRENCIES: SeededCurrency[] = ['UAH', 'EUR', 'BTC', 'USDT'];
 
 const BINANCE_BTC_KEY = 'binance-btc';
 const BINANCE_USDT_KEY = 'binance-usdt';
-const BINANCE_BNB_KEY = 'binance-bnb';
-const BINANCE_XRP_KEY = 'binance-xrp';
 const BINANCE_UAH_KEY = 'binance-uah';
 const BINANCE_EUR_KEY = 'binance-eur';
 
@@ -217,19 +181,19 @@ type ExchangeOperationFields = Pick<
   'pair' | 'untrackedCounterpart' | 'operation' | 'comment'
 >;
 
-// What the Binance account holds: BTC under the account's own name, one small deposit per other
-// coin at the coin's own scale (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4 decimals), and
-// a UAH and a EUR balance, since an exchange wallet keeps fiat as a `crypto_asset` holding in a
-// fiat currency. The exchange operation rows (a convert, a trade with its fee, a trade with a coin
-// not held, an XRP dust sweep into BNB, a P2P, card purchase, card sale and bank rows) are all
-// dated 33 days or more before the anchor, outside the default 30-day window, so Home and the
-// 30-day charts show none of these rows. Each holding's deposits are cut by what its operation
-// rows add, so each holding ends at its pinned balance.
+// What the Binance account holds: BTC under the account's own name, USDT, and a UAH and a EUR
+// balance, since an exchange wallet keeps fiat as a `crypto_asset` holding in a fiat currency.
+// The exchange operation rows (a convert, a trade with its fee, a trade with a coin not held, a
+// USDT dust sweep into BTC, a P2P, card purchase, card sale and bank rows) are all dated 33 days
+// or more before the anchor, outside the default 30-day window, so Home and the 30-day charts show
+// none of these rows. Each holding's deposits are cut by what its operation rows add, so each
+// holding ends at its pinned balance.
 // The coin names are brand names and stay Latin in both languages; the two fiat names are text.
 const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHolding[] => {
   const exchangeHolding = (
     fields: Pick<SeedHolding, 'key' | 'name' | 'currency' | 'transactions'>,
   ): SeedHolding => ({ ...fields, type: 'crypto_asset', color: entityColorsDark.orange });
+  // Money paid into the exchange is a transfer between the user's own places, not spending.
   const deposit = (
     currency: SeededCurrency,
     amountMinorUnits: number,
@@ -237,8 +201,14 @@ const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHold
   ): SeedTransaction => ({
     amountMinorUnits,
     time: calendar.at(daysAgo),
-    category: null,
+    category: 'transfers',
     description: isCrypto(currency) ? text.cryptoPurchase : text.accountTopUp,
+  });
+  const bitcoinPurchase = (amountMinorUnits: number, daysAgo: number): SeedTransaction => ({
+    amountMinorUnits,
+    time: calendar.at(daysAgo),
+    category: 'transfers',
+    description: text.bitcoinPurchase,
   });
   // An operation row stores no description: its label renders from the operation and the code.
   const operationRow = (
@@ -259,21 +229,15 @@ const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHold
       name: 'Binance',
       currency: 'BTC',
       transactions: [
-        {
-          amountMinorUnits: 790_000,
-          time: calendar.at(140),
-          category: null,
-          description: text.bitcoinPurchase,
-        },
-        {
-          amountMinorUnits: 200_000,
-          time: calendar.at(130),
-          category: null,
-          description: text.bitcoinPurchase,
-        },
+        bitcoinPurchase(789_000, 140),
+        bitcoinPurchase(200_000, 130),
         operationRow(45, 110_000, {
           pair: { key: 'trade', counterpartHoldingKey: BINANCE_USDT_KEY },
           operation: 'trade',
+        }),
+        operationRow(40, 1_000, {
+          pair: { key: 'dust', counterpartHoldingKey: BINANCE_USDT_KEY },
+          operation: 'dust',
         }),
         operationRow(35, 100_000, {
           untrackedCounterpart: 'card:UAH:2600.00',
@@ -283,22 +247,16 @@ const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHold
       ],
     }),
     exchangeHolding({
-      name: 'Ethereum',
-      currency: 'ETH',
-      transactions: [
-        deposit('ETH', 4_300_000, 120),
-        operationRow(38, -1_300_000, {
-          untrackedCounterpart: 'card:UAH:1300.00',
-          operation: 'card',
-          comment: '1300 UAH',
-        }),
-      ],
-    }),
-    exchangeHolding({
       key: BINANCE_USDT_KEY,
       name: 'USDT',
       currency: 'USDT',
       transactions: [
+        deposit('USDT', 3_455_000_000, 120),
+        operationRow(38, -3_170_000_000, {
+          untrackedCounterpart: 'card:UAH:1300.00',
+          operation: 'card',
+          comment: '1300 UAH',
+        }),
         operationRow(110, 9_990_000_000, {
           untrackedCounterpart: 'p2p:UAH:4150.00',
           operation: 'p2p',
@@ -312,51 +270,14 @@ const buildExchangeHoldings = (calendar: DemoCalendar, text: DemoText): SeedHold
           pair: { key: 'trade', counterpartHoldingKey: BINANCE_BTC_KEY },
           operation: 'trade',
         }),
-      ],
-    }),
-    exchangeHolding({
-      name: 'USD Coin',
-      currency: 'USDC',
-      transactions: [deposit('USDC', 3_000_000_000, 105)],
-    }),
-    exchangeHolding({
-      key: BINANCE_BNB_KEY,
-      name: 'BNB',
-      currency: 'BNB',
-      transactions: [
-        deposit('BNB', 395_000, 100),
-        operationRow(45, -5_000, {
+        operationRow(45, -5_000_000, {
           pair: { key: 'trade', counterpartHoldingKey: BINANCE_BTC_KEY },
           operation: 'trade-fee',
         }),
-        operationRow(40, 110_000, {
-          pair: { key: 'dust', counterpartHoldingKey: BINANCE_XRP_KEY },
-          operation: 'dust',
-        }),
-      ],
-    }),
-    exchangeHolding({
-      name: 'Solana',
-      currency: 'SOL',
-      // PEPE is a coin the demo does not hold, so this trade has one tracked leg and an asset code.
-      transactions: [
-        deposit('SOL', 700_000, 90),
-        operationRow(42, -200_000, { untrackedCounterpart: 'asset:PEPE', operation: 'trade' }),
-      ],
-    }),
-    exchangeHolding({
-      name: 'ChainGPT',
-      currency: 'CGPT',
-      transactions: [deposit('CGPT', 500_000_000, 85)],
-    }),
-    exchangeHolding({
-      key: BINANCE_XRP_KEY,
-      name: 'XRP',
-      currency: 'XRP',
-      transactions: [
-        deposit('XRP', 660_000, 80),
-        operationRow(40, -60_000, {
-          pair: { key: 'dust', counterpartHoldingKey: BINANCE_BNB_KEY },
+        // PEPE is a coin the demo does not hold: one tracked leg and an asset code.
+        operationRow(42, -200_000_000, { untrackedCounterpart: 'asset:PEPE', operation: 'trade' }),
+        operationRow(40, -80_000_000, {
+          pair: { key: 'dust', counterpartHoldingKey: BINANCE_BTC_KEY },
           operation: 'dust',
         }),
       ],
@@ -428,16 +349,9 @@ const HISTORY_WEEKS = 26;
 type HistoryPair = { base: Currency; startUah: number; endUah: number };
 
 const HISTORY_PAIRS: HistoryPair[] = [
-  { base: 'USD', startUah: 40.0, endUah: PRICE_IN_UAH.USD },
   { base: 'EUR', startUah: 43.0, endUah: PRICE_IN_UAH.EUR },
   { base: 'BTC', startUah: 2_000_000, endUah: PRICE_IN_UAH.BTC },
-  { base: 'ETH', startUah: 85_000, endUah: PRICE_IN_UAH.ETH },
   { base: 'USDT', startUah: 40.0, endUah: PRICE_IN_UAH.USDT },
-  { base: 'BNB', startUah: 24_000, endUah: PRICE_IN_UAH.BNB },
-  { base: 'SOL', startUah: 3_600, endUah: PRICE_IN_UAH.SOL },
-  { base: 'XRP', startUah: 45, endUah: PRICE_IN_UAH.XRP },
-  { base: 'USDC', startUah: 40.0, endUah: PRICE_IN_UAH.USDC },
-  { base: 'CGPT', startUah: 0.6, endUah: PRICE_IN_UAH.CGPT },
 ];
 
 /** Weekly history points per foreign:UAH pair, linearly trending start -> end. */
@@ -472,9 +386,8 @@ const buildHistory = (calendar: DemoCalendar): SeedHistoryRow[] => {
 
 type MonthlyExpense = {
   category: string;
-  // The recurring merchant/operation the monthly spend reads as. One per
-  // category so each ledger row names a real Ukrainian merchant matched to its
-  // category (the category chart stays accurate — only the label changed).
+  // The recurring merchant the monthly spend reads as. Several per category, each a real
+  // Ukrainian merchant matched to its category, so the ledger reads like a real card.
   description: string;
   baseMinorUnits: number;
   monthlyDriftMinorUnits: number;
@@ -493,65 +406,60 @@ type OneOffExpense = {
 };
 
 // Categories reference the 10 seeded slugs (src/db/__fixtures__/seeded-categories.ts).
-const buildMonthlyExpenses = (text: DemoText): MonthlyExpense[] => [
-  {
-    category: 'groceries',
-    description: text.groceryStore,
-    baseMinorUnits: 320_000,
-    monthlyDriftMinorUnits: 6_000,
-    dayOfMonth: 4,
-  },
-  {
-    category: 'dining',
-    description: text.restaurant,
-    baseMinorUnits: 150_000,
-    monthlyDriftMinorUnits: 5_000,
-    dayOfMonth: 7,
-  },
-  {
-    category: 'transport',
-    description: 'Uklon',
-    baseMinorUnits: 62_000,
-    monthlyDriftMinorUnits: 2_000,
-    dayOfMonth: 10,
-  },
-  {
-    category: 'utilities',
-    description: text.utilities,
-    baseMinorUnits: 210_000,
-    monthlyDriftMinorUnits: 4_000,
-    dayOfMonth: 13,
-  },
-  {
-    category: 'entertainment',
-    description: text.cinema,
-    baseMinorUnits: 90_000,
-    monthlyDriftMinorUnits: 3_000,
-    dayOfMonth: 16,
-  },
-  {
-    category: 'shopping',
-    description: 'Rozetka',
-    baseMinorUnits: 240_000,
-    monthlyDriftMinorUnits: 8_000,
-    dayOfMonth: 19,
-  },
-  {
-    category: 'health',
-    description: text.gym,
-    baseMinorUnits: 140_000,
-    monthlyDriftMinorUnits: 0,
-    dayOfMonth: 22,
-    everyNthMonth: 2,
-  },
-  {
-    category: 'other',
-    description: text.courier,
-    baseMinorUnits: 48_000,
-    monthlyDriftMinorUnits: 1_000,
-    dayOfMonth: 25,
-  },
-];
+// A Latin brand name stays a literal in both languages; the others come from the demo text. Each
+// category's bases and drifts add up to what its single merchant spent before the split, so the
+// monthly spend, the net-worth line and the card balance are unchanged.
+const buildMonthlyExpenses = (text: DemoText): MonthlyExpense[] => {
+  // category, merchant, base, monthly drift, day of the month, and for a health row, the months
+  // between two charges.
+  const rows: [string, string, number, number, number, number?][] = [
+    ['groceries', text.groceryStore, 160_000, 3_000, 4],
+    ['groceries', text.discountSupermarket, 90_000, 2_000, 11],
+    ['groceries', text.fora, 40_000, 1_000, 19],
+    ['groceries', 'Novus', 30_000, 0, 26],
+    ['dining', text.restaurant, 70_000, 2_000, 7],
+    ['dining', text.lvivCroissants, 35_000, 1_000, 13],
+    ['dining', 'Aroma Kava', 25_000, 1_000, 21],
+    ['dining', 'Salateira', 20_000, 1_000, 27],
+    ['transport', 'Uklon', 20_000, 1_000, 5],
+    ['transport', 'Bolt', 12_000, 0, 16],
+    ['transport', text.metro, 2_000, 0, 9],
+    ['transport', text.okko, 28_000, 1_000, 23],
+    ['utilities', text.kyivteploenergo, 95_000, 2_000, 13],
+    ['utilities', 'YASNO', 65_000, 1_000, 14],
+    ['utilities', text.kyivvodokanal, 25_000, 1_000, 15],
+    ['utilities', text.kyivstar, 25_000, 0, 17],
+    ['entertainment', text.cinema, 45_000, 2_000, 16],
+    ['entertainment', 'Netflix', 30_000, 1_000, 24],
+    ['entertainment', 'Multiplex', 15_000, 0, 10],
+    ['shopping', 'Rozetka', 130_000, 5_000, 19],
+    ['shopping', text.epicentr, 70_000, 2_000, 22],
+    ['shopping', text.avrora, 40_000, 1_000, 8],
+    ['health', text.gym, 90_000, 0, 22, 2],
+    ['health', text.podorozhnyk, 30_000, 0, 12, 2],
+    ['health', text.apteka911, 20_000, 0, 18, 2],
+    ['other', text.courier, 30_000, 1_000, 25],
+    ['other', text.ukrposhta, 18_000, 0, 6],
+  ];
+
+  return rows.map(
+    ([
+      category,
+      description,
+      baseMinorUnits,
+      monthlyDriftMinorUnits,
+      dayOfMonth,
+      everyNthMonth,
+    ]): MonthlyExpense => ({
+      category,
+      description,
+      baseMinorUnits,
+      monthlyDriftMinorUnits,
+      dayOfMonth,
+      everyNthMonth,
+    }),
+  );
+};
 
 // Monthly take-home pay, indexed by month (0 = the most recent month,
 // LEDGER_MONTHS-1 = the oldest). Deliberately UNEVEN and, in the three months a
@@ -604,9 +512,13 @@ const P2P_FUNDING_MINOR_UNITS = 415_000;
 const CARD_FUNDING_MINOR_UNITS = 260_000;
 const FIAT_DEPOSIT_FUNDING_MINOR_UNITS = 10_000;
 
-// Raised by the two UAH funding debits, so the card keeps the end balance it had before them.
+// Raised by the two UAH funding debits, so the card keeps its end balance.
 const CARD_OPENING_MINOR_UNITS = 2_000_000 + P2P_FUNDING_MINOR_UNITS + CARD_FUNDING_MINOR_UNITS;
-const WISE_OPENING_MINOR_UNITS = 80_000 + FIAT_DEPOSIT_FUNDING_MINOR_UNITS;
+// Raised by the fiat funding debit and by the three card purchases below, so Wise keeps its end
+// balance.
+const WISE_PURCHASES_MINOR_UNITS = 4_500 + 3_900 + 2_200;
+const WISE_OPENING_MINOR_UNITS =
+  80_000 + FIAT_DEPOSIT_FUNDING_MINOR_UNITS + WISE_PURCHASES_MINOR_UNITS;
 
 const CAR_LOAN_KEY = 'car-loan';
 const PERSONAL_DEBT_KEY = 'personal-debt';
@@ -615,7 +527,7 @@ const CAR_KEY = 'car';
 const MAIN_CARD_KEY = 'main-card';
 const PRIVAT_CARD_KEY = 'privat-card';
 const CASH_KEY = 'cash';
-const USD_CASH_KEY = 'usd-cash';
+const BROKER_EURO_KEY = 'broker-euro';
 
 // A fabricated government bond: 1,000.00 nominal, a 16.2% coupon paid twice a
 // year (81.00 per bond each time). Its ISIN carries a valid check digit, so a
@@ -656,19 +568,19 @@ const buildCarLoanPayments = (calendar: DemoCalendar, text: DemoText): SeedTrans
   }));
 
 // Six rows left in the default category, which no stored rule claims, so a rule typed live in
-// the app has something to move: "Name starts with" Wolt, "Amount" less than 800, "Type" Expense
-// takes the pizza, sushi and burgers. Each of the other three fails one condition (an income,
+// the app has something to move: "Name starts with" KFC, "Amount" less than 800, "Type" Expense
+// takes the three KFC orders under 800. Each of the other three fails one condition (an income,
 // another name, an amount of 800 or more) and stays, which shows that every condition must match.
-// The merchant is one the reviewer's fake Monobank statement never names, so importing that
+// The merchants are ones the reviewer's fake Monobank statement never names, so importing that
 // statement does not add rows the live rule would move.
 const buildFoodDeliveryTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] =>
   [
-    { amountMinorUnits: -48_000, daysAgo: 3, description: text.woltPizza },
-    { amountMinorUnits: 35_000, daysAgo: 5, description: text.woltRefund },
-    { amountMinorUnits: -62_000, daysAgo: 6, description: text.woltSushi },
-    { amountMinorUnits: -39_500, daysAgo: 8, description: text.woltBurgers },
-    { amountMinorUnits: -52_000, daysAgo: 10, description: text.boltFoodShawarma },
-    { amountMinorUnits: -145_000, daysAgo: 12, description: text.woltGroupOrder },
+    { amountMinorUnits: -48_000, daysAgo: 3, description: 'KFC' },
+    { amountMinorUnits: 35_000, daysAgo: 10, description: text.kfcRefund },
+    { amountMinorUnits: -62_000, daysAgo: 14, description: 'KFC' },
+    { amountMinorUnits: -39_500, daysAgo: 18, description: 'KFC' },
+    { amountMinorUnits: -52_000, daysAgo: 12, description: 'Sushi Master' },
+    { amountMinorUnits: -145_000, daysAgo: 24, description: 'KFC' },
   ].map(({ amountMinorUnits, daysAgo, description }) => ({
     amountMinorUnits,
     time: calendar.at(daysAgo),
@@ -701,11 +613,11 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
   const oneOffExpenses = buildOneOffExpenses(text);
   const list: SeedTransaction[] = [
     // The opening deposit predates all monthly activity so the line starts from
-    // a positive base and rises. No category: an opening balance is not spending.
+    // a positive base and rises. A transfer: an opening balance is not spending.
     {
       amountMinorUnits: CARD_OPENING_MINOR_UNITS,
       time: calendar.at(LEDGER_MONTHS * MONTH_DAYS + 5),
-      category: null,
+      category: 'transfers',
       description: text.accountTopUp,
     },
   ];
@@ -757,7 +669,7 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
 
 // ---------------------------------------------------------------------------
 // Accounts. All plain manual (no institution) so useAutoSync never runs and the
-// pinned rates stay stable. A spread across UAH/USD/EUR/BTC populates the
+// pinned rates stay stable. A spread across UAH/EUR/BTC/USDT populates the
 // currency breakdown and the account-contribution pie.
 // ---------------------------------------------------------------------------
 
@@ -788,7 +700,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
           transactions: [80, 50, 20].map((daysAgo) => ({
             amountMinorUnits: 200_000,
             time: calendar.at(daysAgo),
-            category: null,
+            category: 'transfers',
             description: text.jarTopUp,
           })),
         },
@@ -846,10 +758,16 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
           color: entityColorsDark.green,
           transactions: [
             {
-              amountMinorUnits: 800_000,
+              amountMinorUnits: 835_000,
               time: calendar.at(170),
-              category: null,
+              category: 'cash',
               description: text.cashWithdrawal,
+            },
+            {
+              amountMinorUnits: -35_000,
+              time: calendar.at(6),
+              category: 'groceries',
+              description: text.market,
             },
             {
               amountMinorUnits: -150_000,
@@ -889,13 +807,13 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
           key: PRIVAT_CARD_KEY,
           name: text.privatBank,
           type: 'card',
-          currency: 'USD',
+          currency: 'EUR',
           color: entityColorsDark.teal,
           transactions: [
             {
               amountMinorUnits: 140_000,
               time: calendar.at(150),
-              category: null,
+              category: 'transfers',
               description: text.accountTopUp,
             },
             {
@@ -928,8 +846,26 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
             {
               amountMinorUnits: WISE_OPENING_MINOR_UNITS,
               time: calendar.at(120),
-              category: null,
+              category: 'transfers',
               description: text.accountTopUp,
+            },
+            {
+              amountMinorUnits: -4_500,
+              time: calendar.at(9),
+              category: 'groceries',
+              description: 'Lidl',
+            },
+            {
+              amountMinorUnits: -3_900,
+              time: calendar.at(15),
+              category: 'transport',
+              description: 'FlixBus',
+            },
+            {
+              amountMinorUnits: -2_200,
+              time: calendar.at(20),
+              category: 'shopping',
+              description: 'Rossmann',
             },
             // Two days before the EUR row it funds (`bank:EUR:100.00`, day 60), inside the
             // matcher's five-day window for a fiat deposit; older than the 30-day window.
@@ -961,16 +897,16 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
       color: entityColorsDark.violet,
       holdings: [
         {
-          key: USD_CASH_KEY,
-          name: text.usDollars,
+          key: BROKER_EURO_KEY,
+          name: text.euro,
           type: 'cash',
-          currency: 'USD',
+          currency: 'EUR',
           color: entityColorsDark.violet,
           transactions: [
             {
               amountMinorUnits: 50_000,
               time: calendar.at(100),
-              category: null,
+              category: 'transfers',
               description: text.brokerageTopUp,
             },
           ],
@@ -1153,7 +1089,7 @@ const buildBondRegister = (calendar: DemoCalendar, text: DemoText): BondRegister
 
 // One template per form mode, so the reviewer sees each. The salary template leaves its amount
 // empty (the amount is optional), the rest fill it. The prices follow the dataset's own rates:
-// 4,100.00 UAH buys 100.00 USD at 41.
+// 4,450.00 UAH buys 100.00 EUR at 44.5.
 const buildTemplates = (text: DemoText): SeedTemplate[] => {
   const draft: TemplateDraft = {
     version: 1,
@@ -1182,15 +1118,15 @@ const buildTemplates = (text: DemoText): SeedTemplate[] => {
       },
     },
     {
-      name: text.templateBuyDollars,
+      name: text.templateBuyEuros,
       draft: {
         ...draft,
         mode: 'exchange',
         holdingId: CASH_KEY,
-        amountMinorUnits: 410_000,
+        amountMinorUnits: 445_000,
         exchange: {
-          destinationHoldingId: USD_CASH_KEY,
-          destinationCurrency: 'USD',
+          destinationHoldingId: BROKER_EURO_KEY,
+          destinationCurrency: 'EUR',
           valueInMinorUnits: 10_000,
         },
       },

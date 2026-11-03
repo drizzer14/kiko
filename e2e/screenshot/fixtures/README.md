@@ -8,15 +8,20 @@ argument (Guideline 2.5.19):
 - **`kiko-demo-uk.kiko`** — imported by `.maestro/screenshots/duo-import-demo.yaml` (`FILE=`)
   or by hand, and used for the screenshots.
   Ukrainian names (Монобанк, Сільпо, Брокер, ...) and `language: 'uk'`, so it
-  imports with the UI in Ukrainian.
+  imports with the UI in Ukrainian. It no longer matches the shipped
+  `screenshots/appstore/**/uk/` deliverables: the dataset has changed since they
+  were shot (two fiats and two coins only, many more merchants, categorized
+  top-ups, and the live rule demo rows below), so a reshoot differs from the
+  shipped images.
 - **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. English
-  names for every user-visible text the file carries (Broker, US dollars,
+  names for every user-visible text the file carries (Broker, Euro,
   Government bonds (OVDP), Real estate, Owed to Andrii, ...) and
   `language: 'en'`, so an English-reading reviewer is not dropped into a
   Ukrainian app (`restoreDataSnapshot` takes the `settings` row from the file
   except the columns in `KEPT_FROM_LIVE_ON_RESTORE`, see
   `src/db/kept-from-live-on-restore.ts`; `language` comes from the file). Real
-  merchant and brand names stay (Uklon, Rozetka, Amazon, Booking.com, Wise, Binance). The names
+  merchant and brand names stay (Silpo, ATB, Uklon, Bolt, Rozetka, Netflix, KFC, Lidl, Amazon,
+  Booking.com, Wise, Binance). The names
   live in `../seed/demo-text.ts`; numbers, dates, and structure are identical
   in both files, and a test pins that the English file holds no Cyrillic letter.
 
@@ -42,7 +47,7 @@ Home list and charts on the last 30 days before the **device date**
 (`src/dates/default-range.ts`), and the newest demo row sits two days before the
 anchor. So the files fill Home and the charts from the anchor day onward, but
 they thin out as the device date moves past it: the default 30-day window
-holds 19 rows on the anchor day, fewer each week, and none after
+holds 42 rows on the anchor day, fewer each week, and none after
 about four weeks (see `seed/screenshot-seed.ts`). The data thins from about
 the second week, so about four weeks is an upper bound, not a safe age: a file anchored on a past day imports fine but shows a sparse,
 then empty, Home list and spending charts.
@@ -102,14 +107,17 @@ regeneration day.
 
 ## The live rule demo
 
-Six Monobank card rows (`Wolt: ...` and `Bolt Food: ...`, 3 to 12 days before the anchor) sit in
-the default category with no rule over them, so a rule typed live in the app has rows to move. Open
-the Settings tab, then Categories, then Dining, then Add rule, and enter three conditions: Name
-starts with `Wolt`; Amount, Less than, `800` (hryvnias); Type, Expense. Save asks "This changes 3
-transactions."; the pizza, sushi and burgers move to Dining. The refund (an income), the Bolt Food
-order (another name) and the group order (1,450) each fail one condition and stay.
-The merchant is Wolt because the reviewer kit's fake Monobank statement names Glovo (five rows
-under 800 that import as other), so a Glovo rule would count 8 once that statement is imported.
+Six Monobank card rows (`KFC` four times, `KFC: refund` and `Sushi Master`, 3 to 24 days before
+the anchor) sit in the default category with no rule over them, so a rule typed live in the app has
+rows to move. Open the Settings tab, then Categories, then Dining, then Add rule, and enter three
+conditions: Name starts with `KFC`; Amount, Less than, `800` (hryvnias); Type, Expense. Save asks
+"This changes 3 transactions."; the three KFC orders under 800 move to Dining. The refund (an
+income), the Sushi Master order (another name) and the KFC order of 1,450 (an amount over 800) each
+fail one condition and stay.
+The merchants are KFC and Sushi Master because the reviewer kit's fake Monobank statement names
+neither of them, nor any other merchant of this rule demo: a rule on a merchant the statement does
+name (Glovo has five rows under 800 that import as other) would count more rows once that
+statement is imported.
 `build-demo-snapshot.rule-demo.test.ts` pins the rule and the count with the app's own matcher.
 
 ## Importing on a device
