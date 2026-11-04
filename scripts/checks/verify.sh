@@ -100,8 +100,10 @@ is_trigger_path() {
   return 1
 }
 
-# local_branch_exists <ref>: status 0 when the ref exists, 1 when it is truly absent (the only
-# status `rev-parse --verify --quiet` gives for that), 2 or more when the git call itself failed.
+# local_branch_exists <ref>: status 0 when the ref exists, 1 when it is absent or unresolvable
+# (`rev-parse --verify --quiet` gives 1 for a garbage or dangling ref too), 2 or more when the git
+# call itself failed. Reading an unresolvable `next` as absent is safe: the diff from the main
+# base lists everything not on main, so a broken `next` only widens the diff.
 local_branch_exists() {
   git rev-parse --verify --quiet "$1" > /dev/null
 }
