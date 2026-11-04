@@ -121,12 +121,37 @@ export const resolveCategoryOverrideRequest = (
   return { name, category: selectedCategory, sourceTransactionId };
 };
 
+type PrefixPreview = { count: number; names: readonly string[] };
+
+type PrefixConfirm = {
+  message: string;
+  onConfirm: () => void;
+  onBack: () => void;
+  isApplying: boolean;
+};
+
+// The sheet's confirm step for the prefix rule, or null while no preview is shown. The title is
+// the picked category's resolved one, never its stored seed text; `buildMessage` keeps this module
+// translation-agnostic.
+export const resolvePrefixConfirm = (
+  preview: PrefixPreview | null,
+  pendingCategory: { title: string } | null,
+  buildMessage: (preview: PrefixPreview, categoryTitle: string) => string,
+  actions: Omit<PrefixConfirm, 'message'>,
+): PrefixConfirm | null => {
+  if (preview === null || pendingCategory === null) {
+    return null;
+  }
+
+  return { message: buildMessage(preview, pendingCategory.title), ...actions };
+};
+
 // Resolve the pending override's category into the icon name and the confirm
 // copy the "Apply Category to All" sheet shows. The sheet renders the glyph
 // white (textPrimary), not its category color, so only the icon name is needed
 // here. Kept module-level so its null branch stays out of the screen
 // component's cognitive-complexity budget.
-type PendingCategoryView = { icon: string; message: string };
+type PendingCategoryView = { icon: string; title: string; message: string };
 
 // `buildMessage` resolves the catalog's interpolated confirm copy; passed in
 // (rather than read from a module-level template) so this helper stays
@@ -151,6 +176,7 @@ export const resolvePendingCategory = (
 
   return {
     icon: display.icon,
+    title: display.title,
     message: buildMessage(display.title, pendingOverride.name.trim()),
   };
 };

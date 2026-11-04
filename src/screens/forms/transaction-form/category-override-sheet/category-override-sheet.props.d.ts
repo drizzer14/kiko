@@ -14,4 +14,17 @@ export type CategoryOverrideSheetProps = {
   isApplyingOne: boolean;
   // Either write in flight: Cancel is disabled while it runs.
   isWriting: boolean;
+  // The name's text before a store number, or `null` for a name with none: it offers the rule for
+  // every name that starts the same way.
+  prefix: string | null;
+  onOfferPrefix: () => void;
+  // The preview behind that offer is loading.
+  isOfferingPrefix: boolean;
+  // Non-null while the preview of the prefix rule is shown in place of the first step.
+  prefixConfirm: {
+    message: string;
+    onConfirm: () => void;
+    onBack: () => void;
+    isApplying: boolean;
+  } | null;
 };

@@ -17,32 +17,21 @@ const { default: mockButton } = jest.requireMock('@kiko/design-system/components
   default: jest.Mock;
 };
 
-type PrefixConfirm = {
-  message: string;
-  onConfirm: () => void;
-  onBack: () => void;
-  isApplying: boolean;
-};
+type PrefixProps = Pick<
+  CategoryOverrideSheetProps,
+  'prefix' | 'onOfferPrefix' | 'isOfferingPrefix' | 'prefixConfirm'
+>;
 
-// None of these props has a type yet, so the sheet is rendered with them spread from a test-local
-// type.
-type PrefixProps = {
-  prefix: string | null;
-  onOfferPrefix: () => void;
-  isOfferingPrefix: boolean;
-  prefixConfirm: PrefixConfirm | null;
-};
-
-const translate = i18n.t as unknown as (key: string, options?: object) => string;
+type PrefixConfirm = NonNullable<PrefixProps['prefixConfirm']>;
 
 const APPLY = i18n.t('forms.transaction.apply');
 const APPLY_TO_ONE = i18n.t('forms.transaction.applyToThisOne');
 const CANCEL = i18n.t('common.cancel');
-const PREFIX_LABEL = translate('forms.transaction.applyToAllStartingWith', { prefix: 'ATB' });
-const MOVE = translate('categoryRulePreview.confirm');
+const PREFIX_LABEL = i18n.t('forms.transaction.applyToAllStartingWith', { prefix: 'ATB' });
+const MOVE = i18n.t('categoryRulePreview.confirm');
 const CONFIRM_MESSAGE = '23 transactions move to "Food": ATB 0212, ATB 0340.';
 
-const baseProps: CategoryOverrideSheetProps = {
+const baseProps: Omit<CategoryOverrideSheetProps, keyof PrefixProps> = {
   visible: true,
   onDismiss: jest.fn(),
   categoryIcon: 'fork.knife',

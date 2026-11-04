@@ -126,16 +126,6 @@ describe('useCategoryOverride', () => {
 
 describe('useCategoryOverride, the prefix offer', () => {
   type Preview = { count: number; names: string[] };
-  // None of these fields has a type yet: the hook's result is read through a test-local type.
-  type PrefixFlow = {
-    prefixOffer: string | null;
-    prefixPreview: Preview | null;
-    isOverrideWriting: boolean;
-    onOfferPrefix: () => void;
-    onBackFromPrefix: () => void;
-    onApplyPrefix: () => void;
-    cancelOverride: () => void;
-  };
 
   const PREVIEW: Preview = { count: 3, names: ['ATB 0212', 'ATB 0340', 'ATB Market'] };
   const showSaveErrorAlert = jest.fn();
@@ -157,8 +147,6 @@ describe('useCategoryOverride, the prefix offer', () => {
       }),
     );
 
-  const flowOf = (current: object): PrefixFlow => current as unknown as PrefixFlow;
-
   const pendingWith = async (name: string) => {
     const rendered = await setupFlow();
 
@@ -173,7 +161,7 @@ describe('useCategoryOverride, the prefix offer', () => {
     const rendered = await pendingWith(name);
 
     await act(async () => {
-      flowOf(rendered.result.current).onOfferPrefix();
+      rendered.result.current.onOfferPrefix();
     });
 
     return rendered;
@@ -194,13 +182,13 @@ describe('useCategoryOverride, the prefix offer', () => {
   it('offers no prefix for a name with no store number', async () => {
     const { result } = await pendingWith('Coffee Shop');
 
-    expect(flowOf(result.current).prefixOffer).toBeNull();
+    expect(result.current.prefixOffer).toBeNull();
   });
 
   it('offers the prefix for a name that ends in one', async () => {
     const { result } = await pendingWith('ATB 0212');
 
-    expect(flowOf(result.current).prefixOffer).toBe('ATB');
+    expect(result.current.prefixOffer).toBe('ATB');
   });
 
   it('previews without writing on the first tap', async () => {
@@ -211,7 +199,7 @@ describe('useCategoryOverride, the prefix offer', () => {
       kind: 'nameStartsWith',
       category: 'dining',
     });
-    expect(flowOf(result.current).prefixPreview).toEqual(PREVIEW);
+    expect(result.current.prefixPreview).toEqual(PREVIEW);
     expectNothingWritten();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
@@ -222,7 +210,7 @@ describe('useCategoryOverride, the prefix offer', () => {
     expectNothingWritten();
 
     await act(async () => {
-      flowOf(result.current).onApplyPrefix();
+      result.current.onApplyPrefix();
     });
 
     expect(mockApplyNameRule).toHaveBeenCalledTimes(1);
@@ -239,11 +227,11 @@ describe('useCategoryOverride, the prefix offer', () => {
     const { result } = await offered();
 
     await act(async () => {
-      flowOf(result.current).onBackFromPrefix();
+      result.current.onBackFromPrefix();
     });
 
-    expect(flowOf(result.current).prefixPreview).toBeNull();
-    expect(flowOf(result.current).prefixOffer).toBe('ATB');
+    expect(result.current.prefixPreview).toBeNull();
+    expect(result.current.prefixOffer).toBe('ATB');
     expectNothingWritten();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
@@ -252,7 +240,7 @@ describe('useCategoryOverride, the prefix offer', () => {
     const { result } = await offered();
 
     await act(async () => {
-      flowOf(result.current).cancelOverride();
+      result.current.cancelOverride();
     });
 
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
@@ -265,7 +253,7 @@ describe('useCategoryOverride, the prefix offer', () => {
     const { result } = await offered();
 
     expect(showSaveErrorAlert).toHaveBeenCalledTimes(1);
-    expect(flowOf(result.current).prefixPreview).toBeNull();
+    expect(result.current.prefixPreview).toBeNull();
     expectNothingWritten();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
@@ -283,15 +271,15 @@ describe('useCategoryOverride, the prefix offer', () => {
     const { result } = await offered();
 
     await act(async () => {
-      flowOf(result.current).onApplyPrefix();
-      flowOf(result.current).onApplyPrefix();
+      result.current.onApplyPrefix();
+      result.current.onApplyPrefix();
     });
 
     expect(mockApplyNameRule).toHaveBeenCalledTimes(1);
-    expect(flowOf(result.current).isOverrideWriting).toBe(true);
+    expect(result.current.isOverrideWriting).toBe(true);
 
     await act(async () => {
-      flowOf(result.current).cancelOverride();
+      result.current.cancelOverride();
     });
 
     expect(navigation.goBack).not.toHaveBeenCalled();

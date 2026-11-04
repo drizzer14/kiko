@@ -300,6 +300,7 @@ export const en = {
     newOnly: 'New transactions only',
   },
   categoryRulePreview: {
+    back: 'Back',
     confirm: 'Move',
     confirmTitle: 'Move Transactions',
     // English defines every plural form so both catalogues carry the same keys (Ukrainian selects
