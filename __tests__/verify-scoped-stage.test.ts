@@ -42,6 +42,16 @@ type VerifyRun = {
 
 type FixtureOptions = { triggerList?: string | null };
 
+// Extra executables written into the stub folder after the defaults, so a row can wrap git or
+// replace mktemp; each text is a whole script.
+type StubScripts = (context: { stubs: string; realGit: string }) => Record<string, string>;
+
+type VerifyOptions = {
+  flag?: string | null;
+  failingGitCommand?: string;
+  stubScripts?: StubScripts;
+};
+
 const realGit = (): string =>
   spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim() || '/usr/bin/git';
 
@@ -104,10 +114,7 @@ const createFixture = (options: FixtureOptions = {}): Fixture => {
 };
 
 // Every stub logs the flag it sees, so the log names one entry per stage that ran.
-const runVerify = (
-  fixture: Fixture,
-  options: { flag?: string | null; failingGitCommand?: string } = {},
-): VerifyRun => {
+const runVerify = (fixture: Fixture, options: VerifyOptions = {}): VerifyRun => {
   const flag = options.flag === undefined ? '1' : options.flag;
   const stubs = createTemporaryDirectory('kiko-verify-scoped-stubs-');
   const log = join(stubs, 'calls.log');
@@ -136,6 +143,13 @@ const runVerify = (
       `#!/bin/sh\nif [ "$1" = ${options.failingGitCommand} ]; then exit 1; fi\nexec "${realGit()}" "$@"\n`,
     );
     chmodSync(join(stubs, 'git'), 0o755);
+  }
+
+  const extraStubs = options.stubScripts?.({ stubs, realGit: realGit() }) ?? {};
+
+  for (const [name, text] of Object.entries(extraStubs)) {
+    writeFileSync(join(stubs, name), text);
+    chmodSync(join(stubs, name), 0o755);
   }
 
   const environment: NodeJS.ProcessEnv = {
@@ -178,6 +192,12 @@ const expectFullRun = (run: VerifyRun, reasonFragment: string): void => {
   expect(reasonLine(run)).toContain(reasonFragment);
 };
 
+const expectSkip = (run: VerifyRun): void => {
+  expect({ jestCalls: run.jestCalls, status: run.status }).toEqual({ jestCalls: 1, status: 0 });
+  expect(run.stdout.split('\n').filter((line) => line.startsWith(SKIPPED_HEADER))).toHaveLength(1);
+  expect(reasonLine(run)).toBe('');
+};
+
 const srcOnly = { 'src/new.ts': 'export const created = 1;\n' };
 
 describe('scripts/checks/verify.sh scoped stage 2b skip', () => {
@@ -189,7 +209,7 @@ describe('scripts/checks/verify.sh scoped stage 2b skip', () => {
 
     const run = runVerify(fixture);
 
-    expect({ jestCalls: run.jestCalls, status: run.status }).toEqual({ jestCalls: 1, status: 0 });
+    expectSkip(run);
     expect(run.stdout).toContain(
       `${SKIPPED_HEADER}no trigger path changed since ${mainTip.slice(0, 12)}) ──`,
     );
@@ -208,7 +228,7 @@ describe('scripts/checks/verify.sh scoped stage 2b skip', () => {
 
     branchWith(fixture, { [path]: 'changed\n' });
 
-    expect(runVerify(fixture).jestCalls).toBe(1);
+    expectSkip(runVerify(fixture));
   });
 
   it('measures from the newer base when next contains main', () => {
@@ -218,7 +238,7 @@ describe('scripts/checks/verify.sh scoped stage 2b skip', () => {
     fixture.commit({ 'rules/x.yml': 'rules: []\n' });
     branchWith(fixture, srcOnly);
 
-    expect(runVerify(fixture).jestCalls).toBe(1);
+    expectSkip(runVerify(fixture));
   });
 
   it('measures from the newer base when main contains next', () => {
@@ -228,7 +248,7 @@ describe('scripts/checks/verify.sh scoped stage 2b skip', () => {
     fixture.commit({ 'rules/x.yml': 'rules: []\n' });
     branchWith(fixture, srcOnly);
 
-    expect(runVerify(fixture).jestCalls).toBe(1);
+    expectSkip(runVerify(fixture));
   });
 
   it('works with no local next branch', () => {
@@ -238,7 +258,24 @@ describe('scripts/checks/verify.sh scoped stage 2b skip', () => {
     branchWith(fixture, srcOnly);
 
     expect(fixture.git('branch', '--list', 'next')).toBe('');
-    expect(runVerify(fixture).jestCalls).toBe(1);
+    expectSkip(runVerify(fixture));
+  });
+
+  it('measures from the shared base when next sits at the same commit as main', () => {
+    const fixture = createFixture();
+
+    fixture.git('branch', 'next');
+    branchWith(fixture, srcOnly);
+
+    expectSkip(runVerify(fixture));
+  });
+
+  it('skips 2b when the trigger list has trigger lines and no exclude line', () => {
+    const fixture = createFixture({ triggerList: 'scripts/\nrules/\n' });
+
+    branchWith(fixture, srcOnly);
+
+    expectSkip(runVerify(fixture));
   });
 });
 
@@ -362,6 +399,122 @@ describe('scripts/checks/verify.sh scoped stage 2b runs in full', () => {
     expectFullRun(runVerify(fixture, { failingGitCommand: 'diff' }), 'diff');
   });
 
+  it.each(['refs/heads/main', 'refs/heads/next'])(
+    'runs 2b when the rev-parse of %s fails',
+    (ref) => {
+      const fixture = createFixture();
+
+      fixture.git('branch', 'next');
+      branchWith(fixture, srcOnly);
+
+      const run = runVerify(fixture, {
+        stubScripts: ({ realGit: git }) => ({
+          git: [
+            '#!/bin/sh',
+            'for argument in "$@"; do',
+            `  if [ "$1" = rev-parse ] && [ "$argument" = ${ref} ]; then exit 128; fi`,
+            'done',
+            `exec "${git}" "$@"`,
+            '',
+          ].join('\n'),
+        }),
+      });
+
+      expectFullRun(run, 'rev-parse');
+    },
+  );
+
+  it('runs 2b when HEAD has no merge base with main', () => {
+    const fixture = createFixture();
+
+    fixture.git('checkout', '-q', '--orphan', 'work');
+    fixture.commit(srcOnly);
+
+    expectFullRun(runVerify(fixture), 'git merge-base against refs/heads/main');
+  });
+
+  // Call 1 asks whether the main base is inside the next base (next contains main); call 2 is
+  // the mirror and only runs when call 1 answers no (main contains next).
+  it.each([
+    [1, 'next contains main'],
+    [2, 'main contains next'],
+  ])('runs 2b when the is-ancestor call %i fails and %s', (failingCall, arrangement) => {
+    const fixture = createFixture();
+
+    if (arrangement === 'next contains main') {
+      fixture.git('switch', '-q', '-c', 'next');
+      fixture.commit({ 'rules/x.yml': 'rules: []\n' });
+    } else {
+      fixture.git('branch', 'next');
+      fixture.commit({ 'rules/x.yml': 'rules: []\n' });
+    }
+
+    branchWith(fixture, srcOnly);
+
+    const run = runVerify(fixture, {
+      stubScripts: ({ stubs, realGit: git }) => ({
+        git: [
+          '#!/bin/sh',
+          'if [ "$1" = merge-base ] && [ "$2" = --is-ancestor ]; then',
+          `  count=$(( $(cat "${stubs}/count" 2>/dev/null || echo 0) + 1 ))`,
+          `  echo "$count" > "${stubs}/count"`,
+          `  if [ "$count" = ${failingCall} ]; then exit 3; fi`,
+          'fi',
+          `exec "${git}" "$@"`,
+          '',
+        ].join('\n'),
+      }),
+    });
+
+    expectFullRun(run, 'is-ancestor');
+  });
+
+  it('runs 2b when the changed-path listing cannot be read after the diff', () => {
+    const fixture = createFixture();
+
+    branchWith(fixture, srcOnly);
+
+    const run = runVerify(fixture, {
+      stubScripts: ({ stubs, realGit: git }) => ({
+        mktemp: `#!/bin/sh\n: > "${stubs}/listing"\necho "${stubs}/listing"\n`,
+        git: `#!/bin/sh\n"${git}" "$@"\ncode=$?\nif [ "$1" = diff ]; then rm -f "${stubs}/listing"; fi\nexit $code\n`,
+      }),
+    });
+
+    expectFullRun(run, 'changed-path listing');
+  });
+
+  it('runs 2b when the trigger list cannot be read', () => {
+    const fixture = createFixture();
+
+    branchWith(fixture, srcOnly);
+    chmodSync(join(fixture.root, 'scripts/checks/semgrep-suite-triggers.txt'), 0o000);
+
+    expectFullRun(runVerify(fixture), 'trigger list could not be read');
+  });
+
+  it('prints no marker line forged by a newline in a changed path', () => {
+    const fixture = createFixture();
+    const forged = `${SKIPPED_HEADER}x`;
+
+    branchWith(fixture, { [`scripts/a\n${forged}`]: 'x\n' });
+
+    const run = runVerify(fixture);
+    const lines = run.stdout.split('\n');
+
+    expect({ jestCalls: run.jestCalls, status: run.status }).toEqual({ jestCalls: 2, status: 0 });
+    expect(lines.filter((line) => line.startsWith(SKIPPED_HEADER))).toEqual([]);
+    expect(lines.filter((line) => line.startsWith(RUNS_IN_FULL_HEADER))).toHaveLength(1);
+  });
+
+  it('runs 2b when a trigger path changed and the trigger list has no exclude line', () => {
+    const fixture = createFixture({ triggerList: 'scripts/\nrules/\n' });
+
+    branchWith(fixture, { 'rules/x.yml': 'rules: []\n' });
+
+    expectFullRun(runVerify(fixture), 'rules/x.yml');
+  });
+
   it('runs 2b when a Cyrillic path under scripts/ changed', () => {
     const fixture = createFixture();
 
@@ -423,10 +576,36 @@ describe('scripts/checks/verify.sh scoped stage 2b runs in full', () => {
     expectFullRun(runVerify(fixture), 'src/i18n/locales/en.ts');
   });
 
-  const shippedTriggerLines = readTextFile(TRIGGER_LIST)
+  const shippedEntries = readTextFile(TRIGGER_LIST)
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => line !== '' && !line.startsWith('#') && !line.startsWith('!'));
+    .filter((line) => line !== '' && !line.startsWith('#'));
+  const shippedTriggerLines = shippedEntries.filter((line) => !line.startsWith('!'));
+
+  it('the shipped list holds exactly the specified trigger lines and the Markdown exclude', () => {
+    expect([...shippedEntries].sort()).toEqual(
+      [
+        'scripts/',
+        'rules/',
+        'harness/',
+        'githooks/',
+        'patches/',
+        '__mocks__/',
+        'jest/',
+        '__tests__/test-support/',
+        'package.json',
+        'package-lock.json',
+        'jest.config.js',
+        'babel.config.js',
+        'tsconfig.json',
+        '.env.test',
+        'biome.json',
+        'Makefile',
+        'src/i18n/locales/en.ts',
+        '!harness/*.md',
+      ].sort(),
+    );
+  });
 
   it.each(shippedTriggerLines)('runs 2b when a trigger line matches: %s', (line) => {
     const fixture = createFixture();
@@ -474,13 +653,12 @@ describe('scripts/checks/verify.sh scoped markdown exclude under harness/', () =
     ['a nested skill file', 'harness/kiko/skills/x/SKILL.md'],
     ['a top-level file', 'harness/top.md'],
     ['a Cyrillic path', 'harness/kiko/файл.md'],
-    ['a path no working-tree file matches', 'harness/other.md'],
   ])('skips 2b for %s', (_name, path) => {
     const fixture = createFixture();
 
     branchWith(fixture, { [path]: 'text\n' });
 
-    expect(runVerify(fixture).jestCalls).toBe(1);
+    expectSkip(runVerify(fixture));
   });
 
   it.each([

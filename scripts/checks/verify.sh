@@ -16,9 +16,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT" || exit 2
 
-# Stage 1 (check:all) starts the run: its first check is lint, so a format error still fails in
-# seconds, and the gate's scans (check:security, check:rules) run at a load that was just read
-# by the queue's start-load defer instead of about 30 minutes after it.
+# Stage 1 (check:all) starts the run: its first check is lint, so a format error fails in
+# seconds, and the gate's scans (check:security, check:rules) run right after the queue's
+# start-load defer read the load.
 #
 # Stage 1 also overlaps several checks that the Stop and SubagentStop medium tier runs (dup,
 # knip, deps, typecheck, and more). Do NOT mistake that overlap for a bug and remove the stage —
@@ -64,6 +64,8 @@ trim_line() {
 load_triggers() {
   local line
   if [ -f "$TRIGGER_LIST" ]; then
+    # A loop whose input cannot be opened never runs its body and reports status 1; its status is
+    # otherwise 0 (the last body command is a case with a matching arm).
     while IFS= read -r line || [ -n "$line" ]; do
       line="$(trim_line "$line")"
       case "$line" in
@@ -71,9 +73,15 @@ load_triggers() {
         '!'*) EXCLUDES+=("${line#!}") ;;
         *) TRIGGERS+=("$line") ;;
       esac
-    done < "$TRIGGER_LIST"
+    done < "$TRIGGER_LIST" || {
+      FULL_RUN_REASON="the trigger list could not be read"
+      return 1
+    }
   fi
-  [ "${#TRIGGERS[@]}" -gt 0 ]
+  if [ "${#TRIGGERS[@]}" -eq 0 ]; then
+    FULL_RUN_REASON="the trigger list holds no trigger line"
+    return 1
+  fi
 }
 
 # is_trigger_path <path>: an exclude wins over every trigger.
@@ -92,7 +100,14 @@ is_trigger_path() {
   return 1
 }
 
-# merge_base_with <ref>: sets MERGE_BASE to the one merge base of HEAD and the ref.
+# local_branch_exists <ref>: status 0 when the ref exists, 1 when it is truly absent (the only
+# status `rev-parse --verify --quiet` gives for that), 2 or more when the git call itself failed.
+local_branch_exists() {
+  git rev-parse --verify --quiet "$1" > /dev/null
+}
+
+# merge_base_with <ref>: sets MERGE_BASE to the one merge base of HEAD and the ref. `merge-base
+# --all` exits 1 with no output when there is no base, so an empty output cannot reach the case.
 merge_base_with() {
   local output
   MERGE_BASE=""
@@ -101,10 +116,6 @@ merge_base_with() {
     return 1
   }
   case "$output" in
-    '')
-      FULL_RUN_REASON="HEAD has no merge base with $1"
-      return 1
-      ;;
     *$'\n'*)
       FULL_RUN_REASON="HEAD has more than one merge base with $1"
       return 1
@@ -148,31 +159,40 @@ skip_stage_2b() {
     FULL_RUN_REASON="no --scoped flag: KIKO_VERIFY_SCOPED is not 1"
     return 1
   fi
-  if ! load_triggers; then
-    FULL_RUN_REASON="the trigger list holds no trigger line"
-    return 1
-  fi
-  if ! git rev-parse --verify --quiet refs/heads/main > /dev/null; then
-    FULL_RUN_REASON="there is no local main branch"
-    return 1
-  fi
+  load_triggers || return 1
+  local_branch_exists refs/heads/main
+  case $? in
+    0) ;;
+    1)
+      FULL_RUN_REASON="there is no local main branch"
+      return 1
+      ;;
+    *)
+      FULL_RUN_REASON="git rev-parse of refs/heads/main failed"
+      return 1
+      ;;
+  esac
   head_commit="$(git rev-parse HEAD)" || {
     FULL_RUN_REASON="git rev-parse HEAD failed"
     return 1
   }
   merge_base_with refs/heads/main || return 1
   base="$MERGE_BASE"
-  if git rev-parse --verify --quiet refs/heads/next > /dev/null; then
-    main_base="$base"
-    merge_base_with refs/heads/next || return 1
-    next_base="$MERGE_BASE"
-    if [ "$main_base" = "$next_base" ]; then
-      base="$main_base"
-    else
+  local_branch_exists refs/heads/next
+  case $? in
+    0)
+      main_base="$base"
+      merge_base_with refs/heads/next || return 1
+      next_base="$MERGE_BASE"
       newer_base "$main_base" "$next_base" || return 1
       base="$MERGE_BASE"
-    fi
-  fi
+      ;;
+    1) ;;
+    *)
+      FULL_RUN_REASON="git rev-parse of refs/heads/next failed"
+      return 1
+      ;;
+  esac
   if [ "$base" = "$head_commit" ]; then
     FULL_RUN_REASON="HEAD is reachable from main or next, so a diff says nothing"
     return 1
@@ -187,15 +207,24 @@ skip_stage_2b() {
     FULL_RUN_REASON="git diff failed"
     return 1
   fi
+  # A listing that cannot be opened never runs the body (status 1), so the loop's own status is
+  # the only proof that the paths were read. A read error in the middle of the file ends the loop
+  # like the end of the file does, and bash cannot tell the two apart.
   while IFS= read -r -d '' changed; do
     if is_trigger_path "$changed"; then
       first_trigger="$changed"
       break
     fi
-  done < "$listing"
+  done < "$listing" || {
+    rm -f "$listing"
+    FULL_RUN_REASON="the changed-path listing could not be read"
+    return 1
+  }
   rm -f "$listing"
   if [ -n "$first_trigger" ]; then
-    FULL_RUN_REASON="trigger path: $first_trigger"
+    # The match above used the raw path; only the printed copy loses control characters, so a
+    # newline in a path cannot start a forged marker line in the log.
+    FULL_RUN_REASON="trigger path: $(printf '%s' "$first_trigger" | LC_ALL=C tr -d '\000-\037\177')"
     return 1
   fi
   SKIP_BASE="$base"
