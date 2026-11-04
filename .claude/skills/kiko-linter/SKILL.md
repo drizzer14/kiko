@@ -28,7 +28,8 @@ stages (2a: every suite but the real-semgrep ones, with the tripwire shim
 ORDERED, FAIL-FAST stages, stopping at the first failing stage rather than always running all
 of them. Stage 2b is skipped only with `--scoped` and no trigger path changed
 (`scripts/checks/semgrep-suite-triggers.txt`; a Markdown file under `harness/` is no trigger,
-user ruling 2026-11-04); any doubt runs it. Read `verify.sh` directly for the exact stage commands rather
+user ruling 2026-11-04); any doubt runs it. Read `verify.sh` directly for the exact stage
+commands rather
 than restating them here; a new harness check that belongs in the
 fast+medium gate is picked up by `make verify` automatically through
 `check:all`, with no `Makefile` change needed.

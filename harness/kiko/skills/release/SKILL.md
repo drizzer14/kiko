@@ -27,7 +27,8 @@ commit is the `mainMove` kind, where only help passes and `--abort`/`--continue`
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies it (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
 real merge, conflicts and all, in a separate detached worktree, verify
-it there with a queued `scripts/job-queue.sh verify` of the merge commit with no flag, then fast-forward
+it there with a queued `scripts/job-queue.sh verify` of the merge commit with no flag, then
+fast-forward
 main with `bash scripts/ff-main.sh <sha>` (it needs that verify's done.log line to be exit 0;
 a raw `merge --ff-only` on main is denied).
 

@@ -380,13 +380,15 @@ tree, and keep that tree untouched until DONE. A verify reads the commit named a
 `-verify` checkout (a listed worktree: pruning it costs one `npm ci`), so its track goes on.
 done.log's head field of a verify is that full sha, kept while the checkout is clean at the end
 (field 7 is `full` or `partial`; `ff-main.sh` needs absent or `full`). For the other kinds it is
-the full 40-character HEAD only when the tree (`tree_is_clean` in `scripts/job-queue.sh`: untracked files counted) is
+the full 40-character HEAD only when the tree (`tree_is_clean` in `scripts/job-queue.sh`:
+untracked files counted) is
 clean at START and again at the end and HEAD is
 unchanged, else `unknown`; an edit reverted before the end is not seen, and ignored files (`.env`,
 `node_modules`) are not counted.
 
 `gate` refuses a tree with any change (untracked included) with exit 3, at enqueue and again at
-START; `verify` does so at enqueue only, and not with `--sha`; the message names the first 3 paths. Commit the change (for example
+START; `verify` does so at enqueue only, and not with `--sha`; the message names the first 3
+paths. Commit the change (for example
 `ios/Podfile.lock` after a pod install) or copy the files aside; never stash. `check-all` and
 `security` still run on a dirty tree and record `unknown`. A tree the job itself changed records
 `unknown` plus a `NOTE <label>: the tree changed during the job: <path>` line. A verify prints no

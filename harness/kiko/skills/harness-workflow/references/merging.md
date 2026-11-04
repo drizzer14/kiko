@@ -7,7 +7,8 @@ run from it, so a conflict marker there breaks every hook. The
 kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
 real merge, conflicts and all, in a separate detached worktree. Verify
 it there = a verify the coordinator queues with `scripts/job-queue.sh verify` (not a bare
-`make verify`, and with no flag: `ff-main.sh` needs a full verify) at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
+`make verify`, and with no flag: `ff-main.sh` needs a full verify) at the MERGE COMMIT (the
+per-window gate ran on the branch tip, not on
 the merge result). Move main only on exit 0 with the full test count. A
 clean `git merge-tree` is not proof of a green merge. A merge with 0 src
 files in it still gets the verify, because check:all and the hooks run
