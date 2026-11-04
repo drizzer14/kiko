@@ -13,6 +13,9 @@ export const styles = StyleSheet.create((theme) => ({
     width: frame.width,
     height: frame.height,
   }),
+  hidden: {
+    opacity: 0,
+  },
   dividerColor: {
     backgroundColor: theme.colors.border,
   },

@@ -546,4 +546,144 @@ describe('PaneStackView', () => {
       expect(dispatch).toBe(navigation.dispatch);
     });
   });
+
+  describe('a whole-window route on top', () => {
+    const WHOLE_HOME: PaneConfig = { ...HOME, wholeWindowRoutes: ['Tables'] };
+    const onTables = stackState([route('home', 'Home'), route('tables', 'Tables')], {
+      home: 'primary',
+      tables: 'primary',
+    });
+
+    // Testing Library leaves a pane hidden from accessibility out of its queries by default.
+    const WITH_HIDDEN = { includeHiddenElements: true } as const;
+
+    const styleOf = (testID: string) =>
+      StyleSheet.flatten(screen.getByTestId(testID, WITH_HIDDEN).props.style);
+
+    const frameOf = (testID: string) => {
+      const { left, top, width, height } = styleOf(testID);
+
+      return { x: left, y: top, width, height };
+    };
+
+    it('gives its pane the whole window, hides the other pane and draws no divider', async () => {
+      await renderView(onTables, WHOLE_HOME);
+
+      expect(frameOf('two-pane-primary')).toEqual({ x: 0, y: 0, width: 951, height: 669 });
+      expect(styleOf('two-pane-primary').opacity).toBeUndefined();
+      expect(styleOf('two-pane-companion').opacity).toBe(0);
+      expect(screen.getByTestId('two-pane-companion', WITH_HIDDEN).props.pointerEvents).toBe(
+        'none',
+      );
+      expect(screen.queryByTestId('two-pane-divider')).toBeNull();
+    });
+
+    it('keeps the default beside it mounted in its pane, with Tables the only visible route', async () => {
+      await renderView(onTables, WHOLE_HOME);
+
+      expect(screen.getByTestId('stack-pane-default:companion', WITH_HIDDEN)).toBeTruthy();
+      expect(screen.getByTestId('stack-home+tables')).toBeTruthy();
+
+      for (const [, visibility] of mockNativeStackView.mock.calls) {
+        expect([...visibility.visibleKeys]).toEqual(['tables']);
+      }
+    });
+
+    it('is the companion pane that takes the window when Tables sits above a real route there', async () => {
+      const state = stackState(
+        [route('home', 'Home'), route('statistics', 'Statistics'), route('tables', 'Tables')],
+        { home: 'primary', statistics: 'companion', tables: 'companion' },
+      );
+
+      await renderView(state, WHOLE_HOME);
+
+      expect(frameOf('two-pane-companion')).toEqual({ x: 0, y: 0, width: 951, height: 669 });
+      expect(styleOf('two-pane-primary').opacity).toBe(0);
+
+      for (const [, visibility] of mockNativeStackView.mock.calls) {
+        expect([...visibility.visibleKeys]).toEqual(['tables']);
+      }
+    });
+
+    it('keeps every screen mounted, with no frame that shows nothing, as Tables opens and closes', async () => {
+      const covered = stackState(
+        [route('home', 'Home'), route('detail', 'WideDetail'), route('tables', 'Tables')],
+        { home: 'primary', detail: 'companion', tables: 'companion' },
+      );
+      const open = stackState([route('home', 'Home'), route('detail', 'WideDetail')], {
+        home: 'primary',
+        detail: 'companion',
+      });
+      const element = (state: PaneStackState) => (
+        <PaneStackView
+          mode="columns"
+          state={state}
+          navigation={navigation}
+          descriptors={descriptors}
+          describe={describeRoute}
+          paneConfig={WHOLE_HOME}
+        />
+      );
+
+      const view = await render(element(open));
+      await view.rerender(element(covered));
+
+      expect(styleOf('two-pane-primary').opacity).toBe(0);
+      expect(screen.getByTestId('detail-screen')).toBeTruthy();
+
+      await view.rerender(element(open));
+
+      expect(screen.getAllByTestId('detail-screen')).toHaveLength(1);
+      expect(mockDetailMounted).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares the window again once a route covers Tables', async () => {
+      const state = stackState(
+        [route('home', 'Home'), route('tables', 'Tables'), route('form', 'TransactionForm')],
+        { home: 'primary', tables: 'primary', form: 'companion' },
+      );
+
+      await renderView(state, WHOLE_HOME);
+
+      expect(screen.getByTestId('two-pane-divider')).toBeTruthy();
+      expect(frameOf('two-pane-primary').width).toBeLessThan(951);
+    });
+
+    it('changes nothing with one pane, or for a config that lists no whole-window route', async () => {
+      await renderView(onTables, WHOLE_HOME, 'single');
+
+      expect(renderedProps()).toHaveLength(1);
+      expect(screen.queryByTestId('two-pane-primary')).toBeNull();
+
+      mockNativeStackView.mockClear();
+      await renderView(onTables, HOME);
+
+      expect(screen.getByTestId('two-pane-divider')).toBeTruthy();
+    });
+
+    describe('the fixed content margin', () => {
+      it('is the single stack’s under a side bar, 16 pt, in both panes', async () => {
+        mockUseTabBarEdge.mockReturnValue('leading');
+        mockWindow.width = 1376;
+        mockWindow.height = 1032;
+
+        await renderView(onTables, WHOLE_HOME);
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([
+          [darkTheme.spacing(4)],
+          [darkTheme.spacing(4)],
+        ]);
+      });
+
+      it('is 0 under a top bar, as the single stack, where a split pane has the side padding', async () => {
+        mockUseTabBarEdge.mockReturnValue('top');
+        mockWindow.width = 1376;
+        mockWindow.height = 1032;
+
+        await renderView(onTables, WHOLE_HOME);
+
+        expect(mockFixedContentMargin.mock.calls).toEqual([[0], [0]]);
+      });
+    });
+  });
 });

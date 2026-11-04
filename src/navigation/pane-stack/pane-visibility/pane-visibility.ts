@@ -16,7 +16,7 @@ export type DetailPaneRoute = {
 type PaneVisibility = {
   isTabFocused: boolean;
   // The route on top of each pane. Both are on screen at once, though only one is the focused
-  // route of the stack.
+  // route of the stack; except while a pane takes the whole window, when it is that pane's alone.
   visibleKeys: ReadonlySet<string>;
   // Null while the detail pane has neither a route nor a default.
   detailRoute: DetailPaneRoute | null;

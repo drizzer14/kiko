@@ -4,18 +4,18 @@ import {
   useIsTabBarNotAtBottom,
   useTabBarPlacement,
 } from '@kiko/design-system/components/screen';
-import { useIsFocused } from '@react-navigation/native';
 import { type FC, useEffect, useMemo, useState } from 'react';
 import { FixedContentMarginContext } from 'react-native-screens';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
 import { NativeStackView, type NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
-import { oppositePane } from '../pane-assignment';
 import { OpenInPaneContext } from '../open-in-pane';
 import { PaneVisibilityContext } from '../pane-visibility';
+import { oppositePane, wholeWindowPaneOf } from '../pane-assignment';
 
 import { paneSlice, withoutDefaultRoutes } from './pane-slice';
 import type { PaneStackViewProps } from './pane-stack-view.props';
+import { usePaneVisibilityValue } from './use-pane-visibility-value';
 import { keepStandInOptions, type StandInOptions, withStandInOptions } from './stand-in-options';
 
 /**
@@ -30,7 +30,6 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   paneConfig,
   mode,
 }) => {
-  const isTabFocused = useIsFocused();
   const isTabBarNotAtBottom = useIsTabBarNotAtBottom();
   const tabBarPlacement = useTabBarPlacement();
   const isSplit = mode !== 'single';
@@ -41,8 +40,14 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   // screen's title and header items are lost. Mounting the new layout one commit after the old one
   // unmounted (this one renders neither, for about a frame) lets the old cleanup run first.
   const isSwitching = isSplitShown !== isSplit;
-  const hasFixedContentMargin = isSplit ? isTabBarNotAtBottom : tabBarPlacement === 'side';
-  const contentMargin = useContentMarginFor(isSplit);
+  // The pane that takes the whole window while a route listed in the pane config is on top. It is
+  // still a split (`isSplit` and the settled mode stay, so nothing remounts or switches), but its
+  // screens are the window's, so the margins the native stack is told are the single stack's. One
+  // pane has no pane to take it, and reads none of this.
+  const wholeWindowPane = wholeWindowPaneOf(state.routes, state.panes, paneConfig);
+  const isPaned = isSplit && wholeWindowPane === null;
+  const hasFixedContentMargin = isPaned ? isTabBarNotAtBottom : tabBarPlacement === 'side';
+  const contentMargin = useContentMarginFor(isPaned);
   const { dispatch } = navigation;
   // A screen shown as a default has no route in the state, so React Navigation keeps nothing for
   // its `setOptions`; they are kept here and lie over the static options it is described with.
@@ -85,13 +90,13 @@ const PaneStackView: FC<PaneStackViewProps> = ({
       })) ?? null,
     [detailKey, detailName, detailParams, isDetailDefault],
   );
-  const visibility = useMemo(
-    () =>
-      isSplit
-        ? { isTabFocused, visibleKeys: new Set([companionTopKey, primaryTopKey]), detailRoute }
-        : null,
-    [isSplit, isTabFocused, companionTopKey, primaryTopKey, detailRoute],
-  );
+  const visibility = usePaneVisibilityValue({
+    isSplit,
+    wholeWindowPane,
+    companionTopKey,
+    primaryTopKey,
+    detailRoute,
+  });
 
   useEffect(() => {
     setIsSplitShown(isSplit);
@@ -116,6 +121,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
           {!isSwitching && isSplit && (
             <TwoPaneLayout
               mode={mode}
+              expandedPane={wholeWindowPane}
               companionShare={paneConfig.companionShare}
               companion={
                 companion && (
