@@ -47,6 +47,7 @@ const DataTable: FC<DataTableProps> = ({
   columns,
   rows,
   caption,
+  topContent,
   initialColumnIndex,
   testID = 'data-table',
 }) => {
@@ -133,9 +134,14 @@ const DataTable: FC<DataTableProps> = ({
       testID={testID}
     >
       <ScrollView testID={`${testID}-vertical-scroll`} stickyHeaderIndices={[1]}>
-        <RNText style={styles.caption} accessibilityRole="summary" testID={`${testID}-caption`}>
-          {caption}
-        </RNText>
+        {/* One child holds both, so the header stays the scroll's child at the sticky index. */}
+        <View style={styles.top} testID={`${testID}-top`}>
+          {topContent}
+
+          <RNText style={styles.caption} accessibilityRole="summary" testID={`${testID}-caption`}>
+            {caption}
+          </RNText>
+        </View>
 
         {/* The sticky wrapper takes this child's own style onto itself and gives the child a fill
             style, which would drop the row's direction; so the child carries no style. */}

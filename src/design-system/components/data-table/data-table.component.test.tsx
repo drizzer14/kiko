@@ -1,5 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native';
 import * as reanimated from 'react-native-reanimated';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -414,6 +414,38 @@ describe('DataTable', () => {
       expect(sticky?.props.style).toBeUndefined();
       expect(sticky?.children).toHaveLength(1);
       expect(flat(row).flexDirection).toBe('row');
+    });
+
+    it('draws top content above the caption, both in the one child before the sticky header', async () => {
+      const rendered = await renderTable({ topContent: <View testID="filters" /> });
+      const top = rendered.getByTestId(`${PREFIX}-top`);
+      const row = rendered.getByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true });
+      const siblings = top.parent?.children ?? [];
+
+      expect(siblings.indexOf(top as never)).toBe(0);
+      expect(siblings.indexOf(row.parent as never)).toBe(1);
+      expect(
+        within(top)
+          .getAllByTestId(/^(filters|table-caption)$/)
+          .map((part) => part.props.testID),
+      ).toEqual(['filters', `${PREFIX}-caption`]);
+      expect(rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices).toEqual([
+        1,
+      ]);
+    });
+
+    it('keeps the caption as the table summary beside top content', async () => {
+      const rendered = await renderTable({ topContent: <View testID="filters" /> });
+
+      expect(rendered.getByText('Spending in UAH').props.accessibilityRole).toBe('summary');
+    });
+
+    it('keeps the same child count with no top content', async () => {
+      const rendered = await renderTable();
+      const top = rendered.getByTestId(`${PREFIX}-top`);
+
+      expect(within(top).getByTestId(`${PREFIX}-caption`)).toBeTruthy();
+      expect(top.parent?.children).toHaveLength(3);
     });
 
     it('gives the sticky header row an opaque surface ground', async () => {

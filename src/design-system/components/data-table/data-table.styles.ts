@@ -7,6 +7,9 @@ export const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
   },
+  top: {
+    gap: theme.spacing(3),
+  },
   caption: {
     ...theme.typography.caption,
     color: theme.colors.textSecondary,

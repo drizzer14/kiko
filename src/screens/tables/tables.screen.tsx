@@ -136,41 +136,47 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     );
   }
 
+  // They go into the table's scroll, so at a large type size they scroll away with the caption
+  // and leave the rows the room; the empty state keeps them in place.
+  const controls = (
+    <Box gap={3}>
+      <Box direction="row" gap={3} style={styles.filterBar}>
+        <FilterMenu
+          key={`account-filter-${sheetGeneration}`}
+          label={t('statistics.filterAccounts')}
+          sheetTitle={t('statistics.filterAccountsSheetTitle')}
+          testID="tables-account-filter"
+          options={buildAccountOptions(filtered.optionAccounts, t)}
+          selected={filtered.visibleSelectedAccounts}
+          onToggle={toggleAccount}
+          triggerIcon="tray"
+        />
+
+        <FilterMenu
+          key={`category-filter-${sheetGeneration}`}
+          label={t('statistics.filterCategories')}
+          sheetTitle={t('statistics.filterCategoriesSheetTitle')}
+          testID="tables-category-filter"
+          options={categoryOptions}
+          selected={visibleSelectedCategories}
+          onToggle={toggleCategory}
+          triggerIcon={genericEntitySymbol.category}
+        />
+      </Box>
+
+      <TablePeriodField
+        key={`period-${sheetGeneration}`}
+        period={period}
+        options={periodOptions}
+        onSelect={selectPeriod}
+        testID="tables-period"
+      />
+    </Box>
+  );
+
   return (
     <Screen>
       <Box gap={3} style={styles.content}>
-        <Box direction="row" gap={3} style={styles.filterBar}>
-          <FilterMenu
-            key={`account-filter-${sheetGeneration}`}
-            label={t('statistics.filterAccounts')}
-            sheetTitle={t('statistics.filterAccountsSheetTitle')}
-            testID="tables-account-filter"
-            options={buildAccountOptions(filtered.optionAccounts, t)}
-            selected={filtered.visibleSelectedAccounts}
-            onToggle={toggleAccount}
-            triggerIcon="tray"
-          />
-
-          <FilterMenu
-            key={`category-filter-${sheetGeneration}`}
-            label={t('statistics.filterCategories')}
-            sheetTitle={t('statistics.filterCategoriesSheetTitle')}
-            testID="tables-category-filter"
-            options={categoryOptions}
-            selected={visibleSelectedCategories}
-            onToggle={toggleCategory}
-            triggerIcon={genericEntitySymbol.category}
-          />
-        </Box>
-
-        <TablePeriodField
-          key={`period-${sheetGeneration}`}
-          period={period}
-          options={periodOptions}
-          onSelect={selectPeriod}
-          testID="tables-period"
-        />
-
         <CategoryTable
           ledger={ledger}
           months={months}
@@ -180,6 +186,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
           baseCurrency={baseCurrency}
           defaultCategoryKey={defaultCategoryKey}
           excludedCategories={excludedCategories}
+          topContent={controls}
         />
       </Box>
     </Screen>

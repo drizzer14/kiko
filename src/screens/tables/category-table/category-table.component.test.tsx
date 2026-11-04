@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -66,6 +67,7 @@ const propsOf = (
   baseCurrency: 'UAH',
   defaultCategoryKey: 'other',
   excludedCategories: new Set<string>(),
+  topContent: <View testID="table-controls" />,
   ...overrides,
 });
 
@@ -229,7 +231,23 @@ describe('CategoryTable', () => {
     });
   });
 
+  describe('the top content', () => {
+    it('goes to the table, to scroll away with the caption', async () => {
+      const topContent = <View testID="given-controls" />;
+      const { table } = await shown(propsOf(WORLD, { topContent }));
+
+      expect(table.topContent).toBe(topContent);
+    });
+  });
+
   describe('with no spending in the period', () => {
+    it('keeps the top content on screen, so an empty period can be left', async () => {
+      const { rendered } = await shown(propsOf([]));
+
+      expect(rendered.getByTestId('table-controls')).toBeTruthy();
+      expect(rendered.getByTestId('category-table-empty')).toBeTruthy();
+    });
+
     it('shows the empty state and no table', async () => {
       const { rendered, table } = await shown(propsOf([]));
 

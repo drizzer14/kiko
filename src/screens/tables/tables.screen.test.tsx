@@ -11,8 +11,8 @@ import { calendarMonthOf } from '@kiko/dates';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
-import { act, fireEvent, render, renderHook } from '@testing-library/react-native';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
+import { act, fireEvent, render, renderHook, within } from '@testing-library/react-native';
 import { answerFilterData, pressFilterOption } from '@kiko/test-support/statistics-filter-data';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
@@ -129,6 +129,30 @@ describe('TablesScreen', () => {
 
       expect(getByText('No spending in this period')).toBeTruthy();
       expect(queryByTestId('category-table-caption')).toBeNull();
+    });
+
+    it('keeps the filters and the period on screen, so the empty period can be left', async () => {
+      mockUseLiveQuery.mockImplementation(
+        answerWith((tables) => (tables[0] === 'transactions' ? [] : undefined)),
+      );
+
+      const { getByTestId } = await renderTables();
+
+      expect(getByTestId('tables-account-filter')).toBeTruthy();
+      expect(getByTestId('tables-category-filter')).toBeTruthy();
+      expect(getByTestId('tables-period')).toBeTruthy();
+    });
+  });
+
+  describe('the controls', () => {
+    it('scroll with the caption, above it, inside the table', async () => {
+      const { getByTestId } = await renderTables();
+      const top = getByTestId('category-table-top');
+
+      expect(within(top).getByTestId('tables-account-filter')).toBeTruthy();
+      expect(within(top).getByTestId('tables-category-filter')).toBeTruthy();
+      expect(within(top).getByTestId('tables-period')).toBeTruthy();
+      expect(within(top).getByTestId('category-table-caption')).toBeTruthy();
     });
   });
 

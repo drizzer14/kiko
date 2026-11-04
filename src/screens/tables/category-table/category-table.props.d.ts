@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { CalendarMonth } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import type { RateTable } from '@kiko/rates/conversion';
@@ -16,4 +17,9 @@ export type CategoryTableProps = {
   defaultCategoryKey: string;
   /** Category keys a held pick leaves out; empty means every category. */
   excludedCategories: ReadonlySet<string>;
+  /**
+   * The filters and the period. They scroll with the caption above the rows, and stay on screen
+   * in the empty state, where they are the way out of an empty period.
+   */
+  topContent: ReactNode;
 };

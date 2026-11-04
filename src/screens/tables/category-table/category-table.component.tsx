@@ -89,6 +89,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
   baseCurrency,
   defaultCategoryKey,
   excludedCategories,
+  topContent,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
@@ -168,14 +169,18 @@ const CategoryTable: FC<CategoryTableProps> = ({
 
   if (table.rows.length === 0) {
     return (
-      <Box style={styles.empty}>
-        <EmptyState
-          icon="tablecells"
-          title={t('tables.empty.title')}
-          message={t('tables.empty.message')}
-          testID="category-table-empty"
-        />
-      </Box>
+      <>
+        {topContent}
+
+        <Box style={styles.empty}>
+          <EmptyState
+            icon="tablecells"
+            title={t('tables.empty.title')}
+            message={t('tables.empty.message')}
+            testID="category-table-empty"
+          />
+        </Box>
+      </>
     );
   }
 
@@ -186,6 +191,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
       columns={columns}
       rows={rows}
       caption={currentIsPartial ? `${caption} ${t('tables.category.partialMonth')}` : caption}
+      topContent={topContent}
       initialColumnIndex={Math.max(months.length - OPENING_MONTHS_SHOWN, 0)}
       testID="category-table"
     />
