@@ -61,8 +61,9 @@ the gate text stays below for when it is lifted.
 
 ## 1.4-bybit set 1/8: the terms verdict, the probe script and the user's probe run
 
-Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). The user's spec approval comes after the
-verdict and before step 6/7 (PLANNER CALL 23, O41). Size: 1 script, 1,357 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file. Not mutable.
+Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). Steps 3/7 and 4/7 are done (2026-11-04), and step
+5/7 is open. The user's spec approval comes after the
+verdict and before step 6/7 (PLANNER CALL 23, O41). Size: 1 script, 1,379 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file. Not mutable.
 Reviewer checks: the whole script for any leak path; every part against spec section 10; no write verb. "Set 1 tip" is
 the commit after the last step that writes results: the second run of step 7/7, for R3 and R4 (O36). Set 2 bases on it.
 
@@ -76,26 +77,32 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   `kiko:reviewer`; `.superpowers/sdd/1.4-bybit/terms-verdict.md`. The stop rule did not fire. It went into spec section 9
   with `make doc-suites`. C1 to C5 and C7 are spec section 9 rows, and each step that holds one names it below. C6 is the user
   line of spec section 10.
-- [ ] **step 3/7: write `memory/refs/bybit-probe.sh`** (main checkout, untracked, like its templates; `kiko:ops` or
-  the coordinator names the writer). Pattern: `binance-transfer-depth-probe.sh`, `eodhd-verify.sh`: hidden prompts,
+- [x] **step 3/7: write `memory/refs/bybit-probe.sh`, DONE 2026-11-04, with fix round 4** (main checkout, untracked, like its
+  templates; `kiko:ops` or the coordinator names the writer). Pattern: `binance-transfer-depth-probe.sh`, `eodhd-verify.sh`: hidden prompts,
   `curl -q --noproxy '*' -K -` with URL and key on stdin, perl HMAC with the secret on stdin, alnum-checked key, masked URLs. Parts
   P1 to P7 and P11 to P18, no others (O37), with P14 NOT RUN and no call (O49). The printer of spec section 10: no server text, a
   `retCode` with a word from a closed table (O45), a value from a closed list per field, and `<other>` for an unknown value (O46);
   a coin name, a `permissions` name and a wallet-hint value keep a shape test, the accepted residual of spec section 10 (O51).
   P4 and P6 read two balances around the user's step (O47); P2 and P3 hold K3, K4, K5 and K11 at prompts (O50), with P3's stake
-  check on amounts (O54); P13 tests the filter time field on the withdrawal series (O48); P17 renews only after a refusal that
-  can be about expiry (O55). `set -u`; a Ctrl-C prints what was read. No elapsed time is printed, and no
+  check on amounts (O54); P13 tests the filter time field on the withdrawal series (O48); P17 asks for a renewal only when the
+  key may really have expired: an ok from any of its first three calls prints "not expired yet" and ends with no prompt, and the
+  `query-api` answer stops it on HTTP other than 200 or 401, on HTTP 200 with no `retCode`, and on 10002, 10004 and 10016 (O55,
+  O57). `set -u`; a Ctrl-C prints what was read. No elapsed time is printed, and no
   call repeats to measure uptime or latency (C6, API 6.6).
-- [ ] **step 4/7: fake-curl test.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
+- [x] **step 4/7: fake-curl test, DONE 2026-11-04.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
   values for every part. Check: no sentinel appears on stdout or stderr, the key is in no argv, and each part stays under a
-  maximum number of calls per part, with `CALL_CAP` as the hard cap (C6, O53).
-- [ ] **step 5/7: read the whole file** (orchestrator). The reviewer passes it. After that pass and the user's spec approval
-  (O41), the coordinator hands it over, with the R1 account list, the C6 user line of spec section 10 and part 2 of the
-  browser step (spec section 9).
+  maximum number of calls per part, with `CALL_CAP` as the hard cap (C6, O53). Result: `memory/refs/bybit-probe.test.sh` printed
+  "4673 passed, 0 failed", exit 0 (re-run by the orchestrator on 2026-11-04 with /bin/bash 3.2.57 and jq 1.7.1-apple).
+- [ ] **step 5/7: read the file and hand it over, OPEN** (orchestrator, then coordinator). Was: "read the whole file. The reviewer
+  passes it." The reviewer did not pass it: three reviews each gave FIX FIRST (17, 9 and 6 findings), and O56 stopped the chain after
+  fix round 4 with no fourth review. O56 replaces that pass. Done under O56: the orchestrator read the round 4 diff, and the test
+  of step 4/7 passed. Still open: the user's spec approval (O41), which is not given. After that approval, the coordinator hands it
+  over, with the R1 account list, the C6 user line of spec section 10 and part 2 of the browser step (spec section 9).
 - [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
   the C6 line before R1, part 2 of the browser step at R1, `R2 P4` while K1 is pending, with a prompt until K1 lands and before
   K2 (O16, O32, O47), `R2 P2` BEFORE K2 if K1 landed before `R2 P4` could run (O52), skip at the P4 prompt of the whole R2, the
-  cancel of K3 at P2's prompt and K4 and K5 on one prompt of P3 in R3 (O50, O54), K6 at P6's prompt from each wallet that Bybit
+  cancel of K3 at P2's prompt and K4 and K5 on one prompt of P3 in R3 (O50, O54), with two different amounts, because the stake check cannot tell the products apart
+  with equal amounts, and Enter only after the step has landed, K6 at P6's prompt from each wallet that Bybit
   allows, with two different amounts when both wallets are used (O14), R4 after the R3 run of P3 shows the position, with no fixed
   day (O40), skip at the prompt of each `R4 P6` settle run, `R2 P13` once more after K6 settles (O48), and last K11, the redeem
   of Flexible Savings, at the prompt of `R4 P3` (O31, O50). Outputs go to `memory/refs/bybit-probe-output-<date>.txt`. The date of `expiredAt` goes into the track HANDOFF and the run log as an
@@ -340,7 +347,7 @@ verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 
 
 | Set | Code lines (about) | Code files | Test lines (about) |
 |---|---|---|---|
-| 1 | script 1,357, measured | 1 | 1 fake-curl test |
+| 1 | script 1,379, measured | 1 | 1 fake-curl test |
 | 2 | 210 | 9-12 | 450 |
 | 3 | 1,270 | 25-29 | 2,350 |
 | 4 | 550 | 13-15 | 1,050 |
@@ -371,7 +378,7 @@ O44 set 7 header, step 6, "Merge order". O45, O46 set 1 step 3, spec sections 10
 10, 12. O48 set 1 steps 3, 6, 7, spec sections 10, 12. O49 set 1 step 3, gate per stage, spec sections 8, 10, 12. O50 set 1 steps 3,
 6, gate per stage, set 3 header, spec sections 10, 12. O51 set 1 step 3, spec sections 10, 12. O52 set 1 steps 6, 7, spec rule 45,
 sections 10, 12. O53 set 1 step 4, spec sections 10, 12. O54 set 1 steps 3, 6, spec sections 10, 12. O55 set 1 header, steps 3, 6, spec
-sections 6.3, 10, 12.
+sections 6.3, 10, 12. O56 set 1 header, step 5, spec sections 10, 12. O57 set 1 step 3, spec sections 6.3, 10, 12.
 
 Acceptance rows: A1 to A7, A11, A31, A36, A37, A47, A48 set 3 step 5; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
