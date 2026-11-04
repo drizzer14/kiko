@@ -27,8 +27,9 @@ export const PaneVisibilityContext = createContext<PaneVisibility | null>(null);
 
 /**
  * Whether the calling screen is on screen right now. In two panes that is the route on top of
- * either pane while the tab is focused; the stack's focused route would hide the other pane's
- * screen from a data refresh. In one pane it is `useIsFocused`.
+ * either pane while the tab is focused (the top route of the pane that takes the whole window,
+ * alone, while one does); the stack's focused route would hide the other pane's screen from a
+ * data refresh. In one pane it is `useIsFocused`.
  */
 export const useIsScreenVisible = (): boolean => {
   const { key } = useRoute();

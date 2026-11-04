@@ -16,8 +16,9 @@ export const OpenInPaneContext = createContext<DispatchPaneAction | null>(null);
 
 /**
  * Opens a screen in the detail pane, on top of the calling screen when that is in the detail pane
- * too, and in place of what the detail pane showed when it is the list. Outside a pane navigator
- * it is a plain navigate.
+ * too, and in place of what the detail pane showed when it is the list. A whole-window route
+ * (Tables) opens instead in the pane of the route it opens above, across the window. Outside a
+ * pane navigator it is a plain navigate.
  */
 export const useOpenInPane = (): ((name: string, params?: object) => void) => {
   const { key } = useRoute();
