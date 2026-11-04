@@ -156,6 +156,11 @@ CLAIM_PATH="$QUEUE_DIRECTORY/claim"
 POLL_SECONDS="${KIKO_QUEUE_POLL_SECONDS:-30}"
 STOP_POLLS="${KIKO_QUEUE_STOP_POLLS:-20}"
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Where wait-load.sh, and a verify's verify-checkout.sh, are read at the job's start. The queuing
+# script's own folder is usually a track worktree, which can be removed or edited while the job
+# waits, so a verify names the main checkout's scripts folder at enqueue when that holds
+# verify-checkout.sh (resolve_verify_commit), and the track's worktree is not read after enqueue.
+SUPPORT_DIRECTORY="$SCRIPT_DIRECTORY"
 # A job at the head waits while the 5-minute load is at or above GATE_START_MAX_LOAD, at most
 # GATE_START_MAX_WAIT seconds. The two values are a fixed policy, not a tuning knob.
 GATE_START_MAX_LOAD=10
@@ -580,8 +585,10 @@ fi
 # worktree may be dirty or moved), else the worktree HEAD, and a dirty tree is refused so a
 # forgotten commit is caught. The job runs in the sibling `<main checkout>-verify` linked worktree,
 # prepared by verify-checkout.sh against the main checkout, so a track worktree removed while the
-# verify waits changes nothing. A folder with no readable HEAD (a scratch queue only; the real queue
-# refuses it above) keeps the in-place run and records `unknown`.
+# verify waits changes nothing. A folder with no readable HEAD keeps the in-place run: a folder that
+# is no repository (the real queue refuses it above) or, on the real queue too, an unborn-HEAD
+# worktree of this repository. It records `unknown`, or the HEAD it really tested when one exists at
+# the start of the job.
 verify_sha=''
 verify_repository=''
 verify_checkout=''
@@ -604,8 +611,11 @@ resolve_verify_commit() {
     | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')"
   [ -n "$main_checkout" ] && [ -d "$main_checkout" ] \
     || refuse "the main checkout of $worktree cannot be found (git worktree list --porcelain)"
-  [ -f "$SCRIPT_DIRECTORY/verify-checkout.sh" ] \
-    || refuse "$SCRIPT_DIRECTORY/verify-checkout.sh is missing: it prepares the verify checkout"
+  if [ -f "$main_checkout/scripts/verify-checkout.sh" ]; then
+    SUPPORT_DIRECTORY="$main_checkout/scripts"
+  elif [ ! -f "$SCRIPT_DIRECTORY/verify-checkout.sh" ]; then
+    refuse "verify-checkout.sh is missing in $main_checkout/scripts and in $SCRIPT_DIRECTORY: it prepares the verify checkout"
+  fi
   verify_repository="$main_checkout"
   verify_checkout="$(dirname "$main_checkout")/$(basename "$main_checkout")-verify"
   job_tree="$verify_checkout"
@@ -925,7 +935,7 @@ reset_load_wait() {
 # Returns 0 below the limit, 1 at or above it (load_value is set), 2 unreadable.
 read_gate_load() {
   local output code
-  output="$(bash "$SCRIPT_DIRECTORY/wait-load.sh" "$GATE_START_MAX_LOAD" 0 2>&1)"
+  output="$(bash "$SUPPORT_DIRECTORY/wait-load.sh" "$GATE_START_MAX_LOAD" 0 2>&1)"
   code=$?
   case "$code" in
     0) return 0 ;;
@@ -1032,7 +1042,7 @@ start_verify_job() {
   # One backgrounded subshell, so the prepare step runs in the job's own process group and a signal
   # reaches it as it reaches make. A failed prepare is the job's exit 2, and make never runs.
   (
-    env -u FORCE_COLOR bash "$SCRIPT_DIRECTORY/verify-checkout.sh" \
+    env -u FORCE_COLOR bash "$SUPPORT_DIRECTORY/verify-checkout.sh" \
       "$verify_repository" "$verify_checkout" "$verify_sha" \
       && exec env -u FORCE_COLOR "${scope_arguments[@]}" make -C "$verify_checkout" verify
   ) > "$verify_log" 2>&1 < /dev/null &
@@ -1116,10 +1126,10 @@ keep_verify_log() {
   tail -n "$VERIFY_TAIL_LINES" "$verify_log" 2> /dev/null
 }
 
-case "$command_name" in
-  gate) refuse_dirty_tree ;;
-esac
-[ "$command_name" = gate ] && prepare_gate
+if [ "$command_name" = gate ]; then
+  refuse_dirty_tree
+  prepare_gate
+fi
 started_at="$(iso_stamp)"
 # The START line names the commit the job runs on: a gate was refused unless HEAD starts with its
 # expected head, so the worktree's HEAD is the queued commit; its first 12 characters name it even

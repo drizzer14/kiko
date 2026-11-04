@@ -56,6 +56,10 @@ const NPM_STUB = [
   '',
 ].join('\n');
 
+// A copy of a support script that records which copy ran, so a row sees where the queue read it.
+const supportStub = (name: string, copy: string): string =>
+  ['#!/usr/bin/env bash', `echo "${name} ${copy} $*" >> "$KIKO_STUB_CALLS"`, ''].join('\n');
+
 type Fixture = { root: string; queue: string; environment: NodeJS.ProcessEnv; calls: string };
 
 const children: ChildProcess[] = [];
@@ -155,13 +159,16 @@ const commitFile = (fixture: Fixture, directory: string, path: string): string =
 const headOf = (fixture: Fixture, directory: string): string =>
   git(fixture, directory, 'rev-parse', 'HEAD');
 
+const runQueueFrom = (fixture: Fixture, script: string, ...queueArguments: string[]) =>
+  spawnSync('bash', [script, ...queueArguments], { env: fixture.environment, encoding: 'utf8' });
+
 const runQueue = (fixture: Fixture, ...queueArguments: string[]) =>
-  spawnSync('bash', [SCRIPT, ...queueArguments], { env: fixture.environment, encoding: 'utf8' });
+  runQueueFrom(fixture, SCRIPT, ...queueArguments);
 
 type Waiter = { child: ChildProcess; stdout: () => string; finished: Promise<number | null> };
 
-const startQueue = (fixture: Fixture, ...queueArguments: string[]): Waiter => {
-  const child = spawn('bash', [SCRIPT, ...queueArguments], {
+const startQueueFrom = (fixture: Fixture, script: string, ...queueArguments: string[]): Waiter => {
+  const child = spawn('bash', [script, ...queueArguments], {
     env: fixture.environment,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -177,6 +184,9 @@ const startQueue = (fixture: Fixture, ...queueArguments: string[]): Waiter => {
     finished: new Promise((settle) => child.on('close', (code) => settle(code))),
   };
 };
+
+const startQueue = (fixture: Fixture, ...queueArguments: string[]): Waiter =>
+  startQueueFrom(fixture, SCRIPT, ...queueArguments);
 
 const lockPath = (fixture: Fixture): string => join(fixture.queue, 'lock');
 
@@ -405,6 +415,7 @@ describe('scripts/job-queue.sh a verify checkout', () => {
 
   it.each([
     ['--sha with no value', ['verify', 'WORKTREE', 'one', '--sha']],
+    ['--sha with an empty value', ['verify', 'WORKTREE', 'one', '--sha', '']],
     ['--sha twice', ['verify', 'WORKTREE', 'one', '--sha', 'abc1234', '--sha', 'abc1234']],
     ['--scoped twice', ['verify', 'WORKTREE', 'one', '--scoped', '--scoped']],
     ['an unknown flag', ['verify', 'WORKTREE', 'one', '--fast']],
@@ -437,22 +448,106 @@ describe('scripts/job-queue.sh a verify checkout', () => {
     expect(makeCalls(fixture)).toEqual([]);
   });
 
-  it('refuses at enqueue when the sibling script is missing', () => {
+  it('refuses at enqueue when neither the main checkout nor the queuing folder has the script', () => {
     const fixture = createFixture();
     const repository = createRepository(fixture, 'own');
     const loose = join(fixture.root, 'loose');
     mkdirSync(loose);
     copyFileSync(SCRIPT, join(loose, 'job-queue.sh'));
 
-    const result = spawnSync('bash', [join(loose, 'job-queue.sh'), 'verify', repository, 'one'], {
-      env: fixture.environment,
-      encoding: 'utf8',
-    });
+    const result = runQueueFrom(fixture, join(loose, 'job-queue.sh'), 'verify', repository, 'one');
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('verify-checkout.sh');
     expect(ticketNames(fixture)).toEqual([]);
     expect(makeCalls(fixture)).toEqual([]);
+  });
+});
+
+describe('scripts/job-queue.sh the support scripts of a verify', () => {
+  // A folder holding a queue script beside stub copies of the two scripts a verify reads.
+  const writeSupportFolder = (root: string, name: string, copy: string): string => {
+    const folder = join(root, name);
+    mkdirSync(folder);
+    copyFileSync(SCRIPT, join(folder, 'job-queue.sh'));
+    writeFile(folder, 'verify-checkout.sh', supportStub('prepare', copy));
+    writeFile(folder, 'wait-load.sh', supportStub('wait-load', copy));
+
+    return join(folder, 'job-queue.sh');
+  };
+
+  // `<script> <copy>` for each call of a support script, in call order.
+  const supportCalls = (fixture: Fixture): string[] =>
+    readLines(fixture.calls)
+      .filter((line) => /^(prepare|wait-load) /.test(line))
+      .map((line) => line.split(' ').slice(0, 2).join(' '));
+
+  it('runs when the track that holds the queued script is removed while queued', async () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture, 'own', {
+      'scripts/job-queue.sh': readFileSync(SCRIPT, 'utf8'),
+      'scripts/verify-checkout.sh': supportStub('prepare', 'main'),
+      'scripts/wait-load.sh': supportStub('wait-load', 'main'),
+    });
+    const track = join(fixture.root, 'own-track');
+    git(fixture, repository, 'worktree', 'add', '-q', '--detach', track);
+    holdLock(fixture);
+
+    const waiter = startQueueFrom(
+      fixture,
+      join(track, 'scripts/job-queue.sh'),
+      'verify',
+      track,
+      'one',
+    );
+    await waitFor(() => waiter.stdout().includes('QUEUED one'));
+    rmSync(track, { recursive: true, force: true });
+    rmSync(lockPath(fixture));
+    const code = await waiter.finished;
+
+    expect(code).toBe(0);
+    expect(supportCalls(fixture)).toEqual(['wait-load main', 'prepare main']);
+    expect(waiter.stdout()).not.toContain('load unknown');
+    expect(makeCalls(fixture)).toHaveLength(1);
+  });
+
+  it("prepares and reads the load with the main checkout's copy when the queuing copy differs", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture, 'own', {
+      'scripts/verify-checkout.sh': supportStub('prepare', 'main'),
+      'scripts/wait-load.sh': supportStub('wait-load', 'main'),
+    });
+    const script = writeSupportFolder(fixture.root, 'loose', 'track');
+
+    const result = runQueueFrom(fixture, script, 'verify', repository, 'one');
+
+    expect(result.status).toBe(0);
+    expect(supportCalls(fixture)).toEqual(['wait-load main', 'prepare main']);
+  });
+
+  it("falls back to the queuing script's copy when the main checkout has none", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture, 'own');
+    const script = writeSupportFolder(fixture.root, 'loose', 'track');
+
+    const result = runQueueFrom(fixture, script, 'verify', repository, 'one');
+
+    expect(result.status).toBe(0);
+    expect(supportCalls(fixture)).toEqual(['wait-load track', 'prepare track']);
+  });
+
+  it("keeps reading the queuing script's copy for a kind other than verify", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture, 'own', {
+      'package.json': '{}\n',
+      'scripts/wait-load.sh': supportStub('wait-load', 'main'),
+    });
+    const script = writeSupportFolder(fixture.root, 'loose', 'track');
+
+    const result = runQueueFrom(fixture, script, 'check-all', repository, 'one');
+
+    expect(result.status).toBe(0);
+    expect(supportCalls(fixture)).toEqual(['wait-load track']);
   });
 });
 
@@ -577,16 +672,34 @@ describe('scripts/job-queue.sh the 7th done.log field of a verify', () => {
     expect(doneFields(fixture)[6]).toBe('partial');
   });
 
+  it('runs a repository with an unborn HEAD in place and records unknown', () => {
+    const fixture = createFixture();
+    const unborn = join(fixture.root, 'unborn');
+    mkdirSync(unborn);
+    git(fixture, unborn, 'init', '-q', '-b', 'main');
+
+    const result = runQueue(fixture, 'verify', unborn, 'one');
+
+    expect(result.status).toBe(0);
+    expect(makeCalls(fixture).map((call) => call.directory)).toEqual([unborn]);
+    expect(doneFields(fixture)[5]).toBe('unknown');
+    expect(existsSync(siblingOf(unborn))).toBe(false);
+  });
+
   it('keeps full when the header falls out of the trimmed log', () => {
     const fixture = createFixture();
     const repository = createRepository(fixture, 'own');
+    // More summary lines than the kept summary holds come first, so the header is dropped by the
+    // summary and, with the noise after it, by the kept tail too.
     fixture.environment.KIKO_STUB_OUTPUT = [
+      ...Array.from({ length: 150 }, (_, index) => `Tests: ${index} passed`),
       HEADER,
       ...Array.from({ length: 500 }, (_, index) => `noise ${index}`),
     ].join('\n');
 
     runQueue(fixture, 'verify', repository, 'one');
 
+    expect(verifyLog(fixture, 'one')).not.toContain(HEADER);
     expect(doneFields(fixture)[6]).toBe('full');
   });
 });
