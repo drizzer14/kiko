@@ -1,20 +1,6 @@
 import type { TFunction } from 'i18next';
 import type { CalendarMonth } from '@kiko/dates';
-
-const MONTH_KEYS = [
-  'january',
-  'february',
-  'march',
-  'april',
-  'may',
-  'june',
-  'july',
-  'august',
-  'september',
-  'october',
-  'november',
-  'december',
-] as const;
+import { MONTH_KEYS } from '@kiko/calendar/month-keys';
 
 const JANUARY = 0;
 

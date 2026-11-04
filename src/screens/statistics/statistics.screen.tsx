@@ -139,10 +139,9 @@ const StatisticsScreen: FC = () => {
   const sharedCardStyle = isRowShared ? styles.sharedRowFill : undefined;
   const sharedChartStyle = isRowShared ? styles.chartBody : undefined;
   // This screen sits in its own tab's stack; the stack hands a navigate it
-  // cannot answer (a jump to the Accounts tab) up to the tab navigator.
-  const navigation = useNavigation<NavigationProp<TabParamList>>();
-  // The Tables screen sits in the stack this screen is in, whichever tab's stack that is.
-  const stackNavigation = useNavigation<NavigationProp<StatisticsStackParamList>>();
+  // cannot answer (a jump to the Accounts tab) up to the tab navigator. The Tables screen sits in
+  // the stack this screen is in, whichever tab's stack that is.
+  const navigation = useNavigation<NavigationProp<TabParamList & StatisticsStackParamList>>();
 
   // Re-tapping the Statistics tab while already on it returns this scrolling
   // page to the top (the standard iOS active-tab re-tap), driven off the native
@@ -740,7 +739,7 @@ const StatisticsScreen: FC = () => {
             size="compact"
             icon="tablecells"
             trailingIcon="chevron.right"
-            onPress={() => stackNavigation.navigate('Tables')}
+            onPress={() => navigation.navigate('Tables')}
             testID="statistics-open-tables"
           >
             {t('statistics.openTables')}

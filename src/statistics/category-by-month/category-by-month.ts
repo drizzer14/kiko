@@ -31,10 +31,7 @@ const byTotalThenKey = (left: CategoryByMonthRow, right: CategoryByMonthRow): nu
     return right.total - left.total;
   }
 
-  if (left.key === right.key) {
-    return 0;
-  }
-
+  // Row keys come from a Map, so two rows never share one.
   return left.key < right.key ? -1 : 1;
 };
 

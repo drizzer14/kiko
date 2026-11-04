@@ -371,9 +371,10 @@ describe('the Tables screen opened from the Statistics button', () => {
     await goTo('StatisticsTab');
     await pressTablesButton(rendered);
 
-    expect(subscriptionsOf('StatisticsTab/Statistics').every(({ isPaused }) => isPaused)).toBe(
-      true,
-    );
+    const covered = subscriptionsOf('StatisticsTab/Statistics');
+
+    expect(covered.length).toBeGreaterThan(0);
+    expect(covered.every(({ isPaused }) => isPaused)).toBe(true);
     expect(await readersOfAWrite()).toEqual(['StatisticsTab/Tables']);
   });
 });
