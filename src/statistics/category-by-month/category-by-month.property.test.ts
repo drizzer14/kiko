@@ -26,13 +26,18 @@ import { buildCategoryByMonth } from '.';
 const SEED_SPREAD = 1_000_003;
 const SEEDS = sweep(Array.from({ length: 30 }, (_unused, position) => 1 + position * 3));
 const EDGE_CHANCE = 0.25;
+const REACHED_CHANCE = 0.8;
 
 const DISPLAY = buildCategoryDisplayMap([
   { key: 'groceries', title: 'Groceries', icon: 'cart' },
   { key: 'transport', title: 'Transport', icon: 'car' },
   { key: 'utilities', title: 'Utilities', icon: 'bolt' },
   { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
+  { key: 'refunded', title: 'Refunded', icon: 'arrow.uturn.left' },
 ]);
+// The edited payments' own category, so that a world whose edited payments are all netted out by
+// their returns leaves a category the period nets to nothing.
+const REFUNDED = 'refunded';
 const CATEGORIES = ['groceries', 'transport', 'utilities', null, 'a-deleted-category'];
 
 const MONTHS = calendarMonthsBetween(
@@ -71,7 +76,7 @@ const timeInRandomMonth = (random: Random): number => {
 
 const amountOf = (random: Random): number => 1 + Math.floor(random() * 80_000);
 
-type RowKind = 'expense' | 'income' | 'change' | 'transfer' | 'exchange' | 'loan';
+type RowKind = 'expense' | 'income' | 'change' | 'edited' | 'transfer' | 'exchange' | 'loan';
 
 const KINDS: RowKind[] = [
   'expense',
@@ -81,6 +86,8 @@ const KINDS: RowKind[] = [
   'income',
   'change',
   'change',
+  'edited',
+  'edited',
   'transfer',
   'transfer',
   'exchange',
@@ -132,6 +139,36 @@ const ROWS_OF_KIND: Record<RowKind, RowMaker> = {
           time,
         }),
       ),
+    ];
+  },
+  // A payment whose date was edited apart from its group: the repo moves one row's `time` only,
+  // so the returns keep the group's time. Most returns reach the payment, which nets it out of the
+  // period and not out of a month the returns are not in.
+  edited: (id, random) => {
+    const holdingId = pick(random, ['card', 'cash']);
+    const payment = 20_000 + Math.floor(random() * 50_000);
+    const returned =
+      random() < REACHED_CHANCE
+        ? payment + Math.floor(random() * 5_000)
+        : 1 + Math.floor(random() * 10_000);
+
+    return [
+      transactionRow({
+        id,
+        holdingId,
+        category: REFUNDED,
+        amountMinorUnits: -payment,
+        changeGroupId: `group-${id}`,
+        time: timeInRandomMonth(random),
+      }),
+      transactionRow({
+        id: `${id}-return`,
+        holdingId,
+        category: null,
+        amountMinorUnits: returned,
+        changeGroupId: `group-${id}`,
+        time: timeInRandomMonth(random),
+      }),
     ];
   },
   // A large odd amount, so a pair seldom matches another pair's legs. The debit sits within a
@@ -261,16 +298,17 @@ const checkAgainstDonut = (ledger: SpendingLedger, excludedCategories?: Readonly
   const periodDonut = donutOf(ledger, PERIOD, excludedCategories);
 
   expectMonthsToEqualDonuts(table, monthDonuts);
-  expect(table.rows.map((row) => row.key).sort()).toEqual(
-    periodDonut.map((slice) => slice.key).sort(),
+  // A row that a month spends on and the whole period nets out has no slice, and a total of zero.
+  expect(table.rows.map((row) => row.key)).toEqual(
+    expect.arrayContaining(periodDonut.map((slice) => slice.key)),
   );
 
-  for (const slice of periodDonut) {
-    expect(table.rows.find((row) => row.key === slice.key)?.total).toBe(slice.amount);
+  for (const row of table.rows) {
+    expect(row.total).toBe(periodDonut.find((slice) => slice.key === row.key)?.amount ?? 0);
   }
 
   expect(table.allTotal).toBe(sumOf(periodDonut.map((slice) => slice.amount)));
-  expect(sumOf(table.allCells)).toBe(table.allTotal);
+  expect(sumOf(table.rows.map((row) => row.total))).toBe(table.allTotal);
 };
 
 describe('buildCategoryByMonth against the donut', () => {
@@ -312,6 +350,24 @@ describe('buildCategoryByMonth against the donut', () => {
       }
 
       expect(worlds.some(crossesMonthEdge)).toBe(true);
+    });
+
+    it('edit a payment apart from its group, so that a Total is not the sum of its cells', () => {
+      const ledgers = worlds.map((world) =>
+        buildSpendingLedger(worldInput({ transactions: world.transactions })),
+      );
+      const rowsOf = ledgers.flatMap((ledger) => tableOf(ledger).rows);
+
+      expect(rowsOf.some((row) => row.total !== sumOf(row.cells))).toBe(true);
+    });
+
+    it('draw a month of spending that its whole period nets out, a row with a total of zero', () => {
+      const rowsOf = worlds.flatMap(
+        (world) =>
+          tableOf(buildSpendingLedger(worldInput({ transactions: world.transactions }))).rows,
+      );
+
+      expect(rowsOf.some((row) => row.total === 0 && sumOf(row.cells) > 0)).toBe(true);
     });
 
     it('reach the exclusion rules and the loan entries, so the equality is not between empty sets', () => {

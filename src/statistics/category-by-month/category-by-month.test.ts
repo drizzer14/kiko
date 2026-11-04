@@ -286,6 +286,61 @@ describe('buildCategoryByMonth', () => {
     });
   });
 
+  // The repo's date edit moves one row's `time` only, so a payment can leave its group's month.
+  describe('a payment whose date was edited apart from its group', () => {
+    const payment = transactionRow({
+      id: 'payment',
+      holdingId: 'card',
+      category: 'groceries',
+      amountMinorUnits: -212_00,
+      changeGroupId: 'group',
+      time: FEBRUARY.start,
+    });
+    const returned = transactionRow({
+      id: 'returned',
+      holdingId: 'card',
+      category: null,
+      amountMinorUnits: 20_00,
+      changeGroupId: 'group',
+      time: JANUARY.end,
+    });
+
+    it('keeps the month cell as that month’s donut and the total as the period donut', () => {
+      const { rows, allCells, allTotal } = byCategory(ledgerOf([payment, returned]));
+
+      expect(rows).toEqual([
+        { key: 'groceries', title: 'Groceries', cells: [0, 212_00, 0], total: 192_00 },
+      ]);
+      expect(allCells).toEqual([0, 212_00, 0]);
+      expect(allTotal).toBe(192_00);
+    });
+
+    it('keeps a row whose period nets out, with a total of zero', () => {
+      const { rows, allTotal } = byCategory(
+        ledgerOf([
+          { ...payment, amountMinorUnits: -20_00 },
+          { ...returned, amountMinorUnits: 30_00 },
+        ]),
+      );
+
+      expect(rows.map((row) => [row.key, row.cells, row.total])).toEqual([
+        ['groceries', [0, 20_00, 0], 0],
+      ]);
+      expect(allTotal).toBe(0);
+    });
+
+    it('orders the rows by the period total', () => {
+      const { rows } = byCategory(
+        ledgerOf([payment, returned, expense('t', 'transport', -200_00, MARCH.start)]),
+      );
+
+      expect(rows.map((row) => [row.key, row.total])).toEqual([
+        ['transport', 200_00],
+        ['groceries', 192_00],
+      ]);
+    });
+  });
+
   describe('a held category pick', () => {
     it('drops the excluded category from the rows and from the All cells', () => {
       const { rows, allCells, allTotal } = byCategory(ledgerOf(SPREAD_WORLD), {
