@@ -415,18 +415,18 @@ const rewriteWithPreparedRules = async (
   return rowIds.length;
 };
 
-// The row the user is editing always ends in the category they picked, whatever kind of row it is:
-// the rewrite never touches a balance-setting row or a split-change row, so the category cannot
-// arrive through it. The row follows the new rule (by-hand mark cleared), unless a
-// stronger rule of another category still wins it: then the mark is set, so the pick stays and a
-// later rewrite of that stronger rule cannot take it back. Returns 1 when the category changed,
-// because the rewrite skips a row that already holds the picked category and would not count it.
-const giveSourceRowCategory = async (
+// What the picked category does to the row the user is editing, judged on the rules as they will
+// stand: the name the lists show for it, whether a stronger rule of another category still wins
+// it, and whether its category changes. The write and the preview both ask this, so the row Apply
+// moves is the row the preview counts.
+type SourceRowPlan = { name: string; isOutRanked: boolean; isMoved: boolean };
+
+const planSourceRow = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
   sourceTransactionId: string,
   savedRule: { id: string; category: string },
-): Promise<number> => {
+): Promise<SourceRowPlan | undefined> => {
   const [source] = await databaseTransaction
     .select({
       category: transactions.category,
@@ -444,35 +444,77 @@ const giveSourceRowCategory = async (
     .where(eq(transactions.id, sourceTransactionId));
 
   if (source === undefined) {
-    return 0;
+    return undefined;
   }
 
   // The row may be an exchange leg, whose label names its counterpart holding.
   const { holdingNameById, holdingCurrencyById } = await readHoldingLabels(databaseTransaction);
-  const winner = winningRule(
-    prepared,
-    subjectOfStoredRow({
-      ...source,
-      description: ruleDescriptionOf({
-        transaction: source,
-        holdingName: holdingNameById.get(source.holdingId) ?? '',
-        holdingNameById,
-        holdingCurrencyById,
-        t: i18n.t,
-      }),
-    }),
-  );
-  const isOutRanked =
-    winner !== undefined &&
-    winner.id !== savedRule.id &&
-    !isSameCategory(winner.category, savedRule.category);
+  const name = ruleDescriptionOf({
+    transaction: source,
+    holdingName: holdingNameById.get(source.holdingId) ?? '',
+    holdingNameById,
+    holdingCurrencyById,
+    t: i18n.t,
+  });
+  const winner = winningRule(prepared, subjectOfStoredRow({ ...source, description: name }));
+
+  return {
+    name,
+    isOutRanked:
+      winner !== undefined &&
+      winner.id !== savedRule.id &&
+      !isSameCategory(winner.category, savedRule.category),
+    isMoved: !isSameCategory(source.category, savedRule.category),
+  };
+};
+
+// The row the user is editing always ends in the category they picked, whatever kind of row it is:
+// the rewrite never touches a balance-setting row or a split-change row, so the category cannot
+// arrive through it. The row follows the new rule (by-hand mark cleared), unless a
+// stronger rule of another category still wins it: then the mark is set, so the pick stays and a
+// later rewrite of that stronger rule cannot take it back. Returns 1 when the category changed,
+// because the rewrite skips a row that already holds the picked category and would not count it.
+const giveSourceRowCategory = async (
+  databaseTransaction: typeof database,
+  prepared: PreparedRules,
+  sourceTransactionId: string,
+  savedRule: { id: string; category: string },
+): Promise<number> => {
+  const plan = await planSourceRow(databaseTransaction, prepared, sourceTransactionId, savedRule);
+
+  if (plan === undefined) {
+    return 0;
+  }
 
   await databaseTransaction
     .update(transactions)
-    .set({ category: savedRule.category, categorySetByHand: isOutRanked })
+    .set({ category: savedRule.category, categorySetByHand: plan.isOutRanked })
     .where(eq(transactions.id, sourceTransactionId));
 
-  return isSameCategory(source.category, savedRule.category) ? 0 : 1;
+  return plan.isMoved ? 1 : 0;
+};
+
+// The rows `applyNameRule` changes, seen before it writes: the rewrite's rows, plus the row the
+// user is editing when the rewrite leaves it out (a hand-set, balance-setting or out-ranked row,
+// which Apply moves anyway) and it does not hold the category yet.
+const withSourceRow = async (
+  databaseTransaction: typeof database,
+  prepared: PreparedRules,
+  rewrittenRows: readonly RewrittenRow[],
+  sourceTransactionId: string | null,
+  savedRule: { id: string; category: string },
+): Promise<RewrittenRow[]> => {
+  if (sourceTransactionId === null || rewrittenRows.some((row) => row.id === sourceTransactionId)) {
+    return [...rewrittenRows];
+  }
+
+  const plan = await planSourceRow(databaseTransaction, prepared, sourceTransactionId, savedRule);
+
+  if (plan === undefined || !plan.isMoved) {
+    return [...rewrittenRows];
+  }
+
+  return [...rewrittenRows, { id: sourceTransactionId, name: plan.name }];
 };
 
 export const categoryRulesRepo = {
@@ -551,13 +593,15 @@ export const categoryRulesRepo = {
     }),
   /**
    * What `applyNameRule` would change for this text and kind, judged by the same plan: how many
-   * rows move and the names they hold. Reads only: no rule is stored and no row is touched. A
-   * blank text moves nothing.
+   * rows move and the names they hold, the row being edited (`sourceTransactionId`) included as
+   * Apply moves it. Reads only: no rule is stored and no row is touched. A blank text moves
+   * nothing.
    */
   previewNameRule: async (input: {
     text: string;
     kind: NameRuleKind;
     category: string;
+    sourceTransactionId: string | null;
   }): Promise<{ count: number; names: string[] }> => {
     if (normalizeTransactionName(input.text) === '') {
       return { count: 0, names: [] };
@@ -570,7 +614,13 @@ export const categoryRulesRepo = {
       return { count: 0, names: [] };
     }
 
-    const rewrittenRows = await rowsRewrittenBy(database, prepared, savedRule);
+    const rewrittenRows = await withSourceRow(
+      database,
+      prepared,
+      await rowsRewrittenBy(database, prepared, savedRule),
+      input.sourceTransactionId,
+      { id: row.id, category: input.category },
+    );
 
     return { count: rewrittenRows.length, names: listedNamesOf(rewrittenRows) };
   },

@@ -111,6 +111,7 @@ export const useCategoryOverride = ({
           text: prefixOffer,
           kind: 'nameStartsWith',
           category: pendingOverride.category,
+          sourceTransactionId: pendingOverride.sourceTransactionId,
         }),
       );
     } catch {

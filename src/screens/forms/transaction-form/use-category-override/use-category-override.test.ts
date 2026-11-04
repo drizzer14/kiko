@@ -198,6 +198,7 @@ describe('useCategoryOverride, the prefix offer', () => {
       text: 'ATB',
       kind: 'nameStartsWith',
       category: 'dining',
+      sourceTransactionId: 'created-row',
     });
     expect(result.current.prefixPreview).toEqual(PREVIEW);
     expectNothingWritten();
