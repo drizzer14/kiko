@@ -955,6 +955,20 @@ of a 1.3 build). The output goes in that commit body. If it throws, the decision
 orchestrator reports it. The permanent test on the new build is a round trip of the entry, plus the
 existing tolerance pins.
 
+RUN (2026-11-04, task 2/10 step 1/5, at 18250b0d6, the pre-id tip; PASS, so the decision stands: no bump). The
+scratch test `.superpowers/sdd/1.4-bybit/older-build-restore.test.ts` (gitignored, not in `src/`) builds a file with
+the real writer path (`readDataSnapshot`, `encryptEnvelope`, the current `EXPORT_VERSION`): a `bybit` account, a
+holding with `bybitAsset` metadata, a `source: 'bybit'` row, a walk state text, `secrets.bybitCredentials`, and
+`tables.fundingMatchRows`. It restores the file through the real `importData`, `restoreDataSnapshot` and
+`restoreExportSecrets` on a migrated `node:sqlite`, with only the Keychain module doubled.
+`npx jest .superpowers/sdd/1.4-bybit/older-build-restore.test.ts --maxWorkers=2`: 1 suite passed, 3 tests passed,
+exit 0. Shown: the restore passes with and without the `fundingMatchRows` key; the account, holding, row and walk
+state text are stored as in the file; `isBalanceProviderId('bybit')`, `isSyncedAccount` and `isSyncedHolding` are
+false and `syncJobsFor` gives no job, so the account reads unsynced; `setGenericPassword`,
+`resetGenericPassword` and `getGenericPassword` are never called, so there is no Keychain write; no funding
+table exists after the restore and a re-export carries no `fundingMatchRows` key. Step 5/5 adds that key to the
+new build only; the older build ignores it today, as shown.
+
 ### 6.7 Same-account provider switch (O11)
 
 Traced: `isPickLocked` (`isEdit || accountRowStarted || accounts.length > 0 || isRowUnknown`) gates
