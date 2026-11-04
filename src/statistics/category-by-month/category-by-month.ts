@@ -61,23 +61,14 @@ const breakdownIn = (
   });
 
 /**
- * Every category the table can have a cell for: the donut's slices over the whole period and over
- * each month. The category menu lists these and a pick excludes by them, so a pick removes every
- * row it does not cover. The period's slices alone would miss a category that a month spends on
- * and the whole period nets out (a split change group): it has no period slice, yet a row.
+ * Every category the table can have a cell for: the donut's slices over each month. The category
+ * menu lists these and a pick excludes by them, so a pick removes every row it does not cover.
+ * The whole period's slices add no category: one that nets above zero over the period does so in
+ * some month too. The months do add one the period misses, a category that a month spends on and
+ * the whole period nets out (a split change group).
  */
-export const categorySlicesOfMonths = (sources: CategoryTableSources): CategorySlice[] => {
-  const { months } = sources;
-
-  if (months.length === 0) {
-    return [];
-  }
-
-  return [
-    ...breakdownIn(sources, months[0].start, months[months.length - 1].end),
-    ...months.flatMap((month) => breakdownIn(sources, month.start, month.end)),
-  ];
-};
+export const categorySlicesOfMonths = (sources: CategoryTableSources): CategorySlice[] =>
+  sources.months.flatMap((month) => breakdownIn(sources, month.start, month.end));
 
 /**
  * Spending by category, one column per month. A cell IS the donut's slice for that month: the

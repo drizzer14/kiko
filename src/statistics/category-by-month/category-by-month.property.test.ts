@@ -346,6 +346,20 @@ describe('buildCategoryByMonth against the donut', () => {
       checkAgainstDonut(buildSpendingLedger(worldInput({ transactions, shownHoldings: shown })));
     });
 
+    it.each(SEEDS)('has every period category in the donut of some month, seed %i', (seed) => {
+      const { transactions } = worldOf(seed);
+      const ledger = buildSpendingLedger(worldInput({ transactions, shownHoldings: shown }));
+      const monthKeys = new Set(
+        MONTHS.flatMap((month) =>
+          donutOf(ledger, { from: month.start, to: month.end }).map((slice) => slice.key),
+        ),
+      );
+
+      for (const slice of donutOf(ledger, PERIOD)) {
+        expect(monthKeys.has(slice.key)).toBe(true);
+      }
+    });
+
     it.each(SEEDS)('equals the donut with a held category pick, seed %i', (seed) => {
       const { transactions } = worldOf(seed);
       const ledger = buildSpendingLedger(worldInput({ transactions, shownHoldings: shown }));
