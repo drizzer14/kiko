@@ -226,6 +226,14 @@ describe('scripts/checks/kill-guard.sh heavy-job deny (hook entry)', () => {
     expect(reason).toContain('scripts/job-queue.sh');
   });
 
+  it('names the --sha and --scoped options of a queued verify', () => {
+    const result = run('make verify');
+    const reason: string = JSON.parse(result.stdout.trim()).hookSpecificOutput
+      .permissionDecisionReason;
+
+    expect(reason).toContain('a verify also takes --sha <commit> and --scoped');
+  });
+
   it('allows a queued verify', () => {
     const result = run('bash scripts/job-queue.sh verify /tmp/worktree label');
 
