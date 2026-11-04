@@ -141,8 +141,8 @@ new component can land between reviews of this skill:
 - **DataTable** (`src/design-system/components/data-table/`) — a grid of money amounts: props
   `{ columns, rows, caption, topContent?, emptyContent?, initialColumnIndex?, testID? }`: strings
   and display flags, plus two `ReactNode` props (the caller formats every amount). A fixed first
-  column (at most 40% of the table's measured width, a long label wraps in full), one vertical `ScrollView` whose child 0 is one `View` holding
-  `topContent` and the caption (both scroll away), the header row (child 1, sticky through
+  column (at most 40% of the table's measured width, a long label wraps in full), one vertical
+  `ScrollView` whose child 0 is one `View` holding `topContent` and the caption (both scroll away), the header row (child 1, sticky through
   `stickyHeaderIndices={[1]}`, opaque `surface` ground), then the body. `stickyHeaderIndices`
   moves the sticky child's own style to a wrapper, so that child must be a plain `View` that holds
   the row. `emptyContent` replaces the header and the body: no sticky index, `topContent` stays
