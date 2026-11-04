@@ -17,11 +17,11 @@ fi
 
 # The credential-bearing clients, listed once so checks 1 and 1b always agree on
 # the marker set: a marker added here reaches both.
-credential_files="$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'|(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')"
+credential_files="$(grep -rlE "'(X-Token|X-MBX-APIKEY|X-BAPI-API-KEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'|(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')"
 
 # --- 1. Every credential-bearing host must be pinned (H3) ---------------------
-# A client that sends a credential header (X-Token, X-MBX-APIKEY, Authorization,
-# or an api-key-ish header) or a credential query parameter (the bare word
+# A client that sends a credential header (X-Token, X-MBX-APIKEY, X-BAPI-API-KEY,
+# Authorization, or an api-key-ish header) or a credential query parameter (the bare word
 # api_token, quoted or not: Biome unquotes an object key, and a template query
 # string never quotes it) takes its base URL from `@env` — that is the
 # project's convention (kiko-code-style, "Externalize hardcoded config"). Resolve
@@ -107,7 +107,7 @@ fi
 # object, headers included. So an api_token query parameter lands in the stored
 # URL (a response the server lets a cache keep, `no-cache, private` among them,
 # writes the key to disk), and a credential header (X-Token, X-MBX-APIKEY,
-# Authorization, an api-key header) lands in the stored request. Pinning helps
+# X-BAPI-API-KEY, Authorization, an api-key header) lands in the stored request. Pinning helps
 # with neither. Every credential client (check 1's marker set) must send the
 # `Cache-Control: no-store` request header, as an object key
 # (`'Cache-Control': 'no-store'`) or a Headers call
