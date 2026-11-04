@@ -39,7 +39,7 @@ import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldow
 import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 
 const order = payOrder;
-const WARN_TAG_STOP = '[binance sync] history window stopped';
+const WARN_TAG_STOP = '[exchange sync] history window stopped';
 const FLOOR = Date.UTC(2025, 3, 20);
 
 // `cooldownUntilByAccount` is module-level and has no exported reset, so every case
@@ -1435,7 +1435,7 @@ describe('the pending overlap days of a walk', () => {
       await runOver(state, []);
 
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn).toHaveBeenCalledWith('[binance sync] pending overlap ranges unreadable', {
+      expect(warn).toHaveBeenCalledWith('[exchange sync] pending overlap ranges unreadable', {
         name: 'BinanceWalkStop',
         code: 'pending-malformed',
       });
@@ -2000,7 +2000,7 @@ describe('the pending overlap days of a walk', () => {
 
         expect(pointQueryStarts(deps)).toEqual(points.map((point) => point.start));
         expect(warn.mock.calls).toContainEqual([
-          '[binance sync] point cursor unreadable',
+          '[exchange sync] point cursor unreadable',
           { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
         ]);
       });
@@ -2019,7 +2019,7 @@ describe('the pending overlap days of a walk', () => {
         expect(written[0]).toBe(Number.MIN_SAFE_INTEGER);
         expect(typeof state.pointCursor).toBe('number');
         expect(
-          warn.mock.calls.filter(([tag]) => tag === '[binance sync] point cursor unreadable'),
+          warn.mock.calls.filter(([tag]) => tag === '[exchange sync] point cursor unreadable'),
         ).toHaveLength(1);
       });
     });
@@ -2617,7 +2617,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
 
     expect(dayStartsOf(deps)).toEqual(days.map((day) => day.start));
     expect(warn.mock.calls).toContainEqual([
-      '[binance sync] range cursor unreadable',
+      '[exchange sync] range cursor unreadable',
       { name: 'BinanceWalkStop', code: 'range-cursor-malformed' },
     ]);
     expect(writesTo(deps, 'rangeCursor')[0]).toBe(Number.MIN_SAFE_INTEGER);
@@ -2669,7 +2669,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
     await sync(deps);
 
     expect(warn.mock.calls).toContainEqual([
-      '[binance sync] span hints unreadable',
+      '[exchange sync] span hints unreadable',
       { name: 'BinanceWalkStop', code: 'span-hints-malformed' },
     ]);
     expectWalkMarkWritten(deps, WALK_ACCOUNT_ID, 'pay', 'spanHints', {

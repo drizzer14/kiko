@@ -685,8 +685,8 @@ describe('commitSettledSpan', () => {
     await commit('pending', { rows: [], codes: ['same', 'same', 'other'], owed: [SPAN] });
 
     expect(warn.mock.calls).toEqual([
-      ['[binance sync] history window stopped', { name: 'BinanceWalkStop', code: 'same' }],
-      ['[binance sync] history window stopped', { name: 'BinanceWalkStop', code: 'other' }],
+      ['[exchange sync] history window stopped', { name: 'BinanceWalkStop', code: 'same' }],
+      ['[exchange sync] history window stopped', { name: 'BinanceWalkStop', code: 'other' }],
     ]);
   });
 
@@ -783,7 +783,7 @@ describe('commitSettledSpan', () => {
       await commitOwing({ rows: [], codes: ['owed-only'], owed: [point] });
 
       expect(warn.mock.calls).toEqual([
-        ['[binance sync] history window stopped', { name: 'BinanceWalkStop', code: 'owed-only' }],
+        ['[exchange sync] history window stopped', { name: 'BinanceWalkStop', code: 'owed-only' }],
       ]);
     });
 

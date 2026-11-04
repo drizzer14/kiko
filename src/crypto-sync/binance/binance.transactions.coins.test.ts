@@ -22,7 +22,7 @@ import { createBinanceHistoryRun } from './binance.history-budget';
 
 const NOW = 1_704_326_400_000; // 2024-01-04T00:00:00Z
 const ACCOUNT_ID = 'acc-1';
-const STOP_TAG = '[binance sync] history window stopped';
+const STOP_TAG = '[exchange sync] history window stopped';
 
 const spotHolding = { id: 'h-spot', metadata: { binanceAsset: 'BTC' } } as unknown as HoldingRow;
 const fundingHolding = {
