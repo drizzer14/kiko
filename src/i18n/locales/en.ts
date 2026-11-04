@@ -155,6 +155,21 @@ export const en = {
       november: 'November',
       december: 'December',
     },
+    // Three letters, for a table column header.
+    monthShort: {
+      january: 'Jan',
+      february: 'Feb',
+      march: 'Mar',
+      april: 'Apr',
+      may: 'May',
+      june: 'Jun',
+      july: 'Jul',
+      august: 'Aug',
+      september: 'Sep',
+      october: 'Oct',
+      november: 'Nov',
+      december: 'Dec',
+    },
     weekday: {
       sun: 'Sun',
       mon: 'Mon',
@@ -1281,6 +1296,7 @@ export const en = {
     filterCategoriesSheetTitle: 'Categories',
     netWorthOverTime: 'Net Worth Over Time',
     noSpendingToShow: 'No spending to show',
+    openTables: 'Monthly tables',
     spendingTrendByCategory: 'Spending Trend by Category',
     title: 'Statistics',
     // The spending-trend chart's filter: a single "Filters" button (its label
@@ -1316,6 +1332,26 @@ export const en = {
         top: 'Top {{count}} by {{measure}}',
       },
     },
+  },
+  // The Tables screen: the monthly tables behind the Statistics charts.
+  tables: {
+    all: 'All',
+    average: 'Average',
+    category: {
+      caption: "Spending by category in {{currency}}, in whole units, at today's rate.",
+      partialMonth: 'The latest month is not over yet, so the average leaves it out.',
+    },
+    empty: {
+      title: 'No spending in this period',
+      message: 'Pick another period, or other accounts or categories, to see a table.',
+    },
+    period: {
+      label: 'Period',
+      last12: 'Last 12 months',
+      sheetTitle: 'Period',
+    },
+    title: 'Tables',
+    total: 'Total',
   },
   // The Home and Holding-detail rows both render the same fallback label
   // (src/transactions/default-description/default-description.ts) for a transaction with no

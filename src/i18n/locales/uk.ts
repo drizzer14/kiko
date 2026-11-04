@@ -136,6 +136,20 @@ export const uk: typeof en = {
       november: 'Листопад',
       december: 'Грудень',
     },
+    monthShort: {
+      january: 'Січ',
+      february: 'Лют',
+      march: 'Бер',
+      april: 'Кві',
+      may: 'Тра',
+      june: 'Чер',
+      july: 'Лип',
+      august: 'Сер',
+      september: 'Вер',
+      october: 'Жов',
+      november: 'Лис',
+      december: 'Гру',
+    },
     weekday: {
       sun: 'Нд',
       mon: 'Пн',
@@ -1119,6 +1133,7 @@ export const uk: typeof en = {
     filterCategoriesSheetTitle: 'Категорії',
     netWorthOverTime: 'Капітал з часом',
     noSpendingToShow: 'Витрат ще немає',
+    openTables: 'Таблиці за місяцями',
     spendingTrendByCategory: 'Тренд витрат за категоріями',
     title: 'Статистика',
     trendFilter: {
@@ -1151,6 +1166,25 @@ export const uk: typeof en = {
         top: 'Топ {{count}} за {{measure}}',
       },
     },
+  },
+  tables: {
+    all: 'Усього',
+    average: 'Середнє',
+    category: {
+      caption: 'Витрати за категоріями в {{currency}}, у цілих одиницях, за сьогоднішнім курсом.',
+      partialMonth: 'Останній місяць ще не завершився, тому середнє його не враховує.',
+    },
+    empty: {
+      title: 'У цьому періоді витрат немає',
+      message: 'Оберіть інший період, інші рахунки чи категорії, щоб побачити таблицю.',
+    },
+    period: {
+      label: 'Період',
+      last12: 'Останні 12 місяців',
+      sheetTitle: 'Період',
+    },
+    title: 'Таблиці',
+    total: 'Разом',
   },
   transactions: {
     defaultDescriptionExpense: 'Витрата: {{name}}',
