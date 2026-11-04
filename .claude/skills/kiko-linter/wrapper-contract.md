@@ -278,7 +278,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   FIX also names `scripts/ff-main.sh`. The way out: do the real merge in a separate detached
   worktree, have the coordinator queue `scripts/job-queue.sh verify` on the merge commit, then
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
-  sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
+  sha to be exit 0 and its 7th field absent or `full`; read its header; a `harness/kiko` change also needs a plugin.json
   version strictly above main's, and no commit may lower, remove, or make unreadable that
   version while main has a readable one, user ruling 2026-10-18). After the move, when main
   has a `patches/` folder, it runs main's own `node_modules/.bin/patch-package --error-on-fail`
@@ -520,8 +520,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   itself). A dry run (`make -n verify`), `make mutable`, `mutation.sh --list`, `security.sh
   <file>`, Semgrep on a subfolder or file, a jest run that names a test file or a lone
   `--testPathPattern` filter, and `--listTests|--help|--version|--showConfig` stay allowed.
-  The way out is the queue: `bash scripts/job-queue.sh verify|check-all|security <worktree>
-  <label>` or `gate <worktree> <label> <base> <head>`, run in the background and awaited on its
+  The way out is the queue: `bash scripts/job-queue.sh verify <worktree> <label> [--sha
+  <commit>] [--scoped]`, `check-all|security <worktree> <label>` or `gate <worktree> <label> <base> <head>`, run in the background and awaited on its
   exit code; a role agent asks the coordinator. A queued command is noted as `rules.queued`
   (`noteQueuedJob`, `isQueueScript`). Rows: `__tests__/kill-guard-heavy-jobs.test.ts`,
   `-jest-runs`, `-jest-options`, `-queue-edges`. Known limits (all allowed; the docs never

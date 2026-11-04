@@ -340,7 +340,9 @@ never raise a timeout. See memory `check-security-timeout-under-load`.
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full
 contract, including the label charset). The COORDINATOR queues (harness-workflow, "Run the FULL
 jest"); an orchestrator reports READY FOR VERIFY and ops queues only when the coordinator's
-brief says so. Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
+brief says so. Run `scripts/job-queue.sh verify <worktree> <label> [--sha <commit>] [--scoped]`
+(`--scoped` on a track verify, no flag on a main-bound one),
+`scripts/job-queue.sh check-all|security <worktree> <label>` or
 `scripts/job-queue.sh harness-verify <harness worktree> <label>` (runs `npm test` then
 `check:all` in a harness-repo worktree) or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
@@ -373,15 +375,18 @@ job may have run fully). At handover or close run `scripts/job-queue.sh status`,
 hand over your own tickets. Keep
 `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm ->
 bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all
-or verify reads the worktree throughout the run; never queue one while a developer still edits that
-tree, and keep that tree untouched until DONE. done.log's head field is the full 40-character HEAD
-only when the tree (`tree_is_clean` in `scripts/job-queue.sh`: untracked files counted) is
+or gate reads the worktree throughout the run; never queue one while a developer still edits that
+tree, and keep that tree untouched until DONE. A verify reads the commit named at enqueue in the
+`-verify` checkout (a listed worktree: pruning it costs one `npm ci`), so its track goes on.
+done.log's head field of a verify is that full sha, kept while the checkout is clean at the end
+(field 7 is `full` or `partial`; `ff-main.sh` needs absent or `full`). For the other kinds it is
+the full 40-character HEAD only when the tree (`tree_is_clean` in `scripts/job-queue.sh`: untracked files counted) is
 clean at START and again at the end and HEAD is
 unchanged, else `unknown`; an edit reverted before the end is not seen, and ignored files (`.env`,
 `node_modules`) are not counted.
 
-`verify` and `gate` refuse a tree with any change (untracked included) with exit 3, at enqueue and
-again at START; the message names the first 3 paths. Commit the change (for example
+`gate` refuses a tree with any change (untracked included) with exit 3, at enqueue and again at
+START; `verify` does so at enqueue only, and not with `--sha`; the message names the first 3 paths. Commit the change (for example
 `ios/Podfile.lock` after a pod install) or copy the files aside; never stash. `check-all` and
 `security` still run on a dirty tree and record `unknown`. A tree the job itself changed records
 `unknown` plus a `NOTE <label>: the tree changed during the job: <path>` line. A verify prints no
