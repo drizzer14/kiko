@@ -680,7 +680,10 @@ verified usage, not dead weight:
   `--findRelatedTests`; every other file under `__tests__/` must not be, so a
   Semgrep-spawning harness test never joins a Stryker run or its dry run. The
   test asserts the related set EQUALS this list, so a stale entry fails too.
-  Two entries, each a real import of app source:
+  Three entries, each a real import of app source:
+  `__tests__/light-palette-source.test.ts` pins `darkTheme`, `lightTheme` and the palette
+  sets from `@kiko/design-system/theme` and `@kiko/design-system/palette` to
+  `docs/design/light-palette/palette.json`, so it must import them; and
   `__tests__/App.test.tsx` renders the real root component (`import App from
   '../App'`), imports `@kiko/reminders/native` and
   `@kiko/navigation/navigation-ref`, and mocks and requires the actual

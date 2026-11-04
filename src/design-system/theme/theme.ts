@@ -14,7 +14,14 @@
 
 import { StyleSheet } from 'react-native';
 
-import { chartSeriesDark, entityColorsDark } from '../palette';
+import {
+  type ColorScheme,
+  categoryColorsLight,
+  chartSeriesDark,
+  chartSeriesLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '../palette';
 
 const spacing = (multiplier: number) => multiplier * 4;
 // `full` is a capsule/pill sentinel, not a fourth point value in the sm/md/lg
@@ -74,7 +81,13 @@ const layout = {
   hairline: StyleSheet.hairlineWidth,
 } as const;
 
+// The glyph on a tile too light for the white `onAccent` glyph, shared by both themes. A fixed
+// black, not the `background` token: on light that token is a pale gray and would put a pale
+// glyph on a pale tile. In dark it is the same black the tile code read from `background`.
+const glyphOnLightTile = '#000000';
+
 export const darkTheme = {
+  colorScheme: 'dark' as ColorScheme,
   colors: {
     background: '#000000', // systemBackground (dark)
     // `#111112` (rgb 17,17,18) — DARKENED from the original `#1C1C1E`
@@ -218,7 +231,11 @@ export const darkTheme = {
     // `scrim`.
     scrimFallback: 'rgba(0,0,0,0.55)',
     entityColors: entityColorsDark,
+    // Dark has one swatch set for accounts, holdings and categories alike, so the category
+    // set is the entity set; light splits them (see `categoryColorsLight`).
+    categoryColors: entityColorsDark,
     chartSeries: chartSeriesDark,
+    glyphOnLightTile,
   },
   spacing,
   radii,
@@ -226,3 +243,42 @@ export const darkTheme = {
   iconSizes,
   layout,
 } as const;
+
+// The light theme. Every value comes from docs/design/light-palette/palette.json (pinned by
+// __tests__/light-palette-source.test.ts); the non-color scales are the dark theme's own objects.
+// `satisfies` the dark key shape, so a token added to dark and missed here fails to type-check.
+const lightColors = {
+  background: '#F2F2F7',
+  surface: '#FFFFFF',
+  surfaceTranslucent: 'rgba(255,255,255,0.60)',
+  surfaceTranslucentStrong: 'rgba(255,255,255,0.80)',
+  surfaceWashStrong: 'rgba(255,255,255,0.38)',
+  surfaceHigh: '#E5E5EA',
+  sheetBackground: '#F2F2F7',
+  segmentSelected: '#FFFFFF',
+  textPrimary: '#000000',
+  textSecondary: 'rgba(60,60,67,0.78)',
+  accent: '#0066E6',
+  onAccent: '#FFFFFF',
+  positive: '#0F7A4A',
+  negative: '#C20019',
+  negativeSubtle: 'rgba(194,0,25,0.12)',
+  neutralSubtle: 'rgba(118,118,128,0.12)',
+  border: '#C6C6C8',
+  scrim: 'rgba(0,0,0,0.3)',
+  scrimFallback: 'rgba(0,0,0,0.4)',
+  entityColors: entityColorsLight,
+  categoryColors: categoryColorsLight,
+  chartSeries: chartSeriesLight,
+  glyphOnLightTile,
+} as const satisfies Record<keyof typeof darkTheme.colors, unknown>;
+
+export const lightTheme = {
+  colorScheme: 'light' as ColorScheme,
+  colors: lightColors,
+  spacing,
+  radii,
+  typography,
+  iconSizes,
+  layout,
+} as const satisfies Record<keyof typeof darkTheme, unknown>;

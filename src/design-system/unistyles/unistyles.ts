@@ -1,10 +1,11 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-import { darkTheme } from '../theme';
+import { darkTheme, lightTheme } from '../theme';
 
-// The app is dark-only: a single dark theme is registered, so there is no
-// runtime theme switching and no `adaptiveThemes`. `initialTheme` pins it.
-const themes = { dark: darkTheme };
+// Dark first: the Unistyles jest mock reads the first registered theme, so this order keeps every
+// dark-pinned test on dark. Light is registered but unreachable: no `adaptiveThemes`, no runtime
+// switch, and `initialTheme` pins dark.
+const themes = { dark: darkTheme, light: lightTheme };
 
 type AppThemes = typeof themes;
 
