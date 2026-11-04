@@ -305,6 +305,79 @@ const accountRow = (id: string, name: string, kind: string) => ({
   bankId: null,
 });
 
+// The Tables screen reads the same sources as Statistics. Pressing the Statistics button covers
+// that Statistics beside or under it, and a covered screen must not read a write.
+describe('the Tables screen opened from the Statistics button', () => {
+  beforeEach(() => {
+    mockSubscriptions.clear();
+    mockReads = [];
+    mockRows = { accounts: [accountRow('cash', 'Cash', 'cash')] };
+    mockLayoutMode = 'columns';
+  });
+
+  const pressTablesButton = async (rendered: Awaited<ReturnType<typeof walkTabs>>) => {
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId('statistics-open-tables'));
+    });
+  };
+
+  const subscriptionsOf = (instance: string): Subscription[] =>
+    [...mockSubscriptions.values()].filter((subscription) => subscription.instance === instance);
+
+  const readersOfAWrite = async (): Promise<string[]> => {
+    mockReads = [];
+
+    await act(async () => {
+      mockWrite('transactions');
+    });
+
+    return [...new Set(mockReads.map(({ instance }) => instance))].sort();
+  };
+
+  it('on the Home tab with two panes, mounts Statistics again under Tables, paused, and a later write reads from Home and Tables only', async () => {
+    const rendered = await walkTabs();
+
+    mockReads = [];
+    await pressTablesButton(rendered);
+
+    expect(subscriptionsOf('HomeTab/Tables').length).toBeGreaterThan(0);
+    expect(mockReads.some(({ instance }) => instance === 'HomeTab/Statistics')).toBe(true);
+    expect(subscriptionsOf('HomeTab/Statistics').length).toBeGreaterThan(0);
+    expect(subscriptionsOf('HomeTab/Statistics').every(({ isPaused }) => isPaused)).toBe(true);
+    expect(await readersOfAWrite()).toEqual(['HomeTab/Home', 'HomeTab/Tables']);
+  });
+
+  it('on the Statistics tab, keeps Statistics reading beside Tables', async () => {
+    const rendered = await walkTabs();
+
+    await goTo('StatisticsTab');
+
+    const kept = subscriptionsOf('StatisticsTab/Statistics');
+
+    await pressTablesButton(rendered);
+
+    expect(kept.length).toBeGreaterThan(0);
+    expect(subscriptionsOf('StatisticsTab/Statistics')).toEqual(kept);
+    expect(subscriptionsOf('StatisticsTab/Statistics').some(({ isPaused }) => isPaused)).toBe(
+      false,
+    );
+    expect(await readersOfAWrite()).toEqual(['StatisticsTab/Statistics', 'StatisticsTab/Tables']);
+  });
+
+  it('with one pane, the covered Statistics reads nothing', async () => {
+    mockLayoutMode = 'single';
+    const rendered = await walkTabs();
+
+    await goTo('StatisticsTab');
+    await pressTablesButton(rendered);
+
+    expect(subscriptionsOf('StatisticsTab/Statistics').every(({ isPaused }) => isPaused)).toBe(
+      true,
+    );
+    expect(await readersOfAWrite()).toEqual(['StatisticsTab/Tables']);
+  });
+});
+
 const accountsRoutes = (): StackRoute[] => {
   const tab = navigationRef.getRootState()?.routes.find(({ name }) => name === 'AccountsTab');
 

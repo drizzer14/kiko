@@ -110,6 +110,11 @@ describe('StatisticsStack', () => {
     expect(statistics?.props.options).toEqual({ title: 'statistics.title' });
   });
 
+  it('registers the Tables route and titles it with the translated tables.title', () => {
+    expect(screenNames()).toContain('Tables');
+    expect(screenOf('Tables')?.props.options).toEqual({ title: 'tables.title' });
+  });
+
   it('titles the Transaction form with the translated add title', () => {
     expect(screenOf('TransactionForm')?.props.options).toEqual({
       title: 'forms.transaction.addTitle',

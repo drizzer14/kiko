@@ -135,6 +135,20 @@ describe('HomeStack', () => {
     });
   });
 
+  it('registers the Tables route with a visible header, the shared large-title options and its title', () => {
+    expect(optionsOf('Tables', undefined)).toEqual({
+      headerShown: true,
+      ...sharedLargeTitleOptions,
+      title: 'Tables',
+    });
+  });
+
+  it('keeps the Tables header on a merged Home', () => {
+    mockMergedHome.isMerged = true;
+
+    expect(optionsOf('Tables', undefined)).toMatchObject({ headerShown: true, title: 'Tables' });
+  });
+
   it('leaves the Home root without options of its own', () => {
     expect(optionsOf('Home', undefined)).toBeUndefined();
   });
