@@ -428,6 +428,20 @@ describe('the choices a help step names', () => {
   );
 
   it.each([
+    ['en', enValues, /by 1\b/, 'first month with data', 'differ slightly'],
+    ['uk', ukValues, /на 1\b/, 'перший місяць із даними', 'трохи відрізнятися'],
+  ] as const)(
+    'claims in %s no bound on how far a table total can sit from its cells, and names the first month the average leaves out',
+    (_language, values, bound, firstMonth, difference) => {
+      const step = stepOf(values, 'viewStatistics', 9);
+
+      expect(step).not.toMatch(bound);
+      expect(step).toContain(firstMonth);
+      expect(step).toContain(difference);
+    },
+  );
+
+  it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],
     ['uk', ukValues, /лише/i, 'Відсотки за кредитом'],
   ] as const)(
