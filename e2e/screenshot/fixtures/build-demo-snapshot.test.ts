@@ -10,6 +10,11 @@ import {
 } from '@kiko/categories/category-rules';
 import maybe, { foldMap } from 'fnts/maybe';
 import { defaultDateRange } from '@kiko/dates';
+import {
+  SEEDED_CATEGORIES,
+  LOAN_INTEREST_CATEGORY,
+  TRAVEL_CATEGORY,
+} from '@kiko/db/__fixtures__/seeded-categories';
 import { isCrypto } from '@kiko/currency/currency';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
@@ -20,7 +25,6 @@ import { bankCatalog, isBankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catal
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
 import { parseUntrackedCounterpart } from '@kiko/transactions/untracked-counterpart';
 import { draftReferences, isTemplateDraft } from '@kiko/transaction-templates/draft';
-import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { buildScreenshotDataset } from '../seed/screenshot-seed';
 
@@ -275,13 +279,14 @@ describe('buildDemoSnapshot', () => {
     expect(bondIsins.every((isin) => isin !== undefined && registerIsins.has(isin))).toBe(true);
   });
 
-  // A real install seeds loan_interest by its own migration; the import
-  // replaces every category, so the snapshot must carry it for the linked
-  // loan payment's interest to file under a named category.
-  it('carries the 10 default categories plus loan interest, and an empty syncState', () => {
+  // A real install seeds loan_interest and travel by their own migrations; the import
+  // replaces every category, so the snapshot must carry them for the linked
+  // loan payment's interest and the hotel and airline codes to file under a named category.
+  it('carries the 10 default categories plus loan interest and travel, and an empty syncState', () => {
     expect(snapshot.categories.map((category) => category.key)).toEqual([
       ...SEEDED_CATEGORIES.map((category) => category.key),
       LOAN_INTEREST_CATEGORY.key,
+      TRAVEL_CATEGORY.key,
     ]);
     expect(snapshot.syncState).toEqual([]);
   });
@@ -388,6 +393,17 @@ describe('buildDemoSnapshot', () => {
 
     expect(loanInterest?.color).toBe('#5E5CE6');
     expect(loanInterest?.sortOrder).toBe(SEEDED_CATEGORIES.length);
+  });
+
+  it('colors Travel the way its own migration does', () => {
+    const travel = snapshot.categories.find((category) => category.key === TRAVEL_CATEGORY.key);
+
+    expect(travel?.color).toBe('#40C8E0');
+    expect(travel?.sortOrder).toBe(SEEDED_CATEGORIES.length + 1);
+  });
+
+  it('marks the file as one this build wrote', () => {
+    expect(snapshot.settings[0].mccCategoriesBackfilled).toBe(true);
   });
 
   it('carries one settings row with the dataset language, UAH, and the lock OFF', () => {

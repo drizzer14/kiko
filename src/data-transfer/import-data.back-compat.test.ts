@@ -32,6 +32,9 @@ jest.mock('@kiko/loans/use-loan-auto-link', () => ({
 jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
   recostStoredLots: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('@kiko/categories/category-rules-repo/backfill-mcc-categories', () => ({
+  backfillMccCategories: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
   replanRestoredReminders: jest.fn().mockResolvedValue(undefined),
 }));
@@ -42,11 +45,20 @@ import { DatabaseSync } from 'node:sqlite';
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
+import { utf8Decode } from './utf8/utf8';
 import { importData } from './import-data';
-import { encryptEnvelope } from './crypto/envelope';
-import { encodeBytesToBase64 } from './base64/base64';
 import { generateExportKey } from './crypto/generate-key';
 import { readDataSnapshot } from './snapshot/read-snapshot';
+import { decryptEnvelope, encryptEnvelope } from './crypto/envelope';
+import { decodeBase64ToBytes, encodeBytesToBase64 } from './base64/base64';
+
+type CategoryRow = {
+  key: string;
+  title: string;
+  icon: string;
+  color: string | null;
+  sortOrder: number;
+};
 
 const DEMO_FIXTURES = join(__dirname, '..', '..', 'e2e', 'screenshot', 'fixtures');
 
@@ -75,6 +87,7 @@ const EARLIER_BUILD_SETTINGS_COLUMNS = [
   'quoteQuota',
   'lotsRecosted',
   'importTimesRezoned',
+  'mccCategoriesBackfilled',
 ];
 
 // A statement-import row an earlier build stored with the bank's wall clock
@@ -421,6 +434,41 @@ describe('importing a version 1 file an earlier build wrote', () => {
       expect(new Set(Object.values(accountCurrencies())).size).toBeGreaterThan(1);
       expect(summary.unrestoredCredentials).toEqual([]);
       expect(importTimesRezoned()).toBe(1);
+    });
+
+    it('a real 1.1 file gains Travel and restores its own rows', async () => {
+      const fileText = readFileSync(join(DEMO_FIXTURES, 'kiko-demo-en-1.1.kiko'), 'utf8');
+      const keyBase64 = readFileSync(join(DEMO_FIXTURES, 'kiko-demo.key'), 'utf8').trim();
+      const fileCategories = (
+        JSON.parse(
+          utf8Decode(decryptEnvelope(JSON.parse(fileText), decodeBase64ToBytes(keyBase64))),
+        ) as { tables: { categories: CategoryRow[] } }
+      ).tables.categories;
+      mockReadFile.mockResolvedValue(fileText);
+      mockDatabase = openDatabase();
+
+      await importData({ fileUri: '/tmp/demo.kiko', keyBase64 });
+
+      const stored = mockDatabase
+        .prepare('SELECT key, title, icon, color, sort_order AS sortOrder FROM categories')
+        .all() as CategoryRow[];
+      const storedByKey = new Map(stored.map((row) => [row.key, row]));
+      const highestSortOrder = Math.max(
+        ...stored.filter((row) => row.key !== 'travel').map((row) => row.sortOrder),
+      );
+
+      expect(fileCategories.some((row) => row.key === 'travel')).toBe(false);
+      expect(storedByKey.get('travel')).toEqual({
+        key: 'travel',
+        title: 'Travel',
+        icon: 'airplane',
+        color: '#40C8E0',
+        sortOrder: highestSortOrder + 1,
+      });
+
+      for (const row of fileCategories) {
+        expect(storedByKey.get(row.key)).toEqual(row);
+      }
     });
   });
 

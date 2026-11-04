@@ -6,6 +6,7 @@ import {
   id,
   categoryRules,
   holdings,
+  categories,
   transactions,
   chunkRows,
   IN_CLAUSE_CHUNK_SIZE,
@@ -40,7 +41,7 @@ export const readAllRulesDatabaseTransaction = (
   databaseTransaction: typeof database,
 ): Promise<CategoryRuleRow[]> => databaseTransaction.select().from(categoryRules);
 
-const candidateColumns = {
+export const candidateColumns = {
   id: transactions.id,
   holdingId: transactions.holdingId,
   holdingName: holdings.name,
@@ -56,6 +57,12 @@ const candidateColumns = {
   setsBalance: transactions.setsBalance,
   changeGroupId: transactions.changeGroupId,
 };
+
+// `hasNoRealCategory` in SQL, narrowing only: `lower()` folds ASCII alone, so a key in another
+// case is read as a superset and the pure function rejects it. The outer parentheses are part of
+// the fragment: `and()` and `not()` do not wrap a raw fragment, so without them an `or` chain
+// would bind to the term beside it.
+export const noRealCategorySql = sql`(${transactions.category} IS NULL OR lower(${transactions.category}) = 'other' OR lower(${transactions.category}) NOT IN (SELECT lower(${categories.key}) FROM ${categories}))`;
 
 // The two candidate reads below filter on nothing but the description list or the id keyset:
 // `planRuleRewrite` leaves out the rows a rule may not touch (picked by hand, balance-setting and
@@ -100,7 +107,9 @@ type HoldingLabels = {
   holdingCurrencyById: ReadonlyMap<string, string>;
 };
 
-const readHoldingLabels = async (databaseTransaction: typeof database): Promise<HoldingLabels> => {
+export const readHoldingLabels = async (
+  databaseTransaction: typeof database,
+): Promise<HoldingLabels> => {
   const rows = await databaseTransaction
     .select({ id: holdings.id, name: holdings.name, currency: holdings.currency })
     .from(holdings);
@@ -113,10 +122,10 @@ const readHoldingLabels = async (databaseTransaction: typeof database): Promise<
 
 // A candidate as the user sees it: a blank description reads as its label, so a name matcher
 // judges what the lists show (the same name every other apply path reads).
-const withVisibleDescription = (
-  rows: readonly CandidateRow[],
+export const withVisibleDescription = <Row extends CandidateRow>(
+  rows: readonly Row[],
   labels: HoldingLabels,
-): CandidateRow[] =>
+): Row[] =>
   rows.map((row) => ({
     ...row,
     description: ruleDescriptionOf({

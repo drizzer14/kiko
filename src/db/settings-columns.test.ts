@@ -76,6 +76,7 @@ const TAKEN_FROM_FILE_ON_RESTORE = [
   'lotsRecosted',
   'quoteQuota',
   'dismissedTips',
+  'mccCategoriesBackfilled',
 ];
 
 const SCHEMA_PATH = join(__dirname, 'schema.ts');
@@ -168,5 +169,24 @@ describe('settings schema columns', () => {
     expect(lotsRecosted).toBeDefined();
     expect(lotsRecosted?.notnull).toBe(1);
     expect(lotsRecosted?.dflt_value).toBe('false');
+  });
+
+  it('adds mcc_categories_backfilled, defaulting to false', () => {
+    const database = new DatabaseSync(':memory:');
+
+    applyAllMigrations(database);
+
+    const columnInfo = database.prepare('PRAGMA table_info(settings)').all() as {
+      name: string;
+      notnull: number;
+      dflt_value: string;
+    }[];
+    const mccCategoriesBackfilled = columnInfo.find(
+      (column) => column.name === 'mcc_categories_backfilled',
+    );
+
+    expect(mccCategoriesBackfilled).toBeDefined();
+    expect(mccCategoriesBackfilled?.notnull).toBe(1);
+    expect(mccCategoriesBackfilled?.dflt_value).toBe('false');
   });
 });

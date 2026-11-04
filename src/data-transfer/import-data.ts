@@ -4,6 +4,7 @@ import { bifold, eitherSync, isLeft } from 'fnts/either';
 import { recostStoredLots } from '@kiko/holdings/lot-recost';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
+import { backfillMccCategories } from '@kiko/categories/category-rules-repo';
 import { replanRestoredReminders } from '@kiko/reminders/use-reminder-scheduler';
 
 import {
@@ -233,6 +234,8 @@ export const importData = async (options: {
   // unset, so its stale sale costs are fixed before any screen reads them.
   // Local and quick, and it never rejects.
   await recostStoredLots();
+  // Travel is restored first, so a hotel row finds it. Never rejects.
+  await backfillMccCategories();
   // Never rejects: a secret the Keychain refuses comes back as a connection to
   // set up again, so the steps below still run for data that is restored.
   const unrestoredCredentials = await restoreExportSecrets(
