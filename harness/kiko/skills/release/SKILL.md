@@ -125,6 +125,11 @@ statement, or the live "Apply to existing" count depends on the import order (th
 has Glovo rows, so the demo uses KFC; see "The live rule demo" in
 e2e/screenshot/fixtures/README.md).
 
+Stop the release if `src/design-system/unistyles/unistyles.ts` registers a `light` theme and
+`ios/Kiko/Info.plist` still has `UIUserInterfaceStyle`: the light theme is registered but the app
+cannot yet reach it (a tip with sets 2-5 and no set 6), and set 6 removes the plist key and this
+step.
+
 6. `kiko:ops` archives the `Release` configuration (signed with the
    KikoDistribution provisioning profile and the distribution
    certificate). Archive `Release`; `Release-AdHoc` exists only
