@@ -816,7 +816,8 @@ A name matcher reads `ruleDescriptionOf` (`src/transactions/row-description/rule
 the stored description, or for a blank one the label the row shows in the current language. Every
 apply path reads it so: the insert (`withCategoryRules`, which evaluates legs by their label), the
 rewrite and its count (`rowIdsRewrittenBy`), `planSourceRow` (the source row, shared by
-`giveSourceRowCategory` and the preview), and the form's `resolveRuleDescription`. A named rule's rewrite pages the blank rows by id-keyset
+`giveSourceRowCategory` and the preview), and the form's `resolveRuleDescription`.
+A named rule's rewrite pages the blank rows by id-keyset
 (`rewriteBlankPageQuery`); a leg is rewritten like any row, and only the guard fields keep a
 row out. A leg is judged by its real label: `readHoldingLabels` (`category-rules.repo.ts`;
 every holding name and currency, read once per count or rewrite) feeds `withVisibleDescription`,
@@ -851,12 +852,13 @@ matchers refuse it. On a create, the name-rule sheet
 user picked the category by hand or a Duplicate/template seed carries one
 (what a template stores is kiko-domain "Transaction templates"); a
 category the rules pre-selected saves flag 0 with no sheet; an edit is
-unchanged. When the name ends in a store number, the sheet also offers "All starting with X"
-(`merchantNameOf(...).prefix`): it first shows a confirm step with `previewNameRule`'s count (0
-reads title `Add Rule`, button `Add`), and only its "Move" or "Add" button writes the
-`nameStartsWith` rule through `applyNameRule({ kind })`. Otherwise Apply rewrites every same-name row to a category the user
+unchanged. Otherwise Apply rewrites every same-name row to a category the user
 never chose (`resolveCategoryOverrideRequest` in
 `src/screens/forms/transaction-form/category-rule/category-rule.ts`).
+When the name ends in a store number, the sheet also offers "All starting with X"
+(`merchantNameOf(...).prefix`): it first shows a confirm step with `previewNameRule`'s count (0
+reads title `Add Rule`, button `Add`), and only its "Move" or "Add" button writes the
+`nameStartsWith` rule through `applyNameRule({ kind })`.
 
 ## App-open and refresh work is gated on data presence
 
