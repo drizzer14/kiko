@@ -34,6 +34,173 @@ run_stage() {
   "$@"
 }
 
+# Only `job-queue.sh verify ... --scoped` sets this. It is read once and unset: jest inherits the
+# environment, and a stage that saw it would let semgrep-load-limits.test.ts's own verify.sh runs
+# skip 2b and fail their full-mode pins; a verify nested in a stage would inherit a skip it never
+# asked for.
+SCOPED_REQUESTED="${KIKO_VERIFY_SCOPED-}"
+unset KIKO_VERIFY_SCOPED
+
+# Stage 2b is skipped only for a scoped verify whose branch changed no path the real-semgrep suites
+# can read. Anything the function cannot prove runs 2b: every failure path returns 1 with the
+# reason in FULL_RUN_REASON, so a doubt is never a skip. The list format is in the file itself.
+TRIGGER_LIST="$DIR/semgrep-suite-triggers.txt"
+TRIGGERS=()
+EXCLUDES=()
+FULL_RUN_REASON=""
+SKIP_BASE=""
+MERGE_BASE=""
+
+# trim_line <text>: prints the text without leading and trailing whitespace.
+trim_line() {
+  local text="$1"
+  text="${text#"${text%%[![:space:]]*}"}"
+  printf '%s' "${text%"${text##*[![:space:]]}"}"
+}
+
+# load_triggers: fills TRIGGERS (prefix when it ends in /, else exact path) and EXCLUDES (the text
+# after a leading !, kept as a case pattern). The pattern is only ever read into a variable, so no
+# shell glob expands it. The suites of semgrep-jest-suites.txt are triggers too.
+load_triggers() {
+  local line
+  if [ -f "$TRIGGER_LIST" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="$(trim_line "$line")"
+      case "$line" in
+        '' | '#'*) ;;
+        '!'*) EXCLUDES+=("${line#!}") ;;
+        *) TRIGGERS+=("$line") ;;
+      esac
+    done < "$TRIGGER_LIST"
+  fi
+  [ "${#TRIGGERS[@]}" -gt 0 ]
+}
+
+# is_trigger_path <path>: an exclude wins over every trigger.
+is_trigger_path() {
+  local exclude trigger
+  for exclude in ${EXCLUDES[@]+"${EXCLUDES[@]}"}; do
+    # The pattern stays unquoted on purpose: quoted, `case` would compare it as plain text.
+    case "$1" in $exclude) return 1 ;; esac
+  done
+  for trigger in "${TRIGGERS[@]}" ${SEMGREP_SUITES[@]+"${SEMGREP_SUITES[@]}"}; do
+    case "$trigger" in
+      */) case "$1" in "$trigger"*) return 0 ;; esac ;;
+      *) [ "$1" = "$trigger" ] && return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# merge_base_with <ref>: sets MERGE_BASE to the one merge base of HEAD and the ref.
+merge_base_with() {
+  local output
+  MERGE_BASE=""
+  output="$(git merge-base --all HEAD "$1")" || {
+    FULL_RUN_REASON="git merge-base against $1 failed"
+    return 1
+  }
+  case "$output" in
+    '')
+      FULL_RUN_REASON="HEAD has no merge base with $1"
+      return 1
+      ;;
+    *$'\n'*)
+      FULL_RUN_REASON="HEAD has more than one merge base with $1"
+      return 1
+      ;;
+  esac
+  MERGE_BASE="$output"
+}
+
+# newer_base <main base> <next base>: sets MERGE_BASE to the one that contains the other; returns 1
+# with the reason when neither does or a git call fails (a status other than 0 or 1).
+newer_base() {
+  git merge-base --is-ancestor "$1" "$2"
+  case $? in
+    0)
+      MERGE_BASE="$2"
+      return 0
+      ;;
+    1) ;;
+    *)
+      FULL_RUN_REASON="git merge-base --is-ancestor failed"
+      return 1
+      ;;
+  esac
+  git merge-base --is-ancestor "$2" "$1"
+  case $? in
+    0)
+      MERGE_BASE="$1"
+      return 0
+      ;;
+    1) FULL_RUN_REASON="neither base contains the other" ;;
+    *) FULL_RUN_REASON="git merge-base --is-ancestor failed" ;;
+  esac
+  return 1
+}
+
+# skip_stage_2b: returns 0 when 2b can be skipped (SKIP_BASE is the commit measured from).
+skip_stage_2b() {
+  local main_base next_base base head_commit listing first_trigger="" changed
+
+  if [ "$SCOPED_REQUESTED" != 1 ]; then
+    FULL_RUN_REASON="no --scoped flag: KIKO_VERIFY_SCOPED is not 1"
+    return 1
+  fi
+  if ! load_triggers; then
+    FULL_RUN_REASON="the trigger list holds no trigger line"
+    return 1
+  fi
+  if ! git rev-parse --verify --quiet refs/heads/main > /dev/null; then
+    FULL_RUN_REASON="there is no local main branch"
+    return 1
+  fi
+  head_commit="$(git rev-parse HEAD)" || {
+    FULL_RUN_REASON="git rev-parse HEAD failed"
+    return 1
+  }
+  merge_base_with refs/heads/main || return 1
+  base="$MERGE_BASE"
+  if git rev-parse --verify --quiet refs/heads/next > /dev/null; then
+    main_base="$base"
+    merge_base_with refs/heads/next || return 1
+    next_base="$MERGE_BASE"
+    if [ "$main_base" = "$next_base" ]; then
+      base="$main_base"
+    else
+      newer_base "$main_base" "$next_base" || return 1
+      base="$MERGE_BASE"
+    fi
+  fi
+  if [ "$base" = "$head_commit" ]; then
+    FULL_RUN_REASON="HEAD is reachable from main or next, so a diff says nothing"
+    return 1
+  fi
+
+  listing="$(mktemp)" || {
+    FULL_RUN_REASON="mktemp failed"
+    return 1
+  }
+  if ! git diff --name-only --no-renames -z "$base" HEAD > "$listing"; then
+    rm -f "$listing"
+    FULL_RUN_REASON="git diff failed"
+    return 1
+  fi
+  while IFS= read -r -d '' changed; do
+    if is_trigger_path "$changed"; then
+      first_trigger="$changed"
+      break
+    fi
+  done < "$listing"
+  rm -f "$listing"
+  if [ -n "$first_trigger" ]; then
+    FULL_RUN_REASON="trigger path: $first_trigger"
+    return 1
+  fi
+  SKIP_BASE="$base"
+}
+
 # The suites that start the real semgrep run alone (2b), in band: beside the rest of the suite
 # (2a) on every core they starve semgrep of CPU and its 5 s per-rule timer fires. The list is
 # one file, shared with the pin in __tests__/semgrep-load-limits.test.ts. A --testPathIgnorePatterns
@@ -92,6 +259,13 @@ if [ "$code" -ne 0 ]; then
   exit "$code"
 fi
 
+if skip_stage_2b; then
+  echo "── make verify: stage 2b SKIPPED (no trigger path changed since ${SKIP_BASE:0:12}) ──"
+  echo "✔ make verify: gate and stage 2a passed; stage 2b skipped"
+  exit 0
+fi
+
+echo "── make verify: stage 2b runs in full ($FULL_RUN_REASON) ──"
 run_stage 2b "jest (real-semgrep suites, in band)" npx jest "${SEMGREP_SUITES[@]}" --runInBand
 code=$?
 if [ "$code" -ne 0 ]; then

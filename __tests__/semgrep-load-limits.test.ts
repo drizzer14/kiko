@@ -209,10 +209,16 @@ describe('scripts/checks/verify.sh stage order', () => {
 
     for (const log of [calls, gatePath, gateSweep, jestSweeps]) writeFileSync(log, '');
 
+    // `make jest-affected` runs this suite with the tripwire already on PATH, so the start PATH
+    // drops it: only verify.sh itself may put it there.
+    const startPath = (process.env.PATH ?? '')
+      .split(':')
+      .filter((entry) => !entry.endsWith('semgrep-tripwire'))
+      .join(':');
     const result = spawnSync('bash', [VERIFY_SCRIPT], {
       cwd: ROOT,
       encoding: 'utf8',
-      env: { ...process.env, KIKO_PROPERTY_SWEEP: undefined, PATH: `${stubs}:${process.env.PATH}` },
+      env: { ...process.env, KIKO_PROPERTY_SWEEP: undefined, PATH: `${stubs}:${startPath}` },
     });
     const lines = (path: string): string[] =>
       readTextFile(path)
