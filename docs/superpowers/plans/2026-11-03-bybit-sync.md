@@ -2,7 +2,7 @@
 
 > For agentic workers: use superpowers:subagent-driven-development. Steps use `- [ ]` tracking.
 
-**Goal:** Bybit balances, then tested data kinds, from a read-only key, visible and complete at each stage.
+**Goal:** Bybit balances and history rows from a read-only key, visible and complete at each stage, with nothing that needs the user's money (O62). Rows rest on the live API docs ("docs only"); balances rest on an empty mainnet read and a testnet run.
 
 **Architecture:** A new `src/crypto-sync/bybit/` beside `binance/`, on the shared walk. Seams 1, 2 and 7 get
 parameters first; the provider id and core follow with no way in from the UI, seams 3, 4 and 9 change with the id, and
@@ -11,14 +11,15 @@ the catalog entry goes last.
 **Spec:** `docs/superpowers/specs/2026-11-03-bybit-sync-design.md`. Section numbers below are the spec's. Plan
 text never overrides it; a difference found is reported.
 
-**Status:** The coordinator relayed the user's approval of the spec on 2026-11-04 (O41, O59). R1 is
-next, it has not run, and it waits for the user. No app code until set 2's own conditions hold: set
-2 bases on the set 1 tip, the commit after the second run of step 7/7, for R3 and R4 (O36). The
+**Status:** O62 (2026-11-04) changed the scope after the approval of O41 and O59: "I can't spend money testing what's
+already covered by api documentation, so implement what you can without relying on my money". R1 and the second key ran,
+and their results are written (O60). R2 to R4 with real money are off: later, no date, the user's choice (spec Backlog). Set 2 bases
+on the set 1 tip, which is the commit of this text (PLANNER CALL 33; was: after R3 and R4, O36). The
 terms verdict is in spec section 9: PASS WITH CONDITIONS for global accounts. The user accepted the
 5.2.2 and 6.5 doubts: keep Bybit, global
 accounts only, no letter to Bybit (O42). The user answered Q1 to Q4 (spec section 13):
-stages A and B ship, and stages C and D are deferred under Backlog (O37); no notification; the two gaps are accepted limits;
-1.4 ships before R7, with the copy of O26. Mutation gates are paused by the user since 2026-10-25: verify and review only;
+stages A and B ship, and stages C and D are deferred under Backlog (O37, O62); no notification; the two gaps are accepted;
+1.4 ships before R7, with the copy of O26. Q5 is open with the user: if the answer is not A, sets 5 and 6 change. Mutation gates are paused by the user since 2026-10-25: verify and review only;
 the gate text stays below for when it is lifted.
 
 ## Global constraints
@@ -64,27 +65,24 @@ the gate text stays below for when it is lifted.
 
 ## 1.4-bybit set 1/8: the terms verdict, the probe script and the user's probe run
 
-Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). Steps 3/7 to 5/7
-are done (2026-11-04). The user's spec approval is given (2026-11-04, O59), after the verdict and
-before step 6/7 (PLANNER CALL 23, O41). Steps 1/7 to 5/7 are done. Step 6/7 is next, and it waits
-for the user's R1 run.
-Size: 1 script, 1,379 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file.
+Base: 57130e23c, plus this spec. Steps 1/10 to 7/10 are done (O39, O59, O60, and this text). Steps 8/10 to 10/10
+are next (O62); only set 3 step 7/7 and set 7's Earn clause wait for them.
+Size: 1 script, 1,379 lines measured 2026-11-04, plus the host choice of step 8/10, 1 test, no app file.
 Not mutable.
 Reviewer checks: the whole script for any leak path; every part against spec section 10; no write verb. "Set 1 tip" is
-the commit after the last step that writes results: the second run of step 7/7, for R3 and R4 (O36). Set 2 bases on it.
+the commit of step 7/10, this text (PLANNER CALL 33; was: the commit after the second results run, O36). Set 2 bases on it.
 
-The user's order (O23, O31, O36, O38, O39, O41): part 1 of the browser step (step 1/7, done), the terms verdict (step 2/7,
-done), the user's spec approval (done, O59), THE KEY MOMENT R1 (step 6/7), R2, R3, R4 with the
-redeem, and R7 the day after its date (O55), an open check
-after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O38).
+The user's order (O23, O31, O38, O39, O41, O62): part 1 of the browser step (step 1/10, done), the terms verdict (step 2/10,
+done), the user's spec approval (done, O59), R1 and the second key (step 6/10, done), the empty mainnet read and the testnet
+run (step 9/10), and R7 on 2027-02-05 or later (O55, O60), an open check after the ship (Q4).
 
-- [x] **step 1/7: part 1 of the browser step, DONE 2026-11-03** (O39; PLANNER CALL 18). The coordinator read both pages in the
+- [x] **step 1/10: part 1 of the browser step, DONE 2026-11-03** (O39; PLANNER CALL 18). The coordinator read both pages in the
   Orca browser at the user's word. No login was needed. The text is in `memory/refs/bybit-terms-2026-11-03/`.
-- [x] **step 2/7: the terms verdict, DONE 2026-11-03** (O23, O39). PASS WITH CONDITIONS for global accounts, by a
+- [x] **step 2/10: the terms verdict, DONE 2026-11-03** (O23, O39). PASS WITH CONDITIONS for global accounts, by a
   `kiko:reviewer`; `.superpowers/sdd/1.4-bybit/terms-verdict.md`. The stop rule did not fire. It went into spec section 9
   with `make doc-suites`. C1 to C5 and C7 are spec section 9 rows, and each step that holds one names it below. C6 is the user
   line of spec section 10.
-- [x] **step 3/7: write `memory/refs/bybit-probe.sh`, DONE 2026-11-04, with fix round 4** (main checkout, untracked, like its
+- [x] **step 3/10: write `memory/refs/bybit-probe.sh`, DONE 2026-11-04, with fix round 4** (main checkout, untracked, like its
   templates; `kiko:ops` or the coordinator names the writer). Pattern: `binance-transfer-depth-probe.sh`, `eodhd-verify.sh`: hidden prompts,
   `curl -q --noproxy '*' -K -` with URL and key on stdin, perl HMAC with the secret on stdin, alnum-checked key, masked URLs. Parts
   P1 to P7 and P11 to P18, no others (O37), with P14 NOT RUN and no call (O49). The printer of spec section 10: no server text, a
@@ -96,7 +94,7 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   `query-api` answer stops it on HTTP other than 200 or 401, on HTTP 200 with no `retCode`, and on 10002, 10004 and 10016 (O55,
   O57). `set -u`; a Ctrl-C prints what was read. No elapsed time is printed, and no
   call repeats to measure uptime or latency (C6, API 6.6).
-- [x] **step 4/7: fake-curl test, DONE 2026-11-04.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
+- [x] **step 4/10: fake-curl test, DONE 2026-11-04.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
   values for every part. Check: no sentinel appears on stdout or stderr, the key is in no argv, and each part stays under a
   maximum number of calls per part, with `CALL_CAP` as the hard cap (C6, O53). The script has no
   limit variable per part. The maximum per part follows from the code, with no paging loop: P1 1,
@@ -104,44 +102,41 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   test pins exact counts per run and for some parts alone, and runs a `CALL_CAP` variant (O58).
   Result: `memory/refs/bybit-probe.test.sh` printed
   "4673 passed, 0 failed", exit 0 (re-run by the orchestrator on 2026-11-04 with /bin/bash 3.2.57 and jq 1.7.1-apple).
-- [x] **step 5/7: read the file and hand it over, DONE 2026-11-04** (orchestrator, then
+- [x] **step 5/10: read the file and hand it over, DONE 2026-11-04** (orchestrator, then
   coordinator). Was: "read the whole file. The reviewer
   passes it." The reviewer did not pass it: three reviews each gave FIX FIRST (17, 9 and 6 findings), and O56 stopped the chain after
   fix round 4 with no fourth review. O56 replaces that pass. Done under O56: the orchestrator
   read the round 4 diff and the whole final script on 2026-11-04 with no blocking defect (a read,
-  not a review; O58), and the test of step 4/7 passed. The user's spec approval is given, DONE
-  2026-11-04 (O41, O59). The handover, as the coordinator confirmed it: the user has the R1 list,
-  the four residuals and the exact command of the script run. The coordinator gave the C6 line of
-  spec section 10 in its own words, not verbatim, and added its "one bounded run" bullet. For part
-  2 of the browser step (spec section 9), the user sends the API management URL to the coordinator,
-  and the coordinator relays it. That URL has not arrived yet.
-- [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
-  the C6 line before R1, part 2 of the browser step at R1, `R2 P4` while K1 is pending, with a prompt until K1 lands and before
-  K2 (O16, O32, O47), `R2 P2` BEFORE K2 if K1 landed before `R2 P4` could run (O52), skip at the P4 prompt of the whole R2, the
-  cancel of K3 at P2's prompt and K4 and K5 on one prompt of P3 in R3 (O50, O54), with two different amounts, because the stake check cannot tell the products apart
-  with equal amounts, and Enter only after the step has landed, K6 at P6's prompt from each wallet that Bybit
-  allows, with two different amounts when both wallets are used (O14), R4 after the R3 run of P3 shows the position, with no fixed
-  day (O40), skip at the prompt of each `R4 P6` settle run, `R2 P13` once more after K6 settles (O48), and last K11, the redeem
-  of Flexible Savings, at the prompt of `R4 P3` (O31, O50). Outputs go to `memory/refs/bybit-probe-output-<date>.txt`. The date of `expiredAt` goes into the track HANDOFF and the run log as an
-  open gap until R7 runs. The key and the secret stay in the user's password manager until R7. R7 the day after that date (O55), an open check after the ship (Q4): it holds neither set 7 nor the merge, and its
-  row stays UNPROBED(P17), with the copy of O26.
-- [ ] **step 7/7: write results into the spec.** `kiko:planner` turns each UNPROBED row into MEASURED or edits it; the
-  same pass edits this plan, picks the outcome of rules 45, 46 and 47 and the section 8 clauses, and states the needed
-  boxes of each kind (O13). A P12 refusal moves a floor; an empty 0 keeps 729 days (O20). Check: `git grep -c UNPROBED`
-  on the spec falls to the rows of P5 and P17, rule 47 if the user missed the pending window, the deposit half of rule 45 if the
-  user also missed `R2 P2` before K2, and the deferred rows under Backlog (O32, O35, O37, O52). A row keeps its mark until its own probe runs. A kind that failed goes to its text in section 8. A shape
-  change that reverses a row adds a was column. `make doc-suites`. This step runs once for R1 and R2 and again for R3, R4 and
-  the `R2 P13` run after K6; the second run's commit is the set 1 tip.
+  not a review; O58), and the test of step 4/10 passed. The user's spec approval is given, DONE
+  2026-11-04 (O41, O59). The handover was confirmed by the coordinator. Part 2 of the browser step is DONE (O60).
+- [x] **step 6/10: R1 and the second key, DONE 2026-11-04** (O60): 46 and 10 calls, output lines 1 to 158 and 159 to 215 of
+  `memory/refs/bybit-probe-output-2026-11-04.txt`. The second key is deleted (O61 (c)). The first key stays in the user's password
+  manager until R7, on 2027-02-05 or later (O55): an open check after the ship (Q4), which holds neither set 7 nor the merge, with its
+  row UNPROBED(P17) and the copy of O26. Was: this step also held R2, R3 and R4 with real money; they are under the spec's Backlog (O62).
+- [x] **step 7/10: write results into the spec, first run, DONE by this commit.** R1 and the second key are MEASURED;
+  docs-only rows, safe readings and clauses are written (O60, O62). Check: `make doc-suites`. This commit is the set 1 tip.
+- [ ] **step 8/10: the host choice in the script.** Owner: `kiko:developer`, from spec section 10, "The testnet run". Files:
+  `memory/refs/bybit-probe.sh`, `memory/refs/bybit-probe.test.sh`, both in the main checkout, untracked. First argument
+  `--testnet`, a closed choice of two hosts, default byte-identical; `--testnet R7` refused before the key prompt; header, key prompt, P1's host line
+  and usage name the host. Check: the test pins each call's host per run and passes with `/bin/bash` and jq, as step 4/10 did. A reader
+  reads the diff; O56 keeps its stopping rule.
+- [ ] **step 9/10: the user's reads, no money.** Mainnet: `R2 P2`, then `R4 P3` with `skip`. Testnet: the six steps of spec section 10, each
+  with its proof. Outputs: `memory/refs/bybit-probe-output-<date>.txt` for mainnet, `memory/refs/bybit-probe-testnet-output-<date>.txt` for
+  testnet. If the account step fails or a step is refused: the coordinator takes the question to the user; the table in spec section 10 says what each
+  refusal means. It blocks only set 3 step 7/7 and the Earn clause.
+- [ ] **step 10/10: write those results.** `kiko:planner`: the P2 and P3 rows to MEASURED with "on testnet" stated, the clause by "What proves
+  Earn", the `locked` row, or the question to the user. Check: `git grep -c UNPROBED` on the spec falls to P17, deferred rows under Backlog, the record
+  rows of section 12, and any row of P2 or P3 whose step was refused (O35). A was column where a shape reverses a row. `make doc-suites`.
 
-Gate per stage: every code set bases on the set 1 tip or later, so P1 to P7, P11, P12, P13, P15, P16 and step 2/7 hold at
-each of them, with each row's mark per step 7/7. Set 3's Earn step uses the `R4 P3` run around the redeem (O31, O50). P14 holds nothing: it makes no call (O49).
+Gate per stage: every code set bases on the set 1 tip or later, so P1, P11, P12, P13 (edges), P15, P16 and step 2/10 hold at each of them.
+No code set needs R2 to R4 (O62). Set 3 step 7/7 needs step 10/10. P14 holds nothing: it makes no call (O49).
 
 ## 1.4-bybit set 2/8: neutral seams, Binance unchanged
 
 Base: set 1 tip. Order: first code set. Size: about 210 code lines in 9 to 12 files, about 450 test lines (was 280, 13
 to 16, 650: O30 moves seams 3, 4 and 9 to set 3). Tip: no Bybit id, no visible change. Merges alone (O21). At this set,
 existing suites stay green unchanged except the re-pins of step 3/4 (no owed state added, no 1.2-upgrade seed moves); set 3
-step 6/6 re-pins the status suites' calls (O30). Reviewer checks: a Binance run writes byte-identical rows, marks and text;
+step 6/7 re-pins the status suites' calls (O30). Reviewer checks: a Binance run writes byte-identical rows, marks and text;
 no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the parent; seams 3, 4 and 9 untouched.
 
 - [ ] **step 1/4: run the older-build restore (O10).** On this tip, before any id exists, a scratch test under
@@ -167,41 +162,39 @@ no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the p
 
 ## 1.4-bybit set 3/8: provider id, client, keys and balances (stage A core)
 
-Base: set 2 tip. Needs step 2/7 of set 1 and P1, P2, P11, P15, P16; step 5/6 needs P3, with the `R4 P3` run around the redeem. Size:
+Base: set 2 tip. Needs step 2/10 of set 1 and P1, P11, P15, P16, all MEASURED. Steps 1/7 to 6/7 need no user step: coin-row fixtures use the page samples,
+and the empty read when it exists. Step 7/7 needs step 10/10 of set 1. Was: P2 and P3 with the `R4 P3` run around the redeem (O62). Size:
 about 1,270 code lines in 25 to 29 files (under the cap of 30; `make mutable` measures, and a count over the cap is a
 report to the orchestrator), about 2,350 test lines (was 1,200, 21 to 25, 2,050: O30 moves seams 3, 4 and 9 here; O31, O33
-add rows; O29 moves the policy, its site pages and `bybit.privacy-policy.test.ts` to set 7; O39 adds A52, A53, A56). Tip: `bybit` in
+add rows; O29 moves the policy, its site pages and `bybit.privacy-policy.test.ts` to set 7; O39 adds A52, A53, A56; O62 adds A58, A62 and moves no count). Tip before step 7/7: Earn is not read, and clause "E2 and E4" is true. Tip: `bybit` in
 `balanceProviderIds`, every arm present, no catalog row and no registry entry, so no way in (`syncJobsFor` skips an
 unwired id; pinned by the unwired-provider guides). Stays out of `next` (O21). Reviewer checks: compliance items (pins,
 no-store, `hardenedFor`, no personal field parsed); C2 and C5 (no write path, no server copy, no shared key in the build);
 retCode before status; each refusal class; balance anti-goals; fixtures from the probe output, never real values; every
 Binance caption result the same after the re-pins.
 
-- [ ] **step 1/6: host and pins.** `ios/Kiko/Info.plist` pin block (spec section 9), `.env.example`, `.env.test`,
+- [ ] **step 1/7: host and pins.** `ios/Kiko/Info.plist` pin block (spec section 9), `.env.example`, `.env.test`,
   local `.env`, `src/env.d.ts` (`BYBIT_API_ENDPOINT`), `docs/security/README.md` table and host loop. Re-run the runbook's
   `openssl` line first. The policy step is set 7 step 4/6 (O29). Check: `npm run check:plist`, `plutil -lint`.
-- [ ] **step 2/6: client.** `bybit.endpoints.ts`, `bybit.client.ts`: `signedBybitGet` with the four headers and
-  `no-store`, `fetchKeyInfo` (with `readOnly`, `isMaster`, `permissions` for set 7), `fetchUnifiedBalance`,
+- [ ] **step 2/7: client.** `bybit.endpoints.ts`, `bybit.client.ts`: `signedBybitGet` with the four headers and
+  `no-store`, `fetchKeyInfo` (with `readOnly`, `isMaster` for set 7; `permissions` stays unread), `fetchUnifiedBalance`,
   `fetchFundBalance`, the refusal table of spec section 4, `BybitRateLimitError`, `BybitRefusalError`. `bybit.cooldown.ts`.
   `BYBIT_SIGNED_PATHS` in `bybit.endpoints.ts`, a path added in each later step that adds a route, with its literal in
-  `bybit.endpoints.test.ts` (C2). Check: rows A9, A10, A15, A52 (C1: the host), A53 (C2: GET only, a closed list);
+  `bybit.endpoints.test.ts` (C2). Check: rows A9, A10, A15, A52 (C1: the host, and no tracked file names `api-testnet`), A53 (C2: GET only, a closed list), A62;
   `npm run check:plist` now sees the client; `check:dup`.
-- [ ] **step 3/6: Keychain.** `exchange/credentials`: `createWriteSerial`; `bybit.credentials.ts`: service
+- [ ] **step 3/7: Keychain.** `exchange/credentials`: `createWriteSerial`; `bybit.credentials.ts`: service
   `kiko.bybit.credentials`, username `bybit`, save, read, clear, clear-if-written. `accounts.repo.ts`
   `clearKeychainItems` (seam 6). `src/holdings/holding-metadata`: member `bybitAsset`. `ExchangeMetadataField` follows.
   Check: A56 (C5: writer goes through `hardenedFor`); delete clears (seam 6 red); no secret in a log.
-- [ ] **step 4/6: coins and keys.** `bybit.tracked-coin.ts` with `BYBIT_FIAT_CODES` re-read from the public
+- [ ] **step 4/7: coins and keys.** `bybit.tracked-coin.ts` with `BYBIT_FIAT_CODES` re-read from the public
   `instruments-info` (spec rule 9), the list stays the 5 codes (O19), `bybit.holding-keys.ts`. The tracked predicate
-  `isTrackedBybitAsset` is written here; step 6/6 wires it to the section. Check: A8, A38, property Q2 start.
-- [ ] **step 5/6: balances.** `bybit.provider.ts` on the order of spec rule 3; `fetchEarnPositions` after P3, by spec
-  rule 46: a row with a `status` needs the allowlist, a row with none adds its `amount` (O31). If P3 shows no separate
-  money, leave Earn out and take clause E3; with no on-chain position, clause E2; if the redeem shows a redeemed row with
-  no `status` and a non-zero `amount`, leave FlexibleSaving out and take clause E4. Patch kind `balanceNotes` in
-  `exchange-state-patch.ts` for the refused wallets, borrowed coins and Earn left-out count, per wallet, on the
+  `isTrackedBybitAsset` is written here; step 6/7 wires it to the section. Check: A8, A38, property Q2 start.
+- [ ] **step 5/7: balances, UNIFIED and FUND.** `bybit.provider.ts` on the order of spec rule 3, reading `walletBalance` (PLANNER CALL 32). Patch kind
+  `balanceNotes` in `exchange-state-patch.ts` for the refused wallets, borrowed coins and Earn left-out count, per wallet, on the
   `oversizedBalance` and `complete` precedent: a wallet that this run read replaces its notes, and a wallet that failed
-  keeps them, plus its refused mark on a 10005 (O33, PLANNER CALL 17). Rows A1 to A7, A11, A31, A34 (state part), A36, A37,
-  A46 (provider part), A47, A48.
-- [ ] **step 6/6: the `bybit` id, arms, seams 3, 4, 9 and the Bybit tracked predicate (O30).** Red first with the real id,
+  keeps them, plus its refused mark on a 10005 (O33, PLANNER CALL 17). The `balanceSyncedAt` stamp, so an empty account shows Last sync. Rows A1,
+  A2, A5 to A7, A11, A31, A34 (state part), A46 (provider part), A48, A58.
+- [ ] **step 6/7: the `bybit` id, arms, seams 3, 4, 9 and the Bybit tracked predicate (O30).** Red first with the real id,
   on the parent, in existing suites and in `exchange-history-gate.test.ts`, so no red imports a missing module.
   - Arms: `balanceProviderIds`, `run-crypto-sync.ts` (`bybit` arm, join, no walks yet), `resync-request.ts`, `disconnect.ts`,
     `db/schema.ts` `source` list, `isWalletHoldingInstitution` gains `bybit` (seam 1 red, real SQLite). Re-pin
@@ -223,6 +216,11 @@ Binance caption result the same after the re-pins.
   - Seam 9: `accountDetail.untrackedCoins` takes `{{exchange}}` in en and uk; the output for Binance is byte-identical (pin
     it). `CoinLines` gets the name through `providerDisplayName`.
   - Check: `make jest-affected`; tsc; `npx jest` on the section suites, Binance's caption results the same.
+- [ ] **step 7/7: Earn, WAITS for set 1 step 10/10.** `fetchEarnPositions`, by spec rule 46 and "What proves Earn": a row with a `status`
+  needs the allowlist, a row with none adds its `amount` (O31). Clause E3: no Earn read, and the money is in the balance; clause E2: FlexibleSaving only;
+  clause E4: OnChain only; "E2 and E4": this step writes no code, and the balance-note count leaves. Rows A3, A4, A36, A37, A47, whichever the outcome keeps.
+  `BYBIT_SIGNED_PATHS` gains `/v5/earn/position` only if a category ships. If the `locked` reading came back outside `walletBalance`, the question
+  returns to the user first (spec section 10), and this step adds nothing for it until the answer. Any later set may land before this step; the batch merge may not.
 
 ## 1.4-bybit set 4/8: expiry, `.kiko`, switch gate, account detail
 
@@ -245,30 +243,30 @@ cannot strand a Binance user; translator review of this set's keys.
 
 ## 1.4-bybit set 5/8: cursor reader, budget and capital walk (stage B)
 
-Base: set 4 tip. Needs P4, P5, P6, P11, P12, P13. Size: about 950 code lines in 7 to 9 files, about 1,750 test lines, split (was 900, same, 1,600: O14, O32, O20). Tip: the run arm reads deposits and withdrawals; still no
+Base: set 4 tip. Needs the live pages of spec section 3, and P11, P12, P13 (edges), MEASURED. Was: P4, P5, P6 with real money (O62). Size: about 1,000 code lines in 7 to 9 files, about 1,900 test lines, split (was 950, same, 1,750: `depositType`, the time unit, two reach rules, A60, A61). Fixtures take the page samples. Tip: the run arm reads deposits and withdrawals; still no
 way in. Stays out of `next` (O21). Reviewer checks: each early return of spec section 5; settled matrix; no stored cursor;
-`withdrawType=2`; O6 sentinel; the floor stays 729 days unless a P12 refusal moved it (O20); rule 45 and 47 outcomes.
+`withdrawType=2`; O6 sentinel; the floor stays 729 days (R1); rules 45 and 47, and each safe reading of spec section 3 against the page.
 
 - [ ] **step 1/4: budget and config.** `bybit.history-budget.ts` (`BybitLane`, caps 30 and 20, interval 1100,
-  `createBybitHistoryRun`, refused call counted), `bybit.walk-config.ts` (`source: 'bybit'`, `bybitAsset`). Interval
-  and caps may change only by P16 or a P12 refusal, and the spec's section 5 changes with them.
+  `createBybitHistoryRun`, refused call counted), `bybit.walk-config.ts` (`source: 'bybit'`, `bybitAsset`). P16 and
+  P12 are MEASURED, and the interval and caps stay (spec section 5).
 - [ ] **step 2/4: `readCursorSpan`** (`bybit.cursor-span.ts`), at the `walkSpans` `read` seam: follows
-  `nextPageCursor`, `canAfford` per page, `split` over a day, `undefined` at a day or less, repeat cursor or row outside
-  `reach` is `bybit-page-drift`; a pending row with no time is never drift, and the time sort leaves it out (rule 19,
-  rule 47, O32). No `readIdCursor` or `readSeriesSpan` stretch (O8). Rows A20, Q5 start.
+  `nextPageCursor`, `canAfford` per page, `split` over a day, `undefined` at a day or less; a repeat cursor, or a row outside the span
+  by both readings of its window field, is `bybit-page-drift` (rule 22, PLANNER CALL 29); an empty or absent cursor, or a page with no row, ends the span; a pending row with no time is never drift, and the time sort leaves it out (rule 19,
+  rule 47). No `readIdCursor` or `readSeriesSpan` stretch (O8). Rows A20, A61, Q5 start.
 - [ ] **step 3/4: parsers.** `bybit.history-client.ts`: tracked rule, unreadable, untracked counted never parsed, named
-  fields only, `BybitHistoryParseError`, time units from P4, P5, P6; an empty, 0 or absent time reads the same (O32). Paths added to `BYBIT_SIGNED_PATHS`.
-- [ ] **step 4/4: the capital walk.** `bybit.capital-history.ts`: series `deposit`, `internal` (only if P5 passed),
-  `withdraw`; windows 29 days; floor `now - 729 days`, which only a P12 refusal moves, never an empty 0 (O20); `reach`;
-  removal of 70011; forward owes constant per the Transfer rule. Row wallet by the outcome of spec rule 45 (O14): the
-  field P4 and P6 showed, or FUND with clause W1. The walker stays as it is: a pending row with no time owes its span as
-  a range through `pointOf` and `owedBy`, and the caption shows while it is pending (rule 47, O32). Guard on an empty plan
+  fields only (the list of each series in spec section 3: `result.rows`, and `result.list` for transfer), `BybitHistoryParseError`, time by digit count: 13 ms, 10 seconds, any other unreadable and owed (A60); an empty, 0 or absent time reads the same (rule 47). Paths added to `BYBIT_SIGNED_PATHS`.
+- [ ] **step 4/4: the capital walk.** `bybit.capital-history.ts`: series `deposit`, `internal`,
+  `withdraw`; windows 29 days; floor `now - 729 days`, which P12 did not move (R1); `reach` per rule 18;
+  a withdrawal's `extentOf` is `createTime` alone (PLANNER CALL 29); `depositType` 0 only (PLANNER CALL 30); removal of 70011; forward owes constant per the
+  Transfer rule, holding each code of a waiting status with a time. Every row on FUND, clause W1 (rule 45). The walker stays as it is: a pending row with
+  no time makes no row and owes nothing (rule 47, PLANNER CALL 28). Guard on an empty plan
   tests all four lists. Arm: `capital` in `logOnFailure`, `captionWalksOf('bybit')` gains `capital`. Rows A17
-  to A22, A27, A30, A35, A39, A41.
+  to A22, A27, A30, A35, A39, A41, A60. A failing proof of a safe reading is a report to the planner, never a loosened row.
 
 ## 1.4-bybit set 6/8: transfer walk and convergence proof (stage B)
 
-Base: set 5 tip. Needs P7, P13. Size: about 500 code lines in 5 to 6 files, about 1,200 test lines.
+Base: set 5 tip. Needs the live pages and the transfer path (MEASURED). Was: P7, P13 with rows (O62). Size: about 500 code lines in 5 to 6 files, about 1,300 test lines (was 1,200: A57).
 Stays out of `next` (O21). Reviewer checks: pair id has one coin; wallet words closed; section 5 tables replaced with
 measured numbers.
 
@@ -276,14 +274,14 @@ measured numbers.
   wallet owed. Arm and `captionWalksOf('bybit')` gain `transfer`. Rows A23 to A25, A26.
 - [ ] **step 2/3: `bybit.keys.property.test.ts`, `bybit.convergence.test.ts`**, Q1 to Q7, run through real
   `planWalkPasses` and `runWalkPlan` with a fake route that serves the seeds, cut at every commit for the restart property,
-  and added to `__tests__/property-sweep-sites.test.ts`. A red for Q3 shown by a mutant that drops a mark.
+  and added to `__tests__/property-sweep-sites.test.ts`. A red for Q3 shown by a mutant that drops a mark. A57: the fake route serves each window field in turn.
 - [ ] **step 3/3: measured numbers.** Scribe writes the convergence table's MEASURED column into spec section 5. A cap that
   fails a seed's bound is a report to the orchestrator, never a loosened bound.
 
 ## 1.4-bybit set 7/8: the way in, shipped stage A+B (catalog last, O9)
 
-Base: set 6 tip. Needs P1, P11 (boxes), part 2 of the browser step (URL). Size:
-about 450 code lines in 16 to 20 files, about 950 test lines (was 450, same, 850: O29 moves `bybit.privacy-policy.test.ts`
+Base: set 6 tip. Needs P1, P11 and the URL of part 2, all done, and set 3 step 7/7's outcome for the Earn clause (no outcome: "E2 and E4"). Size:
+about 480 code lines in 17 to 21 files, about 1,000 test lines (was 450, 16 to 20, 950: PLANNER CALLS 25 and 27; O29 moves `bybit.privacy-policy.test.ts`
 here; O39 adds A51, A54, A55), plus the policy and site pages (O29). Tip: Bybit visible and complete. Merge: the batch of
 "Merge order", only after the device check on this branch (PLANNER CALL 15). That check, step 6/6, is "fundamentals done" (O44).
 Reviewer checks: compliance section whole, each
@@ -292,13 +290,12 @@ that offers Kiko in place of the Bybit app) and C3 (no price, ad, IAP, tip or sp
 every new key.
 
 - [ ] **step 1/6: credentials field.** Extract `ExchangeKeyForm` from `binance-credentials-field`, Binance's suite unchanged;
-  new `bybit-credentials-field` over it, verifying through `fetchKeyInfo`; refusals in the order of spec section 6.8 with the
-  boxes per kind from set 1 step 7/7 (O13), all before any Keychain write; `bybitConnectLimits` and `bybitKinds` before the
-  inputs; `BYBIT_API_MANAGEMENT_URL` in the env files, and `www.bybit.com` in `scripts/privacy-site.js` `NON_REQUEST_HOSTS`
+  new `bybit-credentials-field` over it, verifying through `fetchKeyInfo` and one real read of each shipped route, 7 calls, 9 with Earn; refusals in the order of spec section 6.8 (O13, PLANNER CALL 25), all before any Keychain write; `bybitConnectLimits` and `bybitKinds` before the
+  inputs; `BYBIT_API_MANAGEMENT_URL` = https://www.bybit.com/en/app/user/api-management in the env files, and `www.bybit.com` in `scripts/privacy-site.js` `NON_REQUEST_HOSTS`
   in this same step. Rows A12, A13, A32, A33, A54 (C3: the exact URL). `bybitConnectLimits` and `bybitKeyRejected` carry the C1
   text. Check: `npm run privacy:site -- hosts` does not list `www.bybit.com`.
 - [ ] **step 2/6: wiring.** `exchange-catalog.ts` id and row before `other`, `exchange/registry/registry.ts` entry with
-  `notListedKey`, `crypto-sync-form.component.tsx` arm, `crypto-sync-section.component.tsx` connect callback,
+  `notListedKey`; an optional registry field that `ExchangeHistoryFooter` reads for `earlierHistory`, set on Binance only, so its line stays byte-identical (PLANNER CALL 27, A59); `crypto-sync-form.component.tsx` arm, `crypto-sync-section.component.tsx` connect callback,
   `account-form.screen.tsx` and `use-connect-reminder.ts` per-provider props, `clearPairIfRowMissing` for Bybit. Re-pin
   `exchange-catalog.test.ts`, `registry.test.ts`, `crypto-sync-section.component.connect.test.tsx`, naming O9. Row A43,
   red on the parent, where `bybit` has neither entry (O21). Row A55 (C4: the caption). The footer of `notListedKey` carries the
@@ -321,12 +318,15 @@ every new key.
   Bybit, with the reason. Kit section D gains the App Privacy line. C4: no Bybit in the store title, subtitle or keywords, and
   no Bybit logo in the store metadata. Check: the coordinator reads both texts and the store metadata against spec section 9; no
   app file changes.
-- [ ] **step 6/6: device check, user on device.** Build from this branch. If Flexible Savings ships, the user subscribes
-  again first, because K11 redeemed it (PLANNER CALL 22). Each kind against the small account, each surface
-  in section 6.4; expiry line; a wrong key; a read-write key; a key not on the main account; a key with a missing box;
-  disconnect and reconnect; Binance still syncs; light and dark. Positive and negative pin checks of
-  `docs/security/README.md`. The coordinator owns device builds. This check is "fundamentals done" (O44), the next device call
-  for Bybit: every A+B kind correct on the small account, every stated limit shown. A defect in data, a stated limit or a
+- [ ] **step 6/6: device check, user on device, two builds (PLANNER CALL 34, spec section 10).** The coordinator owns device builds.
+  First, scratch: a scratch clone of this tip, with `BYBIT_API_ENDPOINT` set to testnet in its own untracked `.env`, never a `src/` edit. If Flexible Savings
+  ships, the user subscribes again on testnet first, because K11 redeemed it (PLANNER CALL 22). Coin rows on Unified and Funding, a balance moving, Earn if it ships, one transfer if K2 ran. Then the
+  scratch app leaves the device. Then real: this tip, `make deploy EXPECT=api.bybit.com`; the empty account with Last sync; the expiry line with 2027-02-04; each surface
+  in section 6.4; a wrong key; a read-write key; a key refused on a route (a narrow key, made and deleted by the user, optional); disconnect and reconnect;
+  Binance still syncs; light and dark. Positive and negative pin checks of `docs/security/README.md`. Guard: `.env` is in `.gitignore`, the worktree's `.env` never changes, and A52
+  pins that no tracked file names `api-testnet`. This check is "fundamentals done" (O44), the next device call for Bybit. It proves the connect path, the expiry, balances from a live answer and every
+  stated limit. It does not prove a coin row on mainnet, or any deposit or withdrawal row, which no build can show: those are the accepted residuals of spec section 10. If the
+  testnet account step failed, only the real build runs, and the report says that no coin row was seen. A defect in data, a stated limit or a
   condition blocks it. A visual wish does not block it: it goes to fast visual rounds after it, on this branch, before the batch
   merge. Pass: those rounds, then the batch merge. A stop here: sets 3 to 7 stay out of `next`, and no removal row is needed.
 
@@ -355,7 +355,9 @@ id and may stay. The cost is one larger merge.
 The device pass is "fundamentals done" = set 7's device check, step 6/6 (O44). Fast visual rounds come after it, on set 7's branch,
 before the batch merge; a visual wish does not block the pass, and a defect in data, a stated limit or a condition does.
 
-Order into `next`: 2 alone; then the batch 3, 4, 5, 6, 7 after the device pass and the visual rounds; then 8.
+Order into `next`: 2 alone; then the batch 3, 4, 5, 6, 7 after the device pass and the visual rounds; then 8. O62 removes no set and changes no order: it removes
+the wait for R2 to R4 before set 2, so set 2 can merge now. The batch holds set 3 step 7/7, or clause "E2 and E4" when no testnet reading exists. Nothing ships hidden at any merge (2.5.19): set 2 has no id,
+and the way in comes last.
 
 Set 1 merges nothing but its spec edit. Each set tip has its queued verify, and the merged tip of each merge has a queued
 verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 unaffected.
@@ -364,13 +366,13 @@ verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 
 
 | Set | Code lines (about) | Code files | Test lines (about) |
 |---|---|---|---|
-| 1 | script 1,379, measured | 1 | 1 fake-curl test |
+| 1 | script 1,379, measured, plus the host choice | 1 | 1 fake-curl test |
 | 2 | 210 | 9-12 | 450 |
 | 3 | 1,270 | 25-29 | 2,350 |
 | 4 | 550 | 13-15 | 1,050 |
-| 5 | 950 | 7-9 | 1,750 |
-| 6 | 500 | 5-6 | 1,200 |
-| 7 | 450, plus copy, the policy and site pages | 16-20 | 950 |
+| 5 | 1,000 | 7-9 | 1,900 |
+| 6 | 500 | 5-6 | 1,300 |
+| 7 | 480, plus copy, the policy and site pages | 17-21 | 1,000 |
 | 8 | docs | | |
 
 A duration for any of these comes from `kiko:estimator`.
@@ -398,14 +400,20 @@ sections 10, 12. O53 set 1 step 4, spec sections 10, 12. O54 set 1 steps 3, 6, s
 sections 6.3, 10, 12. O56 set 1 header, step 5, spec sections 10, 12. O57 set 1 step 3, spec sections 6.3, 10, 12.
 O58 set 1 steps 4, 5, spec rule 41, sections 10, 12.
 O59 status, set 1 header, step 5, spec status, sections 10, 12.
+O60 set 1 steps 6, 7, set 7 step 1, spec sections 3 to 6.8, 8, 9, 10. O61 (c) set 1 step 6. O62 status, goal, set 1 steps 7 to 10, set 3 header, step 7, set 5 header, set 6 header,
+set 7 header, step 6, "Merge order", spec status, sections 1, 3, 6.4, 8, 9, 10, 12, 13, Backlog. A later step number here that says "of 7" for set 1 now reads "of 10", and for set 3 "step n/7".
 
-Acceptance rows: A1 to A7, A11, A31, A36, A37, A47, A48 set 3 step 5; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
+Acceptance rows: A1, A2, A5 to A7, A11, A31, A48, A58 set 3 step 5; A3, A4, A36, A37, A47 set 3 step 7; A57 set 6 step 2; A59 set 7 step 2; A60 set 5 step 4; A61 set 5 step 2; A62 set 3 step 2; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
 step 1, set 6 step 1; A28 set 4 step 4; A29 set 4 step 3; A12, A13, A32, A33 set 7 step 1; A34, A46 set 3 step 5, set 4 step 2;
 A40, A51 set 7 step 3; A42, A49 set 3 step 6; A43, A55 set 7 step 2; A44, A50 set 7 step 4; A45 set 4 step 2; A52, A53 set 3
 step 2; A54 set 7 step 1; A56 set 3 step 3.
 
 ## Backlog
+
+### Later, no date, the user's choice: one real deposit and withdrawal (O61 (b), O62)
+
+R2, R3 and R4 with real money. No set waits for them. They turn stage B's docs-only rows into MEASURED; the rows and parts are in the spec's Backlog.
 
 ### Deferred: stages C and D (O37)
 
