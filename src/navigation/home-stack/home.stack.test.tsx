@@ -85,12 +85,13 @@ describe('HomeStack', () => {
     expect(navigator.props.screenOptions).toEqual({ headerShown: false });
   });
 
-  it('roots Home in the primary pane and defaults the companion to Statistics', () => {
+  it('roots Home in the primary pane, defaults the companion to Statistics and gives Tables the whole window', () => {
     const navigator = HomeStack({}) as ReactElement<{ paneConfig: object }>;
 
     expect(navigator.props.paneConfig).toEqual({
       rootPane: 'primary',
       companionDefault: { name: 'Statistics', isDefault: true },
+      wholeWindowRoutes: ['Tables'],
     });
   });
 

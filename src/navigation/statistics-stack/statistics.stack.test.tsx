@@ -167,12 +167,13 @@ describe('StatisticsStack', () => {
     },
   );
 
-  it('roots Statistics in the primary pane and defaults the companion to Home', () => {
+  it('roots Statistics in the primary pane, defaults the companion to Home and gives Tables the whole window', () => {
     const navigator = StatisticsStack({}) as ReactElement<{ paneConfig: object }>;
 
     expect(navigator.props.paneConfig).toEqual({
       rootPane: 'primary',
       companionDefault: { name: 'Home', isDefault: true },
+      wholeWindowRoutes: ['Tables'],
     });
   });
 
