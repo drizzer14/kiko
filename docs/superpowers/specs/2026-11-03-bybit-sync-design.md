@@ -5,7 +5,7 @@ WITH CONDITIONS for global accounts. The user accepted the 5.2.2 and 6.5 doubts 
 approval (O41). Base 57130e23c.
 Plan: `docs/superpowers/plans/2026-11-03-bybit-sync.md`.
 
-Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O42, binding), `terms-verdict.md`, `research-bybit-docs.md`,
+Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O50, binding), `terms-verdict.md`, `research-bybit-docs.md`,
 `research-bybit-legal.md`, `seam-map.md` (same folder), the brief `memory/refs/brief-1.4-bybit.md`,
 `memory/refs/bybit-okx-second-check-2026-11-03.md` and `memory/refs/bybit-terms-2026-11-03/` (main checkout), the skills
 kiko-exchange-sync, kiko-compliance, kiko-architecture, kiko-domain, kiko-translator, kiko-testing.
@@ -115,7 +115,7 @@ A shared rule is never assumed. Verdict: HOLDS, CHANGES, N/A.
 | 38 | Caption: P2P read failed | N/A | No P2P walk (O5); the gate stays Binance only | O5 |
 | 39 | Trades, dust, fiat, Pay walks | N/A | No such routes. 1.4 does not read trades, and the UI states it (O37) | Rulings |
 | 40 | Namespaced `externalId` | HOLDS | `<accountId>:` prefix, then the kind, the record id and `:<COIN>` (O4, memory exchange-ids) | CODE |
-| 41 | Network fee out of the ledger line | HOLDS until P6 | `amount` only; P6 and P4 compare it against the wallet drop | UNPROBED(P4, P6) |
+| 41 | Network fee out of the ledger line | HOLDS until P6 | `amount` only; per wallet, P6 and P4 compare `amount`, and `amount` + fee, against the change between two balance readings around the user's step (O47) | UNPROBED(P4, P6) |
 | 42 | `untrackedCounterpart`, wallet codes | HOLDS, unused | Bybit transfers move between UNIFIED and FUND only (accountType enum, SUMMARY). Any other wallet word is `bybit-transfer-wallet-unknown`, owed; `UNTRACKED_WALLETS` gets no member | SUMMARY; UNPROBED(P7) |
 | 43 | Funding matcher | HOLDS | Bybit writes no `p2p`, `card` or `bank` code, so `fundingOf` skips its rows. `EXCHANGE_NAME` stays | CODE |
 | 44 | Thrown errors are named classes | HOLDS | `BybitHistoryParseError`, `BybitRateLimitError`, `BybitRefusalError` with a fixed message and a `code` | CODE (`kiko-no-literal-sync-error`) |
@@ -523,7 +523,7 @@ probe output.
 | `bybitCoinBorrowed` (O27: fits a first connect, with no last balance. Level: SUMMARY for the borrow fields; UNPROBED(P2)) | {{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. | {{coin}}: Bybit показує позику під цю монету, тож Кіко не читає її баланс. Баланс, показаний тут, узято з попередньої синхронізації. |
 | `disconnectProviderMessage.bybit` | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | Акаунт буде відʼєднано, а збережений API-ключ очищено. Ваші активи й транзакції збережуться, і ви можете й надалі керувати ними вручну. |
 | `untrackedCoins` (changed) | Not tracked: {{tickers}}. Kiko does not import a currency its {{exchange}} sync does not support. | The existing uk line with Binance replaced by `{{exchange}}`; the output for Binance stays byte-identical |
-| `holdingDetail.exchangeNotListed.bybit` (E1 and M1; O15, O25, O39 C1. Level: UNPROBED(P3, P5); QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not") | Not listed: deposits sent by another Bybit user; trades, converts, interest and other Unified log entries; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than Bybit keeps. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted. | Не показано: поповнення від іншого користувача Bybit; угоди, конвертації, відсотки й інші записи журналу Unified; замовлення й дохід Earn; замовлення P2P, бо API Bybit відкритий для них лише рекламодавцям; продукти Earn, крім Flexible Savings і On-Chain; прибуток і збитки деривативів; позики; субакаунти; записи, старіші за ті, що зберігає Bybit. Кіко не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти. |
+| `holdingDetail.exchangeNotListed.bybit` (E1 and M1; O15, O25, O39 C1. Level: UNPROBED(P3, P5); QUOTE the P2P guide for the P2P clause, with no probe (O5, O49); QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not") | Not listed: deposits sent by another Bybit user; trades, converts, interest and other Unified log entries; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than Bybit keeps. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted. | Не показано: поповнення від іншого користувача Bybit; угоди, конвертації, відсотки й інші записи журналу Unified; замовлення й дохід Earn; замовлення P2P, бо API Bybit відкритий для них лише рекламодавцям; продукти Earn, крім Flexible Savings і On-Chain; прибуток і збитки деривативів; позики; субакаунти; записи, старіші за ті, що зберігає Bybit. Кіко не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти. |
 | `help.topics.connectCrypto.title`, `rowLabel` | Connect Binance, Bybit or a Bitcoin Wallet; Connect Binance, Bybit or a Bitcoin wallet | Підключення Binance, Bybit або гаманця Bitcoin (обидва) |
 | `help.topics.connectCrypto.steps.2` | Under "Exchange or wallet", choose "Binance", "Bybit" or "Bitcoin wallet address". | У полі «Біржа або гаманець» оберіть «Binance», «Bybit» або «Адреса гаманця Bitcoin». |
 | `help.topics.connectCrypto.steps.4` (new; the old 4 and 5 become 5 and 6; O15, O25, O39 C1. Level: UNPROBED(P1) for read-only with no IP restriction and for the main account; QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not"; QUOTE for 90 days and renewal before the date) | For Bybit: Kiko works only with global accounts (bybit.com). It does not support Bybit EU accounts, and a key from another regional site may not be accepted. Tap "Open Bybit API management" and, on your main account, create a read-only key with no IP restriction. Paste the "API key" and "API secret", then tap "Connect Bybit". Bybit ends the key after 90 days; renew it there before that date, and the key stays the same. The shipped `bybitKinds` text follows here, word for word. | Для Bybit: Кіко працює лише з глобальними акаунтами (bybit.com). Він не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти. Натисніть «Відкрити керування API Bybit» і в основному акаунті створіть ключ лише для читання без обмеження за IP. Вставте «API ключ» і «API секрет», потім натисніть «Підключити Bybit». Bybit припиняє дію ключа через 90 днів; подовжте її там до цієї дати, і ключ лишиться той самий. Далі йде текст `bybitKinds` слово в слово. |
@@ -739,16 +739,28 @@ Nothing before step 5 needs a key or asks for an account; no code that needs a s
 that needs Bybit comes before the terms verdict.
 
 The script's parts for 1.4 (O37): P1, P2, P3, P4, P5, P6, P7, P11, P12, P13, P14, P15, P16, P17, P18. P8, P9 and P10 are
-used only by stages C and D, so they are not in the script. Their ids stay reserved under Backlog.
+used only by stages C and D, so they are not in the script. Their ids stay reserved under Backlog. P14 is in the script, prints
+NOT RUN and makes no call (O49).
 
 Script (plan set 1): `memory/refs/bybit-probe.sh`, main checkout, on the eodhd-verify and
 binance-operations-probe pattern: hidden prompts, key and URL to `curl -q -K -` on stdin, secret to perl HMAC
-on stdin, masked URLs, one part per argument, GET only. It prints only field names, types, status words, row
-counts, decimal counts per coin, time-unit class, the box names of a key's `permissions`, `retCode`, HTTP status and `X-Bapi-Limit*`. An allowlist
-decides any value; everything else is a name and a type. No email, phone, address, name, id or txID is ever
-printed. A fake-curl test runs before handover, and the orchestrator reads the whole file. Output goes to
-`memory/refs/bybit-probe-output-<date>.txt`. The script prints no elapsed time and repeats no call to measure uptime or
-latency (API 6.6).
+on stdin, masked URLs, `<run> [part ...]` (a part name after the run runs only that part), GET only, on a closed list of paths.
+It prints only field names, types, status words, row counts, decimal counts per coin, time-unit class, the box names of a key's
+`permissions`, the UTC date of `expiredAt` and its days left, `retCode`, HTTP status, `X-Bapi-Limit*`, and fixed words that compare
+two readings (equal, changed, yes, no), never an amount.
+
+- It prints no server text. A `retCode` prints with a word from a closed table in the script, and a code outside the table prints
+  alone (O45).
+- A value prints only from a closed list per field. An unknown value prints `<other>`, and that is a result to read (O46).
+- Three printed values still pass a shape test and not a closed list: a coin name, a group or box name of `permissions`, and a
+  wallet-hint value of one or two digits (`iscoin`, `P1_JQ`, `walletword`). This disagrees with the letter of O46, and it is reported
+  to the orchestrator.
+- Residual accepted (O46): a field NAME of plain letters can hold a person's name only if a server uses a value as a key, and no
+  documented route does.
+
+No email, phone, address, name, id or txID is ever printed. A fake-curl test runs before handover, and the orchestrator reads the
+whole file. Output is added to `memory/refs/bybit-probe-output-<date>.txt` with `>>`, and each run starts with a line of `########`.
+The script prints no elapsed time and repeats no call to measure uptime or latency (API 6.6).
 
 The user line before R1 (C6; a human action, not mechanizable):
 
@@ -767,11 +779,11 @@ account plus a few USD in fees; it can be withdrawn after.
 
 | Run | When | The user does first | Parts | Proves |
 |---|---|---|---|---|
-| R1 | After the user's spec approval (O41), no money | Read the C6 line above. Global account at bybit.com, KYC as Bybit asks; one key: System-generated, read-only, every read box offered, no IP restriction. Part 2 of the browser step (section 9). Which boxes a read-only key can tick and whether it works with no IP restriction are UNPROBED(P1) | P1, P11, P12, P13 (empty), P14, P15, P16 | Host for Ukraine (O1), key shape, boxes, `isMaster`, expiry date, per-route permissions, no-P2P. On this empty account P12 shows only a refusal (O20); an empty 0 proves no retention |
-| R2 | After money lands | K1: on-chain USDT deposit. K2: FUND to UNIFIED and back, part of it left in UNIFIED. K3: a far-off unfilled spot limit order | P4 while K1 is pending (O16, O32); then, after it lands, P2, P4, P7, P13 (rows), P18 | The form of a row with no time, balance shapes, `locked` inside `walletBalance`, deposit wallet and status, transfer path and rows, page behaviour, decimals. If the user misses the pending window, rule 47 stays UNPROBED(P4) (O32) |
-| R3 | Same day | K4: subscribe Flexible Savings. K5: on-chain Earn if its minimum is affordable. Cancel K3 | P2, P3 | The double count. The Earn status rule still waits for R4 (rule 46) |
-| R4 | After the R3 run of P3 shows the position; no fixed day (O31, O40) | K6: on-chain withdrawal to the user's own Binance from FUND, and one from UNIFIED if Bybit allows it (O14); the output names each source wallet. K7, optional: an internal deposit from another Bybit user. K8, optional: off-chain withdrawal. Last: K11, redeem all of Flexible Savings, then wait until it lands | P3, P5, P6 (run thrice as it settles); P3 again after K11 | `success` vs `BlockchainConfirmed`, amount vs fee, internal rows, whether a row tells its wallet (rule 45), the redeemed row (rule 46). When its results are written, the set 1 tip exists and code may start (O36) |
-| R7 | On the date `expiredAt` prints; an open check after the ship (Q4) | Nothing; do not renew first | P17 | The error after expiry, then renewal keeps the key. Until it runs, the renewal row stays UNPROBED(P17), with the copy of O26 |
+| R1 | After the user's spec approval (O41), no money | Read the C6 line above. Global account at bybit.com, KYC as Bybit asks; one key: System-generated, read-only, every read box offered, no IP restriction. Part 2 of the browser step (section 9). Which boxes a read-only key can tick and whether it works with no IP restriction are UNPROBED(P1) | P1, P11, P12, P13 (empty), P14 (no call, O49), P15, P16 (about 50 calls) | Host for Ukraine (O1), key shape, boxes, `isMaster`, expiry date, per-route permissions. On this empty account P12 shows only a refusal (O20); an empty 0 proves no retention |
+| R2 | `R2 P4` while K1 is pending; the whole R2 after money lands | K1: on-chain USDT deposit. After `R2 P4`: K2: FUND to UNIFIED and back, part of it left in UNIFIED. K3: a far-off unfilled spot limit order, left open for R3 | `R2 P4` while K1 is pending (O16, O32): it reads the balances and the pending row, waits at a prompt until K1 lands, then reads the balances again (O47). Then the whole R2, with skip typed at the P4 prompt: P2, P4, P7, P13 (rows), P18 (up to about 60 calls). After K6 settles (R4): `R2 P13` once more, because no withdrawal row exists before K6 (O48) | The form of a row with no time, the wallet that moved for K1, balance shapes, deposit wallet and status, transfer path and rows, page behaviour, decimals. After K6: the time field that a withdrawal window filters on. The proof of `locked` inside `walletBalance` is in R3 (O50). If the user misses the pending window, rule 47 stays UNPROBED(P4) (O32), and P4 prints no balance comparison for K1 |
+| R3 | Same day | Nothing before the run: K3 stays open, and K4 and K5 wait for their prompt (O50) | P2: it reads UNIFIED and FUND, the user cancels K3 at its prompt, then it reads UNIFIED again. P3: reading 1 BEFORE K4, then at its prompt K4: subscribe Flexible Savings, and K5: on-chain Earn if its minimum is affordable; then reading 2 (about 12 calls) | `locked` inside `walletBalance`: both, per coin, around the cancel of K3 (O50). The double count. The Earn status rule still waits for R4 (rule 46) |
+| R4 | After the R3 run of P3 shows the position; no fixed day (O31, O40) | K7, optional: an internal deposit from another Bybit user. K8, optional: off-chain withdrawal. K6 waits for its prompt, and K11 is last | `R4`: P3 as one reading, with no redeem prompt (O50); P5; P6 reads FUND and UNIFIED, then at its prompt K6: on-chain withdrawal to the user's own Binance from FUND, and one from UNIFIED if Bybit allows it (O14), then it reads them again (about 10 calls). `R4 P6` as K6 settles, three times in all, with skip typed at the prompt. `R2 P13` once more (O48). Last, K11, through `R4 P3`: reading 1, then at its prompt the user redeems all of Flexible Savings and waits until it lands, then reading 2 | `success` vs `BlockchainConfirmed`; per wallet, change equals amount, change equals amount + fee; internal rows; whether a row tells its wallet (rule 45); the wallet that moved around K6, which the output names by its words: FUND and UNIFIED as equal or changed per coin (O47); the redeemed row (rule 46) and the redeem check. When its results are written, the set 1 tip exists and code may start (O36) |
+| R7 | On the date `expiredAt` prints; an open check after the ship (Q4) | Nothing; do not renew first | P17 (6 calls) | The error after expiry, then renewal keeps the key. Until it runs, the renewal row stays UNPROBED(P17), with the copy of O26 |
 
 Everything in research "STILL NEEDS THE KEY". Items 7 and 8, and the order and yield parts of item 12, are under Backlog,
 because only the deferred stages need them:
@@ -786,7 +798,7 @@ because only the deferred stages need them:
 | 6 | The real transfer path | P7 |
 | 9 | `deadlineDay`, `expiredAt`, permissions object | P1; an IP-bound key stays UNVERIFIED unless the user adds one |
 | 10 | Error after expiry; wrong-host key | P17; wrong-host stays UNVERIFIED, no EU key exists, and no key goes to a second domain |
-| 11 | P2P `simplifyList` for a non-advertiser | P14, one call in the probe, never in the app |
+| 11 | P2P `simplifyList` for a non-advertiser | Closed, no call: the route is a POST, and the probe is GET only (section 10) and C2 (O49). P14 stays NOT RUN |
 | 12 | Earn position shape and limits, limit headers | P3, P16 |
 | 13 | Maximum recv window | P15 |
 | 14 | HTTP status for every call | P16, printed on each |
@@ -796,14 +808,14 @@ Parts, what each must print and which code it unlocks:
 
 | Part | Prints | Unlocks |
 |---|---|---|
-| P1 | query-api names, types, `readOnly`, `expiredAt` and `deadlineDay` shape, days left, `uta`, `isMaster` as booleans, the group and box names inside `permissions` (allowlisted words, no personal data) | Set 3 client, set 4 expiry, set 7 connect refusals (O13) |
-| P2 | Wallet bodies per coin: names, types, zero listed or not, `walletBalance` vs `equity` equal or not, `locked`, `spotBorrow`, `bonus` non-zero or not | Set 3 balances |
-| P3 | Sum per coin in UNIFIED, FUND and position, before and after, as equal or changed, never amounts; `status`; per row, whether a `status` is present and whether `amount` is zero or non-zero, after K11 too (rule 46, O31); `claimableYield` inside or not; `nextPageCursor` | Set 3 Earn |
-| P4, P5, P6, P7 | Row names and types, status words, unit class of times, id present, FUND vs UNIFIED drop as equal or changed, amount vs fee. P4 and P6 also print `depositType` values and any field that could tell the wallet, against the wallet the coin moved in (rule 45). P4 with K1 pending prints whether the time is empty, 0, absent or present (rule 47) | Sets 5, 6 |
+| P1 | query-api names, types, `readOnly`, `expiredAt` and `deadlineDay` shape, days left, `uta`, `isMaster` as booleans, the group and box names inside `permissions` (by a shape test, not a closed list; see the list above) | Set 3 client, set 4 expiry, set 7 connect refusals (O13) |
+| P2 | Wallet bodies per coin: names, types, zero listed or not, `walletBalance` vs `equity` equal or not, `locked`, `spotBorrow`, `borrowAmount`, `bonus` non-zero or not. In R3 only: `walletBalance` and `locked` per coin before and after the cancel of K3, as equal or changed (O50) | Set 3 balances |
+| P3 | Two readings around the user's Earn step; never an amount. Per coin: `unified`, `fund`, `flexible` and `onchain` as equal or changed (up or down); wallet (unified + fund) and position (flexible + onchain) moving in opposite ways or not. When `flexible` falls, the redeem check: wallet rise equals the position amount, and wallet rise equals amount + `claimableYield`, each yes or no. Per row, after K11 too (rule 46, O31): `status`, and `amount`, `claimableYield` and `totalPnl` as zero or non-zero; `nextPageCursor`. A `status` prints as absent, empty, `Processing` or `Active`, and any other word prints `<other>` (O46): the research lists `Processing` and `Active` for OnChain only, so a FlexibleSaving row can print `<other>`, and that is a result to read. A plain `R4` prints one reading only (O50) | Set 3 Earn |
+| P4, P5, P6, P7 | Row names and types, status words from a closed list per series (`<other>` outside it), unit class of times, id present, amount and fee as zero or non-zero, fee smaller than amount. P4 and P6 also use two balance readings around the user's step (O47): per coin, FUND and UNIFIED as equal or changed; per row and per wallet, change equals amount, and change equals amount + fee, each yes or no, with the sign ignored. A skip at the prompt prints no comparison. P5 and P7 print no balance drop: P5 is optional, and P7 rows name both wallets. P7 tries both transfer paths. P4 and P6 also print `depositType` values and any field that could tell the wallet, against the wallet that moved (rule 45). P4 with K1 pending prints whether the time is empty, 0, absent or present (rule 47) | Sets 5, 6 |
 | P11 | One call per endpoint: `retCode` | Sets 3, 5 |
 | P12 | Rows and `retCode` for a window starting 2 years back, and 18, 12, 6 months, per series. Only a refusal moves a floor; an empty 0 keeps 729 days (O20) | Set 5 floors |
-| P13 | Window edges (7 d, 7 d + 1 s; 29 d, 30 d), an end-exclusive test on a known row, filter field, `limit=1` page order, cursor shape, a full last page, a repeated cursor | Sets 5, 6 |
-| P14 | `retCode` | The O5 text |
+| P13 | Per series: window edges (transfer 7 d, 7 d + 1 s; the others 29 d, 30 d), an end-exclusive and a start-exclusive test on the newest row, `limit=1` page order, cursor shape, a full last page, a repeated cursor. On the withdrawal series only, the filter field: the time field, `createTime` or `updateTime`, that `startTime` and `endTime` filter on, by a window that ends and a window that starts between the two times of one row (O48). No coin filter: no Stage B row sends `coin`. A series with no row prints only its edges, so `R2 P13` runs once more after K6 settles | Sets 5, 6 |
+| P14 | NOT RUN, no call. Closed by the GET-only rule of this section and by C2, not a pending probe (O49): the only P2P order-list route is a POST. P1's box names, `FiatP2P` among them, are the only P2P fact the script reads | Nothing. The O5 text rests on the docs line: QUOTE "The P2P API is only accessible by General Advertisers or above" (research, section H) |
 | P15 | `retCode` for recv window 5000, 20000, 60000 | Set 3 |
 | P16 | HTTP status, `X-Bapi-Limit`, `-Status`, `-Reset-Timestamp` per route | Sets 3, 5 interval |
 | P17 | Section 6.3 | Refusal table |
@@ -1006,6 +1018,13 @@ reverses a row):
 | O40 (reverses PLANNER CALL 24) | R4's condition | at least a day after K4 | after the R3 run of P3 shows the position; no fixed day |
 | O41 (accepts PLANNER CALL 23) | R1 and the spec approval | a planner call, not yet ruled | the user's approval comes after the verdict, before R1; R1 waits for it |
 | O42 (replaces the "Open" sentence of O39) | Guideline 5.2.2 and the API 6.5 doubt | an open question, with the coordinator for the user; a letter to Bybit as an option | no question: both doubts stay open and are accepted by the user; keep Bybit, global accounts only, no letter to Bybit |
+| O45 | A `retCode` in the output | no rule on the server's text | a word from a closed table, or the code alone; no server text |
+| O46 | A value in the output | "an allowlist decides", and a pattern passed | a closed list per field; an unknown value prints `<other>`; the residual on a field name is accepted |
+| O47 | "Which wallet" and rule 41 | one row against one balance; "the output names each source wallet"; amount vs fee | two balance readings around the user's step, in P4 and P6; the output names the wallet that moved by its words; change equals amount, change equals amount + fee, per wallet |
+| O48 | P13 "filter field" | no stated meaning | the time field that `startTime` and `endTime` filter on, tested on the withdrawal series; no coin filter; `R2 P13` once more after K6 |
+| O49 | P14 | one call; R1 proves no-P2P; it unlocks the O5 text | NOT RUN, closed by GET only and C2; the O5 text rests on the docs line |
+| O50 | K3 cancel, K4, K5, K11 | done before the run | at the prompts of P2 and P3; a plain `R4` has no redeem prompt, and K11 goes through `R4 P3` |
+| O50 | `locked` inside `walletBalance` | proved at R2 | proved at R3, around the cancel of K3 |
 
 | Id | Conflict | Kept |
 |---|---|---|

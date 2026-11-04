@@ -62,7 +62,7 @@ the gate text stays below for when it is lifted.
 ## 1.4-bybit set 1/8: the terms verdict, the probe script and the user's probe run
 
 Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). The user's spec approval comes after the
-verdict and before step 6/7 (PLANNER CALL 23, O41). Size: 1 script of about 600 to 900 lines, 1 test, no app file. Not mutable.
+verdict and before step 6/7 (PLANNER CALL 23, O41). Size: 1 script, 1,295 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file. Not mutable.
 Reviewer checks: the whole script for any leak path; every part against spec section 10; no write verb. "Set 1 tip" is
 the commit after the last step that writes results: the second run of step 7/7, for R3 and R4 (O36). Set 2 bases on it.
 
@@ -79,8 +79,11 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
 - [ ] **step 3/7: write `memory/refs/bybit-probe.sh`** (main checkout, untracked, like its templates; `kiko:ops` or
   the coordinator names the writer). Pattern: `binance-transfer-depth-probe.sh`, `eodhd-verify.sh`: hidden prompts,
   `curl -q -K -` with URL and key on stdin, perl HMAC with the secret on stdin, alnum-checked key, masked URLs. Parts
-  P1 to P7 and P11 to P18, no others (O37), and the allowlist-only printer of spec section 10; `set -u`; a Ctrl-C prints
-  what was read. No elapsed time is printed, and no call repeats to measure uptime or latency (C6, API 6.6).
+  P1 to P7 and P11 to P18, no others (O37), with P14 NOT RUN and no call (O49). The printer of spec section 10: no server text, a
+  `retCode` with a word from a closed table (O45), a value from a closed list per field, and `<other>` for an unknown value (O46).
+  P4 and P6 read two balances around the user's step (O47); P2 and P3 hold K3, K4, K5 and K11 at prompts (O50); P13 tests the
+  filter time field on the withdrawal series (O48). `set -u`; a Ctrl-C prints what was read. No elapsed time is printed, and no
+  call repeats to measure uptime or latency (C6, API 6.6).
 - [ ] **step 4/7: fake-curl test.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
   values for every part. Check: no sentinel appears on stdout or stderr, the key is in no argv, and each part makes a fixed
   number of calls (C6).
@@ -88,10 +91,11 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   (O41), the coordinator hands it over, with the R1 account list, the C6 user line of spec section 10 and part 2 of the
   browser step (spec section 9).
 - [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
-  the C6 line before R1, part 2 of the browser step at R1, P4 also while K1 is pending (O16, O32), K6 from each wallet that
-  Bybit allows (O14), R4 after the R3 run of P3 shows the position, with no fixed day (O40), and last at R4 K11, the redeem of
-  Flexible Savings, with a P3 run after it (O31). Outputs go to
-  `memory/refs/bybit-probe-output-<date>.txt`. The date of `expiredAt` goes into the track HANDOFF and the run log as an
+  the C6 line before R1, part 2 of the browser step at R1, `R2 P4` while K1 is pending, with a prompt until K1 lands and before
+  K2 (O16, O32, O47), skip at the P4 prompt of the whole R2, the cancel of K3 at P2's prompt and K4 and K5 at P3's prompt in R3
+  (O50), K6 at P6's prompt from each wallet that Bybit allows (O14), R4 after the R3 run of P3 shows the position, with no fixed
+  day (O40), skip at the prompt of each `R4 P6` settle run, `R2 P13` once more after K6 settles (O48), and last K11, the redeem
+  of Flexible Savings, at the prompt of `R4 P3` (O31, O50). Outputs go to `memory/refs/bybit-probe-output-<date>.txt`. The date of `expiredAt` goes into the track HANDOFF and the run log as an
   open gap until R7 runs. R7 on that date, an open check after the ship (Q4): it holds neither set 7 nor the merge, and its
   row stays UNPROBED(P17), with the copy of O26.
 - [ ] **step 7/7: write results into the spec.** `kiko:planner` turns each UNPROBED row into MEASURED or edits it; the
@@ -99,11 +103,11 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   boxes of each kind (O13). A P12 refusal moves a floor; an empty 0 keeps 729 days (O20). Check: `git grep -c UNPROBED`
   on the spec falls to the rows of P5 and P17, rule 47 if the user missed the pending window, and the deferred rows under
   Backlog (O32, O35, O37). A row keeps its mark until its own probe runs. A kind that failed goes to its text in section 8. A shape
-  change that reverses a row adds a was column. `make doc-suites`. This step runs once for R1 and R2 and again for R3 and
-  R4; the second run's commit is the set 1 tip.
+  change that reverses a row adds a was column. `make doc-suites`. This step runs once for R1 and R2 and again for R3, R4 and
+  the `R2 P13` run after K6; the second run's commit is the set 1 tip.
 
 Gate per stage: every code set bases on the set 1 tip or later, so P1 to P7, P11, P12, P13, P15, P16 and step 2/7 hold at
-each of them, with each row's mark per step 7/7. Set 3's Earn step uses the P3 run after the redeem (O31).
+each of them, with each row's mark per step 7/7. Set 3's Earn step uses the `R4 P3` run around the redeem (O31, O50). P14 holds nothing: it makes no call (O49).
 
 ## 1.4-bybit set 2/8: neutral seams, Binance unchanged
 
@@ -136,7 +140,7 @@ no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the p
 
 ## 1.4-bybit set 3/8: provider id, client, keys and balances (stage A core)
 
-Base: set 2 tip. Needs step 2/7 of set 1 and P1, P2, P11, P15, P16; step 5/6 needs P3, with the run after the redeem. Size:
+Base: set 2 tip. Needs step 2/7 of set 1 and P1, P2, P11, P15, P16; step 5/6 needs P3, with the `R4 P3` run around the redeem. Size:
 about 1,270 code lines in 25 to 29 files (under the cap of 30; `make mutable` measures, and a count over the cap is a
 report to the orchestrator), about 2,350 test lines (was 1,200, 21 to 25, 2,050: O30 moves seams 3, 4 and 9 here; O31, O33
 add rows; O29 moves the policy, its site pages and `bybit.privacy-policy.test.ts` to set 7; O39 adds A52, A53, A56). Tip: `bybit` in
@@ -254,7 +258,8 @@ measured numbers.
 Base: set 6 tip. Needs P1, P11 (boxes), part 2 of the browser step (URL). Size:
 about 450 code lines in 16 to 20 files, about 950 test lines (was 450, same, 850: O29 moves `bybit.privacy-policy.test.ts`
 here; O39 adds A51, A54, A55), plus the policy and site pages (O29). Tip: Bybit visible and complete. Merge: the batch of
-"Merge order", only after the device check on this branch (PLANNER CALL 15). Reviewer checks: compliance section whole, each
+"Merge order", only after the device check on this branch (PLANNER CALL 15). That check, step 6/6, is "fundamentals done" (O44).
+Reviewer checks: compliance section whole, each
 surface's copy against spec section 8, help pins, the policy text against spec section 9; C4's wording (no Bybit look, no line
 that offers Kiko in place of the Bybit app) and C3 (no price, ad, IAP, tip or sponsor), both by judgment; kiko:translator on
 every new key.
@@ -293,8 +298,10 @@ every new key.
   again first, because K11 redeemed it (PLANNER CALL 22). Each kind against the small account, each surface
   in section 6.4; expiry line; a wrong key; a read-write key; a key not on the main account; a key with a missing box;
   disconnect and reconnect; Binance still syncs; light and dark. Positive and negative pin checks of
-  `docs/security/README.md`. The coordinator owns device builds. Pass: the batch merge. A stop here: sets 3 to 7 stay out of
-  `next`, and no removal row is needed.
+  `docs/security/README.md`. The coordinator owns device builds. This check is "fundamentals done" (O44), the next device call
+  for Bybit: every A+B kind correct on the small account, every stated limit shown. A defect in data, a stated limit or a
+  condition blocks it. A visual wish does not block it: it goes to fast visual rounds after it, on this branch, before the batch
+  merge. Pass: those rounds, then the batch merge. A stop here: sets 3 to 7 stay out of `next`, and no removal row is needed.
 
 ## 1.4-bybit set 8/8: skill drift
 
@@ -318,7 +325,10 @@ A recommendation to the coordinator, who owns the merge (O21). Sets 3 to 7 stay 
 then merge as one batch, so no dormant reader reaches `next`. If set 7 stops, no removal row is needed; set 2 holds no Bybit
 id and may stay. The cost is one larger merge.
 
-Order into `next`: 2 alone; then the batch 3, 4, 5, 6, 7 after the device pass; then 8.
+The device pass is "fundamentals done" = set 7's device check, step 6/6 (O44). Fast visual rounds come after it, on set 7's branch,
+before the batch merge; a visual wish does not block the pass, and a defect in data, a stated limit or a condition does.
+
+Order into `next`: 2 alone; then the batch 3, 4, 5, 6, 7 after the device pass and the visual rounds; then 8.
 
 Set 1 merges nothing but its spec edit. Each set tip has its queued verify, and the merged tip of each merge has a queued
 verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 unaffected.
@@ -327,7 +337,7 @@ verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 
 
 | Set | Code lines (about) | Code files | Test lines (about) |
 |---|---|---|---|
-| 1 | script 600-900 | 1 | 1 fake-curl test |
+| 1 | script 1,295, measured | 1 | 1 fake-curl test |
 | 2 | 210 | 9-12 | 450 |
 | 3 | 1,270 | 25-29 | 2,350 |
 | 4 | 550 | 13-15 | 1,050 |
@@ -354,6 +364,9 @@ set 3 steps 4, 6; O31 set 1 step 6, set 3 step 5, set 7 step 6, spec sections 8,
 11, 12, 13. O40 set 1 step 6, spec sections 10, 12. O41 status, set 1 header, step 5, spec sections 10, 12. C1 set 3 step 2, set 7
 steps 1, 2, 3; C2 set 3 step 2; C3 set 7 header, step 1, set 8 step 2; C4 set 7 header, steps 2, 5; C5 set 3 header, step 3; C6 set
 1 steps 3, 4, 5, 6, spec section 10; C7 set 8 step 2. O42 status, set 8 step 2, spec sections 9, 12, 13. Q1 to Q4: spec sections 6.3, 7, 13, set 1 step 6.
+O44 set 7 header, step 6, "Merge order". O45, O46 set 1 step 3, spec sections 10, 12. O47 set 1 steps 3, 6, spec rule 41, sections
+10, 12. O48 set 1 steps 3, 6, 7, spec sections 10, 12. O49 set 1 step 3, gate per stage, spec sections 8, 10, 12. O50 set 1 steps 3,
+6, gate per stage, set 3 header, spec sections 10, 12.
 
 Acceptance rows: A1 to A7, A11, A31, A36, A37, A47, A48 set 3 step 5; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
