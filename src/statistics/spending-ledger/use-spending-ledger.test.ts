@@ -6,11 +6,12 @@ import { sameCurrencyMoveTransactionIds } from '@kiko/statistics/exchange-exclus
 import {
   CARD,
   CASH,
+  LOAN_PAYMENT,
   transactionRow,
   worldInput,
   WORLD_TRANSACTIONS,
 } from './__fixtures__/spending-ledger-world';
-import { buildSpendingLedger, type SpendingLedgerInput, useSpendingLedger } from '.';
+import { buildSpendingLedger, useSpendingLedger } from '.';
 
 jest.mock('@kiko/statistics/internal-transfers', () => {
   const actual: typeof import('@kiko/statistics/internal-transfers') = jest.requireActual(
@@ -46,6 +47,18 @@ const BALANCE_SET = transactionRow({
   amountMinorUnits: -50_000,
   setsBalance: true,
 });
+const CASH_BALANCE_SET = transactionRow({
+  id: 'cash-balance-set',
+  holdingId: 'cash',
+  amountMinorUnits: -70_000,
+  setsBalance: true,
+});
+const MARKED_LOAN_PAYMENT = transactionRow({
+  ...LOAN_PAYMENT,
+  id: 'marked-loan-payment',
+  setsBalance: true,
+  time: LOAN_PAYMENT.time - 1,
+});
 
 describe('useSpendingLedger', () => {
   it('gives every field the builder gives, on the same world', async () => {
@@ -61,16 +74,29 @@ describe('useSpendingLedger', () => {
   });
 
   it('gives the builder output on a filtered account list too', async () => {
-    const input = worldInput({ shownHoldings: [CARD] });
+    const input = worldInput({
+      shownHoldings: [CARD],
+      transactions: [...WORLD_TRANSACTIONS, CASH_BALANCE_SET],
+    });
     const { result } = await renderHook(() => useSpendingLedger(input));
 
     expect(result.current).toEqual(buildSpendingLedger(input));
+    expect(result.current.excludedTransactionIds.has('cash-balance-set')).toBe(true);
+  });
+
+  it('derives no loan entry for a marked row linked to a loan', async () => {
+    const input = worldInput({ transactions: [...WORLD_TRANSACTIONS, MARKED_LOAN_PAYMENT] });
+    const { result } = await renderHook(() => useSpendingLedger(input));
+    const trendIds = result.current.trendTransactions.map((row) => row.id);
+
+    expect(trendIds.filter((id) => id.endsWith(':marked-loan-payment'))).toEqual([]);
+    expect(trendIds).toContain('loan-interest:loan-payment');
   });
 
   it('does not rerun a ledger-wide matcher when only the shown holdings change', async () => {
     const input = worldInput();
     const { result, rerender } = await renderHook(
-      (props: SpendingLedgerInput) => useSpendingLedger(props),
+      (props: typeof input) => useSpendingLedger(props),
       { initialProps: input },
     );
     const firstLedger = result.current.ledgerWithCurrency;
@@ -90,10 +116,9 @@ describe('useSpendingLedger', () => {
 
   it('reruns the ledger-wide matchers when a transaction arrives', async () => {
     const input = worldInput();
-    const { rerender } = await renderHook(
-      (props: SpendingLedgerInput) => useSpendingLedger(props),
-      { initialProps: input },
-    );
+    const { rerender } = await renderHook((props: typeof input) => useSpendingLedger(props), {
+      initialProps: input,
+    });
     const before = jest.mocked(internalTransferTransactionIds).mock.calls.length;
 
     await rerender({

@@ -157,7 +157,16 @@ describe('the export version against the migration journal', () => {
     // (`operation`), a label only: an older build restoring a file that carries it drops the key,
     // its rows keep their markers, and this build restores an older file without it as null, so
     // it needed no bump.
-    migrationCount: 64,
+    // Through the Travel seed, a row in `categories` and no new shape: an older build restoring a
+    // file that carries it keeps the row as a category of its own, and this build adds the row to
+    // an older file (told by the absent settings mark key, never by the row alone), so it needed
+    // no bump.
+    // Through the back-fill mark, a column riding inside the settings row
+    // (`mccCategoriesBackfilled`): an older build restoring a file that carries it drops the key,
+    // and its own later upgrade runs the back-fill; this build restores an older file without it
+    // as the default `false`, so the back-fill runs on it, and it needed no bump (a bump would
+    // make an older build refuse every new file).
+    migrationCount: 66,
   };
 
   it('has a version decision for every migration', () => {

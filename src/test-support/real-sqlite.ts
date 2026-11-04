@@ -89,6 +89,15 @@ export const addTransactionOperationColumn = (database: DatabaseSync): void => {
   database.exec(firstStatementOf('0063_add_transaction_operation'));
 };
 
+/**
+ * Adds `settings.mcc_categories_backfilled` to a database migrated below the mark migration, so a
+ * read through today's schema works on it. Only the column, at its default: it is the migration's
+ * one statement.
+ */
+export const addMccCategoriesBackfilledColumn = (database: DatabaseSync): void => {
+  database.exec(firstStatementOf('0065_add_mcc_categories_backfilled'));
+};
+
 const journalIndexOf = (entries: MigrationJournalEntry[], tag: string): number => {
   const index = entries.findIndex((entry) => entry.tag === tag);
 

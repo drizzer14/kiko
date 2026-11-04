@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addMccCategoriesBackfilledColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
@@ -236,6 +237,7 @@ const scaleTwoDatabase = (): DatabaseSync => {
   target.exec(EXCHANGE_STATE_SQL);
   addAccountCurrencyColumn(target);
   addTransactionOperationColumn(target);
+  addMccCategoriesBackfilledColumn(target);
   seedScaleTwoDatabase(target);
 
   return target;

@@ -267,6 +267,138 @@ describe('restoreDataSnapshot', () => {
     });
   });
 
+  describe('Travel category reseed', () => {
+    const TRAVEL_ROW = {
+      key: 'travel',
+      title: 'Travel',
+      icon: 'airplane',
+      color: '#40C8E0',
+    };
+    const GROCERIES_ROW = {
+      key: 'groceries',
+      title: 'Groceries',
+      icon: 'cart',
+      color: null,
+      sortOrder: 0,
+    };
+    const LOAN_INTEREST_ROW = {
+      key: 'loan_interest',
+      title: 'Loan interest',
+      icon: 'percent',
+      color: '#5E5CE6',
+      sortOrder: 1,
+    };
+
+    const insertedCategoriesOf = async (
+      categories: readonly object[],
+      settingsRows: readonly object[],
+    ) => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restore({
+        ...emptySnapshot,
+        categories: categories as never,
+        settings: settingsRows as never,
+      });
+
+      return insertedRows.categories;
+    };
+
+    it('adds Travel at one past every category for a file from before 1.4', async () => {
+      const inserted = await insertedCategoriesOf(
+        [
+          { ...GROCERIES_ROW, sortOrder: 7 },
+          { ...LOAN_INTEREST_ROW, sortOrder: 3 },
+        ],
+        [{ id: 1 }],
+      );
+
+      expect(inserted).toEqual([
+        { ...GROCERIES_ROW, sortOrder: 7 },
+        { ...LOAN_INTEREST_ROW, sortOrder: 3 },
+        { ...TRAVEL_ROW, sortOrder: 8 },
+      ]);
+    });
+
+    it.each([
+      ['true', true],
+      ['false', false],
+    ])(
+      'does not bring Travel back in a 1.4 file where the user deleted it (mark %s)',
+      async (_label, mark) => {
+        const inserted = await insertedCategoriesOf(
+          [GROCERIES_ROW, LOAN_INTEREST_ROW],
+          [{ id: 1, mccCategoriesBackfilled: mark }],
+        );
+
+        expect(inserted).toEqual([GROCERIES_ROW, LOAN_INTEREST_ROW]);
+      },
+    );
+
+    it.each([
+      ['absent', { id: 1 }],
+      ['present', { id: 1, mccCategoriesBackfilled: true }],
+    ])("keeps a file's own Travel row verbatim (mark %s)", async (_label, settingsRow) => {
+      const ownTravel = {
+        key: 'travel',
+        title: 'Trips',
+        icon: 'suitcase',
+        color: '#123456',
+        sortOrder: 0,
+      };
+      const inserted = await insertedCategoriesOf(
+        [ownTravel, { ...GROCERIES_ROW, sortOrder: 5 }, LOAN_INTEREST_ROW],
+        [settingsRow],
+      );
+
+      expect(inserted).toEqual([ownTravel, { ...GROCERIES_ROW, sortOrder: 5 }, LOAN_INTEREST_ROW]);
+    });
+
+    it('adds loan interest, then Travel, to a file with neither', async () => {
+      const inserted = await insertedCategoriesOf([GROCERIES_ROW], [{ id: 1 }]);
+
+      expect(inserted).toEqual([GROCERIES_ROW, LOAN_INTEREST_ROW, { ...TRAVEL_ROW, sortOrder: 2 }]);
+    });
+
+    it('leaves a user category titled Travel alone beside the added row', async () => {
+      const userTravel = {
+        key: 'my-own-travel',
+        title: 'Travel',
+        icon: 'bag',
+        color: '#ABCDEF',
+        sortOrder: 4,
+      };
+      const inserted = await insertedCategoriesOf([userTravel, LOAN_INTEREST_ROW], [{ id: 1 }]);
+
+      expect(inserted).toEqual([userTravel, LOAN_INTEREST_ROW, { ...TRAVEL_ROW, sortOrder: 5 }]);
+    });
+
+    it('adds no Travel for a file with no settings row', async () => {
+      const inserted = await insertedCategoriesOf([GROCERIES_ROW], []);
+
+      expect(inserted).toEqual([GROCERIES_ROW, LOAN_INTEREST_ROW]);
+    });
+
+    it('reads the key by presence: a key of false is a 1.4 file', async () => {
+      const withoutKey = await insertedCategoriesOf(
+        [GROCERIES_ROW, LOAN_INTEREST_ROW],
+        [{ id: 1 }],
+      );
+      const withFalseKey = await insertedCategoriesOf(
+        [GROCERIES_ROW, LOAN_INTEREST_ROW],
+        [{ id: 1, mccCategoriesBackfilled: false }],
+      );
+
+      expect(withoutKey).toEqual([
+        GROCERIES_ROW,
+        LOAN_INTEREST_ROW,
+        { ...TRAVEL_ROW, sortOrder: 2 },
+      ]);
+      expect(withFalseKey).toEqual([GROCERIES_ROW, LOAN_INTEREST_ROW]);
+    });
+  });
+
   it('inserts a snapshot pricePoints row into the price_points table', async () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;

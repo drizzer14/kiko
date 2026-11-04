@@ -186,7 +186,7 @@ export const useRateHistoryBackfill = (input: {
     // No local "nothing missing" shortcut here any more: `runBackfill` itself
     // owns that decision now, since it also has to check a newly-held or
     // lagging currency against `lastBackfilledDayByCurrency` — a check this
-    // screen cannot replicate without `openCurrencies`'s own async read.
+    // caller cannot replicate without `openCurrencies`'s own async read.
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDayRef.current });
     // either() captures every rejection as a Left, and the .then handler only sets state.
     // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)

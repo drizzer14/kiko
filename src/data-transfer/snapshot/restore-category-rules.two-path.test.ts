@@ -25,6 +25,9 @@ jest.mock('@kiko/loans/use-loan-auto-link', () => ({
 jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
   recostStoredLots: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('@kiko/categories/category-rules-repo/backfill-mcc-categories', () => ({
+  backfillMccCategories: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
   replanRestoredReminders: jest.fn().mockResolvedValue(undefined),
 }));
@@ -33,6 +36,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addMccCategoriesBackfilledColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
@@ -318,6 +322,7 @@ describe('restoring a .kiko file this build exported', () => {
     exported.exec(EXCHANGE_STATE_SQL);
     addAccountCurrencyColumn(exported);
     addTransactionOperationColumn(exported);
+    addMccCategoriesBackfilledColumn(exported);
 
     await restoreExportOf(exported);
 

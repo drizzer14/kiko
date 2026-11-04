@@ -133,11 +133,13 @@ and `@react-native-community/cli-types`. Both parents request
 `^17.2.1`, which accepts the fixed `17.13.7`, and no existing override
 covers them, so it is pinned with a top-level override. A later advisory
 (GHSA-wr44-6hxh-3jwq, CVSS 6.3) moved the same pin to `17.13.8`
-(published 2026-09-11):
+(published 2026-09-11), and GHSA-4528-x5fx-h6hg (CVSS 7.5) moved it to `17.13.9` (published
+2026-10-28T10:04Z, past the `.npmrc` 7-day minimum age from 2026-11-04T10:04Z). The
+lockfile change is the `joi` entry only:
 
 ```json
 "overrides": {
-  "joi": "17.13.8"
+  "joi": "17.13.9"
 }
 ```
 
@@ -461,15 +463,6 @@ they cannot be pinned via `overrides` today. Accepted as tracked debt,
 same class as the `image-size` CVEs above — do not suppress it;
 re-check periodically (next 2026-11-04) and pin once `query-string` ships an
 ESM-compatible or patched line.
-
-`bash scripts/checks/osv.sh` also flags `joi` 17.13.8, advisory GHSA-4528-x5fx-h6hg (CVSS 7.5),
-fixed in 17.13.9 (published 2026-10-28T10:04Z, which passes the `.npmrc` 7-day minimum age from
-2026-11-04T10:04Z). Its parent chain is `@react-native-community/cli` 20.2.0 ->
-`cli-config` and `cli-types` (both `^17.2.1`, which accept 17.13.9). It is dev-only (a
-`devOptional` lockfile entry; osv labels it dev), Node-side CLI tooling that never reaches the
-app bundle. Tracked debt, not a suppressed finding: as its own change set on or after
-2026-11-04, change the top-level `overrides` entry `joi` from `17.13.8` to `17.13.9` and move
-this entry into "osv-scanner CVE remediation". Re-check date: 2026-11-04.
 
 `bash scripts/checks/osv.sh` also flags `glob` 9.3.5 (GHSA-3g3m-2fjr-6pw4, affected
 `>=9.0.0 <=14.0.1`) and `minimatch` on four majors (GHSA-g3hv-75wg-m249, affected `<11.0.1`):

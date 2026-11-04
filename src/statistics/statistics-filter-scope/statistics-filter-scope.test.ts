@@ -10,7 +10,6 @@ import {
   buildCategoryOptions,
   buildFilterScope,
   excludedCategoryKeysOf,
-  type FilterScope,
   visibleCategorySelection,
 } from '.';
 
@@ -64,7 +63,7 @@ const HOLDINGS = [CARD, CLOSED_JAR, SAVINGS_CARD, ARCHIVED_CARD];
 const scopeOf = (
   selectedAccounts: string[],
   overrides: { accounts?: AccountRow[]; holdings?: HoldingRow[] } = {},
-): FilterScope =>
+) =>
   buildFilterScope({
     accounts: overrides.accounts ?? ACCOUNTS,
     holdings: overrides.holdings ?? HOLDINGS,
@@ -213,7 +212,7 @@ describe('buildCategoryOptions', () => {
     expect(option.color).toBe(resolveCategoryColor(null, 'groceries'));
   });
 
-  it('lists a key once when it is both in the slices and kept', () => {
+  it('lists a key once, as the slice option, when it is both in the slices and kept', () => {
     const options = buildCategoryOptions({
       slices: [slice('health')],
       categories: CATEGORIES,
@@ -221,7 +220,9 @@ describe('buildCategoryOptions', () => {
       keptKeys: new Set(['health', 'health']),
     });
 
-    expect(optionKeys(options)).toEqual(['health']);
+    expect(options).toEqual([
+      { value: 'health', label: 'Health', icon: 'cross', color: '#abcdef' },
+    ]);
   });
 
   it('leaves out a kept key no category resolves', () => {
