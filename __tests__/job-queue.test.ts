@@ -2617,7 +2617,7 @@ describe('scripts/job-queue.sh a job that changes the tree', () => {
       '── make verify: stage 2a (jest) ──',
       tests,
       ...Array.from({ length: 500 }, (_, index) => `noise ${index}`),
-      '✔ make verify: lint, jest, and gate all passed',
+      '✔ make verify: gate and jest all passed',
     ].join('\n');
 
     const result = runQueue(sandbox, 'verify', worktree, 'one');
