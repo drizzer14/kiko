@@ -377,7 +377,8 @@ hand over your own tickets. Keep
 bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued
 check:all, security, gate or harness-verify reads the worktree throughout the run; never queue
 one while a developer still edits that tree, and keep that tree untouched until DONE.
-A verify reads the commit named at enqueue in the `-verify` checkout (a listed worktree: pruning it costs one `npm ci`), so its track goes on.
+A verify reads the commit named at enqueue in the `-verify` checkout
+(a listed worktree: pruning it costs one `npm ci`), so its track goes on.
 done.log's head field of a verify is that full sha, kept while the checkout is clean at the end
 (field 7 is `full` or `partial`; `ff-main.sh` needs absent or `full`). For the other kinds it is
 the full 40-character HEAD only when the tree (`tree_is_clean` in `scripts/job-queue.sh`:
