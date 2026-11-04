@@ -144,6 +144,17 @@ const oneOf = (rendered: Rendered, testID: string): Instance => {
   return found[0];
 };
 
+// The content view of the Tables screen, whose parent is the screen's SafeAreaView.
+const tablesContent = (rendered: Rendered): Instance | null => {
+  let node = rendered.getByTestId('tables-period').parent;
+
+  while (node !== null && node.props.testID !== 'screen-content') {
+    node = node.parent;
+  }
+
+  return node;
+};
+
 // The pane an instance is rendered in.
 const paneOf = (instance: Instance): string | null => {
   for (let node = instance.parent; node !== null; node = node.parent) {
@@ -240,6 +251,25 @@ describe('Tables takes the whole window', () => {
 
       expect(home.panes[tables?.key ?? '']).toBe('primary');
       expect(home.routes[0]?.name).toBe('Home');
+    });
+
+    // The expanded pane tells its screens they are in no pane, so Tables reads as the single
+    // stack's: the header owns the top inset, the other edges are the window's, and the content
+    // starts at the base padding with no top-bar pill.
+    it('lays Tables out as the window under its header: no top edge, the base padding', async () => {
+      const rendered = await renderRoot();
+
+      await pressTables(rendered);
+
+      const content = tablesContent(rendered);
+
+      expect(content?.parent?.props.edges).toEqual({
+        top: 'off',
+        right: 'additive',
+        bottom: 'additive',
+        left: 'additive',
+      });
+      expect(StyleSheet.flatten(content?.props.style).paddingTop).toBe(darkTheme.spacing(4));
     });
 
     it('keeps the Statistics beside Home mounted, with no route made for it', async () => {
@@ -361,16 +391,12 @@ describe('Tables takes the whole window', () => {
       await goToTab('StatisticsTab');
       await pressTables(rendered);
 
-      let node = rendered.getByTestId('tables-period').parent;
-
-      while (node !== null && node.props.testID !== 'screen-content') {
-        node = node.parent;
-      }
+      const content = tablesContent(rendered);
 
       expect(allOf(rendered, PRIMARY)).toHaveLength(0);
       expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables']);
-      expect(node).not.toBeNull();
-      expect(StyleSheet.flatten(node?.parent?.props.style).maxWidth).toBeUndefined();
+      expect(content).not.toBeNull();
+      expect(StyleSheet.flatten(content?.parent?.props.style).maxWidth).toBeUndefined();
       expect(darkTheme.layout.paneMaxWidth).toBeLessThan(669);
     });
 
