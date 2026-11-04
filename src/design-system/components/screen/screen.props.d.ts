@@ -77,6 +77,15 @@ export type ScreenProps = {
   // Only meaningful in the plain (non-scroll) branch; ignored in `scroll` mode
   // (which already drops the top edge for its own ScrollView).
   bleedTop?: boolean;
+  // A plain (non-scroll) screen that sits under a SHOWN native header. The header owns the top
+  // inset and clears a floating top tab bar, so the plain branch drops the SafeAreaView's top
+  // edge and adds no top-bar pill, and the content starts directly below the header with the
+  // base padding. Everything else of the plain branch stays: the wrapper, its margin, the
+  // tab-bar clearance, the footer, the pane cap. Pass it only where the header is shown (it is
+  // not read from `HeaderHeightContext`, which reports 0 on a focused stack beside a vertical
+  // bar). Only meaningful in the plain branch; ignored in `scroll` mode and with `bleedTop`,
+  // which already drop the top edge.
+  belowHeader?: boolean;
   // Forwarded to the `scroll`-mode ScrollView's own `onContentSizeChange`, so
   // a caller resolving a Save-press scroll target (`scrollToField`, see
   // `src/design-system/scroll-to-field/`) can capture the CURRENT total

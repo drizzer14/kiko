@@ -144,6 +144,42 @@ describe('TablesScreen', () => {
     });
   });
 
+  // Under the shown native header, the header owns the top inset; a top edge here left a blank
+  // band the height of the inset between the bar and the content.
+  describe('the safe area under the header', () => {
+    // The package's SafeAreaView hands the native view all four edges, a dropped one as 'off'.
+    const EDGES_UNDER_HEADER = {
+      top: 'off',
+      right: 'additive',
+      bottom: 'additive',
+      left: 'additive',
+    };
+
+    it('drops the top edge when the table shows', async () => {
+      const { getByTestId } = await renderTables();
+
+      expect(getByTestId('screen-content').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
+    });
+
+    it('drops the top edge while the data loads', async () => {
+      mockUseLiveQuery.mockImplementation(() => ({ data: [], isLoading: true, isFresh: false }));
+
+      const { getByTestId } = await renderTables();
+
+      expect(getByTestId('screen-content').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
+    });
+
+    it('drops the top edge in the empty state', async () => {
+      mockUseLiveQuery.mockImplementation(
+        answerWith((tables) => (tables[0] === 'transactions' ? [] : undefined)),
+      );
+
+      const { getByTestId } = await renderTables();
+
+      expect(getByTestId('screen-content').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
+    });
+  });
+
   describe('the controls', () => {
     it('scroll with the caption, above it, inside the table', async () => {
       const { getByTestId } = await renderTables();

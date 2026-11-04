@@ -339,6 +339,29 @@ describe('Screen', () => {
     expect(getByTestId(CONTENT_TEST_ID).parent?.props.edges).toBeUndefined();
   });
 
+  describe('belowHeader (a plain screen under a shown native header)', () => {
+    it('drops the top edge, so the header owns the top inset, and keeps the rest', async () => {
+      const { getByTestId } = await renderScreen({ belowHeader: true });
+
+      expect(getByTestId(CONTENT_TEST_ID).parent?.props.edges).toEqual(['left', 'right', 'bottom']);
+    });
+
+    it('keeps the content, the base top padding and the tab-bar clearance of the plain branch', async () => {
+      const { getByTestId } = await renderScreen({ belowHeader: true });
+      const content = StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style);
+
+      expect(content.paddingTop).toBe(CONTENT_BASE_PADDING);
+      expect(content.paddingBottom).toBe(FOOTER_GAP + BOTTOM_CLEARANCE);
+      expect(content.flex).toBe(1);
+    });
+
+    it('still pins a footer below the content', async () => {
+      const { getByTestId } = await renderScreen({ belowHeader: true, footer: footerNode });
+
+      expect(getByTestId(FOOTER_TEST_ID)).toBeTruthy();
+    });
+  });
+
   it('renders the bleedTop child directly under the SafeAreaView with no content wrapper, so the native large title can track it as its scroll view', async () => {
     const { getByText, queryByTestId } = await renderScreen({ bleedTop: true });
 
@@ -871,6 +894,12 @@ describe('Screen', () => {
       ).toBeUndefined();
     });
 
+    it('adds no pill under a top bar when the screen sits below a shown header', async () => {
+      const view = await renderScreen({ belowHeader: true });
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
+    });
+
     it('carries no top clearance in the scroll branch', async () => {
       const { getByTestId } = await renderScreen({ scroll: true });
       const scrollContentStyle = StyleSheet.flatten(
@@ -1110,6 +1139,20 @@ describe('Screen', () => {
       'reserves a plain screen’s safe area only on the window edges the %s %s pane touches',
       async (mode, pane, touched) => {
         const view = await renderInPane({}, mode, pane);
+
+        expect(view.getByTestId(CONTENT_TEST_ID).parent?.props.edges).toEqual(touched);
+      },
+    );
+
+    it.each([
+      ['columns', 'companion', ['left', 'bottom']],
+      ['columns', 'primary', ['right', 'bottom']],
+      ['rows', 'companion', ['left', 'right']],
+      ['rows', 'primary', ['left', 'right', 'bottom']],
+    ] as const)(
+      'drops the top edge of a plain screen below a header and keeps only the edges the %s %s pane touches',
+      async (mode, pane, touched) => {
+        const view = await renderInPane({ belowHeader: true }, mode, pane);
 
         expect(view.getByTestId(CONTENT_TEST_ID).parent?.props.edges).toEqual(touched);
       },

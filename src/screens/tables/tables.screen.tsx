@@ -130,7 +130,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
 
   if (!isReady) {
     return (
-      <Screen>
+      <Screen belowHeader>
         <LoadingState testID="tables-loading" />
       </Screen>
     );
@@ -175,7 +175,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   );
 
   return (
-    <Screen>
+    <Screen belowHeader>
       <Box gap={3} style={styles.content}>
         <CategoryTable
           ledger={ledger}

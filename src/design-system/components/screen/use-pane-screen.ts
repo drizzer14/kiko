@@ -76,26 +76,30 @@ export const useScrollIndicatorProps = () =>
  * what the screen has always used: the SafeAreaView's own default edges. In a pane the screen
  * keeps a safe-area inset only on an edge the pane shares with the window. Beside a side bar the
  * bottom edge is dropped everywhere (`useIsBottomInsetPadded`): the content runs to the window's
- * bottom and pads the inset itself.
+ * bottom and pads the inset itself. A plain screen below a shown header (`isBelowHeader`) takes
+ * the large-title edges as its plain ones, since the header owns the top inset.
  */
-export const usePaneScreen = () => {
+export const usePaneScreen = (isBelowHeader = false) => {
   const pane = usePaneContext();
   const isBottomInsetPadded = useIsBottomInsetPadded();
 
   const withoutPaddedBottom = (edges: readonly Edge[]) =>
     isBottomInsetPadded ? edges.filter((edge) => edge !== 'bottom') : edges;
 
+  const touched = (edges: readonly Edge[]) =>
+    pane === null ? edges : edges.filter((edge) => pane.edges[edge]);
+  const largeTitleEdges = withoutPaddedBottom(touched(LARGE_TITLE_EDGES));
+
+  if (isBelowHeader) {
+    return { plainEdges: largeTitleEdges, largeTitleEdges };
+  }
+
   if (pane === null) {
     return {
       plainEdges: isBottomInsetPadded ? withoutPaddedBottom(ALL_EDGES) : undefined,
-      largeTitleEdges: withoutPaddedBottom(LARGE_TITLE_EDGES),
+      largeTitleEdges,
     };
   }
 
-  const touched = (edges: readonly Edge[]) => edges.filter((edge) => pane.edges[edge]);
-
-  return {
-    plainEdges: withoutPaddedBottom(touched(ALL_EDGES)),
-    largeTitleEdges: withoutPaddedBottom(touched(LARGE_TITLE_EDGES)),
-  };
+  return { plainEdges: withoutPaddedBottom(touched(ALL_EDGES)), largeTitleEdges };
 };
