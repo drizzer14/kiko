@@ -259,6 +259,46 @@ describe('useCategoryOverride, the prefix offer', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  describe('while the preview is still loading', () => {
+    const NEVER_RESOLVED = new Promise<never>(() => undefined);
+
+    it('holds the sheet: Cancel does nothing while it loads', async () => {
+      mockPreviewNameRule.mockReturnValue(NEVER_RESOLVED);
+
+      const { result } = await offered();
+
+      expect(result.current.isOfferingPrefix).toBe(true);
+      expect(result.current.isOverrideWriting).toBe(true);
+
+      await act(async () => {
+        result.current.cancelOverride();
+      });
+
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      expect(result.current.prefixPreview).toBeNull();
+      expectNothingWritten();
+    });
+
+    it('holds the step: Back keeps the preview that is shown', async () => {
+      const { result } = await offered();
+
+      mockPreviewNameRule.mockReturnValue(NEVER_RESOLVED);
+
+      await act(async () => {
+        result.current.onOfferPrefix();
+      });
+
+      expect(result.current.isOverrideWriting).toBe(true);
+
+      await act(async () => {
+        result.current.onBackFromPrefix();
+      });
+
+      expect(result.current.prefixPreview).toEqual(PREVIEW);
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+  });
+
   it('blocks a second confirm while the write runs', async () => {
     let finishWrite: () => void = () => undefined;
 

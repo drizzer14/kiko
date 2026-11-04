@@ -15,6 +15,8 @@ import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { DEFAULT_CATEGORY_KEY, resolveCategoryDisplay } from '@kiko/categories/category-display';
 
+import type { CategoryOverrideSheetProps } from '../category-override-sheet/category-override-sheet.props';
+
 // What the form holds of a transaction while it is filled in, as far as a rule can read it.
 // `currency` is the picked holding's, null while no holding is picked.
 export type CategoryDraft = {
@@ -123,27 +125,26 @@ export const resolveCategoryOverrideRequest = (
 
 type PrefixPreview = { count: number; names: readonly string[] };
 
-type PrefixConfirm = {
-  message: string;
-  onConfirm: () => void;
-  onBack: () => void;
-  isApplying: boolean;
-};
+type PrefixConfirm = NonNullable<CategoryOverrideSheetProps['prefixConfirm']>;
 
 // The sheet's confirm step for the prefix rule, or null while no preview is shown. The title is
 // the picked category's resolved one, never its stored seed text; `buildMessage` keeps this module
-// translation-agnostic.
+// translation-agnostic. A preview of no rows still shows the step, so the user can store the rule.
 export const resolvePrefixConfirm = (
   preview: PrefixPreview | null,
   pendingCategory: { title: string } | null,
   buildMessage: (preview: PrefixPreview, categoryTitle: string) => string,
-  actions: Omit<PrefixConfirm, 'message'>,
+  actions: Omit<PrefixConfirm, 'message' | 'hasRowsToMove'>,
 ): PrefixConfirm | null => {
   if (preview === null || pendingCategory === null) {
     return null;
   }
 
-  return { message: buildMessage(preview, pendingCategory.title), ...actions };
+  return {
+    message: buildMessage(preview, pendingCategory.title),
+    hasRowsToMove: preview.count > 0,
+    ...actions,
+  };
 };
 
 // Resolve the pending override's category into the icon name and the confirm

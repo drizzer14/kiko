@@ -16,10 +16,10 @@ import type { CategoryOverrideSheetProps } from './category-override-sheet.props
 // the secondary single-row override; "Cancel" is a transparent ghost with
 // a red label. A name that ends in a store number also offers a secondary
 // "starts with" button, which swaps the sheet's content for the preview of
-// that rule: a primary "Move" and a ghost "Back". Dismissing the sheet
-// (scrim/back) behaves like Cancel — it returns to the list. While a write
-// runs, its button shows a spinner and the sheet stays open until the
-// write is done.
+// that rule: a primary "Move" and a ghost "Back". When no existing transaction moves, the tap only
+// stores the rule, so the step reads "Add Rule" and "Add" instead. Dismissing the sheet
+// (scrim/back) behaves like Cancel — it returns to the list. While a write runs, its button shows
+// a spinner and the sheet stays open until the write is done.
 const CategoryOverrideSheet = ({
   visible,
   onDismiss,
@@ -49,9 +49,9 @@ const CategoryOverrideSheet = ({
           {categoryIcon !== null && <SymbolIcon name={categoryIcon} size={22} tone="textPrimary" />}
 
           <Text variant="heading">
-            {prefixConfirm === null
-              ? t('forms.transaction.applyCategoryToAll')
-              : t('categoryRulePreview.confirmTitle')}
+            {prefixConfirm === null && t('forms.transaction.applyCategoryToAll')}
+            {prefixConfirm?.hasRowsToMove === true && t('categoryRulePreview.confirmTitle')}
+            {prefixConfirm?.hasRowsToMove === false && t('categoryRulePreview.addTitle')}
           </Text>
         </Box>
       }
@@ -109,7 +109,9 @@ const CategoryOverrideSheet = ({
           </Text>
 
           <Button onPress={prefixConfirm.onConfirm} loading={prefixConfirm.isApplying}>
-            {t('categoryRulePreview.confirm')}
+            {prefixConfirm.hasRowsToMove
+              ? t('categoryRulePreview.confirm')
+              : t('categoryRulePreview.add')}
           </Button>
 
           <Button

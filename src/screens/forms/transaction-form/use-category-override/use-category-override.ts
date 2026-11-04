@@ -18,7 +18,8 @@ type UseCategoryOverrideParams = {
 // The category-override confirmation's state and writes: the pending request
 // (non-null while the themed confirm sheet is up, carrying the affected name,
 // the picked category key and the row the save wrote; null when no confirmation
-// is in flight) and the sheet's three actions.
+// is in flight) and the sheet's actions: Apply, Just for this one, and the prefix offer's preview
+// and confirm.
 export const useCategoryOverride = ({
   navigation,
   editingId,
@@ -34,9 +35,9 @@ export const useCategoryOverride = ({
   // A category change offers to become a name rule for every same-name
   // transaction (and for future imports), so surface the blast radius in a
   // themed confirm modal before writing the rule. Every path returns to the
-  // list (the manual write, if any, has already been done); only "Apply" also
-  // writes the name rule, and it hands the rule the row the save wrote so that
-  // row follows the rule rather than staying a hand pick.
+  // list (the manual write, if any, has already been done); only "Apply" and
+  // the prefix confirm also write a name rule, and each hands the rule the row
+  // the save wrote so that row follows the rule rather than staying a hand pick.
   const applyOverride = async (): Promise<void> => {
     if (pendingOverride === null) {
       return;

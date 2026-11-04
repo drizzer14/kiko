@@ -270,6 +270,8 @@ export const uk: typeof en = {
     newOnly: 'Лише нові транзакції',
   },
   categoryRulePreview: {
+    add: 'Додати',
+    addTitle: 'Додати правило',
     back: 'Назад',
     confirm: 'Перемістити',
     confirmTitle: 'Перемістити транзакції',

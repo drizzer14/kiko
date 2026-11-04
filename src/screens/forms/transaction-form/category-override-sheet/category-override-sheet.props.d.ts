@@ -12,7 +12,7 @@ export type CategoryOverrideSheetProps = {
   isApplying: boolean;
   onApplyOne: () => void;
   isApplyingOne: boolean;
-  // Either write in flight: Cancel is disabled while it runs.
+  // A write or the preview read in flight: Cancel is disabled while it runs.
   isWriting: boolean;
   // The name's text before a store number, or `null` for a name with none: it offers the rule for
   // every name that starts the same way.
@@ -20,9 +20,12 @@ export type CategoryOverrideSheetProps = {
   onOfferPrefix: () => void;
   // The preview behind that offer is loading.
   isOfferingPrefix: boolean;
-  // Non-null while the preview of the prefix rule is shown in place of the first step.
+  // Non-null while the preview of the prefix rule is shown in place of the first step. With no rows
+  // to move (`hasRowsToMove` false) the step only stores the rule, so it is titled and labeled for
+  // adding a rule rather than moving transactions.
   prefixConfirm: {
     message: string;
+    hasRowsToMove: boolean;
     onConfirm: () => void;
     onBack: () => void;
     isApplying: boolean;

@@ -1,13 +1,13 @@
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
-export type MerchantName = {
+type MerchantName = {
   // The grouping identity: a normalized name, or its normalized prefix.
   key: string;
   // The text a "starts with" rule would hold, as written; null when no store number was cut.
   prefix: string | null;
 };
 
-export const MERCHANT_PREFIX_MIN_LETTERS = 3;
+const MERCHANT_PREFIX_MIN_LETTERS = 3;
 
 // One digit is no store number and seven or more is a phone or a reference. A masked card has
 // letters or stars in its token, so it never matches.

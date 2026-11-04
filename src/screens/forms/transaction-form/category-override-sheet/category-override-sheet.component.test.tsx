@@ -78,6 +78,7 @@ const confirming = (overrides: Partial<PrefixConfirm> = {}): PrefixProps => ({
     onConfirm: jest.fn(),
     onBack: jest.fn(),
     isApplying: false,
+    hasRowsToMove: true,
     ...overrides,
   },
 });
@@ -127,7 +128,68 @@ describe('CategoryOverrideSheet', () => {
     expect(buttonPropsFor(PREFIX_LABEL).loading).toBe(true);
   });
 
+  it('disables Apply, Just for this one and Cancel while the preview loads', async () => {
+    const onApply = jest.fn();
+    const onApplyOne = jest.fn();
+    const onDismiss = jest.fn();
+    const { getByText } = await renderSheet(
+      { ...withPrefix, isOfferingPrefix: true },
+      { onApply, onApplyOne, onDismiss, isWriting: true },
+    );
+
+    expect(buttonPropsFor(APPLY).disabled).toBe(true);
+    expect(buttonPropsFor(APPLY_TO_ONE).disabled).toBe(true);
+    expect(buttonPropsFor(CANCEL).disabled).toBe(true);
+
+    await fireEvent.press(getByText(APPLY));
+    await fireEvent.press(getByText(APPLY_TO_ONE));
+    await fireEvent.press(getByText(CANCEL));
+
+    expect(onApply).not.toHaveBeenCalled();
+    expect(onApplyOne).not.toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('leaves Apply and Just for this one enabled when nothing is loading', async () => {
+    await renderSheet(withPrefix);
+
+    expect(buttonPropsFor(APPLY).disabled).toBe(false);
+    expect(buttonPropsFor(APPLY_TO_ONE).disabled).toBe(false);
+  });
+
   describe('the confirm content', () => {
+    const MOVE_TITLE = i18n.t('categoryRulePreview.confirmTitle');
+    const ADD_TITLE = i18n.t('categoryRulePreview.addTitle');
+    const ADD = i18n.t('categoryRulePreview.add');
+
+    it('titles the step Move Transactions with a Move button when rows move', async () => {
+      const { getByTestId } = await renderSheet(confirming({ hasRowsToMove: true }));
+      const sheet = within(getByTestId('category-override-sheet'));
+
+      expect(sheet.getByText(MOVE_TITLE)).toBeTruthy();
+      expect(sheet.getByText(MOVE)).toBeTruthy();
+      expect(sheet.queryByText(ADD_TITLE)).toBeNull();
+      expect(sheet.queryByText(ADD)).toBeNull();
+    });
+
+    it('titles the step Add Rule with an Add button when no row moves', async () => {
+      const onConfirm = jest.fn();
+      const { getByTestId, getByText } = await renderSheet(
+        confirming({ hasRowsToMove: false, onConfirm }),
+      );
+      const sheet = within(getByTestId('category-override-sheet'));
+
+      expect(sheet.getByText(ADD_TITLE)).toBeTruthy();
+      expect(sheet.getByText(ADD)).toBeTruthy();
+      expect(sheet.queryByText(MOVE_TITLE)).toBeNull();
+      expect(sheet.queryByText(MOVE)).toBeNull();
+      expect(buttonPropsFor(ADD).variant ?? 'primary').toBe('primary');
+
+      await fireEvent.press(getByText(ADD));
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
     it('swaps to the confirm content in the same sheet', async () => {
       const first = await renderSheet(withPrefix);
       const offered = within(first.getByTestId('category-override-sheet'));

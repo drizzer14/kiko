@@ -276,8 +276,8 @@ const withTravelReseeded: (categories: CategoryRow[], settings: SettingsRow[]) =
 **Interfaces. Produces:**
 ```ts
 // @kiko/transactions/merchant-name
-export type MerchantName = { key: string; prefix: string | null };
-export const MERCHANT_PREFIX_MIN_LETTERS = 3;
+type MerchantName = { key: string; prefix: string | null };
+const MERCHANT_PREFIX_MIN_LETTERS = 3;
 export const merchantNameOf: (name: string) => MerchantName;
 export const tidiedNameOf: (name: string) => string; // spec section 4 `tidy`: the full name, case kept
 export const merchantSpellingOf: (name: string) => string; // prefix, else the tidied name: `nameStartsWith` text only
@@ -299,6 +299,8 @@ export const ruleMoveMessage: (preview: { count: number; names: readonly string[
 | `forms.transaction.applyToAllStartingWith` | `All starting with "{{prefix}}"` | `Усі, що починаються з «{{prefix}}»` |
 | `categoryRulePreview.confirmTitle` (title key) | `Move Transactions` | `Перемістити транзакції` |
 | `categoryRulePreview.confirm` | `Move` | `Перемістити` |
+| `categoryRulePreview.addTitle` (title key), shown instead of `confirmTitle` at a count of 0 | `Add Rule` | `Додати правило` |
+| `categoryRulePreview.add`, shown instead of `confirm` at a count of 0 | `Add` | `Додати` |
 | `categoryRulePreview.moveMessage_one/_few/_many/_other` | `_one`: `{{count}} transaction moves to "{{category}}": {{names}}.`; the rest: `{{count}} transactions move to ...` | `_one`: `{{count}} транзакція перейде до категорії «{{category}}»: {{names}}.`; `_few`: `транзакції перейдуть`; `_many`: `транзакцій перейде`; `_other`: `транзакції перейде` |
 | `categoryRulePreview.moreNames_*` | `and {{count}} more` | `і ще {{count}}` |
 | `categoryRulePreview.noRowsMessage` | `No existing transactions move. New ones will go to "{{category}}".` | `Наявні транзакції не перейдуть. Нові потраплятимуть до категорії «{{category}}».` |

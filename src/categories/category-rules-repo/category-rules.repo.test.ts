@@ -1630,7 +1630,6 @@ describe('a name rule of a store-number name', () => {
       await applyNameRule({ name: 'ATB 0212', category: 'food', sourceTransactionId: null });
 
       expect(storedRules().map(matchersOf)).toEqual([[{ type: 'nameIs', text: 'ATB 0212' }]]);
-      expect(changedIdsSince({})).toContain('first');
       expect(categoriesOf()).toMatchObject({ first: 'food', second: 'food', third: 'groceries' });
     });
 

@@ -300,6 +300,8 @@ export const en = {
     newOnly: 'New transactions only',
   },
   categoryRulePreview: {
+    add: 'Add',
+    addTitle: 'Add Rule',
     back: 'Back',
     confirm: 'Move',
     confirmTitle: 'Move Transactions',
