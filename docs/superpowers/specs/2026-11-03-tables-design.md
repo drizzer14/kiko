@@ -34,7 +34,7 @@ the base:
 | Source claim | Finding |
 |---|---|
 | "Landscape and the unfolded Duo show more" | iPhone is portrait only; iPad has all four orientations (`ios/Kiko/Info.plist:133-143`). No iPhone landscape in this track. Unlocking it would change the whole app. |
-| Duo and wide windows | The Duo inner screen is 669 wide and is `single` mode, never "large" (`layout-mode.ts:8-25`). Panes cap content at `paneMaxWidth` 600 (`use-pane-screen.ts:51-61`). |
+| Duo and wide windows | The Duo inner screen is 669 wide and is `single` mode, never "large" (`layout-mode.ts:8-25`). Panes cap content at `paneMaxWidth` 600 (`use-pane-screen.ts`), and `useContentCap` caps any `regular` window. Tables is `Screen uncapped` and a whole-window route, so it fills the window or the pane (section 12, ruling 11). |
 | C1 data: "Yes: category-breakdown, buckets" | Partly. Buckets are 1 or 7 days only (`buckets.ts:5-13`); no month helper exists in `src/`. |
 | C2: "mostly, new calculation" | Correct. No income code exists; every builder skips `amountMinorUnits >= 0` (`category-breakdown.ts:180`). |
 | C3: "Yes: net-worth-series, holding-value-at" | Partly. The series sums inside its reduce (`net-worth-series.ts:230-236`). No per-account series exists. |
@@ -105,7 +105,7 @@ Proof rows (each is a test):
 ## 5. Where the tables live, and the period
 
 Ruled (Decision 1): an own screen, "Tables", `src/screens/tables/`, pushed from a button in Statistics. The
-charts view does not change, apart from the button. Orchestrator's call: the button is an in-page row under the
+charts view does not change, apart from the button. Orchestrator's call: the button is an in-page row above the
 filter bar, not a header item, because Statistics also shows as the Home companion pane, and one in-page path is
 visible in every pane (Guideline 2.5.19). One untagged `Box` holds the filter bar and the button, so the pinned children of `statistics-blocks` stay as they are. The designer sets its look. The route registers in BOTH the Statistics and
 the Home stacks: on a wide window Statistics is Home's companion, and a name the stack does not register is unhandled
@@ -231,7 +231,8 @@ total equals the cell; C2's expense cell ignores the pick, as the C2 column does
 
 ## 9. The table component (kiko:designer owns it)
 
-`src/design-system/components/data-table/`. It takes only strings and display flags as props: column
+`src/design-system/components/data-table/`. Its props are strings and display flags, plus two `ReactNode` props of the
+caller's (`topContent`, `emptyContent`; see `data-table.props.d.ts`): column
 headers and row text come from the caller, so `check:component-i18n-namespace` stays clean, and no money
 logic sits in it. `SummaryTable` cannot be reused: it has no columns, header, fixed column or scroll. The
 one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed column.
@@ -239,8 +240,8 @@ one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed
 - Fixed first column, opaque `surface`, right edge `border` + `layout.hairline`. Header text `textSecondary`,
   row separators `border`. Negative values `negative`. Theme tokens only (`kiko-no-raw-color-literal`), so
   the light palette of `1.4-light-scheme` works with no edit. Do not assume a black background.
-- Size from `onLayout`, never the window and never the device type (HIG size-class rule). The pane cap means
-  a horizontal scroll can appear in every window. When all columns fit, there is no scroll.
+- Size from `onLayout`, never the window and never the device type (HIG size-class rule). Tables is `Screen uncapped`,
+  so it is not held to the pane cap, and a horizontal scroll appears only when the columns overflow. When all columns fit, there is no scroll.
 - Column widths come from measured text, so an amount is never cut, shrunk or wrapped: no
   `adjustsFontSizeToFit`. Row height comes from the taller of the fixed and scrolled parts, measured.
 - First column: at most 40% of the width; labels wrap in full and never truncate.
@@ -253,7 +254,7 @@ one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed
   column visible as the scroll hint. Sum columns have a `sheetBackground` tint. The last row ("All") is bold.
 - The header row stays visible on vertical scroll. RN has no sticky support in a horizontal list, so this is
   the first probe of the change set. Tables is its own screen, so the table owns its vertical scroll, and the header
-  row sits above it and follows the horizontal offset. Measure before you build. Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
+  row is child 1 of that scroll (`stickyHeaderIndices={[1]}`), under the caption and `topContent`, and follows the horizontal offset. Measure before you build. Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
   actions (`kiko-gestures`). Check the iPad split and the edge swipe on a device.
 - VoiceOver: one element per cell, label "<row>, <month>", value = the FULL amount, never rounded; role `button`
   and a hint only where a tap opens rows. Header cells are hidden from it, as the HIG says for chart axes,
@@ -261,8 +262,9 @@ one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed
   grid role.
 
 Amounts in cells (Decision 4), ruled: whole major units, no currency symbol, base currency named in the
-caption. Reason: 2-3 month columns fit on a phone only that way. A shown total can differ by 1 from the sum of
-shown cells. Never K/M suffixes: they are hardcoded in `compact.ts:13-18` and hide the amount. Formatting uses
+caption. Reason: 2-3 month columns fit on a phone only that way. A "Total" or "All" figure is not the sum of the
+shown cells when a return falls in another month than its payment: it lowers the total, not the payment month's cell
+(help step 9 says so). Never K/M suffixes: they are hardcoded in `compact.ts:13-18` and hide the amount. Formatting uses
 the shared money path with the digits option the builder adds, not a new formatter. For a base currency with
 0 decimals, no change.
 
@@ -339,11 +341,11 @@ The compliance skill has no rule on plain-text export: the scribe adds one.
 - Performance: Tables reads the same queries as S, through the shared hook. Compute only the selected table, inside a memo. What S does
   while Tables shows depends on the window:
   - One pane: S stays mounted under Tables, paused, and keeps its rows.
-  - Statistics tab, `columns` window that is not large: S stays visible beside Tables, so both compute.
-  - Home tab with two panes: S is the companion's default until the press, which makes the default a real route under Tables
-    (`realizeStaticDefault` in `pane-router.ts`, a new key in `pane-slice.ts`). So S unmounts and remounts covered: its mount reads
-    run even while paused (kiko-architecture, "`paused` vs `enabled`"), and all its memos run on top of Tables'. Back returns S at the top
-    of its scroll.
+  - Statistics tab with two panes: Tables takes the whole window in the pane of the route below it, and S stays mounted
+    under it, hidden and paused (`visibleKeys` holds only Tables), with its scroll kept.
+  - Home tab with two panes: S is the companion's default and stays the stand-in, same key, never remounted
+    (`realizeStaticDefault` is skipped for a whole-window route). No second S mounts, so no mount reads run; only Tables reads.
+    Back returns S as it was.
   Measure these on the device. Unknown: cell count and per-account memory. Measure on the device with the real data.
 - Tests: `kiko-testing`; acceptance pins in section 4; AX and long uk labels in the component's render tests; device check per the
   ops checklist for phone, Duo and iPad, at the largest AX size.
@@ -363,6 +365,15 @@ The compliance skill has no rule on plain-text export: the scribe adds one.
 | 8 | CSV gate | A warning, then Face ID or passcode; on a device with no passcode, a warning, then allow |
 | 9 | What counts as income (section 6) | Every credit that no exclusion rule catches; the user reads C2 on a device, then decides on a mark |
 | 10 | Balance-set rows (`setsBalance`) in the matchers (section 6) | They leave the matchers too, in task 4 or earlier, one pin per pairing |
+
+Rulings of 2026-11-04 (user, relayed by the coordinator):
+
+| # | Decision | Ruling |
+|---|---|---|
+| 11 | Tables on a wide window | User on the Duo preview: "make "Tables" screen appear as a separate screen, and not a sub-screen of "STatistiscs" so that Duo displays is on full width. Access to "Tables" can be left where it is now, just move the button above statistics filters and double-check its visuals against iOS guidelines". Built as a whole-window route (`PaneConfig.wholeWindowRoutes`); the tab bar stays, Back returns to the two panes |
+| 12 | Tables title | "A: Small title (Recommended)": a normal small title in an opaque bar, content below it, Tables only |
+| 13 | Button size | "As it is now": 44 pt, full width (`size="compact"`) |
+| 14 | Button chevron | "Remove it (Recommended)" |
 
 ## 13. Left to the builder
 

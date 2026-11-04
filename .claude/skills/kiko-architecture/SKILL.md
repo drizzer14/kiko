@@ -1644,14 +1644,19 @@ are built with `createPaneStackNavigator`.
   detail pane (the pane opposite `rootPane`), whichever pane its opener is in** (`useOpenInPane`,
   or a plain `navigate` from a screen; both become `PANE_OPEN`). `openFrom` in
   `pane-assignment.ts` first pops every route above the opener, so a tap in the list replaces
-  the detail stack and a tap in the detail pane goes one step deeper there.
+  the detail stack and a tap in the detail pane goes one step deeper there. The exception is a
+  route named in `PaneConfig.wholeWindowRoutes`: it sits in the pane of the route below it
+  (`resolvePanes`, `openFrom`; Back stays in that slice) and the other pane keeps its screen
+  hidden.
 - **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` decides
   by position alone: index 0 takes `rootPane`, every other route, a default included, takes the
   detail pane (so a route pushed while folded, or a reminder rebuild, never lands in the list
   pane). `retainPanes` drops the entry of every closed route; the router calls it after every
   action.
 - **Per-tab config.** Each stack file declares its own `PANE_CONFIG` (`rootPane`, and optionally
-  `companionDefault` / `primaryDefault` as `{ name, isDefault: true }`). Read the four
+  `companionDefault` / `primaryDefault` as `{ name, isDefault: true }`, and `wholeWindowRoutes`;
+  the keys are in
+  `src/navigation/pane-stack/pane-assignment/pane-assignment.types.d.ts`). Read the four
   `src/navigation/*-stack/*.stack.tsx` `PANE_CONFIG`s for the current defaults, not this skill.
   A config with no default can still get a RUNTIME default (below): the Accounts stack's config
   declares none, and `use-accounts-pane.ts` shows one through `useShowPaneDefault`. A config
@@ -1667,14 +1672,18 @@ are built with `createPaneStackNavigator`.
   (`stand-in-options.ts`, `pane-slice.ts`), see `stand-in-navigation.ts` for the other helpers.
   An opener that is a static default is made a real route below the opened page by
   `realizeStaticDefault` (`src/navigation/pane-stack/pane-router/pane-router.ts`); `openFrom`'s
-  static-key branch is only the fallback. Two tests
+  static-key branch is only the fallback. A whole-window route opened from a static default skips
+  it (`isWholeWindow`): the stand-in stays, under the same key, and is never remounted. Two tests
   pin React Navigation assumptions (the two `PINS React Navigation` cases in
   `src/navigation/root-navigator/default-pane-navigation.test.tsx`); re-check them on every React
   Navigation upgrade.
 - **Screen rule for anything that can be a default** (Home, Statistics, Settings Categories and
   the Accounts list, as the rule's path globs say). In a default `useIsFocused()` is false and
   `useFocusEffect` never runs, so such a screen uses `useIsScreenVisible()` (two panes: the top
-  route of either pane while the tab is focused; one pane: `useIsFocused`) and passes
+  route of either pane while the tab is focused, but only the expanded pane's top route while a
+  pane is expanded, see `visibleKeys` in
+  `src/navigation/pane-stack/pane-stack-view/use-pane-visibility-value.ts`; one pane:
+  `useIsFocused`) and passes
   `paused: !isVisible` to its live queries (the "paused vs enabled" rule above). Semgrep rule
   `kiko-no-focus-hook-in-pane-default-screen` (`rules/semgrep-prewrite.yml`) bans
   `useIsFocused` / `useFocusEffect` under
@@ -1781,7 +1790,8 @@ are built with `createPaneStackNavigator`.
   in the state, but a runtime default is (`index > 0`), so a blur pops it and the Accounts pane
   hook inserts it again.
 - **Cost.** Home and Statistics are each mounted in two tabs on a wide window (a root in one, a
-  default in the other), so their live queries run twice.
+  default in the other), so their live queries run twice. Opening Tables does not mount a second
+  Statistics: it has no mount reads and the stand-in stays, paused.
 
 ## Transaction form: holding change and template seeding
 
