@@ -203,7 +203,7 @@ then one of these call sites, rather than reinventing the check.
 
 ## Styling layer: react-native-unistyles v3
 
-`react-native-unistyles` (^3.3.0) is the styling layer. A single
+`react-native-unistyles` (3.6.0) is the styling layer. A single
 Unistyles v3 theme object — the OLED `darkTheme` above — is registered
 in `src/design-system/unistyles/unistyles.ts` as `themes = { dark: darkTheme }`,
 with `settings: { initialTheme: 'dark' }`. There is no second theme to
