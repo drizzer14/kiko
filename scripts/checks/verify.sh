@@ -7,6 +7,19 @@
 # captured or piped) so a failing stage's structured WHAT/DETAILS/... block
 # reaches the agent unaltered.
 #
+# Scoped stage 2b: only `job-queue.sh verify ... --scoped` sets KIKO_VERIFY_SCOPED=1, and the
+# default is a full run. Stage 2b is skipped only when ALL hold: the flag is 1; the one merge base
+# of HEAD with main (and with next, when that branch exists; the newer one if one contains the
+# other) is found; HEAD is not reachable from main or next; and no path changed since that base
+# matches scripts/checks/semgrep-suite-triggers.txt or semgrep-jest-suites.txt. A missing,
+# empty or comments-only trigger list, any git failure, or a doubt runs 2b. A run prints
+# `── make verify: stage 2b SKIPPED (...) ──` for the skip, else `── make verify: stage 2b runs in
+# full (<reason>) ──` before the stage header; only the header `── make verify: stage 2b (`
+# proves a full run, which is what the queue records as `full` in done.log and ff-main.sh needs.
+# Known limits: a new semgrep binary changes no path, so only a full verify sees it; a read error
+# in the middle of the just-written changed-path file looks like its end of file in bash, so the
+# paths read so far decide, while a failed open runs 2b.
+#
 # Deliberately `set -uo pipefail`, NOT `set -e`: each stage's exit code is
 # captured explicitly so this script can print its own stage-failure marker
 # before exiting with that code.

@@ -9,7 +9,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 import {
@@ -290,6 +290,24 @@ describe('scripts/verify-checkout.sh the checkout', () => {
     expect(readFileSync(join(fixture.checkout, 'a.txt'), 'utf8')).toBe('two\n');
   });
 
+  it('moves a checkout whose registered gitdir path is relative to its git directory', () => {
+    const fixture = createFixture();
+    const first = fixture.commit({ 'a.txt': 'one\n' });
+    const second = fixture.commit({ 'a.txt': 'two\n' });
+    fixture.run(first);
+    const gitDirectory = realpathSync(
+      fixture.mustGit(fixture.checkout, 'rev-parse', '--absolute-git-dir'),
+    );
+    const registered = relative(gitDirectory, join(realpathSync(fixture.checkout), '.git'));
+    writeFileSync(join(gitDirectory, 'gitdir'), `${registered}\n`);
+
+    const result = fixture.run(second);
+
+    expect(registered.startsWith('..')).toBe(true);
+    expect(result.status).toBe(0);
+    expect(fixture.git(fixture.checkout, 'rev-parse', 'HEAD').stdout.trim()).toBe(second);
+  });
+
   it('drops a tracked edit, an untracked file, an ignored file, and a nested repository', () => {
     const fixture = createFixture();
     const sha = fixture.commit({ 'a.txt': 'one\n', '.gitignore': 'ignored.log\n' });
@@ -504,6 +522,8 @@ describe('scripts/verify-checkout.sh the checkout path', () => {
     ['a letter past f', 'abcdefg'],
     ['a branch name', 'main'],
     ['a revision suffix', 'HEAD~1'],
+    ['an empty argument', ''],
+    ['an option', '--all'],
   ])('exits 2 for a sha with %s and creates no checkout', (_title, requested) => {
     const fixture = createFixture();
     fixture.commit({ 'a.txt': 'one\n' });
@@ -536,8 +556,9 @@ describe('scripts/verify-checkout.sh the install stamp', () => {
     const sha = fixture.commit(INSTALLABLE);
     fixture.run(sha);
 
-    fixture.run(sha);
+    const result = fixture.run(sha);
 
+    expect(result.status).toBe(0);
     expect(npmInstalls(fixture)).toHaveLength(1);
   });
 
@@ -547,8 +568,9 @@ describe('scripts/verify-checkout.sh the install stamp', () => {
     const second = fixture.commit({ 'src/other.ts': 'export {};\n' });
     fixture.run(first);
 
-    fixture.run(second);
+    const result = fixture.run(second);
 
+    expect(result.status).toBe(0);
     expect(npmInstalls(fixture)).toHaveLength(1);
   });
 

@@ -57,6 +57,52 @@ held while a waiter checks, removes, and creates the lock. A lock is live while 
 alive OR its job group has a member. A gate holds this queue lock, then `mutation.sh` takes its
 own lock above.
 
+The verify checkout: a `verify` does not run in the track's worktree. It runs in ONE shared linked
+worktree (detached) at `<parent of the main checkout>/<main checkout name>-verify`, for example
+`/Users/drizzer14/Developer/Projects/pff-ios-verify`, at the commit read at enqueue (`--sha`, else
+the worktree HEAD). The main checkout is the first entry of `git worktree list --porcelain`, as in
+`ff-main.sh`; a scratch queue's temporary repository gets its own sibling. One checkout is enough
+because the queue runs one job at a time, and a checkout per track would need one `node_modules`
+per track for no parallel gain. It is a LINKED worktree because `pre-write-guard-rules` needs a
+real linked worktree of the repository, and `refuse_foreign_repository_on_real_queue` and
+`shipped-migrations.sh` need the same git common directory and the local `main`. The path is not
+under `~/.claude/kiko-queue`: a hidden folder in the path is a risk for every tool with a `.claude`
+ignore pattern.
+
+- `scripts/verify-checkout.sh <repository> <checkout> <sha>` prepares it, inside the job's process
+  group, with its output in the verify log; a failure is exit 2 and a failed verify. It binds the
+  path: it refuses a symlink, any path other than `<parent>/<name>-verify`, and a `.git` file
+  whose worktree entry does not name the checkout back (a plain folder, a clone and another
+  repository's worktree are refused, and their files are never deleted). It creates the worktree
+  when the folder is missing (`git worktree prune`, then `worktree add --detach`), removes the
+  checkout's own `index.lock` (the queue lock means nothing else uses it), runs `git checkout
+  --force --detach <sha>` and `git clean -ffdx` that keeps `/node_modules` and `/.env`, keeps an
+  install stamp in `node_modules/.kiko-verify-install` (a hash of the blob ids of
+  `package-lock.json` and `package.json`, the tree id of `patches`, and `node --version`; a missing
+  or different stamp
+  runs a plain `npm ci` after dropping the old stamp, and the new one is written only after
+  success), and runs `node scripts/ensure-env.js` on every run when the sha has it.
+- Then `make -C <checkout> verify` runs the target sha's own Makefile and `verify.sh`; an old
+  sha's `verify.sh` runs in full and records `full` by its stage 2b header.
+- The checkout is a LISTED worktree and not "unused": pruning it costs one `npm ci`.
+- A check fingerprint is keyed on the root path, so the checkout has one state folder and a new
+  sha re-runs what changed. Its guard-replay mark is one more `refs/kiko/guard-replay/*` ref; the
+  replay still counts only commits no mark reaches.
+- A verify of a folder with no readable HEAD (a scratch queue only; the real queue refuses it)
+  still runs `make` in place and records `unknown`; `--sha` there is exit 2.
+- `done.log` head: the sha, kept when the checkout is clean and at that sha at the end, else
+  `unknown` plus the NOTE. The track's worktree is not read after enqueue.
+- Where the prepare step comes from: for a verify, `verify-checkout.sh` and `wait-load.sh` are read
+  from `SUPPORT_DIRECTORY`, chosen at enqueue: the main checkout's `scripts` when it holds
+  `verify-checkout.sh`, else the queuing folder, else a refusal (exit 2). Known limits: (1)
+  `job-queue.sh` itself still runs from the folder it was started in, so a harness track that edits
+  that file during the wait can disturb its waiter. (2) The copy is chosen at enqueue, so a main
+  copy of `verify-checkout.sh` that refuses every run also refuses the verify of its own fix, and
+  `ff-main.sh` then cannot land that fix. There is no bypass flag. The recovery is a user step,
+  through the coordinator: the main copy goes aside while the verify of the fix is queued, then
+  comes back. (3) The queuing folder's copy, used when main lacks the script, can still be removed
+  or edited while the verify waits.
+
 The load wait: a job of every class (verify, check-all, security, gate) at the head waits while
 the 5-minute load is at or above 10, at most `KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS` seconds
 (default 1200). That one name is the cap for every class, with no alias; a value that is not a

@@ -267,6 +267,20 @@ describe('scripts/job-queue.sh a verify checkout', () => {
     expect(makeCalls(fixture).map((call) => call.directory)).toEqual([siblingOf(repository)]);
   });
 
+  it('runs make in the sibling checkout when the repository path holds a space', () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture, 'own repository');
+
+    const result = runQueue(fixture, 'verify', repository, 'one');
+
+    expect(result.status).toBe(0);
+    expect(readLines(fixture.calls).slice(0, 2)).toEqual([
+      `make -C ${siblingOf(repository)} verify`,
+      `  head ${headOf(fixture, repository)}`,
+    ]);
+    expect(doneFields(fixture)[5]).toBe(headOf(fixture, repository));
+  });
+
   it('gives a scratch repository its own checkout path', () => {
     const fixture = createFixture();
     const first = createRepository(fixture, 'first');

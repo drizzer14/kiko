@@ -3,7 +3,8 @@
 # all worktrees: one job runs at a time, the shortest class first, and nothing runs on battery.
 #
 # Usage (run it with run_in_background and wait on its exit code):
-#   job-queue.sh verify|check-all|security <worktree> <label>
+#   job-queue.sh verify <worktree> <label> [--sha <commit>] [--scoped]
+#   job-queue.sh check-all|security <worktree> <label>
 #   job-queue.sh harness-verify <harness worktree> <label>
 #   job-queue.sh gate <worktree> <label> <mutation-base> <expected-head> [--long]
 #   job-queue.sh hold <reason>    stop every start until `release`; running jobs are not stopped
@@ -28,17 +29,26 @@
 #              followed by its last VERIFY_LOG_LINES lines, also after INT or TERM. At the end a
 #              verify prints the summary lines, `log: <path>`, and its last VERIFY_TAIL_LINES
 #              lines; the other jobs print to stdout
-#   done.log   one line per finished job: kind label exit start end head. head is the full
-#              40-character HEAD of the worktree, read at START only when `git status --porcelain`
-#              (untracked files included) was empty at START and again at the end and HEAD is the
-#              same at the end; it is `unknown` for a changed tree at either point, a moved HEAD,
-#              or an unreadable repository. A verify or a gate never starts on a changed tree (it
-#              is refused with exit 3, at enqueue and again at START), so its head is `unknown`
-#              only when the job itself changed the tree (a NOTE names the first path), moved HEAD,
-#              or the repository is unreadable; check-all and security still run on a changed tree
-#              and record `unknown`. Known limit: an edit made and reverted while the job
-#              runs, or a change to an ignored file, leaves the head set (no content hash).
-#              A line from before this field has five fields.
+#   done.log   one line per finished job: kind label exit start end head, and a 7th field, scope,
+#              on a `verify` line only (every other kind keeps 6 fields). Every reader uses `$6`
+#              and `NF >= 6`. head is the full 40-character HEAD the job tested, read only while
+#              `git status --porcelain` (untracked files included) is empty and HEAD has not moved:
+#              - a verify with a sha (below) tests the commit named at enqueue, in the shared
+#                checkout, so its head is that sha when the checkout is clean and at that sha at
+#                the end, else `unknown` and a NOTE names the first changed path;
+#              - a gate, check-all, security, and a verify of a folder with no readable HEAD read
+#                the worktree itself, at START and again at the end: `unknown` for a changed tree at
+#                either point, a moved HEAD, or an unreadable repository. A gate never starts on a
+#                changed tree (exit 3, at enqueue and again at START); check-all and security still
+#                run on one and record `unknown`.
+#              Known limit: an edit made and reverted while the job runs, or a change to an ignored
+#              file, leaves the head set (no content hash). A line from before this field has five
+#              fields.
+#              scope is `full` when the verify log holds a line beginning
+#              `── make verify: stage 2b (` and none beginning `── make verify: stage 2b SKIPPED`,
+#              else `partial` (a run with no header is `partial`: positive proof only).
+#              scripts/ff-main.sh refuses a line whose 7th field exists and is not `full`; a
+#              6-field line counts as full. QUEUE_FORMAT stays 1, because the field is additive.
 #              A job whose result was never recorded leaves a LOST line in the same six-field order,
 #              so its loss is visible (the lock form may follow a job that ran fully, its waiter
 #              having died while it held the lock): a waiter that pruned a ticket whose waiter pid
@@ -60,6 +70,26 @@
 # `npm run check:all` only when it passes. It is class 1 and takes the same lock as verify. Its
 # done.log line has the kind `harness-verify`, so scripts/ff-main.sh (which matches `verify`
 # exactly) never counts it, and it prints no old-copy WARNING.
+#
+# verify runs in one shared checkout, a detached linked worktree at <parent of the main
+# checkout>/<main checkout name>-verify, so the track goes on with its next task while it waits and
+# runs. The commit is named once, at enqueue: --sha <commit> (a commit of the repository; the
+# worktree may be dirty or moved), else the worktree HEAD, and a dirty worktree is then refused
+# with exit 3 (it catches a forgotten commit). Nothing reads the worktree after enqueue, and there
+# is no dirty check at START. At START scripts/verify-checkout.sh <main checkout> <checkout> <sha>
+# prepares the checkout inside the job's process group, its output in the verify log: it moves the
+# checkout to the sha, cleans it, and runs `npm ci` when the install stamp differs. A failure is the
+# job's exit 2, and make does not run. Then `make -C <checkout> verify` runs, so the verify.sh and
+# Makefile of the sha itself apply. --scoped sets KIKO_VERIFY_SCOPED=1 for that make (verify.sh may
+# then skip stage 2b); without the flag the queue removes the variable, so an inherited value
+# cannot skip 2b. Both options take either order, once each.
+# A folder with no readable HEAD (a scratch queue only; the real queue refuses it) keeps the
+# in-place run, `make -C <folder> verify`, and `--sha` there is exit 2. The pruning of the shared
+# checkout costs one `npm ci`.
+# verify-checkout.sh and wait-load.sh are read from SUPPORT_DIRECTORY, fixed at enqueue: the main
+# checkout's scripts folder when it holds verify-checkout.sh, else this script's own folder. This
+# script itself still runs from the folder it was started in, so an edit of this file there while
+# a verify waits can disturb that waiter.
 #
 # Old copy: a job command prints one WARNING on stderr when the running script differs from
 # <worktree>/scripts/job-queue.sh (the job still runs): a copy kept outside the worktree misses the
@@ -159,7 +189,8 @@ SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Where wait-load.sh, and a verify's verify-checkout.sh, are read at the job's start. The queuing
 # script's own folder is usually a track worktree, which can be removed or edited while the job
 # waits, so a verify names the main checkout's scripts folder at enqueue when that holds
-# verify-checkout.sh (resolve_verify_commit), and the track's worktree is not read after enqueue.
+# verify-checkout.sh (resolve_verify_commit). Only when the main checkout lacks it does the
+# queuing folder stay the source, and that copy can still be removed or edited while the job waits.
 SUPPORT_DIRECTORY="$SCRIPT_DIRECTORY"
 # A job at the head waits while the 5-minute load is at or above GATE_START_MAX_LOAD, at most
 # GATE_START_MAX_WAIT seconds. The two values are a fixed policy, not a tuning knob.
@@ -170,7 +201,9 @@ GATE_START_MAX_WAIT="${KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS:-1200}"
 VERIFY_LOG_LINES=400
 VERIFY_TAIL_LINES=40
 # The jest counts, the failing suites, verify.sh's stage markers (`── make verify: stage`,
-# `✖ make verify FAILED`, `✔ make verify:`), and a failure block header, from the whole log.
+# `✖ make verify FAILED`, `✔ make verify:`, and the `stage 2b SKIPPED` and `stage 2b runs in full`
+# lines), and a failure block header, from the whole log. The scope field of done.log reads the
+# `stage 2b (` header and the SKIPPED line from the log itself, not from this summary.
 VERIFY_SUMMARY_PATTERN='^(Tests|Test Suites):|^FAIL |^[^[:alnum:]]+ make verify[ :]|CHECK FAILED'
 VERIFY_SUMMARY_LINES=100
 
@@ -541,10 +574,11 @@ first_changed_paths() {
     | sed -n "1,${1}p" | cut -c4-
 }
 
-# A verify or a gate records the commit it ran on, and a queued job reads the working tree, so a
-# tree with any change is refused, at enqueue and again at start (a device build can rewrite
-# ios/Podfile.lock while the job waits). An unreadable repository lists no path and is not this
-# refusal's concern: it still records `unknown`.
+# A gate, and a verify with no --sha, record the commit read from the worktree, so a tree with any
+# change is refused: a verify at enqueue only (its job runs in its own checkout at that commit), a
+# gate at enqueue and again at start (a device build can rewrite ios/Podfile.lock while it waits).
+# An unreadable repository lists no path and is not this refusal's concern: it still records
+# `unknown`.
 refuse_dirty_tree() {
   local changes paths
   changes="$(git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all \
@@ -1089,8 +1123,10 @@ drain_job_group() {
   done
 }
 
-# The commit a job ran on, named only while that is certain: a queued job reads the working tree,
-# so a tree with any change (untracked files count) at START is not "the job at that commit".
+# The commit a job that runs in the worktree it was queued for (a gate, check-all, security, a
+# verify of a folder with no sha) ran on, named only while that is certain: a tree with any change
+# (untracked files count) at START is not "the job at that commit". A verify with a sha names its
+# sha instead, and only the end is checked, in its checkout.
 read_tested_head() {
   local head
   head="$(full_head)"

@@ -6,8 +6,9 @@
 #   <repository> is the main checkout of the repository, <checkout> the linked worktree that holds
 #   the sha, <sha> a commit id of lowercase hex characters (any length that names one commit).
 #
-# Silent on success; every failure prints a failure block and exits 2, whatever the failing tool's
-# own code was. In order:
+# Prints nothing of its own on success (an `npm ci` it runs prints its own output, which goes to the
+# verify log); every failure prints a failure block and exits 2, whatever the failing tool's own
+# code was. In order:
 #   0. <checkout> must be <repository's parent>/<repository's name>-verify, the name job-queue.sh
 #      gives it, and never a symbolic link: nothing is read or written through anything else.
 #   1. A missing <checkout> becomes a detached linked worktree (`git worktree prune`, then
@@ -54,16 +55,6 @@ repository="$1"
 checkout="$2"
 requested="$3"
 
-case "$requested" in
-  '' | *[!0-9a-f]*)
-    fail \
-      'The sha is not made of lowercase hex characters' \
-      "got: $requested" \
-      'A name could move between the enqueue and the start of the job; only a commit id is stable.' \
-      'Pass the full commit id of the commit to test.'
-    ;;
-esac
-
 # The git common directory of $1 as a physical path; fails for a folder that is no repository.
 common_directory_of() {
   local common
@@ -107,6 +98,8 @@ if [ -L "$checkout" ]; then
     "Move or delete the link $checkout by hand (the user or the Coordinator decides), then re-queue."
 fi
 
+# The full id is lowercase hex and must start with the argument, so a name (a branch, HEAD~1, an
+# uppercase id) can never redirect the run: only a hex prefix of a commit passes.
 sha="$(git -C "$repository" rev-parse --verify --quiet "${requested}^{commit}" 2> /dev/null)"
 case "$sha" in
   "$requested"*) ;;
@@ -130,7 +123,13 @@ require_linked_worktree() {
   # A linked worktree's own git directory names its folder back; a hand-made `.git` file that names
   # the main checkout's or another worktree's git directory does not.
   registered="$(head -n 1 "$own_directory/gitdir" 2> /dev/null)"
-  if [ "$checkout_common" = "$repository_common" ] && [ -f "$checkout/.git" ] \
+  # Git 2.48 and later write the path relative to this git directory under
+  # worktree.useRelativePaths, so a relative path is read from here, never from the cwd.
+  case "$registered" in
+    /*) ;;
+    *) registered="$own_directory/$registered" ;;
+  esac
+  if [ "$checkout_common" = "$repository_common" ] \
     && [ -n "$own_directory" ] && [ "$own_directory" != "$checkout_common" ] \
     && [ "$(physical_directory "$(dirname "$registered")")/$(basename "$registered")" = "$checkout/.git" ] \
     && [ -n "$top_level" ] && [ "$(physical_directory "$top_level")" = "$checkout" ]; then
@@ -143,7 +142,7 @@ require_linked_worktree() {
     "Move or delete $checkout by hand (the user or the Coordinator decides), then re-queue."
 }
 
-if [ -e "$checkout" ] || [ -L "$checkout" ]; then
+if [ -e "$checkout" ]; then
   require_linked_worktree
 else
   output="$(git -C "$repository" worktree prune 2>&1)" || fail \
