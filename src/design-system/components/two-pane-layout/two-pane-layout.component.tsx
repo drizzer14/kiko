@@ -58,7 +58,9 @@ const Pane: FC<PaneProps> = ({ mode, pane, width, isBelowTopBand, isExpanded, ch
 // which pane it is in, for the screen content to cap and inset itself. The expanded pane takes the
 // window below the band, over the other one, which keeps its frame and its screens but is hidden
 // and out of reach: a `display: none` or a zero width would lay it out again and make its screens
-// measure themselves anew, and a pane taken out of the tree would lose their state.
+// measure themselves anew, and a pane taken out of the tree would lose their state. Each pane view
+// is never collapsed away: the hidden pane's opacity and hidden flags would otherwise turn a view
+// that has no native node into one on each swap, and re-parent the stack inside it.
 const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
   companion,
   primary,
@@ -97,6 +99,7 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
         style={[styles.pane(companionFrame), expandedPane === 'primary' && styles.hidden]}
         pointerEvents={expandedPane === 'primary' ? 'none' : undefined}
         accessibilityElementsHidden={expandedPane === 'primary' ? true : undefined}
+        collapsable={false}
         testID="two-pane-companion"
       >
         <Pane
@@ -119,6 +122,7 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
         style={[styles.pane(primaryFrame), expandedPane === 'companion' && styles.hidden]}
         pointerEvents={expandedPane === 'companion' ? 'none' : undefined}
         accessibilityElementsHidden={expandedPane === 'companion' ? true : undefined}
+        collapsable={false}
         testID="two-pane-primary"
       >
         <Pane

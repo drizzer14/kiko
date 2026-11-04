@@ -543,6 +543,16 @@ describe('TwoPaneLayout', () => {
       },
     );
 
+    it.each([null, 'primary', 'companion'] as const)(
+      'keeps both pane views native whichever pane is expanded (%s)',
+      async (expandedPane) => {
+        await renderExpanded(expandedPane);
+
+        expect(screen.getByTestId('two-pane-companion', WITH_HIDDEN).props.collapsable).toBe(false);
+        expect(screen.getByTestId('two-pane-primary', WITH_HIDDEN).props.collapsable).toBe(false);
+      },
+    );
+
     it('tells its child it is no pane, with no width, and the hidden child its own pane', async () => {
       await renderExpanded('primary');
 
