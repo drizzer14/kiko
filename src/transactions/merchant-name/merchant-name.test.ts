@@ -2,16 +2,12 @@ import { sweep } from '@kiko/test-support/property-sweep';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
-type MerchantNameModule = {
-  merchantNameOf: (name: string) => { key: string; prefix: string | null };
-  tidiedNameOf: (name: string) => string;
-  merchantSpellingOf: (name: string) => string;
-  smallestSpelling: (spellings: Iterable<string>) => string;
-};
-
-// The module does not exist yet, so a static import would fail the whole file at load; a lookup at
-// call time fails each test on its own.
-const merchantName = (): MerchantNameModule => require('./merchant-name');
+import {
+  merchantNameOf,
+  merchantSpellingOf,
+  smallestSpelling,
+  tidiedNameOf,
+} from './merchant-name';
 
 const SEED_SPREAD = 1_000_003;
 const SEEDS = sweep(Array.from({ length: 20 }, (_unused, position) => 11 + position * 17));
@@ -116,12 +112,10 @@ const worldOf = (seed: number): string[] => {
 
 describe('merchantNameOf', () => {
   it.each(NAME_TABLE)('reads %s as key %s and prefix %s', (name, key, prefix) => {
-    expect(merchantName().merchantNameOf(name)).toEqual({ key, prefix });
+    expect(merchantNameOf(name)).toEqual({ key, prefix });
   });
 
   it('is the same for a name in another case and spacing', () => {
-    const { merchantNameOf } = merchantName();
-
     expect(merchantNameOf('ATB  0212').key).toBe('atb');
     expect(merchantNameOf('ATB  0212').key).toBe(merchantNameOf('atb 0212').key);
     expect(merchantNameOf('atb 0212').key).toBe('atb');
@@ -130,7 +124,6 @@ describe('merchantNameOf', () => {
 
 describe('the guarantee', () => {
   it.each(SEEDS)('holds for every name of the world of seed %s', (seed) => {
-    const { merchantNameOf } = merchantName();
     const names = worldOf(seed);
     const results = names.map((name) => ({ name, ...merchantNameOf(name) }));
 
@@ -155,8 +148,6 @@ describe('the guarantee', () => {
 
 describe('smallestSpelling', () => {
   it('takes the smallest by code unit', () => {
-    const { smallestSpelling } = merchantName();
-
     expect(smallestSpelling(['atb', 'ATB'])).toBe('ATB');
     expect(smallestSpelling(['ATB', 'atb'])).toBe('ATB');
   });
@@ -164,12 +155,10 @@ describe('smallestSpelling', () => {
 
 describe('the spellings of a name', () => {
   it('tidiedNameOf keeps the full name', () => {
-    expect(merchantName().tidiedNameOf('ATB  0212')).toBe('ATB 0212');
+    expect(tidiedNameOf('ATB  0212')).toBe('ATB 0212');
   });
 
   it('merchantSpellingOf gives the prefix when cut, else the tidied name', () => {
-    const { merchantSpellingOf } = merchantName();
-
     expect(merchantSpellingOf('ATB 0212')).toBe('ATB');
     expect(merchantSpellingOf('ATB Market')).toBe('ATB Market');
   });
