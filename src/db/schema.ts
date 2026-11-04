@@ -594,6 +594,16 @@ export const settings = sqliteTable('settings', {
   // NULL when there is nothing to keep. It belongs to this device, so a restore keeps the live
   // value and never reads the file's.
   historyBackfillState: text('history_backfill_state'),
+  // One-shot mark: has this data set already moved its old rows with a newly mapped MCC code to
+  // that code's category (`backfillMccCategories`, `src/categories/category-rules-repo/`)? It must
+  // run once only: a later run would overwrite a row that became `other` since, by a deleted rule
+  // or a deleted category. The migration adds it as `false`; the run sets it in the same
+  // transaction that moves the rows. A restored backup without the key keeps the default `false`,
+  // so the restore runs it again. The key's presence in a file also tells a file this build wrote
+  // from an older one (the restore adds the Travel category to the older file only).
+  mccCategoriesBackfilled: integer('mcc_categories_backfilled', { mode: 'boolean' })
+    .notNull()
+    .default(false),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

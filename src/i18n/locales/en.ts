@@ -204,6 +204,9 @@ export const en = {
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Loan interest',
+    // The twelfth default category, seeded by its own later migration — hotels, travel agencies,
+    // airlines and airports file under this key.
+    travel: 'Travel',
     // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Add category',

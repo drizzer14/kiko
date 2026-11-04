@@ -183,6 +183,9 @@ export const uk: typeof en = {
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Відсотки за кредитом',
+    // The twelfth default category, seeded by its own later migration — hotels, travel agencies,
+    // airlines and airports file under this key.
+    travel: 'Подорожі',
     // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Додати категорію',
