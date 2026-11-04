@@ -137,31 +137,38 @@ const DataTable: FC<DataTableProps> = ({
           {caption}
         </RNText>
 
-        <View style={styles.headerRow} testID={`${testID}-header-row`}>
-          <View style={[styles.headerCorner, { width: fixedWidth }]} />
+        {/* The sticky wrapper takes this child's own style onto itself and gives the child a fill
+            style, which would drop the row's direction; so the child carries no style. */}
+        <View>
+          <View style={styles.headerRow} testID={`${testID}-header-row`}>
+            <View style={[styles.headerCorner, { width: fixedWidth }]} />
 
-          <View style={styles.headerClip}>
-            <Animated.View
-              style={[styles.headerTrack, trackStyle]}
-              testID={`${testID}-header-track`}
-            >
-              {columns.map((column, columnIndex) => (
-                <View
-                  key={column.key}
-                  style={[
-                    styles.headerCell,
-                    column.isSum && styles.sumColumn,
-                    { width: columnWidths[columnIndex] },
-                  ]}
-                  testID={`${testID}-header-${column.key}`}
-                  {...HIDDEN_FROM_ACCESSIBILITY}
-                >
-                  <RNText style={styles.headerText} testID={`${testID}-header-text-${column.key}`}>
-                    {column.header}
-                  </RNText>
-                </View>
-              ))}
-            </Animated.View>
+            <View style={styles.headerClip}>
+              <Animated.View
+                style={[styles.headerTrack, trackStyle]}
+                testID={`${testID}-header-track`}
+              >
+                {columns.map((column, columnIndex) => (
+                  <View
+                    key={column.key}
+                    style={[
+                      styles.headerCell,
+                      column.isSum && styles.sumColumn,
+                      { width: columnWidths[columnIndex] },
+                    ]}
+                    testID={`${testID}-header-${column.key}`}
+                    {...HIDDEN_FROM_ACCESSIBILITY}
+                  >
+                    <RNText
+                      style={styles.headerText}
+                      testID={`${testID}-header-text-${column.key}`}
+                    >
+                      {column.header}
+                    </RNText>
+                  </View>
+                ))}
+              </Animated.View>
+            </View>
           </View>
         </View>
 

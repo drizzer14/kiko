@@ -399,6 +399,23 @@ describe('DataTable', () => {
       ]);
     });
 
+    // The real sticky wrapper moves the child's style onto itself and gives the child a fill
+    // style, so a row styled as the child itself would lose its direction. The Jest ScrollView does
+    // not run that wrapper: this pins the nesting only, and the layout is measured on a device.
+    it('makes a plain view with no style of its own the sticky child, holding the row', async () => {
+      const rendered = await renderTable();
+      const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
+      const row = rendered.getByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true });
+      const sticky = row.parent;
+      const siblings = sticky?.parent?.children ?? [];
+
+      expect(vertical.props.stickyHeaderIndices).toEqual([1]);
+      expect(siblings.indexOf(sticky as never)).toBe(1);
+      expect(sticky?.props.style).toBeUndefined();
+      expect(sticky?.children).toHaveLength(1);
+      expect(flat(row).flexDirection).toBe('row');
+    });
+
     it('gives the sticky header row an opaque surface ground', async () => {
       const rendered = await renderTable();
       const row = rendered.getByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true });
