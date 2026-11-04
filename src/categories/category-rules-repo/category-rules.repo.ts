@@ -14,6 +14,7 @@ import {
 import { i18n } from '@kiko/i18n/init';
 import {
   type CategoryRuleMatcher,
+  type NameRuleKind,
   type PreparedRule,
   isSameCategory,
   matcherSetKey,
@@ -28,6 +29,7 @@ import {
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { ruleDescriptionOf } from '@kiko/transactions/row-description';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
+import { smallestSpelling, tidiedNameOf } from '@kiko/transactions/merchant-name';
 
 const REWRITE_PAGE_SIZE = 2000;
 
@@ -180,6 +182,21 @@ const stageDraft = (rows: readonly CategoryRuleRow[], draft: RuleDraft) => {
   return { stored, row, prepared: prepareRules(withRow(rows, row)) };
 };
 
+// The one-matcher name rule `Apply` writes, staged the way the preview judges it: a rule that
+// already holds exactly this matcher is moved, not duplicated.
+const stageNameRule = (
+  rows: readonly CategoryRuleRow[],
+  input: { text: string; kind: NameRuleKind; category: string },
+) => {
+  const matchers: CategoryRuleMatcher[] = [{ type: input.kind, text: input.text.trim() }];
+  const wantedKey = matcherSetKey(matchers);
+  const existingRule = prepareRules(rows).ordered.find(
+    (rule) => matcherSetKey(rule.matchers) === wantedKey,
+  );
+
+  return stageDraft(rows, { id: existingRule?.id ?? null, category: input.category, matchers });
+};
+
 const storeRule = async (
   databaseTransaction: typeof database,
   stored: CategoryRuleRow | undefined,
@@ -215,46 +232,60 @@ const assertSavable = (refusal: string | undefined): void => {
 
 type PreparedRules = ReturnType<typeof prepareRules>;
 
+// A row a rule changes, with the name the lists show for it: the preview lists those names.
+type RewrittenRow = { id: string; name: string };
+
+const rewrittenRowsOf = (
+  prepared: PreparedRules,
+  savedRuleId: string,
+  rows: readonly CandidateRow[],
+  labels: HoldingLabels,
+): RewrittenRow[] => {
+  const visibleRows = withVisibleDescription(rows, labels);
+  const nameById = new Map(visibleRows.map((row) => [row.id, row.description]));
+
+  return planRuleRewrite(prepared, savedRuleId, visibleRows).map((rowId) => ({
+    id: rowId,
+    name: nameById.get(rowId) ?? '',
+  }));
+};
+
 // Every row the query pages through, a page of ids at a time (an id-keyset page, so a page never
 // re-reads or skips a row); planRuleRewrite picks the rewritable ones the saved rule wins.
-const rowIdsByPages = async (
+const rowsByPages = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
   savedRuleId: string,
   pageQuery: typeof rewritePageQuery,
   labels: HoldingLabels,
-): Promise<string[]> => {
-  const rowIds: string[] = [];
+): Promise<RewrittenRow[]> => {
+  const rewrittenRows: RewrittenRow[] = [];
   let lastId = '';
   let pageLength = REWRITE_PAGE_SIZE;
 
   while (pageLength === REWRITE_PAGE_SIZE) {
     const page = await pageQuery(databaseTransaction, lastId);
 
-    for (const rowId of planRuleRewrite(
-      prepared,
-      savedRuleId,
-      withVisibleDescription(page, labels),
-    )) {
-      rowIds.push(rowId);
+    for (const rewrittenRow of rewrittenRowsOf(prepared, savedRuleId, page, labels)) {
+      rewrittenRows.push(rewrittenRow);
     }
 
     pageLength = page.length;
     lastId = page.at(-1)?.id ?? lastId;
   }
 
-  return rowIds;
+  return rewrittenRows;
 };
 
 // A saved rule with a name matcher can only win rows whose description normalizes to what that
 // matcher accepts, so only those descriptions are read as rows. The pure module judges the name,
 // on a subject that knows nothing else, so this narrowing never differs from the rule itself.
-const rowIdsForNamedRule = async (
+const rowsForNamedRule = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
   nameOnlyRule: PreparedRule,
   labels: HoldingLabels,
-): Promise<string[]> => {
+): Promise<RewrittenRow[]> => {
   const descriptionRows = await databaseTransaction
     .selectDistinct({ description: transactions.description })
     .from(transactions);
@@ -269,58 +300,94 @@ const rowIdsForNamedRule = async (
         minuteOfDay: null,
       }),
     );
-  const rowIds: string[] = [];
+  const rewrittenRows: RewrittenRow[] = [];
 
   for (const descriptionChunk of chunkRows(descriptions, IN_CLAUSE_CHUNK_SIZE)) {
     const rows = await rewriteDescriptionRowsQuery(databaseTransaction, descriptionChunk);
 
-    for (const rowId of planRuleRewrite(
-      prepared,
-      nameOnlyRule.id,
-      withVisibleDescription(rows, labels),
-    )) {
-      rowIds.push(rowId);
+    for (const rewrittenRow of rewrittenRowsOf(prepared, nameOnlyRule.id, rows, labels)) {
+      rewrittenRows.push(rewrittenRow);
     }
   }
 
   // The blank rows are always candidates: the label a name matcher may accept is not stored.
-  for (const rowId of await rowIdsByPages(
+  for (const rewrittenRow of await rowsByPages(
     databaseTransaction,
     prepared,
     nameOnlyRule.id,
     rewriteBlankPageQuery,
     labels,
   )) {
-    rowIds.push(rowId);
+    rewrittenRows.push(rewrittenRow);
   }
 
-  return rowIds;
+  return rewrittenRows;
 };
 
 // The rows a rule would change, from the rules as they are given: the count in the confirm sheet
 // and the write behind "Apply to existing" both ask this one question, so the number promised is
 // the number written whenever the ledger has not moved between them.
-const rowIdsRewrittenBy = async (
+const rowsRewrittenBy = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
   savedRule: PreparedRule,
-): Promise<string[]> => {
+): Promise<RewrittenRow[]> => {
   const nameMatchers = savedRule.matchers.filter(isNameMatcher);
   const labels = await readHoldingLabels(databaseTransaction);
 
   // A rule with no name matcher can win any row, so every row is read.
   return nameMatchers.length > 0
-    ? rowIdsForNamedRule(
+    ? rowsForNamedRule(
         databaseTransaction,
         prepared,
         { ...savedRule, matchers: nameMatchers },
         labels,
       )
-    : rowIdsByPages(databaseTransaction, prepared, savedRule.id, rewritePageQuery, labels);
+    : rowsByPages(databaseTransaction, prepared, savedRule.id, rewritePageQuery, labels);
 };
+
+const rowIdsRewrittenBy = async (
+  databaseTransaction: typeof database,
+  prepared: PreparedRules,
+  savedRule: PreparedRule,
+): Promise<string[]> =>
+  (await rowsRewrittenBy(databaseTransaction, prepared, savedRule)).map((row) => row.id);
 
 const preparedRuleOf = (prepared: PreparedRules, ruleId: string): PreparedRule | undefined =>
   prepared.ordered.find((rule) => rule.id === ruleId);
+
+// By code unit, never by locale: the order must not depend on the device.
+const compareByCodeUnit = (left: string, right: string): number => {
+  if (left === right) {
+    return 0;
+  }
+
+  return left < right ? -1 : 1;
+};
+
+// Every distinct normalized name once, spelled in full (never as the cut prefix, which would read
+// "ATB, ATB" for two store numbers), the name with the most rows first, then by normalized text.
+const listedNamesOf = (rows: readonly RewrittenRow[]): string[] => {
+  const groups = new Map<string, { spelling: string; rowCount: number }>();
+
+  for (const { name } of rows) {
+    const key = normalizeTransactionName(name);
+    const spelling = tidiedNameOf(name);
+    const group = groups.get(key);
+
+    groups.set(key, {
+      spelling: smallestSpelling([group?.spelling ?? spelling, spelling]),
+      rowCount: (group?.rowCount ?? 0) + 1,
+    });
+  }
+
+  return [...groups.entries()]
+    .sort(
+      ([leftKey, left], [rightKey, right]) =>
+        right.rowCount - left.rowCount || compareByCodeUnit(leftKey, rightKey),
+    )
+    .map(([, group]) => group.spelling);
+};
 
 // Writes the saved rule's category onto every row that rule wins, planned from the rows as they
 // stand inside the write, so the count is exact even when a sync landed after the user saw a
@@ -483,6 +550,31 @@ export const categoryRulesRepo = {
       return { id: row.id, changed };
     }),
   /**
+   * What `applyNameRule` would change for this text and kind, judged by the same plan: how many
+   * rows move and the names they hold. Reads only: no rule is stored and no row is touched. A
+   * blank text moves nothing.
+   */
+  previewNameRule: async (input: {
+    text: string;
+    kind: NameRuleKind;
+    category: string;
+  }): Promise<{ count: number; names: string[] }> => {
+    if (normalizeTransactionName(input.text) === '') {
+      return { count: 0, names: [] };
+    }
+
+    const { row, prepared } = stageNameRule(await readAllRulesDatabaseTransaction(database), input);
+    const savedRule = preparedRuleOf(prepared, row.id);
+
+    if (savedRule === undefined) {
+      return { count: 0, names: [] };
+    }
+
+    const rewrittenRows = await rowsRewrittenBy(database, prepared, savedRule);
+
+    return { count: rewrittenRows.length, names: listedNamesOf(rewrittenRows) };
+  },
+  /**
    * Makes `name` -> `category` a rule and rewrites every existing row that rule wins, all in ONE
    * write so a partial failure can never leave the rule and the ledger disagreeing. A rule that
    * is already exactly this name moves to the new category (it keeps its id and is now the newest
@@ -494,23 +586,21 @@ export const categoryRulesRepo = {
    *
    * Categories are keyed by a stable slug, so a later category rename only changes its title.
    */
-  applyNameRule: (input: { name: string; category: string; sourceTransactionId: string | null }) =>
+  applyNameRule: (input: {
+    name: string;
+    kind?: NameRuleKind;
+    category: string;
+    sourceTransactionId: string | null;
+  }) =>
     write(async (databaseTransaction) => {
       if (normalizeTransactionName(input.name) === '') {
         return 0;
       }
 
-      const matchers: CategoryRuleMatcher[] = [{ type: 'nameIs', text: input.name.trim() }];
-      const rows = await readAllRulesDatabaseTransaction(databaseTransaction);
-      const wantedKey = matcherSetKey(matchers);
-      const existingRule = prepareRules(rows).ordered.find(
-        (rule) => matcherSetKey(rule.matchers) === wantedKey,
+      const { stored, row, prepared } = stageNameRule(
+        await readAllRulesDatabaseTransaction(databaseTransaction),
+        { text: input.name, kind: input.kind ?? 'nameIs', category: input.category },
       );
-      const { stored, row, prepared } = stageDraft(rows, {
-        id: existingRule?.id ?? null,
-        category: input.category,
-        matchers,
-      });
 
       await storeRule(databaseTransaction, stored, row);
 

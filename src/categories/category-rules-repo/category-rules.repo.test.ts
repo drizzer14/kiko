@@ -13,10 +13,14 @@ jest.mock('@kiko/db/client', () => {
 
 import { database } from '@kiko/db';
 import { i18n } from '@kiko/i18n/init';
+import {
+  parseRuleMatchers,
+  type CategoryRuleMatcher,
+  type NameRuleKind,
+} from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
-import { parseRuleMatchers, type CategoryRuleMatcher } from '@kiko/categories/category-rules';
 
 import {
   categoryRulesRepo,
@@ -1353,7 +1357,6 @@ describe('the rewrite queries', () => {
 });
 
 describe('a name rule of a store-number name', () => {
-  type NameRuleKind = 'nameIs' | 'nameStartsWith';
   type NameRulePreview = { count: number; names: string[] };
   type PreviewInput = { text: string; kind: NameRuleKind; category: string };
   type ApplyInput = {
@@ -1363,14 +1366,8 @@ describe('a name rule of a store-number name', () => {
     sourceTransactionId: string | null;
   };
 
-  // `previewNameRule` and the `kind` argument have no type yet: the lookup fails each test at call
-  // time, where a typed call would fail the whole file at compile time.
   const previewNameRule = (input: PreviewInput): Promise<NameRulePreview> =>
-    (
-      categoryRulesRepo as unknown as {
-        previewNameRule: (preview: PreviewInput) => Promise<NameRulePreview>;
-      }
-    ).previewNameRule(input);
+    categoryRulesRepo.previewNameRule(input);
   const applyNameRule = (input: ApplyInput): Promise<number> =>
     categoryRulesRepo.applyNameRule(input);
 

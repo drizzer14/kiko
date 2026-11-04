@@ -13,6 +13,8 @@ export type CategoryRuleMatcher =
   | { type: 'direction'; direction: RuleDirection }
   | { type: 'time'; operator: TimeOperator; minuteOfDay: number };
 
+export type NameRuleKind = 'nameIs' | 'nameStartsWith';
+
 export type MatcherOfType<Type extends CategoryRuleMatcher['type']> = Extract<
   CategoryRuleMatcher,
   { type: Type }
