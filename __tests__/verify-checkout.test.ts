@@ -1,6 +1,16 @@
+import {
+  rmSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  lstatSync,
+  symlinkSync,
+  realpathSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { rmSync, existsSync, mkdirSync, realpathSync, readFileSync, writeFileSync } from 'node:fs';
 
 import {
   createTemporaryDirectory,
@@ -43,7 +53,9 @@ type Fixture = {
   environment: NodeJS.ProcessEnv;
   commit: (files: Record<string, string>) => string;
   run: (sha: string, extra?: NodeJS.ProcessEnv) => SpawnSyncReturns<string>;
+  runAt: (checkoutPath: string, sha: string) => SpawnSyncReturns<string>;
   git: (directory: string, ...gitArguments: string[]) => SpawnSyncReturns<string>;
+  mustGit: (directory: string, ...gitArguments: string[]) => string;
   npmCalls: () => string[];
   nodeCalls: () => string[];
 };
@@ -58,8 +70,13 @@ const writeTree = (root: string, files: Record<string, string>): void => {
   }
 };
 
-const createFixture = (): Fixture => {
-  const parent = createTemporaryDirectory('kiko-verify-checkout-');
+type FixtureNames = { parentPrefix?: string; repositoryName?: string };
+
+const createFixture = ({
+  parentPrefix = 'kiko-verify-checkout-',
+  repositoryName = 'repository',
+}: FixtureNames = {}): Fixture => {
+  const parent = createTemporaryDirectory(parentPrefix);
   const home = createTemporaryDirectory('kiko-verify-checkout-home-');
   const stubs = join(parent, 'stubs');
   mkdirSync(stubs);
@@ -67,7 +84,7 @@ const createFixture = (): Fixture => {
     writeExecutable(join(stubs, 'npm'), NPM_STUB),
     writeExecutable(join(stubs, 'node'), NODE_STUB),
   ]);
-  const repository = join(parent, 'repository');
+  const repository = join(parent, repositoryName);
   mkdirSync(repository);
   const environment: NodeJS.ProcessEnv = isolatedGitEnvironment(home, {
     PATH: `${stubs}:${process.env.PATH}`,
@@ -89,13 +106,20 @@ const createFixture = (): Fixture => {
     return result.stdout.trim();
   };
   mustGit(repository, 'init', '-q', '-b', 'main');
-  const checkout = join(parent, 'checkout');
+  const checkout = join(parent, `${repositoryName}-verify`);
+  const runAt = (checkoutPath: string, sha: string, extra: NodeJS.ProcessEnv = {}) =>
+    spawnSync('bash', [SCRIPT, repository, checkoutPath, sha], {
+      encoding: 'utf8',
+      env: { ...environment, ...extra },
+    });
 
   return {
     repository,
     checkout,
     environment,
     git,
+    mustGit,
+    runAt,
     commit: (files) => {
       writeTree(repository, files);
       mustGit(repository, 'add', '-A');
@@ -103,11 +127,7 @@ const createFixture = (): Fixture => {
 
       return mustGit(repository, 'rev-parse', 'HEAD');
     },
-    run: (sha, extra = {}) =>
-      spawnSync('bash', [SCRIPT, repository, checkout, sha], {
-        encoding: 'utf8',
-        env: { ...environment, ...extra },
-      }),
+    run: (sha, extra = {}) => runAt(checkout, sha, extra),
     npmCalls: () => readLines(join(parent, 'npm-calls')),
     nodeCalls: () => readLines(join(parent, 'node-calls')),
   };
@@ -167,7 +187,7 @@ describe('scripts/verify-checkout.sh the checkout', () => {
   it('refuses a clone at the path and keeps its files', () => {
     const fixture = createFixture();
     const sha = fixture.commit({ 'a.txt': 'one\n' });
-    fixture.git(dirname(fixture.checkout), 'clone', '-q', fixture.repository, fixture.checkout);
+    fixture.mustGit(dirname(fixture.checkout), 'clone', '-q', fixture.repository, fixture.checkout);
     writeTree(fixture.checkout, { 'marker.txt': 'mine\n' });
 
     const result = fixture.run(sha);
@@ -182,11 +202,11 @@ describe('scripts/verify-checkout.sh the checkout', () => {
     const sha = fixture.commit({ 'a.txt': 'one\n' });
     const other = join(dirname(fixture.repository), 'other');
     mkdirSync(other);
-    fixture.git(other, 'init', '-q', '-b', 'main');
+    fixture.mustGit(other, 'init', '-q', '-b', 'main');
     writeTree(other, { 'b.txt': 'two\n' });
-    fixture.git(other, 'add', '-A');
-    fixture.git(other, 'commit', '-q', '-m', 'other');
-    fixture.git(other, 'worktree', 'add', '-q', '--detach', fixture.checkout);
+    fixture.mustGit(other, 'add', '-A');
+    fixture.mustGit(other, 'commit', '-q', '-m', 'other');
+    fixture.mustGit(other, 'worktree', 'add', '-q', '--detach', fixture.checkout);
     writeTree(fixture.checkout, { 'marker.txt': 'mine\n' });
 
     const result = fixture.run(sha);
@@ -201,27 +221,60 @@ describe('scripts/verify-checkout.sh the checkout', () => {
     const sha = fixture.commit({ 'a.txt': 'one\n' });
     writeTree(fixture.repository, { 'marker.txt': 'mine\n' });
 
-    const result = spawnSync('bash', [SCRIPT, fixture.repository, fixture.repository, sha], {
-      encoding: 'utf8',
-      env: fixture.environment,
-    });
+    const result = fixture.runAt(fixture.repository, sha);
 
     expect(result.status).toBe(2);
     expect(readFileSync(join(fixture.repository, 'marker.txt'), 'utf8')).toBe('mine\n');
   });
 
-  it("removes the checkout's own index.lock and goes on", () => {
+  it("removes the checkout's own index.lock, keeps the main checkout's, and goes on", () => {
     const fixture = createFixture();
     const sha = fixture.commit({ 'a.txt': 'one\n' });
     fixture.run(sha);
     const gitDirectory = fixture.git(fixture.checkout, 'rev-parse', '--absolute-git-dir').stdout;
     const lock = join(gitDirectory.trim(), 'index.lock');
+    const mainLock = join(fixture.repository, '.git/index.lock');
     writeFileSync(lock, '');
+    writeFileSync(mainLock, '');
 
     const result = fixture.run(sha);
 
     expect(result.status).toBe(0);
     expect(existsSync(lock)).toBe(false);
+    expect(existsSync(mainLock)).toBe(true);
+  });
+
+  it('fails when git checkout of the sha fails', () => {
+    const fixture = createFixture();
+    const sha = fixture.commit({ 'a.txt': 'one\n' });
+    fixture.run(sha);
+    const second = fixture.commit({ 'a.txt': 'two\n' });
+    const gitDirectory = fixture.git(fixture.checkout, 'rev-parse', '--absolute-git-dir').stdout;
+    writeFileSync(join(gitDirectory.trim(), 'HEAD.lock'), '');
+
+    const result = fixture.run(second);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('git checkout of the sha failed');
+    expect(fixture.git(fixture.checkout, 'rev-parse', 'HEAD').stdout.trim()).toBe(sha);
+  });
+
+  it('fails when git clean of the checkout fails', () => {
+    const fixture = createFixture();
+    const sha = fixture.commit({ 'a.txt': 'one\n' });
+    fixture.run(sha);
+    const locked = join(fixture.checkout, 'locked');
+    writeTree(fixture.checkout, { 'locked/file.txt': 'x\n' });
+    chmodSync(locked, 0o500);
+
+    try {
+      const result = fixture.run(sha);
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('git clean of the checkout failed');
+    } finally {
+      chmodSync(locked, 0o700);
+    }
   });
 
   it('moves an existing checkout to another sha', () => {
@@ -247,7 +300,7 @@ describe('scripts/verify-checkout.sh the checkout', () => {
       'ignored.log': 'x\n',
     });
     mkdirSync(join(fixture.checkout, 'nested'));
-    fixture.git(join(fixture.checkout, 'nested'), 'init', '-q');
+    fixture.mustGit(join(fixture.checkout, 'nested'), 'init', '-q');
 
     const result = fixture.run(sha);
 
@@ -298,6 +351,164 @@ describe('scripts/verify-checkout.sh the checkout', () => {
       encoding: 'utf8',
       env: fixture.environment,
     });
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');
+    expect(existsSync(fixture.checkout)).toBe(false);
+  });
+});
+
+type Track = { directory: string; head: string; lock: string; gitDirectory: string };
+
+// A linked worktree of the fixture's repository that is not the verify checkout, with a marker
+// file and an index.lock a job of its own track could hold.
+const createTrack = (fixture: Fixture, sha: string): Track => {
+  const directory = join(dirname(fixture.repository), 'track');
+  fixture.mustGit(fixture.repository, 'worktree', 'add', '-q', '--detach', directory, sha);
+  writeTree(directory, { 'marker.txt': 'mine\n' });
+  const gitDirectory = fixture.mustGit(directory, 'rev-parse', '--absolute-git-dir');
+  const lock = join(gitDirectory, 'index.lock');
+  writeFileSync(lock, '');
+
+  return { directory, head: fixture.mustGit(directory, 'rev-parse', 'HEAD'), lock, gitDirectory };
+};
+
+const expectTrackUntouched = (fixture: Fixture, track: Track): void => {
+  expect(readFileSync(join(track.directory, 'marker.txt'), 'utf8')).toBe('mine\n');
+  expect(existsSync(track.lock)).toBe(true);
+  expect(fixture.mustGit(track.directory, 'rev-parse', 'HEAD')).toBe(track.head);
+};
+
+describe('scripts/verify-checkout.sh the checkout path', () => {
+  it('refuses a symlink to a track worktree and leaves the track untouched', () => {
+    const fixture = createFixture();
+    const first = fixture.commit({ 'a.txt': 'one\n' });
+    const track = createTrack(fixture, first);
+    const second = fixture.commit({ 'a.txt': 'two\n' });
+    symlinkSync(track.directory, fixture.checkout);
+
+    const result = fixture.run(second);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');
+    expect(lstatSync(fixture.checkout).isSymbolicLink()).toBe(true);
+    expectTrackUntouched(fixture, track);
+  });
+
+  it('refuses a symlink spelled with a trailing slash', () => {
+    const fixture = createFixture();
+    const first = fixture.commit({ 'a.txt': 'one\n' });
+    const track = createTrack(fixture, first);
+    const second = fixture.commit({ 'a.txt': 'two\n' });
+    symlinkSync(track.directory, fixture.checkout);
+
+    const result = fixture.runAt(`${fixture.checkout}/`, second);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');
+    expectTrackUntouched(fixture, track);
+  });
+
+  it('refuses a dangling symlink and creates nothing behind it', () => {
+    const fixture = createFixture();
+    const sha = fixture.commit({ 'a.txt': 'one\n' });
+    const nowhere = join(dirname(fixture.repository), 'nowhere');
+    symlinkSync(nowhere, fixture.checkout);
+
+    const result = fixture.run(sha);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');
+    expect(lstatSync(fixture.checkout).isSymbolicLink()).toBe(true);
+    expect(existsSync(nowhere)).toBe(false);
+  });
+
+  it('refuses a track worktree passed as the checkout and leaves it untouched', () => {
+    const fixture = createFixture();
+    const first = fixture.commit({ 'a.txt': 'one\n' });
+    const track = createTrack(fixture, first);
+    const second = fixture.commit({ 'a.txt': 'two\n' });
+
+    const result = fixture.runAt(track.directory, second);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');
+    expectTrackUntouched(fixture, track);
+  });
+
+  it("refuses a hand-made .git file that names the main checkout's git directory", () => {
+    const fixture = createFixture();
+    const first = fixture.commit({ 'a.txt': 'one\n' });
+    const second = fixture.commit({ 'a.txt': 'two\n' });
+    writeTree(fixture.checkout, {
+      '.git': `gitdir: ${join(fixture.repository, '.git')}\n`,
+      'marker.txt': 'mine\n',
+    });
+
+    const result = fixture.run(first);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');
+    expect(readFileSync(join(fixture.checkout, 'marker.txt'), 'utf8')).toBe('mine\n');
+    expect(fixture.mustGit(fixture.repository, 'rev-parse', 'HEAD')).toBe(second);
+  });
+
+  it("refuses a hand-made .git file that names a track worktree's git directory", () => {
+    const fixture = createFixture();
+    const first = fixture.commit({ 'a.txt': 'one\n' });
+    const track = createTrack(fixture, first);
+    const second = fixture.commit({ 'a.txt': 'two\n' });
+    writeTree(fixture.checkout, {
+      '.git': `gitdir: ${track.gitDirectory}\n`,
+      'marker.txt': 'mine\n',
+    });
+
+    const result = fixture.run(second);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');
+    expect(readFileSync(join(fixture.checkout, 'marker.txt'), 'utf8')).toBe('mine\n');
+    expectTrackUntouched(fixture, track);
+  });
+
+  it('refuses an empty checkout path and names the expected one', () => {
+    const fixture = createFixture();
+    const sha = fixture.commit({ 'a.txt': 'one\n' });
+
+    const result = fixture.runAt('', sha);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');
+    expect(result.stderr).toContain(`${realpathSync(dirname(fixture.checkout))}/repository-verify`);
+    expect(existsSync(fixture.checkout)).toBe(false);
+  });
+
+  it('prepares a checkout whose repository and parent folders hold a space', () => {
+    const fixture = createFixture({
+      parentPrefix: 'kiko verify checkout-',
+      repositoryName: 'my repository',
+    });
+    const sha = fixture.commit({ 'a.txt': 'one\n' });
+
+    const result = fixture.run(sha);
+
+    expect(result.status).toBe(0);
+    expect(fixture.mustGit(fixture.checkout, 'rev-parse', 'HEAD')).toBe(sha);
+    expect(fixture.mustGit(fixture.checkout, 'rev-parse', '--show-toplevel')).toBe(
+      realpathSync(fixture.checkout),
+    );
+  });
+
+  it.each([
+    ['an uppercase letter', 'ABCDEF1'],
+    ['a letter past f', 'abcdefg'],
+    ['a branch name', 'main'],
+    ['a revision suffix', 'HEAD~1'],
+  ])('exits 2 for a sha with %s and creates no checkout', (_title, requested) => {
+    const fixture = createFixture();
+    fixture.commit({ 'a.txt': 'one\n' });
+
+    const result = fixture.run(requested);
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');

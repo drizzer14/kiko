@@ -3,14 +3,17 @@
 # job's own process group, with its output in the verify log).
 #
 # Usage: verify-checkout.sh <repository> <checkout> <sha>
-#   <repository> is the main checkout of the repository, <checkout> the path of the linked worktree
-#   that holds the sha, <sha> a commit of 7 or more lowercase hex characters.
+#   <repository> is the main checkout of the repository, <checkout> the linked worktree that holds
+#   the sha, <sha> a commit id of lowercase hex characters (any length that names one commit).
 #
 # Silent on success; every failure prints a failure block and exits 2, whatever the failing tool's
 # own code was. In order:
+#   0. <checkout> must be <repository's parent>/<repository's name>-verify, the name job-queue.sh
+#      gives it, and never a symbolic link: nothing is read or written through anything else.
 #   1. A missing <checkout> becomes a detached linked worktree (`git worktree prune`, then
 #      `worktree add --detach`). A folder that exists and is not a linked worktree of <repository>
-#      fails and is never deleted.
+#      (its git directory is not the repository's own, and it names <checkout> back) fails and is
+#      never deleted.
 #   2. The checkout's own index.lock, left by a killed job, is removed: the queue lock means nothing
 #      else uses the checkout.
 #   3. `git checkout --force --detach <sha>`, then `git clean -ffdx` that keeps /node_modules and
@@ -54,7 +57,7 @@ requested="$3"
 case "$requested" in
   '' | *[!0-9a-f]*)
     fail \
-      'The sha is not 7 or more lowercase hex characters' \
+      'The sha is not made of lowercase hex characters' \
       "got: $requested" \
       'A name could move between the enqueue and the start of the job; only a commit id is stable.' \
       'Pass the full commit id of the commit to test.'
@@ -74,6 +77,36 @@ repository_common="$(common_directory_of "$repository")" || fail \
   'The checkout is a linked worktree of that repository.' \
   'Queue a worktree of the repository.'
 
+# $1 as a physical folder path; nothing when it is no folder. An empty $1 is no folder, though a
+# plain `cd ""` succeeds in place.
+physical_directory() {
+  [ -n "$1" ] && (cd "$1" 2> /dev/null && pwd -P)
+}
+
+# The checkout is the one sibling `<repository name>-verify` of the repository, the rule
+# scripts/job-queue.sh names it by. Only the parent folder is resolved, so a symlink in the final
+# component never reads as the bound path, and a symlink there is refused before anything is read
+# through it: the script writes into the checkout (a lock removed, HEAD moved, files deleted), and
+# a link would aim that at another worktree.
+repository_physical="$(physical_directory "$repository")"
+bound_checkout="$(dirname "$repository_physical")/$(basename "$repository_physical")-verify"
+checkout_parent="$(physical_directory "$(dirname "$checkout")")"
+if [ "$checkout_parent/$(basename "$checkout")" != "$bound_checkout" ]; then
+  fail \
+    'The checkout path is not the verify checkout of this repository' \
+    "got: ${checkout:-(empty)}; expected: $bound_checkout" \
+    'The script deletes files in the checkout, so it works only in the one sibling folder the queue names.' \
+    "Pass $bound_checkout as the checkout."
+fi
+checkout="$bound_checkout"
+if [ -L "$checkout" ]; then
+  fail \
+    'The checkout path is a symbolic link' \
+    "$checkout -> $(readlink "$checkout")" \
+    'The script would write into whatever the link names, a track worktree for one.' \
+    "Move or delete the link $checkout by hand (the user or the Coordinator decides), then re-queue."
+fi
+
 sha="$(git -C "$repository" rev-parse --verify --quiet "${requested}^{commit}" 2> /dev/null)"
 case "$sha" in
   "$requested"*) ;;
@@ -90,11 +123,17 @@ fi
 # A folder that exists must be a linked worktree of the repository itself: a plain folder, a clone,
 # the main checkout, or a worktree of another repository is somebody's files, never deleted here.
 require_linked_worktree() {
-  local checkout_common top_level
+  local checkout_common top_level own_directory registered
   checkout_common="$(common_directory_of "$checkout")" || checkout_common=''
   top_level="$(git -C "$checkout" rev-parse --show-toplevel 2> /dev/null)" || top_level=''
+  own_directory="$(physical_directory "$(git -C "$checkout" rev-parse --absolute-git-dir 2> /dev/null)")"
+  # A linked worktree's own git directory names its folder back; a hand-made `.git` file that names
+  # the main checkout's or another worktree's git directory does not.
+  registered="$(head -n 1 "$own_directory/gitdir" 2> /dev/null)"
   if [ "$checkout_common" = "$repository_common" ] && [ -f "$checkout/.git" ] \
-    && [ -n "$top_level" ] && [ "$(cd "$top_level" && pwd -P)" = "$(cd "$checkout" && pwd -P)" ]; then
+    && [ -n "$own_directory" ] && [ "$own_directory" != "$checkout_common" ] \
+    && [ "$(physical_directory "$(dirname "$registered")")/$(basename "$registered")" = "$checkout/.git" ] \
+    && [ -n "$top_level" ] && [ "$(physical_directory "$top_level")" = "$checkout" ]; then
     return 0
   fi
   fail \
