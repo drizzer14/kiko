@@ -1345,6 +1345,8 @@ export const en = {
       title: 'No spending in this period',
       message: 'Pick another period, or other accounts or categories, to see a table.',
     },
+    // Spoken for an average cell that shows a dash.
+    noCompleteMonth: 'No complete month yet',
     period: {
       label: 'Period',
       last12: 'Last 12 months',

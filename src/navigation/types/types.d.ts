@@ -6,6 +6,7 @@ import type { ReminderDraft } from '@kiko/reminders/rules';
 import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { HoldingType } from '@kiko/holdings/holding-type';
+import type { TablePeriod } from '@kiko/statistics/table-period';
 import type { EntryTab } from '@kiko/screens/forms/transaction-form';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { FormMode } from '@kiko/screens/forms/mode-select-field';
@@ -174,13 +175,21 @@ type HoldingFormParams = (
   handbackId?: string;
 };
 
+/**
+ * The Tables screen's period. It lives in the route params, so a fold or a resize that remounts
+ * the screen keeps it, and a new push has none, which reads as the last 12 months.
+ */
+export type TablesParams = { period?: TablePeriod };
+
 // `Statistics` is the companion pane of the Home tab on a wide window, and Home with
 // `TransactionForm` are the same on the Statistics tab: each tab shows the other's root beside
-// its own.
+// its own. `Tables` is registered in both stacks, because the Statistics screen that opens it
+// shows in either.
 export type HomeStackParamList = {
   Home: undefined;
   TransactionForm: TransactionFormParams;
   Statistics: undefined;
+  Tables: TablesParams | undefined;
   // The two create forms an empty holding picker's "Add holding" row opens. They
   // sit in this stack, not behind a switch to the Accounts tab, because leaving
   // the tab resets its stack and the transaction form's draft would go with it.
@@ -360,6 +369,7 @@ export type SettingsStackParamList = {
 
 export type StatisticsStackParamList = {
   Statistics: undefined;
+  Tables: TablesParams | undefined;
   Home: undefined;
   TransactionForm: TransactionFormParams;
   // The two create forms an empty holding picker's "Add holding" row opens, as in the Home stack.

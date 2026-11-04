@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import HomeScreen from '@kiko/screens/home';
 import { useTranslation } from 'react-i18next';
+import TablesScreen from '@kiko/screens/tables';
 import StatisticsScreen from '@kiko/screens/statistics';
 import AccountFormScreen from '@kiko/screens/forms/account-form';
 import HoldingFormScreen from '@kiko/screens/forms/holding-form';
@@ -53,6 +54,8 @@ const StatisticsStack: FC = () => {
         component={StatisticsScreen}
         options={{ title: t('statistics.title') }}
       />
+
+      <Stack.Screen name="Tables" component={TablesScreen} options={{ title: t('tables.title') }} />
 
       <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
 
