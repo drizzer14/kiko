@@ -28,6 +28,8 @@ import type { DataTableProps } from './data-table.props';
 
 const STICKY_HEADER_INDICES = [1];
 
+const NO_WIDTHS: Record<string, number> = {};
+
 const HIDDEN_FROM_ACCESSIBILITY = {
   accessibilityElementsHidden: true,
   importantForAccessibility: 'no-hide-descendants',
@@ -59,7 +61,7 @@ const DataTable: FC<DataTableProps> = ({
   const isEmpty = emptyContent !== undefined;
   const [containerWidth, setContainerWidth] = useState(0);
   const [labelWidth, setLabelWidth] = useState(0);
-  const [columnTextWidths, setColumnTextWidths] = useState<Record<string, number>>({});
+  const [columnTextWidths, setColumnTextWidths] = useState(NO_WIDTHS);
   const [textHeights, setTextHeights] = useState<Record<string, number>>({});
   const scrolledToIndex = useRef<number | undefined>(undefined);
   const bodyRef = useAnimatedRef<ScrollViewInstance>();
@@ -88,6 +90,12 @@ const DataTable: FC<DataTableProps> = ({
       // offset the header follows and the column the body opened at both start over.
       scrolledToIndex.current = undefined;
       bodyOffset.value = 0;
+      // The widths held belong to rows the next fill replaces, and the first effect after it must
+      // not target a column with them. The measuring views are unmounted while empty, so the fill
+      // mounts them anew: a layout event comes for every one, even for a width equal to the old
+      // one, where a layout that never changed would send none and leave the table unmeasured.
+      setLabelWidth(0);
+      setColumnTextWidths(NO_WIDTHS);
 
       return;
     }
@@ -280,45 +288,47 @@ const DataTable: FC<DataTableProps> = ({
         {isEmpty ? null : bodyNode}
       </ScrollView>
 
-      <View
-        style={styles.measureLayer}
-        pointerEvents="none"
-        testID={`${testID}-measure-layer`}
-        {...HIDDEN_FROM_ACCESSIBILITY}
-      >
+      {isEmpty ? null : (
         <View
-          style={styles.measureColumn}
-          onLayout={(event) => setLabelWidth(event.nativeEvent.layout.width)}
-          testID={`${testID}-measure-labels`}
+          style={styles.measureLayer}
+          pointerEvents="none"
+          testID={`${testID}-measure-layer`}
+          {...HIDDEN_FROM_ACCESSIBILITY}
         >
-          {rows.map((row) => (
-            <RNText key={row.key} style={[styles.labelText, row.isSummary && styles.summaryText]}>
-              {row.label}
-            </RNText>
-          ))}
-        </View>
-
-        {columns.map((column, columnIndex) => (
           <View
-            key={column.key}
             style={styles.measureColumn}
-            onLayout={recordColumnWidth(column.key)}
-            testID={`${testID}-measure-column-${column.key}`}
+            onLayout={(event) => setLabelWidth(event.nativeEvent.layout.width)}
+            testID={`${testID}-measure-labels`}
           >
-            <RNText style={styles.headerText}>{column.header}</RNText>
-
             {rows.map((row) => (
-              <RNText
-                key={row.key}
-                style={[styles.cellText, row.isSummary && styles.summaryText]}
-                testID={`${testID}-measure-text-${column.key}-${row.key}`}
-              >
-                {row.cells[columnIndex].text}
+              <RNText key={row.key} style={[styles.labelText, row.isSummary && styles.summaryText]}>
+                {row.label}
               </RNText>
             ))}
           </View>
-        ))}
-      </View>
+
+          {columns.map((column, columnIndex) => (
+            <View
+              key={column.key}
+              style={styles.measureColumn}
+              onLayout={recordColumnWidth(column.key)}
+              testID={`${testID}-measure-column-${column.key}`}
+            >
+              <RNText style={styles.headerText}>{column.header}</RNText>
+
+              {rows.map((row) => (
+                <RNText
+                  key={row.key}
+                  style={[styles.cellText, row.isSummary && styles.summaryText]}
+                  testID={`${testID}-measure-text-${column.key}-${row.key}`}
+                >
+                  {row.cells[columnIndex].text}
+                </RNText>
+              ))}
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 };

@@ -381,7 +381,69 @@ describe('DataTable', () => {
         nativeBody.offset = x;
         offsetBox.value = x;
       };
-      const emptied: Partial<DataTableProps> = { rows: [], emptyContent };
+      // The production empty table keeps its summary row, with zeros.
+      const zeroRow = (columnCount: number): DataTableProps['rows'] => [
+        {
+          key: 'all',
+          label: 'All',
+          isSummary: true,
+          cells: makeCells(Array.from({ length: columnCount }, () => '0')),
+        },
+      ];
+      const emptied: Partial<DataTableProps> = { rows: zeroRow(columns.length), emptyContent };
+      const months: DataTableProps['columns'] = Array.from({ length: 12 }, (_, index) => ({
+        key: `month-${index}`,
+        header: `M${index + 1}`,
+      }));
+      const monthRows = (text: string): DataTableProps['rows'] => [
+        { key: 'groceries', label: 'Groceries', cells: makeCells(months.map(() => text)) },
+        { key: 'all', label: 'All', isSummary: true, cells: makeCells(months.map(() => text)) },
+      ];
+      const realThree = { labels: 60, jan: 80, feb: 100, total: 140 };
+      const narrowThree = { labels: 20, jan: 8, feb: 8, total: 8 };
+      const widthsOfMonths = (labels: number, month: number) => ({
+        labels,
+        ...Object.fromEntries(months.map(({ key }) => [key, month])),
+      });
+      const realMonths = widthsOfMonths(60, 100);
+      const refilledMonths = widthsOfMonths(60, 110);
+      const narrowMonths = widthsOfMonths(20, 8);
+      // What the device reports: a layout event for each measuring view that is mounted, none for
+      // one that is not.
+      const reportWidths = async (rendered: Rendered, widths: Record<string, number>) => {
+        const mounted = rendered.queryAllByTestId(/^table-measure-(labels|column-.+)$/, {
+          includeHiddenElements: true,
+        });
+
+        for (const view of mounted) {
+          const key = String(view.props.testID).replace(`${PREFIX}-measure-`, '');
+
+          await fireEvent(view, 'layout', layoutEvent(widths[key.replace('column-', '')]));
+        }
+      };
+      // Empty, the measuring views report the widths of the zero row (if any is mounted); filled
+      // again, they report the widths of the real rows.
+      const crossEmptyState = async (
+        rendered: Rendered,
+        crossing: {
+          emptied: Partial<DataTableProps>;
+          filled: Partial<DataTableProps>;
+          narrow: Record<string, number>;
+          real: Record<string, number>;
+        },
+      ) => {
+        await rerenderTable(rendered, crossing.emptied);
+        await reportWidths(rendered, crossing.narrow);
+        await rerenderTable(rendered, crossing.filled);
+        await reportWidths(rendered, crossing.real);
+      };
+      const crossThreeColumns = (rendered: Rendered) =>
+        crossEmptyState(rendered, {
+          emptied: { ...emptied, initialColumnIndex: 1 },
+          filled: { initialColumnIndex: 1 },
+          narrow: narrowThree,
+          real: realThree,
+        });
 
       beforeEach(() => {
         nativeBody.offset = 0;
@@ -405,11 +467,41 @@ describe('DataTable', () => {
         scrollTo().mockReset();
       });
 
-      it('opens a new body at the initial column and keeps the header on it, after a scroll', async () => {
+      it('opens at the initial column from the real widths, not the widths of the zero row', async () => {
+        const rendered = await renderTable({
+          columns: months,
+          rows: monthRows('1,000'),
+          initialColumnIndex: 9,
+        });
+        await setContainerWidth(rendered, 390);
+        await reportWidths(rendered, realMonths);
+
+        // Nine columns of 100 + 16 lead the ninth index, and 1392 - (390 - 76 - hairline) of
+        // content is room enough to reach it.
+        expect(nativeBody.offset).toBe(9 * (100 + HORIZONTAL_PADDING));
+
+        scrollByUser(300);
+        // The refill is wider than the table was before the empty state, so only its own widths
+        // put the column where it belongs.
+        await crossEmptyState(rendered, {
+          emptied: {
+            columns: months,
+            rows: zeroRow(months.length),
+            emptyContent,
+            initialColumnIndex: 9,
+          },
+          filled: { columns: months, rows: monthRows('1,000'), initialColumnIndex: 9 },
+          narrow: narrowMonths,
+          real: refilledMonths,
+        });
+
+        expect(nativeBody.offset).toBe(9 * (110 + HORIZONTAL_PADDING));
+        expect(offsetBox.value).toBe(nativeBody.offset);
+      });
+
+      it('keeps the header on a new body opened at the initial column, with no scroll before', async () => {
         const rendered = await settle(1);
-        scrollByUser(144 + HAIRLINE);
-        await rerenderTable(rendered, { initialColumnIndex: 1, ...emptied });
-        await rerenderTable(rendered, { initialColumnIndex: 1 });
+        await crossThreeColumns(rendered);
 
         expect(nativeBody.offset).toBe(firstColumnOffset);
         expect(offsetBox.value).toBe(nativeBody.offset);
@@ -418,14 +510,39 @@ describe('DataTable', () => {
       it('opens at the initial column when the table first mounted empty', async () => {
         const rendered = await renderTable({ initialColumnIndex: 1, ...emptied });
         await setContainerWidth(rendered, 300);
-        await measureLabels(rendered, 60);
-        await measureColumn(rendered, 'jan', 80);
-        await measureColumn(rendered, 'feb', 100);
-        await measureColumn(rendered, 'total', 140);
+        await reportWidths(rendered, narrowThree);
         await rerenderTable(rendered, { initialColumnIndex: 1 });
+        await reportWidths(rendered, realThree);
 
         expect(nativeBody.offset).toBe(firstColumnOffset);
         expect(offsetBox.value).toBe(nativeBody.offset);
+      });
+
+      it('leaves a scroll of the user alone when a later measure follows the refill', async () => {
+        const rendered = await settle(1);
+        await crossThreeColumns(rendered);
+        scrollByUser(120);
+        scrollTo().mockClear();
+        await measureColumn(rendered, 'total', 150);
+
+        expect(scrollTo()).not.toHaveBeenCalled();
+        expect(nativeBody.offset).toBe(120);
+        expect(offsetBox.value).toBe(120);
+      });
+
+      it('measures the rows afresh on a refill, with no measuring views while empty', async () => {
+        const rendered = await settle(1);
+        await rerenderTable(rendered, { initialColumnIndex: 1, ...emptied });
+
+        expect(
+          rendered.queryByTestId(`${PREFIX}-measure-layer`, { includeHiddenElements: true }),
+        ).toBeNull();
+
+        await rerenderTable(rendered, { initialColumnIndex: 1 });
+
+        expect(
+          rendered.getByTestId(`${PREFIX}-measure-layer`, { includeHiddenElements: true }),
+        ).toBeTruthy();
       });
 
       it('follows the body only while there is one', async () => {
