@@ -1,5 +1,6 @@
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
+import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
@@ -9,7 +10,7 @@ import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statist
 import StatisticsScreen from './statistics.screen';
 
 /**
- * The in-page row under the filter bar that opens the Tables screen. It sits in the one untagged
+ * The in-page row above the filter bar that opens the Tables screen. It sits in the one untagged
  * `Box` with the filter bar, so the children of `statistics-blocks` stay as they were.
  */
 
@@ -57,6 +58,14 @@ describe('the Tables button in Statistics', () => {
 
     expect(inside.getByTestId(ACCOUNT_FILTER)).toBeTruthy();
     expect(inside.getByTestId(TABLES_BUTTON)).toBeTruthy();
+  });
+
+  it('comes first in that box, above the filter bar', async () => {
+    const { toJSON } = await render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
+    const order = testIdsInOrder(toJSON());
+
+    expect(order.indexOf(TABLES_BUTTON)).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf(TABLES_BUTTON)).toBeLessThan(order.indexOf(ACCOUNT_FILTER));
   });
 
   it('does not show in the empty state of a user with no account', async () => {

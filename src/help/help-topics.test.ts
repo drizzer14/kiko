@@ -459,6 +459,20 @@ describe('the choices a help step names', () => {
     },
   );
 
+  // The step names where the button is, so it must follow the screen: first, above the filters.
+  it.each([
+    ['en', enValues, 'Above the filters', 'Below the filters'],
+    ['uk', ukValues, 'Над фільтрами', 'Під фільтрами'],
+  ] as const)(
+    'places the Monthly tables button in %s above the filters',
+    (_language, values, above, below) => {
+      const step = stepOf(values, 'viewStatistics', 9);
+
+      expect(step.startsWith(above)).toBe(true);
+      expect(step).not.toContain(below);
+    },
+  );
+
   it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],
     ['uk', ukValues, /лише/i, 'Відсотки за кредитом'],

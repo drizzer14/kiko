@@ -707,9 +707,20 @@ const StatisticsScreen: FC = () => {
   return (
     <Screen scroll scrollableRef={scrollRef}>
       <Box gap={4} testID="statistics-blocks">
-        {/* One untagged box holds the filter bar and the Tables button, so the grid's children
+        {/* One untagged box holds the Tables button and the filter bar, so the grid's children
             below keep their place in `statistics-blocks`. */}
         <Box gap={3}>
+          <Button
+            variant="secondaryTonal"
+            size="compact"
+            icon="tablecells"
+            trailingIcon="chevron.right"
+            onPress={() => navigation.navigate('Tables')}
+            testID="statistics-open-tables"
+          >
+            {t('statistics.openTables')}
+          </Button>
+
           <Box direction="row" gap={3} style={styles.filterBar}>
             <FilterMenu
               key={sheetGeneration}
@@ -733,17 +744,6 @@ const StatisticsScreen: FC = () => {
               onClear={clearDateRange}
             />
           </Box>
-
-          <Button
-            variant="secondaryTonal"
-            size="compact"
-            icon="tablecells"
-            trailingIcon="chevron.right"
-            onPress={() => navigation.navigate('Tables')}
-            testID="statistics-open-tables"
-          >
-            {t('statistics.openTables')}
-          </Button>
         </Box>
 
         <StatisticsGrid
