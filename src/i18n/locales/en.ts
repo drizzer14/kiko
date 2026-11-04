@@ -1278,6 +1278,7 @@ export const en = {
           '6': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
           '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category. A transaction that sets an account\'s balance, such as its initial value, does not count as spending either.',
           '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
+          '9': 'Below the filters, "Monthly tables" opens your spending by category for each month, in whole units of your base currency at today\'s rate, so an earlier month changes when the rate does. "Period" chooses the last 12 months or one calendar year. The average leaves out the month that is not over yet. A "Total" or "All" figure can differ by 1 from the sum of the cells you see, because each cell is rounded.',
         },
         title: 'Read Your Statistics',
       },
