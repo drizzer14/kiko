@@ -110,9 +110,13 @@ describe('StatisticsStack', () => {
     expect(statistics?.props.options).toEqual({ title: 'statistics.title' });
   });
 
-  it('registers the Tables route and titles it with the translated tables.title', () => {
+  // User ruling (small title): the table sits below an opaque bar, never under a large title.
+  it('registers the Tables route with the translated tables.title as a small title', () => {
     expect(screenNames()).toContain('Tables');
-    expect(screenOf('Tables')?.props.options).toEqual({ title: 'tables.title' });
+    expect(screenOf('Tables')?.props.options).toEqual({
+      title: 'tables.title',
+      headerLargeTitle: false,
+    });
   });
 
   it('titles the Transaction form with the translated add title', () => {

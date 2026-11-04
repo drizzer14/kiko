@@ -71,10 +71,12 @@ const HomeStack: FC = () => {
         }}
       />
 
+      {/* A small title in an opaque bar, because the table lays out below it, not under a large
+          title. */}
       <Stack.Screen
         name="Tables"
         component={TablesScreen}
-        options={{ headerShown: true, ...largeTitleScreenOptions, title: t('tables.title') }}
+        options={{ headerShown: true, title: t('tables.title') }}
       />
 
       <Stack.Screen

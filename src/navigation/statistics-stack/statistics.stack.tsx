@@ -55,7 +55,13 @@ const StatisticsStack: FC = () => {
         options={{ title: t('statistics.title') }}
       />
 
-      <Stack.Screen name="Tables" component={TablesScreen} options={{ title: t('tables.title') }} />
+      {/* A small title in an opaque bar, because the table lays out below it, not under a large
+          title. */}
+      <Stack.Screen
+        name="Tables"
+        component={TablesScreen}
+        options={{ title: t('tables.title'), headerLargeTitle: false }}
+      />
 
       <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
 
