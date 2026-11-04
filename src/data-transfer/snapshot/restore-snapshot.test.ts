@@ -363,7 +363,7 @@ describe('restoreDataSnapshot', () => {
 
     it('leaves a user category titled Travel alone beside the added row', async () => {
       const userTravel = {
-        key: '0b9f2f7a-4c1e-4b8e-9a53-6d1f0c2e7a11',
+        key: 'my-own-travel',
         title: 'Travel',
         icon: 'bag',
         color: '#ABCDEF',
