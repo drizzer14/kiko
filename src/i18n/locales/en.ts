@@ -299,6 +299,19 @@ export const en = {
     applyToExisting: 'Apply to existing',
     newOnly: 'New transactions only',
   },
+  categoryRulePreview: {
+    confirm: 'Move',
+    confirmTitle: 'Move Transactions',
+    // English defines every plural form so both catalogues carry the same keys (Ukrainian selects
+    // all four). The names text is a quoted list or the list with its own rest phrase. The names
+    // follow a second sentence, so the value is not read as a "Label: {{value}}" fragment.
+    moveMessage_one: '{{count}} transaction moves to "{{category}}". Names: {{names}}.',
+    moveMessage_few: '{{count}} transactions move to "{{category}}". Names: {{names}}.',
+    moveMessage_many: '{{count}} transactions move to "{{category}}". Names: {{names}}.',
+    moveMessage_other: '{{count}} transactions move to "{{category}}". Names: {{names}}.',
+    namesAndMore: '{{names}}, and {{count}} more',
+    noRowsMessage: 'No existing transactions move. New ones will go to "{{category}}".',
+  },
   forms: {
     // Field labels reused across two or more of the forms below (the account,
     // holding, transaction, and contribution create/edit screens), so callers
@@ -628,6 +641,7 @@ export const en = {
       applyCategoryMessage:
         'Apply "{{category}}" to all transactions named "{{name}}"? This also applies to future imports.',
       applyCategoryToAll: 'Apply Category to All',
+      applyToAllStartingWith: 'All starting with "{{prefix}}"',
       applyToThisOne: 'Just for this one',
       category: 'Category',
       categorySheetTitle: 'Category',
@@ -1134,7 +1148,7 @@ export const en = {
           '2': 'Tap "Add rule" and set a condition on the name, the amount, or the time. Tap "Add condition" for more; a transaction must match them all.',
           '3': 'Tap "Save". If existing transactions match, choose "Apply to existing" or "New transactions only".',
           '4': 'Rules also sort the transactions you import or sync later.',
-          '5': 'When you change the category of a transaction and choose "Apply", Kiko adds a rule for its name.',
+          '5': 'When you change the category of a transaction and choose "Apply", Kiko adds a rule for its name. If the name ends in a store number, you can also apply to all names that start the same way.',
         },
         title: 'Set Categories Automatically',
       },
