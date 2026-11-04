@@ -172,7 +172,8 @@ VERIFY_SUMMARY_LINES=100
 usage() {
   [ "$#" -eq 0 ] || printf '%s\n' "$1" >&2
   cat >&2 <<'USAGE'
-usage: job-queue.sh verify|check-all|security <worktree> <label>
+usage: job-queue.sh verify <worktree> <label> [--sha <commit>] [--scoped]
+       job-queue.sh check-all|security <worktree> <label>
        job-queue.sh harness-verify <harness worktree> <label>
        job-queue.sh gate <worktree> <label> <mutation-base> <expected-head> [--long]
        job-queue.sh hold <reason>
@@ -305,6 +306,31 @@ mutation_base=''
 expected_head=''
 job_class=1
 job_size=0
+scoped=0
+requested_sha=''
+
+# `[--sha <commit>] [--scoped]` of a verify, in either order; a repeat, an unknown word, or a --sha
+# with no value is a usage error.
+parse_verify_options() {
+  local sha_given=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --scoped)
+        [ "$scoped" -eq 0 ] || usage "--scoped given twice"
+        scoped=1
+        ;;
+      --sha)
+        [ "$sha_given" -eq 0 ] || usage "--sha given twice"
+        [ "$#" -ge 2 ] && [ -n "$2" ] || usage "--sha needs a commit"
+        requested_sha="$2"
+        sha_given=1
+        shift
+        ;;
+      *) usage "unknown option: $1" ;;
+    esac
+    shift
+  done
+}
 
 case "$command_name" in
   status)
@@ -328,7 +354,11 @@ case "$command_name" in
     rm -f "$HOLD_FILE"
     exit 0
     ;;
-  verify | check-all | security)
+  verify)
+    [ "$#" -ge 3 ] || usage
+    parse_verify_options "${@:4}"
+    ;;
+  check-all | security)
     [ "$#" -eq 3 ] || usage
     ;;
   harness-verify)
@@ -354,6 +384,9 @@ case "$GATE_START_MAX_WAIT" in
 esac
 
 worktree="$2"
+# The tree whose status and HEAD the job's record reads: the worktree, until a verify names its
+# shared checkout.
+job_tree="$worktree"
 label="$3"
 valid_label "$label" || usage "invalid label: $label"
 if [ "$command_name" = harness-verify ]; then
@@ -477,19 +510,29 @@ refuse_moved_head() {
   esac
 }
 
+# The full HEAD of the job's tree, or nothing when it cannot be read.
+full_head() {
+  local head
+  head="$(git -C "$job_tree" rev-parse HEAD 2> /dev/null)" || return 0
+  case "$head" in
+    *[!0-9a-f]*) ;;
+    *) [ "${#head}" -eq 40 ] && printf '%s' "$head" ;;
+  esac
+}
+
 # Succeeds only when the worktree has no change at all (untracked files count). --no-optional-locks
 # keeps the read from taking the worktree's index.lock, so it never races a git command of the user.
 # --untracked-files=all overrides a status.showUntrackedFiles=no in the worktree's own config.
 tree_is_clean() {
   local changes
-  changes="$(git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all \
+  changes="$(git --no-optional-locks -C "$job_tree" status --porcelain --untracked-files=all \
     2> /dev/null)" || return 1
   [ -z "$changes" ]
 }
 
 # The first $1 changed paths, one per line (the status letters are cut off).
 first_changed_paths() {
-  git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all 2> /dev/null \
+  git --no-optional-locks -C "$job_tree" status --porcelain --untracked-files=all 2> /dev/null \
     | sed -n "1,${1}p" | cut -c4-
 }
 
@@ -531,7 +574,44 @@ if [ "$command_name" = gate ]; then
   refuse_dirty_tree
   read_gate_size
 fi
-[ "$command_name" != verify ] || refuse_dirty_tree
+
+# The commit a verify tests is named once, here, and the job never reads the worktree again: the
+# track goes on with its next task while the verify waits and runs. --sha names a commit (the
+# worktree may be dirty or moved), else the worktree HEAD, and a dirty tree is refused so a
+# forgotten commit is caught. The job runs in the sibling `<main checkout>-verify` linked worktree,
+# prepared by verify-checkout.sh against the main checkout, so a track worktree removed while the
+# verify waits changes nothing. A folder with no readable HEAD (a scratch queue only; the real queue
+# refuses it above) keeps the in-place run and records `unknown`.
+verify_sha=''
+verify_repository=''
+verify_checkout=''
+resolve_verify_commit() {
+  local main_checkout
+  if [ -n "$requested_sha" ]; then
+    valid_head "$requested_sha" \
+      || refuse "--sha takes 7 or more lowercase hex characters, got \"$requested_sha\""
+    verify_sha="$(git -C "$worktree" rev-parse --verify --quiet "${requested_sha}^{commit}" 2> /dev/null)"
+    case "$verify_sha" in
+      "$requested_sha"*) ;;
+      *) refuse "--sha $requested_sha is not a commit of $worktree, or it is ambiguous" ;;
+    esac
+  else
+    refuse_dirty_tree
+    verify_sha="$(full_head)"
+    [ -n "$verify_sha" ] || return 0
+  fi
+  main_checkout="$(git -C "$worktree" worktree list --porcelain 2> /dev/null \
+    | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')"
+  [ -n "$main_checkout" ] && [ -d "$main_checkout" ] \
+    || refuse "the main checkout of $worktree cannot be found (git worktree list --porcelain)"
+  [ -f "$SCRIPT_DIRECTORY/verify-checkout.sh" ] \
+    || refuse "$SCRIPT_DIRECTORY/verify-checkout.sh is missing: it prepares the verify checkout"
+  verify_repository="$main_checkout"
+  verify_checkout="$(dirname "$main_checkout")/$(basename "$main_checkout")-verify"
+  job_tree="$verify_checkout"
+}
+
+[ "$command_name" != verify ] || resolve_verify_commit
 
 mkdir -p "$TICKETS_DIRECTORY"
 ticket_name="${job_class}-$(printf '%010d' "$job_size")-$(date +%s)-$$-${label}"
@@ -541,6 +621,7 @@ job_group=''
 sleeper=''
 verify_log=''
 verify_log_trimmed=0
+verify_scope=partial
 verify_summary=''
 owns_claim=0
 
@@ -720,6 +801,13 @@ trim_verify_log() {
   local trimmed
   [ -n "$verify_log" ] && [ -f "$verify_log" ] && [ "$verify_log_trimmed" -eq 0 ] || return 0
   verify_log_trimmed=1
+  # Read before the trim, because the 2b header can fall out of the kept lines. Both anchors are at
+  # the line start, so a suite that prints the marker text mid-line proves nothing. `full` needs the
+  # real header and no SKIPPED line; a log with no header is `partial`.
+  if grep -a -q '^── make verify: stage 2b (' "$verify_log" \
+    && ! grep -a -q '^── make verify: stage 2b SKIPPED' "$verify_log"; then
+    verify_scope=full
+  fi
   trimmed="$verify_log.trimmed"
   verify_summary="$(grep -a -E "$VERIFY_SUMMARY_PATTERN" "$verify_log" | sed -n "1,${VERIFY_SUMMARY_LINES}p")"
   {
@@ -932,7 +1020,22 @@ start_gate_job() {
 start_verify_job() {
   verify_log="$QUEUE_DIRECTORY/logs/verify-$label.log"
   mkdir -p "$QUEUE_DIRECTORY/logs"
-  env -u FORCE_COLOR make -C "$worktree" verify > "$verify_log" 2>&1 < /dev/null &
+  # make gets KIKO_VERIFY_SCOPED=1 only for --scoped, and an inherited value is removed, so a stale
+  # export can never skip stage 2b.
+  local scope_arguments=(-u KIKO_VERIFY_SCOPED)
+  [ "$scoped" -eq 0 ] || scope_arguments=(KIKO_VERIFY_SCOPED=1)
+  if [ -z "$verify_sha" ]; then
+    env -u FORCE_COLOR "${scope_arguments[@]}" make -C "$worktree" verify \
+      > "$verify_log" 2>&1 < /dev/null &
+    return
+  fi
+  # One backgrounded subshell, so the prepare step runs in the job's own process group and a signal
+  # reaches it as it reaches make. A failed prepare is the job's exit 2, and make never runs.
+  (
+    env -u FORCE_COLOR bash "$SCRIPT_DIRECTORY/verify-checkout.sh" \
+      "$verify_repository" "$verify_checkout" "$verify_sha" \
+      && exec env -u FORCE_COLOR "${scope_arguments[@]}" make -C "$verify_checkout" verify
+  ) > "$verify_log" 2>&1 < /dev/null &
 }
 
 # The job runs in the background, in a process group of its own (`set -m`), and the script waits
@@ -976,16 +1079,6 @@ drain_job_group() {
   done
 }
 
-# The full HEAD of the worktree, or nothing when it cannot be read.
-full_head() {
-  local head
-  head="$(git -C "$worktree" rev-parse HEAD 2> /dev/null)" || return 0
-  case "$head" in
-    *[!0-9a-f]*) ;;
-    *) [ "${#head}" -eq 40 ] && printf '%s' "$head" ;;
-  esac
-}
-
 # The commit a job ran on, named only while that is certain: a queued job reads the working tree,
 # so a tree with any change (untracked files count) at START is not "the job at that commit".
 read_tested_head() {
@@ -1024,15 +1117,21 @@ keep_verify_log() {
 }
 
 case "$command_name" in
-  verify | gate) refuse_dirty_tree ;;
+  gate) refuse_dirty_tree ;;
 esac
 [ "$command_name" = gate ] && prepare_gate
 started_at="$(iso_stamp)"
 # The START line names the commit the job runs on: a gate was refused unless HEAD starts with its
 # expected head, so the worktree's HEAD is the queued commit; its first 12 characters name it even
-# when the expected head was given short.
-head_sha="$(git -C "$worktree" rev-parse HEAD 2> /dev/null | cut -c1-12)"
-tested_head="$(read_tested_head)"
+# when the expected head was given short. A verify with a sha runs on the commit read at enqueue,
+# never on the worktree it was queued for.
+if [ -n "$verify_sha" ]; then
+  head_sha="${verify_sha:0:12}"
+  tested_head="$verify_sha"
+else
+  head_sha="$(git -C "$worktree" rev-parse HEAD 2> /dev/null | cut -c1-12)"
+  tested_head="$(read_tested_head)"
+fi
 printf 'START %s at %s head %s (load: %s)\n' "$label" "$(clock_time)" "${head_sha:-unknown}" "$(uptime 2> /dev/null | sed 's/.*averages: //')"
 run_job
 drain_job_group
@@ -1046,7 +1145,8 @@ keep_verify_log
     grep -E '^(TIMEOUT-HEAVY |REPORT SCOPE MISMATCH|RERUN )' "$gate_log" | awk '!seen[$0]++'
   }
 confirm_tested_head
-printf '%s %s %s %s %s %s\n' "$command_name" "$label" "$job_code" "$started_at" "$(iso_stamp)" \
-  "$tested_head" >> "$DONE_LOG"
+done_line="$command_name $label $job_code $started_at $(iso_stamp) $tested_head"
+[ "$command_name" != verify ] || done_line="$done_line $verify_scope"
+printf '%s\n' "$done_line" >> "$DONE_LOG"
 printf 'DONE %s exit %s at %s\n' "$label" "$job_code" "$(clock_time)"
 exit "$job_code"

@@ -132,6 +132,7 @@ const ALLOWED_AROUND_HEAVY_JOBS: string[] = [
   "grep -rn 'make verify' docs/",
   "grep -rn 'check:deep' package.json",
   `bash scripts/job-queue.sh verify ${WORKTREE} label`,
+  `bash scripts/job-queue.sh verify ${WORKTREE} label --sha abc1234 --scoped`,
   `bash scripts/job-queue.sh gate ${WORKTREE} label base head`,
   `bash scripts/job-queue.sh check-all ${WORKTREE} label`,
   `bash scripts/job-queue.sh security ${WORKTREE} label`,
