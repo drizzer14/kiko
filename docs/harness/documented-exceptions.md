@@ -986,8 +986,8 @@ verified usage, not dead weight:
   files mock or call the whole-table read to prove the current-rows book gives
   the same numbers. Measured on 2026-10-02: without the excludes the rule draws
   hits only in those folders and tests, plus the two overridden sites
-  (`statistics.screen.tsx`, `read-snapshot.ts`), each with a per-line
-  `nosemgrep ... OVERRIDE(...)` in the source, never a file exclude. The flat
+  (`src/statistics/statistics-sources/use-statistics-sources.ts`, `read-snapshot.ts`), each
+  with a per-line `nosemgrep ... OVERRIDE(...)` in the source, never a file exclude. The flat
   fixture pair proves the rule in `check:rules`.
 
 - **`readAllRulesDatabaseTransaction`

@@ -146,7 +146,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
     expect(getByTestId('connect-exchange-option-btc_wallet')).toBeTruthy();
     expect(queryByTestId('connect-exchange-option-other')).toBeNull();
     expect(getByText('Binance')).toBeTruthy();
-    expect(getByText('Bitcoin wallet address')).toBeTruthy();
+    expect(getByText('Bitcoin wallet')).toBeTruthy();
     expect(getByText('Connect with a read-only API key.')).toBeTruthy();
     expect(getByText('Connect with a public address.')).toBeTruthy();
   });

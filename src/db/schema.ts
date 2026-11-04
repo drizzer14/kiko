@@ -271,9 +271,10 @@ export const transactions = sqliteTable(
     loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
     // True on every row whose amount set its holding's balance (an opening
     // balance, a cash opening, a hand edit), for good, after a description or a
-    // category too, which its shape does not survive. It only keeps a closing
+    // category too, which its shape does not survive. It keeps a closing
     // balance import from counting the row again past its as-of
-    // (`postClosingRowsWhere`): the row's edit and delete move the balance by its
+    // (`postClosingRowsWhere`) and keeps the row out of spending in the Statistics
+    // charts (`balanceSetIdsOf`): the row's edit and delete move the balance by its
     // amount like any row's.
     setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),

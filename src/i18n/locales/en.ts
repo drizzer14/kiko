@@ -341,7 +341,7 @@ export const en = {
       bankType: 'Bank type',
       bankTypePlaceholder: 'Select a bank',
       bankTypeSheetTitle: 'Bank Type',
-      bitcoinWallet: 'Bitcoin wallet address',
+      bitcoinWallet: 'Bitcoin wallet',
       broker: 'Broker',
       brokerDisclaimer:
         'Kiko is an independent app. It is not affiliated with or endorsed by any broker.',
@@ -1142,7 +1142,7 @@ export const en = {
         rowLabel: 'Connect Binance or a Bitcoin wallet',
         steps: {
           '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Crypto".',
-          '2': 'Under "Exchange or wallet", choose "Binance" or "Bitcoin wallet address".',
+          '2': 'Under "Exchange or wallet", choose "Binance" or "Bitcoin wallet".',
           '3': 'For Binance, tap "Open Binance API management" and create an API key there with only "Enable Reading" turned on (no trading or withdrawal permission). Paste the "API key" and "API secret", then tap "Connect Binance".',
           '4': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
           '5': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
@@ -1264,7 +1264,7 @@ export const en = {
           '4': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
           '5': '"Expenses by Category" shows your spending over the chosen dates, with the total in the middle. "Categories" chooses which categories it counts. The list under the chart shows categories of 5% or more, and "Show all" shows the rest.',
           '6': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
-          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category.',
+          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category. A row that sets the balance of an account, such as an opening balance, does not count as spending either.',
           '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
         },
         title: 'Read Your Statistics',

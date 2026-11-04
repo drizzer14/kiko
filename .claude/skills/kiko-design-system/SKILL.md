@@ -429,7 +429,8 @@ The established patterns grouped under this heading:
   category filter is scoped to the active date range), but a value
   the user has already SELECTED must stay listed and checked even once
   it drops out of that scope — union it back in from wherever its
-  display data lives (Statistics: `categoryByKey`), rather than pruning
+  display data lives (Statistics: `categoryByKey`, handled with `keptKeys` in
+  `src/statistics/statistics-filter-scope/statistics-filter-scope.ts`), rather than pruning
   the selection or letting the row vanish so the user can never find
   it to uncheck (`statistics.screen.tsx`'s
   `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s

@@ -180,7 +180,7 @@ describe('SettingsScreen', () => {
     const { getByTestId } = await renderScreen(navigation);
 
     const currencyCard = getByTestId('settings-card-base-currency');
-    const groupCard = getByTestId('settings-card-templates-and-categories');
+    const groupCard = getByTestId('settings-card-categories-reminders-templates');
 
     // Two distinct Card surfaces, one per setting.
     expect(currencyCard).toBeTruthy();
@@ -191,12 +191,12 @@ describe('SettingsScreen', () => {
     expect(within(currencyCard).getByTestId('settings-row-base-currency')).toBeTruthy();
     expect(within(currencyCard).queryByTestId('settings-row-categories')).toBeNull();
 
-    // ...and the Categories row lives only inside the templates-and-categories card.
+    // ...and the Categories row lives only inside the categories-reminders-templates card.
     expect(within(groupCard).getByTestId('settings-row-categories')).toBeTruthy();
     expect(within(groupCard).queryByTestId('settings-row-base-currency')).toBeNull();
   });
 
-  it('renders the System navigation card at the very top, then Reminders, then Import/Export', async () => {
+  it('renders the System navigation card at the very top, then Import/Export, base currency, the Categories-Reminders-Templates group and Help', async () => {
     const { getByTestId, getAllByTestId } = await renderScreen();
 
     expect(getByTestId('settings-card-system')).toBeTruthy();
@@ -210,10 +210,9 @@ describe('SettingsScreen', () => {
       .filter((testID) => !testID.endsWith('-base'));
     expect(cardOrder).toEqual([
       'settings-card-system',
-      'settings-card-reminders',
       'settings-card-data-transfer',
       'settings-card-base-currency',
-      'settings-card-templates-and-categories',
+      'settings-card-categories-reminders-templates',
       'settings-card-help',
     ]);
   });
@@ -317,11 +316,11 @@ describe('SettingsScreen', () => {
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
-  it('navigates to the Reminders list from its own bell row', async () => {
+  it('navigates to the Reminders list from its bell row in the group card', async () => {
     const navigation = navigationSpy();
     const { getByTestId, root } = await renderScreen(navigation);
 
-    const card = getByTestId('settings-card-reminders');
+    const card = getByTestId('settings-card-categories-reminders-templates');
 
     expect(within(card).getByText('Reminders')).toBeTruthy();
     // The bell glyph is unique to this row, so a whole-tree lookup suffices.
@@ -383,48 +382,60 @@ describe('SettingsScreen', () => {
     expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
-  it('groups Transaction templates and Categories into one card, templates first', async () => {
+  it('groups Categories, Reminders and Transaction templates into one card, in that order', async () => {
     const { getByTestId, getAllByTestId } = await renderScreen();
 
-    const card = getByTestId('settings-card-templates-and-categories');
+    const card = getByTestId('settings-card-categories-reminders-templates');
 
-    expect(within(card).getByText('Transaction templates')).toBeTruthy();
     expect(within(card).getByText('Categories')).toBeTruthy();
+    expect(within(card).getByText('Reminders')).toBeTruthy();
+    expect(within(card).getByText('Transaction templates')).toBeTruthy();
     expect(
       card.queryAll((node) => node.props.name === genericEntitySymbol.template).length,
     ).toBeGreaterThan(0);
 
     const order = getAllByTestId(
-      /^settings-(row-(transaction-templates|categories)|divider-templates-and-categories)$/,
+      /^settings-(row-(categories|reminders|transaction-templates)|divider-(categories-reminders|reminders-templates))$/,
     ).map((node) => node.props.testID as string);
     expect(order).toEqual([
-      'settings-row-transaction-templates',
-      'settings-divider-templates-and-categories',
       'settings-row-categories',
+      'settings-divider-categories-reminders',
+      'settings-row-reminders',
+      'settings-divider-reminders-templates',
+      'settings-row-transaction-templates',
     ]);
   });
 
-  it('styles the templates-and-categories card like the Import/Export card', async () => {
+  it('styles the Categories-Reminders-Templates card like the Import/Export card', async () => {
     const { getByTestId } = await renderScreen();
 
-    const card = getByTestId('settings-card-templates-and-categories');
-    const divider = getByTestId('settings-divider-templates-and-categories');
-    const dividerStyle = StyleSheet.flatten(divider.props.style);
+    const card = getByTestId('settings-card-categories-reminders-templates');
 
     expect(StyleSheet.flatten(card.props.style).padding).toBe(0);
-    expect(
-      StyleSheet.flatten(getByTestId('settings-row-transaction-templates').props.style)
-        .paddingVertical,
-    ).toBe(darkTheme.spacing(3));
-    expect(
-      StyleSheet.flatten(getByTestId('settings-row-categories').props.style).paddingVertical,
-    ).toBe(darkTheme.spacing(3));
-    expect(dividerStyle.marginLeft).toBe(
-      darkTheme.spacing(3) + darkTheme.iconSizes.body + darkTheme.spacing(3),
-    );
-    expect(dividerStyle.marginRight).toBe(
-      darkTheme.spacing(3) + chevronTrailingWhitespace(chevronSize(darkTheme), darkTheme),
-    );
+
+    for (const rowId of [
+      'settings-row-categories',
+      'settings-row-reminders',
+      'settings-row-transaction-templates',
+    ]) {
+      expect(StyleSheet.flatten(getByTestId(rowId).props.style).paddingVertical).toBe(
+        darkTheme.spacing(3),
+      );
+    }
+
+    for (const dividerId of [
+      'settings-divider-categories-reminders',
+      'settings-divider-reminders-templates',
+    ]) {
+      const dividerStyle = StyleSheet.flatten(getByTestId(dividerId).props.style);
+
+      expect(dividerStyle.marginLeft).toBe(
+        darkTheme.spacing(3) + darkTheme.iconSizes.body + darkTheme.spacing(3),
+      );
+      expect(dividerStyle.marginRight).toBe(
+        darkTheme.spacing(3) + chevronTrailingWhitespace(chevronSize(darkTheme), darkTheme),
+      );
+    }
   });
 
   it('navigates to the TransactionTemplates sub-screen when its row is pressed', async () => {
@@ -630,20 +641,16 @@ describe('SettingsScreen — loading gate', () => {
 // On a wide window the menu is one pane and the page of a row the other: the row whose page the
 // detail pane opened with (Categories until another is opened) is marked. On one pane nothing is.
 describe('SettingsScreen — the selected row', () => {
-  // Import and Export share one card, and so do Templates and Categories, so there the row is
-  // marked and the card is not.
+  // Import and Export share one card, and so do Categories, Reminders and Templates, so there the
+  // row is marked and the card is not.
+  const GROUP_CARD = 'settings-card-categories-reminders-templates';
   const ROWS = [
     ['System', 'settings-card-system', 'settings-row-system', true],
-    ['Reminders', 'settings-card-reminders', 'settings-row-reminders', true],
+    ['Reminders', GROUP_CARD, 'settings-row-reminders', false],
     ['ImportData', 'settings-card-data-transfer', 'settings-row-import-data', false],
     ['ExportData', 'settings-card-data-transfer', 'settings-row-export-data', false],
-    [
-      'TransactionTemplates',
-      'settings-card-templates-and-categories',
-      'settings-row-transaction-templates',
-      false,
-    ],
-    ['Categories', 'settings-card-templates-and-categories', 'settings-row-categories', false],
+    ['TransactionTemplates', GROUP_CARD, 'settings-row-transaction-templates', false],
+    ['Categories', GROUP_CARD, 'settings-row-categories', false],
     ['Help', 'settings-card-help', 'settings-row-help', true],
   ] as const;
 
@@ -691,7 +698,9 @@ describe('SettingsScreen — the selected row', () => {
       StyleSheet.flatten(getByTestId(cardId).props.style).backgroundColor;
 
     expect(fillOf('settings-row-categories')).toBe(darkTheme.colors.accent);
-    expect(fillOf('settings-card-templates-and-categories')).not.toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-card-categories-reminders-templates')).not.toBe(
+      darkTheme.colors.accent,
+    );
     expect(fillOf('settings-card-help')).not.toBe(darkTheme.colors.accent);
     expect(fillOf('settings-card-system')).not.toBe(darkTheme.colors.accent);
   });
@@ -710,17 +719,16 @@ describe('SettingsScreen — no tip', () => {
     mockLiveQueryIsLoading = false;
   });
 
-  it('puts the templates-and-categories card straight after the base-currency card, with no tip between', async () => {
+  it('puts the categories-reminders-templates card straight after the base-currency card, with no tip between', async () => {
     const { getAllByTestId } = await renderScreen();
 
     const order = getAllByTestId(/^settings-card-/).map((node) => node.props.testID as string);
 
     expect(order).toEqual([
       'settings-card-system',
-      'settings-card-reminders',
       'settings-card-data-transfer',
       'settings-card-base-currency',
-      'settings-card-templates-and-categories',
+      'settings-card-categories-reminders-templates',
       'settings-card-help',
     ]);
   });
