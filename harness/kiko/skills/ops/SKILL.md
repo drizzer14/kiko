@@ -374,9 +374,9 @@ writes one `lost` done.log line, and a reclaimed dead lock writes a lock-form `l
 job may have run fully). At handover or close run `scripts/job-queue.sh status`, re-queue or
 hand over your own tickets. Keep
 `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm ->
-bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all,
-security, gate or harness-verify reads the worktree throughout the run; never queue one while a developer still edits that
-tree, and keep that tree untouched until DONE. A verify reads the commit named at enqueue in the
+bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued
+check:all, security, gate or harness-verify reads the worktree throughout the run; never queue
+one while a developer still edits that tree, and keep that tree untouched until DONE. A verify reads the commit named at enqueue in the
 `-verify` checkout (a listed worktree: pruning it costs one `npm ci`), so its track goes on.
 done.log's head field of a verify is that full sha, kept while the checkout is clean at the end
 (field 7 is `full` or `partial`; `ff-main.sh` needs absent or `full`). For the other kinds it is
