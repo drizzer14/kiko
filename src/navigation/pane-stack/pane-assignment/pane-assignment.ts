@@ -25,12 +25,28 @@ export const defaultRouteKey = (pane: Pane): string => `pane-default:${pane}`;
 export const paneOfDefaultKey = (key: string): Pane | undefined =>
   PANES.find((pane) => defaultRouteKey(pane) === key);
 
+const isWholeWindow = (config: PaneConfig, route: RouteLike): boolean =>
+  config.wholeWindowRoutes?.includes(route.name) === true;
+
+const unstoredPane = (config: PaneConfig, route: RouteLike, below: Pane | undefined): Pane => {
+  if (below === undefined) {
+    return config.rootPane;
+  }
+
+  return isWholeWindow(config, route) ? below : oppositePane(config.rootPane);
+};
+
 // A stored pane wins; otherwise the root takes the root pane and every other route, a default
-// included, takes the other one. Position alone decides, so a state without a pane map (a route
-// pushed while folded, a reminder rebuild) never puts a deeper route in the list pane.
-const resolvePanes = (routes: readonly RouteLike[], panes: PaneMap, rootPane: Pane): Pane[] =>
-  routes.map(
-    (route, index) => panes[route.key] ?? (index === 0 ? rootPane : oppositePane(rootPane)),
+// included, takes the other one, except a whole-window route, which stays in the pane of the
+// route below it. Position alone decides, so a state without a pane map (a route pushed while
+// folded, a reminder rebuild) never puts a deeper route in the list pane.
+const resolvePanes = (routes: readonly RouteLike[], panes: PaneMap, config: PaneConfig): Pane[] =>
+  routes.reduce<Pane[]>(
+    (resolved, route) => [
+      ...resolved,
+      panes[route.key] ?? unstoredPane(config, route, resolved.at(-1)),
+    ],
+    [],
   );
 
 // The keys the routes still hold, so a closed route never leaves its pane behind.
@@ -56,9 +72,27 @@ export const routesOfPane = <Route extends RouteLike>(
   config: PaneConfig,
   pane: Pane,
 ): Route[] => {
-  const resolved = resolvePanes(routes, panes, config.rootPane);
+  const resolved = resolvePanes(routes, panes, config);
 
   return routes.filter((_route, index) => resolved[index] === pane);
+};
+
+/**
+ * The pane that takes the whole window: the pane of the top route when the config lists it, or
+ * null when the panes share the window.
+ */
+export const wholeWindowPaneOf = (
+  routes: readonly RouteLike[],
+  panes: PaneMap,
+  config: PaneConfig,
+): Pane | null => {
+  const top = routes.at(-1);
+
+  if (top === undefined || !isWholeWindow(config, top)) {
+    return null;
+  }
+
+  return resolvePanes(routes, panes, config).at(-1) ?? null;
 };
 
 /**
@@ -74,7 +108,9 @@ export const paneDefault = (config: PaneConfig, pane: Pane): PaneDefault | null 
  * route becomes a real route (the user acted on it), unless it is a placeholder, which stays a
  * default. The router makes a static default a real route first (`realizeStaticDefault` in
  * pane-router.ts), so the opener it hands over is that route; the branch here that puts a static
- * default's key right above the root is only the fallback for an opener the router did not realize.
+ * default's key right above the root is only the fallback for an opener the router did not realize,
+ * which is what it hands over for a whole-window route: that route opens in the pane of the last
+ * route kept, so the static default beside it is never made real.
  *
  * `panes` must name the opener's pane; an opener it cannot place leaves everything as it was.
  */
@@ -100,9 +136,13 @@ export const openFrom = <Route extends RouteLike>(
       route.key === openerKey && route.isPlaceholder !== true ? withoutDefaultFlag(route) : route,
     );
 
+  const nextPane = isWholeWindow(config, next)
+    ? (resolvePanes(kept, panes, config).at(-1) ?? oppositePane(config.rootPane))
+    : oppositePane(config.rootPane);
+
   return {
     routes: [...kept, next],
-    panes: { ...retainPanes(panes, kept), [next.key]: oppositePane(config.rootPane) },
+    panes: { ...retainPanes(panes, kept), [next.key]: nextPane },
   };
 };
 
@@ -129,7 +169,7 @@ export const unfoldAssignment = (
   panes: PaneMap,
   config: PaneConfig,
 ): PaneMap => {
-  const resolved = resolvePanes(routes, panes, config.rootPane);
+  const resolved = resolvePanes(routes, panes, config);
 
   return Object.fromEntries(routes.map((route, index) => [route.key, resolved[index]]));
 };

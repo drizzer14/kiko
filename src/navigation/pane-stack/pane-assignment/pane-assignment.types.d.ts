@@ -24,4 +24,8 @@ export type PaneConfig = {
   primaryDefault?: PaneDefault;
   // The share of a columns window the companion pane asks for; equal halves without it.
   companionShare?: number;
+  // Routes that take the whole window while they are on top (a table too wide for half of it).
+  // Such a route is not a detail: it opens in the pane of the route below it, so that route
+  // stays its Back and the other pane keeps its screen, hidden, instead of a new one.
+  wholeWindowRoutes?: readonly string[];
 };

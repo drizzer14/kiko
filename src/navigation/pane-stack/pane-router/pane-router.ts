@@ -131,16 +131,20 @@ export const PaneRouter = ({
 
   // A static default is not in the stack, so a page opened from it would stand alone in its pane
   // with nothing to go back to. The user acted on it, so it becomes the real route below the page.
+  // Not for a whole-window route: it opens in the pane of the route below it, so the default beside
+  // it keeps its place, and a real route made here would mount a second instance of a screen that
+  // is already there.
   const realizeStaticDefault = (
     state: PaneStackState,
     openerKey: string,
     config: RouterConfigOptions,
+    isWholeWindow: boolean,
   ): { routes: PaneStackRoute[]; panes: PaneMap; key: string } => {
     const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
     const unchanged = { routes: state.routes, panes, key: openerKey };
     const pane = paneOfDefaultKey(openerKey);
 
-    if (pane === undefined) {
+    if (pane === undefined || isWholeWindow) {
       return unchanged;
     }
 
@@ -176,7 +180,12 @@ export const PaneRouter = ({
       return null;
     }
 
-    const opener = realizeStaticDefault(state, payload.openerKey, config);
+    const opener = realizeStaticDefault(
+      state,
+      payload.openerKey,
+      config,
+      paneConfig.wholeWindowRoutes?.includes(payload.route.name) === true,
+    );
 
     const opened = openFrom(opener.routes, opener.panes, opener.key, next.route, paneConfig);
 
