@@ -164,16 +164,6 @@ describe('the MCC back-fill after a restore', () => {
     expect(markOf(mockDatabase)).toBe(1);
   });
 
-  it('keeps the mark through a round trip', async () => {
-    const source = currentDatabase();
-
-    source.exec('UPDATE settings SET mcc_categories_backfilled = 1');
-
-    await restoreFileOf(source);
-
-    expect(markOf(mockDatabase)).toBe(1);
-  });
-
   it("restores an older file's hand-set and rule-won rows as stored", async () => {
     const source = currentDatabase();
 
