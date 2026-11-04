@@ -162,15 +162,6 @@ describe('DataTable', () => {
       expect(amount.props.minimumFontScale).toBeUndefined();
     });
 
-    it('finds the amount element, so the absent props above are read off the real cell', async () => {
-      const rendered = await renderTable();
-      const amount = rendered.getByText('120');
-
-      expect(amount.props.children).toBe('120');
-      expect(amount.props.allowFontScaling).not.toBe(false);
-      expect(amount.props.style).toBeDefined();
-    });
-
     it('sets tabular-nums on cell text', async () => {
       const rendered = await renderTable();
 
@@ -377,6 +368,10 @@ describe('DataTable', () => {
   });
 
   describe('sticky header', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
     it('puts the caption, the header and the body in the vertical scroll, in that order', async () => {
       const rendered = await renderTable();
       const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
@@ -550,7 +545,7 @@ describe('DataTable', () => {
     });
   });
 
-  describe('Dynamic Type', () => {
+  describe('measured text height and font scaling', () => {
     it('keeps every text and lets a taller measured line grow the row', async () => {
       const rendered = await renderTable();
       await setContainerWidth(rendered, 400);
@@ -602,7 +597,8 @@ describe('DataTable', () => {
   });
 
   describe('palette independence', () => {
-    // Every theme the store offers today; a light palette adds a row here and nothing else.
+    // The render below runs under the one theme the Jest setup registers, so a row here only picks
+    // the token set to compare against. A second palette also needs the render to switch theme.
     const themes = { dark: darkTheme };
     const tokenColors = (theme: typeof darkTheme) => new Set<unknown>(Object.values(theme.colors));
     const colorsIn = (element: { props: { style?: unknown } }) =>

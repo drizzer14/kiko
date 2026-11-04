@@ -87,7 +87,8 @@ const DataTable: FC<DataTableProps> = ({
     // A change of index moves to its column even when that is the start; the first mount at the
     // start has nothing to move.
     const isIndexChange = isNewIndex && scrolledToIndex.current !== undefined;
-    // UIKit does not clamp an offset the content has shrunk away from, so the reset is explicit.
+    // The reset is explicit and does not rely on the platform clamping an offset that the content
+    // has shrunk away from.
     const targetOffset = isNewIndex
       ? resolveInitialOffset(columnWidths, initialColumnIndex, furthestOffset)
       : Math.min(currentOffset, furthestOffset);
