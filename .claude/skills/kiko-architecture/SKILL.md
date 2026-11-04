@@ -400,7 +400,7 @@ ONE worker thread" below) until it commits. A where-less
 `select().from(<table>)` inside it reads the whole table and then filters in
 JS while every other read and write waits. Filter in SQL (`.where(...)`),
 read only the column you need (`selectDistinct`, as
-`rowIdsForNamedRule` in
+`rowsForNamedRule` in
 `src/categories/category-rules-repo/category-rules.repo.ts` does for descriptions), or bound it with
 `.limit(...)`. The one-row `settings` table is exempt. Mechanized as
 `kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
