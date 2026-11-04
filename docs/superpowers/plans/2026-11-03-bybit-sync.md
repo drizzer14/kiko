@@ -64,16 +64,18 @@ the gate text stays below for when it is lifted.
 
 ## 1.4-bybit set 1/8: the terms verdict, the probe script and the user's probe run
 
-Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). Steps 3/7 and 4/7 are done (2026-11-04), and step
-5/7 is open. The user's spec approval is given (2026-11-04, O59), after the verdict and before step
-6/7 (PLANNER CALL 23, O41). Steps 1/7 to 5/7 are done once step 5/7 is marked.
+Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). Steps 3/7 to 5/7
+are done (2026-11-04). The user's spec approval is given (2026-11-04, O59), after the verdict and
+before step 6/7 (PLANNER CALL 23, O41). Steps 1/7 to 5/7 are done. Step 6/7 is next, and it waits
+for the user's R1 run.
 Size: 1 script, 1,379 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file.
 Not mutable.
 Reviewer checks: the whole script for any leak path; every part against spec section 10; no write verb. "Set 1 tip" is
 the commit after the last step that writes results: the second run of step 7/7, for R3 and R4 (O36). Set 2 bases on it.
 
 The user's order (O23, O31, O36, O38, O39, O41): part 1 of the browser step (step 1/7, done), the terms verdict (step 2/7,
-done), the user's spec approval, THE KEY MOMENT R1 (step 6/7), R2, R3, R4 with the redeem, and R7 the day after its date (O55), an open check
+done), the user's spec approval (done, O59), THE KEY MOMENT R1 (step 6/7), R2, R3, R4 with the
+redeem, and R7 the day after its date (O55), an open check
 after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O38).
 
 - [x] **step 1/7: part 1 of the browser step, DONE 2026-11-03** (O39; PLANNER CALL 18). The coordinator read both pages in the
@@ -102,16 +104,17 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   test pins exact counts per run and for some parts alone, and runs a `CALL_CAP` variant (O58).
   Result: `memory/refs/bybit-probe.test.sh` printed
   "4673 passed, 0 failed", exit 0 (re-run by the orchestrator on 2026-11-04 with /bin/bash 3.2.57 and jq 1.7.1-apple).
-- [ ] **step 5/7: read the file and hand it over, OPEN** (orchestrator, then coordinator). Was: "read the whole file. The reviewer
+- [x] **step 5/7: read the file and hand it over, DONE 2026-11-04** (orchestrator, then
+  coordinator). Was: "read the whole file. The reviewer
   passes it." The reviewer did not pass it: three reviews each gave FIX FIRST (17, 9 and 6 findings), and O56 stopped the chain after
   fix round 4 with no fourth review. O56 replaces that pass. Done under O56: the orchestrator
   read the round 4 diff and the whole final script on 2026-11-04 with no blocking defect (a read,
   not a review; O58), and the test of step 4/7 passed. The user's spec approval is given, DONE
-  2026-11-04 (O41, O59). Still open: the handover. The coordinator hands the script over, with the
-  R1 account list, the C6 user line of spec section 10 and part 2 of the browser step (spec section
-  9). State at O59: the coordinator's words are "I now give the user the R1 list and the four
-  residuals". Those words do not name the script, the C6 line or part 2, so this step stays open
-  until the coordinator confirms the whole handover.
+  2026-11-04 (O41, O59). The handover, as the coordinator confirmed it: the user has the R1 list,
+  the four residuals and the exact command of the script run. The coordinator gave the C6 line of
+  spec section 10 in its own words, not verbatim, and added its "one bounded run" bullet. For part
+  2 of the browser step (spec section 9), the user sends the API management URL to the coordinator,
+  and the coordinator relays it. That URL has not arrived yet.
 - [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
   the C6 line before R1, part 2 of the browser step at R1, `R2 P4` while K1 is pending, with a prompt until K1 lands and before
   K2 (O16, O32, O47), `R2 P2` BEFORE K2 if K1 landed before `R2 P4` could run (O52), skip at the P4 prompt of the whole R2, the
