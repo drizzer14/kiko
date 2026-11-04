@@ -44,6 +44,7 @@ describe('property sweep sites', () => {
       'src/crypto-sync/binance/binance.walks.backfill.properties.test.ts',
       'src/crypto-sync/binance/binance.walks.multi-coin.properties.test.ts',
       'src/currency/currency-group/currency-group.test.ts',
+      'src/statistics/category-by-month/category-by-month.property.test.ts',
       'src/statistics/internal-transfers/internal-transfers.test.ts',
     ]);
   });
