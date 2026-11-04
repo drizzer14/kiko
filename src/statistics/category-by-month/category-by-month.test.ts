@@ -12,7 +12,7 @@ import {
 import { buildCategoryBreakdown } from '../category-breakdown';
 import { buildSpendingLedger, spendingRowsIn, type SpendingLedger } from '../spending-ledger';
 
-import { buildCategoryByMonth } from '.';
+import { buildCategoryByMonth, categorySlicesOfMonths } from '.';
 
 const DISPLAY = buildCategoryDisplayMap([
   { key: 'groceries', title: 'Groceries', icon: 'cart' },
@@ -191,10 +191,13 @@ describe('buildCategoryByMonth', () => {
     const converted = convert(Money.of('USDT', tenTether), 'UAH', { USDT: 40 }).minorUnits;
 
     expect(converted).toBe(400_00);
-    expect(byCategory(ledger, { rateTable: { USDT: 40 } }).allCells).toEqual([
-      converted,
-      0,
-      converted,
+
+    const table = byCategory(ledger, { rateTable: { USDT: 40 } });
+
+    expect(table.allCells).toEqual([converted, 0, converted]);
+    expect(table.allTotal).toBe(2 * converted);
+    expect(table.rows.map((row) => [row.key, row.cells, row.total])).toEqual([
+      ['groceries', [converted, 0, converted], 2 * converted],
     ]);
   });
 
@@ -338,6 +341,70 @@ describe('buildCategoryByMonth', () => {
         ['transport', 200_00],
         ['groceries', 192_00],
       ]);
+    });
+  });
+
+  // The category menu and a pick's exclusion read one key list. A category that a month spends on
+  // and the whole period nets out has no period slice, so a list of the period's slices alone
+  // would miss it: a pick could not remove its row, and the menu would not offer it.
+  describe('the categories the months spent on', () => {
+    const payment = transactionRow({
+      id: 'payment',
+      holdingId: 'card',
+      category: 'groceries',
+      amountMinorUnits: -20_00,
+      changeGroupId: 'group',
+      time: FEBRUARY.start,
+    });
+    const returned = transactionRow({
+      id: 'returned',
+      holdingId: 'card',
+      category: null,
+      amountMinorUnits: 30_00,
+      changeGroupId: 'group',
+      time: JANUARY.end,
+    });
+    const keysOf = (transactions: ReturnType<typeof transactionRow>[]) =>
+      categorySlicesOfMonths({
+        ledger: ledgerOf(transactions),
+        months: MONTHS,
+        categoryDisplay: DISPLAY,
+        rateTable: {},
+        baseCurrency: 'UAH',
+        defaultCategoryKey: 'other',
+      }).map((slice) => slice.key);
+
+    it('lists a category that a month spends on and its period nets out', () => {
+      const ledger = ledgerOf([payment, returned]);
+
+      expect(
+        buildCategoryBreakdown({
+          transactions: spendingRowsIn(ledger, JANUARY.start, MARCH.end),
+          categoryDisplay: DISPLAY,
+          rateTable: {},
+          baseCurrency: 'UAH',
+          defaultCategoryKey: 'other',
+          excludedTransactionIds: ledger.excludedTransactionIds,
+        }),
+      ).toEqual([]);
+      expect(keysOf([payment, returned])).toEqual(['groceries']);
+    });
+
+    it('lists the categories of the whole period and of every month', () => {
+      expect(new Set(keysOf(SPREAD_WORLD))).toEqual(new Set(['groceries', 'transport']));
+    });
+
+    it('lists none with no month', () => {
+      expect(
+        categorySlicesOfMonths({
+          ledger: ledgerOf(SPREAD_WORLD),
+          months: [],
+          categoryDisplay: DISPLAY,
+          rateTable: {},
+          baseCurrency: 'UAH',
+          defaultCategoryKey: 'other',
+        }),
+      ).toEqual([]);
     });
   });
 

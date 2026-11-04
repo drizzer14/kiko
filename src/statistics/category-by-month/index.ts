@@ -1,1 +1,1 @@
-export { buildCategoryByMonth } from './category-by-month';
+export { buildCategoryByMonth, categorySlicesOfMonths } from './category-by-month';

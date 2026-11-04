@@ -11,9 +11,10 @@ import {
 } from '@kiko/statistics/spending-ledger/__fixtures__/spending-ledger-world';
 
 import { buildCategoryBreakdown } from '../category-breakdown';
+import { excludedCategoryKeysOf } from '../statistics-filter-scope';
 import { buildSpendingLedger, spendingRowsIn, type SpendingLedger } from '../spending-ledger';
 
-import { buildCategoryByMonth } from '.';
+import { buildCategoryByMonth, categorySlicesOfMonths } from '.';
 
 /**
  * Each row of a random world is made from a kind (a plain expense, income, a payment with its
@@ -76,13 +77,22 @@ const timeInRandomMonth = (random: Random): number => {
 
 const amountOf = (random: Random): number => 1 + Math.floor(random() * 80_000);
 
-type RowKind = 'expense' | 'income' | 'change' | 'edited' | 'transfer' | 'exchange' | 'loan';
+type RowKind =
+  | 'expense'
+  | 'foreign'
+  | 'income'
+  | 'change'
+  | 'edited'
+  | 'transfer'
+  | 'exchange'
+  | 'loan';
 
 const KINDS: RowKind[] = [
   'expense',
   'expense',
   'expense',
   'expense',
+  'foreign',
   'income',
   'change',
   'change',
@@ -103,6 +113,16 @@ const ROWS_OF_KIND: Record<RowKind, RowMaker> = {
       holdingId: pick(random, ['card', 'cash']),
       category: pick(random, CATEGORIES),
       amountMinorUnits: -amountOf(random),
+      time: timeInRandomMonth(random),
+    }),
+  ],
+  // An amount in the coin holding's own currency, converted at the one rate table.
+  foreign: (id, random) => [
+    transactionRow({
+      id,
+      holdingId: 'coin',
+      category: pick(random, CATEGORIES),
+      amountMinorUnits: -(1_000_000 + amountOf(random)),
       time: timeInRandomMonth(random),
     }),
   ],
@@ -241,6 +261,8 @@ const crossesMonthEdge = (world: World): boolean =>
     );
   });
 
+const RATE_TABLE = { USDT: 40 };
+
 const donutOf = (
   ledger: SpendingLedger,
   range: { from: number; to: number },
@@ -249,7 +271,7 @@ const donutOf = (
   buildCategoryBreakdown({
     transactions: spendingRowsIn(ledger, range.from, range.to),
     categoryDisplay: DISPLAY,
-    rateTable: {},
+    rateTable: RATE_TABLE,
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
     excludedCategories,
@@ -258,16 +280,21 @@ const donutOf = (
 
 const sumOf = (values: readonly number[]): number => values.reduce((sum, value) => sum + value, 0);
 
+const inputOf = (ledger: SpendingLedger) => ({
+  ledger,
+  months: MONTHS,
+  categoryDisplay: DISPLAY,
+  rateTable: RATE_TABLE,
+  baseCurrency: 'UAH' as const,
+  defaultCategoryKey: 'other',
+});
+
 const tableOf = (ledger: SpendingLedger, excludedCategories?: ReadonlySet<string>) =>
-  buildCategoryByMonth({
-    ledger,
-    months: MONTHS,
-    categoryDisplay: DISPLAY,
-    rateTable: {},
-    baseCurrency: 'UAH',
-    defaultCategoryKey: 'other',
-    excludedCategories,
-  });
+  buildCategoryByMonth({ ...inputOf(ledger), excludedCategories });
+
+/** The pick the screen holds: the keys its menu lists, kept, and the rest excluded. */
+const excludedByKeeping = (ledger: SpendingLedger, kept: ReadonlySet<string>) =>
+  excludedCategoryKeysOf(categorySlicesOfMonths(inputOf(ledger)), new Set(kept));
 
 const expectMonthsToEqualDonuts = (
   table: ReturnType<typeof tableOf>,
@@ -323,13 +350,33 @@ describe('buildCategoryByMonth against the donut', () => {
       const { transactions } = worldOf(seed);
       const ledger = buildSpendingLedger(worldInput({ transactions, shownHoldings: shown }));
       const random = seededRandom(seed * SEED_SPREAD + 7);
+      // From the keys the menu lists, so a category that only a month spends on can be excluded.
       const excluded = new Set(
-        donutOf(ledger, PERIOD)
+        categorySlicesOfMonths(inputOf(ledger))
           .map((slice) => slice.key)
           .filter(() => random() < 0.5),
       );
 
       checkAgainstDonut(ledger, excluded);
+    });
+
+    it.each(SEEDS)('leaves no row that the held pick does not cover, seed %i', (seed) => {
+      const { transactions } = worldOf(seed);
+      const ledger = buildSpendingLedger(worldInput({ transactions, shownHoldings: shown }));
+      const random = seededRandom(seed * SEED_SPREAD + 11);
+      const kept = new Set(
+        categorySlicesOfMonths(inputOf(ledger))
+          .map((slice) => slice.key)
+          .filter(() => random() < 0.5),
+      );
+      const table = tableOf(ledger, excludedByKeeping(ledger, kept));
+
+      // An empty pick keeps everything; a pick covers exactly the rows it names.
+      if (kept.size > 0) {
+        expect(table.rows.every((row) => kept.has(row.key))).toBe(true);
+      }
+
+      checkAgainstDonut(ledger, excludedByKeeping(ledger, kept));
     });
   });
 
@@ -368,6 +415,32 @@ describe('buildCategoryByMonth against the donut', () => {
       );
 
       expect(rowsOf.some((row) => row.total === 0 && sumOf(row.cells) > 0)).toBe(true);
+    });
+
+    it('draw a pick that removes a row with a total of zero, which no period slice names', () => {
+      const removed = worlds.some((world) => {
+        const ledger = buildSpendingLedger(worldInput({ transactions: world.transactions }));
+        const excluded = excludedByKeeping(ledger, new Set(['groceries']));
+
+        return tableOf(ledger).rows.some(
+          (row) => row.total === 0 && sumOf(row.cells) > 0 && excluded.has(row.key),
+        );
+      });
+
+      expect(removed).toBe(true);
+    });
+
+    it('draw a foreign amount that the table converts at the rate, into a Total', () => {
+      const converted = worlds.some(
+        (world) =>
+          tableOf(
+            buildSpendingLedger(
+              worldInput({ transactions: world.transactions, shownHoldings: holdingsOf('coin') }),
+            ),
+          ).allTotal > 0,
+      );
+
+      expect(converted).toBe(true);
     });
 
     it('reach the exclusion rules and the loan entries, so the equality is not between empty sets', () => {

@@ -18,10 +18,10 @@ import { type FC, useEffect, useMemo, useState } from 'react';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
+import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
-import { buildCategoryBreakdown } from '@kiko/statistics/category-breakdown';
-import { spendingRowsIn, useSpendingLedger } from '@kiko/statistics/spending-ledger';
+import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
@@ -85,25 +85,21 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const period = resolveTablePeriod(route.params?.period, periodOptions);
   const months = useMemo(() => monthsOfPeriod(period, spanStart, now), [period, spanStart, now]);
 
-  // The category menu lists what the period spent on, so a month's table never offers a category
-  // it has no cell for; a held pick that fell out of the period stays listed, checked.
-  const periodSlices = useMemo(() => {
-    const first = months.at(0);
-    const last = months.at(-1);
-
-    if (first === undefined || last === undefined) {
-      return [];
-    }
-
-    return buildCategoryBreakdown({
-      transactions: spendingRowsIn(ledger, first.start, last.end),
-      categoryDisplay: categoryByKey,
-      rateTable,
-      baseCurrency,
-      defaultCategoryKey,
-      excludedTransactionIds: ledger.excludedTransactionIds,
-    });
-  }, [months, ledger, categoryByKey, rateTable, baseCurrency, defaultCategoryKey]);
+  // The category menu lists what the months spent on, so a table never offers a category it has
+  // no cell for; a held pick that fell out of the period stays listed, checked. The pick excludes
+  // by the same list, so it removes every row it does not cover, a row the period nets out too.
+  const periodSlices = useMemo(
+    () =>
+      categorySlicesOfMonths({
+        ledger,
+        months,
+        categoryDisplay: categoryByKey,
+        rateTable,
+        baseCurrency,
+        defaultCategoryKey,
+      }),
+    [months, ledger, categoryByKey, rateTable, baseCurrency, defaultCategoryKey],
+  );
 
   const categoryOptions = useMemo(
     () =>

@@ -329,6 +329,74 @@ describe('TablesScreen', () => {
       await reader.unmount();
     });
 
+    // A payment and its return share a group, and a date edit moved the payment a month earlier:
+    // the period nets the group out, so the category has no period slice, yet a cell of its own.
+    describe('a category that a month spends on and the period nets out', () => {
+      const PAID_AT = calendarMonthOf(calendarMonthOf(SPENT_AT).start - 1).start + 1_000;
+      const PAID_IN = monthTitle(calendarMonthOf(PAID_AT), i18n.t);
+      const NO_MARKERS = {
+        setsBalance: false,
+        exchangeCounterpartHoldingId: null,
+        untrackedCounterpart: null,
+        loanHoldingId: null,
+        changeGroupId: 'refund-group',
+      };
+      const withNettedOutCategory = answerWith((tables, answer) => {
+        if (tables[0] === 'categories') {
+          return [
+            ...(answer.data as object[]),
+            { key: 'refunded', title: 'Refunded', icon: 'arrow.uturn.left' },
+          ];
+        }
+
+        if (tables[0] === 'transactions') {
+          return [
+            ...(answer.data as object[]),
+            {
+              ...NO_MARKERS,
+              id: 'paid',
+              holdingId: 'h1',
+              time: PAID_AT,
+              amountMinorUnits: -200_00,
+              category: 'refunded',
+            },
+            {
+              ...NO_MARKERS,
+              id: 'returned',
+              holdingId: 'h1',
+              time: SPENT_AT,
+              amountMinorUnits: 250_00,
+              category: null,
+            },
+          ];
+        }
+
+        return undefined;
+      });
+
+      it('is offered by the category menu, and a pick of another category removes its row', async () => {
+        mockUseLiveQuery.mockImplementation(withNettedOutCategory);
+
+        const { getByTestId, getByLabelText, queryByLabelText } = await renderTables();
+
+        expect(spokenValue(getByLabelText(`Refunded, ${PAID_IN}`))).toBe('200.00 ₴');
+
+        await act(async () => {
+          await fireEvent.press(getByTestId('tables-category-filter'));
+        });
+
+        expect(getByTestId('tables-category-filter-option-refunded')).toBeTruthy();
+
+        await act(async () => {
+          await fireEvent.press(getByTestId('tables-category-filter-option-groceries'));
+        });
+
+        expect(queryByLabelText(`Refunded, ${PAID_IN}`)).toBeNull();
+        expect(spokenValue(getByLabelText(`All, ${PAID_IN}`))).toBe('0.00 ₴');
+        expect(spokenValue(getByLabelText(`All, ${SPENT_IN}`))).toBe('300.00 ₴');
+      });
+    });
+
     it('offers the categories of the period, and keeps a held pick that is not in it', async () => {
       const held = await renderHook(() => useStatisticsFilterSelection());
 
