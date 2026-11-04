@@ -63,7 +63,8 @@ const DataTable: FC<DataTableProps> = ({
   const [textHeights, setTextHeights] = useState<Record<string, number>>({});
   const scrolledToIndex = useRef<number | undefined>(undefined);
   const bodyRef = useAnimatedRef<ScrollViewInstance>();
-  const bodyOffset = useScrollOffset(bodyRef);
+  // No body is mounted when empty, and Reanimated warns about a ref that points at nothing.
+  const bodyOffset = useScrollOffset(isEmpty ? null : bodyRef);
   const trackStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -bodyOffset.value }] }));
 
   const padding = theme.spacing(CELL_PADDING_UNITS * 2);
@@ -82,6 +83,15 @@ const DataTable: FC<DataTableProps> = ({
     columns.every((column) => columnTextWidths[column.key] !== undefined);
 
   useEffect(() => {
+    if (isEmpty) {
+      // The body is gone, and the next one mounts at the start without a scroll event, so the
+      // offset the header follows and the column the body opened at both start over.
+      scrolledToIndex.current = undefined;
+      bodyOffset.value = 0;
+
+      return;
+    }
+
     if (!isMeasured) {
       return;
     }
@@ -108,6 +118,7 @@ const DataTable: FC<DataTableProps> = ({
     }
   }, [
     initialColumnIndex,
+    isEmpty,
     isMeasured,
     columnWidths,
     contentWidth,

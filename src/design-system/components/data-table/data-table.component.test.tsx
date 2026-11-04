@@ -366,6 +366,81 @@ describe('DataTable', () => {
       expect(rendered.getByTestId(`${PREFIX}-body-scroll`).props.scrollEnabled).toBe(false);
       expect(scrollTo()).toHaveBeenLastCalledWith({ x: 0, y: 0, animated: false });
     });
+
+    describe('across the empty content', () => {
+      type BodyHost = { props: { testID?: string } };
+      type BodyPrototype = { componentDidMount?: (this: BodyHost) => void };
+
+      const bodyId = `${PREFIX}-body-scroll`;
+      const emptyContent = <View testID="nothing-here" />;
+      const firstColumnOffset = 80 + HORIZONTAL_PADDING;
+      // Where the body really is, as the native side keeps it: a body mounts at 0 and says nothing,
+      // a scrollTo moves it and reports the new offset to the shared value the header follows.
+      const nativeBody = { offset: 0 };
+      const scrollByUser = (x: number) => {
+        nativeBody.offset = x;
+        offsetBox.value = x;
+      };
+      const emptied: Partial<DataTableProps> = { rows: [], emptyContent };
+
+      beforeEach(() => {
+        nativeBody.offset = 0;
+        (ScrollView.prototype as unknown as BodyPrototype).componentDidMount = function (
+          this: BodyHost,
+        ) {
+          if (this.props.testID === bodyId) {
+            nativeBody.offset = 0;
+          }
+        };
+        scrollTo().mockImplementation(function (this: BodyHost, { x }: { x: number }) {
+          if (this.props.testID === bodyId) {
+            nativeBody.offset = x;
+            offsetBox.value = x;
+          }
+        });
+      });
+
+      afterEach(() => {
+        (ScrollView.prototype as unknown as BodyPrototype).componentDidMount = undefined;
+        scrollTo().mockReset();
+      });
+
+      it('opens a new body at the initial column and keeps the header on it, after a scroll', async () => {
+        const rendered = await settle(1);
+        scrollByUser(144 + HAIRLINE);
+        await rerenderTable(rendered, { initialColumnIndex: 1, ...emptied });
+        await rerenderTable(rendered, { initialColumnIndex: 1 });
+
+        expect(nativeBody.offset).toBe(firstColumnOffset);
+        expect(offsetBox.value).toBe(nativeBody.offset);
+      });
+
+      it('opens at the initial column when the table first mounted empty', async () => {
+        const rendered = await renderTable({ initialColumnIndex: 1, ...emptied });
+        await setContainerWidth(rendered, 300);
+        await measureLabels(rendered, 60);
+        await measureColumn(rendered, 'jan', 80);
+        await measureColumn(rendered, 'feb', 100);
+        await measureColumn(rendered, 'total', 140);
+        await rerenderTable(rendered, { initialColumnIndex: 1 });
+
+        expect(nativeBody.offset).toBe(firstColumnOffset);
+        expect(offsetBox.value).toBe(nativeBody.offset);
+      });
+
+      it('follows the body only while there is one', async () => {
+        const rendered = await settle(1);
+        await rerenderTable(rendered, { initialColumnIndex: 1, ...emptied });
+
+        expect(reanimated.useScrollOffset).toHaveBeenLastCalledWith(null);
+
+        await rerenderTable(rendered, { initialColumnIndex: 1 });
+
+        expect(reanimated.useScrollOffset).toHaveBeenLastCalledWith(
+          expect.objectContaining({ current: expect.anything() }),
+        );
+      });
+    });
   });
 
   describe('sticky header', () => {
