@@ -1,11 +1,12 @@
 # Bybit sync design (track 1.4-bybit)
 
-Status: SPEC READY for the user's approval. Q1 to Q4 are answered (section 13). The terms verdict is in section 9: PASS
-WITH CONDITIONS for global accounts. The user accepted the 5.2.2 and 6.5 doubts (O42). No app code and no R1 before the
-approval (O41). Base 57130e23c.
+Status: the user's approval is given, DONE 2026-11-04 (O41, O59). Q1 to Q4 are answered (section
+13). The terms verdict is in section 9: PASS WITH CONDITIONS for global accounts. The user accepted
+the 5.2.2 and 6.5 doubts (O42). R1 has not run. App code starts at set 2, on the set 1 tip (O36).
+Base 57130e23c.
 Plan: `docs/superpowers/plans/2026-11-03-bybit-sync.md`.
 
-Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O58, binding), `terms-verdict.md`,
+Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O59, binding), `terms-verdict.md`,
 `research-bybit-docs.md`,
 `research-bybit-legal.md`, `seam-map.md` (same folder), the brief `memory/refs/brief-1.4-bybit.md`,
 `memory/refs/bybit-okx-second-check-2026-11-03.md` and `memory/refs/bybit-terms-2026-11-03/` (main checkout), the skills
@@ -735,8 +736,8 @@ the redeem at R6, the script and the approval before the browser step):
    rule did not fire.
 3. Meanwhile set 1's script is written and reviewed, so a pass loses no time (O38). The reviewer gave no pass: three reviews each
    gave FIX FIRST, and O56 stopped the chain after fix round 4 and replaces that pass. The user gets the script only after step 4.
-4. The user approves this spec, with the verdict in it (PLANNER CALL 23, O41). The coordinator's message gave answers and asked
-   for the script review; it did not state approval of the spec. So R1 waits for this approval.
+4. DONE 2026-11-04: the user approved this spec, with the verdict in it (PLANNER CALL 23, O41,
+   O59). The coordinator relayed the answer "Approve (Recommended)", at tip fc83566e2.
 5. THE KEY MOMENT, R1: the first step that needs an account or a key. It holds no money. The user gets the C6 line below first.
 6. R2: the first of the user's money. R3, then R4, with the Flexible Savings redeem and its P3 run.
 7. The planner writes the results. The commit after the last step that writes results is the set 1 tip, and set 2 bases
@@ -771,7 +772,8 @@ never an amount.
   documented route does.
 - Residual accepted (O56, O58): two withdrawals whose amounts differ by exactly the fee can give
   yes on both wallets for one row, and the other row resolves it. The report for the spec approval
-  (O41) puts this to the user.
+  (O41) named four residuals (O51, O46, O56, O58 (a)), and the user approved with that report in
+  hand (O59).
 - Cost of a defect at R1 (O56): R1 holds no money, so a defect found there costs only a rerun.
 
 No email, phone, address, name, id or txID is ever printed. A fake-curl test runs before handover, and the orchestrator reads the
@@ -1052,6 +1054,7 @@ reverses a row):
 | O56 | The review of the probe script | a reviewer pass before the handover | no pass: three reviews each gave FIX FIRST (17, 9 and 6 findings), the chain stops after fix round 4, and the orchestrator reads the round 4 diff and the whole final script (O58) and runs the test; the accepted residuals are in section 10 |
 | O57 | P17: which answers stop it, and which ok ends it | HTTP not 200 stops, HTTP 401 too; no `retCode` stops at any HTTP; 10002 and 10004 stop; an ok first call prints "not expired yet" (O55) | HTTP other than 200 or 401 stops; no `retCode` stops only with HTTP 200; 10002, 10004 and 10016 stop, and a `retCode` rule wins over HTTP 401; HTTP 401 otherwise goes on to the prompt; an ok from any of the first three calls prints "not expired yet" and ends with no prompt |
 | O58 | O57's stops, the whole-file read, the limit per part, the O56 items, rule 41 | no rule on which answer the stops of O57 read; the whole-file read of section 10 not done; "a maximum number of calls per part" with no source for it; the O56 items with no owner; rule 41: P4 and P6 compare `amount`, and `amount` + fee | (a) the stops of O57 apply to the `query-api` answer only: a later HTTP 500 or 10002 on UNIFIED or FUND still reaches the prompt, and only that route's reading before the renewal is lost; accepted under the stopping rule of O56, no script change. (b) the orchestrator read the whole final script (1,379 lines) on 2026-11-04 with no blocking defect: a read, not a review, and it does not replace the reviewer pass that O56 stopped. (c) the script has no limit variable per part: the maximum per part follows from the code, with no paging loop, and `CALL_CAP=150` per run is the only enforced limit. (d) the O56 items are accepted residuals in section 10, and the report puts them to the user with the spec approval (O41). (e) rule 41: P4 also compares `amount` - fee, and P6 does not |
+| O59 | The user's spec approval (O41) | not given, so R1 waited for it | given on 2026-11-04: the coordinator relayed the answer "Approve (Recommended)" to the question in the approval report, at tip fc83566e2; the report named four residuals (O51, O46, O56, O58 (a)); R1 has not run; the coordinator gives the user the R1 list and the four residuals, and no other step starts until the coordinator says that the R1 output file is ready |
 
 | Id | Conflict | Kept |
 |---|---|---|

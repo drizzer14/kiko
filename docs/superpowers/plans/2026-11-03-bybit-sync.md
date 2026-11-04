@@ -11,8 +11,11 @@ the catalog entry goes last.
 **Spec:** `docs/superpowers/specs/2026-11-03-bybit-sync-design.md`. Section numbers below are the spec's. Plan
 text never overrides it; a difference found is reported.
 
-**Status:** No app code and no R1 until the coordinator relays the user's approval of the spec (O41). The terms verdict is in
-spec section 9: PASS WITH CONDITIONS for global accounts. The user accepted the 5.2.2 and 6.5 doubts: keep Bybit, global
+**Status:** The coordinator relayed the user's approval of the spec on 2026-11-04 (O41, O59). R1 is
+next, it has not run, and it waits for the user. No app code until set 2's own conditions hold: set
+2 bases on the set 1 tip, the commit after the second run of step 7/7, for R3 and R4 (O36). The
+terms verdict is in spec section 9: PASS WITH CONDITIONS for global accounts. The user accepted the
+5.2.2 and 6.5 doubts: keep Bybit, global
 accounts only, no letter to Bybit (O42). The user answered Q1 to Q4 (spec section 13):
 stages A and B ship, and stages C and D are deferred under Backlog (O37); no notification; the two gaps are accepted limits;
 1.4 ships before R7, with the copy of O26. Mutation gates are paused by the user since 2026-10-25: verify and review only;
@@ -62,8 +65,10 @@ the gate text stays below for when it is lifted.
 ## 1.4-bybit set 1/8: the terms verdict, the probe script and the user's probe run
 
 Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). Steps 3/7 and 4/7 are done (2026-11-04), and step
-5/7 is open. The user's spec approval comes after the
-verdict and before step 6/7 (PLANNER CALL 23, O41). Size: 1 script, 1,379 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file. Not mutable.
+5/7 is open. The user's spec approval is given (2026-11-04, O59), after the verdict and before step
+6/7 (PLANNER CALL 23, O41). Steps 1/7 to 5/7 are done once step 5/7 is marked.
+Size: 1 script, 1,379 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file.
+Not mutable.
 Reviewer checks: the whole script for any leak path; every part against spec section 10; no write verb. "Set 1 tip" is
 the commit after the last step that writes results: the second run of step 7/7, for R3 and R4 (O36). Set 2 bases on it.
 
@@ -101,9 +106,12 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   passes it." The reviewer did not pass it: three reviews each gave FIX FIRST (17, 9 and 6 findings), and O56 stopped the chain after
   fix round 4 with no fourth review. O56 replaces that pass. Done under O56: the orchestrator
   read the round 4 diff and the whole final script on 2026-11-04 with no blocking defect (a read,
-  not a review; O58), and the test of step 4/7 passed. Still open: the user's spec approval (O41),
-  which is not given. After that approval, the coordinator hands it
-  over, with the R1 account list, the C6 user line of spec section 10 and part 2 of the browser step (spec section 9).
+  not a review; O58), and the test of step 4/7 passed. The user's spec approval is given, DONE
+  2026-11-04 (O41, O59). Still open: the handover. The coordinator hands the script over, with the
+  R1 account list, the C6 user line of spec section 10 and part 2 of the browser step (spec section
+  9). State at O59: the coordinator's words are "I now give the user the R1 list and the four
+  residuals". Those words do not name the script, the C6 line or part 2, so this step stays open
+  until the coordinator confirms the whole handover.
 - [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
   the C6 line before R1, part 2 of the browser step at R1, `R2 P4` while K1 is pending, with a prompt until K1 lands and before
   K2 (O16, O32, O47), `R2 P2` BEFORE K2 if K1 landed before `R2 P4` could run (O52), skip at the P4 prompt of the whole R2, the
@@ -386,6 +394,7 @@ O44 set 7 header, step 6, "Merge order". O45, O46 set 1 step 3, spec sections 10
 sections 10, 12. O53 set 1 step 4, spec sections 10, 12. O54 set 1 steps 3, 6, spec sections 10, 12. O55 set 1 header, steps 3, 6, spec
 sections 6.3, 10, 12. O56 set 1 header, step 5, spec sections 10, 12. O57 set 1 step 3, spec sections 6.3, 10, 12.
 O58 set 1 steps 4, 5, spec rule 41, sections 10, 12.
+O59 status, set 1 header, step 5, spec status, sections 10, 12.
 
 Acceptance rows: A1 to A7, A11, A31, A36, A37, A47, A48 set 3 step 5; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
