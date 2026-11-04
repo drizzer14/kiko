@@ -86,6 +86,12 @@ export type ScreenProps = {
   // bar). Only meaningful in the plain branch; ignored in `scroll` mode and with `bleedTop`,
   // which already drop the top edge.
   belowHeader?: boolean;
+  // Takes the whole window or pane it is in: no cap and no centring, which is for a screen whose
+  // content is wider than the pane max width (a table). The content cap exists to keep a form
+  // from stretching across a wide window; everything else of the branch stays (margin, edges,
+  // clearance, footer). A `bleedTop` or `bleedBottom` child that caps its own content with
+  // `useContentCap()` does not read this, so it is not for them.
+  uncapped?: boolean;
   // Forwarded to the `scroll`-mode ScrollView's own `onContentSizeChange`, so
   // a caller resolving a Save-press scroll target (`scrollToField`, see
   // `src/design-system/scroll-to-field/`) can capture the CURRENT total

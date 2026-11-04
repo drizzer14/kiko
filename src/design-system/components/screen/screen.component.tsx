@@ -89,6 +89,7 @@ const Screen: FC<ScreenProps> = ({
   bleedBottom = false,
   bleedTop = false,
   belowHeader,
+  uncapped,
   scrollableRef,
   onContentSizeChange,
   automaticallyAdjustKeyboardInsets = true,
@@ -163,7 +164,7 @@ const Screen: FC<ScreenProps> = ({
   const topClearance = useTopClearance(belowHeader);
   // The sides of the content, the footer and the scroll content are padded by this one margin.
   const contentMargin = useContentMargin();
-  const contentCap = useContentCap();
+  const contentCap = useContentCap(uncapped);
   const scrollIndicatorProps = useScrollIndicatorProps();
   const { plainEdges, largeTitleEdges } = usePaneScreen(belowHeader);
   // The plain branch's `content` reserves the clearance itself only when it is

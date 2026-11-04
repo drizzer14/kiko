@@ -1,4 +1,5 @@
 import type { ComponentProps } from 'react';
+import { StyleSheet, Text } from 'react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import {
@@ -8,6 +9,9 @@ import {
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
 import { calendarMonthOf } from '@kiko/dates';
+import { darkTheme } from '@kiko/design-system/theme';
+import Screen from '@kiko/design-system/components/screen';
+import { reportWindow } from '@kiko/test-support/window-size';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
@@ -177,6 +181,51 @@ describe('TablesScreen', () => {
       const { getByTestId } = await renderTables();
 
       expect(getByTestId('screen-content').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
+    });
+  });
+
+  // The pane cap keeps a form from stretching across a wide window; a table of twelve months is
+  // wider than it, so the screen takes the whole window in each of its three states.
+  describe('the width on a regular window', () => {
+    const rootStyleOf = (rendered: Awaited<ReturnType<typeof renderTables>>) =>
+      StyleSheet.flatten(rendered.getByTestId('screen-content').parent?.props.style);
+
+    beforeEach(() => {
+      reportWindow('regular', 1376, 1032);
+    });
+
+    afterEach(() => {
+      reportWindow('compact', 393, 852);
+    });
+
+    it('is capped for a plain Screen of the same window, so the cases below are a change', async () => {
+      const plain = await render(
+        <Screen belowHeader>
+          <Text>content</Text>
+        </Screen>,
+      );
+
+      expect(
+        StyleSheet.flatten(plain.getByTestId('screen-content').parent?.props.style).maxWidth,
+      ).toBe(darkTheme.layout.paneMaxWidth);
+    });
+
+    it('is not capped while the table shows', async () => {
+      expect(rootStyleOf(await renderTables()).maxWidth).toBeUndefined();
+    });
+
+    it('is not capped while the data loads', async () => {
+      mockUseLiveQuery.mockImplementation(() => ({ data: [], isLoading: true, isFresh: false }));
+
+      expect(rootStyleOf(await renderTables()).maxWidth).toBeUndefined();
+    });
+
+    it('is not capped in the empty state', async () => {
+      mockUseLiveQuery.mockImplementation(
+        answerWith((tables) => (tables[0] === 'transactions' ? [] : undefined)),
+      );
+
+      expect(rootStyleOf(await renderTables()).maxWidth).toBeUndefined();
     });
   });
 

@@ -26,14 +26,15 @@ const LARGE_TITLE_EDGES: readonly Edge[] = ['left', 'right', 'bottom'];
  * has not yet moved into a pane keeps its cap through a resize into a split. A scrollable surface
  * applies it to its content container, never to itself, so the scroll view and its indicator span
  * the whole pane; a screen with no scroll view takes it on its root, so the native header and
- * bars, which are not inside it, still span the pane.
+ * bars, which are not inside it, still span the pane. A screen whose content is wider than the cap
+ * (a table) asks for none (`isUncapped`).
  */
-export const useContentCap = () => {
+export const useContentCap = (isUncapped = false) => {
   const pane = usePaneContext();
   const { horizontalSizeClass } = useDisplayRegions();
   const isTabBarAtTop = useIsTabBarAtTop();
 
-  if (pane !== null && isTabBarAtTop) {
+  if (isUncapped || (pane !== null && isTabBarAtTop)) {
     return undefined;
   }
 
