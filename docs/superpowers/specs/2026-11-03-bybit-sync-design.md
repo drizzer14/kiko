@@ -5,7 +5,8 @@ WITH CONDITIONS for global accounts. The user accepted the 5.2.2 and 6.5 doubts 
 approval (O41). Base 57130e23c.
 Plan: `docs/superpowers/plans/2026-11-03-bybit-sync.md`.
 
-Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O57, binding), `terms-verdict.md`, `research-bybit-docs.md`,
+Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O58, binding), `terms-verdict.md`,
+`research-bybit-docs.md`,
 `research-bybit-legal.md`, `seam-map.md` (same folder), the brief `memory/refs/brief-1.4-bybit.md`,
 `memory/refs/bybit-okx-second-check-2026-11-03.md` and `memory/refs/bybit-terms-2026-11-03/` (main checkout), the skills
 kiko-exchange-sync, kiko-compliance, kiko-architecture, kiko-domain, kiko-translator, kiko-testing.
@@ -115,7 +116,7 @@ A shared rule is never assumed. Verdict: HOLDS, CHANGES, N/A.
 | 38 | Caption: P2P read failed | N/A | No P2P walk (O5); the gate stays Binance only | O5 |
 | 39 | Trades, dust, fiat, Pay walks | N/A | No such routes. 1.4 does not read trades, and the UI states it (O37) | Rulings |
 | 40 | Namespaced `externalId` | HOLDS | `<accountId>:` prefix, then the kind, the record id and `:<COIN>` (O4, memory exchange-ids) | CODE |
-| 41 | Network fee out of the ledger line | HOLDS until P6 | `amount` only; per wallet, P6 and P4 compare `amount`, and `amount` + fee, against the change between two balance readings around the user's step (O47) | UNPROBED(P4, P6) |
+| 41 | Network fee out of the ledger line | HOLDS until P6 | `amount` only; per wallet, P6 and P4 compare `amount`, and `amount` + fee, against the change between two balance readings around the user's step (O47); P4 also compares `amount` - fee, because a deposit can be credited net of its fee, and P6 does not (round 4, O58) | UNPROBED(P4, P6) |
 | 42 | `untrackedCounterpart`, wallet codes | HOLDS, unused | Bybit transfers move between UNIFIED and FUND only (accountType enum, SUMMARY). Any other wallet word is `bybit-transfer-wallet-unknown`, owed; `UNTRACKED_WALLETS` gets no member | SUMMARY; UNPROBED(P7) |
 | 43 | Funding matcher | HOLDS | Bybit writes no `p2p`, `card` or `bank` code, so `fundingOf` skips its rows. `EXCHANGE_NAME` stays | CODE |
 | 44 | Thrown errors are named classes | HOLDS | `BybitHistoryParseError`, `BybitRateLimitError`, `BybitRefusalError` with a fixed message and a `code` | CODE (`kiko-no-literal-sync-error`) |
@@ -768,9 +769,10 @@ never an amount.
   documented route puts personal data there.
 - Residual accepted (O46): a field NAME of plain letters can hold a person's name only if a server uses a value as a key, and no
   documented route does.
-- Known limit (O56): two withdrawals whose amounts differ by exactly the fee can give yes on both wallets for one row, and the other
-  row resolves it.
-- Known limit (O56): R1 holds no money, so a defect found there costs only a rerun.
+- Residual accepted (O56, O58): two withdrawals whose amounts differ by exactly the fee can give
+  yes on both wallets for one row, and the other row resolves it. The report for the spec approval
+  (O41) puts this to the user.
+- Cost of a defect at R1 (O56): R1 holds no money, so a defect found there costs only a rerun.
 
 No email, phone, address, name, id or txID is ever printed. A fake-curl test runs before handover, and the orchestrator reads the
 whole file. Output is added to `memory/refs/bybit-probe-output-<date>.txt` with `>>`, and each run starts with a line of `########`.
@@ -1047,8 +1049,9 @@ reverses a row):
 | O53 | Calls per part | a fixed number | a maximum number of calls per part, and the hard cap; still one bounded run |
 | O54 | P3's double-count answer | direction alone | on a position rise, the stake check on amounts, yes or no; K4 and K5 stay on one prompt |
 | O55 | R7 | on the date `expiredAt` prints; 6 calls; `expiredAt` moved by two readings | the day after that date; up to 6 calls; ok prints "not expired yet" and ends; an answer that cannot be about expiry makes no prompt and no renewal; `expiredAt` moved against the date P1 printed |
-| O56 | The review of the probe script | a reviewer pass before the handover | no pass: three reviews each gave FIX FIRST (17, 9 and 6 findings), the chain stops after fix round 4, and the orchestrator reads the round 4 diff and runs the test; the known limits are in section 10 |
+| O56 | The review of the probe script | a reviewer pass before the handover | no pass: three reviews each gave FIX FIRST (17, 9 and 6 findings), the chain stops after fix round 4, and the orchestrator reads the round 4 diff and the whole final script (O58) and runs the test; the accepted residuals are in section 10 |
 | O57 | P17: which answers stop it, and which ok ends it | HTTP not 200 stops, HTTP 401 too; no `retCode` stops at any HTTP; 10002 and 10004 stop; an ok first call prints "not expired yet" (O55) | HTTP other than 200 or 401 stops; no `retCode` stops only with HTTP 200; 10002, 10004 and 10016 stop, and a `retCode` rule wins over HTTP 401; HTTP 401 otherwise goes on to the prompt; an ok from any of the first three calls prints "not expired yet" and ends with no prompt |
+| O58 | O57's stops, the whole-file read, the limit per part, the O56 items, rule 41 | no rule on which answer the stops of O57 read; the whole-file read of section 10 not done; "a maximum number of calls per part" with no source for it; the O56 items with no owner; rule 41: P4 and P6 compare `amount`, and `amount` + fee | (a) the stops of O57 apply to the `query-api` answer only: a later HTTP 500 or 10002 on UNIFIED or FUND still reaches the prompt, and only that route's reading before the renewal is lost; accepted under the stopping rule of O56, no script change. (b) the orchestrator read the whole final script (1,379 lines) on 2026-11-04 with no blocking defect: a read, not a review, and it does not replace the reviewer pass that O56 stopped. (c) the script has no limit variable per part: the maximum per part follows from the code, with no paging loop, and `CALL_CAP=150` per run is the only enforced limit. (d) the O56 items are accepted residuals in section 10, and the report puts them to the user with the spec approval (O41). (e) rule 41: P4 also compares `amount` - fee, and P6 does not |
 
 | Id | Conflict | Kept |
 |---|---|---|

@@ -91,12 +91,18 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   call repeats to measure uptime or latency (C6, API 6.6).
 - [x] **step 4/7: fake-curl test, DONE 2026-11-04.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
   values for every part. Check: no sentinel appears on stdout or stderr, the key is in no argv, and each part stays under a
-  maximum number of calls per part, with `CALL_CAP` as the hard cap (C6, O53). Result: `memory/refs/bybit-probe.test.sh` printed
+  maximum number of calls per part, with `CALL_CAP` as the hard cap (C6, O53). The script has no
+  limit variable per part. The maximum per part follows from the code, with no paging loop: P1 1,
+  P2 3, P3 8, P4 6, P5 1, P6 5, P7 2, P11 9, P12 16, P13 42, P14 0, P15 3, P16 9, P17 6, P18 8. The
+  test pins exact counts per run and for some parts alone, and runs a `CALL_CAP` variant (O58).
+  Result: `memory/refs/bybit-probe.test.sh` printed
   "4673 passed, 0 failed", exit 0 (re-run by the orchestrator on 2026-11-04 with /bin/bash 3.2.57 and jq 1.7.1-apple).
 - [ ] **step 5/7: read the file and hand it over, OPEN** (orchestrator, then coordinator). Was: "read the whole file. The reviewer
   passes it." The reviewer did not pass it: three reviews each gave FIX FIRST (17, 9 and 6 findings), and O56 stopped the chain after
-  fix round 4 with no fourth review. O56 replaces that pass. Done under O56: the orchestrator read the round 4 diff, and the test
-  of step 4/7 passed. Still open: the user's spec approval (O41), which is not given. After that approval, the coordinator hands it
+  fix round 4 with no fourth review. O56 replaces that pass. Done under O56: the orchestrator
+  read the round 4 diff and the whole final script on 2026-11-04 with no blocking defect (a read,
+  not a review; O58), and the test of step 4/7 passed. Still open: the user's spec approval (O41),
+  which is not given. After that approval, the coordinator hands it
   over, with the R1 account list, the C6 user line of spec section 10 and part 2 of the browser step (spec section 9).
 - [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
   the C6 line before R1, part 2 of the browser step at R1, `R2 P4` while K1 is pending, with a prompt until K1 lands and before
@@ -379,6 +385,7 @@ O44 set 7 header, step 6, "Merge order". O45, O46 set 1 step 3, spec sections 10
 6, gate per stage, set 3 header, spec sections 10, 12. O51 set 1 step 3, spec sections 10, 12. O52 set 1 steps 6, 7, spec rule 45,
 sections 10, 12. O53 set 1 step 4, spec sections 10, 12. O54 set 1 steps 3, 6, spec sections 10, 12. O55 set 1 header, steps 3, 6, spec
 sections 6.3, 10, 12. O56 set 1 header, step 5, spec sections 10, 12. O57 set 1 step 3, spec sections 6.3, 10, 12.
+O58 set 1 steps 4, 5, spec rule 41, sections 10, 12.
 
 Acceptance rows: A1 to A7, A11, A31, A36, A37, A47, A48 set 3 step 5; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
