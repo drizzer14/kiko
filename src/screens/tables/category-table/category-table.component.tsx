@@ -167,24 +167,20 @@ const CategoryTable: FC<CategoryTableProps> = ({
     ];
   }, [table, months, firstRowTime, now, currentIsPartial, baseCurrency, locale, t]);
 
-  if (table.rows.length === 0) {
-    return (
-      <>
-        {topContent}
-
-        <Box style={styles.empty}>
-          <EmptyState
-            icon="tablecells"
-            title={t('tables.empty.title')}
-            message={t('tables.empty.message')}
-            testID="category-table-empty"
-          />
-        </Box>
-      </>
-    );
-  }
-
   const caption = t('tables.category.caption', { currency: baseCurrency });
+  // The empty state goes through the table, so the controls above it are one mounted tree whether
+  // the table has rows or not: a filter sheet open in them survives a pick that empties the table.
+  const emptyContent =
+    table.rows.length === 0 ? (
+      <Box style={styles.empty}>
+        <EmptyState
+          icon="tablecells"
+          title={t('tables.empty.title')}
+          message={t('tables.empty.message')}
+          testID="category-table-empty"
+        />
+      </Box>
+    ) : undefined;
 
   return (
     <DataTable
@@ -192,6 +188,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
       rows={rows}
       caption={currentIsPartial ? `${caption} ${t('tables.category.partialMonth')}` : caption}
       topContent={topContent}
+      emptyContent={emptyContent}
       initialColumnIndex={Math.max(months.length - OPENING_MONTHS_SHOWN, 0)}
       testID="category-table"
     />

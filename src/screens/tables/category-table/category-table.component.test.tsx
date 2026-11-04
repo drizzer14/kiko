@@ -19,10 +19,15 @@ const mockDataTable = jest.fn();
 
 jest.mock('@kiko/design-system/components/data-table', () => ({
   __esModule: true,
-  default: (props: unknown) => {
+  default: (props: { topContent?: unknown; emptyContent?: unknown }) => {
     mockDataTable(props);
 
-    return null;
+    return require('react').createElement(
+      require('react-native').View,
+      null,
+      props.topContent,
+      props.emptyContent,
+    );
   },
 }));
 
@@ -238,6 +243,13 @@ describe('CategoryTable', () => {
 
       expect(table.topContent).toBe(topContent);
     });
+
+    it('passes no empty state while there are rows', async () => {
+      const { table, rendered } = await shown(propsOf(WORLD));
+
+      expect(table.emptyContent).toBeUndefined();
+      expect(rendered.queryByTestId('category-table-empty')).toBeNull();
+    });
   });
 
   describe('with no spending in the period', () => {
@@ -248,10 +260,11 @@ describe('CategoryTable', () => {
       expect(rendered.getByTestId('category-table-empty')).toBeTruthy();
     });
 
-    it('shows the empty state and no table', async () => {
+    it('passes the empty state to the table, which draws it under the same top content', async () => {
       const { rendered, table } = await shown(propsOf([]));
 
-      expect(table).toBeUndefined();
+      expect(table.emptyContent).toBeDefined();
+      expect(table.topContent).toBeDefined();
       expect(rendered.getByText('No spending in this period')).toBeTruthy();
       expect(
         rendered.getByText('Pick another period, or other accounts or categories, to see a table.'),
@@ -263,7 +276,7 @@ describe('CategoryTable', () => {
         propsOf(WORLD, { excludedCategories: new Set(['groceries', 'transport']) }),
       );
 
-      expect(table).toBeUndefined();
+      expect(table.emptyContent).toBeDefined();
       expect(rendered.getByTestId('category-table-empty')).toBeTruthy();
     });
   });

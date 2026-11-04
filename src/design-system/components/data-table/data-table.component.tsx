@@ -26,6 +26,8 @@ import {
 import { styles } from './data-table.styles';
 import type { DataTableProps } from './data-table.props';
 
+const STICKY_HEADER_INDICES = [1];
+
 const HIDDEN_FROM_ACCESSIBILITY = {
   accessibilityElementsHidden: true,
   importantForAccessibility: 'no-hide-descendants',
@@ -49,10 +51,12 @@ const DataTable: FC<DataTableProps> = ({
   rows,
   caption,
   topContent,
+  emptyContent,
   initialColumnIndex,
   testID = 'data-table',
 }) => {
   const { theme } = useUnistyles();
+  const isEmpty = emptyContent !== undefined;
   const [containerWidth, setContainerWidth] = useState(0);
   const [labelWidth, setLabelWidth] = useState(0);
   const [columnTextWidths, setColumnTextWidths] = useState<Record<string, number>>({});
@@ -128,133 +132,141 @@ const DataTable: FC<DataTableProps> = ({
     );
   };
 
+  const captionNode = (
+    <RNText style={styles.caption} accessibilityRole="summary" testID={`${testID}-caption`}>
+      {caption}
+    </RNText>
+  );
+
+  // The sticky wrapper takes this child's own style onto itself and gives the child a fill style,
+  // which would drop the row's direction; so the child carries no style.
+  const headerNode = (
+    <View>
+      <View style={styles.headerRow} testID={`${testID}-header-row`}>
+        <View style={[styles.headerCorner, { width: fixedWidth }]} />
+
+        <View style={styles.headerClip}>
+          <Animated.View style={[styles.headerTrack, trackStyle]} testID={`${testID}-header-track`}>
+            {columns.map((column, columnIndex) => (
+              <View
+                key={column.key}
+                style={[
+                  styles.headerCell,
+                  column.isSum && styles.sumColumn,
+                  { width: columnWidths[columnIndex] },
+                ]}
+                testID={`${testID}-header-${column.key}`}
+                {...HIDDEN_FROM_ACCESSIBILITY}
+              >
+                <RNText style={styles.headerText} testID={`${testID}-header-text-${column.key}`}>
+                  {column.header}
+                </RNText>
+              </View>
+            ))}
+          </Animated.View>
+        </View>
+      </View>
+    </View>
+  );
+
+  const bodyNode = (
+    <View style={styles.bodyRow} testID={`${testID}-body-row`}>
+      <View style={[styles.fixedColumn, { width: fixedWidth }]} testID={`${testID}-fixed-column`}>
+        {rows.map((row) => (
+          <View
+            key={row.key}
+            style={[styles.fixedRow, { minHeight: rowHeights[row.key] }]}
+            testID={`${testID}-fixed-row-${row.key}`}
+          >
+            <RNText
+              style={[styles.labelText, row.isSummary && styles.summaryText]}
+              onLayout={recordHeight(labelHeightKey(row.key))}
+              testID={`${testID}-label-${row.key}`}
+            >
+              {row.label}
+            </RNText>
+          </View>
+        ))}
+      </View>
+
+      <Animated.ScrollView
+        ref={bodyRef}
+        horizontal
+        scrollEnabled={overflows}
+        showsHorizontalScrollIndicator={false}
+        style={styles.bodyScroll}
+        testID={`${testID}-body-scroll`}
+      >
+        <View>
+          {rows.map((row) => (
+            <View
+              key={row.key}
+              style={[styles.scrolledRow, { minHeight: rowHeights[row.key] }]}
+              testID={`${testID}-scrolled-row-${row.key}`}
+            >
+              {row.cells.map((cell, cellIndex) => {
+                const column = columns[cellIndex];
+
+                return (
+                  <Pressable
+                    key={column.key}
+                    accessibilityLabel={cell.accessibilityLabel}
+                    accessibilityValue={{ text: cell.accessibilityValue }}
+                    accessibilityRole={cell.onPress === undefined ? undefined : 'button'}
+                    accessibilityHint={
+                      cell.onPress === undefined ? undefined : cell.accessibilityHint
+                    }
+                    onPress={cell.onPress}
+                    style={[
+                      styles.cell,
+                      column.isSum && styles.sumColumn,
+                      { width: columnWidths[cellIndex] },
+                    ]}
+                    testID={`${testID}-cell-${row.key}-${column.key}`}
+                  >
+                    <RNText
+                      style={[
+                        styles.cellText,
+                        cell.tone === 'negative' && styles.negativeText,
+                        row.isSummary && styles.summaryText,
+                      ]}
+                      onLayout={recordHeight(cellHeightKey(row.key, column.key))}
+                      testID={`${testID}-cell-text-${row.key}-${column.key}`}
+                    >
+                      {cell.text}
+                    </RNText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      </Animated.ScrollView>
+    </View>
+  );
+
   return (
     <View
       style={styles.container}
       onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
       testID={testID}
     >
-      <ScrollView testID={`${testID}-vertical-scroll`} stickyHeaderIndices={[1]}>
-        {/* One child holds both, so the header stays the scroll's child at the sticky index. */}
+      <ScrollView
+        testID={`${testID}-vertical-scroll`}
+        stickyHeaderIndices={isEmpty ? undefined : STICKY_HEADER_INDICES}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* One child holds both, so the header stays the scroll's child at the sticky index. It
+            stays the first child in the empty state too, so a control in it is never remounted. */}
         <View style={styles.top} testID={`${testID}-top`}>
           {topContent}
 
-          <RNText style={styles.caption} accessibilityRole="summary" testID={`${testID}-caption`}>
-            {caption}
-          </RNText>
+          {isEmpty ? null : captionNode}
         </View>
 
-        {/* The sticky wrapper takes this child's own style onto itself and gives the child a fill
-            style, which would drop the row's direction; so the child carries no style. */}
-        <View>
-          <View style={styles.headerRow} testID={`${testID}-header-row`}>
-            <View style={[styles.headerCorner, { width: fixedWidth }]} />
+        {isEmpty ? emptyContent : headerNode}
 
-            <View style={styles.headerClip}>
-              <Animated.View
-                style={[styles.headerTrack, trackStyle]}
-                testID={`${testID}-header-track`}
-              >
-                {columns.map((column, columnIndex) => (
-                  <View
-                    key={column.key}
-                    style={[
-                      styles.headerCell,
-                      column.isSum && styles.sumColumn,
-                      { width: columnWidths[columnIndex] },
-                    ]}
-                    testID={`${testID}-header-${column.key}`}
-                    {...HIDDEN_FROM_ACCESSIBILITY}
-                  >
-                    <RNText
-                      style={styles.headerText}
-                      testID={`${testID}-header-text-${column.key}`}
-                    >
-                      {column.header}
-                    </RNText>
-                  </View>
-                ))}
-              </Animated.View>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.bodyRow} testID={`${testID}-body-row`}>
-          <View
-            style={[styles.fixedColumn, { width: fixedWidth }]}
-            testID={`${testID}-fixed-column`}
-          >
-            {rows.map((row) => (
-              <View
-                key={row.key}
-                style={[styles.fixedRow, { minHeight: rowHeights[row.key] }]}
-                testID={`${testID}-fixed-row-${row.key}`}
-              >
-                <RNText
-                  style={[styles.labelText, row.isSummary && styles.summaryText]}
-                  onLayout={recordHeight(labelHeightKey(row.key))}
-                  testID={`${testID}-label-${row.key}`}
-                >
-                  {row.label}
-                </RNText>
-              </View>
-            ))}
-          </View>
-
-          <Animated.ScrollView
-            ref={bodyRef}
-            horizontal
-            scrollEnabled={overflows}
-            showsHorizontalScrollIndicator={false}
-            style={styles.bodyScroll}
-            testID={`${testID}-body-scroll`}
-          >
-            <View>
-              {rows.map((row) => (
-                <View
-                  key={row.key}
-                  style={[styles.scrolledRow, { minHeight: rowHeights[row.key] }]}
-                  testID={`${testID}-scrolled-row-${row.key}`}
-                >
-                  {row.cells.map((cell, cellIndex) => {
-                    const column = columns[cellIndex];
-
-                    return (
-                      <Pressable
-                        key={column.key}
-                        accessibilityLabel={cell.accessibilityLabel}
-                        accessibilityValue={{ text: cell.accessibilityValue }}
-                        accessibilityRole={cell.onPress === undefined ? undefined : 'button'}
-                        accessibilityHint={
-                          cell.onPress === undefined ? undefined : cell.accessibilityHint
-                        }
-                        onPress={cell.onPress}
-                        style={[
-                          styles.cell,
-                          column.isSum && styles.sumColumn,
-                          { width: columnWidths[cellIndex] },
-                        ]}
-                        testID={`${testID}-cell-${row.key}-${column.key}`}
-                      >
-                        <RNText
-                          style={[
-                            styles.cellText,
-                            cell.tone === 'negative' && styles.negativeText,
-                            row.isSummary && styles.summaryText,
-                          ]}
-                          onLayout={recordHeight(cellHeightKey(row.key, column.key))}
-                          testID={`${testID}-cell-text-${row.key}-${column.key}`}
-                        >
-                          {cell.text}
-                        </RNText>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
-          </Animated.ScrollView>
-        </View>
+        {isEmpty ? null : bodyNode}
       </ScrollView>
 
       <View

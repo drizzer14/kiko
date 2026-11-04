@@ -192,6 +192,60 @@ describe('TablesScreen', () => {
     });
   });
 
+  describe('a filter sheet that is open while a pick crosses between the table and the empty state', () => {
+    const OPTION = 'tables-account-filter-option-c';
+    const withIdleAccount = answerWith((tables, answer) => {
+      if (tables[0] === 'accounts') {
+        return [...(answer.data as object[]), { id: 'c', name: 'Idle', kind: 'cash', color: null }];
+      }
+
+      if (tables[0] === 'holdings') {
+        return [
+          ...(answer.data as object[]),
+          {
+            id: 'h3',
+            accountId: 'c',
+            currency: 'UAH',
+            type: 'cash',
+            balanceMinorUnits: 1_000,
+            metadata: null,
+            closedAt: null,
+          },
+        ];
+      }
+
+      return undefined;
+    });
+
+    it('stays open both ways: into the empty state, and back to the table', async () => {
+      mockUseLiveQuery.mockImplementation(withIdleAccount);
+
+      const { getByTestId, getByText, queryByTestId } = await renderTables();
+
+      // The sheet is not rendered while it is closed, so the option rows below prove it is open.
+      expect(queryByTestId(OPTION)).toBeNull();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId('tables-account-filter'));
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId(OPTION));
+      });
+
+      expect(getByText('No spending in this period')).toBeTruthy();
+      expect(queryByTestId('category-table-body-row')).toBeNull();
+      expect(getByTestId(OPTION)).toBeTruthy();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(OPTION));
+      });
+
+      expect(getByTestId('category-table-body-row')).toBeTruthy();
+      expect(queryByTestId('category-table-empty')).toBeNull();
+      expect(getByTestId(OPTION)).toBeTruthy();
+    });
+  });
+
   describe('the period', () => {
     it('opens on the last 12 months when the route carries no period', async () => {
       const { getByTestId } = await renderTables();

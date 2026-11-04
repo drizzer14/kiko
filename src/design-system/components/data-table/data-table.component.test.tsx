@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import * as reanimated from 'react-native-reanimated';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
@@ -446,6 +447,62 @@ describe('DataTable', () => {
 
       expect(within(top).getByTestId(`${PREFIX}-caption`)).toBeTruthy();
       expect(top.parent?.children).toHaveLength(3);
+    });
+
+    describe('with empty content', () => {
+      const emptyContent = <View testID="nothing-here" />;
+
+      it('shows it in place of the caption, the header and the rows, under the top content', async () => {
+        const rendered = await renderTable({ topContent: <View testID="filters" />, emptyContent });
+        const top = rendered.getByTestId(`${PREFIX}-top`);
+
+        expect(rendered.getByTestId('nothing-here')).toBeTruthy();
+        expect(within(top).getByTestId('filters')).toBeTruthy();
+        expect(rendered.queryByTestId(`${PREFIX}-caption`)).toBeNull();
+        expect(
+          rendered.queryByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true }),
+        ).toBeNull();
+        expect(rendered.queryByTestId(`${PREFIX}-body-row`)).toBeNull();
+        expect(
+          rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices,
+        ).toBeUndefined();
+      });
+
+      it('lets the empty content fill the room under the top content', async () => {
+        const rendered = await renderTable({ emptyContent });
+
+        expect(
+          flat({
+            props: {
+              style: rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.contentContainerStyle,
+            },
+          }),
+        ).toMatchObject({ flexGrow: 1 });
+      });
+
+      it('keeps the top content mounted when the table crosses to the empty content and back', async () => {
+        const mounted = jest.fn();
+        const unmounted = jest.fn();
+        const Probe = () => {
+          useEffect(() => {
+            mounted();
+
+            return unmounted;
+          }, []);
+
+          return <View testID="filters" />;
+        };
+        const rendered = await renderTable({ topContent: <Probe /> });
+
+        await rendered.rerender(
+          <DataTable {...baseProps} topContent={<Probe />} emptyContent={emptyContent} />,
+        );
+        await rendered.rerender(<DataTable {...baseProps} topContent={<Probe />} />);
+
+        expect(rendered.getByTestId('filters')).toBeTruthy();
+        expect(mounted).toHaveBeenCalledTimes(1);
+        expect(unmounted).not.toHaveBeenCalled();
+      });
     });
 
     it('gives the sticky header row an opaque surface ground', async () => {
