@@ -714,7 +714,6 @@ const StatisticsScreen: FC = () => {
             variant="secondaryTonal"
             size="compact"
             icon="tablecells"
-            trailingIcon="chevron.right"
             onPress={() => navigation.navigate('Tables')}
             testID="statistics-open-tables"
           >

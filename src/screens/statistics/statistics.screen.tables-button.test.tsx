@@ -1,5 +1,6 @@
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { fireEvent, render, within } from '@testing-library/react-native';
@@ -37,6 +38,12 @@ describe('the Tables button in Statistics', () => {
     const { getByTestId } = await render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
 
     expect(getByTestId(TABLES_BUTTON)).toHaveTextContent('Monthly tables', { exact: false });
+  });
+
+  it('shows its table glyph and no trailing chevron', async () => {
+    const { getByTestId } = await render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
+
+    expect(glyphNamesWithin(getByTestId(TABLES_BUTTON))).toEqual(['tablecells']);
   });
 
   it('opens the Tables route with a navigate to its name', async () => {
