@@ -2,14 +2,15 @@
 
 Status: the user's approval of the earlier text is given, DONE 2026-11-04 (O41, O59). O62 changed the scope after
 it: nothing in this track needs the user's money. O64 added stage E after it: spot trades and converts, in the same
-release (Q5 "E + A"). Stages A, B and E stay. Rows the live API docs cover ship "docs only".
+release (Q5 "E + A"). O65 added stage F: the Funding wallet ledger, in the same release (Q6 "B: Add to 1.4"). Stages A, B, E
+and F stay. Rows the live API docs cover ship "docs only".
 R1 and the second key ran, and their results are in this text (O60). The empty mainnet read and the testnet run are
-next (section 10). App code starts at set 2, on the commit of this text (O62, O63 (e); was: after R2 to R4, O36). Q1 to Q5
-are answered, and Q6 is open (section 13). The terms verdict is in section 9: PASS WITH CONDITIONS for global
+next (section 10). App code starts at set 2, on the commit of this text (O62, O63 (e); was: after R2 to R4, O36). Q1 to Q6
+are answered (section 13). The terms verdict is in section 9: PASS WITH CONDITIONS for global
 accounts. The user accepted the 5.2.2 and 6.5 doubts (O42). Base 57130e23c.
 Plan: `docs/superpowers/plans/2026-11-03-bybit-sync.md`.
 
-Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O64, binding; O61 (a) and (b) are replaced by O62),
+Inputs: `.superpowers/sdd/1.4-bybit/rulings.md` (O1-O65, binding; O61 (a) and (b) are replaced by O62),
 `report-r1.md`, `report-no-money.md`, `report-q5.md`, `review-7a2391ca8.md`, `terms-verdict.md`,
 `research-bybit-docs.md`,
 `research-bybit-legal.md`, `seam-map.md` (same folder), the brief `memory/refs/brief-1.4-bybit.md`,
@@ -57,7 +58,9 @@ Goals:
 2. Stage B adds rows from the live API docs ("docs only", O62), complete on its own. A shape the docs do not
    give is refused and owed, never guessed into a shown amount.
 3. Stage E adds spot trades and converts, also docs only (O64), so the past of the net-worth line holds for a user who
-   trades (section 3, "The worked example").
+   trades (section 3, "The worked example"). Stage F adds what only the Funding wallet's own record shows, also docs only (O65): a
+   row lists only when no other series explains it. A row that may be explained is held and counted, so the ledger adds a lost row and
+   not a double count, except in the cases named in section 3, "What stays wrong".
 4. Every limit shows in the UI: global accounts only, the EU limit, the key of about 90 days, the kinds not
    read (USER ruling), and, where the past is drawn, what the past cannot hold (section 8, `statistics.bybitPastLimits`).
 5. Nothing needs the user's money (O62).
@@ -128,7 +131,7 @@ A shared rule is never assumed. Verdict: HOLDS, CHANGES, N/A.
 | 33 | One pacing gate per run | HOLDS | `createExchangeRun`, interval from the slowest route read (section 5) | CODE; QUOTE (limits) |
 | 34 | `isUnreadableWindowError` | HOLDS | `BybitHistoryParseError` alone; rate limit, refused key, clock skew and network stop the run | CODE |
 | 35 | A walk failure never fails the balance sync | HOLDS | `logOnFailure` per walk | CODE |
-| 36 | Caption: behind | CHANGES | `CAPTION_WALKS` per provider, with a required parameter and no default to Binance (O30). Reusing the 8 would keep "behind" up forever (`null` cursor). Stage A: none. Stage B: `capital`, `transfer`. Stage E: also `log`, `convert` | CODE; seam 4 |
+| 36 | Caption: behind | CHANGES | `CAPTION_WALKS` per provider, with a required parameter and no default to Binance (O30). Reusing the 8 would keep "behind" up forever (`null` cursor). Stage A: none. Stage B: `capital`, `transfer`. Stage E: also `log`, `convert`. Stage F: also `fundingLedger` | CODE; seam 4 |
 | 37 | Caption: paused, coin lines, not imported | CHANGES | The `connectedProvider === 'binance'` gates become "an exchange with a walk state". Tracked predicate per provider | CODE; seam 3 |
 | 38 | Caption: P2P read failed | N/A | No P2P walk (O5); the gate stays Binance only | O5 |
 | 39 | Trades | CHANGES | No Binance-style read per symbol (`readIdCursor`, `tradeCandidatesOf`, the `trades` state). Bybit's spot trades come from the Unified log, one row per log row: rule 49 (O64; was: not read, O37) | QUOTE (live page); docs only |
@@ -144,6 +147,7 @@ A shared rule is never assumed. Verdict: HOLDS, CHANGES, N/A.
 | 48 | Connect checks no permission (Binance, section 6.8) | CHANGES | Connect refuses `readOnly` not 1, `isMaster` not true, and a 10005 on one real read of any shipped route, before any Keychain write, with a text per reason (O13, PLANNER CALL 25). A later 10005 on one wallet shows `bybitWalletRefused` with the wallet name, and the last balance stays | MEASURED 2026-11-04 (R1, second key); QUOTE for master only |
 | 49 | Spot trades (new, O64) | CHANGES | A `TRADE` log row with `category` spot imports one row on `<COIN>:unified`, amount `change`, marked as an exchange leg; any other `type` imports nothing and is named in `bybitLogLeftOut`. Section 3, stage E | QUOTE (live pages); docs only |
 | 50 | Converts (new, O64) | CHANGES | The convert history is the one source of a convert. `success` imports two legs; `CURRENCY_BUY`, `CURRENCY_SELL` and `CONVERT` log rows never import, so a double count cannot happen. Section 3, stage E | QUOTE (live pages); docs only |
+| 51 | The Funding ledger (new, O65) | CHANGES | One pure rule, `matchFundingLedger`, runs over every stored ledger row and source record of the account on each run, so the result does not depend on arrival order. A ledger row is `explained`, `listed`, `held`, `waiting` or `earnMove`. Only `listed` writes a row: one row on `<COIN>:fund`, amount `txnAmt`, marker `ledger:funding`, out of spending. Section 3, stage F | QUOTE (live pages); docs only |
 
 ## 3. Data per stage
 
@@ -152,7 +156,7 @@ record are the live pages, read 2026-11-04, not the raw repo files, which are ol
 `https://bybit-exchange.github.io/docs/v5/asset/deposit/deposit-record`, `.../asset/deposit/internal-deposit-record`,
 `.../asset/withdraw/withdraw-record`, `.../asset/transfer/inter-transfer-list`, `.../enum`, `.../account/wallet-balance`,
 and for stage E `.../account/transaction-log`, `.../asset/convert/get-convert-history`, `.../asset/convert/guideline`,
-`.../rate-limit`, `.../asset/fund-history`, read 2026-11-04 with `curl -q -sS -m 30`.
+`.../rate-limit`, and for stage F `.../asset/fund-history` and `https://bybit-exchange.github.io/docs/changelog/v5`, read 2026-11-04 with `curl -q -sS -m 30`.
 Each field named below was checked on them.
 
 ### Stage A: balances (5 calls per sync)
@@ -207,6 +211,7 @@ Rows do feed other money values, so "the row is one ledger line" was too short.
 | 2-minute transfer matcher | Yes, unmarked rows only | `rowsForTransferMatch` drops a row with a pair id or a marker | Equal amounts inside 2 minutes pair, as for Binance. A trade or convert leg is never a partner |
 | Funding matcher | No | `fundingOf` needs a `p2p`, `card` or `bank` code; Bybit writes none | None |
 | Loan payment matcher | Yes, an unmarked debit | `isEligibleTransaction` refuses a counterpart holding and an untracked counterpart | An auto link a user can undo, as for Binance. A trade or convert leg is never a candidate |
+| A listed Funding ledger row (stage F) | Past line, lists, date field and bond start day: yes. Spending, 2-minute matcher, funding matcher, loan matcher: no | `createHoldingValuer` sums every row; `exchangeExcludedTransactionIds` and `rowsForTransferMatch` drop a row with an `untrackedCounterpart`; `fundingOf` needs a `p2p`, `card` or `bank` code; `isEligibleTransaction` refuses the marker; `reconcileBondFunding` has no marker test | Section 3, "Stage F". A debit in a bond's currency can shift that bond's start on the line by up to 7 days, as for Binance |
 
 Statistics draws only the sum (`buildNetWorthSeries`), filtered by account (`buildFilterScope`); `buildHoldingValues` has no other
 consumer, and no per-holding past is drawn once `earlierHistory` is off (PLANNER CALL 27). So a holding's own past below zero is not
@@ -229,22 +234,30 @@ of 0.1 % taken in X, the X row is +0.999, today's balance is 0.999, and the line
 
 With p = 60 before the deposit: truth 0, A -40, C 60, E 0. COMPUTED by hand here; A77 runs it through `buildNetWorthSeries` on real SQLite.
 
-What stays wrong. Each row uses the same rule: a move Kiko cannot read stays in the past as units nobody moved. Levels: COMPUTED from `balance - rows`.
+With the ledger on (O65), the same example has two ledger rows: In 100 and Out 100. The deposit and the transfer explain them, so no row lists and the line stays 0, 100, p. If neither pairs, because `txnAmt` has some other form, both are `held`, and the line again stays 0, 100, p. COMPUTED by hand here; A91 runs both through `buildNetWorthSeries`.
+
+What stays wrong. Each row uses the same rule: a move Kiko cannot read stays in the past as units nobody moved. Levels: COMPUTED from `balance - rows`. Each row was ruled again for O65, and a "was:" shows the line before stage F. No row calls a gap closed on a shape the page does not show: the page's one sample is an Earn row, so the rows below mean "if Bybit lists that move in this ledger", and A92 tests the row shape, not that Bybit lists such a move.
 
 | Case | Example | Truth | The line now | Error | The user read it (O64) |
 |---|---|---|---|---|---|
-| P2P credit | P2P credit of 100 USDT, then buy 1 X at 100 | 0 before the credit | 100 before the credit | +100 USDT before the credit, none after | Yes |
-| Web convert before 2025-09-10 | Deposit 100 USDT, convert it to 1 X on the web in 2024 | 0, then 100, then p | p - 100, then p, then p | The offset of A, for that convert only | Yes |
-| Earn yield | 100 USDT staked and read, 5 of yield | 0, then 100 rising to 105 | +5 before the deposit, 105 after it | The yield earned after the day shown, at that day's rate | Yes |
+| P2P credit | P2P credit of 100 USDT to Funding, then buy 1 X at 100 | 0 before the credit | 0 before the credit if the ledger lists it, the same as the truth. Was: 100 before the credit. If it lands on Unified, Bybit does not list it, or the ledger holds it: still 100 | +100 USDT before the credit in those cases, none after | Yes, with the was |
+| Web convert before 2025-09-10 | Deposit 100 USDT, convert it to 1 X on the web in 2024 | 0, then 100, then p | On Funding, if the ledger still lists 2024: the truth. Otherwise as was: p - 100, then p, then p. No page states how far back the ledger goes, and its first changelog entry is 2026-03-06 | The offset of A, for that convert only | Yes, with the was |
+| Earn yield | 100 USDT staked and read, 5 of yield | 0, then 100 rising to 105 | Paid to Funding and listed: the truth. Was: +5 before the deposit, 105 after it. Added to the position, or paid to Unified: still as was | The yield earned after the day shown, at that day's rate | Yes, with the was |
 | Derivatives P&L | Deposit 100, perps profit 50, balance 150 | 0, then 100, then 150 | 50, then 150, then 150 | The P&L after the day shown | Yes |
 | Over 2 years | Any move older than the floor | Unknown | Flat in units before the floor; `balance - rows` holds at the floor | Before the floor only | Yes |
-| Money moved into an Earn product Kiko does not read | Deposit 100, stake all in SmartLeverage, or in Earn when clause "E2 and E4" holds | 0, then 100, then 0 (money not counted) | -100, then 0, then 0 | -100 before the stake | No: new here, PLANNER CALL 47 |
+| Money moved into an Earn product Kiko does not read | Deposit 100, stake all in SmartLeverage, or in Earn when clause "E2 and E4" holds | 0, then 100, then 0 (money not counted) | From Funding, under "E2 and E4": the truth. Was: -100, then 0, then 0. From Unified, or under any other clause: still as was | -100 before the stake | No: new here, PLANNER CALL 47 |
 | Interest, bonus, airdrop | Deposit 100, airdrop of 10, balance 110 | 0, then 100, then 110 | 10, then 110, then 110 | +10 before the airdrop | No: new here, PLANNER CALL 47 |
 | A row that waits | Any owed row (rules 13 to 17) | | As if the move had not happened | Its amount, until it imports; a caption shows | Part of O63 (d) |
+| A false match (new, O65) | 100 USDT deposit that lands on Unified, and a P2P credit of 100 USDT on Funding within 7 days | 0, then 100, then 200 | The deposit row explains the credit, so 100, then 200, then 200 | +100 before the credit: the same as with no ledger. A lost row, and no count shows | No: new, O65 |
+| A held row (new, O65) | The same, with a credit of 99 | 0, then 100, then 199 | The credit is held: 99, then 199, then 199 | +99 before the credit: the same as with no ledger; `bybitFundingHeld` counts it | No: new, O65 |
+| A ledger row over 7 days from its source (new, O65) | A deposit of 100, and its ledger row 8 days after it | 0, then 100, then 100 | -100, then 0, then 100 | A double count: -100 until the second row. No page states a delay; a withdrawal's whole `createTime` to `updateTime` counts as distance 0 | No: new, O65 |
+| An Earn move under a word Kiko has not seen, with Earn read (new, O65) | Deposit 100, stake it from Funding in a read product, with a ledger word on no list | 0, then 100, then 100 | 100, then 200, then 100 | A double count: +100 until the stake. With clause "E2 and E4" the case cannot happen | No: new, O65. It goes to the user: PLANNER CALL 57 |
+| A Funding move to a read wallet that is on no list (new, O65) | Deposit 100, then a Funding to Unified move that the transfer list does not hold | 0, then 100, then 100 | 100, then 200, then 100 | A double count: +100 until the move. The page says the list holds "the internal transfer records between different account types under the same UID", so this is outside the pages | No: new, O65 |
+| A purchase from Funding (new, O65) | A Bybit Card payment of 100 listed by the ledger | Spending 100 | The past line is true. Spending shows 0 (PLANNER CALL 56) | Spending short by 100 | No: new, O65 |
 
 The call on scope (PLANNER CALL 47): interest, bonus and airdrop break the past by the same rule, bounded by their own units, and in most accounts they
 are small next to a trade. They stay under Backlog, as the brief says, and `bybitLogLeftOut`, the footer and `statistics.bybitPastLimits` name them.
-A stake into an unread Earn product can be large, and the log alone cannot fix it, because a stake from Funding is on no log. The line names it too, and the report names it to the user.
+A stake into an unread Earn product can be large, and the log alone cannot fix it, because a stake from Funding is on no log. The line names it too, and the report names it to the user. Was: "cannot be closed" from Funding; stage F closes the Funding half under clause "E2 and E4" (O65).
 
 ### Safe readings (O62)
 
@@ -271,14 +284,18 @@ A "missing row" below is never only a line: it means a wrong past on the net-wor
 | Row key (stage E) | `<acc>:log:<id>:<type>:<transactionTime>:<COIN>` (PLANNER CALL 38). The page says "Unique id", yet its own sample gives one `id` to a SETTLEMENT row and a TRADE row, so `id` alone is not a key. A second row with the same key and another `change` in one span: both owe their point | A row waits | A missing row |
 | A coin with no holding (stage E) | `placeWalletRows` makes `<COIN>:unified` at zero through `ensureExchangeHoldings`, for a row's coin and its counterpart, so a coin sold out still has its past. The wallet read writes it at zero after that. Such a holding can show 0, as rule 45 states for FUND | None for money | A holding at 0 |
 | An untracked coin on a trade (stage E) | `isTrackedBybitAsset` false: its row is counted, its point returned, its ticker in `untrackedCoins`, no row. The tracked leg still imports, with `untrackedCounterpart` `asset:<COIN>` as its marker. Both untracked: no row. A code `untrackedAssetCode` refuses: owed | The money leaves the line at the trade, which is right for a coin Kiko does not count | None for counted money |
-| The FUND gap (stage E) | The log covers UNIFIED only (QUOTE "Query for transaction logs in your Unified account"). A Funding move that is no deposit, withdrawal, transfer or convert has no row in 1.4: P2P credits, Earn yield paid to Funding, card purchases, rewards. Spot trades happen on Unified. A `/v5/asset/fundinghistory` page exists; PLANNER CALL 46 and Q6 keep it out | The past reads high by that credit | The first row of "What stays wrong" |
+| The FUND gap (stage E, then stage F) | The log covers UNIFIED only (QUOTE "Query for transaction logs in your Unified account"). Was: a Funding move that is no deposit, withdrawal, transfer or convert has no row in 1.4, and PLANNER CALL 46 keeps `/v5/asset/fundinghistory` out. Now: stage F reads that route (O65), and a row lists by rule 51. Spot trades happen on Unified | A wrong match: section 3, "Stage F" | A lost row, or in the named cases a double count |
 | Convert in both lists (stage E) | Rule 50: the log never imports `CURRENCY_BUY`, `CURRENCY_SELL` or `CONVERT`, and the convert history is the one source (PLANNER CALL 39). A web convert out of UNIFIED that the history lists with a `funding` word lands on FUND: the per-wallet past differs and the sum holds, as in rule 45. A UTA convert the history does not list is a missing row, with those log rows named in `bybitLogLeftOut`. A convert shown as a spot `TRADE` would double: no page says so, and P8 and P9 can show it | See the reading | A missing row at worst, under the pages |
 | Convert wallet word (stage E) | Closed list from the page: `eb_convert_uta` is UNIFIED; `eb_convert_funding`, `funding`, `funding_fiat`, `funding_fbtc_convert`, `funding_block_trade` are FUND, read from "Wallet type". Any other word, the same coin on both sides, or an unreadable time: refused into `notImported` as `convert-unrecognized`, with its existing line | A refused convert is a missing row | A missing row, with its line |
 | Convert status (stage E) | `success` imports; `failure` is final and nothing is owed; `init`, `processing` and any other word owe their point, read again by the next pass | A convert that waits | A missing row |
 | Stock and RWA rows (stage E) | `STOCK_TRADE_BUY`, `STOCK_TRADE_SELL`, `STOCK_TRADE_REFUND`, `STOCK_CORPORATE_ACTION_DIVIDEND`, `STOCK_ADR_FEE`, and the four split types never import, though the page names trade words. They are not spot `TRADE` rows, and no page gives their `qty`. They are named in `bybitLogLeftOut`. A `TRADE` row with `category` linear, option, inverse or event never imports: its `change` is a fee (the page's samples) | A stock bought with USDT reads as a missing move | A missing row, named |
-| Web converts before 2025-09-10 (stage E) | QUOTE "Starting from September 10, 2025, converts executed on the webpage can also be queried via this API". An older one is on no list. On Unified it can appear as log rows; they do not import (rule 50) | The offset of A for that convert | The second row of "What stays wrong" |
+| Web converts before 2025-09-10 (stage E) | QUOTE "Starting from September 10, 2025, converts executed on the webpage can also be queried via this API". An older one is on no list. On Unified it can appear as log rows; they do not import (rule 50). On Funding, the ledger lists its two legs as two rows, if the ledger reaches that date | The offset of A for that convert | The second row of "What stays wrong" |
+| Which rows the ledger holds (stage F) | No closed list of `showBusiType`, on the page or the enum page. A row is judged by coin, direction, amount and time (O65). Its word decides only the Earn rule | PLANNER CALL 57 | A named double count, or none |
+| `txnAmt` against a fee (stage F) | "Transaction amount": the page does not say net or gross. A listed row shows it as reported. Each form of section 3, "Stage F" counts as a match, and a near row is held | A listed row off by at most an unread fee | A wrong number in the past, bounded by that fee |
+| How far back the ledger goes (stage F) | No stated retention; first changelog entry 2026-03-06. Floor 729 days, by rule 25. An empty answer proves nothing | Older moves stay as with no ledger | A missing row; clause L1 |
 
-Never read, and stated in the UI: P2P orders (O5), SmartLeverage, BYUSDT token, derivatives P&L, loans. Not read in
+Never read, and stated in the UI: P2P orders (O5), SmartLeverage, BYUSDT token, derivatives P&L, loans. A ledger row can hold the
+money of one of these, as a Funding move with a fixed label: it reads nothing of the order. Not read in
 1.4, and stated in the UI: the Unified log's entries other than spot trades, Earn orders and yield (O37, O64;
 the outlines are under Backlog).
 
@@ -328,6 +345,157 @@ The walks:
 - Log: `planWalkPasses`, `runWalkPlan`, `readCursorSpan` as is, one series named `log`, so an unreadable time owes a tagged range (rule 47's shape). `reach` per rule 18. A row outside the span is `bybit-page-drift`. QUOTE "During periods of extreme market volatility, this interface may experience increased latency or temporary delays": a late row falls behind the cursor, and the re-scan of 7 days reads it.
 - Convert: no window, so it does not use `planWalkPasses`. `bybit.convert-history.ts` reads `index` 1 upward, `canAfford` per page, and each page settles and commits by `settleRecords` and `commitSettledSpan`, rows before marks. The stored mark is a new optional `pageIndex` on `WalkMarks`, the next page to read, so a list over the lane cap resumes on the next run. A page with no row ends the pass, whatever the page before held (no page says a short page is the last), and then `cursor` moves to the run's start and `pageIndex` clears. Owed points are replaced at the end of a pass, keeping each `since`. A page whose keys all equal the page before ends the read as `bybit-page-drift` with no mark moved. The sample is newest first, and no page states an order. Under newest first, a new row pushes older rows down, so a pass can repeat a row and never skip one. Under oldest first, nothing moves. The key makes a repeat harmless. Every run reads the whole list, because with no stated order no early stop is safe. A row older than the floor makes no row (rule 25).
 - A leg's amount: `rowMinorUnits(coin, text, 'rounded-row')` (rule 12). A leg that rounds to 0 units is not written, nor is its pair, as for Binance's trades. A convert amount of 0 or less: owed.
+
+### Stage F: the Funding ledger (O65)
+
+Every row here is docs only. The page shows one sample row. Nothing below rests on a real row until step 7 of the testnet run, and then for shape only.
+
+Facts, from the live pages, 2026-11-04. Each is docs only:
+
+| Fact | QUOTE | What follows |
+|---|---|---|
+| Scope | "Return transaction log in Funding Account" | A Funding move of any kind can be a row. No list of kinds |
+| Window | `createTimeFrom`: "Start timestamp (seconds)... The interval between createTimeFrom and createTimeTo cannot exceed 7 days" | 7-day windows, in seconds |
+| Page | `limit`: "[1, 100]. Default: 10"; `cursor`; `nextPageCursor`: "Cursor for next page". The sample has a cursor on a page with its one row | Sends `limit=100` |
+| Limit | Rate limit page: `/v5/asset/fundinghistory`, "30 req/s" | The gate of 1100 ms holds |
+| Fields | `currency` "Coin symbol"; `ioDirection` "Direction. I: In, O: Out"; `txnAmt` "Transaction amount"; `createTime` "Create time (Unix seconds)"; `showBusiType` "Business type (localized key)"; `description` "Description (localized key)"; `currcCursor` "Unique id, can be used to duplicate check" | Read. `memberId`, `afterAmt`, `showBusiTypeEn`, `descriptionEn` are never read (PLANNER CALLS 56, 58) |
+| Sample | `showBusiType` `fundingAccountRecordEarn`, `showBusiTypeEn` "Earn", `description` `fundingAccountRecordFlexSavingInterestDistribution`, `descriptionEn` "Easy Earn \| Flexible Interest Distribution" | The only words the docs show. The enum page has none of these words |
+| Amount of a source | Deposit: `amount`, `depositFee` "Deposit fee", sample `""`. Withdrawal: `amount`, `withdrawFee` "Withdraw fee", `tax` "Tax amount"; a sample has `41.43008` with fee `5`. No page says net or gross | Forms, below |
+| Time of a source | Deposit `successAt` "Deposit's success time". Internal `createdTime` "Deposit created timestamp". Withdrawal `createTime`, `updateTime`, "(ms)". Transfer `timestamp` "Transfer created timestamp (ms)". Convert `createdAt` "Quote created time". No page states a delay to the ledger | The window, below |
+| History | Changelog: 2026-03-06 "Funding Account Transaction History [NEW]"; 2026-08-27 "Add a new response field currcCursor". The words "filtering by transaction type" name no parameter on the page | An older row may have no `currcCursor` (below). No retention stated |
+| Permission | The page names none | Connect's real read decides (section 6.8). Whether the `Wallet` and `Earn` boxes reach it is not known: the second key is deleted, and R1 did not ask this route |
+
+| Series | Endpoint and params | Window | Page | Row fields used | Key per row | Wallet | Evidence | Probe |
+|---|---|---|---|---|---|---|---|---|
+| Funding ledger | GET `/v5/asset/fundinghistory`, `createTimeFrom`, `createTimeTo`, `limit=100`, `cursor`; list `result.list` | 7 days, floor `now - 729 days` | 100, default 10, cursor | `currency`, `ioDirection`, `txnAmt`, `createTime`, `showBusiType`, `description`, `currcCursor` | `<acc>:funding:<currcCursor>:<COIN>` (memory exchange-ids-are-per-coin-key-every-derived-id; nothing on the page argues against it) | FUND, `<COIN>:fund` | QUOTE, live page | Docs only; P19, section 10 |
+
+#### The rule: one pure function
+
+`matchFundingLedger` in `src/crypto-sync/bybit/bybit.funding-match.ts`. Input: every stored ledger row and source record of the account, the walk marks, and the shipped Earn clause. Output: one verdict per ledger row. It reads no clock, no database and no float. Amounts are text, compared by `compareDecimal` and `addDecimal`.
+
+1. **Sources.** A record is a source only if it can touch Funding and is settled, by rules 13 to 17 and 50:
+
+| Series | Direction | Forms of the amount, in this order | Time extent | Can it have no ledger row? |
+|---|---|---|---|---|
+| Deposit | I | `txnAmt` = `amount`; `txnAmt` + `depositFee` = `amount`; `txnAmt` = `amount` + `depositFee` | `successAt` | Yes: no page names the wallet (rule 45), and it can land on Unified |
+| Internal deposit | I | `txnAmt` = `amount` | `createdTime`, its whole second | Yes, the same |
+| Withdrawal | O | `txnAmt` = `amount`; = `amount` + `withdrawFee`; = `amount` + `withdrawFee` + `tax` | `createTime` to `updateTime` | Yes, the same |
+| Transfer | I when `toAccountType` is FUND, O when `fromAccountType` is FUND; no other transfer is a source | `txnAmt` = `amount` | `timestamp` | No: it names Funding |
+| Convert | O for `fromCoin`, I for `toCoin`, only on the FUND words of section 3 | `txnAmt` = `fromAmount`, `toAmount` | `createdAt` | No: it names Funding |
+
+An empty or unreadable fee or tax makes no form, and the other forms stay. Log rows are no source: the log is Unified only (PLANNER CALL 39 stands). A universal transfer to a sub-account is read by no series, so it lists, which is true for the main account.
+
+2. **Pair.** A candidate is a ledger row and a source with the same coin, the same direction, an equal amount under a form, and a distance of at most W = 7 days. The distance is 0 inside the extent, and otherwise the gap to it. Candidates sort by form order, then distance, then ledger key, then source key, and each takes its pair if both are still free. So pairing is one to one and does not depend on order. Two equal rows at one time do not share one source. A pair gives `explained`.
+3. **Earn.** Any row left whose words are on `EARN_PRINCIPAL_WORDS`, when the shipped clause reads Earn or holds E3, gives `earnMove`: no row and no count (PLANNER CALL 57).
+4. **Wait.** Any row left, when its source series may not have shown its source yet, gives `waiting`. That is: the row's time plus H = 1 day is past the cursor of a series of its direction, or owed ground of such a series, a point or a range, lies within W of it, or no convert pass has ended past that time. A deposit, internal deposit or withdrawal holds only rows of its own direction. A transfer and a convert hold both.
+5. **Hold.** Any row left with a free source of its coin and direction within W gives `held`. The source shows that some move near it has no ledger row, and this row may be that move in a form no page states (PLANNER CALL 54).
+6. **List.** Any other row gives `listed`.
+
+Which failure is worse decides each choice: a missed match is a double count, which is new harm from this feature. A false match or a held row is a lost row, and the line then equals the line with no ledger, which the user read in O64.
+
+The window: no page states a delay. W is one constant, and the test passes it in.
+
+| W | Result | Number |
+|---|---|---|
+| Too narrow: 0 | A ledger row 1 s after its deposit is listed: a double count | -100 before the second row, for each such 100 |
+| Chosen: 7 days | A source with a real partner pairs with the nearest row, so a wider window costs it nothing. A deposit with no ledger row can take an equal row within 7 days | +100 before a credit of exactly 100 within 7 days of a Unified deposit of 100 |
+| Too wide: 729 days | That lost row can happen with a credit of the same amount at any time, and a round amount recurs | +100, for each such row, over 2 years |
+
+#### The matrix
+
+`bybit.funding-match.test.ts`, one `it` per row (A84). S is a source, L a ledger row, and amounts are in USDT unless named.
+
+| # | World | Verdict | Effect on the past line |
+|---|---|---|---|
+| M1 | S deposit 100; L In 100, same second | L explained | None: the truth |
+| M2 | S withdrawal 41.43008, fee 5; L Out 46.43008 | L explained, by the fee form | Off by the fee 5, rule 41 |
+| M3 | S withdrawal 41.43008, fee 5; L Out 41.43008 and L Out 5 | First explained, second listed | None: the truth, and better than rule 41 |
+| M4 | S transfer FUND to UNIFIED 5000; L Out 5000 | Explained | None |
+| M5 | S transfer UNIFIED to FUND 5000; L In 5000 | Explained | None |
+| M6 | S transfer FUND to UNIFIED 5000 with its own L Out 5000; a second L In 5000 | Out explained. The source is used, and the row is In, so it lists | None: a real credit |
+| M7 | S convert on `eb_convert_funding`, 0.1 ETH to 0.00534882723991 BTC; L Out and L In of those | Both explained | None |
+| M8 | The same S; L Out 0.1 ETH and L In 0.00534882 BTC | Out explained. The BTC row has no pair: held | None: the source row holds the move; `bybitFundingHeld` shows 1 |
+| M9 | S deposit 100; two L In 100 at one time | One explained, one listed | None: the truth. The key fixes which row pairs |
+| M10 | Two S deposit 100; one L In 100 | One explained; the free source has no row left to hold | None if the other landed on Unified |
+| M11 | No S; L In 100, an unknown word | Listed | None: closes the +100 |
+| M12 | S deposit 100 that landed on Unified; L In 100 on Funding, 3 days later | Explained: a false match | A lost row: +100 before it |
+| M13 | The same, 8 days later | Listed | None |
+| M14 | S deposit 100; L In 99, from a fee in no field | Held | Off by 1 at most, rule 41; `bybitFundingHeld` shows 1 |
+| M15 | S deposit 100 that landed on Unified; L In 99 | Held | A lost row: +99 before it, counted |
+| M16 | S deposit 100; L In 100, 8 days later, and truly its own | Listed: a double count | -100 before the second row. The one missed match left under the pages |
+| M17 | W = 0, S deposit 100, L In 100, 1 s later | Listed | -100: the window is load-bearing |
+| M18 | W = 729 days, as M12 with the credit a year later | Explained | +100: the upper bound is load-bearing |
+| M19 | L Out 100, word on `EARN_PRINCIPAL_WORDS`, Earn read | `earnMove` | None: Earn's own balance holds it |
+| M20 | The same, clause "E2 and E4" | Listed | None: the money left what Kiko counts |
+| M21 | L In 100, the same word, a redemption, Earn read | `earnMove` | None |
+| M22 | L In 0.00003561 BTC, the page's sample words, either clause | Listed: the interest key is not on the principal list | None |
+| M23 | L Out 100, a word on no list, Earn read, and it is a stake | Listed: a double count | +100 before the stake. PLANNER CALL 57 |
+| M24 | S withdrawal `CancelByUser`, so no source; L Out 100, L In 100 | Both listed | None: the money did leave and return |
+| M25 | L In 100, L Out 100 of a rolled back deposit, S removed by 70011 | Both listed | None: net 0 |
+| M26 | `100` against `100.00` | Equal | Exact, never a float |
+
+The failure the user named (O65) has its own kind of proof: A89 runs M16 and M23 through `buildNetWorthSeries` and asserts the double count by number, so a change to the window or the words moves a test. A90 does the same for the lost rows M12 and M15. Q10 and Q11 pin that no other world can double.
+
+#### Arrival order
+
+The walk code answers this. `commitSettledSpan` writes rows, then marks. `planWalkPasses` moves a series' `cursor` only by a commit, and a run can stop at any commit. A pending deposit makes no row at all (rule 47). So when a ledger row is read, its source may be unread, may be waiting, or may be in no store. A decision taken once, when the ledger row arrives, cannot be right in all of these. A hold alone is not enough either, because a source can land behind its cursor through the re-scan.
+
+So no decision is stored (PLANNER CALL 52). Rule 51 runs on the whole set at the end of each run, and the write brings the rows to its result:
+
+- Each source walk writes its record to the stored set in the same `add` as its row, before its marks. A `remove` deletes the record with the row.
+- The ledger walk writes each read row to the stored set, and writes no transaction row. So no walk ever waits for another.
+- `reconcileFundingLedger`, in its own `logOnFailure` after the last walk, makes no call: it adds a row for `listed`, removes a row for a verdict that left `listed`, and patches the counts.
+- A key with no stored ledger row is never removed. So a reconnect or a partly read set takes away nothing.
+
+| Case | What happens | Line |
+|---|---|---|
+| The ledger row is read before the source window | `waiting`, by step 4, until that series passes it by H | As with no ledger. The caption is up, because that series is behind |
+| A deposit waits with a time (10011, 10012, 0) | Its point is owed: In rows within W are `waiting` | As with no ledger, with the caption |
+| A deposit with no time (rule 47) | The tagged range is owed: In rows within W of the span wait, and Out rows do not | The same, as long as the range stays |
+| A withdrawal under review, ledger row at request | Its point is owed: Out rows within W wait; when it settles it pairs | The same |
+| A source lands after its row is listed, by a re-scan | The next reconcile pairs them and removes the listed row by key (`removeSyncedRows`). A user's category on that row goes with it | A double count only until that reconcile, and the run that read the source runs it |
+| A re-scan reads the same rows | The stored set keeps one row per key, and nothing changes (Q6) | None |
+| A rollback, 70011, in the re-scan | The record goes with its row, and the In and the Out both list | Net 0: the truth |
+| A rollback seen only past the re-scan | Q3 (a) stands: the deposit row stays, and it pairs with the In. The Out of the rollback lists alone, so the rows net to 0 | The truth, if Bybit lists that Out. Q3 (a) gets smaller (A92) |
+| A run stops at a budget hold or a crash, at any commit | Reconcile reads what is stored. A series that did not move its cursor keeps its rows waiting | Q10 cuts at every commit |
+| A convert pass spans runs | `cursor` moves only at the end of a whole pass, so step 4 holds rows until then. This rests on the fix of N4 and N5 (O66 (c)): with `cursor` null for good, every ledger row waits for good | A lost row, with the caption |
+| A capital or transfer day that never commits (Q3 (b)) | Its cursor holds, so all later rows of that direction wait | A lost row, with the caption. Q3 (b) grows by this |
+| A reconnect | `disconnectExchange` clears the stored set. Kept rows stay as a manual snapshot, and a read of the same key re-adopts them | None |
+| A `.kiko` restore | The stored set rides in the file (PLANNER CALL 51) | None |
+
+#### What a listed row is
+
+| Topic | Rule | Code |
+|---|---|---|
+| Row | `source: 'bybit'`, amount `txnAmt` signed by `ioDirection`, by `rowMinorUnits(coin, text, 'rounded-row')`; time `createTime`; `description` `''`; no category; `operation` null; no pair id | `placeWalletRows` |
+| Spending | Out: marker `ledger:funding`, in either direction (PLANNER CALL 56) | `exchangeExcludedTransactionIds` |
+| Label | The fixed label `transactionRow.fundingLedgerMove`. Server text is never stored or shown: `descriptionEn` is English only, which kiko-translator refuses on a Ukrainian screen, and kiko-compliance's parse rule keeps out a free text that could name a person | `row-description.ts`; `untracked-counterpart.ts` gains the kind `ledger` |
+| A row that rounds to 0 units | No row, and the stored row stays for pairing | As stage E |
+| A coin not tracked | `isTrackedBybitAsset` false: its ticker in `untrackedCoins`, no stored row | Rule 8 |
+| No `currcCursor` | A row with no key cannot be stored: it makes no row and owes nothing, because no read could clear it, and a patch kind `fundingLeftOut` marks that one exists. It shows `bybitFundingNoId` (PLANNER CALL 60) | `logKinds` precedent |
+| An unreadable row: `ioDirection` outside I and O, a malformed `txnAmt`, a time of another digit count | The span owes one range tagged `fundingLedger`, not a point per row, so `pending` stays bounded (N3, PLANNER CALL 60) | `isOwedPast`, `MAX_PENDING_RANGES` |
+| One key with two values | Both owe their point, as PLANNER CALL 38. A same-key conflict is rare, so a point holds | Rule 47's shape |
+
+`EARN_PRINCIPAL_WORDS` is a closed list of `showBusiType` and `description` words: at this text `fundingAccountRecordEarn`, unless `description` is `fundingAccountRecordFlexSavingInterestDistribution`, the page's only words. Set 1 step 10/11 adds what P19 prints around K4, K5 and K11, "on testnet".
+
+Earn and the line (COMPUTED). Deposit 100 to Funding, stake it all in a read product. Earn's balance is 100 and has no rows.
+
+| Past line | Before the deposit | Deposit to stake | After the stake |
+|---|---|---|---|
+| Truth | 0 | 100 | 100 |
+| Stake row not listed (`earnMove`) | 0 | 100 | 100 |
+| Stake row listed | 100 | 200 | 100 |
+
+So a stake is a double count when Earn is read, and is right when it is not (M19, M20). The same holds for a redemption. Interest paid to Funding is a true credit on either clause.
+
+The walk:
+
+- Walk id: a new `WALK_IDS` member `fundingLedger`, the fan-out of `log` (stage E). Nothing writes it on a Binance account, so its stored text stays byte-identical (A79 grows).
+- `planWalkPasses`, `runWalkPlan`, `readCursorSpan` as is, one series, `reach` per rule 18. A row outside the span is `bybit-page-drift`.
+- A day over `cap x 100` rows does not stall: `readCursorSpan` splits below a day, to 1 minute, as the fix of N1 gives `log` (O66 (a)). If that fix does not converge, this walk takes the line it gets. A minute with over 2,000 rows holds this lane only.
+- A repeated `nextPageCursor` ends the span when the page holds no new key, and is `bybit-page-drift` only with a new key: a page past the end must not hold the caption for good (N5). The re-scan reads the same ground again, and the key makes a repeat harmless. P19 prints which form the route has.
+- This walk reads by time, so it has no pass-end replacement of owed ground and needs no new store (N4). It depends on N4 only through the convert `cursor` above.
+- The stored set is `funding_match_rows`, one row per ledger row and per source (PLANNER CALL 51), read by account on its primary key.
 
 ## 4. Client facts
 
@@ -383,10 +551,11 @@ Stage A has no walk: 5 calls every sync, outside the gate, as Binance's balance 
 | B | transfer | 60/min | 7 d | ceil(729/7) = 105 | 105 | 2 | same |
 | E | log | 25/s | 7 d | 105 | 105 | 2 | the real walker (set 9); P8 on testnet for the row shape only |
 | E | convert | 50/s or 100/s (section 3) | none | | 1 + ceil(rows/100) | 1 + ceil(rows/100) | set 9 |
+| F | funding ledger | 30/s (QUOTE, live page) | 7 d | 105 | 105 | 2 | the real walker (set 10); P19 on testnet for the row shape only |
 
 Steady state: forward 1 window plus re-scan `[now - window, cursor)` 1 window (`withoutRead` takes
 the overlap day out). Totals: A 5. B first 183, steady 8. E first at least 106, steady at least 3. A+B+E: first at least 289 gated plus 5, steady
-at least 11 gated plus 5 (was: A+B, first 183, steady 8).
+at least 11 gated plus 5 (was: A+B, first 183, steady 8). A+B+E+F: first at least 394 gated plus 5, steady at least 13 gated plus 5.
 
 The Binance reference at the same date: capital 78, Earn 354, Transfer 120 (seam map section 7).
 Bybit's first read is smaller in total, but its 60/min transfer route sets a much slower gate.
@@ -399,10 +568,10 @@ Bybit's first read is smaller in total, but its 60/min transfer route sets a muc
   per route. P16 MEASURED each route's `X-Bapi-Limit` (table above), Earn's at 10, and no route moves the interval.
 - No weight reading. Headers are read only for the cooldown (rule 31).
 - Caps, chosen from the table below: lane `capital` 30 calls per run (10 windows of 3 series, so
-  `MAX_WINDOWS` 10), lane `transfer` 20 calls per run (`MAX_WINDOWS` 20), lane `log` 20 (`MAX_WINDOWS` 20), lane `convert` 10 pages. A run
-  spends at most 80 gated calls plus 5 (was: 50 plus 5), holding one of the `SYNC_CONCURRENCY_LIMIT` slots for that many intervals. Reference:
+  `MAX_WINDOWS` 10), lane `transfer` 20 calls per run (`MAX_WINDOWS` 20), lane `log` 20 (`MAX_WINDOWS` 20), lane `convert` 10 pages, lane `fundingLedger` 20 (`MAX_WINDOWS` 20). A run
+  spends at most 100 gated calls plus 5 (was: 80 plus 5, before that 50 plus 5), holding one of the `SYNC_CONCURRENCY_LIMIT` slots for that many intervals. Reference:
   Binance's transfer lane alone is 80 (`LANE_CALL_CAPS`, CODE).
-- Order: capital walk, then transfer, then log, then convert, each in its own `logOnFailure`, forward first
+- Order: capital walk, then transfer, then log, then convert, then the ledger, then reconcile with no call, each in its own `logOnFailure`, forward first
   (`owedFirst` false). The forward pass keeps none, so during catch-up the re-scan and owed ground
   wait; catch-up ends in a bounded number of runs, so they are read then.
 
@@ -452,6 +621,19 @@ The same for stage E, COMPUTED; `bybit.convergence.test.ts` in set 9 replaces th
 | Perps bot | 50,000 over 2 years, even | 10 | at least 53, at least 1,050 | 0 | 1 |
 | Burst | Over 1,000 rows in one day | | That day never commits (pager rule, Q3 (b)) | | |
 
+The same for stage F, COMPUTED; `bybit.funding-ledger.convergence.test.ts` in set 10 replaces these with MEASURED values. The lane runs on the windows of transfer and log, so all three end on the same run on a small account.
+
+| Seed | Ledger rows | Pages per window | Ledger: runs, calls | Listed rows |
+|---|---|---|---|---|
+| Small account | under 100 per window | 1 | 6, 106 | Few |
+| Hourly yield on 1 coin, if Bybit pays hourly (no page states it) | 168 per window | 2 | 11, 210 | 17,520 over 2 years (PLANNER CALL 62) |
+| Hourly yield on 5 coins, the same | 840 per window | 9 | 48, 945 | 87,600 over 2 years |
+| A day of 150 rows | Over 100 in a day | 2 in that window | 6, at least 107 | |
+| A day of 1,001 rows | Over 1,000 in a day | 11 in that window | Commits inside the 20 calls of a run: 1,001 rows fit 2,000 | |
+| A day of 2,001 rows | Over `cap x 100` | | Splits below a day (N1's fix). A minute with over 2,000 rows holds this lane only | |
+
+Reconcile reads every stored row of the account on each run. Its cost at the 5-coin seed is not known: set 10 step 5/6 measures it with 100,000 rows on real SQLite, and a result that blocks the JS thread is a report to the orchestrator, never a loosened rule.
+
 ### The pager rule and its convergence
 
 `readCursorSpan` (`src/crypto-sync/bybit/`, PLANNER CALL 6) reads one span of one series by following
@@ -477,7 +659,8 @@ Every return that says "nothing to do" or "complete", and the check that must ru
 | No credentials | balance read, walk | None needed: nothing can be read; a walk logs by code |
 | Cooldown | balance read, `canAfford` | Time only; no mark moves |
 | Malformed state | run arm | Stops every walk, shows the paused caption |
-| Empty plan | walk `runSync` | Binance's Transfer tests `forward` and `rescan` only. Bybit's guard tests `forward`, `rescan`, `pending` and `points`, for capital, transfer and log, so a clock step back never skips owed ground: red pin required |
+| Empty plan | walk `runSync` | Binance's Transfer tests `forward` and `rescan` only. Bybit's guard tests `forward`, `rescan`, `pending` and `points`, for capital, transfer, log and the ledger, so a clock step back never skips owed ground: red pin required |
+| Empty stored set | reconcile | None needed: no row can list. A failed walk does not skip reconcile, because it reads only what is stored |
 | Empty convert page | convert read | The whole pass held its rows; `cursor` moves only here. A first read at `pageIndex` over 1 still ends here, and the next pass starts at 1 |
 | `canAfford` false | `readPass` | `complete: false`; marks unmoved |
 | Span read `undefined` | `walkSpans` | Hint stored; `complete: false` |
@@ -573,8 +756,8 @@ key may get it, UNPROBED(P17).
 
 ### 6.4 Which kinds ship, and how the UI says so
 
-Stages A, B and E ship (Q1, O62, O64). UNIFIED and FUND ship on the mainnet read and the testnet run. Deposits, internal deposits,
-withdrawals, transfers, spot trades and converts ship docs only. Earn ships only by "What proves Earn" (section 10), and otherwise clause "E2 and
+Stages A, B, E and F ship (Q1, O62, O64, O65). UNIFIED and FUND ship on the mainnet read and the testnet run. Deposits, internal deposits,
+withdrawals, transfers, spot trades, converts and the Funding ledger ship docs only. Earn ships only by "What proves Earn" (section 10), and otherwise clause "E2 and
 E4" states that it is not read. Was: only a kind that passed on the small account on device ships, and a kind the user
 cannot produce stays unread.
 
@@ -583,7 +766,7 @@ cannot produce stays unread.
 | Connect screen | `bybitConnectLimits`, `bybitKinds` | `bybitKinds` per kind set (section 8) |
 | Help topic `connectCrypto` | a new Bybit step, which ends with the `bybitKinds` text | per kind set |
 | Holding footer `notListedKey` | `holdingDetail.exchangeNotListed.bybit` | per kind set |
-| Account detail | `bybitKinds` in the connected section, expiry line, coin lines, `bybitWalletRefused`, `bybitEarnLeftOut`, `bybitLogLeftOut` | per kind set |
+| Account detail | `bybitKinds` in the connected section, expiry line, coin lines, `bybitWalletRefused`, `bybitEarnLeftOut`, `bybitLogLeftOut`, `bybitFundingHeld`, `bybitFundingNoId` | per kind set |
 | Statistics, net worth card | `statistics.bybitPastLimits`, under the line, only with a Bybit account in the filter scope (PLANNER CALL 45) | none |
 | Catalog row | existing `exchangeConnectable`, `exchangeDisclaimer` | none |
 
@@ -600,7 +783,7 @@ Reused as is (CODE): `signQuery`, `exchange/credentials` (`hardenedFor`, service
 
 New, in `src/crypto-sync/bybit/` (no walker copy): client, endpoints, credentials, cooldown,
 holding keys, tracked coin, provider, key expiry, budget, walk config, cursor span reader, capital
-walk, transfer walk, log types, log walk, convert read, barrel. Narrowest shared extractions:
+walk, transfer walk, log types, log walk, convert read, funding ledger read, match rule, match store, reconcile, barrel. Narrowest shared extractions:
 
 - `runExchangeWalkPlan`, `commitExchangeSpan` move from `binance.walk-wiring.ts` into
   `exchange/walk/` taking config, cooldown test and unreadable test; Binance's wiring stays as a thin
@@ -672,10 +855,10 @@ shipped kind, before any Keychain write, with a text that names the reason (PLAN
 |---|---|---|
 | `readOnly` not 1, in `query-api` | `bybitKeyNotReadOnly` | MEASURED 2026-11-04: number, 1 on a read-only key |
 | `isMaster` not true, absent included | `bybitKeyNotMain` | MEASURED: boolean, true on a main key. QUOTE, withdrawal page: "Can query by the master UID's api key only" |
-| One real read of each shipped route answers 10005: UNIFIED, FUND, deposit, internal deposit, withdrawal, transfer, log, convert, and Earn if it ships | `bybitKeyMissingPermission`, one remedy with no kind named (was: `{{kind}}`, cut: every kind has the same remedy) | MEASURED: UNIFIED gives HTTP 200, 10005 on a key with `Wallet` and `Earn` only. The convert route needs the `Exchange` box (QUOTE, guideline), which "every read box" holds. docs only for the log and convert until the empty read (section 10) |
+| One real read of each shipped route answers 10005: UNIFIED, FUND, deposit, internal deposit, withdrawal, transfer, log, convert, the Funding ledger, and Earn if it ships | `bybitKeyMissingPermission`, one remedy with no kind named (was: `{{kind}}`, cut: every kind has the same remedy) | MEASURED: UNIFIED gives HTTP 200, 10005 on a key with `Wallet` and `Earn` only. The convert route needs the `Exchange` box (QUOTE, guideline), which "every read box" holds. docs only for the log, convert and the ledger until the empty read (section 10). The ledger page names no permission, so what a narrow key gets is not known; a 10005 there refuses it, by the same text |
 | Any other refusal of those reads | Its text from the table of section 4 | docs only, except 10001 and 131203 |
 
-Connect call count: `query-api` and 8 routes make 9 calls with no Earn category, 10 with one, 11 with both (was: 7 or 9, which left out one category, and no log or convert). A32 locks the count per kind set. History reads use `limit=1` and a window of one day,
+Connect call count: `query-api` and 9 routes make 10 calls with no Earn category, 11 with one, 12 with both (was: 9, 10 or 11, before the ledger; before that 7 or 9, which left out one category, and no log or convert). A32 locks the count per kind set. History reads use `limit=1` and a window of one day,
 the shape of P11; the convert read uses `limit=1`, `index=1`. Each route's limit holds for one call (section 5). This is more than a sync's 5, once per connect.
 
 No box list (was: `bybitKeyMissingPermission` named boxes read from `permissions`, per P1 and P11). No page names UNIFIED's
@@ -702,7 +885,7 @@ dated. The measured cost of a notification is under Backlog.
 
 kiko-translator reviews this table before any commit that adds it. Plain-text name, no logo, generic
 icon, existing `forms.account.exchangeDisclaimer`. New keys under `accountDetail` unless named. UI text
-uses Кіко in uk, ʼ for the apostrophe. The wording shows clauses E1, M2, W1, F1, F2 and L1. Set 7 picks the Earn clause by the
+uses Кіко in uk, ʼ for the apostrophe. The wording shows clauses E1, M2, W1, F1, F2, F3 and L1. Set 7 picks the Earn clause by the
 testnet outcome, from the clause table below, and clause "E2 and E4" holds with no passing reading. A row changed or added
 by a ruling states its level in the key cell. A row that carries a level other than QUOTE or MEASURED is copy that set 1
 step 10/11 re-checks against the output. kiko:translator's review of this table stays owed at set 7. This table holds the final text, trades and converts
@@ -724,7 +907,7 @@ the past cannot hold, which is a different thing (goal 4, PLANNER CALL 45).
 | `noBybitCredentials` | No Bybit credentials stored; connect Bybit before syncing. | Облікові дані Bybit не збережено; підключіть Bybit перед синхронізацією. |
 | `bybitKeychainDisclosure` | Your Bybit API key is stored only in your device's Keychain, used only to fetch your own data directly from Bybit, and is never sent to Kiko or any server. | Ваш API-ключ Bybit зберігається лише в Keychain вашого пристрою, використовується лише для отримання ваших власних даних безпосередньо з Bybit і ніколи не надсилається до Кіко чи на будь-який сервер. |
 | `bybitConnectLimits` (O2, O13, O25, O39 C1, O60. Level: O1 for "only global"; QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not"; MEASURED for read-only with no IP restriction, every read box and the main account; QUOTE for 90 days and renewal before the date, and "about" for the reading of O60) | Kiko works only with global Bybit accounts (bybit.com). It does not support Bybit EU accounts, and an account of another regional Bybit site (Turkey, Kazakhstan and others) may not work here. On your main account, create a read-only key with every read box ticked and no IP restriction. Bybit ends such a key after about 90 days; you renew it on Bybit, and the key and secret stay the same. | Кіко працює лише з глобальними акаунтами Bybit (bybit.com). Він не підтримує акаунти Bybit EU, а акаунт іншого регіонального сайту Bybit (Туреччина, Казахстан тощо) тут може не спрацювати. В основному акаунті створіть ключ лише для читання, позначте всі дозволи на читання й не вмикайте обмеження за IP. Bybit припиняє дію такого ключа приблизно через 90 днів; ви подовжуєте її на Bybit, а ключ і секрет лишаються ті самі. |
-| `bybitKinds` (E1, M2, W1, L1; O64. Level: UNPROBED(P3) for Earn; docs only for the rest. Was: "It does not read trades, converts, ...") | Kiko reads your balances (Unified, Funding, Flexible Savings, On-Chain Earn), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades and converts. It does not read P2P orders, other Earn products, derivatives or loans. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. The text of clause L1 follows here, word for word. | Кіко читає ваші баланси (Unified, Funding, Flexible Savings, On-Chain Earn), поповнення, зокрема від іншого користувача Bybit, виведення, перекази між Funding і Unified, спотові угоди й конвертації. Він не читає замовлення P2P, інші продукти Earn, деривативи й позики. Записи Bybit про поповнення й виведення не вказують, який гаманець використано, тож Кіко показує їх усі на Funding. Це не впливає на ваші поточні баланси. Далі йде текст пункту L1 слово в слово. |
+| `bybitKinds` (E1, M2, W1, L1; O64, O65. Level: UNPROBED(P3) for Earn; docs only for the rest. Was: "It does not read trades, converts, ..."; no Funding record) | Kiko reads your balances (Unified, Funding, Flexible Savings, On-Chain Earn), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet's record. It does not read P2P orders, other Earn products, derivatives or loans. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. The text of clause L1 follows here, word for word. | Кіко читає ваші баланси (Unified, Funding, Flexible Savings, On-Chain Earn), поповнення, зокрема від іншого користувача Bybit, виведення, перекази між Funding і Unified, спотові угоди, конвертації й журнал вашого гаманця Funding. Він не читає замовлення P2P, інші продукти Earn, деривативи й позики. Записи Bybit про поповнення й виведення не вказують, який гаманець використано, тож Кіко показує їх усі на Funding. Це не впливає на ваші поточні баланси. Далі йде текст пункту L1 слово в слово. |
 | `bybitKeyRejected` (O25, O39 C1: fits a wrong key and a key of Bybit EU or another regional site. Level: QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not") | Bybit did not accept this key. Check the key and the secret. Kiko works only with global Bybit accounts: it does not support Bybit EU accounts, and a key from another regional site may not be accepted here. | Bybit не прийняв цей ключ. Перевірте ключ і секрет. Кіко працює лише з глобальними акаунтами Bybit: він не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту тут може не підійти. |
 | `bybitKeyNotReadOnly` | This key can do more than read. Create a read-only key on Bybit and connect with that one. | Цей ключ дозволяє більше, ніж читання. Створіть на Bybit ключ лише для читання й підключіться з ним. |
 | `bybitKeyNotMain` (new, O13. Level: MEASURED for the field; a key that is not a main key is docs only) | Bybit does not show this key as a main account key. Create a read-only key on your main Bybit account and connect with that one. | Bybit не показує цей ключ як ключ основного акаунта. Створіть ключ лише для читання в основному акаунті Bybit і підключіться з ним. |
@@ -732,6 +915,9 @@ the past cannot hold, which is a different thing (goal 4, PLANNER CALL 45).
 | `bybitLogLeftOut` (new, O64, PLANNER CALL 41. Level: QUOTE for the words) | Unified log entries not imported: {{kinds}}. | Записи журналу Unified, які не імпортовано: {{kinds}}. |
 | `bybitLogKind.*`, the values of `{{kinds}}` (new; a list, joined by the app's list format) | `derivatives` derivatives; `convertEntries` convert and liquidation entries; `interestAndLoans` interest and loans; `bonuses` bonuses and airdrops; `earn` Earn moves; `stocks` stocks; `custody` custody entries; `other` other entries | `derivatives` деривативи; `convertEntries` записи конвертацій і ліквідацій; `interestAndLoans` відсотки й позики; `bonuses` бонуси й аірдропи; `earn` рухи коштів Earn; `stocks` акції; `custody` записи кастоді; `other` інші записи |
 | `statistics.bybitPastLimits` (new, F14, PLANNER CALL 45; under `statistics`, not `accountDetail`) | Bybit: the past of this line can be off. The text of clause L1 follows here, word for word. Your current balances are not affected. | Bybit: минуле на цій лінії може бути неточним. Далі йде текст пункту L1 слово в слово. Це не впливає на ваші поточні баланси. |
+| `bybitFundingHeld` (new, plural, O65, PLANNER CALL 54. Level: docs only) | one: Kiko did not list {{count}} Funding move, because it looks like a move Kiko already has but does not match it exactly. other: Kiko did not list {{count}} Funding moves, because they look like moves Kiko already has but do not match them exactly. | one: Кіко не показав {{count}} рух коштів у Funding, бо він схожий на вже наявний запис, але не збігається з ним точно. few: Кіко не показав {{count}} рухи коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно. many: Кіко не показав {{count}} рухів коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно. other: Кіко не показав {{count}} руху коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно. |
+| `bybitFundingNoId` (new, O65, PLANNER CALL 60. Level: QUOTE for the field; docs only for a row with none) | Bybit gave some Funding moves no ID, so Kiko did not list them. | Bybit не надав ID деяким рухам коштів у Funding, тож Кіко їх не показав. |
+| `transactionRow.fundingLedgerMove` (new, O65, PLANNER CALL 56; the developer greps the namespace `row-description.ts` reads) | Funding wallet move | Рух коштів у гаманці Funding |
 | `bybitWalletRefused` (new, O13. Level: MEASURED 10005 on UNIFIED) | Bybit refused this key for {{wallet}}, so Kiko did not update that balance. Check the key's permissions on Bybit. | Bybit не дозволив цьому ключу читати {{wallet}}, тож Кіко не оновив цей баланс. Перевірте дозволи ключа на Bybit. |
 | `bybitEarnLeftOut` (new, plural, O18. Level: UNPROBED(P3)) | one: Kiko left {{count}} Bybit Earn position out of this balance, because its status is not one Kiko counts. It may be a position you already redeemed. other: Kiko left {{count}} Bybit Earn positions out of this balance, because their status is not one Kiko counts. They may include positions you already redeemed. | one: Кіко не врахував у цьому балансі {{count}} позицію Bybit Earn, бо її статус не входить до тих, які він рахує. Це може бути вже погашена позиція. few: Кіко не врахував у цьому балансі {{count}} позиції Bybit Earn, бо їхній статус не входить до тих, які він рахує. Серед них можуть бути вже погашені. many: Кіко не врахував у цьому балансі {{count}} позицій Bybit Earn, бо їхній статус не входить до тих, які він рахує. Серед них можуть бути вже погашені. other: Кіко не врахував у цьому балансі {{count}} позиції Bybit Earn, бо їхній статус не входить до тих, які він рахує. Серед них можуть бути вже погашені. |
 | `bybitKeyValidUntil` | Bybit key works until {{date}}. | Ключ Bybit діє до {{date}}. |
@@ -748,7 +934,7 @@ the past cannot hold, which is a different thing (goal 4, PLANNER CALL 45).
 | `bybitCoinBorrowed` (O27: fits a first connect, with no last balance. Level: SUMMARY for the borrow fields; UNPROBED(P2)) | {{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. | {{coin}}: Bybit показує позику під цю монету, тож Кіко не читає її баланс. Баланс, показаний тут, узято з попередньої синхронізації. |
 | `disconnectProviderMessage.bybit` | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | Акаунт буде відʼєднано, а збережений API-ключ очищено. Ваші активи й транзакції збережуться, і ви можете й надалі керувати ними вручну. |
 | `untrackedCoins` (changed) | Not tracked: {{tickers}}. Kiko does not import a currency its {{exchange}} sync does not support. | The existing uk line with Binance replaced by `{{exchange}}`; the output for Binance stays byte-identical |
-| `holdingDetail.exchangeNotListed.bybit` (E1, M2, W1, F1, F2; O15, O25, O39 C1, O62, O64. Level: UNPROBED(P3) for Earn; docs only for the rows; QUOTE the P2P guide for the P2P clause, with no probe (O5, O49); QUOTE for the convert date; QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not". Was: "trades, converts" not listed; "records older than Bybit keeps") | Not listed: interest, bonuses, airdrops and other Unified log entries that are not spot trades; converts made on the website or in the app before 10 September 2025; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than two years. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. Deposit and withdrawal amounts are as Bybit reports them, with no separate fee line. A spot trade's amount already holds its fee. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted. | Не показано: відсотки, бонуси, аірдропи й інші записи журналу Unified, крім спотових угод; конвертації на сайті чи в застосунку до 10 вересня 2025 року; замовлення й дохід Earn; замовлення P2P, бо API Bybit відкритий для них лише рекламодавцям; продукти Earn, крім Flexible Savings і On-Chain; прибуток і збитки деривативів; позики; субакаунти; записи, старіші за два роки. Записи Bybit про поповнення й виведення не вказують, який гаманець використано, тож Кіко показує їх усі на Funding. Це не впливає на ваші поточні баланси. Суми поповнень і виведень показано так, як їх повідомляє Bybit, без окремого рядка комісії. Сума спотової угоди вже містить її комісію. Кіко не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти. |
+| `holdingDetail.exchangeNotListed.bybit` (E1, M2, W1, F1, F2, F3; O15, O25, O39 C1, O62, O64, O65. Level: UNPROBED(P3) for Earn; docs only for the rows; QUOTE the P2P guide for the P2P clause, with no probe (O5, O49); QUOTE for the convert date; QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not". Was: "trades, converts" not listed; "records older than Bybit keeps") | Not listed: interest, bonuses, airdrops and other Unified log entries that are not spot trades; converts made on the website or in the app before 10 September 2025; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than two years. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. Deposit and withdrawal amounts are as Bybit reports them, with no separate fee line. A spot trade's amount already holds its fee. A Funding wallet move is one no other Bybit record explains; it does not count as spending, and one that looks like a record Kiko already has stays out. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted. | Не показано: відсотки, бонуси, аірдропи й інші записи журналу Unified, крім спотових угод; конвертації на сайті чи в застосунку до 10 вересня 2025 року; замовлення й дохід Earn; замовлення P2P, бо API Bybit відкритий для них лише рекламодавцям; продукти Earn, крім Flexible Savings і On-Chain; прибуток і збитки деривативів; позики; субакаунти; записи, старіші за два роки. Записи Bybit про поповнення й виведення не вказують, який гаманець використано, тож Кіко показує їх усі на Funding. Це не впливає на ваші поточні баланси. Суми поповнень і виведень показано так, як їх повідомляє Bybit, без окремого рядка комісії. Сума спотової угоди вже містить її комісію. Рух коштів у гаманці Funding — це запис, якого не пояснює жоден інший запис Bybit; він не рахується як витрата, а рух, схожий на вже наявний запис, Кіко не показує. Кіко не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти. |
 | `help.topics.connectCrypto.title`, `rowLabel` | Connect Binance, Bybit or a Bitcoin Wallet; Connect Binance, Bybit or a Bitcoin wallet | Підключення Binance, Bybit або гаманця Bitcoin (обидва) |
 | `help.topics.connectCrypto.steps.2` | Under "Exchange or wallet", choose "Binance", "Bybit" or "Bitcoin wallet address". | У полі «Біржа або гаманець» оберіть «Binance», «Bybit» або «Адреса гаманця Bitcoin». |
 | `help.topics.connectCrypto.steps.4` (new; the old 4 and 5 become 5 and 6; O15, O25, O39 C1, O60. Level: MEASURED for read-only with no IP restriction, every read box and the main account; QUOTE EU 7.4 for Bybit EU; UNVERIFIED for another regional site, so "may not"; QUOTE for 90 days and renewal before the date, and "about" for the reading of O60) | For Bybit: Kiko works only with global accounts (bybit.com). It does not support Bybit EU accounts, and a key from another regional site may not be accepted. Tap "Open Bybit API management" and, on your main account, create a read-only key with every read box offered ticked and no IP restriction. Paste the "API key" and "API secret", then tap "Connect Bybit". Bybit ends the key after about 90 days; renew it there before that date, and the key stays the same. The shipped `bybitKinds` text follows here, word for word. | Для Bybit: Кіко працює лише з глобальними акаунтами (bybit.com). Він не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти. Натисніть «Відкрити керування API Bybit» і в основному акаунті створіть ключ лише для читання, позначте всі запропоновані дозволи на читання й не вмикайте обмеження за IP. Вставте «API ключ» і «API секрет», потім натисніть «Підключити Bybit». Bybit припиняє дію ключа приблизно через 90 днів; подовжте її там до цієї дати, і ключ лишиться той самий. Далі йде текст `bybitKinds` слово в слово. |
@@ -772,7 +958,8 @@ record.
 | W1 | Rule 45 outcome (b): no page names the wallet. Docs only (O62) | Added to the footer and to the end of `bybitKinds` | Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. (was: "Your balances", changed because a row feeds the past of the net-worth line) | Записи Bybit про поповнення й виведення не вказують, який гаманець використано, тож Кіко показує їх усі на Funding. Це не впливає на ваші поточні баланси. |
 | F1 | Rule 41: no page says whether `amount` holds the fee. Docs only (O62) | Added to the footer | Deposit and withdrawal amounts are as Bybit reports them, with no separate fee line. | Суми поповнень і виведень показано так, як їх повідомляє Bybit, без окремого рядка комісії. |
 | F2 | Rule 49: a spot row's `change` is net of its fee. QUOTE for the sum; docs only for a spot row (O64) | Added to the footer | A spot trade's amount already holds its fee. | Сума спотової угоди вже містить її комісію. |
-| L1 | What stays wrong (section 3; O64, PLANNER CALL 47). COMPUTED, and QUOTE for the convert date | Added to the end of `bybitKinds` and inside `statistics.bybitPastLimits`; the help step takes it through `bybitKinds` | Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses and airdrops, derivatives profit and loss, or anything older than two years. The past of your net worth can be off by those amounts. | Кіко не може прочитати монети, зараховані через P2P, конвертації на сайті чи в застосунку до 10 вересня 2025 року, дохід Earn, кошти, переведені в продукт Earn, який він не читає, відсотки, бонуси й аірдропи, прибуток і збитки деривативів, а також усе, що старше за два роки. Минуле вашого капіталу може відрізнятися на ці суми. |
+| F3 | Rule 51 and PLANNER CALL 56. Docs only (O65) | Added to the footer | A Funding wallet move is one no other Bybit record explains; it does not count as spending, and one that looks like a record Kiko already has stays out. | Рух коштів у гаманці Funding — це запис, якого не пояснює жоден інший запис Bybit; він не рахується як витрата, а рух, схожий на вже наявний запис, Кіко не показує. |
+| L1 | What stays wrong (section 3; O64, O65, PLANNER CALL 47). COMPUTED, and QUOTE for the convert date. Was: "Kiko cannot read coins credited by P2P, ... Earn yield, money moved into an Earn product it does not read, interest, bonuses and airdrops", with no wallet named. "Cannot read" left where the ledger may read it, and no gap is called closed: no page shows a P2P row | Added to the end of `bybitKinds` and inside `statistics.bybitPastLimits`; the help step takes it through `bybitKinds` | On Unified, Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses or airdrops. It cannot read derivatives profit and loss, or anything older than two years. On Funding, it reads such moves only as far as Bybit's Funding record lists them, and a move that looks like one it already has stays out. The past of your net worth can be off by those amounts. | В Unified Кіко не може прочитати монети, зараховані через P2P, конвертації на сайті чи в застосунку до 10 вересня 2025 року, дохід Earn, кошти, переведені в продукт Earn, який він не читає, відсотки, бонуси чи аірдропи. Він не може прочитати прибуток і збитки деривативів, а також усе, що старше за два роки. У Funding він читає такі рухи лише настільки, наскільки їх показує журнал Funding у Bybit, а рух, схожий на вже наявний запис, не показує. Минуле вашого капіталу може відрізнятися на ці суми. |
 
 The wallet names Unified, Funding, Earn in holding names are proper nouns kept in code, `'Bybit <Wallet>
 · <CODE>'`. The help step names no box list: it says every read box offered (section 6.8). That a read-only key works with
@@ -803,10 +990,10 @@ the credentials toggle.
 
 **Personal data (O5, O6, O64).** Never parsed into a row, state, log or description: `internal-deposit.address`,
 `fromMemberId`, `toAddress`, `fromAddress`, `tag`, `txID`, query-api's `userID`, `inviterID`, `kycRegion`,
-`note`; on the convert route `userId`, `extInfo` with `paramValue`; on the log route `tradeId`, `orderLinkId` (a text the user or a bot typed). Parsers read named fields only. A sentinel test covers each. `readOnly` and `isMaster`
+`note`; on the convert route `userId`, `extInfo` with `paramValue`; on the log route `tradeId`, `orderLinkId` (a text the user or a bot typed); on the ledger route `memberId`, `afterAmt`, `showBusiTypeEn`, `descriptionEn`. `showBusiType` and `description` are read as words against a closed list at the parse, and never stored. Parsers read named fields only. A sentinel test covers each. `readOnly` and `isMaster`
 hold no personal data; they are read at connect and never stored (O13). `permissions` is not read (section 6.8).
 
-Which ids are stored, and why (stage E): the log `id` only inside its row key, because the key needs it; the page's sample `592324_XRPUSDT_161440249321` reads as holding an account number (an inference), so the policy names it. `orderId` only inside the pair id, because a delete follows the pair. `exchangeTxId` only inside the convert's pair id. `tradeId` is not stored: the key does not need it.
+Which ids are stored, and why (stage E): the log `id` only inside its row key, because the key needs it; the page's sample `592324_XRPUSDT_161440249321` reads as holding an account number (an inference), so the policy names it. `orderId` only inside the pair id, because a delete follows the pair. `exchangeTxId` only inside the convert's pair id. `tradeId` is not stored: the key does not need it. `currcCursor` only inside the row key and the stored set (O65): the page's sample decodes from base64 to a plain number (an inference), so the policy names it as an ID of that record. The stored set holds coin, direction, amount, time and that key for each ledger row and source, also for a ledger row with no row of its own, so the policy names it.
 
 **Privacy policy.** Section 3 of `docs/privacy-policy.en.md` and `docs/privacy-policy.md` gets the two blocks
 below (E1 and M2 wording; O24, O13, O15, O34, O62, O64).
@@ -815,22 +1002,24 @@ below (E1 and M2 wording; O24, O13, O15, O34, O62, O64).
 > read-only, whether it belongs to your main account, and when it ends); your balances of
 > every coin and fiat currency (Unified, Funding, Flexible Savings, On-Chain Earn); your deposit history, including
 > deposits sent by another Bybit user, your withdrawal history; your transfers between your Bybit wallets; your Unified
-> account's transaction log, from which Kiko imports spot trades; and your convert history.
+> account's transaction log, from which Kiko imports spot trades; your convert history; and your Funding wallet's transaction record.
 > Bybit's answers can include your Bybit user ID and the sender's or recipient's address, email, phone number or Bybit user ID. They reach only your device,
 > and Kiko does not keep those details. Kiko keeps on your device the tickers of coins it does not track or could not read, the wallets and
 > the number of Earn positions it left out, the kinds of log entries it did not import, the date your key ends, and, inside each
-> imported trade or convert, Bybit's IDs of that record and its order, which can hold your account number; this also travels in a `.kiko` export.
+> imported trade or convert, Bybit's IDs of that record and its order, which can hold your account number; for each move of your Funding
+> wallet's record and each move matched to one, its coin, direction, amount, time and Bybit's ID, also for one that Kiko does not list; this also travels in a `.kiko` export.
 
 > uk: **Bybit** (`api.bybit.com`): за допомогою вашого API-ключа лише для читання: дані самого ключа (чи він
 > лише для читання, чи належить вашому основному акаунту й коли завершується його дія); ваші
 > баланси всіх монет і фіатних валют (Unified, Funding, Flexible Savings, On-Chain Earn); історія ваших поповнень,
 > зокрема від іншого користувача Bybit, історія виведень; перекази між гаманцями Bybit; журнал операцій вашого акаунта
-> Unified, з якого Кіко імпортує спотові угоди; історія ваших конвертацій. Відповіді Bybit можуть
+> Unified, з якого Кіко імпортує спотові угоди; історія ваших конвертацій; журнал операцій вашого гаманця Funding. Відповіді Bybit можуть
 > містити ваш ID користувача Bybit, а також адресу, email, номер телефону чи ID користувача Bybit відправника або отримувача. Вони надходять лише на ваш пристрій, і Кіко цих
 > даних не зберігає. Кіко зберігає на
 > вашому пристрої тікери монет, які не відстежує або не зміг прочитати, гаманці й кількість позицій Earn, які він
 > не врахував, види записів журналу, які він не імпортував, дату завершення дії ключа, а також, у кожній імпортованій угоді чи
-> конвертації, ID цього запису й замовлення в Bybit, де може бути номер вашого акаунта; це також переноситься в експорт `.kiko`.
+> конвертації, ID цього запису й замовлення в Bybit, де може бути номер вашого акаунта; для кожного руху коштів із журналу гаманця Funding і кожного
+> зіставленого з ним запису — монету, напрям, суму, час та ID у Bybit, також для руху, який Кіко не показує; це також переноситься в експорт `.kiko`.
 
 The counterparty text says "does not keep", because the response reaches the device and the parser drops it
 (O24). The level of the sentence "can include": QUOTE, live pages: `toAddress`, `fromAddress`, "Email address or phone
@@ -988,6 +1177,7 @@ R1 printed retCodes only, so no balance body of the empty account is known. The 
   `skip` ends it with no reading 2. It prints the Earn position fields on an empty account, for Earn if it ships. A plain `R4`
   would also reach P6's withdrawal prompt, so it is not used.
 - `R2 P8 P9`, after set 1 step 11/11: 2 calls, no prompt. They prove that the first key reaches the log and the convert route, which R1's P11 did not ask, and they give the empty shape.
+- `R2 P19`, after set 1 step 11/11: at most 3 calls, no prompt. It proves that the first key reaches the ledger route, gives the empty shape, and asks a window 729 days back (only a refusal moves a floor, O20).
 
 Neither disturbs R7: they are reads, and none renews anything. No script change is needed for `R2 P2` and `R4 P3`.
 
@@ -1022,9 +1212,11 @@ The user's steps, each with the proof it gives:
 | 4 | K3: a far-off unfilled spot limit order | `R3`: P2 reads, cancel K3 at its prompt, P2 reads again. Then P3 reading 1; at its prompt K4: subscribe Flexible Savings, and K5: on-chain Earn with another amount; Enter after they land; reading 2 | `locked` inside `walletBalance`; the double count | K3 refused or `locked` not shown: the question returns to the user, and it is not decided here. K4 refused: clause "E2 and E4". K5 refused: clause E2 |
 | 5 | K11 at the prompt: redeem ALL Flexible Savings, wait until it lands | `R4 P3` | The redeemed row and the redeem check | Refused or not landed: FlexibleSaving does not ship, clause E4 |
 | 6 | Nothing | `R2 P18` | Decimal counts per coin on the balance routes (8 calls; the history routes print none) | Decimals rest on the docs and the curated scale |
-| 7 (new, O64; waits for set 1 step 11/11) | K9: one spot buy that fills, a small market order or a limit order that crosses. K10, if testnet offers it: one convert in Funding and one in Unified | `R2 P8 P9` | The one free proof of a log row, shape only, no mainnet parity: how many rows per fill and per order, which coin each holds, `change + fee = qty` yes or no, whether `id` repeats, and the words of `type` and `category`. For a convert: the wallet word, and whether a convert in Unified also shows in the log, and under which word | No fill (a market order can fail with no liquidity, FAQ, SUMMARY), or refused: trades and converts stay docs only, and nothing blocks. A row shape that differs edits section 3 before set 9 writes it, or as a fix to set 9 |
+| 7 (new, O64; P19 by O65; waits for set 1 step 11/11) | K9: one spot buy that fills, a small market order or a limit order that crosses. K10, if testnet offers it: one convert in Funding and one in Unified | `R2 P7 P8 P9 P19`. P19 reads the ledger after K2, K4, K5, K11, K10 and the test coins of step 2, so one run shows them all | P19 is the free proof of a ledger row, shape only: which words each move takes, and whether a transfer and a Funding convert match their ledger rows by the forms and the window of section 3, "Stage F". The one free proof of a log row, shape only, no mainnet parity: how many rows per fill and per order, which coin each holds, `change + fee = qty` yes or no, whether `id` repeats, and the words of `type` and `category`. For a convert: the wallet word, and whether a convert in Unified also shows in the log, and under which word | No fill (a market order can fail with no liquidity, FAQ, SUMMARY), or refused: trades and converts stay docs only, and nothing blocks. A row shape that differs edits section 3 before set 9 writes it, or as a fix to set 9 |
 
 The decision on P8 and P9 (PLANNER CALL 44): add them. O37 left them out because stages C and D were deferred, and O64 brings the trade half back. A fill costs no real money, the shape is the largest open item in stage E, and a wrong shape costs all trades. Size: a floor of 150 script lines and 250 test lines, on top of step 8/11, with 2 new paths on the closed list, closed lists for `type` (the 68 words), `category`, `accountType` and `exchangeStatus`, `<other>` for any other word (O46), the coin shape test (O51), and yes or no comparisons, never an amount. Maximum calls: P8 3, P9 2. New sentinels for the fake-curl test: `userId`, `orderLinkId`, `tradeId`, `paramValue`. Nothing waits for it but its own two reads.
+
+P19 (PLANNER CALL 61): inside set 1 step 11/11, the same step. A floor of 60 script lines and 120 test lines on top of that step, 1 new path, new sentinels `memberId`, `afterAmt`, `descriptionEn` and `showBusiTypeEn`. It needs no user step of its own and no money. Earn's words need K4, K5 and K11 to have run, which only an Earn clause that ships needs.
 
 If the account step fails (no access, KYC) or the run cannot start: this track does not decide. The question returns to the user
 through the coordinator, with coin rows then resting on the docs and the empty mainnet read, clause "E2 and E4", and `locked` open.
@@ -1061,6 +1253,7 @@ device, and the app has no remote log, so no fault reaches the developer. What e
 | A fault of meaning in `locked`, or in Earn after a testnet pass | A wrong current balance, with no sign. This is the only way a current balance can be wrong. Only testnet stands against it |
 | A fault of meaning in a row (fee, rollback, window, a log row that doubles) | A wrong or missing line, or a wrong past point on the net-worth line or in spending (section 3); never a current balance |
 | A status the page does not explain | The row waits, with a caption: a missing row, as above. If that status is an end state, it waits until the floor passes it |
+| A fault in the ledger's forms, window or words | A row held and counted, or lost with no sign. A double count only in the cases of section 3, "What stays wrong", and those have no sign |
 
 One real deposit, withdrawal, trade and convert can remove the rows' part of this at a later time (Backlog).
 
@@ -1071,10 +1264,10 @@ On mainnet the account is empty, so a device build shows no coin row and no hist
 
 | Build | Proves | Cannot prove |
 |---|---|---|
-| Real: the set 7 tip, `api.bybit.com`, on the user's phone | Pins; connect with the real key, its refusals and 9, 10 or 11 calls (section 6.8); the expiry line with 2027-02-04; an empty account with "Last sync" and no holding; every stated limit, `statistics.bybitPastLimits` too; disconnect; Binance still syncs | Any coin row or history row |
+| Real: the set 7 tip, `api.bybit.com`, on the user's phone | Pins; connect with the real key, its refusals and 10, 11 or 12 calls (section 6.8); the expiry line with 2027-02-04; an empty account with "Last sync" and no holding; every stated limit, `statistics.bybitPastLimits` too; disconnect; Binance still syncs | Any coin row or history row |
 | Scratch: a scratch clone of the set 7 tip, with `BYBIT_API_ENDPOINT` in its own untracked `.env` set to testnet, on the simulator or on a named device with no real data, by UDID (O63 (c)) | The user sees coin rows on Unified and Funding from a live answer, a balance moving, a zero, Earn if it ships, and, if K2 ran, one transfer through the real walk to two legs and a caption-free list. If K9 filled: a spot trade as two legs through the real log walk, out of spending, with its past on the line. If K10 ran: a convert as two legs. No `src/` edit: the host comes from `@env` | Mainnet parity, pins (the testnet host is unpinned), deposit and withdrawal rows (none exist on testnet) |
 
-Deposit and withdrawal rows show on no device in this track (the user read this, O64). Their proof is the fake-route tests of set 5 and 6, from the page samples.
+Deposit and withdrawal rows show on no device in this track (the user read this, O64). Their proof is the fake-route tests of set 5 and 6, from the page samples. So no device shows a deposit or withdrawal matched against a ledger row either: the fake-route tests of set 10 are its proof (O65). A testnet transfer or Funding convert, if run, shows that match live on the scratch build, as no listed row.
 
 The scratch build NEVER goes on the user's phone (O63 (c); was: "the scratch app is deleted from the device"). It has the one bundle id (`deploy-device.sh` `BUNDLE_ID`), so it installs in place on the real database, and deleting it wipes the real container while `kiko.db.key` stays in the Keychain. Leaving it puts testnet holdings in the real database. A named device means `make deploy DEVICE=<UDID>` on a device that holds no real Kiko data; the coordinator names it. A simulator is shut down after use.
 
@@ -1082,7 +1275,7 @@ The guard against the scratch host reaching a commit: `.env` is in `.gitignore`,
 clone, so the worktree's `.env` never changes. A52 fails if a tracked env file, plist or `src/` file names `api-testnet`. A device scratch build runs with `EXPECT=api-testnet.bybit.com` on `make deploy`, because the deploy script warns of stale bundles (F11); a simulator build states the same check by `scripts/bundle-contains.js` on its bundle. The real build
 comes from the tip after the scratch check, with `EXPECT=api.bybit.com` on `make deploy`. If the testnet account step failed, only the real build runs, and the report says that no coin row was seen.
 
-The script's parts for 1.4 (O37, O64): P1, P2, P3, P4, P5, P6, P7, P11, P12, P13, P14, P15, P16, P17, P18, and from set 1 step 11/11 P8 and P9. P10 is
+The script's parts for 1.4 (O37, O64): P1, P2, P3, P4, P5, P6, P7, P11, P12, P13, P14, P15, P16, P17, P18, and from set 1 step 11/11 P8, P9 and P19. P10 is
 used only by stage D, so it is not in the script. Its id stays reserved under Backlog. P14 is in the script, prints
 NOT RUN and makes no call (O49).
 
@@ -1135,8 +1328,8 @@ The runs in 1.4. None holds money (O62). R2, R3 and R4 with real money are under
 | Run | When | The user does first | Parts | Proves |
 |---|---|---|---|---|
 | R1 | DONE 2026-11-04, 46 calls, then the second key, `R1 P1 P11`, 10 calls (O60). Output: `memory/refs/bybit-probe-output-2026-11-04.txt`, lines 1 to 158 and 159 to 215 | Read the C6 line above. A network with no VPN and no proxy (the script's curl uses `--noproxy '*'`, so a proxy variable cannot defeat this step). Global account at bybit.com, KYC as Bybit asks; one key: System-generated, read-only, every read box offered, no IP restriction. Keep the key and the secret in a password manager until R7: without them, "renewal keeps the same key" cannot be measured. Part 2 of the browser step (section 9) | P1, P11, P12, P13 (empty), P14 (no call, O49), P15, P16 | MEASURED: host (O1), key shape, boxes, `isMaster`, expiry date, 9 routes, limits, recv window, transfer path, window edges. The second key: 10005 on UNIFIED. An empty 0 proves no retention (O20) |
-| Empty read | Next, sections above | Nothing | `R2 P2`; `R4 P3` with `skip`; `R2 P8 P9` | The empty body shapes; reach of the log and convert routes |
-| Testnet | Sections above | Steps 1 to 7 | `--testnet` runs | Shape of coin rows, `locked`, Earn, a spot log row, a convert row |
+| Empty read | Next, sections above | Nothing | `R2 P2`; `R4 P3` with `skip`; `R2 P8 P9 P19` | The empty body shapes; reach of the log, convert and ledger routes |
+| Testnet | Sections above | Steps 1 to 7 | `--testnet` runs | Shape of coin rows, `locked`, Earn, a spot log row, a convert row, ledger rows and their words |
 | R7 | 2027-02-05 or later, the day after the date `expiredAt` printed (O55, O60); an open check after the ship (Q4). The first key costs nothing, so it stays | Have the key and the secret from the password manager; do not renew first | P17 (up to 6 calls). An ok answer from any of the first three calls (`query-api`, UNIFIED, FUND) prints "not expired yet" and ends the part with no prompt, because a renewal before the expiry loses the expiry error until the next expiry: run it again the next day (O57). A `query-api` answer that cannot be about expiry (HTTP other than 200 or 401, HTTP 200 with no `retCode`, or 10002, 10004 or 10016) makes no prompt and no renewal, and a `retCode` rule wins over HTTP 401, so 401 with 10002 stops. A rate limit also makes no prompt and no renewal. HTTP 401 otherwise goes on, because the docs name it for a bad key and an expired key may get it (UNPROBED(P17)). Any other refusal goes on to UNIFIED, FUND and the renewal prompt | The error after expiry, then renewal keeps the key. "`expiredAt` moved" is measured against the date P1 printed: the call before the renewal is refused and gives no date. Until it runs, the renewal row stays UNPROBED(P17), with the copy of O26 |
 
 Everything in research "STILL NEEDS THE KEY". Item 7 is P8 on testnet and item 8 is P9 on testnet (section 10, step 7), both shape only; the order and yield parts of item 12 are under Backlog,
@@ -1169,6 +1362,7 @@ P4 to P7, P13 with rows and P18 with rows run only at the later real-money run:
 | P4, P5, P6, P7 | Row names and types, `nextPageCursor` as absent, empty or present with its mask, status words from a closed list per series (`<other>` outside it), unit class of times, id present, amount and fee as zero or non-zero, fee smaller than amount. P4 and P6 also use two balance readings around the user's step (O47): per coin, FUND and UNIFIED as equal or changed; per row and per wallet, change equals amount, and change equals amount + fee, each yes or no, with the sign ignored. A deposit (P4) also prints change equals amount - fee, because a deposit can be credited net of its fee; the withdrawal series (P6) does not print it. P4 reads the rows before the prompt (the pending row, rule 47) and again after it, and the second read is the one compared; P6 reads them after the prompt. P4 and P6 row lines print that row's wallet-hint words, so that a value in the tally can be matched with one row. The K6 prompt asks for two different amounts when both wallets are used. A skip at the prompt prints no comparison. P5 and P7 print no balance drop: P5 is optional, and P7 rows name both wallets. P7 tries both transfer paths. P4 and P6 also print `depositType` values and any field that could tell the wallet, against the wallet that moved (rule 45). P4 with K1 pending prints whether the time is empty, 0, absent or present (rule 47) | Sets 5, 6 |
 | P8 (new, O64) | One read of the log for the last 7 days on the chosen host, at most 3 pages. Per row: names and types; `type`, `category`, `side` from closed lists, `<other>` outside them; `currency` by the coin shape test; `qty` sign; `change + fee = qty` yes or no, `change = cashFlow + funding - fee` yes or no; time unit class; `id` present and whether it repeats among rows; rows that share an `orderId`, as a count; whether the two coins of one order share a `tradeId`. No id, no amount | Nothing waits. A shape that differs edits section 3 and set 9 |
 | P9 (new, O64) | Convert history, at most 2 pages. Per row: `accountType` and `exchangeStatus` from closed lists, `<other>` outside them; `fromCoin`, `toCoin` by the coin shape test; largest decimal count of each amount; time unit class; order of `createdAt` on the page as newest first or not. Then, against the same run's P8 rows: whether a log row of the same time window has a word of `CURRENCY_BUY`, `CURRENCY_SELL`, `CONVERT` or `TRADE`, yes or no per word. No `userId`, no `extInfo` | Nothing waits. A shape that differs edits section 3 and set 9 |
+| P19 (new, O65) | At most 3 calls: the last 7 days, the next page, and a window 729 days back. Per row: names and types; `ioDirection` from a closed list; `currency` by the coin shape test; `showBusiType` and `description` by a shape test only, `fundingAccountRecord` and letters, otherwise `<other>` (O46; an accepted residual of the O51 kind, because a closed list would hide what this part exists to find; no free server text prints); `descriptionEn`, `showBusiTypeEn`, `memberId`, `afterAmt` never; `currcCursor` present, and whether it repeats; time unit class; largest decimal count of `txnAmt`; `nextPageCursor` mask, and whether a page past the end is empty or repeated. Then against the same run's P7 and P9 rows, per source row: a ledger row of its coin and direction with an equal amount, yes or no, and its delay as under a minute, under an hour, under a day, or more. No id, no amount | Nothing waits, except `EARN_PRINCIPAL_WORDS` for an Earn clause that ships. A shape that differs edits section 3 and set 10 |
 | P11 | One call per endpoint: `retCode` | Sets 3, 5 |
 | P12 | Rows and `retCode` for a window starting 2 years back, and 18, 12, 6 months, per series. Only a refusal moves a floor; an empty 0 keeps 729 days (O20) | Set 5 floors |
 | P13 | Per series: window edges (transfer 7 d, 7 d + 1 s; the others 29 d, 30 d), an end-exclusive and a start-exclusive test on the newest row, each with a control call one second past that time (`endTime` + 1 s, `startTime` - 1 s), `limit=1` page order, cursor shape (the mask of page 1), a full last page, a repeated cursor. On the withdrawal series only, the filter field: the time field, `createTime` or `updateTime`, that `startTime` and `endTime` filter on, by a window that ends and a window that starts between the two times of one row (O48). No coin filter: no Stage B row sends `coin`. A series with no row prints only its edges, so `R2 P13` runs once more after K6 settles | Sets 5, 6 |
@@ -1226,7 +1420,7 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A29 | Older build file | `src/data-transfer/secrets/restore-secrets.test.ts` (edit): "restores a Bybit pair to its own account" |
 | A30 | Sentinel email in `address` | `bybit.capital-history.test.ts`: "a counterparty field reaches no row, mark or log" |
 | A31 | query-api sentinel `userID` | `bybit.provider.test.ts`: "no identity field of the key reaches the state" |
-| A32 | 10005 on each shipped route at connect, and the count per kind set (O13, PLANNER CALL 25, F8) | `bybit-credentials-field.component.test.tsx`: "a key refused on any shipped route is refused before any Keychain write, and connect makes 9, 10 or 11 calls by the kind set" |
+| A32 | 10005 on each shipped route at connect, and the count per kind set (O13, PLANNER CALL 25, F8) | `bybit-credentials-field.component.test.tsx`: "a key refused on any shipped route is refused before any Keychain write, and connect makes 10, 11 or 12 calls by the kind set" |
 | A33 | `isMaster` false or absent (O13) | same, "a key not shown as a main key is refused before any Keychain write" |
 | A34 | 10005 on FUND on a later sync (O13) | `bybit.provider.test.ts`: "a refused wallet keeps its last balance and records its name for the visible line"; `crypto-sync-section` test: "the refused wallet line names the wallet" |
 | A35 | Deposit with no time, empty, 0 or absent, a fixture per form; status 0, status 3 with type 0, type 20, type 50; read again over 29 days later under a window on creation time (PLANNER CALL 37, O63 (b); was: owes nothing, CALL 28) | `bybit.capital-history.test.ts`: "a deposit with no time makes no row, owes its span in the deposit series only, moves the other series and gives no page drift, and imports once a later read shows its time" |
@@ -1278,6 +1472,20 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A81 | Rounding use (PLANNER CALL 42) | `src/crypto-sync/exchange/amounts/amounts.test.ts` (edit): "rounded-row rounds any coin, and row and trade-row stay as they were" |
 | A82 | A withdrawal's day on the line (F10) | `bybit.capital-history.test.ts`: "a withdrawal row's time is its createTime, before and after it settles" |
 | A83 | The leftovers on each surface (O64, clause L1) | `bybit.shipped-copy.test.ts`: "kinds, help and the Statistics line name trades and converts as read and state what the past cannot hold, the footer names what is not listed, in en and uk" |
+| A84 | Every row of the matrix, M1 to M26 (O65, rule 51) | `bybit.funding-match.test.ts`: "gives each ledger row of the matrix its verdict" |
+| A85 | The ledger's fields against the page's sample, and `memberId` as a sentinel, with `afterAmt`, `descriptionEn`, `showBusiTypeEn` | `bybit.funding-ledger.test.ts`: "reads the named fields of the page's row and a sentinel reaches no row, mark or log" |
+| A86 | Rows with no `currcCursor`, a bad `ioDirection`, a bad `txnAmt`, a bad time; a repeated cursor with and with no new key (PLANNER CALL 60) | same, "a row with no id owes nothing and marks the line, bad rows owe one tagged range, and a repeated cursor ends the span unless the page holds a new key" |
+| A87 | Each case of "Arrival order", real SQLite (O65) | `bybit.funding-ledger.real-sqlite.test.ts`: "each arrival case gives its verdict, and a source that lands late removes the listed row" |
+| A88 | A disconnect, a reconnect, a key with no stored row, and a `.kiko` round trip | same, "a reconnect and a restore remove no listed row, and a disconnect clears the stored set" |
+| A89 | The two doubles the rule names, M16 and M23, by number (O65) | `bybit.past-line.funding.real-sqlite.test.ts`: "a ledger row past the window and a stake under an unseen word each double by the amount shown" |
+| A90 | The lost rows M12 and M15, by number | same, "a false match and a held row each read as with no ledger" |
+| A91 | The worked example with the ledger on: paired, and with no pair (O65) | same, "the past of the worked example equals the truth with the ledger on, paired or held" |
+| A92 | A ledger row of an unknown word, as a P2P credit, on the row shape only; a rollback's Out past the re-scan | same, "a credit of an unknown word lists and closes its offset, and a late rollback's Out cancels the stale row" |
+| A93 | Out and In rows and each exclusion (PLANNER CALL 56) | `bybit.funding-ledger.real-sqlite.test.ts`: "a listed row stays out of spending and of the transfer, funding and loan matchers" |
+| A94 | The label in en and uk, and no server text (PLANNER CALL 56) | `src/transactions/row-description/row-description.test.ts` (edit): "a ledger marker renders its fixed label and no server text" |
+| A95 | The lines of the counts | The section test beside `crypto-sync-section.component.tsx` (edit): "the held count and the no-id line read persisted state" |
+| A96 | The new table (PLANNER CALL 51) | `src/db/schema.funding-match.test.ts`: "the read of one account's rows uses the primary key by EXPLAIN QUERY PLAN" |
+| A97 | Stage F in copy (O65, F3, L1) | `bybit.shipped-copy.test.ts`: "kinds, footer, help and the Statistics line state the Funding record, what it leaves out and that it is no spending, in en and uk" |
 
 ### Property suites
 
@@ -1294,6 +1502,10 @@ Through `sweep`, added to the `__tests__/property-sweep-sites.test.ts` list.
 | Q7 | No marks: `multiCoinSince`, `multiCoinSeen` | same, "a Bybit walk writes no multi-coin mark" |
 | Q8 | Random fills of one trade under fill and order forms, any page order, read twice | `bybit.log-history.property.test.ts`: "the sum per coin holds under any form and any read order" |
 | Q9 | Convergence of log and convert under caps, seeds of section 5, cut at every commit | `bybit.convergence.test.ts`: "log and convert reach the end within the table's runs and survive a restart" |
+| Q10 | Clean worlds: seeded true moves, each a source with its ledger row, or a ledger row with no source and no equal amount within W; every arrival order, cut at every commit, read twice (O65) | `bybit.funding-ledger.property.test.ts`: "over any arrival order, the past line of a clean world equals the truth, with no double count and no lost row" |
+| Q11 | Any world, ambiguous ones included, with no delay past W and no unseen Earn word | same, "no world doubles a source, and the error equals the sum of its false matches and held rows" |
+| Q12 | `matchFundingLedger` on any permutation of its input | `bybit.funding-match.property.test.ts`: "the verdicts do not depend on input order, and pairs are one to one" |
+| Q13 | Convergence of the ledger under the cap, seeds of section 5, cut at every commit | `bybit.funding-ledger.convergence.test.ts`: "the ledger reaches the end within the table's runs and survives a restart" |
 
 ### Red-first seam tests
 
@@ -1304,8 +1516,8 @@ step 6/7 also changes Binance's status suites: their calls gain the required pro
 results (A49). Neither adds owed state to any Binance account, so no 1.2-upgrade seed moves. A Bybit account has no
 1.2-upgrade world at all.
 
-No migration in any set: `source`, `institution`, metadata and `exchange_state` have no SQL constraint (seam
-map section 2). So no EXPLAIN test and no migration review step.
+One migration, in set 10 step 1/6 (O65, PLANNER CALL 51; was: no migration in any set). `source`, `institution`, metadata and `exchange_state` still have no SQL constraint (seam
+map section 2), so nothing else needs one. It has an EXPLAIN test (A96) and a `kiko:reviewer` step. It adds an empty table, so no 1.2-upgrade seed gains owed state; the developer checks that against `walk.owed-since.test.ts`.
 
 Pins that move, in the step that moves them (floor, developer greps): `provider.test.ts`,
 `exchange-catalog.test.ts`, `registry.test.ts`, `help-topics.test.ts` (step count 5 to 6; the Binance step
@@ -1359,14 +1571,26 @@ stays 3, so "Enable Reading" holds; uk title), `en.uk.parity.test.ts`, `en.casin
 | PLANNER CALL 40 (new; settles the brief's SUMMARY item) | A spot row's amount is `change`, accepted only when `change + fee = qty` | "Change = cashFlow + funding - fee" is QUOTE on the live page, not a SUMMARY, and the samples add up. They are linear rows, where `qty` has no direction and `change` is only a fee. For a spot row only `qty`'s words are stated, so `qty` is the check and `cashFlow` is not read. If a spot row has another shape, the check refuses it and the past stays A's, never a wrong trade |
 | PLANNER CALL 41 (new; the brief's "counted" is by kind) | The not-imported line names kinds, with no count of rows | An idempotent count needs one stored id per row (`notImported`), and a perps account writes thousands of rows into one JSON column. A count kept without ids would double on each re-scan. A kind is also what the user can act on. Precedent: `untrackedCoins`, a list of names |
 | PLANNER CALL 42 (new) | New `AmountUse` `rounded-row` for a log `change` and a convert amount | Rule 12 refuses more decimals than the scale, and the page's convert sample has 15. Refusal would owe nearly every convert for up to 729 days, each a missing row: a larger error than half a minor unit |
-| PLANNER CALL 43 (new) | The new set is numbered 9/9 and runs before set 7: order 2, 3, 4, 5, 6, 9, 7, 8 | "Set 7" and "set 8" are named in rulings O44 and O64, in the review, the reports and this text, so renumbering would make those records false. The harness rule asks for a number plus the total, and M moves to 9. Order is stated once, in the plan's "Merge order" |
+| PLANNER CALL 43 (total changed to 10 by CALL 59) | The new set is numbered 9/9 and runs before set 7: order 2, 3, 4, 5, 6, 9, 7, 8 | "Set 7" and "set 8" are named in rulings O44 and O64, in the review, the reports and this text, so renumbering would make those records false. The harness rule asks for a number plus the total, and M moves to 9. Order is stated once, in the plan's "Merge order" |
 | PLANNER CALL 44 (new) | Add P8 and P9 by a new set 1 step 11/11, on top of step 8/11; the user steps grow to 7 | Section 10. A free fill is the only live look at a row in this track |
 | PLANNER CALL 45 (new, F14) | A line on the net worth card, not a user waiver | Goal 4 stands and the user gave no waiver. Statistics is where the past is drawn, and no other surface is read while looking at it. It shows only with a Bybit account in the filter scope, so a Binance user sees no change. A registry field names the line, beside the one of PLANNER CALL 27 |
-| PLANNER CALL 46 (new; a page the research did not have) | `/v5/asset/fundinghistory` stays out of 1.4, under Backlog, and Q6 asks | QUOTE "Return transaction log in Funding Account", 7-day windows, 100 per page, `ioDirection`, `txnAmt`, `afterAmt`, `currcCursor` as the unique id. It could read P2P credits, Earn yield and old web converts, so "P2P credits are never readable" in report-q5.md is too strong: the P2P route is closed (O5), and this route is not. It is out because `showBusiTypeEn` has no closed list on the page (its sample shows only "Earn"), so a row cannot be told from a deposit, transfer or convert already read: each wrong pairing is a double count, and O64 forbids a guess in a shown value. `memberId` stays unread if it is ever used |
+| PLANNER CALL 46 (replaced by O65 and CALLs 51 to 62: "stays out" and "under Backlog" no longer hold; its facts and its risk stay as the trace) | Was: `/v5/asset/fundinghistory` stays out of 1.4, under Backlog, and Q6 asks | QUOTE "Return transaction log in Funding Account", 7-day windows, 100 per page, `ioDirection`, `txnAmt`, `afterAmt`, `currcCursor` as the unique id. It could read P2P credits, Earn yield and old web converts, so "P2P credits are never readable" in report-q5.md is too strong: the P2P route is closed (O5), and this route is not. It is out because `showBusiTypeEn` has no closed list on the page (its sample shows only "Earn"), so a row cannot be told from a deposit, transfer or convert already read: each wrong pairing is a double count, and O64 forbids a guess in a shown value. `memberId` stays unread if it is ever used |
 | PLANNER CALL 47 (new; tests the brief's scope) | Interest, bonus and airdrop stay under Backlog. L1 also names them and money moved into an unread Earn product, which the user did not read in O64 | Section 3, worked numbers: an airdrop of 10 reads +10 before it; a stake of 100 into an unread product reads -100 before it. The first kind is small and needs only rules on rows the walk already holds, so it is the cheap next step. The second cannot be closed from the log, because a stake from Funding is on no log. Goal 4 needs them stated |
 | PLANNER CALL 48 (new) | A new walk id `log`; the existing `convert` id with a new `pageIndex` mark; no `category` in the log request | Each exchange's state is per account, so `convert` fans out to nothing (CALL 8's shape). `log` has no fitting id. With `category=spot` the line could not see what else the log holds, and no page says which `category` an interest row has. Cost: perps rows use up the lane, and a day over 1,000 rows holds (section 5) |
 | PLANNER CALL 49 (new) | A convert older than the 729-day floor makes no row | The route has no time filter, so nothing else stops it. One old row would move `spanStart` and start the line years before any other row, with an empty past |
 | PLANNER CALL 50 (new) | One Kiko row per log row, no sum per order | Binance sums per order through a read per order. Here a span can cut an order in two, and a summed row's key and amount would change when the second part arrives. The cost is a longer list for an order with many fills, which a visual round can fold |
+| PLANNER CALL 51 (new, O65; was: no migration in any set) | A new table `funding_match_rows`, one migration, in the `.kiko` snapshot as an optional key with no version bump (the `deletedImportKeys` precedent) | A paired ledger row has no transaction row, so it needs a store. `exchange_state` fails: CALL 41 rejects one JSON column for thousands of rows, and 87,600 rows at about 60 bytes is about 5 MB rewritten per patch (COMPUTED, 5-coin seed). A transaction row with a hidden flag fails: a reader that misses the flag doubles. A column on the source row fails: a removed source would lose its ledger row. `snapshot-covers-every-table.test.ts` requires the file key, and the design needs it: without it a restore keeps cursors past rows no store holds |
+| PLANNER CALL 52 (new; the brief asks whether the ledger walk waits) | No walk waits. One rule runs over the whole stored set at the end of each run, with no stored decision | A hold alone misses a source behind its cursor, and a decision at arrival depends on order. Order-free by construction is simpler to prove than a list of orders. `waiting` is a verdict inside the rule, not a walk's state |
+| PLANNER CALL 53 (new; the brief asks for each series' unit and time) | One W, 7 days, measured to a time extent; no table of windows per series | No page states a delay, so a table would be a table of guesses. A withdrawal's review time is in its extent, which the stored record holds and a transaction row cannot. The window's cost falls only on a source with no ledger row, because pairing is nearest first |
+| PLANNER CALL 54 (new; extends the brief's rule) | A free source near a row holds it, whatever its amount, and `bybitFundingHeld` counts it. No percent tolerance, and no compare at a shorter scale | This turns "a form no page states" from a double count into a lost row. A tolerance would be a guess at a fee. Cost: a real credit near a Unified deposit of that coin stays out, and the count can include rows the source already holds (M8, M14), so the text says "looks like". P19 prints a decimal count and a match, so a scale rule can come as a fix if testnet shows it |
+| PLANNER CALL 55 (new; the brief's property is wrong as written) | Two properties, not one: equality on clean worlds (Q10), and on any world no double count, with the error equal to its lost rows (Q11) | "Equals the truth, with no lost row" over any seeded world cannot hold: M12 has one source, one ledger row, equal amounts and no way to tell them apart. A pass would only mean that the seeds avoid it. M16 and M23 stay outside Q11 by name, and A89 pins them by number |
+| PLANNER CALL 56 (new) | A listed row is never spending, in either direction, by the marker `ledger:funding`. A fixed label, with no server text stored or shown | An Out row can be a stake, a P2P sale, a move to a sub-account or a card payment, and no list tells them apart: O62 forbids guessing that into a shown value. Spending stays as with no ledger, so a card payment stays short by its amount, and F3 says so. `descriptionEn` is English on a Ukrainian screen |
+| PLANNER CALL 57 (new; tests the brief's Earn question) | Words on `EARN_PRINCIPAL_WORDS` list only under clause "E2 and E4". A word on no list always lists. So under any clause that reads Earn, a stake under an unseen word doubles (M23), by its amount, with no sign. No page gives a list, and any safe reading for it costs every unknown row, so the whole feature | Worked numbers in section 3. Under "E2 and E4", the default with no testnet reading, Earn has no holding, so a listing is right and the case cannot happen. An Earn clause ships only after K4 and K11 on testnet, which are also what P19 reads, so the list exists when it matters. The user gets this residual through the report |
+| PLANNER CALL 58 (new) | `afterAmt` is not read | It looks like a proof and is none: each ledger row is listed or paired, so a sum over the ledger closes on `afterAmt` under a wrong match too. The sample also has 16 decimals against 8, so a sum would need a tolerance. No surface needs the figure |
+| PLANNER CALL 59 (new) | A new set, 10/10, order 2, 3, 4, 5, 6, 9, 10, 7, 8. Not part of set 9. M becomes 10 (was: 9; CALL 43's text stays as the record) | Set 9 is at 12 to 15 files, and together they could pass the cap of 30 mutable files. A migration has its own review. Set 7 bases on set 10's tip, stays last and holds the way in, so Guideline 2.5.19 holds at each tip |
+| PLANNER CALL 60 (new; applies N1, N3 and N5 of the review of 32337df0d to this walk) | Bad rows owe a tagged range, not a point each. A row with no `currcCursor` owes nothing and marks a flag. A repeated cursor with no new key ends the span. A day splits to 1 minute | A point per bad row grows `pending` with no bound (N3). A row with no id can never clear a point, and rows before 2026-08-27 may have none; a flag is bounded, on the CALL 41 precedent. A cursor past the end must not hold the caption (N5). A day over the cap must not hold the lane (N1) |
+| PLANNER CALL 61 (new) | P19 in set 1 step 11/11, on the testnet step 7 run and the empty read. No new step number in set 1 | The words are the largest open item, testnet costs no money, and K2, K4, K5, K10 and K11 are already there. Printing `showBusiType` is an O51-kind residual: a shape test, not a closed list. O56's stopping rule stays |
+| PLANNER CALL 62 (new) | One Kiko row per listed ledger row, no sum per day | A summed row's key and amount would change, as CALL 50 says for an order. If Bybit pays hourly (no page states it), a Flexible Savings user gets 8,760 rows a year per coin in the list. A visual round can fold them, and a sum per day needs no change to the match rule |
 
 Changed by the rulings of the builder check, the re-check and the user's answers (was: and now, per ruling that
 reverses a row):
@@ -1466,6 +1690,15 @@ reverses a row):
 | O64 | Sets | 8 sets, order 2 to 8 | 9 sets, order 2, 3, 4, 5, 6, 9, 7, 8 (PLANNER CALL 43) |
 | O64 | Lane caps per run | 50 gated plus 5 | 80 gated plus 5 |
 | O64 | Connect calls | 7 or 9 | 9, 10 or 11 |
+| O65 | Q6 | open, with "this text assumes A" | answered "B: Add to 1.4": stage F, set 10 |
+| O65 | CALL 46 | `/v5/asset/fundinghistory` stays out, under Backlog | read, and a row lists by rule 51 |
+| O65 | Migrations | none in any set | one, set 10 step 1/6 (PLANNER CALL 51) |
+| O65 | Sets | 9 sets, order 2, 3, 4, 5, 6, 9, 7, 8 | 10 sets, order 2, 3, 4, 5, 6, 9, 10, 7, 8 (PLANNER CALL 59) |
+| O65 | Lane caps per run | 80 gated plus 5 | 100 gated plus 5 |
+| O65 | Connect calls | 9, 10 or 11 | 10, 11 or 12 |
+| O65 | Clause L1 | "Kiko cannot read" each kind, on any wallet | Unified and Funding apart; no gap called closed |
+| O65 | "What stays wrong" | a stake from Funding "cannot be closed"; P2P always +100 | closed under "E2 and E4", and if the ledger lists it; six new rows |
+| O65 | Q3 (a) and (b) | a late rollback leaves a stale row; a stalled day holds its own walk | a late rollback's Out cancels it, if listed; a stalled source day also holds the ledger's later rows of its direction |
 | O64 | Copy | "does not read trades, converts" | spot trades and converts read; clauses F2 and L1 |
 | O64 | Rule 12 | every row exact at the scale | a log `change` and a convert amount round (PLANNER CALL 42) |
 | O59 | The user's spec approval (O41) | not given, so R1 waited for it | given on 2026-11-04: the coordinator relayed the answer "Approve (Recommended)" to the question in the approval report, at tip fc83566e2; the report named four residuals (O51, O46, O56, O58 (a)); R1 has not run; the coordinator gives the user the R1 list and the four residuals, and no other step starts until the coordinator says that the R1 output file is ready |
@@ -1474,7 +1707,7 @@ reverses a row):
 |---|---|---|
 | CONFLICT 1 | O7 asks a failing-first test for each of nine seams; seam 8 has no behaviour to change, so a parent red cannot exist | The ruling's row stands; its test is proven by a scratch mutant, per kiko-testing "load-bearing" |
 
-## 13. User questions (Q1 to Q5 answered, Q6 open)
+## 13. User questions (Q1 to Q6 answered)
 
 | Question | The user's words, 2026-11-03 | What holds now |
 |---|---|---|
@@ -1496,12 +1729,12 @@ feeds the past of the net-worth line and spending (section 3), which Q3 did not 
 
 The rows above show each option under the same example. Option D (rows in the lists, out of the line) was rejected by review, with C's past (report-q5.md). Q3's two gaps stay accepted, now with their effect stated. Gap (b) grows by the log (section 5).
 
-Q6, OPEN, for the user through the coordinator: `/v5/asset/fundinghistory` (PLANNER CALL 46). This page reads Funding's whole ledger, and the research file does not name it (`git grep -c fundinghistory`: 0). Options: (A, recommended) keep it under Backlog and ship 1.4 with L1 as written; the next track takes it, with testnet words first. (B) Add it to 1.4 as a read that lists only what no other series explains, by a match on coin, direction, amount and time: it closes most of P2P credits and yield on Funding, and a wrong match is a double count in the past. The default is A, and this text assumes A.
+Q6, ANSWERED 2026-11-04 (O65): "B: Add to 1.4". `/v5/asset/fundinghistory` (PLANNER CALL 46) reads Funding's whole ledger. The options were: (A, was recommended) keep it under Backlog and ship 1.4 with L1 as it stood; (B) add it to 1.4 as a read that lists only what no other series explains, by a match on coin, direction, amount and time, where a wrong match is a double count in the past. Section 3, "Stage F" holds the rule. The words of that option "it closes most of P2P credits and yield" are not carried over: no page shows a P2P row.
 
 The user's words on the order, the same date: "Spend no money and ask for no account step before the terms verdict."
 (O38, section 10.)
 
-Merge order (O21, PLANNER CALL 43), a recommendation to the coordinator, who owns the merge: set 2 alone; sets 3, 4, 5, 6, 9 and 7 stay out of `next`
+Merge order (O21, PLANNER CALLS 43, 59), a recommendation to the coordinator, who owns the merge: set 2 alone; sets 3, 4, 5, 6, 9, 10 and 7 stay out of `next`
 until set 7 passes on device, then merge as one batch; then set 8. Detail: the plan, "Merge order".
 
 ## Backlog
@@ -1546,10 +1779,6 @@ replace their Earn and `locked` parts in 1.4.
 | R3 | Same day | Nothing before the run: K3 stays open, and K4 and K5 wait for their prompt (O50) | P2: it reads UNIFIED and FUND, the user cancels K3 at its prompt, then it reads UNIFIED again. P3: reading 1 BEFORE K4, then at its one prompt K4: subscribe Flexible Savings, and K5: on-chain Earn if its minimum is affordable, with two different amounts for K4 and K5, because the stake check cannot tell the products apart with equal amounts; press Enter only after Bybit shows that the step has landed; then reading 2 (about 12 calls). K4 and K5 stay on one prompt, because the two checks of P3 separate them (O54). A comparison lost at the prompt cannot be repeated by a new run, because a new run starts a new reading 1: a repeat needs the step again with a small amount, at the prompt of a new `R3 P3` or `R4 P3` run | `locked` inside `walletBalance`: both, per coin, around the cancel of K3 (O50). The double count, by the stake check on amounts, not by direction alone (O54). The Earn status rule still waits for R4 (rule 46) |
 | R4 | After the R3 run of P3 shows the position; no fixed day (O31, O40) | K7, optional: an internal deposit from another Bybit user. K8, optional: off-chain withdrawal. K6 waits for its prompt, and K11 is last | `R4`: P3 as one reading, with no redeem prompt (O50); P5; P6 reads FUND and UNIFIED, then at its prompt K6: on-chain withdrawal to the user's own Binance from FUND, and one from UNIFIED if Bybit allows it (O14), with two different amounts when both wallets are used, so that each row matches one wallet, then it reads them again (about 10 calls). `R4 P6` as K6 settles, three times in all, with skip typed at the prompt. `R2 P13` once more (O48). Last, K11, through `R4 P3`: reading 1, then at its prompt the user redeems all of Flexible Savings and waits until it lands, then reading 2 | `success` vs `BlockchainConfirmed`; per wallet, change equals amount, change equals amount + fee; internal rows; whether a row tells its wallet (rule 45); the wallet that moved around K6, which the output names by its words: FUND and UNIFIED as equal or changed per coin (O47); the redeemed row (rule 46) and the redeem check |
 
-### Funding ledger (Q6, PLANNER CALL 46)
-
-GET `/v5/asset/fundinghistory`, `createTimeFrom`, `createTimeTo` in seconds, 7 days at most, `limit` up to 100, `cursor`; 30 req/s (QUOTE, live pages). Named fields would be `currency`, `ioDirection`, `txnAmt`, `createTime`, `showBusiTypeEn`, `currcCursor` ("Unique id, can be used to duplicate check"). `memberId` never. Needs first: the list of `showBusiTypeEn` words, from a testnet run and a funded account, with a part of the script. It would close P2P credits, yield paid to Funding and old converts on Funding.
-
 ### Deferred: the rest of stage C, and stage D (O37, O64)
 
 Not built in 1.4, and not counted in the plan's sets. A later track takes each up with its own sets, its own user steps
@@ -1571,7 +1800,7 @@ Call counts, COMPUTED as in section 5:
 | D | earn orders | UNVERIFIED | 7 d | 105 | 105 | 2 | P10 |
 | D | yield x2 categories | UNVERIFIED | 7 d, 90 d floor | 13 x 2 | 26 | 4 | P10 |
 
-Totals: D first 131, steady 6. With stages A, B and E: first at least 420 gated, steady at least 17 gated
+Totals: D first 131, steady 6. With stages A, B, E and F: first at least 525 gated, steady at least 19 gated
 plus 5.
 
 User runs and probe parts, for the later track's script:

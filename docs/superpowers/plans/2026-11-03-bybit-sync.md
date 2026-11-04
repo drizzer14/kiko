@@ -1,10 +1,10 @@
-# 1.4-bybit: Bybit sync implementation plan, sets 1/9 to 9/9
+# 1.4-bybit: Bybit sync implementation plan, sets 1/10 to 10/10
 
 > For agentic workers: use superpowers:subagent-driven-development. Steps use `- [ ]` tracking.
 
-**Goal:** Bybit balances and history rows, spot trades and converts included, from a read-only key, visible and complete at each stage, with nothing that needs the user's money (O62, O64). Rows rest on the live API docs ("docs only"); balances rest on an empty mainnet read and a testnet run.
+**Goal:** Bybit balances and history rows, spot trades, converts and the Funding wallet's ledger included, from a read-only key, visible and complete at each stage, with nothing that needs the user's money (O62, O64, O65). Rows rest on the live API docs ("docs only"); balances rest on an empty mainnet read and a testnet run.
 
-**Order of the sets:** 1, 2, 3, 4, 5, 6, 9, 7, 8. Set 9 runs before set 7 and keeps its number, so that "set 7" and "set 8" stay true in the rulings, reports and reviews (PLANNER CALL 43).
+**Order of the sets:** 1, 2, 3, 4, 5, 6, 9, 10, 7, 8. Sets 9 and 10 run before set 7 and keep their numbers, so that "set 7" and "set 8" stay true in the rulings, reports and reviews (PLANNER CALLS 43, 59).
 
 **Architecture:** A new `src/crypto-sync/bybit/` beside `binance/`, on the shared walk. Seams 1, 2 and 7 get
 parameters first; the provider id and core follow with no way in from the UI, seams 3, 4 and 9 change with the id, and
@@ -21,26 +21,26 @@ terms verdict is in spec section 9: PASS WITH CONDITIONS for global accounts. Th
 5.2.2 and 6.5 doubts: keep Bybit, global
 accounts only, no letter to Bybit (O42). The user answered Q1 to Q5 (spec section 13):
 stages A and B ship; no notification; the two gaps are accepted; 1.4 ships before R7, with the copy of O26; and Q5 "E + A" brings spot trades
-and converts into this release as set 9 (O64). The rest of the log and stage D stay under Backlog. Q6 is open (spec section 13) and this text assumes its default, A: no set waits for it. Mutation gates are paused by the user since 2026-10-25: verify and review only;
+and converts into this release as set 9 (O64). The rest of the log and stage D stay under Backlog. Q6 "B: Add to 1.4" brings the Funding ledger into this release as set 10 (O65). Mutation gates are paused by the user since 2026-10-25: verify and review only;
 the gate text stays below for when it is lifted.
 
 ## Global constraints
 
-- Base 57130e23c at this writing; each set's base is the tip of the set before it in the order above (set 9's base is set 6's tip, set 7's base is set 9's tip). Every code fact is a symbol or
+- Base 57130e23c at this writing; each set's base is the tip of the set before it in the order above (set 9's base is set 6's tip, set 10's base is set 9's tip, set 7's base is set 10's tip). Every code fact is a symbol or
   anchor text: re-grep it on the actual base. Every count is a FLOOR measured at 57130e23c; the developer measures.
 - Commit granularity: per step, one `kiko:qa` RED commit showing the failing output on the parent, then one
-  `kiko:developer` GREEN commit. A message names `1.4-bybit set N/9 step n/m`. A re-pin names the ruling that forces
+  `kiko:developer` GREEN commit. A message names `1.4-bybit set N/10 step n/m`. A re-pin names the ruling that forces
   it and lists old title to new title in the commit body. No red commit may import a module that does not exist yet.
 - Tests by an agent: `npx jest <files> --maxWorkers=2` and `make jest-affected`. Never full jest, `make verify` or
   `check:all`. Exit 3 from `make jest-affected`: tell the coordinator.
 - Coordinator's queue, per set tip: `bash scripts/job-queue.sh verify <worktree> <label>`, rerun until green. Gate,
   when lifted: `scripts/job-queue.sh gate` per set, `KIKO_MUTATION_BASE` = that set's base, never a whole-branch run;
-  over 30 mutable files exits 2 (`MUTATION_FILE_CAP`). Each set below stays under it, set 9 too (12 to 15 code files); `make mutable` measures.
-- Set 2's tip is shippable alone. The tips of sets 3 to 6 and 9 are not: they stay out of `next` until set 7 passes on device (O21,
+  over 30 mutable files exits 2 (`MUTATION_FILE_CAP`). Each set below stays under it, set 9 too (12 to 15 code files) and set 10 (18 to 21); `make mutable` measures.
+- Set 2's tip is shippable alone. The tips of sets 3 to 6, 9 and 10 are not: they stay out of `next` until set 7 passes on device (O21,
   "Merge order"), and each still passes its queued verify. At every tip: no way in from the UI before set 7; every new
   export has a consumer at that tip, or knip fails. No held tip runs `privacy:site check`: it compares the live page, and
   it runs at publish only (O29). UI uses theme tokens only: `tone=`, `theme.iconSizes`, no colour literal (O12).
-- No migration in any set, so no migration review and no EXPLAIN test. No `BinanceX` rename (O7).
+- One migration, in set 10 step 1/6, with its `kiko:reviewer` step before BATCH READY and an EXPLAIN QUERY PLAN test (O65, PLANNER CALL 51; was: no migration in any set). No other set adds one. No `BinanceX` rename (O7).
 - Every set: a `kiko:reviewer` pass on its diff before merge; after it, the session's skill-drift rule (retrospect
   verifies, scribe fixes) unless the orchestrator folds it into set 8; the report names the drift sha or "no drift".
 - A new test file stays under 1000 lines; split by concern (memory new-test-file-over-1000-lines-dup-regression).
@@ -66,9 +66,13 @@ the gate text stays below for when it is lifted.
 | `src/crypto-sync/bybit/bybit.log-types.ts` | the closed list of log words, each to one kind | 9 |
 | `src/crypto-sync/bybit/bybit.log-history.ts` | log walk, spot legs | 9 |
 | `src/crypto-sync/bybit/bybit.convert-history.ts` | convert read by index, legs | 9 |
+| `src/crypto-sync/bybit/bybit.funding-match.ts` | `matchFundingLedger`, the pure rule | 10 |
+| `src/crypto-sync/bybit/bybit.funding-match.repo.ts` | the stored set, `funding_match_rows` | 10 |
+| `src/crypto-sync/bybit/bybit.funding-ledger.ts` | ledger walk, parsers' consumer | 10 |
+| `src/crypto-sync/bybit/bybit.funding-reconcile.ts` | `reconcileFundingLedger` | 10 |
 | `src/design-system/components/bybit-credentials-field/` | connect field | 7 |
 
-## 1.4-bybit set 1/9: the terms verdict, the probe script and the user's probe run
+## 1.4-bybit set 1/10: the terms verdict, the probe script and the user's probe run
 
 Base: 57130e23c, plus this spec. Steps 1/11 to 7/11 are done (O39, O59, O60, and this text). Steps 8/11, 11/11, 9/11 and 10/11
 are next, in that order (O62, O64); only set 3 step 7/7 and set 7's Earn clause wait for them.
@@ -125,20 +129,20 @@ run (step 9/11), and R7 on 2027-02-05 or later (O55, O60), an open check after t
   `--testnet`, a closed choice of two hosts, default byte-identical; `--testnet R7` refused before the key prompt; header, key prompt, P1's host line
   and usage name the host. Check: the test pins each call's host per run and passes with `/bin/bash` and jq, as step 4/11 did. A reader
   reads the diff; O56 keeps its stopping rule. Add a pin that `--testnet R7` is refused before the prompt.
-- [ ] **step 11/11 (runs after 8/11 and before the parts of 9/11 that name it): P8 and P9 in the script (PLANNER CALL 44).** Owner: `kiko:developer`, on top of step 8/11, from spec section 10, the P8 and P9 rows. Files:
+- [ ] **step 11/11 (runs after 8/11 and before the parts of 9/11 that name it): P8, P9 and P19 in the script (PLANNER CALLS 44, 61).** Owner: `kiko:developer`, on top of step 8/11, from spec section 10, the P8, P9 and P19 rows. P19 adds 1 path, a shape test for `showBusiType` and `description`, sentinels `memberId`, `afterAmt`, `descriptionEn`, `showBusiTypeEn`, at most 3 calls, and a floor of 60 script lines and 120 test lines on top of the sizes below. Files:
   `memory/refs/bybit-probe.sh`, `memory/refs/bybit-probe.test.sh`, main checkout, untracked. The two paths join the closed list; closed lists for `type` (the 68 words), `category`, `side`, `accountType`, `exchangeStatus`; `<other>` otherwise (O46); coin names by the shape test (O51); yes or no comparisons, no id and no amount. Sentinels `userId`, `orderLinkId`, `tradeId`, `paramValue` join the fake-curl test. Size: floor 150 script lines, 250 test lines. Check: the fake-curl test passes with `/bin/bash` and jq, with exact call counts, P8 at most 3 and P9 at most 2. A reader reads the diff; O56 keeps its stopping rule. No set waits for this step.
-- [ ] **step 9/11: the user's reads, no money.** Mainnet: `R2 P2`, then `R4 P3` with `skip`, then `R2 P8 P9`. Testnet: the seven steps of spec section 10, each
+- [ ] **step 9/11: the user's reads, no money.** Mainnet: `R2 P2`, then `R4 P3` with `skip`, then `R2 P8 P9 P19`. Testnet: the seven steps of spec section 10, each
   with its proof. Step 7 is one spot fill and, if offered, a convert (K9, K10); no fill means docs only, and nothing blocks. Outputs: `memory/refs/bybit-probe-output-<date>.txt` for mainnet, `memory/refs/bybit-probe-testnet-output-<date>.txt` for
   testnet. If the account step fails or a step is refused: the coordinator takes the question to the user; the table in spec section 10 says what each
   refusal means. It blocks only set 3 step 7/7 and the Earn clause.
 - [ ] **step 10/11: write those results.** `kiko:planner`: the P2 and P3 rows to MEASURED with "on testnet" stated, the clause by "What proves
   Earn", the `locked` row, or the question to the user. Check: `git grep -c UNPROBED` on the spec falls to P17, deferred rows under Backlog, the record
-  rows of section 12, and any row of P2 or P3 whose step was refused (O35). Any P8 or P9 result goes into the stage E safe readings, with "on testnet" stated, before set 9 starts, or as a fix to set 9. A was column where a shape reverses a row. `make doc-suites`.
+  rows of section 12, and any row of P2 or P3 whose step was refused (O35). Any P8 or P9 result goes into the stage E safe readings, with "on testnet" stated, before set 9 starts, or as a fix to set 9. Any P19 result goes into stage F the same way, and `EARN_PRINCIPAL_WORDS` gains the words around K4, K5 and K11, before set 10 starts, or as a fix to set 10. A was column where a shape reverses a row. `make doc-suites`.
 
 Gate per stage: every code set bases on the set 1 tip or later, so P1, P11, P12, P13 (edges), P15, P16 and step 2/11 hold at each of them.
 No code set needs R2 to R4 (O62). Set 3 step 7/7 needs step 10/11. P14 holds nothing: it makes no call (O49).
 
-## 1.4-bybit set 2/9: neutral seams, Binance unchanged
+## 1.4-bybit set 2/10: neutral seams, Binance unchanged
 
 Base: set 1 tip. Order: first code set. Size: about 210 code lines in 9 to 12 files, about 450 test lines (was 280, 13
 to 16, 650: O30 moves seams 3, 4 and 9 to set 3). Tip: no Bybit id, no visible change. Merges alone (O21). At this set,
@@ -148,7 +152,7 @@ no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the p
 
 - [ ] **step 1/4: run the older-build restore (O10).** On this tip, before any id exists, a scratch test under
   `.superpowers/sdd/1.4-bybit/` (not committed to `src/`) restores a fixture file: a `bybit` account, `bybitAsset`
-  holdings, `source: 'bybit'` rows, walk state, a `bybitCredentials` list. Check: restore passes, the account reads
+  holdings, `source: 'bybit'` rows, walk state, a `bybitCredentials` list, and a `fundingMatchRows` table key (O65). Check: restore passes, the account reads
   unsynced, no Keychain write for it. Output in the commit body and spec section 6.6. A failure stops the set and
   flips the decision: report it.
 - [ ] **step 2/4: seam 2, `source` on the config.** `ExchangeWalkConfig` gains `source`; `PlacedWalletRow.source`,
@@ -167,7 +171,7 @@ no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the p
   move to `exchange/walk/`, with `binance.walk-wiring.ts` their thin caller (consumer at this tip); `createWriteSerial`
   waits for its consumer in set 3. Check: Binance's walk suites unchanged; `npm run check:plist`; `npm run check:dup`.
 
-## 1.4-bybit set 3/9: provider id, client, keys and balances (stage A core)
+## 1.4-bybit set 3/10: provider id, client, keys and balances (stage A core)
 
 Base: set 2 tip. Needs step 2/11 of set 1 and P1, P11, P15, P16, all MEASURED. Steps 1/7 to 6/7 need no user step: coin-row fixtures use the page samples,
 and the empty read when it exists. Step 7/7 needs step 10/11 of set 1. Was: P2 and P3 with the `R4 P3` run around the redeem (O62). Size:
@@ -229,7 +233,7 @@ Binance caption result the same after the re-pins.
   `BYBIT_SIGNED_PATHS` gains `/v5/earn/position` only if a category ships. If the `locked` reading came back outside `walletBalance`, the question
   returns to the user first (spec section 10), and this step adds nothing for it until the answer. Any later set may land before this step; the batch merge may not.
 
-## 1.4-bybit set 4/9: expiry, `.kiko`, switch gate, account detail
+## 1.4-bybit set 4/10: expiry, `.kiko`, switch gate, account detail
 
 Base: set 3 tip. Size: about 550 code lines in 13 to 15 files, about 1,050 test lines (was 450, 12 to 14, 900: O13, O18,
 O26, O27 lines). Tip: text keys exist and render only for a connected `bybit` account, which no path can create yet.
@@ -248,7 +252,7 @@ cannot strand a Binance user; translator review of this set's keys.
 - [ ] **step 4/4: switch gate (O11).** `conflictingExchangeHoldings`, `ConnectExchange`, `exchangeSwitchRefused`. Check:
   A28, Binance to wallet unchanged.
 
-## 1.4-bybit set 5/9: cursor reader, budget and capital walk (stage B)
+## 1.4-bybit set 5/10: cursor reader, budget and capital walk (stage B)
 
 Base: set 4 tip. Needs the live pages of spec section 3, and P11, P12, P13 (edges), MEASURED. Was: P4, P5, P6 with real money (O62). Size: about 1,030 code lines in 7 to 9 files, about 1,980 test lines, split (was 1,000, same, 1,900: the series-tagged range of PLANNER CALL 37, A35, A60, A82). Fixtures take the page samples. Tip: the run arm reads deposits and withdrawals; still no
 way in. Stays out of `next` (O21). Reviewer checks: each early return of spec section 5; settled matrix; no stored cursor; no text that calls a waiting row harmless (O63 (d));
@@ -271,7 +275,7 @@ way in. Stays out of `next` (O21). Reviewer checks: each early return of spec se
   tests all four lists. Arm: `capital` in `logOnFailure`, `captionWalksOf('bybit')` gains `capital`. Rows A17
   to A22, A27, A30, A35, A39, A41, A60, A82. A failing proof of a safe reading is a report to the planner, never a loosened row.
 
-## 1.4-bybit set 6/9: transfer walk and convergence proof (stage B)
+## 1.4-bybit set 6/10: transfer walk and convergence proof (stage B)
 
 Base: set 5 tip. Needs the live pages and the transfer path (MEASURED). Was: P7, P13 with rows (O62). Size: about 500 code lines in 5 to 6 files, about 1,300 test lines (was 1,200: A57).
 Stays out of `next` (O21). Reviewer checks: pair id has one coin; wallet words closed; section 5 tables replaced with
@@ -285,7 +289,7 @@ measured numbers.
 - [ ] **step 3/3: measured numbers.** Scribe writes the convergence table's MEASURED column into spec section 5. A cap that
   fails a seed's bound is a report to the orchestrator, never a loosened bound.
 
-## 1.4-bybit set 9/9: spot trades and converts (stage E; runs before set 7, PLANNER CALL 43)
+## 1.4-bybit set 9/10: spot trades and converts (stage E; runs before set 7, PLANNER CALL 43)
 
 Base: set 6 tip. Needs the live pages of spec section 3, stage E; no user step. If set 1 step 10/11 already holds P8 or P9 results, the spec's stage E rows hold them. Was: stage C in the Backlog, needing R5 with real money (O37). Size: about 850 code lines in 12 to 15 files, about 1,800 test lines, split, each new test file under 1000 lines (a floor; was "floor 800, under 15 files"). Under `MUTATION_FILE_CAP`; `make mutable` measures. Tip: the run arm reads the log and the converts; still no way in. Stays out of `next` (O21). No migration: `log`, `pageIndex` and `logKinds` live in `exchange_state`.
 Reviewer checks: every field against the live page; nothing parsed outside the closed list; a trade never counted twice, under one row per fill, one row per order, and a convert in both lists; each rule of the spending table in spec section 3; a Binance run writes byte-identical rows, marks and state text; `userId`, `orderLinkId`, `tradeId`, `extInfo` reach nothing; the policy's statement of which ids are stored still holds.
@@ -296,10 +300,23 @@ Reviewer checks: every field against the live page; nothing parsed outside the c
 - [ ] **step 4/5: the convert read.** `bybit.convert-history.ts`: index paging by the rules of spec section 3, "The walks", `pageIndex`, rows before marks, a repeated page moves no mark; the wallet word, status and refusal rules; legs as in Binance's `settledOutcomeOf`, not imported from it, with `operation: 'convert'` and the pair id that names both coins; a row older than the floor makes no row (PLANNER CALL 49). Arm: `convert` after `log`; `captionWalksOf('bybit')` gains `convert`. Rows A72 to A75, A76, A80. Check: a disconnect drops `pageIndex` (A26 grows); `npx jest` on those.
 - [ ] **step 5/5: the line, the proof and the numbers.** `bybitLogLeftOut` with `bybitLogKind.*` beside `CoinLines` in `crypto-sync-section`, en and uk, keeping the section's complexity budget. `bybit.past-line.real-sqlite.test.ts` runs the worked example through `buildNetWorthSeries` with the fake routes (A77). `bybit.convergence.test.ts` gains the log and convert seeds, cut at every commit (Q9), and joins `__tests__/property-sweep-sites.test.ts` with Q8. Scribe writes the MEASURED column of the stage E tables into spec section 5. A cap that fails a seed's bound is a report to the orchestrator, never a loosened bound. A failing proof of a safe reading is a report to the planner, never a loosened row. Check: `make jest-affected`; translator review owed at set 7.
 
-## 1.4-bybit set 7/9: the way in, shipped stages A, B and E (catalog last, O9)
+## 1.4-bybit set 10/10: the Funding ledger (stage F, O65; runs before set 7, PLANNER CALL 59)
 
-Base: set 9 tip (was: set 6 tip). Needs P1, P11 and the URL of part 2, all done, and set 3 step 7/7's outcome for the Earn clause (no outcome: "E2 and E4"). Size:
-about 540 code lines in 18 to 22 files, about 1,080 test lines (was 480, 17 to 21, 1,000: the Statistics line and A78, the log and convert reads at connect, clauses F2 and L1; was before that 450, 16 to 20, 950: PLANNER CALLS 25 and 27; O29 moves `bybit.privacy-policy.test.ts`
+Base: set 9 tip. Needs the live pages of spec section 3, stage F; no user step. If set 1 step 10/11 already holds P19 results, the spec's stage F rows hold them. Was: under Backlog (PLANNER CALL 46). Rests on the O66 fix round for `readCursorSpan`'s split (N1) and the convert `cursor` (N4, N5). Size: about 900 code lines in 18 to 21 files, about 2,700 test lines, split, each new test file under 1000 lines (a floor). Under `MUTATION_FILE_CAP`; `make mutable` measures. Tip: the run arm reads the ledger; still no way in. Stays out of `next` (O21).
+Existing suites: is any seed a 1.2-upgrade world with owed state from this set? The table starts empty and a Binance account writes no `fundingLedger` entry, so no; each suite that lists tables or walks re-pins by name, and the developer checks `walk.owed-since.test.ts`.
+Reviewer checks: rule 51 against each row of the matrix; a wrong match reads as a lost row, except M16, M23 and the row "on no list", each named; no server text stored or shown; a listed row out of spending and each matcher; `memberId`, `afterAmt`, `descriptionEn`, `showBusiTypeEn` reach nothing; a Binance run writes byte-identical rows, marks and state text; each row of spec "What stays wrong" and clause L1 against the shipped behaviour.
+
+- [ ] **step 1/6: the table (PLANNER CALL 51).** `src/db/schema.ts`: `fundingMatchRows`, primary key `(account_id, side, record_key)`, reference to `accounts`. `drizzle/migrations/` next number at the actual base (0064 at this writing; re-read it: another track can take a number, and a shipped one never moves), with `migrations.js`, meta and its own migration test. `bybit.funding-match.repo.ts`. `read-snapshot.ts` appended last, because its test mock keys off the call order; `restore-snapshot.ts` with its delete and insert, defensive on an absent key; `data-snapshot.d.ts` optional, as `deletedImportKeys`. `disconnect.ts` clears it; an account delete clears it (`accounts.repo.foreign-keys.test.ts`). Grep first: `snapshot-covers-every-table.test.ts`, `__tests__/closure-table.test.ts`, `run-migrations.test.ts`, `schema.test.ts`, the restore two-path suites. Rows A88 (table part), A96. Check: `npx jest` on those; `npm run check:shipped-migrations`. Then **a `kiko:reviewer` pass on this step alone, before anything builds on it** (every-migration-gets-a-review): name, types, crash order, restore, older-build file. Is `withWalkStateMoved`'s account merge reached by this table? A file that holds this table has no implicit account to merge; the reviewer confirms that on the code.
+- [ ] **step 2/6: the pure rule, matrix first.** `bybit.funding-match.ts`, words in `bybit.funding-words.ts`, red from the matrix in spec section 3: `matchFundingLedger`, W and H as arguments with their constants beside them, `compareDecimal` and `addDecimal` only, no `Number` on an amount. Rows A84, Q12. Check: `npx jest` on those; a grep shows no `parseFloat` or `Number(` on an amount in the file.
+- [ ] **step 3/6: sources write their records.** In `bybit.capital-history.ts`, `bybit.transfer-history.ts`, `bybit.convert-history.ts`: the record in the same `add`, before marks, and in `remove`; each series' parser gains `depositFee`, `withdrawFee`, `tax`, and only for this. A source of a wallet word that is not FUND writes none. Rows A87 (source part). Check: each walk's suites stay green with a store double; `make jest-affected`; exit 3 goes to the coordinator.
+- [ ] **step 4/6: the ledger walk.** `exchange/walk-state/walk-state.ts`: `WALK_IDS` gains `fundingLedger`, patch kinds `fundingHeld` and `fundingLeftOut`, on the `logKinds` precedent, red first in existing suites. Grep the fan-out as set 9 step 1/5 did, and re-pin naming O65. `bybit.endpoints.ts`, `bybit.endpoints.test.ts` (C2, A53): the path. `bybit.history-budget.ts`: lane `fundingLedger` 20. `bybit.history-client.ts`: `fetchFundingLedgerPage`, named fields only. `bybit.funding-ledger.ts`: `planWalkPasses`, `runWalkPlan`, `readCursorSpan`, the split to a minute and the repeated-cursor end of spec section 3, bad rows owe one tagged range, no `currcCursor` marks the flag. Guard on an empty plan tests all four lists. Arm: after `convert`; `captionWalksOf('bybit')` gains `fundingLedger`. Rows A79 (grows), A85, A86. Check: `npx jest` on those; a Binance state text is byte-identical.
+- [ ] **step 5/6: reconcile.** `bybit.funding-reconcile.ts` in its own `logOnFailure`, last: rule 51 on the stored set, `placeWalletRows` and `addManyDedup` for `listed`, `removeSyncedRows` for a key that left `listed`, never for a key with no stored ledger row; then the counts. Rows A87, A88, Q10, Q11, Q13; join `__tests__/property-sweep-sites.test.ts`. Measure one reconcile with 100,000 stored rows on real SQLite and write the number in the commit body; a result that blocks the JS thread is a report to the orchestrator. Check: real SQLite suites, cut at every commit.
+- [ ] **step 6/6: marker, label, lines and the past-line proof.** `untracked-counterpart.ts`: kind `ledger`, code `ledger:funding`; `row-description.ts`: the fixed label; `bybitFundingHeld`, `bybitFundingNoId` beside `CoinLines`, en and uk, keeping the section's complexity budget. `bybit.past-line.funding.real-sqlite.test.ts`: the kind of proof the user named: A89 (M16, M23 double by number), A90, A91 (the worked example with the ledger on), A92, A93, A94, A95. Scribe writes the MEASURED column of the stage F table into spec section 5. A cap that fails a seed's bound is a report to the orchestrator, never a loosened bound. A failing proof of a safe reading is a report to the planner, never a loosened row. Check: `make jest-affected`; translator review owed at set 7.
+
+## 1.4-bybit set 7/10: the way in, shipped stages A, B, E and F (catalog last, O9)
+
+Base: set 10 tip (was: set 9 tip; before that, set 6 tip). Needs P1, P11 and the URL of part 2, all done, and set 3 step 7/7's outcome for the Earn clause (no outcome: "E2 and E4"). Size:
+about 570 code lines in 18 to 22 files, about 1,160 test lines (was 540, same, 1,080: the ledger read at connect, clause F3, A97; before that 480, 17 to 21, 1,000: the Statistics line and A78, the log and convert reads at connect, clauses F2 and L1; was before that 450, 16 to 20, 950: PLANNER CALLS 25 and 27; O29 moves `bybit.privacy-policy.test.ts`
 here; O39 adds A51, A54, A55), plus the policy and site pages (O29). Tip: Bybit visible and complete. Merge: the batch of
 "Merge order", only after the device check on this branch (PLANNER CALL 15). That check, step 6/6, is "fundamentals done" (O44).
 Reviewer checks: compliance section whole, each
@@ -308,7 +325,7 @@ that offers Kiko in place of the Bybit app) and C3 (no price, ad, IAP, tip or sp
 every new key.
 
 - [ ] **step 1/6: credentials field.** Extract `ExchangeKeyForm` from `binance-credentials-field`, Binance's suite unchanged;
-  new `bybit-credentials-field` over it, verifying through `fetchKeyInfo` and one real read of each shipped route, 9 calls, 10 with one Earn category, 11 with both (F8, O64); `bybitKeyMissingPermission` has no `{{kind}}` (F18); refusals in the order of spec section 6.8 (O13, PLANNER CALL 25), all before any Keychain write; `bybitConnectLimits` and `bybitKinds` before the
+  new `bybit-credentials-field` over it, verifying through `fetchKeyInfo` and one real read of each shipped route, 10 calls, 11 with one Earn category, 12 with both (F8, O64, O65); `bybitKeyMissingPermission` has no `{{kind}}` (F18); refusals in the order of spec section 6.8 (O13, PLANNER CALL 25), all before any Keychain write; `bybitConnectLimits` and `bybitKinds` before the
   inputs; `BYBIT_API_MANAGEMENT_URL` = https://www.bybit.com/en/app/user/api-management in the env files, and `www.bybit.com` in `scripts/privacy-site.js` `NON_REQUEST_HOSTS`
   in this same step. Rows A12, A13, A32, A33, A54 (C3: the exact URL). `bybitConnectLimits` and `bybitKeyRejected` carry the C1
   text. Check: `npm run privacy:site -- hosts` does not list `www.bybit.com`.
@@ -317,12 +334,12 @@ every new key.
   `account-form.screen.tsx` and `use-connect-reminder.ts` per-provider props, `clearPairIfRowMissing` for Bybit. Re-pin
   `exchange-catalog.test.ts`, `registry.test.ts`, `crypto-sync-section.component.connect.test.tsx`, naming O9. Row A43,
   red on the parent, where `bybit` has neither entry (O21). Row A55 (C4: the caption). The footer of `notListedKey` carries the
-  C1 text, and clauses F2 and "older than two years". `statistics.bybitPastLimits`: a registry field beside the `earlierHistory` one; `netWorthCard` in `statistics.screen.tsx` shows the line under `NetWorthLine` when `filtered.filteredAccounts` holds a provider with that field, caption tone, theme tokens only (PLANNER CALL 45, F14). Row A78. Grep `en.casing-by-role` and uk first.
+  C1 text, and clauses F2, F3 and "older than two years". `statistics.bybitPastLimits`: a registry field beside the `earlierHistory` one; `netWorthCard` in `statistics.screen.tsx` shows the line under `NetWorthLine` when `filtered.filteredAccounts` holds a provider with that field, caption tone, theme tokens only (PLANNER CALL 45, F14). Row A78. Grep `en.casing-by-role` and uk first.
 - [ ] **step 3/6: help and shipped copy.** Grep the help pins, `en.casing-by-role`, and uk first; in ONE step edit
   `help-topics.ts` (a sixth step key), en, uk, `help-topics.test.ts` (count 6, step 3 still Binance). The keys of steps 4 and
   5 move: per harness-workflow "Removing or renaming a catalogue key", every dependent edit stays in this step. The step text
   ends with the shipped `bybitKinds` text, and it carries the C1 text. `bybit.shipped-copy.test.ts`, one row per kind set (O15).
-  Rows A40, A51 (C1: the four surfaces, en and uk), A83 (clause L1, O64).
+  Rows A40, A51 (C1: the four surfaces, en and uk), A83 (clause L1, O64), A97 (F3 and L1, O65).
 - [ ] **step 4/6: the policy (O29, O24, O15, O34).** The block and the section 3 intro of spec section 9, with the variant
   that fits the shipped kind set, in `docs/privacy-policy.en.md`, `docs/privacy-policy.md`, site rebuilt under
   `docs/privacy-site/` (`npm run privacy:site -- build`); only the shipped paths in `BYBIT_SIGNED_PATHS` (O15);
@@ -339,15 +356,15 @@ every new key.
 - [ ] **step 6/6: device check, user on device, two builds (PLANNER CALL 34, spec section 10).** The coordinator owns device builds.
   First, scratch: a scratch clone of this tip, with `BYBIT_API_ENDPOINT` set to testnet in its own untracked `.env`, never a `src/` edit, on the simulator, or on a named device with no real data by UDID (`make deploy DEVICE=<UDID> EXPECT=api-testnet.bybit.com`), NEVER on the user's phone: the bundle id is the one of the real app, so an install replaces it in place on the real database (O63 (c), F1, F11). A simulator's bundle gets the same string check by `scripts/bundle-contains.js`, and the simulator is shut down after use. If Flexible Savings
   ships, the user subscribes again on testnet first, because K11 redeemed it (PLANNER CALL 22). Coin rows on Unified and Funding, a balance moving, Earn if it ships, one transfer if K2 ran, one spot trade as two legs and out of spending if K9 filled, one convert if K10 ran, the past of the net-worth line with those rows. Then real: this tip, `make deploy EXPECT=api.bybit.com`; the empty account with Last sync; the expiry line with 2027-02-04; each surface
-  in section 6.4, `statistics.bybitPastLimits` too; connect in 9, 10 or 11 calls; a wrong key; a read-write key; a key refused on a route (a narrow key, made and deleted by the user, optional); disconnect and reconnect;
+  in section 6.4, `statistics.bybitPastLimits` too; connect in 10, 11 or 12 calls; a wrong key; a read-write key; a key refused on a route (a narrow key, made and deleted by the user, optional); disconnect and reconnect;
   Binance still syncs; light and dark. Positive and negative pin checks of `docs/security/README.md`. Guard: `.env` is in `.gitignore`, the worktree's `.env` never changes, and A52
   pins that no tracked file names `api-testnet`. This check is "fundamentals done" (O44), the next device call for Bybit. It proves the connect path, the expiry, balances from a live answer and every
   stated limit, and, if K9 filled, a trade through the real walk on testnet. It does not prove a coin row or a trade on mainnet, or any deposit or withdrawal row, which no build can show: those are the accepted residuals of spec section 10 (O64). If the
   testnet account step failed, only the real build runs, and the report says that no coin row was seen. A defect in data, a stated limit or a
   condition blocks it. A visual wish does not block it: it goes to fast visual rounds after it, on this branch, before the batch
-  merge. Pass: those rounds, then the batch merge. A stop here: sets 3 to 7 and 9 stay out of `next`, and no removal row is needed.
+  merge. Pass: those rounds, then the batch merge. A stop here: sets 3 to 7, 9 and 10 stay out of `next`, and no removal row is needed.
 
-## 1.4-bybit set 8/9: skill drift
+## 1.4-bybit set 8/10: skill drift
 
 Base: set 7 tip. Size: skill and agent text only. Reviewer: `make doc-suites`.
 
@@ -365,14 +382,14 @@ Base: set 7 tip. Size: skill and agent text only. Reviewer: `make doc-suites`.
 
 ## Merge order
 
-A recommendation to the coordinator, who owns the merge (O21, PLANNER CALL 43). Sets 3 to 6, 9 and 7 stay out of `next` until set 7 passes on device,
+A recommendation to the coordinator, who owns the merge (O21, PLANNER CALLS 43, 59). Sets 3 to 6, 9, 10 and 7 stay out of `next` until set 7 passes on device,
 then merge as one batch, so no dormant reader reaches `next`. If set 7 stops, no removal row is needed; set 2 holds no Bybit
 id and may stay. The cost is one larger merge.
 
 The device pass is "fundamentals done" = set 7's device check, step 6/6 (O44). Fast visual rounds come after it, on set 7's branch,
 before the batch merge; a visual wish does not block the pass, and a defect in data, a stated limit or a condition does.
 
-Order into `next`: 2 alone; then the batch 3, 4, 5, 6, 9, 7 after the device pass and the visual rounds; then 8. O62 removes no set: it removes
+Order into `next`: 2 alone; then the batch 3, 4, 5, 6, 9, 10, 7 after the device pass and the visual rounds; then 8. O62 removes no set: it removes
 the wait for R2 to R4 before set 2, so set 2 can merge once this commit is its base. The batch holds set 3 step 7/7, or clause "E2 and E4" when no testnet reading exists. Nothing ships hidden at any merge (2.5.19): set 2 has no id,
 and the way in comes last.
 
@@ -383,15 +400,18 @@ verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 
 
 | Set | Code lines (about) | Code files | Test lines (about) |
 |---|---|---|---|
-| 1 | script 1,379, measured, plus the host choice and a floor of 150 for P8 and P9 | 1 | 1 fake-curl test, plus a floor of 250 |
+| 1 | script 1,379, measured, plus the host choice and a floor of 210 for P8, P9 and P19 (was 150) | 1 | 1 fake-curl test, plus a floor of 370 (was 250) |
 | 2 | 210 | 9-12 | 450 |
 | 3 | 1,270 | 25-29 | 2,350 |
 | 4 | 550 | 13-15 | 1,050 |
 | 5 | 1,030 | 7-9 | 1,980 |
 | 6 | 500 | 5-6 | 1,300 |
 | 9, runs before 7 | 850 | 12-15 | 1,800 |
-| 7 | 540, plus copy, the policy and site pages | 18-22 | 1,080 |
+| 10, runs before 7 | 900, and 1 migration | 18-21 | 2,700 |
+| 7 | 570, plus copy, the policy and site pages | 18-22 | 1,160 |
 | 8 | docs | | |
+
+Totals for sets 2 to 7, 9 and 10: about 5,880 code lines, 107 to 129 code files, about 12,790 test lines (was: 4,950, 89 to 108, 10,010).
 
 A duration for any of these comes from `kiko:estimator`.
 
@@ -421,23 +441,20 @@ O59 status, set 1 header, step 5, spec status, sections 10, 12.
 O60 set 1 steps 6, 7, set 7 step 1, spec sections 3 to 6.8, 8, 9, 10. O61 (c) set 1 step 6. O62 status, goal, set 1 steps 7 to 10, set 3 header, step 7, set 5 header, set 6 header,
 set 7 header, step 6, "Merge order", spec status, sections 1, 3, 6.4, 8, 9, 10, 12, 13, Backlog. A later step number here that says "of 7" for set 1 now reads "of 11", and for set 3 "step n/7".
 O63 (a) spec section 12; (b) spec rules 13, 14, 19, 47, set 5 step 4; (c) set 7 step 6, spec section 10; (d) spec rule 15, section 3 "Safe readings", section 10; (e) status, set 1 header. O64 status, goal, set 9, set 1 steps 8, 9, 10, 11, set 7 header, steps 1, 2, 6, "Merge order", spec status, sections 1, 2, 3, 5, 6.4, 6.8, 8, 9, 10, 11, 12, 13, Backlog.
+O65 status, goal, set 10, set 1 steps 9, 10, 11, set 2 step 1, set 7 header, steps 1, 2, 3, 6, global constraints, "Merge order", Sizes, Backlog, spec status, sections 1, 2, 3, 5, 6.4, 6.5, 6.8, 8, 9, 10, 11, 12, 13, Backlog.
 Review of 7a2391ca8: F1 set 7 step 6, spec section 10; F2 spec rules 13, 14, 19, 47, A18, A35, PLANNER CALL 37; F3 spec section 13; F4 spec section 3; F5 spec rule 15, section 3 "Safe readings", section 5, section 10; F6 spec section 3, A60; F7 status, set 1 header, spec section 13; F8 spec section 6.8, section 10, CALL 25, set 7 step 1, A32; F9 spec rule 42, set 6 step 1; F10 spec section 3, A60, A82, set 5 step 3; F11 set 7 step 6, spec section 10; F12 spec section 9, A44; F13 spec section 10; F14 spec sections 1, 6.4, 8, A78, set 7 step 2, PLANNER CALL 45; F15 spec rule 26, section 8; F16 spec sections 12; F17 spec sections 8, 11, 12, set 1 step 10; F18 spec sections 4, 6.8, 8, A32, set 7 step 1.
 
 Acceptance rows: A1, A2, A5 to A7, A11, A31, A48, A58 set 3 step 5; A3, A4, A36, A37, A47 set 3 step 7; A57 set 6 step 2; A59 set 7 step 2; A60 set 5 step 4; A61 set 5 step 2; A62 set 3 step 2; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
 step 1, set 6 step 1; A28 set 4 step 4; A29 set 4 step 3; A12, A13, A32, A33 set 7 step 1; A34, A46 set 3 step 5, set 4 step 2;
 A40, A51 set 7 step 3; A42, A49 set 3 step 6; A43, A55 set 7 step 2; A44, A50 set 7 step 4; A45 set 4 step 2; A52, A53 set 3
-step 2; A54 set 7 step 1; A56 set 3 step 3; A63 set 9 step 2; A64 to A71 set 9 step 3; A72 to A75 set 9 step 4; A76 set 9 steps 3, 4; A77 set 9 step 5; A78 set 7 step 2; A79, A81 set 9 step 1; A80 set 9 steps 2, 3, 4; A82 set 5 step 4; A83 set 7 step 3. Q8 set 9 step 3; Q9 set 9 step 5.
+step 2; A54 set 7 step 1; A56 set 3 step 3; A63 set 9 step 2; A64 to A71 set 9 step 3; A72 to A75 set 9 step 4; A76 set 9 steps 3, 4; A77 set 9 step 5; A78 set 7 step 2; A79, A81 set 9 step 1; A80 set 9 steps 2, 3, 4; A82 set 5 step 4; A83 set 7 step 3. Q8 set 9 step 3; Q9 set 9 step 5. A84 set 10 step 2; A85, A86 set 10 step 4; A87 set 10 steps 3, 5; A88 set 10 steps 1, 5; A89 to A95 set 10 step 6; A96 set 10 step 1; A97 set 7 step 3. Q10, Q11, Q13 set 10 step 5; Q12 set 10 step 2. Set 7's A32 now counts 10, 11 or 12 calls.
 
 ## Backlog
 
 ### Later, no date, the user's choice: one real deposit and withdrawal (O61 (b), O62)
 
 R2, R3 and R4 with real money. No set waits for them. They turn stage B's docs-only rows into MEASURED; the rows and parts are in the spec's Backlog.
-
-### Funding ledger (Q6, PLANNER CALL 46)
-
-`/v5/asset/fundinghistory`, if the user picks it or the next track takes it. The spec's Backlog holds its fields and what it needs first.
 
 ### Deferred: the rest of stage C, and stage D (O37, O64)
 
