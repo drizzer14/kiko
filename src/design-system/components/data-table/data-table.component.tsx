@@ -34,7 +34,8 @@ const HIDDEN_FROM_ACCESSIBILITY = {
 /**
  * A grid of money amounts: a fixed first column of row labels, a header row that stays visible,
  * and the columns scrolling sideways beside it only when they do not all fit. It takes strings
- * and display flags only; the caller formats every amount and owns the vertical room.
+ * and display flags, and one node of the caller's (`topContent`) to scroll above the caption; the
+ * caller formats every amount and owns the vertical room.
  *
  * Every width comes from measured text, never from the window or the device type, so an amount
  * is never cut, shrunk or wrapped, and the table follows Dynamic Type. A row is as tall as the
