@@ -428,16 +428,34 @@ describe('the choices a help step names', () => {
   );
 
   it.each([
-    ['en', enValues, /by 1\b/, 'first month with data', 'differ slightly'],
-    ['uk', ukValues, /на 1\b/, 'перший місяць із даними', 'трохи відрізнятися'],
+    [
+      'en',
+      enValues,
+      /by 1\b/,
+      'first month with data',
+      'differ slightly',
+      'mean of the cells',
+      'A return that falls in a different month from its payment lowers the "Total" or "All" figure, but not the cell of the payment\'s month.',
+    ],
+    [
+      'uk',
+      ukValues,
+      /на 1\b/,
+      'перший місяць із даними',
+      'трохи відрізнятися',
+      'середнє значення клітинок',
+      'Повернення, що припадає на інший місяць, ніж платіж, зменшує значення «Разом» або «Усього», але не клітинку місяця платежу.',
+    ],
   ] as const)(
-    'claims in %s no bound on how far a table total can sit from its cells, and names the first month the average leaves out',
-    (_language, values, bound, firstMonth, difference) => {
+    'claims in %s no bound on how far a table total can sit from its cells, names the first month the average leaves out, and says what a return in another month changes',
+    (_language, values, bound, firstMonth, falseClaim, averageIsCells, returnSentence) => {
       const step = stepOf(values, 'viewStatistics', 9);
 
       expect(step).not.toMatch(bound);
+      expect(step).not.toContain(falseClaim);
       expect(step).toContain(firstMonth);
-      expect(step).toContain(difference);
+      expect(step).toContain(averageIsCells);
+      expect(step).toContain(returnSentence);
     },
   );
 

@@ -179,6 +179,50 @@ describe('CategoryTable', () => {
     expect(cellsOf(table, 'category-groceries')[7].text).toBe('75');
   });
 
+  // A date edit moved a payment away from its group's return, so a month cell and the Total do not
+  // agree. The average reads the cells and stays the mean of what the row shows month by month,
+  // which a reader can check from the row; it does not follow the Total.
+  describe('a payment whose return fell in the month before it', () => {
+    const paid = (amountMinorUnits: number, returnedMinorUnits: number) => [
+      spend('before-period', 'transport', 1_00, new Date(2024, 11, 20, 12).getTime()),
+      transactionRow({
+        id: 'paid',
+        holdingId: 'card',
+        category: 'groceries',
+        amountMinorUnits: -amountMinorUnits,
+        changeGroupId: 'group',
+        time: MARCH.start + 1_000,
+      }),
+      transactionRow({
+        id: 'returned',
+        holdingId: 'card',
+        category: null,
+        amountMinorUnits: returnedMinorUnits,
+        changeGroupId: 'group',
+        time: FEBRUARY.end - 1_000,
+      }),
+    ];
+
+    it('averages the cells of the complete months, not the Total over them', async () => {
+      const { table } = await shown(propsOf(paid(212_00, 20_00)));
+      const cells = cellsOf(table, 'category-groceries');
+
+      // January to May: the cells are 0, 0, 212, 0, 0; the Total is 192. 212 / 5 = 42.4, where
+      // 192 / 5 would be 38.4.
+      expect(cells.slice(0, 5).map((cell) => cell.text)).toEqual(['0', '0', '212', '0', '0']);
+      expect(cells[6].text).toBe('192');
+      expect(cells[7].text).toBe('42');
+    });
+
+    it('can show an average above zero on a row with a Total of zero', async () => {
+      const { table } = await shown(propsOf(paid(20_00, 30_00)));
+      const cells = cellsOf(table, 'category-groceries');
+
+      expect(cells[6].text).toBe('0');
+      expect(cells[7].text).toBe('4');
+    });
+  });
+
   it('shows a dash and a spoken reason for an average with no complete month', async () => {
     const { table } = await shown(
       propsOf([spend('g-jun', 'groceries', 50_00, JUNE.start + 1_000)], { months: [JUNE] }),
