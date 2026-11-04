@@ -334,20 +334,26 @@ describe('the Tables screen opened from the Statistics button', () => {
     return [...new Set(mockReads.map(({ instance }) => instance))].sort();
   };
 
-  it('on the Home tab with two panes, mounts Statistics again under Tables, paused, and a later write reads from Home and Tables only', async () => {
+  // Whole-window ruling (user, 2026-11-04): Tables takes the whole window, so the screens beside
+  // and under it are not on screen. They stay mounted, paused, and only Tables reads a write.
+  it('on the Home tab with two panes, keeps Statistics where it is, not read again and paused, and a later write reads from Tables only', async () => {
     const rendered = await walkTabs();
+
+    const kept = subscriptionsOf('HomeTab/Statistics');
 
     mockReads = [];
     await pressTablesButton(rendered);
 
+    expect(kept.length).toBeGreaterThan(0);
     expect(subscriptionsOf('HomeTab/Tables').length).toBeGreaterThan(0);
-    expect(mockReads.some(({ instance }) => instance === 'HomeTab/Statistics')).toBe(true);
-    expect(subscriptionsOf('HomeTab/Statistics').length).toBeGreaterThan(0);
+    expect(mockReads.some(({ instance }) => instance === 'HomeTab/Statistics')).toBe(false);
+    expect(subscriptionsOf('HomeTab/Statistics')).toHaveLength(kept.length);
+    expect(subscriptionsOf('HomeTab/Statistics').every((own, at) => own === kept[at])).toBe(true);
     expect(subscriptionsOf('HomeTab/Statistics').every(({ isPaused }) => isPaused)).toBe(true);
-    expect(await readersOfAWrite()).toEqual(['HomeTab/Home', 'HomeTab/Tables']);
+    expect(await readersOfAWrite()).toEqual(['HomeTab/Tables']);
   });
 
-  it('on the Statistics tab, keeps Statistics reading beside Tables', async () => {
+  it('on the Statistics tab, keeps Statistics beside Tables, paused, and a later write reads from Tables only', async () => {
     const rendered = await walkTabs();
 
     await goTo('StatisticsTab');
@@ -358,10 +364,10 @@ describe('the Tables screen opened from the Statistics button', () => {
 
     expect(kept.length).toBeGreaterThan(0);
     expect(subscriptionsOf('StatisticsTab/Statistics')).toEqual(kept);
-    expect(subscriptionsOf('StatisticsTab/Statistics').some(({ isPaused }) => isPaused)).toBe(
-      false,
+    expect(subscriptionsOf('StatisticsTab/Statistics').every(({ isPaused }) => isPaused)).toBe(
+      true,
     );
-    expect(await readersOfAWrite()).toEqual(['StatisticsTab/Statistics', 'StatisticsTab/Tables']);
+    expect(await readersOfAWrite()).toEqual(['StatisticsTab/Tables']);
   });
 
   it('with one pane, the covered Statistics reads nothing', async () => {

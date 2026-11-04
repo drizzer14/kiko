@@ -285,6 +285,38 @@ describe('the Statistics tab when the window turns into a merged Home', () => {
     });
   });
 
+  // Tables takes the whole window, so it goes where the route below it is: in the pane of Home,
+  // which is its way back, not alone in the companion pane.
+  describe('with Tables open above the Statistics root', () => {
+    const period = { kind: 'year', year: 2024 };
+
+    beforeEach(async () => {
+      await renderTabs('StatisticsTab');
+      await openIn('StatisticsTab', 'Tables', { period });
+    });
+
+    it('carries Tables and its period to the Home tab, above Home', async () => {
+      await setLargeWindow(true);
+      await settle();
+
+      const home = stackOf('HomeTab');
+
+      expect(focusedTab()).toBe('HomeTab');
+      expect(home?.routes.map(({ name }) => name)).toEqual(['Home', 'Tables']);
+      expect(home?.routes.at(-1)?.params).toEqual({ period });
+    });
+
+    it('opens Tables in the pane of Home, so that Home is its Back', async () => {
+      await setLargeWindow(true);
+      await settle();
+
+      const home = stackOf('HomeTab');
+      const tables = home?.routes.find(({ name }) => name === 'Tables');
+
+      expect(home?.panes[tables?.key ?? '']).toBe('primary');
+    });
+  });
+
   describe('on a tab other than Statistics', () => {
     it('stays on the Accounts tab when a Statistics tab that was visited turns merged', async () => {
       await renderTabs('StatisticsTab');
