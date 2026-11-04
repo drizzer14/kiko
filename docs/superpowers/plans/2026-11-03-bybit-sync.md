@@ -62,12 +62,12 @@ the gate text stays below for when it is lifted.
 ## 1.4-bybit set 1/8: the terms verdict, the probe script and the user's probe run
 
 Base: 57130e23c, plus this spec. Steps 1/7 and 2/7 are done (2026-11-03, O39). The user's spec approval comes after the
-verdict and before step 6/7 (PLANNER CALL 23, O41). Size: 1 script, 1,295 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file. Not mutable.
+verdict and before step 6/7 (PLANNER CALL 23, O41). Size: 1 script, 1,357 lines measured 2026-11-04 (was about 600 to 900), 1 test, no app file. Not mutable.
 Reviewer checks: the whole script for any leak path; every part against spec section 10; no write verb. "Set 1 tip" is
 the commit after the last step that writes results: the second run of step 7/7, for R3 and R4 (O36). Set 2 bases on it.
 
 The user's order (O23, O31, O36, O38, O39, O41): part 1 of the browser step (step 1/7, done), the terms verdict (step 2/7,
-done), the user's spec approval, THE KEY MOMENT R1 (step 6/7), R2, R3, R4 with the redeem, and R7 on its date, an open check
+done), the user's spec approval, THE KEY MOMENT R1 (step 6/7), R2, R3, R4 with the redeem, and R7 the day after its date (O55), an open check
 after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O38).
 
 - [x] **step 1/7: part 1 of the browser step, DONE 2026-11-03** (O39; PLANNER CALL 18). The coordinator read both pages in the
@@ -78,31 +78,34 @@ after the ship (Q4). Steps 3/7 to 5/7 run meanwhile, so a pass loses no time (O3
   line of spec section 10.
 - [ ] **step 3/7: write `memory/refs/bybit-probe.sh`** (main checkout, untracked, like its templates; `kiko:ops` or
   the coordinator names the writer). Pattern: `binance-transfer-depth-probe.sh`, `eodhd-verify.sh`: hidden prompts,
-  `curl -q -K -` with URL and key on stdin, perl HMAC with the secret on stdin, alnum-checked key, masked URLs. Parts
+  `curl -q --noproxy '*' -K -` with URL and key on stdin, perl HMAC with the secret on stdin, alnum-checked key, masked URLs. Parts
   P1 to P7 and P11 to P18, no others (O37), with P14 NOT RUN and no call (O49). The printer of spec section 10: no server text, a
-  `retCode` with a word from a closed table (O45), a value from a closed list per field, and `<other>` for an unknown value (O46).
-  P4 and P6 read two balances around the user's step (O47); P2 and P3 hold K3, K4, K5 and K11 at prompts (O50); P13 tests the
-  filter time field on the withdrawal series (O48). `set -u`; a Ctrl-C prints what was read. No elapsed time is printed, and no
+  `retCode` with a word from a closed table (O45), a value from a closed list per field, and `<other>` for an unknown value (O46);
+  a coin name, a `permissions` name and a wallet-hint value keep a shape test, the accepted residual of spec section 10 (O51).
+  P4 and P6 read two balances around the user's step (O47); P2 and P3 hold K3, K4, K5 and K11 at prompts (O50), with P3's stake
+  check on amounts (O54); P13 tests the filter time field on the withdrawal series (O48); P17 renews only after a refusal that
+  can be about expiry (O55). `set -u`; a Ctrl-C prints what was read. No elapsed time is printed, and no
   call repeats to measure uptime or latency (C6, API 6.6).
 - [ ] **step 4/7: fake-curl test.** A fake `curl` on `PATH` feeds sentinel email, phone, address, name, id and key
-  values for every part. Check: no sentinel appears on stdout or stderr, the key is in no argv, and each part makes a fixed
-  number of calls (C6).
+  values for every part. Check: no sentinel appears on stdout or stderr, the key is in no argv, and each part stays under a
+  maximum number of calls per part, with `CALL_CAP` as the hard cap (C6, O53).
 - [ ] **step 5/7: read the whole file** (orchestrator). The reviewer passes it. After that pass and the user's spec approval
   (O41), the coordinator hands it over, with the R1 account list, the C6 user line of spec section 10 and part 2 of the
   browser step (spec section 9).
 - [ ] **step 6/7: THE KEY MOMENT. The user runs R1, R2, R3, R4,** in the order and with the holdings of spec section 10:
   the C6 line before R1, part 2 of the browser step at R1, `R2 P4` while K1 is pending, with a prompt until K1 lands and before
-  K2 (O16, O32, O47), skip at the P4 prompt of the whole R2, the cancel of K3 at P2's prompt and K4 and K5 at P3's prompt in R3
-  (O50), K6 at P6's prompt from each wallet that Bybit allows (O14), R4 after the R3 run of P3 shows the position, with no fixed
+  K2 (O16, O32, O47), `R2 P2` BEFORE K2 if K1 landed before `R2 P4` could run (O52), skip at the P4 prompt of the whole R2, the
+  cancel of K3 at P2's prompt and K4 and K5 on one prompt of P3 in R3 (O50, O54), K6 at P6's prompt from each wallet that Bybit
+  allows, with two different amounts when both wallets are used (O14), R4 after the R3 run of P3 shows the position, with no fixed
   day (O40), skip at the prompt of each `R4 P6` settle run, `R2 P13` once more after K6 settles (O48), and last K11, the redeem
   of Flexible Savings, at the prompt of `R4 P3` (O31, O50). Outputs go to `memory/refs/bybit-probe-output-<date>.txt`. The date of `expiredAt` goes into the track HANDOFF and the run log as an
-  open gap until R7 runs. R7 on that date, an open check after the ship (Q4): it holds neither set 7 nor the merge, and its
+  open gap until R7 runs. The key and the secret stay in the user's password manager until R7. R7 the day after that date (O55), an open check after the ship (Q4): it holds neither set 7 nor the merge, and its
   row stays UNPROBED(P17), with the copy of O26.
 - [ ] **step 7/7: write results into the spec.** `kiko:planner` turns each UNPROBED row into MEASURED or edits it; the
   same pass edits this plan, picks the outcome of rules 45, 46 and 47 and the section 8 clauses, and states the needed
   boxes of each kind (O13). A P12 refusal moves a floor; an empty 0 keeps 729 days (O20). Check: `git grep -c UNPROBED`
-  on the spec falls to the rows of P5 and P17, rule 47 if the user missed the pending window, and the deferred rows under
-  Backlog (O32, O35, O37). A row keeps its mark until its own probe runs. A kind that failed goes to its text in section 8. A shape
+  on the spec falls to the rows of P5 and P17, rule 47 if the user missed the pending window, the deposit half of rule 45 if the
+  user also missed `R2 P2` before K2, and the deferred rows under Backlog (O32, O35, O37, O52). A row keeps its mark until its own probe runs. A kind that failed goes to its text in section 8. A shape
   change that reverses a row adds a was column. `make doc-suites`. This step runs once for R1 and R2 and again for R3, R4 and
   the `R2 P13` run after K6; the second run's commit is the set 1 tip.
 
@@ -337,7 +340,7 @@ verify green. `1.4-light-scheme` may land first: theme tokens keep sets 4 and 7 
 
 | Set | Code lines (about) | Code files | Test lines (about) |
 |---|---|---|---|
-| 1 | script 1,295, measured | 1 | 1 fake-curl test |
+| 1 | script 1,357, measured | 1 | 1 fake-curl test |
 | 2 | 210 | 9-12 | 450 |
 | 3 | 1,270 | 25-29 | 2,350 |
 | 4 | 550 | 13-15 | 1,050 |
@@ -366,7 +369,9 @@ steps 1, 2, 3; C2 set 3 step 2; C3 set 7 header, step 1, set 8 step 2; C4 set 7 
 1 steps 3, 4, 5, 6, spec section 10; C7 set 8 step 2. O42 status, set 8 step 2, spec sections 9, 12, 13. Q1 to Q4: spec sections 6.3, 7, 13, set 1 step 6.
 O44 set 7 header, step 6, "Merge order". O45, O46 set 1 step 3, spec sections 10, 12. O47 set 1 steps 3, 6, spec rule 41, sections
 10, 12. O48 set 1 steps 3, 6, 7, spec sections 10, 12. O49 set 1 step 3, gate per stage, spec sections 8, 10, 12. O50 set 1 steps 3,
-6, gate per stage, set 3 header, spec sections 10, 12.
+6, gate per stage, set 3 header, spec sections 10, 12. O51 set 1 step 3, spec sections 10, 12. O52 set 1 steps 6, 7, spec rule 45,
+sections 10, 12. O53 set 1 step 4, spec sections 10, 12. O54 set 1 steps 3, 6, spec sections 10, 12. O55 set 1 header, steps 3, 6, spec
+sections 6.3, 10, 12.
 
 Acceptance rows: A1 to A7, A11, A31, A36, A37, A47, A48 set 3 step 5; A8, A38 set 3 step 4; A9, A10 set 3 step 2; A14, A16 set 4
 step 1; A15 set 3 step 2, set 4 step 2; A17 to A22, A27, A30, A35, A39, A41 set 5 step 4; A23 to A25 set 6 step 1; A26 set 4
