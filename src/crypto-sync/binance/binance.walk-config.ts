@@ -17,7 +17,12 @@ import { binanceKeyOf, coinHoldingName, partsOfHoldingKey } from './binance.hold
 export const isUnreadableWindowError = (error: unknown): boolean =>
   error instanceof BinanceHistoryParseError;
 
-export const BINANCE_WALK_CONFIG: ExchangeWalkConfig<BinanceRateLimitError, BinancePageWeights> = {
+export const BINANCE_WALK_CONFIG: ExchangeWalkConfig<
+  BinanceRateLimitError,
+  BinancePageWeights,
+  'binance'
+> = {
+  source: 'binance',
   metadataField: 'binanceAsset',
   holdingKeyOf: binanceKeyOf,
   walletHoldingOf: (key) =>

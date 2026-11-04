@@ -936,6 +936,19 @@ describe('placeWalletRows', () => {
     ]);
   });
 
+  it('puts the source of the config it is given on a row, not a fixed one', async () => {
+    const rows = await placeWalletRows({
+      accountId: 'acc-1',
+      planned: [{ wallet: SPOT_KEY, externalId: 'a' }],
+      config: { ...BINANCE_WALK_CONFIG, source: 'btc_wallet' },
+      listHoldings,
+      ensureHoldings,
+      missingCode: 'x-holding-missing',
+    });
+
+    expect(rows.map((row) => row.source)).toEqual(['btc_wallet']);
+  });
+
   it('puts the other leg of a row on its own holding', async () => {
     await expect(
       place([{ wallet: SPOT_KEY, counterpartWallet: FUNDING_KEY, externalId: 'a' }]),
