@@ -462,6 +462,30 @@ describe('scripts/job-queue.sh a verify checkout', () => {
     expect(makeCalls(fixture)).toEqual([]);
   });
 
+  it('names --sha <commit> in the dirty-worktree refusal of a verify', () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture, 'own');
+    writeFile(repository, 'dirty.txt', 'dirty\n');
+
+    const result = runQueue(fixture, 'verify', repository, 'one');
+
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain('--sha <commit>');
+  });
+
+  it('does not name --sha in the dirty-worktree refusal of a gate', () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture, 'own');
+    const head = headOf(fixture, repository);
+    writeFile(repository, 'dirty.txt', 'dirty\n');
+
+    const result = runQueue(fixture, 'gate', repository, 'one', 'main', head.slice(0, 9));
+
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain('dirty.txt');
+    expect(result.stderr).not.toContain('--sha');
+  });
+
   it('refuses at enqueue when neither the main checkout nor the queuing folder has the script', () => {
     const fixture = createFixture();
     const repository = createRepository(fixture, 'own');

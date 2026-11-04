@@ -583,13 +583,17 @@ first_changed_paths() {
 # An unreadable repository lists no path and is not this refusal's concern: it still records
 # `unknown`.
 refuse_dirty_tree() {
-  local changes paths
+  local changes paths sha_hint=''
   changes="$(git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all \
     2> /dev/null)" || return 0
   [ -n "$changes" ] || return 0
   paths="$(printf '%s\n' "$changes" | sed -n '1,3p' | cut -c4- | paste -s -d, -)"
-  printf 'job-queue.sh: %s has uncommitted changes (first paths: %s); a %s of a changed tree is not a result of any commit. Commit them first (for example ios/Podfile.lock after a pod install) or copy the files aside, never stash, then re-queue.\n' \
-    "$worktree" "$paths" "$command_name" >&2
+  # Only a verify takes --sha; naming it for a gate would point at a flag the gate refuses.
+  if [ "$command_name" = verify ]; then
+    sha_hint=' To test a commit while the tree stays dirty, queue with --sha <commit>.'
+  fi
+  printf 'job-queue.sh: %s has uncommitted changes (first paths: %s); a %s of a changed tree is not a result of any commit. Commit them first (for example ios/Podfile.lock after a pod install) or copy the files aside, never stash, then re-queue.%s\n' \
+    "$worktree" "$paths" "$command_name" "$sha_hint" >&2
   exit 3
 }
 

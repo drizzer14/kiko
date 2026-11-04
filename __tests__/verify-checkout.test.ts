@@ -23,7 +23,7 @@ import { isolatedGitEnvironment } from './test-support/isolated-git';
 // scripts/verify-checkout.sh prepares the one shared checkout a queued verify runs in. Each row
 // runs the real script against a throwaway repository, with `npm` and `node` stubbed: nothing
 // installs.
-const SCRIPT = join(__dirname, '../scripts/verify-checkout.sh');
+const SCRIPT = join(__dirname, '..', 'scripts/verify-checkout.sh');
 const STAMP = 'node_modules/.kiko-verify-install';
 
 jest.setTimeout(120_000);
