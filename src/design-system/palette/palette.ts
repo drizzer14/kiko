@@ -47,9 +47,10 @@ export const chartSeriesDark = [
 ] as const satisfies readonly string[];
 
 // Light twins of the dark set, from docs/design/light-palette/palette.json (pinned by
-// __tests__/light-palette-source.test.ts). Stored colors stay the dark hex; these are only the
-// display value. Keyed by the dark set, so a key can never exist on one side only. They sit below
-// the dark sets because the dark-value checker reads the dark blocks by position.
+// light-palette-source.test.ts). Stored colors stay the dark hex; these are only the display
+// value. Keyed by the dark set, so a key can never exist on one side only. They sit below the dark
+// sets so the dark blocks keep their original place in this file, and a diff against the base
+// shows them untouched.
 //
 // Tile fill for an account or holding: kept at least 3.8:1 against white, so even the lightened
 // top gradient stop holds a white glyph at 3:1.
@@ -89,8 +90,10 @@ export const categoryColorsLight: Record<SwatchName, string> = {
   gray: '#7C7C80',
 };
 
-// The same eight hues in the same order, read from the category set so the subset invariant above
-// holds by construction for light.
+// The same eight hues in the same order as chartSeriesDark, read from the category set. The subset
+// invariant above is about entityColors and does not carry over: a light chart hue is a subset of
+// categoryColorsLight (by construction here, pinned by palette.contrast.test.ts), not of
+// entityColorsLight.
 export const chartSeriesLight: readonly string[] = (
   ['blue', 'green', 'orange', 'violet', 'teal', 'pink', 'yellow', 'indigo'] as const
 ).map((name) => categoryColorsLight[name]);

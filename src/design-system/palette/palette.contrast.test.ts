@@ -13,24 +13,17 @@ type Scheme = {
     surface: string;
     onAccent: string;
     glyphOnLightTile: string;
-    entityColors: Record<string, string>;
-    categoryColors: Record<string, string>;
-    chartSeries: readonly string[];
   };
 };
 
 const casesOf = (label: string, scheme: Scheme, swatches: Record<string, string>) =>
-  Object.entries(swatches).map(([name, hex]) => ({
-    label: `${label} ${name}`,
-    hex,
-    scheme,
-  }));
+  Object.entries(swatches).map(([name, hex]) => [`${label} ${name}`, hex, scheme] as const);
 
 const cases = [
   ...casesOf('dark entity', darkTheme, darkTheme.colors.entityColors),
   ...casesOf('light entity', lightTheme, lightTheme.colors.entityColors),
   ...casesOf('light category', lightTheme, lightTheme.colors.categoryColors),
-].map(({ label, hex, scheme }) => [label, hex, scheme] as const);
+];
 
 describe('palette contrast: no invisible tile', () => {
   it.each(cases)('%s tile holds 3:1 against page and card', (_label, hex, scheme) => {

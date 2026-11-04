@@ -245,7 +245,7 @@ export const darkTheme = {
 } as const;
 
 // The light theme. Every value comes from docs/design/light-palette/palette.json (pinned by
-// __tests__/light-palette-source.test.ts); the non-color scales are the dark theme's own objects.
+// palette/light-palette-source.test.ts); the non-color scales are the dark theme's own objects.
 // `satisfies` the dark key shape, so a token added to dark and missed here fails to type-check.
 const lightColors = {
   background: '#F2F2F7',

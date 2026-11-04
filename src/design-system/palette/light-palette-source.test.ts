@@ -1,13 +1,14 @@
 import { join } from 'node:path';
-import { darkTheme, lightTheme } from '@kiko/design-system/theme';
-import { chartSeriesDark, entityColorsDark } from '@kiko/design-system/palette';
+import { readFileSync } from 'node:fs';
 
-import { readTextFile } from './test-support/read-text-file';
+import { darkTheme, lightTheme } from '../theme';
+
+import { chartSeriesDark, entityColorsDark } from './palette';
 
 type SwatchFile = Record<string, { dark: string; light: string }>;
 
 const palette = JSON.parse(
-  readTextFile(join(__dirname, '..', 'docs', 'design', 'light-palette', 'palette.json')),
+  readFileSync(join(__dirname, '../../../docs/design/light-palette/palette.json'), 'utf8'),
 ) as {
   decisions: {
     pageBackground: { chosen: string };
@@ -35,8 +36,8 @@ const keyPaths = (value: unknown, prefix = ''): string[] =>
       ])
     : [];
 
-const lightOf = (swatches: SwatchFile): Record<string, string> =>
-  Object.fromEntries(Object.entries(swatches).map(([name, { light }]) => [name, light]));
+const valuesOf = (swatches: SwatchFile, scheme: 'dark' | 'light'): Record<string, string> =>
+  Object.fromEntries(Object.entries(swatches).map(([name, values]) => [name, values[scheme]]));
 
 describe('the approved light palette file', () => {
   it('records the approved page background and segmented thumb decisions', () => {
@@ -52,13 +53,12 @@ describe('the approved light palette file', () => {
   });
 
   it('entity, category and chart sets equal the file', () => {
-    expect(lightTheme.colors.entityColors).toEqual(lightOf(palette.entitySwatches));
-    expect(lightTheme.colors.categoryColors).toEqual(lightOf(palette.categorySwatches));
+    expect(lightTheme.colors.entityColors).toEqual(valuesOf(palette.entitySwatches, 'light'));
+    expect(lightTheme.colors.categoryColors).toEqual(valuesOf(palette.categorySwatches, 'light'));
     expect(lightTheme.colors.chartSeries).toEqual(palette.chartSeries.light);
     expect(chartSeriesDark).toEqual(palette.chartSeries.dark);
-    expect(entityColorsDark).toEqual(
-      Object.fromEntries(Object.entries(palette.entitySwatches).map(([n, { dark }]) => [n, dark])),
-    );
+    expect(entityColorsDark).toEqual(valuesOf(palette.entitySwatches, 'dark'));
+    expect(darkTheme.colors.categoryColors).toEqual(valuesOf(palette.categorySwatches, 'dark'));
     expect(palette.chartSeries.light).toEqual(
       palette.chartSeries.keys.map((key) => palette.categorySwatches[key].light),
     );
