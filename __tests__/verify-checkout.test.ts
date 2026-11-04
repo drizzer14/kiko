@@ -517,18 +517,18 @@ describe('scripts/verify-checkout.sh the checkout path', () => {
     );
   });
 
-  it.each([
-    ['an uppercase letter', 'ABCDEF1'],
-    ['a letter past f', 'abcdefg'],
-    ['a branch name', 'main'],
-    ['a revision suffix', 'HEAD~1'],
-    ['an empty argument', ''],
-    ['an option', '--all'],
-  ])('exits 2 for a sha with %s and creates no checkout', (_title, requested) => {
+  it.each<[string, (sha: string) => string]>([
+    ['an uppercase letter', (sha) => sha.toUpperCase()],
+    ['a letter past f', () => 'abcdefg'],
+    ['a branch name', () => 'main'],
+    ['a revision suffix', () => 'HEAD~1'],
+    ['an empty argument', () => ''],
+    ['an option', () => '--all'],
+  ])('exits 2 for a sha with %s and creates no checkout', (_title, requestedFrom) => {
     const fixture = createFixture();
-    fixture.commit({ 'a.txt': 'one\n' });
+    const sha = fixture.commit({ 'a.txt': 'one\n' });
 
-    const result = fixture.run(requested);
+    const result = fixture.run(requestedFrom(sha));
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('CHECK FAILED: verify-checkout.sh');

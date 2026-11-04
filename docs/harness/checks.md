@@ -156,9 +156,11 @@ can affect. The full suite runs only in the queued verify. A focused run of name
   without the real-semgrep suites, on every core), then stage 2b (the seven real-semgrep suites of
   `scripts/checks/semgrep-jest-suites.txt`, in band). There is no separate lint stage. It stops at
   the first failing stage. `KIKO_PROPERTY_SWEEP=full` is exported after the gate. The gate starts
-  right after the queue's start-load defer read the load (5-minute load below 10), so
-  `check:security` and `check:rules` run at a load that was just read, and 2a and 2b never run
-  beside the gate.
+  after the queue's start-load defer read the load (5-minute load below 10), but not right after
+  it: the install step (`npm ci`, when the stamp differs) runs between, a `LOAD WAIT EXPIRED` or
+  an unknown load starts the job without a low reading, and `check:security` follows lint, dup,
+  knip and deps inside the gate. So the load read at the start is only a bound on where the
+  gate began. 2a and 2b never run beside the gate.
 - Costs: a gate failure hides the jest results until the fix. A scoped verify ends on 2a, which
   uses all cores, so the next queued job's start-load defer can wait some minutes. The gate runs in
   the shared checkout, so it has none of the track's Stop-tier fingerprints and can take longer
@@ -183,10 +185,12 @@ can affect. The full suite runs only in the queued verify. A focused run of name
 - User ruling 2026-11-04: `harness/**/*.md` does not trigger 2b. The list holds `harness/` and then
   `!harness/*.md`, a bash `case` pattern where `*` also matches `/`. A commit with Markdown plus
   non-Markdown under `harness/` runs 2b, and a rename out of or into Markdown lists both paths, so
-  a non-Markdown side runs 2b. Evidence: a trace of the seven suites at 6d809d307 found no read,
-  copy or listing under `harness/`. The trace sees node only; the native children were covered by
-  a source grep and logged arguments. The result holds for that suite code only: a suite that
-  begins to read a Markdown file under `harness/` needs a trigger line (and the exclude narrowed).
+  a non-Markdown side runs 2b. Evidence: a trace of the seven suites at 6d809d307 found no
+  Markdown file read, copied or listed under `harness/`. Non-Markdown paths under `harness/` stay
+  triggers: `pre-write-guard-rules` runs the real `harness/kiko/hooks/dispatch.sh`. The trace sees
+  node only; the native children were covered by a source grep and logged arguments. The result
+  holds for that suite code only: a suite that begins to read a Markdown file under `harness/`
+  needs a trigger line (and the exclude narrowed).
 - The log: every verify prints `── make verify: stage 2b runs in full (<reason or first trigger
   path>) ──` before the stage 2b header, or `── make verify: stage 2b SKIPPED (no trigger path
   changed since <12-character base>) ──`. Only the header form `── make verify: stage 2b (` proves
@@ -197,9 +201,9 @@ can affect. The full suite runs only in the queued verify. A focused run of name
   far decide; a failed open runs 2b.
 - Main: `ff-main.sh` refuses a verify line whose 7th field is not `full` (exit 2). A main-bound
   set therefore gets a verify with no flag; `--scoped` belongs to a track verify. Forgetting the
-  flag on a track costs about 10 minutes. The skip rate is low for a merge (a merge carries skill
-  and harness commits that touch triggers), so the merge verify mostly runs in full; the per-task
-  verify is the one that skips.
+  flag on a track costs the 2b time, measured at 620 to 889 s. The skip rate is low for a merge (a
+  merge carries skill and harness commits that touch triggers), so the merge verify mostly runs in
+  full; the per-task verify is the one that skips.
 - Track rule: a track goes on with its next task while its verify waits and runs. `--sha` names
   the commit (the worktree may be dirty or moved); with no `--sha` the worktree HEAD at enqueue is
   tested and a dirty worktree is refused. On a failure of sha S a fresh developer fixes on top of

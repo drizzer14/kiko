@@ -30,8 +30,9 @@ ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT" || exit 2
 
 # Stage 1 (check:all) starts the run: its first check is lint, so a format error fails in
-# seconds, and the gate's scans (check:security, check:rules) run right after the queue's
-# start-load defer read the load.
+# seconds. The gate begins after the queue's start-load defer, but not right after it: an install
+# can run between, a load wait that expired or an unknown load starts it unread, and
+# check:security follows lint, dup, knip and deps.
 #
 # Stage 1 also overlaps several checks that the Stop and SubagentStop medium tier runs (dup,
 # knip, deps, typecheck, and more). Do NOT mistake that overlap for a bug and remove the stage —

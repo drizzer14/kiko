@@ -88,8 +88,11 @@ ignore pattern.
 - A check fingerprint is keyed on the root path, so the checkout has one state folder and a new
   sha re-runs what changed. Its guard-replay mark is one more `refs/kiko/guard-replay/*` ref; the
   replay still counts only commits no mark reaches.
-- A verify of a folder with no readable HEAD (a scratch queue only; the real queue refuses it)
-  still runs `make` in place and records `unknown`; `--sha` there is exit 2.
+- A verify of a folder with no readable HEAD and no `--sha` runs `make` in place and records
+  `unknown`, or the HEAD it really tested when one exists at the start. The folder is no
+  repository (the real queue refuses it) or, on the real queue too, an unborn-HEAD worktree of
+  this repository. A `--sha` there is accepted when it names a commit of the repository: the
+  verify then runs in the shared checkout; any other value is refused at enqueue.
 - `done.log` head: the sha, kept when the checkout is clean and at that sha at the end, else
   `unknown` plus the NOTE. The track's worktree is not read after enqueue.
 - Where the prepare step comes from: for a verify, `verify-checkout.sh` and `wait-load.sh` are read

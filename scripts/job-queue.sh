@@ -83,9 +83,11 @@
 # Makefile of the sha itself apply. --scoped sets KIKO_VERIFY_SCOPED=1 for that make (verify.sh may
 # then skip stage 2b); without the flag the queue removes the variable, so an inherited value
 # cannot skip 2b. Both options take either order, once each.
-# A folder with no readable HEAD (a scratch queue only; the real queue refuses it) keeps the
-# in-place run, `make -C <folder> verify`, and `--sha` there is exit 2. The pruning of the shared
-# checkout costs one `npm ci`.
+# A folder with no readable HEAD and no --sha keeps the in-place run, `make -C <folder> verify`:
+# a folder that is no repository (the real queue refuses it) or an unborn-HEAD worktree of this
+# repository, which the real queue accepts. A --sha there is accepted when it names a commit, and
+# the verify then runs in the shared checkout. The pruning of the shared checkout costs one
+# `npm ci`.
 # verify-checkout.sh and wait-load.sh are read from SUPPORT_DIRECTORY, fixed at enqueue: the main
 # checkout's scripts folder when it holds verify-checkout.sh, else this script's own folder. This
 # script itself still runs from the folder it was started in, so an edit of this file there while
@@ -138,8 +140,9 @@
 # be trapped: a waiter killed with it leaves its job running, so never SIGKILL one (the lock is
 # live by group only once the group is named; see Known limits).
 #
-# START line: `START <label> at HH:MM head <12-character sha of the worktree HEAD, or unknown>
-# (load: <averages>)`, so a log says which commit a job ran on.
+# START line: `START <label> at HH:MM head <12-character sha of the worktree HEAD (of the enqueue
+# sha for a verify with a sha), or unknown> (load: <averages>)`, so a log says which commit a job
+# ran on.
 #
 # DONE summary of a gate (printed before the DONE line): the last five of the `changed lines`,
 # `CHANGE SET`, `GATE:`, and `CHECK FAILED` lines of the gate log, never a `FIRST RUN: ` line (the
