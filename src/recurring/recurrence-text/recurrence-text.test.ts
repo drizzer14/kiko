@@ -50,9 +50,140 @@ const WEEKDAY_LINES_UK = [
   'Списувалося щотижня, у суботу',
 ];
 
+// The marked kind and the two marked-only periods are reached by lookup: the types gain them
+// with the copy.
+const markedPeriod = (name: string): RecurringPeriod => name as RecurringPeriod;
+const MARKED = { kind: 'marked' } as unknown as Recurrence;
+
+const markedSeriesWith = (period: string): RecurringSeries =>
+  ({
+    ...seriesWith({ period: markedPeriod(period), recurrence: MARKED }),
+    marks: [{ currency: 'UAH', amountMinorUnits: 88800, period }],
+    markedSpan: { lowest: 88800, highest: 99900 },
+  }) as unknown as RecurringSeries;
+
+const textOf = (key: string, options?: Record<string, string>): string =>
+  (i18n.t as unknown as (key: string, options?: Record<string, string>) => string)(key, options);
+
+const MARKED_PERIODS = ['weekly', 'monthly', 'everyThreeMonths', 'everySixMonths', 'yearly'];
+const MARKED_ONLY_PERIODS = ['everyThreeMonths', 'everySixMonths'];
+
+const MARKED_LINES_EN = [
+  'Marked: weekly',
+  'Marked: monthly',
+  'Marked: every 3 months',
+  'Marked: every 6 months',
+  'Marked: yearly',
+];
+
+const MARKED_LINES_UK = [
+  'Позначено: щотижня',
+  'Позначено: щомісяця',
+  'Позначено: раз на 3 місяці',
+  'Позначено: раз на 6 місяців',
+  'Позначено: щороку',
+];
+
+type MarkedExpectations = {
+  lines: readonly string[];
+  monthlyOnDay: string;
+  weeklyOnMonday: string;
+  yearlyOn: string;
+  monthly: string;
+  emptyMessage: string;
+  lastCharge: string;
+  quiet: string;
+};
+
+const markedCases = (expected: MarkedExpectations): void => {
+  describe('marked text', () => {
+    it.each(MARKED_PERIODS.map((period, index) => [period, expected.lines[index]] as const))(
+      'reads a marked %s series as its marked line',
+      (period, line) => {
+        expect(recurrenceLineOf(markedPeriod(period), MARKED)).toBe(line);
+      },
+    );
+
+    it.each(MARKED_ONLY_PERIODS.map((period) => [period, MARKED_PERIODS.indexOf(period)] as const))(
+      'reads a %s period with no pattern as its marked line',
+      (period, index) => {
+        expect(recurrenceLineOf(markedPeriod(period), { kind: 'none' })).toBe(
+          expected.lines[index],
+        );
+        expect(recurrenceLineOf('monthly', { kind: 'none' })).toBe(expected.monthly);
+      },
+    );
+
+    it('reads a marked monthly day as any series', () => {
+      const line = recurrenceLineOf('monthly', { kind: 'onDay', day: 15 });
+
+      expect(line).toBe(expected.monthlyOnDay);
+      expect(expected.lines).not.toContain(line);
+      expect(recurrenceLineOf(markedPeriod('monthly'), MARKED)).toBe(expected.lines[1]);
+    });
+
+    it('reads a marked weekday and a marked date as any series', () => {
+      expect(recurrenceLineOf('weekly', { kind: 'onWeekday', weekday: 1 })).toBe(
+        expected.weeklyOnMonday,
+      );
+      expect(recurrenceLineOf('yearly', { kind: 'onDate', time: YEARLY_TIME })).toBe(
+        expected.yearlyOn,
+      );
+      expect(recurrenceLineOf(markedPeriod('weekly'), MARKED)).toBe(expected.lines[0]);
+    });
+
+    it('words the empty message with no merchant name', () => {
+      const text = textOf('recurringCharges.markedEmptyMessage', { name: 'Netflix' });
+
+      expect(text).toBe(expected.emptyMessage);
+      expect(text).not.toContain('Netflix');
+      expect(text).not.toContain('{{');
+    });
+
+    it('words the empty message with no digit', () => {
+      const text = textOf('recurringCharges.markedEmptyMessage');
+
+      expect(text).toBe(expected.emptyMessage);
+      expect(text).not.toMatch(/\d/);
+    });
+
+    it('would show a merchant name and a digit if the message held them', () => {
+      const text = i18n.t('recurringCharges.holdingQuietSince', {
+        holding: 'Netflix',
+        date: formatDate(QUIET_SINCE),
+      });
+
+      expect(text).toBe(expected.quiet);
+      expect(text).toContain('Netflix');
+      expect(text).toMatch(/\d/);
+    });
+
+    it('holds the last real charge of a marked series, never a stored amount', () => {
+      const line = lastChargeLineOf(markedSeriesWith('everyThreeMonths'));
+
+      expect(line).toBe(expected.lastCharge);
+      expect(line).not.toContain('888');
+      expect(recurrenceLineOf(markedPeriod('everyThreeMonths'), MARKED)).toBe(expected.lines[2]);
+    });
+  });
+};
+
 describe('recurrence text in English', () => {
   beforeAll(async () => {
     await i18n.changeLanguage('en');
+  });
+
+  markedCases({
+    lines: MARKED_LINES_EN,
+    monthlyOnDay: 'Charged monthly, on day 15',
+    weeklyOnMonday: 'Charged weekly, on Mondays',
+    yearlyOn: 'Charged yearly, on 07.03',
+    monthly: 'Charged monthly',
+    emptyMessage:
+      'No transactions near the amount you marked count here now. ' +
+      'Transfers, exchanges and loan payments are left out.',
+    lastCharge: 'Last charge 15.08.2026',
+    quiet: 'Netflix: no newer transactions since 20.08.2026',
   });
 
   describe('recurrenceLine', () => {
@@ -127,6 +258,19 @@ describe('recurrence text in Ukrainian', () => {
 
   afterAll(async () => {
     await i18n.changeLanguage('en');
+  });
+
+  markedCases({
+    lines: MARKED_LINES_UK,
+    monthlyOnDay: 'Списувалося щомісяця, 15 числа',
+    weeklyOnMonday: 'Списувалося щотижня, у понеділок',
+    yearlyOn: 'Списувалося щороку, 07.03',
+    monthly: 'Списувалося щомісяця',
+    emptyMessage:
+      'Зараз тут немає транзакцій, близьких до позначеної суми, які враховуються. ' +
+      'Перекази, обміни й платежі за кредитом не враховуються.',
+    lastCharge: 'Останнє списання 15.08.2026',
+    quiet: '«Netflix»: немає новіших транзакцій за 20.08.2026',
   });
 
   describe('recurrenceLine', () => {
