@@ -178,7 +178,7 @@ no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`,
 is a disk leak path through NSURLCache (`Cache.db` stores the response under
 its URL, together with the request object and its headers). Always send the
 request header `Cache-Control: no-store` on every such request (every
-Monobank and Binance request does); `npm run check:plist` fails a
+Monobank, Binance and Bybit request does); `npm run check:plist` fails a
 credential client without it. `AppDelegate.purgeStoredURLCacheOnce` cleared
 the rows builds before that stored. Verified on macOS CFNetwork: a per-request
 `cachePolicy` does NOT prevent the store, and React Native fetch's

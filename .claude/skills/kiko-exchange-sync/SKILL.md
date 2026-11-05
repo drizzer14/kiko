@@ -1026,6 +1026,28 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
   rather than trust a caller-supplied flag, since the write is reachable
   directly, not only through the picker.
 
+## Bybit balance sync — notes, set-aside coins, cooling
+
+Status: set 4 of 1.4-bybit; the history walk of set 6 can extend this section. The code is in
+`src/crypto-sync/bybit/`; read it there and copy no list from here.
+
+- The provider (`bybit.provider.ts`) returns state patches. Patch kind `balanceNotes`
+  (`src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`, `withBalanceNotes`): a good read
+  of a wallet replaces that wallet's entry whole. A failed FUND read keeps the entry and adds
+  `refused` (key permission) or `notRead` (any other cause); only a later good read clears it.
+- `balanceNotesOf` (`src/crypto-sync/exchange/history-status/history-status.ts`) returns entries
+  as `{wallet, coin}`, so a note always names its wallet.
+- A tracked UNIFIED coin with a loan, with `locked` above zero, or with a field that is not
+  decimal text is set aside: its holding is never written and never zeroed
+  (`bybit.balance-read.ts`).
+- A Bybit balance read never writes the `oversizedBalance` patch; a coin that does not fit is
+  `refused` in its note.
+- Cooling (`fetchBalances` in `bybit.provider.ts`): an account with a stamped Bybit holding skips
+  silently and keeps its balances; any other account fails with `bybitCoolingFailure`
+  (`bybit.failure-text.ts`). A kept holding with no stamp does not count.
+- A provider failure throws. `sync.ts` reads an empty answer as success, so an empty return can
+  hide a failure.
+
 ## Crypto re-sync request
 
 A re-sync of a connected crypto account carries no address: `resyncRequest`

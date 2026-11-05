@@ -1312,8 +1312,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   rules and the app exports every rule: a restore guard never rejects a state
   the app itself writes.
 - **Every Keychain secret class the export carries is read and restored.**
-  Read `payload.d.ts`'s `ExportSecrets` for the classes it carries: the
-  per-account `monobankTokens` and `binanceCredentials`. The
+  Read `ExportSecrets` in `src/data-transfer/payload.d.ts` for the classes it
+  carries (each is per account). The
   export never carries the SQLCipher DB key at all. Secrets are written only
   with the credentials toggle on. `secrets/read-secrets.ts` reads every class
   from the Keychain (skipping an account with no stored secret) and

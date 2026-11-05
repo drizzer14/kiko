@@ -237,6 +237,8 @@ string:
   missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence. A Binance
   product or wallet name is a whole PHRASE in `BINANCE_PRODUCT_PHRASES` (same en file), never a
   single word added to `PROPER_NOUNS`: "Card" or "Spot" alone would then pass in every string.
+  A Bybit phrase is a whole phrase in `BYBIT_PHRASES` (same en file), never a word in
+  `PROPER_NOUNS`.
   "Enable Reading" (Binance's own API-key permission label, quoted by the connectCrypto help
   step) is also in `BINANCE_PRODUCT_PHRASES` (`src/i18n/locales/en.casing-by-role.test.ts`).
   Untracked-wallet product names (`UNTRACKED_WALLETS`,
