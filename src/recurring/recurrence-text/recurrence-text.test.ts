@@ -50,23 +50,25 @@ const WEEKDAY_LINES_UK = [
   'Списувалося щотижня, у суботу',
 ];
 
-// The marked kind and the two marked-only periods are reached by lookup: the types gain them
-// with the copy.
-const markedPeriod = (name: string): RecurringPeriod => name as RecurringPeriod;
-const MARKED = { kind: 'marked' } as unknown as Recurrence;
+const MARKED: Recurrence = { kind: 'marked' };
 
-const markedSeriesWith = (period: string): RecurringSeries =>
-  ({
-    ...seriesWith({ period: markedPeriod(period), recurrence: MARKED }),
-    marks: [{ currency: 'UAH', amountMinorUnits: 88800, period }],
+const markedSeriesWith = (period: RecurringPeriod): RecurringSeries => {
+  const markedFields = {
+    marks: [{ currency: 'UAH' as const, amountMinorUnits: 88800, period }],
     markedSpan: { lowest: 88800, highest: 99900 },
-  }) as unknown as RecurringSeries;
+  };
 
-const textOf = (key: string, options?: Record<string, string>): string =>
-  (i18n.t as unknown as (key: string, options?: Record<string, string>) => string)(key, options);
+  return { ...seriesWith({ period, recurrence: MARKED }), ...markedFields };
+};
 
-const MARKED_PERIODS = ['weekly', 'monthly', 'everyThreeMonths', 'everySixMonths', 'yearly'];
-const MARKED_ONLY_PERIODS = ['everyThreeMonths', 'everySixMonths'];
+const MARKED_PERIODS: readonly RecurringPeriod[] = [
+  'weekly',
+  'monthly',
+  'everyThreeMonths',
+  'everySixMonths',
+  'yearly',
+];
+const MARKED_ONLY_PERIODS: readonly RecurringPeriod[] = ['everyThreeMonths', 'everySixMonths'];
 
 const MARKED_LINES_EN = [
   'Marked: weekly',
@@ -100,16 +102,14 @@ const markedCases = (expected: MarkedExpectations): void => {
     it.each(MARKED_PERIODS.map((period, index) => [period, expected.lines[index]] as const))(
       'reads a marked %s series as its marked line',
       (period, line) => {
-        expect(recurrenceLineOf(markedPeriod(period), MARKED)).toBe(line);
+        expect(recurrenceLineOf(period, MARKED)).toBe(line);
       },
     );
 
     it.each(MARKED_ONLY_PERIODS.map((period) => [period, MARKED_PERIODS.indexOf(period)] as const))(
       'reads a %s period with no pattern as its marked line',
       (period, index) => {
-        expect(recurrenceLineOf(markedPeriod(period), { kind: 'none' })).toBe(
-          expected.lines[index],
-        );
+        expect(recurrenceLineOf(period, { kind: 'none' })).toBe(expected.lines[index]);
         expect(recurrenceLineOf('monthly', { kind: 'none' })).toBe(expected.monthly);
       },
     );
@@ -119,7 +119,7 @@ const markedCases = (expected: MarkedExpectations): void => {
 
       expect(line).toBe(expected.monthlyOnDay);
       expect(expected.lines).not.toContain(line);
-      expect(recurrenceLineOf(markedPeriod('monthly'), MARKED)).toBe(expected.lines[1]);
+      expect(recurrenceLineOf('monthly', MARKED)).toBe(expected.lines[1]);
     });
 
     it('reads a marked weekday and a marked date as any series', () => {
@@ -129,11 +129,11 @@ const markedCases = (expected: MarkedExpectations): void => {
       expect(recurrenceLineOf('yearly', { kind: 'onDate', time: YEARLY_TIME })).toBe(
         expected.yearlyOn,
       );
-      expect(recurrenceLineOf(markedPeriod('weekly'), MARKED)).toBe(expected.lines[0]);
+      expect(recurrenceLineOf('weekly', MARKED)).toBe(expected.lines[0]);
     });
 
     it('words the empty message with no merchant name', () => {
-      const text = textOf('recurringCharges.markedEmptyMessage', { name: 'Netflix' });
+      const text = i18n.t('recurringCharges.markedEmptyMessage', { name: 'Netflix' });
 
       expect(text).toBe(expected.emptyMessage);
       expect(text).not.toContain('Netflix');
@@ -141,7 +141,7 @@ const markedCases = (expected: MarkedExpectations): void => {
     });
 
     it('words the empty message with no digit', () => {
-      const text = textOf('recurringCharges.markedEmptyMessage');
+      const text = i18n.t('recurringCharges.markedEmptyMessage');
 
       expect(text).toBe(expected.emptyMessage);
       expect(text).not.toMatch(/\d/);
@@ -163,7 +163,7 @@ const markedCases = (expected: MarkedExpectations): void => {
 
       expect(line).toBe(expected.lastCharge);
       expect(line).not.toContain('888');
-      expect(recurrenceLineOf(markedPeriod('everyThreeMonths'), MARKED)).toBe(expected.lines[2]);
+      expect(recurrenceLineOf('everyThreeMonths', MARKED)).toBe(expected.lines[2]);
     });
   });
 };

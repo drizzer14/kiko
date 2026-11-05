@@ -1,7 +1,15 @@
 import type { Currency } from '@kiko/currency/currency';
 import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
 
-export type RecurringPeriod = 'weekly' | 'monthly' | 'yearly';
+// The picker's order. Detection finds only the three of `DetectedPeriod`; a mark adds the rest.
+export type RecurringPeriod =
+  | 'weekly'
+  | 'monthly'
+  | 'everyThreeMonths'
+  | 'everySixMonths'
+  | 'yearly';
+
+export type DetectedPeriod = Extract<RecurringPeriod, 'weekly' | 'monthly' | 'yearly'>;
 
 export type Recurrence =
   | { kind: 'onDay'; day: number }
@@ -9,6 +17,7 @@ export type Recurrence =
   | { kind: 'lastDay' }
   | { kind: 'onWeekday'; weekday: number }
   | { kind: 'onDate'; time: number }
+  | { kind: 'marked' }
   | { kind: 'none' };
 
 export type RecurringSeries = {

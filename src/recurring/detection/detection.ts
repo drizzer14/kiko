@@ -12,8 +12,8 @@ import { isRecurringCandidate, recurringExcludedIds } from '@kiko/recurring/elig
 
 import type {
   Recurrence,
+  DetectedPeriod,
   RecurringInput,
-  RecurringPeriod,
   RecurringSeries,
   RecurringLedgerRow,
 } from './detection.types.d';
@@ -32,7 +32,7 @@ type Charge = {
 type ChargeGroup = { key: string; currency: Currency; charges: Charge[] };
 
 type PeriodRule = {
-  period: RecurringPeriod;
+  period: DetectedPeriod;
   minimumCharges: number;
   // Local days a charge may sit from its expected date.
   tolerance: number;

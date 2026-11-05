@@ -218,7 +218,10 @@ const recurrenceViewOf = (recurrence: Recurrence): RecurrenceView =>
       month: new Date(time).getMonth() + 1,
       day: new Date(time).getDate(),
     }))
-    .with({ kind: P.union('onDay', 'aroundDay', 'lastDay', 'onWeekday', 'none') }, (other) => other)
+    .with(
+      { kind: P.union('onDay', 'aroundDay', 'lastDay', 'onWeekday', 'marked', 'none') },
+      (other) => other,
+    )
     .exhaustive();
 
 /** Every instant a series carries: its last charge, its quiet date and a yearly date. */
