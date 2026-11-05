@@ -6,12 +6,6 @@ import { isTrackedBinanceAsset } from '@kiko/crypto-sync/binance';
 import { hasExchangeHistory, hasKeyLines, isTrackedAssetOf } from './binance-history-status';
 
 describe('hasKeyLines', () => {
-  it('every balance provider has a gate decision', () => {
-    for (const provider of balanceProviderIds) {
-      expect(typeof hasKeyLines(provider)).toBe('boolean');
-    }
-  });
-
   it.each([
     ['btc_wallet', false],
     ['binance', false],

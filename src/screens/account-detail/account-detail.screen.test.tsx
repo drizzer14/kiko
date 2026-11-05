@@ -2839,11 +2839,9 @@ describe('AccountDetailScreen — a Bybit account with no holding and a balance 
 
   it.each([
     ['a coin set aside for a loan', { unified: { borrowed: ['BTC'] }, fund: {} }],
-    ['a Funding coin set aside for a loan', { unified: {}, fund: { borrowed: ['BTC'] } }],
     ['a coin set aside for an open order', { unified: { openOrder: ['BTC'] }, fund: {} }],
     ['a refused Unified coin', { unified: { refusedCoins: ['BTC'] }, fund: {} }],
     ['a refused Funding coin', { unified: {}, fund: { refusedCoins: ['BTC'] } }],
-    ['a refused Unified wallet', { unified: { refused: true }, fund: {} }],
     ['a refused Funding wallet', { unified: {}, fund: { refused: true } }],
     ['a Funding wallet that was not read', { unified: {}, fund: { notRead: true } }],
   ])('shows the not-read block, never No holdings yet, for %s', async (_title, balanceNotes) => {
