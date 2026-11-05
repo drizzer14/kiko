@@ -13,11 +13,12 @@ import { hasKeyLines, isTrackedAssetOf } from '../crypto-sync-section/binance-hi
 import type { HoldingsEmptyStateProps } from './holdings-empty-state.props';
 
 // The block under the Holdings heading when the account has no active holding. A Bybit account
-// whose last balance read set a coin aside, was refused a wallet, or listed only coins Kiko does
-// not track is not empty, so it says so instead of "No holdings yet" under lines that name the
-// coins. It reads the account's own `sync_state` row, gated on its own isLoading: while that read
-// is on its first load a Bybit account shows nothing, because either block would be a guess. Every
-// other account has no notes to read, so its read stays off and its block shows at once.
+// whose last balance read set a coin aside, was refused a wallet, could not read a wallet, or
+// listed a coin Kiko does not track is not empty, so it says so instead of "No holdings yet" under
+// lines that name them. It reads the account's own `sync_state` row, gated on its own isLoading:
+// while that read is on its first load a Bybit account shows nothing, because either block would
+// be a guess. Every other account has no notes to read, so its read stays off and its block shows
+// at once.
 const HoldingsEmptyState: FC<HoldingsEmptyStateProps> = ({
   accountId,
   institution,

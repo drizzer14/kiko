@@ -193,10 +193,25 @@ describe('bybitProvider', () => {
     });
 
     // An empty answer would let a first Connect that the cooldown stopped report success on an
-    // account no read has reached, with no text to say why.
+    // account no read has reached, with no text to say why. A holding a disconnect kept has lost
+    // its stamp, so it proves no read of the key now stored; a closed one proves nothing either.
     it.each([
       ['no holding', []],
       ['only a holding no Bybit key names', [{ ...heldHolding('BTC:unified'), metadata: null }]],
+      [
+        'only a Bybit holding with no sync stamp',
+        [{ ...heldHolding('BTC:unified'), metadata: { bybitAsset: 'BTC:unified' } }],
+      ],
+      [
+        'only a closed Bybit holding with no sync stamp',
+        [
+          {
+            ...heldHolding('BTC:unified'),
+            metadata: { bybitAsset: 'BTC:unified' },
+            closedAt: NOW - 1,
+          },
+        ],
+      ],
     ])(
       'fails with the text of the refusal and makes no call for an account with %s',
       async (_title, holdings) => {
@@ -304,6 +319,31 @@ describe('bybitProvider', () => {
           await bybitProvider.fetchBalances(deps, target).catch(() => undefined);
 
           await expect(bybitProvider.fetchBalances(deps, target)).rejects.toThrow(
+            i18n.t('accountDetail.bybitForbidden'),
+          );
+          expect(requested).toEqual([KEY_INFO_PATH]);
+        },
+      );
+
+      it.each(refusals)(
+        'fails the retry after a disconnect inside the cooldown, with no request, for %s',
+        async (_title, answer) => {
+          const { deps, requested } = routedDeps({
+            [KEY_INFO_PATH]: answer,
+            [UNIFIED_PATH]: okAnswer(unifiedResult([unifiedCoin('BTC', '1')])),
+            [FUND_PATH]: okAnswer(fundResult([])),
+          });
+          const target = freshTarget([heldHolding('BTC:unified', 5)]);
+          const disconnected = {
+            ...target,
+            holdings: [
+              { ...heldHolding('BTC:unified', 5), metadata: { bybitAsset: 'BTC:unified' } },
+            ],
+          };
+
+          await bybitProvider.fetchBalances(deps, target).catch(() => undefined);
+
+          await expect(bybitProvider.fetchBalances(deps, disconnected)).rejects.toThrow(
             i18n.t('accountDetail.bybitForbidden'),
           );
           expect(requested).toEqual([KEY_INFO_PATH]);

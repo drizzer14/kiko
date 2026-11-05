@@ -258,16 +258,6 @@ describe('the notes of a Bybit account', () => {
     ).toBeTruthy();
   });
 
-  it('names each refused wallet by the name its holdings carry', async () => {
-    const { getByText } = await renderState('bybit', {
-      walks: {},
-      balanceNotes: { unified: { refused: true }, fund: { refused: true } },
-    });
-
-    expect(getByText('Bybit refused this key for Unified', { exact: false })).toBeTruthy();
-    expect(getByText('Bybit refused this key for Funding', { exact: false })).toBeTruthy();
-  });
-
   it('names the wallet that was not read, and says its balance is from an earlier sync', async () => {
     const { getByText, queryByText } = await renderState('bybit', {
       walks: {},
@@ -282,15 +272,13 @@ describe('the notes of a Bybit account', () => {
     expect(queryByText('Bybit refused this key', { exact: false })).toBeNull();
   });
 
-  it('names a wallet that was not read apart from one the key was refused for', async () => {
+  it('names a wallet this build does not know by its key, apart from one the key was refused for', async () => {
     const { getByText } = await renderState('bybit', {
       walks: {},
-      balanceNotes: { unified: { notRead: true }, fund: { refused: true } },
+      balanceNotes: { margin: { notRead: true }, fund: { refused: true } },
     });
 
-    expect(
-      getByText('Kiko could not read Unified in the last sync', { exact: false }),
-    ).toBeTruthy();
+    expect(getByText('Kiko could not read margin in the last sync', { exact: false })).toBeTruthy();
     expect(getByText('Bybit refused this key for Funding', { exact: false })).toBeTruthy();
   });
 

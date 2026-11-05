@@ -3,6 +3,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { logFailure } from '@kiko/diagnostics';
 import type { Currency } from '@kiko/currency/currency';
+import { syncedAtOf } from '@kiko/holdings/holding-metadata';
 import { exchangeStateDepsOf } from '@kiko/crypto-sync/exchange/walk';
 import { appearMinorUnitsOf } from '@kiko/crypto-sync/exchange/amounts';
 import { keyExpiryOf } from '@kiko/crypto-sync/exchange/history-status';
@@ -133,6 +134,10 @@ const checkKey = async (
 /** The `bybitAsset` match keys already present among a target's holdings. */
 const existingBybitKeys = (holdings: HoldingRow[]): Set<string> =>
   new Set(holdings.flatMap((holding) => foldMap(maybe(bybitKeyOf(holding)), (key) => [key]) ?? []));
+
+/** A holding with a Bybit key and the stamp of a read, which a disconnect drops. */
+const isReadBybitHolding = (holding: HoldingRow): boolean =>
+  bybitKeyOf(holding) !== undefined && syncedAtOf(holding.metadata) !== null;
 
 /** The coins that already have a holding in `wallet`. */
 const heldCoinsOf = (wallet: BybitWallet, existingKeys: ReadonlySet<string>): Currency[] =>
@@ -275,12 +280,13 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
   metadataField: 'bybitAsset',
   fetchBalances: async (deps, target) => {
     // Checked before even reading credentials, so a cooling account makes no request. An account
-    // that holds a Bybit holding returns no balances, never throwing, so a later sync inside the
+    // with a stamped Bybit holding returns no balances, never throwing, so a later sync inside the
     // cooldown leaves its stamp and balances as they were. An account with none has no read of
     // Bybit behind it: an empty answer would let a first connect that the cooldown stopped report
-    // success with no text, so it fails with the refusal's text instead.
+    // success with no text, so it fails with the refusal's text instead. A disconnect keeps the
+    // holdings and drops their stamp, so a kept one proves no read of the key stored now.
     if (isBybitCoolingDown(target.accountId, deps.now())) {
-      if (existingBybitKeys(target.holdings).size === 0) {
+      if (!target.holdings.some(isReadBybitHolding)) {
         throw bybitCoolingFailure();
       }
 
