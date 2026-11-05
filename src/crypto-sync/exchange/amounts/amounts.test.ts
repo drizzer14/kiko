@@ -1,7 +1,7 @@
 import { bifold, isLeft } from 'fnts/either';
 import type { Currency } from '@kiko/currency/currency';
 
-import { type AmountError, exchangeMinorUnits } from '.';
+import { type AmountError, appearMinorUnitsOf, exchangeMinorUnits } from '.';
 
 // BTC stores 8 decimals and is not reduced; XRP stores 4, below the 8 its exchange sends.
 const FULL_SCALE: Currency = 'BTC';
@@ -145,5 +145,17 @@ describe('exchangeMinorUnits', () => {
     expect(outcomeOf(FULL_SCALE, '1e-8', use)).toEqual({ error: 'amount-malformed' });
     expect(outcomeOf(REDUCED_SCALE, '1.5E+3', use)).toEqual({ error: 'amount-malformed' });
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('appearMinorUnitsOf', () => {
+  it('is the dust threshold of a curated coin in its minor units', () => {
+    expect(appearMinorUnitsOf('BTC')).toBe(1_000);
+    expect(appearMinorUnitsOf('ETH')).toBe(40_000);
+  });
+
+  it('is one minor unit for a fiat currency, so any non-zero balance appears', () => {
+    expect(appearMinorUnitsOf('USD')).toBe(1);
+    expect(appearMinorUnitsOf('PLN')).toBe(1);
   });
 });

@@ -1,6 +1,7 @@
+import { identity } from 'fnts';
 import { logFailure } from '@kiko/diagnostics';
 import { curatedCoins } from '@kiko/currency/coins';
-import { bifold, type Either, isLeft } from 'fnts/either';
+import { bifold, bifoldMap, type Either, isLeft } from 'fnts/either';
 import { type Currency, currencyScale, isCrypto } from '@kiko/currency/currency';
 import { type DecimalAmountError, decimalToMinorUnits } from '@kiko/currency/decimal';
 
@@ -52,3 +53,13 @@ export const exchangeMinorUnits = (
 
   return rounded;
 };
+
+/** The least balance that creates a holding: a coin's dust threshold, any non-zero fiat balance. */
+export const appearMinorUnitsOf = (currency: Currency): number =>
+  isCrypto(currency)
+    ? bifoldMap(
+        exchangeMinorUnits(currency, curatedCoins[currency].dustBelow, 'balance'),
+        () => 1,
+        identity,
+      )
+    : 1;
