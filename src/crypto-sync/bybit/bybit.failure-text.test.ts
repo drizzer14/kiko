@@ -52,6 +52,15 @@ describe('bybitFailureOf', () => {
     );
   });
 
+  it.each(['sign', 'window', 'ip', 'notUnified', 'unknown'] as const)(
+    'shows a generic text with no dangling code for the %s class with no code',
+    (refusal) => {
+      expect(textOf(bybitFailureOf(new BybitRefusalError(refusal, undefined)))).toBe(
+        'Bybit request failed.',
+      );
+    },
+  );
+
   it('leaves an error that is no Bybit refusal as it is', () => {
     const lost = new TypeError('Network request failed');
 
@@ -86,6 +95,12 @@ describe('bybitFailureOf', () => {
       );
       expect(textOf(bybitFailureOf(new BybitRefusalError('compliance', 10024)))).toBe(
         i18n.t('accountDetail.bybitComplianceRefused'),
+      );
+    });
+
+    it('gives a generic text with no dangling code when the refusal has no code', () => {
+      expect(textOf(bybitFailureOf(new BybitRefusalError('unknown', undefined)))).toBe(
+        'Запит до Bybit не вдався.',
       );
     });
   });

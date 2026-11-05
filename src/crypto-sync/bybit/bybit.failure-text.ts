@@ -7,7 +7,9 @@ import { BybitRateLimitError, type BybitRefusalClass, BybitRefusalError } from '
 const FORBIDDEN_STATUS = 403;
 
 const generic = (code: number | undefined): string =>
-  i18n.t('accountDetail.bybitRequestFailed', { code: code ?? '' });
+  code === undefined
+    ? i18n.t('accountDetail.bybitRequestFailedNoCode')
+    : i18n.t('accountDetail.bybitRequestFailed', { code });
 
 /**
  * One text per refusal class. A class that names no cause the user can act on (a signing fault, a
