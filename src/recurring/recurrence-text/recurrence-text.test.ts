@@ -2,21 +2,12 @@ import { i18n } from '@kiko/i18n/init';
 import { formatDate, formatDayMonth } from '@kiko/dates';
 import type { Recurrence, RecurringPeriod, RecurringSeries } from '@kiko/recurring/detection';
 
-type Translate = typeof i18n.t;
-
-type RecurrenceText = {
-  recurrenceLine: (period: RecurringPeriod, recurrence: Recurrence, t: Translate) => string;
-  lastChargeLine: (series: RecurringSeries, t: Translate) => string;
-};
-
-// Read at call time, so a missing module fails each test at run time, not the typecheck.
-const recurrenceText = (): RecurrenceText => jest.requireActual('./recurrence-text');
+import { lastChargeLine, recurrenceLine } from './recurrence-text';
 
 const recurrenceLineOf = (period: RecurringPeriod, recurrence: Recurrence): string =>
-  recurrenceText().recurrenceLine(period, recurrence, i18n.t);
+  recurrenceLine(period, recurrence, i18n.t);
 
-const lastChargeLineOf = (series: RecurringSeries): string =>
-  recurrenceText().lastChargeLine(series, i18n.t);
+const lastChargeLineOf = (series: RecurringSeries): string => lastChargeLine(series, i18n.t);
 
 const LAST_CHARGE_TIME = new Date(2026, 7, 15, 9, 30).getTime();
 const QUIET_SINCE = new Date(2026, 7, 20, 18, 5).getTime();
@@ -76,6 +67,7 @@ describe('recurrence text in English', () => {
       ['the last day', 'monthly', { kind: 'lastDay' }, 'Charged monthly, on the last day'],
       ['a monthly series with no pattern', 'monthly', { kind: 'none' }, 'Charged monthly'],
       ['a weekly series with no pattern', 'weekly', { kind: 'none' }, 'Charged weekly'],
+      ['a yearly series with no pattern', 'yearly', { kind: 'none' }, 'Charged yearly'],
     ])('reads %s', (_name, period, recurrence, expected) => {
       expect(recurrenceLineOf(period, recurrence)).toBe(expected);
     });
@@ -149,6 +141,7 @@ describe('recurrence text in Ukrainian', () => {
       ['the last day', 'monthly', { kind: 'lastDay' }, 'Списувалося щомісяця, в останній день'],
       ['a monthly series with no pattern', 'monthly', { kind: 'none' }, 'Списувалося щомісяця'],
       ['a weekly series with no pattern', 'weekly', { kind: 'none' }, 'Списувалося щотижня'],
+      ['a yearly series with no pattern', 'yearly', { kind: 'none' }, 'Списувалося щороку'],
     ])('reads %s', (_name, period, recurrence, expected) => {
       expect(recurrenceLineOf(period, recurrence)).toBe(expected);
     });

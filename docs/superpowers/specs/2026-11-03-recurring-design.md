@@ -829,6 +829,7 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `recurringCharges.monthly` | Charged monthly | Списувалося щомісяця |
 | `recurringCharges.weekly` | Charged weekly | Списувалося щотижня |
 | `recurringCharges.weeklyOn.monday` ... `.sunday` | Charged weekly, on Mondays ... | Списувалося щотижня, у понеділок / у вівторок / у середу / у четвер / у пʼятницю / у суботу / у неділю |
+| `recurringCharges.yearly` | Charged yearly | Списувалося щороку |
 | `recurringCharges.yearlyOn` | Charged yearly, on {{date}} | Списувалося щороку, {{date}} |
 | `recurringCharges.lastCharge` | Last charge {{date}} | Останнє списання {{date}} |
 | `recurringCharges.noChargeSince` | No charge since {{date}} | Немає списань від {{date}} |
