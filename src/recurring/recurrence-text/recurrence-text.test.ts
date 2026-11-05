@@ -190,9 +190,7 @@ describe('recurrence text in Ukrainian', () => {
     });
 
     it('says no charge since the last charge date of a stopped series', () => {
-      expect(lastChargeLineOf(seriesWith({ isStopped: true }))).toBe(
-        'Немає списань від 15.08.2026',
-      );
+      expect(lastChargeLineOf(seriesWith({ isStopped: true }))).toBe('Немає списань з 15.08.2026');
     });
 
     it('names the holding and its newest date when the series is quiet', () => {
@@ -203,7 +201,7 @@ describe('recurrence text in Ukrainian', () => {
             quiet: { since: QUIET_SINCE, holdingName: 'Monobank black' },
           }),
         ),
-      ).toBe('Monobank black: немає новіших транзакцій від 20.08.2026');
+      ).toBe('«Monobank black»: немає новіших транзакцій за 20.08.2026');
     });
   });
 });

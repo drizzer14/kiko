@@ -832,8 +832,8 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `recurringCharges.yearly` | Charged yearly | Списувалося щороку |
 | `recurringCharges.yearlyOn` | Charged yearly, on {{date}} | Списувалося щороку, {{date}} |
 | `recurringCharges.lastCharge` | Last charge {{date}} | Останнє списання {{date}} |
-| `recurringCharges.noChargeSince` | No charge since {{date}} | Немає списань від {{date}} |
-| `recurringCharges.holdingQuietSince` | {{holding}}: no newer transactions since {{date}} | {{holding}}: немає новіших транзакцій від {{date}} |
+| `recurringCharges.noChargeSince` | No charge since {{date}} | Немає списань з {{date}} |
+| `recurringCharges.holdingQuietSince` | {{holding}}: no newer transactions since {{date}} | «{{holding}}»: немає новіших транзакцій за {{date}} |
 | `recurringCharges.stoppedHeading` | No Recent Charge | Без нових списань |
 | `recurringCharges.chargeCount_*` | {{count}} charge / charges | `_one`, `_few`, `_other`: {{count}} списання; `_many`: {{count}} списань |
 | `recurringCharges.listChangedTitle` | This list has changed | Цей список змінився |
