@@ -193,8 +193,8 @@ describe('the refusal classes', () => {
 });
 
 describe('a refusal past the stored date', () => {
-  const PAST = new Date(NOW - 1_000).toISOString();
-  const FUTURE = new Date(NOW + 1_000).toISOString();
+  const PAST = NOW - 1_000;
+  const FUTURE = NOW + 1_000;
 
   it.each<[string, Parameters<typeof answerWith>[0]]>([
     ['33004', { body: envelopeOf(33004) }],
@@ -205,7 +205,7 @@ describe('a refusal past the stored date', () => {
     ['an unknown code', { body: envelopeOf(99999) }],
     ['an unknown status', { notJson: true, status: 502 }],
   ])('every refusal past the stored date is the expired class: %s', async (_title, answer) => {
-    await expect(readWith(answer, { expiredAt: PAST }).result).rejects.toMatchObject({
+    await expect(readWith(answer, { expiredAtMs: PAST }).result).rejects.toMatchObject({
       refusal: 'expired',
     });
   });
@@ -216,7 +216,7 @@ describe('a refusal past the stored date', () => {
     ['HTTP 401', { notJson: true, status: 401 }, 'rejected'],
     ['an unknown code', { body: envelopeOf(99999) }, 'unknown'],
   ])('keeps %s as it is before the stored date', async (_title, answer, refusal) => {
-    await expect(readWith(answer, { expiredAt: FUTURE }).result).rejects.toMatchObject({
+    await expect(readWith(answer, { expiredAtMs: FUTURE }).result).rejects.toMatchObject({
       refusal,
     });
   });
@@ -230,7 +230,7 @@ describe('a refusal past the stored date', () => {
     [10028, 'notUnified'],
   ])('keeps code %i as the %s class after the stored date', async (code, refusal) => {
     await expect(
-      readWith({ body: envelopeOf(code) }, { expiredAt: PAST }).result,
+      readWith({ body: envelopeOf(code) }, { expiredAtMs: PAST }).result,
     ).rejects.toMatchObject({ refusal });
   });
 
@@ -239,28 +239,29 @@ describe('a refusal past the stored date', () => {
       refusal: 'expired',
     });
     await expect(
-      readWith({ body: envelopeOf(33004) }, { expiredAt: FUTURE }).result,
+      readWith({ body: envelopeOf(33004) }, { expiredAtMs: FUTURE }).result,
     ).rejects.toMatchObject({ refusal: 'expired' });
   });
 
   it('reads the instant of the stored date as the end of the key', async () => {
-    const { result } = readWith(
-      { body: envelopeOf(10003) },
-      { expiredAt: new Date(NOW).toISOString() },
-    );
+    const { result } = readWith({ body: envelopeOf(10003) }, { expiredAtMs: NOW });
 
     await expect(result).rejects.toMatchObject({ refusal: 'expired' });
   });
 
-  it('reads a stored date it cannot parse as no date', async () => {
+  it.each<[string, number]>([
+    ['not a number', Number.NaN],
+    ['the epoch', 0],
+    ['before the epoch', -1],
+  ])('reads a stored date that is %s as no date', async (_title, expiredAtMs) => {
     await expect(
-      readWith({ body: envelopeOf(10003) }, { expiredAt: 'tomorrow' }).result,
+      readWith({ body: envelopeOf(10003) }, { expiredAtMs }).result,
     ).rejects.toMatchObject({ refusal: 'rejected' });
   });
 
   it('does not turn a body that is malformed into an expiry', async () => {
     await expect(
-      readWith({ body: { result: {} } }, { expiredAt: PAST }).result,
+      readWith({ body: { result: {} } }, { expiredAtMs: PAST }).result,
     ).rejects.toMatchObject({ refusal: 'malformed' });
   });
 
@@ -268,7 +269,7 @@ describe('a refusal past the stored date', () => {
     const { fetchImpl } = answerWith({ body: envelopeOf(10003) });
 
     await expect(
-      fetchKeyInfo(API_KEY, SECRET, { fetchImpl, now: () => NOW, expiredAt: PAST }),
+      fetchKeyInfo(API_KEY, SECRET, { fetchImpl, now: () => NOW, expiredAtMs: PAST }),
     ).rejects.toMatchObject({ refusal: 'expired' });
   });
 });

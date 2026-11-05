@@ -51,7 +51,7 @@ describe('fetchKeyInfo', () => {
 
   it('returns the expiry date, the days left, and the two facts the connect needs', async () => {
     await expect(keyInfoFrom(KEY_INFO_BODY).info).resolves.toStrictEqual({
-      expiredAt: '2099-01-02T03:04:05Z',
+      expiredAtMs: Date.UTC(2099, 0, 2, 3, 4, 5),
       deadlineDay: 30,
       readOnly: 1,
       isMaster: true,
@@ -62,7 +62,12 @@ describe('fetchKeyInfo', () => {
     const info = await keyInfoFrom(KEY_INFO_BODY).info;
 
     expect(JSON.stringify(info)).not.toMatch(/SENTINEL|987654321|123456789/);
-    expect(Object.keys(info).sort()).toEqual(['deadlineDay', 'expiredAt', 'isMaster', 'readOnly']);
+    expect(Object.keys(info).sort()).toEqual([
+      'deadlineDay',
+      'expiredAtMs',
+      'isMaster',
+      'readOnly',
+    ]);
   });
 
   it('reads a read-write key as it is, so the connect can refuse it', async () => {
@@ -78,11 +83,13 @@ describe('fetchKeyInfo', () => {
   });
 
   it.each<[string, Record<string, unknown>]>([
-    ['expiredAt', { expiredAt: undefined }],
-    ['expiredAt', { expiredAt: '' }],
-    ['expiredAt', { expiredAt: 'tomorrow' }],
-    ['expiredAt', { expiredAt: 20990102 }],
-    ['expiredAt', { expiredAt: '2099-01-02 03:04:05' }],
+    ['expiredAtMs', { expiredAt: undefined }],
+    ['expiredAtMs', { expiredAt: '' }],
+    ['expiredAtMs', { expiredAt: 'tomorrow' }],
+    ['expiredAtMs', { expiredAt: 20990102 }],
+    ['expiredAtMs', { expiredAt: '2099-01-02 03:04:05' }],
+    ['expiredAtMs', { expiredAt: '1970-01-01T00:00:00Z' }],
+    ['expiredAtMs', { expiredAt: '1969-12-31T23:59:59Z' }],
     ['deadlineDay', { deadlineDay: undefined }],
     ['deadlineDay', { deadlineDay: '30' }],
     ['deadlineDay', { deadlineDay: Number.NaN }],

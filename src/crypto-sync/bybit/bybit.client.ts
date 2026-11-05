@@ -13,8 +13,8 @@ export type BybitReadOptions = {
   now?: () => number;
   /** The account a rate refusal puts in cooldown; a connect has no account yet. */
   accountId?: string;
-  /** The stored `expiredAt` of the connected key (see `isPastExpiry`). */
-  expiredAt?: string;
+  /** The stored end of the connected key, in milliseconds (see `isPastExpiry`). */
+  expiredAtMs?: number;
 };
 
 /**
@@ -127,12 +127,19 @@ const retryAfterMsOf = (headers: Headers, now: number): number => {
 };
 
 /**
+ * Bybit's key-info page shows an `expiredAt` at the epoch with a negative `deadlineDay`, which
+ * is no real end of a key. An instant at or before the epoch, or not a number, reads as unknown.
+ */
+const isKnownInstant = (milliseconds: number): boolean =>
+  Number.isFinite(milliseconds) && milliseconds > 0;
+
+/**
  * Whether the stored end of the key has come. A refusal that says only "no" (a rejected key, a
  * code this client does not know) reads as the key having ended when it has; one that names its
  * cause keeps it.
  */
-const isPastExpiry = (expiredAt: string | undefined, now: number): boolean =>
-  now >= Date.parse(expiredAt ?? '');
+const isPastExpiry = (expiredAtMs: number | undefined, now: number): boolean =>
+  expiredAtMs !== undefined && isKnownInstant(expiredAtMs) && now >= expiredAtMs;
 
 const errorOf = (failure: Failure, response: Response, options: BybitReadOptions, now: number) =>
   match(failure.kind)
@@ -146,7 +153,7 @@ const errorOf = (failure: Failure, response: Response, options: BybitReadOptions
       P.union('rejected', 'unknown'),
       (refusal) =>
         new BybitRefusalError(
-          isPastExpiry(options.expiredAt, now) ? 'expired' : refusal,
+          isPastExpiry(options.expiredAtMs, now) ? 'expired' : refusal,
           failure.code,
         ),
     )
@@ -250,19 +257,24 @@ const finiteNumberOf = (value: unknown): number | undefined =>
 /** The one shape of the date the key-info page measured (UTC, to the second). */
 const EXPIRED_AT_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
-const expiredAtOf = (value: unknown): string | undefined =>
-  typeof value === 'string' && EXPIRED_AT_SHAPE.test(value) && Number.isFinite(Date.parse(value))
-    ? value
-    : undefined;
+const expiredAtMsOf = (value: unknown): number | undefined => {
+  if (typeof value !== 'string' || !EXPIRED_AT_SHAPE.test(value)) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(value);
+
+  return isKnownInstant(parsed) ? parsed : undefined;
+};
 
 /**
- * What the key-info read gives. `expiredAt` and `deadlineDay` are the key's end, read on a sync.
+ * What the key-info read gives. `expiredAtMs` and `deadlineDay` are the key's end, read on a sync.
  * `readOnly` (1 for a read-only key) and `isMaster` are read at connect only and never stored.
  * Every other field of the answer (the permissions, the user and inviter ids, the region, the
  * note) is dropped here, so none of it reaches state. A field of another shape reads as absent.
  */
 type BybitKeyInfo = {
-  expiredAt: string | undefined;
+  expiredAtMs: number | undefined;
   deadlineDay: number | undefined;
   readOnly: number | undefined;
   isMaster: boolean | undefined;
@@ -277,7 +289,7 @@ export const fetchKeyInfo = async (
   const info = recordOf(await signedBybitGet(apiKey, secret, '/v5/user/query-api', {}, options));
 
   return {
-    expiredAt: expiredAtOf(info.expiredAt),
+    expiredAtMs: expiredAtMsOf(info.expiredAt),
     deadlineDay: finiteNumberOf(info.deadlineDay),
     readOnly: finiteNumberOf(info.readOnly),
     isMaster: typeof info.isMaster === 'boolean' ? info.isMaster : undefined,
