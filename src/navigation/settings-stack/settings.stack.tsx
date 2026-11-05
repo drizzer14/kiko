@@ -16,6 +16,7 @@ import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import CategoryFormScreen from '@kiko/screens/forms/category-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 import CategoryRuleFormScreen from '@kiko/screens/forms/category-rule-form';
+import RecurringSeriesScreen from '@kiko/screens/settings/recurring-series';
 import RecurringChargesScreen from '@kiko/screens/settings/recurring-charges';
 import TransactionTemplatesScreen from '@kiko/screens/settings/transaction-templates';
 
@@ -119,6 +120,13 @@ const SettingsStack: FC = () => {
         name="RecurringCharges"
         component={RecurringChargesScreen}
         options={{ title: t('recurringCharges.title') }}
+      />
+
+      {/* The title is the merchant's own text from the route, never a catalogue string. */}
+      <Stack.Screen
+        name="RecurringSeries"
+        component={RecurringSeriesScreen}
+        options={({ route }) => ({ title: route.params.name })}
       />
 
       {/* The template forms, and the create forms their empty holding picker opens: they sit

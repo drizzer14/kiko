@@ -1,4 +1,3 @@
-import type { FC } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -35,7 +34,9 @@ describe('RecurringSeriesRow', () => {
   });
 
   it('shows the name, the recurrence line, the last charge and its amount under its own testID', async () => {
-    const { getByTestId, getByText } = await render(<RecurringSeriesRow series={seriesWith({})} />);
+    const { getByTestId, getByText } = await render(
+      <RecurringSeriesRow series={seriesWith({})} onPress={jest.fn()} />,
+    );
 
     expect(getByTestId('recurring-series-row-netflix-1')).toBeTruthy();
     expect(getByText('Netflix')).toBeTruthy();
@@ -47,11 +48,7 @@ describe('RecurringSeriesRow', () => {
   it('hands its series to onPress when it is tapped', async () => {
     const series = seriesWith({});
     const onPress = jest.fn();
-    const PressableRow = RecurringSeriesRow as FC<{
-      series: RecurringSeries;
-      onPress: (pressed: RecurringSeries) => void;
-    }>;
-    const { getByTestId } = await render(<PressableRow series={series} onPress={onPress} />);
+    const { getByTestId } = await render(<RecurringSeriesRow series={series} onPress={onPress} />);
 
     expect(onPress).not.toHaveBeenCalled();
 
@@ -65,6 +62,7 @@ describe('RecurringSeriesRow', () => {
     const { getByText } = await render(
       <RecurringSeriesRow
         series={seriesWith({ currency: 'USD', lastChargeAmountMinorUnits: 1500 })}
+        onPress={jest.fn()}
       />,
     );
 
@@ -73,7 +71,10 @@ describe('RecurringSeriesRow', () => {
 
   it('shows the no-charge-since line of a stopped series', async () => {
     const { getByText } = await render(
-      <RecurringSeriesRow series={seriesWith({ isStopped: true, lastChargeTime: FIRST_OF_MAY })} />,
+      <RecurringSeriesRow
+        series={seriesWith({ isStopped: true, lastChargeTime: FIRST_OF_MAY })}
+        onPress={jest.fn()}
+      />,
     );
 
     expect(getByText(`No charge since ${formatDate(FIRST_OF_MAY)}`)).toBeTruthy();
@@ -87,6 +88,7 @@ describe('RecurringSeriesRow', () => {
           lastChargeTime: FIRST_OF_MAY,
           quiet: { since: TENTH_OF_JUNE, holdingName: 'Wallet' },
         })}
+        onPress={jest.fn()}
       />,
     );
 

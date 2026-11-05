@@ -1279,6 +1279,7 @@ export const en = {
         steps: {
           '1': 'Open the "Settings" tab and tap "Recurring charges".',
           '2': 'Kiko finds charges that repeat in your transactions and shows the day they were charged and the last charge. It shows only what already happened, never a future charge.',
+          '3': 'Tap a charge to see each of its past transactions, then tap one to open it.',
         },
         title: 'View Recurring Charges',
       },
@@ -1675,11 +1676,17 @@ export const en = {
       'Old .xls files are not supported. Save the file as .xlsx or CSV and try again.',
   },
   recurringCharges: {
+    chargeCount_one: '{{count}} charge',
+    chargeCount_few: '{{count}} charges',
+    chargeCount_many: '{{count}} charges',
+    chargeCount_other: '{{count}} charges',
     emptyMessage:
       'Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones.',
     emptyTitle: 'No recurring charges yet',
     holdingQuietSince: '{{holding}}: no newer transactions since {{date}}',
     lastCharge: 'Last charge {{date}}',
+    listChangedMessage: 'Go back to see your recurring charges as they are now.',
+    listChangedTitle: 'This list has changed',
     monthly: 'Charged monthly',
     monthlyAroundDay: 'Charged monthly, around day {{day}}',
     monthlyLastDay: 'Charged monthly, on the last day',

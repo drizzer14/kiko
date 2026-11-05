@@ -1,0 +1,204 @@
+import { match } from 'ts-pattern';
+import { useLiveQuery } from '@kiko/db';
+import { formatDate } from '@kiko/dates';
+import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+  resolveCategoryKey,
+} from '@kiko/categories/category-display';
+import { Money } from '@kiko/currency/money';
+import { settingsRepo } from '@kiko/settings';
+import { useTranslation } from 'react-i18next';
+import Screen, {
+  useContentCap,
+  useContentMargin,
+  useScrollIndicatorProps,
+  useAutomaticScrollClearance,
+} from '@kiko/design-system/components/screen';
+import { FlatList, Pressable } from 'react-native';
+import Box from '@kiko/design-system/components/box';
+import { type FC, useCallback, useMemo } from 'react';
+import { categoriesRepo } from '@kiko/categories/repo';
+import Text from '@kiko/design-system/components/text';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import LargeTitleHeading, {
+  useLargeTitleScroll,
+} from '@kiko/design-system/components/large-title-heading';
+import { entrySymbol } from '@kiko/navigation/entry-symbols';
+import type { RecurringSeries } from '@kiko/recurring/detection';
+import EmptyState from '@kiko/design-system/components/empty-state';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import TransactionCard from '@kiko/design-system/components/transaction-card';
+import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { useIsScreenVisible, useOpenInPane } from '@kiko/navigation/pane-stack';
+import { lastChargeLine, recurrenceLine } from '@kiko/recurring/recurrence-text';
+
+import { styles } from './recurring-series.styles';
+
+type RecurringSeriesScreenProps = NativeStackScreenProps<SettingsStackParamList, 'RecurringSeries'>;
+
+type RouteParams = RecurringSeriesScreenProps['route']['params'];
+
+// A charge has the merchant's own text as its description, so its row text never comes from a
+// counterpart holding and needs no holding names.
+const NO_HOLDING_TEXT: ReadonlyMap<string, string> = new Map();
+
+// The series by its id; on a miss (an older import moved the earliest charge) the one series with
+// the same key, currency and period. With none or several there is no series: a guess could show
+// another merchant's charges.
+const seriesOfRoute = (
+  series: readonly RecurringSeries[],
+  { seriesId, merchantKey, currency, period }: RouteParams,
+): RecurringSeries | undefined => {
+  const sameKind = series.filter(
+    (candidate) =>
+      candidate.merchantKey === merchantKey &&
+      candidate.currency === currency &&
+      candidate.period === period,
+  );
+
+  return (
+    series.find(({ id }) => id === seriesId) ?? (sameKind.length === 1 ? sameKind[0] : undefined)
+  );
+};
+
+// One series, every past charge of it. The list stays mounted while the series read is queued and
+// shows the loading state in place of its rows, never the neutral text.
+const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route }) => {
+  const { t } = useTranslation();
+  const { series: allSeries, isLoading } = useRecurringSeries();
+  const series = seriesOfRoute(allSeries, route.params);
+  const isVisible = useIsScreenVisible();
+  // Paused under the form a charge opens: on Back the last rows show until the one re-read lands.
+  const liveOptions = { paused: !isVisible } as const;
+  const { data: rows, isLoading: rowsLoading } = useLiveQuery(
+    transactionsRepo.listWithContextByIdsQuery(series?.chargeIds ?? []),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    liveOptions,
+  );
+  const { data: categories } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+    true,
+    liveOptions,
+  );
+  const { data: settingsRows } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    liveOptions,
+  );
+  const openInPane = useOpenInPane();
+  const headingScrollProps = useLargeTitleScroll();
+  const bottomClearance = useAutomaticScrollClearance();
+  const contentMargin = useContentMargin();
+  const contentCap = useContentCap();
+  const scrollIndicatorProps = useScrollIndicatorProps();
+  const categoryByKey = buildCategoryDisplayMap(categories);
+  const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
+  // In the order of the series' own ids, so a row deleted or not yet read leaves no gap in the
+  // count it is shown under.
+  const charges = useMemo(() => {
+    const rowById = new Map(rows.map((row) => [row.id, row]));
+
+    return (series?.chargeIds ?? []).flatMap((id) => rowById.get(id) ?? []);
+  }, [rows, series]);
+  const openCharge = useCallback(
+    (transactionId: string): void => {
+      openInPane('TransactionForm', { transactionId });
+    },
+    [openInPane],
+  );
+
+  const emptyComponent = match({ isLoading, series, rowsLoading })
+    .with({ isLoading: true }, () => <LoadingState testID="recurring-series-loading" />)
+    .with({ series: undefined }, () => (
+      <EmptyState
+        icon={entrySymbol.recurringCharges}
+        title={t('recurringCharges.listChangedTitle')}
+        message={t('recurringCharges.listChangedMessage')}
+        testID="recurring-series-empty"
+      />
+    ))
+    .with({ rowsLoading: true }, () => <LoadingState testID="recurring-series-loading" />)
+    .otherwise(() => undefined);
+
+  return (
+    <Screen bleedTop>
+      <FlatList
+        data={charges}
+        keyExtractor={({ id }) => id}
+        renderItem={({ item: row }) => {
+          const category = resolveCategoryDisplay(row.category, categoryByKey, defaultCategoryKey);
+
+          return (
+            <Pressable accessibilityRole="button" onPress={() => openCharge(row.id)}>
+              <TransactionCard
+                title={transactionRowDescription({
+                  transaction: row,
+                  holdingName: row.holdingName,
+                  holdingNameById: NO_HOLDING_TEXT,
+                  holdingCurrencyById: NO_HOLDING_TEXT,
+                  t,
+                })}
+                categoryIcon={category.icon}
+                categoryIconColor={resolveCategoryColor(
+                  category.color,
+                  resolveCategoryKey(row.category, categoryByKey, defaultCategoryKey),
+                )}
+                categoryAccessibilityLabel={category.title}
+                money={Money.of(row.currency, row.amountMinorUnits)}
+                footerMeta={`${accountDisplayName(
+                  {
+                    kind: row.accountKind,
+                    name: row.accountName,
+                    archivedAt: row.accountArchivedAt,
+                  },
+                  t,
+                )} · ${category.title}`}
+                footerTrailing={formatDate(row.time)}
+                loanLinked={row.loanHoldingId !== null}
+                style={styles.chargeCard}
+                testID={`recurring-series-charge-${row.id}`}
+              />
+            </Pressable>
+          );
+        }}
+        ListHeaderComponent={
+          <>
+            <LargeTitleHeading />
+
+            {series !== undefined && (
+              <Box gap={1} style={styles.header} testID="recurring-series-header">
+                <Text variant="body">{recurrenceLine(series.period, series.recurrence, t)}</Text>
+
+                <Text variant="caption" tone="textSecondary">
+                  {lastChargeLine(series, t)}
+                </Text>
+
+                <Text variant="caption" tone="textSecondary">
+                  {t('recurringCharges.chargeCount', { count: series.chargeIds.length })}
+                </Text>
+              </Box>
+            )}
+          </>
+        }
+        ListEmptyComponent={emptyComponent}
+        {...headingScrollProps}
+        contentInsetAdjustmentBehavior="automatic"
+        {...scrollIndicatorProps}
+        style={styles.list}
+        contentContainerStyle={[styles.listContent(bottomClearance, contentMargin), contentCap]}
+      />
+    </Screen>
+  );
+};
+
+export default RecurringSeriesScreen;
