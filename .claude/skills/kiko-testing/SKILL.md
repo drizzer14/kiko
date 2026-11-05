@@ -54,6 +54,17 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `recurring-mark-live-queries.ts`: the settings and whole-ledger reads of the transaction form's
   mark field (`createMarkLiveQueries`, `taggedQuery`) and the Netflix fixtures its three suites
   share.
+- `recurring-ledger.ts`: builders for a recurring-detection ledger (`ledgerOf`, `chargeOf`,
+  `monthly`, `weekly`, `holdingOf`, `randomLedgerOf`) and the views that compare series with
+  their expected shape (`viewsOf`, `expectedViewsOf`).
+- `marked-series-world.ts`: the mark, expected-series and outcome types of a marked-series world,
+  and the views and random entries (`entryOf`, `outcomeOf`, `randomEntriesOf`) that check it.
+- `marked-series-worlds.ts`: the table of marked-series worlds (`ONE_AMOUNT_WORLDS`,
+  `exclusionWorlds`) and the small builders they share (`series`, `marked`, `detected`, `chain`).
+- `marked-series-chain-worlds.ts`: the amount-chain worlds (`AMOUNT_CHAIN_WORLDS`), built from the
+  same builders.
+- `marked-series-hook-result.ts`: what the series hook hands its screens for a ledger and marked
+  entries (`hookResultOf`, `hookStateOf`), made of the real detection functions.
 - `form-header-items.ts`: the nav-bar items a form sets (`pressSave`, `saveItem`,
   `expectNavBarSaveOnly`).
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an
