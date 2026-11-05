@@ -137,17 +137,13 @@ export const layerSlice = (
 
   const routes = layerRoutesOf(state.routes, config);
   const root: PaneStackRoute = { key: LAYER_ROOT_KEY, name: first.name };
-  const overlaid = routes.flatMap(
-    (route) =>
-      foldMap(
-        maybe(listed.includes(route.name) ? descriptors[route.key] : undefined),
-        (described) => [
-          [
-            route.key,
-            { ...described, options: { ...described.options, ...LAYER_BACK_OPTIONS } },
-          ] as const,
-        ],
-      ) ?? [],
+  const overlaid = Object.fromEntries(
+    routes
+      .filter(({ key, name }) => listed.includes(name) && key in descriptors)
+      .map(({ key }) => [
+        key,
+        { ...descriptors[key], options: { ...descriptors[key].options, ...LAYER_BACK_OPTIONS } },
+      ]),
   );
 
   return {
@@ -164,7 +160,7 @@ export const layerSlice = (
           ...(routes.length > 0 ? LAYER_ROOT_HEADER : { headerShown: false }),
         },
       },
-      ...Object.fromEntries(overlaid),
+      ...overlaid,
     },
   };
 };

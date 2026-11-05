@@ -63,8 +63,8 @@ export const belowTopBand = (geometry: PaneGeometry, band: number): PaneGeometry
       };
 
 /**
- * The frame of a pane that takes the whole window: the window below the top-bar band, which the
- * pane's native header must not sit behind.
+ * The frame of the layer over both panes: the window below the top-bar band, which the layer's
+ * native header must not sit behind.
  */
 export const wholeWindowFrame = (window: Window, band: number): PaneFrame => ({
   x: 0,

@@ -238,24 +238,23 @@ describe('layerSlice', () => {
     expect(screen.toJSON()).toBeNull();
   });
 
-  it.each([
-    ['at rest', atRest],
-    ['with Tables in it', onTables],
-  ] as const)('gives the root a title-less page on a clear ground %s', (_state, build) => {
-    const { options } = rootOf(build());
-
-    expect(options).toMatchObject({ title: '', contentStyle: { backgroundColor: 'transparent' } });
-  });
-
+  // The whole options object is compared: the root takes nothing from the route it is named after,
+  // whose own options (a large title, for one) would show in a bar that is meant to be empty.
   // Root and Tables share one navigation bar. A root with no header hides that bar when a swipe
   // back starts, so while Tables is in the layer the root keeps a header of its own, clear and
   // empty; at rest the layer shows no header at all.
-  it('gives the root no header while the layer holds only the root', () => {
-    expect(rootOf(atRest()).options.headerShown).toBe(false);
+  it('gives the root a title-less page on a clear ground and no header while it holds only the root', () => {
+    expect(rootOf(atRest()).options).toEqual({
+      title: '',
+      contentStyle: { backgroundColor: 'transparent' },
+      headerShown: false,
+    });
   });
 
-  it('gives the root a shown, clear, empty header while Tables is in the layer', () => {
-    expect(rootOf(onTables()).options).toMatchObject({
+  it('gives the root a title-less page on a clear ground and a shown, clear, empty header with Tables in it', () => {
+    expect(rootOf(onTables()).options).toEqual({
+      title: '',
+      contentStyle: { backgroundColor: 'transparent' },
       headerShown: true,
       headerTransparent: true,
       headerTitle: '',

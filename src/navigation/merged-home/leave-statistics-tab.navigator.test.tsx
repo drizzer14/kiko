@@ -46,16 +46,48 @@ type ShownRoute = { key: string; name: string };
 // A native stack that renders nothing but records the routes each pane is handed: the screens
 // inside are not under test, the routes are.
 const mockShownRoutes: ShownRoute[] = [];
-jest.mock('@react-navigation/native-stack', () => ({
-  ...jest.requireActual('@react-navigation/native-stack'),
-  NativeStackView: ({ state }: { state: { routes: ShownRoute[] } }) => {
-    for (const { key, name } of state.routes) {
-      mockShownRoutes.push({ key, name });
-    }
 
-    return null;
-  },
-}));
+// What each shown route does when the native stack reports its finished dismissal, which is the
+// stack's own `onDismissed` handler: a pop that names the route it came from.
+const mockDismissals = new Map<string, () => void>();
+jest.mock('@react-navigation/native-stack', () => {
+  const { StackActions } = jest.requireActual('@react-navigation/native');
+
+  return {
+    ...jest.requireActual('@react-navigation/native-stack'),
+    NativeStackView: ({
+      state,
+      descriptors,
+    }: {
+      state: { routes: ShownRoute[] };
+      descriptors: Record<
+        string,
+        {
+          navigation: {
+            dispatch: (action: object) => void;
+            getState: () => { key: string };
+          };
+        }
+      >;
+    }) => {
+      for (const { key, name } of state.routes) {
+        mockShownRoutes.push({ key, name });
+
+        const { navigation } = descriptors[key];
+
+        mockDismissals.set(key, () =>
+          navigation.dispatch({
+            ...StackActions.pop(1),
+            source: key,
+            target: navigation.getState().key,
+          }),
+        );
+      }
+
+      return null;
+    },
+  };
+});
 
 const setLargeWindow = async (isLarge: boolean): Promise<void> => {
   await act(async () => {
@@ -137,6 +169,12 @@ const openIn = async (tab: string, screen: string, params: object): Promise<void
       payload: { openerKey: opener?.key, route: { name: screen, params } },
       target: stack?.key,
     });
+  });
+};
+
+const dismissNatively = async (key: string): Promise<void> => {
+  await act(async () => {
+    mockDismissals.get(key)?.();
   });
 };
 
@@ -325,6 +363,24 @@ describe('the Statistics tab when the window turns into a merged Home', () => {
 
       expect(mockShownRoutes).toContainEqual({ key: 'pane-layer-root', name: 'Home' });
       expect(mockShownRoutes).toContainEqual({ key: home?.routes.at(-1)?.key, name: 'Tables' });
+    });
+
+    it('goes back from the carried Tables to Home, which is left with no layer page', async () => {
+      await setLargeWindow(true);
+      await settle();
+
+      const tables = stackOf('HomeTab')?.routes.at(-1);
+
+      mockShownRoutes.length = 0;
+      await dismissNatively(tables?.key ?? '');
+
+      const home = stackOf('HomeTab');
+
+      expect(tables?.name).toBe('Tables');
+      expect(focusedTab()).toBe('HomeTab');
+      expect(home?.routes.map(({ name }) => name)).toEqual(['Home']);
+      expect(mockShownRoutes).toContainEqual({ key: 'pane-layer-root', name: 'Home' });
+      expect(mockShownRoutes.map(({ name }) => name)).not.toContain('Tables');
     });
   });
 
