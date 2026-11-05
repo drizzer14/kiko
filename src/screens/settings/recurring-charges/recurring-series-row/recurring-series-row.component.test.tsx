@@ -40,7 +40,7 @@ describe('RecurringSeriesRow', () => {
 
     expect(getByTestId('recurring-series-row-netflix-1')).toBeTruthy();
     expect(getByText('Netflix')).toBeTruthy();
-    expect(getByText('Charged monthly, on day 15')).toBeTruthy();
+    expect(getByText('Monthly, on day 15')).toBeTruthy();
     expect(getByText(`Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`)).toBeTruthy();
     expect(getByText(formatMoney(Money.of('UAH', 29900)))).toBeTruthy();
   });

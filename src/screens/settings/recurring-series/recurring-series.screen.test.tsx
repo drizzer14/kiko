@@ -225,7 +225,7 @@ describe('RecurringSeriesScreen — header', () => {
       paramsOf(series),
     );
 
-    expect(getByTestId(HEADER)).toHaveTextContent('Charged monthly, on day 15', { exact: false });
+    expect(getByTestId(HEADER)).toHaveTextContent('Monthly, on day 15', { exact: false });
     expect(getByTestId(HEADER)).toHaveTextContent(
       `Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`,
       { exact: false },
