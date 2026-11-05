@@ -84,5 +84,10 @@ export interface BalanceProvider<Deps> {
   id: BalanceProviderId;
   /** The `holdings.metadata` field the provider's `metadataKey` is stored under. */
   metadataField: ExchangeMetadataField;
+  /**
+   * Set by a provider whose holdings the net-worth line must date: the sync then writes the read
+   * time with every balance it writes. Absent for a provider whose rows are not read against it.
+   */
+  datesBalance?: boolean;
   fetchBalances: (deps: Deps, target: SyncTarget) => Promise<ProviderRead>;
 }

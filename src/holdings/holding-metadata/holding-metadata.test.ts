@@ -17,6 +17,7 @@ import {
   syncClosedFromOf,
   walletAddressOf,
   withCarriedMetadataKeys,
+  BALANCE_READ_AT_FIELD,
   type BondMeta,
   type CompoundingFrequency,
   type LoanMeta,
@@ -336,6 +337,15 @@ describe('withCarriedMetadataKeys', () => {
     };
 
     expect(withCarriedMetadataKeys(target, stored)).toEqual(target);
+  });
+
+  it('does not carry the balance read time, so a read writes the new one', () => {
+    const target = { bybitAsset: 'BTC:UNIFIED', syncedAt: 2_000, [BALANCE_READ_AT_FIELD]: 2_000 };
+    const stored = { bybitAsset: 'BTC:UNIFIED', syncedAt: 1_000, [BALANCE_READ_AT_FIELD]: 1_000 };
+
+    expect(BALANCE_READ_AT_FIELD).toBe('balanceReadAt');
+    expect(withCarriedMetadataKeys(target, stored)).toEqual(target);
+    expect(withCarriedMetadataKeys({ syncedAt: 2_000 }, stored)).toEqual({ syncedAt: 2_000 });
   });
 
   it('leaves the target unchanged when the stored metadata has no sync-owned key', () => {

@@ -1,5 +1,8 @@
 import { i18n } from '@kiko/i18n/init';
 
+import { binanceProvider } from '../binance';
+import { bitcoinWalletProvider } from '../btc-wallet';
+
 import {
   BybitRateLimitError,
   BybitRefusalError,
@@ -85,6 +88,12 @@ describe('bybitProvider', () => {
   it('is the bybit exchange provider keyed on bybitAsset', () => {
     expect(bybitProvider.id).toBe('bybit');
     expect(bybitProvider.metadataField).toBe('bybitAsset');
+  });
+
+  it('dates its balances, and the wallet and Binance providers do not', () => {
+    expect(bybitProvider.datesBalance).toBe(true);
+    expect(binanceProvider.datesBalance).toBeUndefined();
+    expect(bitcoinWalletProvider.datesBalance).toBeUndefined();
   });
 
   it('wires the real client, credentials reader, clock and fetch as its default deps', () => {

@@ -8,6 +8,7 @@ import {
 import { i18n } from '@kiko/i18n/init';
 import { accountsRepo } from '@kiko/accounts';
 import type { AccountRow, HoldingRow } from '@kiko/db';
+import { BALANCE_READ_AT_FIELD } from '@kiko/holdings/holding-metadata';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
 import {
@@ -211,7 +212,10 @@ const runBalanceSyncInner = async <Deps>(
           type: 'crypto_asset',
           currency,
           balanceMinorUnits,
-          metadata: { syncedAt },
+          metadata: {
+            syncedAt,
+            ...(provider.datesBalance === true ? { [BALANCE_READ_AT_FIELD]: syncedAt } : {}),
+          },
           metadataField: provider.metadataField,
           metadataKey,
           renameFromDefaults,

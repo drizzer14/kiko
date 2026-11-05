@@ -128,6 +128,14 @@ export type ExchangeMetadataField = Exclude<SyncedMetadataField, 'monobankId'>;
  */
 export const SYNCED_AT_FIELD = 'syncedAt';
 
+/**
+ * The instant of the read that wrote the holding's balance, kept beside `syncedAt` by a provider
+ * that dates its balances. It is in neither `carriedMetadataKeys` nor the disconnect's stripped
+ * list: a carried key would overwrite the new read's time with the stored one, and a stripped one
+ * would leave a disconnected holding unable to tell "read, and its rows hold" from "never read".
+ */
+export const BALANCE_READ_AT_FIELD = 'balanceReadAt';
+
 // The two stored shapes a balance sync writes (see the spec's "Data model"):
 //   wallet:  { walletAddress: string; syncedAt: number }
 //   Binance: { binanceAsset: 'BTC'; syncedAt: number }
