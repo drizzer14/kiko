@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -542,6 +543,48 @@ describe('RecurringChargesScreen — hidden merchants', () => {
 
     expect(showSpy).toHaveBeenCalledTimes(1);
     expect(showSpy).toHaveBeenCalledWith('fora');
+  });
+
+  describe('when "Show again" is tapped', () => {
+    const renderWithHiddenAtb = () =>
+      renderScreen({
+        series: [],
+        isLoading: false,
+        choices: new Map([['atb', hiddenChoice('ATB')]]),
+      });
+
+    let alertSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      alertSpy.mockRestore();
+    });
+
+    it('shows the save alert and keeps the hidden row when the write is rejected', async () => {
+      showSpy.mockRejectedValueOnce(new Error('disk full'));
+      const { getByTestId } = await renderWithHiddenAtb();
+
+      await fireEvent.press(getByTestId(showAgainTestId('atb')));
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(alertSpy).toHaveBeenCalledWith(
+        translate('forms.fields.saveErrorTitle'),
+        translate('forms.fields.saveErrorMessage'),
+      );
+      expect(getByTestId(hiddenRowTestId('atb'))).toHaveTextContent('ATB');
+    });
+
+    it('shows no alert when the write is accepted', async () => {
+      const { getByTestId } = await renderWithHiddenAtb();
+
+      await fireEvent.press(getByTestId(showAgainTestId('atb')));
+
+      expect(showSpy).toHaveBeenCalledWith('atb');
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
   });
 
   it('states the heading and the button literally in English', async () => {
