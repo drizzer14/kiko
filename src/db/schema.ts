@@ -769,11 +769,12 @@ export const reminders = sqliteTable(
 export type ReminderRow = typeof reminders.$inferSelect;
 
 /**
- * The stored set of paired ledger rows of an exchange account: one row per ledger row and per
- * source (`side`), so the pairing of a ledger row with its source is decided again on the whole
- * set at the end of each run and never once, at arrival. Empty until a writer exists: nothing
- * writes it yet, and only the backup path (`readDataSnapshot`, `restoreDataSnapshot`) and the
- * child-first deletes (`accountsRepo.remove`, `accountsRepo.disconnectExchange`) touch it.
+ * The stored set of ledger rows and sources of an exchange account: one row per ledger row and
+ * per source (`side`), so the pairing of a ledger row with its source is decided again on the
+ * whole set at the end of each run and never once, at arrival. No pair is stored. Empty until a
+ * writer exists: nothing writes it yet, and only the backup path (`readDataSnapshot`,
+ * `restoreDataSnapshot`) and the child-first deletes (`accountsRepo.remove`,
+ * `accountsRepo.disconnectExchange`) touch it.
  *
  * The final columns are fixed with the table, because a column added later is a second
  * migration. `amount`, `fee` and `tax` are decimal text, as the reading gives them. The times

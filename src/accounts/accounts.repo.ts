@@ -494,7 +494,8 @@ export const accountsRepo = {
    */
   disconnectExchange: (accountId: string, exchangeId: BalanceProviderId, floorMs: number) =>
     write(async (databaseTransaction) => {
-      // First, so a failure of the reset or the clear below rolls the delete back with them. A
+      // The three parts run in ONE write, so a failure in any of them rolls all back, in any
+      // order; this one is first only because the reset and the clear read none of these rows. A
       // no-op for an account that never stored a row, which is every Binance account.
       await databaseTransaction
         .delete(fundingMatchRows)
@@ -610,8 +611,10 @@ export const accountsRepo = {
       // it here, before the account row goes — mirrors the order
       // `restoreDataSnapshot` already uses (`data-transfer/snapshot/restore-snapshot.ts`).
       await databaseTransaction.delete(syncState).where(eq(syncState.accountId, accountId));
-      // `funding_match_rows.account_id` is the same kind of NO ACTION foreign key, and the account
-      // can own rows from a run before it was disconnected.
+      // `funding_match_rows.account_id` is the same kind of NO ACTION foreign key. A synced account
+      // is refused above and `disconnectExchange` clears the rows of a disconnected one, so a row
+      // is found here only if it came another way (a restored file that holds rows for a manual
+      // account); left in place, it would make the account delete throw.
       await databaseTransaction
         .delete(fundingMatchRows)
         .where(eq(fundingMatchRows.accountId, accountId));

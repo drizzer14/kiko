@@ -1,10 +1,11 @@
 /*
- Add the table `funding_match_rows`: the stored set of paired ledger rows of an exchange account,
- one row per ledger row and per source (`side`), read by account. It is created EMPTY and with its
- final columns, because a column added later is a second migration: no writer exists in this
- build, and a later release writes it with no migration of its own, so every build's journal is a
- prefix of the one that follows it (the runner applies `journal.slice(COUNT)`, and a phone with
- real data must never run a migration a later build does not hold).
+ Add the table `funding_match_rows`: the stored set of ledger rows and sources of an exchange
+ account, one row per ledger row and per source (`side`), read by account. No pair is stored.
+ It is created EMPTY and with its final columns, because a column added later is a second
+ migration: no writer exists in this build, and a later release writes it with no migration of
+ its own, so every build's journal is a prefix of the one that follows it (the runner applies
+ `journal.slice(COUNT)`, and a phone with real data must never run a migration a later build
+ does not hold).
 
  The composite primary key is the only index: its leading `account_id` serves the read, the prune
  and the clear of one account's rows, so no named index joins the shared index namespace. The
