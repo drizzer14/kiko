@@ -77,13 +77,17 @@ const toPieSlice = (slice: CategorySlice): AccountSlice => ({
 // each holding's running balance over time. Keyed by holding, not account,
 // because a holding's balance is what the series values at each day.
 const groupByHolding = (
-  transactions: { holdingId: string; time: number; amountMinorUnits: number }[],
+  transactions: (Required<SeriesTransaction> & { holdingId: string })[],
 ): Map<string, SeriesTransaction[]> => {
   const byHolding = new Map<string, SeriesTransaction[]>();
 
   for (const transaction of transactions) {
     const list = byHolding.get(transaction.holdingId) ?? [];
-    list.push({ time: transaction.time, amountMinorUnits: transaction.amountMinorUnits });
+    list.push({
+      time: transaction.time,
+      amountMinorUnits: transaction.amountMinorUnits,
+      source: transaction.source,
+    });
     byHolding.set(transaction.holdingId, list);
   }
 

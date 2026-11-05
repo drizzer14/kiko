@@ -1597,6 +1597,47 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.at(-1)?.amount).toBe(3_578.68);
   });
 
+  it('ends on the net worth Home shows for a Bybit coin with a row after its read', () => {
+    const start = new Date(2026, 8, 1).getTime();
+    const day = (offset: number, hour = 0): number => addLocalDays(start, offset) + hour * HOUR;
+    const now = day(5, 12);
+    const readAt = day(1, 10);
+    const coin = holding({
+      id: 'bybit-btc',
+      currency: 'BTC',
+      type: 'crypto_asset',
+      balanceMinorUnits: 100_000_000,
+      metadata: { bybitAsset: 'BTC:unified', syncedAt: readAt, balanceReadAt: readAt },
+    });
+    const liveRateTable = { BTC: 2_500_000 };
+
+    const series = buildNetWorthSeries({
+      holdings: [coin],
+      transactionsByHolding: new Map([
+        [
+          'bybit-btc',
+          [
+            { time: day(0, 12), amountMinorUnits: 100_000_000, source: 'bybit' },
+            { time: day(3, 12), amountMinorUnits: -20_000_000, source: 'bybit' },
+          ],
+        ],
+      ]),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: day(-1), to: endOfLocalDay(now) },
+      liveRateTable,
+      today: now,
+    });
+    const home = guardedNetWorth([coin], 'UAH', liveRateTable, now);
+    const amounts = series.points.map((point) => point.amount);
+
+    expect(amounts.at(-1)).toBe(toMajor(home.minorUnits, 'UAH'));
+    expect(amounts.at(-1)).toBe(2_500_000);
+    expect(amounts[0]).toBe(0);
+    expect(amounts.slice(1)).toEqual(amounts.slice(1).map(() => 2_500_000));
+    expect(amounts.length).toBeGreaterThan(3);
+  });
+
   describe('the live rate backs a currency the stored history does not cover', () => {
     const D3 = D0 + 3 * DAY_MS;
     const D5 = D0 + 5 * DAY_MS;

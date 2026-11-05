@@ -1,5 +1,6 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
+import type { TransactionRow } from '@kiko/db';
 
 import { asLots, type Lot } from '../lots';
 import { asOwnershipChanges, type OwnershipChange } from '../ownership';
@@ -222,6 +223,31 @@ const numberFieldOf =
 export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
 
 export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
+
+/** The instant of the read that wrote the balance; null when the holding has no such read. */
+export const balanceReadAtOf = numberFieldOf(BALANCE_READ_AT_FIELD);
+
+/**
+ * The sync-owned keys whose holdings carry a dated balance, each with the `source` of the ledger
+ * rows that such a balance holds. The one place that decides which holding the net-worth valuer
+ * dates: a provider that starts to write `BALANCE_READ_AT_FIELD` is listed here and nowhere else.
+ */
+const datedBalances: readonly { field: SyncedMetadataField; source: TransactionRow['source'] }[] = [
+  { field: 'bybitAsset', source: 'bybit' },
+];
+
+/**
+ * The row `source` that a holding's stored balance holds up to `balanceReadAtOf`, or `undefined`
+ * for a holding whose balance is not dated, which counts every row. A key that is not a string
+ * marks no holding, as in the provider's own reader of the key.
+ */
+export const datedBalanceSourceOf = (metadata: unknown): TransactionRow['source'] | undefined => {
+  if (!isRecord(metadata)) {
+    return undefined;
+  }
+
+  return datedBalances.find(({ field }) => typeof metadata[field] === 'string')?.source;
+};
 
 /**
  * Copies any `carriedMetadataKeys` present on `storedMetadata` onto

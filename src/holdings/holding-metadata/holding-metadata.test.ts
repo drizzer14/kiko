@@ -13,6 +13,8 @@ import {
   propertyCategoryOf,
   hasStoredBondPurchasePrice,
   syncedAtOf,
+  balanceReadAtOf,
+  datedBalanceSourceOf,
   statementFromOf,
   syncClosedFromOf,
   walletAddressOf,
@@ -309,6 +311,39 @@ describe('syncedAtOf', () => {
     expect(syncedAtOf({ syncedAt: 'yesterday' })).toBeNull();
     expect(syncedAtOf({ syncedAt: Number.NaN })).toBeNull();
     expect(syncedAtOf(null)).toBeNull();
+  });
+});
+
+describe('balanceReadAtOf', () => {
+  it('reads a finite balanceReadAt timestamp, beside a syncedAt that differs', () => {
+    expect(
+      balanceReadAtOf({ bybitAsset: 'BTC:unified', syncedAt: 2_000, balanceReadAt: 1_000 }),
+    ).toBe(1_000);
+  });
+
+  it('returns null when absent, non-numeric or not an object, whatever syncedAt holds', () => {
+    expect(balanceReadAtOf({ bybitAsset: 'BTC:unified', syncedAt: 2_000 })).toBeNull();
+    expect(balanceReadAtOf({ balanceReadAt: '1000' })).toBeNull();
+    expect(balanceReadAtOf({ balanceReadAt: Number.NaN })).toBeNull();
+    expect(balanceReadAtOf(null)).toBeNull();
+  });
+});
+
+describe('datedBalanceSourceOf', () => {
+  it('names the row source of a holding whose key marks a dated balance', () => {
+    expect(datedBalanceSourceOf({ bybitAsset: 'BTC:unified' })).toBe('bybit');
+  });
+
+  it.each([
+    ['a Binance key', { binanceAsset: 'BTC', syncedAt: 1_000 }],
+    ['a Monobank key', { monobankId: 'card-1', syncedAt: 1_000 }],
+    ['a wallet address', { walletAddress: 'bc1q', syncedAt: 1_000 }],
+    ['no source key', { syncedAt: 1_000, balanceReadAt: 1_000 }],
+    ['a key that is not a string', { bybitAsset: 5 }],
+    ['null', null],
+    ['text', 'bybitAsset'],
+  ])('names no source for %s', (_, metadata) => {
+    expect(datedBalanceSourceOf(metadata)).toBeUndefined();
   });
 });
 

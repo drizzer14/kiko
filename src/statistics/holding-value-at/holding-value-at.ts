@@ -1,9 +1,10 @@
-import type { HoldingRow } from '@kiko/db';
 import { startOfLocalDay } from '@kiko/dates';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { balanceReadAtOf, datedBalanceSourceOf } from '@kiko/holdings/holding-metadata';
 
 /**
  * A holding as the series builders need it: identity, currency, and value
@@ -18,8 +19,38 @@ export type SeriesHolding = Pick<
   'id' | 'currency' | 'type' | 'balanceMinorUnits' | 'metadata' | 'closedAt'
 >;
 
-/** One transaction as the reconstruction needs it: when, and how much (signed). */
-export type SeriesTransaction = { time: number; amountMinorUnits: number };
+/**
+ * One transaction as the reconstruction needs it: when, and how much (signed). `source` is read
+ * only for a holding whose balance is dated; a row built without it counts like any other row.
+ */
+export type SeriesTransaction = {
+  time: number;
+  amountMinorUnits: number;
+  source?: TransactionRow['source'];
+};
+
+// The rows a holding's stored balance already holds. A dated balance is as old as its last read,
+// so a row of the syncing source that is dated after the read is not in it: counting it would move
+// the whole past against the old balance. With no read date no such row counts, so a holding that
+// was never read opens at its stored balance and no opening is guessed. Any other row, and every
+// row of a holding whose balance is not dated, counts as it is.
+const rowsHeldByBalance = (
+  holding: SeriesHolding,
+  transactions: SeriesTransaction[],
+): SeriesTransaction[] => {
+  const datedSource = datedBalanceSourceOf(holding.metadata);
+
+  if (datedSource === undefined) {
+    return transactions;
+  }
+
+  const readAt = balanceReadAtOf(holding.metadata);
+
+  return transactions.filter(
+    (transaction) =>
+      transaction.source !== datedSource || (readAt !== null && transaction.time <= readAt),
+  );
+};
 
 // The last cumulative-sum entry whose `day` is <= `targetDay`, or -1 when
 // every entry is after it (nothing applied yet).
@@ -63,7 +94,10 @@ const lastIndexAtOrBefore = (days: number[], targetDay: number): number => {
  *   net-worth neutral instead of spiking or dipping across the midnight
  *   boundary. Opening balance = current balance - sum(all transactions),
  *   since the stored `balanceMinorUnits` is the CURRENT balance, not the
- *   range-start balance. The per-holding one-time setup groups transactions
+ *   range-start balance. A holding whose balance is dated (`datedBalanceSourceOf`) sums only
+ *   the rows its balance already holds (`rowsHeldByBalance`), so the line past the last read is
+ *   flat at that balance, which is the number Home shows, instead of moving by rows the balance
+ *   does not contain. The per-holding one-time setup groups transactions
  *   by local-day key and builds a running (prefix) sum per distinct day;
  *   each call then binary searches that sorted day list instead of
  *   re-filtering/re-reducing the whole transaction list per bucket.
@@ -79,7 +113,7 @@ export const createHoldingValuer = (
 
   const sumByDay = new Map<number, number>();
 
-  for (const transaction of transactions) {
+  for (const transaction of rowsHeldByBalance(holding, transactions)) {
     const day = startOfLocalDay(transaction.time);
 
     sumByDay.set(day, (sumByDay.get(day) ?? 0) + transaction.amountMinorUnits);
