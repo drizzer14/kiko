@@ -330,7 +330,10 @@ PICKER field's sheet title is a noun ("Account Kind" / "Вид рахунку"),
 imperative "Select a …" / "Оберіть …" — that form belongs to the field's placeholder
 only (noun-title decision, 2026-09-26). An action sheet opened by a Button
 (`ProviderSheet`) is not a picker field: its title takes the action's imperative in Title
-Case ("Add a Bank", "Connect an Exchange or Wallet"). Read the FAILURE MESSAGE'S key path before
+Case ("Add a Bank", "Connect an Exchange or Wallet"). In uk a button and an action-sheet
+title take the infinitive (`Додати банк`, `Обрати категорію`); the imperative `Оберіть`
+belongs to a placeholder or a message sentence (`src/i18n/locales/uk.ts`, `categoryReview`).
+Read the FAILURE MESSAGE'S key path before
 assuming a new string is miscased: add a new title key to
 `title-keys.ts`, not just to the catalogue.
 
