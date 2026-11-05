@@ -1063,6 +1063,14 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
 - The amount chain reads only amounts, so a twin fold cannot change which chain a row is in.
 - The accepted false stop: a subscription that goes on at a price outside the chain shows "No
   charge since" until the user re-marks. This is the user's ruling, not a defect.
+- The list's category groups and totals: `recurringGroupsOf` and `paidSoFarOf` in
+  `src/recurring/recurring-groups/recurring-groups.ts` (read it for the rules). In words: a
+  series' category is its newest charge's, folded to the default category when it has none or it
+  is unknown; groups follow the Categories screen order; within a group the active series come
+  before the stopped ones; 'Marked, No Charges' and 'Hidden' are their own sections with no total.
+  A total is the all-time sum of the shown series' charges, one conversion per series sum into the
+  base currency, as the category breakdown converts; a currency with no rate is left out of the
+  total. The detail's 'All paid so far' is `paidSoFarOf` in the series' own currency.
 - One choice map holds every key's hide flag and its list of marks, one entry per key; removing
   a mark clears only that mark, and "Show again" clears only the hide.
 
