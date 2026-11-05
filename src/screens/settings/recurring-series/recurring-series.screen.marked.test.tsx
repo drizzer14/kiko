@@ -321,6 +321,41 @@ describe('RecurringSeriesScreen — removing a mark', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  it('shows the current state, not the removed series, when the write lands off the focused screen', async () => {
+    const { getByText, getByTestId, queryByTestId, update, navigation } = await renderScreen(
+      APPLE,
+      routeOf(MARKED_APPLE),
+    );
+
+    navigation.isFocused.mockReturnValue(false);
+    await fireEvent.press(getByText(removeMarkText()));
+    await update(hookStateOf(appleLedger(), []));
+    await act(async () => {
+      settleWrite.resolve();
+    });
+
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(getByTestId(EMPTY)).toBeTruthy();
+    expect(queryByTestId(HEADER)).toBeNull();
+    expect(queryByTestId('recurring-series-remove-mark')).toBeNull();
+  });
+
+  it('shows the current result, not the held series, after a rejected write and a changed route', async () => {
+    const { getByText, getByTestId, queryByTestId, update } = await renderScreen(
+      APPLE,
+      routeOf(MARKED_APPLE),
+    );
+
+    await fireEvent.press(getByText(removeMarkText()));
+    await act(async () => {
+      settleWrite.reject(new Error('disk full'));
+    });
+    await update(hookStateOf(appleLedger(), []));
+
+    expect(getByTestId(EMPTY)).toBeTruthy();
+    expect(queryByTestId(HEADER)).toBeNull();
+  });
+
   it('shows the neutral text for the same removal made elsewhere, with no write of its own', async () => {
     const { getByTestId, queryByTestId, update } = await renderScreen(APPLE, routeOf(MARKED_APPLE));
 

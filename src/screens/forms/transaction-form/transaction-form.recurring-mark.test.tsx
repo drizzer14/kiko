@@ -179,7 +179,8 @@ const navigation = navigationSpy();
 
 // Home, Holding Detail and a series link each open the form with this one param, so a pin on it
 // holds for every path; the real navigators in `recurring-series.marks.navigator.test.tsx` hold
-// the paths.
+// Home and a series link, and `holding-detail.screen.test.tsx` (in `screens/holding-detail`)
+// holds Holding Detail's param.
 const routeOf = (): TransactionFormParams => ({ transactionId: ROW_ID });
 
 const formElement = (params: TransactionFormParams) => (
