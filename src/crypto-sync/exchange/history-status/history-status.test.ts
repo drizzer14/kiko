@@ -54,10 +54,10 @@ describe('untrackedCoinsOf', () => {
 describe('untrackedBalanceCoinsOf', () => {
   it('the balance coins leave out the history list', () => {
     const state = stateWith({
-      untrackedCoins: { balance: ['PEPE', 'ABC'], history: ['PEPE', 'XYZ'] },
+      untrackedCoins: { balance: ['PEPE'], history: ['PEPE', 'XYZ'] },
     });
 
-    expect(untrackedBalanceCoinsOf(state, () => false)).toEqual(['ABC', 'PEPE']);
+    expect(untrackedBalanceCoinsOf(state, () => false)).toEqual(['PEPE']);
   });
 
   it('leaves out a ticker that is a curated code now', () => {

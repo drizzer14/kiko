@@ -130,10 +130,12 @@ export type ExchangeMetadataField = Exclude<SyncedMetadataField, 'monobankId'>;
 export const SYNCED_AT_FIELD = 'syncedAt';
 
 /**
- * The instant of the read that wrote the holding's balance, kept beside `syncedAt` by a provider
- * that dates its balances. It is in neither `carriedMetadataKeys` nor the disconnect's stripped
- * list: a carried key would overwrite the new read's time with the stored one, and a stripped one
- * would leave a disconnected holding unable to tell "read, and its rows hold" from "never read".
+ * The time that dates the balance a sync wrote, kept beside `syncedAt` by a provider on the dated
+ * list. The sync takes it after all of the run's reads have ended, so it is later than the answer
+ * that held a given coin's balance, and a row inside that stretch can fall on the wrong side of
+ * it. It is in neither `carriedMetadataKeys` nor the disconnect's stripped list: a carried key
+ * would overwrite the new read's time with the stored one, and a stripped one would leave a
+ * disconnected holding unable to tell "read, and its rows hold" from "never read".
  */
 export const BALANCE_READ_AT_FIELD = 'balanceReadAt';
 
@@ -224,17 +226,26 @@ export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
 
 export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
 
-/** The instant of the read that wrote the balance; null when the holding has no such read. */
+/**
+ * The time that dates the holding's balance, taken after the run's reads ended; null when the
+ * holding has none.
+ */
 export const balanceReadAtOf = numberFieldOf(BALANCE_READ_AT_FIELD);
 
 /**
  * The sync-owned keys whose holdings carry a dated balance, each with the `source` of the ledger
  * rows that such a balance holds. The one place that decides which holding the net-worth valuer
- * dates: a provider that starts to write `BALANCE_READ_AT_FIELD` is listed here and nowhere else.
+ * dates: a provider that starts to write `BALANCE_READ_AT_FIELD` is listed here and nowhere else,
+ * because the sync reads its write from `datesBalanceOf`, and the valuer reads its rows from
+ * `datedBalanceSourceOf`.
  */
 const datedBalances: readonly { field: SyncedMetadataField; source: TransactionRow['source'] }[] = [
   { field: 'bybitAsset', source: 'bybit' },
 ];
+
+/** Whether a sync of the provider that owns `field` writes `BALANCE_READ_AT_FIELD`. */
+export const datesBalanceOf = (field: SyncedMetadataField): boolean =>
+  datedBalances.some((entry) => entry.field === field);
 
 /**
  * The row `source` that a holding's stored balance holds up to `balanceReadAtOf`, or `undefined`

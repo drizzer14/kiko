@@ -2857,27 +2857,32 @@ describe('AccountDetailScreen — a Bybit account with no holding and a balance 
     expect(queryByText(EMPTY_MESSAGE)).toBeNull();
   });
 
-  it.each([['a coin on the balance list', { balance: ['PEPE'], history: [] }]])(
-    'shows the not-read block, never No holdings yet, for an account that holds only %s Bybit does not track',
-    async (_title, untrackedCoins) => {
-      setLiveData({
-        accounts: [bybitAccount],
-        holdings: [],
-        syncState: [{ exchangeState: JSON.stringify({ version: 1, walks: {}, untrackedCoins }) }],
-      });
+  it('shows the not-read block, never No holdings yet, for an account that holds only a coin on the balance list Bybit does not track', async () => {
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [],
+      syncState: [
+        {
+          exchangeState: JSON.stringify({
+            version: 1,
+            walks: {},
+            untrackedCoins: { balance: ['PEPE'], history: [] },
+          }),
+        },
+      ],
+    });
 
-      const { getByTestId, getByText, queryByText } = await renderScreen();
+    const { getByTestId, getByText, queryByText } = await renderScreen();
 
-      expect(
-        within(getByTestId('account-detail-holdings-empty')).getByText(NOT_READ_TITLE),
-      ).toBeTruthy();
-      expect(getByText(NOT_READ_MESSAGE)).toBeTruthy();
-      expect(queryByText(EMPTY_TITLE)).toBeNull();
-    },
-  );
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText(NOT_READ_TITLE),
+    ).toBeTruthy();
+    expect(getByText(NOT_READ_MESSAGE)).toBeTruthy();
+    expect(queryByText(EMPTY_TITLE)).toBeNull();
+  });
 
-  // O83: no balance claim stands behind a coin on the history list, and no balance read clears
-  // that list, so it cannot hold the block. The caption under Synchronization still names it
+  // No balance claim stands behind a coin on the history list, and no balance read clears that
+  // list, so it would hold the block for good. The caption under Synchronization still names it
   // (the section suites pin that line).
   it('shows No holdings yet for an account whose untracked coin is on the history list alone', async () => {
     setLiveData({

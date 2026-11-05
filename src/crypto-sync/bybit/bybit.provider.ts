@@ -278,7 +278,6 @@ const statePatchesOf = ({
 export const bybitProvider: BalanceProvider<BybitDeps> = {
   id: 'bybit',
   metadataField: 'bybitAsset',
-  datesBalance: true,
   fetchBalances: async (deps, target) => {
     // Checked before even reading credentials, so a cooling account makes no request. An account
     // with a stamped Bybit holding returns no balances, never throwing, so a later sync inside the

@@ -15,6 +15,7 @@ import {
   syncedAtOf,
   balanceReadAtOf,
   datedBalanceSourceOf,
+  datesBalanceOf,
   statementFromOf,
   syncClosedFromOf,
   walletAddressOf,
@@ -345,6 +346,19 @@ describe('datedBalanceSourceOf', () => {
   ])('names no source for %s', (_, metadata) => {
     expect(datedBalanceSourceOf(metadata)).toBeUndefined();
   });
+});
+
+describe('datesBalanceOf', () => {
+  it('is true for a key on the dated list', () => {
+    expect(datesBalanceOf('bybitAsset')).toBe(true);
+  });
+
+  it.each(['binanceAsset', 'walletAddress', 'monobankId'] as const)(
+    'is false for %s, which is not on the list',
+    (field) => {
+      expect(datesBalanceOf(field)).toBe(false);
+    },
+  );
 });
 
 describe('withCarriedMetadataKeys', () => {

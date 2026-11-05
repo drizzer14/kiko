@@ -17,10 +17,11 @@ import type { HoldingsEmptyStateProps } from './holdings-empty-state.props';
 // listed a coin Kiko does not track is not empty, so it says so instead of "No holdings yet" under
 // lines that name them. The untracked coins it counts are the balance list alone, not the union
 // of `untrackedCoinsOf`: a coin on the history list has no balance claim behind it and no balance
-// read clears that list (O83). The caption under Synchronization keeps the union. It reads the
-// account's own `sync_state` row, gated on its own isLoading: while that read is on its first
-// load a Bybit account shows nothing, because either block would be a guess. Every other account
-// has no notes to read, so its read stays off and its block shows at once.
+// read clears that list, so it would keep the block for good. The caption under Synchronization
+// keeps the union. It reads the account's own `sync_state` row, gated on its own isLoading: while
+// that read is on its first load a Bybit account shows nothing, because either block would be a
+// guess. Every other account has no notes to read, so its read stays off and its block shows at
+// once.
 const HoldingsEmptyState: FC<HoldingsEmptyStateProps> = ({
   accountId,
   institution,

@@ -1,4 +1,5 @@
 import { i18n } from '@kiko/i18n/init';
+import { datesBalanceOf } from '@kiko/holdings/holding-metadata';
 
 import { binanceProvider } from '../binance';
 import { bitcoinWalletProvider } from '../btc-wallet';
@@ -90,10 +91,10 @@ describe('bybitProvider', () => {
     expect(bybitProvider.metadataField).toBe('bybitAsset');
   });
 
-  it('dates its balances, and the wallet and Binance providers do not', () => {
-    expect(bybitProvider.datesBalance).toBe(true);
-    expect(binanceProvider.datesBalance).toBeUndefined();
-    expect(bitcoinWalletProvider.datesBalance).toBeUndefined();
+  it('has its key on the dated list, and the wallet and Binance keys are not on it', () => {
+    expect(datesBalanceOf(bybitProvider.metadataField)).toBe(true);
+    expect(datesBalanceOf(binanceProvider.metadataField)).toBe(false);
+    expect(datesBalanceOf(bitcoinWalletProvider.metadataField)).toBe(false);
   });
 
   it('wires the real client, credentials reader, clock and fetch as its default deps', () => {

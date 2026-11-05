@@ -36,9 +36,9 @@ export const untrackedCoinsOf = (
 ): string[] => unionOfKind(state, 'untrackedCoins').filter((ticker) => !isTracked(ticker));
 
 /**
- * The tickers a balance read found and the exchange does not track: the sorted balance list alone,
- * without a ticker the exchange tracks now. The history list is left out because a coin there has
- * no balance claim behind it, and no balance read clears that list.
+ * The tickers a balance read found and the exchange does not track: the balance list alone, in
+ * stored order, without a ticker the exchange tracks now. The history list is left out because a
+ * coin there has no balance claim behind it, and no balance read clears that list.
  */
 export const untrackedBalanceCoinsOf = (
   state: ParsedExchangeState,
@@ -47,7 +47,7 @@ export const untrackedBalanceCoinsOf = (
   match(state)
     .returnType<string[]>()
     .with({ kind: 'parsed' }, ({ untrackedCoins }) =>
-      [...new Set(untrackedCoins.balance)].sort().filter((ticker) => !isTracked(ticker)),
+      untrackedCoins.balance.filter((ticker) => !isTracked(ticker)),
     )
     .with({ kind: 'malformed' }, () => [])
     .exhaustive();
