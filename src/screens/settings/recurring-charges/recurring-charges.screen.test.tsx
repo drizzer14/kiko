@@ -397,9 +397,6 @@ describe('RecurringChargesScreen — hidden merchants', () => {
       (node) => node.props.testID,
     );
 
-  // The key is looked up at run time: the catalogue does not hold it until the screen is built.
-  const translate = (key: string): string => String((i18n.t as (key: string) => unknown)(key));
-
   let showSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -571,8 +568,8 @@ describe('RecurringChargesScreen — hidden merchants', () => {
 
       expect(alertSpy).toHaveBeenCalledTimes(1);
       expect(alertSpy).toHaveBeenCalledWith(
-        translate('forms.fields.saveErrorTitle'),
-        translate('forms.fields.saveErrorMessage'),
+        i18n.t('forms.fields.saveErrorTitle'),
+        i18n.t('forms.fields.saveErrorMessage'),
       );
       expect(getByTestId(hiddenRowTestId('atb'))).toHaveTextContent('ATB');
     });
@@ -596,8 +593,8 @@ describe('RecurringChargesScreen — hidden merchants', () => {
 
     expect(getByTestId(HIDDEN_HEADING)).toHaveTextContent('Hidden');
     expect(getByTestId(showAgainTestId('atb'))).toHaveTextContent('Show again');
-    expect(translate('recurringCharges.hiddenHeading')).toBe('Hidden');
-    expect(translate('recurringCharges.showAgain')).toBe('Show again');
+    expect(i18n.t('recurringCharges.hiddenHeading')).toBe('Hidden');
+    expect(i18n.t('recurringCharges.showAgain')).toBe('Show again');
   });
 
   describe('in Ukrainian', () => {
@@ -622,8 +619,8 @@ describe('RecurringChargesScreen — hidden merchants', () => {
 
       expect(getByTestId(HIDDEN_HEADING)).toHaveTextContent('Приховані');
       expect(getByTestId(showAgainTestId('atb'))).toHaveTextContent('Показати знову');
-      expect(translate('recurringCharges.hiddenHeading')).toBe('Приховані');
-      expect(translate('recurringCharges.showAgain')).toBe('Показати знову');
+      expect(i18n.t('recurringCharges.hiddenHeading')).toBe('Приховані');
+      expect(i18n.t('recurringCharges.showAgain')).toBe('Показати знову');
     });
   });
 

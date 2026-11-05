@@ -630,9 +630,6 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
     return { ...tree, navigation };
   };
 
-  // The key is looked up at run time: the catalogue does not hold it until the screen is built.
-  const translate = (key: string): string => String((i18n.t as (key: string) => unknown)(key));
-
   beforeEach(() => {
     hideSpy = jest.spyOn(settingsRepo, 'hideRecurringMerchant').mockImplementation(openWrite);
     alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
@@ -650,11 +647,47 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
     expect(hideSpy).not.toHaveBeenCalled();
   });
 
+  it('offers no hide button on the neutral text, and offers it again with a series', async () => {
+    const navigation = navigationSpy();
+
+    mockResult = { series: [], isLoading: false };
+    mockLedger = NETFLIX_LEDGER;
+
+    const { getByTestId, queryByTestId, rerender } = await render(hideScreen(navigation));
+
+    expect(getByTestId(EMPTY)).toBeTruthy();
+    expect(queryByTestId(HIDE_BUTTON)).toBeNull();
+
+    mockResult = { series: [NETFLIX], isLoading: false };
+    await rerender(hideScreen(navigation));
+
+    expect(queryByTestId(EMPTY)).toBeNull();
+    expect(getByTestId(HIDE_BUTTON)).toBeTruthy();
+  });
+
+  it('offers no hide button while the series read is loading, and offers it once loaded', async () => {
+    const navigation = navigationSpy();
+
+    mockResult = { series: [], isLoading: true };
+    mockLedger = NETFLIX_LEDGER;
+
+    const { getByTestId, queryByTestId, rerender } = await render(hideScreen(navigation));
+
+    expect(getByTestId(LOADING)).toBeTruthy();
+    expect(queryByTestId(HIDE_BUTTON)).toBeNull();
+
+    mockResult = { series: [NETFLIX], isLoading: false };
+    await rerender(hideScreen(navigation));
+
+    expect(queryByTestId(LOADING)).toBeNull();
+    expect(getByTestId(HIDE_BUTTON)).toBeTruthy();
+  });
+
   it('states the button text literally in English', async () => {
     const { getByTestId } = await renderNetflix();
 
     expect(getByTestId(HIDE_BUTTON)).toHaveTextContent('Not a recurring charge');
-    expect(translate('recurringCharges.notRecurring')).toBe('Not a recurring charge');
+    expect(i18n.t('recurringCharges.notRecurring')).toBe('Not a recurring charge');
   });
 
   describe('in Ukrainian', () => {
@@ -666,7 +699,7 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
       const { getByTestId } = await renderNetflix();
 
       expect(getByTestId(HIDE_BUTTON)).toHaveTextContent('Це не регулярний платіж');
-      expect(translate('recurringCharges.notRecurring')).toBe('Це не регулярний платіж');
+      expect(i18n.t('recurringCharges.notRecurring')).toBe('Це не регулярний платіж');
     });
   });
 

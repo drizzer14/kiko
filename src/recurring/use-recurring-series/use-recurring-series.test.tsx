@@ -103,6 +103,13 @@ type SettingsRows = { recurringMerchantChoices: unknown }[];
 let settingsRows: SettingsRows;
 let pendingSettingsRows: SettingsRows | undefined;
 
+// The tables each read listens to, by its first table, as its latest render gave them. A write to
+// a listened table makes that read run again, as the live-query hook does.
+let listenedTables: Map<string, string[]>;
+
+// How often the ledger read ran again: a ledger write, or a write to a table it listens to.
+let ledgerReruns: number;
+
 const actualDetection = (
   jest.requireActual('@kiko/recurring/detection') as {
     detectRecurringSeries: typeof detectRecurringSeries;
@@ -125,19 +132,28 @@ beforeEach(() => {
   queued = new Set();
   settingsRows = [];
   pendingSettingsRows = undefined;
+  listenedTables = new Map();
+  ledgerReruns = 0;
   mockUseLiveQuery.mockImplementation(
     (_query: unknown, tables: string[], _enabled: boolean, options?: { paused?: boolean }) => {
       const isPaused = options?.paused ?? false;
 
+      listenedTables.set(tables[0], tables);
+
       if (!isPaused && pending !== undefined) {
         committed = pending;
         pending = undefined;
+        ledgerReruns += 1;
       }
 
       if (tables[0] === 'settings') {
         if (!isPaused && pendingSettingsRows !== undefined) {
           settingsRows = pendingSettingsRows;
           pendingSettingsRows = undefined;
+
+          if (listenedTables.get('transactions')?.includes('settings')) {
+            ledgerReruns += 1;
+          }
         }
 
         return { data: settingsRows, isLoading: queued.has('settings'), isFresh: true };
@@ -387,11 +403,6 @@ describe('useRecurringSeries — the merchant choices', () => {
   const settingsCalls = (): unknown[][] =>
     mockUseLiveQuery.mock.calls.filter((call) => (call[1] as string[])[0] === 'settings');
 
-  // A narrow view of the hook's result, so these cases read `choices` by shape alone.
-  type WithChoices = { choices: ReadonlyMap<string, { name: string; hidden: true }> };
-
-  const choicesOf = (result: object): WithChoices['choices'] => (result as WithChoices).choices;
-
   it('reads the settings table, paused with the others and never cached', async () => {
     await renderHook(() => useRecurringSeries());
 
@@ -412,8 +423,8 @@ describe('useRecurringSeries — the merchant choices', () => {
 
     const { result } = await renderHook(() => useRecurringSeries());
 
-    expect(choicesOf(result.current).size).toBe(1);
-    expect(choicesOf(result.current).get('netflix')).toEqual(NETFLIX_CHOICE);
+    expect(result.current.choices.size).toBe(1);
+    expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
   });
 
   it.each([
@@ -424,8 +435,8 @@ describe('useRecurringSeries — the merchant choices', () => {
 
     const { result } = await renderHook(() => useRecurringSeries());
 
-    expect(choicesOf(result.current).size).toBe(0);
-    expect(choicesOf(result.current).has('constructor')).toBe(false);
+    expect(result.current.choices.size).toBe(0);
+    expect(result.current.choices.has('constructor')).toBe(false);
   });
 
   it('reads a stored __proto__ key as an entry beside a plain one', async () => {
@@ -439,8 +450,8 @@ describe('useRecurringSeries — the merchant choices', () => {
 
     const { result } = await renderHook(() => useRecurringSeries());
 
-    expect([...choicesOf(result.current).keys()].sort()).toEqual(['__proto__', 'netflix']);
-    expect(choicesOf(result.current).get('__proto__')).toEqual({ name: 'Proto', hidden: true });
+    expect([...result.current.choices.keys()].sort()).toEqual(['__proto__', 'netflix']);
+    expect(result.current.choices.get('__proto__')).toEqual({ name: 'Proto', hidden: true });
   });
 
   it('keeps a hidden merchant in series, which the list filters', async () => {
@@ -453,7 +464,7 @@ describe('useRecurringSeries — the merchant choices', () => {
     const { result } = await renderHook(() => useRecurringSeries());
 
     expect(names(result.current.series)).toEqual(['Netflix', 'Spotify']);
-    expect(choicesOf(result.current).get('netflix')).toEqual(NETFLIX_CHOICE);
+    expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
   });
 
   describe('detection and the settings read', () => {
@@ -491,21 +502,29 @@ describe('useRecurringSeries — the merchant choices', () => {
       expect(result.current.isLoading).toBe(false);
       expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
       expect(names(result.current.series)).toEqual(['Netflix']);
-      expect(choicesOf(result.current).get('netflix')).toEqual(NETFLIX_CHOICE);
+      expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
     });
 
     it('runs nothing and reads no ledger for a settings write, and hands over the same series', async () => {
       const { result, rerender } = await renderHook(() => useRecurringSeries());
       const seriesBefore = result.current.series;
-      const ledgerRowsBefore = committed.transactions;
 
       pendingSettingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
       await setVisible(rerender, true);
 
-      expect(choicesOf(result.current).get('netflix')).toEqual(NETFLIX_CHOICE);
+      expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
       expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
-      expect(committed.transactions).toBe(ledgerRowsBefore);
+      expect(ledgerReruns).toBe(0);
       expect(result.current.series).toBe(seriesBefore);
+    });
+
+    it('counts a ledger write as a ledger read that ran again', async () => {
+      const { rerender } = await renderHook(() => useRecurringSeries());
+
+      pending = worldOf([...committed.transactions, ...monthlyCharges('Spotify', -9_900)]);
+      await setVisible(rerender, true);
+
+      expect(ledgerReruns).toBe(1);
     });
 
     it('runs again for a ledger write beside it, which a settings write does not stand for', async () => {
@@ -529,11 +548,11 @@ describe('useRecurringSeries — the merchant choices', () => {
       pendingSettingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
       await setVisible(rerender, false);
 
-      expect(choicesOf(result.current).size).toBe(0);
+      expect(result.current.choices.size).toBe(0);
 
       await setVisible(rerender, true);
 
-      expect(choicesOf(result.current).get('netflix')).toEqual(NETFLIX_CHOICE);
+      expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
       expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
     });
   });
