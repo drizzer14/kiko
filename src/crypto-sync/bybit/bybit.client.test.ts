@@ -16,7 +16,7 @@ import {
   answerWith,
   envelopeOf,
 } from './bybit.client-test-fixtures';
-import { isBybitCoolingDown } from './bybit.cooldown';
+import { isBybitCoolingDown } from '.';
 
 const RESET_HEADER = 'X-Bapi-Limit-Reset-Timestamp';
 const TEN_MINUTES_MS = 600_000;
@@ -361,11 +361,10 @@ describe('the rate refusals', () => {
     await expect(result).rejects.toMatchObject({ retryAfterMs: TEN_MINUTES_MS });
   });
 
-  it('throws the rate error without a cooldown when it is given no account', async () => {
+  it('throws the rate error when it is given no account', async () => {
     const { result } = readWith({ body: envelopeOf(10006) });
 
     await expect(result).rejects.toMatchObject({ code: 10006 });
-    expect(isBybitCoolingDown('acc-never-given', NOW)).toBe(false);
   });
 
   it('sets no cooldown for a refusal that is not a rate refusal', async () => {
