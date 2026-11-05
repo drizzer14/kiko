@@ -508,15 +508,73 @@ describe('CategoryReviewScreen', () => {
 
       const screen = await renderReview();
       await pick(screen, FIRST_LINE);
-      await pick(screen, SECOND_LINE);
-
-      expect(mockApply).toHaveBeenCalledTimes(1);
-
-      await act(async () => write.resolve(ATB_ROWS));
       previewReturns(SILPO_ROWS);
       await pick(screen, SECOND_LINE);
 
+      expect(mockPreview).toHaveBeenCalledTimes(1);
+      expect(mockApply).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId(CONFIRM_SHEET)).toBeNull();
+
+      await act(async () => write.resolve(ATB_ROWS));
+      await pick(screen, SECOND_LINE);
+
       expect(mockApply).toHaveBeenCalledTimes(2);
+    });
+
+    describe('while the confirmed write runs', () => {
+      const DISMISSALS: [string, (screen: Screen) => Promise<void>][] = [
+        [
+          'Cancel',
+          async (screen) => {
+            await fireEvent.press(within(screen.getByTestId(CONFIRM_SHEET)).getByText(CANCEL));
+          },
+        ],
+        [
+          'a scrim or back dismiss',
+          async () => {
+            await act(async () => {
+              mockModalProps.get(`${CONFIRM_SHEET}-modal`)?.onRequestClose?.();
+            });
+          },
+        ],
+      ];
+
+      it.each(DISMISSALS)(
+        'leaves the confirm open until the write ends: %s',
+        async (_, dismiss) => {
+          previewReturns(ATB_ROWS + 3);
+          const write = deferredWrite();
+          mockApply.mockReturnValueOnce(write.promise);
+
+          const screen = await renderReview();
+          await pick(screen, FIRST_LINE);
+          await pressMove(screen);
+          await dismiss(screen);
+
+          expect(screen.getByTestId(CONFIRM_SHEET)).toBeTruthy();
+          expect(mockApply).toHaveBeenCalledTimes(1);
+
+          await act(async () => write.resolve(ATB_ROWS + 3));
+
+          expect(screen.queryByTestId(CONFIRM_SHEET)).toBeNull();
+          expect(mockApply).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it('still lets Cancel close the confirm once the write has failed', async () => {
+        previewReturns(ATB_ROWS + 3);
+        mockApply.mockRejectedValueOnce(new Error('write failed'));
+
+        const screen = await renderReview();
+        await pick(screen, FIRST_LINE);
+        await pressMove(screen);
+
+        expect(alertSpy).toHaveBeenCalledTimes(1);
+
+        await fireEvent.press(within(screen.getByTestId(CONFIRM_SHEET)).getByText(CANCEL));
+
+        expect(screen.queryByTestId(CONFIRM_SHEET)).toBeNull();
+      });
     });
 
     it('writes once for a double tap on the confirm', async () => {

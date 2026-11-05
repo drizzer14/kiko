@@ -69,7 +69,7 @@ export const useReviewActions = () => {
       alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
     }
   }, [t]);
-  const { onPress: submit } = useSubmitOnce(run);
+  const { onPress: submit, isSubmitting } = useSubmitOnce(run);
 
   // The job is handed over through a ref, so a tap `useSubmitOnce` ignores must not leave it there
   // for the next one to find.
@@ -112,6 +112,12 @@ export const useReviewActions = () => {
     pick,
     onOptionsClosed,
     confirm,
-    cancelConfirm: () => setIsConfirmOpen(false),
+    // A write that has started cannot be taken back, so a Cancel or scrim dismiss that lands
+    // while it runs would close the sheet over rows that still move.
+    cancelConfirm: () => {
+      if (!isSubmitting) {
+        setIsConfirmOpen(false);
+      }
+    },
   };
 };
