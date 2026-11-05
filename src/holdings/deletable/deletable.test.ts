@@ -90,10 +90,9 @@ describe('isSyncedHolding', () => {
     );
   });
 
-  // The `bybit` institution joins the registry in step 6/7 of set 3; the key is what this pins.
   it('flags a holding carrying a bybitAsset', () => {
     expect(
-      isSyncedHolding({ metadata: { bybitAsset: 'BTC:unified' } }, { institution: 'binance' }),
+      isSyncedHolding({ metadata: { bybitAsset: 'BTC:unified' } }, { institution: 'bybit' }),
     ).toBe(true);
   });
 
