@@ -1,4 +1,3 @@
-import { match } from 'ts-pattern';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { logFailure } from '@kiko/diagnostics';
@@ -66,11 +65,11 @@ export class BybitNoCredentialsError extends Error {
 }
 
 /**
- * What one tolerant wallet's attempt came to: its read, or a failure. A failure never writes a
- * holding for the wallet, a zero included. `refused` is set when Bybit refused the key for this
- * wallet (code 10005), which the account shows by name.
+ * What one tolerant wallet's attempt came to: its read, or none on a failure. A failure never
+ * writes a holding for the wallet, a zero included. `refused` is set when Bybit refused the key
+ * for this wallet (code 10005), which the account shows by name.
  */
-type WalletOutcome = { kind: 'read'; read: WalletRead } | { kind: 'failed'; refused: boolean };
+type WalletOutcome = { read?: WalletRead; refused: boolean };
 
 const isPermissionRefusal = (error: unknown): boolean =>
   error instanceof BybitRefusalError && error.refusal === 'permission';
@@ -86,24 +85,11 @@ const walletOutcome = async (
     (error): WalletOutcome => {
       logFailure(`[bybit sync] skipped the ${wallet} wallet`, error);
 
-      return { kind: 'failed', refused: isPermissionRefusal(error) };
+      return { refused: isPermissionRefusal(error) };
     },
-    (walletRead): WalletOutcome => ({ kind: 'read', read: walletRead }),
+    (walletRead): WalletOutcome => ({ read: walletRead, refused: false }),
   );
 };
-
-const readOfOutcome = (outcome: WalletOutcome): WalletRead | undefined =>
-  match(outcome)
-    .returnType<WalletRead | undefined>()
-    .with({ kind: 'read' }, ({ read }) => read)
-    .with({ kind: 'failed' }, () => undefined)
-    .exhaustive();
-
-const refusedWalletsOf = (outcome: WalletOutcome, wallet: BybitWallet): BybitWallet[] =>
-  match(outcome)
-    .returnType<BybitWallet[]>()
-    .with({ kind: 'failed', refused: true }, () => [wallet])
-    .otherwise(() => []);
 
 /**
  * The key check goes first. A key refused as expired fails the sync at once, since no read can
@@ -234,18 +220,16 @@ const statePatchesOf = ({
     {
       kind: 'oversizedBalance',
       wallets: {
-        unified: sortedTickers([...unified.refused]),
-        ...foldMap(maybe(fund), (read) => ({ fund: sortedTickers([...read.refused]) })),
+        unified: [...unified.refused],
+        ...foldMap(maybe(fund), (read) => ({ fund: [...read.refused] })),
       },
       complete: fund !== undefined,
     },
     {
       kind: 'balanceNotes',
       wallets: {
-        unified: { borrowed: sortedTickers([...unified.borrowed]) },
-        ...foldMap(maybe(fund), (read) => ({
-          fund: { borrowed: sortedTickers([...read.borrowed]) },
-        })),
+        unified: { borrowed: [...unified.borrowed] },
+        ...foldMap(maybe(fund), (read) => ({ fund: { borrowed: [...read.borrowed] } })),
       },
       refused,
     },
@@ -293,7 +277,7 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
     const fundOutcome = await walletOutcome('fund', async () =>
       fundReadOf(await deps.fetchFundBalance(apiKey, secret, options)),
     );
-    const fund = readOfOutcome(fundOutcome);
+    const { read: fund } = fundOutcome;
 
     const balances: ProviderBalance[] = [];
     const existingKeys = existingBybitKeys(target.holdings);
@@ -311,7 +295,7 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
       exchangeState: statePatchesOf({
         unified,
         fund,
-        refused: refusedWalletsOf(fundOutcome, 'fund'),
+        refused: fundOutcome.refused ? ['fund'] : [],
         syncedAt: deps.now(),
       }),
     };

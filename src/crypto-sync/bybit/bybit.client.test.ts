@@ -16,7 +16,7 @@ import {
   answerWith,
   envelopeOf,
 } from './bybit.client-test-fixtures';
-import { isBybitCoolingDown } from '.';
+import { isBybitCoolingDown } from './bybit.cooldown';
 
 const RESET_HEADER = 'X-Bapi-Limit-Reset-Timestamp';
 const TEN_MINUTES_MS = 600_000;
