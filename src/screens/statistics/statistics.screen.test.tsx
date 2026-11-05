@@ -3420,7 +3420,7 @@ describe('StatisticsScreen — a Bybit holding on the net-worth line', () => {
     mockUseIsScreenVisible.mockReturnValue(true);
   });
 
-  it("hands each row's source to the net-worth line", async () => {
+  it("hands each row's id and source to the net-worth line", async () => {
     const fill = { id: 'f1', holdingId: 'hb', time: localDaysFrom(now, -1) };
     const manual = { id: 'm1', holdingId: 'hb', time: localDaysFrom(now, -2) };
 
@@ -3438,8 +3438,8 @@ describe('StatisticsScreen — a Bybit holding on the net-worth line', () => {
     const input = mockBuildNetWorthSeries.mock.calls.at(-1)?.[0];
 
     expect(input.transactionsByHolding.get('hb')).toEqual([
-      { time: fill.time, amountMinorUnits: -20_000_000, source: 'bybit' },
-      { time: manual.time, amountMinorUnits: 50_000_000, source: 'manual' },
+      { id: 'f1', time: fill.time, amountMinorUnits: -20_000_000, source: 'bybit' },
+      { id: 'm1', time: manual.time, amountMinorUnits: 50_000_000, source: 'manual' },
     ]);
   });
 });

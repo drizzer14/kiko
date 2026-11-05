@@ -19,8 +19,10 @@ import {
   statementFromOf,
   syncClosedFromOf,
   walletAddressOf,
+  overwrittenRowIdsOf,
   withCarriedMetadataKeys,
   BALANCE_READ_AT_FIELD,
+  OVERWRITTEN_ROW_IDS_FIELD,
   type BondMeta,
   type CompoundingFrequency,
   type LoanMeta,
@@ -361,6 +363,38 @@ describe('datesBalanceOf', () => {
   );
 });
 
+describe('overwrittenRowIdsOf', () => {
+  it('reads the list of row ids, in order', () => {
+    expect(
+      overwrittenRowIdsOf({ bybitAsset: 'BTC:unified', overwrittenRowIds: ['b', 'a'] }),
+    ).toEqual(['b', 'a']);
+  });
+
+  it('keeps only the strings of a list', () => {
+    expect(overwrittenRowIdsOf({ overwrittenRowIds: ['a', 5, null, 'b', { id: 'c' }] })).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it.each([
+    ['text', 'a'],
+    ['an object', { a: true }],
+    ['a number', 5],
+    ['null', null],
+  ])('reads %s in place of the list as empty', (_, value) => {
+    expect(overwrittenRowIdsOf({ overwrittenRowIds: value })).toEqual([]);
+  });
+
+  it.each([
+    ['no key', { bybitAsset: 'BTC:unified' }],
+    ['null metadata', null],
+    ['text metadata', 'overwrittenRowIds'],
+  ])('reads %s as empty', (_, metadata) => {
+    expect(overwrittenRowIdsOf(metadata)).toEqual([]);
+  });
+});
+
 describe('withCarriedMetadataKeys', () => {
   it('carries a sync-owned key from the stored metadata onto the target', () => {
     const target = { monobankId: 'card-1', syncedAt: 2_000 };
@@ -395,6 +429,21 @@ describe('withCarriedMetadataKeys', () => {
     expect(BALANCE_READ_AT_FIELD).toBe('balanceReadAt');
     expect(withCarriedMetadataKeys(target, stored)).toEqual(target);
     expect(withCarriedMetadataKeys({ syncedAt: 2_000 }, stored)).toEqual({ syncedAt: 2_000 });
+  });
+
+  it('does not carry the mark of overwritten rows, so a read writes its own', () => {
+    const target = { bybitAsset: 'BTC:unified', syncedAt: 2_000 };
+    const stored = {
+      bybitAsset: 'BTC:unified',
+      syncedAt: 1_000,
+      [OVERWRITTEN_ROW_IDS_FIELD]: ['row-1'],
+    };
+
+    expect(OVERWRITTEN_ROW_IDS_FIELD).toBe('overwrittenRowIds');
+    expect(withCarriedMetadataKeys(target, stored)).toEqual(target);
+    expect(
+      withCarriedMetadataKeys({ ...target, [OVERWRITTEN_ROW_IDS_FIELD]: ['row-2'] }, stored),
+    ).toEqual({ ...target, [OVERWRITTEN_ROW_IDS_FIELD]: ['row-2'] });
   });
 
   it('leaves the target unchanged when the stored metadata has no sync-owned key', () => {

@@ -1,10 +1,15 @@
+import {
+  balanceReadAtOf,
+  overwrittenRowIdsOf,
+  datedBalanceSourceOf,
+} from '@kiko/holdings/holding-metadata';
+import maybe, { foldMap } from 'fnts/maybe';
 import { startOfLocalDay } from '@kiko/dates';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
-import { balanceReadAtOf, datedBalanceSourceOf } from '@kiko/holdings/holding-metadata';
 
 /**
  * A holding as the series builders need it: identity, currency, and value
@@ -20,10 +25,12 @@ export type SeriesHolding = Pick<
 >;
 
 /**
- * One transaction as the reconstruction needs it: when, and how much (signed). `source` is read
- * only for a holding whose balance is dated; a row built without it counts like any other row.
+ * One transaction as the reconstruction needs it: when, and how much (signed). `source` and `id`
+ * are read only for a holding whose balance is dated; a row built without either counts like any
+ * other row.
  */
 export type SeriesTransaction = {
+  id?: string;
   time: number;
   amountMinorUnits: number;
   source?: TransactionRow['source'];
@@ -32,8 +39,10 @@ export type SeriesTransaction = {
 // The rows a holding's stored balance already holds. A dated balance is as old as its last read,
 // so a row of the syncing source that is dated after the read is not in it: counting it would move
 // the whole past against the old balance. With no read date no such row counts, so a holding that
-// was never read opens at its stored balance and no opening is guessed. Any other row, and every
-// row of a holding whose balance is not dated, counts as it is.
+// was never read opens at its stored balance and no opening is guessed. Any other row counts too,
+// unless the read overwrote it: that balance already holds the move of a row the user typed
+// before the read, whatever the row's date, and the holding's list of overwritten ids names it. A
+// row with no id is on no list. Every row of a holding whose balance is not dated counts as it is.
 const rowsHeldByBalance = (
   holding: SeriesHolding,
   transactions: SeriesTransaction[],
@@ -45,10 +54,12 @@ const rowsHeldByBalance = (
   }
 
   const readAt = balanceReadAtOf(holding.metadata);
+  const overwrittenRowIds = new Set(overwrittenRowIdsOf(holding.metadata));
 
-  return transactions.filter(
-    (transaction) =>
-      transaction.source !== datedSource || (readAt !== null && transaction.time <= readAt),
+  return transactions.filter((transaction) =>
+    transaction.source === datedSource
+      ? readAt !== null && transaction.time <= readAt
+      : foldMap(maybe(transaction.id), (rowId) => overwrittenRowIds.has(rowId)) !== true,
   );
 };
 
@@ -97,7 +108,8 @@ const lastIndexAtOrBefore = (days: number[], targetDay: number): number => {
  *   range-start balance. A holding whose balance is dated (`datedBalanceSourceOf`) sums only
  *   the rows its balance already holds (`rowsHeldByBalance`), so the line past the last read is
  *   flat at that balance, which is the number Home shows, instead of moving by rows the balance
- *   does not contain. The per-holding one-time setup groups transactions
+ *   does not contain. A row that the read overwrote, which the holding's list names, is left out
+ *   as well, since that balance holds its move. The per-holding one-time setup groups transactions
  *   by local-day key and builds a running (prefix) sum per distinct day;
  *   each call then binary searches that sorted day list instead of
  *   re-filtering/re-reducing the whole transaction list per bucket.

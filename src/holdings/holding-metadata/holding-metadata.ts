@@ -139,6 +139,16 @@ export const SYNCED_AT_FIELD = 'syncedAt';
  */
 export const BALANCE_READ_AT_FIELD = 'balanceReadAt';
 
+/**
+ * The ids of the rows that the last balance read overwrote, written beside the balance by a
+ * provider on the dated list: every row of the holding that is not of the syncing source, so a row
+ * the user typed before that read is held by the balance already. It is in neither
+ * `carriedMetadataKeys` nor the disconnect's stripped list: a carried key would join the new
+ * read's list to the stored one, so the id of a row that is gone would never leave it, and a
+ * stripped one would put a disconnected holding's typed rows back on its line.
+ */
+export const OVERWRITTEN_ROW_IDS_FIELD = 'overwrittenRowIds';
+
 // The two stored shapes a balance sync writes (see the spec's "Data model"):
 //   wallet:  { walletAddress: string; syncedAt: number }
 //   Binance: { binanceAsset: 'BTC'; syncedAt: number }
@@ -233,11 +243,28 @@ export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
 export const balanceReadAtOf = numberFieldOf(BALANCE_READ_AT_FIELD);
 
 /**
+ * The ids of the rows that the holding's balance overwrote: the strings of the stored list. A
+ * value that is not a list, and an entry that is not text, read as nothing.
+ */
+export const overwrittenRowIdsOf = (metadata: unknown): string[] => {
+  if (!isRecord(metadata)) {
+    return [];
+  }
+
+  const rowIds = metadata[OVERWRITTEN_ROW_IDS_FIELD];
+
+  return Array.isArray(rowIds)
+    ? rowIds.filter((rowId): rowId is string => typeof rowId === 'string')
+    : [];
+};
+
+/**
  * The sync-owned keys whose holdings carry a dated balance, each with the `source` of the ledger
  * rows that such a balance holds. The one place that decides which holding the net-worth valuer
  * dates: a provider that starts to write `BALANCE_READ_AT_FIELD` is listed here and nowhere else,
  * because the sync reads its write from `datesBalanceOf`, and the valuer reads its rows from
- * `datedBalanceSourceOf`.
+ * `datedBalanceSourceOf`. The upsert of a holding on this list writes the list of overwritten row
+ * ids as well, and no other holding gets that read or that key.
  */
 const datedBalances: readonly { field: SyncedMetadataField; source: TransactionRow['source'] }[] = [
   { field: 'bybitAsset', source: 'bybit' },

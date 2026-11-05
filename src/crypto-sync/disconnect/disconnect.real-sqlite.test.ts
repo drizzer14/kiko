@@ -159,6 +159,44 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(JSON.parse(metadata)).toEqual({ bybitAsset: 'BTC:unified', balanceReadAt: NOW });
   });
 
+  // The list names the rows that the stored balance overwrote. A disconnected holding keeps both,
+  // so the line still leaves those rows out.
+  it('a disconnect keeps the mark of a Bybit holding', async () => {
+    mockDatabase.exec('PRAGMA foreign_keys = ON;');
+    mockDatabase.exec(
+      "INSERT INTO accounts (id, name, kind, institution) VALUES ('acc-1', 'Bybit', 'crypto', 'bybit')",
+    );
+    mockDatabase
+      .prepare(
+        `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
+         VALUES ('h-unified', 'acc-1', 'Bybit BTC', 'crypto_asset', 'BTC', 100, ?)`,
+      )
+      .run(
+        JSON.stringify({
+          bybitAsset: 'BTC:unified',
+          syncedAt: NOW,
+          balanceReadAt: NOW,
+          overwrittenRowIds: ['t-1'],
+        }),
+      );
+    mockDatabase.exec(
+      `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source)
+       VALUES ('t-1', 'h-unified', 50, ${NOW + 1}, 'manual')`,
+    );
+
+    await disconnectCryptoAccount('acc-1', 'bybit');
+
+    const { metadata } = mockDatabase
+      .prepare("SELECT metadata FROM holdings WHERE id = 'h-unified'")
+      .get() as { metadata: string };
+
+    expect(JSON.parse(metadata)).toEqual({
+      bybitAsset: 'BTC:unified',
+      balanceReadAt: NOW,
+      overwrittenRowIds: ['t-1'],
+    });
+  });
+
   it('for Binance, clears the not-imported list with the rest of the state but the walks', async () => {
     connectedBinanceAccount();
     mockDatabase.prepare("UPDATE sync_state SET exchange_state = ? WHERE account_id = 'acc-1'").run(

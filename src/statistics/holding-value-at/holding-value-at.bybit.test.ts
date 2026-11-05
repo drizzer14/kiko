@@ -195,9 +195,134 @@ describe('createHoldingValuer against a Bybit holding whose balance was read bef
   });
 });
 
+describe('createHoldingValuer against a Bybit holding whose read overwrote typed rows', () => {
+  const TENTH_OF_A_COIN = 10_000_000;
+  const THREE_TENTHS_OF_A_COIN = 30_000_000;
+
+  const typedRow = (
+    id: string,
+    time: number,
+    amountMinorUnits: number,
+    source: SeriesTransaction['source'] = 'manual',
+  ): SeriesTransaction => ({ id, time, amountMinorUnits, source });
+
+  const markedMetadata = (readAt: number, mark: unknown): SeriesHolding['metadata'] => ({
+    bybitAsset: KEY,
+    syncedAt: readAt,
+    balanceReadAt: readAt,
+    overwrittenRowIds: mark,
+  });
+
+  it('row 15, a row on the mark does not count', () => {
+    const holding = holdingOf(TENTH_OF_A_COIN, markedMetadata(at(2, 10), ['typed']));
+    const rows = [typedRow('typed', at(1, 9), HALF_OF_A_COIN)];
+
+    expect(lineOf(holding, rows, [-1, 0, 1, 2, 3])).toEqual(Array(5).fill(TENTH_OF_A_COIN));
+  });
+
+  it('row 15, the other sign: a row of -0.5 on the mark does not count', () => {
+    const holding = holdingOf(ONE_COIN, markedMetadata(at(2, 10), ['typed']));
+    const rows = [typedRow('typed', at(1, 9), -HALF_OF_A_COIN)];
+
+    expect(lineOf(holding, rows, [-1, 0, 1, 2, 3])).toEqual(Array(5).fill(ONE_COIN));
+  });
+
+  it('a row typed after the read counts, beside a row on the mark', () => {
+    const holding = holdingOf(
+      TENTH_OF_A_COIN + THREE_TENTHS_OF_A_COIN,
+      markedMetadata(at(2, 10), ['typed']),
+    );
+    const rows = [
+      typedRow('typed', at(1, 9), HALF_OF_A_COIN),
+      typedRow('later', at(3, 9), THREE_TENTHS_OF_A_COIN),
+    ];
+
+    expect(lineOf(holding, rows, [0, 1, 2, 3, 4])).toEqual([
+      TENTH_OF_A_COIN,
+      TENTH_OF_A_COIN,
+      TENTH_OF_A_COIN,
+      TENTH_OF_A_COIN + THREE_TENTHS_OF_A_COIN,
+      TENTH_OF_A_COIN + THREE_TENTHS_OF_A_COIN,
+    ]);
+  });
+
+  it('a row typed after the read counts even when it is dated before the read', () => {
+    const holding = holdingOf(TENTH_OF_A_COIN, markedMetadata(at(2, 10), ['typed']));
+    const rows = [
+      typedRow('typed', at(1, 9), HALF_OF_A_COIN),
+      typedRow('older', at(-1, 9), -FIFTH_OF_A_COIN),
+    ];
+
+    expect(lineOf(holding, rows, [-2, -1, 0, 1])).toEqual([
+      TENTH_OF_A_COIN + FIFTH_OF_A_COIN,
+      TENTH_OF_A_COIN,
+      TENTH_OF_A_COIN,
+      TENTH_OF_A_COIN,
+    ]);
+  });
+
+  describe('row 24, a mark that names no row of the line changes nothing', () => {
+    // A Bybit row before the read, a typed row on day 1 and a Bybit row after the read: with no
+    // usable mark the first two count, the third does not, and the opening is 0.
+    const rows = [
+      typedRow('before', at(-1, 12), ONE_COIN, 'bybit'),
+      typedRow('typed', at(1, 12), HALF_OF_A_COIN),
+      typedRow('after', at(2, 12), -FIFTH_OF_A_COIN, 'bybit'),
+    ];
+    const lineWithNoUsableMark = [
+      0,
+      ONE_COIN,
+      ONE_COIN,
+      ONE_COIN + HALF_OF_A_COIN,
+      ONE_COIN + HALF_OF_A_COIN,
+      ONE_COIN + HALF_OF_A_COIN,
+    ];
+
+    it.each([
+      ['an id with no row', ['ghost']],
+      ['a Bybit row before the read', ['before']],
+      ['a Bybit row after the read', ['after']],
+      ['a list of what is not text', [5, null, { id: 'typed' }]],
+      ['text in place of a list', 'typed'],
+      ['an object in place of a list', { typed: true }],
+      ['an empty list', []],
+      ['null', null],
+    ])('with a mark that names %s', (_, mark) => {
+      const holding = holdingOf(ONE_COIN + HALF_OF_A_COIN, markedMetadata(at(0, 10), mark));
+
+      expect(lineOf(holding, rows, [-2, -1, 0, 1, 2, 3])).toEqual(lineWithNoUsableMark);
+    });
+
+    it('with a mark that names the typed row beside it, only that row goes', () => {
+      const holding = holdingOf(ONE_COIN + HALF_OF_A_COIN, markedMetadata(at(0, 10), ['typed']));
+
+      expect(lineOf(holding, rows, [-2, -1, 0, 1, 2, 3])).toEqual([
+        HALF_OF_A_COIN,
+        ONE_COIN + HALF_OF_A_COIN,
+        ONE_COIN + HALF_OF_A_COIN,
+        ONE_COIN + HALF_OF_A_COIN,
+        ONE_COIN + HALF_OF_A_COIN,
+        ONE_COIN + HALF_OF_A_COIN,
+      ]);
+    });
+  });
+
+  it('a row with no id counts, whatever the mark holds', () => {
+    const holding = holdingOf(TENTH_OF_A_COIN, markedMetadata(at(2, 10), ['', 'typed']));
+    const rows = [{ time: at(1, 9), amountMinorUnits: HALF_OF_A_COIN, source: 'manual' as const }];
+
+    expect(lineOf(holding, rows, [0, 1, 2])).toEqual([
+      TENTH_OF_A_COIN - HALF_OF_A_COIN,
+      TENTH_OF_A_COIN,
+      TENTH_OF_A_COIN,
+    ]);
+  });
+});
+
 describe('createHoldingValuer against a holding that is not a Bybit one', () => {
   // A row whose own fields count every read: the filter must add no pass for a holding that is
-  // not Bybit's, so each row is read exactly twice (`time`, `amountMinorUnits`) and `source` never.
+  // not Bybit's, so each row is read exactly twice (`time`, `amountMinorUnits`) and neither
+  // `source` nor `id` is ever read.
   const countedRow = (
     time: number,
     amountMinorUnits: number,
@@ -217,6 +342,11 @@ describe('createHoldingValuer against a holding that is not a Bybit one', () => 
       readCounter.sourceReads += 1;
 
       return 'bybit' as const;
+    },
+    get id() {
+      readCounter.sourceReads += 1;
+
+      return 'row-1';
     },
   });
 

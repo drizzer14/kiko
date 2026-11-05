@@ -84,6 +84,7 @@ const groupByHolding = (
   for (const transaction of transactions) {
     const list = byHolding.get(transaction.holdingId) ?? [];
     list.push({
+      id: transaction.id,
       time: transaction.time,
       amountMinorUnits: transaction.amountMinorUnits,
       source: transaction.source,
