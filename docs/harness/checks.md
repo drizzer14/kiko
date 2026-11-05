@@ -127,8 +127,9 @@ can affect. The full suite runs only in the queued verify. A focused run of name
 (`npx jest <files> --maxWorkers=2`) stays allowed.
 
 - Property seeds: a dev run and `make jest-affected` draw 3 seeds per property list;
-  `scripts/checks/verify.sh` exports `KIKO_PROPERTY_SWEEP=full` before stage 2a (both jest
-  stages) and `scripts/checks/mutation.sh` exports it for Stryker. To reproduce a verify failure
+  `scripts/checks/verify.sh` exports `KIKO_PROPERTY_SWEEP=full` after the gate and before stage 2a
+  (true for 2a; stage 2b gets it only when 2b runs, and a scoped verify may skip 2b) and
+  `scripts/checks/mutation.sh` exports it for Stryker. To reproduce a verify failure
   in a property suite, run that file with `KIKO_PROPERTY_SWEEP=full`.
 - Base: the default is `git merge-base HEAD main`; `BASE=<ref>` overrides it. An unresolvable base
   exits 2. The changed paths are the tracked diff against the base plus untracked files.
@@ -144,6 +145,73 @@ can affect. The full suite runs only in the queued verify. A focused run of name
   block (bad argument, unresolvable base, missing list, git or jest listing failure), nothing ran;
   3 an every-suite path.
 - The queued verify stays the backstop.
+
+## The queued verify
+
+`bash scripts/job-queue.sh verify <worktree> <label> [--sha <commit>] [--scoped]` runs `make verify`
+(`scripts/checks/verify.sh`) in a shared checkout at one commit; the queue's mechanics are in
+`checks-internals.md` ("The in-repo job queue").
+
+- Order: stage 1 the gate (`npm run check:all`, whose first check is lint), then stage 2a (jest
+  without the real-semgrep suites, on every core), then stage 2b (the seven real-semgrep suites of
+  `scripts/checks/semgrep-jest-suites.txt`, in band). There is no separate lint stage. It stops at
+  the first failing stage. `KIKO_PROPERTY_SWEEP=full` is exported after the gate. The gate starts
+  after the queue's start-load defer read the load (5-minute load below 10), but not right after
+  it: the install step (`npm ci`, when the stamp differs) runs between, a `LOAD WAIT EXPIRED` or
+  an unknown load starts the job without a low reading, and `check:security` follows lint, dup,
+  knip and deps inside the gate. So the load read at the start is only a bound on where the
+  gate began. 2a and 2b never run beside the gate.
+- Costs: a gate failure hides the jest results until the fix. A scoped verify ends on 2a, which
+  uses all cores, so the next queued job's start-load defer can wait some minutes. The gate runs in
+  the shared checkout, so it has none of the track's Stop-tier fingerprints. The log has no gate
+  stage time: subtract the `Time:` lines of 2a and 2b from the job's start-to-end in done.log.
+  First full run (2026-11-05, 97bd292f2): total 1575 s, 2a 806 s, 2b 626 s, so gate plus prepare
+  took at most 143 s.
+- `--scoped` sets `KIKO_VERIFY_SCOPED=1` for that one `make`; without it the queue removes the
+  variable (`env -u`), so an inherited value cannot skip 2b. The default is a FULL verify.
+  `verify.sh` skips stage 2b only when ALL hold: the flag is 1; `git merge-base --all HEAD main`
+  (and `next`, when that local branch exists) gives exactly one commit, and when both exist one
+  contains the other (the newer is the base); HEAD is not reachable from main or next (a commit
+  already on a shared branch gives an empty diff, which says nothing); and `git diff --name-only
+  --no-renames -z <base> HEAD` succeeds and lists no trigger path (`-z` so a non-ASCII path is not
+  quoted into a miss; `--no-renames` so a rename out of a trigger folder lists both paths). Any
+  failure, doubt or missing input runs 2b.
+- Triggers: `scripts/checks/semgrep-suite-triggers.txt` (a line ending in `/` is a prefix, any
+  other line an exact path, a line starting `!` an exclude that wins over every trigger) plus the
+  suites of `semgrep-jest-suites.txt`. The config and mock lines come from `is_every_suite_path` in
+  `scripts/checks/jest-affected.sh`. A missing, empty, comments-only or excludes-only list runs 2b.
+- Why these lines (read, not assumed): of the seven suites only `src/i18n/locales/en.ts` is a real
+  app file they read (`pre-write-guard-rules` through the plural-count rule, `guard-replay` by
+  copying it into its scratch repository), so a change to it runs 2b by a coordinator ruling;
+  the others use scratch folders or `rules/fixtures`.
+- User ruling 2026-11-04: `harness/**/*.md` does not trigger 2b. The list holds `harness/` and then
+  `!harness/*.md`, a bash `case` pattern where `*` also matches `/`. A commit with Markdown plus
+  non-Markdown under `harness/` runs 2b, and a rename out of or into Markdown lists both paths, so
+  a non-Markdown side runs 2b. Evidence: a trace of the seven suites at 6d809d307 found no
+  Markdown file read, copied or listed under `harness/`. Non-Markdown paths under `harness/` stay
+  triggers: `pre-write-guard-rules` runs the real `harness/kiko/hooks/dispatch.sh`. The trace sees
+  node only; the native children were covered by a source grep and logged arguments. The result
+  holds for that suite code only: a suite that begins to read a Markdown file under `harness/`
+  needs a trigger line (and the exclude narrowed).
+- The log: every verify prints `── make verify: stage 2b runs in full (<reason or first trigger
+  path>) ──` before the stage 2b header, or `── make verify: stage 2b SKIPPED (no trigger path
+  changed since <12-character base>) ──`. Only the header form `── make verify: stage 2b (` proves
+  `full`; `job-queue.sh` writes the 7th done.log field from it (`full` with the header and no
+  SKIPPED line, else `partial`, positive proof).
+- Limits: a new semgrep binary changes no path, so only a full verify sees it. A mid-file read
+  error of the just-written changed-path file looks like end of file in bash, so the paths read so
+  far decide; a failed open runs 2b.
+- Main: `ff-main.sh` refuses a verify line with a 7th field that is not `full` (exit 2).
+  A main-bound set therefore gets a verify with no flag; `--scoped` belongs to a track verify.
+  Forgetting the flag on a track costs the 2b time, measured at 620 to 889 s. The skip rate is
+  low for a merge (a merge carries skill and harness commits that touch triggers), so the merge
+  verify mostly runs in full; the per-task verify is the one that skips.
+- Track rule: a track goes on with its next task while its verify waits and runs. `--sha` names
+  the commit (the worktree may be dirty or moved); with no `--sha` the worktree HEAD at enqueue is
+  tested and a dirty worktree is refused. On a failure of sha S a fresh developer fixes on top of
+  the branch tip, newer work included, with no rewind; the next READY FOR VERIFY names the new tip,
+  and only the verified sha merges. Before a fix round the coordinator withdraws a queued verify
+  of the old sha.
 
 ## Automatic wiring
 
@@ -254,14 +322,19 @@ option is `--ff-only` is its own finding, `mainFastForward`: main moves only thr
 `bash scripts/ff-main.sh <sha>`. Do the real merge in a separate detached worktree, run a queued
 `scripts/job-queue.sh verify` on the merge commit, then run `bash scripts/ff-main.sh <sha>`.
 The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines are
-`kind label exit start end head`, where head is the full 40-character sha the queue tested, or
-`unknown` unless the tree is clean at START and again at the end (`git --no-optional-locks
-status --porcelain --untracked-files=all`), HEAD is unchanged, and the repository is readable.
-The queue never takes the worktree's index.lock for these reads. A job that edits its own tree
-without committing records `unknown` plus a `NOTE <label>: the tree changed during the job:
-<path>` line; `verify` and `gate` refuse a tree with any change (untracked included) with exit 3,
-at enqueue and again at START, naming the first 3 paths (commit or copy aside, never stash;
-`check-all` and `security` still run on a dirty tree). On the real queue (`KIKO_QUEUE_DIR` unset
+`kind label exit start end head`, and a `verify` line has a 7th field, `scope` (`full` or
+`partial`; see "The queued verify" above). Head is the full 40-character sha the queue tested, or
+`unknown`. A `gate`, `check-all` or `security` reads it from the worktree: `unknown` unless the
+tree is clean at START and again at the end (`git --no-optional-locks status --porcelain
+--untracked-files=all`), HEAD is unchanged, and the repository is readable. A `verify` tests the
+sha named at enqueue in its shared checkout, so its head is that sha unless the checkout is not
+clean and at that sha at the end. The queue never takes an index.lock for these reads. A job that
+edits its own tree (a verify: its checkout) without committing records `unknown` plus a `NOTE
+<label>: the tree changed during the job: <path>` line. A `gate` refuses a tree with any change
+(untracked included) with exit 3, at enqueue and again at START, naming the first 3 paths (commit
+or copy aside, never stash). A `verify` with no `--sha` refuses a dirty worktree with exit 3 at
+enqueue only, and never reads the worktree after that; `--sha` has no dirty check. `check-all` and
+`security` still run on a dirty tree. On the real queue (`KIKO_QUEUE_DIR` unset
 or equal to `~/.claude/kiko-queue`) `verify`, `gate` and `check-all` also exit 3 for a target
 worktree of another repository (git common dir) or a script copy outside any repository
 (`harness-verify` and `security` are exempt); jest.config.js sets a temporary `KIKO_QUEUE_DIR`
@@ -271,8 +344,12 @@ header, `refuse_foreign_repository_on_real_queue`). A verify prints no live outp
 trimmed to the summary lines plus the last 400 lines; the end prints the summary, `log: <path>`
 and the last 40 lines (header of `scripts/job-queue.sh`). An edit reverted before the end is not
 seen, and ignored files (`.env`, `node_modules`) are not counted; keep the tree untouched until
-DONE. The LAST `verify` line whose head equals the full sha decides and needs exit 0;
-`check-all`, `gate`, `unknown`, `lost`, and old 5-field lines never count. The queue writes one
+DONE for `gate`, `check-all`, `security` and `harness-verify` only (a verify is tested in its own
+checkout). The LAST `verify` line whose head equals the full sha decides and needs exit 0; exit
+comes first, so the 7th field of a failed line does not matter. A 7th field that exists and is not
+`full` is refused (exit 2, a block that asks for a full verify with no `--scoped`); a 6-field line
+counts as full, because every verify before the field ran stage 2b. `check-all`, `gate`,
+`unknown`, `lost`, and old 5-field lines never count. The queue writes one
 `lost` line when a waiter prunes a dead waiter's ticket, and a lock-form `lost` line when it
 reclaims a dead lock (its job may have run fully). `$QUEUE_DIRECTORY/format` is a format stamp: an
 older `job-queue.sh` copy refuses with exit 2. A copy that differs from the target worktree's own

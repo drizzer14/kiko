@@ -17,15 +17,19 @@ tree today.
 
 The root `Makefile`'s `verify` target (`make verify`, wrapping
 `scripts/checks/verify.sh`) is the end-of-work verify. The COORDINATOR queues it
-(`bash scripts/job-queue.sh verify <worktree> <label>`) when an orchestrator reports
-READY FOR VERIFY; a typed `make verify` is
-denied (see "Heavy-job and full-jest deny"). It runs lint, then the full Jest suite in two
+(`bash scripts/job-queue.sh verify <worktree> <label> [--sha <commit>] [--scoped]`) when an
+orchestrator reports READY FOR VERIFY: `--scoped` on a track verify, no flag on a main-bound one
+(`scripts/ff-main.sh` needs a full verify); a typed `make verify` is
+denied (see "Heavy-job and full-jest deny"). It runs `check:all` (the fast+medium gate, whose
+first check is lint), then the full Jest suite in two
 stages (2a: every suite but the real-semgrep ones, with the tripwire shim
 `scripts/checks/semgrep-tripwire/semgrep` first on PATH; 2b: the suites listed in
-`scripts/checks/semgrep-jest-suites.txt`, in band; a missing or empty list fails closed), then
-`check:all` (the fast+medium gate) as ORDERED, FAIL-FAST stages,
-stopping at the first failing stage rather than always running all
-of them. Read `verify.sh` directly for the exact stage commands rather
+`scripts/checks/semgrep-jest-suites.txt`, in band; a missing or empty list fails closed) as
+ORDERED, FAIL-FAST stages, stopping at the first failing stage rather than always running all
+of them. Stage 2b is skipped only with `--scoped` and no trigger path changed
+(`scripts/checks/semgrep-suite-triggers.txt`; a Markdown file under `harness/` is no trigger,
+user ruling 2026-11-04); any doubt runs it. Read `verify.sh` directly for the exact stage
+commands rather
 than restating them here; a new harness check that belongs in the
 fast+medium gate is picked up by `make verify` automatically through
 `check:all`, with no `Makefile` change needed.

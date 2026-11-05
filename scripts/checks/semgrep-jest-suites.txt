@@ -2,6 +2,7 @@
 # scripts/checks/verify.sh runs them alone and in band (stage 2b) and leaves them out of stage 2a,
 # because beside the rest of the suite they starve semgrep of CPU and its per-rule timer fires.
 # __tests__/semgrep-load-limits.test.ts pins this list to the suites that spawn semgrep.
+# A listed suite is also a 2b trigger: a scoped verify runs 2b when the suite itself changed.
 __tests__/fast-hook-comment-width.test.ts
 __tests__/guard-replay.test.ts
 __tests__/history-comment-rules-scope.test.ts
