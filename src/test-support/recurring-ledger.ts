@@ -1,15 +1,14 @@
-import { match, P } from 'ts-pattern';
-import { maxOf } from '@kiko/numbers';
-import maybe, { foldMap } from 'fnts/maybe';
-import type { AccountRow, HoldingRow } from '@kiko/db';
-import { merchantNameOf } from '@kiko/transactions/merchant-name';
-
 import type {
   Recurrence,
   RecurringPeriod,
   RecurringSeries,
   RecurringLedgerRow,
-} from './detection.types.d';
+} from '@kiko/recurring/detection';
+import { match, P } from 'ts-pattern';
+import { maxOf } from '@kiko/numbers';
+import maybe, { foldMap } from 'fnts/maybe';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+import { merchantNameOf } from '@kiko/transactions/merchant-name';
 
 type Random = () => number;
 export type LedgerRow = RecurringLedgerRow;
@@ -218,7 +217,10 @@ const recurrenceViewOf = (recurrence: Recurrence): RecurrenceView =>
       month: new Date(time).getMonth() + 1,
       day: new Date(time).getDate(),
     }))
-    .with({ kind: P.union('onDay', 'aroundDay', 'lastDay', 'onWeekday', 'none') }, (other) => other)
+    .with(
+      { kind: P.union('onDay', 'aroundDay', 'lastDay', 'onWeekday', 'marked', 'none') },
+      (other) => other,
+    )
     .exhaustive();
 
 /** Every instant a series carries: its last charge, its quiet date and a yearly date. */

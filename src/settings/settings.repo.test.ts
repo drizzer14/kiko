@@ -18,7 +18,13 @@ jest.mock('@kiko/db/client', () => {
 
 import { database } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
+import type { MarkedEntry } from '@kiko/recurring/marked-series';
+import { merchantNameOf } from '@kiko/transactions/merchant-name';
+import { outcomeOf } from '@kiko/test-support/marked-series-world';
+import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
+import type { RecurringMark, RecurringPeriod } from '@kiko/recurring/detection';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
+import { at, nowOf, chargeOf, ledgerOf } from '@kiko/test-support/recurring-ledger';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
 
 import { isReminderOfferDismissed, settingsRepo } from './settings.repo';
@@ -383,6 +389,37 @@ const transactionsFingerprint = (): { count: number; checksum: string } => {
   return { count: rows.length, checksum: JSON.stringify(rows) };
 };
 
+const mark = (key: string, name: string, stored: RecurringMark) =>
+  settingsRepo.markRecurringCharge(key, name, stored);
+
+const setPeriod = (key: string, marks: readonly RecurringMark[], period: RecurringPeriod) =>
+  settingsRepo.setRecurringChainPeriod(key, marks, period);
+
+const unmark = (key: string, marks: readonly RecurringMark[]) =>
+  settingsRepo.removeRecurringMarks(key, marks);
+
+const markOf = (
+  amountMinorUnits: number,
+  period: RecurringPeriod = 'monthly',
+  currency: RecurringMark['currency'] = 'UAH',
+): RecurringMark => ({ currency, amountMinorUnits, period });
+
+const storeEntries = (entries: object): void => storeRawChoices(JSON.stringify(entries));
+
+const markedEntriesOf = (choices: ReadonlyMap<string, RecurringMerchantChoice>): MarkedEntry[] =>
+  [...choices].flatMap(([key, { name, marks = [] }]) =>
+    marks.length > 0 ? [{ key, name, marks }] : [],
+  );
+
+const markedSeriesUnder = async (description: string) => {
+  const ledger = ledgerOf([chargeOf('charge-1', at(2026, 10, 15), 250, { description })]);
+
+  return outcomeOf(ledger, markedEntriesOf(await readChoices()), nowOf()).marked;
+};
+
+const GOOD_MARK = markOf(9_900);
+const OTHER_GOOD_MARK = markOf(40_000, 'yearly');
+
 describe('settingsRepo recurring merchant choices, on a real database', () => {
   beforeEach(async () => {
     mockRealDatabase = new DatabaseSync(':memory:');
@@ -537,5 +574,438 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
 
     expect([...afterWrite.keys()].sort()).toEqual(['__proto__', 'atb', 'constructor', 'silpo']);
     expect(afterWrite.get('__proto__')).toEqual({ name: 'Proto Shop', hidden: true });
+  });
+
+  describe('marks', () => {
+    const APPLE_99 = markOf(9_900);
+    const APPLE_399 = markOf(39_900);
+
+    it('stores a mark as the name and one mark with its currency, amount and period', async () => {
+      await mark('apple', 'Apple', APPLE_99);
+
+      const expected = new Map([['apple', { name: 'Apple', marks: [APPLE_99] }]]);
+
+      expect(storedEntries()).toEqual(expected);
+      expect(await readChoices()).toEqual(expected);
+    });
+
+    it('keeps the hide beside the mark when a hidden key is marked, in one entry', async () => {
+      await hide('apple', 'Apple');
+      await mark('apple', 'Apple', APPLE_99);
+
+      expect(storedEntries()).toEqual(
+        new Map([['apple', { name: 'Apple', hidden: true, marks: [APPLE_99] }]]),
+      );
+    });
+
+    it('keeps the marks beside the hide when a marked key is hidden, in one entry', async () => {
+      await mark('apple', 'Apple', APPLE_99);
+      await mark('apple', 'Apple', APPLE_399);
+      await hide('apple', 'Apple');
+
+      expect(storedEntries()).toEqual(
+        new Map([['apple', { name: 'Apple', hidden: true, marks: [APPLE_99, APPLE_399] }]]),
+      );
+    });
+
+    it('takes the spelling of the last write on a mark and on a hide', async () => {
+      await mark('apple', 'Apple', APPLE_99);
+      await mark('apple', 'Apple Store', APPLE_399);
+
+      expect(storedEntries().get('apple')).toEqual({
+        name: 'Apple Store',
+        marks: [APPLE_99, APPLE_399],
+      });
+
+      await hide('apple', 'APPLE');
+
+      expect(storedEntries().get('apple')).toEqual({
+        name: 'APPLE',
+        hidden: true,
+        marks: [APPLE_99, APPLE_399],
+      });
+    });
+
+    it('holds one entry for the key at every step of mark, remove and hide', async () => {
+      await mark('apple', 'Apple', APPLE_99);
+
+      expect(storedEntries().size).toBe(1);
+
+      await unmark('apple', [APPLE_99]);
+
+      expect(storedEntries().size).toBe(0);
+
+      await hide('apple', 'Apple');
+
+      expect(storedEntries()).toEqual(new Map([['apple', { name: 'Apple', hidden: true }]]));
+    });
+
+    it('adds a mark at another amount beside the first', async () => {
+      await mark('apple', 'Apple', APPLE_99);
+      await mark('apple', 'Apple', APPLE_399);
+
+      expect(storedEntries().get('apple')).toEqual({
+        name: 'Apple',
+        marks: [APPLE_99, APPLE_399],
+      });
+    });
+
+    it('adds a mark at the same amount in another currency beside the first', async () => {
+      const apple99Dollars = markOf(9_900, 'monthly', 'USD');
+
+      await mark('apple', 'Apple', APPLE_99);
+      await mark('apple', 'Apple', apple99Dollars);
+
+      expect(storedEntries().get('apple')).toEqual({
+        name: 'Apple',
+        marks: [APPLE_99, apple99Dollars],
+      });
+    });
+
+    it('gives the new period to a mark of the same currency and amount', async () => {
+      await mark('apple', 'Apple', APPLE_99);
+      await mark('apple', 'Apple', APPLE_399);
+      await mark('apple', 'Apple', markOf(9_900, 'yearly'));
+
+      expect(storedEntries().get('apple')).toEqual({
+        name: 'Apple',
+        marks: [markOf(9_900, 'yearly'), APPLE_399],
+      });
+    });
+
+    describe('setRecurringChainPeriod', () => {
+      it('rewrites the period of exactly those marks and moves no amount', async () => {
+        await mark('apple', 'Apple', markOf(10_000));
+        await mark('apple', 'Apple', markOf(20_000));
+        await mark('apple', 'Apple', markOf(30_000));
+
+        await setPeriod('apple', [markOf(10_000), markOf(30_000)], 'yearly');
+
+        expect(storedEntries().get('apple')).toEqual({
+          name: 'Apple',
+          marks: [markOf(10_000, 'yearly'), markOf(20_000), markOf(30_000, 'yearly')],
+        });
+      });
+
+      it('keeps the hide', async () => {
+        await hide('apple', 'Apple');
+        await mark('apple', 'Apple', APPLE_99);
+
+        await setPeriod('apple', [APPLE_99], 'weekly');
+
+        expect(storedEntries().get('apple')).toEqual({
+          name: 'Apple',
+          hidden: true,
+          marks: [markOf(9_900, 'weekly')],
+        });
+      });
+    });
+
+    type Seed = () => Promise<unknown>;
+
+    const NO_CHAIN_TO_CHANGE: [title: string, seed: Seed][] = [
+      ['an absent entry', async () => undefined],
+      ['a hide-only entry', () => hide('apple', 'Apple')],
+      ['marks at another amount', () => mark('apple', 'Apple', APPLE_399)],
+      ['marks in another currency', () => mark('apple', 'Apple', markOf(9_900, 'monthly', 'USD'))],
+    ];
+
+    describe.each<{ name: string; write: Seed; extra: [title: string, seed: Seed][] }>([
+      {
+        name: 'setRecurringChainPeriod',
+        write: () => setPeriod('apple', [APPLE_99], 'yearly'),
+        extra: [
+          ['marks at the same period', () => mark('apple', 'Apple', markOf(9_900, 'yearly'))],
+        ],
+      },
+      { name: 'removeRecurringMarks', write: () => unmark('apple', [APPLE_99]), extra: [] },
+    ])('$name', ({ write, extra }) => {
+      it.each([...NO_CHAIN_TO_CHANGE, ...extra])('writes nothing on %s', async (_title, seed) => {
+        await seed();
+        const before = storedText();
+        writeCounts.count = 0;
+
+        await write();
+
+        expect(writeCounts.count).toBe(0);
+        expect(storedText()).toBe(before);
+      });
+    });
+
+    describe('removeRecurringMarks', () => {
+      it('clears only those marks and keeps the others and the hide', async () => {
+        await hide('apple', 'Apple');
+        await mark('apple', 'Apple', APPLE_99);
+        await mark('apple', 'Apple', APPLE_399);
+
+        await unmark('apple', [APPLE_99]);
+
+        expect(storedEntries().get('apple')).toEqual({
+          name: 'Apple',
+          hidden: true,
+          marks: [APPLE_399],
+        });
+      });
+
+      it('leaves no entry when the last mark of a marks-only entry goes', async () => {
+        await mark('apple', 'Apple', APPLE_99);
+        await mark('apple', 'Apple', APPLE_399);
+
+        await unmark('apple', [APPLE_99, APPLE_399]);
+
+        expect(storedEntries()).toEqual(new Map());
+      });
+
+      it('leaves the hide alone when the last mark of a hidden entry goes', async () => {
+        await hide('apple', 'Apple');
+        await mark('apple', 'Apple', APPLE_99);
+
+        await unmark('apple', [APPLE_99]);
+
+        expect(storedEntries()).toStrictEqual(
+          new Map([['apple', { name: 'Apple', hidden: true }]]),
+        );
+      });
+
+      it('writes nothing when the same marks are removed a second time', async () => {
+        await mark('apple', 'Apple', APPLE_99);
+        await mark('apple', 'Apple', APPLE_399);
+        await unmark('apple', [APPLE_99]);
+        const before = storedText();
+        writeCounts.count = 0;
+
+        await unmark('apple', [APPLE_99]);
+
+        expect(writeCounts.count).toBe(0);
+        expect(storedText()).toBe(before);
+      });
+    });
+
+    describe('showRecurringMerchantAgain', () => {
+      it('clears the hide and keeps the marks of an entry holding both', async () => {
+        storeEntries({ apple: { name: 'Apple', hidden: true, marks: [APPLE_99] } });
+
+        await showAgain('apple');
+
+        expect(storedEntries()).toEqual(new Map([['apple', { name: 'Apple', marks: [APPLE_99] }]]));
+      });
+
+      it('leaves no entry for a hide-only entry', async () => {
+        await hide('apple', 'Apple');
+
+        await showAgain('apple');
+
+        expect(storedEntries()).toEqual(new Map());
+      });
+
+      it('writes nothing on a marks-only entry', async () => {
+        storeEntries({ apple: { name: 'Apple', marks: [APPLE_99] } });
+        const before = storedText();
+        writeCounts.count = 0;
+
+        await showAgain('apple');
+
+        expect(writeCounts.count).toBe(0);
+        expect(storedText()).toBe(before);
+      });
+
+      it('leaves no entry after hide, mark, remove and show again', async () => {
+        await hide('apple', 'Apple');
+        await mark('apple', 'Apple', APPLE_99);
+        await unmark('apple', [APPLE_99]);
+
+        expect(storedEntries().get('apple')).toStrictEqual({ name: 'Apple', hidden: true });
+
+        await showAgain('apple');
+
+        expect(storedEntries()).toEqual(new Map());
+      });
+    });
+
+    it('changes no transactions row on a mark, a period, a removal, a hide or a show', async () => {
+      const before = transactionsFingerprint();
+
+      await mark('apple', 'Apple', APPLE_99);
+      await mark('apple', 'Apple', APPLE_399);
+      await setPeriod('apple', [APPLE_99], 'yearly');
+      await hide('apple', 'Apple');
+      await unmark('apple', [APPLE_399]);
+      await showAgain('apple');
+      await unmark('apple', [markOf(9_900, 'yearly')]);
+
+      expect(before.count).toBe(2);
+      expect(transactionsFingerprint()).toEqual(before);
+    });
+  });
+
+  describe('marks under a key that is user text', () => {
+    const PROTO_KEY = merchantNameOf('__proto__').key;
+    const CONSTRUCTOR_KEY = merchantNameOf('constructor').key;
+
+    it('names the lookalike keys as they are', () => {
+      expect([PROTO_KEY, CONSTRUCTOR_KEY]).toEqual(['__proto__', 'constructor']);
+    });
+
+    it('reads a __proto__ charge as one marked series only once it is marked and reloaded', async () => {
+      expect(await markedSeriesUnder('__proto__')).toEqual([]);
+
+      await mark(PROTO_KEY, '__proto__', markOf(25_000));
+      await mark('plain', 'Plain', markOf(10_000));
+
+      const [series, ...rest] = await markedSeriesUnder('__proto__');
+
+      expect(rest).toEqual([]);
+      expect(series.merchantKey).toBe(PROTO_KEY);
+      expect(series.chargeIds).toEqual(['charge-1']);
+      expect(series.period).toBe('monthly');
+    });
+
+    it('reads a constructor charge as unmarked with no entry and as marked beside its twin', async () => {
+      expect(await markedSeriesUnder('constructor')).toEqual([]);
+
+      await unmark(CONSTRUCTOR_KEY, [markOf(25_000)]);
+      await setPeriod(CONSTRUCTOR_KEY, [markOf(25_000)], 'yearly');
+      await showAgain(CONSTRUCTOR_KEY);
+
+      expect(writeCounts.count).toBe(0);
+      expect(await markedSeriesUnder('constructor')).toEqual([]);
+
+      await mark(CONSTRUCTOR_KEY, 'constructor', markOf(25_000));
+
+      const series = await markedSeriesUnder('constructor');
+
+      expect(series.map(({ chargeIds }) => chargeIds)).toEqual([['charge-1']]);
+    });
+  });
+
+  describe('the parser of the marks', () => {
+    const BAD_MARKS: [string, unknown][] = [
+      ['an unknown period', { ...OTHER_GOOD_MARK, period: 'daily' }],
+      ['an unknown currency', { ...OTHER_GOOD_MARK, currency: 'XXX' }],
+      ['a currency that is not text', { ...OTHER_GOOD_MARK, currency: 7 }],
+      ['no period', { currency: 'UAH', amountMinorUnits: 40_000 }],
+      ['no amount', { currency: 'UAH', period: 'yearly' }],
+      ['an amount that is a string', { ...OTHER_GOOD_MARK, amountMinorUnits: '40000' }],
+      ['an amount that is a fraction', { ...OTHER_GOOD_MARK, amountMinorUnits: 400.5 }],
+      ['an amount of zero', { ...OTHER_GOOD_MARK, amountMinorUnits: 0 }],
+      ['a negative amount', { ...OTHER_GOOD_MARK, amountMinorUnits: -40_000 }],
+      [
+        'an amount past the safe integers',
+        { ...OTHER_GOOD_MARK, amountMinorUnits: Number.MAX_SAFE_INTEGER + 1 },
+      ],
+      ['a null mark', null],
+      ['a text mark', 'yearly'],
+    ];
+
+    it.each(BAD_MARKS)('drops a mark with %s alone beside a good mark', async (_title, bad) => {
+      storeEntries({ apple: { name: 'Apple', marks: [bad, GOOD_MARK] } });
+
+      expect((await readChoices()).get('apple')).toEqual({
+        name: 'Apple',
+        marks: [GOOD_MARK],
+      });
+
+      await hide('silpo', 'Silpo');
+
+      expect(storedEntries().get('apple')).toEqual({ name: 'Apple', marks: [GOOD_MARK] });
+    });
+
+    it.each([
+      ['one minor unit', 1],
+      ['the largest safe integer', Number.MAX_SAFE_INTEGER],
+    ])('keeps a mark of %s', async (_title, amountMinorUnits) => {
+      const edge = markOf(amountMinorUnits);
+
+      storeEntries({ apple: { name: 'Apple', marks: [edge] } });
+
+      expect((await readChoices()).get('apple')).toEqual({ name: 'Apple', marks: [edge] });
+    });
+
+    it.each([
+      ['no marks', undefined],
+      ['marks that are not an array', 'monthly'],
+      ['marks that are an object', { 0: GOOD_MARK }],
+      ['marks that are null', null],
+      ['marks that are empty', []],
+      ['marks that are all bad', [{ ...GOOD_MARK, period: 'daily' }, null]],
+    ])('drops an entry with %s unless it holds a hide', async (_title, marks) => {
+      storeEntries({
+        bare: { name: 'Bare', marks },
+        hidden: { name: 'Hidden', hidden: true, marks },
+        good: { name: 'Good', marks: [GOOD_MARK] },
+      });
+
+      const choices = await readChoices();
+
+      expect(choices.has('bare')).toBe(false);
+      expect(choices.get('hidden')).toStrictEqual({ name: 'Hidden', hidden: true });
+      expect(choices.get('good')).toEqual({ name: 'Good', marks: [GOOD_MARK] });
+    });
+
+    it('reads a hidden flag that is not true as no hide beside good marks', async () => {
+      storeEntries({ apple: { name: 'Apple', hidden: false, marks: [GOOD_MARK] } });
+
+      expect((await readChoices()).get('apple')).toStrictEqual({
+        name: 'Apple',
+        marks: [GOOD_MARK],
+      });
+    });
+
+    it('drops an entry whose name is not text even beside good marks', async () => {
+      storeEntries({ apple: { name: 7, marks: [GOOD_MARK] } });
+
+      expect((await readChoices()).has('apple')).toBe(false);
+    });
+
+    const PERIOD_PAIRS = RECURRING_PERIODS.flatMap((earlier, index) =>
+      RECURRING_PERIODS.slice(index + 1).map((later) => [earlier, later] as const),
+    );
+
+    it.each(
+      PERIOD_PAIRS.flatMap(([earlier, later]) => [
+        [earlier, later, false],
+        [earlier, later, true],
+      ]),
+    )(
+      'reads two marks of one currency and amount as the earlier of %s and %s (reversed: %s)',
+      async (earlier, later, isReversed) => {
+        const stored = [markOf(9_900, later), markOf(9_900, earlier)];
+
+        storeEntries({ apple: { name: 'Apple', marks: isReversed ? stored.reverse() : stored } });
+
+        expect((await readChoices()).get('apple')?.marks).toEqual([markOf(9_900, earlier)]);
+      },
+    );
+
+    it('keeps two marks of one amount in two currencies', async () => {
+      const dollars = markOf(9_900, 'monthly', 'USD');
+
+      storeEntries({ apple: { name: 'Apple', marks: [dollars, GOOD_MARK] } });
+
+      expect((await readChoices()).get('apple')?.marks).toEqual([GOOD_MARK, dollars]);
+    });
+
+    const SORTED_MARKS = [
+      markOf(10_000, 'monthly', 'UAH'),
+      markOf(10_000, 'yearly', 'USD'),
+      markOf(20_000, 'monthly', 'UAH'),
+      markOf(20_000, 'monthly', 'USD'),
+      markOf(30_000, 'weekly', 'UAH'),
+    ];
+
+    it.each([
+      ['reversed', [4, 3, 2, 1, 0]],
+      ['shuffled', [2, 0, 4, 1, 3]],
+      ['rotated', [1, 3, 0, 4, 2]],
+    ])(
+      'reads marks stored %s by amount, then period order, then currency',
+      async (_title, order) => {
+        storeEntries({
+          apple: { name: 'Apple', marks: order.map((index) => SORTED_MARKS[index]) },
+        });
+
+        expect((await readChoices()).get('apple')?.marks).toEqual(SORTED_MARKS);
+      },
+    );
   });
 });

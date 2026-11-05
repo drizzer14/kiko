@@ -5,10 +5,6 @@ import {
   smallestSpelling,
   merchantSpellingOf,
 } from '@kiko/transactions/merchant-name';
-import { sweep } from '@kiko/test-support/property-sweep';
-import { seededRandom } from '@kiko/test-support/seeded-random';
-import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
-
 import {
   at,
   weekly,
@@ -34,7 +30,11 @@ import {
   type LedgerRow,
   type ExpectedSeries,
   type RecurrenceView,
-} from './detection-test-helper';
+} from '@kiko/test-support/recurring-ledger';
+import { sweep } from '@kiko/test-support/property-sweep';
+import { seededRandom } from '@kiko/test-support/seeded-random';
+import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
+
 import { detectRecurringSeries } from './detection';
 import type { RecurringSeries } from './detection.types.d';
 

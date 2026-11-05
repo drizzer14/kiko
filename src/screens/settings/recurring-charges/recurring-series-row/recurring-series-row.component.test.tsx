@@ -97,4 +97,37 @@ describe('RecurringSeriesRow', () => {
     ).toBeTruthy();
     expect(queryByText(`No charge since ${formatDate(FIRST_OF_MAY)}`)).toBeNull();
   });
+
+  describe('a marked series', () => {
+    const MARKED = seriesWith({
+      recurrence: { kind: 'marked' },
+      lastChargeAmountMinorUnits: 26000,
+      marks: [{ currency: 'UAH', amountMinorUnits: 25000, period: 'monthly' }],
+      markedSpan: { lowest: 25000, highest: 26000 },
+    });
+
+    it('shows its marked line and the amount of its last real charge, never a stored amount', async () => {
+      const { getByText, queryByText } = await render(
+        <RecurringSeriesRow series={MARKED} onPress={jest.fn()} />,
+      );
+
+      expect(getByText('Marked: monthly')).toBeTruthy();
+      expect(getByText(`Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`)).toBeTruthy();
+      expect(getByText(formatMoney(Money.of('UAH', 26000)))).toBeTruthy();
+      expect(queryByText(formatMoney(Money.of('UAH', 25000)))).toBeNull();
+    });
+
+    it('hands the series with its marks to onPress, which the list reads the lowest of', async () => {
+      const onPress = jest.fn();
+      const { getByTestId } = await render(
+        <RecurringSeriesRow series={MARKED} onPress={onPress} />,
+      );
+
+      await fireEvent.press(getByTestId('recurring-series-row-netflix-1'));
+
+      expect(onPress).toHaveBeenCalledTimes(1);
+      expect(onPress).toHaveBeenCalledWith(MARKED);
+      expect(onPress.mock.calls[0][0].marks).toEqual(MARKED.marks);
+    });
+  });
 });

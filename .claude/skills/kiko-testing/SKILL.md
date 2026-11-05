@@ -51,6 +51,24 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   stack reader, for a navigator test a spy cannot replace.
 - `transaction-form-data-layer.ts`: the data layer the real transaction form reads and writes,
   for a navigator test that renders it.
+- `recurring-mark-live-queries.ts`: the settings and whole-ledger reads of the transaction form's
+  mark field (`createMarkLiveQueries`, `taggedQuery`) and the Netflix fixtures its three suites
+  share.
+- `recurring-ledger.ts`: builders for a recurring-detection ledger (`ledgerOf`, `chargeOf`,
+  `monthly`, `weekly`, `holdingOf`, `randomLedgerOf`) and the views that compare series with
+  their expected shape (`viewsOf`, `expectedViewsOf`).
+- `marked-series-world.ts`: the mark, expected-series and outcome types of a marked-series world,
+  and the views and random entries (`entryOf`, `outcomeOf`, `randomEntriesOf`) that check it.
+- `marked-series-worlds.ts`: the table of marked-series worlds (`ONE_AMOUNT_WORLDS`,
+  `exclusionWorlds`) and the small builders they share (`series`, `marked`, `detected`, `chain`).
+- `marked-series-chain-worlds.ts`: the amount-chain worlds (`AMOUNT_CHAIN_WORLDS`), built from the
+  same builders.
+- `marked-series-hook-result.ts`: what the series hook hands its screens for a ledger and marked
+  entries (`hookStateOf`, with the `MarkedNames` type), made of the real detection functions.
+- `sqlite-live-query.ts`, `recurring-sqlite-world.ts`: a navigator test's whole data layer on a
+  real migrated `node:sqlite` database (`clientModule`, `openSqliteWorld`; a
+  `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and
+  the rows of a `ledgerOf` ledger put into it.
 - `form-header-items.ts`: the nav-bar items a form sets (`pressSave`, `saveItem`,
   `expectNavBarSaveOnly`).
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an
@@ -252,7 +270,9 @@ test from being decorative.
   geometry (whether a `hitSlop` or `minHeight`-grown touch target is reachable on the device). A
   fix for either needs a real-navigator test (see
   `src/navigation/root-navigator/statement-import-return.navigator.test.tsx`) or a device check;
-  a green Jest assertion on a prop is never proof the real behavior is fixed. An accessible iOS
+  a green Jest assertion on a prop is never proof the real behavior is fixed. A navigator flow
+  where a write must change what Back shows runs the real `useLiveQuery` through
+  `src/test-support/sqlite-live-query.ts`. An accessible iOS
   `Pressable` groups its children into one VoiceOver element, and RNTL `getByLabelText` still
   finds the inner control: device-check a control inside a pressable row with VoiceOver.
 - The time zone is pinned by a top-level assignment in `jest.config.js` only. Jest gives each test

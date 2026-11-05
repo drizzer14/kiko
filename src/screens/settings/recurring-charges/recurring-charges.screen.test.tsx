@@ -23,7 +23,7 @@ let mockResult: { series: RecurringSeries[]; isLoading: boolean; choices: Choice
 };
 
 jest.mock('@kiko/recurring/use-recurring-series', () => ({
-  useRecurringSeries: () => mockResult,
+  useRecurringSeries: () => ({ markedSeries: [], withoutCharges: [], ...mockResult }),
 }));
 
 const mockOpenInPane = jest.fn();

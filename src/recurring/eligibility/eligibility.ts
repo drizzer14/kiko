@@ -4,13 +4,16 @@ import {
   ownIbansOf,
 } from '@kiko/statistics/spending-ledger';
 import {
-  descriptionExcludedTransferTransactionIds,
+  isMccExcludedTransfer,
+  isDescriptionExcludedTransfer,
   mccExcludedTransferTransactionIds,
+  descriptionExcludedTransferTransactionIds,
 } from '@kiko/statistics/transfer-exclusion';
 import {
   internalTransferTransactionIds,
   rowsForTransferMatch,
 } from '@kiko/statistics/internal-transfers';
+import { startOfLocalDay } from '@kiko/dates';
 import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
 import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
 
@@ -54,6 +57,24 @@ export const recurringExcludedIds = (
     ...exchangeFundingMatches(ledger, accountKindByHoldingIdOf(accounts, holdings)).excludedIds,
   ]);
 };
+
+/**
+ * Whether the transaction form offers to mark this row: the structural part plus the two matchers
+ * that read one row, on a row that is not on a later local day. The matched own transfer and the
+ * funded exchange debit need the whole ledger, which the form does not hold: a mark on such a row
+ * selects no charge, because a series never counts it.
+ */
+export const isOfferedForMark = (
+  row: EligibilityRow,
+  holding: EligibilityHolding | undefined,
+  account: EligibilityAccount | undefined,
+  ownIbans: ReadonlySet<string>,
+  now: number,
+): boolean =>
+  isRecurringCandidate(row, holding, account) &&
+  !isMccExcludedTransfer(row, ownIbans) &&
+  !isDescriptionExcludedTransfer(row.description) &&
+  startOfLocalDay(row.time) <= startOfLocalDay(now);
 
 /** The structural part of what makes a row a charge; `recurringExcludedIds` covers the rest. */
 export const isRecurringCandidate = (

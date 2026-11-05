@@ -3,6 +3,7 @@ import type { Currency } from '@kiko/currency/currency';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import type { RecurringMark, RecurringPeriod } from '@kiko/recurring/detection';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { type Repository, type SettingsRow, settings, database, write } from '@kiko/db';
 
@@ -14,6 +15,8 @@ import {
 } from './history-backfill-state';
 import {
   type RecurringMerchantChoice,
+  isSameChain,
+  recurringChoiceOf,
   recurringMerchantChoicesOf,
 } from './recurring-merchant-choices';
 
@@ -96,6 +99,21 @@ const changeRecurringMerchantChoices = (
       .set({ recurringMerchantChoices: Object.fromEntries(changed) })
       .where(eq(settings.id, SETTINGS_ID));
   });
+
+/** Stores the choice under the key, or removes the key when the choice is no entry. */
+const withChoice = (
+  choices: Map<string, RecurringMerchantChoice>,
+  key: string,
+  choice: RecurringMerchantChoice | null,
+): Map<string, RecurringMerchantChoice> => {
+  if (choice === null) {
+    choices.delete(key);
+
+    return choices;
+  }
+
+  return choices.set(key, choice);
+};
 
 export const settingsRepo = {
   getQuery: () => database.select().from(settings).where(eq(settings.id, SETTINGS_ID)),
@@ -207,12 +225,94 @@ export const settingsRepo = {
       .from(settings)
       .where(eq(settings.id, SETTINGS_ID)),
   recurringMerchantChoicesOf,
-  /** Hides a merchant's detected series; hiding a key again keeps one entry, the last name. */
+  /**
+   * Hides a merchant's detected series; hiding a key again keeps one entry, the last name. The
+   * marks of the key stay beside the hide.
+   */
   hideRecurringMerchant: (key: string, name: string) =>
-    changeRecurringMerchantChoices((choices) => choices.set(key, { name, hidden: true })),
-  /** Clears the hide, and writes nothing for a key that holds none. */
+    changeRecurringMerchantChoices((choices) =>
+      choices.set(key, { ...choices.get(key), name, hidden: true }),
+    ),
+  /**
+   * Clears the hide and keeps the marks, so an entry left with neither is dropped. Writes nothing
+   * for a key that holds no hide.
+   */
   showRecurringMerchantAgain: (key: string) =>
-    changeRecurringMerchantChoices((choices) => (choices.delete(key) ? choices : null)),
+    changeRecurringMerchantChoices((choices) => {
+      const entry = choices.get(key);
+
+      if (entry === undefined || entry.hidden !== true) {
+        return null;
+      }
+
+      return withChoice(
+        choices,
+        key,
+        recurringChoiceOf(entry.name, { isHidden: false, marks: entry.marks ?? [] }),
+      );
+    }),
+  /**
+   * Marks a chain as recurring, beside the hide and the other marks of the key. A mark of the
+   * same currency and amount takes the new period; `name` is the last write's spelling.
+   */
+  markRecurringCharge: (key: string, name: string, mark: RecurringMark) =>
+    changeRecurringMerchantChoices((choices) => {
+      const entry = choices.get(key);
+      const marks = entry?.marks ?? [];
+      const isStored = marks.some((stored) => isSameChain(stored, mark));
+
+      return choices.set(key, {
+        ...entry,
+        name,
+        marks: isStored
+          ? marks.map((stored) => (isSameChain(stored, mark) ? mark : stored))
+          : [...marks, mark],
+      });
+    }),
+  /**
+   * Gives the marks of one chain a new period and moves no stored amount. Writes nothing for an
+   * entry that holds none of them, or none at another period.
+   */
+  setRecurringChainPeriod: (
+    key: string,
+    chain: readonly RecurringMark[],
+    period: RecurringPeriod,
+  ) =>
+    changeRecurringMerchantChoices((choices) => {
+      const entry = choices.get(key);
+      const marks = entry?.marks ?? [];
+      const isChanged = (stored: RecurringMark) =>
+        stored.period !== period && chain.some((member) => isSameChain(member, stored));
+
+      if (entry === undefined || !marks.some(isChanged)) {
+        return null;
+      }
+
+      return choices.set(key, {
+        ...entry,
+        marks: marks.map((stored) => (isChanged(stored) ? { ...stored, period } : stored)),
+      });
+    }),
+  /**
+   * Clears the marks of one chain and keeps the hide and the other marks, so an entry left with
+   * neither is dropped. Writes nothing for an entry that holds none of them.
+   */
+  removeRecurringMarks: (key: string, chain: readonly RecurringMark[]) =>
+    changeRecurringMerchantChoices((choices) => {
+      const entry = choices.get(key);
+      const marks = entry?.marks ?? [];
+      const kept = marks.filter((stored) => !chain.some((member) => isSameChain(member, stored)));
+
+      if (entry === undefined || kept.length === marks.length) {
+        return null;
+      }
+
+      return withChoice(
+        choices,
+        key,
+        recurringChoiceOf(entry.name, { isHidden: entry.hidden === true, marks: kept }),
+      );
+    }),
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>
     write((databaseTransaction) =>
       databaseTransaction
