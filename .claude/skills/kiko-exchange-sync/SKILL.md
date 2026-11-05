@@ -327,7 +327,10 @@ than restated here:
   when finished, and a mark behind the base starts a new pass.
 - **A balance sync never touches the walk state.** A balance sync's own
   upsert (`runBalanceSyncInner` -> `upsertExchangeMany`) writes a FRESH
-  `{ syncedAt }` metadata object on every run, for every provider. The walk
+  metadata object on every run, for every provider: `{ syncedAt }`, plus the read date for a
+  provider whose balance is dated (`datesBalanceOf` in `holding-metadata.ts`). The update
+  branch of the upsert also writes the overwritten-row list of a dated holding
+  (`overwrittenRowsPatch`, `src/holdings/repo/holdings.repo.ts`). The walk
   marks are not in that metadata (they live in `sync_state.exchange_state`),
   so nothing there needs carrying except what `carriedMetadataKeys`
   (`holding-metadata.ts`) names: `STATEMENT_FROM_FIELD` (a reopened Monobank
@@ -1047,6 +1050,10 @@ Status: set 4 of 1.4-bybit; the history walk of set 6 can extend this section. T
   (`bybit.failure-text.ts`). A kept holding with no stamp does not count.
 - A provider failure throws. `sync.ts` reads an empty answer as success, so an empty return can
   hide a failure.
+- Past-line mark: a Bybit balance is dated by its last read (`balanceReadAt`), and a read lists
+  the rows it overwrote (`overwrittenRowIds`). A row on that list moves no balance when the user
+  edits or deletes it. Read `datedBalanceSourceOf`, `isOverwrittenRow` and `datesBalanceOf` in
+  `src/holdings/holding-metadata/holding-metadata.ts`; copy no list from here.
 
 ## Crypto re-sync request
 
